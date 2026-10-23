@@ -241,7 +241,7 @@ class SharedEditTest : StringSpec({
         // Saved without a word: nothing reaches the parent's forms until the draft is published.
         parentAdmin.postData(DSV.sharedFieldEdit, sharedArgs(sandboxType, DesignDemo.venue, null, options, read[DSV.sharedBasedOn] as String))
 
-        val report = ConfigImpact.report(cxt.mkSubContext("setup", parent), parent, DesignDemo.configName)
+        val report = ConfigImpact.report(cxt.mkSubContext("setup", parent), parent, listOf(DesignDemo.configName))
         report.findings.single().kind shouldBe ImpactKind.dataInvalid
         report.findings.single().rows shouldContain held
     }
@@ -269,11 +269,11 @@ class SharedEditTest : StringSpec({
     "a configuration carrying somebody's unpublished changes is refused; published, editing returns" {
         // An unpublished change beside Design View: a save here publishes, and would take it live (issue #1026).
         val configId = GedraId.of(GedraConfigType.configDoc, client, DesignDemo.configName)
-        GedraConfigService.get(cxt).patchConfig(cxt.mkSubContext("setup", client), configId) { it }
+        GedraConfigService.get(cxt).patchConfigs(cxt.mkSubContext("setup", client)) { edit(configId) { it } }.single()
         try {
             traitRead()[DSV.sharedRefusalCode] shouldBe DesignRefusal.unpublishedChanges.name
         } finally {
-            GedraConfigService.get(cxt).publish(cxt.mkSubContext("setup", client), configId)
+            GedraConfigService.get(cxt).publish(cxt.mkSubContext("setup", client), listOf(configId))
         }
         traitRead()[DSV.canEditShared] shouldBe true
     }

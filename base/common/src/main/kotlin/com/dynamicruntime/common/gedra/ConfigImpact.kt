@@ -63,30 +63,33 @@ object ConfigImpact {
     private const val readBatch = 500
 
     /**
-     * The report for publishing [client]'s configuration [name] as its latest revision stands. Not found when the
-     * client has no such configuration.
+     * The report for publishing [client]'s configurations [names] together (issue #1352), each as its latest revision
+     * stands. Not found when the client has no such configuration.
      */
-    fun report(cxt: KdrCxt, client: String, name: String): ImpactReport {
-        val latest = GedraConfigService.get(cxt).readLatest(cxt, GedraId.of(GedraConfigType.configDoc, client, name))
-            ?: throw KdrException("No configuration '$name' for client '$client'.", code = EXC.notFound)
+    fun report(cxt: KdrCxt, client: String, names: List<String>): ImpactReport {
+        if (names.isEmpty()) throw KdrException.mkInput("An impact report must name at least one configuration.")
+        val latest = names.distinct().map { name ->
+            GedraConfigService.get(cxt).readLatest(cxt, GedraId.of(GedraConfigType.configDoc, client, name))
+                ?: throw KdrException("No configuration '$name' for client '$client'.", code = EXC.notFound)
+        }
         return reportFor(cxt, client, latest)
     }
 
     /**
-     * The report for making [latest] -- a revision of one of [client]'s configurations -- the one it runs. A publish
-     * asks on behalf of a published-only client alone, since a client on the latest tier already runs [latest]. An
-     * editor's save that writes [latest] and makes it live in one step ([anyTier], issue #1040) asks before the reload
-     * on either tier: what the client runs now is still the revision before it.
+     * The report for making [latest] -- revisions of [client]'s configurations, judged together (issue #1352) -- the
+     * ones it runs. A publish asks on behalf of a published-only client alone, since a client on the latest tier
+     * already runs [latest]. An editor's save that writes [latest] and makes it live in one step ([anyTier], issue
+     * #1040) asks before the reload on either tier: what the client runs now is still the revisions before them.
      */
-    fun reportFor(cxt: KdrCxt, client: String, latest: GedraConfigRow, anyTier: Boolean = false): ImpactReport {
-        val report = ImpactReport(client, latest.configId.baseId, latest.version)
+    fun reportFor(cxt: KdrCxt, client: String, latest: List<GedraConfigRow>, anyTier: Boolean = false): ImpactReport {
+        val report = ImpactReport(client, latest.map { it.configId.baseId to it.version })
         val publishedOnly = GedraConfigService.get(cxt).publishedOnly(cxt, client)
         if (!publishedOnly && !anyTier) return report
         val data = GedraDataService.get(cxt)
         val idsByKind = GU.entryKinds.associateWith { data.liveGedraIds(cxt, it, client).sorted() }
         val limit = cxt.getEnvVar(scanLimitEnvVar)?.trim()?.toIntOrNull() ?: defaultScanLimit
         if (idsByKind.values.sumOf { it.size } > limit) return report.also { it.tooLarge = true }
-        val candidate = GedraConfigTrial.candidate(cxt, client, listOf(latest), published = publishedOnly) ?: return report
+        val candidate = GedraConfigTrial.candidate(cxt, client, latest, published = publishedOnly) ?: return report
 
         val now = Judged(SchemaService.get(cxt).storeFor(client).types, WorkflowService.get(cxt).forClient(client))
         val next = Judged(candidate.schema.types, candidate.workflows)
@@ -107,12 +110,12 @@ object ConfigImpact {
     }
 
     /**
-     * Refuses a publish of [latest] whose report finds anything (or could not be computed), with the report in the
+     * Refuses a publish of [latest] (judged together) whose report finds anything (or could not be computed), with the report in the
      * refusal's `extraData` under [IMP.report] and its `errorCode` [IMP.refusedCode], so a caller can show it and ask
      * again with [IMP.acknowledgeImpact]. With [asSave] it is an editor's save made live at once (issue #1040): judged
      * on any tier ([reportFor]'s `anyTier`), and refused in a save's words.
      */
-    fun requireNone(cxt: KdrCxt, client: String, latest: GedraConfigRow, asSave: Boolean = false) {
+    fun requireNone(cxt: KdrCxt, client: String, latest: List<GedraConfigRow>, asSave: Boolean = false) {
         val report = reportFor(cxt, client, latest, anyTier = asSave)
         if (!report.blocks) return
         val what = if (report.tooLarge) {
@@ -121,7 +124,7 @@ object ConfigImpact {
         } else {
             report.findings.joinToString("; ") { it.describe() }
         }
-        val (doing, again) = if (asSave) "This change" to "Save" else "Publishing configuration '${report.name}'" to "Publish"
+        val (doing, again) = if (asSave) "This change" to "Save" else "Publishing ${report.describeConfigs()}" to "Publish"
         throw KdrException.mkInput(
             "$doing would affect data client '$client' already stores: $what. $again again acknowledging the impact " +
                 "to go ahead.",
@@ -197,13 +200,23 @@ object ConfigImpact {
 enum class ImpactGate { unchecked, refuse, acknowledged }
 
 /** A publish impact report (issue #935); see [ConfigImpact]. The wire names are [IMP]'s. */
-class ImpactReport(val client: String, val name: String, val version: Int) {
+class ImpactReport(
+    val client: String,
+    /** The configurations judged together, each its name and the version of the revision judged (issue #1352). */
+    val configs: List<Pair<String, Int>>,
+) {
     var scanned = 0
     var tooLarge = false
     private val byKey = LinkedHashMap<List<String?>, ImpactFinding>()
 
     /** The findings, in the order first met. */
     val findings: List<ImpactFinding> get() = byKey.values.toList()
+
+    /** The configurations as a refusal names them: "configuration 'main'", or "configurations 'a' and 'b'". */
+    fun describeConfigs(): String {
+        val quoted = configs.map { "'${it.first}'" }
+        return if (quoted.size == 1) "configuration ${quoted[0]}" else "configurations ${quoted.dropLast(1).joinToString(", ")} and ${quoted.last()}"
+    }
 
     /** Whether a publish needs acknowledging: something found, or nothing could be examined. */
     val blocks: Boolean get() = tooLarge || byKey.isNotEmpty()
@@ -215,8 +228,7 @@ class ImpactReport(val client: String, val name: String, val version: Int) {
 
     fun toMap(): Map<String, Any?> = linkedMapOf(
         IMP.client to client,
-        IMP.name to name,
-        IMP.version to version,
+        IMP.configs to configs.map { (name, version) -> linkedMapOf(IMP.name to name, IMP.version to version) },
         IMP.scanned to scanned,
         IMP.tooLarge to tooLarge,
         IMP.findings to findings.map { it.toMap() },

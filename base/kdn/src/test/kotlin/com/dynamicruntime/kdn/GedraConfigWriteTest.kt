@@ -98,7 +98,7 @@ class GedraConfigWriteTest : StringSpec({
         b1[GE.data].toJsonMapOrEmpty()[CCT.description] shouldBe "Beta v2"
 
         // Publish the editable latest.
-        val published = service().publish(asOwner(), classId)
+        val published = service().publish(asOwner(), listOf(classId)).single()
         published.version shouldBe 1
         published.isPublished shouldBe true
         published.publishedAt.shouldNotBeNull()
@@ -203,7 +203,7 @@ class GedraConfigWriteTest : StringSpec({
 
         // Publish, then write again -- which mints revision 2. The planted key must be carried across the bump,
         // exactly as an in-place edit would keep it.
-        service().publish(asOwner(), classId)
+        service().publish(asOwner(), listOf(classId))
         val v2 = service().writeConfig(asOwner(), cfg("wcfgExtra", "Beta v2"))
         v2.version shouldBe 2
         v2.extra[stray] shouldBe strayValue

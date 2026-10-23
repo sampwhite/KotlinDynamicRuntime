@@ -112,7 +112,7 @@ class GedraConfigSyncTest : StringSpec({
 
         // v1 published (tierP), then v2 unpublished adds tierQ. The latest tier consumes the latest, so tierQ is live.
         writeTc(nodeA, "tierP")
-        GedraConfigService.get(nodeA).publish(tcClient(nodeA), GedraId.of(GedraConfigType.configDoc, tc, "${tc}cfg"))
+        GedraConfigService.get(nodeA).publish(tcClient(nodeA), listOf(GedraId.of(GedraConfigType.configDoc, tc, "${tc}cfg")))
         writeTc(nodeA, "tierP", "tierQ")
         reloadAnnounce(nodeA)
         tcTraits(nodeA) shouldContain "tierQ"

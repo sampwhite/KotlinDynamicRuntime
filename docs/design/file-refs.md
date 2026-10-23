@@ -177,7 +177,7 @@ one, is the deployment's to say and is written up in `examples/custom-config.md`
   local ref the revision already holds, so their edit of the same configuration is not refused for something they
   did not write; it may reword the ref's description, which names no file; and it may leave the ref out, or
   upload over it. An edit of theirs that is refused and undone puts back what was there
-  (`patchConfig(restoring = …)`).
+  (`ConfigPatches.edit(restoring = …)`).
 - **A client's own ref is the third source** (issue #1164). `{ refId, source: "clientLocal", root, path }` reads
   `<root>/<owner>/<path>`: the directory, in a root the deployment opened to clients
   (`KDR_LOCAL_FILE_CLIENT_ROOTS`), of the client whose ref it is. It is the one local ref a client's own

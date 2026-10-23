@@ -74,7 +74,7 @@ class SandboxClientTest : StringSpec({
         val parent = "sbxpub"
         val sandbox = sandboxOf(parent)
         write(parent, "pubA")
-        svc().publish(asClient(parent), classId(parent))
+        svc().publish(asClient(parent), listOf(classId(parent)))
         svc().setPublishedOnly(asClient(parent), parent, true)
         write(parent, "pubA", "pubB")        // v2, unpublished
         val result = reload(parent)
@@ -88,7 +88,7 @@ class SandboxClientTest : StringSpec({
         result.all.map { it.client } shouldContainExactly listOf(parent, sandbox)
 
         // Publishing v2 brings the parent up to what the sandbox already showed.
-        svc().publish(asClient(parent), classId(parent))
+        svc().publish(asClient(parent), listOf(classId(parent)))
         reload(parent)
         traits(parent) shouldContain "pubB"
         traits(sandbox) shouldContain "pubB"

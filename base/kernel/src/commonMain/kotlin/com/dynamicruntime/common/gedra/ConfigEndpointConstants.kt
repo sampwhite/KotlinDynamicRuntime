@@ -23,7 +23,12 @@ object CFEP {
 
     /** What publishing a configuration would do to the client's stored data (issue #935); the names are [IMP]'s. */
     const val bundleImpact = "/${SECT.clientAdmin}/config/bundle/impact"
-    const val traits = "/${SECT.clientAdmin}/config/traits"
+    /**
+     * The stored entries of a configuration's slots, each with its own stamps (issue #1352): "slot", never "trait",
+     * outward -- that slots are stored as config traits is the storage's business, and `/clientAdmin/client/traits`
+     * is the client's data traits.
+     */
+    const val slotEntries = "/${SECT.clientAdmin}/config/entries"
     const val reload = "/${SECT.clientAdmin}/config/reload"
     const val publishedOnly = "/${SECT.clientAdmin}/config/publishedOnly"
 
@@ -31,12 +36,23 @@ object CFEP {
     const val bundleType = "ConfigBundle"
     const val bundleWriteType = "ConfigBundleWrite"
     const val summaryType = "ConfigSummary"
-    const val traitEntryType = "ConfigTraitEntry"
+    const val patchResultType = "ConfigPatchResult"
+    const val publishResultType = "ConfigPublishResult"
+    const val slotEntryType = "ConfigSlotEntry"
     const val reloadResultType = "ConfigReloadResult"
     const val tierType = "ConfigTier"
 
     // --- field names (each matches its value) ---
     const val name = "name"
+
+    /** The configurations a publish or an impact preview acts on together, by name (issue #1352). */
+    const val names = "names"
+
+    /**
+     * The configurations a request acts on, or answers with, one per configuration (issue #1352): on a patch the
+     * `{name, edits}` it applies in one transaction, and on a patch's or a publish's answer each one written.
+     */
+    const val configs = "configs"
     const val namespaceField = "namespace"
     const val client = "client"
     const val version = "version"
@@ -84,7 +100,7 @@ object ACEP {
     const val bundlePublish = "/${SECT.admin}/client/config/bundle/publish"
     const val bundleRevert = "/${SECT.admin}/client/config/bundle/revert"
     const val bundleImpact = "/${SECT.admin}/client/config/bundle/impact"
-    const val traits = "/${SECT.admin}/client/config/traits"
+    const val slotEntries = "/${SECT.admin}/client/config/entries"
     const val reload = "/${SECT.admin}/client/config/reload"
     const val publishedOnly = "/${SECT.admin}/client/config/publishedOnly"
     const val import = "/${SECT.admin}/client/config/import"

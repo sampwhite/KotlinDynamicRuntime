@@ -75,7 +75,7 @@ class FileRefCopyTest : StringSpec({
                 )
             },
         )
-        svc.publish(setup, GedraId.of(GedraConfigType.configDoc, client, "main"))
+        svc.publish(setup, listOf(GedraId.of(GedraConfigType.configDoc, client, "main")))
         GedraConfigReload.reloadClient(cxt, client)
         return TestUser.create(cxt, "chief@$client.test", level = ROLE.admin, userClient = client)
     }
@@ -209,7 +209,7 @@ class FileRefCopyTest : StringSpec({
 
         // Published together, they are the client's.
         val owner = cxt.mkSubContext("publish", client).also { it.userId = 11861L }
-        svc.publish(owner, GedraId.of(GedraConfigType.configDoc, client, CPY.copyConfigName))
+        svc.publish(owner, listOf(GedraId.of(GedraConfigType.configDoc, client, CPY.copyConfigName)))
         GedraConfigReload.reloadClient(cxt, client)
         shellRefs(member) shouldBe mapOf("hero" to FREF.versionedName("hero", png.sha256Hex()))
         served(client) shouldBe "![Hero](ref:hero)"

@@ -60,7 +60,7 @@ class GedraConfigCacheTest : StringSpec({
         }
 
         // Publish it: latest == published, the same row.
-        service().publish(asClient(), classId)
+        service().publish(asClient(), listOf(classId))
         revisions().shouldNotBeNull().let {
             version(it.latest) shouldBe 1L
             version(it.latestPublished) shouldBe 1L
@@ -74,7 +74,7 @@ class GedraConfigCacheTest : StringSpec({
         }
 
         // The transition: publishing the newer revision moves published up to meet latest.
-        service().publish(asClient(), classId)
+        service().publish(asClient(), listOf(classId))
         revisions().shouldNotBeNull().let {
             version(it.latest) shouldBe 2L
             version(it.latestPublished) shouldBe 2L

@@ -110,7 +110,7 @@ fun gedraConfigToEntries(config: GedraConfig): Map<String, List<Map<String, Any?
  *
  * From stored rows a conversion fault stays what it is: nobody sent those.
  *
- * Every write path reassembles through this -- the bundle write, the import, and `patchConfig` -- and the load
+ * Every write path reassembles through this -- the bundle write, the import, and `patchConfigs` -- and the load
  * does not, so a row a write once accepted still loads.
  */
 fun reassembleForWrite(

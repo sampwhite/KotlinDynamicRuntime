@@ -1,5 +1,6 @@
 package com.dynamicruntime.kdn
 
+import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.gedra.CFEP
 import com.dynamicruntime.common.gedra.CLD
@@ -41,7 +42,7 @@ class BundleLiveStateTest : StringSpec({
             },
         )
         write("First")
-        svc.publish(setup, GedraId.of(GedraConfigType.configDoc, client, "main"))
+        svc.publish(setup, listOf(GedraId.of(GedraConfigType.configDoc, client, "main")))
         write("Second")
         GedraConfigReload.reloadClient(cxt, client)
         val admin = TestUser.create(cxt, "chief@$client.test", level = ROLE.admin, userClient = client)
@@ -58,6 +59,9 @@ class BundleLiveStateTest : StringSpec({
         row()[CLD.publishedOnly] shouldBe true
 
         // Published, the latest is its own published version.
-        admin.postData(CFEP.bundlePublish, mapOf(CFEP.name to "main"))[CFEP.publishedVersion] shouldBe 2
+        onlyConfig(admin.postData(CFEP.bundlePublish, mapOf(CFEP.names to listOf("main"))))[CFEP.publishedVersion] shouldBe 2
     }
 })
+
+/** The one configuration a single-config patch or publish answered with (issue #1352). */
+private fun onlyConfig(result: Map<String, Any?>): Map<String, Any?> = result[CFEP.configs].toJsonListOfMaps().single()

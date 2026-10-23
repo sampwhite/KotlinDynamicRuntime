@@ -219,7 +219,7 @@ class ClientMenuEditEndpointTest : StringSpec({
             mapOf(CFEP.client to SC.globex, CFEP.name to "menuExtra", CFEP.namespaceField to clientNamespace(SC.globex),
                 CFEP.slots to mapOf(CCT.uiBlockDef to listOf(mapOf(CCT.blockId to HMENU.block, CCT.content to mapOf(HFLD.menu to listOf(mapOf(HFLD.id to extra, HFLD.label to "Site news"))))))),
         )
-        admin.postData(ACEP.bundlePublish, mapOf(CFEP.client to SC.globex, CFEP.name to "menuExtra"))[CFEP.published] shouldBe true
+        onlyConfig(admin.postData(ACEP.bundlePublish, mapOf(CFEP.client to SC.globex, CFEP.names to listOf("menuExtra"))))[CFEP.published] shouldBe true
         admin.postData(ACEP.reload, mapOf(CFEP.client to SC.globex))
         servedMenu(globexUser)[extra] shouldBe "Site news"
 
@@ -240,3 +240,6 @@ class ClientMenuEditEndpointTest : StringSpec({
         }
     }
 })
+
+/** The one configuration a single-config patch or publish answered with (issue #1352). */
+private fun onlyConfig(result: Map<String, Any?>): Map<String, Any?> = result[CFEP.configs].toJsonListOfMaps().single()

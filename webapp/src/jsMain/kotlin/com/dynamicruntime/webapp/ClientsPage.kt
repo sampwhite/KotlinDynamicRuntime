@@ -724,7 +724,7 @@ private val StoredConfigTable = FC<StoredConfigTableProps> { props ->
         error = null
         clientsScope.launch {
             try {
-                ClientsApi.publishBundle(props.clientId, name, props.acrossClients, acknowledgeImpact = acknowledge)
+                ClientsApi.publishBundles(props.clientId, listOf(name), props.acrossClients, acknowledgeImpact = acknowledge)
                 impact = null
                 props.onChanged()
             } catch (e: Throwable) {
@@ -741,7 +741,7 @@ private val StoredConfigTable = FC<StoredConfigTableProps> { props ->
         error = null
         clientsScope.launch {
             try {
-                impact = ImpactDialog(name, ClientsApi.bundleImpact(props.clientId, name, props.acrossClients), refused = false, canPublish = canPublish)
+                impact = ImpactDialog(name, ClientsApi.bundleImpact(props.clientId, listOf(name), props.acrossClients), refused = false, canPublish = canPublish)
             } catch (e: Throwable) {
                 error = userFacingError(e)
             } finally {

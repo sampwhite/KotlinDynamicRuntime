@@ -16,7 +16,7 @@ import kotlin.test.assertTrue
  */
 class ImpactReportTest {
     private val wire = mapOf(
-        IMP.client to "acme", IMP.name to "traits", IMP.version to 4, IMP.scanned to 12, IMP.tooLarge to false,
+        IMP.client to "acme", IMP.configs to listOf(mapOf(IMP.name to "traits", IMP.version to 4)), IMP.scanned to 12, IMP.tooLarge to false,
         IMP.findings to listOf(
             mapOf(IMP.kind to ImpactKind.traitGone.name, IMP.traitId to "extra", IMP.count to 7, IMP.sampleIds to listOf("gd.fd.acme.a", "gd.fd.acme.b")),
             mapOf(IMP.kind to ImpactKind.stateStranded.name, IMP.workflowId to "review", IMP.taskId to "check", IMP.count to 1, IMP.sampleIds to listOf("gd.fd.acme.c")),
@@ -27,7 +27,7 @@ class ImpactReportTest {
     fun aReportIsReadOffTheWire() {
         val report = parseImpactReport(wire)
         assertEquals("acme", report.client)
-        assertEquals(4, report.version)
+        assertEquals(listOf("traits" to 4), report.configs)
         assertEquals(12, report.scanned)
         assertTrue(report.blocks)
         val gone = report.findings.first()
@@ -43,7 +43,7 @@ class ImpactReportTest {
             "Publishing configuration 'traits' would affect data.", fromFragment = false, status = 400,
             errorCode = IMP.refusedCode, traceId = null, extraData = mapOf(IMP.report to wire),
         )
-        assertEquals("traits", impactOf(refused)?.name)
+        assertEquals(listOf("traits" to 4), impactOf(refused)?.configs)
         assertNull(impactOf(ApiError("Nope.", fromFragment = false, status = 400, errorCode = null, traceId = null)))
         assertNull(impactOf(IllegalStateException("not an API error")))
     }
@@ -94,13 +94,21 @@ class ImpactReportTest {
     }
 
     @Test
+    fun aGroupIsNamedInFull() {
+        val group = parseImpactReport(wire + (IMP.configs to listOf(mapOf(IMP.name to "a", IMP.version to 1), mapOf(IMP.name to "b", IMP.version to 2), mapOf(IMP.name to "c", IMP.version to 3))))
+        assertEquals("a, b and c", impactConfigsText(group))
+        assertEquals("traits", impactConfigsText(parseImpactReport(wire)))
+    }
+
+    @Test
     fun publishAnywaySendsTheAcknowledgement() {
-        val anyway = publishBundleRequest("acme", "traits", acrossClients = false, acknowledgeImpact = true)
+        val anyway = publishBundleRequest("acme", listOf("traits"), acrossClients = false, acknowledgeImpact = true)
         assertEquals(CFEP.bundlePublish, anyway.path)
+        assertEquals(listOf("traits"), anyway.body[CFEP.names])
         assertEquals(true, anyway.body[IMP.acknowledgeImpact])
-        assertFalse(publishBundleRequest("acme", "traits", acrossClients = false, acknowledgeImpact = false).body.containsKey(IMP.acknowledgeImpact))
+        assertFalse(publishBundleRequest("acme", listOf("traits"), acrossClients = false, acknowledgeImpact = false).body.containsKey(IMP.acknowledgeImpact))
         // Across clients, a sandbox's page publishes its parent's, by name.
-        val fromSandbox = publishBundleRequest("acme:sandbox", "traits", acrossClients = true, acknowledgeImpact = true)
+        val fromSandbox = publishBundleRequest("acme:sandbox", listOf("traits"), acrossClients = true, acknowledgeImpact = true)
         assertEquals(ACEP.bundlePublish, fromSandbox.path)
         assertEquals("acme", fromSandbox.body[CFEP.client])
         assertEquals(true, fromSandbox.body[IMP.acknowledgeImpact])

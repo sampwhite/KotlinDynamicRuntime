@@ -1,5 +1,6 @@
 package com.dynamicruntime.kdn
 
+import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.content.ContentResources
 import com.dynamicruntime.common.content.HashedFileServing
 import com.dynamicruntime.common.context.CL
@@ -121,7 +122,7 @@ class ClientFileRefsTest : StringSpec({
                 )
             },
         )
-        svc.publish(setup, GedraId.of(GedraConfigType.configDoc, client, "main"))
+        svc.publish(setup, listOf(GedraId.of(GedraConfigType.configDoc, client, "main")))
         GedraConfigReload.reloadClient(on, client)
     }
 
@@ -178,10 +179,7 @@ class ClientFileRefsTest : StringSpec({
             ?.entriesBySlot()?.get(CCT.fileRefDef).orEmpty()
 
     /** One edit of the file-ref slot through the configuration's own patch endpoint: what an administrator types by hand. */
-    fun slotEdit(action: GedraEditAction, entry: Map<String, Any?>, config: String = CPY.copyConfigName): Map<String, Any?> = mapOf(
-        CFEP.name to config,
-        CFEP.edits to listOf(mapOf(CFEP.slot to CCT.fileRefDef, GED.action to action.name, GE.data to entry)),
-    )
+    fun slotEdit(action: GedraEditAction, entry: Map<String, Any?>, config: String = CPY.copyConfigName): Map<String, Any?> = mapOf(CFEP.configs to listOf(mapOf(CFEP.name to config, CFEP.edits to listOf(mapOf(CFEP.slot to CCT.fileRefDef, GED.action to action.name, GE.data to entry)))))
 
     "an upload stores the bytes under their hash, writes the ref into the configuration, and is served by name" {
         val client = "refone"
@@ -433,7 +431,7 @@ class ClientFileRefsTest : StringSpec({
 
         // Published, it is the client's people's.
         val owner = cxt.mkSubContext("publish", client).also { it.userId = 11531L }
-        svc.publish(owner, GedraId.of(GedraConfigType.configDoc, client, CPY.copyConfigName))
+        svc.publish(owner, listOf(GedraId.of(GedraConfigType.configDoc, client, CPY.copyConfigName)))
         GedraConfigReload.reloadClient(cxt, client)
         static(admin, name).rptResponseBytes!!.toList() shouldBe png.toList()
         listed(admin).getValue("logo")[FREF.live] shouldBe true
@@ -502,7 +500,7 @@ class ClientFileRefsTest : StringSpec({
 
         // Removed again and published, it is gone: nobody is served it.
         admin.postData(UADEP.clientFilesRemove, mapOf(CCT.refId to "logo"))
-        svc.publish(cxt.mkSubContext("publish", client).also { it.userId = 11531L }, GedraId.of(GedraConfigType.configDoc, client, CPY.copyConfigName))
+        svc.publish(cxt.mkSubContext("publish", client).also { it.userId = 11531L }, listOf(GedraId.of(GedraConfigType.configDoc, client, CPY.copyConfigName)))
         GedraConfigReload.reloadClient(cxt, client)
         listed(admin).keys shouldBe setOf("kept")
     }
@@ -570,7 +568,7 @@ class ClientFileRefsTest : StringSpec({
 
         // An unrelated draft write goes through: the missing file is the draft's already. A whole write, and a patch.
         svc.writeConfig(writer, gedraConfig(cxt, "words", clientNamespace(client), client) { cfact("unrelated", "carry", "Unrelated.") }, trial = true)
-        svc.patchConfig(writer, GedraId.of(GedraConfigType.configDoc, client, "words"), trial = true) { it }
+        svc.patchConfigs(writer, trial = true) { edit(GedraId.of(GedraConfigType.configDoc, client, "words")) { it } }.single()
         // So does one of the same configuration that leaves the ref naming what it named: rewording it.
         svc.writeConfig(writer, gedraConfig(cxt, "art", clientNamespace(client), client) { fileRef("pic", hash, "Reworded.") }, trial = true)
             .shouldNotBeNull()
@@ -638,13 +636,13 @@ class ClientFileRefsTest : StringSpec({
         val art = GedraId.of(GedraConfigType.configDoc, client, "art")
         val hash = plant(client, png)
         svc.writeConfig(writer, gedraConfig(cxt, "art", clientNamespace(client), client) { fileRef("banner", hash) }, trial = true)
-        svc.publish(writer, art)
+        svc.publish(writer, listOf(art))
         GedraConfigReload.reloadClient(cxt, client)
         svc.writeConfig(writer, gedraConfig(cxt, "art", clientNamespace(client), client) { fileRef("banner", hash, "Half done.") }, trial = true)
         refused(admin, "banner", image(otherPng)) shouldContain "unpublished changes"
         stored(otherPng).shouldBeNull()
         // Published, the same upload is taken, into the configuration that held the ref.
-        svc.publish(writer, art)
+        svc.publish(writer, listOf(art))
         uploaded(admin, "banner", image(otherPng))[FREF.configName] shouldBe "art"
 
         // A client already served as many refs as it may have is told so before the file is stored.
@@ -652,7 +650,7 @@ class ClientFileRefsTest : StringSpec({
         defineClient(full)
         val fullHash = plant(full, png)
         svc.writeConfig(writerOf(full), gedraConfig(cxt, "many", clientNamespace(full), full) { for (n in 1..FREF.maxRefs) fileRef("r$n", fullHash) }, trial = true)
-        svc.publish(writerOf(full), GedraId.of(GedraConfigType.configDoc, full, "many"))
+        svc.publish(writerOf(full), listOf(GedraId.of(GedraConfigType.configDoc, full, "many")))
         GedraConfigReload.reloadClient(cxt, full)
         refs.forClient(full).refs.size shouldBe FREF.maxRefs
         val fullAdmin = adminOf(full)
@@ -682,7 +680,7 @@ class ClientFileRefsTest : StringSpec({
             svc.writeConfig(bound, gedraConfig(cxt, CPY.copyConfigName, clientNamespace(client), client) {}, mustBeNew = true)
         }.code shouldBe EXC.conflict
 
-        svc.patchConfig(bound, made.configId) { it + (CCT.cfactDef to listOf(mapOf(CCT.name to "firstEdit", CCT.group to "first", CCT.description to "Another editor's."))) }
+        svc.patchConfigs(bound) { edit(made.configId) { it + (CCT.cfactDef to listOf(mapOf(CCT.name to "firstEdit", CCT.group to "first", CCT.description to "Another editor's."))) } }.single()
         uploaded(admin, "one", image(png))
         uploaded(admin, "two", image(otherPng))
         storedRefs(client).map { it[CCT.refId] } shouldContainExactly listOf("one", "two")
@@ -814,16 +812,16 @@ class ClientFileRefsTest : StringSpec({
 
         // An edit of another slot, as a copy or menu editor makes one -- trialled, as theirs are: a slot this node
         // does not read is nothing the write did, so it is not what the trial judges the write by.
-        val patched = svc.patchConfig(writer, classId, trial = true) { current ->
+        val patched = svc.patchConfigs(writer, trial = true) { edit(classId) { current ->
             current + (CCT.cfactDef to listOf(mapOf(CCT.name to "carryTwo", CCT.group to "carry", CCT.description to "Two.")))
-        }
+        } }.single()
         patched.entriesBySlot().getValue(CCT.cfactDef).single()[CCT.name] shouldBe "carryTwo"
         futureOf(patched.entries) shouldBe both
         // An authoritative write of the whole configuration, which says nothing of the slot.
         val rewritten = svc.writeConfig(writer, gedraConfig(cxt, "main", clientNamespace(client), client) { cfact("carryThree", "carry", "Three.") })
         futureOf(rewritten.entries) shouldBe both
         // And the copy a revert makes of a published revision.
-        svc.publish(writer, classId)
+        svc.publish(writer, listOf(classId))
         val reopened = svc.revertToEditable(writer, classId)
         reopened.version shouldBe rewritten.version + 1
         futureOf(reopened.entries) shouldBe both
@@ -879,9 +877,9 @@ class ClientFileRefsTest : StringSpec({
         static(admin, "gone").rptStatusCode shouldBe EXC.notFound
         static(admin, "extra").rptResponseBytes!!.toList() shouldBe png.toList()
         // And none of it stops an edit of something else in that configuration: what it already had is not judged.
-        val patched = admin.postData(CFEP.bundlePatch, slotEdit(GedraEditAction.addOrReplace, mapOf(CCT.refId to "another", CCT.source to FREF.sourceStore, CCT.hash to hash), "arefs"))
+        val patched = onlyConfig(admin.postData(CFEP.bundlePatch, slotEdit(GedraEditAction.addOrReplace, mapOf(CCT.refId to "another", CCT.source to FREF.sourceStore, CCT.hash to hash), "arefs")))
         patched[CFEP.name] shouldBe "arefs"
-        wsvc.publish(writerOf(client, w), GedraId.of(GedraConfigType.configDoc, client, "arefs"))
+        wsvc.publish(writerOf(client, w), listOf(GedraId.of(GedraConfigType.configDoc, client, "arefs")))
         admin.postData(UADEP.clientFilesRemove, mapOf(CCT.refId to "gone"))[CCT.refId] shouldBe "gone"
     }
 
@@ -896,7 +894,7 @@ class ClientFileRefsTest : StringSpec({
         // More than a client is served, however they came to be stored: across two configurations here.
         wsvc.writeConfig(writerOf(client, w), gedraConfig(w, "amany", clientNamespace(client), client) { for (n in 1..150) fileRef("r$n", hash) })
         wsvc.writeConfig(writerOf(client, w), gedraConfig(w, "bmany", clientNamespace(client), client) { for (n in 151..over) fileRef("r$n", hash) })
-        for (name in listOf("amany", "bmany")) wsvc.publish(writerOf(client, w), GedraId.of(GedraConfigType.configDoc, client, name))
+        for (name in listOf("amany", "bmany")) wsvc.publish(writerOf(client, w), listOf(GedraId.of(GedraConfigType.configDoc, client, name)))
         GedraConfigReload.reloadClient(w, client)
 
         // It is served the first of them, as many as a client is, and told once that it holds more.
@@ -959,3 +957,6 @@ class ClientFileRefsTest : StringSpec({
         refs.forClient(SourceFileRefComponent.client).refs.isEmpty() shouldBe true
     }
 })
+
+/** The one configuration a single-config patch or publish answered with (issue #1352). */
+private fun onlyConfig(result: Map<String, Any?>): Map<String, Any?> = result[CFEP.configs].toJsonListOfMaps().single()

@@ -42,7 +42,7 @@ class SandboxBootTierTest : StringSpec({
         val setup = first.mkSubContext("setup", client).also { it.userId = 9930L }
         fun write(name: String, build: GedraConfigBuilder.() -> Unit) =
             svc.writeConfig(setup, gedraConfig(first, name, clientNamespace(client), client, build = build))
-        fun publish(name: String) = svc.publish(setup, GedraId.of(GedraConfigType.configDoc, client, name))
+        fun publish(name: String) = svc.publish(setup, listOf(GedraId.of(GedraConfigType.configDoc, client, name)))
 
         write("main") {
             defineClient(

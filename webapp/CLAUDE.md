@@ -623,7 +623,7 @@ is **Publish** (`bundleAction`): offered on a client without a sandbox and on a 
 parent's bundles, the configuration it runs, and publishes them there -- and replaced by a note elsewhere: a
 client with a sandbox publishes from it, after previewing -- the word "sandbox" leads to the sandbox's page,
 directly for an `allClients` administrator, and for a client-scoped one by opening the sandbox first (a fresh
-session as their user there) and landing on that page -- and a client static in production takes nothing stored. A publish reloads the client (`ClientsApi.publishBundle`).
+session as their user there) and landing on that page -- and a client static in production takes nothing stored. A publish reloads the client (`ClientsApi.publishBundles`, which takes a list: the backend publishes several of a client's bundles together, issue #1352).
 A publish is judged against the client's **stored data** (issue #935): one that would affect it is refused with an
 impact report (the envelope's `errorCode` `IMP.refusedCode`, the report in its `extraData`, which `ApiError` carries
 for this), and the table opens it in a dialog (`ImpactReportDialog`: `impactSummary`, a line per finding from

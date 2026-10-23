@@ -29,7 +29,7 @@ import com.dynamicruntime.common.util.toOptStr
  * ### Only the keys changed, under the lock
  *
  * A `fragmentDef` entry holds a file's whole content map, so a change of some keys is a merge **inside** that map,
- * done by `GedraConfigService.patchConfig` under the client's config lock over the revision as it stands there --
+ * done by `GedraConfigService.patchConfigs` under the client's config lock over the revision as it stands there --
  * never from a map the caller read earlier. So the file's other keys, and a key another administrator changed a
  * moment ago, are kept. A batch lands in **one** config ([apply]), so it is one publish and takes effect at once.
  *
@@ -202,7 +202,7 @@ object ClientCopyEdit {
     /**
      * Patches [row] so its `fragmentDef` entry for [fileId] holds each of [edits]' keys at its value -- or, for a null
      * value, no longer holds the key; an entry left with no keys is dropped, so the config does not carry an empty
-     * overlay. The merge runs inside `patchConfig`, over the revision as it stands under the lock.
+     * overlay. The merge runs inside `patchConfigs`, over the revision as it stands under the lock.
      */
     private fun patchKeys(
         svc: GedraConfigService,
@@ -210,7 +210,7 @@ object ClientCopyEdit {
         row: GedraConfigRow,
         fileId: String,
         edits: Map<Pair<String, String>, String?>,
-    ): GedraConfigRow = svc.patchConfig(bound, row.configId, trial = true) { current ->
+    ): GedraConfigRow = svc.patchConfigs(bound, trial = true) { edit(row.configId) { current ->
         val out = LinkedHashMap<String, List<Map<String, Any?>>>(current)
         val entries = current[CCT.fragmentDef].orEmpty().toMutableList()
         val at = entries.indexOfFirst { it[CCT.fileId].toOptStr() == fileId }
@@ -229,7 +229,7 @@ object ClientCopyEdit {
         val entry = linkedMapOf<String, Any?>(CCT.fileId to fileId, CCT.content to content)
         ClientStoredEdit.storeEntry(out, CCT.fragmentDef, entries, at, entry, emptied = content.isEmpty())
         out
-    }
+    } }.single()
 
     /**
      * Makes [written] take effect ([ClientStoredEdit.takeEffect]: live, or a draft) and reads back what the people of

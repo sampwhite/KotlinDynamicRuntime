@@ -603,7 +603,8 @@ is deleted; a patch says what to do with each entry it names and leaves every ot
 `POST /gedra/patch` (#337) carries it. Each client whose schema varies from the global one also gets a copy at
 `/gedra/<client>/patch` (#387), typed by that client's traits. A workflow task's save, `/gedra/workflow/save`
 (#535), applies its edits through the same patch. A stored configuration bundle is edited slot by slot with the same
-three actions, at `/clientAdmin/config/bundle/patch` and `/admin/client/config/bundle/patch` (#732).
+three actions, at `/clientAdmin/config/bundle/patch` and `/admin/client/config/bundle/patch` (#732) -- several of a
+client's bundles at once, in one transaction judged together, so an entry can move from one bundle to another (#1352).
 
 ```json
 {

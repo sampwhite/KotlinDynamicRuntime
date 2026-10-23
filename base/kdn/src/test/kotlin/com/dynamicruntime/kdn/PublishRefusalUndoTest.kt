@@ -106,7 +106,7 @@ class PublishRefusalUndoTest : StringSpec({
                 )
             },
         )
-        svc.publish(writerOf(client), GedraId.of(GedraConfigType.configDoc, client, "main"))
+        svc.publish(writerOf(client), listOf(GedraId.of(GedraConfigType.configDoc, client, "main")))
         GedraConfigReload.reloadClient(cxt, client)
         return TestUser.create(cxt, "chief@$client.test", level = ROLE.admin, userClient = client)
     }
@@ -211,14 +211,14 @@ class PublishRefusalUndoTest : StringSpec({
     }
 
     // The undo of an upload over a ref somebody else named: an operator's local ref, which the client's own
-    // administrator could not have written. The undo writes it back as what was there (`patchConfig(restoring)`);
+    // administrator could not have written. The undo writes it back as what was there (`ConfigPatch.restoring`);
     // without that, putting it back is refused, and the caller would be told that instead of why their upload failed.
     "file refs: an upload over an operator's local ref, refused at the publish, puts the local ref back" {
         val client = "undoupload"
         val admin = defineClient(client)
         val local = mapOf(CCT.refId to "logo", CCT.source to FREF.sourceLocal, CCT.root to brandRoot, CCT.path to "logo.png")
         val art = svc.writeConfig(writerOf(client), gedraConfig(cxt, "art", clientNamespace(client), client) { fileRefFromMap(local) })
-        svc.publish(writerOf(client), art.configId)
+        svc.publish(writerOf(client), listOf(art.configId))
         GedraConfigReload.reloadClient(cxt, client)
 
         refusing += client
@@ -269,7 +269,7 @@ class PublishRefusalUndoTest : StringSpec({
         FileStoreService.get(cxt).forOwner(cxt, client).put(writerOf(client), FileRefService.bucket, FileRefService.keyOf(client, png.sha256Hex()), image(png))
         val entry = mapOf(CCT.refId to "logo", CCT.source to FREF.sourceStore, CCT.hash to png.sha256Hex(), "laterField" to "kept")
         val art = svc.writeConfig(writerOf(client), gedraConfig(cxt, "art", clientNamespace(client), client) { fileRefFromMap(entry) })
-        svc.publish(writerOf(client), art.configId)
+        svc.publish(writerOf(client), listOf(art.configId))
 
         val env = upload(admin, "logo", otherPng)
         withClue(env) { env[EP.errorMessage].toString() shouldContain "kdr:fileRefDef[logo].laterField" }
@@ -294,7 +294,7 @@ class PublishRefusalUndoTest : StringSpec({
             fileRef("own", description) { clientLocal(openRoot, "own.png") }
         }
         val art = svc.writeConfig(writerOf(client), art("Published."))
-        svc.publish(writerOf(client), art.configId)
+        svc.publish(writerOf(client), listOf(art.configId))
         svc.writeConfig(writerOf(client), art("A draft."))
         refused(admin, UADEP.clientFilesLocal, nameLocal("own", "own.png")) shouldContain
             "Configuration 'art' of client '$client' has unpublished changes, which naming a local file would publish with it."
@@ -307,7 +307,7 @@ class PublishRefusalUndoTest : StringSpec({
         val hash = png.sha256Hex()
         FileStoreService.get(cxt).forOwner(cxt, client).put(writerOf(client), FileRefService.bucket, FileRefService.keyOf(client, hash), image(png))
         val many = svc.writeConfig(writerOf(client), gedraConfig(cxt, "many", clientNamespace(client), client) { for (n in 1..FREF.maxRefs) fileRef("r$n", hash) })
-        svc.publish(writerOf(client), many.configId)
+        svc.publish(writerOf(client), listOf(many.configId))
         GedraConfigReload.reloadClient(cxt, client)
 
         refused(admin, UADEP.clientFilesLocal, nameLocal("own", "own.png")) shouldContain "which is as many as a client is served"

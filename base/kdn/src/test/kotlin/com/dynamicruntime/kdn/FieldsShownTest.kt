@@ -88,7 +88,7 @@ class FieldsShownTest : StringSpec({
         val setup = cxt.mkSubContext("setup", client)
         GedraConfigService.get(cxt).writeConfig(setup, config)
         // Published, as the Clients page would leave it: a Design View save publishes, so it refuses a config carrying a draft.
-        GedraConfigService.get(cxt).publish(setup, GedraId.of(GedraConfigType.configDoc, client, "main"))
+        GedraConfigService.get(cxt).publish(setup, listOf(GedraId.of(GedraConfigType.configDoc, client, "main")))
         GedraConfigReload.reloadClient(cxt, client)
     }
     writeClient()

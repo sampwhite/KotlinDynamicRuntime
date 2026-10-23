@@ -93,7 +93,7 @@ class GedraConfigWriteTrialTest : StringSpec({
     }
 
     fun publish(client: String, name: String) =
-        admin.postData(ACEP.bundlePublish, mapOf(CFEP.client to client, CFEP.name to name))
+        admin.postData(ACEP.bundlePublish, mapOf(CFEP.client to client, CFEP.names to listOf(name)))
 
     fun setPublishedOnly(client: String, value: Boolean) =
         admin.postData(ACEP.publishedOnly, mapOf(CFEP.client to client, CFEP.publishedOnlyField to value))
@@ -183,17 +183,14 @@ class GedraConfigWriteTrialTest : StringSpec({
         admin.postData(ACEP.bundleWrite, writeBody(config(client, "main") { defineClient(clientDef(client)) }))
         val refused = admin.expectError(
             EXC.badInput, ACEP.bundlePatch,
-            mapOf(
-                CFEP.client to client, CFEP.name to "main",
-                CFEP.edits to listOf(
+            mapOf(CFEP.client to client, CFEP.configs to listOf(mapOf(CFEP.name to "main", CFEP.edits to listOf(
                     mapOf(
                         CFEP.slot to CCT.cfactDef, GED.action to GedraEditAction.addOrMerge.name,
                         GE.data to mapOf(
                             CCT.name to SVY.surveyComplete, CCT.group to "trial843", CCT.description to "Redeclared.",
                         ),
                     ),
-                ),
-            ),
+                )))),
         )
         refused[EP.errorMessage].toString() shouldContain SVY.surveyComplete
         val bundle = admin.getItem(ACEP.bundle, mapOf(CFEP.client to client, CFEP.name to "main"))
@@ -274,7 +271,7 @@ class GedraConfigWriteTrialTest : StringSpec({
         admin.postData(ACEP.bundleWrite, writeBody(flow(client, null)))
         admin.postData(ACEP.bundleWrite, writeBody(defs(client)))
         // Publishing 'defs' first would leave the published 'flow' collecting a trait nobody declares.
-        admin.expectError(EXC.badInput, ACEP.bundlePublish, mapOf(CFEP.client to client, CFEP.name to "defs"))
+        admin.expectError(EXC.badInput, ACEP.bundlePublish, mapOf(CFEP.client to client, CFEP.names to listOf("defs")))
         publish(client, "flow")
         publish(client, "defs")
     }

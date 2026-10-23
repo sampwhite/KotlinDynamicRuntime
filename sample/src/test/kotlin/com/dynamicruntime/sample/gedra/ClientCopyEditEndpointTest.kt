@@ -179,7 +179,7 @@ class ClientCopyEditEndpointTest : StringSpec({
         val writer = cxt.mkSubContext("seed", SC.globex).also { it.userId = 9180L }
         for ((name, key, value) in listOf(Triple("wordsA", "title", "Globex welcome"), Triple("wordsB", "intro", "Globex intro"))) {
             val row = svc.writeConfig(writer, gedraConfig(cxt, name, clientNamespace(SC.globex), SC.globex) { fragmentOverlay(HFRAG.home, mapOf("home" to mapOf(key to value))) })
-            svc.publish(writer, row.configId)
+            svc.publish(writer, listOf(row.configId))
         }
         GedraConfigReload.reloadClient(cxt, SC.globex)
         // Setting `intro` goes to wordsB, which holds it -- not wordsA, which merely overlays the file first.

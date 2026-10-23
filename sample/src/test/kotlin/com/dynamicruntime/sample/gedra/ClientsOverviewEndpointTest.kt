@@ -113,7 +113,7 @@ class ClientsOverviewEndpointTest : StringSpec({
         val svc = GedraConfigService.get(cxt)
         svc.writeConfig(writer, overlay)
         // Published: acme has a sandbox (issue #994), so it runs only what is published.
-        svc.publish(writer, GedraId.of(GedraConfigType.configDoc, SC.acme, "main"))
+        svc.publish(writer, listOf(GedraId.of(GedraConfigType.configDoc, SC.acme, "main")))
         GedraConfigReload.reloadClient(cxt, SC.acme)
         val acme = rows(admin).getValue(SC.acme)
         acme[CLD.origin] shouldBe GedraConfigOrigin.source.name

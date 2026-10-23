@@ -44,7 +44,7 @@ class ClientSchemaTest : StringSpec({
             trait("NoteEntry", "note946", setOf(GedraDataType.formDoc), "A note.") { property("text", "What it says.") }
         },
     )
-    svc.publish(setup, GedraId.of(GedraConfigType.configDoc, client, "main"))
+    svc.publish(setup, listOf(GedraId.of(GedraConfigType.configDoc, client, "main")))
     GedraConfigReload.reloadClient(cxt, client)
 
     fun knowsNote(store: KdrSchemaStore): Boolean = store.types[union]?.variants?.isKnown("note946") == true

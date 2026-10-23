@@ -16,6 +16,7 @@ import com.dynamicruntime.common.user.ADEP
 import com.dynamicruntime.common.user.AdminRules
 import com.dynamicruntime.common.util.getReqNonBlankStr
 import com.dynamicruntime.common.util.toJsonListOfMaps
+import com.dynamicruntime.common.util.toJsonListOrEmpty
 import com.dynamicruntime.common.util.toJsonListOfStrings
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
@@ -33,9 +34,10 @@ import com.dynamicruntime.common.util.toOptStr
  *    the same shape a component declares a `GedraConfig` in, split into slot entries on write (via
  *    [reassembleGedraConfig] -> [GedraConfigService.writeConfig]) and reassembled on read, so a caller never
  *    handles the split. This is the surface an editor uses.
- *  - **Trait-level** ([CFEP.traits]) -- the interior, the stored config-trait entries with their per-slot
- *    accounting (each carries its own `createdAt`/`updatedAt`), so *when and by whom a single slot changed* is
- *    inspectable. This is a read view; the matching per-slot **edit** is [CFEP.bundlePatch] (issue #732).
+ *  - **Entry-level** ([CFEP.slotEntries]) -- the interior, the stored slot entries with their own accounting
+ *    (each carries its own `createdAt`/`updatedAt`), so *when and by whom a single entry changed* is inspectable.
+ *    Outward these are slots, never traits (issue #1352): that a slot is stored as a config trait is the storage's
+ *    business, and the slot rides as [CFEP.slot] where the stored envelope says `traitId`. This is a read view; the matching per-slot **edit** is [CFEP.bundlePatch] (issue #732).
  *
  * ### Authorization: client-scoped admin
  *
@@ -98,14 +100,23 @@ fun gedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CFEP.namespace
         }
     }
 
+    type(IMP.configType) {
+        type = SCT.kObject
+        description = "One configuration a publish would make live, as an impact report names it (issue #1352)."
+        property(IMP.name, "The configuration's name.", required = true)
+        property(IMP.version, "The version of its latest revision, the one judged.", required = true) { type = SCT.integer }
+    }
+
     type(IMP.reportType) {
         type = SCT.kObject
-        description = "What publishing one configuration would do to the data its client already stores (issue " +
+        description = "What publishing configurations together would do to the data its client already stores (issue " +
             "#935): only what the publish breaks, so a row with a problem already is not reported. Always empty for " +
             "a client that is not published-only, since publishing changes nothing such a client runs."
         property(IMP.client, "The client whose stored data is judged: the configuration's owner.", required = true)
-        property(IMP.name, "The configuration a publish would make live.", required = true)
-        property(IMP.version, "The version of its latest revision, the one judged.", required = true) { type = SCT.integer }
+        property(IMP.configs, "The configurations a publish would make live together, each its name and version.", required = true) {
+            type = SCT.array
+            items { ref(IMP.configType) }
+        }
         property(IMP.scanned, "How many stored rows were examined.", required = true) { type = SCT.integer }
         property(
             IMP.tooLarge,
@@ -140,6 +151,28 @@ fun gedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CFEP.namespace
         reloadResultProperty()
     }
 
+    // What a patch or a publish answers (issue #1352): every configuration it wrote, in the order asked, and the reload
+    // when one was asked for -- once, since the configurations change together.
+    type(CFEP.patchResultType) {
+        type = SCT.kObject
+        description = "The configurations a patch wrote, together, each as a whole bundle."
+        property(CFEP.configs, "Each configuration written, in the order the patch named them.", required = true) {
+            type = SCT.array
+            items { ref(CFEP.bundleType) }
+        }
+        reloadResultProperty()
+    }
+
+    type(CFEP.publishResultType) {
+        type = SCT.kObject
+        description = "The configurations a publish made published, together."
+        property(CFEP.configs, "Each configuration named, in order -- one already published is as it was.", required = true) {
+            type = SCT.array
+            items { ref(CFEP.summaryType) }
+        }
+        reloadResultProperty()
+    }
+
     // What a caller sends to write a bundle: identity, contents, and the delete mode. The version, publish
     // state, owning client and timestamps are the server's to decide, so they are absent here rather than
     // `g-derived` on the output type -- the write takes a type of its own, which is also where `impliedDelete`
@@ -158,11 +191,12 @@ fun gedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CFEP.namespace
         reloadRequestProperty()
     }
 
-    // One stored config-trait entry, its envelope carried whole so the per-slot accounting is visible.
-    type(CFEP.traitEntryType) {
+    // One stored slot entry, its envelope carried whole so its accounting is visible -- its slot named as a patch
+    // names it (issue #1352).
+    type(CFEP.slotEntryType) {
         type = SCT.kObject
-        description = "One stored config-trait entry: the slot it belongs to, its data, and its own accounting."
-        property(GE.traitId, "The config slot this entry belongs to.", required = true)
+        description = "One stored slot entry: the slot it belongs to, its data, and its own accounting."
+        property(CFEP.slot, "The slot this entry belongs to (`${CCT.traitDef}`, `${CCT.workflowDef}`, ...).", required = true)
         property(GE.data, "The slot entry's data.", required = true) { type = SCT.kObject }
         property(GE.entryId, "This entry's stable id.", required = true)
         property(GE.source, "How the entry's value arrived.", required = true)
@@ -199,24 +233,26 @@ fun gedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CFEP.namespace
 
     generalEndpoint(
         CFEP.bundlePatch,
-        "Edits a configuration's interior slot entries individually (issue #732): per-slot add/replace/merge/" +
-            "delete, addressed by slot + primary key, applied over the latest revision. The rest of the config " +
-            "is left as it was.",
+        "Edits the interior slot entries of one or more configurations (issues #732, #1352): per-slot add/replace/" +
+            "merge/delete, addressed by slot + primary key, applied over each one's latest revision, all in one " +
+            "transaction and judged together -- so an entry can move from one configuration to another. A " +
+            "configuration not yet written is created. The rest of each is left as it was.",
         HttpMethod.POST,
-        outputRef = CFEP.bundleType,
+        outputRef = CFEP.patchResultType,
         inputFields = { configPatchInput() },
     ) { c, request -> inConfigScope(c, mutating = true) { cfgPatchBody(it, request) } }
 
     generalEndpoint(
         CFEP.bundlePublish,
-        "Publishes a configuration's latest editable revision. For a published-only client, refused when making it " +
-            "live would affect the data the client already stores (issue #935) -- the refusal's errorCode is " +
-            "'${IMP.refusedCode}' and its extraData carries the report under '${IMP.report}' -- unless the call " +
-            "acknowledges it.",
+        "Publishes the latest editable revision of one or more configurations, together and judged as one change " +
+            "(issue #1352); one already published is left as it is. For a published-only client, refused when " +
+            "making them live would affect the data the client already stores (issue #935) -- the refusal's " +
+            "errorCode is '${IMP.refusedCode}' and its extraData carries the report under '${IMP.report}' -- unless " +
+            "the call acknowledges it.",
         HttpMethod.POST,
-        outputRef = CFEP.summaryType,
+        outputRef = CFEP.publishResultType,
         inputFields = {
-            field(CFEP.name, "The configuration's name.", required = true)
+            namesField("The configurations to publish together.")
             acknowledgeImpactField()
             reloadRequestField()
         },
@@ -224,12 +260,12 @@ fun gedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CFEP.namespace
 
     itemEndpoint(
         CFEP.bundleImpact,
-        "What publishing a configuration's latest revision would do to the data the client already stores (issue " +
-            "#935), without publishing it. Called in a Shadow Sandbox, about its parent's data.",
+        "What publishing configurations' latest revisions together would do to the data the client already stores " +
+            "(issues #935, #1352), without publishing them. Called in a Shadow Sandbox, about its parent's data.",
         HttpMethod.GET,
         outputRef = IMP.reportType,
         inputFields = {
-            field(CFEP.name, "The configuration's name.", required = true)
+            namesField("The configurations whose publishing together is judged.")
         },
     ) { c, request -> inConfigScope(c) { cfgImpactBody(it, request) } }
 
@@ -246,18 +282,18 @@ fun gedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CFEP.namespace
     ) { c, request -> inConfigScope(c, mutating = true) { cfgRevertBody(it, request) } }
 
     listEndpoint(
-        CFEP.traits,
-        "The interior of one configuration: its stored config-trait entries, each with its own accounting.",
-        outputRef = CFEP.traitEntryType,
+        CFEP.slotEntries,
+        "The interior of one configuration: its stored slot entries, each with its own accounting.",
+        outputRef = CFEP.slotEntryType,
         noLimit = true,
         inputFields = {
             field(CFEP.name, "The configuration's name.", required = true)
         },
-        // The trait-level VIEW; the matching per-slot **edit** is `bundle/patch` (issue #732), which applies the
+        // The entry-level VIEW; the matching per-slot **edit** is `bundle/patch` (issue #732), which applies the
         // edits over the current slots and writes the whole set through the validated bundle write rather than
-        // touching a raw slot -- so it needs no config-trait validation union of its own. This view makes the
-        // per-slot accounting legible.
-    ) { c, request -> inConfigScope(c) { cfgTraitsBody(it, request) } }
+        // touching a raw slot -- so it needs no slot validation union of its own. This view makes each entry's
+        // accounting legible.
+    ) { c, request -> inConfigScope(c) { cfgSlotEntriesBody(it, request) } }
 
     type(CFEP.reloadResultType) {
         type = SCT.kObject
@@ -365,28 +401,36 @@ private fun cfgWriteBody(c: KdrCxt, request: Map<String, Any?>): Map<String, Any
 
 private fun cfgPatchBody(c: KdrCxt, request: Map<String, Any?>): Map<String, Any?> {
     AdminRules.requireClientAdministrator(c)
-    val name = requireName(request)
-    val edits = request[CFEP.edits].toJsonListOfMaps()
-    if (edits.isEmpty()) {
-        throw KdrException.mkInput("A config patch must carry at least one edit.")
+    val requested = request[CFEP.configs].toJsonListOfMaps()
+    if (requested.isEmpty()) throw KdrException.mkInput("A config patch must name at least one configuration in '${CFEP.configs}'.")
+    val byName = requested.map { one ->
+        val name = requireName(one)
+        val edits = one[CFEP.edits].toJsonListOfMaps()
+        if (edits.isEmpty()) throw KdrException.mkInput("The patch of configuration '$name' must carry at least one edit.")
+        name to edits
     }
     val svc = GedraConfigService.get(c)
     val pk = svc.configSlotPrimaryKeys()
-    // The edits run through `patchConfig`, which applies them to the latest revision read **under the write
-    // lock** and reassembles+writes it there -- so a per-slot patch reuses the validated bundle write (no
-    // separate validation path) and cannot be computed off a stale read and clobber a concurrent write (issue
-    // #732). `patchConfig` reads the raw slots, so an untouched `testFeatures` round-trips on a test instance
-    // and, off one, the write is refused rather than silently dropping it (the #685 explicit-write rule). The
-    // 404 for a missing config is `patchConfig`'s.
-    val edited = svc.patchConfig(c, configId(c, name), trial = true) { current ->
-        applyConfigSlotEdits(current, edits, pk).also { patched ->
-            // Read strictly (issue #1051). A definition the edits left malformed reads as none, and is not judged
-            // here: `patchConfig` gates the edited slots next, and refuses it as what it is.
-            requireOperatorFieldsKept(c, patched[CCT.clientDef]?.firstOrNull()?.let { readClientDef(c, it).def })
-            requireCustomersKept(c, patched[CCT.customerDef], current[CCT.customerDef])
+    // The edits run through `patchConfigs`, which applies each configuration's to its latest revision read **under
+    // the write lock** and reassembles+writes it there, all in one transaction (issue #1352) -- so a per-slot patch
+    // reuses the validated bundle write (no separate validation path), cannot be computed off a stale read and
+    // clobber a concurrent write (issue #732), and an entry moved between configurations is never half moved.
+    // `patchConfigs` reads the raw slots, so an untouched `testFeatures` round-trips on a test instance and, off one,
+    // the write is refused rather than silently dropping it (the #685 explicit-write rule). A configuration not yet
+    // written is created; one named twice is `patchConfigs`' refusal.
+    val written = svc.patchConfigs(c, trial = true) {
+        for ((name, edits) in byName) {
+            edit(configId(c, name)) { current ->
+                applyConfigSlotEdits(current, edits, pk).also { patched ->
+                    // Read strictly (issue #1051). A definition the edits left malformed reads as none, and is not
+                    // judged here: `patchConfigs` gates the edited slots next, and refuses it as what it is.
+                    requireOperatorFieldsKept(c, patched[CCT.clientDef]?.firstOrNull()?.let { readClientDef(c, it).def })
+                    requireCustomersKept(c, patched[CCT.customerDef], current[CCT.customerDef])
+                }
+            }
         }
     }
-    return bundleOf(c, edited).withReloadIfAsked(c, request)
+    return mapOf(CFEP.configs to written.map { bundleOf(c, it) }).withReloadIfAsked(c, request)
 }
 
 /**
@@ -584,19 +628,20 @@ fun strippedOfTestFeatures(
 
 private fun cfgPublishBody(c: KdrCxt, request: Map<String, Any?>): Map<String, Any?> {
     AdminRules.requireClientAdministrator(c)
-    val name = requireName(request)
+    val names = requireNames(request)
+    val svc = GedraConfigService.get(c)
     // Publish refuses a class with no revision; surface that as a 404 rather than a 400, since to this caller a
     // config they cannot find is one that is not there.
-    if (GedraConfigService.get(c).readLatest(c, configId(c, name)) == null) {
-        throw KdrException("No configuration '$name' for client '${c.client}'.", code = EXC.notFound)
+    names.firstOrNull { svc.readLatest(c, configId(c, it)) == null }?.let {
+        throw KdrException("No configuration '$it' for client '${c.client}'.", code = EXC.notFound)
     }
-    return summaryOf(c, GedraConfigService.get(c).publish(c, configId(c, name), trial = true, impact = impactGate(request)))
-        .withReloadIfAsked(c, request)
+    val published = svc.publish(c, names.map { configId(c, it) }, trial = true, impact = impactGate(request))
+    return mapOf(CFEP.configs to published.map { summaryOf(c, it) }).withReloadIfAsked(c, request)
 }
 
 private fun cfgImpactBody(c: KdrCxt, request: Map<String, Any?>): Map<String, Any?> {
     AdminRules.requireClientAdministrator(c)
-    return ConfigImpact.report(c, c.client, requireName(request)).toMap()
+    return ConfigImpact.report(c, c.client, requireNames(request)).toMap()
 }
 
 /** A publish request's [IMP.acknowledgeImpact] as the gate it asks for (issue #935). */
@@ -622,14 +667,17 @@ private fun cfgRevertBody(c: KdrCxt, request: Map<String, Any?>): Map<String, An
     return summaryOf(c, GedraConfigService.get(c).revertToEditable(c, configId(c, name)))
 }
 
-private fun cfgTraitsBody(c: KdrCxt, request: Map<String, Any?>): List<Map<String, Any?>> {
+private fun cfgSlotEntriesBody(c: KdrCxt, request: Map<String, Any?>): List<Map<String, Any?>> {
     AdminRules.requireClientAdministrator(c)
     val name = requireName(request)
     val row = GedraConfigService.get(c).readLatest(c, configId(c, name))
         ?: throw KdrException("No configuration '$name' for client '${c.client}'.", code = EXC.notFound)
     // Redacted at the row (issue #696), the same source the bundle read uses -- so testFeatures a cloned config
-    // carries is not echoed off a test instance here either.
-    return row.entriesForEmission(c.instanceConfig.isTestInstance)
+    // carries is not echoed off a test instance here either. The slot is named as a patch names it, not by the
+    // stored envelope's `traitId` (issue #1352).
+    return row.entriesForEmission(c.instanceConfig.isTestInstance).map { entry ->
+        linkedMapOf<String, Any?>(CFEP.slot to entry[GE.traitId]) + (entry - GE.traitId)
+    }
 }
 
 private fun cfgReloadBody(c: KdrCxt): Map<String, Any?> {
@@ -710,6 +758,16 @@ private fun configId(cxt: KdrCxt, name: String): GedraId = GedraId.of(GedraConfi
 private fun requireName(request: Map<String, Any?>): String = request[CFEP.name].toOptStr()
     ?: throw KdrException.mkInput("A configuration must be named by its '${CFEP.name}'.")
 
+/** The [CFEP.names] a request names, at least one, each once (issue #1352). */
+private fun requireNames(request: Map<String, Any?>): List<String> {
+    val names = request[CFEP.names].toJsonListOrEmpty().mapNotNull { it.toOptStr()?.ifBlank { null } }
+    if (names.isEmpty()) throw KdrException.mkInput("Name at least one configuration in '${CFEP.names}'.")
+    names.groupBy { it }.filterValues { it.size > 1 }.keys.firstOrNull()?.let {
+        throw KdrException.mkInput("Configuration '$it' is named more than once.")
+    }
+    return names
+}
+
 /**
  * Coerces a bundle's `slots` (slot -> array of entry objects) to the shape [reassembleGedraConfig] takes, after
  * refusing what would otherwise be dropped silently: a slot name that is not one of [knownSlots] (a typo, which
@@ -738,18 +796,28 @@ private fun slotsOf(raw: Any?, knownSlots: Set<String>): Map<String, List<Map<St
  *  edit is an open object `{slot, action, data}` -- its `data` is a slot-specific shape validated on reassemble,
  *  not here. */
 private fun InputFieldsBuilder.configPatchInput() {
-    field(CFEP.name, "The configuration's name.", required = true)
     field(
-        CFEP.edits,
-        "The per-slot edits to apply, in order. Each is `{${CFEP.slot}, ${GED.action}, ${GE.data}}`: the slot " +
-            "(a config-trait id), the action (${GedraEditAction.entries.joinToString(", ") { it.name }}), and the " +
-            "entry data (carrying the slot's primary-key fields, which say which entry is meant).",
+        CFEP.configs,
+        "The configurations to edit together, each `{${CFEP.name}, ${CFEP.edits}}`: its name, and the per-slot edits to " +
+            "apply to it, in order. Each edit is `{${CFEP.slot}, ${GED.action}, ${GE.data}}`: the slot (`${CCT.traitDef}`, " +
+            "`${CCT.workflowDef}`, ...), the action (${GedraEditAction.entries.joinToString(", ") { it.name }}), and the entry data (carrying " +
+            "the slot's primary-key fields, which say which entry is meant).",
         required = true,
     ) {
         type = SCT.array
         items { type = SCT.kObject }
     }
     reloadRequestField()
+}
+
+/** The [CFEP.names] a publish or an impact preview takes: one or more configurations, by name (issue #1352). */
+private fun InputFieldsBuilder.namesField(description: String) {
+    field(CFEP.names, description, required = true) {
+        type = SCT.array
+        // On the impact preview's GET it arrives as query text: a JSON array, or the names comma-separated.
+        allowCoerce = true
+        items { type = SCT.string }
+    }
 }
 
 /**
@@ -936,10 +1004,10 @@ fun adminGedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, ACEP.name
 
     generalEndpoint(
         ACEP.bundlePatch,
-        "Edits a named client's configuration slot entries individually -- per-slot add/replace/merge/delete " +
-            "over the latest revision (issue #732).",
+        "Edits the slot entries of one or more of a named client's configurations -- per-slot add/replace/merge/" +
+            "delete over each latest revision, in one transaction judged together (issues #732, #1352).",
         HttpMethod.POST,
-        outputRef = "${CFEP.namespace}.${CFEP.bundleType}",
+        outputRef = "${CFEP.namespace}.${CFEP.patchResultType}",
         inputFields = {
             field(CFEP.client, "The client that owns the configuration.", required = true) { clientAttribute() }
             configPatchInput()
@@ -948,12 +1016,13 @@ fun adminGedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, ACEP.name
 
     generalEndpoint(
         ACEP.bundlePublish,
-        "Publishes a named client's configuration's latest editable revision (issue #685).",
+        "Publishes the latest editable revision of one or more of a named client's configurations, together " +
+            "(issues #685, #1352).",
         HttpMethod.POST,
-        outputRef = "${CFEP.namespace}.${CFEP.summaryType}",
+        outputRef = "${CFEP.namespace}.${CFEP.publishResultType}",
         inputFields = {
-            field(CFEP.client, "The client that owns the configuration.", required = true) { clientAttribute() }
-            field(CFEP.name, "The configuration's name.", required = true)
+            field(CFEP.client, "The client that owns the configurations.", required = true) { clientAttribute() }
+            namesField("The configurations to publish together.")
             acknowledgeImpactField()
             reloadRequestField()
         },
@@ -961,12 +1030,13 @@ fun adminGedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, ACEP.name
 
     itemEndpoint(
         ACEP.bundleImpact,
-        "What publishing a named client's configuration would do to the data that client already stores (issue #935).",
+        "What publishing a named client's configurations together would do to the data that client already stores " +
+            "(issues #935, #1352).",
         HttpMethod.GET,
         outputRef = "${CFEP.namespace}.${IMP.reportType}",
         inputFields = {
-            field(CFEP.client, "The client that owns the configuration.", required = true) { clientAttribute() }
-            field(CFEP.name, "The configuration's name.", required = true)
+            field(CFEP.client, "The client that owns the configurations.", required = true) { clientAttribute() }
+            namesField("The configurations whose publishing together is judged.")
         },
     ) { c, request -> cfgImpactBody(adminConfigCxt(c, request), request) }
 
@@ -984,15 +1054,15 @@ fun adminGedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, ACEP.name
     ) { c, request -> cfgRevertBody(adminConfigCxt(c, request), request) }
 
     listEndpoint(
-        ACEP.traits,
-        "The interior of one of a named client's configurations: its stored config-trait entries (issue #685).",
-        outputRef = "${CFEP.namespace}.${CFEP.traitEntryType}",
+        ACEP.slotEntries,
+        "The interior of one of a named client's configurations: its stored slot entries (issues #685, #1352).",
+        outputRef = "${CFEP.namespace}.${CFEP.slotEntryType}",
         noLimit = true,
         inputFields = {
             field(CFEP.client, "The client that owns the configuration.", required = true) { clientAttribute() }
             field(CFEP.name, "The configuration's name.", required = true)
         },
-    ) { c, request -> cfgTraitsBody(adminConfigCxt(c, request), request) }
+    ) { c, request -> cfgSlotEntriesBody(adminConfigCxt(c, request), request) }
 
     generalEndpoint(
         ACEP.reload,

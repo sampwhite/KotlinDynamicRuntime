@@ -35,9 +35,9 @@ object CustomerStore {
         val hub = cxt.mkSubContext("customerStore", CL.hub)
         val svc = GedraConfigService.get(hub)
         val configId = GedraId.of(GedraConfigType.configDoc, CL.hub, CUST.configName)
-        fun patch() = svc.patchConfig(hub, configId, trial = true) { current ->
+        fun patch() = svc.patchConfigs(hub, trial = true) { edit(configId) { current ->
             current + (CCT.customerDef to edit(current[CCT.customerDef].orEmpty()))
-        }
+        } }.single()
         val written = if (svc.readLatest(hub, configId) != null) {
             patch()
         } else {
@@ -52,7 +52,7 @@ object CustomerStore {
             }
         }
         // Published, so it loads whatever `hub`'s tier.
-        svc.publish(hub, written.configId, trial = true)
+        svc.publish(hub, listOf(written.configId), trial = true)
         val reload = GedraConfigReload.reloadClient(cxt, CL.hub)
         ClientSyncService.get(cxt).announceReload(cxt, reload)
     }

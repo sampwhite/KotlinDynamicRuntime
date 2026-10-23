@@ -40,7 +40,7 @@ class GedraConfigCurrentTest : StringSpec({
     )
 
     fun publish(on: KdrCxt, client: String) =
-        GedraConfigService.get(on).publish(writer(on, client), GedraId.of(GedraConfigType.configDoc, client, "main"))
+        GedraConfigService.get(on).publish(writer(on, client), listOf(GedraId.of(GedraConfigType.configDoc, client, "main")))
 
     fun classId(client: String) = GedraId.of(GedraConfigType.configDoc, client, "main").fullId
 

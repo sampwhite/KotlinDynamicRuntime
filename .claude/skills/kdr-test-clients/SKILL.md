@@ -232,9 +232,9 @@ client), issue #627 — the config id is always built from `cxt.client`, so a ca
 | Path (`CFEP`) | Method | Purpose |
 | --- | --- | --- |
 | `/clientAdmin/config/bundle/write` | POST | write a whole bundle (authoritative; `impliedDelete` default true; `reload` to make it live) |
-| `/clientAdmin/config/bundle/patch` | POST | edit slot entries individually (`reload` to make it live) |
-| `/clientAdmin/config/bundle/publish` | POST | publish the latest editable revision (`acknowledgeImpact` to go past an impact report; `reload` to make it live) |
-| `/clientAdmin/config/bundle/impact` | GET | what publishing it would do to the client's stored data (`IMP`, issue #935) |
+| `/clientAdmin/config/bundle/patch` | POST | edit slot entries of one or more configs in one transaction, judged together (`configs: [{name, edits}]`; a config not yet written is created; `reload` to make it live; issue #1352) |
+| `/clientAdmin/config/bundle/publish` | POST | publish the latest editable revision of one or more configs, together (`names`; `acknowledgeImpact` to go past an impact report; `reload` to make it live) |
+| `/clientAdmin/config/bundle/impact` | GET | what publishing them together would do to the client's stored data (`names`; `IMP`, issue #935) |
 | `/clientAdmin/config/reload` | POST | reload this client on this node |
 | `/clientAdmin/config/bundle` / `/bundles` | GET | fetch one / list this client's configs |
 | `/clientAdmin/config/publishedOnly` | POST | set the protection tier |

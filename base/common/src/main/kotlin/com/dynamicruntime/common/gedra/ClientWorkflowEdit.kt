@@ -181,9 +181,9 @@ object ClientWorkflowEdit {
             made = withTemplateSlots(bound, WorkflowTemplates.readStored(bound, stored), slots, workflowId)
             val overlay = workflowTemplateOverlay(template, made)
             if (overlay == stored) throw KdrException.mkInput("Workflow '$workflowId' is already so; nothing to save.")
-            fun patch(on: GedraConfigRow, to: Map<String, Any?>) = svc.patchConfig(bound, on.configId, trial = true) { slotsOf ->
+            fun patch(on: GedraConfigRow, to: Map<String, Any?>) = svc.patchConfigs(bound, trial = true) { edit(on.configId) { slotsOf ->
                 slotsOf + (CCT.workflowDef to slotsOf[CCT.workflowDef].orEmpty().map { if (it[CCT.workflowId] == workflowId) it + (CCT.definition to to) else it })
-            }
+            } }.single()
             written = patch(row, overlay)
             reload = ClientStoredEdit.takeEffect(
                 cxt, target, written,

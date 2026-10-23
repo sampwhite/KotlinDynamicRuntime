@@ -382,7 +382,7 @@ client may narrow are still the parser's and the trial's, in their own words.
 **A written slot is held to its shape first** (issues #1051, #1052). These endpoints are the outward-facing ones --
 a client's own administrators write through them -- so before a write's slots are reassembled they pass a gate
 (`configSlotFailures` in `ConfigSlotGate.kt`, run by `reassembleForWrite`, which the bundle write, the import and
-`patchConfig` all go through). **Every slot entry is validated against the shape `coreConfigTraits` declares for its
+`patchConfigs` all go through). **Every slot entry is validated against the shape `coreConfigTraits` declares for its
 slot** (compiled as `ConfigSlotShapes`): an unknown key, a missing field, a value of the wrong type or a choice that
 is not one is a 400 whose message names each path and what is wrong there, with the failures also structured under
 `extraData.failures` as a request's own input failures are. A path names the slot, the entry by its **key**, and the
@@ -458,11 +458,20 @@ configuration the client runs now and under the candidate. Only what the candida
 - a workflow a form takes part in that would no longer exist;
 - a task a form's recorded state names that its workflow would no longer define.
 
-A non-empty report refuses the publish, carrying the report, unless the caller acknowledges it. The report is per
-configuration, matching publish. Stored state is compared against the candidate's workflows rather than derived
+A non-empty report refuses the publish, carrying the report, unless the caller acknowledges it. The report covers
+the configurations published together, matching publish. Stored state is compared against the candidate's workflows rather than derived
 again, since a trial's workflows carry no functions to run, so a state the candidate would only derive
 *differently* is not reported. Past `KDR_IMPACT_SCAN_LIMIT` rows nothing is examined, and the report says so; a
 publish then asks for acknowledgement all the same.
+
+**Several bundles change together** (issue #1352). A client's definition is spread over bundles, and some changes are
+sound only across several of them: a workflow moved from one bundle to another is in both, or in neither, between two
+separate changes. So a patch and a publish each take several of one client's bundles, in one transaction under the
+client's lock, judged by one trial (and, for a publish, one impact report); a refusal takes all of them back. A
+patch may name a bundle that does not exist yet, which it creates in the client's own namespace. A publish skips a
+bundle whose latest revision is already published rather than refusing the group. A moved entry is written into its
+new bundle with a fresh envelope (`entryId`, `createdAt`/`createdBy` of the move); the old bundle's earlier revisions
+keep its history.
 
 A **component's** schema fault follows the source rule: it refuses the boot outside production, and in production
 the faulty keyword, message or layout is dropped and the node serves. A global document that will not compile still
@@ -554,6 +563,7 @@ is what gives the warning teeth.
 | The schema for schema, generated from the keyword tables and served at `GET /schema/metaSchema` | **built** — #1056 |
 | A write carrying the slots this node does not read | **built** — #1153 |
 | The publish impact report, judged against the client's stored rows | **built** — #935 |
+| A patch and a publish across several of a client's bundles, judged together | **built** — #1352 |
 | Protection tiers: a client runs its latest revision or only its published one, per environment | **built** — #617 |
 | Sandboxes: a client's `<parent>:sandbox`, for trying a change against its own data | **built** — #927, #928; see [`docs/design/sandboxes.md`](../sandboxes.md) |
 | Template extension: a client built on a copy of another's source configuration | **built** — #945 |

@@ -56,7 +56,7 @@ class GedraConfigTierTest : StringSpec({
         val client = "tierlatest"
         write(client, "fA")                 // v1, unpublished
         consumedTraits(client) shouldContain "fA"
-        svc().publish(asClient(client), GedraId.of(GedraConfigType.configDoc, client, "${client}cfg"))
+        svc().publish(asClient(client), listOf(GedraId.of(GedraConfigType.configDoc, client, "${client}cfg")))
         write(client, "fA", "fB")           // v2, unpublished, on top of published v1
         // Latest (no toggle): the latest revision, so the unpublished v2 with fB.
         consumedTraits(client) shouldContain "fB"
@@ -65,7 +65,7 @@ class GedraConfigTierTest : StringSpec({
     "the published-only tier consumes the latest published revision, not a newer unpublished one" {
         val client = "tierpub"
         write(client, "pA")
-        svc().publish(asClient(client), GedraId.of(GedraConfigType.configDoc, client, "${client}cfg"))
+        svc().publish(asClient(client), listOf(GedraId.of(GedraConfigType.configDoc, client, "${client}cfg")))
         write(client, "pA", "pB")           // v2 unpublished adds pB
 
         svc().setPublishedOnly(asClient(client), client, true)

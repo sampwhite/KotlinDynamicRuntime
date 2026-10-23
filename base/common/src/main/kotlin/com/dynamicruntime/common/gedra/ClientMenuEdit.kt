@@ -30,7 +30,7 @@ import com.dynamicruntime.common.util.toOptStr
  * As a copy edit's does ([ClientCopyEdit], [ClientStoredEdit]): in the client's stored config whose `uiBlockDef`
  * entry for the home menu already touches the item, else one that overlays the menu at all, else the editors' own
  * `copy` config, created on the first edit; never into a config with a draft of its own. The item is merged by its
- * `id` into that entry's `menu` array inside `patchConfig`, under the client's config lock, so the entry's other
+ * `id` into that entry's `menu` array inside `patchConfigs`, under the client's config lock, so the entry's other
  * items -- and another administrator's change a moment ago -- are kept. Only `label` and `cfactExpression` are ever
  * written; a reset removes the client's item from the array, whatever it held.
  *
@@ -248,7 +248,7 @@ object ClientMenuEdit {
     /**
      * Patches [row] so its home-menu entry's item [itemId] carries [fields] merged over what it held -- or, with
      * [replace], exactly [fields]; with null fields, no item at all. An entry left with no items is dropped, and a slot
-     * left with no entries too. The merge runs inside `patchConfig`, over the revision as it stands under the lock.
+     * left with no entries too. The merge runs inside `patchConfigs`, over the revision as it stands under the lock.
      */
     private fun patchItem(
         svc: GedraConfigService,
@@ -257,7 +257,7 @@ object ClientMenuEdit {
         itemId: String,
         fields: Map<String, Any?>?,
         replace: Boolean = false,
-    ): GedraConfigRow = svc.patchConfig(bound, row.configId, trial = true) { current ->
+    ): GedraConfigRow = svc.patchConfigs(bound, trial = true) { edit(row.configId) { current ->
         val out = LinkedHashMap<String, List<Map<String, Any?>>>(current)
         val entries = current[CCT.uiBlockDef].orEmpty().toMutableList()
         val at = entries.indexOfFirst { it[CCT.blockId].toOptStr() == HMENU.block }
@@ -274,7 +274,7 @@ object ClientMenuEdit {
         val entry = linkedMapOf<String, Any?>(CCT.blockId to HMENU.block, CCT.content to content)
         ClientStoredEdit.storeEntry(out, CCT.uiBlockDef, entries, at, entry, emptied = content.isEmpty())
         out
-    }
+    } }.single()
 
     /**
      * Makes [written] take effect ([ClientStoredEdit.takeEffect]: live, or a draft) and reads back the item as the

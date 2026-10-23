@@ -1,5 +1,6 @@
 package com.dynamicruntime.kdn
 
+import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.content.MarkdownFragmentService
 import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.UPF
@@ -55,7 +56,7 @@ class SandboxEditsTest : StringSpec({
             )
         }
         svc.writeConfig(setup, config)
-        svc.publish(setup, GedraId.of(GedraConfigType.configDoc, parent, "main"))
+        svc.publish(setup, listOf(GedraId.of(GedraConfigType.configDoc, parent, "main")))
         if (publishedOnly) svc.setPublishedOnly(setup, parent, true)
         GedraConfigReload.reloadClient(cxt, parent)
     }
@@ -90,7 +91,7 @@ class SandboxEditsTest : StringSpec({
         brand(parent) shouldBe shipped
         copyPublished(parent) shouldBe false
 
-        admin.postData(CFEP.bundlePublish, mapOf(CFEP.name to CPY.copyConfigName))
+        admin.postData(CFEP.bundlePublish, mapOf(CFEP.names to listOf(CPY.copyConfigName)))
         admin.postData(CFEP.reload, emptyMap())
         brand(parent) shouldBe "Draft Brand"
     }
@@ -118,8 +119,8 @@ class SandboxEditsTest : StringSpec({
         copyPublished(parent) shouldBe false
 
         // The parent's listing, read from the sandbox (which has none of its own), shows the edit by the parent's user.
-        val entries = admin.getItems(CFEP.traits, mapOf(CFEP.name to CPY.copyConfigName))
-        val fragment = entries.single { it[GE.traitId] == CCT.fragmentDef }
+        val entries = admin.getItems(CFEP.slotEntries, mapOf(CFEP.name to CPY.copyConfigName))
+        val fragment = entries.single { it[CFEP.slot] == CCT.fragmentDef }
         fragment[GE.updatedBy].toOptLong() shouldBe parentUserId
         sandboxUserId shouldNotBe parentUserId
     }
@@ -144,7 +145,7 @@ class SandboxEditsTest : StringSpec({
         (fact in cfacts(sandboxOf(parent))) shouldBe true
         (fact in cfacts(parent)) shouldBe false
 
-        admin.postData(CFEP.bundlePublish, mapOf(CFEP.name to "extra"))[CFEP.published] shouldBe true
+        onlyConfig(admin.postData(CFEP.bundlePublish, mapOf(CFEP.names to listOf("extra"))))[CFEP.published] shouldBe true
         (fact in cfacts(parent)) shouldBe true
     }
 
@@ -188,7 +189,7 @@ class SandboxEditsTest : StringSpec({
             },
         )
         svc.publishedOnly(cxt, parent) shouldBe false
-        svc.publish(setup, GedraId.of(GedraConfigType.configDoc, parent, "main"))
+        svc.publish(setup, listOf(GedraId.of(GedraConfigType.configDoc, parent, "main")))
         svc.publishedOnly(cxt, parent) shouldBe true
     }
 
@@ -209,3 +210,6 @@ class SandboxEditsTest : StringSpec({
         granted.expectError(EXC.notAuthorized, CFEP.bundles)
     }
 })
+
+/** The one configuration a single-config patch or publish answered with (issue #1352). */
+private fun onlyConfig(result: Map<String, Any?>): Map<String, Any?> = result[CFEP.configs].toJsonListOfMaps().single()

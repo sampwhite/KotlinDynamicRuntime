@@ -143,7 +143,7 @@ class DesignEditTest : StringSpec({
     "the block says when the shared copy has changed since the workflow overrode it" {
         // The client's own wording for the title changes after the workflow made its own.
         val configId = GedraId.of(GedraConfigType.configDoc, client, DesignDemo.configName)
-        GedraConfigService.get(cxt).patchConfig(cxt.mkSubContext("setup", client), configId) { slots ->
+        GedraConfigService.get(cxt).patchConfigs(cxt.mkSubContext("setup", client)) { edit(configId) { slots ->
             slots + (
                 CCT.traitDef to slots[CCT.traitDef].orEmpty().map { t ->
                     if (t[CCT.traitId] != DesignDemo.eventRequest) return@map t
@@ -155,9 +155,9 @@ class DesignEditTest : StringSpec({
                     t + (CCT.dataSchema to (data + (SCH.layout to (layout + (SL.schemaFields to fields)))))
                 }
                 )
-        }
+        } }.single()
         // Published, as an edit on the Clients page would be: Design View saves refuse a config left with a draft.
-        GedraConfigService.get(cxt).publish(cxt.mkSubContext("setup", client), configId)
+        GedraConfigService.get(cxt).publish(cxt.mkSubContext("setup", client), listOf(configId))
         GedraConfigReload.reloadClient(cxt, client)
         val facts = block(requestView())[DSV.layoutEdits].toJsonMapOrEmpty()[dataType].toJsonMapOrEmpty()[DesignDemo.title]
             .toJsonMapOrEmpty()
@@ -284,7 +284,7 @@ class DesignEditTest : StringSpec({
     "a workflow alteration of anything but a layout is refused at the write" {
         val configId = GedraId.of(GedraConfigType.configDoc, client, DesignDemo.configName)
         shouldThrow<KdrException> {
-            GedraConfigService.get(cxt).patchConfig(cxt.mkSubContext("setup", client), configId, trial = true) { slots ->
+            GedraConfigService.get(cxt).patchConfigs(cxt.mkSubContext("setup", client), trial = true) { edit(configId) { slots ->
                 slots + (
                     CCT.workflowDef to slots[CCT.workflowDef].orEmpty().map { w ->
                         if (w[CCT.workflowId] != DesignDemo.requestWorkflow) return@map w
@@ -292,7 +292,7 @@ class DesignEditTest : StringSpec({
                         w + (CCT.definition to (def + (WFD.types to mapOf(dataType to mapOf(SCH.properties to emptyMap<String, Any?>())))))
                     }
                     )
-            }
+            } }.single()
         }.fullMessage() shouldContain "may alter only a type's 'g-layout'"
     }
 
@@ -336,7 +336,7 @@ class DesignEditTest : StringSpec({
         val parentCxt = cxt.mkSubContext("setup", parent)
         GedraConfigService.get(cxt).writeConfig(parentCxt, config)
         // The published definition is what decides that a client has a sandbox.
-        GedraConfigService.get(cxt).publish(parentCxt, GedraId.of(GedraConfigType.configDoc, parent, "main"))
+        GedraConfigService.get(cxt).publish(parentCxt, listOf(GedraId.of(GedraConfigType.configDoc, parent, "main")))
         GedraConfigReload.reloadClient(cxt, parent)
         val declared = WorkflowService.get(cxt).forClient(parent).workflow("make")!!
         val refusal = DesignView.editRefusal(parentCxt, declared)
@@ -360,14 +360,14 @@ class DesignEditTest : StringSpec({
     "a configuration carrying somebody's unpublished changes is refused, and the block says why" {
         // An unpublished change, made beside Design View: a save here would publish it too (issue #1026).
         val configId = GedraId.of(GedraConfigType.configDoc, client, DesignDemo.configName)
-        GedraConfigService.get(cxt).patchConfig(cxt.mkSubContext("setup", client), configId) { it }
+        GedraConfigService.get(cxt).patchConfigs(cxt.mkSubContext("setup", client)) { edit(configId) { it } }.single()
         try {
             block(requestView())[DSV.canEdit] shouldBe false
             block(requestView())[DSV.editRefusalCode] shouldBe DesignRefusal.unpublishedChanges.name
             admin.expectError(400, DSV.layoutEntryEdit, editArgs(dataType, DesignDemo.title, mapOf(SL.label to "Nope")))
                 .toString() shouldContain "has unpublished changes"
         } finally {
-            GedraConfigService.get(cxt).publish(cxt.mkSubContext("setup", client), configId)
+            GedraConfigService.get(cxt).publish(cxt.mkSubContext("setup", client), listOf(configId))
         }
         block(requestView())[DSV.canEdit] shouldBe true
         block(requestView()).containsKey(DSV.editRefusalCode) shouldBe false
