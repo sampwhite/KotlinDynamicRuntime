@@ -400,7 +400,7 @@ object ClientCreateFields {
 object CLD {
     /**
      * On a create (issue #1346): whether the new client starts with workflows made from the starter templates
-     * (`WFT.starters`), a creation workflow and a survey -- on unless set false.
+     * (`WFT.starters`), a creation workflow, and a survey -- on unless set false.
      */
     const val starterWorkflows = "starterWorkflows"
 
