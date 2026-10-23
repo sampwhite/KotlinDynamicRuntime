@@ -8,6 +8,9 @@ import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.logging.LogStartup
 import com.dynamicruntime.common.startup.SchemaCollector
 import com.dynamicruntime.common.startup.ServiceInitializer
+import com.dynamicruntime.common.util.ScriptEnv
+import com.dynamicruntime.common.util.ScriptZone
+import com.dynamicruntime.common.util.genericZoneLabel
 import com.dynamicruntime.common.util.serverTimeZone
 import kotlinx.datetime.TimeZone
 
@@ -102,6 +105,18 @@ class ClientService : ServiceInitializer {
      * ([displayTimeZone]); null when neither is set, for the deployment's day start.
      */
     fun displayZoneOf(clientId: String): String? = clients[clientId]?.timeZone ?: displayTimeZone
+
+    /**
+     * What a template evaluated for [clientId]'s people reads its dates in (issue #1321): the zone they are shown moments
+     * in ([displayZoneOf]), named as the webapp names it ([genericZoneLabel]), and [cxt]'s moment as now. The deployment's
+     * day start, unnamed, for a client with no zone to show in.
+     */
+    fun scriptEnvOf(cxt: KdrCxt, clientId: String): ScriptEnv {
+        val id = displayZoneOf(clientId)
+        val zone = id?.let { runCatching { TimeZone.of(it) }.getOrNull() }
+        val scriptZone = if (zone == null) ScriptZone.of(serverTimeZone) else ScriptZone.of(zone, genericZoneLabel(id))
+        return ScriptEnv(scriptZone, cxt.now())
+    }
 
     /** The customer [customerId] names, or null when none is declared that held up (issue #1107). */
     fun customer(customerId: String): CustomerDef? = customers[customerId]?.def

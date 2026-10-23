@@ -39,6 +39,7 @@ import com.dynamicruntime.common.user.refreshActingRoles
 import com.dynamicruntime.common.webasset.ClientWebAssetService
 import com.dynamicruntime.common.context.CL
 import com.dynamicruntime.common.user.IDD
+import com.dynamicruntime.common.util.genericZoneLabel
 import com.dynamicruntime.common.util.toOptStr
 
 /**
@@ -162,6 +163,11 @@ fun homeSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.home") {
                     "deployment's day start.",
             )
             property(
+                HFLD.timeZoneLabel,
+                "Beside timeZone, the zone's generic short name (CT), which a moment shown in it is labeled with (issue " +
+                    "#1321); absent for a zone named only by its offset.",
+            )
+            property(
                 HFLD.sharedDemo,
                 "True when the caller's client is a demo client visitors join (issue #1248), or its sandbox, on a deployment that offers " +
                     "joining, so every page notes it is a shared space; absent otherwise.",
@@ -245,7 +251,11 @@ fun homeSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.home") {
                 sourceRepoBase(c)?.let { put(HFLD.sourceRepoBase, it) }
                 // Where the client's people are (issue #1115): the zone the webapp shows moments in -- the client's, else
                 // the deployment's display default. Absent, the webapp shows the deployment's day start.
-                ClientService.getOrNull(c)?.displayZoneOf(c.client)?.let { put(HFLD.timeZone, it) }
+                ClientService.getOrNull(c)?.displayZoneOf(c.client)?.let { zone ->
+                    put(HFLD.timeZone, zone)
+                    // Named as a moment shown in it is labeled (issue #1321), so the browser's wording is the backend's.
+                    genericZoneLabel(zone)?.let { put(HFLD.timeZoneLabel, it) }
+                }
                 // The self-serve client the caller's person made (issue #1228), read off the identity: in `public`, where
                 // a person creates one, so the home page offers to open it rather than to create a second.
                 if (c.client == CL.public && c.userProfile.isLoggedIn) {

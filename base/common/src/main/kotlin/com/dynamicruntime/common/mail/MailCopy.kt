@@ -151,7 +151,9 @@ object MailCopy {
         // defenses stack -- the sanitizer removes what would structure a link, the escape neutralizes the rest.
         val sanitized = named.mapValues { (_, v) -> if (v is String) v.sanitizeForDisplay(MCOPY.maxParamLength) else v }
         val safe = sanitized.mapValues { (_, v) -> if (v is String) v.escapeMarkdown() else v }
-        val subject = copy(mail, MCOPY.subject).evalTemplate(sanitized)
+        // The mail's dates read in the zone of the client it is about, at the moment it is rendered (issue #1321).
+        val env = client?.let { ClientService.get(cxt).scriptEnvOf(cxt, it) }
+        val subject = copy(mail, MCOPY.subject).evalTemplate(sanitized, env = env)
         val body = copy(mail, MCOPY.body)
         // On a public test deployment every mail says so, beneath whatever footer the client signs with (issue #1150).
         val note = if (PublicTestDeployment.isOn(cxt.instanceConfig)) copy(MCOPY.common, MCOPY.testDeploymentNote) else null
@@ -163,7 +165,7 @@ object MailCopy {
 
         // The text part: the same source, rendered to plain text (issue #795).
         val forText = safe + (MCOPY.forHtmlParam to false)
-        val text = (listOf(body.evalTemplate(forText)) + closing.map { it.evalTemplate(forText) })
+        val text = (listOf(body.evalTemplate(forText, env = env)) + closing.map { it.evalTemplate(forText, env = env) })
             .joinToString("\n\n").renderMarkdownText()
 
         // The HTML part: a URL-valued param written as a Markdown link so the renderer makes it an anchor (the
@@ -173,8 +175,8 @@ object MailCopy {
             if (v is String && isHttpUrl(v)) "[${v.escapeMarkdown()}]($v)" else safe[name]
         } + (MCOPY.forHtmlParam to true)
         val hooks = MarkdownHooks(decorateSpan = ::decorateValue)
-        val rendered = body.evalTemplate(forHtml).renderMarkdown(hooks) +
-            closing.joinToString("") { "<p style=\"$footerStyle\">" + it.evalTemplate(forHtml).renderMarkdownInline(hooks) + "</p>" }
+        val rendered = body.evalTemplate(forHtml, env = env).renderMarkdown(hooks) +
+            closing.joinToString("") { "<p style=\"$footerStyle\">" + it.evalTemplate(forHtml, env = env).renderMarkdownInline(hooks) + "</p>" }
         return RenderedMail(subject, text, wrapHtml(rendered, copy(MCOPY.common, MCOPY.htmlStyle)))
     }
 

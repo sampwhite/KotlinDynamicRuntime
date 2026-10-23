@@ -51,8 +51,8 @@ fun instantOfWallClock(wall: String, zone: String): Instant? {
     return readsRight.minOrNull() ?: (asUtc - offsets.min())
 }
 
-/** How far [zone]'s clocks are ahead of UTC at [at] (negative behind), to the second. */
-private fun zoneOffset(at: Instant, zone: String): Duration {
+/** How far [zone]'s clocks are ahead of UTC at [at] (negative behind), to the second. Throws for a zone `Intl` does not know. */
+fun zoneOffset(at: Instant, zone: String): Duration {
     val whole = Instant.fromEpochSeconds(at.epochSeconds)
     return "${zonedWallClock(whole, zone)}Z".parseDateOrNull()!! - whole
 }

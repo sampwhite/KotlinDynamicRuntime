@@ -359,6 +359,7 @@ class ScriptParser(val state: ScriptState, val tokens: List<Token>) {
                 "Template function '$name' takes $expected but was called with ${args.size}.",
             )
         }
+        fn.checkArgs?.invoke(state, args)
         return CallNode(fn, args)
     }
 

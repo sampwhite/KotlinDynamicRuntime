@@ -2,6 +2,7 @@ package com.dynamicruntime.common.gedra
 
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.startup.SchemaService
+import com.dynamicruntime.common.util.ScriptEnv
 import com.dynamicruntime.common.util.analyzeTemplate
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
@@ -28,14 +29,26 @@ fun computeDisplayValues(
     row: GedraDataRow,
     usages: List<ClientTraitUsage>,
     usageClient: String,
-): List<Map<String, Any?>> = usages.map { usage ->
+): List<Map<String, Any?>> {
+    // Read in the zone of the client whose columns these are, and at this request's moment (issue #1321).
+    val env = ClientService.get(cxt).scriptEnvOf(cxt, usageClient)
+    return usages.map { usage -> displayValue(cxt, row, usage, usageClient, env) }
+}
+
+private fun displayValue(
+    cxt: KdrCxt,
+    row: GedraDataRow,
+    usage: ClientTraitUsage,
+    usageClient: String,
+    env: ScriptEnv,
+): Map<String, Any?> {
     val applies = row.client == usageClient || SchemaService.get(cxt).isGlobalTrait(usage.traitId)
     val data = row.entries.takeIf { applies }?.firstOrNull { it[GE.traitId].toOptStr() == usage.traitId }
         ?.let { it[GE.data].toJsonMapOrEmpty() }
     // Substitution only (this issue): the expression pulls a field out of the trait's data. A missing field is a
     // problem the report carries, and for a *presentation* value it is not a fault -- it is a blank cell.
-    val value = if (data == null) "" else usage.display.analyzeTemplate(evaluateWith = data).value ?: ""
-    linkedMapOf<String, Any?>(
+    val value = if (data == null) "" else usage.display.analyzeTemplate(evaluateWith = data, env = env).value ?: ""
+    return linkedMapOf(
         UF.traitId to usage.traitId,
         UF.label to usage.label,
         UF.value to value,
