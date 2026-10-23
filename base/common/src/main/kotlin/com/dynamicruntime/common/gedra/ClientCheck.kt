@@ -6,6 +6,7 @@ import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.startup.BootCheckMode
 import com.dynamicruntime.common.user.PERSONA
 import com.dynamicruntime.common.user.PERSONASUFFIX
+import com.dynamicruntime.common.user.SessionLifetime
 import com.dynamicruntime.common.util.TZONE
 import com.dynamicruntime.common.util.isPlaceZoneName
 import kotlinx.datetime.TimeZone
@@ -147,6 +148,32 @@ fun checkClientDefs(
                 )
                 reportConfigProblem(cxt, issue.heldBy(holder, GCEL.client, def.clientId), issues)
                 kept[def.clientId] = kept.getValue(def.clientId).copy(timeZone = null)
+            }
+        }
+        // A session lifetime or refresh interval out of bounds costs only itself (issue #1308): the client stands, on
+        // the deployment's. Past the deployment's limit is out of bounds -- refused at a write by the trial, and dropped
+        // at a load should the limit drop below it.
+        def.sessionHours?.let { hours ->
+            val most = SessionLifetime.maxHours(cxt)
+            if (hours < CLD.minSessionHours || hours > most) {
+                val issue = GedraConfigIssue(
+                    "Client '${def.clientId}' sets a session lifetime of $hours hours; it may be from ${CLD.minSessionHours} " +
+                        "to the deployment's limit of $most.",
+                    "Dropping it; the client's sessions last the deployment's default of ${SessionLifetime.deploymentHours(cxt)} hours.",
+                )
+                reportConfigProblem(cxt, issue.heldBy(holder, GCEL.client, def.clientId), issues)
+                kept[def.clientId] = kept.getValue(def.clientId).copy(sessionHours = null)
+            }
+        }
+        def.refreshIntervalSeconds?.let { seconds ->
+            if (seconds !in CLD.minRefreshIntervalSeconds..CLD.maxRefreshIntervalSeconds) {
+                val issue = GedraConfigIssue(
+                    "Client '${def.clientId}' sets a refresh interval of $seconds seconds; it may be from " +
+                        "${CLD.minRefreshIntervalSeconds} to ${CLD.maxRefreshIntervalSeconds}.",
+                    "Dropping it; the client's open tabs refresh at the deployment's interval.",
+                )
+                reportConfigProblem(cxt, issue.heldBy(holder, GCEL.client, def.clientId), issues)
+                kept[def.clientId] = kept.getValue(def.clientId).copy(refreshIntervalSeconds = null)
             }
         }
         // Join roles that cannot be offered cost only themselves (issue #1248): the client stands, and nobody joins it.

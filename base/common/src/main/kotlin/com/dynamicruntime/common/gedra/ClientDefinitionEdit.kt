@@ -89,7 +89,7 @@ object ClientDefinitionEdit {
     /**
      * [fields] as the definition will hold them: text trimmed, the name refused blank, the labels held to the one
      * label rule ([normalizeUserLabels]) rather than refused later by `ClientDef`'s own check, a choice required, the
-     * environments as a list, the preload as a flag -- and an optional field cleared ("" or an empty list) kept as a
+     * environments as a list, the preload as a flag, a number as one -- and an optional field cleared ("" or an empty list) kept as a
      * null, which the patch removes, as `toInfo` leaves an absent one out. A key outside [ClientPresentationFields] is
      * a fault: the endpoint's input admits no other.
      */
@@ -105,6 +105,10 @@ object ClientDefinitionEdit {
                 ClientPresentationFields.Kind.flag -> value == true
                 ClientPresentationFields.Kind.choice -> value.toOptStr()?.trim()?.ifEmpty { null }
                     ?: throw KdrException.mkInput("Client '$client' needs a '$key'; a blank one is refused.")
+                // Whole numbers ride as text, so a blank one clears it (issue #1308); the bounds are the client check's.
+                ClientPresentationFields.Kind.number -> value.toOptStr()?.trim()?.ifEmpty { null }?.let { text ->
+                    text.toIntOrNull() ?: throw KdrException.mkInput("Client '$client' sets '$key' to '$text', which is not a whole number.")
+                }
                 ClientPresentationFields.Kind.text, ClientPresentationFields.Kind.timeZone -> if (key == CLD.name) {
                     value.toOptStr()?.trim()?.ifEmpty { null }
                         ?: throw KdrException.mkInput("Client '$client' needs a name; a blank one is refused.")

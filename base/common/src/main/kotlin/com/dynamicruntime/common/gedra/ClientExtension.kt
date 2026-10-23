@@ -106,13 +106,16 @@ object ClientExtension {
 
     /**
      * [child]'s definition built on [template]'s: the child's own fields stand, and where it is silent the template
-     * fills in. A missing `webResourcesId` is the template's; `includedTraits` and `userLabels` are the template's
+     * fills in. A missing `webResourcesId`, session lifetime or refresh interval (issue #1308) is the template's;
+     * `includedTraits` and `userLabels` are the template's
      * followed by the child's, each entry once -- the template's traits are the child's too, by the clone, so what
      * the template takes as it stands the child does. Nothing else is inherited: the environments, the usage type and
      * the audience say what *this* client is, and routing and the sandbox are never shared.
      */
     fun mergeDef(child: ClientDef, template: ClientDef): ClientDef = child.copy(
         webResourcesId = child.webResourcesId ?: template.webResourcesId,
+        sessionHours = child.sessionHours ?: template.sessionHours,
+        refreshIntervalSeconds = child.refreshIntervalSeconds ?: template.refreshIntervalSeconds,
         includedTraits = (template.includedTraits + child.includedTraits).distinct(),
         userLabels = (template.userLabels + child.userLabels).distinct(),
     )

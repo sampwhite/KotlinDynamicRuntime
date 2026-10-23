@@ -6,7 +6,7 @@ import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.http.request.TestHttpClient
 import com.dynamicruntime.common.test.ClockOp
 import com.dynamicruntime.common.test.TCLK
-import com.dynamicruntime.common.user.AUTHC
+import com.dynamicruntime.common.user.SessionLifetime
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptLong
@@ -75,7 +75,7 @@ class TimeTravelTest : StringSpec({
         UserProfile.fromUserInfo(user.getData("/auth/self/info")).isLoggedIn shouldBe true
 
         // Travel past the 30-day session: the same cookie is now stale on its next request.
-        cxt.instanceConfig.clock.advanceBy((AUTHC.sessionMillis + 1000).milliseconds)
+        cxt.instanceConfig.clock.advanceBy((SessionLifetime.defaultHours * 3_600_000L + 1000).milliseconds)
         UserProfile.fromUserInfo(user.getData("/auth/self/info")).isLoggedIn shouldBe false
     }
 })

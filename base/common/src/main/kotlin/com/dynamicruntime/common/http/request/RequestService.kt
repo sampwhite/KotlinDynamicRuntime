@@ -15,6 +15,7 @@ import com.dynamicruntime.common.user.AUTHC
 import com.dynamicruntime.common.user.AuthTiming
 import com.dynamicruntime.common.user.UserAuthCookie
 import com.dynamicruntime.common.user.ENVA
+import com.dynamicruntime.common.user.SessionLifetime
 import com.dynamicruntime.common.user.EnvAuthRules
 import com.dynamicruntime.common.user.UserService
 import com.dynamicruntime.common.user.refreshActingRoles
@@ -955,7 +956,11 @@ class RequestService : ServiceInitializer {
         val cookie = handler.getRequestCookies()[AUTHC.authCookie] ?: return
         val node = NodeService.get(cxt)
         val decoded = UserAuthCookie.decode(node, cookie) ?: return
-        if (cxt.now().toEpochMilliseconds() > decoded.expireEpochMs) return
+        val nowMs = cxt.now().toEpochMilliseconds()
+        if (nowMs > decoded.expireEpochMs) return
+        // Measured from the sign-in against the client's lifetime now (issue #1308), so shortening it ends longer
+        // sessions at once rather than when their cookies expire.
+        if (nowMs > decoded.signedInEpochMs + SessionLifetime.millisFor(cxt, decoded.client)) return
         if (ClientService.getOrNull(cxt)?.isPresent(decoded.client) == false) return
         cxt.bindToUserProfile(
             UserProfile(
@@ -1001,8 +1006,11 @@ class RequestService : ServiceInitializer {
         }
         if (!req.setAuthCookie) return
         val profile = cxt.userProfile
-        val expireMs = cxt.now().toEpochMilliseconds() + AUTHC.sessionMillis
-        val cookie = UserAuthCookie(profile.userId, profile.client, profile.roles.toList(), expireMs, profile.identityId, profile.persona)
+        val nowMs = cxt.now().toEpochMilliseconds()
+        val expireMs = nowMs + SessionLifetime.millisFor(cxt, profile.client)
+        val cookie = UserAuthCookie(
+            profile.userId, profile.client, profile.roles.toList(), expireMs, profile.identityId, profile.persona, signedInEpochMs = nowMs,
+        )
         handler.addResponseCookie(AUTHC.authCookie, cookie.encode(node), Instant.fromEpochMilliseconds(expireMs))
 
         // Device recording + a long-lived device cookie when the browser has none yet. An existing device
@@ -1010,7 +1018,7 @@ class RequestService : ServiceInitializer {
         var deviceGuid = handler.getRequestCookies()[AUTHC.deviceCookie]
         if (deviceGuid == null) {
             deviceGuid = cxt.mkUniqueId()
-            handler.addResponseCookie(AUTHC.deviceCookie, deviceGuid, Instant.fromEpochMilliseconds(expireMs + AUTHC.sessionMillis))
+            handler.addResponseCookie(AUTHC.deviceCookie, deviceGuid, Instant.fromEpochMilliseconds(nowMs + AUTHC.deviceCookieMillis))
         }
         val identityId = profile.identityId ?: return
         UserService.get(cxt).recordDevice(

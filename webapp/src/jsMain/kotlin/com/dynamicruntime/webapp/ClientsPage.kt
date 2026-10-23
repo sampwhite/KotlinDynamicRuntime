@@ -301,6 +301,7 @@ private fun ChildrenBuilder.clientDetail(
                         baseline = stored
                         this.savesDraft = savesDraft
                         platform = acrossClients
+                        platformDefaults = def.platformDefaults
                         this.onChanged = onChanged
                     }
                 }
@@ -529,6 +530,8 @@ external interface DefinitionEditorProps : Props {
     var savesDraft: Boolean
     /** Whether the caller sees every client, and so is offered the platform's fields too (issue #1116). */
     var platform: Boolean
+    /** The deployment's values of the fields a client may leave blank (issue #1308), said as each one's placeholder. */
+    var platformDefaults: Map<String, Int>
     var onChanged: () -> Unit
 }
 
@@ -610,52 +613,60 @@ private val DefinitionEditor = FC<DefinitionEditorProps> { props ->
         }
     } else {
         val request = definitionEditRequest(props.clientId, baseline, draft, expectedMode(props.savesDraft), props.platform)
-        // The one list the endpoint's input is built from, so a field joining it is drawn here without a change.
-        for (name in ClientPresentationFields.namesFor(props.platform)) {
-            val label = humanizeFieldName(name)
-            fun set(value: String) {
-                draft = draft + (name to value)
-            }
-            when (ClientPresentationFields.kind(name)) {
-                ClientPresentationFields.Kind.choice -> choiceRow(label) {
-                    Select {
-                        value = draft[name].orEmpty()
-                        options = choiceOptions(ClientPresentationFields.choicesOf(name).map { it to it })
-                        disabled = busy
-                        style = js("({ minWidth: 200 })")
-                        onChange = { v -> set((v as? String).orEmpty()) }
-                    }
+        // The one list the endpoint's input is built from, so a field joining it is drawn here without a change --
+        // under its section's heading (issue #1308), declared beside it in the kernel.
+        for ((section, names) in ClientPresentationFields.bySection(ClientPresentationFields.namesFor(props.platform))) {
+            h3 { +section.heading }
+            for (name in names) {
+                val label = humanizeFieldName(name)
+                fun set(value: String) {
+                    draft = draft + (name to value)
                 }
-                ClientPresentationFields.Kind.choices -> choiceRow(label) {
-                    Select {
-                        mode = "multiple"
-                        value = choicesOfText(name, draft[name].orEmpty()).toTypedArray()
-                        options = choiceOptions(ClientPresentationFields.choicesOf(name).map { it to it })
-                        disabled = busy
-                        style = js("({ minWidth: 280 })")
-                        onChange = { v -> set((v as Array<*>).joinToString(", ")) }
+                when (ClientPresentationFields.kind(name)) {
+                    ClientPresentationFields.Kind.choice -> choiceRow(label) {
+                        Select {
+                            value = draft[name].orEmpty()
+                            options = choiceOptions(ClientPresentationFields.choicesOf(name).map { it to it })
+                            disabled = busy
+                            style = js("({ minWidth: 200 })")
+                            onChange = { v -> set((v as? String).orEmpty()) }
+                        }
                     }
-                }
-                ClientPresentationFields.Kind.flag -> choiceRow(label) {
-                    Checkbox {
-                        checked = draft[name] == "true"
-                        disabled = busy
-                        onChange = { e -> set((e.target.checked == true).toString()) }
+                    ClientPresentationFields.Kind.choices -> choiceRow(label) {
+                        Select {
+                            mode = "multiple"
+                            value = choicesOfText(name, draft[name].orEmpty()).toTypedArray()
+                            options = choiceOptions(ClientPresentationFields.choicesOf(name).map { it to it })
+                            disabled = busy
+                            style = js("({ minWidth: 280 })")
+                            onChange = { v -> set((v as Array<*>).joinToString(", ")) }
+                        }
                     }
-                }
-                ClientPresentationFields.Kind.timeZone -> choiceRow(label) {
-                    TimeZonePicker {
-                        value = draft[name].orEmpty()
-                        disabled = busy
-                        onChange = { v -> set(v) }
+                    ClientPresentationFields.Kind.flag -> choiceRow(label) {
+                        Checkbox {
+                            checked = draft[name] == "true"
+                            disabled = busy
+                            onChange = { e -> set((e.target.checked == true).toString()) }
+                        }
                     }
+                    ClientPresentationFields.Kind.timeZone -> choiceRow(label) {
+                        TimeZonePicker {
+                            value = draft[name].orEmpty()
+                            disabled = busy
+                            onChange = { v -> set(v) }
+                        }
+                    }
+                    ClientPresentationFields.Kind.number -> textField(
+                        label, draft[name].orEmpty(), disabled = busy, placeholder = platformDefaultText(name, props.platformDefaults),
+                    ) { v -> set(v) }
+                    else -> textField(label, draft[name].orEmpty(), disabled = busy) { v -> set(v) }
                 }
-                else -> textField(label, draft[name].orEmpty(), disabled = busy) { v -> set(v) }
             }
         }
         p {
             className = ClassName("subtitle")
-            +"Labels are comma-separated; each is matched exactly as written. $timeZoneEditNote ${saveEffectText(props.savesDraft)}"
+            +("Labels are comma-separated; each is matched exactly as written. $timeZoneEditNote $numberFieldsEditNote " +
+                saveEffectText(props.savesDraft))
         }
         p {
             Button {

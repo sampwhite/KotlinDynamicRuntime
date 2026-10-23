@@ -1,5 +1,6 @@
 package com.dynamicruntime.common.gedra
 
+import com.dynamicruntime.common.app.IdleRefresh
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.endpoint.HttpMethod
 import com.dynamicruntime.common.endpoint.SchModule
@@ -12,6 +13,7 @@ import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.SchOption
 import com.dynamicruntime.common.startup.SchemaService
 import com.dynamicruntime.common.user.ADEP
+import com.dynamicruntime.common.user.SessionLifetime
 import com.dynamicruntime.common.util.toOptStr
 
 /**
@@ -125,6 +127,27 @@ fun clientCatalogSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CLD.catalogN
                 "for a sandbox, and on the full-scope retrieve.",
         ) { ref(CLD.infoTypeName) }
         property(CLD.storedDefinitionConfig, "With storedDefinition: the name of the stored configuration holding it.")
+        property(
+            CLD.platformDefaults,
+            "On the scoped retrieve (issue #1308): the deployment's values of the fields a client may leave unset to take " +
+                "them, so a page can say what an unset one means.",
+        ) {
+            type = SCT.kObject
+            // Naming the variables here also declares them at boot, when this schema is built (EnvVarRegistry).
+            property(CLD.sessionHours, "The deployment's default session lifetime, in hours (${SessionLifetime.sessionHoursEnvVar.name}).", required = true) {
+                type = SCT.integer
+            }
+            property(
+                CLD.maxSessionHours,
+                "The most a client's own session lifetime may be, in hours (${SessionLifetime.sessionMaxHoursEnvVar.name}).",
+                required = true,
+            ) {
+                type = SCT.integer
+            }
+            property(CLD.refreshIntervalSeconds, "The deployment's refresh interval, in whole seconds, at least one.", required = true) {
+                type = SCT.integer
+            }
+        }
         property(
             CLD.present,
             "Whether this node carries the client. False for one whose definition a check dropped -- returned " +
@@ -247,9 +270,20 @@ private fun clientDefinitionOf(cxt: KdrCxt, def: ClientDef, withStored: Boolean)
     return buildMap {
         put(CLD.client, def.toInfo())
         // Read only where asked for: the full-scope retrieve is on every node, and its callers do not edit.
-        if (withStored) storedDefinitionOf(cxt, def.clientId)?.let { (configName, stored) ->
-            put(CLD.storedDefinition, stored)
-            put(CLD.storedDefinitionConfig, configName)
+        if (withStored) {
+            storedDefinitionOf(cxt, def.clientId)?.let { (configName, stored) ->
+                put(CLD.storedDefinition, stored)
+                put(CLD.storedDefinitionConfig, configName)
+            }
+            put(
+                CLD.platformDefaults,
+                mapOf(
+                    CLD.sessionHours to SessionLifetime.deploymentHours(cxt),
+                    CLD.maxSessionHours to SessionLifetime.maxHours(cxt),
+                    // Rounded to the nearest second, at least one: a deployment may tune it below what a client may set.
+                    CLD.refreshIntervalSeconds to maxOf(1, (IdleRefresh.deploymentMillis(cxt) + 500) / 1000),
+                ),
+            )
         }
         put(CLD.present, true)
         put(CLD.issues, ClientConfigIssues.get(cxt).issuesFor(def.clientId).map { it.toWireMap() })

@@ -861,4 +861,49 @@ class ClientsPageTest {
         assertTrue("unpublished changes" in refusal(row(), listOf(ConfigSummaryView("main", 3, false, null, null, 0))))
         assertTrue("Not loaded" in refusal(row(CLD.status to ClientStatus.notEnabled.name)))
     }
+
+    @Test
+    fun aSessionLifetimeAndRefreshIntervalShowTheValueInForce() {
+        // Issue #1308: the client's own, else the platform's, said as such.
+        val defaults = mapOf(CLD.sessionHours to 720, CLD.refreshIntervalSeconds to 30)
+        assertEquals("30 days (platform default)", inForceText(CLD.sessionHours, emptyMap(), defaults))
+        assertEquals("8 hours", inForceText(CLD.sessionHours, mapOf(CLD.sessionHours to 8), defaults))
+        assertEquals("1 day", inForceText(CLD.sessionHours, mapOf(CLD.sessionHours to 24L), defaults))
+        assertEquals("30 seconds (platform default)", inForceText(CLD.refreshIntervalSeconds, emptyMap(), defaults))
+        assertEquals("2 minutes", inForceText(CLD.refreshIntervalSeconds, mapOf(CLD.refreshIntervalSeconds to 120), defaults))
+        assertEquals("\u2014", inForceText(CLD.sessionHours, emptyMap(), emptyMap()))
+        assertEquals("Platform default: 30 days", platformDefaultText(CLD.sessionHours, defaults))
+        // With the limit known, the session lifetime's placeholder says it too; the refresh interval's has none.
+        val withLimit = defaults + (CLD.maxSessionHours to 720)
+        assertEquals("Platform default: 30 days; at most 30 days", platformDefaultText(CLD.sessionHours, withLimit))
+        assertEquals("Platform default: 30 seconds", platformDefaultText(CLD.refreshIntervalSeconds, withLimit))
+        // The summary says so; the refresh interval a client's own administrator cannot change is marked when the
+        // client sets one, and a platform default is not.
+        val item = mapOf(
+            CLD.client to mapOf(CLD.clientId to "acme", CLD.name to "Acme", CLD.refreshIntervalSeconds to 45),
+            CLD.platformDefaults to defaults,
+            CLD.present to true,
+        )
+        val scoped = clientSummaryRows("acme", null, parseClientDefinition(item), canSeeAllClients = false).toMap()
+        assertEquals("30 days (platform default)", scoped["Session hours"])
+        assertEquals("45 seconds $platformSetNote", scoped["Refresh interval seconds"])
+    }
+
+    @Test
+    fun theDefinitionEditorDrawsItsFieldsInSections() {
+        val scoped = ClientPresentationFields.bySection(ClientPresentationFields.namesFor(platform = false))
+        assertEquals(listOf("About", "How it behaves"), scoped.map { it.first.heading })
+        assertEquals(listOf(CLD.timeZone, CLD.userLabels, CLD.sessionHours), scoped[1].second)
+        // The platform's own fields join theirs, the refresh interval among how the client behaves.
+        val platform = ClientPresentationFields.bySection(ClientPresentationFields.namesFor(platform = true))
+        assertEquals(listOf("About", "How it behaves", "Platform"), platform.map { it.first.heading })
+        assertTrue(CLD.refreshIntervalSeconds in platform[1].second)
+        assertEquals(ClientPresentationFields.namesFor(platform = true).toSet(), platform.flatMap { it.second }.toSet())
+        // A number rides as text, as the editor's other fields do: unchanged is no change, and blank clears it.
+        val stored = mapOf(CLD.name to "Acme", CLD.sessionHours to 48L)
+        val draft = definitionDraftOf(stored)
+        assertEquals("48", draft[CLD.sessionHours])
+        assertFalse(definitionEditChanges(definitionEditRequest("acme", stored, draft, EDM.live)))
+        assertEquals("", definitionEditRequest("acme", stored, draft + (CLD.sessionHours to " "), EDM.live)[CLD.sessionHours])
+    }
 }

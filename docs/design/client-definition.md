@@ -278,6 +278,8 @@ read from it.
 | `clientId` | the creator | nobody (it is the client) |
 | `name`, `description` | the creator | the definition editor |
 | `timeZone` | copied from the maker | the definition editor |
+| `sessionHours` | copied from the maker | the definition editor |
+| `refreshIntervalSeconds` | copied from the maker | the platform, in the definition editor |
 | `userLabels` | cleared | the definition editor |
 | `usageType`, `audience`, `enabledEnvironments` | copied from the maker | the platform, in the definition editor |
 | `webResourcesId` | copied from the maker | the platform, in the definition editor |
@@ -291,15 +293,33 @@ read from it.
 | `staticConfig`, `testFeatures` | cleared | the platform (`staticConfig` only in source) |
 
 **The definition editor offers each caller what its policy lets them edit** (issue #1116). A client's own
-administrator edits its name, note, time zone, and suggested labels. An administrator who sees every client edits
+administrator edits its name, note, time zone, suggested labels, and session lifetime. An administrator who sees every client edits
 those and the platform's fields marked "in the definition editor" above (`ClientFieldPolicies.platformEditorFields`);
 the endpoint refuses one of those from a client's own administrator (403). The customer and the template stay a
 deliberate configuration write: changing either moves what the client is under or holds. Every field the caller
-does not edit there is shown read-only, saying who sets it.
+does not edit there is shown read-only, saying who sets it. The editor draws its fields in sections -- About, How it
+behaves, Platform -- declared beside each field (`ClientPresentationFields.section`, issue #1308).
 
 The platform's create takes every field but those a create clears and that are then changed only through their own
 surface or by a configuration write: the traits a client includes, its static lock, its retirement, and its test
 features.
+
+**How long its people stay signed in, and how often their open tabs refresh** (issue #1308). Two values that were
+the deployment's alone, each now a field a client may set, and absent for the deployment's:
+
+- **`sessionHours`**, how long a sign-in lasts. The deployment's default is `KDR_SESSION_HOURS` (two days unset), and
+  its limit `KDR_SESSION_MAX_HOURS` (30 days unset): a client's administrator may make its people's sessions shorter
+  or longer than the default, never past the limit. A value past it is refused at the write, and dropped with an issue
+  at a load should the limit later fall below it. The session cookie carries when the person signed in, and every request measures from that against the client's
+  lifetime now (`SessionLifetime`), so shortening it ends longer sessions at once. Lengthening it reaches only
+  sign-ins made after, since a cookie's expiry is set when it is issued.
+- **`refreshIntervalSeconds`**, how often an idle open tab re-reads what it shows (the webapp's idle bump, #146).
+  Every tab asks that often, so it is a load on the deployment, and only the platform sets it, within 5 seconds to an
+  hour. The app UI-config serves the caller's client's, else the deployment's (`IdleRefresh`).
+
+The client's page shows each as the value in force: the client's own, or the platform's, said as such. Error
+obfuscation (`KDR_OBFUSCATE_ERRORS`) stays the deployment's: the errors it hides say something across client lines,
+and most arise before any client is known.
 
 **A client has a time zone** (issue #1115): `timeZone`, an IANA zone of a place (`America/Chicago`), or `UTC`. It
 says where the client's people are, and so the zone its days mean something in. Absent, the client is in the
