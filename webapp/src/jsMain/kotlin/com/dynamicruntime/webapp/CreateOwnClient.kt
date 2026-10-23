@@ -39,8 +39,11 @@ fun createOwnClientRequest(
     timeZone: String,
     /** The new client's home copy (issue #1336), by the create's field names ([CLD.homeCopyFields]' keys). */
     home: Map<String, String> = emptyMap(),
+    /** Whether the client starts with a creation workflow and a survey (issue #1346); sent only when it does not. */
+    starterWorkflows: Boolean = true,
 ): Map<String, Any?> = buildMap {
     put(CLD.name, name.trim())
+    if (!starterWorkflows) put(CLD.starterWorkflows, false)
     description.trim().ifEmpty { null }?.let { put(CLD.description, it) }
     timeZone.trim().ifEmpty { null }?.let { put(CLD.timeZone, it) }
     for (field in CLD.homeCopyFields.keys) home[field]?.trim()?.ifEmpty { null }?.let { put(field, it) }
@@ -173,10 +176,16 @@ fun createOwnClientNext(result: CreateOwnClientResult): CreateOwnClientNext =
 fun ownClientStartZone(browserZone: String?): String = browserZone?.takeIf { isPlaceZoneName(it) }.orEmpty()
 
 object CreateOwnClientApi {
-    suspend fun create(name: String, description: String, timeZone: String, home: Map<String, String> = emptyMap()): CreateOwnClientResult =
-        parseCreateOwnClientResult(
-            Http.sendApi("POST", AEP.createOwnClient, createOwnClientRequest(name, description, timeZone, home))[EP.results].toJsonMapOrEmpty(),
-        )
+    suspend fun create(
+        name: String,
+        description: String,
+        timeZone: String,
+        home: Map<String, String> = emptyMap(),
+        starterWorkflows: Boolean = true,
+    ): CreateOwnClientResult = parseCreateOwnClientResult(
+        Http.sendApi("POST", AEP.createOwnClient, createOwnClientRequest(name, description, timeZone, home, starterWorkflows))[EP.results]
+            .toJsonMapOrEmpty(),
+    )
 }
 
 external interface CreateOwnClientCardProps : Props {
@@ -199,6 +208,8 @@ val CreateOwnClientCard = FC<CreateOwnClientCardProps> { props ->
     var name by useState("")
     var description by useState("")
     var timeZone by useState(ownClientStartZone(browserTimeZone()))
+    // Whether it starts with a creation workflow and a survey (issue #1346): on unless the person says otherwise.
+    var starters by useState(true)
     var busy by useState(false)
     var error by useState<DisplayError?>(null)
     var note by useState<String?>(null)
@@ -272,6 +283,19 @@ val CreateOwnClientCard = FC<CreateOwnClientCardProps> { props ->
                             onChange = { v -> timeZone = v }
                         }
                     }
+                    div {
+                        Checkbox {
+                            checked = starters
+                            disabled = busy
+                            onChange = { e -> starters = e.target.checked == true }
+                            +"Start with a creation workflow and a survey"
+                        }
+                        div {
+                            className = ClassName("type-hint")
+                            +("Two workflows built around a form's name, so your client's people can make a form at once. " +
+                                "They count toward the free plan's workflows, and can be renamed or removed from My client.")
+                        }
+                    }
                     // Its home page, set as it is made (issue #1336): the copy is published with the client, so it shows
                     // at once, and the images upload once the client exists. All of it optional, and all of it changeable.
                     h3 { +"Your client's home page (optional)" }
@@ -326,7 +350,7 @@ val CreateOwnClientCard = FC<CreateOwnClientCardProps> { props ->
                         disabled = name.isBlank() || imageProblems.isNotEmpty()
                         onClick = {
                             act {
-                                val result = CreateOwnClientApi.create(name, description, timeZone, home)
+                                val result = CreateOwnClientApi.create(name, description, timeZone, home, starters)
                                 val next = createOwnClientNext(result)
                                 fun labelOf(slot: String) = WebAssetKinds.slotDef(slot)?.label ?: slot
                                 note = next.note

@@ -189,6 +189,8 @@ class ClientWorkflowTemplateTest : StringSpec({
             mapOf(
                 CLD.clientId to client, CLD.name to "Client $client", CLD.usageType to ClientUsageType.dev.name,
                 CLD.audience to ClientAudience.customer.name, CLD.enabledEnvironments to listOf(ENV.unit, ENV.local),
+                // Without the starter workflows (issue #1346): the case writes the four it counts itself.
+                CLD.starterWorkflows to false,
             ),
         )
         val flows = gedraConfig(cxt, "flows", clientNamespace(client), client) {

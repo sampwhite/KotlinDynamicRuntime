@@ -77,7 +77,10 @@ object ClientDelegatedCreate {
         // the prefix, a taken id is one of the customer's own, which they may see.
         val clientId = request[CLD.clientId].toOptStr().orEmpty()
         newClientPrefixFault(clients, clientId, customer.customerId)?.let { throw KdrException.mkInput(it) }
-        val created = ClientCreate.create(cxt, ClientFieldPolicies.delegatedDefinition(parent.toInfo(), request))
+        val created = ClientCreate.create(
+            cxt, ClientFieldPolicies.delegatedDefinition(parent.toInfo(), request),
+            starterWorkflows = request[CLD.starterWorkflows] != false,
+        )
         // From here the client exists, whatever becomes of its creator's user: a failure is the result's to say.
         return try {
             val admin = PERSONA.def(PERSONA.admin) ?: throw KdrException("The admin persona is not declared.")

@@ -1300,6 +1300,13 @@ object ClientsApi {
         parseWorkflowSaveResult(Http.sendApi("POST", UADEP.clientWorkflowSave, request)[EP.results].toJsonMapOrEmpty())
 
     /**
+     * Removes one of a client's workflows made from a template (issue #1346) -- [request] from [workflowRemoveRequest];
+     * live, or a draft for a client with a sandbox. One forms take part in is refused with the impact report ([impactOf]).
+     */
+    suspend fun removeWorkflow(request: Map<String, Any?>): WorkflowRemoveResult =
+        parseWorkflowRemoveResult(Http.sendApi("POST", UADEP.clientWorkflowRemove, request)[EP.results].toJsonMapOrEmpty())
+
+    /**
      * Sets one of a client's normal workflows' time windows (issue #1121) -- [request] from [windowsSaveRequest]; live,
      * or a draft for a client with a sandbox. One that would freeze or hide engaged forms now is refused with the impact
      * report ([impactOf]).

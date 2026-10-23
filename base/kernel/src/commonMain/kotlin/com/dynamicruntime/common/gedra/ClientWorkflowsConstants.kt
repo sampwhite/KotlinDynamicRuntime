@@ -37,6 +37,7 @@ object CWF {
     const val slots = "slots"
 
     const val windowsResultTypeName = "ClientWorkflowWindowsResult"
+    const val removeResultTypeName = "ClientWorkflowRemoveResult"
 
     /**
      * On a workflow: why its time windows cannot be changed here (issue #1121), for a normal workflow only -- one the

@@ -275,7 +275,9 @@ fun clientOverviewSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CLD.overvie
         "Creates a client under the caller's customer (issue #1112), for an administrator of the customer's root " +
             "client. Its id is '<customer>_<name>'; it holds the creator's choices and what the root passes on -- its " +
             "customer, the environments it runs in, its usage type, audience, and web resources -- and starts with " +
-            "no configuration. The creator gets their own admin user there, returned rather than switched to. " +
+            "no other configuration than its starter workflows, a creation workflow and a survey, unless '" +
+            CLD.starterWorkflows + "' is false (issue #1346). The creator gets their own admin user there, returned " +
+            "rather than switched to. " +
             "Refused for a customer on the free plan, which makes no clients, and otherwise for what the platform's " +
             "create refuses, in the same words.",
         HttpMethod.POST,
@@ -332,12 +334,20 @@ fun clientOverviewSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CLD.overvie
             field(CLD.homeTitle, "The home page's title.") { maxLength = CLD.homeTitleMaxLength }
             field(CLD.homeIntro, "The home page's introduction, in Markdown.") { maxLength = CLD.homeTextMaxLength }
             field(CLD.homeNote, "A note beneath the home page's introduction, in Markdown.") { maxLength = CLD.homeTextMaxLength }
+            field(
+                CLD.starterWorkflows,
+                "Start the client with a creation workflow and a survey, made from the deployment's templates around the " +
+                    "form's name (which the client then includes). On unless set false.",
+            ) {
+                type = SCT.boolean
+                default = true
+            }
         },
     ) { c, request ->
         val home = CLD.homeCopyFields.mapNotNull { (field, key) -> request[field].toOptStr()?.let { key to it } }.toMap()
         val result = ClientSelfServeCreate.create(
             c, request.getValue(CLD.name).toOptStr().orEmpty(), request[CLD.description].toOptStr(), request[CLD.timeZone].toOptStr(),
-            home,
+            home, starterWorkflows = request[CLD.starterWorkflows] != false,
         )
         val switched = result.userId != null && result.created.present
         if (switched) authHandler(c).switchClient(c, result.created.client)

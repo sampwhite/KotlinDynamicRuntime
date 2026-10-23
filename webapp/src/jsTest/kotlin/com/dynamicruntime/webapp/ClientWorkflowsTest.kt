@@ -118,4 +118,19 @@ class ClientWorkflowsTest {
         assertEquals(EDM.draft, result.mode)
         assertNull(result.draftImpact)
     }
+
+    @Test
+    fun aWorkflowMadeFromATemplateIsRemovedSayingWhere() {
+        val own = catalog.workflows.single()
+        assertTrue(workflowRemovable(own))
+        assertFalse(workflowRemovable(ClientWorkflowView(catalog.templates.first().def, null, "It is written whole.")))
+        assertEquals("Remove the workflow 'Site review' of acme (live data)?", workflowRemoveQuestion(own.def, "acme", draft = false))
+        assertEquals("Remove the workflow 'Site review' from the draft of acme?", workflowRemoveQuestion(own.def, "acme:sandbox", draft = true))
+        val request = workflowRemoveRequest("acme", "siteReview", EDM.live, acknowledge = false)
+        assertEquals("siteReview", request[WFD.workflowId])
+        assertNull(request[IMP.acknowledgeImpact])
+        val result = parseWorkflowRemoveResult(mapOf(CWF.configName to "workflow_siteReview", WFD.workflowId to "siteReview", CPY.mode to EDM.live))
+        assertEquals("workflow_siteReview", result.configName)
+        assertEquals("siteReview", result.workflowId)
+    }
 }

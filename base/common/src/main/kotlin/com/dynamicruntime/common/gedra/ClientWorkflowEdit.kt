@@ -57,13 +57,16 @@ object ClientWorkflowEdit {
     /** The catalog for [client]'s page -- see the class note -- as the catalog endpoint answers it. */
     fun catalog(cxt: KdrCxt, client: String): Map<String, Any?> {
         val workflows = WorkflowService.get(cxt)
-        val own = workflows.forClient(client).workflows.values.toList()
+        // What the editors change: for a client with a sandbox, its latest configuration, drafts included -- which is
+        // what the sandbox runs -- so a workflow a draft removed or made is listed as the next edit will find it.
+        val view = sandboxOf(client).takeIf { sandboxParentOf(client) == null && ClientService.get(cxt).present(it) != null } ?: client
+        val own = workflows.forClient(view).workflows.values.toList()
         val templates = workflows.forClient(null).workflows
         val limits = PlanRoom.of(cxt, client)
         return buildMap {
             put(CLD.client, client)
             put(CWF.templates, templates.values.map { templateInfo(it.def, own, limits) })
-            put(CWF.workflows, own.map { workflowInfo(client, it, templates.keys) })
+            put(CWF.workflows, own.map { workflowInfo(view, it, templates.keys) })
             put(CWF.traits, usableTraits(cxt, client))
             ClientService.get(cxt).displayZoneOf(client)?.let { put(CWF.timeZone, it) }
         }
@@ -255,6 +258,43 @@ object ClientWorkflowEdit {
         val written = patch(row, definition)
         val reload = ClientStoredEdit.takeEffect(cxt, target, written, undo = { patch(written, stored) }, restorePublished = row.isPublished, impact = impact)
         return WindowsResult(written.configId.baseId, windows, reload.issues, target.mode, ClientStoredEdit.draftImpact(target, written))
+    }
+
+    /** What a removal did: the configuration the workflow was in, how it took effect, and a draft's impact. */
+    class RemoveResult(val configName: String, val issues: List<GedraConfigIssue>, val mode: String, val draftImpact: ImpactReport?)
+
+    /**
+     * Removes [client]'s workflow [workflowId] (issue #1346): one made from a template, which the client stores --
+     * the starters a new client is given among them. Its entry leaves the configuration holding it, which stays,
+     * and the workflow's name may be taken again. Takes effect as [save] does. A live removal of a workflow forms take
+     * part in is refused with the impact report until acknowledged; a draft's says what publishing it would do.
+     */
+    fun remove(cxt: KdrCxt, client: String, workflowId: String, expected: String? = null, impact: ImpactGate = ImpactGate.refuse): RemoveResult {
+        sandboxParentOf(client)?.let { parent ->
+            throw KdrException.mkInput("'$client' is a sandbox: its workflows are its parent's, which are removed on '$parent'.")
+        }
+        val target = ClientStoredEdit.target(cxt, client, "workflowRemove", expected)
+        val bound = target.bound
+        val svc = GedraConfigService.get(bound)
+        val (row, stored) = storedWorkflow(bound, workflowId)
+            ?: throw KdrException("Client '$client' stores no workflow '$workflowId'.", code = EXC.notFound)
+        if (stored[WFD.fromTemplate] == null) {
+            throw KdrException.mkInput("Workflow '$workflowId' is written whole, not made from a template, so it is removed where it is written.")
+        }
+        if (!row.configId.baseId.startsWith(CWF.configPrefix)) ClientStoredEdit.requireNoForeignDraft(target, row, "a change to its workflows")
+        val written = svc.patchConfigs(bound, trial = true) {
+            edit(row.configId) { slots ->
+                val kept = slots[CCT.workflowDef].orEmpty().filter { it[CCT.workflowId] != workflowId }
+                if (kept.isEmpty()) slots - CCT.workflowDef else slots + (CCT.workflowDef to kept)
+            }
+        }.single()
+        val reload = ClientStoredEdit.takeEffect(
+            cxt, target, written,
+            undo = { svc.patchConfigs(bound) { edit(written.configId) { row.entriesBySlot() } } },
+            restorePublished = row.isPublished,
+            impact = impact,
+        )
+        return RemoveResult(written.configId.baseId, reload.issues, target.mode, ClientStoredEdit.draftImpact(target, written))
     }
 
     /** Every workflow id [bound]'s client stores, latest revisions, drafts included: none a new one may take. */
