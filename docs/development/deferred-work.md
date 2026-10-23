@@ -40,7 +40,10 @@ start to matter.
   other mechanism that grants temporary login state. Every potentially-authenticated request loads this session
   information. On logout the session is marked invalid, and every session sharing the same auth credentials can
   no longer act as that user. Add an admin endpoint that lists all active sessions, including their creation and
-  expiration dates.
+  expiration dates. Design it with what sessions already do without one: each request holds a session to its
+  client's lifetime, measured from the sign-in the cookie carries (#1308), and #1372 plans renewal past half that
+  lifetime under a hard cap. None of that ends a session at logout or when a credential is revoked, which is what
+  the store is for; a store would also record each renewal.
 
 - **Google sign-in: bind the ID token with a `nonce`** *(#157 review).* The ID token is verified by
   signature / audience / issuer / expiry, but is not bound to a single sign-in, so a captured token can be
@@ -66,8 +69,9 @@ start to matter.
   a big enough deal to reshape how cookies were set. Today `deviceId` is deliberately **login-gated** (minted only at
   login, in `RequestService.checkAddAuthCookies`), and no consent is asked for. Settle how consent is asked and
   recorded first; only then consider the early `deviceId`. If revived: split minting (unconditional, early) from
-  `recordDevice`/auth-cookie writing (login-gated), give the cookie its own lifetime, and never `Set-Cookie` on the
-  immutable-cached static assets (#137).
+  `recordDevice`/auth-cookie writing (login-gated), and never `Set-Cookie` on the immutable-cached static assets
+  (#137). The cookie already has its own lifetime, 60 days apart from the session's (`AUTHC.deviceCookieMillis`,
+  #1308).
 
 ## When an organization has to hide content, not just narrow it
 
