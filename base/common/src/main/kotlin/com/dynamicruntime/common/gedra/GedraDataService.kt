@@ -1019,7 +1019,7 @@ class GedraDataService : ServiceInitializer {
     /**
      * The gedras [fullIds] name, of [kind] and within [scope], keyed by full id (issue #981) -- the batch counterpart of
      * [queryGedra], for a caller holding many ids at once (a report run). An id that is absent, deleted, of another
-     * kind or outside the scope is simply not in the answer. Cache-first, each row scope-checked as a single read is;
+     * kind, or outside the scope is simply not in the answer. Cache-first, each row scope-checked as a single read is;
      * SQL only when there is no cache to trust or `_debug=dataFromSql` forces it.
      *
      * No path-client check: the caller passes the scope it has already decided -- a report run's is the client it was
