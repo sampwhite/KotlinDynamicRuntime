@@ -3,6 +3,7 @@ package com.dynamicruntime.appui
 import com.dynamicruntime.common.content.ContentResources
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.exception.EXC
+import com.dynamicruntime.common.http.request.RequestHandler
 import com.dynamicruntime.common.http.request.TestHttpClient
 import com.dynamicruntime.kdn.Startup
 import io.kotest.core.spec.style.StringSpec
@@ -102,11 +103,32 @@ class AppUiHttpTest : StringSpec({
 
     "a leading-colon path does not collapse to the shell (issue #529)" {
         // `/wa/:bogus` once reduced to `"/"` (whole-path substringBefore(':')) and served the full 200 shell,
-        // so an unbounded set of URLs answered as the app root. It must 404 like any other unknown asset.
+        // so an unbounded set of URLs answered as the app root. A colon marks an asset name (its `:hash`), so it is
+        // still a 404 now that route paths get the shell (issue #1370): no route name carries one.
         val c = client("appColon")
         c.sendGetRequestRaw("/wa/:bogus").rptStatusCode shouldBe EXC.notFound
-        // The real shell is still reachable, and it alone.
+        c.sendGetRequestRaw("/wa/bogus:1234").rptStatusCode shouldBe EXC.notFound
         c.sendGetRequestRaw("/wa").rptStatusCode shouldBe 200
+    }
+
+    "every route path gets the shell, which the frontend routes, and the shell never caches permanently (issue #1370)" {
+        val c = client("appDeep")
+        for (path in listOf("/wa/docs", "/wa/docs/getting-started", "/wa/users/12", "/wa/docs/a.b:c/d", "/wa/")) {
+            val resp = c.sendGetRequestRaw(path)
+            resp.rptStatusCode shouldBe 200
+            resp.rptResponseMimeType shouldBe "text/html; charset=utf-8"
+            // Its asset links are absolute, so they resolve the same at any depth.
+            resp.rptResponseData!! shouldContain "src=\"/wa/webapp.js:"
+            resp.rptResponseHeaders["cache-control"]?.firstOrNull() shouldBe AUI.shellCacheControl
+        }
+        // Only a GET (or HEAD) is a page fetch: another method on a route path is a 404, not a 200 page.
+        val config = Startup.mkTestBootCxt("appDeepPost", "appUiHttpTest", additionalComponents = listOf(AppUiComponent())).instanceConfig
+        for (method in listOf("POST", "PUT", "DELETE")) {
+            val handler = RequestHandler(config, method, "/wa/docs/x", LinkedHashMap(), LinkedHashMap())
+            handler.testPostData = ""
+            handler.handleRequest()
+            handler.rptStatusCode shouldBe EXC.notFound
+        }
     }
 
     // The two shells (this one and the dev server's index.html) must not carry their own CSS -- that is how
@@ -200,10 +222,20 @@ class AppUiHttpTest : StringSpec({
         resp.rptResponseData!!.shouldNotBeBlank()
     }
 
-    "GET /wa/does-not-exist yields a friendly HTML 404 (app root, no match)" {
-        val resp = client("appMiss").sendGetRequestRaw("/wa/does-not-exist")
-        resp.rptStatusCode shouldBe 404
-        resp.rptResponseMimeType shouldBe "text/html; charset=utf-8"
-        resp.rptResponseData!! shouldContain "Not Found"
+    "an asset-shaped name the app does not have yields a friendly HTML 404 (app root, no match)" {
+        // A route-shaped path is the shell now (issue #1370); a missing file is still a 404.
+        for (path in listOf("/wa/does-not-exist.js", "/wa/nosuch.css", "/wa/webapp.jsx")) {
+            val resp = client("appMiss").sendGetRequestRaw(path)
+            resp.rptStatusCode shouldBe 404
+            resp.rptResponseMimeType shouldBe "text/html; charset=utf-8"
+            resp.rptResponseData!! shouldContain "Not Found"
+        }
+    }
+
+    "every response carries a Referrer-Policy, so a page's query never leaves the site (issue #1370)" {
+        val c = client("appReferrer")
+        for (path in listOf("/wa", "/wa/docs/x", "/wa/app.css", "/wa/does-not-exist.js", "/kda/health")) {
+            c.sendGetRequestRaw(path).rptResponseHeaders["referrer-policy"]?.firstOrNull() shouldBe RequestHandler.referrerPolicy
+        }
     }
 })

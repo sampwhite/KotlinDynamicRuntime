@@ -559,6 +559,7 @@ class RequestHandler : WebRequest {
         requireNotSent("send a second response")
         setStatusCode(code)
         setResponseContentType(content.mimeType)
+        setReferrerPolicy()
         // Null means the header adds nothing (plain inline content), so it is left off entirely.
         content.contentDispositionHeader()?.let { setResponseHeader(ContentData.contentDispositionKey, it) }
         sentResponse = true
@@ -587,6 +588,14 @@ class RequestHandler : WebRequest {
      */
     fun sendBytesResponse(body: ByteArray, code: Int, mimeType: String) =
         sendContentResponse(ContentData(body, mimeType), code)
+
+    /**
+     * Sets [referrerPolicy] on the response (issue #1370), on every response this node sends -- a page, an asset, an
+     * API answer, a redirect -- so a page's query string never leaves the site in a `Referer` header. The webapp's
+     * refinements move into the query with path routing (#1125), and some of them identify a person: the forms
+     * listing's user, a search's text.
+     */
+    private fun setReferrerPolicy() = setResponseHeader(referrerPolicyHeader, referrerPolicy)
 
     fun setStatusCode(code: Int) {
         requireNotSent("set the status to $code")
@@ -632,6 +641,7 @@ class RequestHandler : WebRequest {
     override fun sendRedirect(url: String) {
         requireNotSent("redirect to $url")
         setStatusCode(303)
+        setReferrerPolicy()
         addResponseHeader("Location", url)
         sentResponse = true
         jettyResponse?.write(true, ByteBuffer.allocate(0), jettyCallback)
@@ -681,6 +691,11 @@ class RequestHandler : WebRequest {
          * [KdrMsg] file/namespace/key and its params -- into the response's `extraData`, so a developer can see
          * the source behind a rendered sentence. Off by default.
          */
+        const val referrerPolicyHeader = "Referrer-Policy"
+
+        /** What [setReferrerPolicy] sends: a cross-site request is told the origin, never the path or query. */
+        const val referrerPolicy = "strict-origin-when-cross-origin"
+
         val explainError = DebugTagDef(
             "explainError",
             "An error built from copy also returns which fragment and params it was built from, under extraData.",
