@@ -176,6 +176,14 @@ class KdrEndpoint(
      */
     val needsClientConfig: Boolean = false,
     /**
+     * Whether the endpoint answers no sooner than the auth timing floor (issue #1299): a sign-in or registration step
+     * whose time would otherwise say whether an account exists -- a lookup, a password hash, or a mail that runs on
+     * one path and not another. The executor waits, after the handler and before the answer, until the floor plus
+     * some jitter has passed since the request began, on a success and an error alike. Only where the deployment
+     * obfuscates its errors (`AuthTiming.isOn`); elsewhere, development and the tests included, it costs nothing.
+     */
+    val timingFloor: Boolean = false,
+    /**
      * (List endpoints only.) Whether the output declares `hasMore` / `numAvailable`, so the executor knows to
      * populate them (issue #499). For a handler that returns a plain `List` the executor fills them from the
      * uncapped size; a [ListPage] supplies its own. `numAvailable` defaults **on** when the endpoint has a
@@ -367,13 +375,16 @@ class SchModuleBuilder(cxt: KdrCxt, namespace: String) : SchTypesBuilder(cxt, na
         tags: Set<String> = emptySet(),
         /** Sync this node's client configuration before serving (issue #618); see [KdrEndpoint.needsClientConfig]. */
         needsClientConfig: Boolean = false,
+        /** Answer no sooner than the auth timing floor (issue #1299); see [KdrEndpoint.timingFloor]. */
+        timingFloor: Boolean = false,
         handler: KdrEndpointHandler,
     ) {
         val output = scalarOutput(EP.results, "Result data (a map object) returned by the endpoint.", outputRef)
         val (fields, typeRef) = captureInput(inputRef, inputFields)
         endpoints.add(
             KdrEndpoint(path, method, EndpointKind.general, namespace, description, fields, typeRef, false, output,
-                forTestingOnly, handler, publicApi = publicApi, tags = tags, needsClientConfig = needsClientConfig),
+                forTestingOnly, handler, publicApi = publicApi, tags = tags, needsClientConfig = needsClientConfig,
+                timingFloor = timingFloor),
         )
     }
 

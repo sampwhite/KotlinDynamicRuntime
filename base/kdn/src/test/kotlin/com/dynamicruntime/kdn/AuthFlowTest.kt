@@ -3,7 +3,6 @@ package com.dynamicruntime.kdn
 import io.kotest.matchers.nulls.shouldBeNull
 import com.dynamicruntime.common.user.UserService
 import com.dynamicruntime.common.content.MarkdownFragmentService
-import com.dynamicruntime.common.context.ACFG
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.UPF
 import com.dynamicruntime.common.context.UserProfile
@@ -356,6 +355,29 @@ class AuthFlowTest : StringSpec({
         results(
             other.sendJsonPostRequest("/auth/login/byPassword", mapOf("loginId" to "robert", "password" to "sekret-pw-123")),
         )["userId"] shouldBe userId
+    }
+
+    "the throttles count the id as typed, so an address and its username are not linked (issue #1299)" {
+        // Its own user and IP. Exhausting one login id's counter must say nothing about another id of the same account:
+        // counted by the account, the second id would be refused too, and the refusal would say the two are one.
+        val client = mkClient("10.12.99.1")
+        val contact = "olga@example.com"
+        registerByCode(client, contact, "olga")
+        client.sendGetRequest("/logout")
+
+        val token = tokenOf(client)
+        fun wrongCode(loginId: String) = client.sendEditRequest(
+            "/auth/login/byCode", null, mapOf("loginId" to loginId, "formAuthToken" to token, "verifyCode" to "WRONGCODE"),
+            HttpMethod.POST,
+        ).rptStatusCode
+        repeat(RL.verifyMax) { wrongCode(contact) shouldBe EXC.badInput }
+        wrongCode(contact) shouldBe EXC.tooManyRequests
+        wrongCode("olga") shouldBe EXC.badInput
+
+        // The password throttle the same way, per login id.
+        repeat(RL.pwPerUserMax) { pwLogin(client, contact, "not-it").rptStatusCode shouldBe EXC.authNeeded }
+        pwLogin(client, contact, "not-it").rptStatusCode shouldBe EXC.tooManyRequests
+        pwLogin(client, "olga", "not-it").rptStatusCode shouldBe EXC.authNeeded
     }
 
     "repeated failed password logins are rate-limited, and recover once the window passes" {

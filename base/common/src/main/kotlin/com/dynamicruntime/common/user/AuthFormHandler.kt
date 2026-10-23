@@ -81,10 +81,21 @@ class AuthFormHandler(
 
     /**
      * Rate-limits, then validates, a verification [verifyCode] for [contactAddress]. The throttle runs first,
-     * so the short code cannot be cheaply brute-forced; a correct code clears the counter for that contact.
+     * so the short code cannot be cheaply brute-forced; a correct code clears the counter.
+     *
+     * The counter is [attemptKey]'s: **what the caller typed** -- the login id, the user id -- whether or not it names an
+     * account, and the same key a refusal for an unknown one counts against (issue #1299). Keyed by the account's
+     * address for a known account and by the typed id for an unknown one, exhausting the counter by address and then
+     * asking by username would say whether the two are one account.
      */
-    private fun verifyCodeOrThrow(cxt: KdrCxt, contactAddress: String, formAuthToken: String, verifyCode: String) {
-        val key = "vc:$contactAddress"
+    private fun verifyCodeOrThrow(
+        cxt: KdrCxt,
+        contactAddress: String,
+        formAuthToken: String,
+        verifyCode: String,
+        attemptKey: String = contactAddress,
+    ) {
+        val key = "vc:$attemptKey"
         if (!rateLimiter.allow(key, RL.verifyMax, RL.verifyWindowMs, cxt.now().toEpochMilliseconds())) {
             throw KdrException.mkMsg(KdrMsg(AFRAG.auth, AERR.ns, AERR.tooManyVerifyAttempts), code = EXC.tooManyRequests)
         }
@@ -171,7 +182,8 @@ class AuthFormHandler(
     /** The code mail, as [client] words it (issue #773); the password framing is its own copy. */
     private fun sendVerifyEmail(cxt: KdrCxt, address: String, verifyCode: String, addPassword: Boolean, client: String?) {
         val which = if (addPassword) MCOPY.verifyCodePassword else MCOPY.verifyCode
-        mail.sendFragmentMail(cxt, address, client, which, mapOf(MCOPY.codeParam to verifyCode))
+        // In the background (issue #1299): no answer waits on the provider, nor fails only for a real account.
+        mail.sendFragmentMail(cxt, address, client, which, mapOf(MCOPY.codeParam to verifyCode), inBackground = true)
     }
 
     // --- user creation ------------------------------------------------------
@@ -283,7 +295,7 @@ class AuthFormHandler(
         // an anonymous caller needs to ask, so a distinct "not found" would let anybody count the user ids there are.
         val row = userService.queryByUserId(cxt, userId)
             ?: refuseUnknownLogin(cxt, userId.toString(), formAuthToken, verifyCode)
-        verifyCodeOrThrow(cxt, row.primaryId, formAuthToken, verifyCode)
+        verifyCodeOrThrow(cxt, row.primaryId, formAuthToken, verifyCode, attemptKey = userId.toString())
         if (username != null) {
             val other = userService.queryByUsername(cxt, username)
             if (other != null && other.userId != userId) {
@@ -312,7 +324,7 @@ class AuthFormHandler(
         PublicTestDeployment.requireSignInOpen(cxt, loginId)
         val row = userService.queryByLoginId(cxt, loginId)
             ?: refuseUnknownLogin(cxt, loginId, formAuthToken, verifyCode)
-        verifyCodeOrThrow(cxt, row.primaryId, formAuthToken, verifyCode)
+        verifyCodeOrThrow(cxt, row.primaryId, formAuthToken, verifyCode, attemptKey = loginId)
         return completeLogin(cxt, row, byCode = true)
     }
 
@@ -320,10 +332,10 @@ class AuthFormHandler(
      * Logs a user in by [password] ([loginId] is a username or email) -- permitted **only from a familiar
      * device** (issue #69). Every failure (unknown user, unverified device, no password, or a wrong password)
      * returns the *same* opaque message; the real reason is only logged, so the caller cannot tell whether the
-     * password was wrong or the device was unfamiliar. Attempts are throttled per **identity** and per source
-     * IP before any password work: the password and the device trust are the person's (issue #748), so the
-     * guesses against them are counted for the person too, whichever of their users the login id names -- and
-     * against the login id itself when it names nobody, so an unknown account is throttled all the same.
+     * password was wrong or the device was unfamiliar. Attempts are throttled per **login id as typed** and per
+     * source IP before any password work, known account or not (issue #1299): counted per identity for a known one,
+     * as they once were, exhausting the counter by one login id and then trying another of the person's would say
+     * the two are one person. The per-IP limit still bounds guesses spread across a person's login ids.
      */
     fun loginByPassword(cxt: KdrCxt, loginId: String, password: String): Map<String, Any?> {
         // Refused by the login id as typed, before it is looked up (issue #1150): a refusal for known users alone
@@ -331,10 +343,7 @@ class AuthFormHandler(
         PublicTestDeployment.requireSignInOpen(cxt, loginId)
         val nowMs = cxt.now().toEpochMilliseconds()
         val ip = cxt.forwardedFor ?: unknownIp
-        // Resolved before the throttle only to key it; a cache hit, and nothing below runs until it passes.
-        val row = userService.queryByLoginId(cxt, loginId)
-        val identity = row?.let { userService.identityOfUser(cxt, it) }
-        val attemptKey = "pw:" + (identity?.identityId ?: loginId)
+        val attemptKey = "pw:$loginId"
         if (!rateLimiter.allow(attemptKey, RL.pwPerUserMax, RL.pwWindowMs, nowMs) ||
             !rateLimiter.allow("pwip:$ip", RL.pwPerIpMax, RL.pwWindowMs, nowMs)
         ) {
@@ -343,6 +352,9 @@ class AuthFormHandler(
                 code = EXC.tooManyRequests,
             )
         }
+        // Looked up only once the throttle passed, so a refused attempt does no lookup to time.
+        val row = userService.queryByLoginId(cxt, loginId)
+        val identity = row?.let { userService.identityOfUser(cxt, it) }
 
         val deviceGuid = cxt.request?.webRequest?.getRequestCookies()?.get(AUTHC.deviceCookie)
         val stored = identity?.encodedPassword
@@ -470,7 +482,7 @@ class AuthFormHandler(
         PublicTestDeployment.requireSignInOpen(cxt, loginId)
         val row = userService.queryByLoginId(cxt, loginId)
             ?: refuseUnknownLogin(cxt, loginId, formAuthToken, verifyCode)
-        verifyCodeOrThrow(cxt, row.primaryId, formAuthToken, verifyCode)
+        verifyCodeOrThrow(cxt, row.primaryId, formAuthToken, verifyCode, attemptKey = loginId)
         val identity = userService.identityOfUser(cxt, row)
         setPassword(identity, row, password)
         userService.updateIdentity(cxt, identity)
@@ -741,7 +753,7 @@ class AuthFormHandler(
                 MCOPY.personaParam to PERSONA.typed(key.persona, key.personaSuffix),
                 MCOPY.personaLabelParam to PERSONA.typed(PERSONA.label(key.persona), key.personaSuffix),
             ) else emptyMap()
-        mail.sendFragmentMail(cxt, address, if (key.isValid) key.client else null, which, params)
+        mail.sendFragmentMail(cxt, address, if (key.isValid) key.client else null, which, params, inBackground = true)
     }
 
     /**

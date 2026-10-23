@@ -4,6 +4,7 @@ import com.dynamicruntime.common.context.ACFG
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.gedra.GCFG
 import com.dynamicruntime.common.startup.BootCheckMode
+import com.dynamicruntime.common.user.AuthTiming
 
 /**
  * The instances `base:kdn`'s tests share (issue #1075). Booting an instance per test made the suite's cost grow with
@@ -50,9 +51,15 @@ object TestInstances {
         cxtName, "kdnSharedEnvAuthNotTestInstance", mapOf(ACFG.isTestInstance to false, ACFG.assumeEnvAuth to true),
     )
 
-    /** Sensitive error detail obfuscated (`obfuscateSensitiveErrors`): for tests of what a caller is not told. */
-    fun obfuscatedErrors(cxtName: String): KdrCxt =
-        Startup.mkTestBootCxt(cxtName, "kdnSharedObfuscatedErrors", mapOf(ACFG.obfuscateSensitiveErrors to true))
+    /**
+     * Sensitive error detail obfuscated (`obfuscateSensitiveErrors`): for tests of what a caller is not told. Obfuscation
+     * also turns on the auth timing floor (issue #1299), which these tests are not about, so it is set to nothing here
+     * and the suite stays fast; `AuthTimingTest` checks the floor on an instance of its own.
+     */
+    fun obfuscatedErrors(cxtName: String): KdrCxt = Startup.mkTestBootCxt(
+        cxtName, "kdnSharedObfuscatedErrors",
+        mapOf(ACFG.obfuscateSensitiveErrors to true, AuthTiming.floorMsKey to 0, AuthTiming.jitterMsKey to 0),
+    )
 
     /** With [ExtensionTemplateComponent]'s source template: for tests of clients defined on a template (issue #945). */
     fun extensionTemplate(cxtName: String): KdrCxt =
