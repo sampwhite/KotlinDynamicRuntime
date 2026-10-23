@@ -1,7 +1,6 @@
 package com.dynamicruntime.common.app
 
 import com.dynamicruntime.common.content.UIC
-import com.dynamicruntime.common.context.ACFG
 import com.dynamicruntime.common.context.DebugTags
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.user.EnvAuthRules
@@ -97,7 +96,8 @@ fun appSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.app") {
             type = SCT.kObject
             property(
                 APP.idleBumpIntervalMs,
-                "How often (ms) the frontend refreshes itself while a tab is visible, so it notices a timed-out session or a newer deploy.",
+                "How often (ms) the frontend refreshes itself while a tab is visible, so it notices a timed-out session or a " +
+                    "newer deploy: the caller's client's interval, else the deployment's.",
                 required = true,
             ) { type = SCT.integer }
             property(
@@ -155,10 +155,9 @@ fun appSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.app") {
                 APP.envAuthDebug to c.isEnvDebug,
             ),
             UIC.settings to mapOf(
-                // Always served, defaulting when the deployment did not tune it (a custom-config override, not
-                // an env var -- this is UI tuning, not an *ops* concern).
-                APP.idleBumpIntervalMs to
-                    (c.instanceConfig.get(ACFG.idleBumpIntervalMs) as? Int ?: APP.defaultIdleBumpIntervalMs),
+                // Always served: the caller's client's, else the deployment's, defaulting when the deployment did not
+                // tune it (a custom-config override, not an env var -- this is UI tuning, not an *ops* concern).
+                APP.idleBumpIntervalMs to IdleRefresh.millisFor(c, c.client),
             ) + dataIdSetting(c),
             // The `_debug` words (issue #1334), to whom the words answer: the diagnostic fence, as for error detail.
             UIC.state to mapOf(

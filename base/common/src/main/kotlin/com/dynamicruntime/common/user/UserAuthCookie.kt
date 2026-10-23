@@ -16,14 +16,18 @@ object AUTHC {
     /** The device cookie: a stable per-browser GUID used to recognize a device (dn's login-source cookie). */
     const val deviceCookie = "kdrDevice"
 
-    /** How long a session auth cookie is valid, in milliseconds (30 days). */
-    const val sessionMillis = 30L * 24 * 3600 * 1000
-
     /**
      * How long a device stays "familiar" (trusted for password login) after a verification-code login, in
      * milliseconds (30 days). Every code login refreshes it; password login rides it but never extends it.
      */
     const val deviceTrustMillis = 30L * 24 * 3600 * 1000
+
+    /**
+     * How long the device cookie lasts once minted, in milliseconds (60 days): twice [deviceTrustMillis], so the
+     * browser keeps naming the device for as long as a code login could have made it familiar. Its own value, not the
+     * session's (issue #1308): a short session would otherwise take the device with it, long before its trust ended.
+     */
+    const val deviceCookieMillis = 2 * deviceTrustMillis
 
     /** How long a form auth token is valid before a fresh one is needed, in milliseconds (15 minutes). */
     const val formTokenMillis = 15L * 60 * 1000
@@ -70,6 +74,12 @@ class UserAuthCookie(
     val identityId: String? = null,
     /** The user's persona (issue #747), for the profile the fast path restores without a database read. */
     val persona: String? = null,
+    /**
+     * When the person signed in (issue #1308): what the session's lifetime is measured from at every request
+     * ([SessionLifetime]), so a client that shortens its lifetime ends longer sessions at once. A cookie without it
+     * is not read.
+     */
+    val signedInEpochMs: Long,
 ) {
     /** Encrypts this cookie to its wire string using the instance key (shared by every node). */
     fun encode(node: NodeService): String =
@@ -81,6 +91,7 @@ class UserAuthCookie(
                 put(K_EXPIRE, expireEpochMs)
                 if (identityId != null) put(K_IDENTITY, identityId)
                 if (persona != null) put(K_PERSONA, persona)
+                put(K_SIGNED_IN, signedInEpochMs)
             }.toJsonStr(compact = true),
         )
 
@@ -91,6 +102,7 @@ class UserAuthCookie(
         private const val K_EXPIRE = "e"
         private const val K_IDENTITY = "i"
         private const val K_PERSONA = "p"
+        private const val K_SIGNED_IN = "s"
 
         /** Decrypts and parses a wire cookie string, or null if it is absent, malformed, or undecryptable. */
         fun decode(node: NodeService, cookie: String): UserAuthCookie? = try {
@@ -99,7 +111,8 @@ class UserAuthCookie(
             val client = m[K_CLIENT].toOptStr() ?: return null
             val roles = m[K_ROLES].toJsonListOfStrings()
             val expire = m[K_EXPIRE].toOptLong() ?: return null
-            UserAuthCookie(userId, client, roles, expire, m[K_IDENTITY].toOptStr(), m[K_PERSONA].toOptStr())
+            val signedIn = m[K_SIGNED_IN].toOptLong() ?: return null
+            UserAuthCookie(userId, client, roles, expire, m[K_IDENTITY].toOptStr(), m[K_PERSONA].toOptStr(), signedIn)
         } catch (_: Exception) {
             null
         }

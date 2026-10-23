@@ -65,7 +65,7 @@ private fun requireUsableForLogin(user: AuthUserRow, identity: AuthIdentityRow) 
  * says it acts in).
  *
  * The cookie is the fast path -- it holds roles precisely so an ordinary request needs no database read -- but
- * those roles are a *snapshot* taken at login, and a session lasts 30 days ([AUTHC.sessionMillis]). Without
+ * those roles are a *snapshot* taken at login, and a session lasts 30 days by default ([SessionLifetime]). Without
  * this, revoking an administrator would leave them administering for up to a month.
  *
  * So the live read is paid only where the answer actually matters, and there are two such places:

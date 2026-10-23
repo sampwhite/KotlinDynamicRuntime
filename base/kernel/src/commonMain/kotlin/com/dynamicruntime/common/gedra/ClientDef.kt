@@ -16,6 +16,7 @@ import com.dynamicruntime.common.schema.schemaDefs
 import com.dynamicruntime.common.user.normalizeUserLabels
 import com.dynamicruntime.common.util.toJsonListOfStrings
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
+import com.dynamicruntime.common.util.toOptLongOrNull
 import com.dynamicruntime.common.util.toOptStr
 import com.dynamicruntime.common.home.HFRAG
 
@@ -178,6 +179,10 @@ object ClientFieldPolicies {
         // Who may join the client from `public`, and as what (issue #1248): authority over who becomes its
         // administrator, so the platform's, and never handed on to a client another makes.
         CLD.joinRoles to p(ClientFieldAtCreate.cleared, ClientFieldEdit.platform),
+        // How long its people stay signed in (issue #1308): the client's to shorten, and a made client starts as its maker.
+        CLD.sessionHours to p(ClientFieldAtCreate.parent, ClientFieldEdit.definitionEditor),
+        // How often its open tabs ask the deployment for more (issue #1308): a load on the deployment, so the platform's.
+        CLD.refreshIntervalSeconds to p(ClientFieldAtCreate.parent, ClientFieldEdit.platform),
     )
 
     /** [field]'s policy; a field with none is a fault, since every field the schema declares has one. */
@@ -217,7 +222,7 @@ object ClientFieldPolicies {
      */
     val platformEditorFields: List<String> = listOf(
         CLD.usageType, CLD.audience, CLD.enabledEnvironments, CLD.preload, CLD.domainPrefix, CLD.customDomain,
-        CLD.webResourcesId,
+        CLD.webResourcesId, CLD.refreshIntervalSeconds,
     )
 
     /** The fields the definition editor offers a client's own administrator, in the order it draws them. */
@@ -290,7 +295,36 @@ object ClientPresentationFields {
          * is -- trimmed, blank clearing it -- and checked by the client check, not here.
          */
         timeZone,
+
+        /**
+         * A whole number (issue #1308). Text on the wire, as [text] is -- blank clearing it, for the deployment's value
+         * -- and stored as a number; its bounds are the definition's schema's.
+         */
+        number,
     }
+
+    /** The headed groups the editor draws its fields in (issue #1308), in their order. */
+    enum class Section(val heading: String) {
+        /** What the client is called and noted as. */
+        about("About"),
+
+        /** How the client behaves for its people. */
+        behavior("How it behaves"),
+
+        /** What the platform sets: what it is for, whose it is, where it runs and is reached. */
+        platform("Platform"),
+    }
+
+    /** The [Section] [name] is drawn in. */
+    fun section(name: String): Section = when (name) {
+        CLD.name, CLD.description -> Section.about
+        CLD.timeZone, CLD.userLabels, CLD.sessionHours, CLD.refreshIntervalSeconds -> Section.behavior
+        else -> Section.platform
+    }
+
+    /** [names] grouped by [section], in the sections' order and each group in the order given; an empty group is left out. */
+    fun bySection(names: List<String>): List<Pair<Section, List<String>>> =
+        Section.entries.map { section -> section to names.filter { section(it) == section } }.filter { it.second.isNotEmpty() }
 
     /** Each editable field, a [CLD] key, in the order an editor draws them, with what the endpoint says of it. */
     val descriptions: Map<String, String> = linkedMapOf(
@@ -299,6 +333,10 @@ object ClientPresentationFields {
         CLD.timeZone to "The client's IANA time zone (America/Chicago), which its dates are read and shown in; " +
             "blank clears it. Changing it moves no stored moment.",
         CLD.userLabels to "The user labels the client suggests, each once and trimmed; empty clears them.",
+        CLD.sessionHours to "How long a sign-in lasts, in hours; blank for the deployment's default. At most the " +
+            "deployment's limit. Shortening it ends longer sessions at once; lengthening it reaches sign-ins made after.",
+        CLD.refreshIntervalSeconds to "How often, in seconds, an idle open tab re-reads what it shows " +
+            "(${CLD.minRefreshIntervalSeconds} to ${CLD.maxRefreshIntervalSeconds}); blank for the deployment's. Set by the platform.",
         CLD.usageType to "What the client is for. Set by the platform.",
         CLD.audience to "Whose client this is: ours, or somebody else's. Set by the platform.",
         CLD.enabledEnvironments to "The environments the client is enabled in; naming any past unit and local needs " +
@@ -335,6 +373,7 @@ object ClientPresentationFields {
         CLD.enabledEnvironments -> Kind.choices
         CLD.preload -> Kind.flag
         CLD.timeZone -> Kind.timeZone
+        CLD.sessionHours, CLD.refreshIntervalSeconds -> Kind.number
         else -> Kind.text
     }
 
@@ -361,7 +400,7 @@ object ClientCreateFields {
 object CLD {
     /**
      * On a create (issue #1346): whether the new client starts with workflows made from the starter templates
-     * (`WFT.starters`), a creation workflow and a survey -- on unless set false.
+     * (`WFT.starters`), a creation workflow, and a survey -- on unless set false.
      */
     const val starterWorkflows = "starterWorkflows"
 
@@ -415,6 +454,30 @@ object CLD {
 
     /** The roles a visitor may join the client as (issue #1248); see [ClientDef.joinRoles]. */
     const val joinRoles = "joinRoles"
+
+    /** How long a sign-in to the client lasts, in hours (issue #1308); see [ClientDef.sessionHours]. */
+    const val sessionHours = "sessionHours"
+
+    /** The shortest session a client may set, in hours. */
+    const val minSessionHours = 1
+
+    /** How often an idle open tab re-reads, in seconds (issue #1308); see [ClientDef.refreshIntervalSeconds]. */
+    const val refreshIntervalSeconds = "refreshIntervalSeconds"
+
+    /** The most often a client's idle tabs may re-read, in seconds. */
+    const val minRefreshIntervalSeconds = 5
+
+    /** The least often a client's idle tabs may re-read, in seconds: an hour. */
+    const val maxRefreshIntervalSeconds = 3600
+
+    /**
+     * On the definition retrieve (issue #1308): the deployment's values of the fields a client may leave unset to take
+     * them -- [sessionHours] and [refreshIntervalSeconds] -- so a page can say what an unset one means.
+     */
+    const val platformDefaults = "platformDefaults"
+
+    /** In [platformDefaults]: the most a client's [sessionHours] may be, in hours (issue #1308). */
+    const val maxSessionHours = "maxSessionHours"
 
     /** Schema type name for the input of a client's creation by a customer's root administrator (issue #1112). */
     const val delegatedCreateTypeName = "ClientDelegatedCreate"
@@ -860,6 +923,21 @@ data class ClientDef(
      * node that does not. Set only by the platform; a sandbox and a client made by another never take it.
      */
     val joinRoles: List<ClientJoinRole> = emptyList(),
+    /**
+     * How long a sign-in to this client lasts, in hours (issue #1308); null for the deployment's default. Shorter or
+     * longer than that, but never past the deployment's limit (`KDR_SESSION_MAX_HOURS`). Held at use as well as at
+     * write, and checked against when the person signed in rather than only when the cookie was issued, so shortening
+     * it ends longer sessions at once; lengthening it reaches only sign-ins made after, since a cookie's expiry is set
+     * when it is issued. Set by the client's own administrator.
+     */
+    val sessionHours: Int? = null,
+    /**
+     * How often, in seconds, the webapp re-reads what it shows while a tab of this client's is open and idle (issue
+     * #1308; the refresh generation's idle bump, #146); null for the deployment's. Every open tab asks that often, so
+     * it is a load on the deployment: set by the platform only, within [CLD.minRefreshIntervalSeconds] and
+     * [CLD.maxRefreshIntervalSeconds].
+     */
+    val refreshIntervalSeconds: Int? = null,
 ) {
     init {
         // Held to the one label rule ([normalizeUserLabels]) that a label on a *user* is held to, and refused here,
@@ -917,6 +995,8 @@ data class ClientDef(
         if (customerId != null) put(CLD.customerId, customerId)
         if (retired) put(CLD.retired, true)
         if (joinRoles.isNotEmpty()) put(CLD.joinRoles, joinRoles.map { it.toJsonMap() })
+        if (sessionHours != null) put(CLD.sessionHours, sessionHours)
+        if (refreshIntervalSeconds != null) put(CLD.refreshIntervalSeconds, refreshIntervalSeconds)
     }
 
     companion object {
@@ -965,6 +1045,8 @@ data class ClientDef(
             customerId = m[CLD.customerId].toOptStr(),
             retired = m[CLD.retired] as? Boolean ?: false,
             joinRoles = ClientJoinRole.listFrom(m[CLD.joinRoles]),
+            sessionHours = m[CLD.sessionHours].toOptLongOrNull()?.toInt(),
+            refreshIntervalSeconds = m[CLD.refreshIntervalSeconds].toOptLongOrNull()?.toInt(),
         )
 
         private fun <E : Enum<E>> enumOf(values: List<E>, name: String?, field: String): E =
@@ -1128,6 +1210,15 @@ data class ClientDef(
             prop(CLD.joinRoles, "The roles a visitor signed in to public may join the client as, on a deployment that offers it.") {
                 type = SCT.array
                 items { ClientJoinRole.declareProperties(this) }
+            }
+            prop(CLD.sessionHours, "How long a sign-in lasts, in hours; absent for the deployment's default, and never past its limit.") {
+                type = SCT.integer
+                minimum = CLD.minSessionHours
+            }
+            prop(CLD.refreshIntervalSeconds, "How often, in seconds, an idle open tab re-reads what it shows; absent for the deployment's.") {
+                type = SCT.integer
+                minimum = CLD.minRefreshIntervalSeconds
+                maximum = CLD.maxRefreshIntervalSeconds
             }
         }
     }

@@ -847,6 +847,12 @@ class ClientDefinitionView(
     val traitIds: List<String>,
     val usageLabels: List<String>,
     val workflowIds: List<String>,
+    /**
+     * The deployment's values of the fields a client may leave unset to take them (issue #1308), by [CLD] key -- the
+     * session lifetime and the refresh interval -- so the page can say what an unset one means. Empty on a read that
+     * carries none.
+     */
+    val platformDefaults: Map<String, Int> = emptyMap(),
 )
 
 /** One stored configuration as the detail lists it (issue #906): a row of the config bundles listing. */
@@ -877,6 +883,7 @@ fun parseClientDefinition(item: Map<String, Any?>): ClientDefinitionView = Clien
     traitIds = item[CLD.traits].toJsonListOfMaps().mapNotNull { it[CCT.traitId].toOptStr() },
     usageLabels = item[CLD.usages].toJsonListOfMaps().mapNotNull { it[UF.label].toOptStr() },
     workflowIds = item[CLD.workflows].toJsonListOfStrings(),
+    platformDefaults = item[CLD.platformDefaults].toJsonMapOrEmpty().mapNotNull { (k, v) -> (v as? Number)?.let { k to it.toInt() } }.toMap(),
 )
 
 /** The config bundles listing's items as [ConfigSummaryView]s; one without a name is not a configuration. Pure, and covered under `jsNodeTest`. */
@@ -951,6 +958,10 @@ fun clientSummaryRows(clientId: String, row: ClientOverview?, def: ClientDefinit
             add("Web resources" to marked(CLD.webResourcesId, text(CLD.webResourcesId)))
             add("Preload" to marked(CLD.preload, if (info[CLD.preload] == true) "Yes" else "No"))
             add("Time zone" to timeZoneText(info[CLD.timeZone].toOptStr(), Clock.System.now()))
+            // The value in force (issue #1308): the client's, else the platform's, said as such.
+            add(humanizeFieldName(CLD.sessionHours) to inForceText(CLD.sessionHours, info, def.platformDefaults))
+            val refresh = inForceText(CLD.refreshIntervalSeconds, info, def.platformDefaults)
+            add(humanizeFieldName(CLD.refreshIntervalSeconds) to if (info[CLD.refreshIntervalSeconds] != null) marked(CLD.refreshIntervalSeconds, refresh) else refresh)
             add("Static config" to marked(CLD.staticConfig, if (info[CLD.staticConfig] == true) "Yes" else "No"))
             add("User labels" to list(info[CLD.userLabels].toJsonListOfStrings()))
             add("Traits" to list(def.traitIds))
@@ -1001,6 +1012,51 @@ fun customerSummaryHref(customerId: String?, row: ClientOverview?, acrossClients
     customerId == null -> null
     acrossClients || row?.rootOf == customerId -> customerHref(customerId)
     else -> null
+}
+
+/**
+ * What the definition editor says of the session lifetime and the refresh interval (issue #1308): blank takes the
+ * platform's, and a lifetime is at most the platform's limit.
+ */
+const val numberFieldsEditNote = "A blank session lifetime or refresh interval is the platform's, as its placeholder " +
+    "says. A session lifetime may be at most the platform's limit; shortening it ends longer sessions at once, and " +
+    "lengthening it reaches sign-ins made after."
+
+/** A number of hours as read: whole days as days (`30 days`, `1 day`), anything else as hours (`8 hours`). Pure. */
+fun hoursText(hours: Int): String = when {
+    hours % 24 == 0 -> (hours / 24).let { if (it == 1) "1 day" else "$it days" }
+    hours == 1 -> "1 hour"
+    else -> "$hours hours"
+}
+
+/** A number of seconds as read: whole minutes as minutes (`2 minutes`), anything else as seconds (`45 seconds`). Pure. */
+fun secondsText(seconds: Int): String = when {
+    seconds % 60 == 0 -> (seconds / 60).let { if (it == 1) "1 minute" else "$it minutes" }
+    seconds == 1 -> "1 second"
+    else -> "$seconds seconds"
+}
+
+/** A value of the number field [name] as read: [hoursText] for the session lifetime, [secondsText] for the refresh interval. */
+fun numberFieldText(name: String, value: Int): String =
+    if (name == CLD.sessionHours) hoursText(value) else secondsText(value)
+
+/**
+ * What the platform default of [name] is said as ("Platform default: 2 days"), with the session lifetime's limit when
+ * [defaults] has it ("Platform default: 2 days; at most 30 days"), or null when [defaults] has no default. Pure.
+ */
+fun platformDefaultText(name: String, defaults: Map<String, Int>): String? = defaults[name]?.let { value ->
+    val most = defaults[CLD.maxSessionHours]?.takeIf { name == CLD.sessionHours }?.let { "; at most ${hoursText(it)}" }.orEmpty()
+    "Platform default: ${numberFieldText(name, value)}$most"
+}
+
+/**
+ * The value of [name] in force for a client whose definition is [info] (issue #1308): its own, or -- when it sets
+ * none -- the platform's from [defaults], said as such ("30 days (platform default)"); a dash when neither is known.
+ * Pure, and covered under `jsNodeTest`.
+ */
+fun inForceText(name: String, info: Map<String, Any?>, defaults: Map<String, Int>): String {
+    (info[name] as? Number)?.let { return numberFieldText(name, it.toInt()) }
+    return defaults[name]?.let { "${numberFieldText(name, it)} (platform default)" } ?: "\u2014"
 }
 
 // --- editing the definition (issue #1026) ---------------------------------------------------------------------

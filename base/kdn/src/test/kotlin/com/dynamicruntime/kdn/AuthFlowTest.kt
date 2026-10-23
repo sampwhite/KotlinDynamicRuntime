@@ -1,6 +1,7 @@
 package com.dynamicruntime.kdn
 
 import io.kotest.matchers.nulls.shouldBeNull
+import com.dynamicruntime.common.user.SessionLifetime
 import com.dynamicruntime.common.user.UserService
 import com.dynamicruntime.common.content.MarkdownFragmentService
 import com.dynamicruntime.common.context.KdrCxt
@@ -57,7 +58,9 @@ class AuthFlowTest : StringSpec({
 
     // Its own instance (issue #1075): it travels the instance clock, which is instance-wide.
     // The one instance the whole flow runs on.
-    val cxt = Startup.mkTestBootCxt("auth", "authFlowTest")
+    // Sessions of 30 days (issue #1308; the default is two): the flow below is about device trust lapsing at 30 days
+    // while a session minted later has not, so its sessions must outlast its trust.
+    val cxt = Startup.mkTestBootCxt("auth", "authFlowTest", mapOf(SessionLifetime.sessionHoursEnvVar.name to "720"))
 
     val email = "jason@example.com"
     val username = "jason"

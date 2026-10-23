@@ -837,12 +837,17 @@ defined in **stored** configuration (`definitionEditable`: present, origin store
 refuses each in its own words; the page only spares showing an editor that cannot save), **Edit
 definition** opens the fields the caller's policy lets them edit (issue #1116, `ClientPresentationFields.namesFor`):
 for a client's administrator its name, description, time zone (issue #1115; the editor says a change moves no stored
-moment; picked, not typed -- see "The time-zone picker" below), and user labels as one comma line (`labelsOfText`); for an administrator who sees every client also its
-usage type and audience (selects), environments (a multi-select), preload (a checkbox), domain prefix, custom domain,
-and web resources -- seeded from the client's **stored** definition, the retrieve's
+moment; picked, not typed -- see "The time-zone picker" below), user labels as one comma line (`labelsOfText`), and
+session lifetime in hours (issue #1308); for an administrator who sees every client also its refresh interval in
+seconds, usage type and audience (selects), environments (a multi-select), preload (a checkbox), domain prefix, custom
+domain, and web resources -- seeded from the client's **stored** definition, the retrieve's
 `storedDefinition` (`definitionDraftOf`; what the client runs differs from it by an unpublished draft, which the
 editor must show and be able to take back, and by what a template fills in, which written back would become the
-client's own). Save posts
+client's own). The fields are drawn under the kernel's sections (`ClientPresentationFields.bySection`: About, How it
+behaves, Platform), declared beside each field rather than here. The two numbers (`Kind.number`) ride as text, and a
+blank one takes the platform's, which the retrieve's `platformDefaults` gives and each field's placeholder says
+(`platformDefaultText`); the summary rows show each as the value in force (`inForceText`: "30 days (platform
+default)"). Save posts
 `/clientAdmin/client/definition/set` (`ClientsApi.setDefinition`) with **only the fields that changed**
 (`definitionEditRequest`; a cleared field goes as blank, which the backend clears, and Save is disabled while
 nothing differs), the same write-trial-publish-reload path as a copy edit, a draft likewise for a client with a

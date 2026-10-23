@@ -93,10 +93,12 @@ class InvitationTest : StringSpec({
         cxt.instanceConfig.clock.advanceBy(8.days)
         accept(TestHttpClient(cxt.instanceConfig), token)[EP.status] shouldBe EXC.badInput
         val userId = users.queryByPrimaryId(cxt, address).shouldNotBeNull().userId
-        admin.postData(ADEP.userInvite, mapOf(ADF.userId to userId))
+        // Signed in again: the administrator's own session (two days, issue #1308) lapsed with the link.
+        val later = TestUser.createFullAdmin(cxt, "invite-admin2@other.test")
+        later.postData(ADEP.userInvite, mapOf(ADF.userId to userId))
         results(accept(TestHttpClient(cxt.instanceConfig), tokenMailedTo(address)))[UPF.userId] shouldBe userId
         // Once claimed, there is nothing to re-send.
-        admin.expectError(EXC.badInput, ADEP.userInvite, mapOf(ADF.userId to userId))
+        later.expectError(EXC.badInput, ADEP.userInvite, mapOf(ADF.userId to userId))
     }
 
     "an invitation to a registered person attaches the user to them, and needs no code" {
