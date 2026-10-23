@@ -263,9 +263,19 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
         requireAssignableOrg(c, org)
         val client = assignableClient(c, request[ADF.client].toOptStr(), "create users in")
         requireNoSandboxAdmin(client, roles)
+        // A disabled user under the key is recovered only when the caller administers it (issue #1300): an administrator
+        // confined to an organization does not re-enable another organization's user and move it into theirs. Nor one
+        // with no organization, which belongs to the whole client: recovering it would stamp the caller's organization
+        // on it and take it out of every other organization's view. So a confined administrator recovers only a user
+        // already in their own organization.
+        val scope = ReadScopeRules.forUserAdmin(c)
+        val confinedTo = orgName(c.userProfile.org).takeIf { AdminRules.adminScope(c) != AdminScope.allClients }
         val userId = service.provisionUser(
             c, primaryId, client, roles, org, c.now(),
             persona = persona, personaSuffix = personaSuffix, username = username, registered = ownAddress,
+            mayRecover = {
+                scope.admitsUserRow(it.client, it.org, it.userId, it.identityId) && (confinedTo == null || orgName(it.org) == confinedTo)
+            },
         ) { authUserData ->
             // The address and its contact are the identity's (issue #748), which `provisionUser` creates
             // unverified: only a code read from the inbox proves it, and the person's first code login does
@@ -652,6 +662,9 @@ private fun requireAssignableOrg(cxt: KdrCxt, org: String?) {
 }
 
 private fun userService(cxt: KdrCxt): UserService = UserService.get(cxt)
+
+/** An organization as compared (issue #1300): an empty or blank one is no organization, the same as an absent one. */
+private fun orgName(org: String?): String? = org?.trim()?.ifEmpty { null }
 
 /**
  * The person behind [user] as the caller may see them (issue #770): the identity's own facts, and those of its

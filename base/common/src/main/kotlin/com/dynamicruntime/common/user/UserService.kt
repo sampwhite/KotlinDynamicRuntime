@@ -426,6 +426,11 @@ class UserService : ServiceInitializer {
      * [persona] null takes the persona the [roles] imply (`PERSONA.defaultFor`): personas grant roles by
      * default, and roles provide a default persona, so a user created as an administrator without naming a
      * persona is an `admin`.
+     *
+     * [mayRecover] says whether the caller may recover a disabled user under the key (issue #1300): an administrator
+     * confined to an organization may not re-enable another organization's user and stamp their own organization on
+     * it, which is a write, not a view. Refused, the key is refused exactly as when its user is enabled, so a user
+     * the caller may not recover reads the same whatever state it is in.
      */
     fun provisionUser(
         cxt: KdrCxt,
@@ -440,6 +445,7 @@ class UserService : ServiceInitializer {
         /** A chosen username; absent leaves the `@<address>` placeholder for the person to replace. */
         username: String? = null,
         registered: Boolean = false,
+        mayRecover: (AuthUserRow) -> Boolean = { true },
         customize: (MutableMap<String, Any?>) -> Unit = {},
     ): Long {
         val persona = persona ?: PERSONA.defaultFor(roles)
@@ -460,7 +466,7 @@ class UserService : ServiceInitializer {
         // `@<address>|<client>|<persona>|<personaSuffix>` -- until the person chooses a real one.
         val placeholder = AuthUserRow.usernameTmpPrefix + if (siblings.isEmpty()) primaryId else "$primaryId|$client|$persona|$personaSuffix"
         siblings.firstOrNull { it.client == client && it.persona == persona && it.personaSuffix == personaSuffix }?.let { existing ->
-            if (existing.enabled || existing.isDeleted) {
+            if (existing.enabled || existing.isDeleted || !mayRecover(existing)) {
                 // A keyed message with the key's parts as params, and the key as the envelope's logical error
                 // code (issue #750): what a surface branches on -- the console offers the personaSuffix box -- so the
                 // sentence can be reworded or localized without anything downstream noticing.
