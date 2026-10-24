@@ -72,9 +72,18 @@ class RouteTableTest {
         // A value that is not the path's own (`edit=0`) is a refinement of the view, not the edit mode.
         assertRoute("/forms/gd.fd.acme.a?edit=0", HP.page to pageSurveyEdit, HP.gedra to "gd.fd.acme.a", HP.edit to "0")
         assertRoute("/invite#token=abc", HP.page to HMENU.pageInvite, HMENU.inviteTokenParam to "abc")
-        // Only a secret is read from the fragment; an anchor, or any other key there, is not a param.
-        assertEquals(mapOf(HP.page to HMENU.pageDocs, HP.doc to "a"), readBack("/docs/a#section-two"))
+        // Any other key in the fragment is not a param.
         assertEquals(mapOf(HP.page to HMENU.pageDocs, HP.doc to "a"), readBack("/docs/a#u=1"))
+    }
+
+    @Test
+    fun aDocumentsSectionIsItsAnchorAndNoOtherPageHasOne() {
+        assertRoute("/docs/code-guide#naming", HP.page to HMENU.pageDocs, HP.doc to "code-guide", HP.section to "naming")
+        // An anchor elsewhere is the browser's alone: a jump to one changes no param, so it tells no page.
+        assertEquals(mapOf(HP.page to HMENU.pageForms), readBack("/forms#naming"))
+        assertEquals(emptyMap(), readBack("#naming"))
+        // A section written as a query param (before it was the anchor) still reads as one.
+        assertEquals(mapOf(HP.section to "naming", HP.page to HMENU.pageDocs, HP.doc to "a"), readBack("/docs/a?section=naming"))
     }
 
     @Test
@@ -110,6 +119,7 @@ class RouteTableTest {
         assertEquals("/docs/a", legacyHashUrl("doc=a"))
         assertEquals("/invite#token=abc", legacyHashUrl("page=invite&token=abc"))
         assertEquals("/operator/boot-checks?from=operator", legacyHashUrl("page=bootChecks&from=operator"))
+        assertEquals("/docs/code-guide#naming", legacyHashUrl("page=docs&doc=code-guide&section=naming"))
         // An anchor, or a token alone, is not an old address.
         assertNull(legacyHashUrl("section-two"))
         assertNull(legacyHashUrl("token=abc"))

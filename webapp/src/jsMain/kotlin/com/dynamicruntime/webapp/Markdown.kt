@@ -3,7 +3,6 @@ package com.dynamicruntime.webapp
 import com.dynamicruntime.common.util.MarkdownHooks
 import com.dynamicruntime.common.util.renderMarkdown
 import com.dynamicruntime.common.util.renderMarkdownInline
-import kotlinx.browser.document
 import kotlinx.browser.window
 import react.FC
 import react.Props
@@ -53,11 +52,10 @@ val Markdown = FC<MarkdownProps> { props ->
     div {
         // `markdown-inline-ui` (issue #631) is the inline-UI opt-in; see [MarkdownProps.inlineUi].
         className = ClassName(if (props.inlineUi == true) "markdown markdown-inline-ui" else "markdown")
-        // A same-document `#anchor` (a table-of-contents link) scrolls in-page rather than letting the app's
-        // hash router consume it (issue #492); everything else, including an in-app `#doc=` route link, is
-        // left to the browser.
-        // A click on a block's copy button copies the block (issue #1233); any other click may be an anchor's.
-        onClick = { e -> if (!copyCodeBlock(e)) scrollSameDocAnchorIntoView(e) }
+        // A click on a block's copy button copies the block (issue #1233). A same-document `#anchor` (a table of
+        // contents' link) is the browser's to follow since the app routes on the path (issue #1125): the address
+        // takes the anchor, Back returns from it, and the scroll stops below the app bar (`scroll-padding-top`).
+        onClick = { e -> copyCodeBlock(e) }
         dangerouslySetInnerHTML = useInnerHtml(props.source.renderMarkdown(markdownHooksFor(props.linkResolver, props.refAddress, useShellFacts())))
     }
 }
@@ -132,25 +130,6 @@ private fun copyCodeBlock(e: dynamic): Boolean {
         refused = {},
     )
     return true
-}
-
-/**
- * If a click landed on a same-document anchor link, scroll its target heading into view and stop the browser
- * navigating (issue #492). A same-document anchor is a `#…` href that is not one of the app's route links --
- * those carry `key=value` params -- so a `#doc=…` in-app document link and every off-page link fall through
- * untouched. A slug that matches no heading simply scrolls nowhere, never reloads.
- */
-private fun scrollSameDocAnchorIntoView(e: dynamic) {
-    val anchor = e.target.closest("a") ?: return
-    val href = anchor.getAttribute("href") as? String ?: return
-    if (!href.startsWith("#") || href.contains("=")) {
-        return
-    }
-    e.preventDefault()
-    val id = href.substring(1)
-    if (id.isNotEmpty()) {
-        document.getElementById(id)?.asDynamic()?.scrollIntoView(js("({ block: 'start' })"))
-    }
 }
 
 /**

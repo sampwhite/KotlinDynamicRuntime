@@ -15,7 +15,7 @@ package com.dynamicruntime.common.util
  *    `https://github.com/owner/repo/blob/main`);
  *  - an absolute `http(s)`/`mailto` link, or anything scheme-bearing, is left exactly as written;
  *  - a same-document `#anchor` is left as written -- it targets a heading id [renderMarkdown] now emits, and
- *    the frontend's Markdown component scrolls to it in-page rather than letting the app's hash router consume it.
+ *    the browser follows it in-page, since the app routes on the path rather than the fragment (issue #1125).
  *
  * Pure and transpile-safe (kernel), so the frontend runs it while rendering and a JVM test covers it. It is
  * passed to [renderMarkdown] as its `resolveUrl` hook; the renderer still runs the result through `safeUrl`,
@@ -44,7 +44,7 @@ fun resolveDocLink(
         return ""
     }
     // A same-document anchor is left as written: it targets a heading id renderMarkdown emits, which the
-    // Markdown component scrolls to in-page (the app's hash router leaves an in-page anchor alone).
+    // browser scrolls to in-page.
     if (url.startsWith("#")) {
         return url
     }

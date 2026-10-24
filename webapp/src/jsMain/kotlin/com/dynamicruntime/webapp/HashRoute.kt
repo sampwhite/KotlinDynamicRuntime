@@ -118,7 +118,8 @@ object HP {
 
     /**
      * Documents page: the heading of the open document to scroll to (issue #1136) -- the `#section` a link into the
-     * document named, carried here because the hash itself is the app's route.
+     * document named. It is the address's anchor (`/wa/docs/readme#configuration`), as an in-page link's is: the
+     * documents route says so in the route table.
      */
     const val section = "section"
 
@@ -182,9 +183,16 @@ private val legacyRouteKeys = setOf(HP.page, HP.method, HP.doc)
 
 /**
  * One route: the page a path shows, the path's pattern -- literal segments, and `:name` for a param carried in the
- * path -- and any params the path fixes (`forms/:g/edit` is the survey page with `edit=1`).
+ * path -- any params the path fixes (`forms/:g/edit` is the survey page with `edit=1`), and the param, if any, that
+ * is the address's anchor (`docs/:doc` reads `#configuration` as the heading to scroll to). On any other route an
+ * anchor is the browser's business alone, and a jump to one tells nobody.
  */
-private class RouteDef(val page: String, pattern: String, val fixed: Map<String, String> = emptyMap()) {
+private class RouteDef(
+    val page: String,
+    pattern: String,
+    val fixed: Map<String, String> = emptyMap(),
+    val anchor: String? = null,
+) {
     val segments: List<String> = pattern.split('/').filter { it.isNotEmpty() }
     val captured: List<String> = segments.filter { it.startsWith(':') }.map { it.substring(1) }
 }
@@ -199,7 +207,7 @@ private class RouteDef(val page: String, pattern: String, val fixed: Map<String,
 private val routes: List<RouteDef> = listOf(
     RouteDef(HMENU.pageCatalog, "catalog"),
     RouteDef(HMENU.pageDocs, "docs"),
-    RouteDef(HMENU.pageDocs, "docs/:${HP.doc}"),
+    RouteDef(HMENU.pageDocs, "docs/:${HP.doc}", anchor = HP.section),
     RouteDef(HMENU.pageLogin, "login"),
     RouteDef(HMENU.pageRegister, "register"),
     RouteDef(HMENU.pageClaim, "claim"),
@@ -275,8 +283,8 @@ private fun splitParams(raw: String): LinkedHashMap<String, String> {
 /**
  * The params an address within the app says (issue #1125), as [hashParams] has always answered them: the page and
  * its identity from [path] (relative to the app root, `/forms/<id>/edit`, or empty for home), refinements from
- * [query], and a one-time secret from [fragment] -- both without their `?` or `#`. A path no route matches is
- * [pageNotFound]. Pure, so the table is covered under `jsNodeTest`.
+ * [query], and from [fragment] a one-time secret, or the route's anchor -- both without their `?` or `#`. A path no
+ * route matches is [pageNotFound]. Pure, so the table is covered under `jsNodeTest`.
  */
 fun routeParamsOf(path: String, query: String, fragment: String): Map<String, String> {
     val out = splitParams(query)
@@ -291,12 +299,16 @@ fun routeParamsOf(path: String, query: String, fragment: String): Map<String, St
     out[HP.page] = route.page
     out.putAll(route.fixed)
     out.putAll(values)
+    if (route.anchor != null && fragment.isNotEmpty() && '=' !in fragment) {
+        out[route.anchor] = decodeUri(fragment)
+    }
     return out
 }
 
 /**
  * The address [params] are written as, relative to the app root -- the inverse of [routeParamsOf]: the path of the
- * route that carries the most of them, the rest as the query, and a secret as the fragment. Params with no page
+ * route that carries the most of them, the rest as the query, and a secret -- else the route's anchor -- as the
+ * fragment. Params with no page
  * are home's, except that an endpoint (`m`) is the catalog's and a document (`doc`) is the documents page's, as the
  * router has always read them. A page with no route, or missing a param its path needs, falls back to home's path
  * with the page in the query, which the router shows as it always showed a page it did not know.
@@ -317,9 +329,12 @@ private fun routeUrlOf(params: List<Pair<String, String>>): Triple<String, Strin
     val path = route?.segments?.joinToString("") { s ->
         "/" + if (s.startsWith(':')) encodePathSegment(all.getValue(s.substring(1))) else s
     }.orEmpty()
+    val anchor = route?.anchor
     fun joined(keep: (String) -> Boolean) =
         all.entries.filter { keep(it.key) }.joinToString("&") { (k, v) -> "$k=${encodeUriComponent(v)}" }
-    return Triple(path, joined { it !in inPath && it !in fragmentKeys }, joined { it in fragmentKeys })
+    val secrets = joined { it in fragmentKeys }
+    val fragment = secrets.ifEmpty { anchor?.let { all[it] }?.let(::encodeUriComponent).orEmpty() }
+    return Triple(path, joined { it !in inPath && it !in fragmentKeys && it != anchor }, fragment)
 }
 
 /**
@@ -570,7 +585,7 @@ fun installRouting(container: dynamic) {
  * modifier or another button (a new tab or window), a link with a `target` or `download`, one to another origin or
  * outside the app's pages (an API download, an unknown path, which then loads as not found), a bare `#anchor`
  * (in-page; a `#page=` one is rewritten when followed), and a link to this very page with a fragment (an anchor on
- * it). A handler that already called `preventDefault` -- the Markdown anchor scroll -- is left its click.
+ * it). A handler that already called `preventDefault` -- a code block's copy button -- is left its click.
  */
 private fun followAppLink(e: dynamic) {
     if (e.defaultPrevented == true || e.button != 0) return
