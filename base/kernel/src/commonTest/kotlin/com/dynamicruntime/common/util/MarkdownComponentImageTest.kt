@@ -48,4 +48,14 @@ class MarkdownComponentImageTest {
         assertEquals("sample:diagram", link.imageName)
         assertEquals(false, link.inert)
     }
+
+    @Test
+    fun anEmptyClearSpanEndsAFloatWhereTheCopyPutsIt() {
+        // Issue #1382: what follows goes below a floated image. Nothing of it reaches a plain-text rendering.
+        assertEquals(
+            "<img src=\"/st/kdr/img/sample:diagram:abc123\" alt=\"D\" class=\"md-float-left\" width=\"120\">Beside.<span class=\"md-${MDR.clear}\"></span>",
+            "![D](img:sample:diagram){.float-left width=120}Beside.[]{.${MDR.clear}}".renderMarkdownInline(hooks),
+        )
+        assertEquals("Beside.", "Beside.[]{.${MDR.clear}}".renderMarkdownText())
+    }
 }

@@ -33,7 +33,10 @@ the underlying file, so two clients reading different copy never share a URL.
 
 **Beyond standard Markdown** the renderer takes two Pandoc-style attributed constructs (issue #795): a bracketed
 span with a role, `[text]{.role}`, and an image with placement, `![alt](src){.float-right width=240}`. A role
-renders as a `md-`-prefixed class by default (`.md-value`, `.md-code` are styled in `app.css`); a surface that
+renders as a `md-`-prefixed class by default (`.md-value`, `.md-code` are styled in `app.css`, and so are an
+image's `.md-float-left` and `.md-float-right`, issue #1382: floated beside the text that follows, at the copy's width,
+contained in their `.markdown` block, and not floated below 480 px -- and `.md-clear`, from an empty `[]{.clear}`,
+which ends a float where the copy puts it, so what follows goes below the image); a surface that
 cannot use a stylesheet -- a mail -- passes `MarkdownHooks(decorateSpan = …)` and realizes the role itself. An
 attribute block holds only role names and numeric `width`/`height`; anything else makes it literal text. A
 backslash escapes any ASCII punctuation (`\*`), and `escapeMarkdown()` applies that to a *value* being substituted

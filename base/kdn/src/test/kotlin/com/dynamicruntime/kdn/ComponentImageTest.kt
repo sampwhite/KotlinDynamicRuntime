@@ -68,7 +68,8 @@ class ComponentImageTest : StringSpec({
         findings.single { "imgfix:missing" in it } shouldContain "no resource"
         findings.single { "elsewhere:dot" in it } shouldContain "not the component's own root"
         findings.single { "imgfix:twice" in it } shouldContain "declared 2 times"
-        images.served.keys shouldContainExactly setOf(ImageFixture.dot)
+        // The fixture's own: core ships images of its own beside them (issue #1382).
+        images.served.keys.filter { it.startsWith("imgfix:") } shouldContainExactly listOf(ImageFixture.dot)
     }
 
     "an image is served by name and content, as a file ref is" {
@@ -93,7 +94,7 @@ class ComponentImageTest : StringSpec({
     "the shell config hands the webapp each image's served name" {
         val state = TestHttpClient(cxt.instanceConfig).sendJsonGetRequest(HEP.homeUiConfig)[EP.results].toJsonMapOrEmpty()
             .let { it[UIC.state].toJsonMapOrEmpty() }
-        state[HFLD.images].toJsonMapOrEmpty() shouldBe mapOf(ImageFixture.dot to served)
+        state[HFLD.images].toJsonMapOrEmpty().filterKeys { it.startsWith("imgfix:") } shouldBe mapOf(ImageFixture.dot to served)
     }
 
     "copy every client shares naming an image no component ships is a fragment problem" {
