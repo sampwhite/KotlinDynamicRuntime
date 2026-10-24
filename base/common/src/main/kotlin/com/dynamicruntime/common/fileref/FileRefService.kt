@@ -88,7 +88,7 @@ class FileRefRegistry(
  * is how a write that would take a client over is refused -- by its trial, whichever configuration or call it is.
  *
  * **A problem is worded by the client that owns the configuration**, never by the one loading it. A sandbox loads
- * its parent's drafts, and the trial of the parent's next write has to recognise what the sandbox's load already
+ * its parent's drafts, and the trial of the parent's next write has to recognize what the sandbox's load already
  * recorded (`GedraConfigTrial`), or a draft's old problem would refuse every later edit as a new one.
  *
  * **Served under the static root**, at `/<appId>/ref/<refId:hash>` ([serve]), for the *caller's* client, by the
@@ -214,7 +214,7 @@ class FileRefService : ServiceInitializer, ContentServer {
      * by name and content, `logo:<hash>` -- what copy naming the image `ref:logo` is drawn from. A ref whose file
      * is not there is left out, so copy naming it draws its alt text.
      *
-     * **Kept for [servedMemoMs]**, and dropped when the client reloads -- which every upload, replacement and
+     * **Kept for [servedMemoMs]**, and dropped when the client reloads -- which every upload, replacement, and
      * removal of a ref does -- since the shell config asks for it on every page a client's people open, and a local
      * ref costs a look at the disk apiece. What only the disk changes (a local file edited in place) is a new name
      * that long later; the old name is answered meanwhile, with the file as it now is and nothing kept of it.

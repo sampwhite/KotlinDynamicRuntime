@@ -132,6 +132,7 @@ class ImageFixture(private val images: List<ComponentImageDef>) : ComponentDefin
 
     override fun images(cxt: KdrCxt): List<ComponentImageDef> = images
 
+    @Suppress("ConstPropertyName")
     companion object {
         const val dot = "imgfix:dot"
     }

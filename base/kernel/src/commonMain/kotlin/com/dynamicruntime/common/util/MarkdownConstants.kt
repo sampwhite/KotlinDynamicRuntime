@@ -7,9 +7,14 @@ package com.dynamicruntime.common.util
 @Suppress("ConstPropertyName")
 object MDR {
     /**
-     * The prefix of the class a role renders as by default: `[x]{.code}` becomes `<span class="md-code">`. A prefix
-     * rather than the bare role, so a role name can never collide with an application class (`.code` is the
-     * app's inset-well style, which an inline value must not pick up).
+     * The prefix of the class a role renders as by default, so this span:
+     *
+     * ```
+     * [x]{.code}
+     * ```
+     *
+     * becomes `<span class="md-code">`. A prefix rather than the bare role, so a role name can never collide with an
+     * application class (`.code` is the app's inset-well style, which an inline value must not pick up).
      */
     const val classPrefix = "md-"
 
