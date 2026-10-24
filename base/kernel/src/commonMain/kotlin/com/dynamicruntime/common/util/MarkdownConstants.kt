@@ -24,6 +24,13 @@ object MDR {
     /** A code a reader reads off and types elsewhere: large, monospaced, spaced out. */
     const val code = "code"
 
+    /**
+     * Ends a floated image here (issue #1382): an empty span, `[]{.clear}`, after which what follows -- the rest of the
+     * paragraph, and the blocks after it -- goes below the image rather than beside it. For copy whose text beside an
+     * image is short on a wide screen, so a list after it would otherwise be squeezed beside the image too.
+     */
+    const val clear = "clear"
+
     /** The attributes an image may carry, numeric only; anything else in an attribute block is dropped. */
     const val width = "width"
     const val height = "height"

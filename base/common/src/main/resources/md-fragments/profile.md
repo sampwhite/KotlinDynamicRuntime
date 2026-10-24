@@ -24,8 +24,10 @@ ${@t("users.helpExtra")}
 
 # +helpExtra
 # +whatIsThis
-You sign in once — with your email address, and your password if you set one — but that sign-in can reach
-**several users**. Each is a separate account:
+![One email address, several users](img:kdr:emailToUsers){.float-left width=120}
+Your email address is bound to several users, each with its own data and profile. You sign in once — with your email
+address, and your password if you set one — but that sign-in can reach **several users**. Each is a separate account:
+[]{.clear}
 
 - **In a client.** A client is an organization's own space in the app, with its own forms and workflows.
 - **With a persona**, such as Member or Admin, which decides what that user may do there.

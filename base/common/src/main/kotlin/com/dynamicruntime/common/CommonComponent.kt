@@ -50,7 +50,9 @@ import com.dynamicruntime.common.node.NodeService
 import com.dynamicruntime.common.operator.operatorSchema
 import com.dynamicruntime.common.content.MarkdownDocDef
 import com.dynamicruntime.common.content.MarkdownDocService
+import com.dynamicruntime.common.content.ComponentImageDef
 import com.dynamicruntime.common.content.ComponentImageService
+import com.dynamicruntime.common.content.componentImage
 import com.dynamicruntime.common.content.FRAG
 import com.dynamicruntime.common.content.FragmentSource
 import com.dynamicruntime.common.content.backendFragmentFiles
@@ -116,6 +118,9 @@ import com.dynamicruntime.common.gedra.JOIN
 import com.dynamicruntime.common.gedra.clientJoinSchema
 import com.dynamicruntime.common.simulation.DesignDemo
 import com.dynamicruntime.common.simulation.DesignDemoBootService
+
+/** The image beside the profile's "What is this?" (issue #1382): one address reaching several users. Copy names it so. */
+private const val emailToUsersImage = "kdr:emailToUsers"
 
 /**
  * The `common` module's component. It owns the foundational schema and services: the [SchemaService]
@@ -288,6 +293,12 @@ class CommonComponent : ComponentDefinition {
 
     /** The README and the repo docs it links to (issue #492), served in-app and offered on the Documents list. */
     override fun docs(cxt: KdrCxt): List<MarkdownDocDef> = coreDocs()
+
+    /**
+     * The images core ships (issues #1339, #1382), named from copy as `img:<name>`: one address reaching several users,
+     * floated beside the profile's "What is this?" (`profile.md`, `users.whatIsThis`).
+     */
+    override fun images(cxt: KdrCxt): List<ComponentImageDef> = listOf(componentImage(emailToUsersImage, "email-to-users.png"))
 
     /**
      * The Gedra configs this module defines: the traits every deployment has, in the reserved `kdr.core`

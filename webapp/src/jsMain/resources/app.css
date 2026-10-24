@@ -615,8 +615,21 @@ a:not([class]):hover { color: var(--accent-brighter); text-decoration: underline
 .link-button:hover { background: var(--border); color: var(--text); }
 .link-button.open { border-color: var(--accent); color: var(--text); }
 
-/* Rendered Markdown (fragment copy and whole documents). */
-.markdown { line-height: 1.6; overflow-wrap: anywhere; }
+/* Rendered Markdown (fragment copy and whole documents). `flow-root` keeps an image the copy floats inside its own
+   block (issue #1382), so it never spills into whatever the page draws next. */
+.markdown { line-height: 1.6; overflow-wrap: anywhere; display: flow-root; }
+/* An image the copy places (issues #795, #1382): `![alt](src){.float-left width=140}` floats it beside the text that
+   follows, at the width the copy gives -- never wider than the block. A list beside one keeps its bullets clear of it.
+   On a narrow screen it stops floating, since text squeezed beside it would be a column of single words. */
+.markdown img { max-width: 100%; }
+.md-float-left { float: left; margin: 4px 16px 8px 0; }
+.md-float-right { float: right; margin: 4px 0 8px 16px; }
+.markdown ul, .markdown ol { display: flow-root; }
+/* `[]{.clear}` ends a float where the copy says (issue #1382): what follows goes below the image. */
+.md-clear { display: block; clear: both; }
+@media (max-width: 480px) {
+    .md-float-left, .md-float-right { float: none; display: block; margin: 0 0 8px; }
+}
 /* Readable measure at any width (issue #554): prose is capped at ~80 characters, on the paragraph rather than
    the container, so a table (#547) or a code block still gets the full column while a line of text does not
    run the width of a wide window. */
