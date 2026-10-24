@@ -673,6 +673,10 @@ client naming none is shown; neither moves the day start.
   no context, so it would be set once at boot. The webapp works out its fallback zone from the same kernel value
   (`deploymentZone`), and would be told it by the shell config instead -- as would the report history, whose days
   are the day start's (`ReportHistory.dayOf`, `ReportSnapshot.day` in the webapp).
+- **Numbers and amounts in the reader's locale** *(from #1322).* A template's `formatNumber` and `currency` write one
+  convention, `1,234.50` and `$1,234.50`, from the kernel's own table of currency symbols (`ScriptNumbers.kt`), so the
+  backend and the browser agree. A locale would ride the script environment beside the zone (`ScriptEnv`, #1321), and
+  supply the separators and where a currency's symbol goes (`1.234,50 €`).
 
 ## When mail volume from a public sign-in becomes a cost or a reputation problem
 
