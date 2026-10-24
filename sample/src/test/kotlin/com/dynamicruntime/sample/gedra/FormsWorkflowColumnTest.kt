@@ -90,10 +90,13 @@ class FormsWorkflowColumnTest : StringSpec({
     "the summary is sent only when asked for, and only with states" {
         val user = TestUser.create(cxt, "col-nostates@acme.test", userClient = SC.acme)
         newForm(user, surveyDone = true)
-        user.client.sendJsonGetRequest(list, emptyMap()).containsKey(EP.summary) shouldBe false
+        // The listing's summary always says its columns (issue #1323); the workflows are in it only when asked for.
+        fun hasWorkflows(args: Map<String, Any?>) = WCOL.workflows in user.client.sendJsonGetRequest(list, args)[EP.summary].toJsonMapOrEmpty()
+        hasWorkflows(emptyMap()) shouldBe false
         // A page turn, search or sort does not change it, so a page asks for it only on its first load.
-        user.client.sendJsonGetRequest(list, mapOf(GDF.withStates to true)).containsKey(EP.summary) shouldBe false
-        user.client.sendJsonGetRequest(list, mapOf(GDF.withWorkflowSummary to true)).containsKey(EP.summary) shouldBe false
+        hasWorkflows(mapOf(GDF.withStates to true)) shouldBe false
+        hasWorkflows(mapOf(GDF.withWorkflowSummary to true)) shouldBe false
+        hasWorkflows(mapOf(GDF.withStates to true, GDF.withWorkflowSummary to true)) shouldBe true
     }
 
     "each row sorts its workflows by the shared rule: engaged, eligible, then ineligible" {

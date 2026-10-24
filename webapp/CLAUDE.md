@@ -1159,7 +1159,12 @@ units -- `12m ago`, `1h 23m ago`, `1d 2h ago`, `in 3h` for a future one -- and f
 `2026-10-10` (`formatRelativeTime`). The exact `formatTimestamp` value is the cell's tooltip. A table reads its rows
 against one `useRelativeClock()`, which re-renders it every 30 seconds -- so minutes are the finest unit -- and an
 antd table files each row's tooltip under `timeTipKey(dataIndex)` for `timeColumnRender`; a plain table draws
-`RelativeTime`. What stays **absolute**: a form's or user's own page (it has the room), a filter chip's date bound (a
+`RelativeTime`. A forms-listing display column is drawn the same way (issue #1323): each cell is its value read through
+the column's presentation (`presentedValue`, the kernel's `presentColumnValue`) against the same clock and
+`DisplayZone.scriptEnv(now)`, with the value behind a reworded cell as its tooltip (`presentedCellTip`). The columns
+and their presentations come once, in the listing's `summary.columns` (`ListingColumn`), not on each row; a `date`
+column with none reads relative to now, and the form's heading (`formHeading`) reads through its column too. What
+stays **absolute**: a form's or user's own page (it has the room), a filter chip's date bound (a
 fixed instant; a relative one would move under the filter), a report's cells and the report history's rows (the
 dates there are data compared across rows and snapshots, and the history's day column already names the day).
 

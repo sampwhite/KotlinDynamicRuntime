@@ -42,9 +42,9 @@ import io.kotest.matchers.string.shouldContain
  * `GedraSearchTest`) cannot cover: that `checkInit` actually runs the checks, and that the config-check mode
  * decides their consequence (strict refuses, warn logs and boots).
  *
- * Both of `checkUsageRules`' sub-checks live here, so a boot refusal over a usage rule is one class rather than
- * one per variation: a usage whose **search parameter collides with a reserved listing field** (issue #538), and
- * **two usage rules for one trait id** (issue #681). Each fixture is gated on its own load flag, so it perturbs
+ * Every one of `checkUsageRules`' sub-checks lives here, so a boot refusal over a usage rule is one class rather
+ * than one per variation: a usage whose **search parameter collides with a reserved listing field** (issue #538),
+ * **two usage rules for one trait id** (issue #681), and **a presentation that does not parse** (issue #1323). Each fixture is gated on its own load flag, so it perturbs
  * no other boot; a spec sets the flag for the fixture it wants.
  */
 class UsageRuleBootCheckTest : StringSpec({
@@ -61,6 +61,24 @@ class UsageRuleBootCheckTest : StringSpec({
         }
         thrown.fullMessage() shouldContain DuplicateUsageComponent.dupeTrait
         thrown.fullMessage() shouldContain "more than one trait-usage rule"
+    }
+
+    "a presentation that does not parse refuses the boot in strict mode (issue #1323)" {
+        // The browser shows a column's value when its presentation cannot be evaluated, so a misspelled style
+        // would never be seen there; a presentation declared in source is checked here, as the write gate checks
+        // a stored one.
+        val thrown = shouldThrow<KdrException> {
+            // Its own instance (issue #1075): the boot itself is under test: BadPresentationComponent is expected to
+            // refuse it.
+            Startup.mkTestBootCxt(
+                "badPresentation", "badPresentationTest",
+                mapOf(BadPresentationComponent.loadFlag.name to "true"),
+                additionalComponents = listOf(BadPresentationComponent()),
+            )
+        }
+        thrown.fullMessage() shouldContain BadPresentationComponent.trait
+        thrown.fullMessage() shouldContain "presentation"
+        thrown.fullMessage() shouldContain "relatve"
     }
 
     "the same duplicate only warns, and boots, when the check mode is warn (issue #681)" {
@@ -134,6 +152,36 @@ class UsageRuleBootCheckTest : StringSpec({
             mapOf(ReservedFieldUsageComponent.reservedTrait to "x", ReservedFieldUsageComponent.offsetTrait to "7")
     }
 })
+
+/** Contributes a global config whose one usage rule has a presentation naming a date style there is not (#1323). */
+class BadPresentationComponent : ComponentDefinition {
+    override val providerName: String = "badPresentationFixture"
+
+    /** The fixture's own owner root (issue #950). */
+    override val ownerRoot: String = namespace
+
+    override fun isLoaded(cxt: KdrCxt): Boolean = cxt.getEnvBool(loadFlag) == true
+
+    override fun gedraConfigs(cxt: KdrCxt): List<GedraConfig> = listOf(
+        gedraConfig(cxt, "badPresentationConfig", namespace, GID.globalClient) {
+            trait(entry, trait, setOf(GedraDataType.formDoc), "A trait with a date, for the #1323 fixture.") {
+                property("due", "When it is due.") { type = SCT.string }
+            }
+            traitUsage(trait, "Due", $$"${due}", UsageKind.date, presentation = $$"""${formatDate(value, "relatve")}""")
+        },
+    )
+
+    @Suppress("ConstPropertyName")
+    companion object {
+        val loadFlag = EnvVarDef(
+            "KDR_LOAD_BAD_PRESENTATION_FIXTURE", group = ENVGRP.application, defaultDoc = "off",
+            description = "Test-only flag that loads the bad-presentation fixture component regardless of environment.",
+        )
+        const val namespace = "badpresentationfixture"
+        const val trait = "$namespace:dueDate"
+        const val entry = "BadPresentationDueEntry"
+    }
+}
 
 /** Contributes a global config with two usage rules for one trait -- the mistake #681's check catches. */
 class DuplicateUsageComponent : ComponentDefinition {

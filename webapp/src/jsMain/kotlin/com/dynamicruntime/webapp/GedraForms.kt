@@ -21,6 +21,11 @@ import com.dynamicruntime.common.gedra.GPF
 import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.GedraEditAction
 import com.dynamicruntime.common.gedra.GedraId
+import com.dynamicruntime.common.gedra.ListingColumn
+import com.dynamicruntime.common.gedra.UsageKind
+import com.dynamicruntime.common.gedra.presentColumnValue
+import com.dynamicruntime.common.util.ScriptEnv
+import com.dynamicruntime.common.util.parseDateOrNull
 import com.dynamicruntime.common.gedra.workflow.SVY
 import com.dynamicruntime.common.gedra.workflow.SVYS
 import com.dynamicruntime.common.gedra.workflow.SWF
@@ -151,6 +156,8 @@ class FormsListPage(
      * of these rows and no others. Null when the listing is everyone's the caller may see.
      */
     val scopeUser: ScopeUser? = null,
+    /** The listing's columns (issue #1323), with the presentation each cell reads through; empty when it has none. */
+    val columns: List<ListingColumn> = emptyList(),
 )
 
 /**
@@ -682,11 +689,44 @@ fun editDataCompletenessFailures(targetType: SchType?, values: Map<String, Any?>
 fun entriesUnionOf(type: SchType?): SchType? = type?.properties?.get(GDF.entries)?.valueType?.itemType
 
 /**
- * A friendly account of a stored form document (issue #408): the human [title] if it has one, the traits it
- * carries by their picker labels, and when it was created. Shown on the create-success screen and in the list.
+ * One computed display value from a client's trait-usage rule (issue #537): a column and its cell's value, as the
+ * backend evaluated it -- what the column sorts and searches by -- and the [data] of the row's entry of the trait,
+ * which the column's presentation reads (issue #1323). [data] is empty when the row has no such entry.
  */
-/** One computed display value from a client's trait-usage rule (issue #537): a column and its cell. */
-class DisplayValue(val traitId: String, val label: String, val value: String)
+class DisplayValue(
+    val traitId: String,
+    val label: String,
+    val value: String,
+    val kind: UsageKind = UsageKind.string,
+    val data: Map<String, Any?> = emptyMap(),
+)
+
+/**
+ * What [display]'s cell shows (issue #1323): its value read through [column]'s presentation, in [env]'s zone and
+ * against its clock -- the value as it is when there is no column for it.
+ */
+fun presentedValue(display: DisplayValue, column: ListingColumn?, env: ScriptEnv): String =
+    if (column == null) display.value else presentColumnValue(display.value, column.kind, column.presentation, display.data, env)
+
+/**
+ * A form's heading (issue #537): the first of its display values that is not blank, read through its column's
+ * presentation (issue #1323), so the heading and the table cell say the same. Null when every one is blank -- a
+ * client that declares no usage rule has none, and the document is shown unnamed.
+ */
+fun formHeading(summary: FormSummary, columns: List<ListingColumn>, env: ScriptEnv): String? {
+    val first = summary.displayValues.firstOrNull { it.value.isNotBlank() } ?: return null
+    return presentedValue(first, columns.firstOrNull { it.traitId == first.traitId }, env)
+}
+
+/**
+ * The tooltip of a listing cell that shows [shown] for [display] (issue #1323): the exact moment for a date the
+ * presentation reworded, the value for anything else it reworded, and none for a cell showing its value as it is.
+ */
+fun presentedCellTip(display: DisplayValue, shown: String): String? = when {
+    display.value.isBlank() || shown == display.value -> null
+    display.kind == UsageKind.date && display.value.parseDateOrNull() != null -> formatTimestamp(display.value)
+    else -> display.value
+}
 
 /**
  * A form's status for the forms-list column (issues #694, #789) and its filter (issue #695): the kernel's [SVYS]
@@ -752,12 +792,9 @@ fun parseSingletonWorkflows(results: Map<String, Any?>): List<SingletonWorkflow>
 class FormSummary(
     val gedraId: String,
     /**
-     * The document's heading, or null when it has none: the first display value the client's usage rules
-     * produced (issue #537). A client that declares no usage rule -- like the trait-picker fallback's global
-     * client -- has none, and the document is shown unnamed, as before.
+     * The client's declared display columns for this row: label and value, in the client's order (issue #537). The
+     * document's heading is the first that is not blank ([formHeading]).
      */
-    val title: String?,
-    /** The client's declared display columns for this row: label and value, in the client's order (issue #537). */
     val displayValues: List<DisplayValue>,
     /** Each entry's trait, by the same friendly label the form's trait picker showed. */
     val traitLabels: List<String>,
@@ -809,18 +846,20 @@ fun summarizeForm(item: Map<String, Any?>, entriesUnion: SchType?): FormSummary 
     }
     // The columns a client's usage rules declared, computed on the backend and attached per row (issue
     // #537). The heading is the first non-blank one -- the form's presentation "name", now client-declared
-    // rather than the `name` trait hardcoded here.
+    // rather than the `name` trait hardcoded here. Each carries the data of the row's entry of its trait, which a
+    // presentation reads (issue #1323): the first such entry, as the backend's value is read from.
     val displayValues = item[GDF.displayValues].toJsonListOfMaps().map {
+        val traitId = it[UF.traitId] as? String ?: ""
         DisplayValue(
-            traitId = it[UF.traitId] as? String ?: "",
+            traitId = traitId,
             label = it[UF.label] as? String ?: "",
             value = it[UF.value] as? String ?: "",
+            kind = UsageKind.entries.firstOrNull { k -> k.name == it[UF.kind] } ?: UsageKind.string,
+            data = entries.firstOrNull { e -> e[GE.traitId] == traitId }?.get(GE.data).toJsonMapOrEmpty(),
         )
     }
-    val title = displayValues.firstOrNull { it.value.isNotBlank() }?.value
     return FormSummary(
         gedraId = item[GDF.gedraId] as? String ?: "(unknown)",
-        title = title,
         displayValues = displayValues,
         traitLabels = traitLabels,
         createdAt = item[GDF.createdAt] as? String,

@@ -189,6 +189,7 @@ fun reassembleGedraConfig(
             e[CCT.display].toOptStr().orEmpty(),
             UsageKind.entries.firstOrNull { it.name == e[CCT.kind].toOptStr() } ?: UsageKind.string,
             e[CCT.substring] as? Boolean ?: false,
+            e[CCT.presentation].toOptStr()?.ifBlank { null },
         )
     }
     entriesBySlot[CCT.workflowDef]?.forEach { workflowFromMap(withoutStoredWindows(it[CCT.definition].toJsonMapOrEmpty(), keepUnreadWorkflow)) }

@@ -15,6 +15,13 @@ import com.dynamicruntime.common.gedra.GEP
 import com.dynamicruntime.common.gedra.GPF
 import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.UF
+import com.dynamicruntime.common.gedra.ListingColumn
+import com.dynamicruntime.common.gedra.UsageKind
+import com.dynamicruntime.common.util.ScriptEnv
+import com.dynamicruntime.common.util.ScriptZone
+import kotlinx.datetime.FixedOffsetTimeZone
+import kotlinx.datetime.UtcOffset
+import kotlin.time.Instant
 import com.dynamicruntime.common.gedra.GedraEditAction
 import com.dynamicruntime.common.gedra.workflow.SVY
 import com.dynamicruntime.common.gedra.workflow.WSC
@@ -403,8 +410,49 @@ class GedraFormsTest {
     }
 
     /** One computed display value, as the backend attaches it (issue #537). */
-    private fun displayValue(traitId: String, label: String, value: String): Map<String, Any?> =
-        mapOf(UF.traitId to traitId, UF.label to label, UF.value to value)
+    private fun displayValue(traitId: String, label: String, value: String, kind: UsageKind = UsageKind.string): Map<String, Any?> =
+        mapOf(UF.traitId to traitId, UF.label to label, UF.value to value, UF.kind to kind.name)
+
+    /** The moment the presentation tests read against, in UTC. */
+    private val env = ScriptEnv(ScriptZone.of(FixedOffsetTimeZone(UtcOffset.ZERO)), Instant.parse("2026-10-17T22:00:00Z"))
+
+    /** [summary]'s heading with no presentations: the first non-blank value as it is. */
+    private fun heading(summary: FormSummary): String? = formHeading(summary, emptyList(), env)
+
+    /**
+     * A column's presentation (issue #1323) reads the trait's data and the column's value: the cell and the heading
+     * read through it, the value behind it is the cell's tooltip, and a date column with none reads relative to now.
+     */
+    @Test
+    fun cellsAndTheHeadingReadThroughTheColumnsPresentation() {
+        val item = mapOf(
+            GDF.gedraId to "gd.fd.acme.u10",
+            GDF.displayValues to listOf(
+                displayValue("site", "Site", "Austin"),
+                displayValue("amount", "Amount", "1234.5", UsageKind.number),
+                displayValue("due", "Due", "2026-10-18T01:00:00Z", UsageKind.date),
+            ),
+            GDF.entries to listOf(
+                mapOf(GE.traitId to "site", GE.data to mapOf("city" to "Austin", "state" to "TX")),
+                mapOf(GE.traitId to "amount", GE.data to mapOf("amount" to 1234.5)),
+                mapOf(GE.traitId to "due", GE.data to mapOf("due" to "2026-10-18T01:00:00Z")),
+            ),
+        )
+        val columns = ListingColumn.listFrom(
+            listOf(
+                mapOf(UF.traitId to "site", UF.label to "Site", UF.kind to "string", UF.presentation to $$"${city}, ${state}"),
+                mapOf(UF.traitId to "amount", UF.label to "Amount", UF.kind to "number", UF.presentation to $$"""${currency(value, "USD")}"""),
+                mapOf(UF.traitId to "due", UF.label to "Due", UF.kind to "date"),
+            ),
+        )
+        val info = summarizeForm(item, entriesUnion())
+        val shown = info.displayValues.map { dv -> presentedValue(dv, columns.firstOrNull { it.traitId == dv.traitId }, env) }
+        assertEquals(listOf("Austin, TX", "$1,234.50", "in 3h"), shown)
+        assertEquals("Austin, TX", formHeading(info, columns, env))
+        // On hover: the value behind a reworded cell, a date's as its moment; a cell showing its value has none.
+        assertEquals("1234.5", presentedCellTip(info.displayValues[1], shown[1]))
+        assertNull(presentedCellTip(info.displayValues[0], "Austin"))
+    }
 
     /** The summary reads each trait by its friendly label, the document's heading and columns from the
      *  client's computed `displayValues`, and the created time as the wire has it (each surface formats it, #1141). */
@@ -422,7 +470,7 @@ class GedraFormsTest {
         val info = summarizeForm(item, entriesUnion())
         assertEquals("gd.fd.acme.u123", info.gedraId)
         // The heading is the first non-blank display value; the column carries label + value.
-        assertEquals("Q3 expenses", info.title)
+        assertEquals("Q3 expenses", heading(info))
         assertEquals(listOf("Name"), info.displayValues.map { it.label })
         assertEquals("Q3 expenses", info.displayValues.single().value)
         // "name" has no branch title so it humanizes; "expenseReport"'s branch declares one.
@@ -442,7 +490,7 @@ class GedraFormsTest {
             GDF.entries to listOf(mapOf(GE.traitId to "name", GE.data to mapOf("name" to "Q3 expenses"))),
         )
         val info = summarizeForm(item, entriesUnion())
-        assertEquals("Q3 expenses", info.title)
+        assertEquals("Q3 expenses", heading(info))
         // Both columns are present in the client's order, blank cell and all.
         assertEquals(listOf("Auditor", "Name"), info.displayValues.map { it.label })
     }
@@ -457,7 +505,7 @@ class GedraFormsTest {
             GDF.entries to listOf(mapOf(GE.traitId to "siteVisit", GE.data to mapOf("place" to "North depot"))),
         )
         val info = summarizeForm(item, entriesUnion())
-        assertNull(info.title)
+        assertNull(heading(info))
         assertEquals(listOf("Name"), info.displayValues.map { it.label })
     }
 
@@ -469,7 +517,7 @@ class GedraFormsTest {
             GDF.entries to listOf(mapOf(GE.traitId to "expenseReport", GE.data to mapOf("year" to 2026))),
         )
         val info = summarizeForm(item, entriesUnion())
-        assertNull(info.title)
+        assertNull(heading(info))
         assertNull(info.createdAt)
         assertEquals(listOf("Expense report"), info.traitLabels)
     }

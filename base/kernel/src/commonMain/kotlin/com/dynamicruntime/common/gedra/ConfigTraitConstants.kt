@@ -57,6 +57,7 @@ object CCT {
     const val display = "display"
     const val kind = "kind"
     const val substring = "substring"
+    const val presentation = "presentation"
 
     const val workflowId = "workflowId"
     const val definition = "definition"

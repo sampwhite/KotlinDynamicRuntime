@@ -68,7 +68,7 @@ class ConfigSlotGateTest : StringSpec({
     fun cfact(name: String = "ready", group: Any? = "grp") =
         mapOf(CCT.name to name, CCT.group to group, CCT.description to "Ready.", CCT.toFrontend to false)
 
-    "a usage rule is held to its shape, and its display to being a template that parses" {
+    "a usage rule is held to its shape, and its display and presentation to being templates that parse" {
         codes(CCT.usageDef, usage()).shouldBeEmpty()
         codes(CCT.usageDef, usage() - CCT.label) shouldBe mapOf("${CCT.usageDef}[a].${CCT.label}" to SchFailCode.missingRequired)
         codes(CCT.usageDef, usage() + (CCT.kind to "text")) shouldBe mapOf("${CCT.usageDef}[a].${CCT.kind}" to SchFailCode.invalidOption)
@@ -80,6 +80,13 @@ class ConfigSlotGateTest : StringSpec({
         malformed.single().path shouldBe "${CCT.usageDef}[a].${CCT.display}"
         malformed.single().code shouldBe SchFailCode.badValue
         malformed.single().message shouldContain "not a template that parses"
+        // A presentation (issue #1323) is parsed as a display is: an unknown function, a wrong number of arguments
+        // and a style there is not are refused here rather than shown as a value in every cell.
+        codes(CCT.usageDef, usage() + (CCT.presentation to $$"""${currency(value, "USD")}""")).shouldBeEmpty()
+        for (bad in listOf($$"${formtNumber(value)}", $$"${formatNumber(value, 1, 2)}", $$"""${formatDate(value, "relatve")}""")) {
+            codes(CCT.usageDef, usage() + (CCT.presentation to bad)) shouldBe
+                mapOf("${CCT.usageDef}[a].${CCT.presentation}" to SchFailCode.badValue)
+        }
         // An entry with no key is named by its place, and its missing key is among its failures.
         // By place, counted from 0 as an array's items are: `[#1]` is the second entry.
         codes(CCT.usageDef, usage(), usage() - CCT.traitId) shouldBe mapOf("${CCT.usageDef}[#1].${CCT.traitId}" to SchFailCode.missingRequired)

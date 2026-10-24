@@ -4,6 +4,7 @@ import com.dynamicruntime.common.home.HFRAG
 import com.dynamicruntime.common.endpoint.EI
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.gedra.GDF
+import com.dynamicruntime.common.gedra.ListingColumn
 import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.gedra.UF
 import com.dynamicruntime.common.gedra.GSORT
@@ -119,6 +120,9 @@ val FormsPage = FC<FormsPageProps> { props ->
     var numAvailable by useState(0)
     // The workflow column's summary (issue #791), delivered with each page: empty means no column.
     var listingWorkflows by useState<List<WorkflowSummaryEntry>>(emptyList())
+    // The listing's columns (issue #1323), from every page's summary: what the table's display columns are, and the
+    // presentation each cell -- and an open form's heading -- reads through.
+    var listingColumns by useState<List<ListingColumn>>(emptyList())
     // What a row with no workflows shows (issue #791): the client's copy, Markdown; null draws a dash.
     var emptyWorkflowsCopy by useState<String?>(null)
     // How many forms the listing asks for (issue #1315): the first batch, grown on request, carried in the address.
@@ -234,6 +238,7 @@ val FormsPage = FC<FormsPageProps> { props ->
             (resp[EP.numAvailable] as? Number)?.toInt() ?: fetched.size,
             if (withSummary) parseWorkflowSummary(resp[EP.summary]) else null,
             parseScopeUser(resp[EP.summary]),
+            ListingColumn.listFrom(resp[EP.summary].toJsonMapOrEmpty()[GDF.columns]),
         )
     }
 
@@ -280,6 +285,7 @@ val FormsPage = FC<FormsPageProps> { props ->
                 numAvailable = page.numAvailable
                 scopeAnswer = ScopeAnswer(search[EI.user] as? String, page.scopeUser)
                 page.workflowSummary?.let { listingWorkflows = it }
+                listingColumns = page.columns
                 searchError = null
             } catch (e: Throwable) {
                 searchError = userFacingError(e)
@@ -379,6 +385,7 @@ val FormsPage = FC<FormsPageProps> { props ->
                     numAvailable = page.numAvailable
                     scopeAnswer = ScopeAnswer(applied[EI.user], page.scopeUser)
                     page.workflowSummary?.let { listingWorkflows = it }
+                    listingColumns = page.columns
                 }
                 error = null
                 searchError = null
@@ -705,7 +712,7 @@ val FormsPage = FC<FormsPageProps> { props ->
                     }
                     else -> {
                         deleteError?.let { errorText("Couldn't delete the form.", it) }
-                        renderForm(viewRow!!, entriesUnionOf(payloadType), payloadType, cat.fieldLayouts)
+                        renderForm(viewRow!!, entriesUnionOf(payloadType), payloadType, cat.fieldLayouts, listingColumns)
                     }
                 }
             }
@@ -1013,6 +1020,7 @@ val FormsPage = FC<FormsPageProps> { props ->
                     // a workflow link goes -- the survey page opened on that workflow, carrying the listing's context
                     // home like every other hop.
                     workflowSummary = listingWorkflows
+                    columns = listingColumns
                     noWorkflowsCopy = emptyWorkflowsCopy
                     workflowHref = { id, wf, task, edit ->
                         routeHref(workflowPageRoute(id, wf, task, edit, listingPage) + listingContext)
@@ -1065,9 +1073,11 @@ private fun ChildrenBuilder.renderForm(
     union: SchType?,
     payloadType: SchType?,
     fieldLayouts: Map<String, SchLayout>,
+    columns: List<ListingColumn>,
 ) {
     val summary = summarizeForm(row, union)
-    summary.title?.let { h2 { +it } }
+    // Read as its listing cell reads (issue #1323), against the moment the page is drawn.
+    formHeading(summary, columns, DisplayZone.scriptEnv())?.let { h2 { +it } }
     if (summary.traitLabels.isNotEmpty()) {
         p {
             className = ClassName("subtitle")

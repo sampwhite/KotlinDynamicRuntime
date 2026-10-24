@@ -348,6 +348,14 @@ deployment's zone (`serverTimeZone`, a fixed UTC-8), as every client was before.
   which the caller hands in: a listing column and a mail the client's zone, named as the webapp names it, and the
   webapp the zone it shows moments in. `formatDay` is the day there, and `formatDate(x, style)` takes `"relative"`,
   `"moment"` (`Oct 17, 2026, 5:00 PM CT`) or `"day"`. An evaluation handed none reads the deployment's zone.
+- **A listing column has a value and, optionally, a presentation** (#1323). A trait usage's `display` is the column's
+  value, which the backend evaluates per row and the column sorts and searches by. Its `presentation`, a string script
+  over the trait's data with the value as `value` (`${currency(value, "USD")}`, `${city}, ${state}`), is only how the
+  cell reads. The listing's summary carries it once, with the columns (`columns`), and the webapp evaluates it in the
+  client's zone against the table's clock, so a relative time stays current. A `date` column with no presentation
+  reads relative to now, as the table's Updated and Created columns do, and a day alone is shown as it is. A
+  presentation is parsed where configuration is written and at boot, and one that cannot be evaluated against a row
+  shows the value. A report's columns and a CSV read the value.
 
 **The definition has a schema, and a written one is held to it** (issue #1051). The attributes above are declared
 once (`ClientDef.defineInfoType`) and make two types. `ClientInfo` is what the client endpoints answer with.
