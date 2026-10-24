@@ -44,16 +44,20 @@ object HashedFileServing {
 
     /**
      * The address [handler]'s request names under [marker], or null when the request is not for it: another focus,
-     * another marker, or another shape. Split at the **first** [CMK.nameSep], the one constant both sides build an
-     * address with: no name served here holds one, so whatever follows it is the hash, whatever that holds.
+     * another marker, or another shape. Split at the [CMK.nameSep] after the [nameSeps] a name served under [marker]
+     * holds -- none for a file ref or a web asset, one for a component image's rooted name (`sample:diagram`, issue
+     * #1339) -- the one constant both sides build an address with: whatever follows it is the hash, whatever that
+     * holds.
      */
-    fun addressOf(handler: RequestHandler, marker: String): Address? {
+    fun addressOf(handler: RequestHandler, marker: String, nameSeps: Int = 0): Address? {
         if (handler.focus != ContextFocus.static) return null
         // appPath is context-root-stripped: "/<appId>/<marker>/<name:hash>" -> ["", appId, marker, nameWithHash].
         val segments = handler.appPath.split('/')
         if (segments.size != pathSegments || segments[2] != marker) return null
         val named = segments[3]
-        return Address(named.substringBefore(CMK.nameSep), named.substringAfter(CMK.nameSep, ""))
+        var at = -1
+        repeat(nameSeps + 1) { at = named.indexOf(CMK.nameSep, at + 1).also { if (it < 0) return Address(named, "") } }
+        return Address(named.substring(0, at), named.substring(at + 1))
     }
 
     /**

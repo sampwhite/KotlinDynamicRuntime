@@ -29,4 +29,13 @@ object MDR {
      * from is the surface's to say ([MarkdownHooks.refAddress]); a surface that cannot say draws its alt text.
      */
     const val refScheme = "ref"
+
+    /**
+     * The scheme an image's source names an image a **component ships** by (issue #1339): `![A diagram](img:sample:diagram)`,
+     * the name rooted under the component's owner. The same image for every client -- unlike a [refScheme] ref, which is
+     * a client's own -- and a separate namespace from refs: a client changes what copy shows by changing the copy. What
+     * it is drawn from is the surface's to say ([MarkdownHooks.imageAddress]); a surface that cannot say draws its alt
+     * text.
+     */
+    const val imageScheme = "img"
 }

@@ -1,6 +1,7 @@
 package com.dynamicruntime.common.home
 
 import com.dynamicruntime.common.user.SandboxAccess
+import com.dynamicruntime.common.content.ComponentImageService
 import com.dynamicruntime.common.fileref.FileRefService
 import com.dynamicruntime.common.gedra.sandboxParentOf
 import com.dynamicruntime.common.gedra.ClientService
@@ -207,6 +208,12 @@ fun homeSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.home") {
                     "(`<refId>:<hash>`), served at the static root's `/<appId>/ref/<name>`: what copy naming an image " +
                     "`ref:<refId>` is drawn from. A ref whose file is not there is absent.",
             ) { mapOfValues { type = SCT.string } }
+            property(
+                HFLD.images,
+                "The images components ship (issue #1339), each rooted name to its image by name and content " +
+                    "(`<name>:<hash>`), served at the static root's `/<appId>/img/<name>`: what copy naming an image " +
+                    "`img:<name>` is drawn from. The same for every caller.",
+            ) { mapOfValues { type = SCT.string } }
         }
     }
 
@@ -291,6 +298,8 @@ fun homeSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.home") {
                 ClientWebAssetService.getOrNull(c)?.let { put(HFLD.webAssets, it.versionedNames(c, c.client)) }
                 // The images its copy may name (issue #1186), as the static root serves them to this caller.
                 FileRefService.getOrNull(c)?.let { put(HFLD.fileRefs, it.servedNames(c, c.client)) }
+                // The images components ship (issue #1339): copy's `img:` names, the same for every caller.
+                ComponentImageService.getOrNull(c)?.let { put(HFLD.images, it.servedNames()) }
             },
         )
     }

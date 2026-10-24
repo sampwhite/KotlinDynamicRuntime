@@ -2,6 +2,7 @@ package com.dynamicruntime.common.fileref
 
 import com.dynamicruntime.common.content.CMK
 import com.dynamicruntime.common.content.HashedFileServing
+import com.dynamicruntime.common.content.IMGS
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.filestore.FNAME
@@ -28,6 +29,7 @@ import com.dynamicruntime.common.startup.BootCheckMode
 import com.dynamicruntime.common.startup.SchemaCollector
 import com.dynamicruntime.common.startup.ServiceInitializer
 import com.dynamicruntime.common.util.MDR
+import com.dynamicruntime.common.util.componentImageNames
 import com.dynamicruntime.common.util.imageRefIds
 import com.dynamicruntime.common.webasset.ClientWebAssetService
 import java.util.concurrent.ConcurrentHashMap
@@ -349,6 +351,9 @@ class FileRefService : ServiceInitializer, ContentServer {
      * A ref kept and its file missing is not this problem (its own is said above): copy may name it, and it is
      * drawn as its alt text until the file is there. Worded by [owner], as the ref problems are, so a sandbox and
      * its parent say it alike.
+     *
+     * An image the copy names that no component ships ([MDR.imageScheme], `![alt](img:sample:diagram)`, issue #1339) is
+     * the same problem, said the same way: what copy every client shares names is the fragment check's to judge.
      */
     private fun reportCopyNamingNoRef(
         cxt: KdrCxt,
@@ -359,12 +364,30 @@ class FileRefService : ServiceInitializer, ContentServer {
         issues: MutableList<GedraConfigIssue>,
     ) {
         val namePrefix = MDR.refScheme + ":"
+        val imagePrefix = MDR.imageScheme + ":"
+        val images = IMGS.declaredNames(cxt)
         for (config in configs) {
             if (config.gedraId.client != client || config.fragments.isEmpty() || config.checkMode(cxt) == BootCheckMode.off) continue
             for (layer in config.fragments) {
                 val content = layer.load() ?: continue
                 for ((namespace, keys) in content) {
                     for ((key, value) in keys) {
+                        // An image no component ships (issue #1339), judged with the refs: the same copy, the same build.
+                        if (value.contains(imagePrefix)) {
+                            for (name in value.componentImageNames()) {
+                                if (name in images) continue
+                                reportConfigProblem(
+                                    cxt,
+                                    config.issue(
+                                        "$namespace.$key (file '${layer.fileId}' of client '$owner', config '${config.name}') " +
+                                            "shows the image $imagePrefix$name, which no component ships.",
+                                        "Keeping the copy; the image is drawn as its alt text.",
+                                        GCEL.fragment, layer.fileId,
+                                    ),
+                                    issues,
+                                )
+                            }
+                        }
                         // Cheap enough to ask of every value, so the parse is for the few that may name one.
                         if (!value.contains(namePrefix)) continue
                         for (refId in value.imageRefIds()) {

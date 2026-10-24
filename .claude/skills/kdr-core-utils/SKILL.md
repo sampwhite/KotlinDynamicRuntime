@@ -148,7 +148,8 @@ code guide's "When not to throw".
   supply — the missing-key half of a render failure, with no evaluation. Reported per fragment entry by
   `GET /operator/fragments/check`, which also takes an optional `data` JSON object.
 - `MarkdownFragmentUtil` — parses a Markdown **fragment file** into `namespace -> key -> value`.
-- `MarkdownRenderUtil` — `String.renderMarkdown()`, escaping all HTML; `renderMarkdownText()` for plain text; Pandoc-style `[x]{.role}` spans and `![a](s){width=…}` images (issue #795), with `MarkdownHooks` for link resolution, role rendering, and where an image naming a client's file ref, `![a](ref:logo)`, is drawn from (`refAddress`, issue #1186 -- unresolved, it is its alt text; `String.imageRefIds()` lists the refs copy names). Frontend and backend render the same. It
+- `MarkdownRenderUtil` — `String.renderMarkdown()`, escaping all HTML; `renderMarkdownText()` for plain text; Pandoc-style `[x]{.role}` spans and `![a](s){width=…}` images (issue #795), with `MarkdownHooks` for link resolution, role rendering, and where an image naming a client's file ref, `![a](ref:logo)`, is drawn from (`refAddress`, issue #1186 -- unresolved, it is its alt text; `String.imageRefIds()` lists the refs copy names), and one
+a component ships, `![a](img:sample:diagram)` (`imageAddress`, issue #1339; `String.componentImageNames()`). Frontend and backend render the same. It
   takes an optional `resolveUrl: ((String) -> String)?` applied to each link target before the URL safety check
   (null = use links as written); a served **document** passes one so its repo-relative interior links resolve
   from inside the app. `String.analyzeMarkdown(hooks)` renders the same HTML and reports the document's structure

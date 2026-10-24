@@ -74,6 +74,9 @@ object BCHK {
     /** Whether the file store can serve every bucket a component declared (issue #1129). */
     const val fileStore = "fileStore"
 
+    /** The images components ship (issue #1339): each a readable image, declared once under its owner's root. */
+    const val images = "images"
+
     // Report field names, shared with the frontend so a console reads them from the same strings.
     const val name = "name"
     const val envVar = "envVar"

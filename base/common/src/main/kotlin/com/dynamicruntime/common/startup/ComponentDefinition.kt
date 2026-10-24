@@ -1,5 +1,6 @@
 package com.dynamicruntime.common.startup
 
+import com.dynamicruntime.common.content.ComponentImageDef
 import com.dynamicruntime.common.content.FragmentSource
 import com.dynamicruntime.common.content.MarkdownDocDef
 import com.dynamicruntime.common.context.DebugTagDef
@@ -147,6 +148,14 @@ interface ComponentDefinition : KdrProvider {
      * collected in component order, which is the order the Documents list shows them in.
      */
     fun docs(cxt: KdrCxt): List<MarkdownDocDef> = emptyList()
+
+    /**
+     * The images this component ships in its resources (issue #1339), each a rooted name (under [ownerRoot]) and the
+     * file it is read from under `component-images/` (`componentImage`). Copy names one as `![alt](img:<name>)`, and
+     * `ComponentImageService` checks and serves them. Declared for the reason [docs] are: the classpath is not
+     * enumerable, so what is declared is what is read, checked, and served.
+     */
+    fun images(cxt: KdrCxt): List<ComponentImageDef> = emptyList()
 
     /**
      * The `_debug` words this component reads (issue #1334), each declared once as a [DebugTagDef] beside the code

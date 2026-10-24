@@ -4,7 +4,9 @@ import com.dynamicruntime.common.context.ACFG
 import com.dynamicruntime.common.context.DebugTagDef
 import com.dynamicruntime.common.context.DebugTags
 import com.dynamicruntime.common.context.ENV
+import com.dynamicruntime.common.content.DeclaredComponentImage
 import com.dynamicruntime.common.content.FRAG
+import com.dynamicruntime.common.content.IMGS
 import com.dynamicruntime.common.content.FragmentSource
 import com.dynamicruntime.common.content.MDOC
 import com.dynamicruntime.common.content.MarkdownDocDef
@@ -145,6 +147,7 @@ object InstanceRegistry {
             val uiBlockSources = mutableListOf<UiBlockSource>()
             val docs = mutableListOf<MarkdownDocDef>()
             val debugTags = mutableListOf<DebugTagDef>()
+            val images = mutableListOf<DeclaredComponentImage>()
             for (component in loaded) {
                 // With the component in hand, so what it contributes is held to its owner root (issue #950).
                 collector.contributingAs(cxt, component) {
@@ -153,6 +156,8 @@ object InstanceRegistry {
                     uiBlockSources.addAll(component.uiBlocks(cxt))
                     docs.addAll(component.docs(cxt))
                     debugTags.addAll(component.debugTags(cxt))
+                    // With the owner root it is held to (issue #1339), checked when the images are read.
+                    component.images(cxt).mapTo(images) { DeclaredComponentImage(it, component.providerName, component.ownerRoot) }
                     // Same loop, so every config is present before any service binds -- which is what lets
                     // SchemaService compile them, and #301 assemble over them, with nothing left to arrive.
                     for (config in component.gedraConfigs(cxt)) {
@@ -191,6 +196,7 @@ object InstanceRegistry {
             config.put(UIB.registryKey, uiBlockSources.toList())
             config.put(MDOC.registryKey, checkedMarkdownDocs(docs))
             config.put(DebugTags.registryKey, DebugTags.of(debugTags))
+            config.put(IMGS.registryKey, images.toList())
 
             val startupEntries = mutableListOf<ServiceEntry>()
             val serviceEntries = mutableListOf<ServiceEntry>()
