@@ -5,7 +5,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 
 /**
- * Pure-logic coverage for [hashWrite] — whether a page's state change adds a history entry, rewrites the
+ * Pure-logic coverage for [routeWrite] — whether a page's state change adds a history entry, rewrites the
  * current one, or leaves history alone (issue #324). Two maps in, one verdict out: no browser, no history.
  *
  * The bug it closes is not a wrong URL — the URL was always right. It is that every write was a rewrite, so a
@@ -13,10 +13,10 @@ import kotlin.test.assertEquals
  * pushed entry was. What is under test is therefore the *distinction*: which changes are navigations and which
  * merely refine where you already are.
  *
- * Both pages that keep state in the hash are covered, because the rule is only as good as the `identity` each
+ * Both pages that keep state in the address are covered, because the rule is only as good as the `identity` each
  * one declares — the catalog's endpoint, the users page's open record.
  */
-class HashWriteTest {
+class RouteWriteTest {
 
     // --- the endpoint catalog: which endpoint is open, refined by what has been typed into it ---------
 
@@ -32,12 +32,12 @@ class HashWriteTest {
             values?.let { put(HP.values, it) }
         }
 
-    /** The hash already says what we would write, so history is not touched — not even to rewrite it. */
+    /** The address already says what we would write, so history is not touched — not even to rewrite it. */
     @Test
     fun writingWhatIsAlreadyThereDoesNothing() {
-        assertEquals(HashWrite.none, hashWrite(list, list, identity, true))
+        assertEquals(RouteWrite.none, routeWrite(list, list, identity, true))
         val ep = endpoint("GET", "/demo/file/list")
-        assertEquals(HashWrite.none, hashWrite(ep, ep, identity, true))
+        assertEquals(RouteWrite.none, routeWrite(ep, ep, identity, true))
     }
 
     /**
@@ -46,17 +46,17 @@ class HashWriteTest {
      */
     @Test
     fun openingAnEndpointIsANavigation() {
-        assertEquals(HashWrite.push, hashWrite(list, endpoint("GET", "/demo/file/list"), identity, true))
+        assertEquals(RouteWrite.push, routeWrite(list, endpoint("GET", "/demo/file/list"), identity, true))
     }
 
     /** And so is leaving one, whether for the list or for a different endpoint. */
     @Test
     fun leavingAnEndpointIsANavigationToo() {
         val ep = endpoint("GET", "/demo/file/list")
-        assertEquals(HashWrite.push, hashWrite(ep, list, identity, true))
-        assertEquals(HashWrite.push, hashWrite(ep, endpoint("POST", "/demo/file/upload"), identity, true))
+        assertEquals(RouteWrite.push, routeWrite(ep, list, identity, true))
+        assertEquals(RouteWrite.push, routeWrite(ep, endpoint("POST", "/demo/file/upload"), identity, true))
         // Same path, different method is still a different endpoint -- the catalog identifies them by both.
-        assertEquals(HashWrite.push, hashWrite(ep, endpoint("POST", "/demo/file/list"), identity, true))
+        assertEquals(RouteWrite.push, routeWrite(ep, endpoint("POST", "/demo/file/list"), identity, true))
     }
 
     /**
@@ -68,12 +68,12 @@ class HashWriteTest {
     fun enteringValuesRewritesTheCurrentEntry() {
         val ep = endpoint("GET", "/demo/file/list")
         assertEquals(
-            HashWrite.replace,
-            hashWrite(ep, endpoint("GET", "/demo/file/list", """{"a":1}"""), identity, true),
+            RouteWrite.replace,
+            routeWrite(ep, endpoint("GET", "/demo/file/list", """{"a":1}"""), identity, true),
         )
         assertEquals(
-            HashWrite.replace,
-            hashWrite(
+            RouteWrite.replace,
+            routeWrite(
                 endpoint("GET", "/demo/file/list", """{"a":1}"""),
                 endpoint("GET", "/demo/file/list", """{"a":12}"""),
                 identity,
@@ -82,42 +82,42 @@ class HashWriteTest {
         )
         // Clearing them is the same kind of change: still the same endpoint.
         assertEquals(
-            HashWrite.replace,
-            hashWrite(endpoint("GET", "/demo/file/list", """{"a":1}"""), ep, identity, true),
+            RouteWrite.replace,
+            routeWrite(endpoint("GET", "/demo/file/list", """{"a":1}"""), ep, identity, true),
         )
     }
 
     /**
-     * A hash naming an endpoint the catalog does not have is a URL to correct, not a place to leave.
+     * An address naming an endpoint the catalog does not have is a URL to correct, not a place to leave.
      *
      * This is the trap the rule falls into on its own: the page resolves an unknown endpoint to *nothing*
      * selected, so the identity differs and the plain rule would push — and landing back on that entry would
      * push again, leaving Back unable to get past it. Correcting it in place cannot loop.
      */
     @Test
-    fun aHashWeCannotHonourIsCorrectedInPlaceRatherThanLeft() {
-        assertEquals(HashWrite.replace, hashWrite(endpoint("GET", "/gone"), list, identity, false))
+    fun anAddressWeCannotHonorIsCorrectedInPlaceRatherThanLeft() {
+        assertEquals(RouteWrite.replace, routeWrite(endpoint("GET", "/gone"), list, identity, false))
     }
 
     /**
-     * Unreachable is about the hash we are leaving, never the one we are writing — and it does not make us
-     * rewrite a hash that already agrees with us, since there is nothing to correct.
+     * Unreachable is about the address we are leaving, never the one we are writing — and it does not make us
+     * rewrite an address that already agrees with us, since there is nothing to correct.
      */
     @Test
-    fun anUnreachableHashThatAlreadyAgreesIsStillLeftAlone() {
+    fun anUnreachableAddressThatAlreadyAgreesIsStillLeftAlone() {
         val gone = endpoint("GET", "/gone")
-        assertEquals(HashWrite.none, hashWrite(gone, gone, identity, false))
+        assertEquals(RouteWrite.none, routeWrite(gone, gone, identity, false))
     }
 
     /**
-     * Params the page does not write (a debug flag, say) make the maps differ, so the hash is rewritten —
+     * Params the page does not write (a debug flag, say) make the maps differ, so the address is rewritten —
      * which is what the previous code did unconditionally. It must not be read as a *navigation*, though:
      * losing a stray parameter is not somewhere Back should return to.
      */
     @Test
     fun anUnrelatedParamIsTidiedAwayWithoutEarningAnEntry() {
         val withExtra = endpoint("GET", "/demo/file/list") + ("fault" to "shell")
-        assertEquals(HashWrite.replace, hashWrite(withExtra, endpoint("GET", "/demo/file/list"), identity, true))
+        assertEquals(RouteWrite.replace, routeWrite(withExtra, endpoint("GET", "/demo/file/list"), identity, true))
     }
 
     // --- the users page: which record the editor is open on ------------------------------------------
@@ -135,23 +135,23 @@ class HashWriteTest {
      */
     @Test
     fun openingAndClosingTheUserEditorAreNavigations() {
-        assertEquals(HashWrite.push, hashWrite(userList, editorOn("42"), userIdentity, true))
-        assertEquals(HashWrite.push, hashWrite(editorOn("42"), userList, userIdentity, true))
-        assertEquals(HashWrite.push, hashWrite(editorOn("42"), editorOn("43"), userIdentity, true))
+        assertEquals(RouteWrite.push, routeWrite(userList, editorOn("42"), userIdentity, true))
+        assertEquals(RouteWrite.push, routeWrite(editorOn("42"), userList, userIdentity, true))
+        assertEquals(RouteWrite.push, routeWrite(editorOn("42"), editorOn("43"), userIdentity, true))
     }
 
     /** Creating is its own destination, and not the same one as editing whoever was open before. */
     @Test
     fun creatingAUserIsItsOwnDestination() {
-        assertEquals(HashWrite.push, hashWrite(userList, editorOn(HP.newRecord), userIdentity, true))
-        assertEquals(HashWrite.push, hashWrite(editorOn("42"), editorOn(HP.newRecord), userIdentity, true))
+        assertEquals(RouteWrite.push, routeWrite(userList, editorOn(HP.newRecord), userIdentity, true))
+        assertEquals(RouteWrite.push, routeWrite(editorOn("42"), editorOn(HP.newRecord), userIdentity, true))
     }
 
     /** Back onto an already-open record writes nothing at all, which is what leaves history traversable. */
     @Test
-    fun returningToTheRecordTheHashAlreadyNamesDoesNothing() {
-        assertEquals(HashWrite.none, hashWrite(editorOn("42"), editorOn("42"), userIdentity, true))
-        assertEquals(HashWrite.none, hashWrite(userList, userList, userIdentity, true))
+    fun returningToTheRecordTheAddressAlreadyNamesDoesNothing() {
+        assertEquals(RouteWrite.none, routeWrite(editorOn("42"), editorOn("42"), userIdentity, true))
+        assertEquals(RouteWrite.none, routeWrite(userList, userList, userIdentity, true))
     }
 
     /**
@@ -160,6 +160,6 @@ class HashWriteTest {
      */
     @Test
     fun aRecordWeCannotResolveIsCorrectedInPlace() {
-        assertEquals(HashWrite.replace, hashWrite(editorOn("999"), userList, userIdentity, false))
+        assertEquals(RouteWrite.replace, routeWrite(editorOn("999"), userList, userIdentity, false))
     }
 }

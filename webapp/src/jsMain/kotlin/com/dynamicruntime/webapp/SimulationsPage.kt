@@ -201,7 +201,7 @@ private val SimulationSignIns = FC<SimulationSignInsProps> { props ->
                         signInError = null
                         simulationsScope.launch {
                             when (val result = SimulationsApi.signInAs(user)) {
-                                is ApiResult.Ok -> afterSessionChange(bump, startPageHash(r.startPage))
+                                is ApiResult.Ok -> afterSessionChange(bump, startPageRoute(r.startPage))
                                 else -> signInError = result.failureOrNull()?.let { userFacingError(it) }
                             }
                         }

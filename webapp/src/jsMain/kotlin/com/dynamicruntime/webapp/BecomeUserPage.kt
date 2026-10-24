@@ -23,7 +23,7 @@ import web.cssom.ClassName
 /*
  * Becoming someone on a test instance (issue #1183): the deployment admin in one click, any user through the
  * `becomeUser` fixture's own form, and the identities this browser became before -- under Account in the menu, on the
- * Home page as a card, and on the `#page=becomeUser` page. Offered only to a caller with test access, for whom the
+ * Home page as a card, and on the `/wa/test/become-user` page. Offered only to a caller with test access, for whom the
  * fixture exists (issue #1149).
  */
 
@@ -76,7 +76,7 @@ val TestAccessCard = FC<Props> {
                 +"Become deployment admin"
             }
             a {
-                href = hashHref(listOf(HP.page to HMENU.pageBecomeUser))
+                href = routeHref(listOf(HP.page to HMENU.pageBecomeUser))
                 className = ClassName("back-link")
                 +"Become a user…"
             }
@@ -87,9 +87,9 @@ val TestAccessCard = FC<Props> {
 }
 
 /**
- * The `#page=becomeUser` page (issue #1183): the deployment admin in one click, the fixture's form -- drawn from the
- * endpoint's own schema, as the Simulations page draws each simulation's -- and the identities this browser
- * remembers, the ones from data since reset greyed with no button, since their users are gone.
+ * The `/wa/test/become-user` page (issue #1183): the deployment admin in one click, the fixture's form -- drawn
+ * from the endpoint's own schema, as the Simulations page draws each simulation's -- and the identities this
+ * browser remembers, the ones from data since reset greyed with no button, since their users are gone.
  */
 val BecomeUserPage = FC<Props> {
     val bump = useRefreshBump()

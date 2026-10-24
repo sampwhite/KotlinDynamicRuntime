@@ -76,7 +76,7 @@ external interface WorkflowFormProps : Props {
     var activeTask: String?
 
     /** Called when the user picks a task in the rail (issue #700); the page owns the choice, since it rides the
-     *  hash. Unset (with a single task) means no rail. */
+     *  address. Unset (with a single task) means no rail. */
     var onSelectTask: ((String) -> Unit)?
 
     /**
@@ -331,14 +331,14 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
         savingTask = task.id
         runError = null
         refreshError = null
-        // The hash this save was launched under (#758 review): a create returns to the listing only while the
+        // The address this save was launched under (#758 review): a create returns to the listing only while the
         // user is still on this page, and carries *this* listing context home -- not whatever page a slow
         // response finds them on.
-        val launched = hashParams()
+        val launched = routeParams()
         wfFormScope.launch {
             // Set when the create's return is under way: the page is about to unmount, so Save stays busy rather
-            // than coming back live for the tick before `hashchange` lands -- a second click there would make a
-            // second form. The sibling create pages skip the same reset for the same reason.
+            // than coming back live for the tick before the router hears of the move -- a second click there would
+            // make a second form. The sibling create pages skip the same reset for the same reason.
             var leaving = false
             try {
                 val outcome = WorkflowApi.save(body, props.client)
@@ -350,9 +350,9 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
                     // #758) -- the same return the trait-picker create makes (#663, #669), which this surface
                     // never got: it stopped on an in-place "Form created" page instead. A form whose survey still
                     // needs information says so on its row's status chip, which links into the survey editor.
-                    formsCreateReturn(launched, hashParams(), outcome.item[GDF.gedraId] as? String)?.let {
+                    formsCreateReturn(launched, routeParams(), outcome.item[GDF.gedraId] as? String)?.let {
                         leaving = true
-                        navigateHash(it)
+                        navigate(it)
                     }
                 } else {
                     justSaved = true
@@ -710,7 +710,7 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
                         // editor's Done makes. It is a navigation, so the leave guard the page armed on
                         // unsaved edits asks through the router (issue #716); nothing to ask here, and asking
                         // here too would prompt twice. A clean Done just leaves.
-                        onClick = { navigateHash(formsListingReturn(hashParams(), gedraId)) }
+                        onClick = { navigate(formsListingReturn(routeParams(), gedraId)) }
                         +"Done"
                     }
                 } else {

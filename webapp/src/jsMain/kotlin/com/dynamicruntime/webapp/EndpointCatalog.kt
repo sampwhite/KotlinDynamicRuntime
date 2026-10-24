@@ -73,8 +73,8 @@ val EndpointCatalog = FC<Props> {
     var runError by useState<DisplayError?>(null)
     var running by useState(false)
     var error by useState<DisplayError?>(null)
-    // True, once the initial URL-hash restore has run; until then the URL is not written back (so the
-    // mount-time sync effect can't clobber a hash we are about to read).
+    // True, once the initial URL restore has run; until then the URL is not written back (so the
+    // mount-time sync effect can't clobber an address we are about to read).
     var restored by useState(false)
 
     // The client selector (issue #394). A caller holding `allClients` can point the catalog at one client, so
@@ -95,7 +95,7 @@ val EndpointCatalog = FC<Props> {
     // The request-JSON textarea, so a parse failure can put the caret on the offending character.
     val rawRef = useRef<HTMLTextAreaElement>(null)
 
-    // The latest catalog, readable from the once-registered hashchange listener below (which would otherwise
+    // The latest catalog, readable from the once-registered route listener below (which would otherwise
     // close over the null catalog of the first render).
     val catalogRef = useRef<Catalog>(null)
     catalogRef.current = catalog
@@ -106,9 +106,9 @@ val EndpointCatalog = FC<Props> {
                 val fetched = SchemaCatalogApi.fetchCatalog()
                 catalog = fetched
                 error = null
-                // Restore the selected endpoint (and any entered values) from the URL hash, so a refresh or a
+                // Restore the selected endpoint (and any entered values) from the URL, so a refresh or a
                 // shared link lands back on the same endpoint with the same input.
-                readHash()?.let { hs ->
+                readRoute()?.let { hs ->
                     fetched.endpoints.firstOrNull { it.method == hs.method && it.path == hs.path }?.let { ep ->
                         selected = ep
                         values = hs.values
@@ -167,27 +167,27 @@ val EndpointCatalog = FC<Props> {
         }
     }
 
-    // Keep the URL hash in sync with the current selection and input values. Whether that reaches history as a
-    // new entry, a rewrite of the current one, or nothing at all is [hashWrite]'s decision -- a keystroke is
+    // Keep the URL in sync with the current selection and input values. Whether that reaches history as a
+    // new entry, a rewrite of the current one, or nothing at all is [routeWrite]'s decision -- a keystroke is
     // not a navigation, but opening an endpoint is, and before #324 both were replaceState and Back left the
-    // page. Gated on `restored` so it never overwrites the hash before it has been read.
+    // page. Gated on `restored` so it never overwrites the address before it has been read.
     useEffect(selected, values, restored, catalog) {
         if (restored) {
-            writeHash(selected, values, reachable(hashParams(), catalog))
+            writeRoute(selected, values, reachable(routeParams(), catalog))
         }
     }
 
-    // React to hash changes made from OUTSIDE this component -- the app-bar menu ("Endpoint catalog" drops the
-    // `m=`/`p=` params) and the back/forward buttons -- by re-deriving the selection from the hash. Neither
-    // replaceState nor pushState fires hashchange, so our own writes never re-enter here; and because the
-    // selection below is derived *from* the hash, the sync effect above then finds nothing to write.
+    // React to address changes made from OUTSIDE this component -- the app-bar menu ("Endpoint catalog" drops the
+    // `m=`/`p=` params) and the back/forward buttons -- by re-deriving the selection from the address. Neither
+    // replaceState nor pushState tells the route listeners, so our own writes never re-enter here; and because the
+    // selection below is derived *from* the address, the sync effect above then finds nothing to write.
     // The catalog is read through a ref because this listener is registered once and would otherwise capture
     // the (still null) catalog from the first render.
     useEffectOnce {
-        onHashChange {
+        onRouteChange {
             val loaded = catalogRef.current
             if (loaded != null) {
-                val target = readHash()
+                val target = readRoute()
                 selected = target?.let { hs ->
                     loaded.endpoints.firstOrNull { it.method == hs.method && it.path == hs.path }
                 }
@@ -367,7 +367,7 @@ val EndpointCatalog = FC<Props> {
          *
          * The pruning is the point. `values` can hold keys no form field represents -- an undeclared property
          * arrives that way when a pasted payload carries one -- and those are invisible in the form yet
-         * persist, into the URL hash and across a reload. Coercing with the default options drops them at every
+         * persist, into the URL and across a reload. Coercing with the default options drops them at every
          * level, which is what makes this direction honestly "the data filled out in the form fields".
          *
          * [validateOn]'s display pass deliberately does the opposite and keeps them, so the failure it reports
@@ -807,29 +807,29 @@ fun parseRawPayload(text: String, what: String = "request"): RawParse {
     return RawParse(parsed, null)
 }
 
-// --- URL-hash routing -------------------------------------------------------------------------------------
+// --- URL routing -------------------------------------------------------------------------------------
 // Within the catalog page, the selected endpoint (method + path) and the entered input values (as JSON) live
-// in the URL hash (under `page=catalog`), so a refresh or a shared link restores the same endpoint page and
-// the same input. Shared hash helpers live in HashRoute.kt.
+// in the URL (under `page=catalog`), so a refresh or a shared link restores the same endpoint page and
+// the same input. Shared address helpers live in Routing.kt.
 
-/** The endpoint identity and input values decoded from the URL hash. */
-private class HashState(val method: String, val path: String, val values: Map<String, Any?>)
+/** The endpoint identity and input values decoded from the URL. */
+private class RouteState(val method: String, val path: String, val values: Map<String, Any?>)
 
-/** Parses the current URL hash into a [HashState], or null when it names no endpoint. */
-private fun readHash(): HashState? {
-    val params = hashParams()
+/** Parses the current URL into a [RouteState], or null when it names no endpoint. */
+private fun readRoute(): RouteState? {
+    val params = routeParams()
     val method = params[HP.method] ?: return null
     val path = params[HP.path] ?: return null
     val values = params[HP.values]?.let { it.jsonMapOrNull() } ?: emptyMap()
-    return HashState(method, path, values)
+    return RouteState(method, path, values)
 }
 
 /**
- * Writes the current selection + input values into the URL hash. Stays on `page=catalog`; adds the endpoint
- * (and its values) when one is selected. [reachable] says whether the hash as it stands names somewhere this
- * page can actually show — see [hashWrite], which decides how the write reaches history.
+ * Writes the current selection + input values into the URL. Stays on `page=catalog`; adds the endpoint
+ * (and its values) when one is selected. [reachable] says whether the address as it stands names somewhere this
+ * page can actually show — see [routeWrite], which decides how the write reaches history.
  */
-private fun writeHash(endpoint: EndpointInfo?, values: Map<String, Any?>, reachable: Boolean) {
+private fun writeRoute(endpoint: EndpointInfo?, values: Map<String, Any?>, reachable: Boolean) {
     val params = mutableListOf(HP.page to HMENU.pageCatalog)
     if (endpoint != null) {
         params.add(HP.method to endpoint.method)
@@ -839,14 +839,14 @@ private fun writeHash(endpoint: EndpointInfo?, values: Map<String, Any?>, reacha
             params.add(HP.values to shareable.toJsonStr(compact = true))
         }
     }
-    applyHashWrite(params, endpointIdentity, reachable)
+    applyRouteWrite(params, endpointIdentity, reachable)
 }
 
 /** What identifies a catalog destination: which endpoint is open. The entered values refine it, never move it. */
 private val endpointIdentity = setOf(HP.method, HP.path)
 
 /**
- * Whether the hash [params] name a destination this page can show: the list, or an endpoint the catalog
+ * Whether the address [params] name a destination this page can show: the list, or an endpoint the catalog
  * actually has. A [catalog] not yet fetched can vouch for nothing, so it answers false — and with no catalog
  * there is nothing to navigate between either.
  */

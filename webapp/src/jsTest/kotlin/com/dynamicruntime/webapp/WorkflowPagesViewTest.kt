@@ -43,14 +43,14 @@ class WorkflowPagesViewTest {
         // The workflow's own listing page, not My forms filtered: the workflow and state are the page's identity.
         assertEquals(
             listOf(HP.page to pageWorkflowForms, WAGG.workflowId to "audit", WAGG.workflowState to "engaged"),
-            workflowDrillHash("audit", WfColumnCategory.engaged, client = null),
+            workflowDrillRoute("audit", WfColumnCategory.engaged, client = null),
         )
         // Across clients, the listing's client says whose workflow it is.
-        assertEquals("acme", workflowDrillHash("audit", WfColumnCategory.finished, "acme").toMap()[EI.client])
-        // The drill-down rides the hash as search parameters, not navigation, so the listing sends it on.
+        assertEquals("acme", workflowDrillRoute("audit", WfColumnCategory.finished, "acme").toMap()[EI.client])
+        // The drill-down rides the address as search parameters, not navigation, so the listing sends it on.
         assertEquals(
             mapOf(WAGG.workflowId to "audit", WAGG.workflowState to "engaged"),
-            formsSearchFromHash(workflowDrillHash("audit", WfColumnCategory.engaged, null).toMap()),
+            formsSearchFromRoute(workflowDrillRoute("audit", WfColumnCategory.engaged, null).toMap()),
         )
     }
 
@@ -96,11 +96,11 @@ class WorkflowPagesViewTest {
         // The workflow and state ride home as search keys, so the listing reopens on the same state.
         assertEquals("audit", home[WAGG.workflowId])
         assertEquals("engaged", home[WAGG.workflowState])
-        assertEquals(pageWorkflowForms, formsRawViewHash(fromWorkflow, "g1").toMap()[HP.page])
-        assertEquals(pageWorkflowForms, formsSurveyViewHash(fromWorkflow, "g1").toMap()[HP.from])
+        assertEquals(pageWorkflowForms, formsRawViewRoute(fromWorkflow, "g1").toMap()[HP.page])
+        assertEquals(pageWorkflowForms, formsSurveyViewRoute(fromWorkflow, "g1").toMap()[HP.from])
         // A workflow-column link on the workflow's listing says so, so the survey page's back link leads there.
-        assertEquals(pageWorkflowForms, workflowPageHash("g1", "audit", "t", edit = true, from = pageWorkflowForms).toMap()[HP.from])
-        assertEquals(HMENU.pageForms, workflowPageHash("g1", "audit", "t", edit = true).toMap()[HP.from])
+        assertEquals(pageWorkflowForms, workflowPageRoute("g1", "audit", "t", edit = true, from = pageWorkflowForms).toMap()[HP.from])
+        assertEquals(HMENU.pageForms, workflowPageRoute("g1", "audit", "t", edit = true).toMap()[HP.from])
         // Opened from My forms, or from an unknown page, home is My forms.
         assertEquals(HMENU.pageForms, formsListingOf(mapOf(HP.from to HMENU.pageForms)))
         assertEquals(HMENU.pageForms, formsListingOf(mapOf(HP.from to "users")))

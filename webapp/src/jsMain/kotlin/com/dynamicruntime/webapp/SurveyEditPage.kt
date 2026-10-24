@@ -29,7 +29,7 @@ private val surveyEditScope = MainScope()
 /**
  * The survey-driven Edit Form (issue #659) -- the **on-boarding** view: the caller's client's survey resolved
  * against a form, seeded from its current entries, showing the survey's *subset* of traits. Reached at
- * `#page=surveyEdit&g=<gedraId>` as the read-only "View Info" view with an Edit toggle, or with `edit=1`
+ * `/wa/forms/<gedraId>` as the read-only "View Info" view with an Edit toggle, or at `/wa/forms/<gedraId>/edit`
  * (issue #694, the forms-list status chip) already in edit mode. Its read-only view offers the **raw** editor
  * -- every trait, including ones set by API or by other workflows -- when the caller's surface carries the
  * patch endpoint. When the client has no survey (`found=false`) it says so rather than showing an empty form.
@@ -40,11 +40,11 @@ private val surveyEditScope = MainScope()
  * read-only.
  */
 val SurveyEditPage = FC<Props> {
-    var gedraId by useState(hashParams()[HP.gedra].orEmpty())
+    var gedraId by useState(routeParams()[HP.gedra].orEmpty())
     // The task the URL names (issue #700), or null to open on the earliest task needing action.
-    var requestedTask by useState(hashParams()[HP.task])
+    var requestedTask by useState(routeParams()[HP.task])
     // The normal workflow the URL names (issue #791), or null for the form's survey.
-    var workflowId by useState(hashParams()[HP.workflow])
+    var workflowId by useState(routeParams()[HP.workflow])
     // Bumped to reload the view in place -- after engaging, which changes what the view says.
     var reloads by useState(0)
     var engageError by useState<DisplayError?>(null)
@@ -80,20 +80,20 @@ val SurveyEditPage = FC<Props> {
         }
     }
 
-    // Keep the open id in step with the hash: App is the router, and a hash-only surveyEdit->surveyEdit move
+    // Keep the open id in step with the address: App is the router, and a surveyEdit->surveyEdit move
     // does not remount this page, so without this the first form would stay loaded under the new URL (mirrors
     // EditFormPage, issue #417).
     useEffectOnce {
-        onHashChange {
-            val h = hashParams()
-            // Only a hash that still names THIS page drives its state (the lesson FormsPage learned in #694, and
-            // what the leave guard depends on): a vetoed leave shows this listener the other page's hash for a
+        onRouteChange {
+            val h = routeParams()
+            // Only an address that still names THIS page drives its state (the lesson FormsPage learned in #694, and
+            // what the leave guard depends on): a vetoed leave shows this listener the other page's address for a
             // moment before the router puts the address back, and reading `g=` off it here would blank the form.
-            if (h[HP.page] != pageSurveyEdit) return@onHashChange
+            if (h[HP.page] != pageSurveyEdit) return@onRouteChange
             gedraId = h[HP.gedra].orEmpty()
             workflowId = h[HP.workflow]
-            // Back/forward between tasks (issue #700): the rail's own pushes fire no hashchange, so this only
-            // runs for history moves and hand-typed URLs, and the state simply follows the hash.
+            // Back/forward between tasks (issue #700): the rail's own pushes tell no route listener, so this only
+            // runs for history moves and hand-typed URLs, and the state simply follows the address.
             requestedTask = h[HP.task]
         }
     }
@@ -153,7 +153,7 @@ val SurveyEditPage = FC<Props> {
         val form = gedraId
         val wf = workflowId
         val fresh = apiResult { fetchFormView(form, wf, workflowClient) }.designRereadValue()
-        val h = hashParams()
+        val h = routeParams()
         if (fresh != null && h[HP.page] == pageSurveyEdit && h[HP.gedra] == form && h[HP.workflow] == wf) view = fresh
     }
     useDesignViewReread { reread() }
@@ -176,21 +176,21 @@ val SurveyEditPage = FC<Props> {
             formsBackToListing()
         }
         view != null -> {
-            // The raw editor (issue #694): forward the whole current hash -- the listing's `from`, filter and
+            // The raw editor (issue #694): forward the whole current address -- the listing's `from`, filter and
             // sort -- minus this page's own keys, so the raw edit's back link returns to the same list.
             val rawEdit: (() -> Unit)? = if (!rawEditAvailable) null else {
                 {
-                    val carried = hashParams().filterKeys { it != HP.page && it != HP.edit }.toList()
-                    navigateHash(listOf(HP.page to pageEditForm) + carried)
+                    val carried = routeParams().filterKeys { it != HP.page && it != HP.edit }.toList()
+                    navigate(listOf(HP.page to pageEditForm) + carried)
                 }
             }
             // The raw read-only view (issue #726): the listing with this form open in place, carrying the
             // listing's search and sort. Needs only the get the listing surface already has, so it is always
             // offered where the raw editor may not be.
-            val rawView: () -> Unit = { navigateHash(formsRawViewHash(hashParams(), gedraId)) }
+            val rawView: () -> Unit = { navigate(formsRawViewRoute(routeParams(), gedraId)) }
             engageError?.let { errorText("Couldn't put the form into this workflow.", it) }
             WorkflowForm {
-                // Keyed on the form (and the workflow), so a hash move to another form remounts with fresh edit
+                // Keyed on the form (and the workflow), so a move to another form remounts with fresh edit
                 // state and honours that URL's own edit flag, rather than carrying the previous form's mode across.
                 key = "$gedraId|${workflowId.orEmpty()}|$reloads".unsafeCast<Key>()
                 this.view = view!!
@@ -198,16 +198,16 @@ val SurveyEditPage = FC<Props> {
                 // The client whose copy of the save to post to -- where the view came from (issue #714).
                 this.client = workflowClient
                 // `edit=1` opens straight in edit mode (the forms-list chip); otherwise the read-only "View Info".
-                initialEditing = hashParams()[HP.edit] == "1"
+                initialEditing = routeParams()[HP.edit] == "1"
                 onRawEdit = rawEdit
                 onRawView = rawView
                 // The rail's task (issue #700): the URL's when it names one of the view's, else the view's earliest
                 // task needing action, else the first. Choosing a task is a move between destinations, so it
-                // pushes a history entry -- Back returns to the previous task -- without firing hashchange.
+                // pushes a history entry -- Back returns to the previous task -- without telling the route listeners.
                 activeTask = initialTaskFor(view!!, requestedTask)
                 val selectTask: (String) -> Unit = { id ->
                     requestedTask = id
-                    pushHash(hashParams().filterKeys { it != HP.task }.toList() + (HP.task to id))
+                    pushRoute(routeParams().filterKeys { it != HP.task }.toList() + (HP.task to id))
                 }
                 onSelectTask = { id ->
                     approveRefusal = null
@@ -239,11 +239,11 @@ val SurveyEditPage = FC<Props> {
                 refreshView = { taskId ->
                     surveyEditScope.promise {
                         val fresh = fetchFormView(refreshForm, refreshWorkflow, refreshClient)
-                        val h = hashParams()
+                        val h = routeParams()
                         if (h[HP.page] == pageSurveyEdit && h[HP.gedra] == refreshForm && h[HP.workflow] == refreshWorkflow) {
                             if (h[HP.task] == null) {
                                 requestedTask = taskId
-                                replaceHash(h.toList() + (HP.task to taskId))
+                                replaceRoute(h.toList() + (HP.task to taskId))
                             }
                             fresh?.let { view = it }
                         }

@@ -76,7 +76,7 @@ val Profile = FC<Props> {
                 }
                 // The config is login-required, so the overwhelmingly likely failure is "not logged in" -- and with
                 // no answer at all there is nothing here to show either.
-                else -> navigateHash(listOf("page" to "login"))
+                else -> navigate(listOf("page" to "login"))
             }
         }
     }
@@ -210,7 +210,7 @@ val Profile = FC<Props> {
 
     fun logout() = run {
         AuthApi.logout()
-        navigateHash(emptyList())
+        navigate(emptyList())
         bump()
     }
 

@@ -46,7 +46,7 @@ val CustomersPage = FC<Props> {
     // The endpoint's refusal (a 403 or 404), in its words.
     var refusal by useState<String?>(null)
     val generation = useRefreshGeneration()
-    val named = hashParams()[HP.customer]
+    val named = routeParams()[HP.customer]
 
     useEffect(generation, named) {
         customersScope.launch {

@@ -190,7 +190,7 @@ private fun assignLocation(url: String) {
 /**
  * A full-window navigation to [url], leaving this single-page app entirely (issue #486).
  *
- * A hash change re-routes *within* the app; this replaces the page. Env logout needs it: the destination is
+ * A [navigate] re-routes *within* the app; this replaces the page. Env logout needs it: the destination is
  * served by the edge rather than being a route within this app, so there is nothing to route to. The public
  * seam over the file-local [assignLocation], which the 401 redirect already uses.
  *

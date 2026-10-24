@@ -241,7 +241,7 @@ class ReportsPageTest {
     }
 
     @Test
-    fun thePagesLinksAndItsModeInTheHash() {
+    fun thePagesLinksAndItsModeInTheAddress() {
         assertEquals("/reports", reportsHref())
         assertEquals("/reports/audits", reportsHref(reportId = "audits"))
         assertEquals("/reports/audits?c=acme&view=grouped", reportsHref("acme", "audits", ReportMode.aggregate))

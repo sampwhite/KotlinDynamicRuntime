@@ -12,7 +12,7 @@ import web.cssom.ClassName
  *
  * Growing re-queries with the larger limit rather than splicing rows in by offset: one query is one consistent
  * snapshot of the current sort, so a form created or deleted between clicks never duplicates or skips a row, and the
- * page keeps one number -- how many rows are shown -- which rides the hash ([HP.shown]), so coming back from a form
+ * page keeps one number -- how many rows are shown -- which rides the address ([HP.shown]), so coming back from a form
  * asks for the same rows again.
  */
 
@@ -23,13 +23,13 @@ const val listingBatch = 100
 const val listingCap = 500
 
 /**
- * How many rows the hash asks a listing to show: [value] as a whole number, held to [listingBatch]..[listingCap];
+ * How many rows the address asks a listing to show: [value] as a whole number, held to [listingBatch]..[listingCap];
  * absent, unreadable, or out of range reads as the nearest bound. Pure, covered under `jsNodeTest`.
  */
-fun shownFromHash(value: String?): Int = (value?.trim()?.toIntOrNull() ?: listingBatch).coerceIn(listingBatch, listingCap)
+fun shownFromRoute(value: String?): Int = (value?.trim()?.toIntOrNull() ?: listingBatch).coerceIn(listingBatch, listingCap)
 
-/** The hash pair for [shown] rows: nothing for the first batch, so an untouched listing's address stays bare. Pure. */
-fun shownHashParams(shown: Int): List<Pair<String, String>> =
+/** The route pair for [shown] rows: nothing for the first batch, so an untouched listing's address stays bare. Pure. */
+fun shownRouteParams(shown: Int): List<Pair<String, String>> =
     if (shown <= listingBatch) emptyList() else listOf(HP.shown to shown.toString())
 
 /** What a growing listing offers next: the count "Show more" would grow to, and the count "Show all" would, each null when not offered. */

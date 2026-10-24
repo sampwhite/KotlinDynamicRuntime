@@ -6,33 +6,34 @@ import com.dynamicruntime.common.home.HMENU
 /**
  * The app's URL routing (issue #1125). Where you are is the **path** (`/wa/forms/<id>/edit`), refinements of where
  * you are are the **query** (`?task=…`), and the **fragment** is left to in-page anchors and one-time secrets (an
- * invitation's token). Every read and write of the URL goes through the functions here, which still speak the
- * params map the app was written against when its state lived in the hash: [hashParams] answers the same map for a
- * path that it answered for a hash, so the pages did not change. The names are kept for now; issue #1371 renames
- * them. One table, `routes`, maps page names to paths both ways.
+ * invitation's token). Every read and write of the URL goes through the functions here, which speak a params map:
+ * [routeParams] reads the address as one, and the writers take one, so a page names where it is (`page`, `g`, `task`)
+ * and never spells a path. One table, `routes`, maps page names to paths both ways; the app routed on the fragment
+ * until issue #1125, and these functions kept the map those pages were written against.
  *
  * Three ways to write it, and the difference is what the Back button does afterwards:
  *
- * - [navigateHash] adds a history entry **and tells the router**, which is how cross-page navigation (home ⇄
+ * - [navigate] adds a history entry **and tells the router**, which is how cross-page navigation (home ⇄
  *   catalog) reaches the [App] router.
- * - [pushHash] adds a history entry without telling anyone -- for a component navigating *within* a page it
+ * - [pushRoute] adds a history entry without telling anyone -- for a component navigating *within* a page it
  *   already owns, where nothing needs telling because the component is the one that moved.
- * - [replaceHash] rewrites the current entry, also without telling anyone -- for state that refines where you are
+ * - [replaceRoute] rewrites the current entry, also without telling anyone -- for state that refines where you are
  *   rather than moving you (text typed into a form).
  *
  * That neither `pushState` nor `replaceState` fires an event is the load-bearing part: it is what lets a component
  * keep the URL in step with its own state without its own handler re-entering on it. Choosing between the last two
- * is the writer's decision -- see `EndpointCatalog`'s `hashWrite`, and #324 for what a page that only ever replaced
+ * is the writer's decision -- see `EndpointCatalog`'s `routeWrite`, and #324 for what a page that only ever replaced
  * cost its Back button.
  *
  * The app's own links are real `href`s, which a crawler follows and a ctrl-click opens in a new tab; one click
- * handler turns a plain click on one into a [navigateHash] (see `followAppLink`). An address from before
+ * handler turns a plain click on one into a [navigate] (see `followAppLink`). An address from before
  * (`/wa#page=docs&doc=x`) is rewritten to its path when the app loads and whenever such a fragment is followed, so
- * bookmarks, mailed links and `#page=` links in a client's stored copy keep working.
+ * bookmarks, mailed links and `#page=` links in a client's stored copy keep working. So is an address that names its
+ * page in the query (`/wa/?page=newForm`), the form the backend writes a page in, since it does not know the paths.
  */
 
 /**
- * The hash's parameter names — the app's client-side routing vocabulary, shared by everything that reads or
+ * The route parameter names — the app's client-side routing vocabulary, shared by everything that reads or
  * writes the URL. They live here rather than beside either reader because they are genuinely shared: [App]
  * routes on [page] and treats a bare [method] as a catalog deep-link, while `EndpointCatalog` writes all four,
  * and the two agreeing is what makes a pasted link land where it says.
@@ -61,9 +62,9 @@ object HP {
      * One slot rather than two, because "which record is open" is one question and a page cannot be editing
      * someone *and* creating someone. A user id is numeric, so the sentinel cannot collide with one.
      *
-     * The draft fields deliberately stay out of the hash, unlike the catalog's [values]: those are someone's
+     * The draft fields deliberately stay out of the address, unlike the catalog's [values]: those are someone's
      * unsaved edits to another person's account, and a URL that carries them is a link that pre-fills an admin
-     * form. What the hash says is which user you have open, not what you were about to do to them.
+     * form. What the address says is which user you have open, not what you were about to do to them.
      */
     const val user = "u"
 
@@ -98,7 +99,7 @@ object HP {
     /**
      * Forms page: the gedra id of a form to **highlight** briefly in the list (issue #592) -- how a save
      * hands the just-edited form back to the listing. Transient: read once on arrival and dropped from the
-     * hash by the page's own hash-write, so a reload does not re-flash it and the URL stays clean to share.
+     * address by the page's own address-write, so a reload does not re-flash it and the URL stays clean to share.
      */
     const val highlight = "hl"
 
@@ -107,7 +108,7 @@ object HP {
      * than edited (issue #758), so the listing's note for a row that is not on screen can say the form was
      * created -- the confirmation a create must never lose. Transient, exactly as [highlight] is.
      *
-     * Spelled `hlc`, not `created` (#758 review): every forms hash key that is not a navigation key is read as a
+     * Spelled `hlc`, not `created` (#758 review): every forms address key that is not a navigation key is read as a
      * search parameter, and a client's string usage mints one named for its **trait id** -- a trait called
      * `created` is a plausible one, and its filter would have been stripped on every round-trip.
      */
@@ -138,7 +139,7 @@ object HP {
     /**
      * Reports page (issue #1007): the report that is open, and how it is shown -- `grouped` or `detail`; absent, the
      * report opens the way it declares. The client whose reports these are rides as [client], as on the Clients page.
-     * Not `m`: that is the catalog's, and a hash carrying it is routed there. The names are the kernel's
+     * Not `m`: that is the catalog's, and an address carrying it is routed there. The names are the kernel's
      * (`HMENU`), since a simulation's start page is built with them on the server (issue #1036).
      */
     const val report = HMENU.reportParam
@@ -157,16 +158,16 @@ object HP {
      */
     const val from = "from"
 
-    // The Users page's *search* (filters, range, sort) is also kept in the hash so a search is shareable, a
+    // The Users page's *search* (filters, range, sort) is also kept in the address so a search is shareable, a
     // pasted link reproduces it, and Back/Forward step through it (issue #411). It has no constants here on
     // purpose: those keys ARE the endpoint's own arg names (`email`, `updatedAfter`, `sortBy`, … from `USF`),
-    // so the hash and the wire carry the same keys and one spec-driven encoding serves both. Unlike the
+    // so the address and the wire carry the same keys and one spec-driven encoding serves both. Unlike the
     // catalog's [values] and the editor draft (deliberately *out* of the URL), the search carries no unsaved
     // edits to anyone's account -- it says what you searched for, which is the thing worth sending someone.
 }
 
 /**
- * The page a path no route matches is shown as (issue #1125): [hashParams] answers it for such a path, and the
+ * The page a path no route matches is shown as (issue #1125): [routeParams] answers it for such a path, and the
  * router shows `NotFoundPage`, which tells a crawler not to index the address.
  */
 const val pageNotFound = "notFound"
@@ -281,7 +282,7 @@ private fun splitParams(raw: String): LinkedHashMap<String, String> {
 }
 
 /**
- * The params an address within the app says (issue #1125), as [hashParams] has always answered them: the page and
+ * The params an address within the app says (issue #1125), as [routeParams] has always answered them: the page and
  * its identity from [path] (relative to the app root, `/forms/<id>/edit`, or empty for home), refinements from
  * [query], and from [fragment] a one-time secret, or the route's anchor -- both without their `?` or `#`. A path no
  * route matches is [pageNotFound]. Pure, so the table is covered under `jsNodeTest`.
@@ -344,7 +345,7 @@ private fun routeUrlOf(params: List<Pair<String, String>>): Triple<String, Strin
 private fun encodePathSegment(value: String): String = encodeUriComponent(value).replace("%3A", ":").replace("%40", "@")
 
 /** The current address parsed into params -- see [routeParamsOf] for how. */
-fun hashParams(): Map<String, String> = paramsOfUrl(locationUrl())
+fun routeParams(): Map<String, String> = paramsOfUrl(locationUrl())
 
 /** The params of [url], an address on this origin (path, query and fragment); outside the app root it is not found. */
 private fun paramsOfUrl(url: String): Map<String, String> {
@@ -375,27 +376,27 @@ private fun isAppPath(path: String): Boolean {
  * Replaces the address from [params] via `history.replaceState` (no new history entry, and the router is not told);
  * empty [params] is home. Used to keep the URL in sync with in-page state.
  */
-fun replaceHash(params: List<Pair<String, String>>) {
-    replaceUrl(hashHref(params))
+fun replaceRoute(params: List<Pair<String, String>>) {
+    replaceUrl(routeHref(params))
 }
 
 /**
  * Pushes the address from [params] via `history.pushState` -- a new history entry, so the Back button returns to
- * where the caller was (issue #324). Like [replaceHash] and unlike [navigateHash], it does **not** tell the router:
+ * where the caller was (issue #324). Like [replaceRoute] and unlike [navigate], it does **not** tell the router:
  * that is what lets a component push its own navigation without its own handler re-entering on it.
  *
- * Use it for a move between destinations, and [replaceHash] for state that merely refines the current one.
+ * Use it for a move between destinations, and [replaceRoute] for state that merely refines the current one.
  */
-fun pushHash(params: List<Pair<String, String>>) {
-    pushUrl(hashHref(params))
+fun pushRoute(params: List<Pair<String, String>>) {
+    pushUrl(routeHref(params))
 }
 
 /**
  * The three ways a component's state can reach the URL: leave history alone, rewrite the current entry
- * ([replaceHash]), or add one ([pushHash]). [hashWrite] decides.
+ * ([replaceRoute]), or add one ([pushRoute]). [routeWrite] decides.
  */
 @Suppress("EnumEntryName")
-enum class HashWrite { none, replace, push }
+enum class RouteWrite { none, replace, push }
 
 /**
  * How writing [next] over the address [current] should reach browser history (issue #324).
@@ -411,50 +412,50 @@ enum class HashWrite { none, replace, push }
  * page's open record. Everything else is refinement. The decision reads the URL rather than any record of what
  * the component did last, which is what makes the back/forward case fall out for free:
  *
- * - **[HashWrite.none]** when the address already says what we would write. That is precisely a write provoked
+ * - **[RouteWrite.none]** when the address already says what we would write. That is precisely a write provoked
  *   *by* Back — the page derives its state from the address, so it recomputes what is already there, and history
  *   must not be touched at all.
- * - **[HashWrite.push]** when an [identity] param differs: a move between destinations.
- * - **[HashWrite.replace]** otherwise: same destination, refined.
+ * - **[RouteWrite.push]** when an [identity] param differs: a move between destinations.
+ * - **[RouteWrite.replace]** otherwise: same destination, refined.
  *
  * [currentReachable] is false when the address names something the page cannot show — an endpoint no longer in
  * the catalog, a user not among the loaded rows. The page resolves that to *nothing selected*, so the identity
  * differs and the rule above would push; landing back on that entry would push again, and Back could never get
- * past it. A URL we cannot honour is one to correct in place, not a place to leave.
+ * past it. A URL we cannot honor is one to correct in place, not a place to leave.
  */
-fun hashWrite(
+fun routeWrite(
     current: Map<String, String>,
     next: Map<String, String>,
     identity: Set<String>,
     currentReachable: Boolean,
-): HashWrite = when {
-    current == next -> HashWrite.none
-    !currentReachable -> HashWrite.replace
-    identity.any { current[it] != next[it] } -> HashWrite.push
-    else -> HashWrite.replace
+): RouteWrite = when {
+    current == next -> RouteWrite.none
+    !currentReachable -> RouteWrite.replace
+    identity.any { current[it] != next[it] } -> RouteWrite.push
+    else -> RouteWrite.replace
 }
 
 /**
- * Writes [params] the way [hashWrite] says to, given the page's [identity] params and [currentReachable]. [params]
+ * Writes [params] the way [routeWrite] says to, given the page's [identity] params and [currentReachable]. [params]
  * are compared as the address would read them back, so a page that leaves out what its path implies (the catalog's
  * `page`, say) is not taken to have moved.
  */
-fun applyHashWrite(params: List<Pair<String, String>>, identity: Set<String>, currentReachable: Boolean) {
-    val href = hashHref(params)
-    when (hashWrite(hashParams(), paramsOfUrl(href), identity, currentReachable)) {
-        HashWrite.none -> {}
-        HashWrite.replace -> replaceUrl(href)
-        HashWrite.push -> pushUrl(href)
+fun applyRouteWrite(params: List<Pair<String, String>>, identity: Set<String>, currentReachable: Boolean) {
+    val href = routeHref(params)
+    when (routeWrite(routeParams(), paramsOfUrl(href), identity, currentReachable)) {
+        RouteWrite.none -> {}
+        RouteWrite.replace -> replaceUrl(href)
+        RouteWrite.push -> pushUrl(href)
     }
 }
 
 /**
  * The address for [params] -- `/wa/forms/<id>/edit?task=…`, or the app root for none -- for an `<a href>` that
  * navigates within the app: a plain click is followed without a reload (see `followAppLink`), and a ctrl-click
- * opens it in a new tab. Built by the same table [hashParams] reads, so a link built here and the state read back
+ * opens it in a new tab. Built by the same table [routeParams] reads, so a link built here and the state read back
  * cannot drift.
  */
-fun hashHref(params: List<Pair<String, String>>): String {
+fun routeHref(params: List<Pair<String, String>>): String {
     val (path, query, fragment) = routeUrlOf(params)
     return (appRootPrefix() + path).ifEmpty { "/" } +
         (if (query.isEmpty()) "" else "?$query") + (if (fragment.isEmpty()) "" else "#$fragment")
@@ -469,12 +470,26 @@ fun legacyHashUrl(fragment: String): String? {
     if (params.keys.none { it in legacyRouteKeys }) {
         return null
     }
-    return hashHref(params.toList())
+    return routeHref(params.toList())
+}
+
+/**
+ * The path form of home's address naming its page in the [query] (`?page=newForm&from=forms` is
+ * `/wa/forms/new?from=forms`), keeping the [fragment]'s secret; null when [path] is not home, the query names no page,
+ * or the page has no path of its own. Each part is given without its `?` or `#`. It shows the page either way; this
+ * only puts its path in the address bar.
+ */
+fun pageQueryUrl(path: String, query: String, fragment: String): String? {
+    if (path.any { it != '/' } || HP.page !in splitParams(query)) {
+        return null
+    }
+    val params = routeParamsOf(path, query, fragment).toList()
+    return if (routeUrlOf(params).first.isEmpty()) null else routeHref(params)
 }
 
 /**
  * Registers [handler] for a move made from OUTSIDE the calling component (an app-bar menu link, the back/forward
- * buttons, a link followed, the address bar). Neither [replaceHash] nor [pushHash] triggers it, so a component's
+ * buttons, a link followed, the address bar). Neither [replaceRoute] nor [pushRoute] triggers it, so a component's
  * own in-page state sync never re-enters its own handler.
  *
  * **Nothing removes the listener**, and with several pages registering one that is worth stating rather than
@@ -485,25 +500,25 @@ fun legacyHashUrl(fragment: String): String? {
  * cleanup is therefore a `try`/`finally` around `awaitCancellation` -- the idiom `useIdleBump` already uses.
  * Recorded in `docs/development/deferred-work.md`.
  */
-fun onHashChange(handler: () -> Unit) {
-    ensureHashDispatcher()
-    pageHashHandlers.add(handler)
+fun onRouteChange(handler: () -> Unit) {
+    ensureRouteDispatcher()
+    pageHandlers.add(handler)
 }
 
 /**
- * The router's hook (issue #700): like [onHashChange], but handed the address the move was **from**, so a vetoed
+ * The router's hook (issue #700): like [onRouteChange], but handed the address the move was **from**, so a vetoed
  * move can be put back exactly -- whatever the move was (a click, Back, a typed URL) -- rather than guessed from
- * recorded state. Runs **before every page's handler**, by construction (see [ensureHashDispatcher]), which is what
+ * recorded state. Runs **before every page's handler**, by construction (see [ensureRouteDispatcher]), which is what
  * a leave veto depends on.
  */
-fun onHashChangeFrom(handler: (oldUrl: String) -> Unit) {
-    ensureHashDispatcher()
-    routerHashHandlers.add(handler)
+fun onRouteChangeFrom(handler: (oldUrl: String) -> Unit) {
+    ensureRouteDispatcher()
+    routerHandlers.add(handler)
 }
 
-private val routerHashHandlers = mutableListOf<(String) -> Unit>()
-private val pageHashHandlers = mutableListOf<() -> Unit>()
-private var hashDispatcherInstalled = false
+private val routerHandlers = mutableListOf<(String) -> Unit>()
+private val pageHandlers = mutableListOf<() -> Unit>()
+private var dispatcherInstalled = false
 
 /**
  * The address the router last saw: what a move is a move *from*. `hashchange` said so (`oldURL`); `popstate` does
@@ -527,9 +542,9 @@ private var lastUrl = ""
  *
  * (Registering the router's listener in the capture phase was tried first and was not enough here.)
  */
-private fun ensureHashDispatcher() {
-    if (hashDispatcherInstalled) return
-    hashDispatcherInstalled = true
+private fun ensureRouteDispatcher() {
+    if (dispatcherInstalled) return
+    dispatcherInstalled = true
     lastUrl = locationUrl()
     val dispatcher: (dynamic) -> Unit = { addressChanged() }
     js("window.addEventListener('popstate', dispatcher)")
@@ -537,31 +552,44 @@ private fun ensureHashDispatcher() {
 }
 
 /**
- * The browser moved the address (Back, Forward, a fragment followed). An address from before paths is rewritten to
- * its path first, so a `#page=` link followed lands where it says; a move that changes no param -- a jump to an
- * anchor, or the `hashchange` that follows the `popstate` of one move -- tells nobody, as a hash router was never
- * told of an in-page jump either.
+ * The browser moved the address (Back, Forward, a fragment followed). An address the app does not write is
+ * rewritten to its path first (see [rewriteToPath]), so a `#page=` link followed lands where it says; a move that
+ * changes no param -- a jump to an anchor, or the `hashchange` that follows the `popstate` of one move -- tells
+ * nobody, as a hash router was never told of an in-page jump either.
  */
 private fun addressChanged() {
-    legacyHashUrl(rawHash().removePrefix("#"))?.let { historyReplace(it) }
-    if (paramsOfUrl(lastUrl) == hashParams()) {
+    rewriteToPath()
+    if (paramsOfUrl(lastUrl) == routeParams()) {
         lastUrl = locationUrl()
         return
     }
     tellMove(lastUrl)
 }
 
+/**
+ * Puts the path in the address bar for an address the router reads but never writes -- one from before paths
+ * ([legacyHashUrl]), or home naming its page in the query ([pageQueryUrl]) -- rewriting the entry in place.
+ */
+private fun rewriteToPath() {
+    val url = locationUrl()
+    val fragment = url.substringAfter('#', "")
+    val beforeFragment = url.substringBefore('#')
+    val path = appPathOf(beforeFragment.substringBefore('?')) ?: return
+    val rewritten = legacyHashUrl(fragment) ?: pageQueryUrl(path, beforeFragment.substringAfter('?', ""), fragment)
+    rewritten?.let { historyReplace(it) }
+}
+
 /** Tells the router, then every page, that the address moved from [oldUrl]. */
 private fun tellMove(oldUrl: String) {
-    for (h in routerHashHandlers.toList()) h(oldUrl)
-    for (h in pageHashHandlers.toList()) h()
+    for (h in routerHandlers.toList()) h(oldUrl)
+    for (h in pageHandlers.toList()) h()
     lastUrl = locationUrl()
 }
 
 /**
- * Installs routing before the app first renders (issue #1125): an address from before paths is rewritten to its
- * path, so the first render reads the page it names, and the router's listener and the click handler for the app's
- * own links go in.
+ * Installs routing before the app first renders (issue #1125): an address the app does not write is rewritten to
+ * its path ([rewriteToPath]), so the first render reads the page it names, and the router's listener and the click
+ * handler for the app's own links go in.
  *
  * The click handler listens on React's root [container] as well as on the document, and the first is the one that
  * matters. A React handler's `stopPropagation` -- the forms table's cells use it, so a link in a row does not also
@@ -572,8 +600,8 @@ private fun tellMove(oldUrl: String) {
  * root's has already called `preventDefault`, which the document's then sees.
  */
 fun installRouting(container: dynamic) {
-    legacyHashUrl(rawHash().removePrefix("#"))?.let { historyReplace(it) }
-    ensureHashDispatcher()
+    rewriteToPath()
+    ensureRouteDispatcher()
     val onClick: (dynamic) -> Unit = { e -> followAppLink(e) }
     container.addEventListener("click", onClick)
     js("document.addEventListener('click', onClick)")
@@ -581,7 +609,7 @@ fun installRouting(container: dynamic) {
 
 /**
  * The click handler for the app's own links (issue #1125): a plain click on a link to one of the app's pages
- * becomes a [navigateHash] -- no reload -- and anything else is left to the browser. Left alone: a click with a
+ * becomes a [navigate] -- no reload -- and anything else is left to the browser. Left alone: a click with a
  * modifier or another button (a new tab or window), a link with a `target` or `download`, one to another origin or
  * outside the app's pages (an API download, an unknown path, which then loads as not found), a bare `#anchor`
  * (in-page; a `#page=` one is rewritten when followed), and a link to this very page with a fragment (an anchor on
@@ -604,9 +632,9 @@ private fun followAppLink(e: dynamic) {
     val path = appPathOf(pathname) ?: return
     if (!isAppPath(path)) return
     val url = pathname + (link.search as String) + (link.hash as String)
-    if ((link.hash as String).isNotEmpty() && paramsOfUrl(url) == hashParams()) return
+    if ((link.hash as String).isNotEmpty() && paramsOfUrl(url) == routeParams()) return
     e.preventDefault()
-    navigateTo(url)
+    navigateToUrl(url)
 }
 
 /** Puts the address bar back to [url] via `history.replaceState`: no history entry, and nobody is told. */
@@ -629,7 +657,7 @@ fun restoreUrl(url: String) {
  * Arming also sets `onbeforeunload`, so a reload, a closed tab or a typed address get the browser's own
  * "leave site?" prompt -- the one exit the app cannot see. A permitted in-app leave clears both.
  *
- * **A known limit.** A move the app makes ([navigateHash], a link followed) is asked before anything is written, so
+ * **A known limit.** A move the app makes ([navigate], a link followed) is asked before anything is written, so
  * a "stay" leaves history as it was. A move the browser made -- Back, Forward -- has already moved the history
  * pointer by the time anyone hears of it (`popstate` cannot be cancelled), so a veto puts the address back with
  * `replaceState` on the entry Back had moved to, and that entry now reads as this page: the page before it is gone
@@ -640,7 +668,7 @@ object LeaveGuard {
     private var check: (() -> Boolean)? = null
 
     /**
-     * Arms the guard: [stays] says whether an address (as [hashParams] reads it) still belongs to the armed work;
+     * Arms the guard: [stays] says whether an address (as [routeParams] reads it) still belongs to the armed work;
      * [check] answers true to allow a leave, false to stay.
      */
     fun arm(stays: (Map<String, String>) -> Boolean, check: () -> Boolean) {
@@ -677,31 +705,30 @@ object LeaveGuard {
 }
 
 /**
- * Navigates to the address for [params] -- unlike [replaceHash], this **does** tell the router, so the [App]
+ * Navigates to the address for [params] -- unlike [replaceRoute], this **does** tell the router, so the [App]
  * router switches pages and the [AppBar] re-reads its auth state. Empty [params] is home.
  *
  * An address that says what this one already does moves nothing and tells nobody, as setting a hash to itself
  * never fired `hashchange` -- which is why a menu item for the page on screen has its own revisit signal.
  */
-fun navigateHash(params: List<Pair<String, String>>) {
-    navigateTo(hashHref(params))
+fun navigate(params: List<Pair<String, String>>) {
+    navigateToUrl(routeHref(params))
 }
 
 /**
  * Moves to [url] (path, query and fragment): asks the leave guard first, so a "stay" writes nothing, then pushes the
  * entry and tells the router and the pages, as `hashchange` once did.
  */
-private fun navigateTo(url: String) {
-    ensureHashDispatcher()
+private fun navigateToUrl(url: String) {
+    ensureRouteDispatcher()
     val next = paramsOfUrl(url)
-    if (next == hashParams()) return
+    if (next == routeParams()) return
     if (LeaveGuard.vetoesMove(next)) return
     val from = locationUrl()
     pushUrl(url)
     tellMove(from)
 }
 
-private fun rawHash(): String = js("window.location.hash") as String
 private fun locationUrl(): String = js("window.location.pathname + window.location.search + window.location.hash") as String
 
 /** Rewrites the current entry, keeping [lastUrl] in step: the address is where the app now is. */

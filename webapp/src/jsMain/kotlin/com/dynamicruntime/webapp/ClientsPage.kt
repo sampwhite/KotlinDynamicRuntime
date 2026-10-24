@@ -84,14 +84,14 @@ val ClientsPage = FC<Props> {
     // A copy edit that went live bumps the generation (issue #918): this page re-reads the client, and the shell
     // re-reads its config and copy, so a changed wordmark shows in the app bar without a reload.
     val bump = useRefreshBump()
-    // The open client's detail (issue #906): read on its own, keyed on the id the hash names -- or, for an
+    // The open client's detail (issue #906): read on its own, keyed on the id the address names -- or, for an
     // administrator of one client, that client, with none named (issue #1082). [inPlace] says the open client is the
     // one this page shows with nothing named, so there is no listing behind it to go back to.
     val caller = config
-    fun openFor(hashClient: String?) = clientsOpenId(
-        hashClient, caller?.canManageUsers == true, caller?.canSeeAllClients == true, caller?.user?.client.orEmpty(),
+    fun openFor(routeClient: String?) = clientsOpenId(
+        routeClient, caller?.canManageUsers == true, caller?.canSeeAllClients == true, caller?.user?.client.orEmpty(),
     )
-    val openId = openFor(hashParams()[HP.client])
+    val openId = openFor(routeParams()[HP.client])
     val inPlace = clientOpenInPlace(
         openId, caller?.canManageUsers == true, caller?.canSeeAllClients == true, caller?.user?.client.orEmpty(),
     )
@@ -108,7 +108,7 @@ val ClientsPage = FC<Props> {
     var overridesRefused by useState(false)
     // The overrides of every listed client (issue #917), for the cross-client view: read once the listing has
     // answered, one retrieve per client, keyed on the rows so a refresh re-reads them.
-    val acrossView = hashParams().containsKey(HP.overrides)
+    val acrossView = routeParams().containsKey(HP.overrides)
     var acrossRows by useState<List<Pair<String, ClientOverridesView>>?>(null)
     var acrossError by useState<DisplayError?>(null)
     // Monotonic token, so a slow answer for a client the user has moved on from is dropped rather than shown; and
@@ -283,7 +283,7 @@ private fun ChildrenBuilder.clientDetail(
         className = ClassName("card wide")
         // No way back to a listing that would only open this page again; a listing the page was opened *from*
         // is still somewhere to go back to.
-        if (clientBackOffered(inPlace, hashParams()[HP.from])) backToListing(HMENU.pageClients)
+        if (clientBackOffered(inPlace, routeParams()[HP.from])) backToListing(HMENU.pageClients)
         h1 { +clientLabel(clientId, row?.name ?: def?.info?.get(CLD.name).toOptStr().orEmpty()) }
         for ((label, value) in clientSummaryRows(clientId, row, def, acrossClients)) {
             // The counts lead to the listings behind them, as they do in the Clients listing -- which the caller

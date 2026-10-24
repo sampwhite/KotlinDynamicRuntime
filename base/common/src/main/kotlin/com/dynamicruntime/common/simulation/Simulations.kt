@@ -52,7 +52,7 @@ class SimulationUser(
 
 /**
  * What a simulation did (issue #997): the [clients] it provisioned or added to, the [users] to sign in as, the
- * [startPage] to open (a page hash, e.g. `page=newForm`), and a one-line [summary]. The same shape for every
+ * [startPage] to open (its route params, e.g. `page=newForm`), and a one-line [summary]. The same shape for every
  * simulation, so the Simulations page can turn any report into "sign in as … and open …".
  */
 class SimulationReport(
@@ -217,7 +217,11 @@ private fun defineSimulationReportTypes(builder: SchModuleBuilder) {
             type = SCT.array
             items { ref(SIM.userType) }
         }
-        property(SIM.startPage, "The page to open after signing in, as a page hash (e.g. page=newForm).")
+        property(
+            SIM.startPage,
+            "The page to open after signing in, as its route params (e.g. page=newForm&from=forms): the page by name, " +
+                "as a menu item names one, for the web app to turn into its path.",
+        )
         property(SIM.summary, "One line of what was done.", required = true)
     }
 }

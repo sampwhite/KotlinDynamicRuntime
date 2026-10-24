@@ -24,7 +24,7 @@ private val appScope = MainScope()
 
 /**
  * The application root and top-level router. The persistent [AppBar] sits above every page; the page itself is
- * derived from the URL, through [hashParams]: `/wa/catalog` (or a deep endpoint link carrying `m=…`) shows the
+ * derived from the URL, through [routeParams]: `/wa/catalog` (or a deep endpoint link carrying `m=…`) shows the
  * [EndpointCatalog], the app root shows [Home], and a path no route matches the not-found page (issue #1125). It is
  * told of every move -- a link followed, a menu item, the browser's back/forward buttons -- so those switch pages.
  * The catalog's in-page navigation (table ⇄ endpoint) uses replaceState and tells nobody, so it doesn't disturb this.
@@ -36,12 +36,12 @@ val App = FC<Props> {
     var page by useState(currentPage())
     // The app-wide refresh generation (issue #115): bumped on navigation and by state mutations, it re-triggers
     // every mounted config consumer. The tuple form (not `by`) is used, so the bump is a functional update
-    // (`{ it + 1 }`), which the persistent hashchange listener below needs to avoid a stale count.
+    // (`{ it + 1 }`), which the persistent route listener below needs to avoid a stale count.
     val (refresh, setRefresh) = useState(0)
     // How many times the page on screen has been chosen again from the menu (issue #565). Folded into the page
     // boundary's key below for the pages in `restartOnRevisit`, so re-selecting one remounts it with fresh
-    // state -- the only reset a page can get when the hash does not change, since setting the hash to itself
-    // fires no `hashchange`. Tuple form for the same reason as `refresh`: the bump is a functional update.
+    // state -- the only reset a page can get when the address does not change, since navigating to
+    // the address on screen tells nobody. Tuple form for the same reason as `refresh`: the bump is a functional update.
     val (revisit, setRevisit) = useState(0)
     // What the shell knows of the caller that pages name themselves by (issue #1091), as the app bar reads it.
     val (shellFacts, setShellFacts) = useState(ShellFacts())
@@ -74,14 +74,14 @@ val App = FC<Props> {
     // App is the root component (it never unmounts), so the listener lives for the page's lifetime; no cleanup.
     useEffectOnce {
         onWebAppStale { updateAvailable = true }
-        onHashChangeFrom { oldUrl ->
+        onRouteChangeFrom { oldUrl ->
             val next = currentPage()
             // A page holding unsaved work may veto being left (issue #700) -- asked HERE, before the switch, so a
             // "stay" changes nothing: the page never unmounts and its edits are intact. The address bar is put
-            // back to exactly where it was (replaceState, so no second hashchange), whatever the move was.
-            if (LeaveGuard.vetoesMove(hashParams())) {
+            // back to exactly where it was (replaceState, which tells nobody), whatever the move was.
+            if (LeaveGuard.vetoesMove(routeParams())) {
                 restoreUrl(oldUrl)
-                return@onHashChangeFrom
+                return@onRouteChangeFrom
             }
             page = next
             // Cross-page navigation is a refresh trigger: bump so every mounted config consumer re-reads.
@@ -182,21 +182,21 @@ val App = FC<Props> {
                         // change, which is exactly when the failure stops being relevant.
                         //
                         // The debug tools are the one place `page` alone is too coarse: they all share `page=debug`
-                        // and differ only by the `tool` hash param (issue #517), so a faulted `tool=fault` would
+                        // and differ only by the `tool` route param (issue #517), so a faulted `tool=fault` would
                         // otherwise keep showing its fallback after a `back` to the index -- the very outliving this
                         // key exists to prevent. Folding the tool in remounts the boundary when it changes.
                         //
                         // The revisit count is folded in for the same reason from the other direction (issue #565):
-                        // choosing the current page from the menu changes nothing else -- not the hash, not `page` --
+                        // choosing the current page from the menu changes nothing else -- not the URL, not `page` --
                         // yet for a page that can be left waiting on something that will never come (a login code
                         // for an address with no account), it is the one gesture that says "start over". Only the
                         // pages in `restartOnRevisit` take it: a remount is not free elsewhere -- the catalog would
                         // refetch its whole listing, Profile would drop a password-change code mid-entry, and every
-                        // page that registers a `hashchange` listener in `useEffectOnce` would leak one per click,
-                        // since `onHashChange` has no cleanup yet (docs/development/deferred-work.md).
+                        // page that registers a route listener in `useEffectOnce` would leak one per click,
+                        // since `onRouteChange` has no cleanup yet (docs/development/deferred-work.md).
                         ErrorBoundary {
                             key = (
-                                page + (hashParams()[debugToolParam]?.let { ":$it" } ?: "") +
+                                page + (routeParams()[debugToolParam]?.let { ":$it" } ?: "") +
                                     (if (page in restartOnRevisit) "#$revisit" else "")
                             ).unsafeCast<Key>()
                             fallback = ErrorFallback
@@ -281,12 +281,12 @@ private const val pageRegister = "register"
 
 // The pages that restart when their own menu item is chosen again (issue #565): the auth flow's two modes,
 // whose code step can be reached for an address that will never receive one (#275 answers an unknown address
-// as success on purpose), and which the hash cannot reset because it does not change. Opt-in, not every page:
+// as success on purpose), and which the address cannot reset because it does not change. Opt-in, not every page:
 // see the boundary key in [App] for what a remount costs the others.
 private val restartOnRevisit = setOf(pageLogin, pageRegister, HMENU.pageClaim)
 // Claiming an account created for you (issue #751): the auth flow's third mode, reached from the login page.
 private const val pageClaim = HMENU.pageClaim
-// The invitation page (issue #751): reached from a mailed link (`#page=invite&token=...`), never from the menu.
+// The invitation page (issue #751): reached from a mailed link (`/wa/invite#token=...`), never from the menu.
 private const val pageInvite = HMENU.pageInvite
 private const val pageProfile = "profile"
 // The user-administration page. Reachable only when the shell's menu offers it (the backend decides), but the
@@ -367,7 +367,7 @@ private const val pageBecomeUser = HMENU.pageBecomeUser
  * not-found page, anything else home.
  */
 private fun currentPage(): String {
-    val params = hashParams()
+    val params = routeParams()
     return when {
         params[HP.page] == pageCatalog || params.containsKey(HP.method) -> pageCatalog
         params[HP.page] == pageDocs || params.containsKey(HP.doc) -> pageDocs
@@ -388,8 +388,8 @@ private fun currentPage(): String {
         params[HP.page] == pageOperator -> pageOperator
         params[HP.page] == pageCfacts -> pageCfacts
         params[HP.page] == pageNewForm -> pageNewForm
-        // A forms hash naming a workflow is the workflow's listing (issue #792) -- what a count linked to before the
-        // listing had its own page, so a saved link still opens where it did; the page then rewrites the hash to its own id.
+        // A forms address naming a workflow is the workflow's listing (issue #792) -- what a count linked to before the
+        // listing had its own page, so a saved link still opens where it did; the page then rewrites the address to its own id.
         params[HP.page] == pageWorkflowForms || (params[HP.page] == pageForms && params.containsKey(WAGG.workflowId)) -> pageWorkflowForms
         params[HP.page] == pageForms -> pageForms
         params[HP.page] == pageWorkflows -> pageWorkflows

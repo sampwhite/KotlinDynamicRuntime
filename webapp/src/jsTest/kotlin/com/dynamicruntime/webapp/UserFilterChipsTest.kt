@@ -8,7 +8,7 @@ import kotlin.test.assertNull
 /**
  * The users console's filter chips (issue #683): the filters in force said in words while the panel is closed,
  * built from the shared spec so a chip can never disagree with the count; the sort as its own chip; and the
- * shared chip vocabulary both listing pages draw on. Pure -- no React, no location -- like the hash round-trip
+ * shared chip vocabulary both listing pages draw on. Pure -- no React, no location -- like the address round-trip
  * beside it.
  */
 class UserFilterChipsTest {

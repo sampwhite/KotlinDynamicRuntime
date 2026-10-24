@@ -142,7 +142,7 @@ external interface AppBarProps : Props {
     var currentPage: String
     /**
      * Called when the item for [currentPage] is chosen again (issue #565). Navigating to the page you are on
-     * changes no hash, so nothing else would react; `App` answers by remounting the page, which is the reset a
+     * changes no address, so nothing else would react; `App` answers by remounting the page, which is the reset a
      * person means by it -- a login stranded at the code step is the case that found this.
      */
     var onRevisit: () -> Unit
@@ -265,9 +265,9 @@ val AppBar = FC<AppBarProps> { props ->
         open = false
         appBarScope.launch {
             apiResult { AuthApi.logout() }
-            navigateHash(emptyList())
-            // Bump so the menu (and every config consumer) re-reads even when we were already home -- setting
-            // the same hash fires no hashchange, which is why the direct re-read used to be needed here.
+            navigate(emptyList())
+            // Bump so the menu (and every config consumer) re-reads even when we were already home -- navigating
+            // to the address on screen tells nobody, which is why the direct re-read used to be needed here.
             bump()
         }
     }
@@ -308,7 +308,7 @@ val AppBar = FC<AppBarProps> { props ->
     // Env logout (issue #486): clear the perimeter cookie, then leave the app for where the edge says to land.
     // Both URLs come from the call's arguments -- the edge supplies them because only it knows them -- and both
     // arrive already guarded same-origin by `FrontendActions` (issue #498). Unlike `logout`, this is a
-    // full-window navigation, not a hash change: the caller is now anonymous, and the destination is served by
+    // full-window navigation, not an address change: the caller is now anonymous, and the destination is served by
     // the edge rather than being a route within this app.
     fun envLogoutAction(args: List<String>) {
         open = false
@@ -386,7 +386,7 @@ val AppBar = FC<AppBarProps> { props ->
         className = ClassName(if (elevated) "app-bar admin" else "app-bar")
         a {
             className = ClassName("app-bar-brand")
-            href = hashHref(emptyList())
+            href = routeHref(emptyList())
             img {
                 className = ClassName("app-bar-logo")
                 // The client's own mark where it has set one (issue #1130), else the deployment's.
@@ -827,7 +827,7 @@ private fun ChildrenBuilder.userMenu(users: List<UserChoice>, onSwitch: (Long) -
     }
 }
 
-/** One anchor menu item; navigating by hash fires `hashchange`, which the router and this bar react to. */
+/** One anchor menu item; a plain click navigates (see `followAppLink`), which the router and this bar react to. */
 private fun ChildrenBuilder.menuLink(href: String, label: String, current: Boolean, onClick: () -> Unit) {
     a {
         className = ClassName(if (current) "app-menu-item is-current" else "app-menu-item")
@@ -899,14 +899,14 @@ fun menuTree(items: List<MenuItem>): List<MenuNode> {
 /** Renders one leaf menu item -- a route as a link, a call as a button (issue #483); a null action renders
  *  nothing (a parent's label is drawn by the drill-down, not here). A route is *current* when it names
  *  [currentPage]. [onNavigate] closes the menu; [onRevisit] fires when the route chosen is the one already on
- *  screen, since the hash cannot announce that (issue #565). */
+ *  screen, since the address cannot announce that (issue #565). */
 private fun ChildrenBuilder.menuItemView(
     item: MenuItem, actions: FrontendActions, currentPage: String, onRevisit: () -> Unit, onNavigate: () -> Unit,
 ) {
     when (val action = item.action) {
         is UiRoute -> {
             val current = action.page == currentPage
-            menuLink(hashHref(listOf(HP.page to action.page)), item.label, current) {
+            menuLink(routeHref(listOf(HP.page to action.page)), item.label, current) {
                 onNavigate()
                 // The same address moves nothing: this is the only signal the router gets that the page was re-chosen.
                 if (current) onRevisit()

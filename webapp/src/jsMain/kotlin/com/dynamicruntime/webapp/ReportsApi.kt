@@ -152,13 +152,13 @@ class ReportRunSetup(val mode: ReportMode, val groupBy: List<String>? = null, va
 }
 
 /**
- * The setup in force for the open report. The **mode is the URL's**: the hash's `view` when it names one, else the way
+ * The setup in force for the open report. The **mode is the URL's**: its `view` when it names one, else the way
  * the report declares it opens ([defaultMode], null while the report is not yet known) -- so the page always shows
  * what its address says, and a link reproduces it. The lists are the session's: what the user set on this report
  * ([groupBy], [excludeEmpty]), null until they did.
  */
-fun reportSetupInForce(hashView: String?, defaultMode: ReportMode?, groupBy: List<String>?, excludeEmpty: List<String>?): ReportRunSetup =
-    ReportRunSetup(reportModeOf(hashView) ?: defaultMode ?: ReportMode.detail, groupBy, excludeEmpty)
+fun reportSetupInForce(routeView: String?, defaultMode: ReportMode?, groupBy: List<String>?, excludeEmpty: List<String>?): ReportRunSetup =
+    ReportRunSetup(reportModeOf(routeView) ?: defaultMode ?: ReportMode.detail, groupBy, excludeEmpty)
 
 /**
  * What one walk of a run is: the client, the report and the setup. A cursor, and the rows on screen, belong to
@@ -280,12 +280,12 @@ fun reportCountsText(summary: ReportRunSummary): String {
     return if (summary.excluded == 0) read else "$read, ${summary.excluded} left out for a missing value"
 }
 
-/** The Reports page's mode in the hash: only the grouped mode is written, so a plain link is a report's default. */
+/** The Reports page's mode in the address: only the grouped mode is written, so a plain link is a report's default. */
 const val reportModeGrouped = "grouped"
 const val reportModeDetail = "detail"
 
-/** The mode a hash's `view` names, or null when it names none -- the report's own default then applies. */
-fun reportModeOf(hashValue: String?): ReportMode? = when (hashValue) {
+/** The mode an address's `view` names, or null when it names none -- the report's own default then applies. */
+fun reportModeOf(routeValue: String?): ReportMode? = when (routeValue) {
     reportModeGrouped -> ReportMode.aggregate
     reportModeDetail -> ReportMode.detail
     else -> null
@@ -294,22 +294,22 @@ fun reportModeOf(hashValue: String?): ReportMode? = when (hashValue) {
 fun reportModeParam(mode: ReportMode): String = if (mode == ReportMode.aggregate) reportModeGrouped else reportModeDetail
 
 /**
- * Whether a hash's `view` asks for the report's **history** (issue #1037) rather than a run of it: its stored
+ * Whether an address's `view` asks for the report's **history** (issue #1037) rather than a run of it: its stored
  * snapshots, charted. Not a run mode -- the run endpoint knows nothing of it -- so it is asked beside [reportModeOf],
  * which answers null for it.
  */
-fun reportViewIsHistory(hashValue: String?): Boolean = hashValue == HMENU.reportViewHistory
+fun reportViewIsHistory(routeValue: String?): Boolean = routeValue == HMENU.reportViewHistory
 
 /**
  * The link to the Reports page: [client]'s reports (the caller's own when null), open at [reportId] when given, in
  * [mode] when given -- absent, the report opens the way it declares -- or, with [history], on its History view.
  */
-fun reportsHref(client: String? = null, reportId: String? = null, mode: ReportMode? = null, history: Boolean = false): String = hashHref(
-    reportsHashParams(client, reportId, if (history) HMENU.reportViewHistory else mode?.let { reportModeParam(it) }),
+fun reportsHref(client: String? = null, reportId: String? = null, mode: ReportMode? = null, history: Boolean = false): String = routeHref(
+    reportsRouteParams(client, reportId, if (history) HMENU.reportViewHistory else mode?.let { reportModeParam(it) }),
 )
 
-/** The Reports page's hash for [client], [reportId] and a `view` value: what a link carries and what the page writes. */
-fun reportsHashParams(client: String?, reportId: String?, view: String?): List<Pair<String, String>> = buildList {
+/** The Reports page's address for [client], [reportId] and a `view` value: what a link carries and what the page writes. */
+fun reportsRouteParams(client: String?, reportId: String?, view: String?): List<Pair<String, String>> = buildList {
     add(HP.page to HMENU.pageReports)
     client?.let { add(HP.client to it) }
     reportId?.let { add(HP.report to it) }
@@ -319,11 +319,11 @@ fun reportsHashParams(client: String?, reportId: String?, view: String?): List<P
 /**
  * The link from a detail row to its form, on the forms page. For an administrator looking across clients the forms
  * page is told which client, as the Clients page's links tell it. It carries no `from`: the forms page owns its
- * hash and its ways home (see "The forms listing across clients" in `webapp/CLAUDE.md`), so its own back link is to
+ * address and its ways home (see "The forms listing across clients" in `webapp/CLAUDE.md`), so its own back link is to
  * the forms listing, and the way back to the report is the browser's Back, which returns to the report that was open
  * (at its first page: the walk's cursor does not outlive leaving the page).
  */
-fun reportFormHref(gedraId: String, client: String?): String = hashHref(
+fun reportFormHref(gedraId: String, client: String?): String = routeHref(
     listOf(HP.page to HMENU.pageForms) + (client?.let { listOf(EI.client to it) } ?: emptyList()) + listOf(HP.gedra to gedraId),
 )
 

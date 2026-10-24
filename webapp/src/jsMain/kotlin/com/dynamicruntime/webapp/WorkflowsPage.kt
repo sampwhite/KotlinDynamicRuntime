@@ -77,7 +77,7 @@ val WorkflowsPage = FC<Props> {
                 a {
                     // The theme's link colour, as the forms list's workflow links have -- not the browser's default.
                     className = ClassName("wf-cell-link")
-                    href = hashHref(workflowDrillHash(entry.workflowId, state, entry.client.takeIf { acrossClients }))
+                    href = routeHref(workflowDrillRoute(entry.workflowId, state, entry.client.takeIf { acrossClients }))
                     +count.toString()
                 }
             }

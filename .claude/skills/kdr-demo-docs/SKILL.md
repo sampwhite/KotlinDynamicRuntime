@@ -111,7 +111,7 @@ cleanly fails there -- then, for every `.md` in `docs/demo-client/`:
 
 Links are checked with the rest of the repository's documentation by `RepoDocLinksTest` (`base:common`, issue
 #1294): a page or repo file that exists, and a `#section` that is a heading of the page it names (slugs are
-GitHub's, which `headingSlug` matches). App routes (`#page=...`) and outside URLs are left alone.
+GitHub's, which `headingSlug` matches). Links to a page of the app (`/wa/...`) and outside URLs are left alone.
 
 What the test does **not** check is prose: a claim like "the form shows one field" is yours to verify (below).
 
@@ -132,7 +132,7 @@ Run it alone with `cd <workspace> && ./gradlew :base:kdn:test --tests '*ConfDemo
   run the `conf-demo` simulation, sign in as the user the page names, and follow the page's own steps. Read the
   labels off the page rather than from the DSL. The browser pane must be visible for clicks; data setup goes
   through the API (`/kda/gedra/confdemo/...`), not the UI.
-- **Open the page in the app** (`#page=docs&doc=demo-client-<name>`) and check: no marker text visible, every link
+- **Open the page in the app** (`/wa/docs/demo-client-<name>`) and check: no marker text visible, every link
   an in-app link, a section link scrolls to its heading.
 - **`$comment` goes where a reader needs a why**: a workflow, a task, an eligibility test, a report, a layout
   block or entry. It is accepted nowhere else (#1135), so do not add one to a save or a column.

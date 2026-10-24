@@ -122,15 +122,15 @@ class WorkflowColumnViewTest {
     fun onlyAnEngagedWorkflowsLinkOpensInEditMode() {
         assertEquals(
             listOf(HP.page to pageSurveyEdit, HP.from to "forms", HP.gedra to "g1", HP.workflow to "audit", HP.task to "record", HP.edit to "1"),
-            workflowPageHash("g1", "audit", "record", edit = true),
+            workflowPageRoute("g1", "audit", "record", edit = true),
         )
         // A finished workflow's last task is there to be looked at; an eligible one opens on the workflow.
-        assertEquals(null, workflowPageHash("g1", "audit", "last", edit = false).toMap()[HP.edit])
-        assertEquals(null, workflowPageHash("g1", "audit", null, edit = true).toMap()[HP.task])
+        assertEquals(null, workflowPageRoute("g1", "audit", "last", edit = false).toMap()[HP.edit])
+        assertEquals(null, workflowPageRoute("g1", "audit", null, edit = true).toMap()[HP.task])
     }
 
     @Test
     fun theWorkflowKeyIsNavigationNotASearchFilter() {
-        assertEquals(mapOf("q" to "x"), formsSearchFromHash(mapOf(HP.page to "surveyEdit", HP.workflow to "audit", "q" to "x")))
+        assertEquals(mapOf("q" to "x"), formsSearchFromRoute(mapOf(HP.page to "surveyEdit", HP.workflow to "audit", "q" to "x")))
     }
 }

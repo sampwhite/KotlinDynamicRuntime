@@ -60,7 +60,7 @@ class MarkdownReportTest {
 
     @Test
     fun aRelativeLinkTheResolverLeftAloneIsReported() {
-        val hooks = MarkdownHooks(resolveUrl = { if (it == "known.md") "#page=doc&d=known" else it })
+        val hooks = MarkdownHooks(resolveUrl = { if (it == "known.md") "/docs/known" else it })
         val problems = "[a](known.md) and [b](other.md) and [c](https://x.test)".analyzeMarkdown(hooks).problems
         assertEquals(listOf(MarkdownIssue.unresolvedLink), problems.map { it.code })
         assertTrue("'other.md'" in problems.single().message)

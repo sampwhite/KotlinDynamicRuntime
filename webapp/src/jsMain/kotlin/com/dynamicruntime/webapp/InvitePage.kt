@@ -26,7 +26,7 @@ fun invitationWhat(info: InvitationInfo): String {
 }
 
 /**
- * The invitation page (issue #751): reached from a mailed link (`#page=invite&token=...`). It previews what the
+ * The invitation page (issue #751): reached from a mailed link (`/wa/invite#token=...`). It previews what the
  * link is for and waits for the person to **accept** -- nothing happens on merely opening it, so a mail
  * scanner that follows the link accepts nothing on their behalf. Accepting registers the invited user, verifies
  * a new identity, and signs this browser in as that user; then a **full reload**, since the session has changed
@@ -39,11 +39,16 @@ val InvitePage = FC<Props> {
     var error by useState<DisplayError?>(null)
     var busy by useState(false)
     var accepted by useState(false)
-    val token = hashParams()[HMENU.inviteTokenParam]?.trim()?.ifEmpty { null }
+    // Read once and held: the address bar loses it on mount, below.
+    val token = useState { routeParams()[HMENU.inviteTokenParam]?.trim()?.ifEmpty { null } }.component1()
 
     fun t(key: String, dflt: String): String = copy.t("invite", key, dflt)
 
     useEffectOnce {
+        // The token leaves the address bar at once (issue #1371), so it is not in the history, a bookmark, or a
+        // screenshot; a reload then finds none, and the mailed link opens the page again. It was never sent but in a
+        // request body, since a fragment does not reach the server.
+        if (token != null) replaceRoute(listOf(HP.page to HMENU.pageInvite))
         inviteScope.launch {
             try {
                 val c = AuthApi.fetchConfig()

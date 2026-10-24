@@ -8,7 +8,7 @@ import kotlin.test.assertNull
 
 /**
  * The route table (issue #1125): each page's params written as a path, and the path read back as the same params --
- * what lets [hashParams] answer for a path what it answered for a hash, so no page had to change. Under Node there
+ * what lets [routeParams] answer for a path what it answered for a hash, so no page had to change. Under Node there
  * is no app root, so an address here is what follows `/wa` in the browser.
  */
 class RouteTableTest {
@@ -20,7 +20,7 @@ class RouteTableTest {
     }
 
     private fun assertRoute(path: String, vararg params: Pair<String, String>) {
-        assertEquals(path, hashHref(params.toList()), "written")
+        assertEquals(path, routeHref(params.toList()), "written")
         assertEquals(params.toMap(), readBack(path), "read back")
     }
 
@@ -89,8 +89,8 @@ class RouteTableTest {
     @Test
     fun aParamlessPageIsInferredAsTheRouterAlwaysInferredIt() {
         // The catalog's own writes leave the page out: an endpoint is the catalog's, a document the documents page's.
-        assertEquals("/catalog?m=GET&p=%2Fkda%2Fhealth", hashHref(listOf(HP.method to "GET", HP.path to "/kda/health")))
-        assertEquals("/docs/a", hashHref(listOf(HP.doc to "a")))
+        assertEquals("/catalog?m=GET&p=%2Fkda%2Fhealth", routeHref(listOf(HP.method to "GET", HP.path to "/kda/health")))
+        assertEquals("/docs/a", routeHref(listOf(HP.doc to "a")))
         // A page missing what its path needs, or one with no route, keeps home's path and says the page.
         assertRoute("/?page=editForm", HP.page to pageEditForm)
         assertRoute("/?page=elsewhere&x=1", HP.page to "elsewhere", "x" to "1")
@@ -124,5 +124,18 @@ class RouteTableTest {
         assertNull(legacyHashUrl("section-two"))
         assertNull(legacyHashUrl("token=abc"))
         assertNull(legacyHashUrl(""))
+    }
+
+    @Test
+    fun homeNamingItsPageInTheQueryIsRewrittenToItsPath() {
+        // The form the backend writes a page in (a simulation's start page), since it does not know the paths.
+        assertEquals("/forms/new?from=forms", pageQueryUrl("/", "page=newForm&from=forms", ""))
+        assertEquals("/clients/acme", pageQueryUrl("", "page=clients&c=acme", ""))
+        assertEquals("/invite#token=abc", pageQueryUrl("/", "page=invite", "token=abc"))
+        // Not home, no page, or a page with no path of its own: left as it is, which shows the page anyway.
+        assertNull(pageQueryUrl("/forms", "page=users", ""))
+        assertNull(pageQueryUrl("/", "q=x", ""))
+        assertNull(pageQueryUrl("/", "page=elsewhere", ""))
+        assertNull(pageQueryUrl("/", "page=editForm", ""))
     }
 }

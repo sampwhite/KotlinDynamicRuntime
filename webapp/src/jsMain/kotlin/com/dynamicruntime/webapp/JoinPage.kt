@@ -21,14 +21,14 @@ import web.cssom.ClassName
 private val joinScope = MainScope()
 
 /**
- * Joining a demo client (issue #1248), at `#page=join&c=<client>`: what the client is, the roles it may be joined as,
+ * Joining a demo client (issue #1248), at `/wa/join/<client>`: what the client is, the roles it may be joined as,
  * and -- before any of them -- what joining a shared space means, which the visitor acknowledges before a join is
  * offered. Joining moves the session to the new user and the page home in that client; a role already joined offers
  * to open it instead. The endpoint is the authority: where joining is not offered, or for a caller not in `public`, its
  * refusal is what the page shows.
  */
 val JoinPage = FC<Props> {
-    val client = hashParams()[HP.client]
+    val client = routeParams()[HP.client]
     var joinable by useState<List<JoinableView>?>(null)
     var error by useState<DisplayError?>(null)
     var acknowledged by useState(false)

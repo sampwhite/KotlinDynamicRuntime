@@ -254,7 +254,7 @@ Current UI-config endpoints:
   the one a sign-in lands on marked **Next sign-in** from the list's `signsInAs` -- the default rule worked out
   (`defaultUserOf`), which differs from `isDefault` (the choice alone) when sign-in passes a chosen default over.
   Each row offers **Switch to this user**, which stays on the profile page (`afterSessionChange` with the profile's
-  hash; the leave from inside a sandbox, read from `ShellFacts.inSandbox`), **Use for next sign-in** (`setDefault`)
+  address; the leave from inside a sandbox, read from `ShellFacts.inSandbox`), **Use for next sign-in** (`setDefault`)
   where a sign-in does not already land, and **Remove** on a `public` row, two-step, saying when it is the whole
   registration (`removablePublicUsers`, `removalEndsEverything`). The table's rules are pure (`profileUserRows`,
   `showsUsersTable`, `showsNameColumn`, `usersHelpData`, covered by `ProfileUsersTest`). Its status line is the
@@ -296,7 +296,7 @@ Current UI-config endpoints:
   from the form's or user's own client (`deleteTargetText`: "acme (live data)" or "acme's sandbox").
 - **Invitations** (issue #751), anonymous like the rest of the auth flow: an administrator's create for an
   address that is not their own -- new, or another person's -- provisions an unclaimed user and mails a link
-  to `#page=invite&token=<token>` (built under `KDR_PUBLIC_URL`, else the request's scheme and host). The
+  to `/wa/invite#token=<token>` (built under `KDR_PUBLIC_URL`, else the request's scheme and host). The
   **invite page** (`InvitePage`) POSTs `/auth/invitation/preview {invitationToken}` to say what the account is
   and waits for **Accept**, which POSTs `/auth/invitation/accept`: the link is the proof, so accepting registers
   the user, verifies a new identity, signs the browser in, and goes home re-reading (`afterSessionChange`, issue
@@ -305,7 +305,7 @@ Current UI-config endpoints:
   user). The **register form** shows Client / Persona / Persona suffix to an `allClients` caller only; set, they ride
   `createInitial` and the backend refuses them from anyone else.
 - **Claiming from the login page** (issue #751), since a mailed link cannot be required: the auth flow's third
-  mode, `#page=claim` ("Claim an account created for you", linked from the login page). The person types the
+  mode, `/wa/claim` ("Claim an account created for you", linked from the login page). The person types the
   address, the client and the persona as the invitation spelled them (`admin`, `member B`; `PERSONA.splitTyped`),
   with no choice lists so an anonymous caller learns nothing about a client. `POST /auth/claim/sendVerify`
   **always answers as a success** and the mail says the rest: the code, or that nothing matched (acknowledging
@@ -364,7 +364,7 @@ A fourth is **belonging**, and behaves unlike the other three:
   address, client and persona -- the backend's duplicate-key refusal, recognized by the envelope's logical
   `errorCode` (`AERR.userKeyTaken`), never by its wording -- switches the box's hint to say why it is now
   needed. **Create a user for me** (issue #797) opens the same form on the caller's own address, locked
-  (`#page=users&u=me`): the user is registered on creation and no invitation is sent. Every successful save on
+  (`/wa/users/me`): the user is registered on creation and no invitation is sent. Every successful save on
   the page bumps the refresh bus, so a user created, disabled or deleted for yourself shows in the badge's
   switcher at once. The list shows both in a **Persona** column (`Member B`), and a **Registered** column says
   when the person claimed the user.
@@ -475,7 +475,7 @@ the link also carries the user's `client` -- when it is one this node carries (`
 page's `clientChoices`) -- so the listing is drawn on that client's surface; for a client not carried here it carries
 none, since a surface that does not exist would fail to load where the bare link still lists the user's forms. A
 scoped administrator's carries none either, as the Clients page's count links do not. `Client` is `clientDetailHref`, the one
-builder of `#page=clients&c=<id>`. The cell stops a click from also opening the row's editor (`onCell`, as the forms
+builder of `/wa/clients/<id>`. The cell stops a click from also opening the row's editor (`onCell`, as the forms
 table's workflow cell does), and the column is pinned right with Status -- a column after a pinned one must be.
 They are links, not buttons: each goes somewhere and changes nothing. A `public` self-administrator is shown neither
 (`userLinksOffered`): they read only their own forms and the Clients page refuses them, so both could only fail.
@@ -499,14 +499,14 @@ how a row is found in a long list, so there is no deep paging, no infinite scrol
 - **Growing re-queries from the top with the larger limit**; it never splices rows in by offset. One query is one
   snapshot of the sort, so a row created or deleted between clicks is never doubled or skipped, and a refresh or a
   delete reloads exactly what is shown.
-- **The count shown rides the hash** as `shown` (`HP.shown`, written only past the first batch, read back through
-  `shownFromHash`, which holds it to the batch and the cap). On the forms listing it is a non-navigation key, so
+- **The count shown rides the address** as `shown` (`HP.shown`, written only past the first batch, read back through
+  `shownFromRoute`, which holds it to the batch and the cap). On the forms listing it is a non-navigation key, so
   `formsListingReturn` carries it home from a form and the listing asks for the same rows again; the endpoint
   whitelist (`formsSearchKeys`) keeps it off the wire.
 - **Changing the search, the sort, or the client starts over at the first batch.** A delete keeps the count.
-- **History restores; an explicit navigation starts over.** Back and Forward land on a hash that names the rows, and
+- **History restores; an explicit navigation starts over.** Back and Forward land on an address that names the rows, and
   the listing shows them. Choosing the listing from the menu is an explicit navigation: from another page it mounts
-  fresh, and on the page itself -- where the bare link may change no hash at all -- the menu's revisit count
+  fresh, and on the page itself -- where the bare link may change the address at all -- the menu's revisit count
   (`useRevisitSinceMount`, on the refresh context) tells the page to start over: no search or sort, the first batch,
   re-read. A future signal that content changed (a latest-modified date on the config calls) could refine this.
 - **Growing keeps the rows on screen while it loads**, so the reader keeps their place and the new rows arrive
@@ -564,13 +564,13 @@ unrestricted scope). The rules that follow from that:
   listing's search, sort and chosen client carried back, and the row flagged to flash. (A survey *save* stays
   on the form; Done is what returns.) A create goes through `formsCreateReturn`, which adds two rules: it is
   marked (`hlc=1`) so a row the listing cannot show is announced rather than silently absent, and it returns
-  **only while the user is still on the page the create was launched from** -- capture `hashParams()` before
+  **only while the user is still on the page the create was launched from** -- capture `routeParams()` before
   the `launch`, because a slow response must not pull someone out of wherever they went next. Keep the save
   button busy across that navigation (no `running = false`, no `finally` reset): the page unmounts a tick
   later, and a live button in between makes a second form. Create-for-user returns to the listing it was
   launched from, as it was (#762 review; see the next bullet). `formsArrivalNote` is the reading half, and
   names the reason (filter, sort, or neither). A new save surface calls the helpers; it does not build its own
-  hash. #758 was the workflow create keeping an in-place "Form created" page after the picker had moved to
+  address. #758 was the workflow create keeping an in-place "Form created" page after the picker had moved to
   this return (#663).
 - **"New form" creates in the caller's own client**, so it is not offered under a chosen client and the note
   under the selector says so. Creating for someone else is its own surface, **Create a form for a user**
@@ -583,10 +583,10 @@ unrestricted scope). The rules that follow from that:
   row with its Client column anyway.
 - **A workflow's listing is its own page** (`page=workflowForms`, issue #792): where a count on the Workflows
   page leads. `FormsPage` draws it in workflow mode -- the workflow as heading, a state switch, `← Workflows` --
-  with the workflow and state riding the hash as search keys (`formsDrillKeys`) so showing more, sorting and a client
+  with the workflow and state riding the address as search keys (`formsDrillKeys`) so showing more, sorting and a client
   switch carry them, but kept by Clear and part of the page's history identity, never a chip. Every way home
   reads the listing off `from` (`formsListingOf`, honouring only the two forms listings), so a form opened
-  there returns there; a `page=forms` hash naming a workflow is routed to the workflow's listing, so old links
+  there returns there; a `page=forms` address naming a workflow is routed to the workflow's listing, so old links
   still open where they did.
 - **Choosing a client drops the `user` scope** (`formsSearchForClient`): a user belongs to one client. A shared
   `client=X` link opened by a caller without `allClients` drops the selector from the search too
@@ -597,7 +597,7 @@ unrestricted scope). The rules that follow from that:
 
 ## The Clients page (issues #903, #905)
 
-`#page=clients` lists the clients an administrator oversees, from `GET /clientAdmin/clients/overview`
+`/wa/clients` lists the clients an administrator oversees, from `GET /clientAdmin/clients/overview`
 (`ClientsApi.listOverview`, rows parsed by the pure `parseClientOverview`): an `allClients` administrator sees
 every client the node knows of -- present, not enabled here, dropped by a check, or known only from stored
 configuration. A client-scoped one is answered with their own client alone, and the page shows it as that
@@ -610,12 +610,12 @@ and count active users only -- disabled and deleted users are never in the cache
 client's Forms and Users counts link to the listings behind them (`clientFormsHref`, `clientUsersHref`), in the
 listing and again in the detail's summary (`clientSummaryHref`): with the client chosen or filtered for an
 `allClients` administrator, bare for a scoped one -- who meets them only in the summary -- whose listings are their
-own client already (the Users page draws no client filter for them, so a `client=` in the hash would be one they
+own client already (the Users page draws no client filter for them, so a `client=` in the address would be one they
 could not clear). The Workflows page takes no client, so that count is plain text until it does.
 
-**An administrator of one client opens it in place** (issue #1082): with no `c=` in the hash, a caller who may
+**An administrator of one client opens it in place** (issue #1082): with no `c=` in the address, a caller who may
 administer and does not see across clients is shown their own client's detail, not a listing of one row
-(`clientsOpenId`, pure). So `#page=clients` and `#page=clients&c=<their client>` are the same page for them, drawn
+(`clientsOpenId`, pure). So `/wa/clients` and `/wa/clients/<their client>` are the same page for them, drawn
 with no `← Clients` link -- there is nothing behind it -- and the copy editor's leave guard treats both addresses as
 staying (`staysOnClientPage`) -- which it must whatever else is done, since the menu item is that bare address and
 is one click away from the named one.
@@ -764,7 +764,7 @@ link would show its syntax. The listing's **Customized** column says how much (`
 2 menu" -- "menu" because every block a client can overlay today is one) and links to the detail; an `allClients`
 administrator also gets **Copy & menu across clients** (`ov=1` on the same route, `overridesAcrossHref`): one
 retrieve per listed client, grouped by the pure `overridesAcrossClients` into file-or-block → key → the clients
-overriding it. A scoped administrator has one client and is never shown that view, whatever the hash says.
+overriding it. A scoped administrator has one client and is never shown that view, whatever the address says.
 
 **How a save takes effect, said before and sent with it** (issues #930, #1176, #1191). Every editor on a client's
 page that saves its configuration -- the copy, the menu, the definition, the traits, the workflows, the files -- is live at once for a client
@@ -1010,7 +1010,7 @@ designing its workflows (#903) open from this page.
 
 ## The Customers page (issue #1114)
 
-`#page=customers` (`CustomersPage.kt`, its pure half in `CustomersApi.kt`, covered by `CustomersPageTest`), grown out
+`/wa/customers` (`CustomersPage.kt`, its pure half in `CustomersApi.kt`, covered by `CustomersPageTest`), grown out
 of the Clients page. An administrator who sees every client gets the deployment's customers
 (`GET /clientAdmin/customers`), each opening to its page (`cu=<id>`, `customerHref`); an administrator of a customer's
 **root** client, client-wide, is shown their own customer in place (`GET /clientAdmin/customer/overview` with no
@@ -1028,16 +1028,16 @@ text elsewhere.
 
 ## The Reports page (issue #1007)
 
-`#page=reports` lists a client's named reports (`GET /clientAdmin/reports`) down the left and runs the open one
+`/wa/reports` lists a client's named reports (`GET /clientAdmin/reports`) down the left and runs the open one
 (`GET /clientAdmin/report/run`) as a table beside them; `docs/design/reporting.md` at the repo root says what a report
 is. The pure half -- parsers, the run's query, the table's columns, a cell's text, the counts line, the links -- is
 `ReportsApi.kt` (covered by `ReportsPageTest`); `ReportsPage.kt` holds the components.
 
-- **Where the page is rides the hash**: `c` (the client, for an `allClients` administrator only -- a client's own
+- **Where the page is rides the address**: `c` (the client, for an `allClients` administrator only -- a client's own
   administrator sends no client and the endpoint answers for theirs), `rpt` (the open report) and `view`
   (`grouped` / `detail`). Report and client are ordinary links, so Back steps through them; the mode is written
-  with `replaceHash` and **read back from the hash** (`reportSetupInForce`), never kept beside it, so the page
-  shows what its address says. Rows are drawn only while they belong to the walk on screen (`reportWalkKey`). **Not `m`** for the mode: that is the catalog's, and any hash carrying it routes there.
+  with `replaceRoute` and **read back from the address** (`reportSetupInForce`), never kept beside it, so the page
+  shows what its address says. Rows are drawn only while they belong to the walk on screen (`reportWalkKey`). **Not `m`** for the mode: that is the catalog's, and any address carrying it routes there.
 - **The setup is "the report's own" until touched.** `ReportRunSetup`'s lists are null until the user changes one,
   and a null list is not sent, so the endpoint applies the report's defaults. A list the user **emptied** is sent
   as an empty list -- absent and empty mean different things to the endpoint (`reportRunQuery`).
@@ -1045,8 +1045,8 @@ is. The pure half -- parsers, the run's query, the table's columns, a cell's tex
   asked again from the start with a larger limit, not the next cursor page, so a refresh keeps the rows shown and
   they are one run's answer. How many are shown is component state keyed on the client, report and setup
   (`reportWalkKey`, `ReportRunSetup.signature`), so anything that changes the query starts at the first batch. It
-  does not ride the hash: a row's "Open" leaves by Back, which re-runs the page anyway. The cursor is the CSV's.
-- **A detail row's "Open" link goes to the forms page**, which owns its hash and its ways home, so its back link
+  does not ride the address: a row's "Open" leaves by Back, which re-runs the page anyway. The cursor is the CSV's.
+- **A detail row's "Open" link goes to the forms page**, which owns its address and its ways home, so its back link
   reads "← Forms" (the listing's name for an administrator, issue #1091); the way back to the report is the
   browser's Back. Do not add a `from=reports`: the forms
   page drops any `from` that is not a forms listing.
@@ -1221,7 +1221,7 @@ the single-choice field. It does not fix it here (tried; no observable differenc
 rather than left in looking load-bearing). Standard tags-mode behavior, and acceptable, but if an open
 multi-select ever becomes a surface people use a lot, this is what to improve.
 
-**Testing note — measured, on the `#page=debug&tool=choice` debug page (`DebugChoicePage.kt`).** An
+**Testing note — measured, on the `/wa/debug/choice` debug page (`DebugChoicePage.kt`).** An
 `AutoComplete` is driven by *typing*, because the typed text **is** its value; no popup is involved. A plain
 `Select` resisted the browser tools for three independent reasons, none of them a bug in the widget:
 
@@ -1372,7 +1372,7 @@ parts of one questionnaire keep each other's answers.
 
 ## The Simulations page (issue #997)
 
-`#page=simulations`, offered to a caller with **test access** only -- a test instance, with env auth effective (issue
+`/wa/test/simulations`, offered to a caller with **test access** only -- a test instance, with env auth effective (issue
 #1149; the menu item is gated on `kdr:hasTestAccess`, and the route is Home without the app config's `hasTestAccess`):
 the simulations the node offers, from `/fixture/simulations` -- the catalog's shape, parsed with `parseCatalog`. Like
 every fixture, the simulations exist for nobody else, so a session that suppressed its env auth loses the page, and
@@ -1389,7 +1389,7 @@ sign-in body, the start page, the saved runs) is covered by `SimulationsTest`. W
 
 ## The file store page (issue #1297)
 
-`#page=fileStore`, **File store** under the Operator menu (app-only, like Simulations, since an edge keeps no files):
+`/wa/operator/files`, **File store** under the Operator menu (app-only, like Simulations, since an edge keeps no files):
 what the file store holds, drilled bucket by bucket and folder by folder, each file downloadable -- what Linode's
 console shows of a bucket, for whichever store the deployment runs on. `OperatorFileStorePage.kt` draws it; the pure
 half (`FileStoreApi.kt`: the answers read into views, the addresses, the words) is covered by `FileStoreBrowserTest`.
@@ -1403,7 +1403,7 @@ Wire names are the kernel's `FSB`, the paths `OPS.fileStore*`, each file's recor
   its row, never listed as a file. A file missing its record or its content is listed **flagged** (`state`:
   `noMeta` / `noContent` / `unreadableMeta`, worded by `fileStateText`) rather than hidden, and only a whole file
   has a Download: it is what `CheckFileStore` would report, seen where it is. A folder past the limit is cut, folders first, and says so.
-- **The bucket and folder ride the hash** (`HP.bucket`, `HP.folder`; the folder read as the endpoint names one,
+- **The bucket and folder ride the address** (`HP.bucket`, `HP.folder`; the folder read as the endpoint names one,
   `fileStoreFolder`, so a typed address without the slash opens the folder), so Back steps out through the folders
   and a folder is linkable; the breadcrumb (`breadcrumbs`) leads back up. A download is `startDownload` on an `<a>`, so a
   refusal does not navigate away.
@@ -1431,7 +1431,7 @@ definition's `joinRoles` (kernel `ClientJoinRole`: a persona, a suffix telling t
 what the page says of it), held at load by `ClientCheck.joinRoleFaults` (never on `public`, `hub`, a sandbox or a
 production client).
 
-- **`JoinPage` (`#page=join&c=<client>`, `JoinApi.kt`)** lists the client's roles (`GET /user/self/joinable`) under the
+- **`JoinPage` (`/wa/join/<client>`, `JoinApi.kt`)** lists the client's roles (`GET /user/self/joinable`) under the
   disclosure (`joinDisclosure`): that the space is shared, that an administrator -- another visitor -- sees the users'
   names and addresses and can change or disable them, and that it all goes when the site's data is cleared. A join
   is offered only once the acknowledgement is ticked, and `POST /user/self/join` refuses one without it. A join
@@ -1600,7 +1600,7 @@ never read their window as confirmation of your edit.
 ## Signing a browser session in to verify a change (the `becomeUser` fixture)
 
 **In the UI** (issue #1183), for a caller with test access: **Become deployment admin** (one click: `admin` plus
-`allClients`, as `TEP.deploymentAdminEmail`) and **Become a user…** (`#page=becomeUser`, the fixture's form drawn from
+`allClients`, as `TEP.deploymentAdminEmail`) and **Become a user…** (`/wa/test/become-user`, the fixture's form drawn from
 its own schema) under Account in the menu, and the same as a card at the top of Home. Each identity one becomes is kept in
 `localStorage` against the app config's `dataId` and offered again in one click, greyed once the data is reset
 (`BecomeUserApi.kt`, `BecomeUserPage.kt`, covered by `BecomeUserTest`). The fetch below is still the way in from
@@ -1617,7 +1617,7 @@ a test fixture rather than the real email-code flow:
   there (issue #1149) -- which a direct local request is assumed to have, unless the session suppressed it with the
   app bar's env control. Call it from the browser page's own
   `fetch()` so the session cookie lands in the browser, then reload the app to fetch as the new identity (a
-  same-hash navigate does not reload — call `location.reload()`).
+  navigate to the address already shown does not reload — call `location.reload()`).
 - **Pass `client` to become a *specific* client's user** (`client: "acme"`). This is what a **per-client**
   surface needs — a client's schema variant, its usage columns and search fields — and without it you land in
   the default client (`hub` for a user given the `allClients` capability, else `public`; issue #799) and verify
@@ -1674,11 +1674,11 @@ a test instance, with env auth effective, issue #1149 -- or ENV DEBUG), for diag
 Reached by URL, which is what lets a browser test drive it with nothing but a link:
 
 ```
-#page=debug                  index of what is available
-#page=debug&tool=state       resolved app config + refresh generation
-#page=debug&tool=fault       throws while rendering -> the page boundary catches
-#page=debug&tool=choice      the antd choice widgets, instrumented with an event trace (see "Choice widgets")
-#<any page>&fault=shell      throws in the app bar   -> the backstop catches
+/wa/debug                    index of what is available
+/wa/debug/state              resolved app config + refresh generation
+/wa/debug/fault              throws while rendering -> the page boundary catches
+/wa/debug/choice             the antd choice widgets, instrumented with an event trace (see "Choice widgets")
+/wa/<any page>?fault=shell   throws in the app bar   -> the backstop catches
 ```
 
 Where the flag is off the route resolves to Home — the page does not exist rather than being refused, so
@@ -1696,8 +1696,8 @@ Two behaviors worth knowing before you touch it, both learned the hard way:
   recovered instead of showing the boundary. A fault that stops being true mid-render is not testable.
 - **Escaping the shell fault is explicit.** The backstop is not keyed, so nothing resets it, and its reload
   would re-read the URL that caused the failure. `reloadWithoutFault` strips the parameter first, using
-  `history.replaceState` and *then* reloading — `location.replace()` does not navigate for a hash-only change,
-  so the reload after it re-reads the original address.
+  `history.replaceState` and *then* reloading, so the reload reads the address without it rather than the one
+  that failed.
 
 ## Frontend tests (issue #161)
 

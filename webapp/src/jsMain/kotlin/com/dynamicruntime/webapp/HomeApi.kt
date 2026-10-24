@@ -204,14 +204,29 @@ fun docKeyByPath(links: List<HomeLink>): Map<String, String> =
     links.filter { it.sourcePath.isNotEmpty() }.associate { it.sourcePath to it.id }
 
 /**
+ * How a document links to a page of the app (issue #1371): an absolute path under the default app root,
+ * `/wa/test/simulations`, which is what the address bar shows. A document cannot know the root a deployment serves
+ * the app under, so [docLinkResolver] puts the live one in its place.
+ */
+private const val docAppRoot = "/wa/"
+
+/**
  * A link resolver for rendering the document at [currentSourcePath], to hand to [Markdown] (issue #492): its
- * interior relative links become in-app document links (`#page=docs&doc=<id>`, via [docHref] so the format cannot drift
- * from what [hashParams] reads) or links into the source repo, per the kernel's [resolveDocLink]. A null
- * [sourceRepoBase] leaves non-document relative links as written. Pure over its inputs; covered by `jsNodeTest`.
+ * interior relative links become in-app document links (`/wa/docs/<id>`, via [docHref] so the format cannot drift
+ * from what [routeParams] reads) or links into the source repo, per the kernel's [resolveDocLink], and a link to a
+ * page of the app ([docAppRoot]) is put under the app's live root. A null [sourceRepoBase] leaves non-document
+ * relative links as written. Pure over its inputs; covered by `jsNodeTest`.
  */
 fun docLinkResolver(currentSourcePath: String, links: List<HomeLink>, sourceRepoBase: String?): (String) -> String {
     val byPath = docKeyByPath(links)
-    return { raw -> resolveDocLink(raw, currentSourcePath, byPath, sourceRepoBase) { key, section -> docHref(key, section) } }
+    return { raw ->
+        val url = raw.trim()
+        if (url.startsWith(docAppRoot)) {
+            appRootPrefix() + url.substring(docAppRoot.length - 1)
+        } else {
+            resolveDocLink(raw, currentSourcePath, byPath, sourceRepoBase) { key, section -> docHref(key, section) }
+        }
+    }
 }
 
 /**

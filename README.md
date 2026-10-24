@@ -154,10 +154,10 @@ talking to the same runtime API on `:7070`:
   with nothing but a link:
 
   ```
-  #page=debug                 what the debug area offers
-  #page=debug&tool=state      the resolved app config and refresh generation this tab is running on
-  #page=debug&tool=fault      throws while rendering, so the page error boundary is seen to catch
-  #<any page>&fault=shell     throws in the app bar, so the backstop boundary is seen to catch
+  /wa/debug                     what the debug area offers
+  /wa/debug/state               the resolved app config and refresh generation this tab is running on
+  /wa/debug/fault               throws while rendering, so the page error boundary is seen to catch
+  /wa/<any page>?fault=shell    throws in the app bar, so the backstop boundary is seen to catch
   ```
 
   A render failure never blanks the page: an error boundary swaps in a panel inside the shell, leaving the

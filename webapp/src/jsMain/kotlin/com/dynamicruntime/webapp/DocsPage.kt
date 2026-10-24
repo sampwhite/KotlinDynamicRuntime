@@ -22,14 +22,14 @@ import web.cssom.ClassName
 private val docsScope = MainScope()
 
 /**
- * The documents page (issue #554): `#page=docs` lists the served documents, and `#page=docs&doc=<id>` shows
+ * The documents page (issue #554): `/wa/docs` lists the served documents, and `/wa/docs/<id>` shows
  * one, with "← Documents" back to the listing. A document is a destination of its own -- it used to be a
- * mode of Home, opened in place with `replaceHash`, so browser Back skipped the listing altogether -- so
+ * mode of Home, opened in place with `replaceRoute`, so browser Back skipped the listing altogether -- so
  * opening one is an ordinary link navigation, which is what gives it a history entry. A bare `#doc=<id>`
  * (an older bookmark or in-document link) routes here as well.
  *
- * Which document is open is read from the hash on every render rather than held in state: the router's page
- * id is the same for the listing and a document, and a hash navigation bumps the refresh generation, which is
+ * Which document is open is read from the address on every render rather than held in state: the router's page
+ * id is the same for the listing and a document, and a navigation bumps the refresh generation, which is
  * what re-renders this page.
  */
 val DocsPage = FC<Props> {
@@ -43,9 +43,9 @@ val DocsPage = FC<Props> {
     val generation = useRefreshGeneration()
     // Monotonic token so an out-of-order document response is dropped rather than overwriting the open one.
     val latestDoc = useRef(0)
-    val openId = hashParams()[HP.doc]
+    val openId = routeParams()[HP.doc]
     // The heading a link into the document named (issue #1136), scrolled to once the document has rendered.
-    val section = hashParams()[HP.section]
+    val section = routeParams()[HP.section]
 
     // The same config Home reads (the links, and the fragment carrying the nav copy), re-read per generation.
     useEffect(generation) {
@@ -63,7 +63,7 @@ val DocsPage = FC<Props> {
         }
     }
 
-    // Fetch whichever document the hash names, keyed on the document and its build -- never on the config object,
+    // Fetch whichever document the address names, keyed on the document and its build -- never on the config object,
     // which a refresh replaces whether or not anything changed (issue #1313): re-running then cleared the text, the
     // page collapsed, and the reader was scrolled to the top. Clear the old text and error only when the document
     // changes, so switching documents never shows the previous body under the new heading, while a new build of the
@@ -161,7 +161,7 @@ fun ChildrenBuilder.docLinks(links: List<HomeLink>) {
  * links, the listing, and the link resolver agree.
  */
 fun docHref(id: String, section: String? = null): String =
-    hashHref(listOfNotNull(HP.page to HMENU.pageDocs, HP.doc to id, section?.let { HP.section to it }))
+    routeHref(listOfNotNull(HP.page to HMENU.pageDocs, HP.doc to id, section?.let { HP.section to it }))
 
 /**
  * Whether [text]'s first heading is a level-1 heading, which the page then shows as the document's title rather than

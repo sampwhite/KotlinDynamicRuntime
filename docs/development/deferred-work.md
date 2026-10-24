@@ -197,7 +197,7 @@ looked fragile.
 
 ## When a listener that outlives its page starts costing something
 
-`onHashChange` (in `HashRoute.kt`) adds a page's handler to the list the one app-wide `hashchange` listener calls
+`onRouteChange` (in `Routing.kt`) adds a page's handler to the list the one app-wide `hashchange` listener calls
 (#700), and nothing ever removes it. Five pages now do this — `EndpointCatalog`, `Users` (since #324),
 `FormsPage`, `EditFormPage` and `SurveyEditPage` — and every one of them mounts and
 unmounts on each navigation to and from it, so what accumulates over a session is one live closure per visit,

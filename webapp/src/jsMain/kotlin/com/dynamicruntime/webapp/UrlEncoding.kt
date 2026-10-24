@@ -4,7 +4,7 @@ import com.dynamicruntime.common.util.toJsonStr
 
 /**
  * One spelling of the two URL-encoding jobs the front end kept re-deriving per file: percent-encoding a value,
- * and building a query string from a map. `AdminApi`, `SchemaCatalogApi` and `HashRoute` each carried their own
+ * and building a query string from a map. `AdminApi`, `SchemaCatalogApi` and `Routing` each carried their own
  * `encodeURIComponent` wrapper, and the query-string builder existed once as a method and once inline -- so a
  * change to how the app encodes a URL meant finding every copy.
  */

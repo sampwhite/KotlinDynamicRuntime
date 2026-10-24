@@ -30,7 +30,7 @@ import kotlin.coroutines.cancellation.CancellationException
 // fail on demand; the second shows the state the app is running on. Both are reached by URL, which is what
 // lets a browser test drive them with nothing but a link.
 
-/** Hash parameter naming which debug tool to show, e.g. `#page=debug&tool=fault`. */
+/** Route parameter naming which debug tool to show, e.g. `fault` in `/wa/debug/fault`. */
 const val debugToolParam = "tool"
 
 /** The tool that throws during render, so the page-level error boundary can be seen to catch. */
@@ -46,7 +46,7 @@ const val debugToolFragment = "fragment"
 const val debugToolChoice = "choice"
 
 /**
- * Hash parameter that makes the **shell** fail (`#fault=shell`), rather than the page.
+ * Route parameter that makes the **shell** fail (`?fault=shell` on any page), rather than the page.
  *
  * It is a separate lever from [debugToolFault] because it has to be reachable from *any* page: proving the
  * backstop catches means breaking the app bar, which renders outside the page boundary. Honored in `AppBar`.
@@ -69,7 +69,7 @@ const val shellFaultValue = "shell"
  * fallback's reload uses.
  */
 fun shouldFailShell(): Boolean =
-    appConfig().allowDebugPages && hashParams()[shellFaultParam] == shellFaultValue
+    appConfig().allowDebugPages && routeParams()[shellFaultParam] == shellFaultValue
 
 /**
  * Reloads with any fault trigger stripped, which is what both fallbacks' reload does.
@@ -80,11 +80,11 @@ fun shouldFailShell(): Boolean =
  * (App state, Fragment pull) are kept, so reloading one of those retries the same tool.
  */
 fun reloadWithoutFault() {
-    val params = hashParams()
+    val params = routeParams()
     val kept = params.filterNot { (k, v) -> k == shellFaultParam || (k == debugToolParam && v == debugToolFault) }
-    // replaceHash rewrites the address WITHOUT navigating, so the reload below re-reads the cleaned URL. Only when
+    // replaceRoute rewrites the address WITHOUT navigating, so the reload below re-reads the cleaned URL. Only when
     // there was a trigger to strip: an address no page answers (not found) is reloaded as it is.
-    if (kept.size != params.size) replaceHash(kept.toList())
+    if (kept.size != params.size) replaceRoute(kept.toList())
     js("window.location.reload()")
 }
 
@@ -95,7 +95,7 @@ fun reloadWithoutFault() {
  * real deployment there is no debug page to find and nothing that says one exists.
  */
 val DebugPage = FC<Props> {
-    when (hashParams()[debugToolParam]) {
+    when (routeParams()[debugToolParam]) {
         debugToolFault -> DebugFault {}
         debugToolState -> DebugState {}
         // The fragment demo calls a `forTestingOnly` fixture endpoint, which exists only for a caller with test
@@ -121,14 +121,14 @@ val DebugIndex = FC<Props> {
             className = ClassName("debug-index")
             li {
                 a {
-                    href = hashHref(listOf(HP.page to HMENU.pageDebug, debugToolParam to debugToolState))
+                    href = routeHref(listOf(HP.page to HMENU.pageDebug, debugToolParam to debugToolState))
                     +"App state"
                 }
                 +" — the resolved configuration and refresh generation this tab is running on."
             }
             li {
                 a {
-                    href = hashHref(listOf(HP.page to HMENU.pageDebug, debugToolParam to debugToolFault))
+                    href = routeHref(listOf(HP.page to HMENU.pageDebug, debugToolParam to debugToolFault))
                     +"Fault: fail this page"
                 }
                 +" — throws while rendering, so the page error boundary is seen to catch."
@@ -139,7 +139,7 @@ val DebugIndex = FC<Props> {
             if (appConfig().hasTestAccess) {
                 li {
                     a {
-                        href = hashHref(listOf(HP.page to HMENU.pageDebug, debugToolParam to debugToolFragment))
+                        href = routeHref(listOf(HP.page to HMENU.pageDebug, debugToolParam to debugToolFragment))
                         +"Fragment pull"
                     }
                     +(" — renders a server-provided content element whose text pulls a fragment, resolved on the " +
@@ -148,14 +148,14 @@ val DebugIndex = FC<Props> {
             }
             li {
                 a {
-                    href = hashHref(listOf(HP.page to HMENU.pageDebug, shellFaultParam to shellFaultValue))
+                    href = routeHref(listOf(HP.page to HMENU.pageDebug, shellFaultParam to shellFaultValue))
                     +"Fault: fail the shell"
                 }
                 +" — throws in the app bar, so the backstop boundary is seen to catch."
             }
             li {
                 a {
-                    href = hashHref(listOf(HP.page to HMENU.pageDebug, debugToolParam to debugToolChoice))
+                    href = routeHref(listOf(HP.page to HMENU.pageDebug, debugToolParam to debugToolChoice))
                     +"Choice widgets"
                 }
                 +(" — the antd choice controls, instrumented with an event trace, for checking which of them " +
@@ -167,7 +167,7 @@ val DebugIndex = FC<Props> {
 
 /**
  * A link back to the debug index, shown atop each tool page so there is always a way back to the listing
- * without relying on the browser's back button (issue #517 follow-up). Routes to `#page=debug` with no tool,
+ * without relying on the browser's back button (issue #517 follow-up). Routes to `/wa/debug` with no tool,
  * which [DebugPage] dispatches to [DebugIndex].
  */
 private fun ChildrenBuilder.debugBackLink() = backToListing(HMENU.pageDebug)

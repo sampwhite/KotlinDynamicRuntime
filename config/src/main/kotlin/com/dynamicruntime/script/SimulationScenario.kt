@@ -29,7 +29,7 @@ fun runSimulation(cxt: ProbeContext, name: String, input: Map<String, Any?> = em
     for (user in report[SIM.users].toJsonListOfMaps()) {
         println()
         println("${user[SIM.email]} -- ${user[SIM.purpose]}.")
-        println("To sign in as them, from the browser's console, then reload${start?.let { " (or open #$it)" }.orEmpty()}:")
+        println("To sign in as them, from the browser's console, then reload${start?.let { " (or open ${cxt.baseUrl}/wa/?$it)" }.orEmpty()}:")
         val body = buildMap {
             put(SIM.email, user[SIM.email])
             put(SIM.level, user[SIM.level])
@@ -43,5 +43,5 @@ fun runSimulation(cxt: ProbeContext, name: String, input: Map<String, Any?> = em
         println("    body: JSON.stringify({$json})})")
     }
     println()
-    println("Or run and sign in from the Simulations page: ${cxt.baseUrl}/wa/#page=${HMENU.pageSimulations}")
+    println("Or run and sign in from the Simulations page: ${cxt.baseUrl}/wa/?page=${HMENU.pageSimulations}")
 }
