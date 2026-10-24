@@ -193,6 +193,11 @@ body {
 }
 .update-banner-reload:hover { background: rgba(255, 255, 255, .15); }
 
+/* A jump to an anchor -- an in-page link, or a document opened at a section -- stops below the sticky bar rather than
+   under it (issue #1125). The bar measures 57px at desktop and phone widths; the rest is room above the heading.
+   It applies to the browser's own anchor scroll and to scrollIntoView alike. */
+html { scroll-padding-top: 72px; }
+
 .app-bar {
     position: sticky;
     top: 0;

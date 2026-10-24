@@ -52,9 +52,9 @@ class BackNavigationTest {
 
     @Test
     fun childHrefCarriesTheListingAndExtras() {
-        assertEquals("#page=bootChecks&from=operator", childHref(HMENU.pageBootChecks, HMENU.pageOperator))
+        assertEquals("/operator/boot-checks?from=operator", childHref(HMENU.pageBootChecks, HMENU.pageOperator))
         assertEquals(
-            "#page=editForm&from=forms&g=abc",
+            "/forms/abc/raw?from=forms",
             childHref(pageEditForm, HMENU.pageForms, HP.gedra to "abc"),
         )
     }

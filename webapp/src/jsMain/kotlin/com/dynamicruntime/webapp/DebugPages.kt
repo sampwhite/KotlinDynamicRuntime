@@ -80,19 +80,12 @@ fun shouldFailShell(): Boolean =
  * (App state, Fragment pull) are kept, so reloading one of those retries the same tool.
  */
 fun reloadWithoutFault() {
-    js(
-        """
-        var hash = window.location.hash.replace(/^#/, '');
-        var kept = hash.split('&').filter(function (p) {
-            return p.indexOf('fault=') !== 0 && p !== 'tool=fault';
-        }).join('&');
-        // replaceState rewrites the address WITHOUT navigating, so the reload below re-reads the cleaned URL.
-        // location.replace() would not do: a change of hash alone is not a navigation, so the reload that
-        // followed it re-read the original address and faulted straight back -- observed, not theorised.
-        window.history.replaceState(null, '', window.location.pathname + (kept ? '#' + kept : ''));
-        window.location.reload();
-        """,
-    )
+    val params = hashParams()
+    val kept = params.filterNot { (k, v) -> k == shellFaultParam || (k == debugToolParam && v == debugToolFault) }
+    // replaceHash rewrites the address WITHOUT navigating, so the reload below re-reads the cleaned URL. Only when
+    // there was a trigger to strip: an address no page answers (not found) is reloaded as it is.
+    if (kept.size != params.size) replaceHash(kept.toList())
+    js("window.location.reload()")
 }
 
 /**
@@ -128,14 +121,14 @@ val DebugIndex = FC<Props> {
             className = ClassName("debug-index")
             li {
                 a {
-                    href = "#page=debug&$debugToolParam=$debugToolState"
+                    href = hashHref(listOf(HP.page to HMENU.pageDebug, debugToolParam to debugToolState))
                     +"App state"
                 }
                 +" — the resolved configuration and refresh generation this tab is running on."
             }
             li {
                 a {
-                    href = "#page=debug&$debugToolParam=$debugToolFault"
+                    href = hashHref(listOf(HP.page to HMENU.pageDebug, debugToolParam to debugToolFault))
                     +"Fault: fail this page"
                 }
                 +" — throws while rendering, so the page error boundary is seen to catch."
@@ -146,7 +139,7 @@ val DebugIndex = FC<Props> {
             if (appConfig().hasTestAccess) {
                 li {
                     a {
-                        href = "#page=debug&$debugToolParam=$debugToolFragment"
+                        href = hashHref(listOf(HP.page to HMENU.pageDebug, debugToolParam to debugToolFragment))
                         +"Fragment pull"
                     }
                     +(" — renders a server-provided content element whose text pulls a fragment, resolved on the " +
@@ -155,14 +148,14 @@ val DebugIndex = FC<Props> {
             }
             li {
                 a {
-                    href = "#page=debug&$shellFaultParam=$shellFaultValue"
+                    href = hashHref(listOf(HP.page to HMENU.pageDebug, shellFaultParam to shellFaultValue))
                     +"Fault: fail the shell"
                 }
                 +" — throws in the app bar, so the backstop boundary is seen to catch."
             }
             li {
                 a {
-                    href = "#page=debug&$debugToolParam=$debugToolChoice"
+                    href = hashHref(listOf(HP.page to HMENU.pageDebug, debugToolParam to debugToolChoice))
                     +"Choice widgets"
                 }
                 +(" — the antd choice controls, instrumented with an event trace, for checking which of them " +

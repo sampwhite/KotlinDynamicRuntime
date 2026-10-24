@@ -117,7 +117,7 @@ val ErrorFallback = FC<ErrorFallbackProps> { props ->
             className = ClassName("error-panel-actions")
             a {
                 className = ClassName("button-link")
-                href = "#"
+                href = hashHref(emptyList())
                 +"Home"
             }
             button {

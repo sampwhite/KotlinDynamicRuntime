@@ -242,9 +242,9 @@ class ReportsPageTest {
 
     @Test
     fun thePagesLinksAndItsModeInTheHash() {
-        assertEquals("#page=reports", reportsHref())
-        assertEquals("#page=reports&rpt=audits", reportsHref(reportId = "audits"))
-        assertEquals("#page=reports&c=acme&rpt=audits&view=grouped", reportsHref("acme", "audits", ReportMode.aggregate))
+        assertEquals("/reports", reportsHref())
+        assertEquals("/reports/audits", reportsHref(reportId = "audits"))
+        assertEquals("/reports/audits?c=acme&view=grouped", reportsHref("acme", "audits", ReportMode.aggregate))
         assertEquals(ReportMode.aggregate, reportModeOf(reportModeParam(ReportMode.aggregate)))
         assertEquals(ReportMode.detail, reportModeOf(reportModeParam(ReportMode.detail)))
         // Anything else -- absent, or a stale link -- leaves the report to open the way it declares.
@@ -252,8 +252,8 @@ class ReportsPageTest {
         assertNull(reportModeOf("sideways"))
 
         // A row's form, on the forms page; told the client when looking across clients.
-        assertEquals("#page=forms&g=gd.fd.acme.a", reportFormHref("gd.fd.acme.a", null))
-        assertEquals("#page=forms&client=acme&g=gd.fd.acme.a", reportFormHref("gd.fd.acme.a", "acme"))
+        assertEquals("/forms?g=gd.fd.acme.a", reportFormHref("gd.fd.acme.a", null))
+        assertEquals("/forms?client=acme&g=gd.fd.acme.a", reportFormHref("gd.fd.acme.a", "acme"))
     }
 
     // --- the download (issue #1008) ---

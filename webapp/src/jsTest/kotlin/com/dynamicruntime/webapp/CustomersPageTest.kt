@@ -36,7 +36,7 @@ class CustomersPageTest {
         assertTrue(customerClientLinked(row("acme_east"), acrossClients = true, ownClient = "hub"))
         assertTrue(customerClientLinked(row("acme"), acrossClients = false, ownClient = "acme"))
         assertFalse(customerClientLinked(row("acme_east"), acrossClients = false, ownClient = "acme"))
-        assertEquals("#page=customers&cu=acme", customerHref("acme"))
+        assertEquals("/customers/acme", customerHref("acme"))
     }
 
     /** A client's summary links its customer only where the caller may open the customer's page. */

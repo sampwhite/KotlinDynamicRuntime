@@ -202,7 +202,7 @@ class ReportHistoryTest {
         assertEquals(true, reportViewIsHistory(HMENU.reportViewHistory))
         assertEquals(false, reportViewIsHistory(reportModeGrouped))
         assertEquals(null, reportModeOf(HMENU.reportViewHistory))
-        assertTrue(reportsHref(null, "expensesByYear", history = true).endsWith("${HP.report}=expensesByYear&${HP.reportView}=${HMENU.reportViewHistory}"))
+        assertEquals("/reports/expensesByYear?${HP.reportView}=${HMENU.reportViewHistory}", reportsHref(null, "expensesByYear", history = true))
         assertEquals("No snapshots yet.", historySummaryText(emptyList()))
         assertTrue(historySummaryText(listOf(snapshot(1, "2026-10-02T12:30:00Z"), snapshot(2, "2026-10-03T12:30:00Z", trigger = "manual"))).startsWith("2 snapshots over 2 days; the latest "))
     }

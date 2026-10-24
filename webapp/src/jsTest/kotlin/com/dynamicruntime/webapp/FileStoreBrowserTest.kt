@@ -64,9 +64,9 @@ class FileStoreBrowserTest {
 
     @Test
     fun theAddressesNameThePageTheBucketAndTheFolder() {
-        assertEquals("#page=fileStore", fileStoreHref())
-        assertEquals("#page=fileStore&bucket=web-assets", fileStoreHref("web-assets"))
-        assertEquals("#page=fileStore&bucket=web-assets&folder=clients%2Facme%2F", fileStoreHref("web-assets", "clients/acme/"))
+        assertEquals("/operator/files", fileStoreHref())
+        assertEquals("/operator/files?bucket=web-assets", fileStoreHref("web-assets"))
+        assertEquals("/operator/files?bucket=web-assets&folder=clients%2Facme%2F", fileStoreHref("web-assets", "clients/acme/"))
         // The folder as the hash names it, read as the endpoint names one: a typed address without the slash still matches.
         assertEquals("", fileStoreFolder(null))
         assertEquals("", fileStoreFolder("  "))

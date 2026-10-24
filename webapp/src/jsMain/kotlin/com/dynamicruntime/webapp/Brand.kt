@@ -24,7 +24,7 @@ import com.dynamicruntime.common.endpoint.EP
 /** The app context root as a URL prefix — `"/wa"` under `appui`, `""` on the dev server (assets at the origin
  *  root). Assets are addressed as `appRootPrefix() + "/name"`, which is correct under both. */
 fun appRootPrefix(): String {
-    val root = js("(window.kdrCfg && window.kdrCfg.contextRoots && window.kdrCfg.contextRoots.app) || ''") as String
+    val root = js("(typeof window !== 'undefined' && window.kdrCfg && window.kdrCfg.contextRoots && window.kdrCfg.contextRoots.app) || ''") as String
     return if (root.isEmpty()) "" else "/$root"
 }
 

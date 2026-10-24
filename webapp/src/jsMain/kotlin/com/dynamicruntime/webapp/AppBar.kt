@@ -386,7 +386,7 @@ val AppBar = FC<AppBarProps> { props ->
         className = ClassName(if (elevated) "app-bar admin" else "app-bar")
         a {
             className = ClassName("app-bar-brand")
-            href = "#"
+            href = hashHref(emptyList())
             img {
                 className = ClassName("app-bar-logo")
                 // The client's own mark where it has set one (issue #1130), else the deployment's.
@@ -906,9 +906,9 @@ private fun ChildrenBuilder.menuItemView(
     when (val action = item.action) {
         is UiRoute -> {
             val current = action.page == currentPage
-            menuLink("#page=${action.page}", item.label, current) {
+            menuLink(hashHref(listOf(HP.page to action.page)), item.label, current) {
                 onNavigate()
-                // Same hash, no `hashchange`: this is the only signal the router gets that the page was re-chosen.
+                // The same address moves nothing: this is the only signal the router gets that the page was re-chosen.
                 if (current) onRevisit()
             }
         }
