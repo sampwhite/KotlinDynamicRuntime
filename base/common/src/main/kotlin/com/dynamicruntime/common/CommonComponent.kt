@@ -50,6 +50,7 @@ import com.dynamicruntime.common.node.NodeService
 import com.dynamicruntime.common.operator.operatorSchema
 import com.dynamicruntime.common.content.MarkdownDocDef
 import com.dynamicruntime.common.content.MarkdownDocService
+import com.dynamicruntime.common.content.ComponentImageService
 import com.dynamicruntime.common.content.FRAG
 import com.dynamicruntime.common.content.FragmentSource
 import com.dynamicruntime.common.content.backendFragmentFiles
@@ -392,6 +393,9 @@ class CommonComponent : ComponentDefinition {
             // sign-in page could. Absent here, that race cannot happen (issues #432, #433).
             service(::PortalService, roles = setOf(BOOT.app)),
             service(::MarkdownFragmentService), service(::MarkdownDocService),
+            // The images components ship (issue #1339), read from the classpath and served under the static root on
+            // every kind of node, as the fragments are.
+            service(::ComponentImageService),
             // A client's own web assets (issue #1130), served under the static root beside the fragments.
             // Application-only, as the file store they are kept in is.
             service(::ClientWebAssetService, roles = setOf(BOOT.app)),

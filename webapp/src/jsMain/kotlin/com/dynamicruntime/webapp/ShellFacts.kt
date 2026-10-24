@@ -38,6 +38,7 @@ data class ShellFacts(
     val docs: List<HomeLink> = emptyList(),
     val sourceRepoBase: String? = null,
     val fileRefs: Map<String, String> = emptyMap(),
+    val images: Map<String, String> = emptyMap(),
     val inSandbox: Boolean = false,
     val whatIsThisLink: String? = null,
     val whatIsThisHide: String? = null,
@@ -61,6 +62,7 @@ fun shellFactsOf(config: HomeConfig, shellCopy: Copy? = null): ShellFacts = Shel
     docs = config.links,
     sourceRepoBase = config.sourceRepoBase,
     fileRefs = config.fileRefs,
+    images = config.images,
     inSandbox = switchesFromSandbox(config),
     whatIsThisLink = shellCopy?.opt(HFRAG.whatIsThisNs, HFRAG.whatIsThisLink)?.ifBlank { null },
     whatIsThisHide = shellCopy?.opt(HFRAG.whatIsThisNs, HFRAG.whatIsThisHide)?.ifBlank { null },
@@ -73,6 +75,14 @@ fun shellFactsOf(config: HomeConfig, shellCopy: Copy? = null): ShellFacts = Shel
  * then draws its alt text. What [Markdown] uses unless it is told otherwise.
  */
 fun ShellFacts.copyRefAddress(addressOf: (String) -> String = Http::fileRefUrl): (String) -> String? = refAddressFrom(fileRefs, addressOf)
+
+/**
+ * Where an image in copy naming one a component ships (`![A diagram](img:sample:diagram)`) is drawn from (issue #1339):
+ * the static root's address of it, `/<appId>/img/sample:diagram:<hash>`, kept for good, and nothing for an image no
+ * component ships, which then draws its alt text. The same on every surface, the copy editor's included.
+ */
+fun ShellFacts.copyImageAddress(addressOf: (String) -> String = Http::componentImageUrl): (String) -> String? =
+    imageAddressFrom(images, addressOf)
 
 /**
  * How a link in **form copy** -- a label, a description, a task's text -- is resolved (issue #1136): as a link in a

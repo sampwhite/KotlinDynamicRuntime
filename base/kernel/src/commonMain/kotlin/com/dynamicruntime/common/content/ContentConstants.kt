@@ -23,10 +23,15 @@ object CMK {
      *  itself: `/<staticRoot>/<appId>/ref/<refId:hash>`. Always the **caller's** client's; see `FREF.staticPath`. */
     const val ref = "ref"
 
+    /** An image a component ships in its resources (issue #1339), returned as the image itself:
+     *  `/<staticRoot>/<appId>/img/<name:hash>`. The same for every caller; see `IMG.staticPath`. */
+    const val img = "img"
+
     /**
      * Separates a name from the hash of its content in a static address -- a fragment file from its build id, a web
      * asset's slot or a file ref's id from its hash. One constant, so the side that builds an address and the side
-     * that parses it cannot come to split it differently.
+     * that parses it cannot come to split it differently. A component image's name is rooted (`sample:diagram`) and
+     * so holds this separator itself; a hash never does, so an address is split at the **last** one.
      */
     const val nameSep = ':'
 }

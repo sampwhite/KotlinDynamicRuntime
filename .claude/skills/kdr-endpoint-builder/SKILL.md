@@ -256,7 +256,9 @@ than an API answer. **How long an answer may be kept is `ContentResources`' to s
 `cacheHeaderFor(matched)` for an address anyone may fetch, `privateCacheHeaderFor(matched)` with `Vary: Cookie`
 for one behind a sign-in, and `noStore` on every miss. **Serving a stored file by its content is
 `HashedFileServing`'s** (`addressOf`, `send`, `downloadHeaders`): a client's file refs (`fileref/FileRefService.kt`,
-issue #1153) are the second server on it, and a third should be too rather than answer those questions again.
+issue #1153) are the second server on it, and the images components ship (`content/ComponentImages.kt`, issue #1339)
+the third -- whose rooted names hold a separator of their own, which `addressOf`'s `nameSeps` says -- and a fourth
+should be too rather than answer those questions again.
 
 ## Signatures
 

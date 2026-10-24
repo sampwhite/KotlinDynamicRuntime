@@ -72,6 +72,15 @@ object SF {
      * `%{@t("questionnaire.topicHelp")}` and resolved server-side at delivery. Never served.
      */
     const val formHelp = "sampleFormHelp"
+
+    /**
+     * An image the sample component ships (issue #1339): a site visit's three steps, which acme's home page shows as
+     * `![...](img:sample:siteVisitFlow)`. Read from `component-images/` on the classpath.
+     */
+    const val siteVisitFlow = "sample:siteVisitFlow"
+
+    /** The file [siteVisitFlow] is read from. */
+    const val siteVisitFlowFile = "site-visit-flow.svg"
 }
 
 /** The sample workflows' ids (issue #533): one creation workflow per client, under one shared name. */
@@ -360,6 +369,9 @@ private fun acmeClient(cxt: KdrCxt): GedraConfig =
         fragmentOverlay(HFRAG.home) {
             namespace("home") {
                 key("brand", "ACME KDR")
+                // An image the sample component ships (issue #1339), in the note beneath the intro, which is empty as
+                // shipped: the same image for every client that names it, served from the component's resources.
+                key("note", "![How a site visit flows: request, visit, report](img:${SF.siteVisitFlow})\n\nEvery site visit goes the same way.")
             }
             // What a form with no workflows shows in the forms list's workflow column (issue #791).
             namespace(HFRAG.formsNs) {

@@ -52,6 +52,17 @@ sets `refAddress` itself. A `[link](ref:logo)` is not a ref: refs are images, an
 ref the client does not have is refused at the write (the file-ref check, `FileRefService.build`), and so is
 removing a ref that copy still names.
 
+**An image may name one a component ships** (issue #1339): `![A diagram](img:sample:siteVisitFlow)`
+(`MDR.imageScheme`), the name rooted under the component's owner. A component declares its images
+(`ComponentDefinition.images`, read from `component-images/` on its classpath); they are checked at boot and served at
+`/st/<appId>/img/<name:hash>` (`IMG.staticPath`, `ComponentImageService`), the same for every caller. The shell config
+carries them as `state.images` (each name to its `<name>:<hash>`, `componentImageNamesFrom`), and every copy surface
+draws them through `MarkdownHooks.imageAddress` (`ShellFacts.copyImageAddress`) -- the copy editor too, which sets only
+its own `refAddress`. **`img:` and `ref:` are separate namespaces**: a client changes what its copy shows by changing
+the copy, never by a ref standing in for a component image. An image no component ships is its alt text, as a mail
+draws every image, and copy naming one is a problem of the copy: the fragment check's for copy every client shares,
+the file-ref check's for a client's own.
+
 **Using a fragment value:** each value is Markdown that may embed `${namespace.key}` placeholders. Resolve
 them with the kernel's `String.evalTemplate(data)` — the fragment map *is* the data map, so `${email.subject}`
 reads `map["email"]["subject"]` — then render the resulting Markdown.

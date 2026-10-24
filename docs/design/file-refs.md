@@ -334,3 +334,9 @@ issues named were closed as not planned.
   where configuration moves it (issue #1167).
 - **Credentials from AWS STS** for an S3 store (issue #1145).
 - **Sweeping files no revision names.** Nothing removes a file today.
+
+**Beside refs, images a component ships** (issue #1339). Copy names one as `![A diagram](img:sample:siteVisitFlow)`:
+an image declared by a component (`ComponentDefinition.images`), read from its classpath at boot, checked as a ref's
+file is (`WebAssetCheck`, at most a ref's size), and served the same way (`HashedFileServing`, at
+`/<staticRoot>/<appId>/img/<name:hash>`). It is the same for every client, so it is a separate namespace from refs:
+a client wanting another image changes its copy to name a ref of its own.

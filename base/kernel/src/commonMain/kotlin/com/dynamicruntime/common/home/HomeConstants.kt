@@ -198,6 +198,13 @@ object HFLD {
      * naming it draws its alt text. Re-read with the rest of the shell config, as [webAssets] is.
      */
     const val fileRefs = "fileRefs"
+
+    /**
+     * In the shell config's state (issue #1339): each image a component ships, by its rooted name (`sample:diagram`),
+     * to its image by name and content (`sample:diagram:<hash>`) -- what copy's `img:sample:diagram` is drawn from, at
+     * `IMG.staticPath`. The same for every caller.
+     */
+    const val images = "images"
 }
 
 /** Home schema type names (the backend's output type refs; also useful to the frontend). */

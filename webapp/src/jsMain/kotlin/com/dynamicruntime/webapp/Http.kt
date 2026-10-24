@@ -3,6 +3,7 @@ package com.dynamicruntime.webapp
 import com.dynamicruntime.common.content.CMK
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.endpoint.RID
+import com.dynamicruntime.common.content.IMG
 import com.dynamicruntime.common.fileref.FREF
 import com.dynamicruntime.common.gedra.DSV
 import com.dynamicruntime.common.util.Parsed
@@ -252,6 +253,12 @@ object Http {
      * gave it (`logo:<hash>`): under the static root, cached for good, the name being its content's.
      */
     fun fileRefUrl(versionedName: String): String = staticRoot + FREF.staticPath(appId, versionedName)
+
+    /**
+     * The address an image a component ships is served at (issue #1339), from its name as the shell config gave it
+     * (`sample:diagram:<hash>`): under the static root, cached for good, the name being its content's.
+     */
+    fun componentImageUrl(versionedName: String): String = staticRoot + IMG.staticPath(appId, versionedName)
 
     /**
      * DELETE an API endpoint. Its input is [args], appended as an encoded query string, because this codebase

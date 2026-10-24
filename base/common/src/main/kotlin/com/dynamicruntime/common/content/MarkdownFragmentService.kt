@@ -122,6 +122,8 @@ class MarkdownFragmentService : ServiceInitializer, ContentServer {
         val results = all.filter { it.client == null }
 
         val findings = results.flatMap { findingsOf(it) } + duplicateOmnibusDeclarations(registeredFragmentSources(cxt)) +
+            // Copy every client shares naming an image no component ships (issue #1339): drawn as its alt text.
+            sharedCopyNamingNoImage(cxt, registeredFragmentSources(cxt)) +
             // A flavor-directory file that would not parse (issue #1220): already left out, and judged here like any
             // fragment fault -- refused outside production, reported in it.
             DeployFlavors.deploymentCopyFaults(cxt)

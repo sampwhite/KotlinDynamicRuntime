@@ -13,7 +13,9 @@ import com.dynamicruntime.sample.gedra.SC
 import com.dynamicruntime.sample.gedra.SF
 import com.dynamicruntime.common.cfact.CFACT
 import com.dynamicruntime.common.cfact.CFACTS
+import com.dynamicruntime.common.content.ComponentImageDef
 import com.dynamicruntime.common.content.FragmentSource
+import com.dynamicruntime.common.content.componentImage
 import com.dynamicruntime.common.content.backendFragmentFiles
 import com.dynamicruntime.common.content.fragmentFiles
 import com.dynamicruntime.common.content.fragmentInline
@@ -128,6 +130,9 @@ class SampleComponent : ComponentDefinition {
      * base file, a `_overlay.md` beside it, and an overlay written in code. Acme's own overlay of the same
      * file arrives through its Gedra config, so the file ends up with four contributors and one reader.
      */
+    /** The images the sample ships (issue #1339): one, shown on acme's home page. */
+    override fun images(cxt: KdrCxt): List<ComponentImageDef> = listOf(componentImage(SF.siteVisitFlow, SF.siteVisitFlowFile))
+
     override fun fragments(cxt: KdrCxt): List<FragmentSource> =
         // A fixture: nothing in the application shows it, and it says so by declaring no `shownOn` (issue #933).
         fragmentFiles(SF.content) +

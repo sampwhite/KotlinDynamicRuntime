@@ -109,6 +109,11 @@ class HomeConfig(
      */
     val fileRefs: Map<String, String> = emptyMap(),
     /**
+     * The images components ship (issue #1339), each rooted name to its served name (`sample:diagram:<hash>`) -- what
+     * copy naming the image `img:sample:diagram` is drawn from ([ShellFacts.copyImageAddress]). The same for everybody.
+     */
+    val images: Map<String, String> = emptyMap(),
+    /**
      * The IANA time zone the caller's moments are shown in (issue #1115, [DisplayZone]): their client's, else the
      * deployment's display default; null when neither is set, for the deployment's day start.
      */
@@ -177,6 +182,7 @@ fun homeConfigFrom(config: UiConfig): HomeConfig {
         joinOffered = config.state[HFLD.joinOffered] == true,
         webAssets = webAssetNamesFrom(config.state[HFLD.webAssets]),
         fileRefs = fileRefNamesFrom(config.state[HFLD.fileRefs]),
+        images = componentImageNamesFrom(config.state[HFLD.images]),
         timeZone = (config.state[HFLD.timeZone] as? String)?.ifBlank { null },
         timeZoneLabel = (config.state[HFLD.timeZoneLabel] as? String)?.ifBlank { null },
     )

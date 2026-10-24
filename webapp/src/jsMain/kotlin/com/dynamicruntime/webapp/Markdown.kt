@@ -64,16 +64,19 @@ val Markdown = FC<MarkdownProps> { props ->
 /**
  * What the renderer is told (issue #1186): the [linkResolver], and where a ref image is drawn from -- [refAddress]
  * where the surface set one, else the caller's own client's refs as the shell was told them ([facts]), each made an
- * address by [addressOf]. Pure, covered under `jsNodeTest`.
+ * address by [addressOf]. A component image (issue #1339) is drawn from the images the shell was told, on every
+ * surface, each made an address by [imageAddressOf]. Pure, covered under `jsNodeTest`.
  */
 fun markdownHooksFor(
     linkResolver: ((String) -> String)?,
     refAddress: ((String) -> String?)?,
     facts: ShellFacts,
     addressOf: (String) -> String = Http::fileRefUrl,
+    imageAddressOf: (String) -> String = Http::componentImageUrl,
 ): MarkdownHooks = MarkdownHooks(
     resolveUrl = linkResolver,
     refAddress = refAddress ?: facts.copyRefAddress(addressOf),
+    imageAddress = facts.copyImageAddress(imageAddressOf),
     decorateCodeBlock = ::copyButtonWrap,
 )
 

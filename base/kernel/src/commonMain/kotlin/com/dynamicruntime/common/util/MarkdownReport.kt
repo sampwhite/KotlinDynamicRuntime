@@ -51,7 +51,16 @@ class MdHeading(val level: Int, val text: String, val slug: String, val line: In
  * [refId] is the file ref an image names (issue #1186): its [resolved] is the surface's address for the ref,
  * empty where it has none -- not inert, since the image is then drawn as its alt text, which is what a ref asks.
  */
-class MdLink(val target: String, val resolved: String, val image: Boolean, val inert: Boolean, val line: Int, val refId: String? = null)
+class MdLink(
+    val target: String,
+    val resolved: String,
+    val image: Boolean,
+    val inert: Boolean,
+    val line: Int,
+    val refId: String? = null,
+    /** For an image naming a component image (issue #1339, [MDR.imageScheme]): its rooted name. */
+    val imageName: String? = null,
+)
 
 /** A fenced code block: its [language] (empty when the fence names none) and the 1-based [line] it opens on. */
 class MdCodeBlock(val language: String, val line: Int)
@@ -153,6 +162,13 @@ class ReportingSink(private val html: HtmlSink, private val hooks: MarkdownHooks
             links.add(MdLink(target, hooks.refAddress?.invoke(refId).orEmpty(), image = true, inert = false, line = line + 1, refId = refId))
             return
         }
+        val imageName = if (image) componentImageNameOf(target) else null
+        if (imageName != null) {
+            links.add(
+                MdLink(target, hooks.imageAddress?.invoke(imageName).orEmpty(), image = true, inert = false, line = line + 1, imageName = imageName),
+            )
+            return
+        }
         val resolved = hooks.resolveUrl?.invoke(target) ?: target
         val inert = resolved.isNotBlank() && safeUrl(resolved).isEmpty()
         links.add(MdLink(target, resolved, image, inert, line + 1))
@@ -183,6 +199,12 @@ class ReportingSink(private val html: HtmlSink, private val hooks: MarkdownHooks
  * produce is not counted; what is written is.
  */
 fun String.imageRefIds(): List<String> = analyzeMarkdown().links.mapNotNull { it.refId }.distinct()
+
+/**
+ * The component images [this] Markdown's images name (issue #1339), each once, in the order they first appear: what
+ * copy needs some component to ship. As with [imageRefIds], what a placeholder would produce is not counted.
+ */
+fun String.componentImageNames(): List<String> = analyzeMarkdown().links.mapNotNull { it.imageName }.distinct()
 
 /** A target with no scheme that is not a same-document anchor or protocol-relative: a path the resolver maps. */
 private fun isRelativeTarget(target: String): Boolean {

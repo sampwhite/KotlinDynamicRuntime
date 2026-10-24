@@ -31,6 +31,14 @@ class MarkdownHooks(
      */
     val refAddress: ((refId: String) -> String?)? = null,
     /**
+     * Where the component image an image names (`![alt](img:sample:diagram)`, [MDR.imageScheme]) is drawn from on this
+     * surface, given its rooted name, or null when it cannot be drawn here (issue #1339): no component declares it, or
+     * a surface with nothing served -- a mail. As with [refAddress], an image it cannot draw is its **alt text**, the
+     * address is still guarded by [safeUrl], and [resolveUrl] is never asked. Apart from [refAddress] because a surface
+     * drawing another client's refs (the copy editor) still draws the one set of component images.
+     */
+    val imageAddress: ((name: String) -> String?)? = null,
+    /**
      * Decorates a fenced code block for this surface (issue #1233): given the fence's language and the rendered
      * `<pre><code>…</code></pre>`, returns the HTML to emit in its place, or null to emit the block as it is. The
      * webapp wraps a JSON block with a copy button; a mail or a page on GitHub passes nothing, since a control
@@ -43,6 +51,13 @@ class MarkdownHooks(
 /** The file ref an image's [src] names -- `ref:logo` names `logo` -- or null when it names none ([MDR.refScheme]). */
 fun imageRefIdOf(src: String): String? =
     src.trim().takeIf { it.startsWith(MDR.refScheme + ":") }?.substring(MDR.refScheme.length + 1)?.takeIf { it.isNotEmpty() }
+
+/**
+ * The component image an image's [src] names -- `img:sample:diagram` names `sample:diagram` -- or null when it names
+ * none ([MDR.imageScheme]).
+ */
+fun componentImageNameOf(src: String): String? =
+    src.trim().takeIf { it.startsWith(MDR.imageScheme + ":") }?.substring(MDR.imageScheme.length + 1)?.takeIf { it.isNotEmpty() }
 
 /**
  * Where a rendering goes (issue #795): each callback takes already-rendered children and returns the rendering of
@@ -95,10 +110,11 @@ class HtmlSink(val hooks: MarkdownHooks) : MarkdownSink {
         hooks.decorateSpan?.invoke(roles, inner) ?: ("<span class=\"" + roleClasses(roles) + "\">" + inner + "</span>")
     override fun image(alt: String, src: String, attrs: MdAttrs?): String {
         val refId = imageRefIdOf(src)
-        val resolved = if (refId != null) {
-            hooks.refAddress?.invoke(refId) ?: return escapeHtml(alt)
-        } else {
-            hooks.resolveUrl?.invoke(src) ?: src
+        val imageName = componentImageNameOf(src)
+        val resolved = when {
+            refId != null -> hooks.refAddress?.invoke(refId) ?: return escapeHtml(alt)
+            imageName != null -> hooks.imageAddress?.invoke(imageName) ?: return escapeHtml(alt)
+            else -> hooks.resolveUrl?.invoke(src) ?: src
         }
         val sb = StringBuilder("<img src=\"").append(escapeHtml(safeUrl(resolved))).append("\" alt=\"").append(escapeHtml(alt)).append('"')
         if (attrs != null) {
