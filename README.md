@@ -336,6 +336,12 @@ Work we have deliberately put off — each with the condition that should make u
 stays a queue of things to act on soon; deferred items become issues only once their trigger fires. Consult and append
 to that file when you defer something rather than leaving a "someday" issue open.
 
+## Contributing
+
+See [`CONTRIBUTING.md`](CONTRIBUTING.md): open an issue to agree on the approach first, then set up with
+`bin/kdr-install`, and run the full suite before opening a pull request. The repository's guidance is written for
+AI coding agents as much as for people, starting from [`CLAUDE.md`](CLAUDE.md).
+
 ## License
 
 [MIT](LICENSE)

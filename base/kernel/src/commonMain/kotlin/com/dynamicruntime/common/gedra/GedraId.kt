@@ -97,7 +97,10 @@ enum class GedraDataType(override val idAbbrev: String) : GedraKind {
     /** A single stored entity holding form-entry data. */
     formDoc("fd"),
 
-    /** Data captured while a workflow was followed. */
+    /**
+     * Data captured while a workflow was followed. Nothing creates one yet (every create and save makes a [formDoc]),
+     * but it is what a "true" workflow will create, and it is on the roadmap: reserved, not vestigial.
+     */
     wfData("wf"),
 
     /** A pointer to (and claim on) file content held in a file store. */

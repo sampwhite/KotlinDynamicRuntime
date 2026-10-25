@@ -6,7 +6,7 @@ machine-specific configuration belongs in your own non-versioned `CLAUDE.md` in 
 (the parent of this repo), not here.
 
 Coding conventions live in [`docs/development/code-guide.md`](docs/development/code-guide.md). Environment variables are
-**declared once in code** as `EnvVarDef` values, grouped by area (`DbEnv`, `NodeUtil`, `LogSetup`, and their neighbours)
+**declared once in code** as `EnvVarDef` values, grouped by area (`DbEnv`, `NodeUtil`, `LogSetup`, and their neighbors)
 — the declaration is the reference, since the read path takes a declared def, so an undeclared variable cannot be read;
 a running node serves the live set, with each variable's resolved value, at the `operator` endpoint
 `/operator/env/reference`.
@@ -33,6 +33,24 @@ build rather than quietly staling the documentation. (`kdr-demo-docs` has prose 
 describes are held to the code by `ConfDemoDocsTest`.) When you change an API, change its skill in the same
 edit — the test will tell you which one, and a skill is read *instead of* the source, so a wrong one is
 followed rather than noticed.
+
+## Before a pull request
+
+- **Run the full suite from the build root: `./gradlew check`** (`bin/kdr-tests` runs exactly this). `./gradlew test`
+  is not it: the multiplatform modules (`base/kernel`, `webapp`) have no `test` task, so Gradle skips their tests
+  without a word, and it skips the Dokka check too, which fails on any KDoc `[link]` that does not resolve. Read
+  Gradle's own exit code, not the exit code of the last command in a pipeline.
+- **Prose follows the code guide too**: US spelling and the serial comma, in comments, KDoc, and Markdown (see
+  [its section on prose](docs/development/code-guide.md#prose-in-comments-and-documents)).
+
+## What not to build
+
+- **An enhancement nobody asked for is neither built ahead nor filed as an issue.** It goes into
+  [`deferred-work.md`](docs/development/deferred-work.md) under a heading naming the observable trigger that would
+  make it worth doing, usually "When a customer wants …". The issue tracker is a queue of work to act on soon.
+- **Before proposing to remove something unused, read its KDoc.** IntelliJ's "unused" warnings are kept on purpose,
+  as a signal of what is not used yet (see the code guide), and some declarations are reserved for planned work:
+  `GedraDataType.wfData` has no creator yet, and stays.
 
 ## The workspace directory is not yours
 
