@@ -110,7 +110,7 @@ class ClientsPageTest {
     @Test
     fun aClientsOwnPageIsOneAddress() {
         assertEquals("/clients/acme", clientDetailHref("acme"))
-        // A sandbox's id holds a colon, which a hash value must carry encoded.
+        // A sandbox's id holds a colon, which an address value must carry encoded.
         assertEquals("/clients/acme:sandbox", clientDetailHref("acme:sandbox"))
         assertEquals(clientDetailHref("acme"), clientOverridesHref("acme"))
     }
@@ -128,13 +128,13 @@ class ClientsPageTest {
 
     @Test
     fun anAdministratorOfOneClientOpensItInPlace() {
-        fun open(hash: String?, manages: Boolean = true, across: Boolean = false, own: String = "acme") =
-            clientsOpenId(hash, manages, across, own)
+        fun open(named: String?, manages: Boolean = true, across: Boolean = false, own: String = "acme") =
+            clientsOpenId(named, manages, across, own)
         // No client named: the one client they have, where the listing was a table of one row.
         assertEquals("acme", open(null))
         // A sandbox is its user's one client too.
         assertEquals("acme:sandbox", open(null, own = "acme:sandbox"))
-        // A client the hash names is the one shown, whoever asks: the endpoint says whether they may see it.
+        // A client the address names is the one shown, whoever asks: the endpoint says whether they may see it.
         assertEquals("globex", open("globex"))
         assertEquals("globex", open("globex", across = true))
         // Across clients there is a listing to show.
@@ -276,7 +276,7 @@ class ClientsPageTest {
         val definitionOnly = clientSummaryRows("acme", null, acmeDefinition(), canSeeAllClients = true).toMap()
         assertEquals("acme", definitionOnly["Client id"])
         assertEquals(null, definitionOnly["Load"])
-        // Neither yet (a deep link before anything answered): the id the hash named still heads the summary.
+        // Neither yet (a deep link before anything answered): the id the address named still heads the summary.
         assertEquals("globex", clientSummaryRows("globex", null, null, canSeeAllClients = false).toMap()["Client id"])
     }
 

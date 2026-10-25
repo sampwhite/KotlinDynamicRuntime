@@ -27,14 +27,14 @@ import web.cssom.ClassName
 private val fileStoreScope = MainScope()
 
 /**
- * The operator's file-store browser (issue #1297): with no bucket in the hash, the store's buckets and what the
- * store is; with one, the folder the hash names -- a breadcrumb back up, the folders under it as links, and its
- * files with their records and a download each. The bucket and folder ride the hash ([HP.bucket], [HP.folder]), so
+ * The operator's file-store browser (issue #1297): with no bucket in the address, the store's buckets and what the
+ * store is; with one, the folder the address names -- a breadcrumb back up, the folders under it as links, and its
+ * files with their records and a download each. The bucket and folder ride the address ([HP.bucket], [HP.folder]), so
  * Back steps out through the folders and a folder is linkable. The endpoints are the authority: a caller without the
  * operator role sees their refusal here, as on the other operator pages.
  */
 val OperatorFileStorePage = FC<Props> {
-    val params = hashParams()
+    val params = routeParams()
     val bucket = params[HP.bucket]
     val folder = fileStoreFolder(params[HP.folder])
     var buckets by useState<Pair<List<BucketView>, StoreView?>?>(null)

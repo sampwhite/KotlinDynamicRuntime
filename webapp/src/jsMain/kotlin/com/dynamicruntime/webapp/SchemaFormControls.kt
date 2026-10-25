@@ -407,7 +407,7 @@ external interface JsonObjectFieldProps : Props {
  * text, because an unparseable edit emits the raw string (see [parseJsonField]). That leaves one piece of
  * state — the message from the last parse — and sidesteps the usual controlled-editor problem of re-syncing
  * local text against a value that arrived from somewhere else, which here happens twice: "Apply to form" from
- * the request panel, and the values restored from the URL hash after the first render.
+ * the request panel, and the values restored from the URL after the first render.
  */
 val JsonObjectField = FC<JsonObjectFieldProps> { props ->
     var parseError by useState<String?>(null)

@@ -60,7 +60,7 @@ class SelfCreateTest {
     }
 
     @Test
-    fun theSelfRecordIsItsOwnHashValue() {
+    fun theSelfRecordIsItsOwnRouteValue() {
         // Distinct from a plain create, so Back and Forward reopen the right form, and not a user id.
         assertNotEquals(HP.newRecord, HP.selfRecord)
         assertTrue(HP.selfRecord.toLongOrNull() == null)

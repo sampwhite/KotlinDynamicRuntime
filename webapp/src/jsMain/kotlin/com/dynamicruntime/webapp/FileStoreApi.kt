@@ -83,7 +83,7 @@ fun breadcrumbs(prefix: String): List<Pair<String, String>> {
 }
 
 /**
- * The folder the hash names, as the endpoint names one: empty for the top of a bucket, else ending in `/` -- so an
+ * The folder the address names, as the endpoint names one: empty for the top of a bucket, else ending in `/` -- so an
  * address typed without the slash opens the folder the endpoint answers for.
  */
 fun fileStoreFolder(raw: String?): String {
@@ -92,7 +92,7 @@ fun fileStoreFolder(raw: String?): String {
 }
 
 /** The page's address for [bucket]'s folder [prefix]; the bucket list with no bucket. */
-fun fileStoreHref(bucket: String? = null, prefix: String = ""): String = hashHref(
+fun fileStoreHref(bucket: String? = null, prefix: String = ""): String = routeHref(
     buildList {
         add(HP.page to HMENU.pageFileStore)
         if (bucket != null) add(HP.bucket to bucket)

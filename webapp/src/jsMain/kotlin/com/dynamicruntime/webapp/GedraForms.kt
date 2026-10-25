@@ -115,13 +115,13 @@ fun formsSearchForClient(applied: Map<String, String>, chosen: String?): Map<Str
     (if (chosen.isNullOrBlank()) applied - EI.client else applied + (EI.client to chosen)) - EI.user
 
 /**
- * The search a mounting forms page applies from its hash (issues #592, #714): [formsSearchFromHash], minus the
+ * The search a mounting forms page applies from its address (issues #592, #714): [formsSearchFromRoute], minus the
  * `client` selector for a caller who may **not** see across clients -- a shared chosen-client link opened by an
  * ordinary user would otherwise carry a filter they have no control to clear (and, on an empty account, read
  * "no forms match" instead of the empty state). Pure, and covered under `jsNodeTest`.
  */
 fun formsInitialSearch(hp: Map<String, String>, seeAllClients: Boolean): Map<String, String> =
-    formsSearchFromHash(hp).let { if (seeAllClients) it else it - EI.client }
+    formsSearchFromRoute(hp).let { if (seeAllClients) it else it - EI.client }
 
 /** The client selector's empty choice on the forms listing (issue #668): every client's rows, the caller's own columns. */
 const val formsAllClientsLabel = "All clients"
@@ -154,19 +154,19 @@ class FormsListPage(
 )
 
 /**
- * The forms hash's navigation keys -- the page, the open form, the listing a child was opened from, the
+ * The forms address's navigation keys -- the page, the open form, the listing a child was opened from, the
  * arrival highlight, and the survey child page's edit-mode flag (issue #694) and open task (issue #700). Every
- * other key on a forms hash is a search parameter (a trait filter, the scope-bar `user`, the free-text `q`),
+ * other key on a forms address is a search parameter (a trait filter, the scope-bar `user`, the free-text `q`),
  * because the forms search shares the endpoint's own arg names, the same arrangement the Users page uses.
  */
 private val formsNavKeys = setOf(HP.page, HP.gedra, HP.from, HP.highlight, HP.created, HP.edit, HP.task, HP.workflow)
 
 /**
- * The applied forms search read back out of a hash (issue #592): every param that is not a navigation key. So a
+ * The applied forms search read back out of an address (issue #592): every param that is not a navigation key. So a
  * shared or bookmarked forms URL reproduces the filter, and returning from an edit -- which carries the search
  * on its own URL -- lands on the same filtered list. Pure, and covered under `jsNodeTest`.
  */
-fun formsSearchFromHash(hp: Map<String, String>): Map<String, String> =
+fun formsSearchFromRoute(hp: Map<String, String>): Map<String, String> =
     hp.filterKeys { it !in formsNavKeys }.filterValues { it.isNotBlank() }
 
 /**
@@ -205,11 +205,11 @@ fun savedNotShownNote(
     }
 }
 
-/** The value a present-or-absent forms hash flag carries ([HP.created]): written and read in this file only. */
-private const val formsHashFlagOn = "1"
+/** The value a present-or-absent forms address flag carries ([HP.created]): written and read in this file only. */
+private const val formsRouteFlagOn = "1"
 
 /**
- * Whether a forms hash [hp] asks for anything but the listing's default order (newest-updated first), which
+ * Whether a forms address [hp] asks for anything but the listing's default order (newest-updated first), which
  * is what decides whether a just-saved row can be off page one for a reason other than a filter. Pure.
  */
 fun formsCustomSort(hp: Map<String, String>): Boolean {
@@ -218,7 +218,7 @@ fun formsCustomSort(hp: Map<String, String>): Boolean {
 }
 
 /**
- * The note a forms listing shows on **arrival** (#758 review): what the arriving hash [hp] says was saved --
+ * The note a forms listing shows on **arrival** (#758 review): what the arriving address [hp] says was saved --
  * the highlighted id, whether it was a create, the sort it arrived under -- read against the page that loaded.
  * The reading half of [formsListingReturn], kept beside it so the flag's spelling lives in one file and one
  * test can run a return straight into an arrival. Pure, and covered under `jsNodeTest`.
@@ -228,7 +228,7 @@ fun formsArrivalNote(hp: Map<String, String>, appliedSearch: Map<String, Any?>, 
         hp[HP.highlight]?.ifBlank { null },
         appliedSearch,
         rowIds,
-        created = hp[HP.created] == formsHashFlagOn,
+        created = hp[HP.created] == formsRouteFlagOn,
         customSort = formsCustomSort(hp),
     )
 
@@ -250,10 +250,10 @@ val formCreateOmittedFields: List<String> = listOf(GDF.allowAdditionalTraits, EI
 fun formForUserBody(userRef: String, payload: Map<String, Any?>): Map<String, Any?> = payload + (EI.user to userRef)
 
 /**
- * The applied forms [search] as hash params (issue #592): its non-blank entries, to merge beside the page and
- * the open form. The inverse of [formsSearchFromHash]. Pure, and covered under `jsNodeTest`.
+ * The applied forms [search] as route params (issue #592): its non-blank entries, to merge beside the page and
+ * the open form. The inverse of [formsSearchFromRoute]. Pure, and covered under `jsNodeTest`.
  */
-fun formsSearchHashParams(search: Map<String, String>): List<Pair<String, String>> =
+fun formsSearchRouteParams(search: Map<String, String>): List<Pair<String, String>> =
     search.entries.mapNotNull { (k, v) -> v.trim().ifEmpty { null }?.let { k to it } }
 
 /**
@@ -263,7 +263,7 @@ fun formsSearchHashParams(search: Map<String, String>): List<Pair<String, String
  * that was just **made** ([HP.created]), so one the listing cannot show is still announced; it rides even when
  * [highlightId] is null (a create whose response carried no id), which the arrival then announces plainly.
  *
- * [hp] is normally the page's own hash, whose navigation keys are left behind here; a caller that returns to a
+ * [hp] is normally the page's own address, whose navigation keys are left behind here; a caller that returns to a
  * *different* listing than it was launched from (create-for-user, into the user's client) passes that context
  * instead. Shared by the survey and raw editors' Done and by every create surface, so the ways home cannot
  * drift: #758 was exactly that, a return the picker had (#663) and the workflow create did not. The bare back
@@ -273,16 +273,16 @@ fun formsSearchHashParams(search: Map<String, String>): List<Pair<String, String
 fun formsListingReturn(hp: Map<String, String>, highlightId: String?, created: Boolean = false): List<Pair<String, String>> =
     buildList {
         add(HP.page to formsListingOf(hp))
-        addAll(formsSearchHashParams(formsSearchFromHash(hp)))
+        addAll(formsSearchRouteParams(formsSearchFromRoute(hp)))
         highlightId?.let { add(HP.highlight to it) }
-        if (created) add(HP.created to formsHashFlagOn)
+        if (created) add(HP.created to formsRouteFlagOn)
     }
 
 /**
  * Where a **create** goes once it has succeeded (issue #758), or null when the user has already left the page
  * it was launched from -- a slow response must not pull someone out of wherever they went next, nor carry that
- * page's hash keys into the listing as a "search" (#758 review). [launched] is the hash when the create was
- * clicked, [now] the hash when it finished, [newId] the new form's id, and [context] the listing context to
+ * page's address keys into the listing as a "search" (#758 review). [launched] is the address when the create was
+ * clicked, [now] the address when it finished, [newId] the new form's id, and [context] the listing context to
  * return with: the launching page's own by default. Pure, and covered under `jsNodeTest`.
  */
 fun formsCreateReturn(
@@ -297,28 +297,28 @@ fun formsCreateReturn(
  * The raw **read-only** view of one form (issue #726): the listing page with the form open in place -- the same
  * view a row click opens where the client has no survey -- reached from the survey's "View raw" beside "Raw
  * edit", so every trait can be looked at without entering the editor. Carries the listing's search and sort out
- * of the survey's own hash [hp], as its other ways home do, and none of the survey's own keys. The listing is
+ * of the survey's own address [hp], as its other ways home do, and none of the survey's own keys. The listing is
  * the one the survey was opened from ([formsListingOf]), so a form reached through a workflow's listing is viewed
  * there. Pure, and covered under `jsNodeTest`.
  */
-fun formsRawViewHash(hp: Map<String, String>, gedraId: String): List<Pair<String, String>> =
-    listOf(HP.page to formsListingOf(hp), HP.gedra to gedraId) + formsSearchHashParams(formsSearchFromHash(hp))
+fun formsRawViewRoute(hp: Map<String, String>, gedraId: String): List<Pair<String, String>> =
+    listOf(HP.page to formsListingOf(hp), HP.gedra to gedraId) + formsSearchRouteParams(formsSearchFromRoute(hp))
 
 /**
  * The survey's read-only "View Info" of one form (issue #726): reached from the raw editor's "View info" beside
- * Done, for a form whose client has a survey. Carries the listing's search and sort out of the editor's hash
+ * Done, for a form whose client has a survey. Carries the listing's search and sort out of the editor's address
  * [hp], and `from=forms` so the survey page's own back link still leads home; none of the editor's keys. Pure,
  * and covered under `jsNodeTest`.
  */
-fun formsSurveyViewHash(hp: Map<String, String>, gedraId: String): List<Pair<String, String>> =
+fun formsSurveyViewRoute(hp: Map<String, String>, gedraId: String): List<Pair<String, String>> =
     listOf(HP.page to pageSurveyEdit, HP.from to formsListingOf(hp), HP.gedra to gedraId) +
-        formsSearchHashParams(formsSearchFromHash(hp))
+        formsSearchRouteParams(formsSearchFromRoute(hp))
 
 /** The listings a form belongs to: My forms, and a workflow's listing of forms (issue #792). */
 private val formsListings = setOf(HMENU.pageForms, pageWorkflowForms)
 
 /**
- * The forms listing a form page belongs to, from its hash [hp]: the one `from` names when it is a forms listing
+ * The forms listing a form page belongs to, from its address [hp]: the one `from` names when it is a forms listing
  * ([formsListings]) -- a workflow's listing as well as My forms -- else My forms, the natural parent. Only a forms
  * listing counts, unlike a back link's `from`: a way *home* for a form is a listing that can show it flashed, and
  * another page the back rules know (Users, say) cannot. What every way home reads, so a form opened from a
@@ -329,7 +329,7 @@ fun formsListingOf(hp: Map<String, String>): String = hp[HP.from]?.takeIf { it i
 /**
  * The `← My forms` link atop a forms child page (issues #554, #671): the shared row + [backToListing], carrying
  * the listing's search and sort back so a cancel/back returns to the same filtered, sorted list the child was
- * opened from -- the sort rides through [formsSearchFromHash] as non-nav hash params (issues #592, #666, #669).
+ * opened from -- the sort rides through [formsSearchFromRoute] as non-nav route params (issues #592, #666, #669).
  * Both the create and edit pages render this, so their way back cannot drift.
  */
 fun ChildrenBuilder.formsBackToListing() {
@@ -346,7 +346,7 @@ fun ChildrenBuilder.formsBackToListing() {
  * on itself (its in-place form view) and says which listing it is.
  */
 fun ChildrenBuilder.formsBackLink(listing: String = HMENU.pageForms) {
-    backToListing(listing, formsSearchHashParams(formsSearchFromHash(hashParams())))
+    backToListing(listing, formsSearchRouteParams(formsSearchFromRoute(routeParams())))
 }
 
 /**
@@ -381,7 +381,7 @@ private val formsNonSearchKeys = setOf(EP.offset, EP.limit, EI.includeUsers, GSO
  * names, minus paging and the owner flag. `user` and `q` are declared and kept, as is every trait filter this
  * client's variant carries.
  *
- * Reading a hash back through this **whitelist** rather than "everything that is not a navigation key" is what
+ * Reading an address back through this **whitelist** rather than "everything that is not a navigation key" is what
  * keeps a stale or hand-added param from reaching the endpoint, where an undeclared property is a 400 -- so a
  * bookmarked URL from before a client's usage rules changed lands on the list rather than an error page, and a
  * stray `offset`/`limit` in the URL cannot pin the paging. Pure, and covered under `jsNodeTest`.
@@ -903,7 +903,7 @@ fun workflowCellOf(states: List<Map<String, Any?>>, client: String, summary: Lis
  * work to do; a finished workflow's last task is there to be looked at. [from] is the listing the link is on, so
  * the page's way back leads to it. Pure, and covered under `jsNodeTest`.
  */
-fun workflowPageHash(
+fun workflowPageRoute(
     gedraId: String,
     workflowId: String,
     task: String?,
@@ -938,7 +938,7 @@ val formsScopeKeys: Set<String> = setOf(EI.user, EI.client) + formsDrillKeys
 
 /**
  * The workflow drill-down a forms search carries (issue #792): the workflow id and, when given, the state -- or null
- * when the listing is not drilled into a workflow. Read off the applied search, where the hash put it.
+ * when the listing is not drilled into a workflow. Read off the applied search, where the address put it.
  */
 fun workflowDrillOf(applied: Map<String, Any?>): Pair<String, WfColumnCategory?>? {
     val id = applied[WAGG.workflowId]?.toString()?.ifBlank { null } ?: return null
@@ -999,11 +999,11 @@ fun parseWorkflowAggregate(items: List<Map<String, Any?>>): List<WorkflowAggrega
 /**
  * Where a count on the workflow pages leads (issue #792): the **workflow's listing** ([pageWorkflowForms]) of the forms
  * in [state] for [workflowId] -- its own page under Workflows rather than My forms filtered, so what it lists is
- * its heading and not a chip. The workflow and state ride the hash as search keys, so the listing sends them on
+ * its heading and not a chip. The workflow and state ride the address as search keys, so the listing sends them on
  * like any other; narrowed to [client] when the caller sees across clients, since the listing's client names
  * whose workflow it is. Pure, and covered under `jsNodeTest`.
  */
-fun workflowDrillHash(workflowId: String, state: WfColumnCategory, client: String?): List<Pair<String, String>> =
+fun workflowDrillRoute(workflowId: String, state: WfColumnCategory, client: String?): List<Pair<String, String>> =
     listOf(HP.page to pageWorkflowForms, WAGG.workflowId to workflowId, WAGG.workflowState to state.name) +
         listOfNotNull(client?.let { EI.client to it })
 

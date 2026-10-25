@@ -52,9 +52,9 @@ private class ReportShown(val key: String, val page: ReportRunPage)
 /**
  * The Reports page (issue #1007): the named reports of a client, and one of them run as a table.
  *
- * Which client and which report are **where the page is** -- they ride the hash (`c`, `rpt`) and are reached by
+ * Which client and which report are **where the page is** -- they ride the address (`c`, `rpt`) and are reached by
  * ordinary links, so Back steps through them, as the Clients page does. Whether the open report is shown per form or
- * grouped rides the hash too (`view`), so the page always shows what its address says; what it groups by and what a
+ * grouped rides the address too (`view`), so the page always shows what its address says; what it groups by and what a
  * form must have are the page's own state for that report. `view=history` shows the report's stored snapshots as a
  * chart instead of running it (`ReportHistoryPanel`, issue #1037).
  *
@@ -87,18 +87,18 @@ val ReportsPage = FC<Props> {
     val latestDownload = useRef(0)
     val listedClient = useRef<String>(null)
 
-    val hash = hashParams()
+    val route = routeParams()
     val across = config?.canSeeAllClients == true
     // Whose reports: the client an allClients administrator chose, else nobody's by name -- the endpoint then
     // answers for the caller's own client, which is all a client's own administrator may ask about.
-    val client = if (across) hash[HP.client] ?: config?.user?.client else null
-    val reportId = hash[HP.report]
+    val client = if (across) route[HP.client] ?: config?.user?.client else null
+    val reportId = route[HP.report]
     val report = listing?.reports?.firstOrNull { it.reportId == reportId }
     val reportKey = "${client.orEmpty()}|${reportId.orEmpty()}"
 
     // The setup in force: the mode the address names (else the report's own), with the lists set on this report.
     val lists = choice?.takeIf { it.key == reportKey }
-    val setup = reportSetupInForce(hash[HP.reportView], report?.defaultMode, lists?.groupBy, lists?.excludeEmpty)
+    val setup = reportSetupInForce(route[HP.reportView], report?.defaultMode, lists?.groupBy, lists?.excludeEmpty)
     val pagingKey = reportWalkKey(client, reportId, setup)
     val shownCount = growth?.takeIf { it.key == pagingKey }?.shown ?: listingBatch
     // The rows on screen, only while they are this walk's: another report's, or another setup's, are never drawn
@@ -159,7 +159,7 @@ val ReportsPage = FC<Props> {
     // the same run asked again for more, and anything else is a new run -- whose key no longer matches, so it starts
     // at the first batch. Within a run the rows on screen stay until the larger answer arrives.
     // Not while the History view is up: it shows the stored snapshots, and a run behind it would be read for nothing.
-    val historyView = reportViewIsHistory(hash[HP.reportView])
+    val historyView = reportViewIsHistory(route[HP.reportView])
     val runnable = report != null && !historyView
     useEffect(runnable, pagingKey, shownCount, generation) {
         val token = (latestRun.current ?: 0) + 1
@@ -242,16 +242,16 @@ val ReportsPage = FC<Props> {
 
     fun changeSetup(next: ReportRunSetup) {
         // The mode goes to the address, which is where the page reads it from; the lists are the session's. Writing
-        // the hash fires no event, so setting the lists -- a new object even when they are unchanged -- is also what
-        // makes the page read the address again.
-        replaceHash(reportsHashParams(client, reportId, reportModeParam(next.mode)))
+        // the address fires no event, so setting the lists -- a new object even when they are unchanged -- is also
+        // what makes the page read the address again.
+        replaceRoute(reportsRouteParams(client, reportId, reportModeParam(next.mode)))
         choice = ReportListsChoice(reportKey, next.groupBy, next.excludeEmpty)
     }
 
     fun showHistory() {
         // The address says History; the lists set on this report are kept for the way back, and setting them again
-        // is what makes the page read the address (writing the hash fires no event).
-        replaceHash(reportsHashParams(client, reportId, HMENU.reportViewHistory))
+        // is what makes the page read the address (writing the address fires no event).
+        replaceRoute(reportsRouteParams(client, reportId, HMENU.reportViewHistory))
         choice = ReportListsChoice(reportKey, lists?.groupBy, lists?.excludeEmpty)
     }
 
@@ -355,7 +355,7 @@ private fun ChildrenBuilder.clientPicker(clients: List<ClientOverview>?, chosen:
             option
         }.toTypedArray()
         style = js("({ minWidth: 220 })")
-        onChange = { v -> (v as? String)?.let { navigateHash(listOf(HP.page to HMENU.pageReports, HP.client to it)) } }
+        onChange = { v -> (v as? String)?.let { navigate(listOf(HP.page to HMENU.pageReports, HP.client to it)) } }
     }
 }
 

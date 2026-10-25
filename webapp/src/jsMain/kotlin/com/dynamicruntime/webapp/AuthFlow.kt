@@ -128,7 +128,7 @@ val AuthFlow = FC<AuthFlowProps> { props ->
         }
     }
 
-    fun goHomeSignedIn() = navigateHash(emptyList())
+    fun goHomeSignedIn() = navigate(emptyList())
 
     val ns = when {
         register -> "register"
@@ -467,19 +467,19 @@ val AuthFlow = FC<AuthFlowProps> { props ->
             when {
                 register || claim -> Button {
                     type = "link"
-                    onClick = { navigateHash(listOf("page" to "login")) }
+                    onClick = { navigate(listOf("page" to "login")) }
                     +t("menu", "login", "Log in")
                 }
                 config?.features?.registration == true -> Button {
                     type = "link"
-                    onClick = { navigateHash(listOf("page" to "register")) }
+                    onClick = { navigate(listOf("page" to "register")) }
                     +t("menu", "register", "Register")
                 }
             }
             if (!register && !claim) {
                 Button {
                     type = "link"
-                    onClick = { navigateHash(listOf("page" to HMENU.pageClaim)) }
+                    onClick = { navigate(listOf("page" to HMENU.pageClaim)) }
                     +t("claim", "loginLink", "Claim an account created for you")
                 }
             }

@@ -179,7 +179,7 @@ object AdminApi {
      */
     suspend fun searchUsers(query: UserSearchQuery, limit: Int? = null): UserSearchResult {
         // The limit is a fetch concern, not part of the query's identity, so it rides on the URL here rather
-        // than in `userSearchArgs` -- which the shareable-hash encoding mirrors, and where a suggestion cap has
+        // than in `userSearchArgs` -- which the shareable-address encoding mirrors, and where a suggestion cap has
         // no business (issue #581). A type-ahead asks for the few it will show; the console omits it and takes
         // the endpoint's own default.
         val args = userSearchArgs(query) + (limit?.let { mapOf(EP.limit to it) } ?: emptyMap())
@@ -362,7 +362,7 @@ object AdminApi {
 }
 
 /**
- * The console's default order: most recently edited first. One place, since the query default, the hash
+ * The console's default order: most recently edited first. One place, since the query default, the address
  * decode and "cancel sorting" on a column header all have to mean the same thing by it.
  */
 val defaultUserSortKey: String = USF.lastEdited.at
@@ -398,7 +398,7 @@ class UserSearchQuery(
  * The user-search endpoint's query args for [query] (issue #411), built by iterating the shared spec: each
  * non-blank text term travels under its field name (which is its wire param), each range under the two param
  * names the spec declares, plus the sort. Shared by [AdminApi.searchUsers] and the page's shareable-URL
- * encoding, so the wire and the hash carry the same keys -- and adding a spec field needs no edit here.
+ * encoding, so the wire and the address carry the same keys -- and adding a spec field needs no edit here.
  */
 fun userSearchArgs(query: UserSearchQuery): Map<String, Any?> = buildMap {
     query.anyText?.trim()?.takeIf { it.isNotEmpty() }?.let { put(EI.q, it) }

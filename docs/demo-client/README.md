@@ -28,13 +28,13 @@ pages link to it as they go.
 
 You can run the demo on any test instance of KDR.
 
-1. Open the [Simulations page](#page=simulations) and run **conf-demo**.
+1. Open the [Simulations page](/wa/test/simulations) and run **conf-demo**.
 2. Choose **Sign in as** next to the speaker.
 3. Type a title in the form that opens, and choose **Create the talk**.
 
 The talk appears in the speaker's forms list.
 
-On a site that offers joining, such as the public reference site, you can [join the demo](#page=join&c=confdemo)
+On a site that offers joining, such as the public reference site, you can [join the demo](/wa/join/confdemo)
 instead, as a speaker, an organizer or a committee member. Joining gives you a user of your own email in the demo,
 and the demo is shared with everyone else who joins it.
 

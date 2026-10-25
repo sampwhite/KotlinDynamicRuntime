@@ -88,7 +88,7 @@ object INVITE {
 
     /** The invitation page's URL for [token] under [publicUrl], or the page's path alone when the deployment's URL is unknown. */
     fun invitationUrl(publicUrl: String?, token: String): String =
-        "${publicUrl ?: ""}/${ContextRoot.wa}#page=${HMENU.pageInvite}&${HMENU.inviteTokenParam}=$token"
+        "${publicUrl ?: ""}/${ContextRoot.wa}/${HMENU.pageInvite}#${HMENU.inviteTokenParam}=$token"
 }
 
 /**

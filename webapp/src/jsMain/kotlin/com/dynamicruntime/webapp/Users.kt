@@ -51,7 +51,7 @@ private val userIdentity = setOf(HP.user)
  *
  * Whether this page is offered at all is the *backend's* call: the shell's UI-config advertises a
  * `canManageUsers` capability for the current caller and only then includes the Users item in the menu. This
- * page reads the same flag, so arriving by a bookmarked `#page=users` gives an honest "not available" instead
+ * page reads the same flag, so arriving by a bookmarked `/wa/users` gives an honest "not available" instead
  * of a wall of failed requests. Neither is enforcement -- every call goes through `AdminApi` to the
  * `clientAdmin` section (issue #466), which refuses a caller without the role (401 anonymous, 403 logged in
  * without it) regardless of what the frontend believes.
@@ -94,7 +94,7 @@ val Users = FC<Props> {
     }
     // What the last search reported: how many matched in all.
     var numAvailable by useState(0)
-    // How many users the listing asks for (issue #1315): the first batch, grown on request, carried in the hash.
+    // How many users the listing asks for (issue #1315): the first batch, grown on request, carried in the address.
     var shown by useState(listingBatch)
     var loaded by useState(false)
     var busy by useState(false)
@@ -113,11 +113,11 @@ val Users = FC<Props> {
     // The caller's own address, from the profile config (its login id is the primary address); null until
     // known, and the "for me" button waits for it.
     var ownAddress by useState<String?>(null)
-    // Read through a ref by [startCreate] and [applyEditorHash]: the hashchange listener is registered once,
+    // Read through a ref by [startCreate] and [applyEditorRoute]: the route listener is registered once,
     // so it would otherwise see the null this held on the first render (the same reason [usersRef] exists).
     val ownAddressRef = useRef<String>(null)
     ownAddressRef.current = ownAddress
-    // True once the hash has been read for a record to open; until then the URL is not written back.
+    // True once the address has been read for a record to open; until then the URL is not written back.
     var restored by useState(false)
 
     // The editor's draft. Nothing here reaches the backend until Save.
@@ -142,7 +142,7 @@ val Users = FC<Props> {
     // one cannot leave acme's suggestions on the globex editor. It also means a client is fetched once per page.
     var draftLabels by useState<List<String>>(emptyList())
     val (labelSuggestions, setLabelSuggestions) = useState<Map<String, List<String>>>(emptyMap())
-    // Read through a ref by [startEdit], which the once-registered hashchange listener reaches -- it would otherwise
+    // Read through a ref by [startEdit], which the once-registered route listener reaches -- it would otherwise
     // see the empty map of the first render and refetch on every open (the reason [usersRef] exists, too).
     val labelSuggestionsRef = useRef<Map<String, List<String>>>(emptyMap())
     labelSuggestionsRef.current = labelSuggestions
@@ -267,7 +267,7 @@ val Users = FC<Props> {
         runSearch(query(ranges = next))
     }
 
-    /** Resets every filter and the sort to their defaults and re-runs; the hash sync then clears the URL. */
+    /** Resets every filter and the sort to their defaults and re-runs; the address sync then clears the URL. */
     fun clearFilters() {
         val q = UserSearchQuery()
         seedFilters(q)
@@ -275,7 +275,7 @@ val Users = FC<Props> {
     }
 
     // The menu chose this page again (issue #1315): an explicit navigation, so start over as its bare link says --
-    // no filters, the default sort, the first batch, re-read. Back and Forward restore from the hash instead.
+    // no filters, the default sort, the first batch, re-read. Back and Forward restore from the address instead.
     val revisits = useRevisitSinceMount()
     useEffect(revisits) {
         if (revisits == 0 || config?.canManageUsers != true) return@useEffect
@@ -296,10 +296,10 @@ val Users = FC<Props> {
                 ownAddressRef.current = own
                 // Seed the controls from the URL and run *that* search, so a shared/bookmarked link reproduces
                 // the sender's filters and sort rather than the default view (issue #411).
-                val q = searchQueryFromHash(hashParams())
+                val q = searchQueryFromRoute(routeParams())
                 seedFilters(q)
-                // As many users as the hash asks for (issue #1315), so returning to the list shows the same rows.
-                runSearch(q, shownFromHash(hashParams()[HP.shown]))
+                // As many users as the address asks for (issue #1315), so returning to the list shows the same rows.
+                runSearch(q, shownFromRoute(routeParams()[HP.shown]))
                 // Only a full-scope administrator is offered a choice of client, and only they can ask for the
                 // list -- it is a cross-client question. A failure leaves the list empty, which falls back to
                 // the read-only field rather than an error: the client is not the reason they came here.
@@ -372,10 +372,10 @@ val Users = FC<Props> {
     // --- the editor as a place you can come back to (issue #324) ---------------------------------------
     //
     // Opening a user used to be React state and nothing else, so it left no history entry: Back from the
-    // editor skipped the whole page and landed wherever you were before arriving at Users. The hash now says
+    // editor skipped the whole page and landed wherever you were before arriving at Users. The address now says
     // which record is open, exactly as the endpoint catalog says which endpoint is.
 
-    /** Who the editor is open on, as the hash should say it: a user id, `new`, or nothing in the list view. */
+    /** Who the editor is open on, as the address should say it: a user id, `new`, or nothing in the list view. */
     fun openRecord(): String? = when {
         creating -> if (creatingForSelf) HP.selfRecord else HP.newRecord
         else -> editing?.userId?.toString()
@@ -406,9 +406,9 @@ val Users = FC<Props> {
         }
     }
 
-    /** Opens the editor on what the hash names, or closes it. Used by the hashchange listener below. */
-    fun applyEditorHash() {
-        val open = hashParams()[HP.user]
+    /** Opens the editor on what the address names, or closes it. Used by the route listener below. */
+    fun applyEditorRoute() {
+        val open = routeParams()[HP.user]
         when {
             open == null -> closeEditor()
             open == HP.newRecord -> startCreate()
@@ -426,29 +426,29 @@ val Users = FC<Props> {
     }
 
     useEffectOnce {
-        // Only the editor is restored on a hash change (Back/Forward, a menu link). The search is deliberately
-        // NOT re-run here: `onHashChange` registers a listener that is never removed (see HashRoute), so one
+        // Only the editor is restored on an address change (Back/Forward, a menu link). The search is deliberately
+        // NOT re-run here: `onRouteChange` registers a listener that is never removed (see Routing), so one
         // survives per past visit to this page -- harmless while it only calls setState on an unmounted
         // component (React ignores that), but a search re-run would fire a real request from every stale
-        // listener on every later hash change. The search reaches the URL only two ways, both safe: a fresh
+        // listener on every later address change. The search reaches the URL only two ways, both safe: a fresh
         // mount restores it in the generation effect below (a reload or a pasted/bookmarked link), and within
         // the page it is written with `replace`, so there are no search history entries for Back to return to
-        // anyway -- the only in-page history is the editor, which `applyEditorHash` handles.
-        onHashChange { applyEditorHash() }
+        // anyway -- the only in-page history is the editor, which `applyEditorRoute` handles.
+        onRouteChange { applyEditorRoute() }
     }
 
-    // Open whatever the hash named once the rows are in -- a reload inside the editor, or a link. Until then
-    // the hash cannot be honoured, so `restored` also holds the sync effect below: without that gate it would
+    // Open whatever the address named once the rows are in -- a reload inside the editor, or a link. Until then
+    // the address cannot be honored, so `restored` also holds the sync effect below: without that gate it would
     // run first with an empty editor and push the record out of the URL before anything could read it. Only the
-    // editor here: the initial search already ran from the hash in the generation effect.
+    // editor here: the initial search already ran from the address in the generation effect.
     useEffect(loaded) {
         if (loaded && !restored) {
-            applyEditorHash()
+            applyEditorRoute()
             restored = true
         }
     }
 
-    // Keep the hash in step with the editor *and the search* (issue #411) -- the same arrangement the endpoint
+    // Keep the address in step with the editor *and the search* (issue #411) -- the same arrangement the endpoint
     // catalog uses, and for the same reason: opening a record is a navigation (a pushed history entry), while
     // the search merely refines where you are (replaced in place), so typing a filter does not spam Back. Only
     // the open record is in [userIdentity], so a filter change never pushes.
@@ -462,16 +462,16 @@ val Users = FC<Props> {
         val params = buildList {
             add(HP.page to HMENU.pageUsers)
             openRecord()?.let { add(HP.user to it) }
-            addAll(searchHashParams(query()))
-            addAll(shownHashParams(shown))
+            addAll(searchRouteParams(query()))
+            addAll(shownRouteParams(shown))
         }
-        // Reachable means the hash as it stands names something this page could show. A `u=` naming a row we
+        // Reachable means the address as it stands names something this page could show. A `u=` naming a row we
         // do not hold is a URL to correct in place -- otherwise Back onto it would push again and never move.
-        val current = hashParams()[HP.user]
+        val current = routeParams()[HP.user]
         val reachable = current == null || current == HP.newRecord || current == HP.selfRecord ||
             users.any { it.userId.toString() == current } ||
             identity?.users?.any { it.userId.toString() == current } == true
-        applyHashWrite(params, userIdentity, reachable)
+        applyRouteWrite(params, userIdentity, reachable)
     }
 
     /**
@@ -1170,12 +1170,12 @@ internal fun react.ChildrenBuilder.readOnlyField(label: String, value: String) {
 
 /**
  * The [UserSearchQuery] a shared/bookmarked URL encodes (issue #411), read generically from the shared spec:
- * the hash carries the **same keys as the wire** (a field's own name for a text filter, the spec's range keys
- * for a date range, plus sort), so this and [searchHashParams] mirror `AdminApi.userSearchArgs`. An absent key
+ * the address carries the **same keys as the wire** (a field's own name for a text filter, the spec's range keys
+ * for a date range, plus sort), so this and [searchRouteParams] mirror `AdminApi.userSearchArgs`. An absent key
  * is its default; an unrecognized sort key (a hand-edited or stale link) drops to the default so a pasted link
  * can never ask the endpoint for a field it would reject. Pure, and covered under `jsNodeTest`.
  */
-fun searchQueryFromHash(hp: Map<String, String>): UserSearchQuery {
+fun searchQueryFromRoute(hp: Map<String, String>): UserSearchQuery {
     val texts = buildMap {
         for (spec in userSearchFieldSpecs) {
             if (spec.filterKind == UserFilterKind.substring || spec.filterKind == UserFilterKind.exact) {
@@ -1198,18 +1198,18 @@ fun searchQueryFromHash(hp: Map<String, String>): UserSearchQuery {
         sortBy = hp[USF.sortBy]?.takeIf { userSortKeys.contains(it) } ?: defaultUserSortKey,
         // Descending is the default; only an explicit "false" means ascending.
         descending = hp[USF.descending] != "false",
-        // The any-text term (issue #581) round-trips through the hash like the other filters -- read back so a
+        // The any-text term (issue #581) round-trips through the address like the other filters -- read back so a
         // shared or bookmarked search keeps it, rather than silently dropping it on decode.
         anyText = hp[EI.q]?.takeIf { it.isNotBlank() },
     )
 }
 
 /**
- * The hash params for a search [query] (issue #411): the same key/value pairs `AdminApi.userSearchArgs` puts
+ * The route params for a search [query] (issue #411): the same key/value pairs `AdminApi.userSearchArgs` puts
  * on the wire (minus the limit), emitting only what differs from the default so a plain search stays a bare
- * `page=users`. Pure, and covered under `jsNodeTest` -- it round-trips with [searchQueryFromHash].
+ * `page=users`. Pure, and covered under `jsNodeTest` -- it round-trips with [searchQueryFromRoute].
  */
-fun searchHashParams(query: UserSearchQuery): List<Pair<String, String>> =
+fun searchRouteParams(query: UserSearchQuery): List<Pair<String, String>> =
     userSearchArgs(query).mapNotNull { (k, v) ->
         when {
             // The sort defaults are omitted so an untouched search carries no params.

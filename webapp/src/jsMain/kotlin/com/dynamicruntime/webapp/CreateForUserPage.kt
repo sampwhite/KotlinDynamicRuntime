@@ -165,7 +165,7 @@ val CreateForUserPage = FC<Props> {
                             } else {
                                 running = true
                                 runError = null
-                                val launched = hashParams()
+                                val launched = routeParams()
                                 createForUserScope.launch {
                                     try {
                                         val newId = AdminApi.createFormForUser(user.primaryId, payload)
@@ -177,7 +177,7 @@ val CreateForUserPage = FC<Props> {
                                         // view shows the row anyway, with its Client column saying whose it is; a
                                         // listing that cannot show it says the form was created. No running=false:
                                         // this navigation unmounts the page.
-                                        formsCreateReturn(launched, hashParams(), newId)?.let { navigateHash(it) }
+                                        formsCreateReturn(launched, routeParams(), newId)?.let { navigate(it) }
                                     } catch (e: Throwable) {
                                         runError = userFacingError(e)
                                         running = false

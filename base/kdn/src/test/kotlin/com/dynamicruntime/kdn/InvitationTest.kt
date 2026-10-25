@@ -61,6 +61,8 @@ class InvitationTest : StringSpec({
         val mailed = MailService.get(cxt).lastEmailTo(address).shouldNotBeNull()
         mailed.text shouldContain "at Hub, as Admin"
         val token = tokenMailedTo(address)
+        // The token rides the fragment (issue #1371), which reaches no server or proxy log when the link is opened.
+        mailed.text shouldContain "/wa/${HMENU.pageInvite}#${HMENU.inviteTokenParam}=$token"
 
         // Merely opening the link previews and changes nothing.
         val browser = TestHttpClient(cxt.instanceConfig)

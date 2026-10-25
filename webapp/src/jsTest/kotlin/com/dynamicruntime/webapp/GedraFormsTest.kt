@@ -253,7 +253,7 @@ class GedraFormsTest {
      * may see across clients; an ordinary caller gets the rest of the search and no filter they cannot clear.
      */
     @Test
-    fun theHashClientAppliesOnlyToACrossClientCaller() {
+    fun theRouteClientAppliesOnlyToACrossClientCaller() {
         val hp = mapOf(HP.page to "forms", EI.client to "acme", EI.q to "roof")
         assertEquals(mapOf(EI.client to "acme", EI.q to "roof"), formsInitialSearch(hp, seeAllClients = true))
         assertEquals(mapOf(EI.q to "roof"), formsInitialSearch(hp, seeAllClients = false))
@@ -274,16 +274,16 @@ class GedraFormsTest {
 
     /**
      * The editors' one way home (issue #726): the forms page, the listing's search and sort carried back out of
-     * the editor's hash, and the form just worked on flagged to flash -- with the editor's own navigation keys
+     * the editor's address, and the form just worked on flagged to flash -- with the editor's own navigation keys
      * (the open form, the edit flag, the task) left behind so none rides back into the listing as a "search".
      */
     @Test
     fun theListingReturnCarriesSearchAndSortAndFlagsTheForm() {
-        val editorHash = mapOf(
+        val editorRoute = mapOf(
             HP.page to "editForm", HP.gedra to "gd.fd.acme.u1", HP.from to "forms", HP.edit to "1", HP.task to "t2",
             "acmeSiteAuditContains" to "dana", EI.q to "roof", GSORT.sort to "updated", GSORT.sortDir to "desc",
         )
-        val back = formsListingReturn(editorHash, "gd.fd.acme.u1").toMap()
+        val back = formsListingReturn(editorRoute, "gd.fd.acme.u1").toMap()
         assertEquals("forms", back[HP.page])
         assertEquals("gd.fd.acme.u1", back[HP.highlight])
         // The search and the sort come home.
@@ -297,17 +297,17 @@ class GedraFormsTest {
 
     /**
      * The survey's "View raw" (issue #726): the listing page with the form open in place, carrying the listing's
-     * search and sort out of the survey's hash and none of the survey's own keys (edit flag, task, `from`).
+     * search and sort out of the survey's address and none of the survey's own keys (edit flag, task, `from`).
      */
     @Test
-    fun theRawViewHashOpensTheFormOnTheListingWithSearchAndSort() {
-        // A DIFFERENT id in the source hash than the one passed (review): the argument must win, so a version
-        // that carried the hash's own `g` through would be caught rather than pass on coinciding values.
-        val surveyHash = mapOf(
+    fun theRawViewRouteOpensTheFormOnTheListingWithSearchAndSort() {
+        // A DIFFERENT id in the source address than the one passed (review): the argument must win, so a version
+        // that carried the address's own `g` through would be caught rather than pass on coinciding values.
+        val surveyRoute = mapOf(
             HP.page to "surveyEdit", HP.gedra to "gd.fd.acme.OTHER", HP.from to "forms", HP.edit to "1", HP.task to "t2",
             EI.q to "roof", GSORT.sort to "updated", GSORT.sortDir to "desc",
         )
-        val view = formsRawViewHash(surveyHash, "gd.fd.acme.u1").toMap()
+        val view = formsRawViewRoute(surveyRoute, "gd.fd.acme.u1").toMap()
         assertEquals("forms", view[HP.page])
         assertEquals("gd.fd.acme.u1", view[HP.gedra])
         assertEquals("roof", view[EI.q])
@@ -322,13 +322,13 @@ class GedraFormsTest {
      * own keys.
      */
     @Test
-    fun theSurveyViewHashOpensViewInfoWithSearchAndSort() {
-        // A different id in the source hash than the one passed (review), so the argument is seen to win.
-        val editorHash = mapOf(
+    fun theSurveyViewRouteOpensViewInfoWithSearchAndSort() {
+        // A different id in the source address than the one passed (review), so the argument is seen to win.
+        val editorRoute = mapOf(
             HP.page to "editForm", HP.gedra to "gd.fd.acme.OTHER", HP.highlight to "x", HP.edit to "1",
             EI.q to "roof", GSORT.sort to "updated", GSORT.sortDir to "desc",
         )
-        val view = formsSurveyViewHash(editorHash, "gd.fd.acme.u1").toMap()
+        val view = formsSurveyViewRoute(editorRoute, "gd.fd.acme.u1").toMap()
         assertEquals(pageSurveyEdit, view[HP.page])
         assertEquals("forms", view[HP.from])
         assertEquals("gd.fd.acme.u1", view[HP.gedra])
@@ -625,34 +625,34 @@ class GedraFormsTest {
 
 
     /**
-     * The forms search round-trips through the hash (issue #592): the navigation keys (page, the open form, the
+     * The forms search round-trips through the address (issue #592): the navigation keys (page, the open form, the
      * `from`) are dropped and everything else -- trait filters, the scope-bar user, the free-text q -- is the
      * applied search, so a bookmarked URL and the edit round-trip both reproduce the filter.
      */
     @Test
-    fun formsSearchRoundTripsThroughTheHash() {
+    fun formsSearchRoundTripsThroughTheAddress() {
         val applied = mapOf("acmeSiteAuditContains" to "dana", EI.user to "7", EI.q to "plan")
-        val params = formsSearchHashParams(applied)
-        // A hash as it would stand on the list, with navigation keys mixed in.
+        val params = formsSearchRouteParams(applied)
+        // An address as it would stand on the list, with navigation keys mixed in.
         // `edit=1` (issue #694) and `task=` (issue #700) are the survey child page's own keys: the chip's link and
-        // the rail put them in the hash the back link is built from, and neither may ride back into the listing
+        // the rail put them in the address the back link is built from, and neither may ride back into the listing
         // as a "search".
-        val hash = params.toMap() +
+        val route = params.toMap() +
             mapOf(HP.page to "forms", HP.gedra to "gd.fd.acme.u1", HP.from to "forms", HP.edit to "1", HP.task to "extra")
-        assertEquals(applied, formsSearchFromHash(hash))
+        assertEquals(applied, formsSearchFromRoute(route))
         // The navigation keys are never taken for search.
-        val decoded = formsSearchFromHash(hash)
+        val decoded = formsSearchFromRoute(route)
         assertTrue(HP.page !in decoded && HP.gedra !in decoded && HP.from !in decoded)
         assertTrue(HP.edit !in decoded && HP.task !in decoded)
         // A blank value is not a filter, so it neither encodes nor decodes.
-        assertTrue(formsSearchHashParams(mapOf("x" to "  ")).isEmpty())
-        assertEquals(emptyMap(), formsSearchFromHash(mapOf(HP.page to "forms", "x" to "")))
+        assertTrue(formsSearchRouteParams(mapOf("x" to "  ")).isEmpty())
+        assertEquals(emptyMap(), formsSearchFromRoute(mapOf(HP.page to "forms", "x" to "")))
         // No search: nothing but the navigation keys.
-        assertEquals(emptyList(), formsSearchHashParams(emptyMap()))
+        assertEquals(emptyList(), formsSearchRouteParams(emptyMap()))
     }
 
     /**
-     * Seeding whitelists the hash against the listing's declared keys (issue #592 review): a stale trait filter
+     * Seeding whitelists the address against the listing's declared keys (issue #592 review): a stale trait filter
      * from before a client's usage rules changed, or a stray paging param, is dropped rather than sent to an
      * endpoint that would refuse the undeclared property with a 400. `user` and `q` and current trait filters
      * are declared and kept; `offset`/`limit`/`includeUsers` are declared but are not applied-search values.
@@ -674,15 +674,15 @@ class GedraFormsTest {
         val keys = formsSearchKeys(inputSchema)
         // Kept: the trait filter, the scope-bar user, the free-text q.
         assertTrue("acmeSiteAuditContains" in keys && EI.user in keys && EI.q in keys)
-        // Dropped: paging, the owner flag, and the sort column/direction (#666) -- the sort rides its own hash
+        // Dropped: paging, the owner flag, and the sort column/direction (#666) -- the sort rides its own address
         // params and state, so treating it as an applied filter would double-emit it and wrongly read the listing
         // as narrowed (its empty state would never show).
         assertTrue(EP.offset !in keys && EP.limit !in keys && EI.includeUsers !in keys)
         assertTrue(GSORT.sort !in keys && GSORT.sortDir !in keys)
         // A stale/hand-added key the schema no longer declares is not in the whitelist, so seeding drops it.
         assertTrue("staleTraitContains" !in keys)
-        val hashSearch = mapOf("acmeSiteAuditContains" to "dana", "staleTraitContains" to "x", EP.offset to "50")
-        assertEquals(mapOf("acmeSiteAuditContains" to "dana"), hashSearch.filterKeys { it in keys })
+        val routeSearch = mapOf("acmeSiteAuditContains" to "dana", "staleTraitContains" to "x", EP.offset to "50")
+        assertEquals(mapOf("acmeSiteAuditContains" to "dana"), routeSearch.filterKeys { it in keys })
     }
 
     /**
@@ -733,40 +733,40 @@ class GedraFormsTest {
      */
     @Test
     fun aCreateReturnsToItsListingFlaggedAsCreated() {
-        val createHash = mapOf(HP.page to "newForm", HP.from to "forms", EI.client to "acme", GSORT.sort to "name")
-        val back = formsListingReturn(createHash, "gd.fd.acme.new", created = true).toMap()
+        val createRoute = mapOf(HP.page to "newForm", HP.from to "forms", EI.client to "acme", GSORT.sort to "name")
+        val back = formsListingReturn(createRoute, "gd.fd.acme.new", created = true).toMap()
         assertEquals("forms", back[HP.page])
         assertEquals("gd.fd.acme.new", back[HP.highlight])
         assertTrue(HP.created in back)
         assertEquals("acme", back[EI.client])
         assertEquals("name", back[GSORT.sort])
         assertTrue(HP.from !in back)
-        assertTrue(HP.created !in formsListingReturn(createHash, "gd.fd.acme.u1").toMap())
+        assertTrue(HP.created !in formsListingReturn(createRoute, "gd.fd.acme.u1").toMap())
         // A create whose response carried no id still says it was a create, so the arrival can announce it.
-        val noId = formsListingReturn(createHash, null, created = true).toMap()
+        val noId = formsListingReturn(createRoute, null, created = true).toMap()
         assertTrue(HP.highlight !in noId && HP.created in noId)
         // The mark is a navigation key, so it never rides back in as a "search" term...
-        assertTrue(HP.created !in formsSearchFromHash(mapOf(HP.created to "1", EI.q to "roof")))
+        assertTrue(HP.created !in formsSearchFromRoute(mapOf(HP.created to "1", EI.q to "roof")))
         // ...and it is not spelled like a trait id a client could declare a filter on (#758 review).
         assertTrue(HP.created != GSORT.created)
     }
 
     /**
-     * The whole path, return into arrival (#758 review): what a create writes into the hash is what the listing
+     * The whole path, return into arrival (#758 review): what a create writes into the address is what the listing
      * reads back, so the flag's spelling cannot drift between the two. On the page: silent. Filtered out: the
      * create wording. An edit's return through the same path keeps the edit wording; no id: announced plainly.
      */
     @Test
     fun aCreatesReturnIsReadBackByTheArrivalNote() {
         val others = listOf("g.fd.acme.a")
-        val createHash = mapOf(HP.page to "newForm", EI.q to "roof")
-        val arriving = formsListingReturn(createHash, "g.fd.acme.new", created = true).toMap()
-        val applied = formsSearchFromHash(arriving)
+        val createRoute = mapOf(HP.page to "newForm", EI.q to "roof")
+        val arriving = formsListingReturn(createRoute, "g.fd.acme.new", created = true).toMap()
+        val applied = formsSearchFromRoute(arriving)
         assertNull(formsArrivalNote(arriving, applied, listOf("g.fd.acme.new")))
         assertTrue(formsArrivalNote(arriving, applied, others)!!.startsWith("The form was created"))
-        val edited = formsListingReturn(createHash, "g.fd.acme.new").toMap()
+        val edited = formsListingReturn(createRoute, "g.fd.acme.new").toMap()
         assertTrue(formsArrivalNote(edited, applied, others)!!.startsWith("The form you just saved"))
-        val noId = formsListingReturn(createHash, null, created = true).toMap()
+        val noId = formsListingReturn(createRoute, null, created = true).toMap()
         assertEquals("The form was created.", formsArrivalNote(noId, applied, others))
         // An ordinary arrival -- nothing saved -- says nothing.
         assertNull(formsArrivalNote(mapOf(HP.page to "forms", EI.q to "roof"), applied, others))
@@ -796,7 +796,7 @@ class GedraFormsTest {
 
     /**
      * A create returns only while the user is still on the page it was launched from (#758 review): a slow
-     * response must not pull them out of wherever they went next. The launching hash is the context by default
+     * response must not pull them out of wherever they went next. The launching address is the context by default
      * -- create-for-user returns to the listing it came from, as it was (#762 review) -- and a caller may pass
      * another.
      */

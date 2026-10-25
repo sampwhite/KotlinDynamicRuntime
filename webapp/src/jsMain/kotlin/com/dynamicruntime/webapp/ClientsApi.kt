@@ -248,7 +248,7 @@ fun workflowsText(count: Int, hasSurvey: Boolean): String = if (hasSurvey) "$cou
  * (`formsInitialSearch`). Pure, and covered under `jsNodeTest`.
  */
 fun clientFormsHref(clientId: String, acrossClients: Boolean): String =
-    hashHref(listOf(HP.page to HMENU.pageForms) + if (acrossClients) listOf(EI.client to clientId) else emptyList())
+    routeHref(listOf(HP.page to HMENU.pageForms) + if (acrossClients) listOf(EI.client to clientId) else emptyList())
 
 /**
  * Where a client's Users count leads (issue #905): the Users page filtered to that client, for an administrator who
@@ -257,19 +257,19 @@ fun clientFormsHref(clientId: String, acrossClients: Boolean): String =
  * and covered under `jsNodeTest`.
  */
 fun clientUsersHref(clientId: String, acrossClients: Boolean): String =
-    hashHref(listOf(HP.page to HMENU.pageUsers) + if (acrossClients) listOf(USF.client to clientId) else emptyList())
+    routeHref(listOf(HP.page to HMENU.pageUsers) + if (acrossClients) listOf(USF.client to clientId) else emptyList())
 
 /**
  * One client's own page (issue #906): its definition, issues, and stored configuration. Any administrator who may
  * see the client may open it -- a client-scoped one their own, which is the only one a link of theirs can name.
  * Pure, and covered under `jsNodeTest`.
  */
-fun clientDetailHref(clientId: String): String = hashHref(listOf(HP.page to HMENU.pageClients, HP.client to clientId))
+fun clientDetailHref(clientId: String): String = routeHref(listOf(HP.page to HMENU.pageClients, HP.client to clientId))
 
 /**
  * Which client the Clients page shows (issue #1082), or null for the listing.
  *
- * A client the hash names ([hashClient], `c=<id>`) is the one, as it always was. With none named, an administrator
+ * A client the address names ([routeClient], `c=<id>`) is the one, as it always was. With none named, an administrator
  * of **one** client -- one who may administer and does not see across clients -- is shown that client, [ownClient],
  * in place: their listing was a table of one row to click through on every visit, and the page they came for is
  * the one behind it. An administrator who sees across clients gets the listing.
@@ -280,8 +280,8 @@ fun clientDetailHref(clientId: String): String = hashHref(listOf(HP.page to HMEN
  * [canSeeAllClients] are false until then -- so nothing is fetched for a caller on a guess. Pure, and covered under
  * `jsNodeTest`.
  */
-fun clientsOpenId(hashClient: String?, canManageUsers: Boolean, canSeeAllClients: Boolean, ownClient: String): String? = when {
-    hashClient != null -> hashClient
+fun clientsOpenId(routeClient: String?, canManageUsers: Boolean, canSeeAllClients: Boolean, ownClient: String): String? = when {
+    routeClient != null -> routeClient
     canManageUsers && !canSeeAllClients && ownClient.isNotEmpty() && ownClient != CL.public -> ownClient
     else -> null
 }
@@ -297,19 +297,19 @@ fun clientOpenInPlace(openId: String?, canManageUsers: Boolean, canSeeAllClients
 /**
  * Whether a client's detail offers its way back (issue #1082). Not when it is open [inPlace] and the way back
  * would be the Clients listing, which for that caller only opens this page again. A listing the page was opened
- * *from* ([from], the hash's `from=`) is still somewhere to go back to. Pure, and covered under `jsNodeTest`.
+ * *from* ([from], the address's `from=`) is still somewhere to go back to. Pure, and covered under `jsNodeTest`.
  */
 fun clientBackOffered(inPlace: Boolean, from: String?): Boolean =
     !inPlace || backTarget(from, HMENU.pageClients) != HMENU.pageClients
 
 /**
- * Whether [hash] is still [clientId]'s own page (issue #1082), for a guard that asks before unsaved work is left:
+ * Whether [params] is still [clientId]'s own page (issue #1082), for a guard that asks before unsaved work is left:
  * the Clients page naming that client -- or, when the client is the one the page opens [inPlace], naming none. So
  * an administrator of one client is not asked whether to leave a page they are staying on, by a move between its
  * two addresses. Pure, and covered under `jsNodeTest`.
  */
-fun staysOnClientPage(hash: Map<String, String>, clientId: String, inPlace: Boolean): Boolean =
-    hash[HP.page] == HMENU.pageClients && (hash[HP.client] == clientId || inPlace && hash[HP.client] == null)
+fun staysOnClientPage(params: Map<String, String>, clientId: String, inPlace: Boolean): Boolean =
+    params[HP.page] == HMENU.pageClients && (params[HP.client] == clientId || inPlace && params[HP.client] == null)
 
 /**
  * Where a user's Forms link leads (issue #1081): the forms listing confined to that one user.
@@ -321,7 +321,7 @@ fun staysOnClientPage(hash: Map<String, String>, clientId: String, inPlace: Bool
  * [surfaceClient] is the client the listing is to be drawn for ([userFormsSurface]), or null to choose none: the
  * page keeps both keys when it loads (`formsInitialSearch`). Pure, and covered under `jsNodeTest`.
  */
-fun userFormsHref(userId: Long, surfaceClient: String?): String = hashHref(
+fun userFormsHref(userId: Long, surfaceClient: String?): String = routeHref(
     listOf(HP.page to HMENU.pageForms, EI.user to userId.toString()) +
         if (surfaceClient != null) listOf(EI.client to surfaceClient) else emptyList(),
 )
@@ -548,7 +548,7 @@ fun overridesAcrossClients(byClient: List<Pair<String, ClientOverridesView>>): L
 fun clientOverridesHref(clientId: String): String = clientDetailHref(clientId)
 
 /** The cross-client view of the overrides (issue #917), for an administrator who sees across clients. */
-fun overridesAcrossHref(): String = hashHref(listOf(HP.page to HMENU.pageClients, HP.overrides to "1"))
+fun overridesAcrossHref(): String = routeHref(listOf(HP.page to HMENU.pageClients, HP.overrides to "1"))
 
 /** One key an administrator may override for a client (issue #918): a row of `/clientAdmin/client/copy/keys`. */
 class CopyKeyView(
@@ -929,7 +929,7 @@ const val sourceSetNote = "(set in source code)"
  * The read-only summary of a client (issue #906): its attributes in the order an administrator reads them, then
  * what it defines. From the overview [row] when the listing has one (status, origin, counts) and the definition
  * [def] when it could be read; either may be missing -- a client this node does not carry has no definition to
- * retrieve, and a deep link arrives before the listing -- so [clientId] is the hash's, which is always there. The
+ * retrieve, and a deep link arrives before the listing -- so [clientId] is the address's, which is always there. The
  * attributes the caller does not edit here say who sets them ([whoSetsNote], issue #1116). A list that is empty reads
  * as a dash. Pure, and covered under `jsNodeTest`.
  */
@@ -1648,4 +1648,4 @@ fun bundleNamesText(names: List<String>): String =
 fun impactFormsOpenable(acrossClients: Boolean, onSandboxPage: Boolean): Boolean = acrossClients || !onSandboxPage
 
 /** Where a form of an impact report opens: the raw trait editor (issue #935). Pure. */
-fun impactFormHref(gedraId: String): String = hashHref(listOf(HP.page to pageEditForm, HP.gedra to gedraId))
+fun impactFormHref(gedraId: String): String = routeHref(listOf(HP.page to pageEditForm, HP.gedra to gedraId))

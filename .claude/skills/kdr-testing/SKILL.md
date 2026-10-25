@@ -263,7 +263,7 @@ default. It is **one or the other per build**: Kotlin/JS runs both executable mo
 compile-sync directory, so a single invocation cannot produce both.
 
 Pair it with the debug fault routes (issue #227) to make the app fail on demand:
-`#page=debug&tool=fault` for a page failure, `#<any page>&fault=shell` for the shell.
+`/wa/debug/fault` for a page failure, `/wa/<any page>?fault=shell` for the shell.
 
 **Stop it and free the port when done** — kill by *your* port, not a remembered one. With several sessions
 about, a hardcoded number is how you take down somebody else's server:

@@ -71,8 +71,8 @@ fun becomeUserBody(user: SimulationUserInfo): Map<String, Any?> = buildMap {
     if (user.capabilities.isNotEmpty()) put(TEP.capabilities, user.capabilities)
 }
 
-/** A report's start page (`page=newForm&from=forms`) as the hash pairs to navigate to; empty (home) when there is none. */
-fun startPageHash(startPage: String?): List<Pair<String, String>> =
+/** A report's start page (`page=newForm&from=forms`) as the route pairs to navigate to; empty (home) when there is none. */
+fun startPageRoute(startPage: String?): List<Pair<String, String>> =
     startPage.orEmpty().split('&').mapNotNull { part ->
         val key = part.substringBefore('=').trim()
         if (key.isEmpty()) null else key to part.substringAfter('=', "")

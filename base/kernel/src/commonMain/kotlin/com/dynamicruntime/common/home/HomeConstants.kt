@@ -328,7 +328,7 @@ object HMENU {
     const val pageCustomers = "customers"
     const val pageReports = "reports"
     /**
-     * The Reports page's own hash parameters (issues #1007, #1036): the report that is open, how it is shown, and
+     * The Reports page's own route parameters (issues #1007, #1036): the report that is open, how it is shown, and
      * the view that shows a report's history. Here, beside the page id, because a simulation's start page is built
      * on the server and the page reads it in the browser: one name each, so a rename cannot part them.
      */
@@ -344,9 +344,9 @@ object HMENU {
     const val pageProfile = "profile"
     const val pageLogin = "login"
     const val pageRegister = "register"
-    /** The invitation page (issue #751): `#page=invite&token=...`, reached from a mailed link, never from the menu. */
+    /** The invitation page (issue #751): `/wa/invite#token=...`, reached from a mailed link, never from the menu. */
     const val pageInvite = "invite"
-    /** The hash parameter the invitation page reads its token from; the backend builds the link with it. */
+    /** The fragment parameter the invitation page reads its token from; the backend builds the link with it. */
     const val inviteTokenParam = "token"
     /** The claim page (issue #751): the auth flow's third mode, for an account created for you, reached from the login page. */
     const val pageClaim = "claim"
@@ -395,11 +395,11 @@ object HACT {
 
     /**
      * Navigate the whole window to a **same-origin path** (issue #493): a full page load out of this
-     * single-page app, as opposed to a `UiRoute`, which routes *within* it by hash.
+     * single-page app, as opposed to a `UiRoute`, which routes *within* it.
      *
      * It exists because some destinations are server paths rather than in-app pages -- an edge's sign-in
-     * page, the application reached through an edge -- and a `UiRoute` cannot express them: it renders as
-     * `#page=`, which the in-app router interprets. The one parameter is the path, supplied by whoever
+     * page, the application reached through an edge -- and a `UiRoute` cannot express them: it names a
+     * page, which the in-app router turns into its own path. The one parameter is the path, supplied by whoever
      * contributes the item (the edge knows its own roots); the implementation **guards** it to a same-origin
      * path, so a client-contributed overlay cannot turn a menu item into an off-site redirect. That guard is
      * why this is one named function rather than a bare "navigate anywhere": the operation is fixed and

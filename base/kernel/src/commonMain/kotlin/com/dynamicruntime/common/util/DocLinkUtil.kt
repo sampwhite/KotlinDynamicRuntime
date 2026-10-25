@@ -4,7 +4,7 @@ package com.dynamicruntime.common.util
  * Rewrites the interior links of a Markdown *document* as it should read from inside the running app (issue
  * #492). A document (a README, a help page) is authored for a Git checkout, so its links are **repo-relative**
  * -- `docs/development/code-guide.md`, `examples/intellij-dev-setup.md`, `#a-heading`. Rendered verbatim in the
- * single-page app those point nowhere (or worse, a bare `#anchor` is read by the app's own hash router). This maps each
+ * single-page app those point nowhere: a relative link resolves against the app's own path. This maps each
  * one to where it actually belongs:
  *
  *  - a target that is **itself a served document** ([docKeyByPath]) becomes an **in-app link** to that document

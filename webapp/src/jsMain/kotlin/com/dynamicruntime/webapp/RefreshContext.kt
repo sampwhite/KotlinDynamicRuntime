@@ -12,7 +12,7 @@ import react.useRef
  *
  * This is the one trigger that replaces the ad-hoc ones the app grew: a widget re-fetching its own config on
  * mount, plus hand-rolled re-reads after a mutation (the [AppBar] used to re-fetch the auth config by hand
- * after logout, precisely because navigating home might be a no-op that fires no `hashchange`). A
+ * after logout, precisely because navigating home might be a no-op that tells nobody). A
  * state-mutating handler now just calls [useRefreshBump]'s function, and every mounted consumer re-reads --
  * including a mutation that does not navigate, or navigates to the page already shown.
  *
@@ -61,10 +61,10 @@ fun useRefreshBump(): () -> Unit = use(RefreshContext).bump
  * or leaving a sandbox (#931), accepting an invitation, removing the user the session acts as: go to [to] (home when
  * empty) and [bump], the way a login completes. No page reload: every per-caller surface either re-reads on the
  * bump -- the shell, the menu, the users list, the sandbox chip -- or fetches when it mounts, and navigating away
- * unmounts the page that was showing. The bump covers the move that changes no hash (already home), which fires no
- * `hashchange`. A reload stays for picking up a newly deployed web app, which the next navigation does on its own.
+ * unmounts the page that was showing. The bump covers the move that changes no address (already home), which tells
+ * nobody. A reload stays for picking up a newly deployed web app, which the next navigation does on its own.
  */
 fun afterSessionChange(bump: () -> Unit, to: List<Pair<String, String>> = emptyList()) {
-    navigateHash(to)
+    navigate(to)
     bump()
 }

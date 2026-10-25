@@ -33,8 +33,8 @@ import web.cssom.ClassName
 private fun sortArgs(col: String?, descending: Boolean): Map<String, Any?> =
     if (col == null) emptyMap() else mapOf(GSORT.sort to col, GSORT.sortDir to if (descending) GSORT.desc else GSORT.asc)
 
-/** The sort as hash params (issue #666): shareable and restored on mount, like the applied search. */
-private fun sortHashParams(col: String?, descending: Boolean): List<Pair<String, String>> =
+/** The sort as route params (issue #666): shareable and restored on mount, like the applied search. */
+private fun sortRouteParams(col: String?, descending: Boolean): List<Pair<String, String>> =
     if (col == null) emptyList() else listOf(GSORT.sort to col, GSORT.sortDir to if (descending) GSORT.desc else GSORT.asc)
 
 /** Coroutine scope for the forms page's suspend calls (the catalog fetch, the list page, and a single fetch). */
@@ -84,17 +84,17 @@ private fun includeUsersArg(on: Boolean): Map<String, Any?> = if (on) mapOf(EI.i
  *
  * The list is a growing listing (issue #1315, `ShowMore.kt`): the first [listingBatch] forms, then more on request up to
  * [listingCap], against the total the scope admits -- re-queried with the larger limit, so the rows on screen are one
- * snapshot, and with the count shown riding the hash (`shown`), so the ways home from a form ask for the same rows. It is ordered
+ * snapshot, and with the count shown riding the address (`shown`), so the ways home from a form ask for the same rows. It is ordered
  * most recently written first, and a caller who administers other users also gets a scope bar (whose forms)
  * and a User column (issue #562); both key on the shell's `canManageUsers`, the predicate the backend attaches
  * owners on, so the controls appear exactly when the rows carry an owner to show. The open form
- * lives in the URL hash (`g=<id>`), like the Users page's open record; a form the loaded page does not hold --
+ * lives in the URL (`g=<id>`), like the Users page's open record; a form the loaded page does not hold --
  * a bookmark, or a link to one now past the first page -- is fetched by id, so a deep link always resolves.
  * The stored row renders through the shared [SchemaForm] in friendly, read-only mode, so its derived system
  * fields drop away and the trait data reads as a filled-in form.
  */
 val FormsPage = FC<FormsPageProps> { props ->
-    // Which listing this is (issue #792): My forms, or a workflow's listing of forms. The page id every hash it
+    // Which listing this is (issue #792): My forms, or a workflow's listing of forms. The page id every address it
     // writes and every child it opens carries, so a form worked on from a workflow's listing returns to it.
     val listingPage = props.listing ?: HMENU.pageForms
     val workflowMode = listingPage == pageWorkflowForms
@@ -121,7 +121,7 @@ val FormsPage = FC<FormsPageProps> { props ->
     var listingWorkflows by useState<List<WorkflowSummaryEntry>>(emptyList())
     // What a row with no workflows shows (issue #791): the client's copy, Markdown; null draws a dash.
     var emptyWorkflowsCopy by useState<String?>(null)
-    // How many forms the listing asks for (issue #1315): the first batch, grown on request, carried in the hash.
+    // How many forms the listing asks for (issue #1315): the first batch, grown on request, carried in the address.
     var shown by useState(listingBatch)
     // The forms-list search (issue #538): `draft` is what the boxes hold, `applied` is what the list is
     // currently filtered by. They part so typing does not re-query on every keystroke -- Search promotes the
@@ -134,7 +134,7 @@ val FormsPage = FC<FormsPageProps> { props ->
     // with the scope that listing was asked about, so it is named only while that is still the scope applied.
     var scopeAnswer by useState<ScopeAnswer?>(null)
     // The chosen sort (issue #666): a display trait id or `updated`/`created`, null for the default order, and a
-    // direction. Carried in the hash like the applied search, and passed to `loadPage` so paging and a new
+    // direction. Carried in the address like the applied search, and passed to `loadPage` so paging and a new
     // search keep it. The backend ignores an unknown column, so a stale sort in a bookmark still lists.
     var sortColumn by useState<String?>(null)
     var sortDescending by useState(false)
@@ -149,7 +149,7 @@ val FormsPage = FC<FormsPageProps> { props ->
     var hasSurvey by useState(false)
     // The clients to offer in the filter-by-client control (issue #668), fetched only for a cross-client caller.
     var clientChoices by useState<List<ClientChoice>>(emptyList())
-    // The row to flash on arrival (issue #592): the form just saved on the edit page, read from the hash once
+    // The row to flash on arrival (issue #592): the form just saved on the edit page, read from the address once
     // and cleared after a beat so the flash is a one-time flourish, not a state a reload repeats.
     var highlightRowId by useState<String?>(null)
     val highlightTimer = useRef<Int>(null)
@@ -170,12 +170,12 @@ val FormsPage = FC<FormsPageProps> { props ->
     // their place and the new rows arrive beneath it.
     var growing by useState(false)
     var error by useState<DisplayError?>(null)
-    // True once the initial hash restore has run; until then the sync effect stays quiet so it cannot overwrite
+    // True once the initial address restore has run; until then the sync effect stays quiet so it cannot overwrite
     // a `g=` we are about to read (the same gate the Users page uses).
     var restored by useState(false)
-    // The search a hash change asks for (issue #792), read by an effect with fresh state rather than by the hash
-    // listener, whose closure is the first render's. Null until a hash change names this page.
-    var hashSearch by useState<Map<String, String>?>(null)
+    // The search an address change asks for (issue #792), read by an effect with fresh state rather than by the address
+    // listener, whose closure is the first render's. Null until an address change names this page.
+    var routeSearch by useState<Map<String, String>?>(null)
 
     // The gedra id of the form open in the view, or null in the list.
     var viewingId by useState<String?>(null)
@@ -305,15 +305,15 @@ val FormsPage = FC<FormsPageProps> { props ->
     val appliedUser = appliedSearch[EI.user]?.ifBlank { null }
 
     // A history move between the workflow's states (issue #792): the state is part of what identifies the page,
-    // so a switch pushed an entry, and Back lands on a hash whose state differs from the one applied. The page
-    // follows it, as it follows `g=` -- only when a drill key moved: a search change writes the hash in place
-    // and never reaches here as a difference, and an unrelated hash change (a form opened) leaves it alone.
-    useEffect(hashSearch) {
-        val fromHash = hashSearch ?: return@useEffect
+    // so a switch pushed an entry, and Back lands on an address whose state differs from the one applied. The page
+    // follows it, as it follows `g=` -- only when a drill key moved: a search change writes the address in place
+    // and never reaches here as a difference, and an unrelated address change (a form opened) leaves it alone.
+    useEffect(routeSearch) {
+        val fromRoute = routeSearch ?: return@useEffect
         val ep = listEndpoint ?: return@useEffect
-        // Read through the listing's own whitelist, as the mount does: the sort rides the hash beside the search
+        // Read through the listing's own whitelist, as the mount does: the sort rides the address beside the search
         // and is applied on its own, and a stale key must not reach the endpoint.
-        val wanted = fromHash.filterKeys { it in formsSearchKeys(ep.inputSchema) }
+        val wanted = fromRoute.filterKeys { it in formsSearchKeys(ep.inputSchema) }
         if (workflowMode && formsDrillKeys.any { wanted[it] != appliedSearch[it] }) {
             searchDraft = wanted
             // Another workflow altogether needs the summary again, or its heading may not be named.
@@ -349,7 +349,7 @@ val FormsPage = FC<FormsPageProps> { props ->
         sortDesc: Boolean,
         includeUsers: Boolean,
         initialLoad: Boolean,
-        /** How many forms to show: the first batch for a client switch, what the hash asks for on arrival. */
+        /** How many forms to show: the first batch for a client switch, what the address asks for on arrival. */
         limit: Int = listingBatch,
     ) {
         beginListAction()
@@ -391,15 +391,15 @@ val FormsPage = FC<FormsPageProps> { props ->
     }
 
     useEffectOnce {
-        // Only a hash that still names THIS page drives the open form. A hash change that leaves for another page
-        // (the survey editor, the raw editor) also carries `g=`; reading it here set `viewingId`, and the hash-sync
-        // effect below then rewrote the hash back to `page=forms&g=…` -- hijacking the departure into the in-page
+        // Only an address that still names THIS page drives the open form. A move that leaves for another page
+        // (the survey editor, the raw editor) also carries `g=`; reading it here set `viewingId`, and the address-sync
+        // effect below then rewrote the address back to `page=forms&g=…` -- hijacking the departure into the in-page
         // view. Found by #694's status-chip link; it also caught the Actions "Edit" link.
-        onHashChange {
-            val h = hashParams()
+        onRouteChange {
+            val h = routeParams()
             if (h[HP.page] == listingPage) {
                 viewingId = h[HP.gedra]
-                hashSearch = formsSearchFromHash(h)
+                routeSearch = formsSearchFromRoute(h)
             }
         }
     }
@@ -441,28 +441,28 @@ val FormsPage = FC<FormsPageProps> { props ->
             if (seeAllClients) {
                 clientChoices = apiResult { AdminApi.listClientSummaries() }.valueOr(emptyList())
             }
-            // The surface to load: a client the hash carries (a bookmarked or shared chosen-client listing,
+            // The surface to load: a client the address carries (a bookmarked or shared chosen-client listing,
             // issue #714) when the caller may see across clients, else the caller's own. The search and sort ride
-            // in the hash too (issues #592, #666); `loadForClient` whitelists the search to what that client's
-            // listing declares and loads the first page. The freshly-read hash and local, not the state set
+            // in the address too (issues #592, #666); `loadForClient` whitelists the search to what that client's
+            // listing declares and loads the first page. The freshly-read address and local, not the state set
             // above (not landed yet). For a caller who may not see across clients the `client` selector is
             // dropped from the search too (`formsInitialSearch`), not just from the surface choice: kept, it
             // would ride as a filter they have no control to clear (#714 review).
-            val hashClient = hashParams()[EI.client]?.ifBlank { null }?.takeIf { seeAllClients }
-            val initialSearch = formsInitialSearch(hashParams(), seeAllClients)
-            val initialSortCol = hashParams()[GSORT.sort]?.ifBlank { null }
-            val initialSortDesc = hashParams()[GSORT.sortDir]?.equals(GSORT.desc, ignoreCase = true) == true
-            // As many forms as the hash asks for (issue #1315): a way home from a form returns to the same rows.
+            val routeClient = routeParams()[EI.client]?.ifBlank { null }?.takeIf { seeAllClients }
+            val initialSearch = formsInitialSearch(routeParams(), seeAllClients)
+            val initialSortCol = routeParams()[GSORT.sort]?.ifBlank { null }
+            val initialSortDesc = routeParams()[GSORT.sortDir]?.equals(GSORT.desc, ignoreCase = true) == true
+            // As many forms as the address asks for (issue #1315): a way home from a form returns to the same rows.
             loadForClient(
-                hashClient, initialSearch, initialSortCol, initialSortDesc, includeUsers = canManage, initialLoad = true,
-                limit = shownFromHash(hashParams()[HP.shown]),
+                routeClient, initialSearch, initialSortCol, initialSortDesc, includeUsers = canManage, initialLoad = true,
+                limit = shownFromRoute(routeParams()[HP.shown]),
             )
         }
     }
 
     // The menu chose this page again (issue #1315): an explicit navigation, so start over as the menu's bare link
     // says -- the reader's own client, no search or sort, the first batch, re-read -- where Back and Forward
-    // restore what the hash names. Not on the workflow's listing, which the menu does not lead to.
+    // restore what the address names. Not on the workflow's listing, which the menu does not lead to.
     val revisits = useRevisitSinceMount()
     useEffect(revisits) {
         if (revisits == 0 || workflowMode) return@useEffect
@@ -470,20 +470,20 @@ val FormsPage = FC<FormsPageProps> { props ->
         loadForClient(null, emptyMap(), null, false, includeUsers = canManageUsers, initialLoad = false)
     }
 
-    // Open whatever the hash named once the first load has run -- a reload in the view, or a link from the
+    // Open whatever the address named once the first load has run -- a reload in the view, or a link from the
     // create page. Gated behind the load so it does not race the initial fetch.
     useEffect(listLoading) {
         if (!listLoading && !restored) {
-            viewingId = hashParams()[HP.gedra]
-            // The just-saved form to flash (issue #592). Read here, before the hash-write effect rewrites the
-            // hash from the applied search and drops it -- so a reload does not re-flash.
-            val saved = hashParams()[HP.highlight]
+            viewingId = routeParams()[HP.gedra]
+            // The just-saved form to flash (issue #592). Read here, before the address-write effect rewrites the
+            // address from the applied search and drops it -- so a reload does not re-flash.
+            val saved = routeParams()[HP.highlight]
             highlightRowId = saved
             // When the saved row is not on this freshly-loaded page the flash lands on nothing, so leave a note
             // instead (issues #669, #758): for a filtered-out save, and for a create wherever it went, since a
             // create says so -- its flag rides beside the highlight, and is as transient. The rule reads the
-            // arriving hash itself and is a pure function, so the whole return-then-arrive path is unit-tested.
-            savedOffscreenNote = formsArrivalNote(hashParams(), appliedSearch, rows.map { it[GDF.gedraId] as? String })
+            // arriving address itself and is a pure function, so the whole return-then-arrive path is unit-tested.
+            savedOffscreenNote = formsArrivalNote(routeParams(), appliedSearch, rows.map { it[GDF.gedraId] as? String })
             restored = true
         }
     }
@@ -534,26 +534,26 @@ val FormsPage = FC<FormsPageProps> { props ->
         }
     }
 
-    // Keep the hash in step with the open form: opening one is a navigation and earns a history entry, so Back
+    // Keep the address in step with the open form: opening one is a navigation and earns a history entry, so Back
     // returns to the list. A `g=` naming a form the page does not hold is corrected in place rather than pushed
     // onto -- the fetch still resolves it, but it is not a list row to page back to.
     useEffect(viewingId, restored, rows, appliedSearch, sortColumn, sortDescending, shown) {
         if (!restored) {
             return@useEffect
         }
-        // The applied search rides in the hash too (issue #592): shareable, restored on mount, and carried
+        // The applied search rides in the address too (issue #592): shareable, restored on mount, and carried
         // across an edit. It is not part of `formsIdentity` (only the open form is), so a filter change replaces
         // the entry in place rather than pushing one -- typing a filter never spams Back.
         val params = buildList {
             add(HP.page to listingPage)
             viewingId?.let { add(HP.gedra to it) }
-            addAll(formsSearchHashParams(appliedSearch))
-            addAll(sortHashParams(sortColumn, sortDescending))
-            addAll(shownHashParams(shown))
+            addAll(formsSearchRouteParams(appliedSearch))
+            addAll(sortRouteParams(sortColumn, sortDescending))
+            addAll(shownRouteParams(shown))
         }
-        val current = hashParams()[HP.gedra]
+        val current = routeParams()[HP.gedra]
         val reachable = current == null || rows.any { it[GDF.gedraId] == current }
-        applyHashWrite(params, identity, reachable)
+        applyRouteWrite(params, identity, reachable)
     }
 
     div {
@@ -624,7 +624,7 @@ val FormsPage = FC<FormsPageProps> { props ->
                 // The shared editor header (issue #726): the back link, the title, and the actions on one line
                 // at the top -- so Edit and Delete are reachable on a long form without scrolling past it, and
                 // the raw view reads like the survey view and the raw editor. The back link is the same
-                // hash-navigating "← My forms" the editors use: it drops `g`, and the hash listener closes the
+                // navigating "← My forms" the editors use: it drops `g`, and the route listener closes the
                 // view in place, rows kept. Drawn for every sub-state so a loading or missing form still has a
                 // way back; the actions appear once the form is up.
                 val formUp = !viewLoading && viewError == null && viewRow != null
@@ -636,10 +636,10 @@ val FormsPage = FC<FormsPageProps> { props ->
                                 type = "primary"
                                 onClick = {
                                     viewingId?.let { id ->
-                                        navigateHash(
+                                        navigate(
                                             listOf(HP.page to pageEditForm, HP.from to listingPage, HP.gedra to id) +
-                                                formsSearchHashParams(appliedSearch) +
-                                                sortHashParams(sortColumn, sortDescending) + shownHashParams(shown),
+                                                formsSearchRouteParams(appliedSearch) +
+                                                sortRouteParams(sortColumn, sortDescending) + shownRouteParams(shown),
                                         )
                                     }
                                 }
@@ -743,10 +743,10 @@ val FormsPage = FC<FormsPageProps> { props ->
                             // (a bookmarked sorted URL on an account with no forms) would otherwise lose its order
                             // on the create round-trip. Kept identical to the other button so neither drifts.
                             onClick = {
-                                navigateHash(
+                                navigate(
                                     listOf(HP.page to HMENU.pageNewForm, HP.from to listingPage) +
-                                        formsSearchHashParams(appliedSearch) +
-                                        sortHashParams(sortColumn, sortDescending) + shownHashParams(shown),
+                                        formsSearchRouteParams(appliedSearch) +
+                                        sortRouteParams(sortColumn, sortDescending) + shownRouteParams(shown),
                                 )
                             }
                             +"Create a form"
@@ -761,10 +761,10 @@ val FormsPage = FC<FormsPageProps> { props ->
                         className = ClassName("row")
                         Button {
                             onClick = {
-                                navigateHash(
+                                navigate(
                                     listOf(HP.page to pageCreateForUser, HP.from to listingPage) +
-                                        formsSearchHashParams(appliedSearch) +
-                                        sortHashParams(sortColumn, sortDescending) + shownHashParams(shown),
+                                        formsSearchRouteParams(appliedSearch) +
+                                        sortRouteParams(sortColumn, sortDescending) + shownRouteParams(shown),
                                 )
                             }
                             +"Create a form for a user…"
@@ -792,10 +792,10 @@ val FormsPage = FC<FormsPageProps> { props ->
                             // edit link carries them: NewFormPage sends them back on success, so a create returns to
                             // the same filtered, sorted listing rather than the default one.
                             onClick = {
-                                navigateHash(
+                                navigate(
                                     listOf(HP.page to HMENU.pageNewForm, HP.from to listingPage) +
-                                        formsSearchHashParams(appliedSearch) +
-                                        sortHashParams(sortColumn, sortDescending) + shownHashParams(shown),
+                                        formsSearchRouteParams(appliedSearch) +
+                                        sortRouteParams(sortColumn, sortDescending) + shownRouteParams(shown),
                                 )
                             }
                             +"New form"
@@ -811,10 +811,10 @@ val FormsPage = FC<FormsPageProps> { props ->
                         className = ClassName("row")
                         Button {
                             onClick = {
-                                navigateHash(
+                                navigate(
                                     listOf(HP.page to pageCreateForUser, HP.from to listingPage) +
-                                        formsSearchHashParams(appliedSearch) +
-                                        sortHashParams(sortColumn, sortDescending) + shownHashParams(shown),
+                                        formsSearchRouteParams(appliedSearch) +
+                                        sortRouteParams(sortColumn, sortDescending) + shownRouteParams(shown),
                                 )
                             }
                             +"Create a form for a user…"
@@ -872,7 +872,7 @@ val FormsPage = FC<FormsPageProps> { props ->
                 // Choose a client (issues #668, #714): a cross-client caller picks one client to work in. Picking
                 // one re-fetches *that* client's surface (`loadForClient`), so the listing's columns, its search
                 // fields and its edit form become that client's rather than the admin's own -- and the chosen
-                // client also rides as the `client=` row filter, carried in the hash and across pages. Clearing
+                // client also rides as the `client=` row filter, carried in the address and across pages. Clearing
                 // goes back to the cross-client view (every client's rows, the admin's own columns, the Client
                 // column that says which client each row is in).
                 if (canSeeAllClients) {
@@ -998,16 +998,16 @@ val FormsPage = FC<FormsPageProps> { props ->
                     // The listing's context (filter, sort, and how many are shown) rides every hop to a child page, so
                     // its back link returns to the same list.
                     val listingContext =
-                        formsSearchHashParams(appliedSearch) + sortHashParams(sortColumn, sortDescending) + shownHashParams(shown)
+                        formsSearchRouteParams(appliedSearch) + sortRouteParams(sortColumn, sortDescending) + shownRouteParams(shown)
                     // "View Info" (issue #694): the survey's read-only view, with its Edit toggle.
                     onSurveyView = { id ->
-                        navigateHash(listOf(HP.page to pageSurveyEdit, HP.from to listingPage, HP.gedra to id) + listingContext)
+                        navigate(listOf(HP.page to pageSurveyEdit, HP.from to listingPage, HP.gedra to id) + listingContext)
                     }
                     // The status chip's direct-to-edit link (issue #694): straight into the survey's edit mode,
                     // bypassing the read-only stop -- a real href, so it is keyboard-reachable and can open in a
                     // new tab.
                     surveyEditHref = { id ->
-                        hashHref(listOf(HP.page to pageSurveyEdit, HP.from to listingPage, HP.gedra to id, HP.edit to "1") + listingContext)
+                        routeHref(listOf(HP.page to pageSurveyEdit, HP.from to listingPage, HP.gedra to id, HP.edit to "1") + listingContext)
                     }
                     // The workflow column (issue #791): its summary, the client's copy for an empty cell, and where
                     // a workflow link goes -- the survey page opened on that workflow, carrying the listing's context
@@ -1015,12 +1015,12 @@ val FormsPage = FC<FormsPageProps> { props ->
                     workflowSummary = listingWorkflows
                     noWorkflowsCopy = emptyWorkflowsCopy
                     workflowHref = { id, wf, task, edit ->
-                        hashHref(workflowPageHash(id, wf, task, edit, listingPage) + listingContext)
+                        routeHref(workflowPageRoute(id, wf, task, edit, listingPage) + listingContext)
                     }
                     // Drilled in from the workflow pages (issue #792): View Workflow and a row double-click open it.
                     drillWorkflowId = drill?.first
                     onOpenWorkflow = { id, wf, task, edit ->
-                        navigateHash(workflowPageHash(id, wf, task, edit, listingPage) + listingContext)
+                        navigate(workflowPageRoute(id, wf, task, edit, listingPage) + listingContext)
                     }
                     confirmingDeleteId = rowConfirmDeleteId
                     deletingId = rowDeletingId

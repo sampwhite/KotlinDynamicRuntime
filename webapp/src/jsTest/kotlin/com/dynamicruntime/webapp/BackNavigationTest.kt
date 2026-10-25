@@ -6,7 +6,7 @@ import kotlin.test.assertEquals
 
 /**
  * Pure-logic coverage for the listing → child back navigation (issue #554): where a child's back link goes,
- * given what the hash says about where it was opened from. No browser; the resolution is a map lookup.
+ * given what the address says about where it was opened from. No browser; the resolution is a map lookup.
  */
 class BackNavigationTest {
 

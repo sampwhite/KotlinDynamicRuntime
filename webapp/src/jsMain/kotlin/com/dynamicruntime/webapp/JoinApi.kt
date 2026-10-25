@@ -46,7 +46,7 @@ fun parseJoinable(envelope: Map<String, Any?>): List<JoinableView> = envelope[EP
 }
 
 /** The Join page for [client] (issue #1248). */
-fun joinHref(client: String): String = hashHref(listOf(HP.page to HMENU.pageJoin, HP.client to client))
+fun joinHref(client: String): String = routeHref(listOf(HP.page to HMENU.pageJoin, HP.client to client))
 
 /**
  * What the Join page says before anyone joins [client] (issue #1248), a paragraph each: that it is one space shared

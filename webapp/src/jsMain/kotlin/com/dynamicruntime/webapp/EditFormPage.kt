@@ -55,10 +55,10 @@ const val pageEditForm = "editForm"
 // rather than dedup'd into a worse-reading abstraction (issue #671 follow-up).
 @Suppress("DuplicatedCode")
 val EditFormPage = FC<Props> {
-    // The form being edited, from the hash (`g=<id>`): initialized from the hash and kept in step with it, so
+    // The form being edited, from the address (`g=<id>`): initialized from the address and kept in step with it, so
     // navigating to another edit URL reloads and re-seeds rather than leaving the previous form on screen --
     // where Save would patch the stale gedra (issue #417).
-    var gedraId by useState(hashParams()[HP.gedra])
+    var gedraId by useState(routeParams()[HP.gedra])
     var patchEndpoint by useState<EndpointInfo?>(null)
     // The get endpoint, kept so a save can re-read the form and re-seed the edits in place (issue #726).
     var getEndpoint by useState<EndpointInfo?>(null)
@@ -100,16 +100,16 @@ val EditFormPage = FC<Props> {
     // them.
     val editedSinceSave = useRef(false)
 
-    // Keep the open id in step with the hash, so a navigation to another edit URL re-runs the load below. App is
-    // the router; a hash-only editForm->editForm move does not remount this page, so without this the first form
+    // Keep the open id in step with the address, so a navigation to another edit URL re-runs the load below. App is
+    // the router; an editForm->editForm move does not remount this page, so without this the first form
     // would stay loaded under the new URL (issue #417).
     useEffectOnce {
-        onHashChange { gedraId = hashParams()[HP.gedra] }
+        onRouteChange { gedraId = routeParams()[HP.gedra] }
     }
 
     // Load the endpoints and the named form, re-running whenever the id changes. Re-fetching the endpoints on a
     // reload is a rare, cheap cost (edit->edit happens only by a hand-edited URL); what matters is that the
-    // form is re-seeded from the id now in the hash, never left as the previous one.
+    // form is re-seeded from the id now in the address, never left as the previous one.
     useEffect(gedraId) {
         // A new form to edit: drop the previous load's seed, validation, and any success screen so none of it
         // bleeds across the reload.
@@ -233,7 +233,7 @@ val EditFormPage = FC<Props> {
         formsEditorHeader(title = { +"Edit form" }) {
             if (formUp) {
                 Button {
-                    onClick = { navigateHash(formsListingReturn(hashParams(), id)) }
+                    onClick = { navigate(formsListingReturn(routeParams(), id)) }
                     +"Done"
                 }
                 // Back to the survey's read-only view (issue #726): an alternate view of the same form, so a
@@ -241,7 +241,7 @@ val EditFormPage = FC<Props> {
                 if (hasSurvey) {
                     Button {
                         type = "link"
-                        onClick = { navigateHash(formsSurveyViewHash(hashParams(), id)) }
+                        onClick = { navigate(formsSurveyViewRoute(routeParams(), id)) }
                         +"View info"
                     }
                 }

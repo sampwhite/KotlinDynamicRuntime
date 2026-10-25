@@ -10,7 +10,8 @@ import java.io.File
  * Every link in the repository's documentation resolves (issue #1294): `README.md`, `CLAUDE.md`, everything under
  * `docs/`, and the guides in `examples/`. A link names a page or file that exists in the repository, and a
  * `#section` that is a heading of the page it names -- as GitHub mints heading anchors, which the app's renderer
- * matches (`headingSlug`). An outside address, a `mailto:`, and an app route (`#page=...`) are left alone.
+ * matches (`headingSlug`). An outside address, a `mailto:`, and a page of the app (`/wa/...`, or `#page=...` from
+ * before paths) are left alone.
  *
  * The documents link to each other by relative paths, which a move breaks without a word; this is what makes a
  * broken one fail the build. Links inside code -- fenced blocks and inline code spans -- are not links.
@@ -33,7 +34,8 @@ class RepoDocLinksTest : StringSpec({
         for (doc in docs) {
             for ((line, target) in links(doc)) {
                 val where = "${doc.relativeTo(repoRoot)}, line $line"
-                if (target.contains("://") || target.startsWith("mailto:") || (target.startsWith("#") && target.contains("="))) continue
+                val appPage = target.startsWith("/wa/") || target.startsWith("#") && target.contains("=")
+                if (target.contains("://") || target.startsWith("mailto:") || appPage) continue
                 val path = target.substringBefore('#')
                 val anchor = target.substringAfter('#', "").ifEmpty { null }
                 val file = when {

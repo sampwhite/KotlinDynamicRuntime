@@ -6,24 +6,24 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * The shareable user-search URL (issue #411): the search encodes to hash params and reads back to the same
+ * The shareable user-search URL (issue #411): the search encodes to route params and reads back to the same
  * query, only the non-default parts appear (so a plain search is a clean URL), and a hand-edited or stale link
- * cannot ask for a sort field the endpoint would reject. The hash keys are the endpoint's own arg names (from
+ * cannot ask for a sort field the endpoint would reject. The address keys are the endpoint's own arg names (from
  * the shared spec), so this exercises the spec-driven encoding too. Pure -- no React, no location.
  */
-class UserSearchHashTest {
+class UserSearchRouteTest {
 
     private fun roundTrip(q: UserSearchQuery): UserSearchQuery =
-        searchQueryFromHash(searchHashParams(q).toMap())
+        searchQueryFromRoute(searchRouteParams(q).toMap())
 
     @Test
     fun aDefaultSearchEmitsNoParams() {
-        assertTrue(searchHashParams(UserSearchQuery()).isEmpty())
+        assertTrue(searchRouteParams(UserSearchQuery()).isEmpty())
     }
 
     @Test
     fun onlyNonDefaultPartsAreEmittedUnderTheWireKeys() {
-        val params = searchHashParams(
+        val params = searchRouteParams(
             UserSearchQuery(textTerms = mapOf(USF.email to "ada"), sortBy = USF.name, descending = false),
         ).toMap()
         assertEquals("ada", params[USF.email])
@@ -54,17 +54,17 @@ class UserSearchHashTest {
     fun theAnyTextTermRoundTrips() {
         // The single "any text" term (issue #581) encodes to the wire `q` and reads back, so a shared link
         // keeps it rather than dropping it on decode.
-        val params = searchHashParams(UserSearchQuery(anyText = "dana")).toMap()
+        val params = searchRouteParams(UserSearchQuery(anyText = "dana")).toMap()
         assertEquals("dana", params["q"])
         assertEquals("dana", roundTrip(UserSearchQuery(anyText = "dana")).anyText)
         // Absent by default, so a plain search stays a clean URL.
-        assertEquals(null, searchHashParams(UserSearchQuery()).toMap()["q"])
+        assertEquals(null, searchRouteParams(UserSearchQuery()).toMap()["q"])
         assertEquals(null, roundTrip(UserSearchQuery()).anyText)
     }
 
     @Test
-    fun anEmptyHashIsTheDefaultSearch() {
-        val q = searchQueryFromHash(emptyMap())
+    fun anEmptyAddressIsTheDefaultSearch() {
+        val q = searchQueryFromRoute(emptyMap())
         assertTrue(q.textTerms.isEmpty())
         assertTrue(q.ranges.isEmpty())
         assertEquals(USF.lastEdited.at, q.sortBy)
@@ -72,12 +72,12 @@ class UserSearchHashTest {
     }
 
     @Test
-    fun aBlankBoundInTheHashIsNoBound() {
+    fun aBlankBoundInTheAddressIsNoBound() {
         // `lastEditedAfter=` from a hand-edited link: present but empty must not become a filter -- it would
         // count toward Clear and the count line, be sent, and read as a chip with nothing after it (issue #683).
-        assertTrue(searchQueryFromHash(mapOf(USF.lastEdited.after to "")).ranges.isEmpty())
+        assertTrue(searchQueryFromRoute(mapOf(USF.lastEdited.after to "")).ranges.isEmpty())
         // A real bound beside a blank one keeps only the real one.
-        val q = searchQueryFromHash(mapOf(USF.lastEdited.after to "2026-01-01T00:00:00.000Z", USF.lastEdited.before to " "))
+        val q = searchQueryFromRoute(mapOf(USF.lastEdited.after to "2026-01-01T00:00:00.000Z", USF.lastEdited.before to " "))
         assertEquals("2026-01-01T00:00:00.000Z", q.ranges[USF.lastEdited.at]?.after)
         assertEquals(null, q.ranges[USF.lastEdited.at]?.before)
     }
@@ -85,8 +85,8 @@ class UserSearchHashTest {
     @Test
     fun anUnknownSortKeyFallsBackToTheDefault() {
         // A hand-edited or stale link must not send a sort the endpoint would 400 on.
-        assertEquals(USF.lastEdited.at, searchQueryFromHash(mapOf(USF.sortBy to "bogusField")).sortBy)
-        // publicName is a backend axis but not a console column, so it is not an accepted hash sort either.
-        assertEquals(USF.lastEdited.at, searchQueryFromHash(mapOf(USF.sortBy to USF.publicName)).sortBy)
+        assertEquals(USF.lastEdited.at, searchQueryFromRoute(mapOf(USF.sortBy to "bogusField")).sortBy)
+        // publicName is a backend axis but not a console column, so it is not an accepted address sort either.
+        assertEquals(USF.lastEdited.at, searchQueryFromRoute(mapOf(USF.sortBy to USF.publicName)).sortBy)
     }
 }

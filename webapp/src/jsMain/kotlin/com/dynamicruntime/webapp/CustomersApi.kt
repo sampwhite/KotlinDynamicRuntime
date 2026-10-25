@@ -47,7 +47,7 @@ fun parseCustomerView(item: Map<String, Any?>): CustomerView? {
 }
 
 /** One customer's page (issue #1114): the one link to it, from the list of customers. */
-fun customerHref(customerId: String): String = hashHref(listOf(HP.page to HMENU.pageCustomers, HP.customer to customerId))
+fun customerHref(customerId: String): String = routeHref(listOf(HP.page to HMENU.pageCustomers, HP.customer to customerId))
 
 /**
  * Whether the customer page links [row] to its client page (issue #1114): every row for an administrator who sees

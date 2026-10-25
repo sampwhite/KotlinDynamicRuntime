@@ -41,9 +41,9 @@ class SimulationsTest {
     }
 
     @Test
-    fun theStartPageBecomesHashPairsAndNoneMeansHome() {
-        assertEquals(listOf("page" to "newForm", "from" to "forms"), startPageHash("page=newForm&from=forms"))
-        assertEquals(emptyList(), startPageHash(null))
+    fun theStartPageBecomesRoutePairsAndNoneMeansHome() {
+        assertEquals(listOf("page" to "newForm", "from" to "forms"), startPageRoute("page=newForm&from=forms"))
+        assertEquals(emptyList(), startPageRoute(null))
         assertEquals("design-demo", simulationName("/fixture/simulate/design-demo"))
     }
 

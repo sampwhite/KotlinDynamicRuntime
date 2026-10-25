@@ -6,7 +6,7 @@ import kotlin.test.assertEquals
 /**
  * Pure-logic coverage (issue #161) for the frontend half of document link resolution (issue #492): building the
  * repo-path -> in-app-doc map from the home links, and the resolver that turns a document's interior link into
- * an in-app `#page=docs&doc=<id>` link (via the shared hash builder) or a source-repo link. The path-resolution rules
+ * an in-app `/docs/<id>` link (via the shared route builder) or a source-repo link. The path-resolution rules
  * themselves are the kernel's [com.dynamicruntime.common.util.resolveDocLink], covered on the JVM.
  */
 class DocLinkResolverTest {
@@ -27,7 +27,7 @@ class DocLinkResolverTest {
     }
 
     @Test
-    fun resolverLinksRegisteredDocsInAppViaTheSharedHashFormat() {
+    fun resolverLinksRegisteredDocsInAppViaTheSharedRouteFormat() {
         val resolve = docLinkResolver("README.md", links, base)
         assertEquals("/docs/code-guide", resolve("code-guide.md"))
     }
@@ -36,6 +36,17 @@ class DocLinkResolverTest {
     fun resolverSendsUnregisteredFilesToTheSourceRepo() {
         val resolve = docLinkResolver("README.md", links, base)
         assertEquals("$base/LICENSE", resolve("LICENSE"))
+    }
+
+    @Test
+    fun aLinkToAPageOfTheAppIsPutUnderTheLiveAppRoot() {
+        // Issue #1371: a document spells an app page as the address bar shows it, under `/wa`, which is not a repo
+        // path. Under Node there is no app root, as under the dev server, so the page's own path is what is left.
+        val resolve = docLinkResolver("docs/demo-client/README.md", links, base)
+        assertEquals("/test/simulations", resolve("/wa/test/simulations"))
+        assertEquals("/join/confdemo", resolve("/wa/join/confdemo"))
+        // A repo file that merely starts with the same letters is still a repo file.
+        assertEquals("$base/wax.md", resolve("/wax.md"))
     }
 
     @Test

@@ -6,27 +6,27 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
- * A growing listing's arithmetic (issue #1315): what the hash asks for, what "Show more" and "Show all" offer, and the
+ * A growing listing's arithmetic (issue #1315): what the URL asks for, what "Show more" and "Show all" offer, and the
  * count line. Pure -- numbers to numbers and strings, no React. The offers fail silently when wrong (a missing button,
  * or one that grows past the cap), which is why they are spelled out case by case.
  */
 class ShowMoreTest {
 
     @Test
-    fun theHashIsHeldToTheBatchAndTheCap() {
-        assertEquals(listingBatch, shownFromHash(null))
-        assertEquals(listingBatch, shownFromHash("many"))
-        assertEquals(listingBatch, shownFromHash("7"))
-        assertEquals(300, shownFromHash("300"))
-        assertEquals(listingCap, shownFromHash("100000"))
+    fun theShownCountIsHeldToTheBatchAndTheCap() {
+        assertEquals(listingBatch, shownFromRoute(null))
+        assertEquals(listingBatch, shownFromRoute("many"))
+        assertEquals(listingBatch, shownFromRoute("7"))
+        assertEquals(300, shownFromRoute("300"))
+        assertEquals(listingCap, shownFromRoute("100000"))
         // Only past the first batch is it written, so an untouched listing's address stays bare.
-        assertEquals(emptyList(), shownHashParams(listingBatch))
-        assertEquals(listOf(HP.shown to "200"), shownHashParams(200))
+        assertEquals(emptyList(), shownRouteParams(listingBatch))
+        assertEquals(listOf(HP.shown to "200"), shownRouteParams(200))
     }
 
     @Test
     fun theWayHomeFromAFormAsksForTheSameRows() {
-        // The count is a non-navigation key on a forms hash, so every way home carries it as it carries the sort.
+        // The count is a non-navigation key on a forms address, so every way home carries it as it carries the sort.
         val home = formsListingReturn(mapOf(HP.page to "editForm", HP.gedra to "g1", HP.shown to "300"), "g1")
         assertTrue(HP.shown to "300" in home)
     }

@@ -36,7 +36,7 @@ val NotFoundPage = FC<Props> {
         }
         p {
             a {
-                href = hashHref(emptyList())
+                href = routeHref(emptyList())
                 +"Go to the home page"
             }
         }

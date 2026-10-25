@@ -58,7 +58,7 @@ fun useIdleBump(intervalMs: Int, bump: () -> Unit) {
 private fun isPageVisible(): Boolean = js("document.visibilityState === 'visible'") as Boolean
 
 // setInterval/clearInterval and add/removeEventListener are used raw (as elsewhere in the frontend, e.g.
-// HashRoute) rather than through typed wrappers. The same Kotlin lambda value is handed to both the add and the
+// Routing) rather than through typed wrappers. The same Kotlin lambda value is handed to both the add and the
 // remove call, so removal matches the exact listener that was registered.
 private fun startInterval(callback: () -> Unit, ms: Int): Int = js("setInterval(callback, ms)") as Int
 private fun clearIntervalId(id: Int) { js("clearInterval(id)") }
