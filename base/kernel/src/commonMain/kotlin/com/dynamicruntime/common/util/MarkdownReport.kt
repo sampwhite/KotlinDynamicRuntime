@@ -29,7 +29,10 @@ enum class MarkdownIssue : ProblemCode {
     /** A same-document `#anchor` link that no heading in the document has the slug of. */
     brokenAnchor,
 
-    /** A relative link the surface's resolver left as written, so it points nowhere from inside the app. */
+    /**
+     * A relative link the surface's resolver left as written, so it points nowhere from inside the app, or one it
+     * resolved to nothing, so it is drawn as its text (issue #1380).
+     */
     unresolvedLink,
 
     /** A table row with more or fewer cells than its header; it is padded or cut to fit. */
@@ -186,6 +189,15 @@ class ReportingSink(private val html: HtmlSink, private val hooks: MarkdownHooks
                 mdWarning(
                     MarkdownIssue.unresolvedLink,
                     "$what '$target' is relative and was not resolved, so it points nowhere from inside the app.",
+                    line + 1,
+                ),
+            )
+        } else if (hooks.resolveUrl != null && resolved.isBlank() && target.isNotBlank()) {
+            val drawn = if (image) "its alt text" else "its text"
+            problems.add(
+                mdWarning(
+                    MarkdownIssue.unresolvedLink,
+                    "$what '$target' has nowhere to go from inside the app, so it is drawn as $drawn.",
                     line + 1,
                 ),
             )

@@ -11,7 +11,9 @@ class MarkdownHooks(
     /**
      * Applied to each link's and image's raw target *before* [safeUrl], so it can never reintroduce an unsafe
      * scheme. Null uses a target as written -- the default, and what fragment copy wants; a document served to
-     * the frontend passes a resolver that retargets its repo-relative links (issue #492).
+     * the frontend passes a resolver that retargets its repo-relative links (issue #492). An empty answer says the
+     * target has nowhere to go from this surface: the link is drawn as its text, the image as its alt text (issue
+     * #1380).
      */
     val resolveUrl: ((String) -> String)? = null,
     /**
@@ -104,6 +106,9 @@ class HtmlSink(val hooks: MarkdownHooks) : MarkdownSink {
         // The resolver (if any) rewrites the target for where this is *rendered*; safeUrl still guards the result,
         // so a resolver can never turn a link into an executable scheme.
         val resolved = hooks.resolveUrl?.invoke(url) ?: url
+        if (hooks.resolveUrl != null && resolved.isBlank()) {
+            return label
+        }
         return "<a href=\"" + escapeHtml(safeUrl(resolved)) + "\">" + label + "</a>"
     }
     override fun span(roles: List<String>, inner: String): String =
@@ -114,7 +119,7 @@ class HtmlSink(val hooks: MarkdownHooks) : MarkdownSink {
         val resolved = when {
             refId != null -> hooks.refAddress?.invoke(refId) ?: return escapeHtml(alt)
             imageName != null -> hooks.imageAddress?.invoke(imageName) ?: return escapeHtml(alt)
-            else -> hooks.resolveUrl?.invoke(src) ?: src
+            else -> hooks.resolveUrl?.let { resolve -> resolve(src).ifBlank { return escapeHtml(alt) } } ?: src
         }
         val sb = StringBuilder("<img src=\"").append(escapeHtml(safeUrl(resolved))).append("\" alt=\"").append(escapeHtml(alt)).append('"')
         if (attrs != null) {

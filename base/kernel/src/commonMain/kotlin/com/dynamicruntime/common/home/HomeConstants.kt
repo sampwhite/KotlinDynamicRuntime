@@ -121,8 +121,8 @@ object HFLD {
 
     /**
      * `state.sourceRepoBase`: the source repository's blob base (`.../blob/<branch>`), or absent when the
-     * deployment did not configure one. Interior links to files that are *not* served as in-app documents are
-     * rewritten under it; without it they are left as written (issue #492).
+     * deployment turned it off. Interior links to files that are *not* served as in-app documents are rewritten
+     * under it (issue #492); without it they are drawn as their text (issue #1380).
      */
     const val sourceRepoBase = "sourceRepoBase"
 

@@ -21,14 +21,16 @@ package com.dynamicruntime.common.util
  * passed to [renderMarkdown] as its `resolveUrl` hook; the renderer still runs the result through `safeUrl`,
  * so this can only ever retarget a link, never make one executable.
  *
- * When [repoBlobBase] is null (the deployment did not configure a source repo), a non-document relative link is
- * left **unchanged** -- the pre-#492 behavior, so nothing regresses.
+ * When [repoBlobBase] is null (the deployment turned the source repo off), a non-document relative link has
+ * nowhere to go, and neither has one that climbs above the repo root: each resolves to **empty**, which
+ * [renderMarkdown] draws as the link's text rather than as a link (issue #1380). Left as written, it would resolve
+ * against the app's own path and open a page that does not exist.
  *
  * @param rawUrl the link target exactly as written in the Markdown.
  * @param currentSourcePath the repo-relative path of the document being rendered (e.g. `"README.md"`), against
  *   which a relative target is resolved.
  * @param docKeyByPath repo source path -> the app's key for the in-app document served from it.
- * @param repoBlobBase the source repository's blob base (`.../blob/<branch>`), or null when unconfigured.
+ * @param repoBlobBase the source repository's blob base (`.../blob/<branch>`), or null when turned off.
  * @param docHref how the app addresses an in-app document by its key and, when the link names one, the heading
  *   anchor within it (its own URL scheme).
  */
@@ -55,7 +57,7 @@ fun resolveDocLink(
     // Relative: peel off any fragment/query, resolve the path against this document's directory, then decide
     // whether it names another in-app document or a plain repo file.
     val cut = listOf(url.indexOf('#'), url.indexOf('?')).filter { it >= 0 }.minOrNull() ?: url.length
-    val repoPath = normalizeRepoPath(currentSourcePath, url.substring(0, cut)) ?: return rawUrl
+    val repoPath = normalizeRepoPath(currentSourcePath, url.substring(0, cut)) ?: return ""
     val docKey = docKeyByPath[repoPath]
     if (docKey != null) {
         // An in-app document, and the section within it the link names, if any (issue #1136). A query is dropped:
@@ -63,7 +65,7 @@ fun resolveDocLink(
         val anchor = url.substringAfter('#', "").ifEmpty { null }
         return docHref(docKey, anchor)
     }
-    return if (repoBlobBase != null) joinUrl(repoBlobBase, repoPath) + url.substring(cut) else rawUrl
+    return if (repoBlobBase != null) joinUrl(repoBlobBase, repoPath) + url.substring(cut) else ""
 }
 
 /** Whether [u] carries a URL scheme -- a colon with no slash before it (`mailto:x`, `https://y`). */
@@ -82,7 +84,7 @@ private fun joinUrl(base: String, path: String): String = base.trimEnd('/') + "/
 /**
  * Resolves [relative] against the directory of [currentSourcePath] into a clean repo path (`.`/`..`/empty
  * segments collapsed), or null when it cannot -- a `..` that climbs above the repo root, or an empty result --
- * in which case the caller leaves the link as written. A leading `/` makes [relative] repo-absolute.
+ * in which case the link has nowhere to go. A leading `/` makes [relative] repo-absolute.
  */
 private fun normalizeRepoPath(currentSourcePath: String, relative: String): String? {
     val segments = if (relative.startsWith("/")) {
