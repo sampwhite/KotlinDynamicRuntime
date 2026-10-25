@@ -72,7 +72,9 @@
 # +explain Accepting proves you can read mail at that address, makes the account yours, and signs you in.
 # +accept Accept and sign in
 # +accepted You are signed in. The account is now yours; it appears in the account menu when you have others.
-# +invalid This invitation link is not valid, or has expired.
+/- Shown with no token in the address: a reload, since the page clears the token on opening (issue #1371). A token
+   the backend refuses is error.invitationInvalid instead. -/
+# +noToken To see your invitation, open the link in your invitation mail again. This page does not keep the link, so a reload loses it.
 /- The way back as well as a resend (issue #565): it unlocks the address. -/
 # +resend Change the address or send a new code
 

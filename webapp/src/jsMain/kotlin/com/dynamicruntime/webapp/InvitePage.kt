@@ -84,7 +84,11 @@ val InvitePage = FC<Props> {
         when {
             token == null -> p {
                 className = ClassName("subtitle")
-                +t("invalid", "This invitation link is not valid, or has expired.")
+                +t(
+                    "noToken",
+                    "To see your invitation, open the link in your invitation mail again. This page does not keep the link, " +
+                        "so a reload loses it.",
+                )
             }
             accepted -> p {
                 className = ClassName("subtitle")
