@@ -31,7 +31,7 @@ object WorkflowAggregate {
         val resolved = HashMap<Pair<String, String>, Pair<WfDeclared, WfPhase>?>()
         fun live(client: String, id: String): Pair<WfDeclared, WfPhase>? = resolved.getOrPut(client to id) {
             registry(client).workflow(id)?.takeIf { it.def.entry == WfEntry.normal }
-                ?.let { it to it.def.phaseAt(now) }?.takeIf { it.second.exists }
+                ?.let { it to WorkflowPhases.phaseAt(cxt, client, it.def, now) }?.takeIf { it.second.exists }
         }
 
         for ((gedraId, states) in statesByForm) {

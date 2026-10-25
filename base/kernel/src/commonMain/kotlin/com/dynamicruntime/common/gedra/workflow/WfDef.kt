@@ -16,7 +16,6 @@ import com.dynamicruntime.common.util.isVariableName
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
-import kotlin.time.Instant
 
 /**
  * The field names of a workflow definition's JSON, and the names of the schema types that describe it
@@ -41,7 +40,6 @@ object WFD {
     const val eligibilityType = "WfEligibility"
     const val singletonType = "WfSingleton"
     const val approvalType = "WfApproval"
-    const val windowType = "WfWindow"
     const val lockType = "WfLock"
 
     const val workflowId = "workflowId"
@@ -117,7 +115,8 @@ object WFD {
     /**
      * A normal workflow's three nested, optional time windows (issue #790), outermost first: outside its
      * [lifetime] the workflow is as good as not configured; outside [relevancy] nothing is calculated for it;
-     * outside [engagement] no form may newly engage. See [WfWindows].
+     * outside [engagement] no form may newly engage. See [WfWindows]. **Keys of a workflow's parameters, never of
+     * its definition** (issue #1356): a workflow's windows are set per client on the client's page ([WfParams]).
      */
     const val lifetime = "lifetime"
     const val relevancy = "relevancy"
@@ -632,8 +631,6 @@ class WfDef(
     val label: String = "",
     eligibility: List<WfEligibility> = emptyList(),
     singletons: List<WfSingleton> = emptyList(),
-    /** The time windows (issue #790); only a [WfEntry.normal] workflow may declare any. */
-    val windows: WfWindows = WfWindows.none,
     locks: List<WfLock> = emptyList(),
     /** The workflow's alterations of types, by qualified type name (issue #984); see [WFD.types]. */
     val typeAlterations: Map<String, Map<String, Any?>> = emptyMap(),
@@ -865,17 +862,6 @@ class WfDef(
                     "cfacts; only a normal workflow emits them, since only an engaged workflow contributes one.",
             )
         }
-        if (!windows.isEmpty) {
-            // A creation or survey workflow is how every form is made and kept -- switching one off by date would
-            // strand the forms, and nothing chooses to engage with them, so the windows have nothing to govern.
-            if (entry != WfEntry.normal) {
-                throw KdrException.mkConv(
-                    "${entry.name.replaceFirstChar { it.uppercase() }} workflow '$workflowId' declares time " +
-                        "windows; only a normal workflow has them, since only a normal workflow is chosen for a form.",
-                )
-            }
-            windows.check(workflowId)
-        }
         val seenSingletons = HashSet<String>()
         for (r in singletons) {
             // The list is hardwired because each name carries code behavior; a workflow cannot invent one, and a
@@ -903,9 +889,6 @@ class WfDef(
 
     /** The task named, or null. */
     fun task(id: String): WfTask? = tasksById[id]
-
-    /** Where the workflow stands in its time windows at [now] (issue #790); always engageable when it has none. */
-    fun phaseAt(now: Instant): WfPhase = windows.phaseAt(now)
 
     /**
      * Whether a page shows the list of tasks: **behavior, not configuration** -- a workflow with one task has
@@ -985,12 +968,6 @@ object WfDefSchema {
             property(WFD.prompt, "The text above the approve button -- a template, evaluated in two passes.", required = true)
             property(WFD.button, "The approve button's own text -- a template, evaluated in two passes.", required = true)
         }
-        type(WFD.windowType) {
-            type = SCT.kObject
-            description = "A time window: from its start (inclusive) to its end (exclusive); a missing bound falls back to the enclosing window's."
-            property(WFD.start, "When the window opens; absent, the enclosing window's start, or no limit.") { dateTime() }
-            property(WFD.end, "When the window closes; absent, the enclosing window's end, or no limit.") { dateTime() }
-        }
         type(WFD.lockType) {
             type = SCT.kObject
             description = "A trait lock: while the form is engaged and the condition holds, only the named task's savers may change the trait, unless a write overrides it."
@@ -1059,15 +1036,6 @@ object WfDefSchema {
                 allowCoerce = true
                 items { ref(WFD.singletonType) }
             }
-            property(WFD.lifetime, "A normal workflow's lifetime: outside it, the workflow is as good as not configured.") {
-                ref(WFD.windowType)
-            }
-            property(WFD.relevancy, "Inside the lifetime: when the workflow is calculated. Outside it, an engaged form's state is frozen.") {
-                ref(WFD.windowType)
-            }
-            property(WFD.engagement, "Inside relevancy: when a form may engage with the workflow.") {
-                ref(WFD.windowType)
-            }
             property(WFD.locks, "A normal workflow's trait locks: what the form's data may not change while it is engaged, and who is exempt or may override.") {
                 type = SCT.array
                 allowCoerce = true
@@ -1135,10 +1103,6 @@ fun WfDef.toJsonMap(): Map<String, Any?> = buildMap {
     if (singletons.isNotEmpty()) {
         put(WFD.singletons, singletons.map { linkedMapOf(WFD.cfact to it.cfact, WFD.kWhen to it.whenExpr) })
     }
-    // As declared, not resolved: a stored definition keeps which bounds were written and which fall back.
-    if (!windows.lifetime.isEmpty) put(WFD.lifetime, windows.lifetime.toJsonMap())
-    if (!windows.relevancy.isEmpty) put(WFD.relevancy, windows.relevancy.toJsonMap())
-    if (!windows.engagement.isEmpty) put(WFD.engagement, windows.engagement.toJsonMap())
     if (locks.isNotEmpty()) put(WFD.locks, locks.map { it.toJsonMap() })
     if (typeAlterations.isNotEmpty()) put(WFD.types, typeAlterations)
     if (typeBasis.isNotEmpty()) put(WFD.typeBasis, typeBasis)
@@ -1210,11 +1174,6 @@ fun parseWfDef(cxt: KdrCxtBase, raw: Map<String, Any?>, templateOverlay: Map<Str
         singletons = m[WFD.singletons].toJsonListOfMaps().map { r ->
             WfSingleton(r[WFD.cfact].toOptStr() ?: "", r[WFD.kWhen].toOptStr() ?: "")
         },
-        windows = WfWindows(
-            lifetime = WfWindow.fromJson(m[WFD.lifetime]),
-            relevancy = WfWindow.fromJson(m[WFD.relevancy]),
-            engagement = WfWindow.fromJson(m[WFD.engagement]),
-        ),
         locks = m[WFD.locks].toJsonListOfMaps().map { l ->
             WfLock(
                 traitId = l[WFD.traitId].toOptStr() ?: "",
@@ -1275,7 +1234,6 @@ class WfDefBuilder(private val workflowId: String, private val entry: WfEntry) {
     private val functions = mutableListOf<Map<String, Any?>>()
     private val eligibility = mutableListOf<Map<String, Any?>>()
     private val singletons = mutableListOf<Map<String, Any?>>()
-    private val windows = linkedMapOf<String, Map<String, Any?>>()
     private val locks = mutableListOf<Map<String, Any?>>()
     private val types = linkedMapOf<String, Map<String, Any?>>()
 
@@ -1328,21 +1286,6 @@ class WfDefBuilder(private val workflowId: String, private val entry: WfEntry) {
     }
 
     /**
-     * The workflow's lifetime (issue #790): outside it, the workflow is as good as not configured. Bounds are
-     * ISO-8601 instants (`2026-10-01T00:00:00Z`); leave one out for no limit on that side.
-     */
-    fun lifetime(start: String? = null, end: String? = null) = window(WFD.lifetime, start, end)
-
-    /**
-     * When the workflow is calculated, inside its [lifetime] (issue #790). A missing bound falls back to the
-     * lifetime's. Outside it, a form engaged with the workflow keeps its last state, read-only.
-     */
-    fun relevancy(start: String? = null, end: String? = null) = window(WFD.relevancy, start, end)
-
-    /** When a form may engage with the workflow, inside its [relevancy] (issue #790); a missing bound falls back. */
-    fun engagement(start: String? = null, end: String? = null) = window(WFD.engagement, start, end)
-
-    /**
      * Locks [traitId] on a form engaged with this workflow (issue #857): while [whenCfacts] -- a cfact expression over
      * the form's facts and the workflow's own -- holds, only whoever may save task [writableVia] (which collects the
      * trait and says who may save it) may change it, by any path. [overrideWhen], over the writer's request facts,
@@ -1350,13 +1293,6 @@ class WfDefBuilder(private val workflowId: String, private val entry: WfEntry) {
      */
     fun lock(traitId: String, writableVia: String, whenCfacts: String = "#always", overrideWhen: String? = null) {
         locks.add(WfLock(traitId, whenCfacts, writableVia, overrideWhen).toJsonMap())
-    }
-
-    private fun window(name: String, start: String?, end: String?) {
-        windows[name] = buildMap {
-            start?.let { put(WFD.start, it) }
-            end?.let { put(WFD.end, it) }
-        }
     }
 
     /** The definition as JSON, ready for [parseWfDef]. */
@@ -1369,7 +1305,6 @@ class WfDefBuilder(private val workflowId: String, private val entry: WfEntry) {
         if (functions.isNotEmpty()) put(WFD.functions, functions.toList())
         if (eligibility.isNotEmpty()) put(WFD.eligibility, eligibility.toList())
         if (singletons.isNotEmpty()) put(WFD.singletons, singletons.toList())
-        putAll(windows)
         if (locks.isNotEmpty()) put(WFD.locks, locks.toList())
         if (types.isNotEmpty()) put(WFD.types, types.toMap())
     }

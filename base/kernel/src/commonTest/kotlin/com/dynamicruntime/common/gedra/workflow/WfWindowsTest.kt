@@ -3,10 +3,13 @@ package com.dynamicruntime.common.gedra.workflow
 import com.dynamicruntime.common.context.KdrCxtBase
 import com.dynamicruntime.common.context.LiteCxt
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Instant
 
@@ -23,9 +26,9 @@ class WfWindowsTest {
     private val sep = at("2026-09-01T00:00:00Z")
     private val dec = at("2026-12-01T00:00:00Z")
 
-    private fun normal(windows: WfDefBuilder.() -> Unit) = WfDefBuilder("audit", WfEntry.normal).apply {
+    private fun normal(more: WfDefBuilder.() -> Unit) = WfDefBuilder("audit", WfEntry.normal).apply {
         task("record", "Record") { trait("a"); save("s", "S", WfSaveKind.edit) }
-        windows()
+        more()
     }.build()
 
     @Test
@@ -65,43 +68,40 @@ class WfWindowsTest {
 
     @Test
     fun windowsThatDoNotNestAreRefused() {
+        fun problem(w: WfWindows) = w.problem("audit")
         // Engagement ending after relevancy does.
-        assertFailsWith<KdrException> {
-            parseWfDef(cxt, normal { relevancy(end = "2026-06-01T00:00:00Z"); engagement(end = "2026-09-01T00:00:00Z") })
-        }
+        assertNotNull(problem(WfWindows(relevancy = WfWindow(end = jun), engagement = WfWindow(end = sep))))
         // Relevancy starting before the lifetime does.
-        assertFailsWith<KdrException> {
-            parseWfDef(cxt, normal { lifetime(start = "2026-03-01T00:00:00Z"); relevancy(start = "2026-01-01T00:00:00Z") })
-        }
+        assertNotNull(problem(WfWindows(lifetime = WfWindow(start = mar), relevancy = WfWindow(start = jan))))
         // A window that closes before it opens -- here only once the engagement start meets relevancy's end. The
         // refusal says the end was inherited, so the author is not sent looking for an engagement end they never wrote.
-        val never = assertFailsWith<KdrException> {
-            parseWfDef(cxt, normal { relevancy(end = "2026-06-01T00:00:00Z"); engagement(start = "2026-09-01T00:00:00Z") })
-        }
-        assertTrue(never.message.orEmpty().contains("ends when its relevancy window does"), never.message)
+        val never = problem(WfWindows(relevancy = WfWindow(end = jun), engagement = WfWindow(start = sep))).orEmpty()
+        assertTrue(never.contains("ends when its relevancy window does"), never)
+        assertNull(problem(WfWindows(lifetime = WfWindow(jan, dec), engagement = WfWindow(end = jun))))
         // A date that is not one.
-        assertFailsWith<KdrException> { parseWfDef(cxt, normal { lifetime(end = "next year") }) }
+        assertFailsWith<KdrException> { WfParams.fromInfo(mapOf(WFP.windows to mapOf(WFD.lifetime to mapOf(WFD.end to "next year")))) }
     }
 
     @Test
-    fun onlyANormalWorkflowHasWindows() {
-        val raw = WfDefBuilder("review", WfEntry.survey).apply {
-            task("t", "T") { trait("a"); save("s", "S", WfSaveKind.edit) }
-            lifetime(end = "2026-12-01T00:00:00Z")
-        }.build()
+    fun aDefinitionHoldsNoWindows() {
+        // Windows are a workflow's parameters, set per client (issue #1356): a definition naming one is not a definition.
+        val raw = normal {} + (WFD.lifetime to mapOf(WFD.end to "2026-12-01T00:00:00Z"))
         assertFailsWith<KdrException> { parseWfDef(cxt, raw) }
+        assertFalse(parseWfDef(cxt, normal {}).toJsonMap().containsKey(WFD.lifetime))
     }
 
     @Test
-    fun windowsParseAndRoundTripAsDeclared() {
-        val def = parseWfDef(cxt, normal { lifetime("2026-01-01T00:00:00Z", "2026-12-01T00:00:00Z"); engagement(end = "2026-06-01T00:00:00Z") })
-        assertEquals(listOf(jan, dec), listOf(def.windows.lifetime.start, def.windows.lifetime.end))
-        assertTrue(def.windows.relevancy.isEmpty)
-        assertEquals(WfPhase.relevant, def.phaseAt(sep))
-
-        val again = parseWfDef(cxt, def.toJsonMap()).windows
-        assertEquals(listOf(jan, dec, null, jun), listOf(again.lifetime.start, again.lifetime.end, again.engagement.start, again.engagement.end))
+    fun parametersRoundTripAsDeclared() {
+        val params = WfParams(WfWindows(lifetime = WfWindow(jan, dec), engagement = WfWindow(end = jun)))
+        val again = WfParams.fromInfo(params.toInfo())
+        assertEquals(params, again)
+        assertEquals(WfPhase.relevant, again.windows.phaseAt(sep))
         // Only what was declared is stored: the fallbacks are recomputed, not written down.
-        assertFalse(def.toJsonMap().containsKey(WFD.relevancy))
+        assertFalse(params.toInfo().getValue(WFP.windows).toJsonMapOrEmpty().containsKey(WFD.relevancy))
+        assertTrue(WfParams.none.toInfo().isEmpty())
+        // A setting keeps who and when, newest first in a history.
+        val setting = WfParamsSetting(params, jan, 12L, "Pat Lee")
+        val read = WfParamsSetting.listFrom(listOf(setting.toInfo())).single()
+        assertEquals(listOf<Any?>(params, jan, 12L, "Pat Lee"), listOf(read.params, read.setAt, read.setBy, read.setByName))
     }
 }

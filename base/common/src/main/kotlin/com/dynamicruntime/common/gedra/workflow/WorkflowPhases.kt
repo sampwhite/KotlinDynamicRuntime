@@ -12,27 +12,42 @@ import kotlin.time.Instant
  * The endpoints' side of a normal workflow's time windows (issue #790): the one place that says what each
  * [WfPhase] allows and in which words, so engage, view, save, approve and the chip popover cannot drift apart.
  *
+ * **Windows are parameters** (issue #1356): a workflow's windows are not in its definition but in its parameters, set
+ * per client ([WorkflowParamsService]), so every phase here is asked of a workflow *in a client* -- the registry's, or
+ * the form's. This is the one place that reads them for a phase.
+ *
  * **One clock.** Every phase is read at `cxt.instanceNow()`, the instance clock -- not the per-context `now()` --
  * because a phase decides what the deriver persists (a frozen entry, a dropped one), and persisted state is
  * stamped on the instance clock throughout; the engagement recorded beside it is.
  */
 object WorkflowPhases {
-    /** Where [def] stands for [cxt]'s request. */
-    fun of(cxt: KdrCxt, def: WfDef): WfPhase = def.phaseAt(cxt.instanceNow())
+    /**
+     * The windows [def] runs with in [client] (issue #1356): its parameters there -- a sandbox's own, else its
+     * parent's -- or none for a workflow that is not normal, which has no windows, and on a node that keeps none.
+     */
+    fun windowsOf(cxt: KdrCxt, client: String?, def: WfDef): WfWindows =
+        if (def.entry != WfEntry.normal) WfWindows.none
+        else WorkflowParamsService.getOrNull(cxt)?.windowsFor(cxt, client, def.workflowId) ?: WfWindows.none
+
+    /** Where [def] stands in [client] at the moment [at]. */
+    fun phaseAt(cxt: KdrCxt, client: String?, def: WfDef, at: Instant): WfPhase = windowsOf(cxt, client, def).phaseAt(at)
+
+    /** Where [def] stands in [client] for [cxt]'s request. */
+    fun of(cxt: KdrCxt, client: String?, def: WfDef): WfPhase = phaseAt(cxt, client, def, cxt.instanceNow())
 
     /**
      * The workflow [id] of [registry] as a caller may address it: null when unknown, and null for a normal
      * workflow outside its lifetime, which is as good as not configured. The lookup every endpoint uses, so a
      * later consumer (the listing's summary, the workflow pages) inherits the rule rather than remembering it.
      */
-    fun live(cxt: KdrCxt, registry: WorkflowRegistry, id: String): WfDeclared? = liveAt(registry, id, cxt.instanceNow())
+    fun live(cxt: KdrCxt, registry: WorkflowRegistry, id: String): WfDeclared? = liveAt(cxt, registry, id, cxt.instanceNow())
 
     /**
      * [live] at the moment [at]: the one statement of what "live" is, so a caller judging another moment -- the
      * publish impact report, at the moment it reads the client's data -- holds the same rule every endpoint does.
      */
-    fun liveAt(registry: WorkflowRegistry, id: String, at: Instant): WfDeclared? =
-        registry.workflow(id)?.takeIf { it.def.entry != WfEntry.normal || it.def.phaseAt(at).exists }
+    fun liveAt(cxt: KdrCxt, registry: WorkflowRegistry, id: String, at: Instant): WfDeclared? =
+        registry.workflow(id)?.takeIf { it.def.entry != WfEntry.normal || phaseAt(cxt, registry.client, it.def, at).exists }
 
     /**
      * [states] -- a form's state entries -- as a caller is shown them (issue #1354): without the per-workflow entries
@@ -88,14 +103,15 @@ object WorkflowPhases {
     private val perWorkflowTraits = setOf(WFS.workflowEngagement, WFS.workflowState, WFS.workflowApproval)
 
     /**
-     * Refuses [doing] -- "saved", "approved" -- in a workflow that is not being calculated: past its relevancy
+     * Refuses [doing] -- "saved", "approved" -- in a workflow that is not being calculated in [client]: past its relevancy
      * (frozen, for a form engaged with it) or not yet relevant. A 409, since the request is well-formed and would
      * succeed at another time.
      */
-    fun requireCalculated(cxt: KdrCxt, def: WfDef, doing: String) {
+    fun requireCalculated(cxt: KdrCxt, client: String?, def: WfDef, doing: String) {
         val now = cxt.instanceNow()
-        if (def.phaseAt(now).calculates) return
-        val w = def.windows.effectiveRelevancy
+        val windows = windowsOf(cxt, client, def)
+        if (windows.phaseAt(now).calculates) return
+        val w = windows.effectiveRelevancy
         val start = w.start
         val reason = if (start != null && now < start) {
             "it does not open until $start"
@@ -105,11 +121,12 @@ object WorkflowPhases {
         throw KdrException("Workflow '${def.workflowId}' cannot be $doing now: $reason.", code = EXC.conflict)
     }
 
-    /** Refuses engaging a form with [def] outside its engagement window; a 400 like the eligibility refusal. */
-    fun requireEngageable(cxt: KdrCxt, def: WfDef) {
+    /** Refuses engaging a form with [def] in [client] outside its engagement window; a 400 like the eligibility refusal. */
+    fun requireEngageable(cxt: KdrCxt, client: String?, def: WfDef) {
         val now = cxt.instanceNow()
-        if (def.phaseAt(now) == WfPhase.engageable) return
-        val w = def.windows.effectiveEngagement
+        val windows = windowsOf(cxt, client, def)
+        if (windows.phaseAt(now) == WfPhase.engageable) return
+        val w = windows.effectiveEngagement
         val start = w.start
         val reason = if (start != null && now < start) "opens at $start" else "closed at ${w.end}"
         throw KdrException.mkInput("Workflow '${def.workflowId}' is not taking new forms: engagement $reason.")

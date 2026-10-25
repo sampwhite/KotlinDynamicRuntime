@@ -10,6 +10,8 @@ import com.dynamicruntime.common.gedra.workflow.WfDefSchema
 import com.dynamicruntime.common.gedra.report.ReportService
 import com.dynamicruntime.common.gedra.report.reportHistoryJob
 import com.dynamicruntime.common.gedra.report.reportHistoryTables
+import com.dynamicruntime.common.gedra.workflow.WorkflowParamsService
+import com.dynamicruntime.common.gedra.workflow.workflowParamsTables
 import com.dynamicruntime.common.gedra.report.reportSchema
 import com.dynamicruntime.common.gedra.workflow.WorkflowService
 import com.dynamicruntime.common.gedra.workflow.ComputeCFactsFromDataCreation
@@ -278,6 +280,8 @@ class CommonComponent : ComponentDefinition {
         collector.addTables(jobTables(cxt), appOnly)
         // The report-snapshot table (issue #1034): read and written by the report endpoints and the nightly job.
         collector.addTables(reportHistoryTables(cxt), appOnly)
+        // A workflow's parameters, its time windows first (issue #1356): set per client, in force at once.
+        collector.addTables(workflowParamsTables(cxt), appOnly)
         // Per-gedra job failures (issue #871), in the same topic.
         collector.addTables(jobExceptionTables(cxt), appOnly)
         collector.addModule(gedraConfigSchema(cxt), appOnly)
@@ -418,6 +422,8 @@ class CommonComponent : ComponentDefinition {
             // compiled by the time this initializes.
             service(::UiBlockService),
             // After the schema, client and fragment services it checks against (issue #533).
+            // A workflow's parameters (issue #1356), which every phase check reads: before the workflows they govern.
+            service(::WorkflowParamsService, roles = setOf(BOOT.app)),
             service(::WorkflowService),
             // After the workflows its reports' workflow paths bind to (issue #980).
             service(::ReportService),

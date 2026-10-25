@@ -239,7 +239,7 @@ object WorkflowStateDeriver : GedraStateDeriver {
         // whose engagement (asserted) survives regardless. Past its relevancy only an engaged form keeps an entry,
         // frozen as last calculated; everything else is calculated below.
         val now = cxt.instanceNow()
-        val phases = normal.mapValues { (_, w) -> w.def.phaseAt(now) }
+        val phases = normal.mapValues { (_, w) -> WorkflowPhases.phaseAt(cxt, state.row.client, w.def, now) }
         val declared = normal.filterKeys { phases.getValue(it).calculates }
         val frozen = normal.keys.filter { phases.getValue(it) == WfPhase.lifetimeOnly && it in engaged }
             .associateWith { previousEntry(state.currentState, it) }

@@ -1,8 +1,6 @@
 package com.dynamicruntime.webapp
 
-import com.dynamicruntime.common.gedra.CIT
 import com.dynamicruntime.common.gedra.CLD
-import com.dynamicruntime.common.gedra.CPY
 import com.dynamicruntime.common.gedra.CWF
 import com.dynamicruntime.common.gedra.IMP
 import com.dynamicruntime.common.gedra.workflow.WFD
@@ -11,8 +9,11 @@ import com.dynamicruntime.common.gedra.workflow.WfWindow
 import com.dynamicruntime.common.gedra.workflow.WfWindows
 import com.dynamicruntime.common.util.formatDate
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
-import com.dynamicruntime.common.util.toOptStr
 import kotlin.time.Instant
+import com.dynamicruntime.common.gedra.workflow.WfParamsSetting
+import com.dynamicruntime.common.gedra.workflow.WfParams
+import com.dynamicruntime.common.gedra.workflow.WFP
+import com.dynamicruntime.common.gedra.isSandboxClient
 
 /**
  * A normal workflow's time windows on the client page (issue #1121; `WorkflowWindowsEditor`): the three windows in plain
@@ -133,22 +134,56 @@ fun timelineLayout(windows: WfWindows, now: Instant, asOf: Instant? = null): Tim
     return TimelineLayout(bands, at(now), asOf?.let(::at))
 }
 
-/** The windows save's request: the workflow, its windows, how the page expects it to take effect, and an acknowledgement. */
-fun windowsSaveRequest(clientId: String, workflowId: String, windows: WfWindows, expected: String, acknowledge: Boolean): Map<String, Any?> =
+/**
+ * The windows save's request (issue #1356): the client or sandbox, the workflow, its parameters with [windows] as the
+ * moments they are -- none set, none sent, which is no limits -- and an acknowledgement.
+ */
+fun windowsSaveRequest(clientId: String, workflowId: String, windows: WfWindows, acknowledge: Boolean): Map<String, Any?> =
     buildMap {
         put(CLD.client, clientId)
         put(WFD.workflowId, workflowId)
-        put(CWF.windows, windows.toInfo().mapValues { (_, w) -> (w as Map<*, *>).mapValues { (_, at) -> (at as Instant).formatDate() } })
-        put(CPY.mode, expected)
+        put(
+            WFP.params,
+            WfParams(windows).toInfo().mapValues { (_, ws) ->
+                (ws as Map<*, *>).mapValues { (_, w) -> (w as Map<*, *>).mapValues { (_, at) -> (at as Instant).formatDate() } }
+            },
+        )
         if (acknowledge) put(IMP.acknowledgeImpact, true)
     }
 
-/** What a windows save did: the configuration the workflow is in, its windows now, how it took effect, and a draft's impact. */
-class WindowsSaveResult(val configName: String, val windows: WfWindows, val mode: String, val draftImpact: ImpactReportView?)
+/** What a windows save did: the workflow's parameters here now, with the setting it replaced among the earlier ones. */
+fun parseWindowsSaveResult(raw: Map<String, Any?>): WorkflowParamsView = parseWorkflowParams(raw[CWF.params].toJsonMapOrEmpty())
 
-fun parseWindowsSaveResult(raw: Map<String, Any?>): WindowsSaveResult = WindowsSaveResult(
-    configName = raw[CWF.configName].toOptStr().orEmpty(),
-    windows = WfWindows.fromInfo(raw[CWF.windows].toJsonMapOrEmpty()),
-    mode = raw[CPY.mode].toOptStr().orEmpty(),
-    draftImpact = raw[CIT.draftImpact]?.toJsonMapOrEmpty()?.let(::parseImpactReport),
-)
+/**
+ * How a windows save takes effect (issue #1356), said beside Save: at once, in the client or sandbox [clientId] names,
+ * with no draft and no publish -- and from a sandbox, never reaching its client.
+ */
+fun windowsEffectText(clientId: String): String =
+    if (isSandboxClient(clientId)) {
+        "Saving takes effect at once in this sandbox, and never reaches its client: a publish carries no time windows."
+    } else {
+        "Saving takes effect at once for this client's people, with no draft and no publish."
+    }
+
+/** Who set [setting] and when, as the editor says it ("Set Oct 20, 2026, 9:30 AM CT by Pat Lee"); null for values nobody set. */
+fun settingByline(setting: WfParamsSetting, zone: String): String? {
+    val at = setting.setAt ?: return null
+    val by = setting.setByName ?: setting.setBy?.let { "user $it" }
+    return "Set ${formatTimestamp(at.formatDate(), zone)}" + (by?.let { " by $it" } ?: "")
+}
+
+/**
+ * [windows] in a line, as the history lists an earlier setting: each window that has a bound, from when to when in
+ * [zone] -- "Available: from Oct 1, 2026, 9:00 AM CT; New forms may join: until Oct 20, 2026, 5:00 PM CT" -- or "No
+ * limits" for none.
+ */
+fun windowsSummaryText(windows: WfWindows, zone: String): String {
+    val parts = WindowBand.entries.mapNotNull { band ->
+        val w = band.declared(windows)
+        if (w.isEmpty) return@mapNotNull null
+        val from = w.start?.let { "from ${formatTimestamp(it.formatDate(), zone)}" }
+        val until = w.end?.let { "until ${formatTimestamp(it.formatDate(), zone)}" }
+        "${band.label}: ${listOfNotNull(from, until).joinToString(" ")}"
+    }
+    return parts.joinToString("; ").ifEmpty { "No limits" }
+}

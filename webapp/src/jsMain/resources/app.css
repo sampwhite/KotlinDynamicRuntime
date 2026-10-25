@@ -1735,6 +1735,9 @@ body.dv-open .app-content { padding-right: calc(var(--dv-panel-width) + 16px); }
 .wf-window { margin-bottom: 8px; }
 .wf-phase { font-weight: 600; }
 .wf-timeline { margin: 12px 0; max-width: 720px; }
+/* A workflow's earlier window settings (issue #1356), expanded in place beneath the editor's Save. */
+.wf-history { list-style: none; padding-left: 0; margin: 8px 0; }
+.wf-history > li { padding: 6px 0; border-top: 1px solid var(--border); }
 .wf-timeline-row { display: flex; align-items: center; gap: 12px; margin: 6px 0; }
 .wf-timeline-label { flex: 0 0 150px; color: var(--text-dim); font-size: 13px; }
 .wf-timeline-track { position: relative; flex: 1; height: 14px; background: var(--surface-page); border: 1px solid var(--border); border-radius: 7px; }

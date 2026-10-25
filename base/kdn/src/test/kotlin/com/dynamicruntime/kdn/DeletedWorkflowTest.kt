@@ -28,6 +28,8 @@ import com.dynamicruntime.common.gedra.workflow.WfEntry
 import com.dynamicruntime.common.gedra.workflow.WfSaveKind
 import com.dynamicruntime.common.gedra.workflow.WfWindow
 import com.dynamicruntime.common.gedra.workflow.WfWindows
+import com.dynamicruntime.common.gedra.workflow.WfParams
+import com.dynamicruntime.common.gedra.workflow.WFP
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.user.TestUser
@@ -210,9 +212,10 @@ class DeletedWorkflowTest : StringSpec({
         val client = "wfend1354"
         val admin = defineClient(client)
         val (user, gid) = engagedForm(client)
+        // The workflow's parameters (issue #1356): in force at once.
         fun setWindows(windows: WfWindows) = admin.postData(
-            UADEP.clientWorkflowWindows,
-            mapOf(WFD.workflowId to "review", CWF.windows to windows.toInfo(), IMP.acknowledgeImpact to true),
+            UADEP.clientWorkflowParams,
+            mapOf(WFD.workflowId to "review", WFP.params to WfParams(windows).toInfo(), IMP.acknowledgeImpact to true),
         )
 
         setWindows(WfWindows(lifetime = WfWindow(now - 30.days, now - 1.days)))
@@ -272,11 +275,15 @@ class DeletedWorkflowTest : StringSpec({
         val review = reviewEntry(admin)
         impactOfDeleting().map { it[IMP.kind] } shouldContain ImpactKind.workflowGone.name
 
-        // Past its lifetime (published, so it is what the client runs), deleting it changes nothing anybody sees.
+        // Past its lifetime -- its parameters in the client its people use (issue #1356), in force at once -- deleting it
+        // changes nothing anybody sees.
         patchFlows(admin, GedraEditAction.addOrReplace, review)
         admin.postData(
-            UADEP.clientWorkflowWindows,
-            mapOf(WFD.workflowId to "review", CWF.windows to WfWindows(lifetime = WfWindow(now - 30.days, now - 1.days)).toInfo(), IMP.acknowledgeImpact to true),
+            UADEP.clientWorkflowParams,
+            mapOf(
+                WFD.workflowId to "review", WFP.params to WfParams(WfWindows(lifetime = WfWindow(now - 30.days, now - 1.days))).toInfo(),
+                IMP.acknowledgeImpact to true,
+            ),
         )
         admin.postData(CFEP.bundlePublish, mapOf(CFEP.names to listOf("flows"), IMP.acknowledgeImpact to true, CFEP.reloadField to true))
         // Dropping the task the form's state names, from a workflow past its lifetime, strands nothing anybody sees.

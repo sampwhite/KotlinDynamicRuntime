@@ -5,6 +5,7 @@ import com.dynamicruntime.common.context.KdrCxtBase
 import com.dynamicruntime.common.exception.ACT
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.gedra.workflow.WFD
 import com.dynamicruntime.common.gedra.workflow.WorkflowTemplates
 import com.dynamicruntime.common.gedra.workflow.toJsonMap
 import com.dynamicruntime.common.schema.SCH
@@ -138,6 +139,19 @@ fun reassembleForWrite(
 }
 
 /**
+ * [definition] with any time windows it was stored with taken out (issue #1356), when it is kept as stored -- every
+ * definition a load reads, and one a write carries unchanged ([keepAsStored]). Windows were part of a workflow's
+ * definition until they became its parameters, and a definition saved then keeps its workflow and loses only its
+ * windows, which are now set on the client's page. A write that adds or changes windows is not kept so: a definition
+ * naming them is refused there.
+ */
+private fun withoutStoredWindows(definition: Map<String, Any?>, keepAsStored: (Map<String, Any?>) -> Boolean): Map<String, Any?> {
+    val windowKeys = setOf(WFD.lifetime, WFD.relevancy, WFD.engagement)
+    if (definition.keys.none { it in windowKeys } || !keepAsStored(definition)) return definition
+    return definition.filterKeys { it !in windowKeys }
+}
+
+/**
  * A [GedraConfig] reassembled from its stored [entriesBySlot] (issue #613): re-runs the `gedraConfig(...)`
  * builder so every generated type is manufactured exactly as source would, rather than stored and reloaded. The
  * identity comes from the row -- [name], [namespace] and [client] -- not from the entries.
@@ -177,7 +191,7 @@ fun reassembleGedraConfig(
             e[CCT.substring] as? Boolean ?: false,
         )
     }
-    entriesBySlot[CCT.workflowDef]?.forEach { workflowFromMap(it[CCT.definition].toJsonMapOrEmpty()) }
+    entriesBySlot[CCT.workflowDef]?.forEach { workflowFromMap(withoutStoredWindows(it[CCT.definition].toJsonMapOrEmpty(), keepUnreadWorkflow)) }
     // Forgiving, unlike the other slots: a report that no longer reads costs only itself (`GedraConfig.unreadReports`).
     entriesBySlot[CCT.reportDef]?.forEach {
         storedReportFromMap(it[CCT.definition].toJsonMapOrEmpty(), it[CCT.reportId].toOptStr())

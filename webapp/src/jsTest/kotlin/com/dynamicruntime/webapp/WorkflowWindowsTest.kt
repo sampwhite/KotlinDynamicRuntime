@@ -1,6 +1,5 @@
 package com.dynamicruntime.webapp
 
-import com.dynamicruntime.common.gedra.CPY
 import com.dynamicruntime.common.gedra.CWF
 import com.dynamicruntime.common.gedra.EDM
 import com.dynamicruntime.common.gedra.IMP
@@ -8,6 +7,11 @@ import com.dynamicruntime.common.gedra.workflow.WFD
 import com.dynamicruntime.common.gedra.workflow.WfWindow
 import com.dynamicruntime.common.gedra.workflow.WfWindows
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
+import com.dynamicruntime.common.gedra.workflow.WFP
+import com.dynamicruntime.common.gedra.workflow.WfParams
+import com.dynamicruntime.common.gedra.workflow.WfParamsSetting
+import com.dynamicruntime.common.gedra.sandboxOf
+import kotlin.test.assertFalse
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -77,14 +81,40 @@ class WorkflowWindowsTest {
     }
 
     @Test
-    fun theSaveSendsTheWindowsAsMomentsAndReadsWhatItDid() {
+    fun theSaveSendsTheParametersAsMomentsAndReadsWhatItDid() {
+        // Windows are a workflow's parameters (issue #1356), sent under `params`; none set, none sent.
         val windows = WfWindows(lifetime = WfWindow(end = now + 1.days))
-        val request = windowsSaveRequest("acme", "review", windows, EDM.live, acknowledge = true)
+        val request = windowsSaveRequest("acme", "review", windows, acknowledge = true)
         assertEquals("review", request[WFD.workflowId])
-        assertEquals(mapOf(WFD.lifetime to mapOf(WFD.end to "2026-10-24T12:00:00.000Z")), request[CWF.windows])
+        val sent = mapOf(WFP.windows to mapOf(WFD.lifetime to mapOf(WFD.end to "2026-10-24T12:00:00.000Z")))
+        assertEquals(sent, request[WFP.params])
         assertEquals(true, request[IMP.acknowledgeImpact])
-        val result = parseWindowsSaveResult(mapOf(CWF.configName to "main", CWF.windows to request[CWF.windows].toJsonMapOrEmpty(), CPY.mode to EDM.live))
+        assertEquals(emptyMap<String, Any?>(), windowsSaveRequest("acme", "review", WfWindows.none, acknowledge = false)[WFP.params])
+        // The answer is the parameters now, the setting they replaced first among the earlier ones.
+        val result = parseWindowsSaveResult(
+            mapOf(
+                CWF.params to mapOf(
+                    WFP.current to mapOf(WFP.params to sent, WFP.setAt to "2026-10-23T12:00:00.000Z", WFP.setByName to "Pat Lee"),
+                    WFP.history to listOf(mapOf(WFP.params to emptyMap<String, Any?>(), WFP.setAt to "2026-10-20T12:00:00.000Z")),
+                ),
+            ),
+        )
         assertEquals(windows, result.windows)
-        assertEquals("main", result.configName)
+        assertEquals("Pat Lee", result.current.setByName)
+        assertEquals(WfWindows.none, result.history.single().params.windows)
+        assertFalse(result.fromParent)
+    }
+
+    @Test
+    fun theEditorSaysWhoSetTheWindowsHowASaveTakesEffectAndEachEarlierSettingInALine() {
+        val setting = WfParamsSetting(WfParams(WfWindows(lifetime = WfWindow(start = now))), now, 7L, "Pat Lee")
+        val byline = assertNotNull(settingByline(setting, zone))
+        assertTrue(byline.startsWith("Set ") && byline.endsWith(" by Pat Lee"), byline)
+        assertNull(settingByline(WfParamsSetting(WfParams.none, null, null), zone))
+        assertTrue(windowsSummaryText(setting.params.windows, zone).startsWith("Available: from "))
+        assertEquals("No limits", windowsSummaryText(WfWindows.none, zone))
+        // At once, with no draft: in a sandbox, never reaching its client.
+        assertTrue(windowsEffectText("acme").contains("at once for this client's people"))
+        assertTrue(windowsEffectText(sandboxOf("acme")).contains("never reaches its client"))
     }
 }

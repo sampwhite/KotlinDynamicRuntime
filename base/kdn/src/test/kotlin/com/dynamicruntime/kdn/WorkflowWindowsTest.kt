@@ -36,6 +36,10 @@ import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonListOrEmpty
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
+import com.dynamicruntime.common.gedra.workflow.WfParams
+import com.dynamicruntime.common.gedra.workflow.WfWindow
+import com.dynamicruntime.common.gedra.workflow.WfWindows
+import com.dynamicruntime.common.gedra.workflow.WorkflowParamsService
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.collections.shouldNotContain
@@ -84,9 +88,6 @@ class WorkflowWindowsTest : StringSpec({
         }
         workflow("inspection", WfEntry.normal) {
             label = "Inspection"
-            lifetime(at(10), at(100))
-            relevancy(at(20), at(80))
-            engagement(at(30), at(50))
             // Finished once the notes say "done" -- data-driven, so a frozen entry is told apart from a recalculated
             // one by changing the notes after relevancy closes.
             function(computeCFactsFromData {
@@ -110,6 +111,12 @@ class WorkflowWindowsTest : StringSpec({
     }
     GedraConfigService.get(cxt).writeConfig(asClient(client), config)
     GedraConfigReload.reloadClient(cxt, client)
+    // The windows are the workflow's parameters in the client (issue #1356), not part of its definition.
+    fun window(start: Int, end: Int) = WfWindow(t0 + start.minutes, t0 + end.minutes)
+    WorkflowParamsService.get(cxt).save(
+        asClient(client), client, "inspection",
+        WfParams(WfWindows(lifetime = window(10, 100), relevancy = window(20, 80), engagement = window(30, 50))),
+    )
 
     val user = TestUser.create(cxt, "u@$client.test", userClient = client)
 

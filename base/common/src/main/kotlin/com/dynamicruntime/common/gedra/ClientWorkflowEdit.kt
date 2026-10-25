@@ -8,19 +8,25 @@ import com.dynamicruntime.common.gedra.workflow.WfDeclared
 import com.dynamicruntime.common.gedra.workflow.WfDef
 import com.dynamicruntime.common.gedra.workflow.WfEntry
 import com.dynamicruntime.common.gedra.workflow.WfTemplateSlots
-import com.dynamicruntime.common.gedra.workflow.WfWindows
+import com.dynamicruntime.common.gedra.workflow.ResolvedWorkflowParams
+import com.dynamicruntime.common.gedra.workflow.WFP
+import com.dynamicruntime.common.gedra.workflow.WfParams
+import com.dynamicruntime.common.gedra.workflow.WfParamsSetting
+import com.dynamicruntime.common.gedra.workflow.WorkflowParamsService
 import com.dynamicruntime.common.gedra.workflow.WorkflowService
 import com.dynamicruntime.common.gedra.workflow.WorkflowTemplates
 import com.dynamicruntime.common.gedra.workflow.templateSlotProblems
 import com.dynamicruntime.common.gedra.workflow.templateSlotsOf
 import com.dynamicruntime.common.gedra.workflow.toJsonMap
 import com.dynamicruntime.common.gedra.workflow.withTemplateSlots
-import com.dynamicruntime.common.gedra.workflow.withWindows
 import com.dynamicruntime.common.gedra.workflow.workflowTemplateOverlay
 import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.startup.SchemaCollector
 import com.dynamicruntime.common.startup.SchemaService
+import com.dynamicruntime.common.user.AuthUserRow
+import com.dynamicruntime.common.user.ReadScopeRules
+import com.dynamicruntime.common.user.UserService
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
 
@@ -72,7 +78,8 @@ object ClientWorkflowEdit {
         return buildMap {
             put(CLD.client, client)
             put(CWF.templates, templates.values.map { templateInfo(it.def, own, limits) })
-            put(CWF.workflows, own.map { workflowInfo(view, it, templates.keys) })
+            val names = SetterNames(cxt)
+            put(CWF.workflows, own.map { workflowInfo(cxt, client, view, it, templates.keys, names) })
             put(CWF.traits, usableTraits(cxt, owner))
             ClientService.get(cxt).displayZoneOf(owner)?.let { put(CWF.timeZone, it) }
         }
@@ -117,23 +124,48 @@ object ClientWorkflowEdit {
         return null
     }
 
-    private fun workflowInfo(client: String, declared: WfDeclared, templateIds: Set<String>): Map<String, Any?> = buildMap {
+    /**
+     * One workflow for the catalog: its definition and where it is stored, as [client] -- whose configuration the page
+     * lists -- holds it; and for a normal workflow, its parameters as [scope], the page's own client or sandbox, runs them
+     * (issue #1356), which are set there whoever declared the workflow.
+     */
+    private fun workflowInfo(
+        cxt: KdrCxt, scope: String, client: String, declared: WfDeclared, templateIds: Set<String>, names: SetterNames,
+    ): Map<String, Any?> = buildMap {
         val def = declared.def
         put(CWF.definition, def.toJsonMap())
         if (declared.bundle.isStored && declared.bundle.gedraId.client == client) put(CWF.configName, declared.bundle.name)
         notEditable(client, declared, templateIds)?.let { put(CWF.notEditable, it) }
-        if (def.entry == WfEntry.normal) windowsNotEditable(client, declared)?.let { put(CWF.windowsNotEditable, it) }
+        if (def.entry == WfEntry.normal) put(CWF.params, paramsInfo(WorkflowParamsService.get(cxt).resolve(cxt, scope, def.workflowId), names))
     }
 
     /**
-     * Why a normal workflow's time windows cannot be changed here (issue #1121), or null: they are the client's to set
-     * on any workflow it stores as its own, made from a template or written whole.
+     * [resolved] as a page is answered (issue #1356): the setting in force and the earlier ones, each with who set it,
+     * and whether a sandbox reads its parent's ([WFP.fromParent]). A setter is named only to a caller who may
+     * administer them ([SetterNames]).
      */
-    private fun windowsNotEditable(client: String, declared: WfDeclared): String? = when {
-        !declared.bundle.isStored -> "It is declared in source code, where its windows are set."
-        declared.bundle.gedraId.client != client || declared.bundle.inheritedFrom != null ->
-            "It comes from the client this one is built on, '${declared.bundle.inheritedFrom ?: declared.bundle.gedraId.client}'."
-        else -> null
+    fun paramsInfo(cxt: KdrCxt, resolved: ResolvedWorkflowParams): Map<String, Any?> = paramsInfo(resolved, SetterNames(cxt))
+
+    private fun paramsInfo(resolved: ResolvedWorkflowParams, names: SetterNames): Map<String, Any?> = buildMap {
+        put(WFP.current, names.named(resolved.current).toInfo())
+        put(WFP.history, resolved.history.map { names.named(it).toInfo() })
+        if (resolved.fromParent) put(WFP.fromParent, true)
+    }
+
+    /**
+     * Who set a workflow's parameters, for one answer: each user looked up once however many settings name them, and
+     * only one the caller may administer (`ReadScopeRules.forUserAdmin`, as a by-id user read is scoped). Anyone else --
+     * a platform operator who set a client's windows, say -- is left out, id and name both, as an administrator's
+     * pages do not reveal users beyond their reach (issue #1298); the setting then says only when.
+     */
+    private class SetterNames(private val cxt: KdrCxt) {
+        private val scope by lazy { ReadScopeRules.forUserAdmin(cxt) }
+        private val users = HashMap<Long, AuthUserRow?>()
+
+        fun named(s: WfParamsSetting): WfParamsSetting {
+            val user = s.setBy?.let { id -> if (id in users) users[id] else UserService.get(cxt).queryAdministrableUser(cxt, id, scope).also { users[id] = it } }
+            return WfParamsSetting(s.params, s.setAt, user?.userId, user?.let { it.name ?: it.publicName() })
+        }
     }
 
     /** Why [declared]'s slots cannot be changed here, or null when they can. */
@@ -218,50 +250,42 @@ object ClientWorkflowEdit {
         return Result(written.configId.baseId, templateSlotsOf(made), reload.issues, target.mode, ClientStoredEdit.draftImpact(target, written))
     }
 
-    /** What a windows save did: the configuration the workflow is in, its windows now, how it took effect, and a draft's impact. */
-    class WindowsResult(
-        val configName: String,
-        val windows: WfWindows,
-        val issues: List<GedraConfigIssue>,
-        val mode: String,
-        val draftImpact: ImpactReport?,
-    )
-
     /**
-     * Sets the time windows of [client]'s normal workflow [workflowId] to [windows] (issue #1121), where the workflow is
-     * stored: into its overlay for one made from a template, into its definition otherwise. Takes effect as [save]
-     * does. A live change that would, now, freeze or hide forms engaged with the workflow -- an end brought forward, a
-     * start pushed back -- is refused with the impact report until acknowledged.
+     * Sets [client]'s own parameters for its normal workflow [workflowId] to [params] (issue #1356): in force at once in
+     * that scope -- the client's people, or a sandbox's -- with no draft and no publish, and what they replace kept in
+     * the history ([WorkflowParamsService]). The workflow may be one [client] runs, or, on a client with a sandbox, one
+     * its sandbox runs and a publish has yet to bring. A change that would, now, freeze or hide forms [client] stores
+     * that are engaged with the workflow -- an end brought forward, a start pushed back -- is refused with the impact
+     * report until acknowledged. Returns the parameters as [client] now runs them.
      */
-    fun saveWindows(
+    fun saveParams(
         cxt: KdrCxt,
         client: String,
         workflowId: String,
-        windows: WfWindows,
-        expected: String? = null,
+        params: WfParams,
         impact: ImpactGate = ImpactGate.refuse,
-    ): WindowsResult {
-        // From a sandbox, its parent's: the sandbox holds no configuration, and a save is a draft of the parent's (#1358).
-        val owner = sandboxParentOf(client) ?: client
-        val target = ClientStoredEdit.target(cxt, client, "workflowWindows", expected)
-        val bound = target.bound
-        val svc = GedraConfigService.get(bound)
-        val (row, stored) = storedWorkflow(bound, workflowId)
-            ?: throw KdrException("Client '$owner' stores no workflow '$workflowId'; its windows are set where it is declared.", code = EXC.notFound)
-        val current = WorkflowTemplates.readStored(bound, stored)
-        if (current.entry != WfEntry.normal) {
-            throw KdrException.mkInput("Workflow '$workflowId' is a ${current.entry} workflow, which has no time windows; only a normal workflow does.")
+    ): ResolvedWorkflowParams {
+        val workflows = WorkflowService.get(cxt)
+        // On a client with a sandbox, a workflow its sandbox runs that a publish has yet to bring is the client's to set too.
+        val sandbox = if (sandboxParentOf(client) != null) null else sandboxOf(client).takeIf { ClientService.get(cxt).present(it) != null }
+        val declared = workflows.forClient(client).workflow(workflowId) ?: sandbox?.let { workflows.forClient(it).workflow(workflowId) }
+            ?: throw KdrException("Client '$client' has no workflow '$workflowId'.", code = EXC.notFound)
+        if (declared.def.entry != WfEntry.normal) {
+            throw KdrException.mkInput(
+                "Workflow '$workflowId' is a ${declared.def.entry} workflow, which has no time windows; only a normal workflow does.",
+            )
         }
-        windows.problem(workflowId)?.let { throw KdrException.mkInput(it) }
-        if (current.windows == windows) throw KdrException.mkInput("Workflow '$workflowId' already has these windows; nothing to save.")
-        val definition = WorkflowTemplates.storedForm(bound, withWindows(bound, current, windows))
-        if (!row.configId.baseId.startsWith(CWF.configPrefix)) ClientStoredEdit.requireNoForeignDraft(target, row, "a change to its workflows")
-        fun patch(on: GedraConfigRow, to: Map<String, Any?>) = svc.patchConfigs(bound, trial = true) { edit(on.configId) { slots ->
-            slots + (CCT.workflowDef to slots[CCT.workflowDef].orEmpty().map { if (it[CCT.workflowId] == workflowId) it + (CCT.definition to to) else it })
-        } }.single()
-        val written = patch(row, definition)
-        val reload = ClientStoredEdit.takeEffect(cxt, target, written, undo = { patch(written, stored) }, restorePublished = row.isPublished, impact = impact)
-        return WindowsResult(written.configId.baseId, windows, reload.issues, target.mode, ClientStoredEdit.draftImpact(target, written))
+        params.problem(workflowId)?.let { throw KdrException.mkInput(it) }
+        val service = WorkflowParamsService.get(cxt)
+        val before = service.resolve(cxt, client, workflowId)
+        if (!before.fromParent && before.params == params) {
+            throw KdrException.mkInput("Workflow '$workflowId' already has these values in client '$client'; nothing to save.")
+        }
+        if (impact == ImpactGate.refuse) {
+            ConfigImpact.requireNoneForParams(cxt, client, workflowId, before.params.windows, params.windows)
+        }
+        service.save(cxt, client, workflowId, params)
+        return service.resolve(cxt, client, workflowId)
     }
 
     /** What a removal did: the configuration the workflow was in, how it took effect, and a draft's impact. */

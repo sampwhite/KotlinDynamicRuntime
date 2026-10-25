@@ -102,11 +102,12 @@ val workflowTemplateMergeSpec: MergeSpec = MergeSpec(
     ),
 )
 
-/** What an overlay may say of the workflow as a whole; anything else is the template's. */
+/**
+ * What an overlay may say of the workflow as a whole; anything else is the template's. Not its time windows, which
+ * are a workflow's parameters and never part of a definition or an overlay (issue #1356).
+ */
 private val workflowOverlayKeys = setOf(
     WFD.workflowId, WFD.fromTemplate, WFD.label, SCH.dComment, WFD.tasks, WFD.types, WFD.typeBasis,
-    // A normal workflow's time windows are the client's to set (issue #1121); the definition refuses them on any other.
-    WFD.lifetime, WFD.relevancy, WFD.engagement,
 )
 
 /** What an overlay may say of one of the template's tasks. */

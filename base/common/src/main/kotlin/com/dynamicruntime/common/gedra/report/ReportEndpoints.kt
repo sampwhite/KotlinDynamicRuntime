@@ -28,6 +28,7 @@ import com.dynamicruntime.common.gedra.overseenClientField
 import com.dynamicruntime.common.gedra.toWireMap
 import com.dynamicruntime.common.gedra.workflow.WfEntry
 import com.dynamicruntime.common.gedra.workflow.WfPhase
+import com.dynamicruntime.common.gedra.workflow.WorkflowPhases
 import com.dynamicruntime.common.gedra.workflow.WorkflowService
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.SchTypesBuilder
@@ -620,7 +621,8 @@ private class SubjectReader(val c: KdrCxt, val client: String, val scope: ReadSc
     private val phases = HashMap<String, WfPhase?>()
 
     private fun phaseOf(id: String): WfPhase? = phases.getOrPut(id) {
-        workflows.workflow(id)?.def?.takeIf { it.entry == WfEntry.normal }?.phaseAt(now)?.takeIf { it.exists }
+        workflows.workflow(id)?.def?.takeIf { it.entry == WfEntry.normal }?.let { WorkflowPhases.phaseAt(c, client, it, now) }
+            ?.takeIf { it.exists }
     }
 
     /** The subjects of the forms [ids] names that still exist, in [ids]' order, with what [columns] read. */

@@ -229,7 +229,7 @@ fun resolveWorkflowView(
     // otherwise identical view, and only for a caller entitled to it, so an ordinary response never carries it.
     if (DesignView.isOn(cxt)) view[DSV.designBlock] = DesignView.workflowBlock(cxt, declared, defs, clientStore, store)
     if (lockedTraits.isNotEmpty()) view[WVF.lockedTraits] = lockedTraits
-    if (declared.def.entry == WfEntry.normal) view[WVF.phase] = WorkflowPhases.of(cxt, declared.def).name
+    if (declared.def.entry == WfEntry.normal) view[WVF.phase] = WorkflowPhases.of(cxt, client, declared.def).name
     formFacts?.let { f ->
         view[WVF.engaged] = f.engaged
         if (!f.engaged) {

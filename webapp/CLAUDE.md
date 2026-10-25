@@ -960,20 +960,27 @@ configuration published with the definition, and includes the trait they collect
 `starterWorkflows` is false. The self-serve card asks with a ticked checkbox; the platform's and a customer's creates
 draw it from their input schema. They count toward a plan's workflows, which is what Remove is for.
 
-**Time windows** (issue #1121, `WorkflowWindowsEditor.kt`, its pure half in `WorkflowWindows.kt`, covered by
+**Time windows** (issues #1121, #1356, `WorkflowWindowsEditor.kt`, its pure half in `WorkflowWindows.kt`, covered by
 `WorkflowWindowsTest`): a normal workflow's row in Workflows says where it stands now (`windowPhaseText`) and offers
-**Time windows…** wherever the client stores it as its own, made from a template or written whole (the catalog's
-`windowsNotEditable` says why not). The editor sets **Available** (lifetime), **Tracked** (relevancy) and **New forms
+**Time windows…** on every normal workflow, whoever declared it. **Windows are the workflow's parameters, not part of
+its definition** (issue #1356): kept per client or sandbox in a table of their own (`WorkflowParamsService`), in force
+at once with no draft and no publish, and a sandbox with none of its own runs its client's (`WFP.fromParent`). The
+catalog carries each normal workflow's parameters for the page's own scope (`CWF.params`: `WFP.current` and
+`WFP.history`, `parseWorkflowParams`). The editor sets **Available** (lifetime), **Tracked** (relevancy) and **New forms
 may join** (engagement), each a start and an end entered as a **date and a time** in the client's zone -- the
 catalog's `timeZone`, not the caller's, since the page may show another client -- through the zoned picker
 (`zonedPickerValue` / `zonedPickerIso`). An empty bound shows what it falls back to (`boundFallbackText`: "Same as
 Available (Oct 20, 2026, 9:30 AM CT)"). Beneath them a timeline of the three bands with now marked
 (`timelineLayout`, plain `div`s on a track coloured `--chart-1..3`), where the workflow stands now, and an **As of**
-picker that says where it would stand then -- the kernel's `phaseAt` in the browser, no clock moved. Save posts
-`/clientAdmin/client/workflows/windows` (`windowsSaveRequest`, with `mode`), which writes into the overlay of a
-template-made workflow and into the definition otherwise. A live change that would, now, freeze or hide forms engaged
-with the workflow is refused with the impact report (`ImpactKind.workflowFrozen` / `workflowHidden`, worded by
-`impactFindingText`), whose **Save anyway** acknowledges it.
+picker that says where it would stand then -- the kernel's `phaseAt` in the browser, no clock moved. Who set the windows
+in force is said under the title (`settingByline`). Save posts `/clientAdmin/client/workflows/params`
+(`windowsSaveRequest`; no `mode`, since a save is never a draft -- `windowsEffectText` says so). A change that would,
+now, freeze or hide forms engaged with the workflow is refused with the impact report (`ImpactKind.workflowFrozen` /
+`workflowHidden`, worded by `impactFindingText`), whose **Save anyway** acknowledges it. Beneath Save, **Earlier
+settings** expands the three a workflow's parameters keep, newest first, each in a line (`windowsSummaryText`) with who
+set it and **Use these values**, which fills the editor -- a pre-fill, never a save: the person saves it as any change.
+A setter the caller may not administer (an operator who set a client's windows) is not named: that line, and the
+byline, say only when.
 
 **Long text** is a layout mark, not a schema keyword: a `g-layout` field entry's `multiline: true` (`SL.multiline`,
 refused on anything but plain text) makes `SchemaForm` draw antd's `TextArea` (`ControlKind.LongText`) for any form

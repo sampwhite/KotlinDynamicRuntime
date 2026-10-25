@@ -1370,8 +1370,8 @@ object ClientsApi {
      * or a draft for a client with a sandbox. One that would freeze or hide engaged forms now is refused with the impact
      * report ([impactOf]).
      */
-    suspend fun saveWorkflowWindows(request: Map<String, Any?>): WindowsSaveResult =
-        parseWindowsSaveResult(Http.sendApi("POST", UADEP.clientWorkflowWindows, request)[EP.results].toJsonMapOrEmpty())
+    suspend fun saveWorkflowWindows(request: Map<String, Any?>): WorkflowParamsView =
+        parseWindowsSaveResult(Http.sendApi("POST", UADEP.clientWorkflowParams, request)[EP.results].toJsonMapOrEmpty())
 
     /** Every key an administrator may override for a client, with the client's value (issue #918). */
     suspend fun copyKeys(clientId: String): List<CopyKeyView> =
