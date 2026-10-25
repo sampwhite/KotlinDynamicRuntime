@@ -227,4 +227,21 @@ class GedraConfigSerializeTest : StringSpec({
         val config = GedraConfig(GedraId.of(GedraConfigType.configDoc, "acme", "flows"), "client.acme", emptyMap(), defs = emptyMap(), workflows = mapOf("made" to made))
         shouldThrow<KdrException> { gedraConfigToEntries(config) }.message.orEmpty() shouldContain "carries no overlay"
     }
+
+    // Windows were part of a workflow's definition until they became its parameters (issue #1356). A definition stored
+    // then keeps its workflow and loses only its windows; a write may carry it unchanged, but not add them.
+    "a stored definition with windows is kept without them, and a write adding them is refused" {
+        val entries = gedraConfigToEntries(sourceConfig())
+        val windows = mapOf(WFD.lifetime to mapOf("end" to "2026-12-01T00:00:00Z"))
+        val stored = entries + (CCT.workflowDef to entries.getValue(CCT.workflowDef).map {
+            it + (CCT.definition to (it[CCT.definition].toJsonMapOrEmpty() + windows))
+        })
+        val loaded = reassembleGedraConfig(cxt, "acmeConfig", "client.acme", "acme", stored)
+        loaded.workflows.keys shouldContainExactly setOf("acmeWf")
+        gedraConfigToEntries(loaded) shouldBe entries
+        // Written back unchanged, it is kept the same way...
+        gedraConfigToEntries(reassembleForWrite(cxt, "acmeConfig", "client.acme", "acme", stored, stored)) shouldBe entries
+        // ...but a write that adds windows to what was stored without them is refused.
+        shouldThrow<KdrException> { reassembleForWrite(cxt, "acmeConfig", "client.acme", "acme", stored, entries) }
+    }
 })

@@ -779,7 +779,7 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
             } else {
                 emptyList()
             }
-            if (declared.def.entry == WfEntry.normal && !WorkflowPhases.of(c, declared.def).isShown(formFacts?.engaged == true)) {
+            if (declared.def.entry == WfEntry.normal && !WorkflowPhases.of(c, registry.client, declared.def).isShown(formFacts?.engaged == true)) {
                 throw KdrException("No workflow '$requested' for this caller.", code = EXC.notFound)
             }
             val entriesByTask = row?.let { entriesByTaskOf(declared, it) } ?: emptyMap()
@@ -878,7 +878,7 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
         }
         // Engaging needs the engagement window open (issue #790) and, below, the eligibility tests (issue #783);
         // disengaging needs neither.
-        if (engaged && declared != null) WorkflowPhases.requireEngageable(c, declared.def)
+        if (engaged && declared != null) WorkflowPhases.requireEngageable(c, row.client, declared.def)
         // Engaging a declared workflow is gated on its eligibility tests (issue #783); disengaging is not.
         val states = WorkflowEngagement.setEngaged(c, row, workflowId, engaged, declared?.def?.takeIf { isNormal })
         // Shown as every answer is (issue #1354) -- but the workflow acted on always, so withdrawing a form from one since
@@ -911,7 +911,7 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
             ?.takeIf { it.def.entry == WfEntry.normal }
             ?: throw KdrException.mkInput("'$workflowId' is not a normal workflow of client '${row.client}'.")
         // A frozen workflow (past its relevancy, issue #790) takes no approvals: nothing would recalculate after it.
-        WorkflowPhases.requireCalculated(c, declared.def, "approved")
+        WorkflowPhases.requireCalculated(c, row.client, declared.def, "approved")
         val task = declared.def.task(taskId)?.takeIf { it.approval != null }
             ?: throw KdrException.mkInput("'$taskId' is not an approval task of workflow '$workflowId'.")
         // The second-person rule (issue #787): whoever owns the form cannot approve it, however they came to be a
@@ -1128,7 +1128,7 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
         // A normal workflow saves only while it is calculated (issue #790): frozen past its relevancy, its state
         // would no longer follow the data a save changes.
         if (declared.def.entry == WfEntry.normal) {
-            WorkflowPhases.requireCalculated(c, declared.def, "saved")
+            WorkflowPhases.requireCalculated(c, c.client, declared.def, "saved")
         }
         val taskId = request[GDF.taskId].toOptStr() ?: throw KdrException.mkInput("A ${GDF.taskId} is required.")
         val saveId = request[GDF.saveId].toOptStr() ?: throw KdrException.mkInput("A ${GDF.saveId} is required.")
@@ -1159,7 +1159,7 @@ private fun workflowDrillFilter(c: KdrCxt, request: Map<String, Any?>): GedraSta
     val phases = HashMap<String, WfPhase?>()
     fun phaseIn(client: String): WfPhase? = phases.getOrPut(client) {
         WorkflowService.get(c).forClient(client).workflow(workflowId)?.def
-            ?.takeIf { it.entry == WfEntry.normal }?.phaseAt(now)?.takeIf { it.exists }
+            ?.takeIf { it.entry == WfEntry.normal }?.let { WorkflowPhases.phaseAt(c, client, it, now) }?.takeIf { it.exists }
     }
     return { gedraId, states ->
         val phase = phaseIn(gedraId.client)

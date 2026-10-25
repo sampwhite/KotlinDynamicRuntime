@@ -34,7 +34,7 @@ object FormWorkflowSummary {
                 val id = entry[GE.data].toJsonMapOrEmpty()[WFD.workflowId].toOptStr() ?: continue
                 if (named[client]?.containsKey(id) == true) continue
                 val declared = WorkflowPhases.live(cxt, registry, id)?.takeIf { it.def.entry == WfEntry.normal } ?: continue
-                val phase = WorkflowPhases.of(cxt, declared.def)
+                val phase = WorkflowPhases.of(cxt, client, declared.def)
                 if (!phase.isShown(id in engaged)) continue
                 named.getOrPut(client) { LinkedHashMap() }[id] = declared to phase
             }

@@ -223,6 +223,15 @@ class GedraConfigService : ServiceInitializer {
     }
 
     /**
+     * Runs [block] in a transaction holding [client]'s configuration lock (the one every config write and publish
+     * takes), handing it the transaction's SQL context: for what changes what a client runs beside its configuration
+     * -- a workflow's parameters (issue #1356) -- so it is ordered with them, and a change spanning both can be made in
+     * one transaction. [block] reads and writes on that context's connection; the table caches are pinned inside it.
+     */
+    fun <T> withClientLock(cxt: KdrCxt, client: String, tranName: String, block: (SqlCxt) -> T): T =
+        underClientLock(cxt.mkSubContext(tranName, client), tranName) { sqlCxt, _ -> block(sqlCxt) }
+
+    /**
      * Runs [block] in a config transaction holding [wcxt]'s client's lock on [GCT.gedraConfigClientTran] (issue #843),
      * handing it the transaction's SQL context and the content table, and returns what it returns.
      *

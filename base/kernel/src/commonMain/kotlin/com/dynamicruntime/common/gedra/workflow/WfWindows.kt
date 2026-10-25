@@ -1,6 +1,5 @@
 package com.dynamicruntime.common.gedra.workflow
 
-import com.dynamicruntime.common.context.KdrCxtBase
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptInstant
@@ -170,16 +169,4 @@ class WfWindows(
         fun fromInfo(raw: Map<String, Any?>): WfWindows =
             WfWindows(WfWindow.fromJson(raw[WFD.lifetime]), WfWindow.fromJson(raw[WFD.relevancy]), WfWindow.fromJson(raw[WFD.engagement]))
     }
-}
-
-/**
- * [def] with [windows] in place of its own (issue #1121), read as any definition is -- so windows that do not nest, or
- * on a workflow that is not a normal one, are refused by the definition's own check. Everything else is [def]'s.
- */
-fun withWindows(cxt: KdrCxtBase, def: WfDef, windows: WfWindows): WfDef {
-    val json = LinkedHashMap(def.toJsonMap())
-    json.keys.removeAll(setOf(WFD.lifetime, WFD.relevancy, WFD.engagement))
-    json.putAll(windows.toInfo())
-    // No overlay carried over: one made from a template is stored as the diff its editor makes of it.
-    return parseWfDef(cxt, json)
 }

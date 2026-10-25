@@ -24,6 +24,10 @@ import com.dynamicruntime.common.gedra.workflow.withTemplateSlots
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
+import com.dynamicruntime.common.gedra.workflow.WfWindows
+import com.dynamicruntime.common.gedra.workflow.WfParamsSetting
+import com.dynamicruntime.common.gedra.workflow.WfParams
+import com.dynamicruntime.common.gedra.workflow.WFP
 
 /**
  * A client's workflows made from templates, on its page (issue #1120; `ClientWorkflowsSection`): the catalog read, the
@@ -39,16 +43,38 @@ private val readCxt = LiteCxt()
 /** A template a workflow can be made from, and why it cannot be now, when it cannot. */
 class WorkflowTemplateView(val def: WfDef, val refusal: String?)
 
+/**
+ * A normal workflow's parameters as the page's client or sandbox runs them (issue #1356): the setting in force, the
+ * earlier ones newest first, and whether a sandbox reads its parent's for want of its own.
+ */
+class WorkflowParamsView(val current: WfParamsSetting, val history: List<WfParamsSetting>, val fromParent: Boolean) {
+    val windows: WfWindows get() = current.params.windows
+
+    companion object {
+        val none = WorkflowParamsView(WfParamsSetting(WfParams.none, null, null), emptyList(), fromParent = false)
+    }
+}
+
+/** A workflow's parameters as the catalog and a save answer them (`CWF.params`). Pure, covered under `jsNodeTest`. */
+fun parseWorkflowParams(raw: Map<String, Any?>): WorkflowParamsView = WorkflowParamsView(
+    WfParamsSetting.fromInfo(raw[WFP.current].toJsonMapOrEmpty()),
+    WfParamsSetting.listFrom(raw[WFP.history]),
+    raw[WFP.fromParent] == true,
+)
+
 /** One of the client's workflows as it runs, the configuration holding it, and why its slots cannot be changed here. */
 class ClientWorkflowView(
     val def: WfDef,
     val configName: String?,
     val notEditable: String?,
-    /** For a normal workflow, why its time windows cannot be changed here (issue #1121); null when they can. */
-    val windowsNotEditable: String? = null,
+    /** For a normal workflow, its parameters here (issue #1356); null for any other kind, which has none. */
+    val params: WorkflowParamsView? = null,
 ) {
-    /** Whether the page offers its time windows: a normal workflow's, where the client may change them. */
-    val windowsOffered: Boolean get() = def.entry == WfEntry.normal && windowsNotEditable == null
+    /** Whether the page offers its time windows: every normal workflow's, set here whoever declared it (issue #1356). */
+    val windowsOffered: Boolean get() = def.entry == WfEntry.normal
+
+    /** Its time windows here: none set means always open. */
+    val windows: WfWindows get() = params?.windows ?: WfWindows.none
 }
 
 /** A trait the client's workflows may collect. */
@@ -76,7 +102,7 @@ fun parseWorkflowCatalog(raw: Map<String, Any?>): WorkflowCatalogView = Workflow
             parseWfDef(readCxt, it[CWF.definition].toJsonMapOrEmpty()),
             it[CWF.configName].toOptStr(),
             it[CWF.notEditable].toOptStr(),
-            it[CWF.windowsNotEditable].toOptStr(),
+            (it[CWF.params] as? Map<*, *>)?.let { _ -> parseWorkflowParams(it[CWF.params].toJsonMapOrEmpty()) },
         )
     },
     traits = raw[CWF.traits].toJsonListOfMaps().map { WorkflowTraitView(it[CCT.traitId].toOptStr().orEmpty(), it[CWF.description].toOptStr()) },

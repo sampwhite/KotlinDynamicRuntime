@@ -8,6 +8,7 @@ import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.workflow.WFD
 import com.dynamicruntime.common.gedra.workflow.WFS
+import com.dynamicruntime.common.gedra.workflow.WfWindows
 import com.dynamicruntime.common.gedra.workflow.WorkflowPhases
 import com.dynamicruntime.common.gedra.workflow.WorkflowRegistry
 import com.dynamicruntime.common.gedra.workflow.WorkflowService
@@ -96,7 +97,7 @@ object ConfigImpact {
         val now = Judged(SchemaService.get(cxt).storeFor(client).types, WorkflowService.get(cxt).forClient(client))
         val next = Judged(candidate.schema.types, candidate.workflows)
         val scope = ReadScope.ofClient(client)
-        // The moment a workflow's time windows are judged at (issue #1121): now, by the instance clock they run on.
+        // The moment what is live is judged at: now, by the instance clock the workflows run on.
         val at = cxt.instanceNow()
         for ((kind, ids) in idsByKind) {
             for (batch in ids.chunked(readBatch)) {
@@ -106,7 +107,7 @@ object ConfigImpact {
                     val row = rows[id] ?: continue
                     report.scanned++
                     judgeEntries(report, row, now.union(kind), next.union(kind))
-                    judgeStates(report, row, states[id].orEmpty(), now.workflows, next.workflows, at)
+                    judgeStates(cxt, report, row, states[id].orEmpty(), now.workflows, next.workflows, at)
                 }
             }
         }
@@ -138,6 +139,63 @@ object ConfigImpact {
         }
     }
 
+    /**
+     * The report for changing [workflowId]'s time windows in [client] from [before] to [after] (issues #1121, #1356):
+     * each form [client] stores that is engaged with the workflow and that the change would, at this moment, hide
+     * ([ImpactKind.workflowHidden]) or freeze ([ImpactKind.workflowFrozen]) -- its phase now under each, so an end
+     * brought forward and a start pushed back are judged alike, by what they do now. The forms judged are [client]'s
+     * own, a sandbox's its own.
+     */
+    fun paramsReport(cxt: KdrCxt, client: String, workflowId: String, before: WfWindows, after: WfWindows): ImpactReport {
+        val report = ImpactReport(client, emptyList())
+        val at = cxt.instanceNow()
+        val was = before.phaseAt(at)
+        val will = after.phaseAt(at)
+        // Nothing the change could do to a form engaged with it: a phase no less shown, and no less calculated.
+        if ((!was.exists || will.exists) && (!was.calculates || will.calculates)) return report
+        val data = GedraDataService.get(cxt)
+        val ids = data.liveGedraIds(cxt, GedraDataType.formDoc, client).sorted()
+        val limit = cxt.getEnvVar(scanLimitEnvVar)?.trim()?.toIntOrNull() ?: defaultScanLimit
+        if (ids.size > limit) return report.also { it.tooLarge = true }
+        val scope = ReadScope.ofClient(client)
+        for (batch in ids.chunked(readBatch)) {
+            val rows = data.readGedras(cxt, GedraDataType.formDoc, batch, scope)
+            val states = data.readStates(cxt, rows.values.map { it.gedraId }, scope)
+            for (id in batch) {
+                val row = rows[id] ?: continue
+                report.scanned++
+                if (workflowId !in engagedWorkflowIds(states[id].orEmpty())) continue
+                when {
+                    was.exists && !will.exists -> report.add(ImpactKind.workflowHidden, row, workflowId = workflowId)
+                    was.calculates && !will.calculates -> report.add(ImpactKind.workflowFrozen, row, workflowId = workflowId)
+                }
+            }
+        }
+        return report
+    }
+
+    /**
+     * Refuses a change of [workflowId]'s windows ([paramsReport]) that would hide or freeze a form engaged with it,
+     * with the report in the refusal as a publish's is, so the caller can show it and save again acknowledging it.
+     */
+    fun requireNoneForParams(cxt: KdrCxt, client: String, workflowId: String, before: WfWindows, after: WfWindows) {
+        val report = paramsReport(cxt, client, workflowId, before, after)
+        if (!report.blocks) return
+        val what = if (report.tooLarge) {
+            "client '$client' stores more rows than an impact report examines (${scanLimitEnvVar.name}), so what it " +
+                "would do to them is unknown"
+        } else {
+            report.findings.joinToString("; ") { it.describe() }
+        }
+        throw KdrException.mkInput(
+            "This change would affect data client '$client' already stores: $what. Save again acknowledging the " +
+                "impact to go ahead.",
+        ).also {
+            it.extraData[KdrException.errorCodeKey] = IMP.refusedCode
+            it.extraData[IMP.report] = report.toMap()
+        }
+    }
+
     /** One configuration's view of a client: its entry unions and workflows. */
     private class Judged(val types: Map<String, SchType>, val workflows: WorkflowRegistry) {
         fun union(kind: GedraDataType): SchType? = types["${GCFG.globalNamespace}.${GU.unionName(kind)}"]
@@ -161,12 +219,12 @@ object ConfigImpact {
     }
 
     /**
-     * A workflow the candidate drops that the form takes part in, a recorded task it no longer defines, and -- for a
-     * workflow the form is engaged with -- time windows that would, [at] this moment, freeze or hide it (issue #1121):
-     * the workflow's phase now under each configuration, so an end brought forward and a start pushed back are judged
-     * alike, by what they do now.
+     * A workflow the candidate drops that the form takes part in, and a recorded task it no longer defines. A
+     * configuration change cannot move a workflow's time windows -- they are its parameters, not its definition (issue
+     * #1356) -- so what a change of windows does is judged where they are saved ([paramsReport]).
      */
     private fun judgeStates(
+        cxt: KdrCxt,
         report: ImpactReport,
         row: GedraDataRow,
         states: List<Map<String, Any?>>,
@@ -176,19 +234,10 @@ object ConfigImpact {
     ) {
         // Live now, as every endpoint finds a workflow ([WorkflowPhases.liveAt]). Deleting one already past its lifetime is
         // a safe delete -- deleted is how it passes it -- so only a workflow live now can be lost (issue #1354).
-        fun liveNow(id: String): Boolean = WorkflowPhases.liveAt(now, id, at) != null
+        fun liveNow(id: String): Boolean = WorkflowPhases.liveAt(cxt, now, id, at) != null
         val involved = LinkedHashSet<String>()
         row.creationWorkflowId?.workflowId?.let { involved.add(it) }
-        val engaged = engagedWorkflowIds(states)
-        involved.addAll(engaged)
-        for (workflowId in engaged) {
-            val before = now.workflow(workflowId)?.def?.phaseAt(at) ?: continue
-            val after = next.workflow(workflowId)?.def?.phaseAt(at) ?: continue
-            when {
-                before.exists && !after.exists -> report.add(ImpactKind.workflowHidden, row, workflowId = workflowId)
-                before.calculates && !after.calculates -> report.add(ImpactKind.workflowFrozen, row, workflowId = workflowId)
-            }
-        }
+        involved.addAll(engagedWorkflowIds(states))
         states.filter { it[GE.traitId].toOptStr() == WFS.workflowState }
             .mapNotNullTo(involved) { it[GE.data].toJsonMapOrEmpty()[WFD.workflowId].toOptStr() }
         for (workflowId in involved) {

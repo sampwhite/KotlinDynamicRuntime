@@ -30,9 +30,10 @@ external interface WorkflowWindowsEditorProps : Props {
     var clientId: String
     /** The normal workflow whose windows are set, as it runs. */
     var workflow: WfDef
+    /** Its parameters as the page's client or sandbox runs them (issue #1356), with their earlier settings. */
+    var params: WorkflowParamsView
     /** The client's time zone, which every bound is entered and shown in. */
     var zone: String
-    var savesDraft: Boolean
     var formsOpenable: Boolean
     var onSaved: (String) -> Unit
     var onCancel: () -> Unit
@@ -46,12 +47,16 @@ external interface WorkflowWindowsEditorProps : Props {
  * ([timelineLayout]), where the workflow stands now ([windowPhaseText]), and where it would stand at a moment picked
  * "as of" -- the kernel's `phaseAt`, in the browser, with no clock moved.
  *
- * A save takes effect as the page's other editors' do. One that would, now, freeze or hide forms engaged with the
- * workflow is refused with the impact report, whose **Save anyway** acknowledges it.
+ * **Windows are parameters** (issue #1356): a save takes effect at once in the page's client or sandbox, with no draft
+ * and no publish ([windowsEffectText]), on any normal workflow, whoever declared it. One that would, now, freeze or hide
+ * forms engaged with the workflow is refused with the impact report, whose **Save anyway** acknowledges it. Who set the
+ * windows in force is said under the title ([settingByline]); the earlier settings expand in place beneath Save, each
+ * with **Use these values**, which fills the editor -- the person still saves it, as any change.
  */
 val WorkflowWindowsEditor = FC<WorkflowWindowsEditorProps> { props ->
-    val baseline = props.workflow.windows
+    val baseline = props.params.windows
     var draft by useState(baseline)
+    var historyOpen by useState(false)
     var asOf by useState<Instant?>(null)
     var busy by useState(false)
     var saveError by useState<DisplayError?>(null)
@@ -69,11 +74,9 @@ val WorkflowWindowsEditor = FC<WorkflowWindowsEditorProps> { props ->
         saveError = null
         windowsScope.launch {
             try {
-                val request = windowsSaveRequest(props.clientId, props.workflow.workflowId, windows, expectedMode(props.savesDraft), acknowledge)
-                val result = ClientsApi.saveWorkflowWindows(request)
+                ClientsApi.saveWorkflowWindows(windowsSaveRequest(props.clientId, props.workflow.workflowId, windows, acknowledge))
                 impact = null
-                val said = savedNote("Saved the time windows of ${props.workflow.workflowId} to ${result.configName}.", result.mode)
-                props.onSaved(listOfNotNull(said, draftImpactText(result.draftImpact)).joinToString(" "))
+                props.onSaved("Saved the time windows of ${props.workflow.workflowId}; they are in force now.")
             } catch (e: Throwable) {
                 val report = impactOf(e)
                 if (report != null) impact = report else saveError = saveFailure(e, props.onChanged)
@@ -93,6 +96,12 @@ val WorkflowWindowsEditor = FC<WorkflowWindowsEditorProps> { props ->
             className = ClassName("subtitle")
             +("When the workflow is open, each a start and an end in ${entryZoneNote(zone)}. A window with no start has " +
                 "been open all along, one with no end stays open; a narrower window left empty follows the one around it.")
+        }
+        settingByline(props.params.current, zone)?.let {
+            p {
+                className = ClassName("type-hint")
+                +(if (props.params.fromParent) "Its client's windows, which this sandbox runs until it has its own. $it." else "$it.")
+            }
         }
         WindowBand.entries.forEach { band ->
             div {
@@ -148,7 +157,7 @@ val WorkflowWindowsEditor = FC<WorkflowWindowsEditorProps> { props ->
         }
         p {
             className = ClassName("subtitle")
-            +saveEffectText(props.savesDraft)
+            +windowsEffectText(props.clientId)
         }
         p {
             Button {
@@ -166,6 +175,39 @@ val WorkflowWindowsEditor = FC<WorkflowWindowsEditorProps> { props ->
             }
         }
         saveError?.let { errorText("Couldn't save the time windows.", it) }
+        val history = props.params.history
+        if (history.isNotEmpty()) {
+            Button {
+                type = "link"
+                size = "small"
+                onClick = { historyOpen = !historyOpen }
+                +(if (historyOpen) "Hide earlier settings" else "Earlier settings (${history.size})")
+            }
+            if (historyOpen) {
+                ul {
+                    className = ClassName("wf-history")
+                    history.forEachIndexed { i, setting ->
+                        li {
+                            key = i.toString().unsafeCast<Key>()
+                            div { +windowsSummaryText(setting.params.windows, zone) }
+                            div {
+                                className = ClassName("type-hint")
+                                +(settingByline(setting, zone) ?: "As first set")
+                                +" "
+                                Button {
+                                    type = "link"
+                                    size = "small"
+                                    disabled = busy
+                                    // A pre-fill, never a save: the person reviews it and saves it as any change.
+                                    onClick = { draft = setting.params.windows; asOf = null }
+                                    +"Use these values"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
     Modal {
         open = impact != null

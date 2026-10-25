@@ -201,8 +201,11 @@ object UADEP {
      */
     const val clientWorkflowRemove = "/${SECT.clientAdmin}/client/workflows/remove"
 
-    /** Sets the time windows of one of a client's normal workflows (issue #1121), made from a template or not. */
-    const val clientWorkflowWindows = "/${SECT.clientAdmin}/client/workflows/windows"
+    /**
+     * Sets the parameters of one of a client's normal workflows (issue #1356) -- its time windows, for now -- in the
+     * client or sandbox named, at once, whoever declared the workflow.
+     */
+    const val clientWorkflowParams = "/${SECT.clientAdmin}/client/workflows/params"
 
     /**
      * Narrows a global trait for a client (issue #1119): hides fields in its layout, requires fields, and restricts

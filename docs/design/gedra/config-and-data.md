@@ -246,8 +246,10 @@ The overlay merges by declared rules, the overlay engine of #985:
 
 A template fixes its structure: its tasks, their saves and approvals, its rules, and its functions. So an overlay may
 say only the workflow's label, its tasks' labels and traits, their saves' labels, how it lays out the types its pages
-show (`types`, which for a workflow holds layouts only), and a normal workflow's time windows (`lifetime`,
-`relevancy`, `engagement`, issue #1121). Anything else is refused. An editor (the client page's slot form, Design
+show (`types`, which for a workflow holds layouts only). Anything else is refused. Not a workflow's time windows:
+those are its parameters, set per client and in force at once, and never part of a definition or an overlay (issue
+#1356). They outlive the workflow: a workflow removed keeps its parameters and their history, so one made again under
+the same id runs with the windows the old one had. An editor (the client page's slot form, Design
 View) changes the workflow as it runs, and what is stored is the diff from the template. A change the overlay cannot
 state, such as a task removed, is refused. If a template later changes in a way an overlay no longer fits, or is
 removed, the workflow costs only itself, as an unreadable report does: the load leaves it out and reports it, and

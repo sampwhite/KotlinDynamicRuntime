@@ -36,17 +36,17 @@ object CWF {
     /** On a save, and its result: the workflow's slots. */
     const val slots = "slots"
 
-    const val windowsResultTypeName = "ClientWorkflowWindowsResult"
+    const val paramsResultTypeName = "ClientWorkflowParamsResult"
+    const val paramsTypeName = "ClientWorkflowParams"
+    const val settingTypeName = "ClientWorkflowParamsSetting"
     const val removeResultTypeName = "ClientWorkflowRemoveResult"
 
     /**
-     * On a workflow: why its time windows cannot be changed here (issue #1121), for a normal workflow only -- one the
-     * client does not store as its own. Absent when they can, and for a workflow of another kind, which has none.
+     * On a normal workflow, and a parameter save's result (issue #1356): its parameters as the page's client or
+     * sandbox runs them -- the setting in force (`WFP.current`), the earlier ones (`WFP.history`), and whether a
+     * sandbox reads its parent's (`WFP.fromParent`). A workflow of another kind has none.
      */
-    const val windowsNotEditable = "windowsNotEditable"
-
-    /** On a windows save, and its result: the workflow's time windows, `WFD.lifetime` and its neighbors. */
-    const val windows = "windows"
+    const val params = "params"
 
     /** On the catalog: the client's time zone, which a window's bounds are entered and shown in. */
     const val timeZone = "timeZone"

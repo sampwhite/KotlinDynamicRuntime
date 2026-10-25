@@ -4,7 +4,8 @@ import com.dynamicruntime.common.endpoint.HttpMethod
 import com.dynamicruntime.common.endpoint.SchModuleBuilder
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.workflow.WFD
-import com.dynamicruntime.common.gedra.workflow.WfWindows
+import com.dynamicruntime.common.gedra.workflow.WFP
+import com.dynamicruntime.common.gedra.workflow.WfParams
 import com.dynamicruntime.common.gedra.workflow.templateSlotsFromInfo
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.user.UADEP
@@ -30,7 +31,33 @@ internal fun SchModuleBuilder.clientWorkflowsEndpoints() {
         }
         property(CWF.configName, "The stored configuration holding it; absent for one declared in source code.")
         property(CWF.notEditable, "Why its slots cannot be changed here; absent when they can.")
-        property(CWF.windowsNotEditable, "For a normal workflow, why its time windows cannot be changed here; absent when they can, and for any other kind.")
+        property(
+            CWF.params,
+            "For a normal workflow, its parameters as the page's client or sandbox runs them (issue #1356): its time " +
+                "windows, set here whoever declared the workflow. Absent for any other kind.",
+        ) { ref(CWF.paramsTypeName) }
+    }
+
+    // --- a workflow's parameters (issue #1356) ---
+    type(CWF.settingTypeName) {
+        type = SCT.kObject
+        description = "One setting of a workflow's parameters: the values, when they were set, and by whom."
+        property(WFP.params, "The values: `${WFP.windows}`, a normal workflow's time windows, each a half-open `{start, end}` of moments, either bound optional.", required = true) {
+            type = SCT.kObject
+        }
+        property(WFP.setAt, "When they were set; absent for values nobody has set.") { dateTime() }
+        property(WFP.setBy, "The user who set them, by id.") { type = SCT.integer }
+        property(WFP.setByName, "The user who set them, by name.")
+    }
+    type(CWF.paramsTypeName) {
+        type = SCT.kObject
+        description = "A workflow's parameters in a client or sandbox (issue #1356), with their earlier settings."
+        property(WFP.current, "The setting in force: no values set means no limits.", required = true) { ref(CWF.settingTypeName) }
+        property(WFP.history, "The earlier settings, newest first, at most ${WFP.historyKept}.", required = true) {
+            type = SCT.array
+            items { ref(CWF.settingTypeName) }
+        }
+        property(WFP.fromParent, "On a sandbox with none of its own: these are its parent's, which it reads.") { type = SCT.boolean }
     }
 
     type(CWF.traitTypeName) {
@@ -116,49 +143,45 @@ internal fun SchModuleBuilder.clientWorkflowsEndpoints() {
         editorSaveResult(client, result.configName, CWF.slots to result.slots.toInfo(), result.mode, result.issues, result.draftImpact)
     }
 
-    // --- a normal workflow's time windows (issue #1121) ---
-    type(CWF.windowsResultTypeName) {
+    // --- a normal workflow's parameters, its time windows first (issues #1121, #1356) ---
+    type(CWF.paramsResultTypeName) {
         type = SCT.kObject
-        description = "What setting a workflow's time windows did (issue #1121)."
-        property(CLD.client, "The client.", required = true)
-        property(CWF.configName, "The stored configuration the workflow is in.", required = true)
-        property(CWF.windows, "The workflow's time windows now.", required = true) { type = SCT.kObject }
-        saveOutcomeFields()
-        draftImpactField()
+        description = "What setting a workflow's parameters did (issue #1356): the parameters as the client or sandbox now runs them."
+        property(CLD.client, "The client or sandbox they were set in.", required = true)
+        property(CWF.params, "The workflow's parameters now, with their earlier settings.", required = true) { ref(CWF.paramsTypeName) }
     }
 
     generalEndpoint(
-        UADEP.clientWorkflowWindows,
-        "Sets the time windows of one of a client's normal workflows (issue #1121) -- `${WFD.lifetime}`, " +
-            "`${WFD.relevancy}` and `${WFD.engagement}`, each a half-open `{start, end}` of moments, either bound " +
-            "optional -- where the workflow is stored: into its overlay for one made from a template, into its " +
-            "definition otherwise. Then as every editor's save. A live change that would, now, freeze or hide forms " +
-            "engaged with the workflow is refused with the impact report unless the impact is acknowledged. Refused for " +
-            "a sandbox, and for a workflow the client does not store.",
+        UADEP.clientWorkflowParams,
+        "Sets the parameters of one of a client's normal workflows (issue #1356) -- `${WFP.windows}`: its time windows, " +
+            "`${WFD.lifetime}`, `${WFD.relevancy}` and `${WFD.engagement}`, each a half-open `{start, end}` of moments, " +
+            "either bound optional -- in the client or sandbox named, whoever declared the workflow. In force at once, " +
+            "with no draft and no publish; what they replace is kept among the earlier settings. A change that would, " +
+            "now, freeze or hide forms engaged with the workflow is refused with the impact report unless the impact is " +
+            "acknowledged.",
         HttpMethod.POST,
-        outputRef = CWF.windowsResultTypeName,
+        outputRef = CWF.paramsResultTypeName,
         needsClientConfig = true,
         inputFields = {
             overseenClientField(CLD.client)
             field(WFD.workflowId, "The workflow.", required = true)
-            field(CWF.windows, "Its time windows: absent or empty, always open.") { type = SCT.kObject }
+            field(WFP.params, "Its parameters: absent or empty, no limits.") { type = SCT.kObject }
             field(
                 IMP.acknowledgeImpact,
                 "Save although forms engaged with the workflow would be frozen or hidden; without it, such a save is " +
                     "refused with the impact report.",
             ) { type = SCT.boolean }
-            expectedModeField()
         },
     ) { c, request ->
         val client = overseenClient(c, request[CLD.client].toOptStr())
         val gate = if (request[IMP.acknowledgeImpact] == true) ImpactGate.acknowledged else ImpactGate.refuse
-        val windows = try {
-            WfWindows.fromInfo(request[CWF.windows].toJsonMapOrEmpty())
+        val params = try {
+            WfParams.fromInfo(request[WFP.params])
         } catch (e: KdrException) {
-            throw KdrException.mkInput("The windows do not read: ${e.message}")
+            throw KdrException.mkInput("The parameters do not read: ${e.message}")
         }
-        val result = ClientWorkflowEdit.saveWindows(c, client, request[WFD.workflowId].toOptStr().orEmpty(), windows, expectedModeOf(request), gate)
-        editorSaveResult(client, result.configName, CWF.windows to result.windows.toInfo(), result.mode, result.issues, result.draftImpact)
+        val resolved = ClientWorkflowEdit.saveParams(c, client, request[WFD.workflowId].toOptStr().orEmpty(), params, gate)
+        mapOf(CLD.client to client, CWF.params to ClientWorkflowEdit.paramsInfo(c, resolved))
     }
 
     // --- removing a workflow made from a template (issue #1346) ---

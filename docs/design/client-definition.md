@@ -348,8 +348,6 @@ deployment's zone (`serverTimeZone`, a fixed UTC-8), as every client was before.
   which the caller hands in: a listing column and a mail the client's zone, named as the webapp names it, and the
   webapp the zone it shows moments in. `formatDay` is the day there, and `formatDate(x, style)` takes `"relative"`,
   `"moment"` (`Oct 17, 2026, 5:00 PM CT`) or `"day"`. An evaluation handed none reads the deployment's zone.
-- **Not yet in its zone:** a workflow's time window written as a day is read when the definition is, in the
-  deployment's zone (the window editor, #1121, writes moments).
 
 **The definition has a schema, and a written one is held to it** (issue #1051). The attributes above are declared
 once (`ClientDef.defineInfoType`) and make two types. `ClientInfo` is what the client endpoints answer with.

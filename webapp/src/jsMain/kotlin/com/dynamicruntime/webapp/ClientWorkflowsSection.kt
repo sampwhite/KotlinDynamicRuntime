@@ -204,7 +204,7 @@ val ClientWorkflowsSection = FC<ClientWorkflowsSectionProps> { props ->
                             td { +(w.def.fromTemplate?.let { shown.template(it)?.let { t -> workflowName(t.def) } ?: it } ?: "—") }
                             td { +w.def.tasks.joinToString(", ") { it.label } }
                             // Where a normal workflow stands in its time windows now (issue #1121); the others have none.
-                            td { +(if (w.def.entry == WfEntry.normal) windowPhaseText(w.def.windows, now, zone) else "—") }
+                            td { +(if (w.def.entry == WfEntry.normal) windowPhaseText(w.windows, now, zone) else "—") }
                             td {
                                 span {
                                     className = ClassName("row-actions")
@@ -316,14 +316,14 @@ val ClientWorkflowsSection = FC<ClientWorkflowsSectionProps> { props ->
 
     val windowsOf = open?.takeIf { it.startsWith(windowsPrefix) }?.removePrefix(windowsPrefix)
     if (windowsOf != null) {
-        val workflow = shown.workflows.firstOrNull { it.def.workflowId == windowsOf && it.windowsOffered }?.def
-        if (workflow != null) {
+        val shownWorkflow = shown.workflows.firstOrNull { it.def.workflowId == windowsOf && it.windowsOffered }
+        if (shownWorkflow != null) {
             WorkflowWindowsEditor {
                 this.key = "windows-$windowsOf".unsafeCast<Key>()
                 this.clientId = props.clientId
-                this.workflow = workflow
+                this.workflow = shownWorkflow.def
+                this.params = shownWorkflow.params ?: WorkflowParamsView.none
                 this.zone = zone
-                this.savesDraft = props.savesDraft
                 formsOpenable = props.formsOpenable
                 onSaved = { said ->
                     open = null
@@ -336,7 +336,7 @@ val ClientWorkflowsSection = FC<ClientWorkflowsSectionProps> { props ->
         } else {
             p {
                 className = ClassName("type-hint")
-                +"That workflow is gone, or its windows are no longer set here."
+                +"That workflow is gone."
                 Button {
                     type = "link"
                     size = "small"

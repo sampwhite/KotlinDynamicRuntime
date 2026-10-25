@@ -52,7 +52,7 @@ object SingletonWorkflows {
                 )
                 // A frozen workflow (past its relevancy) still stands behind the chip, but nothing can be done in it
                 // -- its saves and approvals are refused -- so it is listed without an action.
-                val task = data[WFS.ctaTask].toOptStr()?.takeIf { WorkflowPhases.of(cxt, def).calculates }?.let { def.task(it) }
+                val task = data[WFS.ctaTask].toOptStr()?.takeIf { WorkflowPhases.of(cxt, registry.client, def).calculates }?.let { def.task(it) }
                 if (task != null) {
                     val viewerFacts = viewer.forTask(task)
                     val complete = data[WFS.ctaStatus].toJsonMapOrEmpty()[SVY.complete] == true
