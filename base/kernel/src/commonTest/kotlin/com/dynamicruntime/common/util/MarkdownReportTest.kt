@@ -65,4 +65,13 @@ class MarkdownReportTest {
         assertEquals(listOf(MarkdownIssue.unresolvedLink), problems.map { it.code })
         assertTrue("'other.md'" in problems.single().message)
     }
+
+    @Test
+    fun aLinkTheResolverSentNowhereIsReported() {
+        // Issue #1380: an empty answer draws the link as its text, which the report says.
+        val hooks = MarkdownHooks(resolveUrl = { if (it == "known.md") "/docs/known" else "" })
+        val problems = "[a](known.md) and [b](other.md)".analyzeMarkdown(hooks).problems
+        assertEquals(listOf(MarkdownIssue.unresolvedLink), problems.map { it.code })
+        assertTrue("drawn as its text" in problems.single().message)
+    }
 }

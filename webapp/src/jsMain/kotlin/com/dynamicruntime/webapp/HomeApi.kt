@@ -214,8 +214,9 @@ private const val docAppRoot = "/wa/"
  * A link resolver for rendering the document at [currentSourcePath], to hand to [Markdown] (issue #492): its
  * interior relative links become in-app document links (`/wa/docs/<id>`, via [docHref] so the format cannot drift
  * from what [routeParams] reads) or links into the source repo, per the kernel's [resolveDocLink], and a link to a
- * page of the app ([docAppRoot]) is put under the app's live root. A null [sourceRepoBase] leaves non-document
- * relative links as written. Pure over its inputs; covered by `jsNodeTest`.
+ * page of the app ([docAppRoot]) is put under the app's live root. With a null [sourceRepoBase] a non-document
+ * relative link resolves to empty, which the renderer draws as its text (issue #1380). Pure over its inputs;
+ * covered by `jsNodeTest`.
  */
 fun docLinkResolver(currentSourcePath: String, links: List<HomeLink>, sourceRepoBase: String?): (String) -> String {
     val byPath = docKeyByPath(links)

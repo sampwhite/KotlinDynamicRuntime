@@ -579,11 +579,15 @@ fun coreDocs(): List<MarkdownDocDef> = listOf(
 
 /**
  * The source repository's blob base for this deployment (`.../blob/<branch>`), or null when
- * [HDOCENV.sourceRepoUrl] is unset. A document's interior link to a repo file that is not itself served in-app
- * is rewritten under this; unset, such a link is left as written (issue #492).
+ * [HDOCENV.sourceRepoUrl] is set empty. A document's interior link to a repo file that is not itself served in-app
+ * is rewritten under this (issue #492); with none, such a link is drawn as its text (issue #1380). Unset is the
+ * upstream repository: the documents served are the runtime's own, so that is where their links lead.
  */
 private fun sourceRepoBase(cxt: KdrCxt): String? {
-    val repoUrl = cxt.getEnvVar(HDOCENV.sourceRepoUrl)?.trim()?.ifEmpty { null } ?: return null
+    val repoUrl = (cxt.getEnvVar(HDOCENV.sourceRepoUrl) ?: HDOCENV.defaultRepoUrl).trim()
+    if (repoUrl.isEmpty()) {
+        return null
+    }
     val branch = cxt.getEnvVar(HDOCENV.sourceRepoBranch)?.trim()?.ifEmpty { null } ?: HDOCENV.defaultBranch
     return "${repoUrl.trimEnd('/')}/blob/$branch"
 }
@@ -594,19 +598,23 @@ object HDOCENV {
     /** The branch a source-repo link points at when [sourceRepoBranch] is unset. */
     const val defaultBranch = "main"
 
+    /** The repository a source-repo link points into when [sourceRepoUrl] is unset (issue #1380). */
+    const val defaultRepoUrl = "https://github.com/sampwhite/KotlinDynamicRuntime"
+
     val sourceRepoUrl = EnvVarDef(
-        "KDR_SOURCE_REPO_URL", group = ENVGRP.content, defaultDoc = "unset",
-        description = "The web base URL of the deployment's source repository, e.g. " +
-            "'https://github.com/owner/repo'. When set, a served Markdown document's interior links to repo " +
-            "files that are not themselves served in-app are rewritten to '<this>/blob/<branch>/<path>' " +
-            "(issue #492). Unset (the default) and such links are left exactly as written -- the documents " +
-            "still render, but their repo-relative interior links do not resolve from inside the app.",
+        "KDR_SOURCE_REPO_URL", group = ENVGRP.content, defaultDoc = "'$defaultRepoUrl'",
+        description = "The web base URL of the source repository that served documents link into, e.g. " +
+            "'https://github.com/owner/repo'. A served Markdown document's interior links to repo files that are " +
+            "not themselves served in-app are rewritten to '<this>/blob/<branch>/<path>' (issue #492). Unset, it is " +
+            "the upstream repository, since the documents served are the runtime's own (issue #1380); a fork that " +
+            "serves its own copies sets its own. Set empty, nothing is rewritten, and such a link is drawn as its " +
+            "text, since it has nowhere to go from inside the app.",
     )
 
     val sourceRepoBranch = EnvVarDef(
         "KDR_SOURCE_REPO_BRANCH", group = ENVGRP.content, defaultDoc = "'main'",
         description = "The branch that source-repository document links point at (see KDR_SOURCE_REPO_URL). " +
-            "Defaults to 'main'. Has no effect unless KDR_SOURCE_REPO_URL is set.",
+            "Defaults to 'main'. Has no effect when KDR_SOURCE_REPO_URL is set empty.",
     )
 }
 

@@ -20,7 +20,7 @@ import react.use
  *   shell has been told**, which is a moment after a hard reload, or for good when its config could not be read.
  * - [docs] and [sourceRepoBase] are the served documents and the source repository's blob base (issue #1136), what a
  *   link in form copy resolves against -- see [copyLinkResolver]. Empty until the shell has been told, when a link to
- *   a document is left as written.
+ *   a document is drawn as its text (issue #1380).
  * - [fileRefs] are the file refs the caller's client is served (issue #1186), what an image in copy naming one is
  *   drawn from -- see [copyRefAddress]. Empty until the shell has been told, when such an image draws its alt text.
  * - [inSandbox] is whether the session is in a sandbox (issue #1330), which decides how a switch to another of the

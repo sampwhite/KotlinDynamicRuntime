@@ -140,11 +140,19 @@ class HomeUiConfigEndpointTest : StringSpec({
         shouldThrow<KdrException> { checkedMarkdownDocs(listOf(doc("demo/x", "x.md"))) }.message shouldContain "'demo/x'"
     }
 
-    "source repo base is absent by default and configured from the env var" {
+    "source repo base is the upstream repository by default, configured from the env var, and off when empty" {
         val plain = TestInstances.default("uiHomeNoRepo")
         val plainState = results(TestHttpClient(plain.instanceConfig).sendJsonGetRequest(HEP.homeUiConfig)).obj(UIC.state)
-        // Unconfigured: the field is simply absent, which is how the frontend leaves a non-document link alone.
-        plainState.containsKey(HFLD.sourceRepoBase) shouldBe false
+        // Unset (issue #1380): the documents served are the runtime's own, so their links lead into its repository.
+        plainState[HFLD.sourceRepoBase] shouldBe "${HDOCENV.defaultRepoUrl}/blob/${HDOCENV.defaultBranch}"
+
+        // Its own instance (issue #1075): it changes instance configuration (`instanceConfig.put`) while running.
+        val off = Startup.mkTestBootCxt("uiHomeRepoOff", "uiHomeRepoOffTest")
+        off.instanceConfig.put(HDOCENV.sourceRepoUrl.name, "")
+        val offState = results(TestHttpClient(off.instanceConfig).sendJsonGetRequest(HEP.homeUiConfig)).obj(UIC.state)
+        // Set empty: an empty value is read as set, not replaced by the default, and the field is absent -- how the
+        // frontend draws a non-document link as its text.
+        offState.containsKey(HFLD.sourceRepoBase) shouldBe false
 
         // Its own instance (issue #1075): it changes instance configuration (`instanceConfig.put`) while running.
         val cxt = Startup.mkTestBootCxt("uiHomeRepo", "uiHomeRepoTest")

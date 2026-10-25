@@ -20,16 +20,22 @@ enum class MarkdownIssue : ProblemCode {
     /** An indented list item, which renders as a sibling of the item above rather than nested under it. */
     nestedList,
 
-    /** A reference link (`[text][ref]`) or its definition (`[ref]: url`), which render as text. */
+    /**
+     * A reference link, whose target is a label in square brackets after its text, or the label's definition, a line
+     * giving the label in square brackets, a colon, and a URL. Both render as text.
+     */
     referenceLink,
 
-    /** A link or image whose target is not http, https, mailto or relative, so it renders with an empty target. */
+    /** A link or image whose target is not http, https, mailto, or relative, so it renders with an empty target. */
     inertLink,
 
     /** A same-document `#anchor` link that no heading in the document has the slug of. */
     brokenAnchor,
 
-    /** A relative link the surface's resolver left as written, so it points nowhere from inside the app. */
+    /**
+     * A relative link the surface's resolver left as written, so it points nowhere from inside the app, or one it
+     * resolved to nothing, so it is drawn as its text (issue #1380).
+     */
     unresolvedLink,
 
     /** A table row with more or fewer cells than its header; it is padded or cut to fit. */
@@ -186,6 +192,15 @@ class ReportingSink(private val html: HtmlSink, private val hooks: MarkdownHooks
                 mdWarning(
                     MarkdownIssue.unresolvedLink,
                     "$what '$target' is relative and was not resolved, so it points nowhere from inside the app.",
+                    line + 1,
+                ),
+            )
+        } else if (hooks.resolveUrl != null && resolved.isBlank() && target.isNotBlank()) {
+            val drawn = if (image) "its alt text" else "its text"
+            problems.add(
+                mdWarning(
+                    MarkdownIssue.unresolvedLink,
+                    "$what '$target' has nowhere to go from inside the app, so it is drawn as $drawn.",
                     line + 1,
                 ),
             )

@@ -65,14 +65,16 @@ class DocLinkResolverTest {
         assertEquals("/docs/demo-client-review", resolve("/docs/demo-client/review.md"))
         assertEquals("/docs/demo-client-review#tasks", resolve("docs/demo-client/review.md#tasks"))
         assertEquals("https://example.com/x", resolve("https://example.com/x"))
-        // Before the shell has been told, a document link is a repo link, or left as written with no repo configured.
-        assertEquals("/docs/demo-client/review.md", ShellFacts().copyLinkResolver()("/docs/demo-client/review.md"))
+        // Before the shell has been told, a document link has nowhere to go, and is drawn as its text (issue #1380).
+        assertEquals("", ShellFacts().copyLinkResolver()("/docs/demo-client/review.md"))
     }
 
     @Test
-    fun resolverWithoutABaseLeavesRepoFilesAsWrittenButStillLinksDocs() {
+    fun resolverWithoutABaseHasNowhereForRepoFilesButStillLinksDocs() {
+        // Issue #1380: empty, which the renderer draws as the link's text.
         val resolve = docLinkResolver("README.md", links, null)
-        assertEquals("LICENSE", resolve("LICENSE"))
+        assertEquals("", resolve("LICENSE"))
         assertEquals("/docs/code-guide", resolve("code-guide.md"))
+        assertEquals("/test/simulations", resolve("/wa/test/simulations"))
     }
 }

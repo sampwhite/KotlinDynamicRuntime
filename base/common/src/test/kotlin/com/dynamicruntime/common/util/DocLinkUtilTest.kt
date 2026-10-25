@@ -59,15 +59,29 @@ class DocLinkUtilTest : StringSpec({
         // From a doc one level down, `..` climbs back to the root where code-guide.md lives.
         resolve("../code-guide.md", from = "examples/guide.md") shouldBe "#doc=code-guide"
         resolve("./CHANGELOG") shouldBe "$base/CHANGELOG"
-        // A `..` that climbs above the root cannot resolve; the link is left as written.
-        resolve("../../etc/passwd") shouldBe "../../etc/passwd"
+        // A `..` that climbs above the root cannot resolve, so it has nowhere to go: empty, drawn as its text.
+        resolve("../../etc/passwd") shouldBe ""
     }
 
-    "without a configured repo base, non-document links are left as written" {
+    "without a repo base, a non-document link has nowhere to go" {
         // A registered document still resolves in-app -- that needs no repo base.
         resolve("code-guide.md", repo = null) shouldBe "#doc=code-guide"
-        // A plain repo file has nowhere to go, so it is unchanged (the pre-#492 behavior, no regression).
-        resolve("CHANGELOG", repo = null) shouldBe "CHANGELOG"
+        // A plain repo file resolves to empty, which the renderer draws as the link's text (issue #1380): left as
+        // written, it would resolve against the app's own path and open a page that does not exist.
+        resolve("CHANGELOG", repo = null) shouldBe ""
+        resolve("examples/custom-config.md#branding-the-webapp", repo = null) shouldBe ""
+        // What needs no repo is unaffected.
+        resolve("https://example.com/a", repo = null) shouldBe "https://example.com/a"
+    }
+
+    "a link with nowhere to go is drawn as its text, and an image as its alt text" {
+        val hooks = MarkdownHooks(resolveUrl = { resolve(it, repo = null) })
+        "See [the example](examples/a.kts) and [the guide](code-guide.md).".renderMarkdown(hooks) shouldBe
+            "<p>See the example and <a href=\"#doc=code-guide\">the guide</a>.</p>\n"
+        "A [`code` span](examples/a.kts).".renderMarkdown(hooks) shouldBe "<p>A <code>code</code> span.</p>\n"
+        "![A diagram](examples/d.png)".renderMarkdown(hooks) shouldBe "<p>A diagram</p>\n"
+        // With no resolver at all an empty target is still a link, as written.
+        "[x]()".renderMarkdown() shouldBe "<p><a href=\"\">x</a></p>\n"
     }
 
     // Form copy has no document of its own (issue #1136): it names a document by its path from the repo root, which
