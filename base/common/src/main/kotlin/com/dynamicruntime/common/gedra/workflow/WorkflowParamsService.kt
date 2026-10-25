@@ -104,8 +104,8 @@ class ResolvedWorkflowParams(
  * **A row outlives its workflow.** Removing a workflow leaves its parameters and their history, as it leaves every
  * other stored trace of it: a workflow made again under the same id runs with the windows the old one had.
  *
- * What a save may change -- a normal workflow, windows that nest -- and what it would do to forms engaged with the
- * workflow was the caller's to judge (`ClientWorkflowEdit.saveParams`); this keeps the values.
+ * The caller judges what a save may change -- a normal workflow, windows that nest -- and what it would do to forms
+ * engaged with the workflow (`ClientWorkflowEdit.saveParams`); this keeps the values.
  */
 class WorkflowParamsService : ServiceInitializer {
     override val serviceName: String = WorkflowParamsService.serviceName
