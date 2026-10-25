@@ -149,7 +149,7 @@ class HtmlSink(val hooks: MarkdownHooks) : MarkdownSink {
         val cls = if (language.isEmpty()) "" else " class=\"language-" + escapeHtml(language) + "\""
         // A JSON block is highlighted in the HTML itself (issue #1227); one the lexer cannot read is left plain.
         val inner = (if (language == jsonLanguage) highlightJson(body) else null) ?: escapeHtml(body)
-        val pre = "<pre><code$cls>" + inner + "</code></pre>"
+        val pre = "<pre><code$cls>$inner</code></pre>"
         return (hooks.decorateCodeBlock?.invoke(language, pre) ?: pre) + "\n"
     }
     override fun rule(): String = "<hr/>\n"
@@ -196,14 +196,14 @@ object TextSink : MarkdownSink {
 }
 
 /**
- * Matches a KDoc symbol reference -- a bare name between `[` and `]`, dotted members allowed -- and not a `[text](url)`
+ * Matches a KDoc symbol reference -- a bare name in square brackets, dotted members allowed -- and not a `[text](url)`
  * link. The closing bracket is escaped: the JVM takes a bare one, but the browser's engine, in the Unicode mode Kotlin/JS
  * compiles a `Regex` to, refuses it.
  */
 private val kdocReference = Regex("""\[([A-Za-z][\w.]*)\](?!\()""")
 
 /**
- * [this] KDoc-written prose made ready for a Markdown document: each symbol reference, a name between `[` and `]` --
+ * [this] KDoc-written prose made ready for a Markdown document: each symbol reference, a name in square brackets --
  * a link in the source, a dangling one in CommonMark -- becomes an inline-code span, so it reads as "a name" rather
  * than a broken link. A real `[text](url)` link is left alone (the negative lookahead).
  *
@@ -295,8 +295,8 @@ fun String.renderMarkdownInline(hooks: MarkdownHooks): String = renderInline(thi
  * A heading is its text on a line of its own; a paragraph's wrapped lines join into one; a list is one
  * `- item` (or `1. item`) per line; a quote is its lines, unmarked; a fenced code block is its lines verbatim;
  * a table is one row per line with cells joined by ` | `, the delimiter row dropped; a horizontal rule is
- * nothing. Blocks are separated by a blank line. Inline: emphasis marks and role blocks are dropped (`[x]{.code}`
- * is `x`), a code span is its text, a link is `text (url)` -- or the bare URL when its text is the URL -- an
+ * nothing. Blocks are separated by a blank line. Inline: emphasis marks and role blocks are dropped (a `{.code}`
+ * span is its text), a code span is its text, a link is `text (url)` -- or the bare URL when its text is the URL -- an
  * image is its alt text, and a backslash escape is the character it escapes. Anything unrecognized is kept as
  * written, so a `${...}` block a fragment carries onward for the frontend passes through untouched, as it
  * does in the HTML renderer.
@@ -587,12 +587,11 @@ fun splitTableRow(line: String): List<String> {
     val cur = StringBuilder()
     var i = 0
     while (i < inner.length) {
-        val c = inner[i]
-        when {
-            c == '\\' && i + 1 < inner.length && inner[i + 1] == '|' -> {
+        when (val c = inner[i]) {
+            '\\' if i + 1 < inner.length && inner[i + 1] == '|' -> {
                 cur.append('|'); i += 2
             }
-            c == '|' -> {
+            '|' -> {
                 cells.add(cur.toString().trim()); cur.clear(); i++
             }
             else -> {
@@ -623,7 +622,7 @@ fun cellAlign(delimiterCell: String): String? {
  * (consecutive lines carrying a `|`, stopping at a blank line or another block). The header decides the column
  * count; a body row with fewer cells is padded and one with more is truncated, so a ragged row renders rather
  * than throwing. Column alignment comes from the delimiter and is applied to every cell in the column. Each
- * cell goes through [renderInline], so links, code spans and emphasis work inside a cell and everything else is
+ * cell goes through [renderInline], so links, code spans, and emphasis work inside a cell and everything else is
  * escaped. Returns the resume index.
  */
 @KdrPrivate
@@ -747,7 +746,7 @@ class MdAttrs(val roles: List<String>, val width: Int?, val height: Int?)
  * the caller renders the text as literal, like every other unrecognized construct.
  *
  * **Closed by construction.** Only role names and two numeric attributes ever come out, so nothing here can
- * carry a style, an event handler or raw markup into the output: a `{style=...}` is a malformed block and stays
+ * carry a style, an event handler, or raw markup into the output: a `{style=...}` is a malformed block and stays
  * text. Whitelisting the attribute *names* while dropping unknown ones would leave `{.role foo=bar}` valid; the
  * rule is stricter than that, since a misspelled `widht=` silently dropped is a placement that silently fails.
  */

@@ -75,7 +75,7 @@ private fun hasScheme(u: String): Boolean {
         return false
     }
     val slash = u.indexOf('/')
-    return !(slash in 0 until colon)
+    return slash !in 0 until colon
 }
 
 /** Joins a base and a path with exactly one slash between them. */

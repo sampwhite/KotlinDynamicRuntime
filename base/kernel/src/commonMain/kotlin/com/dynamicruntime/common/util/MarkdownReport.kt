@@ -20,10 +20,13 @@ enum class MarkdownIssue : ProblemCode {
     /** An indented list item, which renders as a sibling of the item above rather than nested under it. */
     nestedList,
 
-    /** A reference link (`[text][ref]`) or its definition (`[ref]: url`), which render as text. */
+    /**
+     * A reference link, whose target is a label in square brackets after its text, or the label's definition, a line
+     * giving the label in square brackets, a colon, and a URL. Both render as text.
+     */
     referenceLink,
 
-    /** A link or image whose target is not http, https, mailto or relative, so it renders with an empty target. */
+    /** A link or image whose target is not http, https, mailto, or relative, so it renders with an empty target. */
     inertLink,
 
     /** A same-document `#anchor` link that no heading in the document has the slug of. */
