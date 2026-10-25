@@ -90,7 +90,7 @@ class ResolvedWorkflowParams(
  * somebody changes it there. Nothing copies values between a sandbox and its parent.
  *
  * **Read from memory.** The table is cached ([WorkflowParamsCache]), each row parsed once as it loads, so the phase
- * check every workflow view, listing and report makes is a lookup by key, and its change stream keeps every node
+ * check every workflow view, listing, and report makes is a lookup by key, and its change stream keeps every node
  * current.
  *
  * **Written under the client's configuration lock** ([GedraConfigService.withClientLock]). Saves of one client's
@@ -105,7 +105,7 @@ class ResolvedWorkflowParams(
  * other stored trace of it: a workflow made again under the same id runs with the windows the old one had.
  *
  * What a save may change -- a normal workflow, windows that nest -- and what it would do to forms engaged with the
- * workflow are the caller's to judge (`ClientWorkflowEdit.saveParams`); this keeps the values.
+ * workflow was the caller's to judge (`ClientWorkflowEdit.saveParams`); this keeps the values.
  */
 class WorkflowParamsService : ServiceInitializer {
     override val serviceName: String = WorkflowParamsService.serviceName

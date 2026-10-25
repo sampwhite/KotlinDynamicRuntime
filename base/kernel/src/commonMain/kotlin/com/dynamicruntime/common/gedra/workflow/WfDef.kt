@@ -16,7 +16,6 @@ import com.dynamicruntime.common.util.isVariableName
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
-import kotlin.time.Instant
 
 /**
  * The field names of a workflow definition's JSON, and the names of the schema types that describe it
@@ -41,7 +40,6 @@ object WFD {
     const val eligibilityType = "WfEligibility"
     const val singletonType = "WfSingleton"
     const val approvalType = "WfApproval"
-    const val windowType = "WfWindow"
     const val lockType = "WfLock"
 
     const val workflowId = "workflowId"

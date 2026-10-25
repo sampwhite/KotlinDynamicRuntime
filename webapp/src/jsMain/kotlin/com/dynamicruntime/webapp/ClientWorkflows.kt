@@ -15,7 +15,6 @@ import com.dynamicruntime.common.gedra.workflow.WfSaveKind
 import com.dynamicruntime.common.gedra.workflow.WfTaskSlot
 import com.dynamicruntime.common.gedra.workflow.WfTemplateSlots
 import com.dynamicruntime.common.gedra.workflow.WfTraitRef
-import com.dynamicruntime.common.gedra.workflow.isDataEntry
 import com.dynamicruntime.common.gedra.workflow.parseWfDef
 import com.dynamicruntime.common.gedra.workflow.templateSlotProblems
 import com.dynamicruntime.common.gedra.workflow.templateSlotsFromInfo
@@ -31,8 +30,9 @@ import com.dynamicruntime.common.gedra.workflow.WFP
 
 /**
  * A client's workflows made from templates, on its page (issue #1120; `ClientWorkflowsSection`): the catalog read, the
- * slot form's edits and checks, the words that explain what a template fixes, and the save. The slots, the checks and
- * the workflow a template makes are the kernel's, so what the page shows is what the backend writes.
+ * slot form's edits and checks, the words that explain what a template fixes, and the save. Reading a workflow's
+ * slots, checking edited ones, and building the workflow a template makes are the kernel's (`templateSlotsOf`,
+ * `templateSlotProblems`, `withTemplateSlots`), so what the page shows is what the backend writes.
  *
  * Everything here is pure, and covered under `jsNodeTest`.
  */
@@ -192,7 +192,7 @@ fun workflowSlotsChanged(slots: WfTemplateSlots, baseline: WfTemplateSlots?): Bo
 fun workflowPreview(base: WfDef, slots: WfTemplateSlots): WfDef? =
     try {
         withTemplateSlots(readCxt, base, slots, slots.workflowId ?: "preview")
-    } catch (e: Exception) {
+    } catch (_: Exception) {
         null
     }
 
@@ -220,9 +220,6 @@ fun parseWorkflowSaveResult(raw: Map<String, Any?>): WorkflowSaveResult = Workfl
     mode = raw[CPY.mode].toOptStr().orEmpty(),
     draftImpact = raw[CIT.draftImpact]?.toJsonMapOrEmpty()?.let(::parseImpactReport),
 )
-
-/** A workflow's data-entry tasks, the ones whose slots the form edits. */
-fun dataEntryTaskIds(def: WfDef): List<String> = def.tasks.filter { it.isDataEntry }.map { it.id }
 
 /**
  * Whether the page offers to remove [workflow] (issue #1346): one made from a template that the client stores as its

@@ -59,7 +59,7 @@ object ADEP {
     const val clients = "/${SECT.admin}/clients"
 
     /**
-     * Creates a client from data (issue #1054): its definition written as its first stored configuration, published
+     * Creates a client from data (issue #1054): its definition written as its first stored configuration, published,
      * and loaded. Full-scope, as every client's creation is the platform operator's: there is no client to be the
      * administrator of until it exists.
      */

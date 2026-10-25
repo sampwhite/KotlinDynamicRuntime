@@ -95,5 +95,5 @@ object SingletonWorkflows {
     }
 
     /** Whether [text] still holds a frontend `${…}` block after the backend pass. */
-    fun needsFormData(text: String): Boolean = "\${" in text
+    fun needsFormData(text: String): Boolean = $$"${" in text
 }
