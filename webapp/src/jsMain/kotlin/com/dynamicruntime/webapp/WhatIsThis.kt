@@ -4,7 +4,10 @@ import react.FC
 import react.Props
 import react.dom.html.ReactHTML.button
 import react.dom.html.ReactHTML.div
+import react.dom.html.ReactHTML.h1
 import react.dom.html.ReactHTML.h2
+import react.dom.html.ReactHTML.h3
+import react.ChildrenBuilder
 import react.useState
 import web.cssom.ClassName
 import web.dom.ElementId
@@ -13,6 +16,18 @@ import web.dom.ElementId
 external interface WhatIsThisProps : Props {
     /** The heading the explanation belongs to, drawn as an `h2` with the link on its line; null for the link alone. */
     var heading: String?
+
+    /**
+     * The heading's level (issue #1337): 1 for the page's own heading, 2 (`h2`, the default) for a page's section, 3
+     * for a section within one.
+     */
+    var headingLevel: Int?
+
+    /** Whether the heading is inline Markdown, as a workflow's label is, rather than plain text (issue #1337). */
+    var headingMarkdown: Boolean?
+
+    /** The heading's element id, for a section a link elsewhere on the page leads to (issue #1337); null for none. */
+    var headingId: String?
 
     /**
      * The explanation, as Markdown, already resolved -- from the fragment that serves the content it explains, so a
@@ -45,14 +60,34 @@ val WhatIsThis = FC<WhatIsThisProps> { props ->
     val panelId = useState { "what-is-this-${++whatIsThisSeq}" }.component1()
     val text = props.text.trim()
 
+    // The heading as the section draws it, at its level and with its id.
+    fun ChildrenBuilder.heading(text: String) {
+        val tag = when (props.headingLevel) {
+            1 -> h1
+            3 -> h3
+            else -> h2
+        }
+        tag {
+            props.headingId?.let { id = ElementId(it) }
+            if (props.headingMarkdown == true) MarkdownInline { source = text } else +text
+        }
+    }
+
     if (text.isEmpty()) {
-        props.heading?.let { h2 { +it } }
+        props.heading?.let { heading(it) }
         return@FC
     }
 
     div {
-        className = ClassName(if (props.heading != null) "what-is-this-heading" else "what-is-this-line")
-        props.heading?.let { h2 { +it } }
+        // A page's own heading keeps the spacing an `h1` has; a section's, the space above a section.
+        className = ClassName(
+            when {
+                props.heading == null -> "what-is-this-line"
+                props.headingLevel == 1 -> "what-is-this-heading what-is-this-title"
+                else -> "what-is-this-heading"
+            },
+        )
+        props.heading?.let { heading(it) }
         button {
             className = ClassName("what-is-this-link")
             asDynamic()["aria-expanded"] = open

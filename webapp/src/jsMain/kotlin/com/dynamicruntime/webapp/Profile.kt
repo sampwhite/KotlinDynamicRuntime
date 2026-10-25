@@ -226,7 +226,7 @@ val Profile = FC<Props> {
         // The status stays in view; the concept behind it -- why one sign-in reaches several users -- is a click away.
         WhatIsThis {
             heading = t("users", "title", "Your users")
-            text = copy.opt("users", "whatIsThis").orEmpty().evalTemplate(emptyMap(), resolver = copy.fragmentResolver())
+            text = copy.explanation("users")
         }
         div {
             className = ClassName("subtitle")

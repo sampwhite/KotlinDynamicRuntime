@@ -83,6 +83,7 @@ import com.dynamicruntime.common.gedra.gedraSchema
 import com.dynamicruntime.common.gedra.gedraStateAdminSchema
 import com.dynamicruntime.common.content.MarkdownFragmentService
 import com.dynamicruntime.common.home.HFRAG
+import com.dynamicruntime.common.home.PFRAG
 import com.dynamicruntime.common.sql.SQLDBG
 import com.dynamicruntime.common.startup.SS
 import com.dynamicruntime.common.user.AFRAG
@@ -123,6 +124,9 @@ import com.dynamicruntime.common.simulation.DesignDemoBootService
 
 /** The image beside the profile's "What is this?" (issue #1382): one address reaching several users. Copy names it so. */
 private const val emailToUsersImage = "kdr:emailToUsers"
+
+/** The Clients page's Files explanation's own image (issue #1337), which the explanation shows a client how to replace. */
+private const val fileRefsImage = "kdr:fileRefs"
 
 /**
  * The `common` module's component. It owns the foundational schema and services: the [SchemaService]
@@ -302,7 +306,10 @@ class CommonComponent : ComponentDefinition {
      * The images core ships (issues #1339, #1382), named from copy as `img:<name>`: one address reaching several users,
      * floated beside the profile's "What is this?" (`profile.md`, `users.whatIsThis`).
      */
-    override fun images(cxt: KdrCxt): List<ComponentImageDef> = listOf(componentImage(emailToUsersImage, "email-to-users.png"))
+    override fun images(cxt: KdrCxt): List<ComponentImageDef> = listOf(
+        componentImage(emailToUsersImage, "email-to-users.png"),
+        componentImage(fileRefsImage, "file-refs.svg"),
+    )
 
     /**
      * The Gedra configs this module defines: the traits every deployment has, in the reserved `kdr.core`
@@ -323,6 +330,10 @@ class CommonComponent : ComponentDefinition {
         fragmentFiles(AFRAG.auth, shownOn = "the sign-in, register and claim pages") +
             fragmentFiles(AFRAG.profile, shownOn = "the profile page") +
             fragmentFiles(HFRAG.home, shownOn = "the app bar and home page, the forms listing and the Documents page, and every \"What is this?\" link") +
+            // The pages with no UI-config of their own (issue #1337), named by the home config after its own file.
+            fragmentFiles(PFRAG.clients, shownOn = "the Clients page") +
+            fragmentFiles(PFRAG.reports, shownOn = "the Reports page") +
+            fragmentFiles(PFRAG.design, shownOn = "Design View's inspector") +
             fragmentFiles(FRAG.errors, shownOn = "error messages") +
             fragmentFiles(FRAG.sample) +
             // The auth mails (issue #773): private copy, read by `MailCopy` rather than delivered.

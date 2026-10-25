@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 520 168" width="520" height="168" role="img">
+  <title>Copy names an image by where it comes from: img: for one the application ships, ref: for one of the client's files</title>
+  <!-- The Files explanation's own image (issue #1337), drawn to read on the app's dark surface. A client replaces it in
+       its copy with a ref: to an image of its own, which is the explanation's exercise. -->
+  <g fill="none" stroke="#94A3B8" stroke-width="2">
+    <rect x="8" y="20" width="220" height="128" rx="10"/>
+    <rect x="320" y="20" width="192" height="52" rx="10"/>
+    <rect x="320" y="96" width="192" height="52" rx="10" stroke="#818CF8"/>
+    <path d="M232 62 H312 M304 55 L312 62 L304 69"/>
+    <path d="M232 122 H312 M304 115 L312 122 L304 129" stroke="#818CF8"/>
+  </g>
+  <g font-family="sans-serif" fill="#E2E8F0">
+    <text x="22" y="44" font-size="14" font-weight="bold">Copy</text>
+    <text x="22" y="67" font-size="13" font-family="monospace">![…](img:kdr:…)</text>
+    <text x="22" y="127" font-size="13" font-family="monospace" fill="#C7D2FE">![…](ref:logo)</text>
+    <text x="416" y="43" font-size="14" font-weight="bold" text-anchor="middle">Shipped with the app</text>
+    <text x="416" y="61" font-size="12" text-anchor="middle" fill="#94A3B8">the same for every client</text>
+    <text x="416" y="119" font-size="14" font-weight="bold" text-anchor="middle" fill="#C7D2FE">This client's Files</text>
+    <text x="416" y="137" font-size="12" text-anchor="middle" fill="#94A3B8">by id: logo</text>
+  </g>
+</svg>

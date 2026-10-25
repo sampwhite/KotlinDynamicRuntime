@@ -1,6 +1,7 @@
 package com.dynamicruntime.webapp
 
 import com.dynamicruntime.common.endpoint.EP
+import com.dynamicruntime.common.home.PFRAG
 import com.dynamicruntime.common.gedra.CCT
 import com.dynamicruntime.common.gedra.CPY
 import com.dynamicruntime.common.gedra.DSV
@@ -188,6 +189,8 @@ external interface DesignInspectorProps : Props {
  * describes the workflow and says how to start.
  */
 val DesignInspector = FC<DesignInspectorProps> { props ->
+    // Design View's own copy (issue #1337): what a workflow's own copy is against the shared definition's.
+    val pageCopy = usePageCopy(PFRAG.design)
     val session = props.session
     val design = session.design
     val selected = session.selected
@@ -331,7 +334,7 @@ val DesignInspector = FC<DesignInspectorProps> { props ->
                     val edit = design.layoutEdit(owner.typeName, selected.name)
                     div {
                         className = ClassName("dv-edit")
-                        overrideFacts(edit)
+                        overrideFacts(edit, pageCopy.explanation(PFRAG.ownCopyNs))
                         edit?.let { sharedCopyFacts(it.inherited, pulledCopyOf(definition?.response, owner.typeName, selected.name)) }
                         p {
                             className = ClassName("dv-note")
@@ -614,12 +617,16 @@ private fun authoredLayoutEntry(address: DesignAddress, loaded: LoadedDefinition
 }
 
 /**
- * The heading of a field's "Copy for this workflow" section, and -- when the workflow overrides the field's copy
- * ([edit]) -- that it does and whether the shared copy has changed since. Said the same way whether or not the copy
- * can be edited here.
+ * The heading of a field's "Copy for this workflow" section, with the [explanation] of a workflow's own copy against
+ * the shared one (issue #1337), and -- when the workflow overrides the field's copy ([edit]) -- that it does and
+ * whether the shared copy has changed since. Said the same way whether or not the copy can be edited here.
  */
-private fun ChildrenBuilder.overrideFacts(edit: LayoutEdit?) {
-    h3 { +"Copy for this workflow" }
+private fun ChildrenBuilder.overrideFacts(edit: LayoutEdit?, explanation: String) {
+    WhatIsThis {
+        heading = "Copy for this workflow"
+        headingLevel = 3
+        text = explanation
+    }
     if (edit == null) return
     p {
         className = ClassName("dv-note")
@@ -668,6 +675,7 @@ external interface WorkflowCopyEditorProps : Props {
  * for each. They save into the same entry, so changing one keeps the copy, and Reset removes them with it.
  */
 private val WorkflowCopyEditor = FC<WorkflowCopyEditorProps> { props ->
+    val pageCopy = usePageCopy(PFRAG.design)
     val session = props.session
     val target = props.target
     val owner = fieldOwner(target.root.typeName, target.root.type, target.path)
@@ -701,7 +709,7 @@ private val WorkflowCopyEditor = FC<WorkflowCopyEditorProps> { props ->
 
     div {
         className = ClassName("dv-edit")
-        overrideFacts(edit)
+        overrideFacts(edit, pageCopy.explanation(PFRAG.ownCopyNs))
         if (!editing) {
             div {
                 className = ClassName("dv-actions")
@@ -1423,6 +1431,7 @@ external interface HeadingSectionProps : Props {
  * key is shared wording, edited at the key.
  */
 private val HeadingSection = FC<HeadingSectionProps> { props ->
+    val pageCopy = usePageCopy(PFRAG.design)
     val session = props.session
     val design = session.design
     val trait = props.trait
@@ -1481,7 +1490,11 @@ private val HeadingSection = FC<HeadingSectionProps> { props ->
 
     div {
         className = ClassName("dv-edit")
-        h3 { +"Heading for this workflow" }
+        WhatIsThis {
+            heading = "Heading for this workflow"
+            headingLevel = 3
+            text = pageCopy.explanation(PFRAG.ownCopyNs)
+        }
         fact("Shown", trait.fieldLayout?.label?.let(::headingLine) ?: fallback.text.orEmpty())
         if (edit != null) {
             p {

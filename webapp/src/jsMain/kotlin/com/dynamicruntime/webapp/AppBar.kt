@@ -191,6 +191,8 @@ val AppBar = FC<AppBarProps> { props ->
     // Whether the identity badge's user menu is open (issue #749); independent of the hamburger's.
     var userMenuOpen by useState(false)
     var sandboxInfoOpen by useState(false)
+    // The shell's copy, once read: what the sandbox chip's "What is this?" explains (issue #1337).
+    var shellCopy by useState(Copy.empty)
     var sharedDemoInfoOpen by useState(false)
     // Which drill-down groups are expanded (issue #540). Collapsed by default -- a group's children show on
     // demand, keeping a long menu short -- and remembered per browser, so an operator who opens the Operator
@@ -246,6 +248,7 @@ val AppBar = FC<AppBarProps> { props ->
             val copy = loaded.valueOrNull()
             if (copy != null) {
                 everLoaded.current = true
+                shellCopy = copy
             } else {
                 // Never swallow (webapp/CLAUDE.md): the chrome does not *show* an outage, but a Failed that
                 // renders nothing must at least reach the console, or a browser test cannot assert its absence.
@@ -606,6 +609,11 @@ val AppBar = FC<AppBarProps> { props ->
                         // A stranded session with nowhere listed to go (issue #1197) is offered the exit that remains.
                         val hasWayOut = back != null || switchableUsers(users).isNotEmpty()
                         p { +sandboxInfoText(inSandbox, hasWayOut) }
+                        // What a sandbox is, for whoever wants more than the line above (issue #1337) -- not to a
+                        // session whose access has ended, which needs the way out rather than the concept.
+                        if (!inSandbox.stranded) {
+                            WhatIsThis { text = shellCopy.explanation(HFRAG.sandboxNs) }
+                        }
                         back?.let { way ->
                             button {
                                 className = ClassName("sandbox-back")
