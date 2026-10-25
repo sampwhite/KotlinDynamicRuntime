@@ -348,6 +348,15 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
         description = "The user a listing is confined to: who the request's `user` was resolved to."
         identifiedUserBlockProperties()
     }
+    // One of the listing's columns (issue #1323), with the presentation its cells read through.
+    type(GEP.listingColumnType) {
+        type = SCT.kObject
+        description = "One column of the forms listing: the trait it reads, its header, its kind, and its presentation."
+        property(UF.traitId, "The trait the column reads; each row's display value for it carries the same id.", required = true)
+        property(UF.label, "The column header.", required = true)
+        property(UF.kind, "What the column's value is, and so how it sorts and searches.", required = true) { options(UsageKind.entries) }
+        property(UF.presentation, "A string script over the trait's data, with the column's value as `value`, that the cell reads through. Absent shows the value -- relative to now for a date.")
+    }
     type(GEP.formDocsSummary) {
         type = SCT.kObject
         description = "What is true of everything the forms listing could return, rather than of one page."
@@ -358,6 +367,10 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
         }
         property(GDF.scopeUser, "The user the listing is confined to, when the request named one (issue #1095).") {
             ref(GEP.scopeUserType)
+        }
+        property(GDF.columns, "The listing's columns, in order: one per trait-usage rule of the client (issue #1323).") {
+            type = SCT.array
+            items { ref(GEP.listingColumnType) }
         }
     }
 
@@ -443,7 +456,11 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
             // And whose forms these are, when the request named a user (issue #1095): the user it was resolved to
             // above, so the caller is told which of a person's users an address meant -- on every page, since it
             // is the row already in hand.
+            //
+            // And the columns (issue #1323), with the presentation each cell reads through: once here, not on every
+            // row, and always, so a listing that matched nothing still says what its columns are.
             summary = buildMap {
+                if (usages.isNotEmpty()) put(GDF.columns, usages.map { ListingColumn.of(it).toMap() })
                 if (withStates && request.getOptBool(GDF.withWorkflowSummary) == true) {
                     putAll(FormWorkflowSummary.of(c, svc.statesInScope(c, formDoc, callerScope)))
                 }

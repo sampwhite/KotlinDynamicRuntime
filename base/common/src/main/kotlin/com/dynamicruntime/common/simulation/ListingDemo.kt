@@ -100,10 +100,11 @@ fun listingDemoMain(cxt: KdrCxtBase, client: String = ListingDemo.client): Gedra
                 dateTime()
             }
         }
-        // The listing's columns, and so its search fields (issues #537, #538): one per trait, a kind each.
+        // The listing's columns, and so its search fields (issues #537, #538): one per trait, a kind each. The amount
+        // reads as dollars and sorts as a number; the due date, with no presentation, reads relative to now (#1323).
         traitUsage(GT.name, "Request", $$"${name}", substring = true)
         traitUsage(ListingDemo.category, "Category", $$"${category}")
-        traitUsage(ListingDemo.amount, "Amount", $$"${amount}", UsageKind.number)
+        traitUsage(ListingDemo.amount, "Amount", $$"${amount}", UsageKind.number, presentation = $$"""${currency(value, "USD")}""")
         traitUsage(ListingDemo.due, "Due", $$"${due}", UsageKind.date)
     }
 

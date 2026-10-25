@@ -161,7 +161,7 @@ private fun entryFailures(cxt: KdrCxtBase, slot: String, type: SchType, entry: M
     if (slot == CCT.clientDef) return readClientDef(cxt, entry).failures
     val shape = validate(type, entry, unparsedBodies).filterNot { leftToTheTrial(slot, entry, it) }
     val beyond = when (slot) {
-        CCT.usageDef -> displayFailures(entry[CCT.display])
+        CCT.usageDef -> templateFailures(CCT.display, entry[CCT.display]) + templateFailures(CCT.presentation, entry[CCT.presentation])
         CCT.fileRefDef -> fileRefFailures(entry)
         else -> emptyList()
     }
@@ -184,9 +184,13 @@ private fun leftToTheTrial(slot: String, entry: Map<String, Any?>, failure: SchF
     return inDefinition && (slot == CCT.reportDef || overlay)
 }
 
-/** What is wrong with a usage rule's `display` as a template -- one failure per defect, so they are fixed in one pass. */
-private fun displayFailures(display: Any?): List<SchFailure> = (display as? String)?.checkTemplateSyntax().orEmpty().map {
-    SchFailure(CCT.display, SchFailCode.badValue, "This is not a template that parses: ${it.message}")
+/**
+ * What is wrong with a usage rule's [field] -- its `display` or its `presentation` (issue #1323) -- as a template: one
+ * failure per defect, so they are fixed in one pass. The parse refuses an unknown function, a wrong number of
+ * arguments, and a literal argument a function cannot take (a date style, a currency code), so none reaches a cell.
+ */
+private fun templateFailures(field: String, template: Any?): List<SchFailure> = (template as? String)?.checkTemplateSyntax().orEmpty().map {
+    SchFailure(field, SchFailCode.badValue, "This is not a template that parses: ${it.message}")
 }
 
 /**

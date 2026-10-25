@@ -86,6 +86,7 @@ import com.dynamicruntime.common.schema.resolveOptionsSources
 import com.dynamicruntime.common.schema.visibleWhenProblems
 import com.dynamicruntime.common.test.SIM
 import com.dynamicruntime.common.util.addDays
+import com.dynamicruntime.common.util.checkTemplateSyntax
 import com.dynamicruntime.common.util.formatDate
 import com.dynamicruntime.common.util.toJsonListOfStrings
 import com.dynamicruntime.common.util.toJsonMap
@@ -369,6 +370,9 @@ class SchemaService : ServiceInitializer, ClientSchemaSource {
      *   with the first (the display map keeps the last, the sort takes the first, both columns share one key),
      *   leaving that trait's search comparing against the wrong value. A trait presents once; two columns from
      *   one trait would need a per-usage key.
+     * - **A presentation that does not parse** (issue #1323): it is evaluated where the listing is drawn, which
+     *   shows the value when it cannot be, so an unknown function or a bad date style would never be seen. The write
+     *   gate refuses one in stored configuration; this catches one declared in source, and is the trial's word too.
      */
     private fun checkUsageRules(
         cxt: KdrCxt,
@@ -403,6 +407,20 @@ class SchemaService : ServiceInitializer, ClientSchemaSource {
                         "Dropping the colliding search parameter; the column still shows, but that trait cannot " +
                             "be searched. Rename the trait, or present it under a different one.",
                         GCEL.usage, collisions.joinToString(","),
+                    ),
+                    issues,
+                )
+            }
+            for (usage in usages) {
+                val faults = usage.presentation?.checkTemplateSyntax().orEmpty()
+                if (faults.isEmpty()) continue
+                reportConfigProblem(
+                    cxt,
+                    holder.issue(
+                        "Client '$scope' declares a presentation for trait '${usage.traitId}' that does not parse: " +
+                            faults.joinToString("; ") { it.message } + ".",
+                        "Showing the column's value as it is. Correct the presentation.",
+                        GCEL.usage, usage.traitId,
                     ),
                     issues,
                 )

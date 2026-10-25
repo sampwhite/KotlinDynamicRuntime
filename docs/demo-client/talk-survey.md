@@ -134,14 +134,19 @@ in the `kdr:usageDef` slot of its `base` bundle.
 | --- | --- |
 | `traitId` | The trait the column takes its value from. |
 | `label` | The column's heading. |
-| `display` | What the column shows: a template over the trait's data, in which `${track}` is the `track` field's value. |
-| `kind` | How a search treats the value: as text, a number, or a date. |
+| `display` | The column's value: a template over the trait's data, in which `${track}` is the `track` field's value. The column sorts and searches by it, and shows it unless the column has a presentation. |
+| `kind` | How a search treats the value: as text, a number, or a date. A date column with no presentation reads relative to now, such as `in 3h`. |
 | `substring` | Whether a search may match part of the value. On the talk's name, a search for `scale` finds `Kotlin at scale`. |
 
 In this example, the demo promotes two fields to be columns: `name`, from the built-in `kdr:name` trait, and `track`,
 from its own `session` trait. A promoted value also becomes available for search.
 As soon as a client declares columns of its own, the platform's default column, the form's name, disappears. So the
 demo redeclares the name column too, but relabels the heading to be **Talk**.
+
+A column may also have a `presentation`, which the demo does not use. A presentation is a template that says how
+the column's cells read, with the column's value available as `value`. For example, `${currency(value, "USD")}` shows
+an amount as `$1,234.50`, and `${city}, ${state}` composes two fields of the trait. The column still sorts and
+searches by its value, so a formatted amount never sorts as text.
 
 The track column shows the stored value, such as `workshop`, rather than the choice's label.
 

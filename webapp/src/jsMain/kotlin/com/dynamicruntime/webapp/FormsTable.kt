@@ -21,6 +21,7 @@ import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.launch
 import web.cssom.ClassName
 import com.dynamicruntime.common.gedra.GSORT
+import com.dynamicruntime.common.gedra.ListingColumn
 import com.dynamicruntime.common.gedra.workflow.WfColumnCategory
 import com.dynamicruntime.common.schema.PSTAT
 import com.dynamicruntime.common.user.personaTag
@@ -127,13 +128,19 @@ external interface FormsTableProps : Props {
     /** Called when a header sort changes: the new column (a trait id, or `updated`/`created`) and direction, or
      *  null when the sort is cleared (back to the default order). The parent re-fetches. */
     var onSort: (column: String?, descending: Boolean) -> Unit
+
+    /**
+     * The listing's columns (issue #1323), from its summary: the client's display columns in order, each with the
+     * presentation its cells read through. Empty for a client that declares none.
+     */
+    var columns: List<ListingColumn>
 }
 
 val FormsTable = FC<FormsTableProps> { props ->
-    // The display columns a client's trait-usage rules declared (issue #537): every row carries the same set
-    // (the backend attaches all of them), so any row's list gives the columns and their order. A client with
-    // no usage rules has none, and `Contains` carries the identity, as it did before this was configurable.
-    val displayCols = props.forms.firstOrNull()?.second?.displayValues ?: emptyList()
+    // The display columns a client's trait-usage rules declared (issue #537), as the listing's summary says them
+    // (issue #1323). A client with no usage rules has none, and `Contains` carries the identity, as it did before
+    // this was configurable.
+    val displayCols = props.columns
     // Draw the Status column, and offer "View Info", only when some row carries a survey status (issue #694): a
     // client with no survey has none on any row, so an empty column or a dead-end action would say nothing. (A
     // persistent store's rows written before the survey deriver existed carry none until re-touched or
@@ -143,8 +150,11 @@ val FormsTable = FC<FormsTableProps> { props ->
     // its endpoint; with neither there is no column, not an empty one.
     val drill = props.drillWorkflowId
     val showActions = anySurveyStatus || props.canDelete || drill != null
-    // What the Updated and Created columns read their relative times against (issue #1141).
+    // What the Updated and Created columns read their relative times against (issue #1141), and every display
+    // column's presentation too (issue #1323), so a due date's "in 3h" moves with them.
     val now = useRelativeClock()
+    val env = DisplayZone.scriptEnv(now)
+    val columnsById = displayCols.associateBy { it.traitId }
     // Opens the drilled workflow on a row (issue #792), on the task its cell link would -- the current task of an
     // engaged form, ready to edit; the last of a finished one; the workflow itself for an eligible one.
     fun openWorkflow(id: String, items: List<WorkflowCellItem>) {
@@ -192,7 +202,8 @@ val FormsTable = FC<FormsTableProps> { props ->
             // header arrow is antd's, controlled from `sortColumn`/`sortDescending`; the sort key sent to the
             // endpoint is the column's dataIndex -- namespaced for a display column, `updated`/`created` for a date.
             displayCols.forEach {
-                add(sortableColumn(it.label, displayColKey(it.traitId), 160, props.sortColumn, props.sortDescending))
+                // Drawn as a time column is (issue #1323): the presented text, with the value behind it on hover.
+                add(timeColumn(sortableColumn(it.label, displayColKey(it.traitId), 160, props.sortColumn, props.sortDescending)))
             }
             add(sortableColumn("Contains", GSORT.contains, null, props.sortColumn, props.sortDescending))
             if (props.showOwner) add(ownerColumn(props.sortColumn, props.sortDescending))
@@ -227,9 +238,14 @@ val FormsTable = FC<FormsTableProps> { props ->
         dataSource = props.forms.map { (id, summary) ->
             val row: dynamic = js("({})")
             row.key = id
-            // Each declared column's value for this row, under the same namespaced key as its column; a blank
-            // cell where the row has none.
-            summary.displayValues.forEach { row[displayColKey(it.traitId)] = it.value.ifBlank { "—" } }
+            // Each declared column's value for this row, read through its presentation (issue #1323), under the same
+            // namespaced key as its column; a blank cell where the row has none. A reworded value is on hover.
+            summary.displayValues.forEach {
+                val key = displayColKey(it.traitId)
+                val shown = presentedValue(it, columnsById[it.traitId], env)
+                row[key] = shown.ifBlank { "—" }
+                presentedCellTip(it, shown)?.let { tip -> row[timeTipKey(key)] = tip }
+            }
             row.contains = summary.traitLabels.joinToString(", ")
             summary.updatedAt?.let {
                 row.updated = formatRelativeTime(it, now)
@@ -575,7 +591,10 @@ private fun sortableColumn(
     return c
 }
 
-/** [c], drawn as a time: its cell's text with the exact time on hover (issue #1141). */
+/**
+ * [c], drawn as a time: its cell's text with the exact time on hover (issue #1141) -- and, for a display column, with
+ * the value its presentation reworded (issue #1323). A row with nothing filed under the tip key has no tooltip.
+ */
 private fun timeColumn(c: dynamic): dynamic {
     c.render = timeColumnRender(timeTipKey(c.dataIndex as String))
     return c

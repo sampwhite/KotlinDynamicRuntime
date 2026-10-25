@@ -104,6 +104,9 @@ fun coreConfigTraits(cxt: KdrCxtBase): GedraConfig = gedraConfig(cxt, CCT.config
             type = SCT.boolean
             allowCoerce = false
         }
+        // Parse-checked at the write as `display` is (issue #1323): it is evaluated where the listing is drawn, and a
+        // presentation that does not parse would only ever show the value.
+        property(CCT.presentation, "A string script over the trait's data, with the column's value as `value`, that the cell reads through.")
     }
     configTrait(
         "WorkflowDefEntry", CCT.workflowDef, setOf(GedraConfigType.configDoc),

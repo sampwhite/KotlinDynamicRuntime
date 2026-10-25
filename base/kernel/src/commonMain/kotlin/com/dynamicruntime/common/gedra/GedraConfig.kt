@@ -568,6 +568,10 @@ class GedraConfigBuilder(
      * A usage is also **searchable** (issue #538): the forms-list gets a parameter per usage -- an exact one
      * for a `string`, a `>=`/`<=` pair for a `number` or `date`. [substring] adds a contains parameter beside
      * the exact one for a `string` kind (ignored otherwise).
+     *
+     * [presentation] is how the cell reads (issue #1323): a string script over the trait's data, with the column's
+     * value as `value`, evaluated where the listing is drawn -- `${'$'}{currency(value, "USD")}`. The column still
+     * sorts and searches by its value.
      */
     fun traitUsage(
         traitId: String,
@@ -575,8 +579,9 @@ class GedraConfigBuilder(
         display: String,
         kind: UsageKind = UsageKind.string,
         substring: Boolean = false,
+        presentation: String? = null,
     ) {
-        usages.add(ClientTraitUsage(traitId, label, display, kind, substring))
+        usages.add(ClientTraitUsage(traitId, label, display, kind, substring, presentation))
     }
 
     /**

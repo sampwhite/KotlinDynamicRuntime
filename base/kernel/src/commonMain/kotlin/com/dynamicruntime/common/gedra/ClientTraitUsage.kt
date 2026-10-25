@@ -33,6 +33,14 @@ class ClientTraitUsage(
      * only where partial-name lookup is worth it.
      */
     val substring: Boolean = false,
+    /**
+     * How the cell **reads** (issue #1323): a string script over the trait's data, with the column's value as
+     * `value`, evaluated on the frontend in the client's zone and against the table's clock -- so it can compose
+     * several fields, add a unit, write a currency, or say a date relative to now, while the column still sorts and
+     * searches by its value. Null shows the value, except that a `date` column reads relative to now
+     * ([columnPresentation]).
+     */
+    val presentation: String? = null,
 )
 
 /** The kinds a [ClientTraitUsage] value can be: what a listing shows and a search (issue #538) filters on. */
@@ -51,7 +59,10 @@ object UF {
     /** The column header, from the usage's label. */
     const val label = "label"
 
-    /** The presented value, already evaluated; empty when the row carries no such trait. */
+    /**
+     * The column's value, already evaluated from the usage's `display`; empty when the row carries no such trait. What
+     * the column sorts and searches by (issue #1323), and what its presentation reads as `value`.
+     */
     const val value = "value"
 
     /** How the value reads (`UsageKind`), for a search to filter on. */
@@ -60,4 +71,7 @@ object UF {
     /** Whether a `string` usage also offers a contains search ([ClientTraitUsage.substring]); on the usage's own
      *  wire projection, not a display value. Here so the one usage-field object owns every usage key. */
     const val substring = "substring"
+
+    /** A listing column's presentation ([ClientTraitUsage.presentation]), on the listing's [GDF.columns] (issue #1323). */
+    const val presentation = "presentation"
 }

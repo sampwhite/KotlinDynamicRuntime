@@ -68,6 +68,9 @@ object GEP {
     /** The user a listing is confined to, as its summary says them: a [DUF] block; see [GDF.scopeUser]. */
     const val scopeUserType = "FormDocsScopeUser"
 
+    /** One of a listing's columns, as its summary says them: a [ListingColumn]; see [GDF.columns] (issue #1323). */
+    const val listingColumnType = "FormDocsColumn"
+
     /** Imports form documents from search output for a target user (issue #545). */
     const val formDocImport = "/gedra/formDoc/import"
 
@@ -243,6 +246,13 @@ object GDF {
      * the columns a client declared. Derived -- neither sent nor stored.
      */
     const val displayValues = "displayValues"
+
+    /**
+     * In a forms listing's `summary` (issue #1323): **the listing's columns**, one `{traitId, label, kind,
+     * presentation?}` per trait-usage rule, in column order. Said once for the listing rather than on every row, since
+     * the presentation is the column's, not the row's; each row's [displayValues] carry only its value.
+     */
+    const val columns = "columns"
 
     /**
      * The document's **owner** as a block of user-type information (issue #580): a `{name?, email}` map keyed
