@@ -39,6 +39,12 @@ external interface ClientWorkflowsSectionProps : Props {
     var savesDraft: Boolean
     /** Whether the impact report's forms can be opened from this session ([impactFormsOpenable]). */
     var formsOpenable: Boolean
+    /**
+     * Whether the client's workflows may be made, edited and removed here: its definition is in stored configuration
+     * that this page edits. False for a client declared in source code, whose workflows are shown with their time
+     * windows alone -- parameters, not configuration, so set here whoever declared the workflow (issue #1386).
+     */
+    var configEditable: Boolean
     /** What a save calls once it has taken effect: the page re-reads. */
     var onChanged: () -> Unit
 }
@@ -61,6 +67,9 @@ private fun openKey(templateId: String?, workflowId: String?) = workflowId?.let 
  * per data-entry task its label and traits -- and explains the rest in words ([workflowFixedParts]). A save takes
  * effect as the page's other editors' do; what is stored is the workflow's overlay of the template, which the backend
  * reads over the template, so a fix to the template reaches the workflow.
+ *
+ * For a client whose configuration is not edited here ([ClientWorkflowsSectionProps.configEditable] false) -- one
+ * declared in source code -- only the workflows are listed, each normal one with **Time windows…**.
  */
 val ClientWorkflowsSection = FC<ClientWorkflowsSectionProps> { props ->
     val generation = useRefreshGeneration()
@@ -100,9 +109,14 @@ val ClientWorkflowsSection = FC<ClientWorkflowsSectionProps> { props ->
 
     p {
         className = ClassName("subtitle")
-        +("The workflows this client's people use, made from the deployment's templates. A template fixes a workflow's " +
-            "steps and rules; the client chooses its name, and for each step that asks for information, what it is " +
-            "called and which traits it collects.")
+        +(if (props.configEditable) {
+            "The workflows this client's people use, made from the deployment's templates. A template fixes a workflow's " +
+                "steps and rules; the client chooses its name, and for each step that asks for information, what it is " +
+                "called and which traits it collects."
+        } else {
+            "The workflows this client's people use. They are not changed here, but each one's time windows are: " +
+                "they are its parameters, not its definition."
+        })
     }
     val shown = workflowCatalog
     if (shown == null) {
@@ -169,6 +183,10 @@ val ClientWorkflowsSection = FC<ClientWorkflowsSectionProps> { props ->
         }
     }
 
+    // The workflow whose time windows are open: drawn in a row of its own beneath that workflow's (issue #1386), so
+    // the editor appears where it was asked for.
+    val windowsOf = open?.takeIf { it.startsWith(windowsPrefix) }?.removePrefix(windowsPrefix)
+
     if (shown.workflows.isEmpty()) {
         p {
             className = ClassName("subtitle")
@@ -176,7 +194,7 @@ val ClientWorkflowsSection = FC<ClientWorkflowsSectionProps> { props ->
         }
     } else {
         div {
-            className = ClassName("op-table-scroll")
+            className = ClassName(if (windowsOf != null) "op-table-scroll detail-open" else "op-table-scroll")
             table {
                 className = ClassName("op-table")
                 thead {
@@ -194,7 +212,7 @@ val ClientWorkflowsSection = FC<ClientWorkflowsSectionProps> { props ->
                         tr {
                             key = w.def.workflowId.unsafeCast<Key>()
                             td {
-                                +workflowName(w.def)
+                                +w.name
                                 div {
                                     className = ClassName("type-hint")
                                     code { +w.def.workflowId }
@@ -202,13 +220,15 @@ val ClientWorkflowsSection = FC<ClientWorkflowsSectionProps> { props ->
                             }
                             td { +workflowEntryText(w.def.entry) }
                             td { +(w.def.fromTemplate?.let { shown.template(it)?.let { t -> workflowName(t.def) } ?: it } ?: "—") }
-                            td { +w.def.tasks.joinToString(", ") { it.label } }
+                            td { +w.taskLabels.joinToString(", ") }
                             // Where a normal workflow stands in its time windows now (issue #1121); the others have none.
                             td { +(if (w.def.entry == WfEntry.normal) windowPhaseText(w.windows, now, zone) else "—") }
                             td {
                                 span {
                                     className = ClassName("row-actions")
-                                    if (w.notEditable == null) {
+                                    if (!props.configEditable) {
+                                        // Only the windows below: the workflow itself is changed where it is declared.
+                                    } else if (w.notEditable == null) {
                                         Button {
                                             type = "link"
                                             size = "small"
@@ -223,7 +243,7 @@ val ClientWorkflowsSection = FC<ClientWorkflowsSectionProps> { props ->
                                             +"Not from a template"
                                         }
                                     }
-                                    if (workflowRemovable(w)) {
+                                    if (props.configEditable && workflowRemovable(w)) {
                                         Popconfirm {
                                             title = workflowRemoveQuestion(w.def, props.clientId, props.savesDraft)
                                             description = workflowRemoveConsequence(props.savesDraft)
@@ -258,14 +278,37 @@ val ClientWorkflowsSection = FC<ClientWorkflowsSectionProps> { props ->
                                 }
                             }
                         }
+                        if (windowsOf == w.def.workflowId && w.windowsOffered) {
+                            tr {
+                                key = "${w.def.workflowId}-windows".unsafeCast<Key>()
+                                td {
+                                    asDynamic()["colSpan"] = 6
+                                    WorkflowWindowsEditor {
+                                        this.key = "windows-$windowsOf".unsafeCast<Key>()
+                                        this.clientId = props.clientId
+                                        this.workflow = w.def
+                                        this.params = w.params ?: WorkflowParamsView.none
+                                        this.zone = zone
+                                        formsOpenable = props.formsOpenable
+                                        onSaved = { said ->
+                                            open = null
+                                            note = said
+                                            props.onChanged()
+                                        }
+                                        onCancel = { open = null }
+                                        onChanged = props.onChanged
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
         }
     }
 
-    h3 { +"Make a workflow from a template" }
-    div {
+    if (props.configEditable) h3 { +"Make a workflow from a template" }
+    if (props.configEditable) div {
         className = ClassName("op-table-scroll")
         table {
             className = ClassName("op-table")
@@ -314,35 +357,17 @@ val ClientWorkflowsSection = FC<ClientWorkflowsSectionProps> { props ->
         }
     }
 
-    val windowsOf = open?.takeIf { it.startsWith(windowsPrefix) }?.removePrefix(windowsPrefix)
-    if (windowsOf != null) {
-        val shownWorkflow = shown.workflows.firstOrNull { it.def.workflowId == windowsOf && it.windowsOffered }
-        if (shownWorkflow != null) {
-            WorkflowWindowsEditor {
-                this.key = "windows-$windowsOf".unsafeCast<Key>()
-                this.clientId = props.clientId
-                this.workflow = shownWorkflow.def
-                this.params = shownWorkflow.params ?: WorkflowParamsView.none
-                this.zone = zone
-                formsOpenable = props.formsOpenable
-                onSaved = { said ->
-                    open = null
-                    note = said
-                    props.onChanged()
-                }
-                onCancel = { open = null }
-                onChanged = props.onChanged
-            }
-        } else {
-            p {
-                className = ClassName("type-hint")
-                +"That workflow is gone."
-                Button {
-                    type = "link"
-                    size = "small"
-                    onClick = { open = null }
-                    +"Close"
-                }
+    // The editor is drawn in its workflow's row above; a workflow gone from under it -- removed by another page -- is
+    // said here, with a way to close it.
+    if (windowsOf != null && shown.workflows.none { it.def.workflowId == windowsOf && it.windowsOffered }) {
+        p {
+            className = ClassName("type-hint")
+            +"That workflow is gone."
+            Button {
+                type = "link"
+                size = "small"
+                onClick = { open = null }
+                +"Close"
             }
         }
     }

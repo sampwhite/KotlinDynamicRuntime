@@ -392,14 +392,17 @@ private fun ChildrenBuilder.clientDetail(
         }
         // Its workflows made from templates (issue #1120), offered where the traits are, for the same reason: a save
         // lands in the client's stored configuration under the same rules. One element whether or not it is drawn.
+        // A client whose configuration is not edited here -- declared in source code -- still lists its workflows, for
+        // their time windows: parameters, set here whoever declared the workflow (issue #1386).
         div {
-            if (def?.stored != null && definitionEditable(row) &&
+            val configEditable = def?.stored != null && definitionEditable(row) &&
                 definitionEditOffer(def.storedConfig, configs, sandbox = savesDraft).editor
-            ) {
+            if (configEditable || row?.status == ClientStatus.present.name) {
                 h2 { +"Workflows" }
                 ClientWorkflowsSection {
                     this.clientId = clientId
                     this.savesDraft = savesDraft
+                    this.configEditable = configEditable
                     formsOpenable = impactFormsOpenable(acrossClients, onSandboxPage = row?.sandboxOf != null)
                     this.onChanged = onChanged
                 }

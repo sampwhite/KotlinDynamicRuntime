@@ -26,6 +26,8 @@ import com.dynamicruntime.common.util.toOptStr
 import com.dynamicruntime.common.gedra.workflow.WfWindows
 import com.dynamicruntime.common.gedra.workflow.WfParamsSetting
 import com.dynamicruntime.common.gedra.workflow.WfParams
+import com.dynamicruntime.common.gedra.workflow.WfParamsFrom
+import com.dynamicruntime.common.gedra.workflow.WfParamsLayers
 import com.dynamicruntime.common.gedra.workflow.WFP
 
 /**
@@ -44,22 +46,41 @@ private val readCxt = LiteCxt()
 class WorkflowTemplateView(val def: WfDef, val refusal: String?)
 
 /**
- * A normal workflow's parameters as the page's client or sandbox runs them (issue #1356): the setting in force, the
- * earlier ones newest first, and whether a sandbox reads its parent's for want of its own.
+ * A normal workflow's parameters as the page's client or sandbox runs them (issues #1356, #1386): the scope's own
+ * setting, on a sandbox its client's, the defaults the client's source code declares, and the scope's earlier
+ * settings, newest first. What they make together is the kernel's ([layers]), as the backend runs it.
  */
-class WorkflowParamsView(val current: WfParamsSetting, val history: List<WfParamsSetting>, val fromParent: Boolean) {
-    val windows: WfWindows get() = current.params.windows
+class WorkflowParamsView(
+    val own: WfParamsSetting?,
+    val parent: WfParamsSetting?,
+    val source: WfParams,
+    val history: List<WfParamsSetting>,
+) {
+    val layers: WfParamsLayers = WfParamsLayers(own?.params ?: WfParams.none, parent?.params ?: WfParams.none, source)
+
+    /** The windows in force. */
+    val windows: WfWindows get() = layers.inForce.windowsInForce
+
+    /** Where the windows in force come from when the scope does not set them; null when it does, or nothing does. */
+    val windowsFrom: WfParamsFrom? get() = layers.from[WFP.windows]
+
+    /** Where the windows would come from if the scope stopped setting its own; null when nothing would set them. */
+    val windowsFallbackFrom: WfParamsFrom? get() = layers.fallbackFrom(WFP.windows)
+
+    /** Whether the scope sets windows of its own. */
+    val ownWindows: Boolean get() = own?.params?.windows != null
 
     companion object {
-        val none = WorkflowParamsView(WfParamsSetting(WfParams.none, null, null), emptyList(), fromParent = false)
+        val none = WorkflowParamsView(null, null, WfParams.none, emptyList())
     }
 }
 
 /** A workflow's parameters as the catalog and a save answer them (`CWF.params`). Pure, covered under `jsNodeTest`. */
 fun parseWorkflowParams(raw: Map<String, Any?>): WorkflowParamsView = WorkflowParamsView(
-    WfParamsSetting.fromInfo(raw[WFP.current].toJsonMapOrEmpty()),
+    (raw[WFP.current] as? Map<*, *>)?.let { WfParamsSetting.fromInfo(raw[WFP.current].toJsonMapOrEmpty()) },
+    (raw[WFP.parent] as? Map<*, *>)?.let { WfParamsSetting.fromInfo(raw[WFP.parent].toJsonMapOrEmpty()) },
+    WfParams.fromInfo(raw[WFP.source]),
     WfParamsSetting.listFrom(raw[WFP.history]),
-    raw[WFP.fromParent] == true,
 )
 
 /** One of the client's workflows as it runs, the configuration holding it, and why its slots cannot be changed here. */
@@ -69,7 +90,16 @@ class ClientWorkflowView(
     val notEditable: String?,
     /** For a normal workflow, its parameters here (issue #1356); null for any other kind, which has none. */
     val params: WorkflowParamsView? = null,
+    /** Its labels with their fragment pulls resolved for the page's client (`CWF.labels`); empty when none pulls any. */
+    val labels: Map<String, Any?> = emptyMap(),
 ) {
+    /** What the page calls it: its label as the client sees it, else its id. */
+    val name: String get() = labels[WFD.label].toOptStr()?.ifBlank { null } ?: workflowName(def)
+
+    /** Its tasks' labels as the client sees them, in order. */
+    val taskLabels: List<String>
+        get() = def.tasks.map { labels[WFD.tasks].toJsonMapOrEmpty()[it.id].toOptStr() ?: it.label }
+
     /** Whether the page offers its time windows: every normal workflow's, set here whoever declared it (issue #1356). */
     val windowsOffered: Boolean get() = def.entry == WfEntry.normal
 
@@ -103,6 +133,7 @@ fun parseWorkflowCatalog(raw: Map<String, Any?>): WorkflowCatalogView = Workflow
             it[CWF.configName].toOptStr(),
             it[CWF.notEditable].toOptStr(),
             (it[CWF.params] as? Map<*, *>)?.let { _ -> parseWorkflowParams(it[CWF.params].toJsonMapOrEmpty()) },
+            it[CWF.labels].toJsonMapOrEmpty(),
         )
     },
     traits = raw[CWF.traits].toJsonListOfMaps().map { WorkflowTraitView(it[CCT.traitId].toOptStr().orEmpty(), it[CWF.description].toOptStr()) },

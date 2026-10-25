@@ -48,6 +48,12 @@ class WorkflowRegistry(
     val client: String?,
     /** Every workflow visible in this scope, by id, in arrival order. */
     val workflows: Map<String, WfDeclared>,
+    /**
+     * The default parameters the scope's source code declares for its workflows, by workflow id (issue #1386): what a
+     * workflow runs with until the client, or a sandbox of it, sets its own (`WorkflowParamsService`). A sandbox's are
+     * its client's, which its configuration copies.
+     */
+    val paramDefaults: Map<String, WfParams> = emptyMap(),
 ) {
     /** The creation workflow of this scope, or null when it has none. At most one, by check. */
     val creation: WfDeclared? = workflows.values.firstOrNull { it.def.entry == WfEntry.creation }
@@ -170,6 +176,36 @@ fun buildWorkflowRegistries(
     )
     // `off` for the bundle's origin admits the workflow unchecked.
     fun unchecked(w: WfDeclared) = w.bundle.checkMode(cxt) == BootCheckMode.off
+
+    // The defaults [client]'s source code declares for its workflows (issue #1386), each for one of the [admitted]
+    // normal workflows source code declares -- the client's own, or its template's, which arrive together in the
+    // template's copy -- and not one the client stores, which a later edit could remove from under a default that
+    // source code cannot change; and each declared once. What does not hold up is a mistake in the code, judged by the
+    // origin of the configuration declaring it, and left out.
+    fun paramDefaultsOf(client: String, admitted: Map<String, WfDeclared>): Map<String, WfParams> {
+        val out = LinkedHashMap<String, WfParams>()
+        val declaredBy = HashMap<String, GedraConfig>()
+        for (bundle in configs.configs.filter { it.gedraId.client == client && it.workflowParams.isNotEmpty() }) {
+            for ((workflowId, params) in bundle.workflowParams) {
+                fun refuse(why: String) = reportConfigProblem(
+                    cxt,
+                    bundle.issue("Default parameters for workflow '$workflowId' in '${bundle.gedraId}' $why", "Leaving them out.", GCEL.workflow, workflowId),
+                    issues,
+                )
+                val w = admitted[workflowId]
+                when {
+                    bundle.checkMode(cxt) == BootCheckMode.off -> out[workflowId] = params
+                    workflowId in declaredBy -> refuse("are declared a second time, beside '${declaredBy.getValue(workflowId).gedraId}'.")
+                    w == null || (w.bundle.isStored && w.bundle.inheritedFrom == null) ->
+                        refuse("name no workflow of client '$client' declared in source code, its own or its template's.")
+                    w.def.entry != WfEntry.normal -> refuse("name a ${w.def.entry} workflow; only a normal workflow has parameters.")
+                    else -> out[workflowId] = params
+                }
+                declaredBy.putIfAbsent(workflowId, bundle)
+            }
+        }
+        return out
+    }
 
     // The checks that depend on nothing but the definition and the scope's own vocabulary. `off` admits
     // everything as declared -- the reading `GedraConfigCollector` gives the mode -- rather than checking and
@@ -355,7 +391,7 @@ fun buildWorkflowRegistries(
                 }
             }
         }
-        return WorkflowRegistry(scope, out)
+        return WorkflowRegistry(scope, out, if (scope != null) paramDefaultsOf(scope, out) else emptyMap())
     }
 
     val globalUsable = configs.traitsFor(GID.globalClient).map { it.traitId }.toSet()
@@ -366,7 +402,8 @@ fun buildWorkflowRegistries(
     for ((client, def) in clients) {
         if (onlyClient != null && client != onlyClient) continue
         val own = declaredIn(client)
-        if (own.isEmpty()) continue
+        // A client declaring no workflow still has its defaults judged: each names a workflow it does not have.
+        if (own.isEmpty() && configs.configs.none { it.gedraId.client == client && it.workflowParams.isNotEmpty() }) continue
         // A client sees global's traits through `supportedTraits`, which also admits what it customized.
         val usable = supportedTraits(configs, client, def, overlaidTypes(client), droppedTypes(client))
             .map { it.traitId }.toSet()

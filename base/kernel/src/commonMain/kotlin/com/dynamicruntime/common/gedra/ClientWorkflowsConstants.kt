@@ -30,6 +30,13 @@ object CWF {
     /** On a workflow: why its slots cannot be changed here; absent when they can. */
     const val notEditable = "notEditable"
 
+    /**
+     * On a workflow whose labels pull copy from a fragment file (`%{@t(...)}`): each label as the page's client sees it
+     * -- the workflow's own under `label`, each task's under `tasks` by task id -- while [definition] keeps them as
+     * written, for an editor. Absent when no label pulls any.
+     */
+    const val labels = "labels"
+
     /** On a workflow, and a save's result: the stored configuration holding it. */
     const val configName = "configName"
 
@@ -42,9 +49,9 @@ object CWF {
     const val removeResultTypeName = "ClientWorkflowRemoveResult"
 
     /**
-     * On a normal workflow, and a parameter save's result (issue #1356): its parameters as the page's client or
-     * sandbox runs them -- the setting in force (`WFP.current`), the earlier ones (`WFP.history`), and whether a
-     * sandbox reads its parent's (`WFP.fromParent`). A workflow of another kind has none.
+     * On a normal workflow, and a parameter save's result (issues #1356, #1386): its parameters as the page's client or
+     * sandbox runs them -- each layer (`WFP.current`, `WFP.parent`, `WFP.source`), the earlier settings
+     * (`WFP.history`), and what the layers make (`WFP.inForce`, `WFP.from`). A workflow of another kind has none.
      */
     const val params = "params"
 

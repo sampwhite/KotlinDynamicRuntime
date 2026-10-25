@@ -962,18 +962,25 @@ draw it from their input schema. They count toward a plan's workflows, which is 
 
 **Time windows** (issues #1121, #1356, `WorkflowWindowsEditor.kt`, its pure half in `WorkflowWindows.kt`, covered by
 `WorkflowWindowsTest`): a normal workflow's row in Workflows says where it stands now (`windowPhaseText`) and offers
-**Time windows…** on every normal workflow, whoever declared it. **Windows are the workflow's parameters, not part of
+**Time windows…** on every normal workflow, whoever declared it, which opens the editor in a row of its own beneath
+that workflow's (the table's height cap lifted while it is open, `.op-table-scroll.detail-open`). **Windows are the workflow's parameters, not part of
 its definition** (issue #1356): kept per client or sandbox in a table of their own (`WorkflowParamsService`), in force
-at once with no draft and no publish, and a sandbox with none of its own runs its client's (`WFP.fromParent`). The
-catalog carries each normal workflow's parameters for the page's own scope (`CWF.params`: `WFP.current` and
-`WFP.history`, `parseWorkflowParams`). The editor sets **Available** (lifetime), **Tracked** (relevancy) and **New forms
+at once with no draft and no publish. **Each parameter resolves on its own** (issue #1386): the scope's own value, else a
+sandbox's client's, else the defaults the client's source code declares (`GedraConfigBuilder.workflowParams`), else no
+limit -- the kernel's `WfParamsLayers`, which the page runs as the backend does. The catalog carries each layer for the
+page's own scope (`CWF.params`: `WFP.current`, `WFP.parent`, `WFP.source`, and `WFP.history`; `parseWorkflowParams` →
+`WorkflowParamsView`). The editor sets **Available** (lifetime), **Tracked** (relevancy) and **New forms
 may join** (engagement), each a start and an end entered as a **date and a time** in the client's zone -- the
 catalog's `timeZone`, not the caller's, since the page may show another client -- through the zoned picker
 (`zonedPickerValue` / `zonedPickerIso`). An empty bound shows what it falls back to (`boundFallbackText`: "Same as
 Available (Oct 20, 2026, 9:30 AM CT)"). Beneath them a timeline of the three bands with now marked
-(`timelineLayout`, plain `div`s on a track coloured `--chart-1..3`), where the workflow stands now, and an **As of**
-picker that says where it would stand then -- the kernel's `phaseAt` in the browser, no clock moved. Who set the windows
-in force is said under the title (`settingByline`). Save posts `/clientAdmin/client/workflows/params`
+(`timelineLayout`, plain `div`s on a track coloured `--chart-1..3`, declared at `:root`), where the workflow stands
+now, and a **Try a date** picker that says where it would stand then ("On Dec 10: …") -- the kernel's `phaseAt` in the
+browser, no clock moved, nothing saved. Where the windows
+in force come from is said under the title (`windowsSourceText`): set here (`settingByline`), its client's on a
+sandbox, or the source code's defaults. While the scope sets its own and a fallback would set some, **Use its client's
+windows** / **Use the source code's windows** (`windowsFallbackLabel`) saves an unset (`WFP.unset`), judged and recorded
+like any change. Save posts `/clientAdmin/client/workflows/params`
 (`windowsSaveRequest`; no `mode`, since a save is never a draft -- `windowsEffectText` says so). A change that would,
 now, freeze or hide forms engaged with the workflow is refused with the impact report (`ImpactKind.workflowFrozen` /
 `workflowHidden`, worded by `impactFindingText`), whose **Save anyway** acknowledges it. Beneath Save, **Earlier

@@ -18,6 +18,8 @@ import com.dynamicruntime.common.gedra.workflow.WFD
 import com.dynamicruntime.common.gedra.workflow.WfDef
 import com.dynamicruntime.common.gedra.workflow.WfDefBuilder
 import com.dynamicruntime.common.gedra.workflow.WfEntry
+import com.dynamicruntime.common.gedra.workflow.WfParams
+import com.dynamicruntime.common.gedra.workflow.WfParamsBuilder
 import com.dynamicruntime.common.gedra.workflow.UnreadWorkflow
 import com.dynamicruntime.common.gedra.workflow.WfTemplateLookup
 import com.dynamicruntime.common.gedra.workflow.expandWorkflowTemplate
@@ -300,6 +302,13 @@ class GedraConfig(
      * empty for a source config.
      */
     val unreadWorkflows: Map<String, UnreadWorkflow> = emptyMap(),
+    /**
+     * The default parameters this config declares for its client's workflows, by workflow id (issue #1386): what a
+     * workflow runs with -- its time windows, for now -- until the client, or a sandbox of it, sets its own on the
+     * client's page. **Source code only**: a scope's values in the database are its own, in force at once and never
+     * published, so a stored configuration holds no defaults (see `GedraConfigBuilder.workflowParams`).
+     */
+    val workflowParams: Map<String, WfParams> = emptyMap(),
     /**
      * The file refs this config declares (issue #1153): its client's named files, each a pointer to bytes kept
      * elsewhere. A list, not a map by id: a row edited by hand to hold one id twice still reassembles, the load says
@@ -600,6 +609,34 @@ class GedraConfigBuilder(
 
     /** The workflows made from templates this stored config holds that do not read; see [keepUnreadWorkflow]. */
     val unreadWorkflows: MutableMap<String, UnreadWorkflow> = LinkedHashMap()
+
+    /** The default parameters declared in this block, by workflow id; see [workflowParams]. */
+    @Suppress("MemberVisibilityCanBePrivate")
+    val workflowParams: MutableMap<String, WfParams> = LinkedHashMap()
+
+    /**
+     * Declares the default parameters of this client's workflow [workflowId] (issue #1386) -- its time windows, for
+     * now -- which the client runs until it, or a sandbox of it, sets its own on the client's page. A workflow's own
+     * values are set per scope, in force at once and kept in the database; these sit below them, so a client declared
+     * in source code says when its workflows run without anyone editing the database.
+     *
+     * **Source code only**, as `staticConfig` is: a stored configuration cannot hold defaults, since what the
+     * database holds is a scope's own values, never published. Nor can a global configuration -- a template has no
+     * windows -- or a sandbox's overlay, since a sandbox follows its client's. Each refusal is a mistake in the code
+     * declaring it, and is said here; whether the workflow is one of the client's normal workflows is checked where
+     * the client's workflows are, at boot.
+     */
+    fun workflowParams(workflowId: String, build: WfParamsBuilder.() -> Unit) {
+        val where = "Default parameters for workflow '$workflowId'"
+        if (isStored) throw KdrException.mkConv("$where are declared only in source code; a stored configuration cannot hold them.")
+        val client = configClient
+            ?: throw KdrException.mkConv("$where cannot be declared in a global configuration: a template has no windows.")
+        sandboxParentOf(client)?.let {
+            throw KdrException.mkConv("$where cannot be declared for the sandbox '$client': a sandbox follows its client's, '$it'.")
+        }
+        if (workflowId in workflowParams) throw KdrException.mkConv("$where are declared twice in one config.")
+        workflowParams[workflowId] = WfParamsBuilder(workflowId).apply(build).build()
+    }
 
     /**
      * Declares a workflow in source (issue #533). The builder writes the definition's **JSON**, which then
@@ -935,6 +972,7 @@ fun gedraConfig(
         reports = builder.reports.toMap(),
         unreadReports = builder.unreadReports.toMap(),
         unreadWorkflows = builder.unreadWorkflows.toMap(),
+        workflowParams = builder.workflowParams.toMap(),
         fileRefs = builder.fileRefs.toList(),
         origin = origin,
         contributesTo = contributesTo,

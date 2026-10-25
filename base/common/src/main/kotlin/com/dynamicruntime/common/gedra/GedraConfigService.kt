@@ -438,6 +438,14 @@ class GedraConfigService : ServiceInitializer {
         vouched: List<Map<String, Any?>> = emptyList(),
     ): GedraConfigRow {
         localFileRefProblem(wcxt, config, latest, vouched)?.let { throw KdrException(it, code = EXC.notAuthorized) }
+        // Default workflow parameters are source code's alone (issue #1386): what the database holds of a workflow's
+        // parameters is a scope's own values, in force at once and never published, so there is no slot for defaults.
+        if (config.workflowParams.isNotEmpty()) {
+            throw KdrException.mkInput(
+                "Config '${config.gedraId}' declares default parameters for workflow(s) ${config.workflowParams.keys}, " +
+                    "which only source code declares. Set a workflow's parameters on the client's page instead.",
+            )
+        }
         // Refuses a config carrying config traits (they are hardwired, never stored); one raw entry map per slot.
         val newBySlot = gedraConfigToEntries(config)
         val priorByKey = latest?.let { keyStoredEntries(it.entries) } ?: emptyMap()

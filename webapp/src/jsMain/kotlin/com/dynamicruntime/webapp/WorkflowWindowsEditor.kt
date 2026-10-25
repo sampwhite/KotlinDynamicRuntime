@@ -45,13 +45,16 @@ external interface WorkflowWindowsEditorProps : Props {
  * forms may join** (engagement), each a start and an end entered as a date and a time in the client's zone. A missing
  * bound says what it falls back to ([boundFallbackText]). Beneath them, a timeline of the three bands
  * ([timelineLayout]), where the workflow stands now ([windowPhaseText]), and where it would stand at a moment picked
- * "as of" -- the kernel's `phaseAt`, in the browser, with no clock moved.
+ * by **Try a date** -- the kernel's `phaseAt`, in the browser, with no clock moved and nothing saved.
  *
  * **Windows are parameters** (issue #1356): a save takes effect at once in the page's client or sandbox, with no draft
  * and no publish ([windowsEffectText]), on any normal workflow, whoever declared it. One that would, now, freeze or hide
- * forms engaged with the workflow is refused with the impact report, whose **Save anyway** acknowledges it. Who set the
- * windows in force is said under the title ([settingByline]); the earlier settings expand in place beneath Save, each
- * with **Use these values**, which fills the editor -- the person still saves it, as any change.
+ * forms engaged with the workflow is refused with the impact report, whose **Save anyway** acknowledges it. Where the
+ * windows in force come from is said under the title ([windowsSourceText]): set here by someone, its client's on a
+ * sandbox, or the source code's defaults (issue #1386). While the page's scope sets its own, a way back to the fallback
+ * is offered beside Save ([windowsFallbackLabel]) -- a save that unsets them, judged and recorded like any other. The
+ * earlier settings expand in place beneath Save, each with **Use these values**, which fills the editor -- the person
+ * still saves it, as any change.
  */
 val WorkflowWindowsEditor = FC<WorkflowWindowsEditorProps> { props ->
     val baseline = props.params.windows
@@ -61,22 +64,29 @@ val WorkflowWindowsEditor = FC<WorkflowWindowsEditorProps> { props ->
     var busy by useState(false)
     var saveError by useState<DisplayError?>(null)
     var impact by useState<ImpactReportView?>(null)
-    // What a save refused over its impact was sending, so Save anyway resends that and not the draft.
+    // What a save refused over its impact was sending, so Save anyway resends that and not the draft: windows of its
+    // own, or (with `pendingUnset`) a return to the fallback.
     var pending by useState<WfWindows?>(null)
+    var pendingUnset by useState(false)
     val zone = entryZone(props.zone)
     val now = Clock.System.now()
     val problem = draft.problem(props.workflow.workflowId)
     val changed = draft != baseline
 
-    fun save(windows: WfWindows, acknowledge: Boolean) {
+    // Null [windows] unsets them, so they follow the fallback again.
+    fun save(windows: WfWindows?, acknowledge: Boolean) {
         pending = windows
+        pendingUnset = windows == null
         busy = true
         saveError = null
         windowsScope.launch {
             try {
                 ClientsApi.saveWorkflowWindows(windowsSaveRequest(props.clientId, props.workflow.workflowId, windows, acknowledge))
                 impact = null
-                props.onSaved("Saved the time windows of ${props.workflow.workflowId}; they are in force now.")
+                props.onSaved(
+                    if (windows == null) "The time windows of ${props.workflow.workflowId} follow the fallback again; they are in force now."
+                    else "Saved the time windows of ${props.workflow.workflowId}; they are in force now.",
+                )
             } catch (e: Throwable) {
                 val report = impactOf(e)
                 if (report != null) impact = report else saveError = saveFailure(e, props.onChanged)
@@ -97,10 +107,10 @@ val WorkflowWindowsEditor = FC<WorkflowWindowsEditorProps> { props ->
             +("When the workflow is open, each a start and an end in ${entryZoneNote(zone)}. A window with no start has " +
                 "been open all along, one with no end stays open; a narrower window left empty follows the one around it.")
         }
-        settingByline(props.params.current, zone)?.let {
+        windowsSourceText(props.params, props.clientId, zone)?.let {
             p {
                 className = ClassName("type-hint")
-                +(if (props.params.fromParent) "Its client's windows, which this sandbox runs until it has its own. $it." else "$it.")
+                +it
             }
         }
         WindowBand.entries.forEach { band ->
@@ -136,18 +146,18 @@ val WorkflowWindowsEditor = FC<WorkflowWindowsEditorProps> { props ->
                     +windowPhaseText(draft, now, zone)
                 }
             }
-            choiceRow("As of") {
+            choiceRow("Try a date") {
                 DatePicker {
                     value = zonedPickerValue(asOf?.formatDate(), zone)
                     showTime = true
                     showNow = false
-                    asDynamic()["placeholder"] = "Pick a moment to preview"
+                    asDynamic()["placeholder"] = "Pick a date and time"
                     onChange = { date, _ -> asOf = zonedPickerIso(date, zone)?.parseDateOrNull() }
                 }
             }
             asOf?.let { at ->
                 p {
-                    +"As of ${formatTimestamp(at.formatDate(), zone)}: "
+                    +"On ${formatTimestamp(at.formatDate(), zone)}: "
                     span {
                         className = ClassName("wf-phase")
                         +windowPhaseText(draft, at, zone, now)
@@ -166,6 +176,13 @@ val WorkflowWindowsEditor = FC<WorkflowWindowsEditorProps> { props ->
                 disabled = !changed || problem != null
                 onClick = { save(draft, acknowledge = false) }
                 +"Save"
+            }
+            windowsFallbackLabel(props.params)?.let { label ->
+                Button {
+                    disabled = busy
+                    onClick = { save(null, acknowledge = false) }
+                    +label
+                }
             }
             Button {
                 type = "link"
@@ -189,18 +206,21 @@ val WorkflowWindowsEditor = FC<WorkflowWindowsEditorProps> { props ->
                     history.forEachIndexed { i, setting ->
                         li {
                             key = i.toString().unsafeCast<Key>()
-                            div { +windowsSummaryText(setting.params.windows, zone) }
+                            val earlier = setting.params.windows
+                            div { +(earlier?.let { windowsSummaryText(it, zone) } ?: "Not set here: followed the fallback") }
                             div {
                                 className = ClassName("type-hint")
                                 +(settingByline(setting, zone) ?: "As first set")
-                                +" "
-                                Button {
-                                    type = "link"
-                                    size = "small"
-                                    disabled = busy
-                                    // A pre-fill, never a save: the person reviews it and saves it as any change.
-                                    onClick = { draft = setting.params.windows; asOf = null }
-                                    +"Use these values"
+                                if (earlier != null) {
+                                    +" "
+                                    Button {
+                                        type = "link"
+                                        size = "small"
+                                        disabled = busy
+                                        // A pre-fill, never a save: the person reviews it and saves it as any change.
+                                        onClick = { draft = earlier; asOf = null }
+                                        +"Use these values"
+                                    }
                                 }
                             }
                         }
@@ -222,7 +242,7 @@ val WorkflowWindowsEditor = FC<WorkflowWindowsEditorProps> { props ->
                 type = "primary"
                 danger = true
                 this.loading = busy
-                onClick = { save(pending ?: draft, acknowledge = true) }
+                onClick = { save(if (pendingUnset) null else pending ?: draft, acknowledge = true) }
                 +"Save anyway"
             }
         }
@@ -254,7 +274,7 @@ private fun ChildrenBuilder.boundPicker(
     }
 }
 
-/** The three bands on one track, with now and the "as of" moment marked ([timelineLayout]). */
+/** The three bands on one track, with now and the date being tried marked ([timelineLayout]). */
 private fun ChildrenBuilder.timeline(windows: WfWindows, now: Instant, asOf: Instant?) {
     val layout = timelineLayout(windows, now, asOf)
     div {
@@ -278,7 +298,7 @@ private fun ChildrenBuilder.timeline(windows: WfWindows, now: Instant, asOf: Ins
                         style = place
                     }
                     marker("wf-timeline-now", layout.nowAt, "Now")
-                    layout.asOfAt?.let { marker("wf-timeline-asof", it, "As of") }
+                    layout.asOfAt?.let { marker("wf-timeline-asof", it, "The date being tried") }
                 }
             }
         }

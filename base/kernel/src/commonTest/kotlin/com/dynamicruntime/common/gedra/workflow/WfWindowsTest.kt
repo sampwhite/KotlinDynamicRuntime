@@ -95,7 +95,7 @@ class WfWindowsTest {
         val params = WfParams(WfWindows(lifetime = WfWindow(jan, dec), engagement = WfWindow(end = jun)))
         val again = WfParams.fromInfo(params.toInfo())
         assertEquals(params, again)
-        assertEquals(WfPhase.relevant, again.windows.phaseAt(sep))
+        assertEquals(WfPhase.relevant, again.windowsInForce.phaseAt(sep))
         // Only what was declared is stored: the fallbacks are recomputed, not written down.
         assertFalse(params.toInfo().getValue(WFP.windows).toJsonMapOrEmpty().containsKey(WFD.relevancy))
         assertTrue(WfParams.none.toInfo().isEmpty())
@@ -103,5 +103,49 @@ class WfWindowsTest {
         val setting = WfParamsSetting(params, jan, 12L, "Pat Lee")
         val read = WfParamsSetting.listFrom(listOf(setting.toInfo())).single()
         assertEquals(listOf<Any?>(params, jan, 12L, "Pat Lee"), listOf(read.params, read.setAt, read.setBy, read.setByName))
+    }
+
+    @Test
+    fun eachParameterFollowsTheFirstLayerThatSetsIt() {
+        // Issue #1386: windows not set follow the fallback; windows set empty are deliberately no limits.
+        val noLimits = WfParams(WfWindows.none)
+        assertEquals(mapOf<String, Any?>(WFP.windows to emptyMap<String, Any?>()), noLimits.toInfo())
+        assertEquals(noLimits, WfParams.fromInfo(noLimits.toInfo()))
+        assertTrue(WfParams.fromInfo(emptyMap<String, Any?>()).isEmpty)
+
+        val source = WfParams(WfWindows(lifetime = WfWindow(jan, dec)))
+        val parent = WfParams(WfWindows(lifetime = WfWindow(jan, jun)))
+        // Nothing of its own: the client's, then the source code's.
+        val fromSource = WfParamsLayers(WfParams.none, source = source)
+        assertEquals(source, fromSource.inForce)
+        assertEquals(mapOf(WFP.windows to WfParamsFrom.source), fromSource.from)
+        val fromParent = WfParamsLayers(WfParams.none, parent, source)
+        assertEquals(parent, fromParent.inForce)
+        assertEquals(mapOf(WFP.windows to WfParamsFrom.parent), fromParent.from)
+        // Its own, even no limits, wins; the fallback says where it would go back to.
+        val own = fromParent.withOwn(noLimits)
+        assertEquals(noLimits, own.inForce)
+        assertTrue(own.from.isEmpty())
+        assertEquals(WfParamsFrom.parent, own.fallbackFrom(WFP.windows))
+        assertNull(WfParamsLayers(noLimits).fallbackFrom(WFP.windows))
+
+        // An edit replaces what it sets and leaves the rest; an unset returns a parameter to the fallback.
+        assertEquals(parent, noLimits.edited(parent))
+        assertEquals(noLimits, noLimits.edited(WfParams.none))
+        assertTrue(noLimits.edited(WfParams.none, setOf(WFP.windows)).isEmpty)
+    }
+
+    @Test
+    fun sourceDefaultsAreBuiltFromMomentsAndMustNest() {
+        val built = WfParamsBuilder("review").apply {
+            lifetime(start = "2026-01-01T00:00:00Z", end = "2026-12-01T00:00:00Z")
+            engagement(end = "2026-06-01T00:00:00Z")
+        }.build()
+        assertEquals(WfWindows(lifetime = WfWindow(jan, dec), engagement = WfWindow(end = jun)), built.windows)
+        assertFailsWith<KdrException> { WfParamsBuilder("review").build() }.message.orEmpty().let { assertTrue(it.contains("declare nothing"), it) }
+        assertFailsWith<KdrException> { WfParamsBuilder("review").apply { lifetime(end = "soon") } }
+        assertFailsWith<KdrException> {
+            WfParamsBuilder("review").apply { lifetime(end = "2026-06-01T00:00:00Z"); engagement(end = "2026-12-01T00:00:00Z") }.build()
+        }
     }
 }

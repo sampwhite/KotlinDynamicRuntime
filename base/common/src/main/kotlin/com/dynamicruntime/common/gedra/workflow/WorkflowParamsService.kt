@@ -59,7 +59,7 @@ fun workflowParamsTables(cxt: KdrCxt): List<KdrTable> =
         }
     }
 
-/** One stored row, read once: the setting in force and the earlier ones, newest first. Immutable, so it is shared. */
+/** One stored row, read once: the scope's own setting and the earlier ones, newest first. Immutable, so it is shared. */
 class WorkflowParamsRow(val current: WfParamsSetting, val history: List<WfParamsSetting>) {
     companion object {
         fun of(row: Map<String, Any?>): WorkflowParamsRow = WorkflowParamsRow(
@@ -70,15 +70,24 @@ class WorkflowParamsRow(val current: WfParamsSetting, val history: List<WfParams
 }
 
 /**
- * A workflow's parameters as one scope runs them (issue #1356): the values in force and how they were set, the earlier
- * settings, and whether a sandbox reads its parent's ([fromParent]) for want of its own.
+ * A workflow's parameters as one scope runs them (issues #1356, #1386): the settings of each layer that may set them,
+ * the scope's earlier ones, and what the layers make together ([layers]) -- each parameter the scope's own, else, on a
+ * sandbox, its client's, else the default the client's source code declares, else no limit.
  */
 class ResolvedWorkflowParams(
-    val current: WfParamsSetting,
+    /** The scope's own setting, or null while it has none. */
+    val own: WfParamsSetting?,
+    /** The scope's earlier settings, newest first. */
     val history: List<WfParamsSetting>,
-    val fromParent: Boolean,
+    /** On a sandbox: its client's own setting, or null while the client has none (and always for a client). */
+    val parent: WfParamsSetting?,
+    /** The defaults the client's source code declares for the workflow; none set when it declares none. */
+    val source: WfParams,
 ) {
-    val params: WfParams get() = current.params
+    val layers: WfParamsLayers = WfParamsLayers(own?.params ?: WfParams.none, parent?.params ?: WfParams.none, source)
+
+    /** The windows the workflow runs with: what every phase check asks. */
+    val windows: WfWindows get() = layers.inForce.windowsInForce
 }
 
 /**
@@ -86,8 +95,10 @@ class ResolvedWorkflowParams(
  * held per scope in a table of their own (`WorkflowParams`, one row per client and workflow id) and in force the moment
  * they are saved: no draft, no publish, and a publish never carries them.
  *
- * **Per scope.** A sandbox has its own row; with none, it reads its parent's, so its preview matches production until
- * somebody changes it there. Nothing copies values between a sandbox and its parent.
+ * **Per scope, per parameter.** A row holds the parameters its scope sets, and each one it does not set follows the
+ * fallback ([ResolvedWorkflowParams]): a sandbox its client's, so its preview matches production until somebody
+ * changes it there, and a client the defaults its source code declares (issue #1386, `GedraConfigBuilder.workflowParams`).
+ * Nothing copies values between scopes, and a save that unsets a parameter returns it to the fallback.
  *
  * **Read from memory.** The table is cached ([WorkflowParamsCache]), each row parsed once as it loads, so the phase
  * check every workflow view, listing, and report makes is a lookup by key, and its change stream keeps every node
@@ -146,35 +157,37 @@ class WorkflowParamsService : ServiceInitializer {
         )
 
     /**
-     * [workflowId]'s parameters as [client] runs them: its own, else -- for a sandbox -- its parent's, else none, which
-     * is no limit. [client] null (the global registry, which no form runs) has none.
+     * [workflowId]'s parameters as [client] runs them, each layer that may set them with what they make together
+     * ([ResolvedWorkflowParams]). The source defaults are those of [client]'s own workflow registry, which a sandbox's
+     * copies from its client's source configuration. [client] null (the global registry, which no form runs) has none.
      */
     fun resolve(cxt: KdrCxt, client: String?, workflowId: String): ResolvedWorkflowParams {
         if (client == null) return none
-        rowOf(cxt, client, workflowId)?.let { return ResolvedWorkflowParams(it.current, it.history, fromParent = false) }
-        sandboxParentOf(client)?.let { parent ->
-            rowOf(cxt, parent, workflowId)?.let { return ResolvedWorkflowParams(it.current, it.history, fromParent = true) }
-        }
-        return none
+        val own = rowOf(cxt, client, workflowId)
+        val parent = sandboxParentOf(client)?.let { rowOf(cxt, it, workflowId) }
+        val source = WorkflowService.get(cxt).forClient(client).paramDefaults[workflowId] ?: WfParams.none
+        return ResolvedWorkflowParams(own?.current, own?.history.orEmpty(), parent?.current, source)
     }
 
     /** The windows [workflowId] runs with in [client] ([resolve]): what every phase check asks. */
-    fun windowsFor(cxt: KdrCxt, client: String?, workflowId: String): WfWindows = resolve(cxt, client, workflowId).params.windows
+    fun windowsFor(cxt: KdrCxt, client: String?, workflowId: String): WfWindows = resolve(cxt, client, workflowId).windows
 
     /**
-     * Sets [client]'s own parameters for [workflowId] to [params], keeping what they replace in the history; returns
-     * false, writing nothing, when [client]'s own row already holds them. A sandbox saving values for the first time
-     * gets a row of its own, whatever its parent's say. The row is read and written under the client's configuration
-     * lock, on its transaction's connection.
+     * Changes [client]'s own parameters for [workflowId]: those [edit] sets replace its own, and those named in [unset]
+     * are no longer its own, so they follow the fallback again ([WfParams.edited]). What they replace is kept in the
+     * history. Returns false, writing nothing, when that leaves its own values as they were. A sandbox saving values for
+     * the first time gets a row of its own, whatever its client's say. The row is read and written under the client's
+     * configuration lock, on its transaction's connection.
      */
-    fun save(cxt: KdrCxt, client: String, workflowId: String, params: WfParams): Boolean =
+    fun save(cxt: KdrCxt, client: String, workflowId: String, edit: WfParams, unset: Set<String> = emptySet()): Boolean =
         GedraConfigService.get(cxt).withClientLock(cxt, client, WPT.tranSave) { sqlCxt ->
             // The transaction's own context: its session holds the connection, and it acts as the caller does.
             val tcxt = sqlCxt.cxt
             val table = table(tcxt)
             val existing = select(tcxt, sqlCxt, client, workflowId)
             val before = existing?.let { WfParams.fromInfo(it[WPT.params]) }
-            if (before == params) return@withClientLock false
+            val params = (before ?: WfParams.none).edited(edit, unset)
+            if (before == params || (before == null && params.isEmpty)) return@withClientLock false
             val history = existing?.let { e ->
                 val replaced = WfParamsSetting(before ?: WfParams.none, e[PF.updatedAt].toOptInstant(), e[PF.updatedBy].toOptLong())
                 (listOf(replaced) + WfParamsSetting.listFrom(e[WPT.history].toJsonMapOrEmpty()[WPT.settings])).take(WFP.historyKept)
@@ -197,7 +210,7 @@ class WorkflowParamsService : ServiceInitializer {
     companion object {
         const val serviceName = "WorkflowParamsService"
 
-        private val none = ResolvedWorkflowParams(WfParamsSetting(WfParams.none, null, null), emptyList(), fromParent = false)
+        private val none = ResolvedWorkflowParams(null, emptyList(), null, WfParams.none)
 
         fun get(cxt: KdrCxt): WorkflowParamsService =
             getOrNull(cxt) ?: throw KdrException("The $serviceName is not available on this node.")

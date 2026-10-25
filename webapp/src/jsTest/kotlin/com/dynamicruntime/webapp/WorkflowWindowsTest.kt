@@ -9,6 +9,7 @@ import com.dynamicruntime.common.gedra.workflow.WfWindows
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.gedra.workflow.WFP
 import com.dynamicruntime.common.gedra.workflow.WfParams
+import com.dynamicruntime.common.gedra.workflow.WfParamsFrom
 import com.dynamicruntime.common.gedra.workflow.WfParamsSetting
 import com.dynamicruntime.common.gedra.sandboxOf
 import kotlin.test.assertFalse
@@ -82,14 +83,18 @@ class WorkflowWindowsTest {
 
     @Test
     fun theSaveSendsTheParametersAsMomentsAndReadsWhatItDid() {
-        // Windows are a workflow's parameters (issue #1356), sent under `params`; none set, none sent.
+        // Windows are a workflow's parameters (issue #1356), sent under `params`; set empty is no limits (issue #1386).
         val windows = WfWindows(lifetime = WfWindow(end = now + 1.days))
         val request = windowsSaveRequest("acme", "review", windows, acknowledge = true)
         assertEquals("review", request[WFD.workflowId])
         val sent = mapOf(WFP.windows to mapOf(WFD.lifetime to mapOf(WFD.end to "2026-10-24T12:00:00.000Z")))
         assertEquals(sent, request[WFP.params])
         assertEquals(true, request[IMP.acknowledgeImpact])
-        assertEquals(emptyMap<String, Any?>(), windowsSaveRequest("acme", "review", WfWindows.none, acknowledge = false)[WFP.params])
+        assertEquals(mapOf(WFP.windows to emptyMap<String, Any?>()), windowsSaveRequest("acme", "review", WfWindows.none, acknowledge = false)[WFP.params])
+        // A way back to the fallback unsets the windows and sends nothing else.
+        val back = windowsSaveRequest("acme", "review", null, acknowledge = false)
+        assertEquals(listOf(WFP.windows), back[WFP.unset])
+        assertFalse(back.containsKey(WFP.params))
         // The answer is the parameters now, the setting they replaced first among the earlier ones.
         val result = parseWindowsSaveResult(
             mapOf(
@@ -100,9 +105,37 @@ class WorkflowWindowsTest {
             ),
         )
         assertEquals(windows, result.windows)
-        assertEquals("Pat Lee", result.current.setByName)
-        assertEquals(WfWindows.none, result.history.single().params.windows)
-        assertFalse(result.fromParent)
+        assertEquals("Pat Lee", result.own?.setByName)
+        // An earlier setting that set no windows followed the fallback.
+        assertNull(result.history.single().params.windows)
+        assertNull(result.windowsFrom)
+    }
+
+    @Test
+    fun theEditorSaysWhereTheWindowsComeFromAndOffersTheWayBack() {
+        val sourceWindows = WfWindows(lifetime = WfWindow(end = now + 30.days))
+        val source = mapOf(WFP.windows to mapOf(WFD.lifetime to mapOf(WFD.end to (now + 30.days).toString())))
+        // Nothing set here: the source code's defaults, and nothing to go back to.
+        val fromSource = parseWorkflowParams(mapOf(WFP.source to source, WFP.history to emptyList<Any?>()))
+        assertEquals(sourceWindows, fromSource.windows)
+        assertEquals(WfParamsFrom.source, fromSource.windowsFrom)
+        assertTrue(windowsSourceText(fromSource, "acme", zone).orEmpty().startsWith("The source code's default windows"))
+        assertTrue(windowsSourceText(fromSource, sandboxOf("acme"), zone).orEmpty().contains("until it or its client sets its own"))
+        assertNull(windowsFallbackLabel(fromSource))
+        // A sandbox following its client: the client's setting is named.
+        val clientSet = mapOf(WFP.params to mapOf(WFP.windows to emptyMap<String, Any?>()), WFP.setAt to "2026-10-20T12:00:00.000Z", WFP.setByName to "Pat Lee")
+        val fromParent = parseWorkflowParams(mapOf(WFP.parent to clientSet, WFP.source to source, WFP.history to emptyList<Any?>()))
+        assertEquals(WfWindows.none, fromParent.windows)
+        assertEquals(WfParamsFrom.parent, fromParent.windowsFrom)
+        assertTrue(windowsSourceText(fromParent, sandboxOf("acme"), zone).orEmpty().let { it.startsWith("Its client's windows") && it.contains("by Pat Lee") })
+        // Its own: who set them, and a way back named for where it leads.
+        val own = parseWorkflowParams(mapOf(WFP.current to clientSet, WFP.source to source, WFP.history to emptyList<Any?>()))
+        assertNull(own.windowsFrom)
+        assertTrue(windowsSourceText(own, "acme", zone).orEmpty().endsWith("by Pat Lee."))
+        assertEquals("Use the source code's windows", windowsFallbackLabel(own))
+        assertEquals("Use its client's windows", windowsFallbackLabel(parseWorkflowParams(mapOf(WFP.current to clientSet, WFP.parent to clientSet))))
+        // Nothing set anywhere: no limits, and nothing said.
+        assertNull(windowsSourceText(WorkflowParamsView.none, "acme", zone))
     }
 
     @Test
@@ -111,7 +144,7 @@ class WorkflowWindowsTest {
         val byline = assertNotNull(settingByline(setting, zone))
         assertTrue(byline.startsWith("Set ") && byline.endsWith(" by Pat Lee"), byline)
         assertNull(settingByline(WfParamsSetting(WfParams.none, null, null), zone))
-        assertTrue(windowsSummaryText(setting.params.windows, zone).startsWith("Available: from "))
+        assertTrue(windowsSummaryText(setting.params.windowsInForce, zone).startsWith("Available: from "))
         assertEquals("No limits", windowsSummaryText(WfWindows.none, zone))
         // At once, with no draft: in a sandbox, never reaching its client.
         assertTrue(windowsEffectText("acme").contains("at once for this client's people"))
