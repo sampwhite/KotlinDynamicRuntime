@@ -14,8 +14,17 @@ import com.dynamicruntime.common.user.AuthUserRow
  *
  * **Asked where a person meets a workflow**, and nowhere else: the workflow view, a save, an engagement, an approval, a
  * form's states, the forms listing's workflow summary, the chip's popover, and the workflow pages' aggregate
- * ([WorkflowPhases.liveFor], [WorkflowPhases.shownStates]). Jobs, the state deriver, reports, trait locks, and an
- * impact report judge every workflow as it is, whoever is looking.
+ * ([WorkflowPhases.liveFor], [WorkflowPhases.shownStates], [WorkflowPhases.statesWithRetired]), and the trait locks
+ * a form holds for them ([TraitLocks]), which are released as a deleted workflow's are -- for a person: a writer with no
+ * user row is held by every workflow's locks. Jobs, the state deriver, reports, and an impact report judge every
+ * workflow as it is, whoever is looking.
+ *
+ * **Not the final word.** A person engaged with a workflow they no longer see is treated as if the workflow were deleted
+ * or past its lifetime: the form's part in it is hidden from them, and kept, and its locks on the form's data are
+ * released for them. That is one answer to a real tension, not the only one. A client may want engagement to keep a
+ * workflow visible to the forms' owners instead, whatever its visibility says -- which costs knowing, per person,
+ * whether any of their forms is engaged with it -- or want the choice made per workflow. A client asking is what would
+ * settle it, and this class is where the rule would change.
  *
  * One per request ([of]): the person's labels are read once, and whether they administer a client once per client,
  * however many workflows are judged. The visibility itself is read each time, from memory, so a save made in the
@@ -33,6 +42,7 @@ class WorkflowAudience private constructor(private val cxt: KdrCxt) {
         return visibility.admits(administers.getOrPut(client) { AdminRules.oversees(cxt, client) }, labels)
     }
 
+    @Suppress("ConstPropertyName")
     companion object {
         private const val localsKey = "workflowAudience"
 

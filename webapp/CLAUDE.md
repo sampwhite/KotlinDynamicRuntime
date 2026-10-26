@@ -1012,9 +1012,9 @@ parameter -- the windows editor uses it too). Restricting a workflow out of enga
 the impact report (`ImpactKind.workflowUnseen`). **A new workflow is made with who sees it**: the slot editor's "Seen
 by" starts on administrators only and is sent as `CWF.visibility`, written before the workflow exists; on a client with
 a sandbox it is the sandbox's, and the client's own stays administrators only. The backend enforces it wherever a person
-meets a workflow (`WorkflowPhases.liveFor`, `WorkflowAudience`): one a person does not see is, to them, as one past its
-lifetime is to everybody -- and a restricted creation workflow sends them to the trait picker, a survey to the raw
-editor. The `clients` file's `workflows.newWorkflowNote` and the home file's `publicHome.createClientNote` ship empty
+meets a workflow (`WorkflowPhases.liveFor`, `WorkflowAudience`): one a person does not see is, to them, as one deleted
+or past its lifetime is to everybody -- its part in their forms hidden and kept, its locks on their data released
+(`TraitLocks`) -- and a restricted creation workflow sends them to the trait picker, a survey to the raw editor. The `clients` file's `workflows.newWorkflowNote` and the home file's `publicHome.createClientNote` ship empty
 and say how to open a workflow up where the `reference` flavor fills them in.
 
 **Long text** is a layout mark, not a schema keyword: a `g-layout` field entry's `multiline: true` (`SL.multiline`,

@@ -1,6 +1,7 @@
 package com.dynamicruntime.kdn
 
 import com.dynamicruntime.common.context.ENV
+import com.dynamicruntime.common.context.ReadScope
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.gedra.CLD
@@ -17,11 +18,15 @@ import com.dynamicruntime.common.gedra.GT
 import com.dynamicruntime.common.gedra.GedraConfigReload
 import com.dynamicruntime.common.gedra.GedraConfigService
 import com.dynamicruntime.common.gedra.GedraConfigType
+import com.dynamicruntime.common.gedra.GedraDataService
+import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.GedraId
 import com.dynamicruntime.common.gedra.IMP
 import com.dynamicruntime.common.gedra.ImpactKind
 import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.gedra.sandboxOf
+import com.dynamicruntime.common.gedra.workflow.TraitLocks
+import com.dynamicruntime.common.gedra.workflow.WFC
 import com.dynamicruntime.common.gedra.workflow.WFD
 import com.dynamicruntime.common.gedra.workflow.WFP
 import com.dynamicruntime.common.gedra.workflow.WFS
@@ -40,6 +45,7 @@ import com.dynamicruntime.common.gedra.workflow.WfWindows
 import com.dynamicruntime.common.gedra.workflow.WorkflowParamsService
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.naming.clientNamespace
+import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.user.ADF
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.user.UADEP
@@ -59,7 +65,7 @@ import kotlin.time.Duration.Companion.days
  * Who sees a workflow (issue #1384): a parameter beside its time windows, on a workflow of any kind. Restricted, it is
  * seen by the client's administrators and by people holding one of its labels, and by nobody else -- not in the view,
  * a save, an engagement, a form's states, or the workflow pages -- while its progress is kept. A rollout is a sequence
- * of ordinary edits, each in the history. Restricting a workflow engaged forms' owners would lose is refused with the
+ * of ordinary edits, each in the history. Its locks on a form's data are released for whoever does not see it. Restricting a workflow engaged forms' owners would lose is refused with the
  * impact report. A workflow made from a template starts restricted, and on a client with a sandbox the client's own
  * stays administrators only whatever the sandbox chose. A client per case, on the shared default instance.
  */
@@ -203,10 +209,70 @@ class WorkflowVisibilityTest : StringSpec({
         // The owner no longer sees their form's part in it, nor can act on it; the administrator still sees it.
         engagedShown(user, gid) shouldBe false
         engagedShown(chief, gid) shouldBe true
+        // Nor does asking for retired workflows reveal it: it is not retired, only not theirs to see.
+        val withRetired = user.getData(GEP.formDocStates, mapOf(GDF.gedraId to gid, GDF.includeRetired to true))
+        withRetired[GDF.states].toJsonListOfMaps().none { it[GE.data].toJsonMapOrEmpty()[WFD.workflowId] == "review" } shouldBe true
+        withRetired[GDF.retiredWorkflows].toJsonListOfStrings() shouldNotContain "review"
         user.expectError(EXC.notFound, GEP.workflowEngage, mapOf(GDF.gedraId to gid, WFD.workflowId to "review", WFS.engaged to false))
         // Opened up again, it is all there.
         chief.postData(UADEP.clientWorkflowParams, visibilityRequest("review", WfVisibility.everyone))
         engagedShown(user, gid) shouldBe true
+    }
+
+    "a workflow's locks on a form's data are released for whoever does not see it, as a deleted workflow's are" {
+        val client = "wfvislock1384"
+        val setup = cxt.mkSubContext("setup", client).also { it.userId = 9000L }
+        GedraConfigService.get(cxt).writeConfig(
+            setup,
+            gedraConfig(cxt, "main", clientNamespace(client), client) {
+                defineClient(
+                    ClientDef(
+                        clientId = client, name = client, usageType = ClientUsageType.dev, audience = ClientAudience.internal,
+                        enabledEnvironments = setOf(ENV.unit, ENV.local), userLabels = listOf("pilot"),
+                    ),
+                )
+                trait("NoteEntry", "note", setOf(GedraDataType.formDoc), "A note.") {
+                    property("text", "What it says.") { type = SCT.string }
+                }
+                // Written once: the note is locked for anybody once the draft is complete.
+                workflow("notes", WfEntry.normal) {
+                    task("draft", "Draft it") {
+                        trait("note")
+                        save("saveDraft", "Save", WfSaveKind.edit)
+                        saveWhen("~${WFC.taskComplete}")
+                    }
+                    lock("note", writableVia = "draft")
+                }
+            },
+        )
+        GedraConfigReload.reloadClient(cxt, client)
+        val chief = admin(client)
+        val user = TestUser.create(cxt, "u@$client.test", userClient = client)
+        val gid = user.postItem(GEP.formDocCreate, mapOf(GDF.entries to emptyList<Any?>()))[GDF.gedraId].toOptStr()!!
+        user.postData(GEP.workflowEngage, mapOf(GDF.gedraId to gid, WFD.workflowId to "notes"))
+        user.postData(
+            GEP.workflowSave,
+            mapOf(
+                WFD.workflowId to "notes", GDF.taskId to "draft", GDF.saveId to "saveDraft", GDF.gedraId to gid,
+                GDF.entries to listOf(mapOf(GE.traitId to "note", GE.data to mapOf("text" to "first"))),
+            ),
+        )
+        fun lockedFor(who: TestUser): List<Any?> =
+            who.getData(GEP.formDocLocks, mapOf(GDF.gedraId to gid))[WVF.lockedTraits].toJsonListOfMaps().map { it[WFD.traitId] }
+        lockedFor(user) shouldBe listOf("note")
+
+        // Restricted away from the owner: to them the workflow is as good as deleted, so its lock no longer holds.
+        chief.postData(UADEP.clientWorkflowParams, visibilityRequest("notes", restrictedTo("pilot"), acknowledge = true))
+        lockedFor(user) shouldBe emptyList()
+        // Whoever still sees it -- the administrator, who may not write the completed draft either -- is held as before.
+        lockedFor(chief) shouldBe listOf("note")
+        // And a writer that is no person -- a system context, an import or a job -- answers to every workflow's locks.
+        val system = cxt.mkSubContext("system", client)
+        val data = GedraDataService.get(cxt)
+        val scope = ReadScope.ofClient(client)
+        val row = data.readGedras(system, GedraDataType.formDoc, listOf(gid), scope).getValue(gid)
+        val states = data.readState(system, row.gedraId, scope)
+        TraitLocks.heldFor(system, client, row.entries, states).map { it.lock.traitId } shouldBe listOf("note")
     }
 
     "a workflow made from a template is restricted from the start, as its maker chose" {

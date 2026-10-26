@@ -126,13 +126,22 @@ object ConfigImpact {
     fun requireNone(cxt: KdrCxt, client: String, latest: List<GedraConfigRow>, asSave: Boolean = false) {
         val report = reportFor(cxt, client, latest, anyTier = asSave)
         if (!report.blocks) return
+        val (doing, again) = if (asSave) "This change" to "Save" else "Publishing ${report.describeConfigs()}" to "Publish"
+        refuse(client, report, doing, again)
+    }
+
+    /**
+     * Throws the refusal for [report], which blocks: what [doing] would do to [client]'s stored data -- the findings, or
+     * that there were too many rows to examine -- and to do [again] acknowledging it, with the report in the refusal's
+     * `extraData` under [IMP.report] and its `errorCode` [IMP.refusedCode].
+     */
+    private fun refuse(client: String, report: ImpactReport, doing: String, again: String): Nothing {
         val what = if (report.tooLarge) {
             "client '$client' stores more rows than an impact report examines (${scanLimitEnvVar.name}), so what it " +
                 "would do to them is unknown"
         } else {
             report.findings.joinToString("; ") { it.describe() }
         }
-        val (doing, again) = if (asSave) "This change" to "Save" else "Publishing ${report.describeConfigs()}" to "Publish"
         throw KdrException.mkInput(
             "$doing would affect data client '$client' already stores: $what. $again again acknowledging the impact " +
                 "to go ahead.",
@@ -198,20 +207,7 @@ object ConfigImpact {
      */
     fun requireNoneForParams(cxt: KdrCxt, client: String, workflowId: String, before: WfParams, after: WfParams) {
         val report = paramsReport(cxt, client, workflowId, before, after)
-        if (!report.blocks) return
-        val what = if (report.tooLarge) {
-            "client '$client' stores more rows than an impact report examines (${scanLimitEnvVar.name}), so what it " +
-                "would do to them is unknown"
-        } else {
-            report.findings.joinToString("; ") { it.describe() }
-        }
-        throw KdrException.mkInput(
-            "This change would affect data client '$client' already stores: $what. Save again acknowledging the " +
-                "impact to go ahead.",
-        ).also {
-            it.extraData[KdrException.errorCodeKey] = IMP.refusedCode
-            it.extraData[IMP.report] = report.toMap()
-        }
+        if (report.blocks) refuse(client, report, "This change", "Save")
     }
 
     /** One configuration's view of a client: its entry unions and workflows. */

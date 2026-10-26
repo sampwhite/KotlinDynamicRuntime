@@ -1081,7 +1081,8 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
         GEP.formDocStates,
         "Answers one form's state entries as stored, with no recompute. The entries of a workflow that is not live " +
             "-- deleted from the configuration, or past its lifetime -- are left out unless includeRetired asks for " +
-            "them, when retiredWorkflows names those workflows.",
+            "them, when retiredWorkflows names those workflows. Those of a workflow the caller does not see are left " +
+            "out either way.",
         HttpMethod.GET,
         outputRef = GEP.workflowStatesType,
         inputFields = {
