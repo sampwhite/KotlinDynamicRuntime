@@ -55,6 +55,7 @@ class SourceParamsComponent : ComponentDefinition {
         },
     )
 
+    @Suppress("ConstPropertyName")
     companion object {
         const val client = "srcparams1386"
         const val defaultStart = "2026-01-01T00:00:00Z"
