@@ -8,6 +8,7 @@ import com.dynamicruntime.common.gedra.ClientService
 import com.dynamicruntime.common.gedra.GEP
 import com.dynamicruntime.common.gedra.workflow.WVF
 import com.dynamicruntime.common.home.HFRAG
+import com.dynamicruntime.common.home.PFRAG
 import com.dynamicruntime.common.http.request.TestHttpClient
 import com.dynamicruntime.common.user.AFRAG
 import com.dynamicruntime.common.user.TestUser
@@ -57,6 +58,13 @@ class ReferenceFlavorTest : StringSpec({
         copy(plain, AFRAG.profile, "users")["helpExtra"] shouldBe ""
         // The help pulls it, so a reference deployment's help ends with it and anyone else's with nothing.
         copy(plain, AFRAG.profile, "users")["help"].orEmpty() shouldContain $$"${@t(\"users.helpExtra\")}"
+    }
+
+    "core says where a client or a workflow is made that a new workflow is seen by administrators only (issue #1384)" {
+        copy(reference, HFRAG.home, "publicHome")["createClientNote"].orEmpty() shouldContain "only by your client's administrators"
+        copy(reference, PFRAG.clients, PFRAG.workflowsNs)[PFRAG.newWorkflowNote].orEmpty() shouldContain "generally available"
+        copy(plain, HFRAG.home, "publicHome")["createClientNote"] shouldBe ""
+        copy(plain, PFRAG.clients, PFRAG.workflowsNs)[PFRAG.newWorkflowNote] shouldBe ""
     }
 
     "the sample loads, by the flavor's default, and says what its clients demonstrate" {

@@ -50,10 +50,24 @@ object WorkflowPhases {
         registry.workflow(id)?.takeIf { it.def.entry != WfEntry.normal || phaseAt(cxt, registry.client, it.def, at).exists }
 
     /**
+     * [live], and seen by the person [cxt] acts as (issue #1384, [WorkflowAudience]): the lookup of every endpoint a
+     * person meets a workflow through. A workflow they do not see is as good as not configured for them, as one past its
+     * lifetime is for everybody -- they cannot view it, save in it, engage a form with it, or approve in it, nothing
+     * shows a form's part in it, and its locks on a form's data do not hold for them ([TraitLocks]) -- while whoever
+     * sees it carries on, and its progress is kept.
+     */
+    fun liveFor(cxt: KdrCxt, registry: WorkflowRegistry, id: String): WfDeclared? =
+        live(cxt, registry, id)?.takeIf { WorkflowAudience.of(cxt).sees(registry.client, id) }
+
+    /** [declared] -- a client's creation or survey workflow -- when the person [cxt] acts as sees it ([liveFor]), else null. */
+    fun seenOrNull(cxt: KdrCxt, registry: WorkflowRegistry, declared: WfDeclared?): WfDeclared? =
+        declared?.takeIf { WorkflowAudience.of(cxt).sees(registry.client, it.def.workflowId) }
+
+    /**
      * [states] -- a form's state entries -- as a caller is shown them (issue #1354): without the per-workflow entries
-     * (its engagement, its calculated state, its approvals) of any workflow that is not [live] in [registry]. A
-     * workflow past its lifetime is "kept, but nothing shows it" ([WfPhase.outsideLifetime]), and one deleted from the
-     * configuration is the same, so neither appears. Nothing stored changes: the entries are only left out, and
+     * (its engagement, its calculated state, its approvals) of any workflow that is not [liveFor] the caller in
+     * [registry]. A workflow past its lifetime is "kept, but nothing shows it" ([WfPhase.outsideLifetime]), one deleted
+     * from the configuration is the same, and so is one the caller does not see (issue #1384), so none appears. Nothing stored changes: the entries are only left out, and
      * putting the workflow back, or extending its lifetime, shows them again. The admin raw-state read keeps them all.
      *
      * [alsoShow] is a workflow whose entries are shown whatever it is: the one a call just acted on -- withdrawing a
@@ -77,25 +91,44 @@ object WorkflowPhases {
         shownStates(cxt, WorkflowService.get(cxt).forClient(client), states, alsoShow)
 
     /**
-     * The workflows, sorted, whose entries in [states] [shownStates] would leave out (issue #1366): what a caller
-     * reading a form's retired workflows too is told, so they can tell an entry that would come back if its workflow
-     * were restored from one that is live, without knowing the configuration.
+     * [states] as a caller reading a form's retired workflows too is answered them (issue #1366): every entry, but those
+     * of a workflow that is [live] and the caller does not see (issue #1384). A restricted workflow is not retired --
+     * whoever sees it carries on -- so asking for retired workflows reveals neither its entries nor its id.
+     */
+    fun statesWithRetired(cxt: KdrCxt, registry: WorkflowRegistry, states: List<Map<String, Any?>>): List<Map<String, Any?>> {
+        val unseenOf = workflowJudge { id -> live(cxt, registry, id) == null || liveFor(cxt, registry, id) != null }
+        return states.filter { unseenOf(it) == null }
+    }
+
+    /**
+     * The workflows, sorted, whose entries in [states] -- as [statesWithRetired] answers them -- [shownStates] would
+     * leave out (issue #1366): those not [live], deleted or past their lifetime. What a caller reading a form's retired
+     * workflows too is told, so they can tell an entry that would come back if its workflow were restored from one
+     * that is live, without knowing the configuration.
      */
     fun retiredWorkflows(cxt: KdrCxt, client: String, states: List<Map<String, Any?>>): List<String> {
-        val retiredOf = retiredJudge(cxt, WorkflowService.get(cxt).forClient(client))
+        val registry = WorkflowService.get(cxt).forClient(client)
+        val retiredOf = workflowJudge { id -> live(cxt, registry, id) != null }
         return states.mapNotNull(retiredOf).distinct().sorted()
     }
 
     /**
-     * Answers, for one state entry, the workflow it belongs to when that workflow is not [live] in [registry], else
-     * null -- null too for an entry that belongs to no workflow. Each workflow is looked up once per judge.
+     * Answers, for one state entry, the workflow it belongs to when that workflow is not [liveFor] the caller in
+     * [registry], else null -- null too for an entry that belongs to no workflow.
      */
-    private fun retiredJudge(cxt: KdrCxt, registry: WorkflowRegistry): (Map<String, Any?>) -> String? {
-        val liveIds = HashMap<String, Boolean>()
+    private fun retiredJudge(cxt: KdrCxt, registry: WorkflowRegistry): (Map<String, Any?>) -> String? =
+        workflowJudge { id -> liveFor(cxt, registry, id) != null }
+
+    /**
+     * Answers, for one per-workflow state entry, the workflow it belongs to when [keeps] says no of it, else null --
+     * null too for an entry that belongs to no workflow. Each workflow is asked once per judge.
+     */
+    private fun workflowJudge(keeps: (String) -> Boolean): (Map<String, Any?>) -> String? {
+        val kept = HashMap<String, Boolean>()
         return judge@{ entry ->
             if (entry[GE.traitId].toOptStr() !in perWorkflowTraits) return@judge null
             val id = entry[GE.data].toJsonMapOrEmpty()[WFD.workflowId].toOptStr() ?: return@judge null
-            id.takeUnless { liveIds.getOrPut(id) { live(cxt, registry, id) != null } }
+            id.takeUnless { kept.getOrPut(id) { keeps(id) } }
         }
     }
 

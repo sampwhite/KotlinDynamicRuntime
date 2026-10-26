@@ -21,8 +21,11 @@ import com.dynamicruntime.common.util.humanizeFieldName
  * computed on every read and every write, never stored, so nothing has to be written to lift a lock.
  *
  * A lock ([WfLock]) of a normal workflow is **active** on a form while the form is engaged with the workflow, the
- * workflow is within its lifetime, and the lock's condition holds over the form's facts (its merged cfacts) and the
- * workflow's own (its stored cfacts and the singletons it contributes). An active lock **holds for** a caller who may
+ * workflow is within its lifetime and seen by the caller ([WorkflowPhases.liveFor], issue #1384: a workflow they do not
+ * see is to them as one deleted, so its locks are released for them -- while a writer that is no person, a system
+ * context with no user row behind it, is held by every workflow's locks, as it always was), and the lock's condition
+ * holds over the form's facts (its merged cfacts) and the workflow's own (its stored cfacts and the singletons it
+ * contributes). An active lock **holds for** a caller who may
  * not save its `writableVia` task -- issue #856's rule, judged by the same [WorkflowTaskJudge] the task's view and save
  * use -- so the task that owns the trait and the lock on it cannot disagree about who may write it. A caller the lock
  * holds for **may override** it when its `overrideWhen` matches their request facts.
@@ -44,8 +47,10 @@ object TraitLocks {
     ): List<Held> {
         val registry = WorkflowService.get(cxt).forClient(client)
         val engaged = engagedWorkflowIds(states)
+        // Only a person sees some workflows and not others; a system writer (an import, a job) answers to them all.
+        val person = cxt.userProfile.isRowBacked
         val locking = engaged.mapNotNull { id ->
-            WorkflowPhases.live(cxt, registry, id)?.takeIf { d ->
+            (if (person) WorkflowPhases.liveFor(cxt, registry, id) else WorkflowPhases.live(cxt, registry, id))?.takeIf { d ->
                 d.def.entry == WfEntry.normal && d.def.locks.any { traitIds == null || it.traitId in traitIds }
             }
         }

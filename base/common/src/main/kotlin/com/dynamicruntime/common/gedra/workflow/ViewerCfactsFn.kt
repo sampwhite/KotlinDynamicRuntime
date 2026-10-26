@@ -41,17 +41,16 @@ interface ViewerCfactsFn : WfFunction {
  * once per **view** (see [ViewerCfacts]) -- and a sink for the cfacts it concludes.
  */
 class ViewerCfactsParams(labels: () -> Set<String>) {
-    private val collected = LinkedHashSet<String>()
-
     /** The viewer's labels -- the acting user's, as an administrator applied them. Empty for a caller with no user row. */
     val viewerLabels: Set<String> by lazy(labels)
 
     /** The cfacts emitted so far, in emission order. */
-    val emitted: Set<String> get() = collected
+    val emitted: Set<String>
+        field = LinkedHashSet<String>()
 
     /** Records that [cfact] holds about the viewer. Idempotent. */
     fun emit(cfact: String) {
-        collected.add(cfact)
+        emitted.add(cfact)
     }
 }
 
@@ -88,9 +87,10 @@ class ViewerCfacts(private val cxt: KdrCxt, private val client: String?) {
 
 /**
  * The labels of the user [cxt] is acting as, read through the `AuthUsers` cache -- or none, without a lookup, when
- * the caller is not backed by a user row (so nobody is a reviewer by default), or the node has no user management.
+ * the caller is not backed by a user row (so nobody is a reviewer by default, nor sees a restricted workflow by a
+ * label, issue #1384), or the node has no user management.
  */
-private fun viewerLabels(cxt: KdrCxt): Set<String> {
+internal fun viewerLabels(cxt: KdrCxt): Set<String> {
     val profile = cxt.userProfile
     if (!profile.isRowBacked) {
         return emptySet()

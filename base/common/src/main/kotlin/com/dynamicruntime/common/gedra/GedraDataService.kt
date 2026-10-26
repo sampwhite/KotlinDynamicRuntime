@@ -363,8 +363,9 @@ class GedraDataService : ServiceInitializer {
      * workflow that is not live left out ([WorkflowPhases.shownStates]) -- one deleted from its client's configuration,
      * or past its lifetime. The read every caller-facing answer of stored state goes through, so the rule holds by
      * construction rather than by each endpoint remembering it; [includeRetired] reads them as stored (issue #1366,
-     * which names the workflows left out with [WorkflowPhases.retiredWorkflows]). Each gedra is judged against its
-     * own client's workflows, so a listing across clients is shown each row's own.
+     * which names the workflows left out with [WorkflowPhases.retiredWorkflows]) but for the entries of a live workflow
+     * the caller does not see (issue #1384, [WorkflowPhases.statesWithRetired]). Each gedra is judged against its own
+     * client's workflows, so a listing across clients is shown each row's own.
      */
     fun readShownStates(
         cxt: KdrCxt,
@@ -373,11 +374,15 @@ class GedraDataService : ServiceInitializer {
         includeRetired: Boolean = false,
     ): Map<String, List<Map<String, Any?>>> {
         val raw = readStates(cxt, gedraIds, scope)
-        if (includeRetired) return raw
         val registries = HashMap<String, WorkflowRegistry>()
         return gedraIds.associate { id ->
             val registry = registries.getOrPut(id.client) { WorkflowService.get(cxt).forClient(id.client) }
-            id.fullId to WorkflowPhases.shownStates(cxt, registry, raw[id.fullId].orEmpty())
+            val states = raw[id.fullId].orEmpty()
+            id.fullId to if (includeRetired) {
+                WorkflowPhases.statesWithRetired(cxt, registry, states)
+            } else {
+                WorkflowPhases.shownStates(cxt, registry, states)
+            }
         }
     }
 

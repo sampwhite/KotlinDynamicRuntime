@@ -52,7 +52,7 @@ fun workflowParamsTables(cxt: KdrCxt): List<KdrTable> =
     tableModule(cxt, namespace = "workflowParams", topic = gedraConfigTopic) {
         table(WPT.workflowParams, "A workflow's parameters in one client or sandbox, and their earlier settings (issue #1356).") {
             column(WPT.workflowId, "The workflow the parameters are for.", required = true)
-            column(WPT.params, "The values in force: a workflow's time windows, for now.", required = true) { type = SCT.kObject }
+            column(WPT.params, "The values the scope sets: a workflow's time windows, and who sees it.", required = true) { type = SCT.kObject }
             column(WPT.history, "The earlier settings, newest first, each with when and by whom.", required = true) { type = SCT.kObject }
             forClient()
             primaryKey(PF.client, WPT.workflowId)
@@ -88,10 +88,14 @@ class ResolvedWorkflowParams(
 
     /** The windows the workflow runs with: what every phase check asks. */
     val windows: WfWindows get() = layers.inForce.windowsInForce
+
+    /** Who sees the workflow (issue #1384): what [WorkflowAudience] asks. */
+    val visibility: WfVisibility get() = layers.inForce.visibilityInForce
 }
 
 /**
- * A workflow's parameters (issue #1356): values that are not part of its definition -- its time windows, for now --
+ * A workflow's parameters (issue #1356): values that are not part of its definition -- a normal workflow's time windows,
+ * and who sees a workflow of any kind (issue #1384) --
  * held per scope in a table of their own (`WorkflowParams`, one row per client and workflow id) and in force the moment
  * they are saved: no draft, no publish, and a publish never carries them.
  *
@@ -115,7 +119,7 @@ class ResolvedWorkflowParams(
  * **A row outlives its workflow.** Removing a workflow leaves its parameters and their history, as it leaves every
  * other stored trace of it: a workflow made again under the same id runs with the windows the old one had.
  *
- * The caller judges what a save may change -- a normal workflow, windows that nest -- and what it would do to forms
+ * The caller judges what a save may change -- windows on a normal workflow only, and that nest -- and what it would do to forms
  * engaged with the workflow (`ClientWorkflowEdit.saveParams`); this keeps the values.
  */
 class WorkflowParamsService : ServiceInitializer {
@@ -171,6 +175,9 @@ class WorkflowParamsService : ServiceInitializer {
 
     /** The windows [workflowId] runs with in [client] ([resolve]): what every phase check asks. */
     fun windowsFor(cxt: KdrCxt, client: String?, workflowId: String): WfWindows = resolve(cxt, client, workflowId).windows
+
+    /** Who sees [workflowId] in [client] ([resolve], issue #1384): what [WorkflowAudience] asks. */
+    fun visibilityFor(cxt: KdrCxt, client: String?, workflowId: String): WfVisibility = resolve(cxt, client, workflowId).visibility
 
     /**
      * Changes [client]'s own parameters for [workflowId]: those [edit] sets replace its own, and those named in [unset]

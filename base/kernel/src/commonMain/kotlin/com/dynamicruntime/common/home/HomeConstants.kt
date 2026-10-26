@@ -484,6 +484,14 @@ object PFRAG {
     const val storedConfigNs = "storedConfig"
     const val filesNs = "files"
 
+    /**
+     * The Clients page's namespace for its Workflows section (issue #1384), whose [newWorkflowNote] the "Make a workflow
+     * from a template" form shows its maker: how a workflow made restricted is opened to people. Empty as shipped, so
+     * only a deployment that says it -- the `reference` flavor -- shows anything.
+     */
+    const val workflowsNs = "workflows"
+    const val newWorkflowNote = "newWorkflowNote"
+
     /** The Reports page's namespace for its views: Per form, Grouped, and History. */
     const val viewsNs = "views"
 

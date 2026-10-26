@@ -195,6 +195,12 @@ external interface CreateOwnClientCardProps : Props {
     var madeName: String?
     /** Whether this site no longer carries [made]. */
     var madeAbsent: Boolean
+    /**
+     * The home copy's note on a new client's workflows (`publicHome.createClientNote`, issue #1384): that one made from a
+     * template later is seen by administrators only until its visibility is changed. Empty as shipped; a deployment
+     * flavor says it.
+     */
+    var workflowsNote: String?
 }
 
 /**
@@ -294,6 +300,12 @@ val CreateOwnClientCard = FC<CreateOwnClientCardProps> { props ->
                             className = ClassName("type-hint")
                             +("Two workflows built around a form's name, so your client's people can make a form at once. " +
                                 "They count toward the free plan's workflows, and can be renamed or removed from My client.")
+                        }
+                        props.workflowsNote?.takeIf { it.isNotBlank() }?.let { text ->
+                            div {
+                                className = ClassName("type-hint")
+                                Markdown { source = text }
+                            }
                         }
                     }
                     // Its home page, set as it is made (issue #1336): the copy is published with the client, so it shows

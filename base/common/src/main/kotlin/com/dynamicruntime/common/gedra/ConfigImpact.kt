@@ -8,7 +8,8 @@ import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.workflow.WFD
 import com.dynamicruntime.common.gedra.workflow.WFS
-import com.dynamicruntime.common.gedra.workflow.WfWindows
+import com.dynamicruntime.common.gedra.workflow.WfParams
+import com.dynamicruntime.common.gedra.workflow.WorkflowAudience
 import com.dynamicruntime.common.gedra.workflow.WorkflowPhases
 import com.dynamicruntime.common.gedra.workflow.WorkflowRegistry
 import com.dynamicruntime.common.gedra.workflow.WorkflowService
@@ -16,6 +17,8 @@ import com.dynamicruntime.common.gedra.workflow.engagedWorkflowIds
 import com.dynamicruntime.common.schema.SchType
 import com.dynamicruntime.common.schema.validate
 import com.dynamicruntime.common.startup.SchemaService
+import com.dynamicruntime.common.user.AuthUserRow
+import com.dynamicruntime.common.user.UserService
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
 import kotlin.time.Instant
@@ -123,13 +126,22 @@ object ConfigImpact {
     fun requireNone(cxt: KdrCxt, client: String, latest: List<GedraConfigRow>, asSave: Boolean = false) {
         val report = reportFor(cxt, client, latest, anyTier = asSave)
         if (!report.blocks) return
+        val (doing, again) = if (asSave) "This change" to "Save" else "Publishing ${report.describeConfigs()}" to "Publish"
+        refuse(client, report, doing, again)
+    }
+
+    /**
+     * Throws the refusal for [report], which blocks: what [doing] would do to [client]'s stored data -- the findings, or
+     * that there were too many rows to examine -- and to do [again] acknowledging it, with the report in the refusal's
+     * `extraData` under [IMP.report] and its `errorCode` [IMP.refusedCode].
+     */
+    private fun refuse(client: String, report: ImpactReport, doing: String, again: String): Nothing {
         val what = if (report.tooLarge) {
             "client '$client' stores more rows than an impact report examines (${scanLimitEnvVar.name}), so what it " +
                 "would do to them is unknown"
         } else {
             report.findings.joinToString("; ") { it.describe() }
         }
-        val (doing, again) = if (asSave) "This change" to "Save" else "Publishing ${report.describeConfigs()}" to "Publish"
         throw KdrException.mkInput(
             "$doing would affect data client '$client' already stores: $what. $again again acknowledging the impact " +
                 "to go ahead.",
@@ -140,24 +152,32 @@ object ConfigImpact {
     }
 
     /**
-     * The report for changing [workflowId]'s time windows in [client] from [before] to [after] (issues #1121, #1356):
-     * each form [client] stores that is engaged with the workflow and that the change would, at this moment, hide
-     * ([ImpactKind.workflowHidden]) or freeze ([ImpactKind.workflowFrozen]) -- its phase now under each, so an end
-     * brought forward and a start pushed back are judged alike, by what they do now. The forms judged are [client]'s
-     * own, a sandbox's its own.
+     * The report for changing [workflowId]'s parameters in [client] from [before] to [after], each as in force there
+     * (issues #1121, #1356, #1384): each form [client] stores that is engaged with the workflow and that the change
+     * would, at this moment, hide ([ImpactKind.workflowHidden]) or freeze ([ImpactKind.workflowFrozen]) -- its phase now
+     * under each windows, so an end brought forward and a start pushed back are judged alike, by what they do now -- or
+     * take out of its owner's sight ([ImpactKind.workflowUnseen]), as [WorkflowAudience] would judge the owner. The
+     * forms judged are [client]'s own, a sandbox's its own.
      */
-    fun paramsReport(cxt: KdrCxt, client: String, workflowId: String, before: WfWindows, after: WfWindows): ImpactReport {
+    fun paramsReport(cxt: KdrCxt, client: String, workflowId: String, before: WfParams, after: WfParams): ImpactReport {
         val report = ImpactReport(client, emptyList())
         val at = cxt.instanceNow()
-        val was = before.phaseAt(at)
-        val will = after.phaseAt(at)
-        // Nothing the change could do to a form engaged with it: a phase no less shown, and no less calculated.
-        if ((!was.exists || will.exists) && (!was.calculates || will.calculates)) return report
+        val was = before.windowsInForce.phaseAt(at)
+        val will = after.windowsInForce.phaseAt(at)
+        val seenBefore = before.visibilityInForce
+        val seenAfter = after.visibilityInForce
+        val windowsHarm = (was.exists && !will.exists) || (was.calculates && !will.calculates)
+        // Nothing the change could do to a form engaged with it: a phase no less shown, no less calculated, and nobody
+        // who saw the workflow left out of it.
+        if (!windowsHarm && (!seenAfter.restricted || seenBefore == seenAfter)) return report
         val data = GedraDataService.get(cxt)
         val ids = data.liveGedraIds(cxt, GedraDataType.formDoc, client).sorted()
         val limit = cxt.getEnvVar(scanLimitEnvVar)?.trim()?.toIntOrNull() ?: defaultScanLimit
         if (ids.size > limit) return report.also { it.tooLarge = true }
         val scope = ReadScope.ofClient(client)
+        // Each owner looked up once, however many of their forms are engaged.
+        val owners = HashMap<Long, AuthUserRow?>()
+        fun owner(userId: Long) = owners.getOrPut(userId) { UserService.getOrNull(cxt)?.queryByUserId(cxt, userId) }
         for (batch in ids.chunked(readBatch)) {
             val rows = data.readGedras(cxt, GedraDataType.formDoc, batch, scope)
             val states = data.readStates(cxt, rows.values.map { it.gedraId }, scope)
@@ -169,31 +189,25 @@ object ConfigImpact {
                     was.exists && !will.exists -> report.add(ImpactKind.workflowHidden, row, workflowId = workflowId)
                     was.calculates && !will.calculates -> report.add(ImpactKind.workflowFrozen, row, workflowId = workflowId)
                 }
+                if (seenAfter.restricted && seenBefore != seenAfter) {
+                    val user = owner(row.userId)
+                    if (WorkflowAudience.userSees(seenBefore, user, client) && !WorkflowAudience.userSees(seenAfter, user, client)) {
+                        report.add(ImpactKind.workflowUnseen, row, workflowId = workflowId)
+                    }
+                }
             }
         }
         return report
     }
 
     /**
-     * Refuses a change of [workflowId]'s windows ([paramsReport]) that would hide or freeze a form engaged with it,
-     * with the report in the refusal as a publish's is, so the caller can show it and save again acknowledging it.
+     * Refuses a change of [workflowId]'s parameters ([paramsReport]) that would hide, freeze, or take out of its owner's
+     * sight a form engaged with it, with the report in the refusal as a publish's is, so the caller can show it and save
+     * again acknowledging it.
      */
-    fun requireNoneForParams(cxt: KdrCxt, client: String, workflowId: String, before: WfWindows, after: WfWindows) {
+    fun requireNoneForParams(cxt: KdrCxt, client: String, workflowId: String, before: WfParams, after: WfParams) {
         val report = paramsReport(cxt, client, workflowId, before, after)
-        if (!report.blocks) return
-        val what = if (report.tooLarge) {
-            "client '$client' stores more rows than an impact report examines (${scanLimitEnvVar.name}), so what it " +
-                "would do to them is unknown"
-        } else {
-            report.findings.joinToString("; ") { it.describe() }
-        }
-        throw KdrException.mkInput(
-            "This change would affect data client '$client' already stores: $what. Save again acknowledging the " +
-                "impact to go ahead.",
-        ).also {
-            it.extraData[KdrException.errorCodeKey] = IMP.refusedCode
-            it.extraData[IMP.report] = report.toMap()
-        }
+        if (report.blocks) refuse(client, report, "This change", "Save")
     }
 
     /** One configuration's view of a client: its entry unions and workflows. */
@@ -320,6 +334,7 @@ class ImpactFinding(val kind: ImpactKind, val traitId: String?, val workflowId: 
             ImpactKind.stateStranded -> "workflow '$workflowId' would no longer define task '$taskId'"
             ImpactKind.workflowFrozen -> "workflow '$workflowId' would stop being tracked now, freezing what it shows"
             ImpactKind.workflowHidden -> "workflow '$workflowId' would be outside its lifetime now, and not shown"
+            ImpactKind.workflowUnseen -> "workflow '$workflowId' would no longer be seen by the form's owner"
         }
         return "${rows.size} row(s), $what"
     }

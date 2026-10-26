@@ -409,6 +409,7 @@ private fun ChildrenBuilder.clientDetail(
                     this.savesDraft = savesDraft
                     this.configEditable = configEditable
                     formsOpenable = impactFormsOpenable(acrossClients, onSandboxPage = row?.sandboxOf != null)
+                    newWorkflowNote = pageCopy.opt(PFRAG.workflowsNs, PFRAG.newWorkflowNote)
                     this.onChanged = onChanged
                 }
             }

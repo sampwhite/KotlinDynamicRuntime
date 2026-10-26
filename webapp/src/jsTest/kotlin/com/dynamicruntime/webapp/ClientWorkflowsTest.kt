@@ -7,6 +7,9 @@ import com.dynamicruntime.common.gedra.CWF
 import com.dynamicruntime.common.gedra.EDM
 import com.dynamicruntime.common.gedra.IMP
 import com.dynamicruntime.common.gedra.workflow.WFD
+import com.dynamicruntime.common.gedra.workflow.WFP
+import com.dynamicruntime.common.gedra.workflow.WfVisibility
+import com.dynamicruntime.common.gedra.workflow.WfVisibilityMode
 import com.dynamicruntime.common.gedra.workflow.WfEntry
 import com.dynamicruntime.common.gedra.workflow.WfSaveKind
 import kotlin.test.Test
@@ -43,8 +46,14 @@ class ClientWorkflowsTest {
         mapOf(
             CLD.client to "acme",
             CWF.templates to listOf(mapOf(CWF.definition to template), mapOf(CWF.definition to template + (WFD.workflowId to "kdr:other"), CWF.refusal to "Not now.")),
-            CWF.workflows to listOf(mapOf(CWF.definition to made, CWF.configName to "workflow_siteReview")),
+            CWF.workflows to listOf(
+                mapOf(
+                    CWF.definition to made, CWF.configName to "workflow_siteReview",
+                    CWF.params to mapOf(WFP.current to mapOf(WFP.params to mapOf(WFP.visibility to mapOf(WFP.mode to "restricted", WFP.labels to listOf("pilot"))))),
+                ),
+            ),
             CWF.traits to listOf(mapOf(CCT.traitId to "kdr:name", CWF.description to "A name."), mapOf(CCT.traitId to "siteVisit")),
+            CWF.userLabels to listOf("pilot", "east"),
         ),
     )
 
@@ -59,6 +68,9 @@ class ClientWorkflowsTest {
         assertEquals("Site review", own.name)
         assertEquals(listOf("Record it", "Approve it"), own.taskLabels)
         assertEquals(listOf("kdr:name — A name." to "kdr:name", "siteVisit" to "siteVisit"), traitChoices(catalog, workflowSlots(own.def).tasks.single()))
+        // Who sees it (issue #1384), and the labels the client suggests for it.
+        assertEquals(WfVisibility(WfVisibilityMode.restricted, listOf("pilot")), own.visibility)
+        assertEquals(listOf("pilot", "east"), catalog.userLabels)
     }
 
     @Test
