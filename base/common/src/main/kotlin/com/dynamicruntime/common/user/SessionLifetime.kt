@@ -22,6 +22,7 @@ import com.dynamicruntime.common.gedra.ClientService
  * person's users, and no session outlasts [maxHours] from it -- a cookie that keeps being used, a stolen one
  * included, still ends.
  */
+@Suppress("ConstPropertyName")
 object SessionLifetime {
     /** The deployment's default when [sessionHoursEnvVar] is unset: two days. */
     const val defaultHours = 2 * 24
