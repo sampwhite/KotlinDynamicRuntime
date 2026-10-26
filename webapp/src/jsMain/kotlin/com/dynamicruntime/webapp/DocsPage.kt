@@ -48,7 +48,9 @@ val DocsPage = FC<Props> {
     val section = routeParams()[HP.section]
 
     // The same config Home reads (the links, and the fragment carrying the nav copy), re-read per generation.
-    useEffect(generation) {
+    // And on every idle poll: it reads the home config, a polled endpoint, and static copy alone (issue #1372).
+    val polls = useIdlePolls()
+    useEffect(generation, polls) {
         docsScope.launch {
             try {
                 val loaded = HomeApi.fetchConfig()

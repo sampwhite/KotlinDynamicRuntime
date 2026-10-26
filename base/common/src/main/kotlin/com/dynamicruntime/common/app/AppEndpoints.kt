@@ -119,7 +119,8 @@ fun appSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.app") {
     }
 
     generalEndpoint(APP.uiConfig, "Returns deployment-wide app config visible to the entire frontend.",
-        HttpMethod.GET, outputRef = appUiConfigType, tags = setOf(ETAG.frontend)) { c, _ ->
+        // Polled (issue #1372): the webapp's idle poll re-reads it, so a call to it renews no session.
+        HttpMethod.GET, outputRef = appUiConfigType, tags = setOf(ETAG.frontend), polled = true) { c, _ ->
         mapOf(
             UIC.features to mapOf(
                 APP.obfuscateSensitiveErrors to RequestHandler.obfuscateSensitiveErrors(c.instanceConfig),

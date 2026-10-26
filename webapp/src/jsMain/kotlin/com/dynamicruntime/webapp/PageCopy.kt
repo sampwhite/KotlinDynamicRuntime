@@ -12,14 +12,16 @@ private val pageCopyScope = MainScope()
 
 /**
  * The copy of a page with no UI-config of its own (issue #1337) -- the Clients page, Reports, Design View -- from the
- * file the shell's config names for it ([HomeConfig.pageFragments]), re-read on every refresh generation as the
- * shell's own copy is. Empty until it arrives, and empty when it cannot be read: such a page's copy only explains, so a
+ * file the shell's config names for it ([HomeConfig.pageFragments]), re-read on every refresh generation and idle poll
+ * as the shell's own copy is. Empty until it arrives, and empty when it cannot be read: such a page's copy only explains, so a
  * failure leaves it unexplained (and says so on the console) rather than failing the page.
  */
 fun usePageCopy(fileId: String): Copy {
     var copy by useState(Copy.empty)
     val generation = useRefreshGeneration()
-    useEffect(generation, fileId) {
+    // And on every idle poll: it reads the home config, a polled endpoint, and static copy alone (issue #1372).
+    val polls = useIdlePolls()
+    useEffect(generation, polls, fileId) {
         pageCopyScope.launch {
             val read = apiResult {
                 val ref = HomeApi.fetchConfig().pageFragments[fileId] ?: return@apiResult Copy.empty

@@ -75,11 +75,16 @@ class UserAuthCookie(
     /** The user's persona (issue #747), for the profile the fast path restores without a database read. */
     val persona: String? = null,
     /**
-     * When the person signed in (issue #1308): what the session's lifetime is measured from at every request
-     * ([SessionLifetime]), so a client that shortens its lifetime ends longer sessions at once. A cookie without it
-     * is not read.
+     * When the person signed in (issue #1308), kept through every renewal: what the deployment's limit is measured
+     * from ([SessionLifetime.honors]), so a session ends however active it has been. A cookie without it is not read.
      */
     val signedInEpochMs: Long,
+    /**
+     * When this cookie was issued (issue #1372): the sign-in, or the session's latest renewal. What the client's
+     * lifetime is measured from at every request, so a client that shortens its lifetime ends longer sessions at
+     * once. A cookie without it is not read.
+     */
+    val issuedEpochMs: Long = signedInEpochMs,
 ) {
     /** Encrypts this cookie to its wire string using the instance key (shared by every node). */
     fun encode(node: NodeService): String =
@@ -92,6 +97,7 @@ class UserAuthCookie(
                 if (identityId != null) put(K_IDENTITY, identityId)
                 if (persona != null) put(K_PERSONA, persona)
                 put(K_SIGNED_IN, signedInEpochMs)
+                put(K_ISSUED, issuedEpochMs)
             }.toJsonStr(compact = true),
         )
 
@@ -103,6 +109,7 @@ class UserAuthCookie(
         private const val K_IDENTITY = "i"
         private const val K_PERSONA = "p"
         private const val K_SIGNED_IN = "s"
+        private const val K_ISSUED = "t"
 
         /** Decrypts and parses a wire cookie string, or null if it is absent, malformed, or undecryptable. */
         fun decode(node: NodeService, cookie: String): UserAuthCookie? = try {
@@ -112,7 +119,8 @@ class UserAuthCookie(
             val roles = m[K_ROLES].toJsonListOfStrings()
             val expire = m[K_EXPIRE].toOptLong() ?: return null
             val signedIn = m[K_SIGNED_IN].toOptLong() ?: return null
-            UserAuthCookie(userId, client, roles, expire, m[K_IDENTITY].toOptStr(), m[K_PERSONA].toOptStr(), signedIn)
+            val issued = m[K_ISSUED].toOptLong() ?: return null
+            UserAuthCookie(userId, client, roles, expire, m[K_IDENTITY].toOptStr(), m[K_PERSONA].toOptStr(), signedIn, issued)
         } catch (_: Exception) {
             null
         }

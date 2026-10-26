@@ -218,7 +218,8 @@ fun homeSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.home") {
     }
 
     generalEndpoint(HEP.homeUiConfig, "Returns the config for constructing the shell (layout, links, menu).",
-        HttpMethod.GET, outputRef = HTYPE.homeUiConfig, tags = setOf(ETAG.frontend)) { c, _ ->
+        // Polled (issue #1372): the webapp's idle poll re-reads it, so a call to it renews no session.
+        HttpMethod.GET, outputRef = HTYPE.homeUiConfig, tags = setOf(ETAG.frontend), polled = true) { c, _ ->
         // The menu says what this caller may reach, so it must be decided on live roles rather than the ones
         // their session cookie captured at login -- otherwise a revoked administrator keeps being offered a
         // page that now 401s, for as long as the cookie lives. The `admin` section is refreshed by the

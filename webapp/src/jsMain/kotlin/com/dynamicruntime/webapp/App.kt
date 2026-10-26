@@ -38,6 +38,9 @@ val App = FC<Props> {
     // every mounted config consumer. The tuple form (not `by`) is used, so the bump is a functional update
     // (`{ it + 1 }`), which the persistent route listener below needs to avoid a stale count.
     val (refresh, setRefresh) = useState(0)
+    // How many times the idle poll has fired (issues #146, #1372), apart from the generation: a poll re-reads only the
+    // shell's polled configs (see useIdlePolls). Tuple form for the same reason as `refresh`.
+    val (polls, setPolls) = useState(0)
     // How many times the page on screen has been chosen again from the menu (issue #565). Folded into the page
     // boundary's key below for the pages in `restartOnRevisit`, so re-selecting one remounts it with fresh
     // state -- the only reset a page can get when the address does not change, since navigating to
@@ -94,7 +97,7 @@ val App = FC<Props> {
     // The deployment-global app config (issue #120), fetched once at the root and re-fetched on every generation
     // like any other config, so it stays fresh. Cached module-side (see AppApi) for consumers such as the
     // error-display policy (issue #111); nothing here re-renders on it, so no state is kept.
-    useEffect(refresh) {
+    useEffect(refresh, polls) {
         appScope.launch {
             AppApi.load()
             // Pick up a reconfigured interval; a change re-keys useIdleBump, which retires the old timer.
@@ -114,8 +117,9 @@ val App = FC<Props> {
 
     // A periodic tick (and a bump on returning to the app) so a tab left open notices things that change
     // without any user action -- a timed-out session reverting to the anonymous menu, a newer version deployed
-    // (issue #146). It just drives the same generation bump; a hidden tab stays silent (see useIdleBump).
-    useIdleBump(idleBumpIntervalMs) { setRefresh { it + 1 } }
+    // (issue #146). It counts a poll, not a generation (issue #1372): only the shell's polled configs re-read, so no
+    // page re-reads its rows and no session is renewed with nobody there. A hidden tab stays silent (see useIdleBump).
+    useIdleBump(idleBumpIntervalMs) { setPolls { it + 1 } }
 
     // antd derives its whole palette from tokens, so the dark algorithm is set once here for the whole tree.
     val darkTheme: dynamic = js("({})")
@@ -126,8 +130,9 @@ val App = FC<Props> {
 
     // Before any consumer's effect runs, so a fetch that consumer makes knows which generation it is for (issue #1313).
     refreshGenerationNow = refresh
+    idlePollsNow = polls
     RefreshContext.Provider {
-        value = RefreshBus(refresh, revisit) { setRefresh { it + 1 } }
+        value = RefreshBus(refresh, revisit, polls) { setRefresh { it + 1 } }
         // What the shell knows of the caller, for the pages to name themselves by (issue #1091).
         ShellFactsContext.Provider {
             value = shellFacts

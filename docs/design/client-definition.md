@@ -313,7 +313,9 @@ the deployment's alone, each now a field a client may set, and absent for the de
   at a load should the limit later fall below it. The session cookie carries when the person signed in, and every request measures from that against the client's
   lifetime now (`SessionLifetime`), so shortening it ends longer sessions at once. Lengthening it reaches only
   sign-ins made after, since a cookie's expiry is set when it is issued.
-- **`refreshIntervalSeconds`**, how often an idle open tab re-reads what it shows (the webapp's idle bump, #146).
+- **`refreshIntervalSeconds`**, how often an idle open tab re-reads the shell's configs (the webapp's idle poll, #146),
+  which is how it notices a session that ended or a new deployment. Only polled endpoints, which renew no session
+  (#1372); a page's own rows are re-read on a navigation or a change.
   Every tab asks that often, so it is a load on the deployment, and only the platform sets it, within 5 seconds to an
   hour. The app UI-config serves the caller's client's, else the deployment's (`IdleRefresh`).
 

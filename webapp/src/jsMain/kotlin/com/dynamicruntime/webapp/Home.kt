@@ -41,7 +41,9 @@ val Home = FC<Props> {
 
     // Re-read the home config on every refresh generation (issue #115): on mount, and whenever a navigation or
     // state mutation bumps it.
-    useEffect(generation) {
+    // And on every idle poll: it reads the home config, a polled endpoint, and static copy alone (issue #1372).
+    val polls = useIdlePolls()
+    useEffect(generation, polls) {
         homeScope.launch {
             try {
                 val loaded = HomeApi.fetchConfig()

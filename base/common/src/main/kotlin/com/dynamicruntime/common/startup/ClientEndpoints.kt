@@ -106,6 +106,8 @@ private fun copyFor(endpoint: KdrEndpoint, client: String): KdrEndpoint {
         needsClientConfig = endpoint.needsClientConfig,
         // And the auth timing floor (issue #1299): a copy that dropped it would answer at the speed the floor hides.
         timingFloor = endpoint.timingFloor,
+        // And whether it is polled (issue #1372), which is about who calls it, not which client it is for.
+        polled = endpoint.polled,
         // Likewise the list-paging flags (issue #499): the copy shares the output schema, so it must share
         // whether the executor populates `numAvailable` / `hasMore` -- otherwise a client copy of a paged
         // listing declares those fields but never fills them, failing validation (or silently dropping paging).

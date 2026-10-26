@@ -19,7 +19,20 @@ import react.useRef
  * The calls are inexpensive by design, so bumping liberally is the point (issue #113): a bump that changed nothing
  * costs a re-fetch, not a visible change.
  */
-class RefreshBus(val generation: Int, val revisit: Int = 0, val bump: () -> Unit)
+class RefreshBus(val generation: Int, val revisit: Int = 0, val polls: Int = 0, val bump: () -> Unit)
+
+/**
+ * How many times the idle poll has fired (issues #146, #1372): its own count, apart from the [RefreshBus.generation],
+ * because a poll re-reads only the shell's **polled** configs (`KdrEndpoint.polled`: the app and home UI-configs) --
+ * enough to notice a session that ended or a new deployment, while no page re-reads its rows with nobody there, and
+ * a tab left open renews no session. A consumer whose effect reads polled endpoints alone adds it to the effect's
+ * keys beside the generation; one that reads anything else must not.
+ */
+fun useIdlePolls(): Int = use(RefreshContext).polls
+
+/** The idle polls [App] is rendering, for [HomeApi.fetchConfig]'s sharing, as [refreshGenerationNow] is. */
+var idlePollsNow: Int = 0
+    internal set
 
 /**
  * The generation [App] is rendering, for a fetch helper that is not a component and so cannot read the context

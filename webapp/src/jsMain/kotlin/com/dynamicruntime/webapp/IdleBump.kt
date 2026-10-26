@@ -4,11 +4,16 @@ import kotlinx.coroutines.awaitCancellation
 import react.useEffect
 
 /**
- * Keeps a long-open tab honest (issue #146). Periodically -- and whenever the app is returned to -- it "bumps"
- * the app-wide refresh generation ([bump] is the #115 counter's increment), which every mounted config
- * consumer already re-reads on. So a session that timed out while the tab sat idle quietly reverts to the
- * anonymous menu, and a version deployed in the meantime raises the reload banner (issue #136), all without the
- * user having touched anything.
+ * Keeps a long-open tab honest (issue #146). Periodically -- and whenever the app is returned to -- it calls
+ * [bump], which counts an idle poll (`useIdlePolls`, issue #1372): the shell's polled configs re-read on it. So a
+ * session that timed out while the tab sat idle quietly reverts to the anonymous menu, and a version deployed in the
+ * meantime raises the reload banner (issue #136), all without the user having touched anything.
+ *
+ * **A poll is not a refresh generation.** Until #1372 it bumped the generation, so every page re-read its rows every
+ * minute -- an open report re-ran -- and the reads kept a session alive with nobody there. Now a page re-reads on a
+ * navigation or a change, and a poll reaches only endpoints the server knows are polled, which renew no session. A
+ * page that should notice what other people change while it sits open is a deferred piece of work
+ * (`deferred-work.md`, "When many people edit the same forms or users at once").
  *
  * Three triggers, all funneling to the same bump. Re-fetching config that turns out unchanged costs a fetch,
  * not a visible change, so bumping on any of them is cheap by design (issue #113):
