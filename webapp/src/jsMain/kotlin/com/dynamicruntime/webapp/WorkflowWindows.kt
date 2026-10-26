@@ -12,6 +12,7 @@ import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import kotlin.time.Instant
 import com.dynamicruntime.common.gedra.workflow.WfParamsSetting
 import com.dynamicruntime.common.gedra.workflow.WfParams
+import com.dynamicruntime.common.gedra.workflow.WfParamsFrom
 import com.dynamicruntime.common.gedra.workflow.WFP
 import com.dynamicruntime.common.gedra.isSandboxClient
 
@@ -83,7 +84,7 @@ private fun whenText(at: Instant, now: Instant, zone: String): String {
 /**
  * Where a workflow with [windows] stands at [at], in words, with what changes next (issue #1121): "Open to new forms;
  * closes to new forms in 5d". [now] is what the next change is measured from -- the moment itself for the current
- * phase, the real now for an "as of" preview.
+ * phase, the real now for a tried date.
  */
 fun windowPhaseText(windows: WfWindows, at: Instant, zone: String, now: Instant = at): String {
     fun next(what: String, moment: Instant?) = moment?.takeIf { it > at }?.let { "; $what ${whenText(it, now, zone)}" }.orEmpty()
@@ -135,19 +136,24 @@ fun timelineLayout(windows: WfWindows, now: Instant, asOf: Instant? = null): Tim
 }
 
 /**
- * The windows save's request (issue #1356): the client or sandbox, the workflow, its parameters with [windows] as the
- * moments they are -- none set, none sent, which is no limits -- and an acknowledgement.
+ * The windows save's request (issues #1356, #1386): the client or sandbox, the workflow, and either [windows] as its own
+ * -- the moments they are, none set being no limits -- or, for null, its windows unset, so they follow the fallback
+ * again; and an acknowledgement. Only the windows are sent: any other parameter is left as it is.
  */
-fun windowsSaveRequest(clientId: String, workflowId: String, windows: WfWindows, acknowledge: Boolean): Map<String, Any?> =
+fun windowsSaveRequest(clientId: String, workflowId: String, windows: WfWindows?, acknowledge: Boolean): Map<String, Any?> =
     buildMap {
         put(CLD.client, clientId)
         put(WFD.workflowId, workflowId)
-        put(
-            WFP.params,
-            WfParams(windows).toInfo().mapValues { (_, ws) ->
-                (ws as Map<*, *>).mapValues { (_, w) -> (w as Map<*, *>).mapValues { (_, at) -> (at as Instant).formatDate() } }
-            },
-        )
+        if (windows == null) {
+            put(WFP.unset, listOf(WFP.windows))
+        } else {
+            put(
+                WFP.params,
+                WfParams(windows).toInfo().mapValues { (_, ws) ->
+                    (ws as Map<*, *>).mapValues { (_, w) -> (w as Map<*, *>).mapValues { (_, at) -> (at as Instant).formatDate() } }
+                },
+            )
+        }
         if (acknowledge) put(IMP.acknowledgeImpact, true)
     }
 
@@ -164,6 +170,31 @@ fun windowsEffectText(clientId: String): String =
     } else {
         "Saving takes effect at once for this client's people, with no draft and no publish."
     }
+
+/**
+ * Where the windows in force come from, as the editor says it under its title (issue #1386): set here, with when and by
+ * whom ([settingByline]); its client's, on a sandbox following them; or the source code's defaults. Null when nothing
+ * sets any -- no limits, said by the windows themselves.
+ */
+fun windowsSourceText(params: WorkflowParamsView, clientId: String, zone: String): String? = when (params.windowsFrom) {
+    WfParamsFrom.parent ->
+        "Its client's windows, which this sandbox runs until it sets its own." +
+            (params.parent?.let { settingByline(it, zone) }?.let { " $it." } ?: "")
+    WfParamsFrom.source ->
+        if (isSandboxClient(clientId)) "The source code's default windows, which this sandbox runs until it or its client sets its own."
+        else "The source code's default windows, which this client runs until it sets its own."
+    null -> params.own?.takeIf { params.ownWindows }?.let { settingByline(it, zone) }?.let { "$it." }
+}
+
+/**
+ * The editor's way back to the fallback (issue #1386), labeled by where the windows would then come from: offered only
+ * while the scope sets its own windows and a fallback would set some. Null when there is no way back to offer.
+ */
+fun windowsFallbackLabel(params: WorkflowParamsView): String? = if (!params.ownWindows) null else when (params.windowsFallbackFrom) {
+    WfParamsFrom.parent -> "Use its client's windows"
+    WfParamsFrom.source -> "Use the source code's windows"
+    null -> null
+}
 
 /** Who set [setting] and when, as the editor says it ("Set Oct 20, 2026, 9:30 AM CT by Pat Lee"); null for values nobody set. */
 fun settingByline(setting: WfParamsSetting, zone: String): String? {

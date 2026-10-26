@@ -1,5 +1,6 @@
 package com.dynamicruntime.common.gedra
 
+import com.dynamicruntime.common.content.MarkdownFragmentService
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
@@ -136,20 +137,38 @@ object ClientWorkflowEdit {
         put(CWF.definition, def.toJsonMap())
         if (declared.bundle.isStored && declared.bundle.gedraId.client == client) put(CWF.configName, declared.bundle.name)
         notEditable(client, declared, templateIds)?.let { put(CWF.notEditable, it) }
+        shownLabels(cxt, scope, def)?.let { put(CWF.labels, it) }
         if (def.entry == WfEntry.normal) put(CWF.params, paramsInfo(WorkflowParamsService.get(cxt).resolve(cxt, scope, def.workflowId), names))
     }
 
     /**
-     * [resolved] as a page is answered (issue #1356): the setting in force and the earlier ones, each with who set it,
-     * and whether a sandbox reads its parent's ([WFP.fromParent]). A setter is named only to a caller who may
-     * administer them ([SetterNames]).
+     * [def]'s labels as [scope]'s page shows them ([CWF.labels]): each fragment pull resolved, or the label as written
+     * where one does not resolve. Null when no label pulls any, which is every workflow made from a template.
+     */
+    private fun shownLabels(cxt: KdrCxt, scope: String, def: WfDef): Map<String, Any?>? {
+        if ((listOf(def.label) + def.tasks.map { it.label }).none { "%{" in it }) return null
+        val fragments = MarkdownFragmentService.get(cxt)
+        val scoped = cxt.mkSubContext("workflowLabels", scope)
+        fun shown(text: String) = fragments.backendPassReport(scoped, text).value ?: text
+        return mapOf(WFD.label to shown(def.label), WFD.tasks to def.tasks.associate { it.id to shown(it.label) })
+    }
+
+    /**
+     * [resolved] as a page is answered (issues #1356, #1386): each layer -- the scope's own setting, on a sandbox its
+     * client's, and the source defaults -- with the scope's earlier settings, and for a reader of the API what they make
+     * together: the parameters in force, and where each that is not the scope's own comes from ([WFP.from]). The page
+     * recomputes those from the layers with the kernel's `WfParamsLayers`, as here. Each setting says who set it, named
+     * only to a caller who may administer them ([SetterNames]).
      */
     fun paramsInfo(cxt: KdrCxt, resolved: ResolvedWorkflowParams): Map<String, Any?> = paramsInfo(resolved, SetterNames(cxt))
 
     private fun paramsInfo(resolved: ResolvedWorkflowParams, names: SetterNames): Map<String, Any?> = buildMap {
-        put(WFP.current, names.named(resolved.current).toInfo())
+        put(WFP.inForce, resolved.layers.inForce.toInfo())
+        resolved.layers.from.takeIf { it.isNotEmpty() }?.let { from -> put(WFP.from, from.mapValues { it.value.name }) }
+        resolved.own?.let { put(WFP.current, names.named(it).toInfo()) }
+        resolved.parent?.let { put(WFP.parent, names.named(it).toInfo()) }
+        resolved.source.takeIf { !it.isEmpty }?.let { put(WFP.source, it.toInfo()) }
         put(WFP.history, resolved.history.map { names.named(it).toInfo() })
-        if (resolved.fromParent) put(WFP.fromParent, true)
     }
 
     /**
@@ -251,18 +270,21 @@ object ClientWorkflowEdit {
     }
 
     /**
-     * Sets [client]'s own parameters for its normal workflow [workflowId] to [params] (issue #1356): in force at once in
-     * that scope -- the client's people, or a sandbox's -- with no draft and no publish, and what they replace kept in
-     * the history ([WorkflowParamsService]). The workflow may be one [client] runs, or, on a client with a sandbox, one
-     * its sandbox runs and a publish has yet to bring. A change that would, now, freeze or hide forms [client] stores
-     * that are engaged with the workflow -- an end brought forward, a start pushed back -- is refused with the impact
-     * report until acknowledged. Returns the parameters as [client] now runs them.
+     * Changes [client]'s own parameters for its normal workflow [workflowId] (issues #1356, #1386): those [edit] sets
+     * become its own, and those named in [unset] stop being its own and follow the fallback again -- a sandbox its
+     * client's, a client its source defaults. Any other parameter is left as it is. In force at once in that scope --
+     * the client's people, or a sandbox's -- with no draft and no publish, and what they replace kept in the history
+     * ([WorkflowParamsService]). The workflow may be one [client] runs, or, on a client with a sandbox, one its sandbox
+     * runs and a publish has yet to bring. A change that would, now, freeze or hide forms [client] stores that are
+     * engaged with the workflow -- an end brought forward, a start pushed back -- is refused with the impact report
+     * until acknowledged. Returns the parameters as [client] now runs them.
      */
     fun saveParams(
         cxt: KdrCxt,
         client: String,
         workflowId: String,
-        params: WfParams,
+        edit: WfParams,
+        unset: Set<String> = emptySet(),
         impact: ImpactGate = ImpactGate.refuse,
     ): ResolvedWorkflowParams {
         val workflows = WorkflowService.get(cxt)
@@ -275,16 +297,24 @@ object ClientWorkflowEdit {
                 "Workflow '$workflowId' is a ${declared.def.entry} workflow, which has no time windows; only a normal workflow does.",
             )
         }
-        params.problem(workflowId)?.let { throw KdrException.mkInput(it) }
+        edit.problem(workflowId)?.let { throw KdrException.mkInput(it) }
+        (unset - WfParams.allKeys).takeIf { it.isNotEmpty() }?.let {
+            throw KdrException.mkInput("There is no parameter $it; a workflow's parameters are ${WfParams.allKeys}.")
+        }
+        (unset intersect edit.keys).takeIf { it.isNotEmpty() }?.let {
+            throw KdrException.mkInput("Parameter(s) $it are both set and unset; a save does one or the other.")
+        }
         val service = WorkflowParamsService.get(cxt)
         val before = service.resolve(cxt, client, workflowId)
-        if (!before.fromParent && before.params == params) {
+        val own = before.own?.params ?: WfParams.none
+        val after = own.edited(edit, unset)
+        if (after == own) {
             throw KdrException.mkInput("Workflow '$workflowId' already has these values in client '$client'; nothing to save.")
         }
         if (impact == ImpactGate.refuse) {
-            ConfigImpact.requireNoneForParams(cxt, client, workflowId, before.params.windows, params.windows)
+            ConfigImpact.requireNoneForParams(cxt, client, workflowId, before.windows, before.layers.withOwn(after).inForce.windowsInForce)
         }
-        service.save(cxt, client, workflowId, params)
+        service.save(cxt, client, workflowId, edit, unset)
         return service.resolve(cxt, client, workflowId)
     }
 

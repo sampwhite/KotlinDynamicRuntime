@@ -4,6 +4,13 @@ import com.dynamicruntime.common.content.FragmentSource
 import com.dynamicruntime.common.gedra.workflow.WfEntry
 import com.dynamicruntime.common.uiblock.UiBlockSource
 
+/** Client extension's constants (issue #945). */
+@Suppress("ConstPropertyName")
+object CEXT {
+    /** What a clone's name starts with, so a listing can tell a copy from the client's own by name alone. */
+    const val clonePrefix = "from_"
+}
+
 /**
  * How a client that **extends** another (`ClientDef.extendsFromClientId`) is built (issue #945): the other client's
  * source configuration is cloned under the extending client's id, and the extending client's own configuration is
@@ -50,13 +57,6 @@ import com.dynamicruntime.common.uiblock.UiBlockSource
  * resolves. The template keeps owning it: the copy claims it for the template, as a sandbox's copies claim theirs
  * for the parent, so the client cannot author into it.
  */
-/** Client extension's constants (issue #945). */
-@Suppress("ConstPropertyName")
-object CEXT {
-    /** What a clone's name starts with, so a listing can tell a copy from the client's own by name alone. */
-    const val clonePrefix = "from_"
-}
-
 object ClientExtension {
     /**
      * The copies of [templateConfigs] -- [template]'s source configs -- that [client] runs, given [own], the configs
@@ -84,6 +84,9 @@ object ClientExtension {
         // shipped one. One past the limit does not: the id is past it, whichever declaration holds it. Two source
         // declarations of one id are a duplicate, so the child's source refs still replace the template's here.
         val ownFileRefs = own.filter { !it.isStored }.flatMap { c -> c.fileRefs.map { it.refId } }.toSet()
+        // A default for a workflow the child declares itself is not the template's to give (issue #1386), and one the
+        // child's source declares replaces the template's.
+        val ownParamDefaults = ownWorkflowIds + own.flatMap { it.workflowParams.keys }
         return templateConfigs.map { config ->
             GedraConfig(
                 gedraId = GedraId.of(config.gedraId.kind, client, cloneName(template, config.name)),
@@ -96,6 +99,7 @@ object ClientExtension {
                 workflows = config.workflows.filterValues { it.workflowId !in ownWorkflowIds && it.entry !in ownSingletonKinds },
                 usages = if (ownUsages) emptyList() else config.usages,
                 reports = config.reports.filterKeys { it !in ownReports },
+                workflowParams = config.workflowParams.filterKeys { it !in ownParamDefaults },
                 // The template's refs are the child's, less the ones its source names itself (issues #1153, #1170).
                 fileRefs = config.fileRefs.filter { it.refId !in ownFileRefs },
                 origin = origin,

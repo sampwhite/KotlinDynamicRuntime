@@ -1047,6 +1047,9 @@ button.wf-cell-more { font-size: .8rem; margin-top: 2px; }
 /* A nested sub-table (a cell's columns/indexes) gets no box of its own: no height cap, no inner scrollbar --
    it just widens its cell, and the outer box does the scrolling. */
 .op-table .op-table-scroll { max-height: none; overflow: visible; margin: 0; }
+/* A table with an editor open in a row of its own (issue #1386): no height cap, so the editor is not clipped inside
+   the table's box -- the page scrolls instead. */
+.op-table-scroll.detail-open { max-height: none; }
 /* A JSON cell (a free-form value) wraps and is width-capped, so one blob does not force the table enormously
    wide before the scroll box even helps. */
 .op-table td .json-value { white-space: pre-wrap; max-width: 300px; margin: 0; }
@@ -1662,8 +1665,9 @@ body.dv-open .app-content { padding-right: calc(var(--dv-panel-width) + 16px); }
    its rank -- validated as a set against the card surface (--surface-raised) for colour-vision separation and
    contrast: a re-order or a new hue has to be validated again, not eyeballed. Slot 6 sits just under 3:1 on the
    card, which is why the table under the chart is always there. Text never wears a series colour; a swatch beside
-   it does. */
-.reports-run {
+   it does. Declared at the root, so every chart draws from the one validated set: the time windows' timeline
+   (issue #1121) reads the first three, and drew nothing while they were the Reports page's alone. */
+:root {
     --chart-1: #3987e5;
     --chart-2: #d95926;
     --chart-3: #199e70;
@@ -1737,7 +1741,7 @@ body.dv-open .app-content { padding-right: calc(var(--dv-panel-width) + 16px); }
 .sim-recent-stale { margin-top: 10px; opacity: .7; }
 .sim-recent-stale > p { margin: 2px 0; }
 
-/* A workflow's time windows (issue #1121): the three bands on one track, now and an "as of" moment marked. */
+/* A workflow's time windows (issue #1121): the three bands on one track, now and a tried date marked. */
 .wf-window { margin-bottom: 8px; }
 .wf-phase { font-weight: 600; }
 .wf-timeline { margin: 12px 0; max-width: 720px; }

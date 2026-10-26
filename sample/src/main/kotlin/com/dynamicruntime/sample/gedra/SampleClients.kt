@@ -552,6 +552,10 @@ private fun acmeClient(cxt: KdrCxt): GedraConfig =
             lock(SC.siteAudit, writableVia = SW.recordAudit, overrideWhen = CFACTS.hasAdminLevel)
         }
 
+        // Default parameters from source code (issue #1386): a lifetime long since begun, so the follow-up runs as it
+        // always has, and its page shows the windows as the source code's until somebody sets its own.
+        workflowParams(SW.siteFollowUp) { lifetime(start = "2020-01-01T00:00:00Z") }
+
         // A second normal workflow (issue #784): a follow-up visit, held off while any review is pending. What
         // shows one workflow's singleton (`auditReview`'s `needsReview`) gating another.
         workflow(SW.siteFollowUp, WfEntry.normal) {

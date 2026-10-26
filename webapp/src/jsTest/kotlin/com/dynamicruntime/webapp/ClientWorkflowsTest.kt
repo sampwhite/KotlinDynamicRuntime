@@ -56,7 +56,26 @@ class ClientWorkflowsTest {
         assertEquals("kdr:review", own.def.fromTemplate)
         assertNull(own.notEditable)
         assertEquals("Site review", workflowName(own.def))
+        assertEquals("Site review", own.name)
+        assertEquals(listOf("Record it", "Approve it"), own.taskLabels)
         assertEquals(listOf("kdr:name — A name." to "kdr:name", "siteVisit" to "siteVisit"), traitChoices(catalog, workflowSlots(own.def).tasks.single()))
+    }
+
+    @Test
+    fun aWorkflowsLabelsAreShownAsTheClientSeesThem() {
+        // Issue #1386: a workflow declared in source pulls its labels from a fragment file; the page shows them resolved.
+        val pulled = made + (WFD.label to "%{@t(\"acmeWf.review.label\")}")
+        val view = parseWorkflowCatalog(
+            mapOf(
+                CLD.client to "acme",
+                CWF.workflows to listOf(
+                    mapOf(CWF.definition to pulled, CWF.labels to mapOf(WFD.label to "Review", WFD.tasks to mapOf("record" to "Record"))),
+                ),
+            ),
+        ).workflows.single()
+        assertEquals("Review", view.name)
+        // A task the answer does not name keeps its label as written.
+        assertEquals(listOf("Record", "Approve it"), view.taskLabels)
     }
 
     @Test

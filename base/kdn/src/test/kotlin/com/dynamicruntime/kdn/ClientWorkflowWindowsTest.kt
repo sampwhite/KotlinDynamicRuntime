@@ -25,6 +25,7 @@ import com.dynamicruntime.common.gedra.workflow.WFP
 import com.dynamicruntime.common.gedra.workflow.WFT
 import com.dynamicruntime.common.gedra.workflow.WfEntry
 import com.dynamicruntime.common.gedra.workflow.WfParams
+import com.dynamicruntime.common.gedra.workflow.WfParamsFrom
 import com.dynamicruntime.common.gedra.workflow.WfParamsSetting
 import com.dynamicruntime.common.gedra.workflow.WfSaveKind
 import com.dynamicruntime.common.gedra.workflow.WfTaskSlot
@@ -129,9 +130,9 @@ class ClientWorkflowWindowsTest : StringSpec({
             .single { it[CWF.definition].toJsonMapOrEmpty()[WFD.workflowId] == "review" }[CWF.params].toJsonMapOrEmpty()
         val history = WfParamsSetting.listFrom(listed[WFP.history])
         history shouldHaveSize 3
-        history.map { it.params.windows.lifetime.end } shouldBe listOf(now + 42.days, now + 41.days, now + 30.days)
+        history.map { it.params.windowsInForce.lifetime.end } shouldBe listOf(now + 42.days, now + 41.days, now + 30.days)
         history.first().setByName.shouldNotBeNull()
-        WfParamsSetting.fromInfo(listed[WFP.current].toJsonMapOrEmpty()).params.windows.lifetime.end shouldBe now + 43.days
+        WfParamsSetting.fromInfo(listed[WFP.current].toJsonMapOrEmpty()).params.windowsInForce.lifetime.end shouldBe now + 43.days
         // A survey has no parameters.
         chief.getItem(UADEP.clientWorkflows)[CWF.workflows].toJsonListOfMaps()
             .single { it[CWF.definition].toJsonMapOrEmpty()[WFD.workflowId] == "details" }.containsKey(CWF.params) shouldBe false
@@ -150,7 +151,8 @@ class ClientWorkflowWindowsTest : StringSpec({
         val outside = WfWindows(lifetime = WfWindow(end = now + 5.days), relevancy = WfWindow(end = now + 6.days))
         chief.expectError(EXC.badInput, UADEP.clientWorkflowParams, windowsRequest("review", outside)).toString() shouldContain
             "after its lifetime window does"
-        chief.expectError(EXC.badInput, UADEP.clientWorkflowParams, windowsRequest("review", WfWindows.none)).toString() shouldContain
+        chief.postData(UADEP.clientWorkflowParams, windowsRequest("review", windows))
+        chief.expectError(EXC.badInput, UADEP.clientWorkflowParams, windowsRequest("review", windows)).toString() shouldContain
             "nothing to save"
         chief.expectError(EXC.notFound, UADEP.clientWorkflowParams, windowsRequest("nosuch", windows))
         // Nor may a definition carry them: windows written into one are refused at the write.
@@ -210,13 +212,13 @@ class ClientWorkflowWindowsTest : StringSpec({
         windowsIn(sandbox, "review") shouldBe live
         val shown = full.getItem(UADEP.clientWorkflows, mapOf(CLD.client to sandbox))[CWF.workflows].toJsonListOfMaps()
             .single { it[CWF.definition].toJsonMapOrEmpty()[WFD.workflowId] == "review" }[CWF.params].toJsonMapOrEmpty()
-        shown[WFP.fromParent] shouldBe true
+        shown[WFP.from].toJsonMapOrEmpty()[WFP.windows] shouldBe WfParamsFrom.parent.name
         // Its own, once saved, are its alone; the client's people keep theirs.
         val tried = WfWindows(lifetime = WfWindow(end = now + 5.days))
         full.postData(UADEP.clientWorkflowParams, windowsRequest("review", tried) + (CLD.client to sandbox))
         windowsIn(sandbox, "review") shouldBe tried
         windowsIn(client, "review") shouldBe live
-        params.resolve(cxt, sandbox, "review").fromParent shouldBe false
+        params.resolve(cxt, sandbox, "review").layers.from.isEmpty() shouldBe true
         // And a later change to the client's does not reach the sandbox: nothing copies between them.
         full.postData(UADEP.clientWorkflowParams, windowsRequest("review", WfWindows(lifetime = WfWindow(end = now + 60.days))) + (CLD.client to client))
         windowsIn(sandbox, "review") shouldBe tried

@@ -6,9 +6,11 @@ import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.workflow.WFD
 import com.dynamicruntime.common.gedra.workflow.WFP
 import com.dynamicruntime.common.gedra.workflow.WfParams
+import com.dynamicruntime.common.gedra.workflow.WfParamsFrom
 import com.dynamicruntime.common.gedra.workflow.templateSlotsFromInfo
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.user.UADEP
+import com.dynamicruntime.common.util.toJsonListOfStrings
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
 
@@ -32,6 +34,11 @@ internal fun SchModuleBuilder.clientWorkflowsEndpoints() {
         property(CWF.configName, "The stored configuration holding it; absent for one declared in source code.")
         property(CWF.notEditable, "Why its slots cannot be changed here; absent when they can.")
         property(
+            CWF.labels,
+            "When its labels pull copy from a fragment file: each as the page's client sees it, the workflow's under " +
+                "`${WFD.label}` and each task's under `${WFD.tasks}` by task id. Absent when none pulls any.",
+        ) { type = SCT.kObject }
+        property(
             CWF.params,
             "For a normal workflow, its parameters as the page's client or sandbox runs them (issue #1356): its time " +
                 "windows, set here whoever declared the workflow. Absent for any other kind.",
@@ -42,22 +49,41 @@ internal fun SchModuleBuilder.clientWorkflowsEndpoints() {
     type(CWF.settingTypeName) {
         type = SCT.kObject
         description = "One setting of a workflow's parameters: the values, when they were set, and by whom."
-        property(WFP.params, "The values: `${WFP.windows}`, a normal workflow's time windows, each a half-open `{start, end}` of moments, either bound optional.", required = true) {
-            type = SCT.kObject
-        }
+        property(
+            WFP.params,
+            "The values the scope set itself: `${WFP.windows}`, a normal workflow's time windows, each a half-open " +
+                "`{start, end}` of moments, either bound optional. A parameter absent here was not set by this setting.",
+            required = true,
+        ) { type = SCT.kObject }
         property(WFP.setAt, "When they were set; absent for values nobody has set.") { dateTime() }
         property(WFP.setBy, "The user who set them, by id.") { type = SCT.integer }
         property(WFP.setByName, "The user who set them, by name.")
     }
     type(CWF.paramsTypeName) {
         type = SCT.kObject
-        description = "A workflow's parameters in a client or sandbox (issue #1356), with their earlier settings."
-        property(WFP.current, "The setting in force: no values set means no limits.", required = true) { ref(CWF.settingTypeName) }
-        property(WFP.history, "The earlier settings, newest first, at most ${WFP.historyKept}.", required = true) {
+        description = "A workflow's parameters in a client or sandbox (issues #1356, #1386), with their earlier settings."
+        property(
+            WFP.inForce,
+            "The parameters in force, each the scope's own, else -- on a sandbox -- its client's, else the default the " +
+                "client's source code declares. A parameter set nowhere is absent, and is no limit.",
+            required = true,
+        ) { type = SCT.kObject }
+        property(
+            WFP.from,
+            "Where each parameter in force that is not the scope's own comes from, by key: " +
+                "${WfParamsFrom.entries.joinToString(" or ") { "`${it.name}`" }}. Absent when every one is its own.",
+        ) { type = SCT.kObject }
+        property(WFP.current, "The scope's own setting; absent while it has set nothing.") { ref(CWF.settingTypeName) }
+        property(WFP.history, "The scope's earlier settings, newest first, at most ${WFP.historyKept}.", required = true) {
             type = SCT.array
             items { ref(CWF.settingTypeName) }
         }
-        property(WFP.fromParent, "On a sandbox with none of its own: these are its parent's, which it reads.") { type = SCT.boolean }
+        property(WFP.parent, "On a sandbox: its client's own setting, which it follows for any parameter it does not set; absent while the client has none.") {
+            ref(CWF.settingTypeName)
+        }
+        property(WFP.source, "The defaults the client's source code declares, which it follows for any parameter nobody set; absent when there are none.") {
+            type = SCT.kObject
+        }
     }
 
     type(CWF.traitTypeName) {
@@ -153,19 +179,24 @@ internal fun SchModuleBuilder.clientWorkflowsEndpoints() {
 
     generalEndpoint(
         UADEP.clientWorkflowParams,
-        "Sets the parameters of one of a client's normal workflows (issue #1356) -- `${WFP.windows}`: its time windows, " +
-            "`${WFD.lifetime}`, `${WFD.relevancy}` and `${WFD.engagement}`, each a half-open `{start, end}` of moments, " +
-            "either bound optional -- in the client or sandbox named, whoever declared the workflow. In force at once, " +
-            "with no draft and no publish; what they replace is kept among the earlier settings. A change that would, " +
-            "now, freeze or hide forms engaged with the workflow is refused with the impact report unless the impact is " +
-            "acknowledged.",
+        "Changes the parameters of one of a client's normal workflows (issues #1356, #1386) -- `${WFP.windows}`: its " +
+            "time windows, `${WFD.lifetime}`, `${WFD.relevancy}` and `${WFD.engagement}`, each a half-open `{start, end}` " +
+            "of moments, either bound optional -- in the client or sandbox named, whoever declared the workflow. Each " +
+            "parameter in `${WFP.params}` becomes the scope's own, and each named in `${WFP.unset}` follows its fallback " +
+            "again; any other is left as it is. In force at once, with no draft and no publish; what they replace is " +
+            "kept among the earlier settings. A change that would, now, freeze or hide forms engaged with the workflow " +
+            "is refused with the impact report unless the impact is acknowledged.",
         HttpMethod.POST,
         outputRef = CWF.paramsResultTypeName,
         needsClientConfig = true,
         inputFields = {
             overseenClientField(CLD.client)
             field(WFD.workflowId, "The workflow.", required = true)
-            field(WFP.params, "Its parameters: absent or empty, no limits.") { type = SCT.kObject }
+            field(WFP.params, "The parameters to set here; one set empty is no limits.") { type = SCT.kObject }
+            field(WFP.unset, "The parameters to stop setting here, by key, so each follows its fallback again.") {
+                type = SCT.array
+                items { type = SCT.string }
+            }
             field(
                 IMP.acknowledgeImpact,
                 "Save although forms engaged with the workflow would be frozen or hidden; without it, such a save is " +
@@ -180,7 +211,8 @@ internal fun SchModuleBuilder.clientWorkflowsEndpoints() {
         } catch (e: KdrException) {
             throw KdrException.mkInput("The parameters do not read: ${e.message}")
         }
-        val resolved = ClientWorkflowEdit.saveParams(c, client, request[WFD.workflowId].toOptStr().orEmpty(), params, gate)
+        val unset = request[WFP.unset].toJsonListOfStrings().toSet()
+        val resolved = ClientWorkflowEdit.saveParams(c, client, request[WFD.workflowId].toOptStr().orEmpty(), params, unset, gate)
         mapOf(CLD.client to client, CWF.params to ClientWorkflowEdit.paramsInfo(c, resolved))
     }
 

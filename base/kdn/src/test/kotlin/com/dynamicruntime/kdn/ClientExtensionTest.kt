@@ -78,6 +78,10 @@ class ClientExtensionTest : StringSpec({
         SchemaService.get(cxt).storeFor(kid).types shouldContainKey "client.tplbase.Shared"
         SchemaService.get(cxt).cfactsFor(kid).defs shouldContainKey "tplFlag"
         WorkflowService.get(cxt).forClient(kid).workflow("tplFlow").shouldNotBeNull()
+        // The template's default parameters for its workflow are the client's, and its sandbox's (issue #1386).
+        for (scope in listOf(kid, sandboxOf(kid))) {
+            WorkflowService.get(cxt).forClient(scope).paramDefaults.getValue("tplFlow").windows.shouldNotBeNull()
+        }
         // A key only the template sets reads the template's; one the client sets reads the client's.
         brand(kid) shouldBe "TPL"
         title(kid) shouldBe "Kid title"
@@ -263,6 +267,8 @@ class ExtensionTemplateComponent : ComponentDefinition {
             }
             cfact("tplFlag", "tpl", "A template flag.")
             workflow("tplFlow", WfEntry.normal) { task("a", "A") { trait("tplNote"); save("s", "Save", WfSaveKind.edit) } }
+            // Wide enough to change nothing any case here sees (issue #1386).
+            workflowParams("tplFlow") { lifetime(start = "2000-01-01T00:00:00Z", end = "2999-01-01T00:00:00Z") }
             fragmentOverlay("home") {
                 namespace("home") {
                     key("title", "Template title")

@@ -249,7 +249,9 @@ say only the workflow's label, its tasks' labels and traits, their saves' labels
 show (`types`, which for a workflow holds layouts only). Anything else is refused. Not a workflow's time windows:
 those are its parameters, set per client and in force at once, and never part of a definition or an overlay (issue
 #1356). They outlive the workflow: a workflow removed keeps its parameters and their history, so one made again under
-the same id runs with the windows the old one had. An editor (the client page's slot form, Design
+the same id runs with the windows the old one had. Each parameter resolves on its own (issue #1386): a scope's own
+value, else a sandbox's client's, else a default the client's source code declares (`workflowParams` in a source
+configuration, beside the workflow; a stored configuration cannot hold one), else no limit. An editor (the client page's slot form, Design
 View) changes the workflow as it runs, and what is stored is the diff from the template. A change the overlay cannot
 state, such as a task removed, is refused. If a template later changes in a way an overlay no longer fits, or is
 removed, the workflow costs only itself, as an unreadable report does: the load leaves it out and reports it, and

@@ -83,6 +83,8 @@ object SandboxConfigs {
             reports = config.reports,
             unreadReports = config.unreadReports,
             unreadWorkflows = config.unreadWorkflows,
+            // The parent's source defaults (issue #1386), which the sandbox falls back to below its client's own values.
+            workflowParams = config.workflowParams,
             // As they are (issue #1153): a ref names bytes by their hash, kept under the parent, and the sandbox
             // serves the parent's -- which is how it previews a ref its parent has only drafted.
             fileRefs = config.fileRefs,
