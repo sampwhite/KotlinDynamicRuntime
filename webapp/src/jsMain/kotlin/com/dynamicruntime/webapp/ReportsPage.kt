@@ -5,6 +5,7 @@ import com.dynamicruntime.common.gedra.ClientStatus
 import com.dynamicruntime.common.gedra.clientLabel
 import com.dynamicruntime.common.gedra.report.ReportMode
 import com.dynamicruntime.common.home.HMENU
+import com.dynamicruntime.common.home.PFRAG
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.awaitCancellation
@@ -67,6 +68,8 @@ private class ReportShown(val key: String, val page: ReportRunPage)
  * calling the endpoint, and the endpoint's own refusal is shown in its words.
  */
 val ReportsPage = FC<Props> {
+    // The page's own copy (issue #1337): what its three views are.
+    val pageCopy = usePageCopy(PFRAG.reports)
     var config by useState<HomeConfig?>(null)
     var clients by useState<List<ClientOverview>?>(null)
     var loadError by useState<DisplayError?>(null)
@@ -295,7 +298,7 @@ val ReportsPage = FC<Props> {
                             +"This client has no report '$reportId'."
                         }
                         report != null -> {
-                            reportHeading(report)
+                            reportHeading(report, pageCopy.explanation(PFRAG.viewsNs))
                             reportControls(report, setup, running, historyView, ::changeSetup, ::showHistory)
                             if (historyView) {
                                 ReportHistoryPanel {
@@ -408,8 +411,12 @@ private fun ChildrenBuilder.reportList(listing: ReportListing?, error: DisplayEr
     }
 }
 
-private fun ChildrenBuilder.reportHeading(report: ReportInfo) {
-    h2 { +report.label }
+/** The report's name and description, with what its three views are beside the name (issue #1337): [explanation]. */
+private fun ChildrenBuilder.reportHeading(report: ReportInfo, explanation: String) {
+    WhatIsThis {
+        heading = report.label
+        text = explanation
+    }
     report.description?.let {
         p {
             className = ClassName("subtitle")

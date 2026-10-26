@@ -80,6 +80,16 @@ what should happen with `?:` rather than relying on tolerance.
 home page, …")`, carried to the fragment check and the copy editor's keys listing as `shownOn`; a file declared
 without one is *not shown by this application* and the editor says so. Declare it for every new file a page reads.
 
+**A page with no UI-config of its own reads a file the shell's names** (issue #1337). The Clients page, Reports and
+Design View have no widget-group, so the home config's `fragments` list names their files after its own
+(`PFRAG.files`: `clients`, `reports`, `design`), and such a page reads its copy with `usePageCopy(PFRAG.clients)`
+(`PageCopy.kt`; empty until it arrives, and if it cannot be read). Those files hold, for now, the pages' **"What is
+this?" explanations**: each at the `whatIsThis` key (`HFRAG.explanation`) of the namespace of the copy it explains,
+read with `copy.explanation(ns)` and drawn by `WhatIsThis` (`headingLevel` and `headingId` for a section heading that
+is not a plain `h2`). The `home` file holds the shell's and the forms pages' (`sandbox`, `forms`, `workflowForms`).
+An empty key draws no link, so a client's overlay can remove one as well as reword it. A page's other words still
+live in the webapp, and belong in its file as they are moved.
+
 **Authoring a `.md` fragment file:** `# @namespace` opens a namespace (re-declare to switch); `# +key value`
 is an inline value; `# +key` alone starts a next-line value (ends at two blank lines or the next `# ` line);
 `/- ... -/` is a comment. Reference: `base/common/src/main/resources/md-fragments/sample.md`, and

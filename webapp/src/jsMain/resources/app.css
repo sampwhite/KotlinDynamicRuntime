@@ -1374,7 +1374,13 @@ textarea.json-edit.json-field { min-height: 4.5rem; }
    which the card's rhythm would otherwise flatten now that the heading is not the card's own child. */
 .what-is-this-heading { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 12px; }
 .card > .what-is-this-heading { margin-top: 28px; }
-.what-is-this-heading > h2 { margin: 0; }
+.what-is-this-heading > h1, .what-is-this-heading > h2, .what-is-this-heading > h3 { margin: 0; }
+/* Beside a page's own heading (issue #1337): the row is spaced as the `h1` alone was. */
+.what-is-this-heading.what-is-this-title { margin: 0 0 4px; }
+.card > .what-is-this-heading.what-is-this-title { margin-top: 0; }
+.card > .what-is-this-title + * { margin-top: 8px; }
+/* In a workflow listing's header row, an opened explanation takes a line of its own beneath the row. */
+.wf-header > .what-is-this-text { order: 1; flex-basis: 100%; }
 .what-is-this-link {
     padding: 0;
     border: 0;

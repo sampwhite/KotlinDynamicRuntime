@@ -17,7 +17,11 @@ import com.dynamicruntime.common.home.HEP
 import com.dynamicruntime.common.home.HFEAT
 import com.dynamicruntime.common.home.HFLD
 import com.dynamicruntime.common.home.HFRAG
+import com.dynamicruntime.common.home.PFRAG
+import com.dynamicruntime.common.content.MarkdownFragmentService
 import com.dynamicruntime.common.http.request.TestHttpClient
+import com.dynamicruntime.common.util.componentImageNames
+import com.dynamicruntime.common.util.imageRefIds
 import com.dynamicruntime.common.util.renderMarkdown
 import com.dynamicruntime.common.util.toJsonMap
 import io.kotest.assertions.throwables.shouldThrow
@@ -56,6 +60,34 @@ class HomeUiConfigEndpointTest : StringSpec({
         features[HFEAT.leftBar] shouldBe false
         features[HFEAT.topBar] shouldBe false
         features[HFEAT.inlineLinks] shouldBe false
+    }
+
+    "home ui config names the pages' copy files after its own, each carrying its explanations (issue #1337)" {
+        // The Clients page, Reports and Design View have no UI-config of their own, so the shell's names their files.
+        val cxt = TestInstances.default("uiHome")
+        val cfg = results(TestHttpClient(cxt.instanceConfig).sendJsonGetRequest(HEP.homeUiConfig))
+        cfg.list(UIC.fragments).map { it!!.toJsonMap()[UIC.fileId] } shouldContainExactly listOf(HFRAG.home) + PFRAG.files
+        // Each explanation the pages read is there, and says something: an empty one would draw no link.
+        val explained = mapOf(
+            HFRAG.home to listOf(HFRAG.formsNs, HFRAG.workflowFormsNs, HFRAG.sandboxNs),
+            PFRAG.clients to listOf(PFRAG.sandboxNs, PFRAG.storedConfigNs, PFRAG.filesNs),
+            PFRAG.reports to listOf(PFRAG.viewsNs),
+            PFRAG.design to listOf(PFRAG.ownCopyNs),
+        )
+        val fragments = MarkdownFragmentService.get(cxt)
+        for ((fileId, namespaces) in explained) {
+            val content = fragments.effectiveFragments(cxt, fileId).shouldNotBeNull().content
+            for (ns in namespaces) {
+                content[ns]?.get(HFRAG.explanation).orEmpty().isNotBlank() shouldBe true
+            }
+        }
+        // The Files explanation shows the image it teaches a client to replace, and its examples are code: they name
+        // no image and no file, so a client's edit of it is not refused for a `ref:` the steps only spell out.
+        val files = fragments.effectiveFragments(cxt, PFRAG.clients).shouldNotBeNull().content
+            .getValue(PFRAG.filesNs).getValue(HFRAG.explanation)
+        files.componentImageNames() shouldContainExactly listOf("kdr:fileRefs")
+        files.imageRefIds() shouldBe emptyList()
+        files.lines().first() shouldContain "(img:kdr:fileRefs)"
     }
 
     "home ui config offers the readme as a versioned document link" {

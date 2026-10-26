@@ -123,8 +123,11 @@ val FormsPage = FC<FormsPageProps> { props ->
     // The listing's columns (issue #1323), from every page's summary: what the table's display columns are, and the
     // presentation each cell -- and an open form's heading -- reads through.
     var listingColumns by useState<List<ListingColumn>>(emptyList())
+    // The home file's copy, which the forms pages read (issue #791): what a row with no workflows shows, and the
+    // listings' "What is this?" explanations (issue #1337). Empty until read, and if it cannot be.
+    var homeCopy by useState(Copy.empty)
     // What a row with no workflows shows (issue #791): the client's copy, Markdown; null draws a dash.
-    var emptyWorkflowsCopy by useState<String?>(null)
+    val emptyWorkflowsCopy = homeCopy.opt(HFRAG.formsNs, HFRAG.noWorkflows)?.ifBlank { null }
     // How many forms the listing asks for (issue #1315): the first batch, grown on request, carried in the address.
     var shown by useState(listingBatch)
     // The forms-list search (issue #538): `draft` is what the boxes hold, `applied` is what the list is
@@ -435,14 +438,14 @@ val FormsPage = FC<FormsPageProps> { props ->
             val seeAllClients = homeConfig?.canSeeAllClients == true
             canSeeAllClients = seeAllClients
             hasSurvey = homeConfig?.hasSurvey == true
-            // The workflow column's empty-cell copy (issue #791), from the home fragment file a client overlays.
-            // Copy only decorates the column, so a failure to fetch it leaves the dash rather than failing the list.
-            emptyWorkflowsCopy = homeConfig?.let { cfg ->
+            // The workflow column's empty-cell copy (issue #791) and the explanations (issue #1337), from the home
+            // fragment file a client overlays. Copy only decorates the page, so a failure to fetch it leaves the dash
+            // and no explanation rather than failing the list.
+            homeConfig?.let { cfg ->
                 apiResult {
                     fetchCopyWithRetry(cfg.fragment) { apiResult { HomeApi.fetchConfig().fragment }.valueOrNull() }
-                        .opt(HFRAG.formsNs, HFRAG.noWorkflows)
                 }.valueOrNull()
-            }?.ifBlank { null }
+            }?.let { homeCopy = it }
             // The clients to offer in the filter, for a cross-client caller (issue #668) -- with each one's
             // `hasSurvey` (issue #695), so the survey-status filter can follow the chosen client.
             if (seeAllClients) {
@@ -579,7 +582,19 @@ val FormsPage = FC<FormsPageProps> { props ->
             div {
                 className = ClassName("wf-header")
                 backToListing(HMENU.pageWorkflows)
-                h1 { MarkdownInline { source = workflowDrillLabel(appliedSearch, listingWorkflows) ?: "Workflow" } }
+                // What a workflow and its states are (issue #1337), beside its name. On the listing only: an open form
+                // is one of its forms, not the workflow.
+                val workflowLabel = workflowDrillLabel(appliedSearch, listingWorkflows) ?: "Workflow"
+                if (viewingId == null) {
+                    WhatIsThis {
+                        heading = workflowLabel
+                        headingLevel = 1
+                        headingMarkdown = true
+                        text = homeCopy.explanation(HFRAG.workflowFormsNs)
+                    }
+                } else {
+                    h1 { MarkdownInline { source = workflowLabel } }
+                }
                 if (ep != null && viewingId == null) {
                     div {
                         className = ClassName("wf-actions")
@@ -608,8 +623,13 @@ val FormsPage = FC<FormsPageProps> { props ->
                 }
             }
         } else {
-            // Named for whose forms it lists (issue #1091), as the menu entry that led here was.
-            h1 { +formsListingName(shell) }
+            // Named for whose forms it lists (issue #1091), as the menu entry that led here was -- with what a form, a
+            // workflow and a task are beside it (issue #1337), on the listing only: an open form is one of them.
+            WhatIsThis {
+                heading = formsListingName(shell)
+                headingLevel = 1
+                text = if (viewingId == null) homeCopy.explanation(HFRAG.formsNs) else ""
+            }
         }
         // The search beyond the listing's own identity (issue #792): on the workflow's listing the workflow and state
         // are not a narrowing of it, so "no forms match your search" and "nothing here at all" part on this.

@@ -27,13 +27,18 @@ class FragmentRef(val fileId: String, val buildId: String)
  * with its own keys and builds its own typed config from them.
  */
 class UiConfig(
-    /** The group's copy. Configs name one fragment file today; [UIC.fragments] is a list against more later. */
+    /** The group's copy: the first file its config names. */
     val fragment: FragmentRef,
     /** Boolean policy flags. */
     val features: Map<String, Any?>,
     /** Non-flag tuning values (numbers, strings); empty for a group that has none. */
     val settings: Map<String, Any?>,
     val state: Map<String, Any?>,
+    /**
+     * Every file the config names, [fragment] first. Only the shell's names more (issue #1337): the files of the pages
+     * with no UI-config of their own, which they read through it ([HomeConfig.pageFragments]).
+     */
+    val fragments: List<FragmentRef> = listOf(fragment),
 )
 
 /**
@@ -75,21 +80,22 @@ class Copy(private val byNamespace: Map<String, Map<String, String>>) {
  */
 fun UiConfig.answersSameAs(other: UiConfig?): Boolean =
     other != null &&
-        fragment.fileId == other.fragment.fileId && fragment.buildId == other.fragment.buildId &&
+        fragments.map { it.fileId to it.buildId } == other.fragments.map { it.fileId to it.buildId } &&
         features == other.features && settings == other.settings && state == other.state
 
 /** GETs a widget-group's UI-config. Cheap and meant to be re-fetched on navigation. */
 suspend fun fetchUiConfig(path: String): UiConfig {
     val results = Http.getApi(path)[EP.results].toJsonMapOrEmpty()
-    val fragment = results[UIC.fragments].toJsonListOrEmpty().firstOrNull().toJsonMapOrEmpty()
+    val fragments = results[UIC.fragments].toJsonListOrEmpty().map {
+        val fragment = it.toJsonMapOrEmpty()
+        FragmentRef(fileId = fragment[UIC.fileId] as? String ?: "", buildId = fragment[UIC.buildId] as? String ?: "")
+    }
     return UiConfig(
-        fragment = FragmentRef(
-            fileId = fragment[UIC.fileId] as? String ?: "",
-            buildId = fragment[UIC.buildId] as? String ?: "",
-        ),
+        fragment = fragments.firstOrNull() ?: FragmentRef("", ""),
         features = results[UIC.features].toJsonMapOrEmpty(),
         settings = results[UIC.settings].toJsonMapOrEmpty(),
         state = results[UIC.state].toJsonMapOrEmpty(),
+        fragments = fragments.ifEmpty { listOf(FragmentRef("", "")) },
     )
 }
 

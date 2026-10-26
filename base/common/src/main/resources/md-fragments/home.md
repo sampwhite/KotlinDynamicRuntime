@@ -32,6 +32,44 @@ The users you have in other clients. Choose one to switch to it; the account men
 /- What a forms-listing row with no workflows shows in the workflow column (issue #791). A client overlays it:
    "Coming Soon...", a link to the workflow pages, "No workflows available." -/
 # +noWorkflows —
+/- The forms listing's "What is this?" (issue #1337): what a form is, and the workflows it may be in. -/
+# +whatIsThis
+A **form** is one document: what was entered for one request, report or case, kept together. Its parts are
+**traits**, such as a name, a site visit or an expense report, and the leading columns show the ones this listing
+picks out. **Contains** lists them all.
+
+A **workflow** is a process a form goes through, such as a review or a follow-up. It is made of **tasks**, each a
+step that somebody does: filling in part of the form, or approving it. One form can be in several workflows at once,
+since each one works on the parts of the form it needs. Where the listing has a workflow column, it shows where the
+form stands in each.
+
+
+# @workflowForms
+/- A workflow's own forms listing (issue #1337), opened from the Workflows page. -/
+# +whatIsThis
+A **workflow** is a process a form goes through, made of **tasks**: each a step that somebody does, such as filling
+in part of the form or approving it. This page lists the forms by where they stand in this one workflow:
+
+- **Eligible:** the form could start the workflow, and has not.
+- **Engaged:** the workflow has started on the form, and work is under way.
+- **Finished:** the workflow is done with the form.
+
+A form can be in several workflows at once, so the same form may be listed under another workflow too.
+
+
+# @sandbox
+/- The sandbox chip's "What is this?" (issue #1337), beneath what the chip says of the sandbox the session is in. -/
+# +whatIsThis
+A sandbox is where a client's changes are tried before its people see them. It runs the client's **latest**
+configuration, drafts included, while the client's own people go on using what was last **published**.
+
+- **Users and data of its own.** Forms made here stay here, and the client's own forms are not shown here.
+- **Changes are drafts.** A change to the client's configuration made here (its copy, menu, traits, workflows or
+  files) shows here at once. It reaches the client's people only when it is published, from the stored
+  configuration on the sandbox's client page.
+- **You act with your own access.** Your user here has the access of the user you opened the sandbox from, and loses
+  it when that user does.
+
 
 # @nav
 # +title Documents

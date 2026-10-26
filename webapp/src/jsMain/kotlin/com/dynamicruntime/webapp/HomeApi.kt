@@ -120,6 +120,11 @@ class HomeConfig(
     val timeZone: String? = null,
     /** Beside [timeZone], the backend's generic short name for it ("CT"), its moments' label (issue #1321). */
     val timeZoneLabel: String? = null,
+    /**
+     * The copy files of the pages with no UI-config of their own (issue #1337) -- the Clients page, Reports, and
+     * Design View (the kernel's `PFRAG`) -- by file id, as the shell's config names them after its own; see [usePageCopy].
+     */
+    val pageFragments: Map<String, FragmentRef> = emptyMap(),
 )
 
 /**
@@ -158,6 +163,7 @@ fun homeConfigFrom(config: UiConfig): HomeConfig {
     }
     return HomeConfig(
         fragment = config.fragment,
+        pageFragments = config.fragments.drop(1).associateBy { it.fileId },
         layout = HomeLayout(
             topBar = config.features[HFEAT.topBar] == true,
             leftBar = config.features[HFEAT.leftBar] == true,

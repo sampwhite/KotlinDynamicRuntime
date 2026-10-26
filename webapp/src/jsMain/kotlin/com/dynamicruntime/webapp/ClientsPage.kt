@@ -7,6 +7,7 @@ import com.dynamicruntime.common.gedra.ClientStatus
 import com.dynamicruntime.common.gedra.MNU
 import com.dynamicruntime.common.gedra.clientLabel
 import com.dynamicruntime.common.home.HMENU
+import com.dynamicruntime.common.home.PFRAG
 import com.dynamicruntime.common.util.humanizeFieldName
 import com.dynamicruntime.common.util.toJsonListOfStrings
 import com.dynamicruntime.common.util.toOptStr
@@ -75,6 +76,8 @@ private const val storedConfigurationId = "stored-configuration"
  */
 @Suppress("UnnecessaryVariable")
 val ClientsPage = FC<Props> {
+    // The page's own copy (issue #1337): its sections' "What is this?" explanations.
+    val pageCopy = usePageCopy(PFRAG.clients)
     var config by useState<HomeConfig?>(null)
     var rows by useState<List<ClientOverview>?>(null)
     var loadError by useState<DisplayError?>(null)
@@ -237,7 +240,7 @@ val ClientsPage = FC<Props> {
         openId != null -> clientDetail(
             openId, rows?.firstOrNull { it.clientId == openId }, definition, storedConfigs,
             detailError, detailNote, storedError, overrides, overridesError, overridesRefused, current.canSeeAllClients,
-            inPlace, onChanged = bump,
+            inPlace, pageCopy, onChanged = bump,
         )
         // The view across clients, and the listing, are the allClients administrator's: a client's own
         // administrator was shown their client above (issue #1082).
@@ -273,6 +276,8 @@ private fun ChildrenBuilder.clientDetail(
     acrossClients: Boolean,
     /** Whether this client is the one the page opens with none named (issue #1082): the caller's one client. */
     inPlace: Boolean,
+    /** The page's copy (issue #1337), whose explanations the sections' headings offer. */
+    pageCopy: Copy,
     /** What a copy edit calls once it is live (issue #918): the page re-reads, and so does the shell. */
     onChanged: () -> Unit,
 ) {
@@ -407,7 +412,10 @@ private fun ChildrenBuilder.clientDetail(
         }
         // Its sandbox (issue #932): whose it is, or adding and removing one.
         row?.let { overview ->
-            h2 { +"Sandbox" }
+            WhatIsThis {
+                heading = "Sandbox"
+                text = pageCopy.explanation(PFRAG.sandboxNs)
+            }
             SandboxSection {
                 this.row = overview
                 this.onChanged = onChanged
@@ -441,7 +449,10 @@ private fun ChildrenBuilder.clientDetail(
             }
             // Its named images (issue #1176). Unlike the two above these are configuration: for a client with a
             // sandbox a change is a draft, and the sandbox's own page lists what the parent has drafted.
-            h2 { +"Files" }
+            WhatIsThis {
+                heading = "Files"
+                text = pageCopy.explanation(PFRAG.filesNs)
+            }
             FileRefsSection {
                 key = "files".unsafeCast<Key>()
                 this.clientId = clientId
@@ -452,9 +463,10 @@ private fun ChildrenBuilder.clientDetail(
             }
         }
         // A sandbox holds no configuration of its own; it runs its parent's latest (issue #1001), listed here as such.
-        h2 {
-            id = ElementId(storedConfigurationId)
-            +(row?.sandboxOf?.let { "Configuration it runs ($it's)" } ?: "Stored configuration")
+        WhatIsThis {
+            heading = row?.sandboxOf?.let { "Configuration it runs ($it's)" } ?: "Stored configuration"
+            headingId = storedConfigurationId
+            text = pageCopy.explanation(PFRAG.storedConfigNs)
         }
         when {
             storedError != null -> errorText("Couldn't load this client's stored configuration.", storedError)

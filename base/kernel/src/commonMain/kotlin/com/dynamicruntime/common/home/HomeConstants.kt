@@ -450,6 +450,45 @@ object HFRAG {
      * so a client may say "Coming Soon…", link to the workflow pages, or say "No workflows available."
      */
     const val noWorkflows = "noWorkflows"
+
+    /**
+     * The key of a "What is this?" explanation (issue #1337), in the namespace of the copy it explains -- in this
+     * file and in a page's own ([PFRAG]), as the profile file's `users.whatIsThis` is. Empty, the link is not offered.
+     */
+    const val explanation = "whatIsThis"
+
+    /** The home file's namespace for the sandbox chip's explanation (issue #1337). */
+    const val sandboxNs = "sandbox"
+
+    /** The home file's namespace for a workflow's forms listing (issue #1337), beside [formsNs]'s forms listing. */
+    const val workflowFormsNs = "workflowForms"
+}
+
+/**
+ * The fragment files of the pages whose copy is not a widget-group's own (issue #1337): the Clients page, Reports, and
+ * Design View. They hold the explanations those pages offer and are the place for the rest of their copy. Having no
+ * UI-config of their own, they are named by the shell's ([HFRAG.home]'s config lists them after its own file), so a
+ * page reads its file with no request of its own.
+ */
+@Suppress("ConstPropertyName")
+object PFRAG {
+    const val clients = "clients"
+    const val reports = "reports"
+    const val design = "design"
+
+    /** Every page file, in the order the shell's config names them. */
+    val files: List<String> = listOf(clients, reports, design)
+
+    /** The Clients page's namespaces: its Sandbox, Stored configuration and Files sections. */
+    const val sandboxNs = "sandbox"
+    const val storedConfigNs = "storedConfig"
+    const val filesNs = "files"
+
+    /** The Reports page's namespace for its views: Per form, Grouped, and History. */
+    const val viewsNs = "views"
+
+    /** Design View's namespace for a workflow's own copy against the shared definition's. */
+    const val ownCopyNs = "ownCopy"
 }
 
 /**

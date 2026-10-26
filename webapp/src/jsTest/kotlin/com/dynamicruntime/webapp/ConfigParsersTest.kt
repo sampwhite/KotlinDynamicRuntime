@@ -6,6 +6,7 @@ import com.dynamicruntime.common.context.UserProfile
 import com.dynamicruntime.common.home.HFEAT
 import com.dynamicruntime.common.home.HFLD
 import com.dynamicruntime.common.home.HFRAG
+import com.dynamicruntime.common.home.PFRAG
 import com.dynamicruntime.common.uiblock.UIB
 import com.dynamicruntime.common.uiblock.UiCall
 import com.dynamicruntime.common.uiblock.UiRoute
@@ -96,6 +97,33 @@ class ConfigParsersTest {
     }
 
     // ---- homeConfigFrom ----
+
+    /**
+     * The shell's config names the pages' copy files after its own (issue #1337): the first is the shell's copy, the
+     * rest each page's by file id, and a config naming one file has none -- and the explanation in a namespace is its
+     * `whatIsThis` key, with any pull resolved in the same file, or nothing.
+     */
+    @Test
+    fun homeConfigNamesThePagesCopyFilesAfterItsOwn() {
+        val home = FragmentRef(HFRAG.home, "h1")
+        val clients = FragmentRef(PFRAG.clients, "c1")
+        val reports = FragmentRef(PFRAG.reports, "r1")
+        val cfg = homeConfigFrom(UiConfig(home, emptyMap(), emptyMap(), emptyMap(), listOf(home, clients, reports)))
+        assertEquals(HFRAG.home, cfg.fragment.fileId)
+        assertEquals(setOf(PFRAG.clients, PFRAG.reports), cfg.pageFragments.keys)
+        assertEquals("c1", cfg.pageFragments.getValue(PFRAG.clients).buildId)
+        assertTrue(homeConfigFrom(uiConfig()).pageFragments.isEmpty())
+
+        val copy = Copy(
+            mapOf(
+                PFRAG.filesNs to mapOf(HFRAG.explanation to $$"Files are images. ${@t(\"files.more\")}", "more" to "See above."),
+                PFRAG.sandboxNs to mapOf("title" to "Sandbox"),
+            ),
+        )
+        assertEquals("Files are images. See above.", copy.explanation(PFRAG.filesNs))
+        assertEquals("", copy.explanation(PFRAG.sandboxNs))
+        assertEquals("", Copy.empty.explanation(PFRAG.storedConfigNs))
+    }
 
     @Test
     fun homeConfigReadsLinksMenuLayoutAndUser() {
