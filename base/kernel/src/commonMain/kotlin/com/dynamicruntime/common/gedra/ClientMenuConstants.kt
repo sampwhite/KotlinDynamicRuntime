@@ -42,6 +42,12 @@ object MNU {
     const val audiences = "audiences"
     const val name = "name"
 
+    /**
+     * On an item: whether it shipped for an audience that is the deployment's own (issue #1397) -- its operators, a
+     * test instance, a debug session -- which a client's people are never among.
+     */
+    const val deploymentOnly = "deploymentOnly"
+
     /** The item this one sits under, when it is not top-level. */
     const val parentId = "parentId"
 

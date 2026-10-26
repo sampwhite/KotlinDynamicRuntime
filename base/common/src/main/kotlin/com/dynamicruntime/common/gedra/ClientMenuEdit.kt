@@ -65,6 +65,11 @@ object ClientMenuEdit {
         val audiences: List<MenuAudience>,
         /** Whether the client's own layers set the label or the condition. */
         val stored: Boolean,
+        /**
+         * Whether the item shipped for an audience that is the deployment's own ([MenuAudience.deployment], issue
+         * #1397): its operators, a test instance, a debug session -- people a client's own are never among.
+         */
+        val deploymentOnly: Boolean = false,
     )
 
     /**
@@ -95,6 +100,7 @@ object ClientMenuEdit {
                 audience = HomeMenuAudiences.of(condition)?.name,
                 audiences = if (shipped == null) emptyList() else HomeMenuAudiences.choicesFor(baseCondition),
                 stored = stored[id]?.let { it.containsKey(HFLD.label) || it.containsKey(UIB.cfactExpression) } ?: false,
+                deploymentOnly = shipped != null && HomeMenuAudiences.of(baseCondition)?.deployment == true,
             )
         }
     }

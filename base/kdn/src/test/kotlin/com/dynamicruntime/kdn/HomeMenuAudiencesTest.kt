@@ -2,6 +2,7 @@ package com.dynamicruntime.kdn
 
 import com.dynamicruntime.common.cfact.CFACT
 import com.dynamicruntime.common.cfact.CFACTS
+import com.dynamicruntime.common.gedra.ClientMenuEdit
 import com.dynamicruntime.common.home.HFLD
 import com.dynamicruntime.common.home.HMENU
 import com.dynamicruntime.common.home.HomeMenuAudiences
@@ -50,6 +51,27 @@ class HomeMenuAudiencesTest : StringSpec({
             "${CFACTS.loggedIn},~${CFACTS.administersClient},${CFACTS.app}",
             "${CFACTS.isClientOperator},${CFACTS.app}",
         )
+    }
+
+    "the deployment's own audiences are told apart from a client's people withheld for another reason (issue #1397)" {
+        // Pinned on purpose: an item shipped for one of these is left out of a client's menu editor by default.
+        HomeMenuAudiences.all.filter { it.deployment }.map { it.condition } shouldBe listOf(
+            "${CFACTS.isDeploymentAdmin},${CFACTS.app}",
+            CFACTS.isDeploymentOperator,
+            "${CFACTS.isDeploymentOperator},${CFACTS.app}",
+            "${CFACTS.hasTestAccess},${CFACTS.app}",
+            "${CFACTS.isEnvDebug},${CFACTS.app}",
+            "${CFACTS.canEnableDebug},${CFACTS.app}",
+        )
+        // None is offered: a client's people are never among them.
+        HomeMenuAudiences.offered.filter { it.deployment }.shouldBeEmpty()
+        // The administrators again, withheld as a second name for an offered audience, are still a client's people.
+        HomeMenuAudiences.of("${CFACTS.hasAdminLevel},${CFACTS.app}")?.deployment shouldBe false
+        // And so the items listing says of each item whether it shipped for the deployment's own.
+        val items = ClientMenuEdit.itemsFor(cxt, "hub").associateBy { it.itemId }
+        items.getValue("systemInfo").deploymentOnly shouldBe true
+        items.getValue("users").deploymentOnly shouldBe false
+        items.getValue("profile").deploymentOnly shouldBe false
     }
 
     "an item may be shown to the offered audiences, and put back to its own" {

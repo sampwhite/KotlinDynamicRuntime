@@ -6,9 +6,11 @@ import com.dynamicruntime.common.cfact.CFACTS
 /**
  * One audience a home-menu item is drawn for (issue #1094): the [condition] the menu writes, and the [name] a person
  * reads and chooses it by. [offered] says whether a client may show **any** item to it; an audience that is not is
- * still named, since the items shipped for it are listed, and may be chosen for those items alone.
+ * still named, since the items shipped for it are listed, and may be chosen for those items alone. [deployment] says
+ * that it is the deployment's own -- people a client's own are never among -- which the Clients page's menu editor
+ * reads to list, by default, only the items a client's people may be offered (issue #1397).
  */
-class MenuAudience(val condition: String, val name: String, val offered: Boolean)
+class MenuAudience(val condition: String, val name: String, val offered: Boolean, val deployment: Boolean = false)
 
 /**
  * The names of the audiences [homeMenuBlock] draws for (issue #1094), **declared beside the menu** so that a
@@ -45,7 +47,7 @@ object HomeMenuAudiences {
 
         MenuAudience(CFACT.alwaysName, "Everyone, edge nodes included", offered = false),
         MenuAudience("${CFACTS.hasAdminLevel},${CFACTS.app}", "Anyone at the administrator level", offered = false),
-        MenuAudience("${CFACTS.isDeploymentAdmin},${CFACTS.app}", "Administrators of every client", offered = false),
+        MenuAudience("${CFACTS.isDeploymentAdmin},${CFACTS.app}", "Administrators of every client", offered = false, deployment = true),
         MenuAudience(
             "${CFACTS.administersClient},~${CFACTS.isDeploymentAdmin},${CFACTS.app}", "Administrators of this client alone",
             offered = false,
@@ -54,11 +56,11 @@ object HomeMenuAudiences {
             "${CFACTS.administersCustomer},~${CFACTS.isDeploymentAdmin},${CFACTS.app}",
             "Administrators of a customer's root client", offered = false,
         ),
-        MenuAudience(CFACTS.isDeploymentOperator, "Deployment operators", offered = false),
-        MenuAudience("${CFACTS.isDeploymentOperator},${CFACTS.app}", "Deployment operators, on an app node", offered = false),
-        MenuAudience("${CFACTS.hasTestAccess},${CFACTS.app}", "Env-authed sessions, on a test instance", offered = false),
-        MenuAudience("${CFACTS.isEnvDebug},${CFACTS.app}", "Sessions in debug", offered = false),
-        MenuAudience("${CFACTS.canEnableDebug},${CFACTS.app}", "Sessions that may turn debug on", offered = false),
+        MenuAudience(CFACTS.isDeploymentOperator, "Deployment operators", offered = false, deployment = true),
+        MenuAudience("${CFACTS.isDeploymentOperator},${CFACTS.app}", "Deployment operators, on an app node", offered = false, deployment = true),
+        MenuAudience("${CFACTS.hasTestAccess},${CFACTS.app}", "Env-authed sessions, on a test instance", offered = false, deployment = true),
+        MenuAudience("${CFACTS.isEnvDebug},${CFACTS.app}", "Sessions in debug", offered = false, deployment = true),
+        MenuAudience("${CFACTS.canEnableDebug},${CFACTS.app}", "Sessions that may turn debug on", offered = false, deployment = true),
     )
 
     private val byCondition: Map<String, MenuAudience> = all.associateBy { it.condition }

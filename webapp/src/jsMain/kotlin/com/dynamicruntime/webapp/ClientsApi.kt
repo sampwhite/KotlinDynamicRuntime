@@ -40,7 +40,6 @@ import com.dynamicruntime.common.util.toJsonListOfStrings
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
 import com.dynamicruntime.common.webasset.WAS
-import kotlin.time.Clock
 
 /**
  * One client as the Clients page lists it (issue #905): a row of `/clientAdmin/clients/overview`. [status] and
@@ -713,6 +712,11 @@ class MenuItemView(
     val audiences: List<MenuAudienceChoice> = emptyList(),
     /** Whether the client's stored configuration changes the item -- what a reset would remove. */
     val stored: Boolean,
+    /**
+     * Whether the item shipped for an audience that is the deployment's own (issue #1397) -- its operators, a test
+     * instance, a debug session -- which the client's people are never among; the backend's to say.
+     */
+    val deploymentOnly: Boolean = false,
 )
 
 /** An audience a menu item may be shown to (issue #1094): the [condition] a show sends, and the [name] it is chosen by. */
@@ -734,6 +738,7 @@ fun parseMenuItems(items: List<Map<String, Any?>>): List<MenuItemView> = items.m
             MenuAudienceChoice(choice[MNU.condition].toOptStr() ?: return@mapNotNull null, choice[MNU.name].toOptStr() ?: return@mapNotNull null)
         },
         stored = row[CPY.stored] == true,
+        deploymentOnly = row[MNU.deploymentOnly] == true,
     )
 }
 
@@ -925,58 +930,7 @@ fun whoSetsNote(field: String, canSeeAllClients: Boolean): String? {
 /** The note beside the static lock for an administrator who sees every client: only source code sets it. */
 const val sourceSetNote = "(set in source code)"
 
-/**
- * The read-only summary of a client (issue #906): its attributes in the order an administrator reads them, then
- * what it defines. From the overview [row] when the listing has one (status, origin, counts) and the definition
- * [def] when it could be read; either may be missing -- a client this node does not carry has no definition to
- * retrieve, and a deep link arrives before the listing -- so [clientId] is the address's, which is always there. The
- * attributes the caller does not edit here say who sets them ([whoSetsNote], issue #1116). A list that is empty reads
- * as a dash. Pure, and covered under `jsNodeTest`.
- */
-fun clientSummaryRows(clientId: String, row: ClientOverview?, def: ClientDefinitionView?, canSeeAllClients: Boolean): List<Pair<String, String>> {
-    val info = def?.info.orEmpty()
-    fun text(key: String): String = info[key].toOptStr()?.ifBlank { null } ?: "\u2014"
-    fun list(items: List<String>): String = if (items.isEmpty()) "\u2014" else items.joinToString(", ")
-    // Said whose it is when this caller does not edit it here.
-    fun marked(key: String, value: String): String =
-        whoSetsNote(key, canSeeAllClients)?.takeIf { value != "\u2014" }?.let { "$value $it" } ?: value
-    val name = row?.name?.ifBlank { null } ?: info[CLD.name].toOptStr().orEmpty()
-    return buildList {
-        add("Client id" to clientId)
-        add("Name" to name.ifBlank { "\u2014" })
-        add("Description" to text(CLD.description))
-        row?.let {
-            add("Load" to clientLoadText(it.status, it.issues.size))
-            add("Definition" to clientOriginText(it.origin, it.storedConfigs))
-        }
-        if (def != null) {
-            // The authority the platform sets (#820, #1107): a client's own administrator sees it, marked.
-            for (key in listOf(CLD.audience, CLD.usageType, CLD.customerId)) add(humanizeFieldName(key) to marked(key, text(key)))
-            add("Enabled in" to marked(CLD.enabledEnvironments, list(info[CLD.enabledEnvironments].toJsonListOfStrings())))
-            add("Extends" to marked(CLD.extendsFromClientId, text(CLD.extendsFromClientId)))
-            add("Domain" to marked(CLD.domainPrefix, info[CLD.customDomain].toOptStr() ?: info[CLD.domainPrefix].toOptStr()?.let { "$it (prefix)" } ?: "\u2014"))
-            add("Web resources" to marked(CLD.webResourcesId, text(CLD.webResourcesId)))
-            add("Preload" to marked(CLD.preload, if (info[CLD.preload] == true) "Yes" else "No"))
-            add("Time zone" to timeZoneText(info[CLD.timeZone].toOptStr(), Clock.System.now()))
-            // The value in force (issue #1308): the client's, else the platform's, said as such.
-            add(humanizeFieldName(CLD.sessionHours) to inForceText(CLD.sessionHours, info, def.platformDefaults))
-            val refresh = inForceText(CLD.refreshIntervalSeconds, info, def.platformDefaults)
-            add(humanizeFieldName(CLD.refreshIntervalSeconds) to if (info[CLD.refreshIntervalSeconds] != null) marked(CLD.refreshIntervalSeconds, refresh) else refresh)
-            add("Static config" to marked(CLD.staticConfig, if (info[CLD.staticConfig] == true) "Yes" else "No"))
-            add("User labels" to list(info[CLD.userLabels].toJsonListOfStrings()))
-            add("Traits" to list(def.traitIds))
-            add("Listing columns" to list(def.usageLabels))
-            add("Workflows" to list(def.workflowIds))
-        }
-        row?.let {
-            add(summaryFormsRow to it.forms.toString())
-            add(summaryUsersRow to userCountText(it.users, it.unclaimedUsers))
-            it.planUsage?.let { usage -> add("Plan" to planUsageText(usage)) }
-        }
-    }
-}
-
-/** The two rows of [clientSummaryRows] that count something with a listing behind it; see [clientSummaryHref]. */
+/** The two counts with a listing behind them, which the header links to ([clientHeaderLinks]); see [clientSummaryHref]. */
 const val summaryFormsRow = "Forms"
 const val summaryUsersRow = "Users"
 

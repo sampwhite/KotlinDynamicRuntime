@@ -1763,3 +1763,51 @@ body.dv-open .app-content { padding-right: calc(var(--dv-panel-width) + 16px); }
 .wf-timeline-marker { position: absolute; top: -4px; bottom: -4px; width: 2px; transform: translateX(-1px); }
 .wf-timeline-now { background: var(--text); }
 .wf-timeline-asof { background: var(--accent-bright); }
+
+/* A client's page (issue #1397): a header -- the name, chips and links, how a save takes effect, a banner while
+   configuration waits to be published, any issues, and links to the panels -- then each panel apart from the others,
+   a shade darker than the card as a copy file is. The panels carry the card's vertical rhythm, which a panel's
+   children would otherwise lose, not being the card's own. A panel scrolled to by its link clears the fixed app bar. */
+.client-header > * + * { margin-top: 8px; }
+.client-header-line { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; }
+.client-header-line .user-mark { margin: 0; }
+.client-banner {
+    padding: 8px 14px;
+    border: 1px solid color-mix(in oklab, var(--accent-bright) 50%, var(--border));
+    border-radius: 8px;
+    background: color-mix(in oklab, var(--accent) 14%, var(--surface-raised));
+}
+.client-issues {
+    padding: 8px 14px;
+    border: 1px solid color-mix(in oklab, var(--danger) 45%, var(--border));
+    border-radius: 8px;
+}
+.client-issues > h2 { margin: 0 0 4px; font-size: var(--h3-size); }
+.client-sections { display: flex; flex-wrap: wrap; gap: 4px 14px; padding-top: 4px; font-size: .9rem; }
+.client-panel {
+    margin-top: 20px;
+    padding: 16px 20px 20px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: color-mix(in oklab, var(--surface-raised), var(--surface-page) 40%);
+    scroll-margin-top: 84px;
+}
+.card > .client-panel { margin-top: 20px; }
+.client-panel > * + * { margin-top: 14px; }
+.client-panel > h3, .client-panel > .what-is-this-heading:not(:first-child) { margin-top: 24px; }
+.client-panel > .what-is-this-heading:first-child { margin-top: 0; }
+/* A panel with no explanation of its own (Definition, publishing, Retirement) is headed by a bare h2, whose own top
+   margin would otherwise open a gap above it that the explained panels do not have. */
+.client-panel > h2:first-child { margin-top: 0; }
+.client-panel > h3 + *, .client-panel > .what-is-this-heading + * { margin-top: 8px; }
+.client-panel-danger { border-color: color-mix(in oklab, var(--danger) 45%, var(--border)); }
+/* The definition's groups, side by side where there is room, each a block of label and value rows. */
+.client-def-groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 18px 32px; }
+.client-def-group > * + * { margin-top: 6px; }
+.client-def-group > .what-is-this-heading { margin-bottom: 4px; }
+.client-def-group .field-label { min-width: 170px; }
+@media (max-width: 560px) { .client-def-groups { grid-template-columns: 1fr; } }
+.client-disclosure > summary { cursor: pointer; color: var(--accent-bright); }
+.client-disclosure > summary:hover { color: var(--accent-brighter); }
+.client-disclosure[open] > summary { margin-bottom: 10px; }
+.client-disclosure > * + * { margin-top: 14px; }

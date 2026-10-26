@@ -63,6 +63,8 @@ A form can be in several workflows at once, so the same form may be listed under
 # @sandbox
 /- The sandbox chip's "What is this?" (issue #1337), beneath what the chip says of the sandbox the session is in. -/
 # +whatIsThis
+![A change is saved as a draft the sandbox runs, and is published to the client's people](img:kdr:sandbox)
+
 A sandbox is where a client's changes are tried before its people see them. It runs the client's **latest**
 configuration, drafts included, while the client's own people go on using what was last **published**.
 

@@ -21,16 +21,21 @@ import react.FC
 import react.Fragment
 import react.Key
 import react.Props
+import react.PropsWithChildren
 import react.create
 import react.dom.html.ReactHTML.a
 import react.dom.html.ReactHTML.code
+import react.dom.html.ReactHTML.details
 import react.dom.html.ReactHTML.div
 import react.dom.html.ReactHTML.h1
 import react.dom.html.ReactHTML.h2
 import react.dom.html.ReactHTML.h3
 import react.dom.html.ReactHTML.li
+import react.dom.html.ReactHTML.nav
 import react.dom.html.ReactHTML.p
+import react.dom.html.ReactHTML.section
 import react.dom.html.ReactHTML.span
+import react.dom.html.ReactHTML.summary
 import react.dom.html.ReactHTML.table
 import react.dom.html.ReactHTML.tbody
 import react.dom.html.ReactHTML.td
@@ -284,257 +289,395 @@ private fun ChildrenBuilder.clientDetail(
     // Whether a save made here is a draft, as the page last read the client: the one answer every editor below says
     // beside its save and sends with it (issue #1191). The listing's row when it holds one, else the definition read.
     val savesDraft = pageSavesDraft(clientId, row, defSandbox = def?.info?.get(CLD.sandbox) == true)
+    val present = row?.status == ClientStatus.present.name
+    // Whether the client's stored configuration is edited on this page: its definition, traits, and workflows.
+    val configEditable = def?.stored != null && definitionEditable(row) &&
+        definitionEditOffer(def.storedConfig, configs, sandbox = savesDraft).editor
+    // A client whose configuration is not edited here -- declared in source code -- still lists its workflows, for
+    // their time windows: parameters, set here whoever declared the workflow (issue #1386).
+    val workflowsShown = configEditable || present
+    val issues = def?.issues?.map { "${it.message} ${it.degradedTo}".trim() + (if (it.origin.isEmpty()) "" else " (${it.origin})") }
+        ?: row?.issues.orEmpty()
+    // The panels drawn, in their order (issue #1397): what the section links under the header lead to.
+    val panels = buildList {
+        add(panelDefinition to "Definition")
+        if (workflowsShown) add(panelFormsData to "Forms and data")
+        if (!overridesRefused) add(panelCopy to "Copy")
+        if (present) add(panelImages to "Images")
+        add(panelPublishing to publishingHeading(row))
+        if (!overridesRefused) add(panelMenu to "Menu")
+        if (acrossClients && row != null) add(panelRetirement to "Retirement")
+    }
+    // Every child of the card is keyed (issue #1397), so each panel keeps its state by what it is, not by how many
+    // elements happen to be drawn above it: mending a file ref clears an issue (issue #1176), and the issues coming
+    // and going must not tear down and remake the editors below, losing what was half typed in them.
     div {
         className = ClassName("card wide")
-        // No way back to a listing that would only open this page again; a listing the page was opened *from*
-        // is still somewhere to go back to.
-        if (clientBackOffered(inPlace, routeParams()[HP.from])) backToListing(HMENU.pageClients)
-        h1 { +clientLabel(clientId, row?.name ?: def?.info?.get(CLD.name).toOptStr().orEmpty()) }
-        for ((label, value) in clientSummaryRows(clientId, row, def, acrossClients)) {
-            // The counts lead to the listings behind them, as they do in the Clients listing -- which the caller
-            // of one client no longer passes through on the way here.
-            val href = clientSummaryHref(label, row, acrossClients, def?.info?.get(CLD.customerId).toOptStr())
-            if (href == null) readOnlyField(label, value) else linkedField(label, value, href)
+        div {
+            key = "header".unsafeCast<Key>()
+            className = ClassName("client-header")
+            // No way back to a listing that would only open this page again; a listing the page was opened *from*
+            // is still somewhere to go back to.
+            if (clientBackOffered(inPlace, routeParams()[HP.from])) backToListing(HMENU.pageClients)
+            h1 { +clientLabel(clientId, row?.name ?: def?.info?.get(CLD.name).toOptStr().orEmpty()) }
+            val chips = clientStatusChips(row, issues.size)
+            val links = clientHeaderLinks(row, acrossClients, clientId)
+            if (chips.isNotEmpty() || links.isNotEmpty()) {
+                div {
+                    className = ClassName("client-header-line")
+                    chips.forEach { chip ->
+                        span {
+                            key = chip.unsafeCast<Key>()
+                            className = ClassName("user-mark")
+                            +chip
+                        }
+                    }
+                    links.forEachIndexed { i, link ->
+                        if (i > 0) span {
+                            key = "sep$i".unsafeCast<Key>()
+                            className = ClassName("subtitle")
+                            +"·"
+                        }
+                        val target = link.href
+                        if (target == null) span { key = link.text.unsafeCast<Key>(); +link.text } else a {
+                            key = link.text.unsafeCast<Key>()
+                            className = ClassName("wf-cell-link")
+                            href = target
+                            +link.text
+                        }
+                    }
+                }
+            }
+            clientSaveEffectLine(row, savesDraft)?.let {
+                p {
+                    className = ClassName("subtitle")
+                    +it
+                }
+            }
+            unpublishedBannerText(row, configs)?.let { text ->
+                div {
+                    className = ClassName("client-banner")
+                    +"$text "
+                    panelLink(panelPublishing, "Review and publish")
+                }
+            }
+            if (issues.isNotEmpty()) {
+                div {
+                    className = ClassName("client-issues")
+                    h2 { +"Issues" }
+                    ul {
+                        className = ClassName("wf-reasons")
+                        issues.forEachIndexed { i, text ->
+                            li {
+                                key = i.toString().unsafeCast<Key>()
+                                +text
+                            }
+                        }
+                    }
+                }
+            }
+            if (panels.size > 2) {
+                nav {
+                    className = ClassName("client-sections")
+                    panels.forEach { (id, title) ->
+                        span {
+                            key = id.unsafeCast<Key>()
+                            panelLink(id, title)
+                        }
+                    }
+                }
+            }
         }
-        // Editing the definition (issue #1026): the presentation fields of a client defined in stored configuration.
-        def?.stored?.let { stored ->
-            if (definitionEditable(row)) {
-                val offer = definitionEditOffer(def.storedConfig, configs, sandbox = savesDraft)
-                if (offer.editor) {
-                    DefinitionEditor {
+        clientPanel(panelDefinition, "Definition", "") {
+            // Editing the definition (issue #1026): the presentation fields of a client defined in stored configuration.
+            def?.stored?.let { stored ->
+                if (definitionEditable(row)) {
+                    val offer = definitionEditOffer(def.storedConfig, configs, sandbox = savesDraft)
+                    if (offer.editor) {
+                        DefinitionEditor {
+                            this.clientId = clientId
+                            baseline = stored
+                            this.savesDraft = savesDraft
+                            platform = acrossClients
+                            platformDefaults = def.platformDefaults
+                            this.onChanged = onChanged
+                        }
+                    }
+                    offer.note?.let { note ->
+                        // Said before the attempt, with the way there: the editor would only be refused for the same reason.
+                        p {
+                            className = ClassName("subtitle")
+                            +"$note, in "
+                            panelLink(panelPublishing, "Stored configuration")
+                            +" below."
+                        }
+                    }
+                }
+            }
+            detailError?.let { errorText("Couldn't load this client's definition.", it) }
+            detailNote?.let {
+                p {
+                    className = ClassName("subtitle")
+                    +it
+                }
+            }
+            if (def == null && detailError == null && detailNote == null) {
+                p {
+                    className = ClassName("subtitle")
+                    +"Loading…"
+                }
+            }
+            div {
+                className = ClassName("client-def-groups")
+                for (group in clientSummaryGroups(clientId, row, def, acrossClients, traitsShownBelow = configEditable)) {
+                    div {
+                        key = group.heading.unsafeCast<Key>()
+                        className = ClassName("client-def-group")
+                        WhatIsThis {
+                            heading = group.heading
+                            headingLevel = 3
+                            text = pageCopy.explanation(group.explanationNs)
+                        }
+                        for ((label, value) in group.rows) {
+                            // The customer row opens the customer's page where the caller may (issue #1114).
+                            val href = clientSummaryHref(label, row, acrossClients, def?.info?.get(CLD.customerId).toOptStr())
+                            if (href == null) readOnlyField(label, value) else linkedField(label, value, href)
+                        }
+                    }
+                }
+            }
+        }
+        if (workflowsShown) {
+            clientPanel(panelFormsData, "Forms and data", pageCopy.explanation(PFRAG.formsDataNs)) {
+                // The global traits it includes (issue #1117), a field of its stored definition chosen apart from the
+                // definition editor, and offered where that editor is: a save lands in the same configuration under the
+                // same rules.
+                val stored = def?.stored
+                if (configEditable && stored != null) {
+                    h3 { +"Traits" }
+                    ClientTraitsSection {
                         this.clientId = clientId
-                        baseline = stored
+                        this.stored = stored[CLD.includedTraits].toJsonListOfStrings()
                         this.savesDraft = savesDraft
-                        platform = acrossClients
-                        platformDefaults = def.platformDefaults
+                        formsOpenable = impactFormsOpenable(acrossClients, onSandboxPage = row?.sandboxOf != null)
                         this.onChanged = onChanged
                     }
                 }
-                offer.note?.let { note ->
-                    // Said before the attempt, with the way there: the editor would only be refused for the same reason.
-                    p {
-                        className = ClassName("subtitle")
-                        +"$note, in "
-                        a {
-                            className = ClassName("wf-cell-link")
-                            href = "#"
-                            onClick = { e ->
-                                e.preventDefault()
-                                // Centred, not at the top: the app bar is fixed and would cover a heading scrolled under it.
-                                document.getElementById(storedConfigurationId)?.asDynamic()?.scrollIntoView(js("({ block: 'center', behavior: 'smooth' })"))
-                            }
-                            +"Stored configuration"
-                        }
-                        +" below."
-                    }
-                }
-            }
-        }
-        // The client's named reports (issue #1007) -- for a client this node carries, which is what has any to run.
-        // Named by client only for an administrator who looks across them; a scoped one's reports are their own.
-        if (row?.status == ClientStatus.present.name) {
-            p {
-                a {
-                    className = ClassName("wf-cell-link")
-                    href = reportsHref(clientId.takeIf { acrossClients })
-                    +"Reports"
-                }
-            }
-        }
-        detailError?.let { errorText("Couldn't load this client's definition.", it) }
-        detailNote?.let {
-            p {
-                className = ClassName("subtitle")
-                +it
-            }
-        }
-        if (def == null && detailError == null && detailNote == null) {
-            p {
-                className = ClassName("subtitle")
-                +"Loading…"
-            }
-        }
-        // The issues, from the definition when it was read and from the listing's row otherwise (the row carries
-        // the messages alone), so a dropped client's reasons show either way.
-        val issues = def?.issues?.map { "${it.message} ${it.degradedTo}".trim() + (if (it.origin.isEmpty()) "" else " (${it.origin})") }
-            ?: row?.issues.orEmpty()
-        // Always one element, with or without issues in it. The sections below are this one's later siblings, and
-        // React keeps a sibling's state by its place: were the heading and the list two elements that come and
-        // go, every section after them would be torn down and made again each time the client's issues appeared
-        // or cleared -- which mending a file ref from its section does (issue #1176), losing that section's note
-        // and whatever was half typed in the ones below.
-        div {
-            if (issues.isNotEmpty()) {
-                h2 { +"Issues" }
-                ul {
-                    className = ClassName("wf-reasons")
-                    issues.forEachIndexed { i, text ->
-                        li {
-                            key = i.toString().unsafeCast<Key>()
-                            +text
-                        }
-                    }
-                }
-            }
-        }
-        // The global traits it includes (issue #1117), a field of its stored definition chosen apart from the definition
-        // editor, and offered where that editor is: a save lands in the same configuration under the same rules. One
-        // element whether or not it is drawn, as Issues is, so the sections after it keep their state.
-        div {
-            val stored = def?.stored
-            if (stored != null && definitionEditable(row) &&
-                definitionEditOffer(def.storedConfig, configs, sandbox = savesDraft).editor
-            ) {
-                h2 { +"Traits" }
-                ClientTraitsSection {
-                    this.clientId = clientId
-                    this.stored = stored[CLD.includedTraits].toJsonListOfStrings()
-                    this.savesDraft = savesDraft
-                    formsOpenable = impactFormsOpenable(acrossClients, onSandboxPage = row?.sandboxOf != null)
-                    this.onChanged = onChanged
-                }
-            }
-        }
-        // Its workflows made from templates (issue #1120), offered where the traits are, for the same reason: a save
-        // lands in the client's stored configuration under the same rules. One element whether or not it is drawn.
-        // A client whose configuration is not edited here -- declared in source code -- still lists its workflows, for
-        // their time windows: parameters, set here whoever declared the workflow (issue #1386).
-        div {
-            val configEditable = def?.stored != null && definitionEditable(row) &&
-                definitionEditOffer(def.storedConfig, configs, sandbox = savesDraft).editor
-            if (configEditable || row?.status == ClientStatus.present.name) {
-                h2 { +"Workflows" }
+                // Its workflows made from templates (issue #1120), offered where the traits are, for the same reason.
+                h3 { +"Workflows" }
                 ClientWorkflowsSection {
                     this.clientId = clientId
                     this.savesDraft = savesDraft
                     this.configEditable = configEditable
                     formsOpenable = impactFormsOpenable(acrossClients, onSandboxPage = row?.sandboxOf != null)
-                    newWorkflowNote = pageCopy.opt(PFRAG.workflowsNs, PFRAG.newWorkflowNote)
                     this.onChanged = onChanged
                 }
             }
         }
-        // Its sandbox (issue #932): whose it is, or adding and removing one.
-        row?.let { overview ->
-            WhatIsThis {
-                heading = "Sandbox"
-                text = pageCopy.explanation(PFRAG.sandboxNs)
+        // What the client's own configuration changes about what its people see (issue #917): the copy it rewords,
+        // file by file, and its editor (issues #918, #1062).
+        if (!overridesRefused) {
+            clientPanel(panelCopy, "Copy", pageCopy.explanation(PFRAG.copyNs)) {
+                when {
+                    overridesError != null -> errorText("Couldn't load this client's copy changes.", overridesError)
+                    overrides == null -> p {
+                        className = ClassName("subtitle")
+                        +"Loading…"
+                    }
+                    else -> {
+                        if (overrides.copy.isEmpty()) {
+                            p {
+                                className = ClassName("subtitle")
+                                +"This client uses the shipped copy."
+                            }
+                        }
+                        CopyFileEditor {
+                            this.clientId = clientId
+                            this.inPlace = inPlace
+                            this.overrides = overrides.copy
+                            this.savesDraft = savesDraft
+                            this.onChanged = onChanged
+                        }
+                    }
+                }
             }
-            SandboxSection {
-                this.row = overview
-                this.onChanged = onChanged
+        }
+        // Its own tab icon and brand mark (issue #1130), and its named images (issue #1176) -- for a client this node
+        // carries, whose people there are to see them. A sandbox shows its parent's web assets, and says so; its own
+        // page lists the files its parent has drafted.
+        if (present && row != null) {
+            clientPanel(panelImages, "Images", pageCopy.explanation(PFRAG.imagesNs)) {
+                h3 { +"Web assets" }
+                WebAssetsSection {
+                    this.clientId = clientId
+                    sandboxOf = row.sandboxOf
+                    this.onChanged = onChanged
+                }
+                WhatIsThis {
+                    heading = "Files"
+                    headingLevel = 3
+                    text = pageCopy.explanation(PFRAG.filesNs)
+                }
+                FileRefsSection {
+                    this.clientId = clientId
+                    sandboxOf = row.sandboxOf
+                    hasSandbox = row.hasSandbox
+                    staticHere = row.staticHere
+                    this.onChanged = onChanged
+                }
+            }
+        }
+        // Its sandbox (issue #932), then the configuration it stores, where the drafts the panels above make are
+        // published. A sandbox holds no configuration of its own; it runs its parent's latest (issue #1001), listed
+        // here as such.
+        clientPanel(panelPublishing, publishingHeading(row), "") {
+            row?.let { overview ->
+                WhatIsThis {
+                    heading = "Sandbox"
+                    headingLevel = 3
+                    text = pageCopy.explanation(PFRAG.sandboxNs)
+                }
+                SandboxSection {
+                    this.row = overview
+                    this.onChanged = onChanged
+                }
+            }
+            WhatIsThis {
+                heading = row?.sandboxOf?.let { "Configuration it runs ($it's)" } ?: "Stored configuration"
+                headingLevel = 3
+                headingId = storedConfigurationId
+                text = pageCopy.explanation(PFRAG.storedConfigNs)
+            }
+            when {
+                storedError != null -> errorText("Couldn't load this client's stored configuration.", storedError)
+                configs == null -> p {
+                    className = ClassName("subtitle")
+                    +"Loading…"
+                }
+                configs.isEmpty() -> p {
+                    className = ClassName("subtitle")
+                    +"This node holds no stored configuration for this client."
+                }
+                else -> StoredConfigTable {
+                    this.configs = configs
+                    this.row = row
+                    this.acrossClients = acrossClients
+                    this.clientId = clientId
+                    this.onChanged = onChanged
+                }
+            }
+        }
+        // The home menu and its editor (issue #919), collapsed: changing it is rare, and it is the longest table here.
+        if (!overridesRefused) {
+            clientPanel(panelMenu, "Menu", pageCopy.explanation(PFRAG.menuNs)) {
+                when {
+                    overridesError != null -> errorText("Couldn't load this client's menu changes.", overridesError)
+                    overrides == null -> p {
+                        className = ClassName("subtitle")
+                        +"Loading…"
+                    }
+                    else -> {
+                        // The overrides report's home-menu rows say which config -- source or stored -- set an item.
+                        val setBy = overrides.blocks.filter { it.blockId == HMENU.block && it.itemId != null }.associate { it.itemId!! to blockSetByText(it) }
+                        // Any other block the client changes (the sample's nav, say) is shown as it was: this editor is
+                        // the home menu's.
+                        val otherBlocks = overrides.blocks.filter { it.blockId != HMENU.block }
+                        Disclosure {
+                            summaryText = "Show the menu — ${menuPanelSummary(setBy.size)}"
+                            MenuEditor {
+                                this.clientId = clientId
+                                this.savesDraft = savesDraft
+                                this.setBy = setBy
+                                this.onChanged = onChanged
+                            }
+                            if (otherBlocks.isNotEmpty()) {
+                                h3 { +"Other interface changes" }
+                                blockOverridesTable(otherBlocks)
+                            }
+                        }
+                    }
+                }
             }
         }
         // Retiring it, or bringing it back (issue #1182): the platform's switch, so only for an administrator who sees
-        // every client -- who alone can reach a retired client's page, through the listing.
+        // every client -- who alone can reach a retired client's page, through the listing. Last, being the rarest.
         if (acrossClients) {
             row?.let { overview ->
-                h2 { +"Retirement" }
-                RetirementSection {
-                    key = "retirement".unsafeCast<Key>()
-                    this.row = overview
-                    storedConfig = def?.storedConfig
-                    this.configs = configs
-                    this.onChanged = onChanged
-                }
-            }
-        }
-        // Its own tab icon and brand mark (issue #1130) -- for a client this node carries, whose people there are
-        // to see them. A sandbox shows its parent's, and says so.
-        if (row?.status == ClientStatus.present.name) {
-            h2 { +"Web assets" }
-            WebAssetsSection {
-                // Keyed, as the section after it is: each keeps its state by what it is, not by how many
-                // elements happen to be drawn above it.
-                key = "web-assets".unsafeCast<Key>()
-                this.clientId = clientId
-                sandboxOf = row.sandboxOf
-                this.onChanged = onChanged
-            }
-            // Its named images (issue #1176). Unlike the two above these are configuration: for a client with a
-            // sandbox a change is a draft, and the sandbox's own page lists what the parent has drafted.
-            WhatIsThis {
-                heading = "Files"
-                text = pageCopy.explanation(PFRAG.filesNs)
-            }
-            FileRefsSection {
-                key = "files".unsafeCast<Key>()
-                this.clientId = clientId
-                sandboxOf = row.sandboxOf
-                hasSandbox = row.hasSandbox
-                staticHere = row.staticHere
-                this.onChanged = onChanged
-            }
-        }
-        // A sandbox holds no configuration of its own; it runs its parent's latest (issue #1001), listed here as such.
-        WhatIsThis {
-            heading = row?.sandboxOf?.let { "Configuration it runs ($it's)" } ?: "Stored configuration"
-            headingId = storedConfigurationId
-            text = pageCopy.explanation(PFRAG.storedConfigNs)
-        }
-        when {
-            storedError != null -> errorText("Couldn't load this client's stored configuration.", storedError)
-            configs == null -> p {
-                className = ClassName("subtitle")
-                +"Loading…"
-            }
-            configs.isEmpty() -> p {
-                className = ClassName("subtitle")
-                +"This node holds no stored configuration for this client."
-            }
-            else -> StoredConfigTable {
-                this.configs = configs
-                this.row = row
-                this.acrossClients = acrossClients
-                this.clientId = clientId
-                this.onChanged = onChanged
-            }
-        }
-        // What the client's own configuration changes about what its people see (issue #917): the copy it rewords
-        // and the interface items it renames, hides, shows or adds. The editors (#918, #919) open from these rows.
-        if (!overridesRefused) h2 { +"Copy & menu" }
-        when {
-            overridesRefused -> {}
-            overridesError != null -> errorText("Couldn't load this client's copy and menu changes.", overridesError)
-            overrides == null -> p {
-                className = ClassName("subtitle")
-                +"Loading…"
-            }
-            else -> {
-                if (overrides.copy.isEmpty() && overrides.blocks.isEmpty()) {
-                    p {
-                        className = ClassName("subtitle")
-                        +"This client uses the shipped copy and menu."
+                clientPanel(panelRetirement, "Retirement", "", extraClass = "client-panel-danger") {
+                    RetirementSection {
+                        this.row = overview
+                        storedConfig = def?.storedConfig
+                        this.configs = configs
+                        this.onChanged = onChanged
                     }
                 }
-                // The copy, file by file, and its editor (issues #918, #1062): every key with the value the client reads,
-                // found by its words or its address, its changes saved a file at a time.
-                h3 { +"Copy" }
-                CopyFileEditor {
-                    this.clientId = clientId
-                    this.inPlace = inPlace
-                    this.overrides = overrides.copy
-                    this.savesDraft = savesDraft
-                    this.onChanged = onChanged
-                }
-                // The home menu and its editor (issue #919): every item, renamed, hidden, shown or reset here.
-                h3 { +"Menu" }
-                MenuEditor {
-                    this.clientId = clientId
-                    this.savesDraft = savesDraft
-                    // The overrides report's home-menu rows say which config -- source or stored -- set an item.
-                    setBy = overrides.blocks.filter { it.blockId == HMENU.block && it.itemId != null }.associate { it.itemId!! to blockSetByText(it) }
-                    this.onChanged = onChanged
-                }
-                // Any other block the client changes (the sample's nav, say) is shown as it was: this editor is the
-                // home menu's.
-                val otherBlocks = overrides.blocks.filter { it.blockId != HMENU.block }
-                if (otherBlocks.isNotEmpty()) {
-                    h3 { +"Other interface changes" }
-                    blockOverridesTable(otherBlocks)
-                }
             }
         }
+    }
+}
+
+/** The client page's panels' element ids (issue #1397), which its section links lead to. */
+private const val panelDefinition = "client-definition"
+private const val panelFormsData = "client-forms-data"
+private const val panelCopy = "client-copy"
+private const val panelImages = "client-images"
+private const val panelPublishing = "client-publishing"
+private const val panelMenu = "client-menu"
+private const val panelRetirement = "client-retirement"
+
+/** The publishing panel's heading: a sandbox has no sandbox of its own, only its parent's configuration. */
+private fun publishingHeading(row: ClientOverview?): String = if (row?.sandboxOf != null) "Publishing" else "Sandbox and publishing"
+
+/**
+ * A panel of the client page (issue #1397): a keyed `section` set apart from the others, headed by [heading] with
+ * its "What is this?" [explanation] (none when blank), its element id [id] what a section link leads to.
+ */
+private fun ChildrenBuilder.clientPanel(id: String, heading: String, explanation: String, extraClass: String? = null, body: ChildrenBuilder.() -> Unit) {
+    section {
+        key = id.unsafeCast<Key>()
+        this.id = ElementId(id)
+        className = ClassName(listOfNotNull("client-panel", extraClass).joinToString(" "))
+        WhatIsThis {
+            this.heading = heading
+            text = explanation
+        }
+        body()
+    }
+}
+
+/**
+ * A link to a panel of the page (issue #1397), scrolled to rather than navigated to: the address is the page's, and a
+ * hash would be read as one. Centred, not at the top: the app bar is fixed and would cover a heading scrolled under it.
+ */
+private fun ChildrenBuilder.panelLink(id: String, text: String) {
+    a {
+        className = ClassName("wf-cell-link")
+        href = "#"
+        onClick = { e ->
+            e.preventDefault()
+            document.getElementById(id)?.asDynamic()?.scrollIntoView(js("({ block: 'start', behavior: 'smooth' })"))
+        }
+        +text
+    }
+}
+
+external interface DisclosureProps : PropsWithChildren {
+    /** The line the closed disclosure shows, which opens it. */
+    var summaryText: String
+}
+
+/**
+ * A section of the page that starts closed (issue #1397), its contents drawn only once opened: the menu's editor,
+ * whose table is the page's longest and rarely changed, reads nothing until somebody asks for it.
+ */
+private val Disclosure = FC<DisclosureProps> { props ->
+    var expanded by useState(false)
+    details {
+        className = ClassName("client-disclosure")
+        this.open = expanded
+        onToggle = { e -> expanded = e.currentTarget.asDynamic().open == true }
+        summary { +props.summaryText }
+        if (expanded) +props.children
     }
 }
 
@@ -1160,6 +1303,9 @@ private val MenuEditor = FC<MenuEditorProps> { props ->
     var draft by useState("")
     var showing by useState<String?>(null)
     var audience by useState<String?>(null)
+    // Whether every item is listed, the deployment's own included, or only those the client's people may be offered
+    // (issue #1397): most of the shipped menu is for operators, test instances, and debug sessions.
+    var everyItem by useState(false)
     val latest = useRef(0)
     val lastClient = useRef<String>(null)
     // Re-read on the app's refresh generation -- an idle tick, a return to the tab, another editor's save -- as the
@@ -1219,12 +1365,26 @@ private val MenuEditor = FC<MenuEditorProps> { props ->
             +"Loading…"
         }
         else -> {
-            val listed = items!!
-            val groups = menuGroups(listed)
+            val all = items!!
+            val groups = menuGroups(all)
+            val forPeople = menuItemsForPeople(all)
+            val listed = if (everyItem) all else forPeople
             // A rename is sent only when it would change something; Enter and the Save button agree on that.
             fun rename(item: MenuItemView) {
                 if (draft.isBlank() || draft == item.label) return
                 run({ ClientsApi.setMenuItem(props.clientId, item.itemId, draft, null, null, expectedMode(props.savesDraft)) }) { "Renamed ${item.itemId} to \"${it.label}\"." }
+            }
+            if (forPeople.size < all.size) {
+                p {
+                    className = ClassName("subtitle")
+                    +(if (everyItem) "Every item of the menu: ${all.size}. " else "The ${forPeople.size} of ${all.size} items this client's people may be offered. ")
+                    Button {
+                        type = "link"
+                        size = "small"
+                        onClick = { everyItem = !everyItem }
+                        +(if (everyItem) "Show only those" else "Show every item")
+                    }
+                }
             }
             div {
                 className = ClassName("op-table-scroll")

@@ -43,6 +43,9 @@ fun clientMenuSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, MNU.namespace) 
         property(CPY.stored, "Whether this client's stored configuration changes the item's label or condition.", required = true) {
             type = SCT.boolean
         }
+        property(MNU.deploymentOnly, "Whether the item shipped for an audience that is the deployment's own -- its operators, a test instance, a debug session -- which the client's people are never among.", required = true) {
+            type = SCT.boolean
+        }
     }
     type(MNU.resultTypeName) {
         type = SCT.kObject
@@ -81,6 +84,7 @@ fun clientMenuSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, MNU.namespace) 
             item.audience?.let { out[MNU.audience] = it }
             out[MNU.audiences] = item.audiences.map { mapOf(MNU.condition to it.condition, MNU.name to it.name) }
             out[CPY.stored] = item.stored
+            out[MNU.deploymentOnly] = item.deploymentOnly
             out
         }
     }
