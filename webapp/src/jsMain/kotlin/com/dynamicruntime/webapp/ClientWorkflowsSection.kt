@@ -3,6 +3,8 @@ package com.dynamicruntime.webapp
 import com.dynamicruntime.common.gedra.workflow.WfDef
 import com.dynamicruntime.common.gedra.workflow.WfEntry
 import com.dynamicruntime.common.gedra.workflow.WfTemplateSlots
+import com.dynamicruntime.common.gedra.workflow.WfVisibility
+import com.dynamicruntime.common.gedra.workflow.WfVisibilityMode
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.launch
 import react.ChildrenBuilder
@@ -45,6 +47,11 @@ external interface ClientWorkflowsSectionProps : Props {
      * windows alone -- parameters, not configuration, so set here whoever declared the workflow (issue #1386).
      */
     var configEditable: Boolean
+    /**
+     * The client copy's note for a new workflow's maker (`clients` file, `workflows.newWorkflowNote`, issue #1384): how a
+     * workflow made restricted is opened to people. Empty as shipped; a deployment flavor says it.
+     */
+    var newWorkflowNote: String?
     /** What a save calls once it has taken effect: the page re-reads. */
     var onChanged: () -> Unit
 }
@@ -53,6 +60,11 @@ external interface ClientWorkflowsSectionProps : Props {
 private const val windowsPrefix = "windows:"
 
 private fun windowsKey(workflowId: String) = windowsPrefix + workflowId
+
+/** What the visibility editor is open on: the workflow, after this prefix (issue #1384). */
+private const val visibilityPrefix = "visibility:"
+
+private fun visibilityKey(workflowId: String) = visibilityPrefix + workflowId
 
 /** What the slot editor is open on: a new workflow from a template, or a workflow made from one. */
 private fun openKey(templateId: String?, workflowId: String?) = workflowId?.let { "edit:$it" } ?: "new:$templateId"
@@ -68,8 +80,10 @@ private fun openKey(templateId: String?, workflowId: String?) = workflowId?.let 
  * effect as the page's other editors' do; what is stored is the workflow's overlay of the template, which the backend
  * reads over the template, so a fix to the template reaches the workflow.
  *
- * For a client whose configuration is not edited here ([ClientWorkflowsSectionProps.configEditable] false) -- one
- * declared in source code -- only the workflows are listed, each normal one with **Time windows…**.
+ * Every workflow has **Visibility…** (issue #1384) -- who sees it -- and each normal one **Time windows…**: its
+ * parameters, set here whoever declared it, each opening its editor in a row of its own beneath the workflow's. For a
+ * client whose configuration is not edited here ([ClientWorkflowsSectionProps.configEditable] false) -- one declared
+ * in source code -- only the workflows are listed, with those two.
  */
 val ClientWorkflowsSection = FC<ClientWorkflowsSectionProps> { props ->
     val generation = useRefreshGeneration()
@@ -114,8 +128,8 @@ val ClientWorkflowsSection = FC<ClientWorkflowsSectionProps> { props ->
                 "steps and rules; the client chooses its name, and for each step that asks for information, what it is " +
                 "called and which traits it collects."
         } else {
-            "The workflows this client's people use. They are not changed here, but each one's time windows are: " +
-                "they are its parameters, not its definition."
+            "The workflows this client's people use. They are not changed here, but who sees each one, and its time " +
+                "windows, are: they are its parameters, not its definition."
         })
     }
     val shown = workflowCatalog
@@ -186,6 +200,8 @@ val ClientWorkflowsSection = FC<ClientWorkflowsSectionProps> { props ->
     // The workflow whose time windows are open: drawn in a row of its own beneath that workflow's (issue #1386), so
     // the editor appears where it was asked for.
     val windowsOf = open?.takeIf { it.startsWith(windowsPrefix) }?.removePrefix(windowsPrefix)
+    val visibilityOf = open?.takeIf { it.startsWith(visibilityPrefix) }?.removePrefix(visibilityPrefix)
+    val rowEditorOpen = windowsOf != null || visibilityOf != null
 
     if (shown.workflows.isEmpty()) {
         p {
@@ -194,7 +210,7 @@ val ClientWorkflowsSection = FC<ClientWorkflowsSectionProps> { props ->
         }
     } else {
         div {
-            className = ClassName(if (windowsOf != null) "op-table-scroll detail-open" else "op-table-scroll")
+            className = ClassName(if (rowEditorOpen) "op-table-scroll detail-open" else "op-table-scroll")
             table {
                 className = ClassName("op-table")
                 thead {
@@ -204,6 +220,7 @@ val ClientWorkflowsSection = FC<ClientWorkflowsSectionProps> { props ->
                         th { +"Made from" }
                         th { +"Steps" }
                         th { +"Now" }
+                        th { +"Seen by" }
                         th { +"" }
                     }
                 }
@@ -223,6 +240,11 @@ val ClientWorkflowsSection = FC<ClientWorkflowsSectionProps> { props ->
                             td { +w.taskLabels.joinToString(", ") }
                             // Where a normal workflow stands in its time windows now (issue #1121); the others have none.
                             td { +(if (w.def.entry == WfEntry.normal) windowPhaseText(w.windows, now, zone) else "—") }
+                            // Who sees it (issue #1384): a restricted one stands out, since its people may not.
+                            td {
+                                if (w.visibility.restricted) className = ClassName("wf-restricted")
+                                +visibilityText(w.visibility)
+                            }
                             td {
                                 span {
                                     className = ClassName("row-actions")
@@ -266,6 +288,13 @@ val ClientWorkflowsSection = FC<ClientWorkflowsSectionProps> { props ->
                                             }
                                         }
                                     }
+                                    Button {
+                                        type = "link"
+                                        size = "small"
+                                        disabled = open != null
+                                        onClick = { open = visibilityKey(w.def.workflowId); note = null }
+                                        +"Visibility…"
+                                    }
                                     if (w.windowsOffered) {
                                         Button {
                                             type = "link"
@@ -282,12 +311,36 @@ val ClientWorkflowsSection = FC<ClientWorkflowsSectionProps> { props ->
                             tr {
                                 key = "${w.def.workflowId}-windows".unsafeCast<Key>()
                                 td {
-                                    asDynamic()["colSpan"] = 6
+                                    asDynamic()["colSpan"] = 7
                                     WorkflowWindowsEditor {
                                         this.key = "windows-$windowsOf".unsafeCast<Key>()
                                         this.clientId = props.clientId
                                         this.workflow = w.def
                                         this.params = w.params ?: WorkflowParamsView.none
+                                        this.zone = zone
+                                        formsOpenable = props.formsOpenable
+                                        onSaved = { said ->
+                                            open = null
+                                            note = said
+                                            props.onChanged()
+                                        }
+                                        onCancel = { open = null }
+                                        onChanged = props.onChanged
+                                    }
+                                }
+                            }
+                        }
+                        if (visibilityOf == w.def.workflowId) {
+                            tr {
+                                key = "${w.def.workflowId}-visibility".unsafeCast<Key>()
+                                td {
+                                    asDynamic()["colSpan"] = 7
+                                    WorkflowVisibilityEditor {
+                                        this.key = "visibility-$visibilityOf".unsafeCast<Key>()
+                                        this.clientId = props.clientId
+                                        this.workflow = w.def
+                                        this.params = w.params ?: WorkflowParamsView.none
+                                        labelSuggestions = shown.userLabels
                                         this.zone = zone
                                         formsOpenable = props.formsOpenable
                                         onSaved = { said ->
@@ -359,7 +412,9 @@ val ClientWorkflowsSection = FC<ClientWorkflowsSectionProps> { props ->
 
     // The editor is drawn in its workflow's row above; a workflow gone from under it -- removed by another page -- is
     // said here, with a way to close it.
-    if (windowsOf != null && shown.workflows.none { it.def.workflowId == windowsOf && it.windowsOffered }) {
+    val rowGone = (windowsOf != null && shown.workflows.none { it.def.workflowId == windowsOf && it.windowsOffered }) ||
+        (visibilityOf != null && shown.workflows.none { it.def.workflowId == visibilityOf })
+    if (rowGone) {
         p {
             className = ClassName("type-hint")
             +"That workflow is gone."
@@ -371,7 +426,7 @@ val ClientWorkflowsSection = FC<ClientWorkflowsSectionProps> { props ->
             }
         }
     }
-    open?.takeIf { windowsOf == null }?.let { key ->
+    open?.takeIf { !rowEditorOpen }?.let { key ->
         val editing = key.removePrefix("edit:").takeIf { key.startsWith("edit:") }
         val workflow = editing?.let { id -> shown.workflows.firstOrNull { it.def.workflowId == id }?.def }
         val templateId = workflow?.fromTemplate ?: key.removePrefix("new:")
@@ -386,6 +441,7 @@ val ClientWorkflowsSection = FC<ClientWorkflowsSectionProps> { props ->
                 this.workflow = workflow
                 this.savesDraft = props.savesDraft
                 formsOpenable = props.formsOpenable
+                newWorkflowNote = props.newWorkflowNote
                 onSaved = { said ->
                     open = null
                     note = said
@@ -419,6 +475,8 @@ external interface WorkflowSlotEditorProps : Props {
     var workflow: WfDef?
     var savesDraft: Boolean
     var formsOpenable: Boolean
+    /** The client copy's note for a new workflow's maker; see [ClientWorkflowsSectionProps.newWorkflowNote]. */
+    var newWorkflowNote: String?
     var onSaved: (String) -> Unit
     var onCancel: () -> Unit
     var onChanged: () -> Unit
@@ -429,11 +487,15 @@ external interface WorkflowSlotEditorProps : Props {
  * traits it collects -- each required or not. What the template fixes is said beneath, in words, from the workflow the
  * slots make ([workflowPreview], the kernel's). Save waits until the slots are whole ([workflowSlotProblems]); a live
  * change that affects stored forms is refused with the impact report, whose **Save anyway** acknowledges it.
+ *
+ * A new workflow is made with **who sees it** (issue #1384), administrators only to start, so nobody meets it before
+ * its maker chose; the backend writes that before the workflow exists. Changing it later is the row's **Visibility…**.
  */
 val WorkflowSlotEditor = FC<WorkflowSlotEditorProps> { props ->
     val base = props.workflow ?: props.template
     val baseline = props.workflow?.let { workflowSlots(it) }
     var draft by useState(baseline ?: newWorkflowSlots(props.template))
+    var visibility by useState(WfVisibility.adminsOnly)
     var busy by useState(false)
     var saveError by useState<DisplayError?>(null)
     var impact by useState<ImpactReportView?>(null)
@@ -449,7 +511,8 @@ val WorkflowSlotEditor = FC<WorkflowSlotEditorProps> { props ->
         saveError = null
         workflowsScope.launch {
             try {
-                val result = ClientsApi.saveWorkflow(workflowSaveRequest(props.clientId, slots, expectedMode(props.savesDraft), acknowledge))
+                val request = workflowSaveRequest(props.clientId, slots, expectedMode(props.savesDraft), acknowledge, visibility)
+                val result = ClientsApi.saveWorkflow(request)
                 impact = null
                 val said = savedNote("Saved workflow ${result.slots.workflowId} to ${result.configName}.", result.mode)
                 props.onSaved(listOfNotNull(said, draftImpactText(result.draftImpact)).joinToString(" "))
@@ -523,6 +586,28 @@ val WorkflowSlotEditor = FC<WorkflowSlotEditorProps> { props ->
                             }
                         }
                     }
+                }
+            }
+        }
+        if (props.workflow == null) {
+            choiceRow("Seen by") {
+                Select {
+                    value = visibility.mode.name
+                    options = choiceOptions(WfVisibilityMode.entries.map { visibilityModeLabel(it) to it.name })
+                    disabled = busy
+                    style = js("({ minWidth: 320 })")
+                    onChange = { v -> WfVisibilityMode.entries.firstOrNull { it.name == v.toString() }?.let { visibility = visibility.withMode(it) } }
+                }
+            }
+            visibilityLabelsRow(visibility, props.workflowCatalog.userLabels, busy) { visibility = it }
+            p {
+                className = ClassName("type-hint")
+                +"${visibilityExplained(visibility)} ${newWorkflowVisibilityNote(props.savesDraft)}"
+            }
+            props.newWorkflowNote?.takeIf { it.isNotBlank() }?.let { text ->
+                div {
+                    className = ClassName("type-hint")
+                    Markdown { source = text }
                 }
             }
         }

@@ -88,9 +88,10 @@ class ViewerCfacts(private val cxt: KdrCxt, private val client: String?) {
 
 /**
  * The labels of the user [cxt] is acting as, read through the `AuthUsers` cache -- or none, without a lookup, when
- * the caller is not backed by a user row (so nobody is a reviewer by default), or the node has no user management.
+ * the caller is not backed by a user row (so nobody is a reviewer by default, nor sees a restricted workflow by a
+ * label, issue #1384), or the node has no user management.
  */
-private fun viewerLabels(cxt: KdrCxt): Set<String> {
+internal fun viewerLabels(cxt: KdrCxt): Set<String> {
     val profile = cxt.userProfile
     if (!profile.isRowBacked) {
         return emptySet()

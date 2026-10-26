@@ -13,7 +13,7 @@ import com.dynamicruntime.common.util.toOptStr
  * column is drawn at all, and what gives each row the labels and reasons its own state entries only name by id.
  *
  * A workflow is named when some form's state has an entry for it and the caller should see it there: it is live
- * (not unknown, not outside its lifetime -- [WorkflowPhases.live]) and shown for that form ([WfPhase.isShown]:
+ * (not unknown, not outside its lifetime, and seen by the caller -- [WorkflowPhases.liveFor]) and shown for that form ([WfPhase.isShown]:
  * open for engagement, or the form is engaged with it). The same test the page's [formWorkflowsOf] applies per
  * row, so a summary never names a workflow no row will show.
  *
@@ -33,7 +33,7 @@ object FormWorkflowSummary {
                 if (entry[GE.traitId].toOptStr() != WFS.workflowState) continue
                 val id = entry[GE.data].toJsonMapOrEmpty()[WFD.workflowId].toOptStr() ?: continue
                 if (named[client]?.containsKey(id) == true) continue
-                val declared = WorkflowPhases.live(cxt, registry, id)?.takeIf { it.def.entry == WfEntry.normal } ?: continue
+                val declared = WorkflowPhases.liveFor(cxt, registry, id)?.takeIf { it.def.entry == WfEntry.normal } ?: continue
                 val phase = WorkflowPhases.of(cxt, client, declared.def)
                 if (!phase.isShown(id in engaged)) continue
                 named.getOrPut(client) { LinkedHashMap() }[id] = declared to phase

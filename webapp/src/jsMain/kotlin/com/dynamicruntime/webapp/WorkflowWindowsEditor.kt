@@ -1,5 +1,6 @@
 package com.dynamicruntime.webapp
 
+import com.dynamicruntime.common.gedra.workflow.WFP
 import com.dynamicruntime.common.gedra.workflow.WfDef
 import com.dynamicruntime.common.gedra.workflow.WfWindows
 import com.dynamicruntime.common.util.formatDate
@@ -81,7 +82,7 @@ val WorkflowWindowsEditor = FC<WorkflowWindowsEditorProps> { props ->
         saveError = null
         windowsScope.launch {
             try {
-                ClientsApi.saveWorkflowWindows(windowsSaveRequest(props.clientId, props.workflow.workflowId, windows, acknowledge))
+                ClientsApi.saveWorkflowParams(windowsSaveRequest(props.clientId, props.workflow.workflowId, windows, acknowledge))
                 impact = null
                 props.onSaved(
                     if (windows == null) "The time windows of ${props.workflow.workflowId} follow the fallback again; they are in force now."
@@ -192,7 +193,7 @@ val WorkflowWindowsEditor = FC<WorkflowWindowsEditorProps> { props ->
             }
         }
         saveError?.let { errorText("Couldn't save the time windows.", it) }
-        val history = props.params.history
+        val history = props.params.historyOf(WFP.windows)
         if (history.isNotEmpty()) {
             Button {
                 type = "link"

@@ -49,14 +49,24 @@ object CWF {
     const val removeResultTypeName = "ClientWorkflowRemoveResult"
 
     /**
-     * On a normal workflow, and a parameter save's result (issues #1356, #1386): its parameters as the page's client or
+     * On a workflow, and a parameter save's result (issues #1356, #1384, #1386): its parameters as the page's client or
      * sandbox runs them -- each layer (`WFP.current`, `WFP.parent`, `WFP.source`), the earlier settings
-     * (`WFP.history`), and what the layers make (`WFP.inForce`, `WFP.from`). A workflow of another kind has none.
+     * (`WFP.history`), and what the layers make (`WFP.inForce`, `WFP.from`). Every kind has them: who sees it, and for
+     * a normal workflow its time windows.
      */
     const val params = "params"
 
     /** On the catalog: the client's time zone, which a window's bounds are entered and shown in. */
     const val timeZone = "timeZone"
+
+    /** On the catalog: the user labels the client suggests, which a workflow's visibility may name (issue #1384). */
+    const val userLabels = "userLabels"
+
+    /**
+     * On a save making a new workflow (issue #1384): who sees it from the start (`WFP.visibility`'s value), administrators
+     * only when absent.
+     */
+    const val visibility = "visibility"
 
     /** On a trait: its description. */
     const val description = "description"

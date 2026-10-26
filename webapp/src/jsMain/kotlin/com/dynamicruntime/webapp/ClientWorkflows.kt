@@ -28,6 +28,8 @@ import com.dynamicruntime.common.gedra.workflow.WfParamsSetting
 import com.dynamicruntime.common.gedra.workflow.WfParams
 import com.dynamicruntime.common.gedra.workflow.WfParamsFrom
 import com.dynamicruntime.common.gedra.workflow.WfParamsLayers
+import com.dynamicruntime.common.gedra.workflow.WfVisibility
+import com.dynamicruntime.common.util.toJsonListOfStrings
 import com.dynamicruntime.common.gedra.workflow.WFP
 
 /**
@@ -46,7 +48,7 @@ private val readCxt = LiteCxt()
 class WorkflowTemplateView(val def: WfDef, val refusal: String?)
 
 /**
- * A normal workflow's parameters as the page's client or sandbox runs them (issues #1356, #1386): the scope's own
+ * A workflow's parameters as the page's client or sandbox runs them (issues #1356, #1384, #1386): the scope's own
  * setting, on a sandbox its client's, the defaults the client's source code declares, and the scope's earlier
  * settings, newest first. What they make together is the kernel's ([layers]), as the backend runs it.
  */
@@ -70,6 +72,32 @@ class WorkflowParamsView(
     /** Whether the scope sets windows of its own. */
     val ownWindows: Boolean get() = own?.params?.windows != null
 
+    /** Who sees the workflow (issue #1384): everybody, unless somebody restricted it. */
+    val visibility: WfVisibility get() = layers.inForce.visibilityInForce
+
+    /** Where the visibility in force comes from when the scope does not set it; null when it does, or nothing does. */
+    val visibilityFrom: WfParamsFrom? get() = layers.from[WFP.visibility]
+
+    /** Where the visibility would come from if the scope stopped setting its own; null when nothing would set it. */
+    val visibilityFallbackFrom: WfParamsFrom? get() = layers.fallbackFrom(WFP.visibility)
+
+    /** Whether the scope sets who sees the workflow itself. */
+    val ownVisibility: Boolean get() = own?.params?.visibility != null
+
+    /**
+     * The earlier settings that changed parameter [key], newest first: each setting records every parameter the scope
+     * set then, so an editor of one parameter leaves out those that changed only another -- the windows editor a
+     * visibility change, and the other way round.
+     */
+    fun historyOf(key: String): List<WfParamsSetting> {
+        fun valueOf(setting: WfParamsSetting?): Any? = setting?.params?.toInfo()?.get(key)
+        var newer = valueOf(own)
+        return history.filter { setting ->
+            val value = valueOf(setting)
+            (value != newer).also { newer = value }
+        }
+    }
+
     companion object {
         val none = WorkflowParamsView(null, null, WfParams.none, emptyList())
     }
@@ -88,7 +116,7 @@ class ClientWorkflowView(
     val def: WfDef,
     val configName: String?,
     val notEditable: String?,
-    /** For a normal workflow, its parameters here (issue #1356); null for any other kind, which has none. */
+    /** Its parameters here (issues #1356, #1384); null when the catalog sent none. */
     val params: WorkflowParamsView? = null,
     /** Its labels with their fragment pulls resolved for the page's client (`CWF.labels`); empty when none pulls any. */
     val labels: Map<String, Any?> = emptyMap(),
@@ -105,6 +133,9 @@ class ClientWorkflowView(
 
     /** Its time windows here: none set means always open. */
     val windows: WfWindows get() = params?.windows ?: WfWindows.none
+
+    /** Who sees it here (issue #1384): nobody restricting it means everybody. */
+    val visibility: WfVisibility get() = params?.visibility ?: WfVisibility.everyone
 }
 
 /** A trait the client's workflows may collect. */
@@ -118,6 +149,8 @@ class WorkflowCatalogView(
     val traits: List<WorkflowTraitView>,
     /** The client's time zone, which a workflow's time windows are entered and shown in; null for the deployment's. */
     val timeZone: String? = null,
+    /** The user labels the client suggests, which a workflow's visibility may name (issue #1384). */
+    val userLabels: List<String> = emptyList(),
 ) {
     fun template(templateId: String): WorkflowTemplateView? = templates.firstOrNull { it.def.workflowId == templateId }
 }
@@ -138,6 +171,7 @@ fun parseWorkflowCatalog(raw: Map<String, Any?>): WorkflowCatalogView = Workflow
     },
     traits = raw[CWF.traits].toJsonListOfMaps().map { WorkflowTraitView(it[CCT.traitId].toOptStr().orEmpty(), it[CWF.description].toOptStr()) },
     timeZone = raw[CWF.timeZone].toOptStr(),
+    userLabels = raw[CWF.userLabels].toJsonListOfStrings(),
 )
 
 /** What a kind of workflow is, in a word. */
@@ -234,10 +268,20 @@ fun traitChoices(catalog: WorkflowCatalogView, task: WfTaskSlot): List<Pair<Stri
         (description?.let { "$id — $it" } ?: id) to id
     }
 
-/** The save's request: the slots, how the page expects it to take effect, and whether an impact is acknowledged. */
-fun workflowSaveRequest(clientId: String, slots: WfTemplateSlots, expected: String, acknowledge: Boolean): Map<String, Any?> = buildMap {
+/**
+ * The save's request: the slots, how the page expects it to take effect, and whether an impact is acknowledged -- and
+ * for a new workflow, who sees it from the start ([visibility], issue #1384); a change of slots sends none.
+ */
+fun workflowSaveRequest(
+    clientId: String,
+    slots: WfTemplateSlots,
+    expected: String,
+    acknowledge: Boolean,
+    visibility: WfVisibility? = null,
+): Map<String, Any?> = buildMap {
     put(CLD.client, clientId)
     put(CWF.slots, slots.toInfo())
+    if (slots.workflowId == null) visibility?.let { put(CWF.visibility, it.toInfo()) }
     put(CPY.mode, expected)
     if (acknowledge) put(IMP.acknowledgeImpact, true)
 }

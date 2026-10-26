@@ -7,6 +7,8 @@ import com.dynamicruntime.common.gedra.workflow.WFD
 import com.dynamicruntime.common.gedra.workflow.WFP
 import com.dynamicruntime.common.gedra.workflow.WfParams
 import com.dynamicruntime.common.gedra.workflow.WfParamsFrom
+import com.dynamicruntime.common.gedra.workflow.WfVisibility
+import com.dynamicruntime.common.gedra.workflow.WfVisibilityMode
 import com.dynamicruntime.common.gedra.workflow.templateSlotsFromInfo
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.user.UADEP
@@ -40,8 +42,8 @@ internal fun SchModuleBuilder.clientWorkflowsEndpoints() {
         ) { type = SCT.kObject }
         property(
             CWF.params,
-            "For a normal workflow, its parameters as the page's client or sandbox runs them (issue #1356): its time " +
-                "windows, set here whoever declared the workflow. Absent for any other kind.",
+            "Its parameters as the page's client or sandbox runs them (issues #1356, #1384): who sees it, and for a " +
+                "normal workflow its time windows, set here whoever declared the workflow.",
         ) { ref(CWF.paramsTypeName) }
     }
 
@@ -52,7 +54,8 @@ internal fun SchModuleBuilder.clientWorkflowsEndpoints() {
         property(
             WFP.params,
             "The values the scope set itself: `${WFP.windows}`, a normal workflow's time windows, each a half-open " +
-                "`{start, end}` of moments, either bound optional. A parameter absent here was not set by this setting.",
+                "`{start, end}` of moments, either bound optional; and `${WFP.visibility}`, who sees the workflow, " +
+                "`{${WFP.mode}, ${WFP.labels}}`. A parameter absent here was not set by this setting.",
             required = true,
         ) { type = SCT.kObject }
         property(WFP.setAt, "When they were set; absent for values nobody has set.") { dateTime() }
@@ -65,7 +68,7 @@ internal fun SchModuleBuilder.clientWorkflowsEndpoints() {
         property(
             WFP.inForce,
             "The parameters in force, each the scope's own, else -- on a sandbox -- its client's, else the default the " +
-                "client's source code declares. A parameter set nowhere is absent, and is no limit.",
+                "client's source code declares. A parameter set nowhere is absent: no limits, and seen by everybody.",
             required = true,
         ) { type = SCT.kObject }
         property(
@@ -110,6 +113,10 @@ internal fun SchModuleBuilder.clientWorkflowsEndpoints() {
             items { ref(CWF.traitTypeName) }
         }
         property(CWF.timeZone, "The client's time zone, which a workflow's time windows are entered and shown in.")
+        property(CWF.userLabels, "The user labels the client suggests, which a workflow's visibility may name.") {
+            type = SCT.array
+            items { type = SCT.string }
+        }
     }
 
     itemEndpoint(
@@ -143,7 +150,9 @@ internal fun SchModuleBuilder.clientWorkflowsEndpoints() {
             "template, in a configuration of its own for a new workflow, or where the workflow is. Then as every " +
             "editor's save: published and reloaded, or a draft for a client with a Shadow Sandbox, whose impact on the " +
             "live client's stored forms is reported for information. A live change leaving stored forms affected is " +
-            "refused with the impact report unless the impact is acknowledged. Refused for a sandbox.",
+            "refused with the impact report unless the impact is acknowledged. A new workflow is seen only by whom " +
+            "`${CWF.visibility}` names, administrators only by default, from before it exists; made as a draft, that " +
+            "is the sandbox's, and the client's own is administrators only (issue #1384).",
         HttpMethod.POST,
         outputRef = CWF.saveResultTypeName,
         needsClientConfig = true,
@@ -156,6 +165,12 @@ internal fun SchModuleBuilder.clientWorkflowsEndpoints() {
                 required = true,
             ) { type = SCT.kObject }
             field(
+                CWF.visibility,
+                "For a new workflow: who sees it, `{${WFP.mode}, ${WFP.labels}}` -- `${WFP.mode}` " +
+                    "${WfVisibilityMode.entries.joinToString(" or ") { "`${it.name}`" }}, and the user labels whose " +
+                    "holders see a restricted one besides administrators. Absent, administrators only.",
+            ) { type = SCT.kObject }
+            field(
                 IMP.acknowledgeImpact,
                 "Save although forms the client stores would be affected; without it, such a save is refused with the " +
                     "impact report.",
@@ -165,27 +180,36 @@ internal fun SchModuleBuilder.clientWorkflowsEndpoints() {
     ) { c, request ->
         val client = overseenClient(c, request[CLD.client].toOptStr())
         val gate = if (request[IMP.acknowledgeImpact] == true) ImpactGate.acknowledged else ImpactGate.refuse
-        val result = ClientWorkflowEdit.save(c, client, templateSlotsFromInfo(request[CWF.slots].toJsonMapOrEmpty()), expectedModeOf(request), gate)
+        val visibility = request[CWF.visibility]?.let { raw ->
+            try {
+                WfVisibility.fromInfo(raw)
+            } catch (e: KdrException) {
+                throw KdrException.mkInput("The visibility does not read: ${e.message}")
+            }
+        }
+        val slots = templateSlotsFromInfo(request[CWF.slots].toJsonMapOrEmpty())
+        val result = ClientWorkflowEdit.save(c, client, slots, expectedModeOf(request), gate, visibility)
         editorSaveResult(client, result.configName, CWF.slots to result.slots.toInfo(), result.mode, result.issues, result.draftImpact)
     }
 
-    // --- a normal workflow's parameters, its time windows first (issues #1121, #1356) ---
+    // --- a workflow's parameters: a normal one's time windows, and who sees any (issues #1121, #1356, #1384) ---
     type(CWF.paramsResultTypeName) {
         type = SCT.kObject
-        description = "What setting a workflow's parameters did (issue #1356): the parameters as the client or sandbox now runs them."
+        description = "What setting a workflow's parameters did (issues #1356, #1384): the parameters as the client or sandbox now runs them."
         property(CLD.client, "The client or sandbox they were set in.", required = true)
         property(CWF.params, "The workflow's parameters now, with their earlier settings.", required = true) { ref(CWF.paramsTypeName) }
     }
 
     generalEndpoint(
         UADEP.clientWorkflowParams,
-        "Changes the parameters of one of a client's normal workflows (issues #1356, #1386) -- `${WFP.windows}`: its " +
-            "time windows, `${WFD.lifetime}`, `${WFD.relevancy}` and `${WFD.engagement}`, each a half-open `{start, end}` " +
-            "of moments, either bound optional -- in the client or sandbox named, whoever declared the workflow. Each " +
+        "Changes the parameters of one of a client's workflows (issues #1356, #1384, #1386) -- `${WFP.windows}`, a " +
+            "normal workflow's time windows: `${WFD.lifetime}`, `${WFD.relevancy}` and `${WFD.engagement}`, each a " +
+            "half-open `{start, end}` of moments, either bound optional; and `${WFP.visibility}`, who sees a workflow of " +
+            "any kind: `{${WFP.mode}, ${WFP.labels}}` -- in the client or sandbox named, whoever declared the workflow. Each " +
             "parameter in `${WFP.params}` becomes the scope's own, and each named in `${WFP.unset}` follows its fallback " +
             "again; any other is left as it is. In force at once, with no draft and no publish; what they replace is " +
-            "kept among the earlier settings. A change that would, now, freeze or hide forms engaged with the workflow " +
-            "is refused with the impact report unless the impact is acknowledged.",
+            "kept among the earlier settings. A change that would, now, freeze or hide forms engaged with the workflow, " +
+            "or take one out of its owner's sight, is refused with the impact report unless the impact is acknowledged.",
         HttpMethod.POST,
         outputRef = CWF.paramsResultTypeName,
         needsClientConfig = true,
@@ -199,8 +223,8 @@ internal fun SchModuleBuilder.clientWorkflowsEndpoints() {
             }
             field(
                 IMP.acknowledgeImpact,
-                "Save although forms engaged with the workflow would be frozen or hidden; without it, such a save is " +
-                    "refused with the impact report.",
+                "Save although forms engaged with the workflow would be frozen, hidden, or out of their owners' sight; " +
+                    "without it, such a save is refused with the impact report.",
             ) { type = SCT.boolean }
         },
     ) { c, request ->

@@ -1366,11 +1366,11 @@ object ClientsApi {
         parseWorkflowRemoveResult(Http.sendApi("POST", UADEP.clientWorkflowRemove, request)[EP.results].toJsonMapOrEmpty())
 
     /**
-     * Sets one of a client's normal workflows' time windows (issue #1121) -- [request] from [windowsSaveRequest]; live,
-     * or a draft for a client with a sandbox. One that would freeze or hide engaged forms now is refused with the impact
-     * report ([impactOf]).
+     * Sets one of a client's workflows' parameters (issues #1121, #1356, #1384) -- [request] from [windowsSaveRequest]
+     * or [visibilitySaveRequest] -- in force at once in the client or sandbox named. One that would freeze or hide
+     * engaged forms now, or take one out of its owner's sight, is refused with the impact report ([impactOf]).
      */
-    suspend fun saveWorkflowWindows(request: Map<String, Any?>): WorkflowParamsView =
+    suspend fun saveWorkflowParams(request: Map<String, Any?>): WorkflowParamsView =
         parseWindowsSaveResult(Http.sendApi("POST", UADEP.clientWorkflowParams, request)[EP.results].toJsonMapOrEmpty())
 
     /** Every key an administrator may override for a client, with the client's value (issue #918). */
@@ -1531,6 +1531,10 @@ fun impactFindingText(f: ImpactFindingView): String {
         ImpactKind.workflowHidden.name ->
             "$forms ${verb("takes", "take")} part in workflow ${f.workflowId}, which would no longer be available now: " +
                 "nothing would show ${verb("its", "their")} part in it, though the data is kept."
+        ImpactKind.workflowUnseen.name ->
+            "$forms ${verb("takes", "take")} part in workflow ${f.workflowId}, which ${verb("its owner", "their owners")} " +
+                "would no longer see: nothing would show them ${verb("its", "their")} part in it, though the progress is " +
+                "kept for whoever still sees it."
         else -> "$forms would be affected (${f.kind})."
     }
 }

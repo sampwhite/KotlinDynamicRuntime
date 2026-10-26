@@ -113,4 +113,11 @@ enum class ImpactKind {
      * workflow is as good as not configured, and nothing shows the form's part in it, though its data is kept.
      */
     workflowHidden,
+
+    /**
+     * A form engaged with a workflow whose visibility (issue #1384) would no longer include the form's owner: the
+     * workflow is as good as not configured for them, and nothing shows them the form's part in it, though its progress
+     * is kept and whoever still sees the workflow carries on.
+     */
+    workflowUnseen,
 }

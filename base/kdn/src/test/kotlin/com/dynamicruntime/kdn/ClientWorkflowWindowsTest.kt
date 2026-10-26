@@ -133,9 +133,10 @@ class ClientWorkflowWindowsTest : StringSpec({
         history.map { it.params.windowsInForce.lifetime.end } shouldBe listOf(now + 42.days, now + 41.days, now + 30.days)
         history.first().setByName.shouldNotBeNull()
         WfParamsSetting.fromInfo(listed[WFP.current].toJsonMapOrEmpty()).params.windowsInForce.lifetime.end shouldBe now + 43.days
-        // A survey has no parameters.
+        // A survey has parameters too -- who sees it, issue #1384 -- but never windows.
         chief.getItem(UADEP.clientWorkflows)[CWF.workflows].toJsonListOfMaps()
-            .single { it[CWF.definition].toJsonMapOrEmpty()[WFD.workflowId] == "details" }.containsKey(CWF.params) shouldBe false
+            .single { it[CWF.definition].toJsonMapOrEmpty()[WFD.workflowId] == "details" }[CWF.params].toJsonMapOrEmpty()[WFP.inForce]
+            .toJsonMapOrEmpty().containsKey(WFP.windows) shouldBe false
     }
 
     "windows are refused on a workflow of another kind, when they do not nest, and when nothing changes" {

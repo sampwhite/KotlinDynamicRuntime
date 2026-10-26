@@ -42,6 +42,7 @@ import com.dynamicruntime.common.gedra.workflow.formWorkflowsOf
 import com.dynamicruntime.common.gedra.workflow.FormWorkflowSummary
 import com.dynamicruntime.common.gedra.workflow.WCOL
 import com.dynamicruntime.common.gedra.workflow.WfPhase
+import com.dynamicruntime.common.gedra.workflow.WorkflowAudience
 import com.dynamicruntime.common.gedra.workflow.WorkflowPhases
 import com.dynamicruntime.common.gedra.workflow.WorkflowFormFacts
 import com.dynamicruntime.common.gedra.workflow.noWorkflowView
@@ -764,11 +765,13 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
         // A workflowId names one directly; otherwise the singleton kind is deduced from whether a form was
         // named -- a form means "edit its survey", none means "create". Both singletons resolve by kind, so a
         // caller never needs to know the id up front (issue #658).
+        // A workflow the caller does not see (issue #1384) is as good as not configured for them: one named is refused as
+        // an unknown one is, and a creation or survey falls back as for a client with none -- the trait picker, the raw editor.
         val declared = when {
-            requested != null -> WorkflowPhases.live(c, registry, requested)
+            requested != null -> WorkflowPhases.liveFor(c, registry, requested)
                 ?: throw KdrException("No workflow '$requested' for this caller.", code = EXC.notFound)
-            gedraId != null -> registry.survey
-            else -> registry.creation
+            gedraId != null -> WorkflowPhases.seenOrNull(c, registry, registry.survey)
+            else -> WorkflowPhases.seenOrNull(c, registry, registry.creation)
         }
         // A creation workflow makes new forms (issue #817): asked against an existing one it would draw that form under a
         // "new form" heading, with a save the save endpoint refuses -- so it is refused here, before anything is read.
@@ -883,7 +886,13 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
         // *engaging* needs a declared normal workflow, while *disengaging* also accepts one the form already has
         // an engagement with -- otherwise a retired workflow's entry could never be taken back out.
         // Outside its lifetime (issue #790) a workflow is as good as not configured, so it is not offered either.
-        val declared = WorkflowPhases.live(c, WorkflowService.get(c).forClient(row.client), workflowId)
+        val registry = WorkflowService.get(c).forClient(row.client)
+        val declared = WorkflowPhases.liveFor(c, registry, workflowId)
+        // One the caller does not see (issue #1384) they cannot act on at all -- not even to withdraw a form from it,
+        // which whoever sees it may still want to find engaged.
+        if (declared == null && WorkflowPhases.live(c, registry, workflowId) != null) {
+            throw KdrException("No workflow '$workflowId' for this caller.", code = EXC.notFound)
+        }
         val isNormal = declared != null && declared.def.entry == WfEntry.normal
         val canDisengage = !engaged &&
             WorkflowEngagement.hasEngagement(GedraDataService.get(c).readState(c, row.gedraId, ReadScopeRules.forCaller(c)), workflowId)
@@ -924,7 +933,7 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
             ?: throw KdrException.mkInput("A ${GDF.workflowId} is required.")
         val taskId = request[GDF.taskId].toOptStr() ?: throw KdrException.mkInput("A ${GDF.taskId} is required.")
         val row = stateTargetRow(c, request)
-        val declared = WorkflowPhases.live(c, WorkflowService.get(c).forClient(row.client), workflowId)
+        val declared = WorkflowPhases.liveFor(c, WorkflowService.get(c).forClient(row.client), workflowId)
             ?.takeIf { it.def.entry == WfEntry.normal }
             ?: throw KdrException.mkInput("'$workflowId' is not a normal workflow of client '${row.client}'.")
         // A frozen workflow (past its relevancy, issue #790) takes no approvals: nothing would recalculate after it.
@@ -1140,7 +1149,7 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
     ) { c, request ->
         val workflowId = request[GDF.workflowId].toOptStr()
             ?: throw KdrException.mkInput("A ${GDF.workflowId} is required.")
-        val declared = WorkflowPhases.live(c, WorkflowService.get(c).forClient(c.client), workflowId)
+        val declared = WorkflowPhases.liveFor(c, WorkflowService.get(c).forClient(c.client), workflowId)
             ?: throw KdrException("No workflow '$workflowId' for this caller.", code = EXC.notFound)
         // A normal workflow saves only while it is calculated (issue #790): frozen past its relevancy, its state
         // would no longer follow the data a save changes.
@@ -1166,7 +1175,8 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
  * a form's state entries that holds when its workflow cell -- by the kernel's [formWorkflowsOf], against the
  * **form's own client's** workflow and its current phase -- shows the named workflow, in the named state when one is
  * given. Resolved per row, so a cross-client listing drills into every client that has the workflow, and a form
- * whose client does not have it (or has it outside its lifetime) simply does not match, as an unknown value does.
+ * whose client does not have it (or has it outside its lifetime, or the caller does not see it, issue #1384) simply
+ * does not match, as an unknown value does.
  * Each client's phase is taken once, at one moment, for the whole listing.
  */
 private fun workflowDrillFilter(c: KdrCxt, request: Map<String, Any?>): GedraStateFilter? {
@@ -1176,7 +1186,8 @@ private fun workflowDrillFilter(c: KdrCxt, request: Map<String, Any?>): GedraSta
     val phases = HashMap<String, WfPhase?>()
     fun phaseIn(client: String): WfPhase? = phases.getOrPut(client) {
         WorkflowService.get(c).forClient(client).workflow(workflowId)?.def
-            ?.takeIf { it.entry == WfEntry.normal }?.let { WorkflowPhases.phaseAt(c, client, it, now) }?.takeIf { it.exists }
+            ?.takeIf { it.entry == WfEntry.normal && WorkflowAudience.of(c).sees(client, workflowId) }
+            ?.let { WorkflowPhases.phaseAt(c, client, it, now) }?.takeIf { it.exists }
     }
     return { gedraId, states ->
         val phase = phaseIn(gedraId.client)

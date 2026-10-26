@@ -999,6 +999,24 @@ set it and **Use these values**, which fills the editor -- a pre-fill, never a s
 A setter the caller may not administer (an operator who set a client's windows) is not named: that line, and the
 byline, say only when.
 
+**Visibility** (issue #1384, `WorkflowVisibilityEditor.kt`, its pure half in `WorkflowVisibility.kt`, covered by
+`WorkflowVisibilityTest`): who sees a workflow, a parameter beside its windows -- on a workflow of **any** kind, so every
+row of Workflows offers **Visibility…** and a **Seen by** column (`visibilityText`; restricted ones in `.wf-restricted`).
+The value is the kernel's `WfVisibility`: `everyone`, or `restricted` to the client's administrators and the people
+holding one of its labels -- the user labels the Users page puts on people, offered from the catalog's `CWF.userLabels`
+and free to type. **One parameter, mode and labels together** (`WFP.visibility`), so a sandbox restricting a workflow
+never inherits its client's group, and the labels are kept when it is opened to everyone. It saves as the windows do
+(`visibilitySaveRequest`, the same `/clientAdmin/client/workflows/params`), with the provenance line, the way back to a
+client's choice, and the earlier choices (`historyOf`, which leaves out a setting that changed only the other
+parameter -- the windows editor uses it too). Restricting a workflow out of engaged forms' owners' sight is refused with
+the impact report (`ImpactKind.workflowUnseen`). **A new workflow is made with who sees it**: the slot editor's "Seen
+by" starts on administrators only and is sent as `CWF.visibility`, written before the workflow exists; on a client with
+a sandbox it is the sandbox's, and the client's own stays administrators only. The backend enforces it wherever a person
+meets a workflow (`WorkflowPhases.liveFor`, `WorkflowAudience`): one a person does not see is, to them, as one past its
+lifetime is to everybody -- and a restricted creation workflow sends them to the trait picker, a survey to the raw
+editor. The `clients` file's `workflows.newWorkflowNote` and the home file's `publicHome.createClientNote` ship empty
+and say how to open a workflow up where the `reference` flavor fills them in.
+
 **Long text** is a layout mark, not a schema keyword: a `g-layout` field entry's `multiline: true` (`SL.multiline`,
 refused on anything but plain text) makes `SchemaForm` draw antd's `TextArea` (`ControlKind.LongText`) for any form
 whose layout says so.

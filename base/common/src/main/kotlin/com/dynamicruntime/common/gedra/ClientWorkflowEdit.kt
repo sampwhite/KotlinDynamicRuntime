@@ -13,6 +13,7 @@ import com.dynamicruntime.common.gedra.workflow.ResolvedWorkflowParams
 import com.dynamicruntime.common.gedra.workflow.WFP
 import com.dynamicruntime.common.gedra.workflow.WfParams
 import com.dynamicruntime.common.gedra.workflow.WfParamsSetting
+import com.dynamicruntime.common.gedra.workflow.WfVisibility
 import com.dynamicruntime.common.gedra.workflow.WorkflowParamsService
 import com.dynamicruntime.common.gedra.workflow.WorkflowService
 import com.dynamicruntime.common.gedra.workflow.WorkflowTemplates
@@ -83,6 +84,8 @@ object ClientWorkflowEdit {
             put(CWF.workflows, own.map { workflowInfo(cxt, client, view, it, templates.keys, names) })
             put(CWF.traits, usableTraits(cxt, owner))
             ClientService.get(cxt).displayZoneOf(owner)?.let { put(CWF.timeZone, it) }
+            // The labels a workflow's visibility may name, as the Users page offers them (issue #1384).
+            ClientService.get(cxt).known(owner)?.userLabels?.takeIf { it.isNotEmpty() }?.let { put(CWF.userLabels, it) }
         }
     }
 
@@ -127,8 +130,8 @@ object ClientWorkflowEdit {
 
     /**
      * One workflow for the catalog: its definition and where it is stored, as [client] -- whose configuration the page
-     * lists -- holds it; and for a normal workflow, its parameters as [scope], the page's own client or sandbox, runs them
-     * (issue #1356), which are set there whoever declared the workflow.
+     * lists -- holds it; and its parameters as [scope], the page's own client or sandbox, runs them (issues #1356,
+     * #1384), which are set there whoever declared the workflow: who sees it, and for a normal workflow its windows.
      */
     private fun workflowInfo(
         cxt: KdrCxt, scope: String, client: String, declared: WfDeclared, templateIds: Set<String>, names: SetterNames,
@@ -138,7 +141,7 @@ object ClientWorkflowEdit {
         if (declared.bundle.isStored && declared.bundle.gedraId.client == client) put(CWF.configName, declared.bundle.name)
         notEditable(client, declared, templateIds)?.let { put(CWF.notEditable, it) }
         shownLabels(cxt, scope, def)?.let { put(CWF.labels, it) }
-        if (def.entry == WfEntry.normal) put(CWF.params, paramsInfo(WorkflowParamsService.get(cxt).resolve(cxt, scope, def.workflowId), names))
+        put(CWF.params, paramsInfo(WorkflowParamsService.get(cxt).resolve(cxt, scope, def.workflowId), names))
     }
 
     /**
@@ -218,8 +221,21 @@ object ClientWorkflowEdit {
      * Saves [slots] for [client]: a new workflow made from their template when they name no workflow, a change of the
      * stored one they name otherwise -- see the class note. [expected] is how the caller told its user the save would
      * take effect; [impact] whether a save that affects stored forms goes ahead.
+     *
+     * **A new workflow is seen by whom the maker chose** (issue #1384): [visibility], administrators only when it is not
+     * given, is written as the workflow's parameter before the workflow exists, so nobody sees it before the
+     * administrator chose. Made as a draft -- a client with a sandbox -- it is the sandbox's, and the client's own is
+     * administrators only whatever was chosen: a publish never makes a workflow visible, and the two scopes stay apart.
+     * A change of slots takes none; who sees a workflow is changed among its parameters ([saveParams]).
      */
-    fun save(cxt: KdrCxt, client: String, slots: WfTemplateSlots, expected: String? = null, impact: ImpactGate = ImpactGate.refuse): Result {
+    fun save(
+        cxt: KdrCxt,
+        client: String,
+        slots: WfTemplateSlots,
+        expected: String? = null,
+        impact: ImpactGate = ImpactGate.refuse,
+        visibility: WfVisibility? = null,
+    ): Result {
         // From a sandbox, its parent's: the sandbox holds no configuration, and a save is a draft of the parent's (#1358).
         val owner = sandboxParentOf(client) ?: client
         // Only a template the deployment's checks admitted.
@@ -233,6 +249,9 @@ object ClientWorkflowEdit {
         val reload: ConfigReloadResult
         val made: WfDef
         val workflowId = slots.workflowId
+        if (workflowId != null && visibility != null) {
+            throw KdrException.mkInput("Who sees workflow '$workflowId' is one of its parameters, set apart from its slots.")
+        }
         if (workflowId == null) {
             // Nor the name of a configuration left from one, which a new workflow's configuration may not take.
             val leftover = svc.listConfigs(bound).map { it.configId.baseId }.filter { it.startsWith(CWF.configPrefix) }
@@ -240,6 +259,7 @@ object ClientWorkflowEdit {
             val taken = WorkflowService.get(cxt).forClient(owner).workflows.keys + storedWorkflowIds(bound) + leftover
             val id = keyFromLabel(slots.label, taken, "workflow")
             made = withTemplateSlots(bound, template, slots, id)
+            seenFromTheStart(cxt, owner, id, visibility ?: WfVisibility.adminsOnly, target.draft)
             val entry = mapOf(CCT.workflowId to id, CCT.definition to workflowTemplateOverlay(template, made))
             val config = reassembleForWrite(bound, CWF.configPrefix + id, clientNamespace(owner), owner, mapOf(CCT.workflowDef to listOf(entry)))
             written = svc.writeConfig(bound, config, trial = true, mustBeNew = true)
@@ -270,13 +290,31 @@ object ClientWorkflowEdit {
     }
 
     /**
-     * Changes [client]'s own parameters for its normal workflow [workflowId] (issues #1356, #1386): those [edit] sets
+     * Who sees [workflowId], a workflow [owner] is about to make, from the start (issue #1384; see [save]): [chosen] in
+     * the scope the workflow is made in -- the client's, or for a [draft] its sandbox's -- and for a draft,
+     * administrators only in the client. Written as ordinary parameter settings, before the workflow exists, so a
+     * failed make leaves a restricted row behind and never a visible workflow. A row a removed workflow of the same id
+     * left keeps its windows, as [WorkflowParamsService] says a row outlives its workflow.
+     */
+    private fun seenFromTheStart(cxt: KdrCxt, owner: String, workflowId: String, chosen: WfVisibility, draft: Boolean) {
+        val service = WorkflowParamsService.get(cxt)
+        if (draft) {
+            service.save(cxt, sandboxOf(owner), workflowId, WfParams(visibility = chosen))
+            service.save(cxt, owner, workflowId, WfParams(visibility = WfVisibility.adminsOnly))
+        } else {
+            service.save(cxt, owner, workflowId, WfParams(visibility = chosen))
+        }
+    }
+
+    /**
+     * Changes [client]'s own parameters for its workflow [workflowId] (issues #1356, #1384, #1386): those [edit] sets
      * become its own, and those named in [unset] stop being its own and follow the fallback again -- a sandbox its
      * client's, a client its source defaults. Any other parameter is left as it is. In force at once in that scope --
      * the client's people, or a sandbox's -- with no draft and no publish, and what they replace kept in the history
      * ([WorkflowParamsService]). The workflow may be one [client] runs, or, on a client with a sandbox, one its sandbox
-     * runs and a publish has yet to bring. A change that would, now, freeze or hide forms [client] stores that are
-     * engaged with the workflow -- an end brought forward, a start pushed back -- is refused with the impact report
+     * runs and a publish has yet to bring. Who sees it may be set on a workflow of any kind; its windows only on a normal
+     * one. A change that would, now, freeze or hide forms [client] stores that are engaged with the workflow -- an end
+     * brought forward, a start pushed back -- or take one out of its owner's sight is refused with the impact report
      * until acknowledged. Returns the parameters as [client] now runs them.
      */
     fun saveParams(
@@ -292,7 +330,7 @@ object ClientWorkflowEdit {
         val sandbox = if (sandboxParentOf(client) != null) null else sandboxOf(client).takeIf { ClientService.get(cxt).present(it) != null }
         val declared = workflows.forClient(client).workflow(workflowId) ?: sandbox?.let { workflows.forClient(it).workflow(workflowId) }
             ?: throw KdrException("Client '$client' has no workflow '$workflowId'.", code = EXC.notFound)
-        if (declared.def.entry != WfEntry.normal) {
+        if (declared.def.entry != WfEntry.normal && (edit.windows != null || WFP.windows in unset)) {
             throw KdrException.mkInput(
                 "Workflow '$workflowId' is a ${declared.def.entry} workflow, which has no time windows; only a normal workflow does.",
             )
@@ -312,7 +350,7 @@ object ClientWorkflowEdit {
             throw KdrException.mkInput("Workflow '$workflowId' already has these values in client '$client'; nothing to save.")
         }
         if (impact == ImpactGate.refuse) {
-            ConfigImpact.requireNoneForParams(cxt, client, workflowId, before.windows, before.layers.withOwn(after).inForce.windowsInForce)
+            ConfigImpact.requireNoneForParams(cxt, client, workflowId, before.layers.inForce, before.layers.withOwn(after).inForce)
         }
         service.save(cxt, client, workflowId, edit, unset)
         return service.resolve(cxt, client, workflowId)

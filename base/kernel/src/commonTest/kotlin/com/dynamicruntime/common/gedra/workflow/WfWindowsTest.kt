@@ -136,6 +136,43 @@ class WfWindowsTest {
     }
 
     @Test
+    fun visibilityAdmitsAdministratorsAndLabelHoldersAndNeverEverybodyByAnEmptyList() {
+        // Issue #1384: everyone, or the client's administrators and the people holding one of the labels.
+        assertTrue(WfVisibility.everyone.admits(isAdministrator = false, personLabels = emptyList()))
+        val adminsOnly = WfVisibility.adminsOnly
+        assertTrue(adminsOnly.admits(isAdministrator = true, personLabels = emptyList()))
+        assertFalse(adminsOnly.admits(isAdministrator = false, personLabels = listOf("pilot")))
+        val pilot = WfVisibility(WfVisibilityMode.restricted, listOf(" pilot ", "east", "pilot", ""))
+        assertEquals(listOf("pilot", "east"), pilot.labels)
+        assertTrue(pilot.admits(isAdministrator = false, personLabels = listOf("east")))
+        assertFalse(pilot.admits(isAdministrator = false, personLabels = listOf("west")))
+        // Opened to everyone, the labels are kept for a later restriction.
+        val opened = pilot.withMode(WfVisibilityMode.everyone)
+        assertEquals(pilot.labels, opened.labels)
+        assertEquals(pilot, opened.withMode(WfVisibilityMode.restricted))
+        // Read and written as one value; a mode that is none is refused.
+        assertEquals(pilot, WfVisibility.fromInfo(pilot.toInfo()))
+        assertFailsWith<KdrException> { WfVisibility.fromInfo(mapOf(WFP.mode to "some")) }
+    }
+
+    @Test
+    fun visibilityResolvesAsOneParameterBesideTheWindows() {
+        val windows = WfWindows(lifetime = WfWindow(jan, dec))
+        val pilot = WfVisibility(WfVisibilityMode.restricted, listOf("pilot"))
+        // A sandbox setting its own visibility follows its client's windows, and the client's labels never leak in.
+        val layers = WfParamsLayers(WfParams(visibility = WfVisibility.adminsOnly), WfParams(windows, pilot))
+        assertEquals(WfParams(windows, WfVisibility.adminsOnly), layers.inForce)
+        assertEquals(mapOf(WFP.windows to WfParamsFrom.parent), layers.from)
+        // Nothing anywhere: no limits, and everybody sees it.
+        assertEquals(WfVisibility.everyone, WfParams.none.visibilityInForce)
+        // An edit of one leaves the other; each is unset on its own.
+        val both = WfParams(windows, pilot)
+        assertEquals(WfParams(windows, WfVisibility.everyone), both.edited(WfParams(visibility = WfVisibility.everyone)))
+        assertEquals(WfParams(windows), both.edited(WfParams.none, setOf(WFP.visibility)))
+        assertEquals(both, WfParams.fromInfo(both.toInfo()))
+    }
+
+    @Test
     fun sourceDefaultsAreBuiltFromMomentsAndMustNest() {
         val built = WfParamsBuilder("review").apply {
             lifetime(start = "2026-01-01T00:00:00Z", end = "2026-12-01T00:00:00Z")

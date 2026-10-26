@@ -1,9 +1,11 @@
 package com.dynamicruntime.common.gedra.workflow
 
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.user.normalizeUserLabels
 import com.dynamicruntime.common.util.formatDate
 import com.dynamicruntime.common.util.parseDateOrNull
 import com.dynamicruntime.common.util.toJsonListOfMaps
+import com.dynamicruntime.common.util.toJsonListOfStrings
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptInstant
 import com.dynamicruntime.common.util.toOptLong
@@ -40,6 +42,15 @@ object WFP {
     /** The parameter holding a normal workflow's time windows ([WfWindows]). */
     const val windows = "windows"
 
+    /** The parameter holding who sees a workflow, of any kind ([WfVisibility], issue #1384). */
+    const val visibility = "visibility"
+
+    /** In a [visibility]: a [WfVisibilityMode] name. */
+    const val mode = "mode"
+
+    /** In a [visibility]: the user labels whose holders see a restricted workflow, besides administrators. */
+    const val labels = "labels"
+
     /** As a page is answered: the scope's own setting ([WfParamsSetting]); absent while it has none. */
     const val current = "current"
 
@@ -59,6 +70,65 @@ object WFP {
     const val historyKept = 3
 }
 
+/** Who sees a workflow, in the large (issue #1384). */
+@Suppress("EnumEntryName")
+enum class WfVisibilityMode {
+    /** Everybody who could otherwise: what a workflow nobody restricted has. */
+    everyone,
+
+    /** Its client's administrators, and anyone holding one of the visibility's labels. */
+    restricted,
+}
+
+/**
+ * Who sees a workflow (issue #1384): everybody, or -- [restricted] -- the client's administrators and anyone holding one
+ * of [labels], the user labels an administrator puts on people (issue #786). Restricted with no labels is administrators
+ * only; an empty list never means everybody.
+ *
+ * **One parameter, not two.** The mode and the labels resolve together, as one value of one scope, so a sandbox that
+ * restricts a workflow never inherits its client's group without choosing it. The labels are kept when the mode is
+ * [WfVisibilityMode.everyone], so restricting again brings the same group back.
+ */
+class WfVisibility(val mode: WfVisibilityMode, labels: List<String> = emptyList()) {
+    /** The labels, each once and trimmed ([normalizeUserLabels], the rule a user's labels are stored by). */
+    val labels: List<String> = normalizeUserLabels(labels)
+
+    val restricted: Boolean get() = mode == WfVisibilityMode.restricted
+
+    /** Whether a person sees the workflow: an administrator of its client always does, anyone else by the mode and their labels. */
+    fun admits(isAdministrator: Boolean, personLabels: Collection<String>): Boolean =
+        !restricted || isAdministrator || labels.any { it in personLabels }
+
+    /** These, set to [mode] with their labels kept. */
+    fun withMode(mode: WfVisibilityMode): WfVisibility = WfVisibility(mode, labels)
+
+    /** These, holding [labels] in place of their own. */
+    fun withLabels(labels: List<String>): WfVisibility = WfVisibility(mode, labels)
+
+    fun toInfo(): Map<String, Any?> = mapOf(WFP.mode to mode.name, WFP.labels to labels)
+
+    override fun equals(other: Any?): Boolean = other is WfVisibility && other.toInfo() == toInfo()
+
+    override fun hashCode(): Int = toInfo().hashCode()
+
+    companion object {
+        /** What no parameter means: everybody sees the workflow. */
+        val everyone = WfVisibility(WfVisibilityMode.everyone)
+
+        /** Administrators only: what a workflow made from a template starts as. */
+        val adminsOnly = WfVisibility(WfVisibilityMode.restricted)
+
+        /** A visibility read off storage or the wire ([toInfo]); a mode that is none is refused. */
+        fun fromInfo(raw: Any?): WfVisibility {
+            val map = raw.toJsonMapOrEmpty()
+            val name = map[WFP.mode].toOptStr()
+            val mode = WfVisibilityMode.entries.firstOrNull { it.name == name }
+                ?: throw KdrException.mkConv("A workflow's visibility has a mode, '$name', that is not ${WfVisibilityMode.entries.map { it.name }}.")
+            return WfVisibility(mode, map[WFP.labels].toJsonListOfStrings())
+        }
+    }
+}
+
 /** Where a parameter in force comes from when it is not the scope's own (issue #1386). */
 @Suppress("EnumEntryName")
 enum class WfParamsFrom {
@@ -72,36 +142,47 @@ enum class WfParamsFrom {
 /**
  * A workflow's parameters in one scope (issue #1356): values that are not part of its definition, set on the client's
  * page, in force at once with no draft and no publish, and kept per client -- a sandbox its own. Their keys are the
- * platform's to declare, not a definition's: [windows] now, a form quota to come.
+ * platform's to declare, not a definition's: [windows], a normal workflow's time windows, and [visibility], who sees a
+ * workflow of any kind (issue #1384); a form quota to come.
  *
- * **Each parameter resolves on its own** (issue #1386). One these do not set ([windows] null) follows the fallback
+ * **Each parameter resolves on its own** (issue #1386). One these do not set (null) follows the fallback
  * below them -- a sandbox its client's, a client its source defaults -- and one they set is theirs, including
  * deliberately no limits ([WfWindows.none]). So a scope may set one parameter and follow the fallback for another, and
  * what nothing sets anywhere is no limit.
  */
-class WfParams(val windows: WfWindows? = null) {
+class WfParams(val windows: WfWindows? = null, val visibility: WfVisibility? = null) {
     /** Whether these set no parameter: each follows the fallback. */
-    val isEmpty: Boolean get() = windows == null
+    val isEmpty: Boolean get() = windows == null && visibility == null
 
     /** The keys of the parameters these set. */
-    val keys: Set<String> get() = buildSet { if (windows != null) add(WFP.windows) }
+    val keys: Set<String>
+        get() = buildSet {
+            if (windows != null) add(WFP.windows)
+            if (visibility != null) add(WFP.visibility)
+        }
 
     /** The windows these give a workflow: their own, or no limits when they set none. */
     val windowsInForce: WfWindows get() = windows ?: WfWindows.none
+
+    /** Who these let see a workflow: their own visibility, or everybody when they set none (issue #1384). */
+    val visibilityInForce: WfVisibility get() = visibility ?: WfVisibility.everyone
 
     /** What is wrong with these parameters for [workflowId], or null: windows that do not nest, say. */
     fun problem(workflowId: String): String? = windows?.problem(workflowId)
 
     /** These, with each parameter they do not set taken from [fallback]. */
-    fun over(fallback: WfParams): WfParams = WfParams(windows ?: fallback.windows)
+    fun over(fallback: WfParams): WfParams = WfParams(windows ?: fallback.windows, visibility ?: fallback.visibility)
 
     /** These, with the parameters [edit] sets replacing theirs, and those named in [unset] no longer set. */
-    fun edited(edit: WfParams, unset: Set<String> = emptySet()): WfParams =
-        WfParams(if (WFP.windows in unset) null else edit.windows ?: windows)
+    fun edited(edit: WfParams, unset: Set<String> = emptySet()): WfParams = WfParams(
+        if (WFP.windows in unset) null else edit.windows ?: windows,
+        if (WFP.visibility in unset) null else edit.visibility ?: visibility,
+    )
 
     /** As stored and sent: each parameter set -- an empty one too, which is no limits -- and nothing for one that is not. */
     fun toInfo(): Map<String, Any?> = buildMap {
         windows?.let { put(WFP.windows, it.toInfo()) }
+        visibility?.let { put(WFP.visibility, it.toInfo()) }
     }
 
     override fun equals(other: Any?): Boolean = other is WfParams && other.toInfo() == toInfo()
@@ -112,12 +193,15 @@ class WfParams(val windows: WfWindows? = null) {
         val none = WfParams()
 
         /** The key of every parameter there is. */
-        val allKeys: Set<String> = setOf(WFP.windows)
+        val allKeys: Set<String> = setOf(WFP.windows, WFP.visibility)
 
-        /** Parameters read off storage or the wire ([toInfo]); a window bound that is no moment is refused. */
+        /** Parameters read off storage or the wire ([toInfo]); a window bound that is no moment, or a mode that is none, is refused. */
         fun fromInfo(raw: Any?): WfParams {
             val map = raw.toJsonMapOrEmpty()
-            return WfParams(if (map[WFP.windows] != null) WfWindows.fromInfo(map[WFP.windows].toJsonMapOrEmpty()) else null)
+            return WfParams(
+                if (map[WFP.windows] != null) WfWindows.fromInfo(map[WFP.windows].toJsonMapOrEmpty()) else null,
+                if (map[WFP.visibility] != null) WfVisibility.fromInfo(map[WFP.visibility]) else null,
+            )
         }
     }
 }

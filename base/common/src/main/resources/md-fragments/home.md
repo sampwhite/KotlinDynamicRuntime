@@ -27,6 +27,9 @@ Join a demo client with a user of your own email. Each one is shared with everyo
 # +accountsTitle Your other accounts
 # +accountsIntro
 The users you have in other clients. Choose one to switch to it; the account menu does the same.
+/- Under the create card's starter workflows (issue #1384). Empty as shipped; the `reference` flavor says how a workflow
+   made later is opened to people. -/
+# +createClientNote
 
 # @forms
 /- What a forms-listing row with no workflows shows in the workflow column (issue #791). A client overlays it:

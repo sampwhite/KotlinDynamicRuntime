@@ -1745,7 +1745,10 @@ body.dv-open .app-content { padding-right: calc(var(--dv-panel-width) + 16px); }
 .wf-window { margin-bottom: 8px; }
 .wf-phase { font-weight: 600; }
 .wf-timeline { margin: 12px 0; max-width: 720px; }
-/* A workflow's earlier window settings (issue #1356), expanded in place beneath the editor's Save. */
+/* A workflow restricted to some of its client's people (issue #1384): said in the table's "Seen by" cell, set apart
+   from the everyday "Everyone" so a pilot is not mistaken for a workflow everybody meets. */
+.wf-restricted { font-weight: 600; }
+/* A workflow's earlier parameter settings (issues #1356, #1384), expanded in place beneath an editor's Save. */
 .wf-history { list-style: none; padding-left: 0; margin: 8px 0; }
 .wf-history > li { padding: 6px 0; border-top: 1px solid var(--border); }
 .wf-timeline-row { display: flex; align-items: center; gap: 12px; margin: 6px 0; }

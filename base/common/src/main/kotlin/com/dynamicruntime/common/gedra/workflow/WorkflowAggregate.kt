@@ -14,7 +14,8 @@ import com.dynamicruntime.common.util.toOptStr
  * A workflow is listed when it is **being calculated** (inside its relevancy window) in a client the caller works
  * in, even with nothing counted yet, **or** when it appears on a form the caller may see -- a workflow past its
  * relevancy still stands behind its engaged forms. One outside its lifetime is never listed
- * ([WorkflowPhases.live]). The clients are those of the caller's visible forms, plus the caller's own.
+ * ([WorkflowPhases.live]), nor one the caller does not see ([WorkflowAudience], issue #1384) -- an administrator of the
+ * client sees every one. The clients are those of the caller's visible forms, plus the caller's own.
  */
 object WorkflowAggregate {
     fun of(cxt: KdrCxt, statesByForm: Map<GedraId, List<Map<String, Any?>>>): List<Map<String, Any?>> {
@@ -30,7 +31,7 @@ object WorkflowAggregate {
         val now = cxt.instanceNow()
         val resolved = HashMap<Pair<String, String>, Pair<WfDeclared, WfPhase>?>()
         fun live(client: String, id: String): Pair<WfDeclared, WfPhase>? = resolved.getOrPut(client to id) {
-            registry(client).workflow(id)?.takeIf { it.def.entry == WfEntry.normal }
+            registry(client).workflow(id)?.takeIf { it.def.entry == WfEntry.normal && WorkflowAudience.of(cxt).sees(client, id) }
                 ?.let { it to WorkflowPhases.phaseAt(cxt, client, it.def, now) }?.takeIf { it.second.exists }
         }
 

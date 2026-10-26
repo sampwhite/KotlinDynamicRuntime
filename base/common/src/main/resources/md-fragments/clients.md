@@ -1,6 +1,7 @@
 /- Copy for the Clients page (issue #1337): for now, the "What is this?" explanations of its sections, each in the
-   namespace of the section it explains. The page's other words are still in the webapp, and belong here as they are
-   moved. Named by the shell's UI-config after the home file, since the page has no UI-config of its own. -/
+   namespace of the section it explains, and the note a new workflow's maker reads (issue #1384). The page's other
+   words are still in the webapp, and belong here as they are moved. Named by the shell's UI-config after the home
+   file, since the page has no UI-config of its own. -/
 
 # @sandbox
 # +whatIsThis
@@ -62,3 +63,9 @@ To try it, make this explanation show an image of your own:
    sandbox. **Reset** on the key puts the shipped explanation back.
 
 Upload the image first: copy naming a file the client does not have is refused when it is saved.
+
+
+# @workflows
+/- Shown under "Seen by" when a workflow is made from a template (issue #1384). Empty as shipped: the form already says
+   who sees the new workflow, and a deployment that teaches -- the `reference` flavor -- adds how to open one up. -/
+# +newWorkflowNote
