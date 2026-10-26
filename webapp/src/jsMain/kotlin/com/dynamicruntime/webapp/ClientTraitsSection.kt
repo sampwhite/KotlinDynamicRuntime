@@ -13,7 +13,7 @@ import react.Props
 import react.create
 import react.dom.html.ReactHTML.code
 import react.dom.html.ReactHTML.div
-import react.dom.html.ReactHTML.h3
+import react.dom.html.ReactHTML.h4
 import react.dom.html.ReactHTML.p
 import react.dom.html.ReactHTML.span
 import react.dom.html.ReactHTML.table
@@ -393,7 +393,7 @@ private fun fieldsTypeOf(trait: TraitChoiceView, types: Map<String, SchType>): S
  * **Edit** -- or why the editor cannot edit it -- then **New trait**, unless the plan allows no more schemas.
  */
 private fun ChildrenBuilder.ownTraits(catalog: TraitCatalogView, designing: String?, busy: Boolean, onOpen: (String) -> Unit) {
-    h3 { +"Its own traits" }
+    h4 { +"Its own traits" }
     p {
         className = ClassName("subtitle")
         +("Traits this client defines for itself, supported without being included. A new one is stored in a " +

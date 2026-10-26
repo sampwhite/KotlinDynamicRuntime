@@ -185,9 +185,18 @@ class ClientsPageTest {
         val absent = ClientStatus.entries.first { it != ClientStatus.present }
         assertEquals(null, clientSummaryHref(summaryFormsRow, row(absent), acrossClients = true))
         assertEquals(null, clientSummaryHref(summaryFormsRow, null, acrossClients = true))
-        // The rows the links hang on are the ones the summary draws.
+        // The header draws them as its links (issue #1397), with Reports after them, and the summary no longer does.
+        val links = clientHeaderLinks(present, acrossClients = false, clientId = "acme")
+        assertEquals(listOf("3 forms", "5 users", "Reports"), links.map { it.text })
+        assertEquals(clientFormsHref("acme", acrossClients = false), links[0].href)
+        assertEquals(reportsHref(null), links[2].href)
+        assertEquals(reportsHref("acme"), clientHeaderLinks(present, acrossClients = true, clientId = "acme")[2].href)
         val labels = clientSummaryRows("acme", present, null, canSeeAllClients = false).map { it.first }
-        assertEquals(true, summaryFormsRow in labels && summaryUsersRow in labels)
+        assertEquals(false, summaryFormsRow in labels || summaryUsersRow in labels)
+        // A client this node does not carry has its counts as text, and no reports to run.
+        assertEquals(listOf("3 forms", "5 users"), clientHeaderLinks(row(absent), acrossClients = true, clientId = "acme").map { it.text })
+        assertEquals(listOf(null, null), clientHeaderLinks(row(absent), acrossClients = true, clientId = "acme").map { it.href })
+        assertEquals(emptyList(), clientHeaderLinks(null, acrossClients = true, clientId = "acme"))
     }
 
     @Test
@@ -249,7 +258,6 @@ class ClientsPageTest {
         val row = ClientOverview("acme", "Acme", ClientStatus.present.name, GedraConfigOrigin.source.name, 1, 3, 5, 2, 4, true, emptyList(), 0, 0)
         val across = clientSummaryRows("acme", row, acmeDefinition(), canSeeAllClients = true).toMap()
         assertEquals("acme", across["Client id"])
-        assertEquals("Loaded", across["Load"])
         assertEquals("Source + 1 stored", across["Definition"])
         assertEquals("production", across["Usage type"])
         assertEquals("customer", across["Audience"])
@@ -257,8 +265,11 @@ class ClientsPageTest {
         assertEquals("acme (prefix)", across["Domain"])
         assertEquals("\u2014", across["Extends"])
         assertEquals("acmeSiteAudit", across["Traits"])
-        assertEquals("reviewForm, auditReview", across["Workflows"])
-        assertEquals("5 (2 unclaimed)", across["Users"])
+        // What the page shows elsewhere is not repeated (issue #1397): the workflows have a panel, the counts are
+        // the header's links, and the load is its chip.
+        assertEquals(null, across["Workflows"])
+        assertEquals(null, across["Users"])
+        assertEquals(null, across["Load"])
         // A client's own administrator sees the operator-only fields marked as the platform's.
         val scoped = clientSummaryRows("acme", row, acmeDefinition(), canSeeAllClients = false).toMap()
         assertEquals("production $platformSetNote", scoped["Usage type"])
@@ -270,7 +281,7 @@ class ClientsPageTest {
         assertEquals("acme (prefix) $platformSetNote", scoped["Domain"])
         // Without a definition (a client this node does not carry), the listing's facts still show.
         val listingOnly = clientSummaryRows("acme", row, null, canSeeAllClients = true).toMap()
-        assertEquals("Loaded", listingOnly["Load"])
+        assertEquals("Source + 1 stored", listingOnly["Definition"])
         assertEquals(null, listingOnly["Traits"])
         // Without a listing row (a deep link before the listing loads), the definition's do.
         val definitionOnly = clientSummaryRows("acme", null, acmeDefinition(), canSeeAllClients = true).toMap()

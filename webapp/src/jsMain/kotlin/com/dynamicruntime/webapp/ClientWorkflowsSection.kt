@@ -15,7 +15,6 @@ import react.Props
 import react.create
 import react.dom.html.ReactHTML.code
 import react.dom.html.ReactHTML.div
-import react.dom.html.ReactHTML.h3
 import react.dom.html.ReactHTML.h4
 import react.dom.html.ReactHTML.li
 import react.dom.html.ReactHTML.p
@@ -360,7 +359,7 @@ val ClientWorkflowsSection = FC<ClientWorkflowsSectionProps> { props ->
         }
     }
 
-    if (props.configEditable) h3 { +"Make a workflow from a template" }
+    if (props.configEditable) h4 { +"Make a workflow from a template" }
     if (props.configEditable) div {
         className = ClassName("op-table-scroll")
         table {

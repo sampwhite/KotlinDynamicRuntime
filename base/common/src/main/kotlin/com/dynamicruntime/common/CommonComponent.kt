@@ -129,6 +129,12 @@ private const val emailToUsersImage = "kdr:emailToUsers"
 private const val fileRefsImage = "kdr:fileRefs"
 
 /**
+ * The sandbox's image (issue #1397): a change saved as a draft the sandbox runs, published to the client's people, and
+ * the administrator's two users. Shown by the Clients page's Sandbox explanation and the sandbox chip's.
+ */
+private const val sandboxImage = "kdr:sandbox"
+
+/**
  * The `common` module's component. It owns the foundational schema and services: the [SchemaService]
  * that compiles all contributed schemas at startup, the [NodeService] (which also contributes the
  * `/health` endpoint), and the [RequestService] dispatcher. Dn's separate `core` component is folded
@@ -309,6 +315,7 @@ class CommonComponent : ComponentDefinition {
     override fun images(cxt: KdrCxt): List<ComponentImageDef> = listOf(
         componentImage(emailToUsersImage, "email-to-users.png"),
         componentImage(fileRefsImage, "file-refs.svg"),
+        componentImage(sandboxImage, "sandbox.svg"),
     )
 
     /**

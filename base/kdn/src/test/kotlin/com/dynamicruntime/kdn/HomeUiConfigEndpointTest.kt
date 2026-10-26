@@ -70,7 +70,7 @@ class HomeUiConfigEndpointTest : StringSpec({
         // Each explanation the pages read is there, and says something: an empty one would draw no link.
         val explained = mapOf(
             HFRAG.home to listOf(HFRAG.formsNs, HFRAG.workflowFormsNs, HFRAG.sandboxNs),
-            PFRAG.clients to listOf(PFRAG.sandboxNs, PFRAG.storedConfigNs, PFRAG.filesNs),
+            PFRAG.clients to PFRAG.clientsExplained,
             PFRAG.reports to listOf(PFRAG.viewsNs),
             PFRAG.design to listOf(PFRAG.ownCopyNs),
         )
@@ -88,6 +88,11 @@ class HomeUiConfigEndpointTest : StringSpec({
         files.componentImageNames() shouldContainExactly listOf("kdr:fileRefs")
         files.imageRefIds() shouldBe emptyList()
         files.lines().first() shouldContain "(img:kdr:fileRefs)"
+        // The sandbox's explanations, on the Clients page and in the chip's popover, share one shipped image (issue #1397).
+        for ((fileId, ns) in listOf(PFRAG.clients to PFRAG.sandboxNs, HFRAG.home to HFRAG.sandboxNs)) {
+            val sandbox = fragments.effectiveFragments(cxt, fileId).shouldNotBeNull().content.getValue(ns).getValue(HFRAG.explanation)
+            sandbox.componentImageNames() shouldContainExactly listOf("kdr:sandbox")
+        }
     }
 
     "home ui config offers the readme as a versioned document link" {

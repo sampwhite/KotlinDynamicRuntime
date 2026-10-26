@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 256" width="560" height="256" role="img">
+  <title>A change is saved as a draft that the client's sandbox runs, and reaches the client's people only when it is published. An administrator moves between their own user and their user in the sandbox.</title>
+  <!-- The sandbox's explanation image (issue #1397), on the Clients page and in the sandbox chip's popover, drawn to read
+       on the app's dark surface as file-refs.svg is. The sandbox is dashed and teal, as the page is in a sandbox.
+       Concepts only, no app chrome: the controls named here are the ones the explanations name. -->
+  <defs>
+    <marker id="head" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#94A3B8"/>
+    </marker>
+    <marker id="headTeal" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#5EEAD4"/>
+    </marker>
+  </defs>
+
+  <!-- The two places, and the way a change travels between them. -->
+  <g fill="none" stroke-width="2">
+    <rect x="8" y="42" width="220" height="128" rx="10" stroke="#94A3B8"/>
+    <rect x="332" y="42" width="220" height="128" rx="10" stroke="#5EEAD4" stroke-dasharray="7 5" fill="#134E4A" fill-opacity="0.35"/>
+    <path d="M442 20 V38" stroke="#5EEAD4" marker-end="url(#headTeal)"/>
+    <path d="M330 112 H232" stroke="#94A3B8" marker-end="url(#head)"/>
+  </g>
+  <g font-family="sans-serif" fill="#E2E8F0">
+    <text x="442" y="14" font-size="12" text-anchor="middle" fill="#99F6E4">Save a change</text>
+    <text x="280" y="104" font-size="12" font-weight="bold" text-anchor="middle">Publish</text>
+
+    <text x="118" y="66" font-size="14" font-weight="bold" text-anchor="middle">The client</text>
+    <text x="118" y="90" font-size="12" text-anchor="middle" fill="#94A3B8">what its people run:</text>
+    <text x="118" y="108" font-size="13" text-anchor="middle">published configuration</text>
+    <text x="118" y="134" font-size="12" text-anchor="middle" font-family="monospace" fill="#94A3B8">v2 live</text>
+    <text x="118" y="156" font-size="12" text-anchor="middle" fill="#94A3B8">its own users and forms</text>
+
+    <text x="442" y="66" font-size="14" font-weight="bold" text-anchor="middle" fill="#99F6E4">Its sandbox</text>
+    <text x="442" y="90" font-size="12" text-anchor="middle" fill="#94A3B8">runs the drafts:</text>
+    <text x="442" y="108" font-size="13" text-anchor="middle">latest configuration</text>
+    <text x="442" y="134" font-size="12" text-anchor="middle" font-family="monospace" fill="#99F6E4">v3 draft</text>
+    <text x="442" y="156" font-size="12" text-anchor="middle" fill="#94A3B8">users and forms of its own</text>
+  </g>
+
+  <!-- The administrator, as their own user and as their user in the sandbox. -->
+  <g fill="none" stroke-width="2">
+    <circle cx="118" cy="196" r="7" stroke="#E2E8F0"/>
+    <path d="M104 220 a14 12 0 0 1 28 0" stroke="#E2E8F0"/>
+    <circle cx="442" cy="196" r="7" stroke="#5EEAD4"/>
+    <path d="M428 220 a14 12 0 0 1 28 0" stroke="#5EEAD4"/>
+    <path d="M150 200 H404" stroke="#94A3B8" marker-end="url(#head)"/>
+    <path d="M410 216 H156" stroke="#94A3B8" marker-end="url(#head)"/>
+  </g>
+  <g font-family="sans-serif" fill="#E2E8F0">
+    <text x="280" y="194" font-size="12" text-anchor="middle">Open sandbox</text>
+    <text x="280" y="232" font-size="12" text-anchor="middle">Back to the client</text>
+    <text x="118" y="244" font-size="12" text-anchor="middle">You, its administrator</text>
+    <text x="442" y="244" font-size="12" text-anchor="middle" fill="#99F6E4">You again, in the sandbox</text>
+  </g>
+</svg>

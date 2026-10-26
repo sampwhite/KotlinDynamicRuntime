@@ -675,6 +675,26 @@ monotonic token, so a client this node does not carry still shows what the listi
 404, and a slow answer for a client the user moved on from is dropped. The constants the frontend reads these by
 (`CFEP`, `ACEP`, `CCT`, `GCI`) live in the kernel for that reason.
 
+**The detail's layout** (issue #1397; the pure half is `ClientDetailLayout.kt`, covered by `ClientDetailLayoutTest`).
+The page has a header, and then panels: each a keyed `section` (`clientPanel`), set apart as a copy file is.
+
+- **The header** holds the client's name. Next to it are its chips (`clientStatusChips`: the load, and how it relates to a sandbox), then its links, **N forms · N users · Reports** (`clientHeaderLinks`). The header also holds:
+  - a line saying how a save takes effect here (`clientSaveEffectLine`);
+  - a banner, linking down to publishing, while any configuration could be published (`unpublishedBannerText`);
+  - the issues, as a warning block;
+  - links to the panels, which scroll rather than set a hash.
+- **The panels**, in order:
+  1. **Definition**: the editor first, then the read-only rows. The rows are grouped as the editor's sections are (`clientSummaryGroups`: About, How it behaves, Platform), plus *Where it runs*. The groups sit side by side where there is room.
+  2. **Forms and data**: Traits, then Workflows.
+  3. **Copy**.
+  4. **Images**: Web assets, then Files.
+  5. **Sandbox and publishing**: Sandbox, then Stored configuration. Drafts made in the panels above are published here.
+  6. **Menu**: closed (`Disclosure`), its editor read only once opened. By default it lists only the items a client's people may be offered (`menuItemsForPeople`). It hides those shipped for the deployment's own people, which the items listing marks `deploymentOnly` from `MenuAudience.deployment`.
+  7. **Retirement**: last, as a danger zone.
+- **What is not repeated.** The definition does not repeat what the page shows elsewhere: the counts are links in the header, the load is a chip, and the workflows have a panel. The traits are listed in the definition only where the Traits section is not drawn.
+- **Explanations.** Each panel and each definition group has a "What is this?" from the `clients` file (`PFRAG.clientsExplained`).
+- **Every child of the card is keyed.** A section keeps its state by what it is, so issues appearing or clearing do not remake the editors below.
+
 **Sandbox** (issue #932, `SandboxSection` in `ClientsPage.kt`): the detail says whether the client has a Shadow
 Sandbox and offers **Add a sandbox** / **Remove the sandbox** (`sandboxControl`), posting
 `/clientAdmin/client/sandbox {client, sandbox}` (`ClientsApi.setSandbox`), which sets the flag in the client's

@@ -479,10 +479,28 @@ object PFRAG {
     /** Every page file, in the order the shell's config names them. */
     val files: List<String> = listOf(clients, reports, design)
 
-    /** The Clients page's namespaces: its Sandbox, Stored configuration and Files sections. */
+    /** The Clients page's namespaces: its Sandbox, Stored configuration, and Files sections. */
     const val sandboxNs = "sandbox"
     const val storedConfigNs = "storedConfig"
     const val filesNs = "files"
+
+    /**
+     * The Clients page's namespaces for its other panels (issue #1397): the definition's four groups (About, How it
+     * behaves, Platform, Where it runs), Forms and data, Copy, Images, and Menu.
+     */
+    const val aboutNs = "about"
+    const val behaviorNs = "behavior"
+    const val platformNs = "platform"
+    const val runsNs = "runs"
+    const val formsDataNs = "formsData"
+    const val copyNs = "copy"
+    const val imagesNs = "images"
+    const val menuNs = "menu"
+
+    /** Every namespace of the Clients page whose `whatIsThis` explains a panel or a group of the page. */
+    val clientsExplained: List<String> = listOf(
+        aboutNs, behaviorNs, platformNs, runsNs, formsDataNs, copyNs, imagesNs, filesNs, sandboxNs, storedConfigNs, menuNs,
+    )
 
     /**
      * The Clients page's namespace for its Workflows section (issue #1384), whose [newWorkflowNote] the "Make a workflow
