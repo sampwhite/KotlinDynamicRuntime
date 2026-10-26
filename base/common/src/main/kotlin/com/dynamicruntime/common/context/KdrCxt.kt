@@ -3,6 +3,7 @@ package com.dynamicruntime.common.context
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.logging.RequestLogCapture
+import com.dynamicruntime.common.user.UserAuthCookie
 import com.dynamicruntime.common.util.splitComma
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.seconds
@@ -202,6 +203,14 @@ class KdrCxt(
      * is declared per section (`SectionRules.directReads`).
      */
     var isDirect: Boolean = false
+
+    /**
+     * The session cookie this request's caller was restored from (issue #1372), or null when none was honored. Set
+     * by the session extractor, and read when the response is written (`RequestService.checkAddAuthCookies`): to
+     * renew the session past half its lifetime, and to keep its original sign-in when a handler moves it to another
+     * of the person's users ([KdrRequest.sessionChange]).
+     */
+    var restoredSession: UserAuthCookie? = null
 
     /**
      * Whether this request may use the **test surface** (issue #1149): the node is a test instance *and* env auth is

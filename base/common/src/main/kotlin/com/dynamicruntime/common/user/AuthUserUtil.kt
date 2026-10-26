@@ -65,8 +65,8 @@ private fun requireUsableForLogin(user: AuthUserRow, identity: AuthIdentityRow) 
  * says it acts in).
  *
  * The cookie is the fast path -- it holds roles precisely so an ordinary request needs no database read -- but
- * those roles are a *snapshot* taken at login, and a session lasts 30 days by default ([SessionLifetime]). Without
- * this, revoking an administrator would leave them administering for up to a month.
+ * those roles are a *snapshot* taken at login or at the session's last renewal, and a session may last up to 30 days
+ * ([SessionLifetime]). Without this, revoking an administrator would leave them administering for up to a month.
  *
  * So the live read is paid only where the answer actually matters, and there are two such places:
  *  - the dispatcher, before enforcing a section's `requiredRole` -- so a revoked admin is refused promptly;
@@ -86,17 +86,20 @@ private fun requireUsableForLogin(user: AuthUserRow, identity: AuthIdentityRow) 
  * that has vanished is treated the same way, as is one that **no longer belongs to the cookie's identity**
  * (issue #748) -- the session was issued to a person, and a user detached from that person is not theirs to
  * act as, however the detachment came about.
+ *
+ * Returns whether it bound the live profile of a user that still acts for the session ([actsForSession]): what a
+ * session renewal asks before reissuing the cookie (issue #1372). False when there was no row to read.
  */
-fun refreshActingRoles(cxt: KdrCxt) {
+fun refreshActingRoles(cxt: KdrCxt): Boolean {
     val profile = cxt.userProfile
     // Skipped when there is no row to read -- which is the actual reason, and worth saying rather than
     // relying on `isLoggedIn` to imply it (issue #386). The system and anonymous profiles happen to be caught
     // by both; an env-authed caller is the first that is genuinely logged in and still has no row, and asking
     // the wrong question about it would send a query after `CL.systemUserId`.
     if (!profile.isRowBacked || !profile.isLoggedIn) {
-        return
+        return false
     }
-    val row = UserService.get(cxt).queryByUserId(cxt, profile.userId) ?: return
+    val row = UserService.get(cxt).queryByUserId(cxt, profile.userId) ?: return false
     // A cookie issued before the split carries no identity and skips the membership check; the next login
     // replaces it with one that does.
     val detached = profile.identityId != null && row.identityId != profile.identityId
@@ -105,7 +108,8 @@ fun refreshActingRoles(cxt: KdrCxt) {
     }
     // In a sandbox, the roles and the organization the person's users outside it say (issues #929, #1196,
     // `SandboxAccess`); a disabled or detached user acts with no roles at all.
-    val live = if (row.actsForSession(profile)) row.toActingProfile(cxt) else row.toUserProfile().copy(roles = emptySet())
+    val acts = row.actsForSession(profile)
+    val live = if (acts) row.toActingProfile(cxt) else row.toUserProfile().copy(roles = emptySet())
     if (live.roles != profile.roles) {
         LogAuth.debug(cxt) { "Roles for user ${profile.userId} changed since login: ${live.roles}." }
     }
@@ -117,6 +121,7 @@ fun refreshActingRoles(cxt: KdrCxt) {
     // fields out by hand is what silently dropped `org`, and later the entity fields, from every caller that
     // arrived through here.
     cxt.bindToUserProfile(live)
+    return acts
 }
 
 /**

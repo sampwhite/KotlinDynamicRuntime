@@ -3,7 +3,6 @@ package com.dynamicruntime.kdn
 import com.dynamicruntime.common.app.APP
 import com.dynamicruntime.common.content.UIC
 import com.dynamicruntime.common.context.ENV
-import com.dynamicruntime.common.context.UserProfile
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.gedra.CLD
 import com.dynamicruntime.common.gedra.ClientAudience
@@ -64,7 +63,8 @@ class ClientSessionSettingsTest : StringSpec({
 
     fun idleInterval(user: TestUser): Any? = user.getData(APP.uiConfig)[UIC.settings].toJsonMapOrEmpty()[APP.idleBumpIntervalMs]
 
-    fun signedIn(user: TestUser): Boolean = UserProfile.fromUserInfo(user.getData("/auth/self/info")).isLoggedIn
+    // Asked as the idle poll asks, so that asking past half a lifetime does not renew the session (issue #1372).
+    fun signedIn(user: TestUser): Boolean = user.isSignedIn()
 
     "the refresh interval is the caller's client's, else the deployment's, and only the platform sets it" {
         val tuned = "tuned1308"

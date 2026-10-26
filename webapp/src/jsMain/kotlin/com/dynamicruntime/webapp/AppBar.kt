@@ -209,20 +209,23 @@ val AppBar = FC<AppBarProps> { props ->
     // ambiguous, since a deployment that names no brand is *also* empty.
     var brandState by useState<ShellBrand>(ShellBrand.Loading)
     // Refs, not state: [everLoaded] is monotonic (a wordmark, once shown, is kept through a transient refresh
-    // failure), and [genRef] lets a slow, superseded generation's late result bow out instead of clobbering a
-    // newer one. Neither is read for rendering, so neither needs to trigger one.
+    // failure), and [genRef] -- a token per read -- lets a slow, superseded read's late result bow out instead of
+    // clobbering a newer one. Neither is read for rendering, so neither needs to trigger one.
     val everLoaded = useRef(false)
     val genRef = useRef(0)
     val generation = useRefreshGeneration()
+    val polls = useIdlePolls()
     val bump = useRefreshBump()
 
     // Re-read the shell config on every refresh generation -- mount, navigation, and any state mutation
-    // (notably sign-in / sign-out). The menu stays as it was if the config could not be loaded.
-    useEffect(generation) {
-        genRef.current = generation
+    // (notably sign-in / sign-out) -- and on every idle poll, the shell config being a polled endpoint (issue #1372).
+    // The menu stays as it was if the config could not be loaded.
+    useEffect(generation, polls) {
+        val token = (genRef.current ?: 0) + 1
+        genRef.current = token
         appBarScope.launch {
             val cfg = apiResult { HomeApi.fetchConfig() }.valueOrNull()
-            if (genRef.current != generation) return@launch // a newer generation is already in charge
+            if (genRef.current != token) return@launch // a newer read is already in charge
             if (cfg == null) {
                 // Config failed: Failed on a first load, but keep any wordmark already shown on a refresh.
                 brandAfterLoad(loaded = false, brand = null, everLoaded = everLoaded.current == true)
@@ -244,7 +247,7 @@ val AppBar = FC<AppBarProps> { props ->
             val loaded = apiResult {
                 fetchCopyWithRetry(cfg.fragment) { apiResult { HomeApi.fetchConfig().fragment }.valueOrNull() }
             }
-            if (genRef.current != generation) return@launch
+            if (genRef.current != token) return@launch
             val copy = loaded.valueOrNull()
             if (copy != null) {
                 everLoaded.current = true

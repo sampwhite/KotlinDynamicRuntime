@@ -233,13 +233,16 @@ return.
 
 Today a page learns that forms or users changed only by reading them again. A listing re-reads when it is reached
 by an explicit navigation, such as a menu choice or a link, and restores from its hash on Back and Forward without
-asking whether anything changed (#1315). That is enough while a client's forms and users are edited by a few people
-who rarely overlap. The trigger is a client whose people edit the same set of forms or users concurrently, so a
-restored or long-open listing is stale often enough to mislead.
+asking whether anything changed (#1315). Nor does a page sitting open re-read its rows: the idle poll re-reads only
+the shell's polled configs (#1372), so a session is not kept alive by a tab nobody is at, and a long-open listing
+stays as it was until the reader navigates or changes something. That is enough while a client's forms and users
+are edited by a few people who rarely overlap. The trigger is a client whose people edit the same set of forms or
+users concurrently, so a restored or long-open listing is stale often enough to mislead.
 
 - **Tell the frontend when content changed.** The config UI calls the shell already makes on every refresh
-  generation would carry a latest-modified date for each kind of content (form documents, users), so a page knows
-  its rows are out of date without fetching them.
+  generation and idle poll would carry a latest-modified date for each kind of content (form documents, users), so a
+  page knows its rows are out of date without fetching them. Those calls are polled endpoints, so carrying the dates
+  there keeps a page that is only watching from renewing the session.
 - **Offer the reload; do not force it.** When a page is reached through history, or when the reader is sitting on a
   page and the date moves, show a bar at the top, like the one offered when the web app itself changes, asking
   whether to reload the page's content. An explicit navigation reloads without asking, as it does now.

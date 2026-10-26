@@ -184,6 +184,17 @@ class KdrEndpoint(
      */
     val timingFloor: Boolean = false,
     /**
+     * Whether something re-reads this endpoint on a timer rather than because a person asked (issue #1372): the
+     * shell configs a visible tab re-reads every minute to stay current (the webapp's idle poll), and the health a
+     * monitor checks. A call to one is never a person's activity, so it renews no session -- a tab left open does
+     * not keep its session alive. Such calls are also the bulk of a log's routine lines, which is why a polled
+     * endpoint is the one to aggregate rather than log call by call.
+     *
+     * A property of the endpoint, not of the request, so the server decides it: nothing a caller sends makes a
+     * request count as polled or not. The webapp's idle poll reads polled endpoints and nothing else.
+     */
+    val polled: Boolean = false,
+    /**
      * (List endpoints only.) Whether the output declares `hasMore` / `numAvailable`, so the executor knows to
      * populate them (issue #499). For a handler that returns a plain `List` the executor fills them from the
      * uncapped size; a [ListPage] supplies its own. `numAvailable` defaults **on** when the endpoint has a
@@ -377,6 +388,8 @@ class SchModuleBuilder(cxt: KdrCxt, namespace: String) : SchTypesBuilder(cxt, na
         needsClientConfig: Boolean = false,
         /** Answer no sooner than the auth timing floor (issue #1299); see [KdrEndpoint.timingFloor]. */
         timingFloor: Boolean = false,
+        /** Re-read on a timer, not by a person (issue #1372); see [KdrEndpoint.polled]. */
+        polled: Boolean = false,
         handler: KdrEndpointHandler,
     ) {
         val output = scalarOutput(EP.results, "Result data (a map object) returned by the endpoint.", outputRef)
@@ -384,7 +397,7 @@ class SchModuleBuilder(cxt: KdrCxt, namespace: String) : SchTypesBuilder(cxt, na
         endpoints.add(
             KdrEndpoint(path, method, EndpointKind.general, namespace, description, fields, typeRef, false, output,
                 forTestingOnly, handler, publicApi = publicApi, tags = tags, needsClientConfig = needsClientConfig,
-                timingFloor = timingFloor),
+                timingFloor = timingFloor, polled = polled),
         )
     }
 

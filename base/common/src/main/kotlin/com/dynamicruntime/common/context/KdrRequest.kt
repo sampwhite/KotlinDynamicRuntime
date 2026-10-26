@@ -46,6 +46,14 @@ class KdrRequest(
      */
     var setAuthCookie: Boolean = false
 
+    /**
+     * Set true, beside [setAuthCookie], by a handler that moves an existing session rather than signing somebody in
+     * (issue #1372): a switch to another of the person's users, into or out of a sandbox. The cookie written keeps the
+     * restored session's original sign-in ([KdrCxt.restoredSession]), so switching never restarts the deployment's
+     * limit on how long a session may last.
+     */
+    var sessionChange: Boolean = false
+
     /** Set true by the logout handler to have the auth hook clear the session auth cookie. */
     var clearAuth: Boolean = false
 

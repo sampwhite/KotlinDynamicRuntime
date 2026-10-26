@@ -958,9 +958,10 @@ class RequestService : ServiceInitializer {
         val decoded = UserAuthCookie.decode(node, cookie) ?: return
         val nowMs = cxt.now().toEpochMilliseconds()
         if (nowMs > decoded.expireEpochMs) return
-        // Measured from the sign-in against the client's lifetime now (issue #1308), so shortening it ends longer
-        // sessions at once rather than when their cookies expire.
-        if (nowMs > decoded.signedInEpochMs + SessionLifetime.millisFor(cxt, decoded.client)) return
+        // Measured from the cookie's issue against the client's lifetime now (issue #1308), so shortening it ends
+        // longer sessions at once rather than when their cookies expire; and from the sign-in against the deployment's
+        // limit (issue #1372), so renewing never makes a session endless.
+        if (!SessionLifetime.honors(cxt, decoded, nowMs)) return
         if (ClientService.getOrNull(cxt)?.isPresent(decoded.client) == false) return
         cxt.bindToUserProfile(
             UserProfile(
@@ -969,6 +970,9 @@ class RequestService : ServiceInitializer {
                 identityId = decoded.identityId, persona = decoded.persona,
             ),
         )
+        // Kept for when the response is written (issue #1372): to renew the session, or to carry its sign-in through a
+        // switch.
+        cxt.restoredSession = decoded
     }
 
     /**
@@ -996,6 +1000,8 @@ class RequestService : ServiceInitializer {
      * later permits a password login from it (issue #69). The device is recorded against the **identity**
      * (issue #748) -- the person, whichever of their users they logged in as -- so a login that bound a
      * profile without one (there is none today) records no device.
+     *
+     * Otherwise, it renews a session that is due one ([renewSession]).
      */
     fun checkAddAuthCookies(cxt: KdrCxt, handler: RequestHandler) {
         val req = cxt.request ?: return
@@ -1004,12 +1010,19 @@ class RequestService : ServiceInitializer {
             handler.addResponseCookie(AUTHC.authCookie, "", Instant.fromEpochMilliseconds(0))
             return
         }
-        if (!req.setAuthCookie) return
+        if (!req.setAuthCookie) {
+            renewSession(cxt, handler)
+            return
+        }
         val profile = cxt.userProfile
         val nowMs = cxt.now().toEpochMilliseconds()
-        val expireMs = nowMs + SessionLifetime.millisFor(cxt, profile.client)
+        // A switch between the person's users keeps the session's sign-in, so it cannot restart the limit (issue
+        // #1372); a sign-in starts one.
+        val signedInMs = cxt.restoredSession?.takeIf { req.sessionChange }?.signedInEpochMs ?: nowMs
+        val expireMs = SessionLifetime.issuedEnd(cxt, profile.client, signedInMs, nowMs)
         val cookie = UserAuthCookie(
-            profile.userId, profile.client, profile.roles.toList(), expireMs, profile.identityId, profile.persona, signedInEpochMs = nowMs,
+            profile.userId, profile.client, profile.roles.toList(), expireMs, profile.identityId, profile.persona,
+            signedInEpochMs = signedInMs, issuedEpochMs = nowMs,
         )
         handler.addResponseCookie(AUTHC.authCookie, cookie.encode(node), Instant.fromEpochMilliseconds(expireMs))
 
@@ -1024,6 +1037,34 @@ class RequestService : ServiceInitializer {
         UserService.get(cxt).recordDevice(
             cxt, identityId, deviceGuid, handler.forwardedFor, handler.userAgent, markTrusted = req.trustDevice,
         )
+    }
+
+    /**
+     * Reissues the session restored for this request when it is due a renewal ([SessionLifetime.renewalDue], issue
+     * #1372): a fresh cookie, good for the client's lifetime from now and held to the deployment's limit from the
+     * original sign-in, which it keeps. Not on a [KdrEndpoint.polled] endpoint: a tab left open polls the shell's
+     * configs every minute, and would otherwise keep the session alive with nobody there.
+     *
+     * The roles are read again from the user's row ([refreshActingRoles]), so one removed from the user lingers in a
+     * session at most half a lifetime, even where nothing re-reads them. A user that no longer acts for the session
+     * -- disabled, detached from the person, gone -- is not renewed, nor is a request whose handler left it acting as
+     * somebody else; such a session ends when the cookie it has does.
+     *
+     * No device is recorded: the person did not sign in.
+     */
+    private fun renewSession(cxt: KdrCxt, handler: RequestHandler) {
+        val renewing = cxt.restoredSession ?: return
+        if (cxt.request?.endpoint?.polled == true) return
+        val nowMs = cxt.now().toEpochMilliseconds()
+        if (!SessionLifetime.renewalDue(cxt, renewing, nowMs)) return
+        if (cxt.userProfile.userId != renewing.userId || !refreshActingRoles(cxt)) return
+        val profile = cxt.userProfile
+        val expireMs = SessionLifetime.issuedEnd(cxt, profile.client, renewing.signedInEpochMs, nowMs)
+        val cookie = UserAuthCookie(
+            profile.userId, profile.client, profile.roles.toList(), expireMs, profile.identityId, profile.persona,
+            signedInEpochMs = renewing.signedInEpochMs, issuedEpochMs = nowMs,
+        )
+        handler.addResponseCookie(AUTHC.authCookie, cookie.encode(NodeService.get(cxt)), Instant.fromEpochMilliseconds(expireMs))
     }
 
     @Suppress("ConstPropertyName")

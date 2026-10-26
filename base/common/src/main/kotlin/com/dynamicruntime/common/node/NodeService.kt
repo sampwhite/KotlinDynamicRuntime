@@ -190,6 +190,8 @@ class NodeService : ServiceInitializer {
                 HttpMethod.GET,
                 outputRef = "Health",
                 tags = setOf(ETAG.internal),
+                // A monitor's check, made on a timer (issue #1372).
+                polled = true,
             ) { c, _ ->
                 get(c).getHealth(c)
             }

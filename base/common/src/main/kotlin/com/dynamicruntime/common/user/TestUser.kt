@@ -1,10 +1,14 @@
 package com.dynamicruntime.common.user
 
+import com.dynamicruntime.common.content.UIC
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.UPF
+import com.dynamicruntime.common.context.UserProfile
 import com.dynamicruntime.common.endpoint.EI
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.endpoint.HttpMethod
+import com.dynamicruntime.common.home.HEP
+import com.dynamicruntime.common.home.HFLD
 import com.dynamicruntime.common.http.request.RequestHandler
 import com.dynamicruntime.common.http.request.TestHttpClient
 import com.dynamicruntime.common.node.NodeService
@@ -96,6 +100,14 @@ class TestUser(val client: TestHttpClient, val cxt: KdrCxt, val userInfo: Map<St
     /** The one endpoint at [path], as `/schema/endpoint` answers this user: [catalog]'s shape, of one endpoint or none. */
     fun catalogLookup(path: String, method: HttpMethod = HttpMethod.GET): Map<String, Any?> =
         getData(catalogLookupPath, mapOf(EI.method to method.name, EI.path to path))
+
+    /**
+     * Whether this user's session is still honored, asked as the webapp's idle poll asks: through the home UI-config,
+     * a polled endpoint (issue #1372), so asking renews nothing however far into the session it is. A test of when a
+     * session ends asks this; one that wants the session renewed makes any other request.
+     */
+    fun isSignedIn(): Boolean =
+        UserProfile.fromUserInfo(getData(HEP.homeUiConfig)[UIC.state].toJsonMapOrEmpty()[HFLD.userInfo].toJsonMapOrEmpty()).isLoggedIn
 
     /** This user's *current* roles, read live from `/auth/self/info` (not the possibly-stale [userInfo]). */
     fun selfRoles(): List<String> = rolesOf(getData(AEP.selfInfo))

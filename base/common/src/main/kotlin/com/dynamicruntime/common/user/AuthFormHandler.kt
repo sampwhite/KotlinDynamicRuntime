@@ -783,7 +783,8 @@ class AuthFormHandler(
      * gated capability. Completes as a login does (the cookie reissued, the timeout reset, `lastUsedUserId`
      * stamped), without touching device trust: a switch proves nothing new about the person.
      */
-    fun switchUser(cxt: KdrCxt, userId: Long): Map<String, Any?> = completeLogin(cxt, ownUser(cxt, userId), byCode = false)
+    fun switchUser(cxt: KdrCxt, userId: Long): Map<String, Any?> =
+        completeLogin(cxt, ownUser(cxt, userId), byCode = false, sessionChange = true)
 
     /**
      * Becomes the person's user in [client] (issue #1110): the switch by client rather than by user, for a surface that
@@ -798,7 +799,7 @@ class AuthFormHandler(
             ?: throw KdrException("This session's identity could not be found; log in again.", code = EXC.authNeeded)
         val user = userService.userInClient(cxt, identity, client)
             ?: throw KdrException.mkInput("You have no user in the client '$client'.")
-        return completeLogin(cxt, user, byCode = false)
+        return completeLogin(cxt, user, byCode = false, sessionChange = true)
     }
 
     /**
@@ -828,7 +829,7 @@ class AuthFormHandler(
         if (current == null || !isSandboxClient(current.client) || !current.actsForSession(profile)) {
             throw KdrException.mkInput("This session is not in a sandbox it can leave.")
         }
-        return completeLogin(cxt, ownUser(cxt, userId), byCode = false)
+        return completeLogin(cxt, ownUser(cxt, userId), byCode = false, sessionChange = true)
     }
 
     /**
@@ -865,7 +866,7 @@ class AuthFormHandler(
             cxt, identity, sandboxOf(parent), own.persona, own.personaSuffix,
             profile.roles.filter { RoleLadder.rankOf(it) != null }.sorted(), openedFrom = own,
         )
-        return completeLogin(cxt, clone, byCode = false)
+        return completeLogin(cxt, clone, byCode = false, sessionChange = true)
     }
 
     /** Chooses which of the person's users an address logs in as ([UserService.defaultUserOf]'s first rule); returns the list. */
@@ -916,7 +917,7 @@ class AuthFormHandler(
         // -- or, when no registered user of theirs remains, end it.
         val next = userService.queryIdentityById(cxt, identity.identityId)?.let { userService.registeredDefaultOf(cxt, it) }
         if (next != null) {
-            return completeLogin(cxt, next, byCode = false)
+            return completeLogin(cxt, next, byCode = false, sessionChange = true)
         }
         cxt.request?.clearAuth = true
         return UserProfile.anonymous().toUserInfo()
@@ -944,8 +945,14 @@ class AuthFormHandler(
      * -- having just read a code from the inbox -- proves the identity's address if nothing had yet, and the
      * user it landed on ([register], which the fixture also asserts): a code used for this user is what makes
      * it the person's (issue #749).
+     *
+     * A [sessionChange] -- a switch to another of the person's users, into or out of a sandbox -- is not a sign-in:
+     * the new cookie keeps the session's original sign-in (see KdrRequest.sessionChange), so the deployment's limit
+     * on a session is not restarted by switching (issue #1372).
      */
-    private fun completeLogin(cxt: KdrCxt, row: AuthUserRow, byCode: Boolean, register: Boolean = byCode): Map<String, Any?> {
+    private fun completeLogin(
+        cxt: KdrCxt, row: AuthUserRow, byCode: Boolean, register: Boolean = byCode, sessionChange: Boolean = false,
+    ): Map<String, Any?> {
         // Every login completes here, so a public test deployment refuses a caller without env auth here (issue
         // #1150) -- by code, password, Google, claim or invitation alike -- as the user's own address decides.
         PublicTestDeployment.requireSignInOpen(cxt, row.primaryId)
@@ -987,6 +994,7 @@ class AuthFormHandler(
         cxt.bindToUserProfile(profile)
         cxt.request?.let {
             it.setAuthCookie = true
+            it.sessionChange = sessionChange
             if (byCode) it.trustDevice = true
         }
         return profile.toUserInfo()
