@@ -769,7 +769,10 @@ configuration, and the section says so -- so a change is live for the whole clie
 one has no draft to come back from. Whichever control was used is the one that shows the work (`webAssetBusyKey`),
 and the slot is redrawn from the change's own answer (`withWebAssetSlot`) before the re-read arrives. Each success
 bumps the refresh generation, which is what makes the shell redraw its mark and tab icon. A change that answers
-after the page has moved to another client is dropped, result and refusal alike.
+after the page has moved to another client is dropped, result and refusal alike. What is running, the open
+confirmation, and the last failure or refusal beside its row are one `RowActionStatus` (issue #1388, `useRowActions`),
+shared with the Files section: change it only through its transitions, which the hook applies through the state's
+transform, since an action ends after an await.
 
 The **preview is not the static address**: that serves the caller's own client's, and the client on this page
 need not be the caller's. It is the named download, `GET /clientAdmin/client/web/download {client, slot, hash}`
