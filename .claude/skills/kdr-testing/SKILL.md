@@ -415,9 +415,10 @@ the **multi-node harness** (issue #872), not the unit suite:
 ./gradlew :multiNodeTest:harness -Pattach=http://localhost:7071,http://localhost:7073,http://localhost:7074
 ```
 
-- **Start mode** (the default) resets the `kdr_multinode` Postgres database, starts backends on **7071, 7073 and
-  7074** (never 7070 or kd3's 7072) and stops them afterwards. A port already in use stops the run before anything
-  starts; it never takes over, or stops, a server it did not start. About 45 seconds for the jobs suite.
+- **Start mode** (the default) resets the `kdr_multinode` Postgres database, starts backends on **7071, 7073, and
+  7074** (never 7070, the developer's own, or 7072, a second checkout's), and stops them afterward. A port already
+  in use stops the run before anything starts; it never takes over, or stops, a server it did not start. About 45
+  seconds for the jobs suite.
 - **Attach mode** runs against nodes you started yourself (in IntelliJ, with breakpoints), on `kdr_multinode`, with
   the `multiNodeTest` component switched on. Scenarios that stop or kill a node are skipped.
 - **The database** is managed by `bin/kdr-multinode-db create|reset|drop`, which touches `kdr_multinode` and nothing
@@ -546,6 +547,16 @@ already written. `AuthFlowTest` and `TimeTravelTest` are the worked examples.
   the provider key at a secret nobody holds (`MAIL.mailgunApiKeySecretKey` to a made-up name) and keep the admin
   domain under `.test` -- a developer's secrets may hold a real key. Ask `MailService.deliveryFor` what would happen to
   a mail rather than sending one. `PublicTestDeploymentTest` is the worked example.
+
+## How much to test
+
+Cover a mechanism **once**, plus the cases where its behavior genuinely diverges: seven tests of the same bounds check
+for four types teach a reviewer less than two pointed ones. Set the depth by where a bug would hide, not by how much
+code is under test. Simple logic with an obvious shape -- bounds, formatting, a resolver with three branches -- gets
+one pass and its divergent case. Code where a mistake fails *silently* -- schema variants, trait composition, cache
+coherence, anything that answers plausibly when wrong -- gets the thorough treatment. Likewise, skip a live server or
+browser check for a change that only adds to a path already exercised; keep it for a changed traversal, a changed DOM
+contract, or a failure a green suite cannot see.
 
 ## Two kinds of test: focused, and flow
 

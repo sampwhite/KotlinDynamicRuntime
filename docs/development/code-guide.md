@@ -29,7 +29,7 @@ implications. An example scenario is where only a unit test wants to access an a
 
 * This code base will use environment variables more than is typical to create variations in configuration on startup.
 Each is **declared once in code** as an `EnvVarDef` value (grouped by area — see `DbEnv`, `NodeUtil`,
-`LogSetup` and their neighbours — carrying its name, default and documentation), and the read path takes a
+`LogSetup` and their neighbors — carrying its name, default, and documentation), and the read path takes a
 declared def, so an undeclared variable cannot be read and the declaration is the reference. Resolution
 consults the running instance's config *before* the real process environment, and under a boot role tries the
 role-prefixed name (`KDR_EDGE_PORT`) before the plain one. A running node serves the live set — each variable
@@ -82,8 +82,9 @@ We knowingly violate Kotlin style on this. Because a lowerCamelCase `const val` 
 inspection, every acronym Object that holds such constants is annotated with `@Suppress("ConstPropertyName")`
 at the object level (one annotation covers all the constants inside it) — see the objects in
 `ExceptionConstants.kt` (`EXC`, `SRC`, `ACT`) and `FMETA` in `FileMetaConstants.kt` for the pattern. Do not
-suppress per-constant. If the constant is a string that is a key that is part of a schema, such as in a JSON schema, the name of the 
-string should match its value.
+suppress per-constant. A **top-level** `const val` needs no suppression: the inspection checks only constants
+declared inside an object or class. If the constant is a string that is a key that is part of a schema, such as in
+a JSON schema, the name of the string should match its value.
 
 * Constant declarations will always be wrappered by a Kotlin Object whose name is an acronym of 
 the topic to which the constants apply. If the string constants are used across more than one class, they will
@@ -192,6 +193,55 @@ resolvable declaration in backticks (`` `name` ``), never in brackets. For a pla
 
 * KDoc in `base:kernel` must not link to a `base:common` symbol. Kernel's Dokka cannot see common, so the link
 dangles; name the common class in backticks or plain text instead.
+
+* Keep brackets that are not links out of KDoc altogether, even inside a code span. Dokka passes a code span, but
+IntelliJ still reads `` `[x]` `` as a link it cannot resolve, and so does a reader; it reads the brackets in
+`` between `[` and `]` `` as a link named "and". Say "in square brackets", or describe the syntax in words.
+
+* **Kotlin block comments nest**, unlike Java's. A `/*` inside a KDoc opens a comment of its own that needs its own
+`*/`, so the KDoc swallows the code after it, and the compiler reports an unclosed comment far below, with a cascade
+of unresolved references. It turns up in Markdown (`a/**bold**`) and in paths (`src/*.kt`): never write `/`
+directly before `*` in a comment.
+
+### Prose in comments and documents
+
+* **US spelling**, in comments, KDoc, and Markdown alike: *color*, *behavior*, *neighbor* (not *-our*); *initialize*,
+*recognize* (not *-ise*); *traveling*, *canceled*, *labeled* (no doubled *l*); *afterward*, *toward* (no *s*); *gray*.
+A word list does not prevent the slip, because it is a class of spelling rather than a set of words; search the
+diff for the endings before committing.
+
+* **The serial comma** in a list of three or more: "declares, changes, or removes", not "declares, changes or
+removes".
+
+* When a file is open for a change anyway, fix an old instance of either in it too.
+
+### Strings with a literal `$`
+
+A string that holds a literal `${...}` -- common in tests of the template evaluator -- is written as a multi-dollar
+literal, `$$"Your code is ${verifyCode}."`, not with every dollar escaped (`"\${verifyCode}"`). Use the prefix only
+where the string holds such text: a `$` that is not followed by `{` or a name needs nothing. To keep a literal `$$`,
+use a `$$$` prefix.
+
+### Regular expressions that run in the browser
+
+A `Regex` in `base:kernel` or `webapp` also runs in JavaScript, where Kotlin/JS compiles it in Unicode mode. That
+mode refuses a bare `]` outside a character class, and reads `[^]` as "any character", so **escape every `]`**:
+`\[[^\]]+\]`, not `\[[^]]+]`. The JVM accepts both, so IntelliJ calls the escapes redundant and offers to remove
+them; decline. Only a test run under JS (`jsNodeTest`) catches the mistake.
+
+### IntelliJ inspections we keep, and file size
+
+* **"Unused" warnings stay.** They show which parts of the application are not used yet, and that signal is worth
+more than a clean gutter. Do not suppress one, and do not write a test only to make something used. If an unused
+declaration needs explaining, say so in its KDoc.
+
+* **A local that names a value already in reach can be deliberate.** `val instanceConfig = cxt.instanceConfig` before
+using it calls the value out. Such locals carry `@Suppress("VariableInitializerIsRedundant2")` -- the trailing `2`
+is intended: it silences the inspection without IntelliJ then calling the suppression redundant. Do not inline these
+in a cleanup.
+
+* **Split a source file at about 2000 lines**, not before. The comments here are long, so a lower limit would split
+files on prose rather than complexity.
 
 ### Endpoints that are not the application: `fixture` and `demo`
 

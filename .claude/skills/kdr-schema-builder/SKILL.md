@@ -67,7 +67,7 @@ val defs = schemaDefs(cxt, "abc.people") {           // namespace named ONCE
 Use constants, never string literals, from `SchemaConstants.kt`:
 - `SCH` — JSON Schema keywords. Naming: a plain keyword's name matches its value;
   a leading `$` → `d` prefix (`$ref` = `SCH.dRef`); a Kotlin hard-keyword
-  collision → `k` prefix (`SCH.kIf`/`kThen`/`kElse`); and a **kd2-specific**
+  collision → `k` prefix (`SCH.kIf`/`kThen`/`kElse`); and a **KDR-specific**
   keyword's *value* carries a `g-` prefix its name does not — `SCH.allowCoerce`
   is `"g-allowCoerce"` — so a document says which keywords are ours while call
   sites read unchanged (see `SCH.gPrefix`). Standard keywords stay bare.
@@ -347,7 +347,7 @@ A type may carry a **field layout** — how a friendly form renders its fields �
 keyword. (Always qualify it: the *task* layout, `WfLayout` on a workflow task, orders the traits within a task and
 is a placeholder until how a task arranges its traits is designed. Today a type has at most one field layout;
 selectors — which already choose a task's display (#788) — are to come down here too, choosing among several.)
-It is the one kd2 keyword that is **never read into `SchType`**: a layout varies by surface, not by validity,
+It is the one KDR keyword that is **never read into `SchType`**: a layout varies by surface, not by validity,
 so it is read out by its own kernel function into a `SchLayout` held **beside** the compiled types
 (`KdrSchemaStore.layouts`, keyed by qualified type name), stripped from the served schema
 (`KdrSchemaStore.servedDefs`, what the catalog and the workflow view hand out), and delivered out-of-band. The
@@ -625,7 +625,7 @@ Layouts and narrowing report the same way: `parseSchLayoutResult` / `parseTypeLa
 located within the block (`schemaFields[2].hint`, plus the template offset) or the type
 (`acme.Q.properties.kind.g-options`). Their messages are unchanged; a caller joining them reads `.message`.
 
-`allowCoerce` (a kd2 keyword, so `g-allowCoerce` on the wire; default **true** for numeric,
+`allowCoerce` (a KDR keyword, so `g-allowCoerce` on the wire; default **true** for numeric,
 **boolean** and date-format types, **false** otherwise — see `coercesByDefault`) governs coercion
 of a mismatched value — and changes
 validation even when no output is requested:
