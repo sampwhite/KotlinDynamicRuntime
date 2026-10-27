@@ -765,7 +765,6 @@ private val DefinitionEditor = FC<DefinitionEditorProps> { props ->
     if (!editing) {
         p {
             Button {
-                size = "small"
                 onClick = { open() }
                 +"Edit definition"
             }

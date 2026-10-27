@@ -127,6 +127,20 @@ val App = FC<Props> {
     // Link colour is deliberately NOT a token here: the dark algorithm re-derives a `colorLink` seed to a dimmer
     // shade (measured: #818cf8 came out #717ad6), so it cannot pin the palette's value. `.ant-btn-link` takes its
     // colour from the app's CSS variables in app.css instead -- one source for `<a>` links and link buttons alike.
+    //
+    // A default (secondary) button IS themed by tokens (issue #1399): the algorithm gives it its own container colour,
+    // a near-black #141414 under a #424242 hairline, darker than the slate card and panels it sits on, so it read as
+    // an inset slot rather than something to press. Component tokens are taken as given, not re-derived, so these
+    // pin a fill one step up the slate ramp from the card (`--border`'s #334155), a hairline above it, and a hover and
+    // press that move further from the background -- as a link's does. Danger and disabled buttons keep antd's.
+    darkTheme.components = js("({})")
+    darkTheme.components.Button = js(
+        """({
+            defaultBg: '#334155', defaultBorderColor: '#475569', defaultColor: '#e2e8f0',
+            defaultHoverBg: '#475569', defaultHoverBorderColor: '#64748b', defaultHoverColor: '#f8fafc',
+            defaultActiveBg: '#3d4b60', defaultActiveBorderColor: '#64748b', defaultActiveColor: '#f8fafc'
+        })"""
+    )
 
     // Before any consumer's effect runs, so a fetch that consumer makes knows which generation it is for (issue #1313).
     refreshGenerationNow = refresh
