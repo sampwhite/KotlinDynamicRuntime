@@ -42,6 +42,19 @@ class IdentityLabelTest {
         assertEquals(signedInFallback, identityLabel(loaded = true, isLoggedIn = true, displayName = "   "))
     }
 
+    /**
+     * The shell goes home only when a session ends between two reads. The first read is not a change (a signed-out
+     * first visit must not be thrown home from a page it asked for), and signing in, or staying either way, is not one.
+     */
+    @Test
+    fun aSessionEndsOnlyOnSignedInToSignedOut() {
+        assertEquals(true, sessionEnded(previous = true, nowLoggedIn = false))
+        assertEquals(false, sessionEnded(previous = null, nowLoggedIn = false))
+        assertEquals(false, sessionEnded(previous = false, nowLoggedIn = false))
+        assertEquals(false, sessionEnded(previous = false, nowLoggedIn = true))
+        assertEquals(false, sessionEnded(previous = true, nowLoggedIn = true))
+    }
+
     /** The signed-in fallback must not read as its opposite — they are one word apart. */
     @Test
     fun theTwoStatesAreNotConfusable() {
