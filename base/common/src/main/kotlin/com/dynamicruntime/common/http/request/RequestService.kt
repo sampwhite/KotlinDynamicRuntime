@@ -13,6 +13,7 @@ import com.dynamicruntime.common.logging.RequestLogCapture
 import com.dynamicruntime.common.node.NodeService
 import com.dynamicruntime.common.user.AKEY
 import com.dynamicruntime.common.user.AUTHC
+import com.dynamicruntime.common.user.AccessTokenService
 import com.dynamicruntime.common.user.ApiKeyService
 import com.dynamicruntime.common.user.AuthTiming
 import com.dynamicruntime.common.user.UserAuthCookie
@@ -570,9 +571,13 @@ class RequestService : ServiceInitializer {
         // (issue #1150), so it is known only now that the session is restored -- and before the gate below.
         EnvAuthRules.fromAdminLogin(cxt)
         // A read-only API key (issue #1402) makes GET requests and nothing else, whatever the section and whatever its
-        // owner may do: refused here, before the gate, so no section -- and no content page -- can forget to.
-        cxt.apiKey?.refusal(method, sessionOnly = false, path = appPath)?.let {
-            throw KdrException(it, code = EXC.notAuthorized)
+        // owner may do: refused here, before the gate, so no section -- and no content page -- can forget to. The one
+        // endpoint that exchanges the key (issue #1403) says so itself, and only under the API root.
+        cxt.apiKey?.let { access ->
+            val exchangesKey = focus == ContextFocus.api && cxt.getGlobalSchema().endpoints["$appPath:$method"]?.keyExchange == true
+            access.refusal(method, sessionOnly = false, path = appPath, exchangesKey = exchangesKey)?.let {
+                throw KdrException(it, code = EXC.notAuthorized)
+            }
         }
         // Whether the request keeps its log lines (issue #1173) is decided here, the first moment the fence can be:
         // the caller's env auth, and whether it is in debug, are only known once the session is restored.
@@ -765,6 +770,8 @@ class RequestService : ServiceInitializer {
         handler.declaredSensitive = inputType.properties.filterValues { it.sensitive }.keys
 
         val data = LinkedHashMap<String, Any?>(handler.queryParams)
+        // A form-encoded body is input only where the endpoint says so (issue #1403); see [KdrEndpoint.formBody].
+        if (endpoint.formBody) handler.decodeFormBody()
         handler.postData?.let { data.putAll(it) }
         // Endpoint input is a flat set of top-level fields (issue #40), so the flat HTTP input -- query params
         // and/or POST body -- validates directly, with no re-grouping. The input type is closed to undeclared
@@ -809,6 +816,13 @@ class RequestService : ServiceInitializer {
                 // content (OpenAPI's `type: string, format: binary`), not a JSON shape.
                 checkAddAuthCookies(cxt, handler)
                 handler.sendContentResponse(inner, EXC.ok)
+            } else if (endpoint.bareResponse) {
+                // The result is the body (issue #1403): a standard the caller speaks fixes its shape, and the output
+                // schema is the result's own type, so it is validated as it is sent.
+                val body = (inner ?: emptyMap<String, Any?>()).toJsonMap()
+                validateResponse(cxt, schema, endpoint, body)
+                checkAddAuthCookies(cxt, handler)
+                handler.sendJsonResponse(body, EXC.ok)
             } else {
                 val envelope = buildEnvelope(cxt, handler, endpoint, requestData, inner)
                 validateResponse(cxt, schema, endpoint, envelope)
@@ -972,17 +986,25 @@ class RequestService : ServiceInitializer {
      * A request carrying an API key (`Authorization: Bearer kdr_…`, issue #1402) is authenticated by the key instead,
      * and its cookies are not read: a program sends one or the other, and a key that is not valid is refused (401)
      * rather than quietly answered as whoever a cookie says.
+     * So is one carrying an access token this deployment issued for a key (issue #1403).
      *
      * So does a session whose client this node does not carry (issue #1111): a client retired since the session
      * began, or not enabled here. Everything its user would reach is scoped by that client, so the session is
      * honored only where the client is. A node carrying no clients (an edge) asks nothing.
      */
     fun extractSessionAuth(cxt: KdrCxt, handler: RequestHandler) {
-        ApiKeyService.bearerKeyOf(handler.getRequestHeader(AKEY.authorizationHeader))?.let { key ->
+        val authorization = handler.getRequestHeader(AKEY.authorizationHeader)
+        ApiKeyService.bearerKeyOf(authorization)?.let { key ->
             val keys = ApiKeyService.getOrNull(cxt)
                 ?: throw KdrException("This node does not accept API keys.", code = EXC.authNeeded)
             keys.authenticate(cxt, key, handler.forwardedFor ?: handler.peerAddress)
             return
+        }
+        // An access token exchanged for a key (issue #1403) is honored as its key is. One some other issuer signed is
+        // not this node's to judge, and is left alone as any bearer that is not ours is.
+        AccessTokenService.bearerTokenOf(authorization)?.let { token ->
+            val tokens = AccessTokenService.getOrNull(cxt)
+            if (tokens != null && tokens.authenticate(cxt, token, handler.forwardedFor ?: handler.peerAddress)) return
         }
         val cookie = handler.getRequestCookies()[AUTHC.authCookie] ?: return
         val node = NodeService.get(cxt)

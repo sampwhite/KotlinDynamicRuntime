@@ -35,6 +35,11 @@ class EndpointInfo(
     val publicApi: Boolean = false,
     /** The endpoint's catalog tags (issue #489), e.g. `internal`/`frontend`; the multi-select filter's options. */
     val tags: List<String> = emptyList(),
+    /**
+     * Whether the endpoint answers its result as the whole body, with no envelope (issue #1403): its [outputSchema] is
+     * then the result's type itself.
+     */
+    val bareResponse: Boolean = false,
 ) {
     /** Stable identity for a `method:path` endpoint (used as a table row key). */
     val key: String get() = "$method:$path"
@@ -124,16 +129,20 @@ class Catalog(
 
     /**
      * The resolved [SchType] of an endpoint's response payload — the type under the envelope's `results`/`item`
-     * key, or the array element type under `items` — looked up by name in the shared [defTypes]. Reading the
+     * key, the array element type under `items`, or for a [bare][EndpointInfo.bareResponse] answer the output's own
+     * type — looked up by name in the shared [defTypes]. Reading the
      * `$ref` name straight from the output schema keeps this independent of the envelope's own parse. Null when
      * the output has no typed `$ref` payload.
      */
     fun payloadType(ep: EndpointInfo): SchType? {
         val props = ep.outputSchema[SCH.properties].toJsonMapOrEmpty()
-        val refNode = when (ep.kind) {
-            EndpointKind.list.name -> props[EP.items].toJsonMapOrEmpty()[SCH.items]
-            EndpointKind.item.name -> props[EP.item]
-            else -> props[EP.results]
+        val refNode = when {
+            ep.bareResponse -> ep.outputSchema
+            else -> when (ep.kind) {
+                EndpointKind.list.name -> props[EP.items].toJsonMapOrEmpty()[SCH.items]
+                EndpointKind.item.name -> props[EP.item]
+                else -> props[EP.results]
+            }
         }
         val ref = refNode.toJsonMapOrEmpty()[SCH.dRef] as? String ?: return null
         return defTypes[refTargetName(ref)]

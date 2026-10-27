@@ -543,5 +543,7 @@ object HDOC {
     const val fileRefs = "file-refs"
     const val sandboxes = "sandboxes"
     const val schemaDialect = "schema-dialect"
+    const val apiKeysAndTokens = "api-keys-and-tokens"
+    const val apiKeys = "api-keys"
     const val license = "license"
 }

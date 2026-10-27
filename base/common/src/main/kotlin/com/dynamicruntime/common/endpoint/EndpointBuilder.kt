@@ -203,6 +203,28 @@ class KdrEndpoint(
      */
     val sessionOnly: Boolean = false,
     /**
+     * (General endpoints only.) Whether the result is sent as the whole body, with no envelope around it (issue #1403),
+     * for a caller speaking a standard that fixes the answer's shape: an OAuth 2.0 token answer (RFC 6749 §5.1), a
+     * JSON Web Key Set (RFC 7517). The output schema is then the result's type itself, and validated as it is. An error
+     * still travels in the standard error envelope.
+     */
+    val bareResponse: Boolean = false,
+    /**
+     * Whether this endpoint exchanges the API key a request carries for something else -- an access token (issue
+     * #1403). It is the one post a read-only key may make, since asking for a token changes nothing, and refused to a
+     * request sent with a token, since it is the key that is exchanged. See
+     * [ApiKeyAccess.refusal][com.dynamicruntime.common.user.ApiKeyAccess.refusal].
+     */
+    val keyExchange: Boolean = false,
+    /**
+     * Whether a form-encoded body (`application/x-www-form-urlencoded`) is read as this endpoint's input (issue
+     * #1403), as an OAuth 2.0 client library sends a token request. Off for every other endpoint: a browser posts a
+     * form to any site without asking first, so taking JSON and nothing else is part of what keeps a page elsewhere
+     * from acting on a signed-in session. Set it only on an endpoint authenticated some other way, such as by an
+     * `Authorization` header, which such a form cannot set.
+     */
+    val formBody: Boolean = false,
+    /**
      * (List endpoints only.) Whether the output declares `hasMore` / `numAvailable`, so the executor knows to
      * populate them (issue #499). For a handler that returns a plain `List` the executor fills them from the
      * uncapped size; a [ListPage] supplies its own. `numAvailable` defaults **on** when the endpoint has a
@@ -266,7 +288,7 @@ class KdrEndpoint(
      * #1402): a read-only key and anything but a GET, or any key and a [sessionOnly] endpoint. Asked by the dispatcher,
      * which refuses with it, and by the catalog, which leaves the endpoint out.
      */
-    fun keyRefusal(cxt: KdrCxt): String? = cxt.apiKey?.refusal(method.name, sessionOnly, path)
+    fun keyRefusal(cxt: KdrCxt): String? = cxt.apiKey?.refusal(method.name, sessionOnly, path, keyExchange)
 
     @Suppress("ConstPropertyName")
     companion object {
@@ -302,6 +324,14 @@ class KdrEndpoint(
                 property(EI.tags, "Free-form tags for slicing the catalog.", required = true) {
                     type = SCT.array
                     items { type = SCT.string }
+                }
+                property(
+                    EI.bareResponse,
+                    "Whether the result is the whole response body, with no envelope: the output schema is then the " +
+                        "result's type itself.",
+                    required = true,
+                ) {
+                    type = SCT.boolean
                 }
             }
         }
@@ -407,14 +437,25 @@ class SchModuleBuilder(cxt: KdrCxt, namespace: String) : SchTypesBuilder(cxt, na
         polled: Boolean = false,
         /** Refused to an API key, open to a signed-in session only (issue #1402); see [KdrEndpoint.sessionOnly]. */
         sessionOnly: Boolean = false,
+        /** The result is the whole body, with no envelope (issue #1403); see [KdrEndpoint.bareResponse]. */
+        bareResponse: Boolean = false,
+        /** Exchanges the request's API key (issue #1403); see [KdrEndpoint.keyExchange]. */
+        keyExchange: Boolean = false,
+        /** Reads a form-encoded body as input (issue #1403); see [KdrEndpoint.formBody]. */
+        formBody: Boolean = false,
         handler: KdrEndpointHandler,
     ) {
-        val output = scalarOutput(EP.results, "Result data (a map object) returned by the endpoint.", outputRef)
+        val output = if (bareResponse) {
+            SchTypeBuilder(cxt, namespace).also { it.ref(outputRef) }.data
+        } else {
+            scalarOutput(EP.results, "Result data (a map object) returned by the endpoint.", outputRef)
+        }
         val (fields, typeRef) = captureInput(inputRef, inputFields)
         endpoints.add(
             KdrEndpoint(path, method, EndpointKind.general, namespace, description, fields, typeRef, false, output,
                 forTestingOnly, handler, publicApi = publicApi, tags = tags, needsClientConfig = needsClientConfig,
-                timingFloor = timingFloor, polled = polled, sessionOnly = sessionOnly),
+                timingFloor = timingFloor, polled = polled, sessionOnly = sessionOnly, bareResponse = bareResponse,
+                keyExchange = keyExchange, formBody = formBody),
         )
     }
 
@@ -889,6 +930,7 @@ fun renderEndpoint(endpoint: KdrEndpoint, defs: Map<String, Any?>): Map<String, 
     EI.publicApi to endpoint.publicApi,
     // Sorted so a catalog rendering is stable between boots; a Set has no order of its own to promise.
     EI.tags to endpoint.tags.sorted(),
+    EI.bareResponse to endpoint.bareResponse,
 )
 
 /**

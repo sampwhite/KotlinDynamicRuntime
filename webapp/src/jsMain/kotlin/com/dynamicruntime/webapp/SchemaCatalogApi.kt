@@ -188,6 +188,7 @@ private fun toEndpointInfo(m: Map<String, Any?>): EndpointInfo = EndpointInfo(
     outputSchema = m[EI.outputSchema].toJsonMapOrEmpty(),
     publicApi = m[EI.publicApi] as? Boolean ?: false,
     tags = m[EI.tags].toJsonListOfStrings(),
+    bareResponse = m[EI.bareResponse] as? Boolean ?: false,
 )
 
 /**

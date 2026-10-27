@@ -4,8 +4,10 @@ An **API key** lets a program call the API as a particular user, without anyone 
 in a header, and the request is answered as the key's user, with that user's roles as they are now. This document says
 what a key is, how it is checked, what it may and may not do, how long it lasts, and what is planned on top of it.
 
-**Status:** keys are built (#1402). Exchanging a key for a short-lived access token is planned (#1403). What is not
+**Status:** keys are built (#1402), and so is exchanging a key for a short-lived access token (#1403). What is not
 built is listed at the end.
+
+How a program uses a key or a token, with examples, is in [API keys and access tokens](../api-keys-and-tokens.md).
 
 ## What a key is
 
@@ -149,22 +151,81 @@ on each key not revoked. A new key opens in a
 dialog with a copy button and a `curl` command to try it, saying it is the only time it is shown. The key is held only in
 the component's state, never in the address or browser storage.
 
-## Next: access tokens (#1403)
+## Access tokens (#1403)
 
 A key is a long-lived secret. Another service that verifies callers, such as an identity service, should not hold it or
-call back to check it. The plan follows the OAuth 2.0 **client-credentials** grant (RFC 6749 §4.4):
+call back to check it. So a program can exchange its key for a short-lived **access token**, by the OAuth 2.0
+**client-credentials** grant (RFC 6749 §4.4), and present that instead.
 
-- **The exchange.** A program sends its key to `POST /auth/token` with `grant_type=client_credentials`. It gets back a
-  signed, short-lived access token: `{access_token, token_type: "Bearer", expires_in, scope}`.
-- **The token** is a JWT (RFC 9068) signed with ES256, using the JDK's `java.security`.
-  - Its claims are `iss`, `sub` (the user id), `aud`, `client`, `scope` (`read` or `full`), `iat`, `exp`, `jti`, and the
-    key's id.
-  - It lasts `KDR_ACCESS_TOKEN_HOURS` hours (24 by default).
-- **Refreshing** is asking again with the key. Refresh tokens belong to user-delegated flows, which are not planned.
-- **Verifying.** The signing keys are published at `GET /auth/jwks`, so any service can verify a token with the public
-  set alone. The same extractor accepts a token as a bearer, with the key's rules.
-- **Revocation.** Revoking a key stops new tokens, but outstanding ones last until `exp`. That is why common practice
-  keeps access tokens to an hour or less, and why the default is configurable.
+### The exchange
+
+```
+POST /kda/auth/token
+Authorization: Bearer kdr_<keyId>_<secret>
+Content-Type: application/x-www-form-urlencoded
+
+grant_type=client_credentials
+```
+
+- **The answer** is the token answer of RFC 6749 §5.1, as the whole body: `{access_token, token_type: "Bearer",
+  expires_in, scope}`, sent with `Cache-Control: no-store`. An error still travels in the runtime's error envelope.
+- **The body** may be form-encoded, as an OAuth client library sends it, or JSON. A form-encoded body is read only by
+  an endpoint that declares `formBody`, which this one alone does: a browser posts a form to any site without asking
+  first, so taking JSON and nothing else is part of what
+  keeps a page elsewhere from acting on a signed-in session. The exchange is authenticated by its `Authorization`
+  header, which such a form cannot set.
+- **Only a key is exchanged.** A signed-in session is refused (401), and so is a token (403), since a token buying the
+  next would make a token live forever. A read-only key may exchange itself: asking for a token changes nothing. The
+  endpoint says both of these by declaring `keyExchange`, which the read-only gate and the endpoint check both read.
+- **Refreshing** is asking again with the key. Refresh tokens belong to user-delegated flows, which are not built.
+
+### The token
+
+A compact JWS signed with **ES256** on the JDK's `java.security` (`Es256`, `JwsParts`), shaped as RFC 9068 says:
+
+- **The header** is `{alg: "ES256", typ: "at+jwt", kid}`, `kid` naming the signing key.
+- **The claims** are `iss`, `sub` (the user id), `aud`, `client`, `scope` (`read` or `full`, the key's access), `iat`,
+  `exp`, `jti`, and `client_id`, the key's id. In client credentials the key is the OAuth client, which is what RFC
+  9068 names that claim for.
+- **The issuer, and the audience,** is the deployment's `KDR_PUBLIC_URL` when set, and otherwise a name built from the
+  instance's (`urn:kdr:<instance>`), so every node agrees.
+- **It lasts** `KDR_ACCESS_TOKEN_HOURS` hours (24 by default, at most 168), and never past its key's expiry.
+
+### Using a token
+
+A token is sent as the key is, `Authorization: Bearer <token>`, and the same extractor reads it.
+
+- **One naming another issuer is left alone,** as any bearer that is not ours is: the request is not authenticated by
+  it. One naming this deployment is verified, and refused with one 401, "The access token is not valid.", whatever was
+  wrong. It is counted with failed keys against the address.
+- **The checks:**
+  - the algorithm and type are pinned, which stops an `alg: none` token and a JWT of another kind;
+  - the signature, against the key its `kid` names;
+  - the audience, the expiry, and an issue time no more than a minute ahead of this node's clock.
+- **On this deployment's own nodes a token is its key.**
+  - It is honored only while the key works and the owner is enabled, with the key's read-only and session-only rules.
+  - So revoking a key, or disabling its owner, ends its tokens here at once.
+  - Its `scope` can only narrow the key's access: a key made read-only since its token was issued is read-only through
+    the token too, and one widened since is not widened in its tokens.
+- **Elsewhere,** a service verifying with the published keys alone honors a token until it expires, even after its key
+  is revoked. That is why common practice keeps access tokens to an hour or less, and why the lifetime is a
+  deployment's choice.
+
+### Signing keys
+
+- **Where they are kept:** in the instance config, as the instance encryption key is, shared by every node of the
+  instance. The first node to need one makes it, under the row's lock.
+- **Published** at `GET /kda/auth/jwks` as a JSON Web Key Set (RFC 7517), the whole body. A service verifies a token
+  with it alone.
+- **Rotation:** `POST /kda/operator/accessToken/rotateSigningKey` (an operator, from a session) publishes a new key.
+  - The new key begins to sign two minutes later. A node rereads the keys every minute, so by then every node holds
+    it, and none refuses a token it signs. The old key signs until then.
+  - The old key then stays published, and goes on verifying, for the longest a token may last (168 hours), plus five
+    minutes for disagreeing clocks. That is measured by the most a deployment may set, not by its setting today, which
+    a token issued under a longer one would outlive.
+  - The next rotation after that drops it.
+- **A token naming a key a node does not hold** makes the node reread the keys at once, no more than every ten
+  seconds, so a run of made-up ids costs no run of reads.
 
 ## Not built
 
@@ -172,6 +233,10 @@ These are recorded in [`deferred-work.md`](../development/deferred-work.md#when-
 each under the trigger that would make it worth doing:
 
 - token introspection (RFC 7662) and revocation (RFC 7009) endpoints;
+- HTTP Basic client authentication and the OAuth error format at the token endpoint, and authorization-server metadata
+  (RFC 8414);
+- an emergency rotation that drops a signing key at once, a rotation on a schedule, and an audience other than this
+  deployment;
 - refresh tokens with rotation, the authorization-code flow with PKCE for third-party apps, and token exchange
   (RFC 8693) for delegation between identity services;
 - service accounts: keys that belong to no person's user;

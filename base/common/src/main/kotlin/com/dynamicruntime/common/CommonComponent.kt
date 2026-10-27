@@ -97,8 +97,10 @@ import com.dynamicruntime.common.http.request.VariantBehavior
 import com.dynamicruntime.common.http.request.variantSchema
 import com.dynamicruntime.common.mail.MailService
 import com.dynamicruntime.common.portal.PortalService
+import com.dynamicruntime.common.user.AccessTokenService
 import com.dynamicruntime.common.user.ApiKeyService
 import com.dynamicruntime.common.user.UserService
+import com.dynamicruntime.common.user.accessTokenSchema
 import com.dynamicruntime.common.user.apiKeySchema
 import com.dynamicruntime.common.user.adminSchema
 import com.dynamicruntime.common.user.scopedUserAdminSchema
@@ -214,6 +216,7 @@ class CommonComponent : ComponentDefinition {
         collector.addModule(authSchema(cxt), appOnly)
         // API keys (issue #1402): a person's own and an administrator's, over the auth topic's AuthApiKeys table.
         collector.addModule(apiKeySchema(cxt), appOnly)
+        collector.addModule(accessTokenSchema(cxt), appOnly)
         collector.addTables(authTables(cxt), appOnly)
         // Profile (issue #70): the login-gated profile page endpoints (its own widget-group namespace).
         collector.addModule(profileSchema(cxt), appOnly)
@@ -464,6 +467,7 @@ class CommonComponent : ComponentDefinition {
             service(::UserService, roles = setOf(BOOT.app)),
             // API keys (issue #1402): the lookup every keyed request makes, through its in-memory cache.
             service(::ApiKeyService, roles = setOf(BOOT.app)),
+            service(::AccessTokenService, roles = setOf(BOOT.app)),
             // GedraService before the data service that reads it, though the ordering is a courtesy rather
             // than a requirement: every service is published into the config before any `checkInit` runs.
             service(::GedraService, roles = setOf(BOOT.app)),

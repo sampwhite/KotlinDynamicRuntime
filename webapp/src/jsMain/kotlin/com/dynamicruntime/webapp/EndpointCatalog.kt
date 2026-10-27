@@ -627,7 +627,7 @@ val EndpointCatalog = FC<Props> {
 
             response?.let { resp ->
                 h2 { +"Response" }
-                renderResponse(current.kind, cat.payloadType(current), resp)
+                renderResponse(current.kind, cat.payloadType(current), resp, current.bareResponse)
                 h2 { +"Raw response" }
                 pre {
                     className = ClassName("code")
@@ -651,14 +651,19 @@ val EndpointCatalog = FC<Props> {
 /**
  * Renders an endpoint's response payload through the read-only [SchemaForm], unwrapping the protocol envelope
  * by [kind]: a `general` result (`results`) and an `item` are single objects; a `list` (`items`) renders each
- * element. [payloadType] is the resolved element/object type; when it is null (an untyped payload), the payload
+ * element; a [bare] answer has no envelope and is the result. [payloadType] is the resolved element/object type; when it is null (an untyped payload), the payload
  * falls back to formatted JSON.
  *
  * The envelope's own fields are shown by [envelopeSummary] above the payload rather than through the form:
  * they describe the *response*, and the form is driven by the payload's `SchType`, which has nothing to say
  * about them (issue #321).
  */
-private fun ChildrenBuilder.renderResponse(kind: String, payloadType: SchType?, response: Map<String, Any?>) {
+private fun ChildrenBuilder.renderResponse(kind: String, payloadType: SchType?, response: Map<String, Any?>, bare: Boolean) {
+    // A bare answer (issue #1403) is the result itself, with no envelope to summarize or unwrap.
+    if (bare) {
+        renderPayload(payloadType, response)
+        return
+    }
     envelopeSummary(kind, response)?.let { summary ->
         p {
             className = ClassName("type-hint")

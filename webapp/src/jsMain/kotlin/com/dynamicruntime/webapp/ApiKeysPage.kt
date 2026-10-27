@@ -1,10 +1,12 @@
 package com.dynamicruntime.webapp
 
+import com.dynamicruntime.common.home.HDOC
 import com.dynamicruntime.common.user.AKEY
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.launch
 import react.FC
 import react.Props
+import react.dom.html.ReactHTML.a
 import react.dom.html.ReactHTML.div
 import react.dom.html.ReactHTML.h1
 import react.dom.html.ReactHTML.p
@@ -50,8 +52,12 @@ val ApiKeysPage = FC<Props> {
             className = ClassName("subtitle")
             +(
                 "The keys of the users you administer. A key acts as its user, so make one from that user's page under " +
-                    "Users, or its owner makes one on their profile."
+                    "Users, or its owner makes one on their profile. "
             )
+            a {
+                href = docHref(HDOC.apiKeysAndTokens)
+                +"How a program uses a key"
+            }
         }
         choiceRow("Status") {
             Select {

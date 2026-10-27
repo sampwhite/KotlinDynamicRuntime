@@ -340,6 +340,20 @@ class RequestHandler : WebRequest {
         return raw.takeIf { it.length in 1..64 && it.isPlainName("._:-") }
     }
 
+    /**
+     * Decodes a form-encoded body into [postData], for an endpoint that reads one
+     * ([formBody][com.dynamicruntime.common.endpoint.KdrEndpoint.formBody], issue #1403); [decodeRequestData] reads JSON
+     * and multipart bodies alone. Called by the dispatcher once it knows the endpoint.
+     */
+    fun decodeFormBody() {
+        if (!contentType.startsWith(formUrlEncoded) || postData != null) return
+        val body = readBody()
+        if (body.length > 16000) {
+            throw KdrException("Form body of size ${body.length} exceeds the maximum of 16000.")
+        }
+        postData = HttpUtil.parseQuery(body).toMutableMap()
+    }
+
     private fun readBody(): String {
         val req = jettyRequest
         return if (req != null) Content.Source.asString(req) else (testPostData ?: "")
@@ -754,6 +768,9 @@ class RequestHandler : WebRequest {
 
         /** The content type a file upload arrives under; matched as a prefix (the boundary follows). */
         const val multipartFormData = "multipart/form-data"
+
+        /** The content type of an HTML form's body, and of an OAuth 2.0 token request; matched as a prefix. */
+        const val formUrlEncoded = "application/x-www-form-urlencoded"
 
         /** What an upload part claims to be when it says nothing: the catch-all binary type. */
         const val defaultUploadMimeType = "application/octet-stream"

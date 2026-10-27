@@ -544,7 +544,8 @@ private fun homeLinksFor(cxt: KdrCxt): List<Map<String, Any?>> {
 /**
  * The documents `base/common` serves (issue #492): the README plus the repo docs it links to, declared by the common
  * component. Other components declare their own (`docs`, issue #1136). The listing offers the README, the extending
- * guide, the code guide, the schema dialect reference (generated, issue #1347), and the license; the design documents are served but unlisted, reached from the README's
+ * guide, the API keys and tokens guide (issue #1403), the code guide, the schema dialect reference (generated, issue
+ * #1347), and the license; the design documents are served but unlisted, reached from the README's
  * links (issue #1238).
  */
 fun coreDocs(): List<MarkdownDocDef> = listOf(
@@ -552,6 +553,8 @@ fun coreDocs(): List<MarkdownDocDef> = listOf(
         "What the runtime is, where it came from, and how to set it up."),
     MarkdownDocDef(HDOC.extending, "Extending", "docs/extending.md",
         "How a deployment, a component, or a client varies what the runtime does, and the rule behind it."),
+    MarkdownDocDef(HDOC.apiKeysAndTokens, "API keys and access tokens", "docs/api-keys-and-tokens.md",
+        "How a program calls the API with a key or a token, and how another service checks a token."),
     MarkdownDocDef(HDOC.codeGuide, "Code guide", "docs/development/code-guide.md",
         "How code here is written, including where it deliberately departs from Kotlin norms."),
     MarkdownDocDef(HDOC.clientDefinition, "Client definition", "docs/design/client-definition.md",
@@ -574,6 +577,8 @@ fun coreDocs(): List<MarkdownDocDef> = listOf(
         "A client's sandbox: a second client that runs its drafts, so a change is tried before it is published.", listed = false),
     MarkdownDocDef(HDOC.userSearch, "User search", "docs/design/user-search.md",
         "The admin user search, and the server-driven shape its console is built from.", listed = false),
+    MarkdownDocDef(HDOC.apiKeys, "API keys (design)", "docs/design/api-keys.md",
+        "How keys and the tokens exchanged for them are made, checked, and limited.", listed = false),
     MarkdownDocDef(HDOC.gedraWorkflow, "Gedra workflow (superseded)", "docs/history/gedra-workflow.md",
         "The first workflow design, retired under #533 and kept for its reasoning.", listed = false),
     MarkdownDocDef(HDOC.schemaDialect, "Schema dialect", "docs/reference/schema-dialect.md",

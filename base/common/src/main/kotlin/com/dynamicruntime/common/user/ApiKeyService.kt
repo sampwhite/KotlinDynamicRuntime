@@ -32,7 +32,15 @@ import java.util.concurrent.ConcurrentHashMap
  * Which API key a request authenticated with (issue #1402), on [KdrCxt.apiKey], and when its use was last recorded. A
  * keyed request sets no cookie, and what it may not reach is [refusal]'s to say.
  */
-class ApiKeyAccess(val keyId: String, val access: String, val lastUsedAt: kotlin.time.Instant? = null) {
+class ApiKeyAccess(
+    val keyId: String,
+    val access: String,
+    val lastUsedAt: kotlin.time.Instant? = null,
+    /** When the key expires, which no token exchanged for it may outlast (issue #1403). */
+    val expiresAt: kotlin.time.Instant? = null,
+    /** Whether the request sent an access token exchanged for the key (issue #1403), rather than the key itself. */
+    val viaToken: Boolean = false,
+) {
     val isReadOnly: Boolean get() = access == AKEY.read
 
     /**
@@ -41,8 +49,13 @@ class ApiKeyAccess(val keyId: String, val access: String, val lastUsedAt: kotlin
      * else; no key reaches a [session-only][com.dynamicruntime.common.endpoint.KdrEndpoint.sessionOnly] endpoint. The
      * one statement of it: the dispatcher refuses with it, and the endpoint catalog leaves out what it refuses, so a
      * keyed caller is never shown an endpoint that would then refuse them.
+     *
+     * An endpoint that [exchangesKey] -- the token exchange, issue #1403 -- is the one exception, and in both directions: a
+     * read-only key may post to it, since asking for a token changes nothing, and a token may not, since it is the key
+     * that is exchanged -- one token buying the next would make a token live forever.
      */
-    fun refusal(method: String, sessionOnly: Boolean, path: String): String? = when {
+    fun refusal(method: String, sessionOnly: Boolean, path: String, exchangesKey: Boolean = false): String? = when {
+        exchangesKey -> if (viaToken) "An access token is not exchanged for another; send the API key itself." else null
         isReadOnly && method != HttpMethod.GET.name -> "This API key is read-only: it may only make GET requests."
         sessionOnly -> "'$path' is not open to API keys; it needs a signed-in session."
         else -> null
@@ -351,32 +364,66 @@ class ApiKeyService : ServiceInitializer {
      * with a 429 until its window passes.
      */
     fun authenticate(cxt: KdrCxt, presented: String, sourceAddress: String?) {
-        val nowMs = cxt.now().toEpochMilliseconds()
-        fun refuse(): Nothing {
-            if (!failures.allow("apikey:${sourceAddress ?: "unknown"}", failuresAllowed, failureWindowMs, nowMs)) {
-                throw KdrException("Too many invalid API keys from this address; try again later.", code = EXC.tooManyRequests)
-            }
-            throw KdrException("The API key is not valid.", code = EXC.authNeeded)
-        }
-        val (keyId, secret) = parseKey(presented) ?: refuse()
-        // A key this node's cache does not hold -- revoked, or one nobody issued -- costs a database read. Those are
-        // bounded node-wide, whatever address they claim to come from, so a flood of made-up keys cannot turn into a
-        // flood of queries; keys the cache holds go on working through it.
-        val row = queryKey(cxt, keyId, onMiss = {
-            if (!failures.allow(missKey, missesAllowed, failureWindowMs, nowMs)) {
-                throw KdrException("Too many unknown API keys; try again later.", code = EXC.tooManyRequests)
-            }
-        }) ?: refuse()
+        val refuse = refuser(cxt, sourceAddress, "The API key is not valid.")
+        val (keyId, secret) = parseKey(presented) ?: refuse("it is not shaped as a key")
+        val row = queryKeyBounded(cxt, keyId) ?: refuse("no key $keyId")
         // The hash first, so a revoked or expired key answers no faster than a wrong one.
         val matches = constantTimeEquals(hashOf(secret), row[APK.secretHash].toOptStr().orEmpty())
-        if (!matches || row[PF.enabled] != true) refuse()
+        if (!matches) refuse("the secret of key $keyId does not match")
+        bindKey(cxt, row, scope = null, viaToken = false, refuse)
+    }
+
+    /**
+     * Authenticates the request in [cxt] by an access token already verified (issue #1403) -- its signature, issuer,
+     * audience and expiry, which are [AccessTokenService]'s to check -- that names the key [keyId], acting as [userId]
+     * of [client] with [scope]. The key must still work and still be that user's, and the owner must still be enabled,
+     * as for the key itself: so revoking a key, or disabling its owner, ends its tokens here at once, though a service
+     * verifying a token with the published keys alone honors it until it expires. [refuse] says why it is not.
+     */
+    fun authenticateToken(cxt: KdrCxt, keyId: String, userId: Long, client: String, scope: String, refuse: (String) -> Nothing) {
+        val row = queryKeyBounded(cxt, keyId) ?: refuse("no key $keyId")
+        if (row[PF.userId].toOptLong() != userId || row[PF.client] != client) refuse("key $keyId is not that user's")
+        bindKey(cxt, row, scope, viaToken = true, refuse)
+    }
+
+    /**
+     * A refusal of a credential from [sourceAddress]: one 401 saying [message], whatever was wrong, since saying which
+     * would tell a guesser how close they came. Why is logged. A run of them from one address is refused with a 429
+     * until its window passes.
+     */
+    fun refuser(cxt: KdrCxt, sourceAddress: String?, message: String): (String) -> Nothing = { reason ->
+        LogAuth.info(cxt) { "$message Refused: $reason." }
+        if (!failures.allow("apikey:${sourceAddress ?: "unknown"}", failuresAllowed, failureWindowMs, cxt.now().toEpochMilliseconds())) {
+            throw KdrException("Too many invalid API keys from this address; try again later.", code = EXC.tooManyRequests)
+        }
+        throw KdrException(message, code = EXC.authNeeded)
+    }
+
+    /**
+     * The key [keyId], read for a credential presented. A key this node's cache does not hold -- revoked, or one nobody
+     * issued -- costs a database read. Those are bounded node-wide, whatever address they claim to come from, so a flood
+     * of made-up keys cannot turn into a flood of queries; keys the cache holds go on working through it.
+     */
+    private fun queryKeyBounded(cxt: KdrCxt, keyId: String): Map<String, Any?>? = queryKey(cxt, keyId, onMiss = {
+        if (!failures.allow(missKey, missesAllowed, failureWindowMs, cxt.now().toEpochMilliseconds())) {
+            throw KdrException("Too many unknown API keys; try again later.", code = EXC.tooManyRequests)
+        }
+    })
+
+    /**
+     * Binds the owner of the key [row] to [cxt] and records the key on it, once the key is found to work and its owner
+     * to be enabled and in a client this node carries; [refuse] otherwise. A token's [scope] can only narrow the key's
+     * access, never widen it, so a key made read-only since its token was issued is read-only through the token too.
+     */
+    private fun bindKey(cxt: KdrCxt, row: Map<String, Any?>, scope: String?, viaToken: Boolean, refuse: (String) -> Nothing) {
         val info = infoOf(row)
-        if (!info.isUsable(cxt.now())) refuse()
-        val owner = UserService.get(cxt).queryByUserId(cxt, info.userId) ?: refuse()
-        if (!owner.enabled || owner.client != info.client) refuse()
-        if (ClientService.getOrNull(cxt)?.isPresent(owner.client) == false) refuse()
+        if (row[PF.enabled] != true || !info.isUsable(cxt.now())) refuse("key ${info.keyId} is revoked or expired")
+        val owner = UserService.get(cxt).queryByUserId(cxt, info.userId) ?: refuse("the owner of key ${info.keyId} is gone")
+        if (!owner.enabled || owner.client != info.client) refuse("the owner of key ${info.keyId} is disabled or moved")
+        if (ClientService.getOrNull(cxt)?.isPresent(owner.client) == false) refuse("client ${owner.client} is not carried here")
+        val access = if (scope == AKEY.read) AKEY.read else info.access
         cxt.bindToUserProfile(owner.toActingProfile(cxt))
-        cxt.apiKey = ApiKeyAccess(keyId, info.access, info.lastUsedAt)
+        cxt.apiKey = ApiKeyAccess(info.keyId, access, info.lastUsedAt, info.expiresAt, viaToken)
     }
 
     /**
@@ -464,10 +511,17 @@ class ApiKeyService : ServiceInitializer {
          * The key in an `Authorization` header [value], or null when the header carries none -- absent, another scheme
          * (a site behind HTTP basic authentication sends `Basic` on every request), or a bearer token that is not ours.
          */
-        fun bearerKeyOf(value: String?): String? {
+        fun bearerKeyOf(value: String?): String? = bearerOf(value)?.takeIf { it.startsWith(AKEY.prefix) }
+
+        /**
+         * The credential in an `Authorization` header [value] sent under the `Bearer` scheme (matched without regard to
+         * case), or null for none. What it is -- a key ([bearerKeyOf]), an access token
+         * ([AccessTokenService.bearerTokenOf]), or someone else's -- is the caller's to tell.
+         */
+        fun bearerOf(value: String?): String? {
             val v = value?.trim() ?: return null
             if (!v.regionMatches(0, AKEY.bearerScheme, 0, AKEY.bearerScheme.length, ignoreCase = true)) return null
-            return v.substring(AKEY.bearerScheme.length).trim().takeIf { it.startsWith(AKEY.prefix) }
+            return v.substring(AKEY.bearerScheme.length).trim()
         }
     }
 }

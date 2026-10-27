@@ -768,8 +768,8 @@ reword a message they cannot get to show. Then:
 
 ## When a program or another service needs more than an API key gives it
 
-From #1402, which built API keys ([`docs/design/api-keys.md`](../design/api-keys.md)); signed access tokens are #1403.
-Each item waits on its own trigger:
+From #1402, which built API keys, and #1403, which exchanges a key for a signed access token (both in
+[`docs/design/api-keys.md`](../design/api-keys.md)). Each item waits on its own trigger:
 
 - **A service wants a revocation to bite before a token expires.** Add token introspection (RFC 7662) and revocation
   (RFC 7009) endpoints, or shorten `KDR_ACCESS_TOKEN_HOURS`.
@@ -784,3 +784,13 @@ Each item waits on its own trigger:
 - **One key's traffic needs limiting, or a key leaks.** Per-key rate limits; an allowlist of addresses a key works
   from; a checksum in the key, so a scanner or a typo is caught without a lookup; rotation with a window in which old
   and new both work; and a mail to the owner before a key expires.
+- **A standard OAuth client cannot talk to the token endpoint.** The exchange takes the key as `Authorization: Bearer`
+  and refuses in the runtime's error envelope. A client library that authenticates with HTTP Basic (`client_id` and
+  `client_secret`, RFC 6749 §2.3.1), or that reads errors as `{error, error_description}` (§5.2), needs both added.
+  One that finds the endpoints by discovery needs authorization-server metadata (RFC 8414) at
+  `/.well-known/oauth-authorization-server`, which is not under any context root today.
+- **A signing key may have leaked.** Today a rotation keeps the old key published until its tokens expire. Dropping it
+  at once, ending every token it signed, is an emergency rotation, and so is rotating on a schedule rather than when an
+  operator asks.
+- **A token is meant for some other service.** Its audience is this deployment's API, the issuer itself. A token aimed
+  elsewhere needs the audience to be the caller's to name, or a deployment's to set.

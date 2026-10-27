@@ -268,10 +268,9 @@ class GoogleIdTokenVerifier(private val clientId: String, private val keySource:
      * probe cannot learn which of the checks it tripped.
      */
     fun verify(cxt: KdrCxt, idToken: String): GoogleIdToken {
-        val parts = idToken.split(".")
-        if (parts.size != 3) reject(cxt, "the token is not a three-part JWT")
+        val parts = JwsParts.parse(idToken) ?: reject(cxt, "the token is not a three-part JWT of base64url-encoded JSON")
 
-        val header = decodeSegment(cxt, parts[0], "header")
+        val header = parts.header
         if (header.getOptStr(GOOG.alg) != GOOG.rs256) {
             // Pinning the algorithm is what stops an "alg": "none" token, and stops a token signed with a
             // symmetric algorithm keyed by a public value we publish.
@@ -280,18 +279,12 @@ class GoogleIdTokenVerifier(private val clientId: String, private val keySource:
         val kid = header.getOptStr(GOOG.kid) ?: reject(cxt, "the token header has no key id")
 
         val key = keySource.rsaKey(cxt, kid) ?: reject(cxt, "no Google signing key matches key id '$kid'")
-        val signedContent = "${parts[0]}.${parts[1]}".toByteArray(Charsets.UTF_8)
-        val signature = try {
-            parts[2].base64Decode()
-        } catch (_: Exception) {
-            reject(cxt, "the signature is not valid base64url")
-        }
         val verifier = Signature.getInstance("SHA256withRSA")
         verifier.initVerify(key)
-        verifier.update(signedContent)
-        if (!verifier.verify(signature)) reject(cxt, "the signature does not match Google's key")
+        verifier.update(parts.signingInput)
+        if (!verifier.verify(parts.signature)) reject(cxt, "the signature does not match Google's key")
 
-        val claims = decodeSegment(cxt, parts[1], "payload")
+        val claims = parts.claims
         if (claims.getOptStr(GOOG.iss) !in GOOG.issuers) reject(cxt, "the issuer is not Google")
         // The audience check. See the class comment: a valid Google signature is not by itself evidence that
         // the token was minted for *this* application.
@@ -310,21 +303,6 @@ class GoogleIdTokenVerifier(private val clientId: String, private val keySource:
             hostedDomain = claims.getOptStr(GOOG.hd),
         )
     }
-
-    /**
-     * Decodes one base64url JWT segment into its claims map, or rejects.
-     *
-     * The parse has to be inside the `try` with the decode: a segment of ordinary letters ("not" in
-     * "not.a.jwt") is *valid* base64url, so it decodes cleanly to bytes that are not JSON, and the JSON parser
-     * then throws its own `KdrException` naming the offending byte and offset. Left uncaught that becomes the
-     * response an anonymous caller sees -- leaking parser internals and breaking this class's rule that every
-     * failure looks identical from outside.
-     */
-    private fun decodeSegment(cxt: KdrCxt, segment: String, what: String): Map<String, Any?> = try {
-        segment.base64Decode().toString(Charsets.UTF_8).jsonMap()
-    } catch (_: Exception) {
-        null
-    } ?: reject(cxt, "the $what is not base64url-encoded JSON")
 
     /**
      * Logs why verification failed and throws the single opaque error the caller sees. Returns [Nothing] so
