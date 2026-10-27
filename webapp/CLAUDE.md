@@ -1210,6 +1210,25 @@ the rule's declared colour proves nothing. Put the pointer on the control (the b
 ref), wait out antd's `0.2s` transition, then read `getComputedStyle(el).color`. If a link ever looks dim,
 measure that way against its surface before touching the palette, and keep hover brighter than rest.
 
+**A default (secondary) button is themed by antd component tokens** (issue #1399), set in `App.kt`'s
+`ConfigProvider` as `components.Button`. The dark algorithm gave it antd's own container colour, a near-black
+`#141414` under a `#424242` hairline. That is darker than the slate card and panels it sits on, so it read as an inset
+slot rather than something to press. It now has:
+
+| state | fill | border | text |
+| --- | --- | --- | --- |
+| rest | `#334155` (`--border`), a step up from the card | `#475569` | `#e2e8f0` |
+| hover | `#475569` | `#64748b` | `#f8fafc` |
+
+Hover moves away from the background, as a link's does.
+
+- **Tokens work here, unlike for links:** the algorithm re-derives a *seed* token such as `colorLink`, but takes a
+  component token as given. Measured on screen, including a real-pointer hover.
+- **Danger buttons keep antd's dark fill on purpose.** Their red text measures about 4.2:1 on it, and would drop to
+  about 2.4:1 on the slate one.
+- **Disabled buttons keep antd's colours too.**
+- **Primary and link buttons are untouched.**
+
 ## Times in tables (issue #1141)
 
 A table column shows a time **relative to now** (`RelativeTime.kt`): `just now` within a minute either way, then two
