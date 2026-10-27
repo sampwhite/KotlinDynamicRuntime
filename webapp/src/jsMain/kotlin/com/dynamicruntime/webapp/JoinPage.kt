@@ -23,9 +23,10 @@ private val joinScope = MainScope()
 /**
  * Joining a demo client (issue #1248), at `/wa/join/<client>`: what the client is, the roles it may be joined as,
  * and -- before any of them -- what joining a shared space means, which the visitor acknowledges before a join is
- * offered. Joining moves the session to the new user and the page home in that client; a role already joined offers
- * to open it instead. The endpoint is the authority: where joining is not offered, or for a caller not in `public`, its
- * refusal is what the page shows.
+ * offered, once per client: a visitor who has joined it as one role is not asked again for another (issue #1410).
+ * Joining moves the session to the new user and the page home in that client; a role already joined offers to open it
+ * instead. The endpoint is the authority: where joining is not offered, or for a caller not in `public`, its refusal
+ * is what the page shows.
  */
 val JoinPage = FC<Props> {
     val client = routeParams()[HP.client]
@@ -63,6 +64,10 @@ val JoinPage = FC<Props> {
                 afterSessionChange(bump)
             } catch (e: Throwable) {
                 joinError = userFacingError(e)
+                // The caller's standing may have changed since the page read it -- a user of theirs disabled or deleted
+                // by an administrator -- and a refusal is the sign: re-read it, so the page offers what the endpoint
+                // will now accept (the acknowledgment's checkbox among it, issue #1410).
+                runCatching { JoinApi.joinable() }.onSuccess { joinable = it }
             } finally {
                 busy = false
             }
@@ -95,14 +100,18 @@ val JoinPage = FC<Props> {
                     asDynamic()["role"] = "note"
                     h2 { +"Before you join" }
                     for (paragraph in joinDisclosure(view)) p { +paragraph }
-                    label {
-                        className = ClassName("join-acknowledge")
-                        Checkbox {
-                            checked = acknowledged
-                            disabled = busy
-                            onChange = { e -> acknowledged = e.target.checked == true }
+                    if (view.joined) {
+                        p { className = ClassName("subtitle"); +joinAcknowledgedBefore(view) }
+                    } else {
+                        label {
+                            className = ClassName("join-acknowledge")
+                            Checkbox {
+                                checked = acknowledged
+                                disabled = busy
+                                onChange = { e -> acknowledged = e.target.checked == true }
+                            }
+                            +" $joinAcknowledgment"
                         }
-                        +" $joinAcknowledgment"
                     }
                 }
                 h2 { +"Join as" }
@@ -126,8 +135,8 @@ val JoinPage = FC<Props> {
                         } else {
                             Button {
                                 type = "primary"
-                                disabled = busy || !acknowledged
-                                onClick = { act { JoinApi.join(view.client, role.name) } }
+                                disabled = busy || !canJoin(view, acknowledged)
+                                onClick = { act { JoinApi.join(view.client, role.name, acknowledged) } }
                                 +"Join as ${role.label}"
                             }
                         }

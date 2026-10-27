@@ -50,6 +50,18 @@ class JoinApiTest {
     }
 
     @Test
+    fun aClientTheCallerJoinedSaysSoAndNeedsNoAcknowledgmentAgain() {
+        val first = parseJoinable(envelope).single()
+        assertTrue(!first.joined)
+        assertTrue(!canJoin(first, acknowledged = false))
+        assertTrue(canJoin(first, acknowledged = true))
+        val joined = parseJoinable(mapOf(EP.items to listOf(mapOf(JOIN.client to "acme", JOIN.clientName to "Acme", JOIN.joined to true)))).single()
+        assertTrue(joined.joined)
+        assertTrue(canJoin(joined, acknowledged = false))
+        assertEquals("You acknowledged this when you first joined Acme.", joinAcknowledgedBefore(joined))
+    }
+
+    @Test
     fun theDisclosureSaysWhatOtherVisitorsSee() {
         val text = joinDisclosure(parseJoinable(envelope).single()).joinToString(" ")
         assertTrue("shared demo space" in text, text)

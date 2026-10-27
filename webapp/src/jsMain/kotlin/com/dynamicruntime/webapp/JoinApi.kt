@@ -19,8 +19,13 @@ class JoinRoleView(
     val isAdmin: Boolean get() = persona == PERSONA.admin
 }
 
-/** A demo client the caller may join (issue #1248), with its roles. */
-class JoinableView(val client: String, val name: String, val description: String?, val roles: List<JoinRoleView>)
+/**
+ * A demo client the caller may join (issue #1248), with its roles, and [joined] when the caller has joined it as any
+ * of them, which acknowledged its disclosure once for all its roles (issue #1410).
+ */
+class JoinableView(
+    val client: String, val name: String, val description: String?, val roles: List<JoinRoleView>, val joined: Boolean = false,
+)
 
 /** The joinable clients from `GET /user/self/joinable`'s envelope. Pure, and covered under `jsNodeTest`. */
 fun parseJoinable(envelope: Map<String, Any?>): List<JoinableView> = envelope[EP.items].toJsonListOrEmpty().mapNotNull { raw ->
@@ -42,6 +47,7 @@ fun parseJoinable(envelope: Map<String, Any?>): List<JoinableView> = envelope[EP
                 removed = role[JOIN.removed] == true,
             )
         },
+        joined = m[JOIN.joined] == true,
     )
 }
 
@@ -73,6 +79,15 @@ fun joinDisclosure(client: JoinableView): List<String> = buildList {
 /** The acknowledgment the Join page asks for before it sends a join (issue #1248). */
 const val joinAcknowledgment = "I understand that this is a shared space, and that other visitors see what I do here."
 
+/**
+ * Whether the Join page offers a join of [client]: once the visitor has [acknowledged] its disclosure here, or when
+ * they have joined it before and so acknowledged it then (issue #1410).
+ */
+fun canJoin(client: JoinableView, acknowledged: Boolean): Boolean = acknowledged || client.joined
+
+/** What the Join page says in place of the acknowledgment for a [client] the visitor has joined (issue #1410). */
+fun joinAcknowledgedBefore(client: JoinableView): String = "You acknowledged this when you first joined ${client.name}."
+
 /** The standing note a shared demo client's pages carry (issue #1248), behind the bar's "Shared demo" chip. */
 fun sharedDemoNoteText(clientName: String): String =
     "$clientName is a shared demo space: other visitors who join it see what you add here, and anyone who joins as an " +
@@ -81,8 +96,11 @@ fun sharedDemoNoteText(clientName: String): String =
 object JoinApi {
     suspend fun joinable(): List<JoinableView> = parseJoinable(Http.getApi(JOIN.joinablePath))
 
-    /** Joins [client] as [role], acknowledged; the session is then that user. Answers the user's id. */
-    suspend fun join(client: String, role: String): Long =
-        Http.sendApi("POST", JOIN.joinPath, mapOf(JOIN.client to client, JOIN.role to role, JOIN.acknowledged to true))[EP.results]
+    /**
+     * Joins [client] as [role], [acknowledged] on this visit or not (a client joined before needs no acknowledgment
+     * again); the session is then that user. Answers the user's id.
+     */
+    suspend fun join(client: String, role: String, acknowledged: Boolean): Long =
+        Http.sendApi("POST", JOIN.joinPath, mapOf(JOIN.client to client, JOIN.role to role, JOIN.acknowledged to acknowledged))[EP.results]
             .toJsonMapOrEmpty()[JOIN.userId].toOptLong() ?: 0L
 }

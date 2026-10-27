@@ -163,6 +163,33 @@ class ClientJoinTest : StringSpec({
         join(again, SC.acme, PERSONA.admin)[JOIN.userId] shouldNotBe deletedId
     }
 
+    "a visitor who has joined a client joins it as another role without the acknowledgment (issue #1410)" {
+        fun joined(user: TestUser, client: String) = joinable(user).first { it[JOIN.client] == client }[JOIN.joined]
+        fun joinUnacknowledged(user: TestUser, client: String, role: String) =
+            user.postData(JOIN.joinPath, mapOf(JOIN.client to client, JOIN.role to role))
+        val visitor = TestUser.create(reference, "returning@join1410.test")
+        joined(visitor, ConfDemo.client) shouldBe null
+        val speaker = join(visitor, ConfDemo.client, ConfDemo.speakerRole)[JOIN.userId].toOptLong().shouldNotBeNull()
+
+        val back = TestUser.create(reference, "returning@join1410.test", userClient = CL.public)
+        joined(back, ConfDemo.client) shouldBe true
+        // Only the client joined: another still asks.
+        joined(back, SC.acme) shouldBe null
+        back.expectError(EXC.badInput, JOIN.joinPath, mapOf(JOIN.client to SC.acme, JOIN.role to PERSONA.admin))
+            .toString() shouldContain "shared demo space"
+        val organizer = joinUnacknowledged(back, ConfDemo.client, ConfDemo.organizerRole)[JOIN.userId].toOptLong().shouldNotBeNull()
+        back.getData(AEP.selfInfo)[UPF.userId] shouldBe organizer
+
+        // Users an administrator disabled still count: the visitor joined, and acknowledged it then.
+        val users = UserService.get(reference)
+        for (userId in listOf(speaker, organizer)) {
+            users.deleteUser(reference.mkSubContext("joinTest", ConfDemo.client), users.queryByUserId(reference, userId)!!, permanent = false)
+        }
+        val again = TestUser.create(reference, "returning@join1410.test", userClient = CL.public)
+        joined(again, ConfDemo.client) shouldBe true
+        joinUnacknowledged(again, ConfDemo.client, ConfDemo.committeeRole)[JOIN.userId].toOptLong().shouldNotBeNull()
+    }
+
     "a join is refused without the acknowledgment, and for what is not offered" {
         val visitor = TestUser.create(reference, "careful@join1248.test")
         visitor.expectError(EXC.badInput, JOIN.joinPath, mapOf(JOIN.client to SC.acme, JOIN.role to PERSONA.admin))
