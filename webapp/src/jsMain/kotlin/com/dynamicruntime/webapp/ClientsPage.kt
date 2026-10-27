@@ -539,6 +539,7 @@ private fun ChildrenBuilder.clientDetail(
                 }
                 SandboxSection {
                     this.row = overview
+                    this.acrossClients = acrossClients
                     this.onChanged = onChanged
                 }
             }
@@ -1157,6 +1158,8 @@ internal fun ChildrenBuilder.impactReportBody(report: ImpactReportView, formsOpe
 
 external interface SandboxSectionProps : Props {
     var row: ClientOverview
+    /** Whether the caller sees every client, for whom a sandbox's way back to its client is a plain link. */
+    var acrossClients: Boolean
     var onChanged: () -> Unit
 }
 
@@ -1168,11 +1171,44 @@ external interface SandboxSectionProps : Props {
 private val SandboxSection = FC<SandboxSectionProps> { props ->
     var busy by useState(false)
     var error by useState<DisplayError?>(null)
+    val bump = useRefreshBump()
+    val shellFacts = useShellFacts()
     useEffect(props.row.clientId) { error = null }
     val control = sandboxControl(props.row)
     p {
         className = ClassName("subtitle")
         +control.text
+    }
+    // The way back to the client (issue #1422; the counterpart of the publishing bar's "Publish from its sandbox"):
+    // having published here, to see the client as its people do. Offered on every sandbox page, whatever is published.
+    // In a sandbox session it switches back as the app bar's "Back to <client>" does, to the same user; an
+    // administrator who sees every client, looking at a sandbox's page from outside, needs only the link.
+    sandboxWayBackTarget(props.row, props.acrossClients, shellFacts.inSandbox, shellFacts.sandboxWayBackUserId)?.let { parent ->
+        p {
+            className = ClassName("subtitle")
+            +"What is published here reaches $parent's people. "
+            a {
+                className = ClassName("wf-cell-link")
+                href = clientDetailHref(parent)
+                shellFacts.sandboxWayBackUserId?.takeIf { shellFacts.inSandbox }?.let { userId ->
+                    title = "Leave the sandbox, and show $parent's own page."
+                    onClick = { e ->
+                        e.preventDefault()
+                        error = null
+                        clientsScope.launch {
+                            try {
+                                AuthApi.leaveSandbox(userId)
+                                afterSessionChange(bump, listOf(HP.page to HMENU.pageClients, HP.client to parent))
+                            } catch (e: Throwable) {
+                                error = userFacingError(e)
+                            }
+                        }
+                    }
+                }
+                +"Back to $parent"
+            }
+            +" to see it as they do."
+        }
     }
     control.add?.let { add ->
         Button {
@@ -1195,7 +1231,14 @@ private val SandboxSection = FC<SandboxSectionProps> { props ->
             +(if (add) "Add a sandbox" else "Remove the sandbox")
         }
     }
-    error?.let { errorText(if (control.add == true) "Couldn't add the sandbox." else "Couldn't remove the sandbox.", it) }
+    error?.let {
+        val lead = when (control.add) {
+            true -> "Couldn't add the sandbox."
+            false -> "Couldn't remove the sandbox."
+            null -> "Couldn't leave the sandbox."
+        }
+        errorText(lead, it)
+    }
 }
 
 external interface RetirementSectionProps : Props {

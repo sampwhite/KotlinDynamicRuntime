@@ -704,7 +704,12 @@ Sandbox and offers **Add a sandbox** / **Remove the sandbox** (`sandboxControl`)
 stored definition, **publishes** it and reloads -- the published definition decides both the sandbox and the tier,
 so a draft would change nothing -- and is refused for a source-defined client (its flag is set in source), for a
 sandbox, and while that config has unpublished changes. A client with a sandbox runs only published configuration.
-A sandbox's own detail says whose it is. In the listing each sandbox follows its parent
+A sandbox's own detail says whose it is. It also offers the way back (issue #1422), in the same panel as the publishing
+bar's "Publish from its sandbox" and whatever is published (`sandboxWayBackTarget`): **Back to <client>**, which in a
+sandbox session leaves it as the app bar's **Back to** does (`ShellFacts.sandboxWayBackUserId`, the same user) and
+lands on the client's page, and for an `allClients` administrator looking from outside is a plain link. It is in this
+section rather than beside the publishing bar because the bar is not drawn for a sandbox whose client stores no
+configuration (one defined in source code, as the sample's acme is). In the listing each sandbox follows its parent
 (`withSandboxesBesideParents`) with a "sandbox of <id>" note (`sandboxRowNote`); the overview rows carry
 `sandboxOf` and `hasSandbox`. A scoped administrator has no listing (issue #1082), so only an `allClients` one
 sees sandbox rows.

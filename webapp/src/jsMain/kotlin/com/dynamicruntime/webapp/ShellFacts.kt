@@ -25,6 +25,9 @@ import react.use
  *   drawn from -- see [copyRefAddress]. Empty until the shell has been told, when such an image draws its alt text.
  * - [inSandbox] is whether the session is in a sandbox (issue #1330), which decides how a switch to another of the
  *   person's users is made -- see [switchesFromSandbox]. False until the shell has been told.
+ * - [sandboxWayBackUserId] is, in a sandbox, the user the app bar's "Back to <client>" switches to ([sandboxWayBack]),
+ *   so a page can offer the same way back where it is wanted (a sandbox's own Clients page, issue #1422). Null outside
+ *   a sandbox, when the person has no user to go back to, and until the shell has been told.
  * - [whatIsThisLink] and [whatIsThisHide] are the words of every "What is this?" link and of closing what it opened
  *   ([WhatIsThis], issue #1330): the app's words, not a page's, so they are the shell's copy (the `home` file's
  *   `whatIsThis` namespace) rather than each page's. Null until the shell's copy has arrived, when the link says it
@@ -40,6 +43,7 @@ data class ShellFacts(
     val fileRefs: Map<String, String> = emptyMap(),
     val images: Map<String, String> = emptyMap(),
     val inSandbox: Boolean = false,
+    val sandboxWayBackUserId: Long? = null,
     val whatIsThisLink: String? = null,
     val whatIsThisHide: String? = null,
 )
@@ -64,6 +68,7 @@ fun shellFactsOf(config: HomeConfig, shellCopy: Copy? = null): ShellFacts = Shel
     fileRefs = config.fileRefs,
     images = config.images,
     inSandbox = switchesFromSandbox(config),
+    sandboxWayBackUserId = config.sandboxOf?.let { sandboxWayBack(it, config.users)?.userId },
     whatIsThisLink = shellCopy?.opt(HFRAG.whatIsThisNs, HFRAG.whatIsThisLink)?.ifBlank { null },
     whatIsThisHide = shellCopy?.opt(HFRAG.whatIsThisNs, HFRAG.whatIsThisHide)?.ifBlank { null },
 )
