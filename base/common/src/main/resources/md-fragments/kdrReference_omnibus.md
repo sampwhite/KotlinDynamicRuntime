@@ -13,6 +13,15 @@ This is a **reference deployment** of the KotlinDynamicRuntime: a working instan
 from the same code and configuration as any other. Its data is kept in a temporary database that is cleared from
 time to time, so anything you add here will not last.
 
+The suggested next step is to register a user of your own: choose **Register** from the menu, and give your email
+address. Once you are signed in, this page lists the demo clients you can join, the conference demo among them, so
+you can try each one as an administrator or as one of its people.
+
+Your email address is used only to sign you in and for mail about your account here, such as a verification code.
+It is not shared with anyone outside this site, and it is not used for marketing or to contact you about anything
+else. Within the site, a client's administrators can see the email addresses of its users, so joining a demo shows
+yours to the demo's administrators, as its join page explains.
+
 Open **Documents** from the menu to read how it is put together, starting with the conference demo -- a client
 built from configuration alone, explained piece by piece.
 
