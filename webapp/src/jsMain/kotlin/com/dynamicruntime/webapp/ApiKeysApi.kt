@@ -67,6 +67,9 @@ fun apiKeyAccessText(access: String): String = if (access == AKEY.read) "Read-on
 /** What a key's access lets it do, as the start of a sentence: "It is read-only", "It has full access". Pure. */
 fun apiKeyAccessSentence(access: String): String = if (access == AKEY.read) "It is read-only" else "It has full access"
 
+/** The title of the guide to using a key or a token (`docs/api-keys-and-tokens.md`), as the key screens link to it. */
+const val apiKeysGuideTitle = "API keys and access tokens"
+
 /** What the API keys section says a key is, to its owner ([forSelf]) or to their administrator. Pure. */
 fun apiKeysIntro(forSelf: Boolean): String = if (forSelf) {
     "An API key lets a script or another program use this site as you, without signing in. Keep it secret, as you " +

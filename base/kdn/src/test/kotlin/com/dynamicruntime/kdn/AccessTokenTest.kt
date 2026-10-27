@@ -11,6 +11,7 @@ import com.dynamicruntime.common.gedra.ClientUsageType
 import com.dynamicruntime.common.gedra.GedraConfigReload
 import com.dynamicruntime.common.gedra.GedraConfigService
 import com.dynamicruntime.common.gedra.gedraConfig
+import com.dynamicruntime.common.home.HDOC
 import com.dynamicruntime.common.http.request.RequestHandler
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.http.request.TestHttpClient
@@ -347,6 +348,17 @@ class AccessTokenTest : StringSpec({
         published() shouldContain newKid
         published() shouldContain again[ATOK.newKeyId]
         bearer(before).sendGetRequest(AEP.selfInfo).rptStatusCode shouldBe EXC.authNeeded
+    }
+
+    "the guide for program authors names only endpoints that exist" {
+        // Served in-app as the `api-keys-and-tokens` document; a renamed path should break this, not the guide's readers.
+        val guide = AccessTokenTest::class.java.classLoader.getResourceAsStream("md-docs/${HDOC.apiKeysAndTokens}.md")
+            .shouldNotBeNull().use { it.readBytes().toString(Charsets.UTF_8) }
+        val named = Regex("/kda(/[A-Za-z][A-Za-z0-9/]*)").findAll(guide).map { it.groupValues[1] }.toSet()
+        named shouldContain ATOK.token
+        named shouldContain ATOK.jwks
+        val served = cxt.getGlobalSchema().endpoints.values.map { it.path }.toSet()
+        named.filterNot { it in served } shouldBe emptyList()
     }
 
     "the key set and the token answer are documented as their standards have them" {

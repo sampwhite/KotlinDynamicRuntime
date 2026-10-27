@@ -7,6 +7,8 @@ what a key is, how it is checked, what it may and may not do, how long it lasts,
 **Status:** keys are built (#1402), and so is exchanging a key for a short-lived access token (#1403). What is not
 built is listed at the end.
 
+How a program uses a key or a token, with examples, is in [API keys and access tokens](../api-keys-and-tokens.md).
+
 ## What a key is
 
 A key looks like this:

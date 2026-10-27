@@ -78,6 +78,7 @@ val embedDocs by tasks.registering(Copy::class) {
     // the HDOC registry and coreDocs() in HomeEndpoints, which carries the same paths.
     val inAppDocs = mapOf(
         "docs/extending.md" to "extending",
+        "docs/api-keys-and-tokens.md" to "api-keys-and-tokens",
         "docs/development/code-guide.md" to "code-guide",
         "docs/development/deferred-work.md" to "deferred-work",
         "docs/design/client-definition.md" to "client-definition",
@@ -89,6 +90,7 @@ val embedDocs by tasks.registering(Copy::class) {
         "docs/design/file-refs.md" to "file-refs",
         "docs/design/sandboxes.md" to "sandboxes",
         "docs/design/user-search.md" to "user-search",
+        "docs/design/api-keys.md" to "api-keys",
         "docs/history/gedra-workflow.md" to "gedra-workflow",
     )
     for ((path, docId) in inAppDocs) {

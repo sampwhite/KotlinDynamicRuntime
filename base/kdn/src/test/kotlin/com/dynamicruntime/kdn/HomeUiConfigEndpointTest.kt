@@ -126,9 +126,9 @@ class HomeUiConfigEndpointTest : StringSpec({
             .obj(UIC.state).list(HFLD.links).map { it!!.toJsonMap() }
         val ids = links.map { it[HFLD.id] }
         val core = listOf(
-            HDOC.readme, HDOC.extending, HDOC.codeGuide, HDOC.clientDefinition, HDOC.deferredWork,
+            HDOC.readme, HDOC.extending, HDOC.apiKeysAndTokens, HDOC.codeGuide, HDOC.clientDefinition, HDOC.deferredWork,
             HDOC.gedraConfigAndData, HDOC.gedraEntry, HDOC.gedraStates, HDOC.uiBlock, HDOC.reporting,
-            HDOC.fileRefs, HDOC.sandboxes, HDOC.userSearch, HDOC.gedraWorkflow,
+            HDOC.fileRefs, HDOC.sandboxes, HDOC.userSearch, HDOC.apiKeys, HDOC.gedraWorkflow,
             HDOC.schemaDialect, HDOC.license,
         )
         ids shouldContainAll core
@@ -136,11 +136,12 @@ class HomeUiConfigEndpointTest : StringSpec({
         links.forEach { (it[HFLD.sourcePath] as String).isNotEmpty() shouldBe true }
         // And the one-line description the Documents listing shows beside each (issue #554).
         links.forEach { (it[HFLD.description] as String).isNotEmpty() shouldBe true }
-        // The listing offers the README, the extending guide, the code guide, the schema dialect reference (issue #1347),
+        // The listing offers the README, the extending guide, the API keys and tokens guide (issue #1403), the code guide,
+        // the schema dialect reference (issue #1347),
         // and the license (issue #1238); the design documents are served but unlisted, as a suite's inner pages -- the
         // conference demo's, say -- are (issue #1136).
         val listed = links.filter { it[HFLD.listed] == true }.map { it[HFLD.id] }
-        val offered = listOf(HDOC.readme, HDOC.extending, HDOC.codeGuide, HDOC.schemaDialect, HDOC.license)
+        val offered = listOf(HDOC.readme, HDOC.extending, HDOC.apiKeysAndTokens, HDOC.codeGuide, HDOC.schemaDialect, HDOC.license)
         listed shouldContainAll offered
         // The license reads last, after the documents components loaded after `common` contribute (issue #1238).
         listed.last() shouldBe HDOC.license

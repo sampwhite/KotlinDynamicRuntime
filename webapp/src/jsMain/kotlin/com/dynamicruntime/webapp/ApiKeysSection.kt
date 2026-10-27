@@ -1,5 +1,6 @@
 package com.dynamicruntime.webapp
 
+import com.dynamicruntime.common.home.HDOC
 import com.dynamicruntime.common.home.HMENU
 import com.dynamicruntime.common.user.AKEY
 import com.dynamicruntime.common.user.ApiKeyInfo
@@ -24,6 +25,8 @@ import react.dom.html.ReactHTML.tr
 import react.useEffect
 import react.useState
 import web.cssom.ClassName
+import web.window.WindowTarget
+import web.window._blank
 
 private val apiKeysScope = MainScope()
 
@@ -285,7 +288,11 @@ val ApiKeysSection = FC<ApiKeysSectionProps> { props ->
         h2 { +"API keys" }
         p {
             className = ClassName("subtitle")
-            +apiKeysIntro(forSelf)
+            +"${apiKeysIntro(forSelf)} "
+            a {
+                href = docHref(HDOC.apiKeysAndTokens)
+                +"How a program uses a key"
+            }
         }
         loadError?.let { errorText("Couldn't read the keys.", it) }
         val loaded = page
@@ -398,6 +405,18 @@ val ApiKeySecretDialog = FC<ApiKeySecretDialogProps> { props ->
                 code { +command }
             }
             CopyButton { text = command; label = "Copy the command" }
+            p {
+                className = ClassName("subtitle")
+                +"To exchange it for a short-lived access token, or to check one in another service, see "
+                a {
+                    href = docHref(HDOC.apiKeysAndTokens)
+                    // In a new tab: leaving the page would close this dialog, and the key is shown nowhere else.
+                    target = WindowTarget._blank
+                    rel = "noopener"
+                    +apiKeysGuideTitle
+                }
+                +"."
+            }
             div {
                 className = ClassName("api-key-dialog-actions")
                 Button {
