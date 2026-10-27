@@ -15,6 +15,12 @@ The examples use `https://app.example.com` for the deployment. Every API path st
   must check who is calling. Any service can check a token without calling back here, and the long-lived key never
   leaves your program.
 
+**You never have to use a token.** Sending the key itself on every request is fully supported, and for a program that
+calls this deployment directly it is the simpler choice and gives up nothing. Revoking a key takes effect on its next
+request, and this deployment checks a token's key on every request anyway, so a token is no safer and no faster here.
+Reach for one only when another service needs to check the credential, or when the key should not travel with each
+request.
+
 Either one acts as the key's user, with that user's permissions as they are now. A **read-only** key, and every token
 exchanged for one, can only look at things (GET requests). A full key can do anything its user can, except what needs a
 person signed in: managing keys, signing in or out, switching users or clients, or changing a password.
