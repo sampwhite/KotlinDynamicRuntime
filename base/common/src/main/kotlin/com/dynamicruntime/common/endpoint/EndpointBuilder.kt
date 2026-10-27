@@ -187,8 +187,8 @@ class KdrEndpoint(
      * Whether something re-reads this endpoint on a timer rather than because a person asked (issue #1372): the
      * shell configs a visible tab re-reads every minute to stay current (the webapp's idle poll), and the health a
      * monitor checks. A call to one is never a person's activity, so it renews no session -- a tab left open does
-     * not keep its session alive. Such calls are also the bulk of a log's routine lines, which is why a polled
-     * endpoint is the one to aggregate rather than log call by call.
+     * not keep its session alive. Such calls are also the bulk of a log's routine lines, so a successful one writes
+     * no request line and is counted instead, in a summary every five minutes (issue #1395, `PolledCallLog`).
      *
      * A property of the endpoint, not of the request, so the server decides it: nothing a caller sends makes a
      * request count as polled or not. The webapp's idle poll reads polled endpoints and nothing else.
