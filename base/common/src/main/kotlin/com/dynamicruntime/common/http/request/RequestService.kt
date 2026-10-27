@@ -81,6 +81,9 @@ class RequestService : ServiceInitializer {
     /** How many sign-in steps may still start now, under the cap (issue #1299) -- for a test to wait on. */
     val authPermitsAvailable: Int get() = authPermits.availablePermits()
 
+    /** The successful calls to polled endpoints, counted in place of their request lines (issue #1395). */
+    val polledCalls = PolledCallLog()
+
     /** The context root under which content is served; from [ACFG.contentContextRoot]. Bound in [checkInit]. */
     var contentContextRoot: String = ContextRoot.cp
 
@@ -659,7 +662,14 @@ class RequestService : ServiceInitializer {
             return
         }
 
-        handler.logSuccess(cxt, EXC.ok)
+        // A polled endpoint's call is counted rather than logged (issue #1395) -- unless the caller asked to see what
+        // the request did with a `_debug` tag, `captureLogs` among them, which writes its line as any request's does.
+        val endpoint = cxt.request?.endpoint
+        if (endpoint?.polled == true && cxt.debug == null) {
+            polledCalls.record(cxt, "${handler.method}:${handler.uri}", cxt.durationMs())
+        } else {
+            handler.logSuccess(cxt, EXC.ok)
+        }
     }
 
     /**
