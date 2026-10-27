@@ -103,6 +103,8 @@ class HomeMenuTest : StringSpec({
             // Their client is `hub`, the root of the platform's own customer, which they act for (issue #1114).
             page(HMENU.myCustomer, "My customer", HMENU.pageCustomers),
             page(HMENU.reports, "Reports", HMENU.pageReports),
+            // The keys of the users they administer (issue #1402), offered as Reports is.
+            page(HMENU.apiKeys, "API keys", HMENU.pageApiKeys),
             page(HMENU.cfactReference, "Client facts", HMENU.pageCfacts),
             // Their listing is every form in their client, not only their own (issue #1091).
             page(HMENU.clientForms, "Forms", HMENU.pageForms),

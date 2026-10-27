@@ -102,6 +102,7 @@ fun testSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.test") {
                     "become, creating it when there is none.",
             )
         },
+        sessionOnly = true,
     ) { c, request ->
         val service = UserService.get(c)
         service.checkInit(c) // idempotent; ensures the handler is built

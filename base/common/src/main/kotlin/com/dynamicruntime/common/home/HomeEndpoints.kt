@@ -402,6 +402,9 @@ fun homeMenuBlock(): UiBlockSource = uiBlock(
         // endpoints admit, so a `public` self-administrator is not offered a page that would refuse them (issue
         // #1091). The endpoints stay the authority.
         menuItem(HMENU.reports, "Reports", UiRoute(HMENU.pageReports), cfactExpression = "${CFACTS.administersClient},${CFACTS.app}")
+        // The API keys of the users a client's administrator administers (issue #1402): offered as Reports is, to the
+        // caller the key endpoints admit, so a `public` self-administrator -- who manages their own on Profile -- is not.
+        menuItem(HMENU.apiKeys, "API keys", UiRoute(HMENU.pageApiKeys), cfactExpression = "${CFACTS.administersClient},${CFACTS.app}")
         // The Operator group (issue #540): a parent header and the deployment-operator diagnostic pages under
         // it, plus an "Overview" landing page that explains each. Parent and children share the one cfact
         // (isDeploymentOperator), so a non-operator sees neither the header nor an orphaned child, and the

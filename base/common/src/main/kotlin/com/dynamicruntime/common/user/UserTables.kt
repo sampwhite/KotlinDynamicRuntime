@@ -17,6 +17,19 @@ object UT {
     const val authUsers = "AuthUsers"
     const val authUserDevices = "AuthUserDevices"
     const val linkedUsers = "LinkedUsers"
+
+    /** API keys (issue #1402): each acts as one user, and only a hash of its secret is kept. */
+    const val authApiKeys = "AuthApiKeys"
+}
+
+/**
+ * `AuthApiKeys` column names beyond the shared ones in [AKEY] (issue #1402). Backend only: the hash never leaves the
+ * server, so nothing the frontend reads names it.
+ */
+@Suppress("ConstPropertyName")
+object APK {
+    /** The SHA-256 of the key's secret, in hex: what a presented key is checked against. */
+    const val secretHash = "secretHash"
 }
 
 /**
@@ -292,5 +305,23 @@ fun authTables(cxt: KdrCxt): List<KdrTable> = tableModule(cxt, namespace = "user
         column(AUD.verifyExpiration, "When the device's verification expires.") { dateTime() }
         primaryKey(AI.identityId, AUD.deviceGuid)
         index(AUD.deviceGuid)
+    }
+    table(UT.authApiKeys, "API keys (issue #1402): each acts as one user, and only a hash of its secret is kept.") {
+        column(AKEY.keyId, "The key's public id, part of the key itself.", required = true)
+        column(AKEY.name, "What the key is for, as its maker named it.", required = true)
+        column(AKEY.access, "'${AKEY.read}' (GET requests only) or '${AKEY.full}'.", required = true)
+        column(APK.secretHash, "The SHA-256 of the key's secret, in hex.", required = true)
+        column(AKEY.expiresAt, "When the key stops working.", required = true) { dateTime() }
+        column(AKEY.lastUsedAt, "When the key was last used, to within an hour.") { dateTime() }
+        column(AKEY.revokedAt, "When the key was revoked; a revoked key is also disabled.") { dateTime() }
+        column(AKEY.revokedBy, "Who revoked it.") { type = SCT.integer }
+        primaryKey(AKEY.keyId)
+        // The owner -- the user the key acts as -- and its client, stamped from the owner rather than from whoever made
+        // the key: an administrator makes keys for other people.
+        forUsers()
+        // An owner's keys, and a client's, for the listings.
+        index(PF.client, PF.userId)
+        // The in-memory cache ([ApiKeyService]) reloads by the rows changed since it last looked.
+        index(PF.updatedAt)
     }
 }

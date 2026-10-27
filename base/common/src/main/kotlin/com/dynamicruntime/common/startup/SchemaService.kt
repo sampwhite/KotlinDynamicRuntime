@@ -1863,7 +1863,11 @@ class SchemaService : ServiceInitializer, ClientSchemaSource {
             // closed between the catalog and the gate. A test-only endpoint the caller has no test access to is
             // not withheld but absent (issue #1149), as the dispatcher treats it, so it is not explained either.
             val (visible, withheld) = surface.schema.endpoints.values
-                .filter { surfaceOf(it, surface.client, surface.named, surface.schema.endpoints.values) && it.existsFor(cxt) }
+                // An endpoint the caller's API key may not call is left out too (issue #1402), as the dispatcher refuses it.
+                .filter {
+                    surfaceOf(it, surface.client, surface.named, surface.schema.endpoints.values) && it.existsFor(cxt) &&
+                        it.keyRefusal(cxt) == null
+                }
                 .partition { ep -> isVisibleTo(cxt, ep) }
             explainAccess(cxt, withheld)
             val renderings = visible
@@ -1923,7 +1927,10 @@ class SchemaService : ServiceInitializer, ClientSchemaSource {
             // Another client's own endpoint is no match for a caller who may not look at that client (issue #1293),
             // as a client that does not exist is none.
             val found = surface.schema.endpoints["$path:$method"]
-                ?.takeIf { it.existsFor(cxt) && clientEndpointOpenTo(cxt, it) && (cxt.isEnvAuthEffective || shownWithoutEnvAuth(cxt, it)) }
+                ?.takeIf {
+                    it.existsFor(cxt) && it.keyRefusal(cxt) == null && clientEndpointOpenTo(cxt, it) &&
+                        (cxt.isEnvAuthEffective || shownWithoutEnvAuth(cxt, it))
+                }
             val endpoint = found?.takeIf { isVisibleTo(cxt, it) }
             explainAccess(cxt, if (found != null && endpoint == null) listOf(found) else emptyList())
             val renderings = listOfNotNull(endpoint).map { renderEndpoint(it, surface.schema.defs) }

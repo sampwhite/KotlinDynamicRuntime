@@ -197,6 +197,7 @@ fun clientJoinSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, JOIN.namespace)
             field(JOIN.role, "The role to join it as.", required = true)
             field(JOIN.acknowledged, "That the caller has read that the client is a shared demo space.") { type = SCT.boolean }
         },
+        sessionOnly = true,
     ) { c, request ->
         val role = request[JOIN.role].toOptStr().orEmpty()
         val row = ClientJoin.join(c, request[JOIN.client].toOptStr().orEmpty(), role, request[JOIN.acknowledged] == true)

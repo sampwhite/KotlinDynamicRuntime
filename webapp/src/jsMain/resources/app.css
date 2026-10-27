@@ -1811,3 +1811,20 @@ body.dv-open .app-content { padding-right: calc(var(--dv-panel-width) + 16px); }
 .client-disclosure > summary:hover { color: var(--accent-brighter); }
 .client-disclosure[open] > summary { margin-bottom: 10px; }
 .client-disclosure > * + * { margin-top: 14px; }
+
+/* API keys (issue #1402): the listing, a key's extension under its row, the create form, and the one-time dialog. */
+.api-keys-section { margin-top: 24px; }
+.api-keys .api-key-dead td { color: var(--text-muted); }
+.api-key-actions { display: flex; gap: 4px; flex-wrap: wrap; }
+.api-key-extend { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.api-key-create { margin-top: 12px; }
+.api-key-secret {
+    margin: 8px 0;
+    padding: 8px 10px;
+    background: var(--surface-page);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    overflow-wrap: anywhere;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.api-key-dialog-actions { display: flex; justify-content: flex-end; margin-top: 16px; }

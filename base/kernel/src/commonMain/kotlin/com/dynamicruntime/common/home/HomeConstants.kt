@@ -253,6 +253,8 @@ object HMENU {
     const val myCustomer = "myCustomer"
     /** The named reports an administrator may run over their client's forms (issue #981). */
     const val reports = "reports"
+    /** The API keys of the users an administrator administers (issue #1402). */
+    const val apiKeys = "apiKeys"
     /** The simulations a test instance offers, to provision a canned scenario and sign in to it (issue #997). */
     const val simulations = "simulations"
     const val envReference = "envReference"
@@ -327,6 +329,7 @@ object HMENU {
     const val pageClients = "clients"
     const val pageCustomers = "customers"
     const val pageReports = "reports"
+    const val pageApiKeys = "apiKeys"
     /**
      * The Reports page's own route parameters (issues #1007, #1036): the report that is open, how it is shown, and
      * the view that shows a report's history. Here, beside the page id, because a simulation's start page is built
