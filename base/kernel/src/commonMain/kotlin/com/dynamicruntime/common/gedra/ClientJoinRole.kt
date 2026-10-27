@@ -46,6 +46,12 @@ object JOIN {
      */
     const val removed = "removed"
 
+    /**
+     * On a client: true when the caller has joined it -- they hold a user in one of its roles, or held one since
+     * disabled -- so they acknowledged its disclosure then and a join needs no acknowledgment again (issue #1410).
+     */
+    const val joined = "joined"
+
     // A role's fields.
     const val name = "name"
     const val label = "label"

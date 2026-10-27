@@ -29,7 +29,9 @@ import com.dynamicruntime.common.util.toOptStr
  *   ([UserService.claimUser]) checks the persona, the suffix and the client's plan, and finds a user the person
  *   already has there rather than making a second.
  * - **Acknowledged.** A demo client is shared: what a visitor writes, and as an administrator their view of the
- *   other visitors, are other visitors'. A join must carry the acknowledgment the Join page asks for, or it is refused.
+ *   other visitors, are other visitors'. A join must carry the acknowledgment the Join page asks for, or it is refused
+ *   -- unless the visitor has joined the client before ([Joinable.joined]), and so acknowledged it then: the disclosure
+ *   is the client's, the same whichever role is chosen (issue #1410).
  */
 object ClientJoin {
     /** Whether this deployment offers joining a demo client (issue #1248). */
@@ -44,10 +46,17 @@ object ClientJoin {
 
     /** A client the caller may join, with each of its roles and how the caller stands in it. */
     class Joinable(val def: ClientDef, val roles: List<JoinableRole>) {
+        /**
+         * Whether the caller has joined the client: they hold one of its roles, or held one since disabled. (A user
+         * deleted for good is not counted, as it is not for its role: the person joins as though for the first time.)
+         */
+        val joined: Boolean get() = roles.any { it.userId != null || it.removed }
+
         fun toJsonMap(): Map<String, Any?> = buildMap {
             put(JOIN.client, def.clientId)
             put(JOIN.clientName, def.name.ifEmpty { def.clientId })
             def.description?.let { put(JOIN.description, it) }
+            if (joined) put(JOIN.joined, true)
             put(JOIN.roles, roles.map { held ->
                 buildMap {
                     put(JOIN.name, held.role.name)
@@ -65,39 +74,43 @@ object ClientJoin {
     fun joinable(cxt: KdrCxt): List<Joinable> {
         val identity = joiner(cxt)
         val mine = UserService.get(cxt).usersOfIdentity(cxt, identity.identityId)
-        return ClientService.get(cxt).presentClients.filter { it.joinRoles.isNotEmpty() }.map { def ->
-            Joinable(def, def.joinRoles.map { role ->
-                val held = mine.firstOrNull { it.holds(def.clientId, role) }
-                JoinableRole(role, held?.takeIf { it.isActive }?.userId, held != null && !held.enabled)
-            })
-        }
+        return ClientService.get(cxt).presentClients.filter { it.joinRoles.isNotEmpty() }.map { standing(it, mine) }
     }
+
+    /** How the person whose users are [mine] stands in [def]'s roles. */
+    private fun standing(def: ClientDef, mine: List<AuthUserRow>): Joinable =
+        Joinable(def, def.joinRoles.map { role ->
+            val held = mine.firstOrNull { it.holds(def.clientId, role) }
+            JoinableRole(role, held?.takeIf { it.isActive }?.userId, held != null && !held.enabled)
+        })
 
     /**
      * Joins [client] as its role [roleName] for the person signed in as [cxt]'s user, who has [acknowledged] the
-     * disclosure: their user there, found or made, carrying the role's labels. The endpoint then moves the session to it.
+     * disclosure, now or when they first joined the client: their user there, found or made, carrying the role's
+     * labels. The endpoint then moves the session to it.
      */
     fun join(cxt: KdrCxt, client: String, roleName: String, acknowledged: Boolean): AuthUserRow {
         val identity = joiner(cxt)
-        if (!acknowledged) {
-            throw KdrException.mkInput(
-                "Joining '$client' needs the acknowledgment that it is a shared demo space, where other visitors see what you do.",
-            )
-        }
         val def = ClientService.get(cxt).present(client)?.takeIf { it.joinRoles.isNotEmpty() }
             ?: throw KdrException.mkInput("'$client' is not a client you may join.")
         val role = def.joinRoles.firstOrNull { it.name == roleName }
             ?: throw KdrException.mkInput(
                 "'$roleName' is not a role '$client' may be joined as; its roles are ${def.joinRoles.joinToString(", ") { it.name }}.",
             )
+        val users = UserService.get(cxt)
+        val mine = users.usersOfIdentity(cxt, identity.identityId)
+        if (!acknowledged && !standing(def, mine).joined) {
+            throw KdrException.mkInput(
+                "Joining '$client' needs the acknowledgment that it is a shared demo space, where other visitors see what you do.",
+            )
+        }
         // The load already holds a role to a persona the registry has (`joinRoleFaults`); asked again, as the one place
         // a role becomes roles.
         val persona = PERSONA.def(role.persona) ?: throw KdrException("Join role '${role.name}' names no persona.")
-        val users = UserService.get(cxt)
         // A user one of the client's administrators disabled stays so: in a shared demo, joining again must not undo
         // another visitor's decision, which the disclosure tells the visitor an administrator may make. (A user deleted
         // for good gave up its key, so it is not found here, and the person joins as the role afresh.)
-        if (users.usersOfIdentity(cxt, identity.identityId).any { it.holds(client, role) && !it.enabled }) {
+        if (mine.any { it.holds(client, role) && !it.enabled }) {
             throw KdrException.mkInput(
                 "Your ${role.label} user in ${def.name.ifEmpty { client }} was disabled by one of its administrators, so " +
                     "it is not joined again.",
@@ -159,6 +172,11 @@ fun clientJoinSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, JOIN.namespace)
         property(JOIN.client, "The client's id.", required = true)
         property(JOIN.clientName, "The client's name.", required = true)
         property(JOIN.description, "What the client is.")
+        property(
+            JOIN.joined,
+            "True when the caller has joined the client, as any of its roles, and so acknowledged its disclosure " +
+                "then; a join then needs no acknowledgment again (issue #1410). Absent otherwise.",
+        ) { type = SCT.boolean }
         property(JOIN.roles, "The roles it may be joined as.", required = true) {
             type = SCT.array
             items { ref(JOIN.joinableRoleTypeName) }
@@ -188,14 +206,17 @@ fun clientJoinSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, JOIN.namespace)
         JOIN.joinPath,
         "Joins a demo client as one of its roles (issue #1248): a user of the caller's own identity there, found or " +
             "made, with the role's persona and labels; the session moves to it. Refused without the acknowledgment that " +
-            "the client is a shared demo space. Offered only to a caller in '${CL.public}' on a deployment that offers " +
-            "joining; absent elsewhere.",
+            "the client is a shared demo space, unless the caller has joined it before. Offered only to a caller in " +
+            "'${CL.public}' on a deployment that offers joining; absent elsewhere.",
         HttpMethod.POST,
         outputRef = JOIN.resultTypeName,
         inputFields = {
             field(JOIN.client, "The client to join.", required = true)
             field(JOIN.role, "The role to join it as.", required = true)
-            field(JOIN.acknowledged, "That the caller has read that the client is a shared demo space.") { type = SCT.boolean }
+            field(
+                JOIN.acknowledged,
+                "That the caller has read that the client is a shared demo space; not needed once they have joined it.",
+            ) { type = SCT.boolean }
         },
         sessionOnly = true,
     ) { c, request ->
