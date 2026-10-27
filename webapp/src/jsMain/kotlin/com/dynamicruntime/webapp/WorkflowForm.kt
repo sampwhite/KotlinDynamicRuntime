@@ -210,6 +210,8 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
     // required field beneath it.
     var committedByTrait by useState<Map<String, Set<String>>>(emptyMap())
     var wholeChecked by useState<Set<String>>(emptySet())
+    // Traits with a field committed since the last render, checked once the commit's new value is in `valuesByTrait`.
+    var pendingChecks by useState<Set<String>>(emptySet())
     var unmetTraits by useState<Set<String>>(emptySet())
     var savingTask by useState<String?>(null)
     var runError by useState<DisplayError?>(null)
@@ -400,11 +402,20 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
         }
     }
 
-    // A field committed (issue #718): remember it, and re-check its whole trait from the working values -- the
+    // A field committed (issue #718): remember it, and have its whole trait re-checked from the working values -- the
     // panel shows the committed fields' failures now and the rest once the trait is checked as a whole.
+    // The check waits for the next render rather than running here: a choice, checkbox, date, or file emits its new
+    // value and commits in the same handler, so this closure still holds the value from *before* the pick. Checked
+    // here, a first pick of a required choice was flagged as missing, and each later pick judged by the one before.
     fun onFieldCommit(trait: WfTraitView, path: String) {
         committedByTrait = committedByTrait + (trait.traitId to (committedByTrait[trait.traitId].orEmpty() + path))
-        failuresByTrait = failuresByTrait + (trait.traitId to checkFormInput(trait.type, valuesOf(trait.traitId), wf.fieldLayouts).failures)
+        pendingChecks = pendingChecks + trait.traitId
+    }
+    useEffect(pendingChecks) {
+        if (pendingChecks.isEmpty()) return@useEffect
+        val traits = wf.tasks.flatMap { it.traits }.filter { it.traitId in pendingChecks }
+        failuresByTrait = failuresByTrait + traits.associate { it.traitId to checkFormInput(it.type, valuesOf(it.traitId), wf.fieldLayouts).failures }
+        pendingChecks = emptySet()
     }
 
     // Leaving a task in the rail checks it as a whole (issue #718): the user is done with it for now, so what
