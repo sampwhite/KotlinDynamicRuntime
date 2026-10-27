@@ -10,6 +10,7 @@ import com.dynamicruntime.common.util.RandomUtil
 import com.dynamicruntime.common.util.base64Encode
 import com.dynamicruntime.common.util.formatDate
 import com.dynamicruntime.common.util.getOptStr
+import com.dynamicruntime.common.util.sanitizeForDisplay
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonMap
 import com.dynamicruntime.common.util.toOptInstant
@@ -22,12 +23,17 @@ import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
 
-/** One key access tokens are signed with: [retiredAt] is null while it signs, and set once a newer key took over. */
+/**
+ * One key access tokens are signed with. It signs from [signsFrom] -- for a key rotated in, a while after it is
+ * published, so every node holds it before a token names it -- until [retiredAt], when the key after it takes over, and
+ * null until a rotation says when that is.
+ */
 class SigningKey(
     val kid: String,
     val privateKey: PrivateKey,
     val publicKey: ECPublicKey,
     val createdAt: Instant,
+    val signsFrom: Instant = createdAt,
     val retiredAt: Instant? = null,
 ) {
     /** As the instance config stores it. */
@@ -36,17 +42,28 @@ class SigningKey(
         privateField to Es256.encodePrivate(privateKey),
         publicField to Es256.encodePublic(publicKey),
         createdField to createdAt.formatDate(),
+        signsFromField to signsFrom.formatDate(),
         retiredField to retiredAt?.formatDate(),
     )
 
-    /** Whether a token it signed may still be unexpired at [now], for tokens lasting [hours]. */
-    fun mayStillVerify(now: Instant, hours: Int): Boolean = retiredAt == null || now < retiredAt + hours.hours + retirementGrace
+    /** Whether it is the key that signs at [now]. */
+    fun signsAt(now: Instant): Boolean = signsFrom <= now && (retiredAt == null || now < retiredAt)
+
+    /**
+     * Whether a token it signed may still be unexpired at [now]. Measured by the longest a deployment may let a token
+     * last ([ATOK.maxHours]) rather than by its setting today, which a token issued under a longer one would outlive.
+     */
+    fun mayStillVerify(now: Instant): Boolean = retiredAt == null || now < retiredAt + ATOK.maxHours.hours + retirementGrace
+
+    /** This key, ending its signing at [at]. */
+    fun retiredAt(at: Instant): SigningKey = SigningKey(kid, privateKey, publicKey, createdAt, signsFrom, at)
 
     @Suppress("ConstPropertyName")
     companion object {
         const val privateField = "privateKey"
         const val publicField = "publicKey"
         const val createdField = "createdAt"
+        const val signsFromField = "signsFrom"
         const val retiredField = "retiredAt"
 
         /**
@@ -55,18 +72,23 @@ class SigningKey(
          */
         val retirementGrace = 5.minutes
 
-        fun fromStored(m: Map<String, Any?>): SigningKey = SigningKey(
-            kid = m.getOptStr(JWS.kid) ?: throw KdrException("A stored signing key has no '${JWS.kid}'."),
-            privateKey = Es256.decodePrivate(m.getOptStr(privateField) ?: throw KdrException("A stored signing key has no private key.")),
-            publicKey = Es256.decodePublic(m.getOptStr(publicField) ?: throw KdrException("A stored signing key has no public key.")),
-            createdAt = m[createdField].toOptInstant() ?: throw KdrException("A stored signing key has no '$createdField'."),
-            retiredAt = m[retiredField].toOptInstant(),
-        )
+        fun fromStored(m: Map<String, Any?>): SigningKey {
+            val createdAt = m[createdField].toOptInstant() ?: throw KdrException("A stored signing key has no '$createdField'.")
+            return SigningKey(
+                kid = m.getOptStr(JWS.kid) ?: throw KdrException("A stored signing key has no '${JWS.kid}'."),
+                privateKey = Es256.decodePrivate(m.getOptStr(privateField) ?: throw KdrException("A stored signing key has no private key.")),
+                publicKey = Es256.decodePublic(m.getOptStr(publicField) ?: throw KdrException("A stored signing key has no public key.")),
+                createdAt = createdAt,
+                signsFrom = m[signsFromField].toOptInstant() ?: createdAt,
+                retiredAt = m[retiredField].toOptInstant(),
+            )
+        }
 
-        fun mkNew(now: Instant): SigningKey {
+        /** A new key, made at [now], that signs from [signsFrom]. */
+        fun mkNew(now: Instant, signsFrom: Instant = now): SigningKey {
             val pair = Es256.newKeyPair()
             val public = pair.public as? ECPublicKey ?: throw KdrException("The JDK made an EC key pair whose public half is not EC.")
-            return SigningKey(RandomUtil.secureBytes(kidBytes).base64Encode(), pair.private, public, now)
+            return SigningKey(RandomUtil.secureBytes(kidBytes).base64Encode(), pair.private, public, now, signsFrom)
         }
 
         /** Random bytes in a signing key's id. */
@@ -74,9 +96,13 @@ class SigningKey(
     }
 }
 
-/** The signing keys as this node last read them, and when. [signer] is the one key not retired. */
+/** The signing keys as this node last read them, and when. */
 class SigningKeySet(val keys: List<SigningKey>, val loadedAt: Instant) {
-    val signer: SigningKey? get() = keys.filter { it.retiredAt == null }.maxByOrNull { it.createdAt }
+    /** The key that signs at [now]: the newest whose turn has come. */
+    fun signerAt(now: Instant): SigningKey? = keys.filter { it.signsAt(now) }.maxByOrNull { it.signsFrom }
+
+    /** The key that signs next, if a rotation has published one that has not begun to: what a rotation answers. */
+    val newest: SigningKey? get() = keys.maxByOrNull { it.signsFrom }
 
     fun byKid(kid: String): SigningKey? = keys.firstOrNull { it.kid == kid }
 }
@@ -107,9 +133,9 @@ class IssuedToken(val token: String, val expiresInSeconds: Long, val scope: Stri
  * its tokens here at once; a service verifying with the published keys alone honors one until it expires.
  *
  * **The signing keys** are kept as the instance encryption key is, in the instance config, shared by every node of the
- * instance. [rotate] starts signing with a new key and keeps the old one published until every token it signed has
- * expired. A node rereads the keys each [reloadInterval], and at once (throttled) when a token names a key it does not
- * hold, so a rotation on one node reaches the others before their tokens need it.
+ * instance. [rotate] publishes a new key that signs from [publishLead] later, and keeps the old one published until
+ * every token it signed may have expired. A node rereads the keys each [reloadInterval] -- so by the time a new key
+ * signs, every node holds it -- and at once (throttled) when a token names a key it does not hold.
  */
 class AccessTokenService : ServiceInitializer {
     override val serviceName: String = AccessTokenService.serviceName
@@ -137,27 +163,27 @@ class AccessTokenService : ServiceInitializer {
                 if (keys.any { it.retiredAt == null }) null else stored(keys + SigningKey.mkNew(now))
             }
         }
-        val hours = AccessTokenLifetime.hours(cxt)
-        return SigningKeySet(storedKeys(data).filter { it.mayStillVerify(now, hours) }, now)
+        return SigningKeySet(storedKeys(data).filter { it.mayStillVerify(now) }, now)
     }
 
     /**
-     * Starts signing with a new key. The key that signed until now is retired but stays published, and goes on
-     * verifying, until every token it signed has expired; keys retired longer ago than that are dropped. Answers the set
-     * as it now stands.
+     * Rotates in a new signing key. It is published at once and signs from [publishLead] later, when every node has
+     * reread the keys and holds it, so no node refuses a token it signs; the key signing now goes on until then. That
+     * key is then retired, and stays published, verifying the tokens it signed, until the longest a token may last has
+     * passed; keys retired longer ago than that are dropped. Answers the set as it now stands.
      */
     fun rotate(cxt: KdrCxt): SigningKeySet {
         val now = cxt.now()
-        val hours = AccessTokenLifetime.hours(cxt)
+        val takesOver = now + publishLead
         InstanceConfigService.get(cxt).updateConfig(cxt, configType, configName) { current ->
-            val kept = storedKeys(current).filter { it.mayStillVerify(now, hours) }.map { key ->
-                if (key.retiredAt == null) SigningKey(key.kid, key.privateKey, key.publicKey, key.createdAt, now) else key
-            }
-            stored(kept + SigningKey.mkNew(now))
+            val kept = storedKeys(current).filter { it.mayStillVerify(now) }.map { if (it.retiredAt == null) it.retiredAt(takesOver) else it }
+            stored(kept + SigningKey.mkNew(now, takesOver))
         }
         val set = loadKeys(cxt)
         keySet = set
-        LogAuth.info(cxt) { "User ${cxt.userProfile.userId} rotated the access-token signing key; ${set.signer?.kid} now signs." }
+        LogAuth.info(cxt) {
+            "User ${cxt.userProfile.userId} rotated the access-token signing key; ${set.newest?.kid} signs from ${takesOver.formatDate()}."
+        }
         return set
     }
 
@@ -190,8 +216,8 @@ class AccessTokenService : ServiceInitializer {
      * access, lasting [AccessTokenLifetime.hours] and never past the key's expiry.
      */
     fun issue(cxt: KdrCxt, access: ApiKeyAccess): IssuedToken {
-        val signer = currentKeys(cxt).signer ?: throw KdrException("No access-token signing key is available.")
         val now = cxt.now()
+        val signer = currentKeys(cxt).signerAt(now) ?: throw KdrException("No access-token signing key is available.")
         val issuer = issuerOf(cxt)
         val lifetimeEnd = now + AccessTokenLifetime.hours(cxt).hours
         val expiresAt = access.expiresAt?.let { minOf(it, lifetimeEnd) } ?: lifetimeEnd
@@ -232,8 +258,10 @@ class AccessTokenService : ServiceInitializer {
         // Pinning both is what stops an "alg": "none" token, and a JWT of another kind passing for an access token.
         if (header[JWS.alg] != JWS.es256 || header[JWS.typ] != JWS.accessTokenType) refuse("its algorithm or type is not ours")
         val kid = header.getOptStr(JWS.kid) ?: refuse("it names no signing key")
-        val key = keyFor(cxt, kid) ?: refuse("no signing key '$kid' verifies tokens now")
-        if (!Es256.verify(key.publicKey, parts.signingInput, parts.signature)) refuse("its signature does not match key '$kid'")
+        // The header is the caller's to write, so what it names goes into the log tamed: one line, and short.
+        val shownKid = kid.sanitizeForDisplay(maxLen = 40)
+        val key = keyFor(cxt, kid) ?: refuse("no signing key '$shownKid' verifies tokens now")
+        if (!Es256.verify(key.publicKey, parts.signingInput, parts.signature)) refuse("its signature does not match key '$shownKid'")
         val claims = parts.claims
         val audience = claims[JWS.aud]
         val forUs = if (audience is List<*>) issuer in audience else audience == issuer
@@ -271,6 +299,12 @@ class AccessTokenService : ServiceInitializer {
         /** How long a node keeps its copy of the signing keys before rereading them. */
         val reloadInterval = 1.minutes
 
+        /**
+         * How long after a rotation publishes a key it begins to sign: past [reloadInterval], with a margin, so every node
+         * has reread the keys and holds it by then.
+         */
+        val publishLead = reloadInterval + 1.minutes
+
         /** How soon after a read a token naming a key this node does not hold rereads them. */
         val unknownKidReloadInterval = 10.seconds
 
@@ -284,19 +318,14 @@ class AccessTokenService : ServiceInitializer {
          * (`KDR_PUBLIC_URL`) when set, which a service checking a token recognizes; otherwise a name built from the
          * instance's, so every node of it agrees.
          */
-        fun issuerOf(cxt: KdrCxt): String =
-            cxt.getEnvVar(INVITE.publicUrl)?.trim()?.trimEnd('/')?.ifEmpty { null } ?: "urn:kdr:${cxt.instanceConfig.instanceName}"
+        fun issuerOf(cxt: KdrCxt): String = INVITE.configuredPublicUrl(cxt) ?: "urn:kdr:${cxt.instanceConfig.instanceName}"
 
         /**
          * The token in an `Authorization` header [value] when it is shaped as a JWT -- a bearer with two dots that is not
          * an API key -- or null. Whose it is, [authenticate] decides.
          */
-        fun bearerTokenOf(value: String?): String? {
-            val v = value?.trim() ?: return null
-            if (!v.regionMatches(0, AKEY.bearerScheme, 0, AKEY.bearerScheme.length, ignoreCase = true)) return null
-            val token = v.substring(AKEY.bearerScheme.length).trim()
-            return token.takeIf { !it.startsWith(AKEY.prefix) && it.count { c -> c == '.' } == 2 }
-        }
+        fun bearerTokenOf(value: String?): String? =
+            ApiKeyService.bearerOf(value)?.takeIf { !it.startsWith(AKEY.prefix) && it.count { c -> c == '.' } == 2 }
 
         /** [keys] as the instance config stores them. */
         fun stored(keys: List<SigningKey>): Map<String, Any?> = mapOf(ATOK.keys to keys.map { it.toStored() })

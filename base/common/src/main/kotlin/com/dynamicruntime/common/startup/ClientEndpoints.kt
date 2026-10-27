@@ -120,5 +120,13 @@ private fun copyFor(endpoint: KdrEndpoint, client: String): KdrEndpoint {
         // And the promise to check every response (issue #1085): it is made of the output schema, which the copy
         // shares -- resolved against the client's variant, where it is as much the contract as on the shared path.
         validateOutput = endpoint.validateOutput,
+        // And what an API key may do there (issues #1402, #1403): a copy that dropped `sessionOnly` would let a key
+        // reach what only a session may, and one that dropped `keyExchange` would refuse the exchange to read-only keys.
+        sessionOnly = endpoint.sessionOnly,
+        keyExchange = endpoint.keyExchange,
+        // And how its answer and its input travel (issue #1403): the copy shares the output schema, which a bare
+        // answer's is the result's own type, and a form body is read only where the endpoint says so.
+        bareResponse = endpoint.bareResponse,
+        formBody = endpoint.formBody,
     )
 }

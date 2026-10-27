@@ -33,6 +33,9 @@ object INVITE {
     )
 
 
+    /** The configured [publicUrl], trimmed and with no trailing slash, or null when it is not set. */
+    fun configuredPublicUrl(cxt: KdrCxt): String? = cxt.getEnvVar(publicUrl)?.trim()?.trimEnd('/')?.ifEmpty { null }
+
     /**
      * The deployment's public URL for a link in a mail: the configured [publicUrl], else the request's
      * `X-Forwarded-Proto` / `Host` (a proxy's convention for the original), else plain `http` and `Host`.
@@ -40,7 +43,7 @@ object INVITE {
      * the token and say where to enter it.
      */
     fun publicUrlFor(cxt: KdrCxt): String? {
-        cxt.getEnvVar(publicUrl)?.trim()?.trimEnd('/')?.ifEmpty { null }?.let { return it }
+        configuredPublicUrl(cxt)?.let { return it }
         val request = cxt.request?.webRequest ?: return null
         val host = request.getRequestHeader("Host")?.trim()?.ifEmpty { null } ?: return null
         val scheme = request.getRequestHeader("X-Forwarded-Proto")?.trim()?.ifEmpty { null } ?: "http"

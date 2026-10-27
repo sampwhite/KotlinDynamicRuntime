@@ -167,12 +167,14 @@ grant_type=client_credentials
 
 - **The answer** is the token answer of RFC 6749 §5.1, as the whole body: `{access_token, token_type: "Bearer",
   expires_in, scope}`, sent with `Cache-Control: no-store`. An error still travels in the runtime's error envelope.
-- **The body** may be form-encoded, as an OAuth client library sends it, or JSON. A form-encoded body is read for this
-  path alone: a browser posts a form to any site without asking first, so taking JSON and nothing else is part of what
+- **The body** may be form-encoded, as an OAuth client library sends it, or JSON. A form-encoded body is read only by
+  an endpoint that declares `formBody`, which this one alone does: a browser posts a form to any site without asking
+  first, so taking JSON and nothing else is part of what
   keeps a page elsewhere from acting on a signed-in session. The exchange is authenticated by its `Authorization`
   header, which such a form cannot set.
 - **Only a key is exchanged.** A signed-in session is refused (401), and so is a token (403), since a token buying the
-  next would make a token live forever. A read-only key may exchange itself: asking for a token changes nothing.
+  next would make a token live forever. A read-only key may exchange itself: asking for a token changes nothing. The
+  endpoint says both of these by declaring `keyExchange`, which the read-only gate and the endpoint check both read.
 - **Refreshing** is asking again with the key. Refresh tokens belong to user-delegated flows, which are not built.
 
 ### The token
@@ -213,13 +215,15 @@ A token is sent as the key is, `Authorization: Bearer <token>`, and the same ext
   instance. The first node to need one makes it, under the row's lock.
 - **Published** at `GET /kda/auth/jwks` as a JSON Web Key Set (RFC 7517), the whole body. A service verifies a token
   with it alone.
-- **Rotation:** `POST /kda/operator/accessToken/rotateSigningKey` (an operator, from a session) starts signing with a
-  new key.
-  - The old key stays published, and goes on verifying, until every token it signed has expired, plus five minutes for
-    disagreeing clocks.
+- **Rotation:** `POST /kda/operator/accessToken/rotateSigningKey` (an operator, from a session) publishes a new key.
+  - The new key begins to sign two minutes later. A node rereads the keys every minute, so by then every node holds
+    it, and none refuses a token it signs. The old key signs until then.
+  - The old key then stays published, and goes on verifying, for the longest a token may last (168 hours), plus five
+    minutes for disagreeing clocks. That is measured by the most a deployment may set, not by its setting today, which
+    a token issued under a longer one would outlive.
   - The next rotation after that drops it.
-- **How a node hears of a rotation:** it rereads the keys every minute, and at once (no more than every ten seconds)
-  when a token names a key it does not hold.
+- **A token naming a key a node does not hold** makes the node reread the keys at once, no more than every ten
+  seconds, so a run of made-up ids costs no run of reads.
 
 ## Not built
 

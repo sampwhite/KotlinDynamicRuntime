@@ -114,7 +114,8 @@ class TestHttpClient(val instanceConfig: KdrInstanceConfig) {
 
     /**
      * Sends a POST whose body is [form], form-encoded, as an OAuth 2.0 client library sends a token request (issue
-     * #1403). Only the paths in [RequestHandler.formBodyPaths] read such a body.
+     * #1403). Only an endpoint declaring [formBody][com.dynamicruntime.common.endpoint.KdrEndpoint.formBody] reads such a
+     * body.
      */
     fun sendFormRequest(endpoint: String, form: Map<String, Any?>): RequestHandler {
         val headers = LinkedHashMap(curHeaders).apply { put("content-type", mutableListOf(RequestHandler.formUrlEncoded)) }

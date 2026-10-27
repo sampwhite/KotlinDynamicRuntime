@@ -210,6 +210,21 @@ class KdrEndpoint(
      */
     val bareResponse: Boolean = false,
     /**
+     * Whether this endpoint exchanges the API key a request carries for something else -- an access token (issue
+     * #1403). It is the one post a read-only key may make, since asking for a token changes nothing, and refused to a
+     * request sent with a token, since it is the key that is exchanged. See
+     * [ApiKeyAccess.refusal][com.dynamicruntime.common.user.ApiKeyAccess.refusal].
+     */
+    val keyExchange: Boolean = false,
+    /**
+     * Whether a form-encoded body (`application/x-www-form-urlencoded`) is read as this endpoint's input (issue
+     * #1403), as an OAuth 2.0 client library sends a token request. Off for every other endpoint: a browser posts a
+     * form to any site without asking first, so taking JSON and nothing else is part of what keeps a page elsewhere
+     * from acting on a signed-in session. Set it only on an endpoint authenticated some other way, such as by an
+     * `Authorization` header, which such a form cannot set.
+     */
+    val formBody: Boolean = false,
+    /**
      * (List endpoints only.) Whether the output declares `hasMore` / `numAvailable`, so the executor knows to
      * populate them (issue #499). For a handler that returns a plain `List` the executor fills them from the
      * uncapped size; a [ListPage] supplies its own. `numAvailable` defaults **on** when the endpoint has a
@@ -273,7 +288,7 @@ class KdrEndpoint(
      * #1402): a read-only key and anything but a GET, or any key and a [sessionOnly] endpoint. Asked by the dispatcher,
      * which refuses with it, and by the catalog, which leaves the endpoint out.
      */
-    fun keyRefusal(cxt: KdrCxt): String? = cxt.apiKey?.refusal(method.name, sessionOnly, path)
+    fun keyRefusal(cxt: KdrCxt): String? = cxt.apiKey?.refusal(method.name, sessionOnly, path, keyExchange)
 
     @Suppress("ConstPropertyName")
     companion object {
@@ -424,6 +439,10 @@ class SchModuleBuilder(cxt: KdrCxt, namespace: String) : SchTypesBuilder(cxt, na
         sessionOnly: Boolean = false,
         /** The result is the whole body, with no envelope (issue #1403); see [KdrEndpoint.bareResponse]. */
         bareResponse: Boolean = false,
+        /** Exchanges the request's API key (issue #1403); see [KdrEndpoint.keyExchange]. */
+        keyExchange: Boolean = false,
+        /** Reads a form-encoded body as input (issue #1403); see [KdrEndpoint.formBody]. */
+        formBody: Boolean = false,
         handler: KdrEndpointHandler,
     ) {
         val output = if (bareResponse) {
@@ -435,7 +454,8 @@ class SchModuleBuilder(cxt: KdrCxt, namespace: String) : SchTypesBuilder(cxt, na
         endpoints.add(
             KdrEndpoint(path, method, EndpointKind.general, namespace, description, fields, typeRef, false, output,
                 forTestingOnly, handler, publicApi = publicApi, tags = tags, needsClientConfig = needsClientConfig,
-                timingFloor = timingFloor, polled = polled, sessionOnly = sessionOnly, bareResponse = bareResponse),
+                timingFloor = timingFloor, polled = polled, sessionOnly = sessionOnly, bareResponse = bareResponse,
+                keyExchange = keyExchange, formBody = formBody),
         )
     }
 

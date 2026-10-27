@@ -66,8 +66,11 @@ class JwsParts(
     val signature: ByteArray,
 ) {
     companion object {
-        /** Longer than any token this deployment signs, so an absurd header is refused before it is decoded. */
-        const val maxLength = 4096
+        /**
+         * Longer than any JWT this deployment reads -- its own tokens, which are well under a kilobyte, and Google's ID
+         * tokens -- so only an absurd one is refused before it is decoded.
+         */
+        const val maxLength = 16384
 
         /**
          * [token] read apart, or null when it is not three base64url segments of which the first two are JSON

@@ -571,9 +571,13 @@ class RequestService : ServiceInitializer {
         // (issue #1150), so it is known only now that the session is restored -- and before the gate below.
         EnvAuthRules.fromAdminLogin(cxt)
         // A read-only API key (issue #1402) makes GET requests and nothing else, whatever the section and whatever its
-        // owner may do: refused here, before the gate, so no section -- and no content page -- can forget to.
-        cxt.apiKey?.refusal(method, sessionOnly = false, path = appPath)?.let {
-            throw KdrException(it, code = EXC.notAuthorized)
+        // owner may do: refused here, before the gate, so no section -- and no content page -- can forget to. The one
+        // endpoint that exchanges the key (issue #1403) says so itself, and only under the API root.
+        cxt.apiKey?.let { access ->
+            val exchangesKey = focus == ContextFocus.api && cxt.getGlobalSchema().endpoints["$appPath:$method"]?.keyExchange == true
+            access.refusal(method, sessionOnly = false, path = appPath, exchangesKey = exchangesKey)?.let {
+                throw KdrException(it, code = EXC.notAuthorized)
+            }
         }
         // Whether the request keeps its log lines (issue #1173) is decided here, the first moment the fence can be:
         // the caller's env auth, and whether it is in debug, are only known once the session is restored.
@@ -766,6 +770,8 @@ class RequestService : ServiceInitializer {
         handler.declaredSensitive = inputType.properties.filterValues { it.sensitive }.keys
 
         val data = LinkedHashMap<String, Any?>(handler.queryParams)
+        // A form-encoded body is input only where the endpoint says so (issue #1403); see [KdrEndpoint.formBody].
+        if (endpoint.formBody) handler.decodeFormBody()
         handler.postData?.let { data.putAll(it) }
         // Endpoint input is a flat set of top-level fields (issue #40), so the flat HTTP input -- query params
         // and/or POST body -- validates directly, with no re-grouping. The input type is closed to undeclared

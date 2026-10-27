@@ -50,12 +50,12 @@ class ApiKeyAccess(
      * one statement of it: the dispatcher refuses with it, and the endpoint catalog leaves out what it refuses, so a
      * keyed caller is never shown an endpoint that would then refuse them.
      *
-     * The token exchange ([ATOK.token], issue #1403) is the one exception, and in both directions: a read-only key may
-     * post to it, since asking for a token changes nothing, and a token may not, since it is the key that is exchanged
-     * -- one token buying the next would make a token live forever.
+     * An endpoint that [exchangesKey] -- the token exchange, issue #1403 -- is the one exception, and in both directions: a
+     * read-only key may post to it, since asking for a token changes nothing, and a token may not, since it is the key
+     * that is exchanged -- one token buying the next would make a token live forever.
      */
-    fun refusal(method: String, sessionOnly: Boolean, path: String): String? = when {
-        path == ATOK.token -> if (viaToken) "An access token is not exchanged for another; send the API key itself." else null
+    fun refusal(method: String, sessionOnly: Boolean, path: String, exchangesKey: Boolean = false): String? = when {
+        exchangesKey -> if (viaToken) "An access token is not exchanged for another; send the API key itself." else null
         isReadOnly && method != HttpMethod.GET.name -> "This API key is read-only: it may only make GET requests."
         sessionOnly -> "'$path' is not open to API keys; it needs a signed-in session."
         else -> null
@@ -511,10 +511,17 @@ class ApiKeyService : ServiceInitializer {
          * The key in an `Authorization` header [value], or null when the header carries none -- absent, another scheme
          * (a site behind HTTP basic authentication sends `Basic` on every request), or a bearer token that is not ours.
          */
-        fun bearerKeyOf(value: String?): String? {
+        fun bearerKeyOf(value: String?): String? = bearerOf(value)?.takeIf { it.startsWith(AKEY.prefix) }
+
+        /**
+         * The credential in an `Authorization` header [value] sent under the `Bearer` scheme (matched without regard to
+         * case), or null for none. What it is -- a key ([bearerKeyOf]), an access token
+         * ([AccessTokenService.bearerTokenOf]), or someone else's -- is the caller's to tell.
+         */
+        fun bearerOf(value: String?): String? {
             val v = value?.trim() ?: return null
             if (!v.regionMatches(0, AKEY.bearerScheme, 0, AKEY.bearerScheme.length, ignoreCase = true)) return null
-            return v.substring(AKEY.bearerScheme.length).trim().takeIf { it.startsWith(AKEY.prefix) }
+            return v.substring(AKEY.bearerScheme.length).trim()
         }
     }
 }

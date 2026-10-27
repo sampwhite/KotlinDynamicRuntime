@@ -18,7 +18,10 @@ object ATOK {
     /** The public keys that verify a token, as a JSON Web Key Set (RFC 7517). In the anonymous `auth` section. */
     const val jwks = "/auth/jwks"
 
-    /** Starts signing with a new key, keeping the old one published until the tokens it signed have expired. */
+    /**
+     * Publishes a new signing key, which signs a couple of minutes later once every node holds it, keeping the old one
+     * published until the tokens it signed may have expired.
+     */
     const val rotateSigningKey = "/operator/accessToken/rotateSigningKey"
 
     // --- the token request and its answer (RFC 6749 §4.4, §5.1) ---
@@ -32,11 +35,17 @@ object ATOK {
     /** The [tokenType] of every token issued: it is sent as `Authorization: Bearer`. */
     const val bearer = "Bearer"
 
+    /** The answer's headers, which keep anything between here and the program from storing a copy (§5.1). */
+    const val cacheControlHeader = "Cache-Control"
+    const val pragmaHeader = "Pragma"
+    const val noCache = "no-cache"
+
     // --- the key set (RFC 7517) ---
     const val keys = "keys"
 
-    /** What [rotateSigningKey] answers: the id of the key now signing, and how many keys are published. */
-    const val signingKeyId = "signingKeyId"
+    /** What [rotateSigningKey] answers: the new key's id, when it begins to sign, and how many keys are published. */
+    const val newKeyId = "newKeyId"
+    const val signsFrom = "signsFrom"
     const val numPublished = "numPublished"
 
     // --- lifetimes ---

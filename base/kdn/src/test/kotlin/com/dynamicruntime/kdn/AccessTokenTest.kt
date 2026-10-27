@@ -291,7 +291,7 @@ class AccessTokenTest : StringSpec({
         answered.rptStatusCode shouldBe 200
         whoIs(foreign) shouldNotBe owner.userId
         // Signed with this deployment's own key, which a forger does not have: what the signature check cannot tell apart.
-        val signer = AccessTokenService.get(cxt).currentKeys(cxt).signer.shouldNotBeNull()
+        val signer = AccessTokenService.get(cxt).currentKeys(cxt).signerAt(cxt.now()).shouldNotBeNull()
         fun signedHere(header: Map<String, Any?>, claims: Map<String, Any?>) =
             JwsParts.encode(header + (JWS.kid to signer.kid), claims) { Es256.sign(signer.privateKey, it) }
         bearer(signedHere(header, claimsOf(token))).sendGetRequest(AEP.selfInfo).rptStatusCode shouldBe 200
@@ -304,38 +304,48 @@ class AccessTokenTest : StringSpec({
         bearer("a.b.c").sendGetRequest(AEP.selfInfo).rptStatusCode shouldBe 200
     }
 
-    "a rotation keeps a token it signed verifying until the token expires" {
+    "a rotation publishes a new key before it signs, and keeps the old one verifying until its tokens expire" {
         val owner = TestUser.create(cxt, "rotated@$mine.test", userClient = mine)
         val operator = TestUser.create(cxt, "operator@$mine.test", level = ROLE.operator, capabilities = listOf(ROLE.allClients), userClient = mine)
         val (key, _) = makeKey(owner)
         val before = tokenOf(key)
-        val beforeKid = JwsParts.parse(before)!!.header[JWS.kid]
+        val oldKid = JwsParts.parse(before)!!.header[JWS.kid]
+        fun published() = bodyOf(TestHttpClient(cxt.instanceConfig).sendGetRequest(ATOK.jwks))[ATOK.keys].toJsonListOfMaps().map { it[JWS.kid] }
+        fun kidOf(token: String) = JwsParts.parse(token)!!.header[JWS.kid]
 
         // Not by a key, even an operator's.
         val (operatorKey, _) = makeKey(operator, access = AKEY.full)
         bearer(operatorKey).sendEditRequest(ATOK.rotateSigningKey, null, emptyMap(), HttpMethod.POST).rptStatusCode shouldBe EXC.notAuthorized
 
         val rotated = operator.postData(ATOK.rotateSigningKey, emptyMap())
-        val newKid = rotated[ATOK.signingKeyId].toOptStr().shouldNotBeNull()
-        newKid shouldNotBe beforeKid
-        val published = bodyOf(TestHttpClient(cxt.instanceConfig).sendGetRequest(ATOK.jwks))[ATOK.keys].toJsonListOfMaps().map { it[JWS.kid] }
-        published shouldContain beforeKid
-        published shouldContain newKid
+        val newKid = rotated[ATOK.newKeyId].toOptStr().shouldNotBeNull()
+        newKid shouldNotBe oldKid
+        val signsFrom = rotated[ATOK.signsFrom].toOptInstant().shouldNotBeNull()
+        (signsFrom - (cxt.now() + AccessTokenService.publishLead)).absoluteValue.inWholeSeconds shouldBeInRange 0L..5L
+        // Published at once, so every node and every verifier holds it before a token names it; the old key signs on.
+        published() shouldContain oldKid
+        published() shouldContain newKid
+        kidOf(tokenOf(key)) shouldBe oldKid
 
-        // The old token still works and still verifies; a new one is signed by the new key.
+        // Its turn comes: the new key signs, and a token the old one signed still works and still verifies.
+        cxt.instanceConfig.clock.advanceBy(AccessTokenService.publishLead + 1.seconds)
+        val after = tokenOf(key)
+        kidOf(after) shouldBe newKid
+        verifiesWithJwksAlone(after) shouldBe true
         whoIs(before) shouldBe owner.userId
         verifiesWithJwksAlone(before) shouldBe true
-        val after = tokenOf(key)
-        JwsParts.parse(after)!!.header[JWS.kid] shouldBe newKid
-        verifiesWithJwksAlone(after) shouldBe true
 
-        // Once every token the old key signed has expired, the next rotation stops publishing it.
-        cxt.instanceConfig.clock.advanceBy(24.hours + 6.minutes)
-        val again = operator.postData(ATOK.rotateSigningKey, emptyMap())
-        val nowPublished = bodyOf(TestHttpClient(cxt.instanceConfig).sendGetRequest(ATOK.jwks))[ATOK.keys].toJsonListOfMaps().map { it[JWS.kid] }
-        (beforeKid in nowPublished) shouldBe false
-        nowPublished shouldContain newKid
-        nowPublished shouldContain again[ATOK.signingKeyId]
+        // The old key stays published for the longest a token may last, whatever the lifetime is set to now, and the
+        // next rotation after that drops it.
+        cxt.instanceConfig.clock.advanceBy(ATOK.maxHours.hours - 1.hours)
+        published() shouldContain oldKid
+        cxt.instanceConfig.clock.advanceBy(1.hours + 6.minutes)
+        // A new session: the operator's may have lapsed in a week.
+        val again = TestUser.create(cxt, "operator2@$mine.test", level = ROLE.operator, capabilities = listOf(ROLE.allClients), userClient = mine)
+            .postData(ATOK.rotateSigningKey, emptyMap())
+        (oldKid in published()) shouldBe false
+        published() shouldContain newKid
+        published() shouldContain again[ATOK.newKeyId]
         bearer(before).sendGetRequest(AEP.selfInfo).rptStatusCode shouldBe EXC.authNeeded
     }
 

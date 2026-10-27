@@ -17,7 +17,6 @@ import com.dynamicruntime.common.exception.KdrMsg
 import com.dynamicruntime.common.gedra.DSV
 import com.dynamicruntime.common.logging.RequestLogCapture
 import com.dynamicruntime.common.startup.InstanceRegistry
-import com.dynamicruntime.common.user.ATOK
 import com.dynamicruntime.common.user.ENVA
 import com.dynamicruntime.common.user.EnvAuthRules
 import com.dynamicruntime.common.util.evalTemplate
@@ -271,18 +270,6 @@ class RequestHandler : WebRequest {
             }
         }
 
-        // An OAuth 2.0 token request is form-encoded (RFC 6749 §4.4), which is what a client library sends. Read for
-        // that one path alone: a browser sends a form-encoded POST to any site without asking first, so taking JSON
-        // and nothing else is part of what keeps a page elsewhere from acting on a signed-in session. The exchange is
-        // authenticated by its `Authorization` header, which such a form cannot set.
-        if (contentType.startsWith(formUrlEncoded) && postData == null && appPath in formBodyPaths) {
-            val body = readBody()
-            if (body.length > 16000) {
-                throw KdrException("Form body of size ${body.length} exceeds the maximum of 16000.")
-            }
-            postData = HttpUtil.parseQuery(body).toMutableMap()
-        }
-
         // A file upload arrives as multipart/form-data rather than JSON: the parts become input fields, and a
         // file part's value is a ContentData. Endpoint input stays a flat set of top-level fields either way,
         // so an upload endpoint's fields validate exactly like any other's.
@@ -351,6 +338,20 @@ class RequestHandler : WebRequest {
     private fun clientId(header: String, param: String): String? {
         val raw = getRequestHeader(header) ?: queryParams[param] as? String ?: return null
         return raw.takeIf { it.length in 1..64 && it.isPlainName("._:-") }
+    }
+
+    /**
+     * Decodes a form-encoded body into [postData], for an endpoint that reads one
+     * ([formBody][com.dynamicruntime.common.endpoint.KdrEndpoint.formBody], issue #1403); [decodeRequestData] reads JSON
+     * and multipart bodies alone. Called by the dispatcher once it knows the endpoint.
+     */
+    fun decodeFormBody() {
+        if (!contentType.startsWith(formUrlEncoded) || postData != null) return
+        val body = readBody()
+        if (body.length > 16000) {
+            throw KdrException("Form body of size ${body.length} exceeds the maximum of 16000.")
+        }
+        postData = HttpUtil.parseQuery(body).toMutableMap()
     }
 
     private fun readBody(): String {
@@ -770,9 +771,6 @@ class RequestHandler : WebRequest {
 
         /** The content type of an HTML form's body, and of an OAuth 2.0 token request; matched as a prefix. */
         const val formUrlEncoded = "application/x-www-form-urlencoded"
-
-        /** The only paths whose [formUrlEncoded] bodies are read: the OAuth token exchange (issue #1403). */
-        val formBodyPaths: Set<String> = setOf(ATOK.token)
 
         /** What an upload part claims to be when it says nothing: the catch-all binary type. */
         const val defaultUploadMimeType = "application/octet-stream"
