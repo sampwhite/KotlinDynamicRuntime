@@ -67,6 +67,16 @@ fun apiKeyAccessText(access: String): String = if (access == AKEY.read) "Read-on
 /** What a key's access lets it do, as the start of a sentence: "It is read-only", "It has full access". Pure. */
 fun apiKeyAccessSentence(access: String): String = if (access == AKEY.read) "It is read-only" else "It has full access"
 
+/** What the API keys section says a key is, to its owner ([forSelf]) or to their administrator. Pure. */
+fun apiKeysIntro(forSelf: Boolean): String = if (forSelf) {
+    "An API key lets a script or another program use this site as you, without signing in. Keep it secret, as you " +
+        "would a password. A read-only key can look at things but not change them."
+} else {
+    "An API key lets a script or another program use this site as this user, with this user's permissions, without " +
+        "signing in. Give it only to the program that needs it, and keep it secret, as you would a password. A " +
+        "read-only key can look at things but not change them."
+}
+
 /** A lifetime in days as a person says it: "1 year", "2 years", "90 days". Pure. */
 fun apiKeyLifetimeText(days: Int): String = when {
     days % 365 == 0 -> (days / 365).let { if (it == 1) "1 year" else "$it years" }

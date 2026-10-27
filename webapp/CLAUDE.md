@@ -1091,7 +1091,8 @@ component, `ApiKeysSection.kt`, with its pure half in `ApiKeysApi.kt` (covered b
   users cannot hold keys.
 - **The Users editor** draws it with `ownerId` for the open user, over `/clientAdmin/apiKey*`. It acts at once, unlike
   the editor's fields, which wait for OK. Not for a sandbox's user, nor for a `public` self-administrator, whom the
-  administrator's surface refuses.
+  administrator's surface refuses. When the open user is the caller, `ownerId` is left off, so one's own keys are
+  managed as on Profile.
 - **The API keys page** (`/wa/api-keys`, `ApiKeysPage.kt`) lists every key the caller administers, soonest to expire
   first, filtered by status, each owner linked to the Users editor. A key is made from its user's page, not here: a key
   belongs to someone. Offered by the same fact as Reports (`administersClient`).

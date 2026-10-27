@@ -944,7 +944,8 @@ val Users = FC<Props> {
                 if (!user.deleted && !isSandboxClient(user.client) && config?.user?.let { mayCreateForOthers(it) } != false) {
                     ApiKeysSection {
                         key = "keys-${user.userId}".unsafeCast<Key>()
-                        ownerId = user.userId
+                        // One's own keys are managed as on Profile, through the self endpoints.
+                        ownerId = user.userId.takeIf { it != config?.user?.userId }
                     }
                 }
             }

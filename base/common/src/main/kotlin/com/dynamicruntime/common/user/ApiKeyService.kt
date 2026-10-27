@@ -7,9 +7,11 @@ import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.ClientService
 import com.dynamicruntime.common.gedra.isSandboxClient
+import com.dynamicruntime.common.sql.KdrColumn
 import com.dynamicruntime.common.sql.KdrTable
 import com.dynamicruntime.common.sql.PF
 import com.dynamicruntime.common.sql.SqlScopeUtil
+import com.dynamicruntime.common.sql.SqlStatement
 import com.dynamicruntime.common.sql.SqlStmtUtil
 import com.dynamicruntime.common.sql.SqlTopicService
 import com.dynamicruntime.common.sql.SqlTopicUtil
@@ -146,19 +148,7 @@ class ApiKeyService : ServiceInitializer {
         cxt: KdrCxt, scope: ReadScope, userId: Long?, limit: Int, keep: (Map<String, Any?>) -> Boolean = { true },
     ): Pair<List<ListedApiKey>, Int> {
         val sqlCxt = SqlTopicService.mkSqlCxt(cxt, authTopic)
-        val table = table(cxt)
-        val data = mutableMapOf<String, Any?>()
-        val conditions = SqlScopeUtil.scopeConditions(scope, table, data, filteredAfterQuery = setOf(PF.org)).toMutableList()
-        if (userId != null) {
-            // Its own parameter: the scope may already bind `userId` (a caller confined to their own rows).
-            conditions.add("c:${PF.userId} = :$listUserParam")
-            data[listUserParam] = userId
-        }
-        val where = if (conditions.isEmpty()) "" else " where " + conditions.joinToString(" and ")
-        val stmt = SqlStmtUtil.prepareSql(
-            sqlCxt, "qAuthApiKeys${scope.shapeKey}${if (userId != null) "U" else ""}", table.columns,
-            "select * from t:${UT.authApiKeys}$where order by c:${AKEY.expiresAt} asc, c:${AKEY.keyId} asc",
-        )
+        val (stmt, data) = listStatement(cxt, scope, userId)
         var rows: List<Map<String, Any?>> = emptyList()
         sqlCxt.sqlDb.withSession(cxt) { rows = sqlCxt.sqlDb.queryStatement(cxt, stmt, data) }
         val kept = rows.filter(keep)
@@ -169,6 +159,31 @@ class ApiKeyService : ServiceInitializer {
         if (scope.org == null) return withOwners(kept.take(limit)) to kept.size
         val admitted = withOwners(kept)
         return admitted.take(limit) to admitted.size
+    }
+
+    /** [listScoped]'s query for [scope] and [userId], with the values it binds. */
+    fun listStatement(cxt: KdrCxt, scope: ReadScope, userId: Long?): Pair<SqlStatement, Map<String, Any?>> {
+        val sqlCxt = SqlTopicService.mkSqlCxt(cxt, authTopic)
+        val table = table(cxt)
+        val data = mutableMapOf<String, Any?>()
+        val conditions = SqlScopeUtil.scopeConditions(scope, table, data, filteredAfterQuery = setOf(PF.org)).toMutableList()
+        if (userId != null) {
+            // Its own parameter: the scope may already bind `userId` (a caller confined to their own rows).
+            conditions.add("c:${PF.userId} = :$listUserParam")
+            data[listUserParam] = userId
+        }
+        val where = if (conditions.isEmpty()) "" else " where " + conditions.joinToString(" and ")
+        // The parameter needs its own column definition (cloned from `userId`, so it binds as a number): a name no
+        // column has binds as a string, which H2 compares with a number and Postgres refuses.
+        val userIdCol = table.columnsByName.getValue(PF.userId)
+        val listUserCol = KdrColumn(
+            listUserParam, userIdCol.schema, userIdCol.storeType, userIdCol.isList, required = false, autoIncrement = false,
+        )
+        val stmt = SqlStmtUtil.prepareSql(
+            sqlCxt, "qAuthApiKeys${scope.shapeKey}${if (userId != null) "U" else ""}", table.columns + listUserCol,
+            "select * from t:${UT.authApiKeys}$where order by c:${AKEY.expiresAt} asc, c:${AKEY.keyId} asc",
+        )
+        return stmt to data
     }
 
     /** [row] as it is listed; [owner] adds the owner's name and address, and [creatorName] who made it. */

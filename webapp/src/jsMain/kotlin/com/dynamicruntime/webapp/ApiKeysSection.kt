@@ -269,15 +269,7 @@ val ApiKeysSection = FC<ApiKeysSectionProps> { props ->
         h2 { +"API keys" }
         p {
             className = ClassName("subtitle")
-            +(if (forSelf) "A program sends a key as " else "A program sends one of this user's keys as ")
-            code { +"Authorization: Bearer …" }
-            +(
-                if (forSelf) {
-                    " and acts as you. A read-only key can only read; neither can sign in, change your keys or switch users."
-                } else {
-                    " and acts as this user, never as you. A read-only key can only read."
-                }
-            )
+            +apiKeysIntro(forSelf)
         }
         loadError?.let { errorText("Couldn't read the keys.", it) }
         val loaded = page
@@ -308,7 +300,7 @@ val ApiKeysSection = FC<ApiKeysSectionProps> { props ->
                             checked = readOnly
                             disabled = creating
                             onChange = { e -> readOnly = e.target.checked as Boolean }
-                            +"Read-only: GET requests only"
+                            +"Read-only (can look at things but not change them)"
                         }
                     }
                     val choices = apiKeyLifetimeChoices(loaded.limits)

@@ -2,6 +2,7 @@ package com.dynamicruntime.kdn
 
 import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.KdrCxt
+import com.dynamicruntime.common.context.ReadScope
 import com.dynamicruntime.common.context.UPF
 import com.dynamicruntime.common.endpoint.EI
 import com.dynamicruntime.common.endpoint.EP
@@ -38,6 +39,7 @@ import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptInstant
 import com.dynamicruntime.common.util.toOptStr
 import com.dynamicruntime.common.util.truncateToMs
+import io.kotest.assertions.withClue
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.longs.shouldBeLessThan
@@ -261,6 +263,20 @@ class ApiKeyTest : StringSpec({
         row.values.none { it.toString().contains(secret) } shouldBe true
         // Nor is it listed again.
         owner.getItems(AKEY.selfKeys).none { it.toString().contains(secret) } shouldBe true
+    }
+
+    "an administrator's listing binds every parameter as the column it is compared with" {
+        // A parameter no column defines binds as a string, which H2 compares with a number and Postgres refuses, so
+        // this is asked of the statement rather than of a listing these tests' H2 would answer either way.
+        val userIdType = ApiKeyService.get(cxt).table(cxt).columnsByName.getValue(PF.userId).storeType
+        val scopes = listOf(ReadScope.unrestricted, ReadScope(client = mine), ReadScope(client = mine, userId = 7L))
+        for (scope in scopes) {
+            val (stmt, data) = ApiKeyService.get(cxt).listStatement(cxt, scope, userId = 7L)
+            for (field in stmt.bindFields) {
+                withClue("${stmt.name} binds :$field") { (field in stmt.columns) shouldBe true }
+            }
+            data.filterValues { it == 7L }.keys.forEach { stmt.columns.getValue(it).storeType shouldBe userIdType }
+        }
     }
 
     "an administrator makes a key for a user in their client, which acts as that user and says who made it" {
