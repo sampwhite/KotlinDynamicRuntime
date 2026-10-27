@@ -97,12 +97,14 @@ object AKEY {
     const val selfKeys = "/user/self/apiKeys"
     const val selfCreate = "/user/self/apiKey/create"
     const val selfExtend = "/user/self/apiKey/extend"
+    const val selfAccess = "/user/self/apiKey/access"
     const val selfRevoke = "/user/self/apiKey/revoke"
 
     // An administrator's, in the scoped `clientAdmin` section: every key they may see, and any user's in their scope.
     const val adminKeys = "/clientAdmin/apiKeys"
     const val adminCreate = "/clientAdmin/apiKey/create"
     const val adminExtend = "/clientAdmin/apiKey/extend"
+    const val adminAccess = "/clientAdmin/apiKey/access"
     const val adminRevoke = "/clientAdmin/apiKey/revoke"
 
     /** The header a key is sent in, and the scheme before it. */

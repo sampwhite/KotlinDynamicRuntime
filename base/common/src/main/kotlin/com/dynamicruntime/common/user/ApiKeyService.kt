@@ -299,6 +299,25 @@ class ApiKeyService : ServiceInitializer {
         return infoOf(updated)
     }
 
+    /**
+     * Sets the key [row]'s access to [access], read-only or full. It bites on the key's next request, on every node
+     * once its cache has heard, as a revocation does. A revoked key is not changed; one already as asked is answered
+     * as it is, unwritten.
+     */
+    fun setAccess(cxt: KdrCxt, row: Map<String, Any?>, access: String): ApiKeyInfo {
+        val info = infoOf(row)
+        if (info.revokedAt != null) throw KdrException.mkInput("API key ${info.keyId} is revoked; make a new one instead.")
+        if (access !in AKEY.accesses) {
+            throw KdrException.mkInput("A key's access is '${AKEY.read}' or '${AKEY.full}', not '$access'.")
+        }
+        if (access == info.access) return info
+        val updated = row.toMutableMap()
+        updated[AKEY.access] = access
+        write(cxt, updated, enabled = true)
+        LogAuth.info(cxt) { "User ${cxt.userProfile.userId} set API key ${info.keyId} of user ${info.userId} to '$access' access." }
+        return infoOf(updated)
+    }
+
     /** Revokes the key [row] at once, for good: it is disabled, so no node honors it once its cache has heard. */
     fun revoke(cxt: KdrCxt, row: Map<String, Any?>): ApiKeyInfo {
         val info = infoOf(row)

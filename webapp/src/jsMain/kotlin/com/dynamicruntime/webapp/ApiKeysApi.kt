@@ -134,6 +134,25 @@ fun apiKeyMadeByText(info: ApiKeyInfo): String? {
 /** The question a revoke asks first. Pure. */
 fun apiKeyRevokeQuestion(info: ApiKeyInfo): String = "Revoke “${info.name}”?"
 
+/**
+ * The change of access offered for [info]: the access it would get, the action's label, its question and what it does.
+ * A read-only key is offered full access, and a full key read-only. Pure.
+ */
+fun apiKeyAccessChange(info: ApiKeyInfo): ApiKeyAccessChange = if (info.access == AKEY.read) {
+    ApiKeyAccessChange(
+        AKEY.full, "Allow changes", "Give “${info.name}” full access?",
+        "Anything using it can then change things, with all of its user's permissions, not only look.",
+    )
+} else {
+    ApiKeyAccessChange(
+        AKEY.read, "Make read-only", "Make “${info.name}” read-only?",
+        "Anything using it can still look at things, but is refused at once when it tries to change one.",
+    )
+}
+
+/** A change of a key's access, as [apiKeyAccessChange] offers it. */
+data class ApiKeyAccessChange(val access: String, val label: String, val question: String, val consequence: String)
+
 /** What a revoke does, beneath its question. */
 const val apiKeyRevokeConsequence = "Anything using it stops working at once. This cannot be undone."
 
@@ -174,6 +193,13 @@ object ApiKeysApi {
     suspend fun extend(asAdmin: Boolean, keyId: String, amount: Int, unit: String): ApiKeyInfo? {
         val body = mapOf(AKEY.keyId to keyId, (if (unit == EXTU.months) AKEY.months else AKEY.days) to amount)
         val answer = Http.sendApi("POST", if (asAdmin) AKEY.adminExtend else AKEY.selfExtend, body)
+        return ApiKeyInfo.fromInfo(answer[EP.results].toJsonMapOrEmpty())
+    }
+
+    /** Sets [keyId]'s access to [access], read-only or full; [asAdmin] through the administrator's path. */
+    suspend fun setAccess(asAdmin: Boolean, keyId: String, access: String): ApiKeyInfo? {
+        val body = mapOf(AKEY.keyId to keyId, AKEY.access to access)
+        val answer = Http.sendApi("POST", if (asAdmin) AKEY.adminAccess else AKEY.selfAccess, body)
         return ApiKeyInfo.fromInfo(answer[EP.results].toJsonMapOrEmpty())
     }
 

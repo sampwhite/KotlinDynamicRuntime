@@ -145,6 +145,46 @@ class ApiKeyTest : StringSpec({
         keyed(full).sendEditRequest(AEP.profileSetName, null, mapOf(AFLD.name to "Pat"), HttpMethod.POST).rptStatusCode shouldBe 200
     }
 
+    "a key's access is changed in place, and the change bites on its next request" {
+        val owner = TestUser.create(cxt, "toggled@$mine.test", userClient = mine)
+        val (key, info) = makeKey(owner, access = AKEY.read)
+        val keyId = info[AKEY.keyId]
+        fun setName() = keyed(key).sendEditRequest(AEP.profileSetName, null, mapOf(AFLD.name to "Pat"), HttpMethod.POST).rptStatusCode
+        setName() shouldBe EXC.notAuthorized
+
+        owner.postData(AKEY.selfAccess, mapOf(AKEY.keyId to keyId, AKEY.access to AKEY.full))[AKEY.access] shouldBe AKEY.full
+        setName() shouldBe 200
+        owner.postData(AKEY.selfAccess, mapOf(AKEY.keyId to keyId, AKEY.access to AKEY.read))[AKEY.access] shouldBe AKEY.read
+        setName() shouldBe EXC.notAuthorized
+        // Asked again, it is answered as it is.
+        owner.postData(AKEY.selfAccess, mapOf(AKEY.keyId to keyId, AKEY.access to AKEY.read))[AKEY.access] shouldBe AKEY.read
+
+        // Not by the key itself, which may not widen what it was given.
+        val (full, _) = makeKey(owner, name = "writer", access = AKEY.full)
+        keyed(full).sendEditRequest(AKEY.selfAccess, null, mapOf(AKEY.keyId to keyId, AKEY.access to AKEY.full), HttpMethod.POST)
+            .rptStatusCode shouldBe EXC.notAuthorized
+        // Nor once revoked.
+        owner.postData(AKEY.selfRevoke, mapOf(AKEY.keyId to keyId))
+        owner.expectError(EXC.badInput, AKEY.selfAccess, mapOf(AKEY.keyId to keyId, AKEY.access to AKEY.full))
+            .toString() shouldContain "is revoked"
+    }
+
+    "an administrator narrows any key they administer, and widens only one they could have made" {
+        val admin = TestUser.create(cxt, "narrows@$mine.test", level = ROLE.admin, userClient = mine)
+        val member = TestUser.create(cxt, "narrowed@$mine.test", userClient = mine)
+        val (_, memberKey) = makeKey(member, access = AKEY.read)
+        val widened = admin.postData(AKEY.adminAccess, mapOf(AKEY.keyId to memberKey[AKEY.keyId], AKEY.access to AKEY.full))
+        widened[AKEY.access] shouldBe AKEY.full
+        widened[AKEY.ownerAddress] shouldBe "narrowed@$mine.test"
+
+        // A user who holds what the administrator does not: their full key may be narrowed, and not widened again.
+        val wider = TestUser.create(cxt, "wider2@$mine.test", level = ROLE.operator, capabilities = listOf(ROLE.allClients), userClient = mine)
+        val (_, widerKey) = makeKey(wider, access = AKEY.full)
+        admin.postData(AKEY.adminAccess, mapOf(AKEY.keyId to widerKey[AKEY.keyId], AKEY.access to AKEY.read))[AKEY.access] shouldBe AKEY.read
+        admin.expectError(EXC.badInput, AKEY.adminAccess, mapOf(AKEY.keyId to widerKey[AKEY.keyId], AKEY.access to AKEY.full))
+            .toString() shouldContain "'${ROLE.allClients}'"
+    }
+
     "no key reaches what only a signed-in session may do" {
         val owner = TestUser.create(cxt, "session@$mine.test", userClient = mine)
         val (full, _) = makeKey(owner, access = AKEY.full)

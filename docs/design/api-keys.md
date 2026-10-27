@@ -78,7 +78,8 @@ refused request is not a use. A change to a key reads its row from SQL, not the 
 - **A full key** (`access: full`) may do what its owner may, except what follows.
 - **No key reaches a session-only endpoint.** An endpoint declared `sessionOnly` is refused to any key with a 403.
   These are what a key must not do even when its owner could:
-  - make, list, extend or revoke keys, so a leaked key cannot mint more or outlast what its maker gave it;
+  - make, list, extend, change or revoke keys, so a leaked key cannot mint more, outlast what its maker gave it, or
+    widen itself;
   - sign in, register, claim an account, or accept an invitation;
   - switch users or clients, open or leave a sandbox, join a demo, or create a self-serve client;
   - log out, or change a password.
@@ -91,9 +92,9 @@ refused request is not a use. A change to a key reads its row from SQL, not the 
 ## Who makes keys
 
 - **A person, for themselves**, on Profile, through the `user` section: `/user/self/apiKeys` and
-  `/user/self/apiKey/{create,extend,revoke}`.
+  `/user/self/apiKey/{create,extend,access,revoke}`.
 - **An administrator, for a user in their scope**, from the Users editor, through the `clientAdmin` section:
-  `/clientAdmin/apiKeys` and `/clientAdmin/apiKey/{create,extend,revoke}`.
+  `/clientAdmin/apiKeys` and `/clientAdmin/apiKey/{create,extend,access,revoke}`.
   - A user outside the administrator's scope reads as absent (404).
   - An organization-confined administrator sees and acts on the keys of their organization's users only. The table
     has no organization column, so the scope's organization is applied to each owner after the query, by the same
@@ -104,6 +105,18 @@ refused request is not a use. A change to a key reads its row from SQL, not the 
     a form as a reviewer who is not its owner (the second-person rule, #787), since a reviewer is an administrator with
     a label. Users below the administrator level are what an administrator makes keys for.
   - A `public` self-administrator is refused the administrator's surface, and manages their own keys on Profile.
+
+## Changing a key's access
+
+A key's access is changed in place (`apiKey/access`, `{keyId, access}`), so a program need not be given a new key
+when what it does changes. The change bites on the key's next request, on every node within the cache's state-row
+throttle, as a revocation does. A revoked key cannot be changed, and no key can change its own access, since the
+endpoint is session-only.
+
+- **Making a key read-only** is open to whoever may revoke it: it only takes away.
+- **Giving a key full access** hands an existing secret more than it had, so an administrator is held to what making
+  a key for its owner is (above). An administrator may therefore narrow the key of a user who holds roles they do
+  not, and may not widen it again.
 
 A sandbox's users cannot hold keys: they take their standing from the person's users outside the sandbox, which a
 program with nobody signed in could not ask about.
@@ -131,7 +144,8 @@ extension and the server making it land on the same moment.
   caller administers, soonest to expire first, filtered by status, each owner linked to the Users editor.
 
 Each listing shows a key's name, access, when it was made and by whom, when it expires and was last used, and its status
-(works, expires soon, expired, revoked), with **Extend…** and **Revoke** on each key not revoked. A new key opens in a
+(works, expires soon, expired, revoked), with **Extend…**, **Make read-only** or **Allow changes**, and **Revoke**
+on each key not revoked. A new key opens in a
 dialog with a copy button and a `curl` command to try it, saying it is the only time it is shown. The key is held only in
 the component's state, never in the address or browser storage.
 

@@ -22,7 +22,8 @@ import com.dynamicruntime.common.util.toOptLong
 
 /**
  * The API-key endpoints (issue #1402), on two surfaces over [ApiKeyService]:
- * - **A person's own**, in the login-gated `user` section: list, make, extend and revoke the signed-in user's keys.
+ * - **A person's own**, in the login-gated `user` section: list, make, extend, change the access of, and revoke the
+ *   signed-in user's keys.
  * - **An administrator's**, in the scoped `clientAdmin` section: every key the caller may see ([ReadScopeRules.forCaller]),
  *   and any user's in their scope ([ReadScopeRules.forUserAdmin]); a user outside it reads as absent (404).
  *
@@ -61,6 +62,13 @@ fun apiKeySchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.apiKey") {
     ) { c, req ->
         val row = ownKey(c, req.getReqStr(AKEY.keyId))
         ApiKeyService.get(c).extend(c, row, optInt(req, AKEY.days), optInt(req, AKEY.months)).toInfo(c.now())
+    }
+    generalEndpoint(
+        AKEY.selfAccess, "Makes one of the signed-in user's API keys read-only, or gives it full access.",
+        HttpMethod.POST, outputRef = ApiKeyInfo.infoTypeName, inputFields = { accessFields() }, sessionOnly = true,
+    ) { c, req ->
+        val row = ownKey(c, req.getReqStr(AKEY.keyId))
+        ApiKeyService.get(c).setAccess(c, row, req.getReqStr(AKEY.access)).toInfo(c.now())
     }
     generalEndpoint(
         AKEY.selfRevoke, "Revokes one of the signed-in user's API keys, at once and for good.",
@@ -118,6 +126,20 @@ fun apiKeySchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.apiKey") {
         ApiKeyService.get(c).extend(c, row, optInt(req, AKEY.days), optInt(req, AKEY.months)).withOwner(owner).toInfo(c.now())
     }
     generalEndpoint(
+        AKEY.adminAccess,
+        "Makes the API key of a user the caller administers read-only, or gives it full access. Giving it full access " +
+            "is held to what making a key for that user is.",
+        HttpMethod.POST, outputRef = ApiKeyInfo.infoTypeName, inputFields = { accessFields() }, sessionOnly = true,
+    ) { c, req ->
+        refusePublicAdmin(c)
+        val (row, owner) = administeredKey(c, req.getReqStr(AKEY.keyId))
+        val access = req.getReqStr(AKEY.access)
+        // Widening hands an existing secret more than it had, which is acting as the owner as making a key is.
+        // Narrowing only takes away, as a revoke does.
+        if (access == AKEY.full) requireMayActAs(c, owner)
+        ApiKeyService.get(c).setAccess(c, row, access).withOwner(owner).toInfo(c.now())
+    }
+    generalEndpoint(
         AKEY.adminRevoke, "Revokes the API key of a user the caller administers, at once and for good.",
         HttpMethod.POST, outputRef = ApiKeyInfo.infoTypeName, inputFields = { keyIdField() }, sessionOnly = true,
     ) { c, req ->
@@ -145,6 +167,13 @@ private fun InputFieldsBuilder.createFields() {
     field(AKEY.days, "How many days the key lasts; the deployment's default (one year) when absent.") {
         type = SCT.integer
         minimum = 1
+    }
+}
+
+private fun InputFieldsBuilder.accessFields() {
+    keyIdField()
+    field(AKEY.access, "'${AKEY.read}' (GET requests only) or '${AKEY.full}'.", required = true) {
+        for (a in AKEY.accesses) option(a)
     }
 }
 

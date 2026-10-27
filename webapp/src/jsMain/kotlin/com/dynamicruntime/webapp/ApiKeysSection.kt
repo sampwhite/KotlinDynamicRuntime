@@ -30,18 +30,19 @@ private val apiKeysScope = MainScope()
 external interface ApiKeysTableProps : Props {
     var keys: List<ApiKeyInfo>
     var limits: ApiKeyLimits?
-    /** Whether the extend and revoke go through the administrator's paths. */
+    /** Whether the extend, the change of access and the revoke go through the administrator's paths. */
     var asAdmin: Boolean
     /** Whether each row names the user the key acts as, linked to the Users page: an administrator's listing. */
     var showOwner: Boolean
-    /** Called after a key was extended or revoked, so the listing re-reads. */
+    /** Called after a key was extended, had its access changed or was revoked, so the listing re-reads. */
     var onChanged: () -> Unit
 }
 
 /**
  * A listing of API keys (issue #1402): what each is for, its access, when it was made and by whom, when it expires and
- * was last used, and whether it still works -- with **Extend…** and **Revoke** on each that has not been revoked. The
- * extension's date is shown before it is saved, worked out by the same kernel rule the server applies.
+ * was last used, and whether it still works -- with **Extend…**, a change of access (**Make read-only** or **Allow
+ * changes**) and **Revoke** on each that has not been revoked. The extension's date is shown before it is saved, worked
+ * out by the same kernel rule the server applies.
  */
 val ApiKeysTable = FC<ApiKeysTableProps> { props ->
     val now = useRelativeClock()
@@ -121,6 +122,21 @@ val ApiKeysTable = FC<ApiKeysTableProps> { props ->
                                     disabled = working != null
                                     onClick = { extendFor = if (extendFor == info.keyId) null else info.keyId }
                                     +"Extend…"
+                                }
+                                val change = apiKeyAccessChange(info)
+                                Popconfirm {
+                                    title = change.question
+                                    description = change.consequence
+                                    okText = change.label
+                                    cancelText = "Cancel"
+                                    placement = "left"
+                                    onConfirm = { act(info.keyId) { ApiKeysApi.setAccess(props.asAdmin, info.keyId, change.access) } }
+                                    Button {
+                                        this.type = "link"
+                                        size = "small"
+                                        disabled = working != null
+                                        +change.label
+                                    }
                                 }
                                 Popconfirm {
                                     title = apiKeyRevokeQuestion(info)

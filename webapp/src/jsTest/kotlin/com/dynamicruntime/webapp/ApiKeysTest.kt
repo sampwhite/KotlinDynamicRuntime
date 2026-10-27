@@ -71,6 +71,17 @@ class ApiKeysTest {
     }
 
     @Test
+    fun aKeysAccessIsOfferedTheOtherWay() {
+        val read = apiKeyAccessChange(key(now + 100.days))
+        assertEquals(AKEY.full, read.access)
+        assertEquals("Allow changes", read.label)
+        assertEquals("Give “nightly sync” full access?", read.question)
+        val full = apiKeyAccessChange(key(now + 100.days).copy(access = AKEY.full))
+        assertEquals(AKEY.read, full.access)
+        assertEquals("Make read-only", full.label)
+    }
+
+    @Test
     fun aKeyMadeByAnotherSaysWho() {
         assertNull(apiKeyMadeByText(key(now, createdBy = 7L)))
         assertEquals("by Pat Lee", apiKeyMadeByText(key(now, createdBy = 3L, createdByName = "Pat Lee")))

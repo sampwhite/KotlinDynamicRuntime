@@ -1102,6 +1102,8 @@ What the component holds to:
 - **The new key is shown once**, in `ApiKeySecretDialog`, with a `CopyButton` and a `curl` command to try it
   (`apiKeyTryCommand`). It lives in component state only and is dropped when the dialog closes; never put it in the
   address, browser storage or a log. The server keeps only its hash, so nothing can show it again.
+- **A change of access is confirmed first**: **Make read-only** or **Allow changes** (`apiKeyAccessChange`), each
+  behind a `Popconfirm` saying what happens to whatever already uses the key.
 - **An extension's date is shown before it is saved**, from the kernel's `ApiKeyRules` -- the rule the server applies,
   calendar months in UTC (`addMonths`) -- by `apiKeyExtensionPreview`, which also says when it would pass the
   deployment's furthest expiry (the listing's summary, `maxDays`).
