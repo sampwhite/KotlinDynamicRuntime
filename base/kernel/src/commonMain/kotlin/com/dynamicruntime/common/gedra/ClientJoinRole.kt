@@ -60,7 +60,6 @@ object JOIN {
     const val userLabels = "userLabels"
     const val summary = "summary"
 
-    const val roleTypeName = "ClientJoinRole"
     const val joinableTypeName = "JoinableClient"
     const val joinableRoleTypeName = "JoinableRole"
     const val resultTypeName = "ClientJoinResult"
