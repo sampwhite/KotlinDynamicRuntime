@@ -26,20 +26,36 @@ pages link to it as they go.
 
 ## Try it
 
-You can run the demo on any test instance of KDR.
+There are two ways to try the demo: join it on a public reference site, or run it on a test instance of your own.
 
-1. Open the [Simulations page](/wa/test/simulations) and run **conf-demo**.
+### On a public reference site
+
+A public reference site, such as [dynamicruntime.org](https://dynamicruntime.org), is a working instance of KDR that
+anyone can sign in to and look around. The demo is already there, ready to join.
+
+1. Choose **Register** from the menu, and create an account with your email address. (If you already have one,
+   choose **Log in** instead.)
+2. On the home page, under **Try a demo**, choose **Join…** on the **Conference demo** card.
+3. Read **Before you join**, check the box that says you understand, and choose **Join as Speaker**.
+4. Open **My forms** from the menu, and choose **Create a form**.
+5. Type a title in the form that opens, and choose **Create the talk**.
+
+The talk appears in your forms list. Joining gives you a user of your own email in the demo, and the demo is shared
+with everyone else who joins it, so other visitors see the talks you add (and you see theirs). You can also join as an
+organizer or a committee member, from the same card, to see the demo as they do.
+
+### On a test instance of your own
+
+A test instance is one you run yourself, from a checkout of the
+[KotlinDynamicRuntime repository](https://github.com/sampwhite/KotlinDynamicRuntime). The repository's
+[README](https://github.com/sampwhite/KotlinDynamicRuntime/blob/main/README.md) explains how to set it up and start
+it. Once it is running:
+
+1. Open **Simulations** from the menu, and choose **Run** on **conf-demo**.
 2. Choose **Sign in as** next to the speaker.
 3. Type a title in the form that opens, and choose **Create the talk**.
 
 The talk appears in the speaker's forms list.
-
-On a site that offers joining, such as the public reference site, you can [join the demo](/wa/join/confdemo)
-instead, as a speaker, an organizer or a committee member. Joining gives you a user of your own email in the demo,
-and the demo is shared with everyone else who joins it.
-
-> **Note:** The Simulations page exists only on a test instance. The link above works when you read this page in the
-> application, not on GitHub.
 
 To change the demo without changing the original, give the simulation a suffix. With the suffix `mine`, it creates a
 separate client, `confdemomine`, that you can edit freely.
