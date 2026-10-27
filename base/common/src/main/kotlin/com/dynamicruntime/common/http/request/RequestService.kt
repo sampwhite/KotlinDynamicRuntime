@@ -11,7 +11,9 @@ import com.dynamicruntime.common.context.UserProfile
 import com.dynamicruntime.common.logging.RLOG
 import com.dynamicruntime.common.logging.RequestLogCapture
 import com.dynamicruntime.common.node.NodeService
+import com.dynamicruntime.common.user.AKEY
 import com.dynamicruntime.common.user.AUTHC
+import com.dynamicruntime.common.user.ApiKeyService
 import com.dynamicruntime.common.user.AuthTiming
 import com.dynamicruntime.common.user.UserAuthCookie
 import com.dynamicruntime.common.user.ENVA
@@ -567,6 +569,11 @@ class RequestService : ServiceInitializer {
         // An ephemeral public test deployment's env auth comes from an administrator's login rather than an edge
         // (issue #1150), so it is known only now that the session is restored -- and before the gate below.
         EnvAuthRules.fromAdminLogin(cxt)
+        // A read-only API key (issue #1402) makes GET requests and nothing else, whatever the section and whatever its
+        // owner may do: refused here, before the gate, so no section can forget to.
+        if (cxt.apiKey?.isReadOnly == true && method != HttpMethod.GET.name) {
+            throw KdrException("This API key is read-only: it may only make GET requests.", code = EXC.notAuthorized)
+        }
         // Whether the request keeps its log lines (issue #1173) is decided here, the first moment the fence can be:
         // the caller's env auth, and whether it is in debug, are only known once the session is restored.
         startLogCapture(cxt, handler)
@@ -635,6 +642,12 @@ class RequestService : ServiceInitializer {
                 // who may not look at that client (issue #1293): answering it differently from a client that has no
                 // copy would say which clients exist.
                 endpoint = endpoint?.takeIf { it.existsFor(cxt) && SchemaService.clientEndpointOpenTo(cxt, it) }
+                // What only a signed-in session may do (issue #1402): manage keys, sign in, switch, log out.
+                if (endpoint != null && endpoint.sessionOnly && cxt.apiKey != null) {
+                    throw KdrException(
+                        "'${endpoint.path}' is not open to API keys; it needs a signed-in session.", code = EXC.notAuthorized,
+                    )
+                }
                 if (endpoint != null) {
                     withAuthPermit(endpoint) { executeEndpoint(cxt, handler, endpoint) }
                 }
@@ -956,13 +969,23 @@ class RequestService : ServiceInitializer {
     /**
      * Restores the acting [KdrCxt.userProfile] from the session auth cookie: decrypt it (via the instance key),
      * and if it is valid and unexpired, bind the user. Silently leaves the (system) profile in place otherwise
-     * -- an absent/expired/forged cookie simply means "not logged in". Header-token auth is a follow-up.
+     * -- an absent/expired/forged cookie simply means "not logged in".
+     *
+     * A request carrying an API key (`Authorization: Bearer kdr_…`, issue #1402) is authenticated by the key instead,
+     * and its cookies are not read: a program sends one or the other, and a key that is not valid is refused (401)
+     * rather than quietly answered as whoever a cookie says.
      *
      * So does a session whose client this node does not carry (issue #1111): a client retired since the session
      * began, or not enabled here. Everything its user would reach is scoped by that client, so the session is
      * honored only where the client is. A node carrying no clients (an edge) asks nothing.
      */
     fun extractSessionAuth(cxt: KdrCxt, handler: RequestHandler) {
+        ApiKeyService.bearerKeyOf(handler.getRequestHeader(AKEY.authorizationHeader))?.let { key ->
+            val keys = ApiKeyService.getOrNull(cxt)
+                ?: throw KdrException("This node does not accept API keys.", code = EXC.authNeeded)
+            keys.authenticate(cxt, key, handler.forwardedFor ?: handler.peerAddress)
+            return
+        }
         val cookie = handler.getRequestCookies()[AUTHC.authCookie] ?: return
         val node = NodeService.get(cxt)
         val decoded = UserAuthCookie.decode(node, cookie) ?: return
@@ -1011,9 +1034,12 @@ class RequestService : ServiceInitializer {
      * (issue #748) -- the person, whichever of their users they logged in as -- so a login that bound a
      * profile without one (there is none today) records no device.
      *
-     * Otherwise, it renews a session that is due one ([renewSession]).
+     * Otherwise, it renews a session that is due one ([renewSession]). A request made with an API key writes no
+     * cookie at all.
      */
     fun checkAddAuthCookies(cxt: KdrCxt, handler: RequestHandler) {
+        // A keyed request has no session to start, renew or end (issue #1402), and records no device.
+        if (cxt.apiKey != null) return
         val req = cxt.request ?: return
         val node = NodeService.get(cxt)
         if (req.clearAuth) {

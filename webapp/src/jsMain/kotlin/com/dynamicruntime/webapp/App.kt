@@ -265,6 +265,7 @@ val App = FC<Props> {
                                 pageClients -> ClientsPage {}
                                 pageCustomers -> CustomersPage {}
                                 pageReports -> ReportsPage {}
+                                pageApiKeys -> ApiKeysPage {}
                                 pageEditForm -> EditFormPage {}
                                 pageSurveyEdit -> SurveyEditPage {}
                                 pageCreateForUser -> CreateForUserPage {}
@@ -360,6 +361,7 @@ private const val pageCustomers = HMENU.pageCustomers
 // The reports page (issue #1007): offered in the menu to administrators, as Clients is; the page says so honestly
 // when the caller may not run reports.
 private const val pageReports = HMENU.pageReports
+private const val pageApiKeys = HMENU.pageApiKeys
 
 // The workflow pages (issue #792): the menu, built server-side, decides whether they are offered (a client turns
 // the item on); the route exists unconditionally, like the others. A workflow's own listing of forms
@@ -415,6 +417,7 @@ private fun currentPage(): String {
         params[HP.page] == pageClients -> pageClients
         params[HP.page] == pageCustomers -> pageCustomers
         params[HP.page] == pageReports -> pageReports
+        params[HP.page] == pageApiKeys -> pageApiKeys
         params[HP.page] == pageEditForm -> pageEditForm
         params[HP.page] == pageSurveyEdit -> pageSurveyEdit
         params[HP.page] == pageCreateForUser -> pageCreateForUser

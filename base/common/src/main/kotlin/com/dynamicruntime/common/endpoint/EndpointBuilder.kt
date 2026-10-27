@@ -195,6 +195,14 @@ class KdrEndpoint(
      */
     val polled: Boolean = false,
     /**
+     * Whether only a **signed-in session** may call this endpoint, never an API key (issue #1402): a keyed caller is
+     * refused with a 403. Set on what a key must not be able to do even when its owner could -- manage keys (so a
+     * leaked key cannot mint or extend more), sign in, switch users or clients, open or leave a sandbox, log out, or
+     * change a credential. Those act on a session, which a keyed request does not have, or extend a key's reach past
+     * what its maker gave it.
+     */
+    val sessionOnly: Boolean = false,
+    /**
      * (List endpoints only.) Whether the output declares `hasMore` / `numAvailable`, so the executor knows to
      * populate them (issue #499). For a handler that returns a plain `List` the executor fills them from the
      * uncapped size; a [ListPage] supplies its own. `numAvailable` defaults **on** when the endpoint has a
@@ -390,6 +398,8 @@ class SchModuleBuilder(cxt: KdrCxt, namespace: String) : SchTypesBuilder(cxt, na
         timingFloor: Boolean = false,
         /** Re-read on a timer, not by a person (issue #1372); see [KdrEndpoint.polled]. */
         polled: Boolean = false,
+        /** Refused to an API key, open to a signed-in session only (issue #1402); see [KdrEndpoint.sessionOnly]. */
+        sessionOnly: Boolean = false,
         handler: KdrEndpointHandler,
     ) {
         val output = scalarOutput(EP.results, "Result data (a map object) returned by the endpoint.", outputRef)
@@ -397,7 +407,7 @@ class SchModuleBuilder(cxt: KdrCxt, namespace: String) : SchTypesBuilder(cxt, na
         endpoints.add(
             KdrEndpoint(path, method, EndpointKind.general, namespace, description, fields, typeRef, false, output,
                 forTestingOnly, handler, publicApi = publicApi, tags = tags, needsClientConfig = needsClientConfig,
-                timingFloor = timingFloor, polled = polled),
+                timingFloor = timingFloor, polled = polled, sessionOnly = sessionOnly),
         )
     }
 
@@ -487,6 +497,8 @@ class SchModuleBuilder(cxt: KdrCxt, namespace: String) : SchTypesBuilder(cxt, na
          * forms listing's trait search) has to reserve it before turning cursor-paged, as it reserves `limit`.
          */
         cursorPaged: Boolean = false,
+        /** Refused to an API key, open to a signed-in session only (issue #1402); see [KdrEndpoint.sessionOnly]. */
+        sessionOnly: Boolean = false,
         handler: KdrEndpointHandler,
     ) {
         if (cursorPaged && noLimit) {
@@ -507,7 +519,7 @@ class SchModuleBuilder(cxt: KdrCxt, namespace: String) : SchTypesBuilder(cxt, na
             KdrEndpoint(path, method, EndpointKind.list, namespace, description, fields, typeRef, !noLimit, output,
                 forTestingOnly, handler, publicApi = publicApi, tags = tags, clientShaped = clientShaped,
                 needsClientConfig = needsClientConfig, hasMore = reportsHasMore, hasNumAvailable = reportsNumAvailable,
-                summaryRef = summaryRef, cursorPaged = cursorPaged),
+                summaryRef = summaryRef, cursorPaged = cursorPaged, sessionOnly = sessionOnly),
         )
     }
 

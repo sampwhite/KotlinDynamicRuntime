@@ -214,8 +214,11 @@ fun String.checkPassword(storedHash: String): Boolean {
     return constantTimeEquals(predicted, storedHash)
 }
 
-/** Constant-time string comparison (via [MessageDigest.isEqual]) to avoid leaking match progress through timing. */
-private fun constantTimeEquals(a: String, b: String): Boolean =
+/**
+ * Constant-time string comparison (via [MessageDigest.isEqual]) to avoid leaking match progress through timing: a
+ * password's hash, and an API key's (issue #1402).
+ */
+fun constantTimeEquals(a: String, b: String): Boolean =
     MessageDigest.isEqual(a.toByteArray(Charsets.UTF_8), b.toByteArray(Charsets.UTF_8))
 
 // --- symmetric encryption ---------------------------------------------------

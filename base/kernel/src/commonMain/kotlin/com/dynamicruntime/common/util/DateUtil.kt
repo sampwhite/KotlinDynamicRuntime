@@ -3,6 +3,7 @@
 package com.dynamicruntime.common.util
 
 import com.dynamicruntime.common.exception.KdrException
+import kotlinx.datetime.DateTimeUnit
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.TimeZone
@@ -14,6 +15,7 @@ import kotlinx.datetime.format.DateTimeComponents
 import kotlinx.datetime.format.DayOfWeekNames
 import kotlinx.datetime.format.MonthNames
 import kotlinx.datetime.format.char
+import kotlinx.datetime.plus
 import kotlinx.datetime.toLocalDateTime
 import kotlin.time.Duration.Companion.days
 import kotlin.time.Duration.Companion.hours
@@ -217,6 +219,14 @@ fun Instant.toStartOfDay(zone: TimeZone = serverTimeZone): Instant = this.toLoca
 
 /** Moves forward (or back, for a negative count) by whole days. Simple arithmetic; ignores daylight savings. */
 fun Instant.addDays(numDays: Int): Instant = this + numDays.days
+
+/**
+ * Moves forward (or back, for a negative count) by whole **calendar** months, counted in UTC (issue #1402): the same
+ * day of the month that many months on, at the same time of day, or the month's last day when it has no such day --
+ * January 31 plus one month is February 28, or 29 in a leap year. UTC, so the answer is the same on every node and in
+ * the browser, which has no zone database.
+ */
+fun Instant.addMonths(numMonths: Int): Instant = this.plus(numMonths, DateTimeUnit.MONTH, TimeZone.UTC)
 
 /** Moves forward (or back, for a negative count) by whole hours. Simple arithmetic; ignores daylight savings. */
 fun Instant.addHours(numHours: Int): Instant = this + numHours.hours

@@ -3,6 +3,7 @@ package com.dynamicruntime.common.context
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.logging.RequestLogCapture
+import com.dynamicruntime.common.user.ApiKeyAccess
 import com.dynamicruntime.common.user.UserAuthCookie
 import com.dynamicruntime.common.util.splitComma
 import kotlin.time.Clock
@@ -213,6 +214,13 @@ class KdrCxt(
     var restoredSession: UserAuthCookie? = null
 
     /**
+     * The API key this request authenticated with (issue #1402), or null for a session or nobody. Set by the session
+     * extractor when the request carries `Authorization: Bearer kdr_…`; the dispatcher then refuses a read-only key
+     * anything but a GET and any key a session-only endpoint, and writes no cookie.
+     */
+    var apiKey: ApiKeyAccess? = null
+
+    /**
      * Whether this request may use the **test surface** (issue #1149): the node is a test instance *and* env auth is
      * effective. `isTestInstance` is a fact about the node and env auth one about the request, and a caller reaching a
      * test instance without env auth -- anonymous or signed in -- may not take advantage of the node being one: to
@@ -296,6 +304,7 @@ class KdrCxt(
         sub.envAuthSuppressed = envAuthSuppressed
         sub.envAuthDebug = envAuthDebug
         sub.isDirect = isDirect
+        sub.apiKey = apiKey // how the caller authenticated is a fact about the request too
         sub.debug = debug // debug tags travel with the request
         sub.logCapture = logCapture // so does a capture of its log lines, which is shared, not copied
         sub.view = view // so does the requested view

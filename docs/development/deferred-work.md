@@ -752,3 +752,22 @@ reword a message they cannot get to show. Then:
 - **Expect these costs**: plain words for a cfact expression (`~kdr:isCta`); branches have no ids, so an edit
   addresses one by position; and for a workflow made from a template, `display` would have to join what an overlay may
   change, with a merge rule for a list whose entries have no ids.
+
+## When a program or another service needs more than an API key gives it
+
+From #1402, which built API keys ([`docs/design/api-keys.md`](../design/api-keys.md)); signed access tokens are #1403.
+Each item waits on its own trigger:
+
+- **A service wants a revocation to bite before a token expires.** Add token introspection (RFC 7662) and revocation
+  (RFC 7009) endpoints, or shorten `KDR_ACCESS_TOKEN_HOURS`.
+- **A third-party app acts for a person who signs in to it.** That is the authorization-code flow with PKCE, with
+  refresh tokens rotated on use. The client-credentials grant #1403 builds has no refresh token because the program
+  holds its key.
+- **Identity passes between services.** Token exchange (RFC 8693), so a service trades a token it was given for one
+  aimed at the next.
+- **A key must not belong to a person.** Service accounts: a user that is not anybody's, for a key that outlives the
+  person who made it. Today a key dies with its owner's user, which is what makes a key no more than its owner.
+- **A key needs less than everything its owner may read, or write.** Scopes per section, beyond read and full.
+- **One key's traffic needs limiting, or a key leaks.** Per-key rate limits; an allowlist of addresses a key works
+  from; a checksum in the key, so a scanner or a typo is caught without a lookup; rotation with a window in which old
+  and new both work; and a mail to the owner before a key expires.

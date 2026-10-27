@@ -82,7 +82,7 @@ fun profileSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.profile") {
     // Opt back out of password login. Login-required (relies on the session, not a verification code); removing
     // a password is a de-escalation, and code login still works afterward.
     generalEndpoint(AEP.profileClearPassword, "Removes the caller's password (opt out of password login).",
-        HttpMethod.POST, outputRef = UserProfile.infoTypeName) { c, _ ->
+        HttpMethod.POST, outputRef = UserProfile.infoTypeName, sessionOnly = true) { c, _ ->
         authHandler(c).removePassword(c)
     }
 }

@@ -240,6 +240,8 @@ object EnvAuthRules {
      */
     fun fromAdminLogin(cxt: KdrCxt) {
         if (cxt.envAuthEmail != null || !PublicTestDeployment.envAuthFromAdminLogin(cxt.instanceConfig)) return
+        // Env auth is a person's, confirmed by their sign-in; a program holding their API key is not them (issue #1402).
+        if (cxt.apiKey != null) return
         val profile = cxt.userProfile
         if (!profile.isRowBacked || !profile.isLoggedIn) return
         val row = UserService.get(cxt).queryByUserId(cxt, profile.userId) ?: return

@@ -339,7 +339,8 @@ val Profile = FC<Props> {
 
     div {
         // Wider while the users table shows (issue #1330): three columns and a row of actions do not fit a form's card.
-        className = ClassName(if (showsUsersTable(myUsers)) "card profile-wide" else "card")
+        // Wide for a table: the person's users, or their API keys (issue #1402), which every profile outside a sandbox shows.
+        className = ClassName(if (showsUsersTable(myUsers) || !shellFacts.inSandbox) "card profile-wide" else "card")
         h1 { +t("profile", "title", "Your profile") }
 
         val user = config?.user
@@ -516,6 +517,10 @@ val Profile = FC<Props> {
                 }
             }
         }
+
+        // The person's API keys (issue #1402), for programs that act as them. Not in a sandbox, whose users take their
+        // standing from the person's users outside it -- which a program with nobody signed in could not ask about.
+        if (!shellFacts.inSandbox) ApiKeysSection {}
 
         div {
             className = ClassName("row")

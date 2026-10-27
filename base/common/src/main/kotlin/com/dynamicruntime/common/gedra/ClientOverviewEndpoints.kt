@@ -343,6 +343,7 @@ fun clientOverviewSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CLD.overvie
                 default = true
             }
         },
+        sessionOnly = true,
     ) { c, request ->
         val home = CLD.homeCopyFields.mapNotNull { (field, key) -> request[field].toOptStr()?.let { key to it } }.toMap()
         val result = ClientSelfServeCreate.create(
