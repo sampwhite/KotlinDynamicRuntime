@@ -51,7 +51,7 @@ import kotlin.time.Duration.Companion.seconds
  * their stored state until something recalculates it, and the client-admin endpoint does that now -- synchronously, as
  * a client launch of the nightly job, within the job profile's synchronous cap.
  *
- * Its own instance: the cap is the instance's job-profile configuration, set here to [cap] so that a client over it
+ * Its own instance: the cap is the instance's job-profile configuration, set here to `cap` so that a client over it
  * needs only a few forms. A client per case.
  */
 class FormStatesRecalcTest : StringSpec({
