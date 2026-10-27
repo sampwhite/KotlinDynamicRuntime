@@ -406,27 +406,12 @@ val FileRefsSection = FC<FileRefsSectionProps> { props ->
                                 }
                                 +"Reword…"
                             }
-                            Popconfirm {
-                                title = fileRefRemoveQuestion(ref, props.clientId, draft)
-                                description = fileRefRemoveConsequence(ref, draft)
-                                okText = "Remove"
-                                cancelText = "Cancel"
-                                placement = "bottomLeft"
-                                open = status.confirming == ref.refId
-                                onOpenChange = { open -> rows.confirm(if (open) ref.refId else null) }
-                                onConfirm = {
-                                    rows.confirm(null)
-                                    run(ref.refId, FACT.remove, added = false, ::fileRefRemovedNote) {
-                                        ClientsApi.removeFileRef(props.clientId, ref.refId, expected)
-                                    }
-                                }
-                                okButtonProps = js("({ danger: true })")
-                                disabled = status.running
-                                Button {
-                                    danger = true
-                                    loading = status.isBusy(ref.refId, FACT.remove)
-                                    disabled = status.othersBusy(ref.refId, FACT.remove)
-                                    +"Remove"
+                            confirmedRemove(
+                                rows, ref.refId, FACT.remove,
+                                fileRefRemoveQuestion(ref, props.clientId, draft), fileRefRemoveConsequence(ref, draft),
+                            ) {
+                                run(ref.refId, FACT.remove, added = false, ::fileRefRemovedNote) {
+                                    ClientsApi.removeFileRef(props.clientId, ref.refId, expected)
                                 }
                             }
                         }
@@ -462,13 +447,7 @@ val FileRefsSection = FC<FileRefsSectionProps> { props ->
                         }
                     }
                 }
-                status.problemAt(ref.refId)?.let {
-                    p {
-                        className = ClassName("error-text")
-                        +it
-                    }
-                }
-                status.failureAt(ref.refId)?.let { errorText("Couldn't change the file '${ref.refId}'.", it) }
+                rowFailure(status, ref.refId, "Couldn't change the file '${ref.refId}'.")
             }
         }
     }
@@ -592,13 +571,7 @@ val FileRefsSection = FC<FileRefsSectionProps> { props ->
                     }
                 }
             }
-            status.problemAt(FACT.adding)?.let {
-                p {
-                    className = ClassName("error-text")
-                    +it
-                }
-            }
-            status.failureAt(FACT.adding)?.let { errorText("Couldn't add the file.", it) }
+            rowFailure(status, FACT.adding, "Couldn't add the file.")
         }
     }
 }

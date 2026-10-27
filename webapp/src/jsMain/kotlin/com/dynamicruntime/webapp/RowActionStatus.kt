@@ -1,7 +1,10 @@
 package com.dynamicruntime.webapp
 
+import react.ChildrenBuilder
 import react.StateSetter
+import react.dom.html.ReactHTML.p
 import react.useState
+import web.cssom.ClassName
 
 /**
  * Where a section's per-row actions stand (issue #1388): which control is running ([busyKey], [webAssetBusyKey]'s
@@ -87,4 +90,53 @@ class RowActions(val status: RowActionStatus, private val set: StateSetter<RowAc
 fun useRowActions(): RowActions {
     val (status, set) = useState(RowActionStatus.cleared)
     return RowActions(status, set)
+}
+
+/**
+ * Row [at]'s **Remove** (issue #1388): a `danger` button behind a confirmation that asks [question] and says
+ * [consequence] -- which names where it acts, as every delete's does (issue #1049) -- whose open question is
+ * [rows]' one. Confirmed, it closes and calls [onConfirm]; the button shows [action] running, and is disabled while
+ * another control's is.
+ */
+internal fun ChildrenBuilder.confirmedRemove(
+    rows: RowActions,
+    at: String,
+    action: String,
+    question: String,
+    consequence: String,
+    onConfirm: () -> Unit,
+) {
+    val status = rows.status
+    Popconfirm {
+        title = question
+        description = consequence
+        okText = "Remove"
+        cancelText = "Cancel"
+        placement = "bottomLeft"
+        open = status.confirming == at
+        onOpenChange = { open -> rows.confirm(if (open) at else null) }
+        this.onConfirm = {
+            rows.confirm(null)
+            onConfirm()
+        }
+        okButtonProps = js("({ danger: true })")
+        disabled = status.running
+        Button {
+            danger = true
+            loading = status.isBusy(at, action)
+            disabled = status.othersBusy(at, action)
+            +"Remove"
+        }
+    }
+}
+
+/** What went wrong with row [at]'s last action, beside it: the page's own objection, or the backend's refusal under [lead]. */
+internal fun ChildrenBuilder.rowFailure(status: RowActionStatus, at: String, lead: String) {
+    status.problemAt(at)?.let {
+        p {
+            className = ClassName("error-text")
+            +it
+        }
+    }
+    status.failureAt(at)?.let { errorText(lead, it) }
 }

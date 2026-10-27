@@ -168,37 +168,16 @@ val WebAssetsSection = FC<WebAssetsSectionProps> { props ->
                         if (slot.file != null) {
                             // Gone for the client's people as it is confirmed, so it is asked about, and the
                             // question names where it acts (issue #1049) -- as every delete's does.
-                            Popconfirm {
-                                title = webAssetRemoveQuestion(slot, props.clientId)
-                                description = webAssetRemoveConsequence(slot)
-                                okText = "Remove"
-                                cancelText = "Cancel"
-                                placement = "bottomLeft"
-                                open = status.confirming == slot.slot
-                                onOpenChange = { open -> rows.confirm(if (open) slot.slot else null) }
-                                onConfirm = {
-                                    rows.confirm(null)
-                                    run(slot.slot, WACT.remove) { ClientsApi.removeWebAsset(props.clientId, slot.slot) }
-                                }
-                                okButtonProps = js("({ danger: true })")
-                                disabled = status.running
-                                Button {
-                                    danger = true
-                                    loading = status.isBusy(slot.slot, WACT.remove)
-                                    disabled = status.othersBusy(slot.slot, WACT.remove)
-                                    +"Remove"
-                                }
+                            confirmedRemove(
+                                rows, slot.slot, WACT.remove,
+                                webAssetRemoveQuestion(slot, props.clientId), webAssetRemoveConsequence(slot),
+                            ) {
+                                run(slot.slot, WACT.remove) { ClientsApi.removeWebAsset(props.clientId, slot.slot) }
                             }
                         }
                     }
                 }
-                status.problemAt(slot.slot)?.let {
-                    p {
-                        className = ClassName("error-text")
-                        +it
-                    }
-                }
-                status.failureAt(slot.slot)?.let { errorText("Couldn't change the ${slot.label.lowercase()}.", it) }
+                rowFailure(status, slot.slot, "Couldn't change the ${slot.label.lowercase()}.")
             }
         }
     }
