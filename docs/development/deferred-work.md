@@ -794,3 +794,16 @@ From #1402, which built API keys, and #1403, which exchanges a key for a signed 
   operator asks.
 - **A token is meant for some other service.** Its audience is this deployment's API, the issuer itself. A token aimed
   elsewhere needs the audience to be the caller's to name, or a deployment's to set.
+
+## When a client holds more forms than its page may recalculate
+
+A client's page recalculates its forms' state synchronously, as a client launch of the nightly recompute job, and only
+for a client holding no more forms than the `gedraState` job profile's synchronous cap, 2000 (issue #1412). A larger
+client waits for the nightly run.
+
+- **Raise the cap** *(#1412, deferred here 2026-10-27).* A setting, not code: `jobProfiles.gedraState.syncTaskCap`
+  and `syncHardCap`, read by both the page's offer and the refusal. On file-backed H2 on a MacBook, every form out of
+  date took about 1 ms a form (2000 in 2.0 s); time a larger count with `kdr-probe form-states-timing` on the
+  deployment's own database before raising it.
+- **An asynchronous launch from the page.** The same client launch with `JobRunMode.async`, answering at once, and
+  the page following the launch row's progress until it ends.

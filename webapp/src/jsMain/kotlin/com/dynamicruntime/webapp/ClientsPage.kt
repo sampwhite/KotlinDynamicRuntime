@@ -472,6 +472,16 @@ private fun ChildrenBuilder.clientDetail(
                     formsOpenable = impactFormsOpenable(acrossClients, onSandboxPage = row?.sandboxOf != null)
                     this.onChanged = onChanged
                 }
+                // Bringing its forms' stored state up to date with the configuration above now, rather than overnight
+                // (issue #1412). A sandbox's too: its forms are its own.
+                row?.let { overview ->
+                    WhatIsThis {
+                        heading = "Form states"
+                        headingLevel = 3
+                        text = pageCopy.explanation(PFRAG.formStatesNs)
+                    }
+                    FormStatesSection { this.row = overview }
+                }
             }
         }
         // What the client's own configuration changes about what its people see (issue #917): the copy it rewords,

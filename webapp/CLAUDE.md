@@ -688,7 +688,7 @@ The page has a header, and then panels: each a keyed `section` (`clientPanel`), 
   - links to the panels, which scroll rather than set a hash.
 - **The panels**, in order:
   1. **Definition**: the editor first, then the read-only rows. The rows are grouped as the editor's sections are (`clientSummaryGroups`: About, How it behaves, Platform), plus *Where it runs*. The groups sit side by side where there is room.
-  2. **Forms and data**: Traits, then Workflows.
+  2. **Forms and data**: Traits, then Workflows, then Form states.
   3. **Copy**.
   4. **Images**: Web assets, then Files.
   5. **Sandbox and publishing**: Sandbox, then Stored configuration. Drafts made in the panels above are published here.
@@ -977,6 +977,16 @@ client does not. A **new trait** may **Start from** a global trait (`extending`)
 which are listed and kept, and the preview resolves the extension onto the base (`previewDefs` with a
 `TraitBaseView`); what a trait extends is fixed once saved. Every one of these saves, as a sandbox's draft, says what
 publishing it would do to the live client's forms (`draftImpact`, `draftImpactText`) -- for information.
+
+**Form states** (issue #1412, `FormStatesSection.kt`, its pure half in `FormStates.kt`, covered by `FormStatesTest`):
+under Workflows, **Recalculate form states** brings the stored state of the client's forms up to date with its
+configuration now, rather than at the nightly recalculation, through `POST /clientAdmin/client/formStates/recalculate`
+(`ClientsApi.recalculateFormStates`). Synchronous, so it is offered only while the overview row's
+`formStatesRecalcCount` -- the backend's own count of what a run looks at, not `forms` -- is within its
+`formStatesRecalcLimit` (`formStatesOffer`); past it, the section says the nightly run brings them up to date. The answer
+is said as counts (`formStatesRecalcText`), including a run that changed nothing, and "busy" while another
+recalculation holds the client. Not asked about first: it changes no data anybody entered. A sandbox's page offers it
+too, since its forms are its own. `kdr-probe --url <your server> form-states-timing [counts...]` times it.
 
 **Workflows** (issue #1120, `ClientWorkflowsSection.kt`, its pure half in `ClientWorkflows.kt`, covered by
 `ClientWorkflowsTest`): under Traits, offered where they are, from `GET /clientAdmin/client/workflows`

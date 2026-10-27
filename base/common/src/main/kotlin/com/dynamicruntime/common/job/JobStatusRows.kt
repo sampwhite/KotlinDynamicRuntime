@@ -20,9 +20,16 @@ import com.dynamicruntime.common.util.toOptStr
 import kotlin.time.Duration
 import kotlin.time.Instant
 
-/** How a job was launched. The launch row is keyed by it, so a scheduled and an endpoint launch run side by side. */
+/**
+ * How a job was launched. The launch row is keyed by it, so a scheduled and an endpoint launch run side by side.
+ *
+ * A [client] launch (issue #1412) is confined to one client, from that client's own page, and its launch row is keyed
+ * by the client too: launches for different clients run side by side, and none of them takes the operator's endpoint
+ * row. Like any two launches of a type, it meets the others at the client's row, where one holding it keeps the
+ * other off.
+ */
 @Suppress("EnumEntryName")
-enum class JobLaunchKind { scheduled, endpoint }
+enum class JobLaunchKind { scheduled, endpoint, client }
 
 /** Where a status row stands. A row nothing has claimed yet has none. */
 @Suppress("EnumEntryName")
@@ -67,7 +74,7 @@ class JobCounts(val completed: Long = 0, val skipped: Long = 0, val failed: Long
  * done under it is adopted rather than redone; a scheduled launch's name comes from its scheduled slot, so a node
  * joining the same slot adopts too. [redoWindow], when set, lets a per-client row be adopted even under another
  * launch's name, if its work began within that long before this launch's time -- the "is it old enough to redo"
- * test.
+ * test. [client] is the one client a [JobLaunchKind.client] launch is confined to, and null for any other.
  */
 class JobLaunch(
     val jobType: String,
@@ -76,6 +83,7 @@ class JobLaunch(
     val params: Map<String, Any?> = emptyMap(),
     val dryRun: Boolean = false,
     val redoWindow: Duration? = null,
+    val client: String? = null,
 )
 
 /**
@@ -120,6 +128,9 @@ class JobStatusRow(row: Map<String, Any?>) {
 
     /** The client, on a per-client row; null on a launch row. */
     val client: String? = row[PF.client].toOptStr()
+
+    /** On a client launch's row, the client it is confined to (issue #1412); null on any other row. */
+    val launchClient: String? = row[JOB.launchClient].toOptStr()?.takeIf { it != JOB.anyClient }
     val runStatus: JobRunStatus? = row[JOB.runStatus].toOptStr()?.let { s -> JobRunStatus.entries.firstOrNull { it.name == s } }
     val launchName: String? = row[JOB.launchName].toOptStr()
     val launchTime: Instant? = row[JOB.launchTime].toOptInstant()
@@ -170,7 +181,7 @@ object JobStatusRows {
      * the attempt before it.
      */
     fun claimLaunch(cxt: KdrCxt, launch: JobLaunch, timeout: Duration): JobClaim =
-        inRowTran(cxt, "jobClaimLaunch", JOB.jobStatus, launchKey(launch.jobType, launch.kind, launch.dryRun)) { tran ->
+        inRowTran(cxt, "jobClaimLaunch", JOB.jobStatus, launchKey(launch.jobType, launch.kind, launch.client, launch.dryRun)) { tran ->
             val now = jobNow(cxt)
             val row = JobStatusRow(tran.row)
             if (row.isLive(now, timeout)) {
@@ -267,15 +278,15 @@ object JobStatusRows {
         finish(cxt, lease, JobAttemptEnd.released, counts, "Released on shutdown.")
 
     /**
-     * Asks the live launch of [jobType] launched as [kind] to abort; its holder's next heartbeat picks it up.
-     * Answers whether there was an active launch to ask. The lease is not touched, so asking does not keep a dead
-     * launch alive.
+     * Asks the live launch of [jobType] launched as [kind] -- for [client], a client launch -- to abort; its holder's
+     * next heartbeat picks it up. Answers whether there was an active launch to ask. The lease is not touched, so
+     * asking does not keep a dead launch alive.
      */
-    fun requestAbort(cxt: KdrCxt, jobType: String, kind: JobLaunchKind, dryRun: Boolean = false): Boolean {
+    fun requestAbort(cxt: KdrCxt, jobType: String, kind: JobLaunchKind, dryRun: Boolean = false, client: String? = null): Boolean {
         // Read first: the transaction would insert the row if it were missing, and a job that never ran should
         // not gain an empty one because somebody asked it to stop.
-        if (readLaunch(cxt, jobType, kind, dryRun)?.runStatus != JobRunStatus.active) return false
-        return inRowTran(cxt, "jobRequestAbort", JOB.jobStatus, launchKey(jobType, kind, dryRun)) { tran ->
+        if (readLaunch(cxt, jobType, kind, dryRun, client)?.runStatus != JobRunStatus.active) return false
+        return inRowTran(cxt, "jobRequestAbort", JOB.jobStatus, launchKey(jobType, kind, client, dryRun)) { tran ->
             if (JobStatusRow(tran.row).runStatus != JobRunStatus.active) {
                 tran.noWrite()
                 false
@@ -286,26 +297,22 @@ object JobStatusRows {
         }
     }
 
-    /** The launch row of [jobType] launched as [kind] (a dry run's, when [dryRun]), or null if none has been written. */
-    fun readLaunch(cxt: KdrCxt, jobType: String, kind: JobLaunchKind, dryRun: Boolean = false): JobStatusRow? =
-        readRow(cxt, JOB.jobStatus, launchKey(jobType, kind, dryRun))
+    /**
+     * The launch row of [jobType] launched as [kind] -- for [client], a client launch -- (a dry run's, when [dryRun]),
+     * or null if none has been written.
+     */
+    fun readLaunch(cxt: KdrCxt, jobType: String, kind: JobLaunchKind, dryRun: Boolean = false, client: String? = null): JobStatusRow? =
+        readRow(cxt, JOB.jobStatus, launchKey(jobType, kind, client, dryRun))
+
+    /** Every launch row [jobType] has (a dry run's, when [dryRun]): by kind, and a client launch's by client. */
+    fun readLaunches(cxt: KdrCxt, jobType: String, dryRun: Boolean = false): List<JobStatusRow> =
+        queryRows(
+            cxt, JOB.jobStatus, "qJobLaunchesByType", "order by c:${JOB.launchKind}, c:${JOB.launchClient}", jobType, dryRun,
+        )
 
     /** Every client row [jobType] has (a dry run's, when [dryRun]), ordered by client. */
-    fun readClients(cxt: KdrCxt, jobType: String, dryRun: Boolean = false): List<JobStatusRow> {
-        val sqlCxt = SqlTopicService.mkSqlCxt(cxt, jobTopic)
-        val table = cxt.getGlobalSchema().tables[JOB.jobClientStatus]
-            ?: throw KdrException("${JOB.jobClientStatus} table is not registered in the schema store.")
-        val stmt = SqlStmtUtil.prepareSql(
-            sqlCxt, "qJobClientsByType", table.columns,
-            "select * from t:${JOB.jobClientStatus} where c:${JOB.jobType} = :${JOB.jobType} " +
-                "and c:${JOB.dryRun} = :${JOB.dryRun} order by c:${PF.client}",
-        )
-        var rows: List<Map<String, Any?>> = emptyList()
-        sqlCxt.sqlDb.withSession(cxt) {
-            rows = sqlCxt.sqlDb.queryStatement(cxt, stmt, mapOf(JOB.jobType to jobType, JOB.dryRun to dryRun))
-        }
-        return rows.map { JobStatusRow(it) }
-    }
+    fun readClients(cxt: KdrCxt, jobType: String, dryRun: Boolean = false): List<JobStatusRow> =
+        queryRows(cxt, JOB.jobClientStatus, "qJobClientsByType", "order by c:${PF.client}", jobType, dryRun)
 
     /** [client]'s row for [jobType] (a dry run's, when [dryRun]), or null if none has been written. */
     fun readClient(cxt: KdrCxt, jobType: String, client: String, dryRun: Boolean = false): JobStatusRow? =
@@ -319,11 +326,27 @@ object JobStatusRows {
      */
     private fun jobNow(cxt: KdrCxt): Instant = Instant.fromEpochMilliseconds(cxt.instanceNow().toEpochMilliseconds())
 
-    private fun launchKey(jobType: String, kind: JobLaunchKind, dryRun: Boolean): Map<String, Any?> =
-        mapOf(JOB.jobType to jobType, JOB.launchKind to kind.name, JOB.dryRun to dryRun)
+    private fun launchKey(jobType: String, kind: JobLaunchKind, client: String?, dryRun: Boolean): Map<String, Any?> =
+        mapOf(JOB.jobType to jobType, JOB.launchKind to kind.name, JOB.launchClient to (client ?: JOB.anyClient), JOB.dryRun to dryRun)
 
     private fun clientKey(jobType: String, client: String, dryRun: Boolean): Map<String, Any?> =
         mapOf(JOB.jobType to jobType, PF.client to client, JOB.dryRun to dryRun)
+
+    /** Every row of [tableName] for [jobType] (a dry run's, when [dryRun]), in the order [orderBy] says. */
+    private fun queryRows(cxt: KdrCxt, tableName: String, queryName: String, orderBy: String, jobType: String, dryRun: Boolean): List<JobStatusRow> {
+        val sqlCxt = SqlTopicService.mkSqlCxt(cxt, jobTopic)
+        val table = cxt.getGlobalSchema().tables[tableName]
+            ?: throw KdrException("$tableName table is not registered in the schema store.")
+        val stmt = SqlStmtUtil.prepareSql(
+            sqlCxt, queryName, table.columns,
+            "select * from t:$tableName where c:${JOB.jobType} = :${JOB.jobType} and c:${JOB.dryRun} = :${JOB.dryRun} $orderBy",
+        )
+        var rows: List<Map<String, Any?>> = emptyList()
+        sqlCxt.sqlDb.withSession(cxt) {
+            rows = sqlCxt.sqlDb.queryStatement(cxt, stmt, mapOf(JOB.jobType to jobType, JOB.dryRun to dryRun))
+        }
+        return rows.map { JobStatusRow(it) }
+    }
 
     private fun readRow(cxt: KdrCxt, tableName: String, key: Map<String, Any?>): JobStatusRow? {
         val sqlCxt = SqlTopicService.mkSqlCxt(cxt, jobTopic)
@@ -365,7 +388,7 @@ object JobStatusRows {
         val jobType = lease.launch.jobType
         val client = lease.client
         val (tableName, key) = if (client == null) {
-            JOB.jobStatus to launchKey(jobType, lease.launch.kind, lease.launch.dryRun)
+            JOB.jobStatus to launchKey(jobType, lease.launch.kind, lease.launch.client, lease.launch.dryRun)
         } else {
             JOB.jobClientStatus to clientKey(jobType, client, lease.launch.dryRun)
         }

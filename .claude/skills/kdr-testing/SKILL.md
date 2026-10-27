@@ -354,6 +354,7 @@ kdr-probe report-demo                                 # runs the report-demo sim
 kdr-probe report-history-demo                         # report-demo plus five days of dated report snapshots (#1036)
 kdr-probe impact-demo [suffix]                        # runs the impact-demo simulation: a draft to publish (#935)
 kdr-probe listing-demo [suffix] [forms] [users]       # long lists: 650 forms and 550 users by default (#1316)
+kdr-probe form-states-timing [counts...]              # times a client's form-state recalculation, stale and current (#1412)
 kdr-probe call --as operator GET /operator/system/info # one request, no session to keep
 kdr-probe --url http://localhost:7099 catalog-diff    # somewhere other than the default 7071
 ```

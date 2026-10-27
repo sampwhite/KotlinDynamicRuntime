@@ -50,8 +50,16 @@ enum class JobLaunchOutcome {
     lockedOut,
 }
 
-/** The answer to a launch: its outcome, why it stopped when it did, and its counters when it ran. */
-class JobLaunchResult(val outcome: JobLaunchOutcome, val reason: String? = null, val counts: JobCounts? = null)
+/**
+ * The answer to a launch: its outcome, why it stopped when it did, its counters when it ran, and the clients it left
+ * alone because another launch held them ([busyClients], issue #1412).
+ */
+class JobLaunchResult(
+    val outcome: JobLaunchOutcome,
+    val reason: String? = null,
+    val counts: JobCounts? = null,
+    val busyClients: List<String> = emptyList(),
+)
 
 /**
  * One launch in progress (issue #869): the loop that claims each client in turn, runs its tasks, heartbeats, and
@@ -385,7 +393,7 @@ internal class JobRun(
             data = linkedMapOf(JOB.end to outcome.name, JOB.counts to launchCounts.toJsonMap()),
         )
         tracer.flush(final = true)
-        return JobLaunchResult(outcome, reason, launchCounts)
+        return JobLaunchResult(outcome, reason, launchCounts, busyClients.toList())
     }
 
     private fun now(): Instant = Instant.fromEpochMilliseconds(cxt.instanceNow().toEpochMilliseconds())

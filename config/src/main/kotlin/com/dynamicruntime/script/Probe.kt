@@ -70,6 +70,7 @@ object Probe {
         reportHistoryDemoName to ::reportHistoryDemo,
         impactDemoName to ::impactDemo,
         listingDemoName to ::listingDemo,
+        formStatesTimingName to ::formStatesTiming,
     )
 }
 

@@ -167,14 +167,14 @@ class JobTracer(
         }
     }
 
-    /** Writes what has been buffered, and on the [final] flush prunes the job type's older launches. */
+    /** Writes what has been buffered, and on the [final] flush prunes the older launches of the job type's kind. */
     fun flush(final: Boolean = false) {
         if (level == JobTraceLevel.off) return
         val batch = synchronized(lock) { pending.toList().also { pending.clear() } }
         val traceCxt = cxt.mkSubContext("jobTrace")
         try {
             if (batch.isNotEmpty()) writer(traceCxt, batch)
-            if (final) JobTraceRows.prune(traceCxt, launch.jobType, keepLaunches)
+            if (final) JobTraceRows.prune(traceCxt, launch.jobType, launch.kind, keepLaunches)
         } catch (e: Exception) {
             LogJob.warn(cxt) { "Dropped ${batch.size} trace entries for job '${launch.jobType}': ${e.message}" }
         }
@@ -237,30 +237,35 @@ object JobTraceRows {
     }
 
     /**
-     * Keeps the trace of [jobType]'s [keep] most recently written launches, deleting entries older than the
-     * earliest of theirs. An older launch's entries written after that point survive with them, which bounds
-     * the table all the same.
+     * Keeps the trace of the [keep] most recently written launches of [jobType] launched as [kind], deleting that
+     * kind's entries older than the earliest of theirs. An older launch's entries written after that point survive
+     * with them, which bounds the table all the same.
+     *
+     * **Each kind keeps its own** (issue #1412): the clicks of a client's page, the operator's launches, and the
+     * schedule's are different people's, and a burst of one must not take the trace of another -- the night's run
+     * that somebody is about to look into, say.
      */
-    fun prune(cxt: KdrCxt, jobType: String, keep: Int) {
+    fun prune(cxt: KdrCxt, jobType: String, kind: JobLaunchKind, keep: Int) {
         val sqlCxt = SqlTopicService.mkSqlCxt(cxt, jobTopic)
         val columns = table(cxt).columns
+        val ofKind = "c:${JOB.jobType} = :${JOB.jobType} and c:${JOB.launchKind} = :${JOB.launchKind}"
         val recent = SqlStmtUtil.prepareSql(
             sqlCxt, "qJobTraceLaunches", columns,
             // Each launch's first entry, most recently written launch first. The aggregate is named as the column
             // it aggregates, so it reads back as that field with that field's type.
-            "select min(c:${JOBT.traceSeq}) as c:${JOBT.traceSeq} from t:${JOBT.jobTrace} " +
-                "where c:${JOB.jobType} = :${JOB.jobType} " +
-                "group by c:${JOB.launchKind}, c:${JOB.dryRun}, c:${JOB.launchName} order by max(c:${JOBT.traceSeq}) desc",
+            "select min(c:${JOBT.traceSeq}) as c:${JOBT.traceSeq} from t:${JOBT.jobTrace} where $ofKind " +
+                "group by c:${JOB.dryRun}, c:${JOB.launchName} order by max(c:${JOBT.traceSeq}) desc",
         )
         val delete = SqlStmtUtil.prepareSql(
             sqlCxt, "dJobTraceBefore", columns,
-            "delete from t:${JOBT.jobTrace} where c:${JOB.jobType} = :${JOB.jobType} and c:${JOBT.traceSeq} < :${JOBT.traceSeq}",
+            "delete from t:${JOBT.jobTrace} where $ofKind and c:${JOBT.traceSeq} < :${JOBT.traceSeq}",
         )
+        val key = mapOf(JOB.jobType to jobType, JOB.launchKind to kind.name)
         sqlCxt.sqlDb.withSession(cxt) {
-            val launches = sqlCxt.sqlDb.queryStatement(cxt, recent, mapOf(JOB.jobType to jobType))
+            val launches = sqlCxt.sqlDb.queryStatement(cxt, recent, key)
             if (launches.size <= keep) return@withSession
             val cutoff = launches.take(keep).mapNotNull { it[JOBT.traceSeq].toOptLong() }.minOrNull() ?: return@withSession
-            sqlCxt.sqlDb.executeStatement(cxt, delete, mapOf(JOB.jobType to jobType, JOBT.traceSeq to cutoff))
+            sqlCxt.sqlDb.executeStatement(cxt, delete, key + (JOBT.traceSeq to cutoff))
         }
     }
 

@@ -80,6 +80,7 @@ fun jobOperatorSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, JOBEP.namespac
         type = SCT.kObject
         description = "One batch-job status row: a launch row, or one client's row."
         property(JOB.launchKind, "The launch kind, on a launch row.")
+        property(JOB.launchClient, "On a client launch's row, the client it is confined to.")
         property(PF.client, "The client, on a client row.")
         property(JOB.runStatus, "active, complete or aborted; absent before the first claim.")
         property(JOB.launchName, "The launch that holds, or last held, the row.")
@@ -107,7 +108,7 @@ fun jobOperatorSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, JOBEP.namespac
         description = "A registered job type and how its rows stand."
         property(JOBF.jobType, "The job type.", required = true)
         property(JOBF.description, "What the job does.", required = true)
-        property(JOBF.launches, "Its launch rows: scheduled and endpoint.", required = true) {
+        property(JOBF.launches, "Its launch rows: scheduled, endpoint, and each client launch's.", required = true) {
             type = SCT.array
             items { ref(JOBEP.rowType) }
         }
@@ -235,8 +236,7 @@ fun jobOperatorSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, JOBEP.namespac
             linkedMapOf(
                 JOBF.jobType to def.jobType,
                 JOBF.description to def.description,
-                JOBF.launches to JobLaunchKind.entries.mapNotNull { JobStatusRows.readLaunch(c, def.jobType, it, dryRun) }
-                    .map { rowInfo(it) },
+                JOBF.launches to JobStatusRows.readLaunches(c, def.jobType, dryRun).map { rowInfo(it) },
                 JOBF.clientRows to JobStatusRows.readClients(c, def.jobType, dryRun).map { rowInfo(it) },
             )
         }
@@ -249,7 +249,7 @@ fun jobOperatorSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, JOBEP.namespac
         inputFields = {
             field(JOBF.jobType, "The job type.", required = true) { optionsSource(JOBEP.jobTypeOptions) }
             field(JOBF.name, "The launch's name.", required = true)
-            field(JOBF.kind, "Which launch: the endpoint one (the default) or the scheduled one.") {
+            field(JOBF.kind, "Which kind of launch: endpoint (the default), scheduled, or client.") {
                 JobLaunchKind.entries.forEach { option(it.name) }
             }
             field(JOBF.dryRun, "The dry run's trace instead of the real one's.") {
@@ -286,16 +286,21 @@ fun jobOperatorSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, JOBEP.namespac
         outputRef = JOBEP.abortResultType,
         inputFields = {
             field(JOBF.jobType, "The job type whose launch to abort.", required = true) { optionsSource(JOBEP.jobTypeOptions) }
-            field(JOBF.kind, "Which launch: the endpoint one (the default) or the scheduled one.") {
+            field(JOBF.kind, "Which launch: the endpoint one (the default), the scheduled one, or a client's.") {
                 JobLaunchKind.entries.forEach { option(it.name) }
             }
+            field(PF.client, "With kind client: the client whose launch to abort.")
             field(JOBF.dryRun, "Abort the dry run's launch instead of the real one.") { type = SCT.boolean }
         },
         tags = setOf(ETAG.internal),
     ) { c, request ->
         val jobType = request[JOBF.jobType].toOptStr() ?: throw KdrException.mkInput("A ${JOBF.jobType} is required.")
         val kind = JobLaunchKind.entries.firstOrNull { it.name == request[JOBF.kind].toOptStr() } ?: JobLaunchKind.endpoint
-        mapOf(JOBF.requested to JobService.get(c).abort(c, jobType, kind, request[JOBF.dryRun] == true))
+        val client = request[PF.client].toOptStr()
+        if ((kind == JobLaunchKind.client) != (client != null)) {
+            throw KdrException.mkInput("A ${PF.client} is named for a client launch, and only for one.")
+        }
+        mapOf(JOBF.requested to JobService.get(c).abort(c, jobType, kind, request[JOBF.dryRun] == true, client))
     }
 }
 
@@ -312,6 +317,7 @@ private fun rowInfo(row: JobStatusRow): Map<String, Any?> {
         if (value != null) out[key] = value
     }
     put(JOB.launchKind, row.launchKind?.name)
+    put(JOB.launchClient, row.launchClient)
     put(PF.client, row.client)
     put(JOB.runStatus, row.runStatus?.name)
     put(JOB.launchName, row.launchName)

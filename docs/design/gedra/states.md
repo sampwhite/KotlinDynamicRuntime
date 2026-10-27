@@ -22,8 +22,9 @@ Later work built on it: the survey's derived state (#657); a recompute after eve
 transaction-scoped context (#687); the per-workflow state of a normal workflow (#794), with eligibility (#783), merged
 cfacts (#784), the call-to-action task (#785), approvals (#787), and time windows (#790); the nightly recompute job
 (#793); a recompute that reads the data again under the lock (#862); trait locks, which read state and record their
-overrides in it (#857); and the publish impact report, which judges stored state (#935). What is not built is listed at
-the end.
+overrides in it (#857); the publish impact report, which judges stored state (#935); and a recalculation of one client's
+forms from its page, run as a synchronous client launch of the nightly job within the job profile's cap (#1412). What
+is not built is listed at the end.
 
 ## Why state is separate from data
 

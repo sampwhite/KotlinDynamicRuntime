@@ -50,8 +50,11 @@ class JobProfile(
     val trace: JobTraceLevel? = null,
     /** The most trace entries one launch records; past it, only launch-level entries are. */
     val traceMaxEntries: Int = 10_000,
-    /** How many of a job type's launches the trace keeps. */
-    val traceKeepLaunches: Int = 20,
+    /**
+     * How many of a job type's launches the trace keeps, for each launch kind: a burst of one kind's launches never
+     * takes another kind's trace (issue #1412).
+     */
+    val traceKeepLaunches: Int = 10,
 ) {
     /**
      * The trace level for a launch that asked for [requested] (or nothing): the request, else this profile's, else
