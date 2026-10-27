@@ -198,10 +198,12 @@ private fun ChildrenBuilder.extendEditor(
         Select {
             value = unit
             disabled = saving
-            options = arrayOf(
-                js("({ label: 'days', value: 'days' })"),
-                js("({ label: 'months', value: 'months' })"),
-            )
+            options = listOf(EXTU.days, EXTU.months).map { u ->
+                val o: dynamic = js("({})")
+                o.label = u
+                o.value = u
+                o
+            }.toTypedArray()
             style = js("({ minWidth: 110 })")
             onChange = { v -> onUnit(v as String) }
         }

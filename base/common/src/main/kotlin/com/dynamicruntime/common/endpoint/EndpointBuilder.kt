@@ -261,6 +261,13 @@ class KdrEndpoint(
      */
     fun existsFor(cxt: KdrCxt): Boolean = !forTestingOnly || cxt.hasTestAccess
 
+    /**
+     * Why the API key [cxt]'s request carries may not call this endpoint, or null when it may or there is no key (issue
+     * #1402): a read-only key and anything but a GET, or any key and a [sessionOnly] endpoint. Asked by the dispatcher,
+     * which refuses with it, and by the catalog, which leaves the endpoint out.
+     */
+    fun keyRefusal(cxt: KdrCxt): String? = cxt.apiKey?.refusal(method.name, sessionOnly, path)
+
     @Suppress("ConstPropertyName")
     companion object {
         /** Schema type name for one endpoint's rendering in the catalog (the shape of [renderEndpoint]). */

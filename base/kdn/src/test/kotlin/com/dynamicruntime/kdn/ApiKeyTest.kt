@@ -3,6 +3,7 @@ package com.dynamicruntime.kdn
 import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.UPF
+import com.dynamicruntime.common.endpoint.EI
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.endpoint.HttpMethod
 import com.dynamicruntime.common.exception.EXC
@@ -294,10 +295,46 @@ class ApiKeyTest : StringSpec({
         admin.expectError(EXC.notFound, AKEY.adminRevoke, mapOf(AKEY.keyId to outsiderInfo[AKEY.keyId]))
         admin.getItems(AKEY.adminKeys).none { it[AKEY.keyId] == outsiderInfo[AKEY.keyId] } shouldBe true
 
+        // Another administrator of their own client: a peer's keys are the peer's to make, or a key would let them
+        // act as a reviewer who is not a form's owner.
+        val peer = TestUser.create(cxt, "peer@$mine.test", level = ROLE.admin, userClient = mine)
+        admin.expectError(EXC.badInput, AKEY.adminCreate, mapOf(AKEY.userId to peer.userId, AKEY.name to "as peer"))
+            .toString() shouldContain "is an administrator, whose API keys are theirs to make"
         // A user of their own client who holds what they do not.
-        val wider = TestUser.create(cxt, "wider@$mine.test", level = ROLE.admin, capabilities = listOf(ROLE.allClients), userClient = mine)
+        val wider = TestUser.create(cxt, "wider@$mine.test", level = ROLE.operator, capabilities = listOf(ROLE.allClients), userClient = mine)
         admin.expectError(EXC.badInput, AKEY.adminCreate, mapOf(AKEY.userId to wider.userId, AKEY.name to "up"))
             .toString() shouldContain "'${ROLE.allClients}'"
+    }
+
+    "a key is shown only the endpoints it may call" {
+        val owner = TestUser.create(cxt, "catalog@$mine.test", userClient = mine)
+        val (read, _) = makeKey(owner)
+        val (full, _) = makeKey(owner, name = "full", access = AKEY.full)
+        // With env auth, so the whole catalog is listed rather than the published API alone (issue #489): what is left
+        // out is left out for the key.
+        fun listed(key: String): List<Map<String, Any?>> {
+            val answer = keyed(key).alwaysWithTestAccess().sendGetRequest("/schema/endpoints", mapOf(EP.limit to 5000))
+            answer.rptStatusCode shouldBe 200
+            return TestUser.endpointsIn(bodyOf(answer)[EP.results].toJsonMapOrEmpty())
+        }
+        val forRead = listed(read)
+        forRead.any { it[EI.path] == AEP.selfInfo } shouldBe true
+        forRead.none { it[EI.method] != HttpMethod.GET.name } shouldBe true
+        val forFull = listed(full)
+        forFull.any { it[EI.path] == AEP.profileSetName } shouldBe true
+        // Not what only a signed-in session may call.
+        forFull.none { it[EI.path] == AKEY.selfKeys || it[EI.path] == AKEY.selfCreate || it[EI.path] == AEP.logout } shouldBe true
+    }
+
+    "a refused request is not a use of the key" {
+        val owner = TestUser.create(cxt, "refusedUse@$mine.test", userClient = mine)
+        val (key, info) = makeKey(owner)
+        fun lastUsed() = owner.getItems(AKEY.selfKeys).single { it[AKEY.keyId] == info[AKEY.keyId] }[AKEY.lastUsedAt]
+        keyed(key).sendEditRequest(AEP.profileSetName, null, mapOf(AFLD.name to "No"), HttpMethod.POST).rptStatusCode shouldBe EXC.notAuthorized
+        keyed(key).sendGetRequest(AKEY.selfKeys).rptStatusCode shouldBe EXC.notAuthorized
+        lastUsed() shouldBe null
+        keyed(key).sendGetRequest(AEP.selfInfo).rptStatusCode shouldBe 200
+        lastUsed().shouldNotBeNull()
     }
 
     "an administrator confined to an organization lists only its users' keys" {

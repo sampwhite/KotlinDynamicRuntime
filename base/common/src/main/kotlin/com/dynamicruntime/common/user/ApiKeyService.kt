@@ -2,6 +2,7 @@ package com.dynamicruntime.common.user
 
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.ReadScope
+import com.dynamicruntime.common.endpoint.HttpMethod
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.ClientService
@@ -26,12 +27,24 @@ import com.dynamicruntime.common.util.toOptStr
 import java.util.concurrent.ConcurrentHashMap
 
 /**
- * Which API key a request authenticated with (issue #1402), on [KdrCxt.apiKey]: the dispatcher refuses a
- * [read][AKEY.read] key anything but a GET, and any key a [session-only][com.dynamicruntime.common.endpoint.KdrEndpoint.sessionOnly]
- * endpoint; and a keyed request sets no cookie.
+ * Which API key a request authenticated with (issue #1402), on [KdrCxt.apiKey], and when its use was last recorded. A
+ * keyed request sets no cookie, and what it may not reach is [refusal]'s to say.
  */
-class ApiKeyAccess(val keyId: String, val access: String) {
+class ApiKeyAccess(val keyId: String, val access: String, val lastUsedAt: kotlin.time.Instant? = null) {
     val isReadOnly: Boolean get() = access == AKEY.read
+
+    /**
+     * Why this key may not make a [method] request of an endpoint that is [sessionOnly] -- or, for a request no endpoint
+     * answers (a content page), of [path] -- or null when it may. A [read][AKEY.read] key makes GET requests and nothing
+     * else; no key reaches a [session-only][com.dynamicruntime.common.endpoint.KdrEndpoint.sessionOnly] endpoint. The
+     * one statement of it: the dispatcher refuses with it, and the endpoint catalog leaves out what it refuses, so a
+     * keyed caller is never shown an endpoint that would then refuse them.
+     */
+    fun refusal(method: String, sessionOnly: Boolean, path: String): String? = when {
+        isReadOnly && method != HttpMethod.GET.name -> "This API key is read-only: it may only make GET requests."
+        sessionOnly -> "'$path' is not open to API keys; it needs a signed-in session."
+        else -> null
+    }
 }
 
 /** A key just made: its info and the whole key, `kdr_<keyId>_<secret>`, which is never seen again. */
@@ -90,10 +103,11 @@ class ApiKeyService : ServiceInitializer {
      * [forWrite] reads SQL alone: a cached row's [AKEY.lastUsedAt] may be behind, since the last-use stamp leaves
      * `updatedAt` as it is and so never reloads the cache, and a change written back from it would erase the stamp.
      */
-    fun queryKey(cxt: KdrCxt, keyId: String, forWrite: Boolean = false): Map<String, Any?>? {
+    fun queryKey(cxt: KdrCxt, keyId: String, forWrite: Boolean = false, onMiss: () -> Unit = {}): Map<String, Any?>? {
         if (!forWrite) keyCache?.let { cache ->
             cache.checkRefresh(cxt)
             cache.snapshot.get(cache.idOf(keyId))?.let { return it.value }
+            onMiss()
             cache.guardFallback(cxt)
         }
         val sqlCxt = SqlTopicService.mkSqlCxt(cxt, authTopic)
@@ -119,15 +133,18 @@ class ApiKeyService : ServiceInitializer {
     }
 
     /**
-     * The keys [scope] admits, each with its owner, soonest to expire first -- an administrator's listing. [userId]
-     * narrows it to one user's.
+     * The keys [scope] admits that [keep] keeps, each with its owner, soonest to expire first -- an administrator's
+     * listing, cut to [limit] -- and how many there are in all. [userId] narrows it to one user's.
      *
      * The table has no organization: a key belongs to its owner, and the owner's organization lives with the user. So
      * the scope's organization is applied to each owner after the query ([SqlScopeUtil]'s `filteredAfterQuery`, as
      * `UserService.listUsers` does), by the same per-row predicate a by-id read of a user asks
      * ([ReadScope.admitsUserRow]). An owner the scope does not admit, or one that is gone, leaves its keys unlisted.
+     * Only then must every key's owner be read; a scope that names no organization reads the owners of the page alone.
      */
-    fun listScoped(cxt: KdrCxt, scope: ReadScope, userId: Long?): List<ListedApiKey> {
+    fun listScoped(
+        cxt: KdrCxt, scope: ReadScope, userId: Long?, limit: Int, keep: (Map<String, Any?>) -> Boolean = { true },
+    ): Pair<List<ListedApiKey>, Int> {
         val sqlCxt = SqlTopicService.mkSqlCxt(cxt, authTopic)
         val table = table(cxt)
         val data = mutableMapOf<String, Any?>()
@@ -144,8 +161,14 @@ class ApiKeyService : ServiceInitializer {
         )
         var rows: List<Map<String, Any?>> = emptyList()
         sqlCxt.sqlDb.withSession(cxt) { rows = sqlCxt.sqlDb.queryStatement(cxt, stmt, data) }
-        val owners = UserService.get(cxt).queryUsersByIds(cxt, rows.mapNotNull { it[PF.userId].toOptLong() }, scope)
-        return rows.mapNotNull { row -> owners[row[PF.userId].toOptLong()]?.let { ListedApiKey(row, it) } }
+        val kept = rows.filter(keep)
+        fun withOwners(of: List<Map<String, Any?>>): List<ListedApiKey> {
+            val owners = UserService.get(cxt).queryUsersByIds(cxt, of.mapNotNull { it[PF.userId].toOptLong() }, scope)
+            return of.mapNotNull { row -> owners[row[PF.userId].toOptLong()]?.let { ListedApiKey(row, it) } }
+        }
+        if (scope.org == null) return withOwners(kept.take(limit)) to kept.size
+        val admitted = withOwners(kept)
+        return admitted.take(limit) to admitted.size
     }
 
     /** [row] as it is listed; [owner] adds the owner's name and address, and [creatorName] who made it. */
@@ -223,6 +246,19 @@ class ApiKeyService : ServiceInitializer {
         val table = table(cxt)
         SqlTopicUtil.prepForStdExecute(cxt, table, row)
         sqlCxt.sqlDb.withSession(cxt) { sqlCxt.sqlDb.executeStatement(cxt, SqlTopicUtil.mkTableInsertStmt(sqlCxt, table), row) }
+        // Counted again, now the key is written: two creates at once each counted the other's key as not yet there. The
+        // later one -- this one, if both see too many -- is taken back rather than leaving the user over the limit.
+        if (liveCount(cxt, keysOf(cxt, owner.client, owner.userId)) > AKEY.maxLiveKeys) {
+            queryKey(cxt, keyId, forWrite = true)?.let { made ->
+                val undone = made.toMutableMap()
+                undone[AKEY.revokedAt] = cxt.now()
+                undone[AKEY.revokedBy] = cxt.userProfile.userId
+                write(cxt, undone, enabled = false)
+            }
+            throw KdrException.mkInput(
+                "User ${owner.userId} already holds ${AKEY.maxLiveKeys} keys that work; revoke one before making another.",
+            )
+        }
         LogAuth.info(cxt) {
             "User ${cxt.userProfile.userId} made API key $keyId ('$keyName', $keyAccess) for user ${owner.userId}, " +
                 "expiring ${expiry}."
@@ -289,7 +325,14 @@ class ApiKeyService : ServiceInitializer {
             throw KdrException("The API key is not valid.", code = EXC.authNeeded)
         }
         val (keyId, secret) = parseKey(presented) ?: refuse()
-        val row = queryKey(cxt, keyId) ?: refuse()
+        // A key this node's cache does not hold -- revoked, or one nobody issued -- costs a database read. Those are
+        // bounded node-wide, whatever address they claim to come from, so a flood of made-up keys cannot turn into a
+        // flood of queries; keys the cache holds go on working through it.
+        val row = queryKey(cxt, keyId, onMiss = {
+            if (!failures.allow(missKey, missesAllowed, failureWindowMs, nowMs)) {
+                throw KdrException("Too many unknown API keys; try again later.", code = EXC.tooManyRequests)
+            }
+        }) ?: refuse()
         // The hash first, so a revoked or expired key answers no faster than a wrong one.
         val matches = constantTimeEquals(hashOf(secret), row[APK.secretHash].toOptStr().orEmpty())
         if (!matches || row[PF.enabled] != true) refuse()
@@ -299,21 +342,21 @@ class ApiKeyService : ServiceInitializer {
         if (!owner.enabled || owner.client != info.client) refuse()
         if (ClientService.getOrNull(cxt)?.isPresent(owner.client) == false) refuse()
         cxt.bindToUserProfile(owner.toActingProfile(cxt))
-        cxt.apiKey = ApiKeyAccess(keyId, info.access)
-        noteUse(cxt, info)
+        cxt.apiKey = ApiKeyAccess(keyId, info.access, info.lastUsedAt)
     }
 
     /**
-     * Stamps [info]'s [AKEY.lastUsedAt] when it is an hour or more old -- on this node's memory as well as the row's,
-     * so a key busy on several nodes writes about once an hour on each, not on every request. The stamp is the only
-     * column written and `updatedAt` is left as it is: it is bookkeeping, not a change to the key, so the cache has
-     * nothing to reload for it. A failure is logged and the request goes on.
+     * Stamps the [AKEY.lastUsedAt] of the key [access] names when it is an hour or more old -- on this node's memory as
+     * well as the row's, so a key busy on several nodes writes about once an hour on each, not on every request. Called
+     * by the dispatcher once a keyed request has been answered without an error, so a refused call is not a use. The
+     * stamp is the only column written and `updatedAt` is left as it is: it is bookkeeping, not a change to the key, so
+     * the cache has nothing to reload for it. A failure is logged and nothing else happens.
      */
-    private fun noteUse(cxt: KdrCxt, info: ApiKeyInfo) {
+    fun noteUse(cxt: KdrCxt, access: ApiKeyAccess) {
         val nowMs = cxt.now().toEpochMilliseconds()
-        val stamped = maxOf(info.lastUsedAt?.toEpochMilliseconds() ?: 0L, lastUseWritten[info.keyId] ?: 0L)
+        val stamped = maxOf(access.lastUsedAt?.toEpochMilliseconds() ?: 0L, lastUseWritten[access.keyId] ?: 0L)
         if (nowMs - stamped < lastUseIntervalMs) return
-        lastUseWritten[info.keyId] = nowMs
+        lastUseWritten[access.keyId] = nowMs
         try {
             val sqlCxt = SqlTopicService.mkSqlCxt(cxt, authTopic)
             val stmt = SqlStmtUtil.prepareSql(
@@ -321,10 +364,10 @@ class ApiKeyService : ServiceInitializer {
                 "update t:${UT.authApiKeys} set c:${AKEY.lastUsedAt} = :${AKEY.lastUsedAt} where c:${AKEY.keyId} = :${AKEY.keyId}",
             )
             sqlCxt.sqlDb.withSession(cxt) {
-                sqlCxt.sqlDb.executeStatement(cxt, stmt, mapOf(AKEY.lastUsedAt to cxt.now(), AKEY.keyId to info.keyId))
+                sqlCxt.sqlDb.executeStatement(cxt, stmt, mapOf(AKEY.lastUsedAt to cxt.now(), AKEY.keyId to access.keyId))
             }
         } catch (e: Exception) {
-            LogAuth.warn(cxt, "Could not record the use of API key ${info.keyId}: ${e.message}")
+            LogAuth.warn(cxt, "Could not record the use of API key ${access.keyId}: ${e.message}")
         }
     }
 
@@ -343,6 +386,15 @@ class ApiKeyService : ServiceInitializer {
 
         /** The failure window: 15 minutes. */
         const val failureWindowMs = 15L * 60 * 1000
+
+        /**
+         * Keys this node's cache does not hold that may be looked up in the database within [failureWindowMs], across
+         * every caller: generous for revoked keys still in use, and a bound on what a flood of made-up keys costs.
+         */
+        const val missesAllowed = 600
+
+        /** The rate limiter's key for [missesAllowed]. */
+        private const val missKey = "apikey-miss"
 
         /** How stale a key's last-use stamp may get before a use writes a new one: an hour. */
         const val lastUseIntervalMs = 60L * 60 * 1000

@@ -114,7 +114,7 @@ object AKEY {
  * One API key as it is listed (issue #1402) -- everything about it but its secret, which is never stored. Its
  * serialization, its schema type and its field names live together here, as the code guide asks.
  */
-class ApiKeyInfo(
+data class ApiKeyInfo(
     val keyId: String,
     val name: String,
     /** [AKEY.read] or [AKEY.full]. */

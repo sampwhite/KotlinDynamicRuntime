@@ -11,6 +11,7 @@ import com.dynamicruntime.common.endpoint.SchModule
 import com.dynamicruntime.common.endpoint.schemaModule
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.http.request.RoleLadder
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.sql.PF
@@ -84,14 +85,13 @@ fun apiKeySchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.apiKey") {
         val userId = req[AKEY.userId].toOptLong()
         val now = c.now()
         val status = req.getOptStr(AKEY.status)
-        val listed = keys.listScoped(c, scope, userId).filter { status == null || keys.infoOf(it.row).status(now) == status }
         val limit = (req[EP.limit] as? Number)?.toInt() ?: defaultListLimit
-        val page = listed.take(limit)
+        val (page, total) = keys.listScoped(c, scope, userId, limit) { status == null || keys.infoOf(it).status(now) == status }
         val creators = creatorNamesOf(c, page.map { it.row }, null, scope)
         val items = page.map { keys.infoOf(it.row, it.owner, creators[it.row[PF.createdBy].toOptLong()]).toInfo(now) }
         // One user's listing says how many of their keys still work, which is what a create is held to.
-        val liveCount = userId?.let { id -> keys.liveCount(c, listed.filter { it.owner.userId == id }.map { it.row }) }
-        ListPage(items, listed.size, hasMore = listed.size > limit, summary = limitsOf(c, liveCount))
+        val liveCount = userId?.let { id -> keys.listScoped(c, scope, id, AKEY.maxLiveKeys + 1) { keys.infoOf(it).isUsable(now) }.second }
+        ListPage(items, total, hasMore = total > limit, summary = limitsOf(c, liveCount))
     }
     generalEndpoint(
         AKEY.adminCreate,
@@ -128,10 +128,7 @@ fun apiKeySchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.apiKey") {
 }
 
 /** [this] info as an administrator's answer gives it: with the owner's name and address. */
-private fun ApiKeyInfo.withOwner(owner: AuthUserRow): ApiKeyInfo = ApiKeyInfo(
-    keyId, name, access, userId, client, createdAt, createdBy, createdByName, expiresAt, lastUsedAt, revokedAt, revokedBy,
-    ownerName = owner.name, ownerAddress = owner.primaryId,
-)
+private fun ApiKeyInfo.withOwner(owner: AuthUserRow): ApiKeyInfo = copy(ownerName = owner.name, ownerAddress = owner.primaryId)
 
 /** How many keys an administrator's listing shows when the request names no `limit`. */
 private const val defaultListLimit = 200
@@ -208,11 +205,21 @@ private fun refusePublicAdmin(c: KdrCxt) {
 }
 
 /**
- * Refuses a key for [owner] that would let the caller act with more than they hold: a key's secret goes to whoever makes
- * it, so making one for somebody is acting as them. Every role [owner] holds -- a level by the ladder, a capability
- * outright -- must be one the caller holds too, as granting a role asks.
+ * Refuses a key for [owner] that would let the caller act as somebody with authority of their own. A key's secret goes
+ * to whoever makes it, so making one for somebody is acting as them, and two things follow:
+ * - **Every role [owner] holds** -- a level by the ladder, a capability outright -- must be one the caller holds too, as
+ *   granting a role asks.
+ * - **Another administrator's keys are their own to make.** An administrator acting as a peer could do what only that
+ *   peer may: approve a form as a reviewer who is not its owner, defeating the second-person rule (#787), since a
+ *   reviewer is an administrator with a label, and labels are not roles. A user below the administrator level holds no
+ *   authority to borrow, so their administrator may make their keys -- what keys are for, a program working as them.
  */
 private fun requireMayActAs(c: KdrCxt, owner: AuthUserRow) {
+    if (owner.userId != c.userProfile.userId && RoleLadder.satisfies(owner.roles.toSet(), ROLE.admin)) {
+        throw KdrException.mkInput(
+            "User ${owner.userId} is an administrator, whose API keys are theirs to make, from their own profile.",
+        )
+    }
     val held = c.userProfile.roles
     val beyond = owner.roles.filterNot { RoleLadder.satisfies(held, it) }
     if (beyond.isNotEmpty()) {

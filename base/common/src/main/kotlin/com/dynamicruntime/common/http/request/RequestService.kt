@@ -570,9 +570,9 @@ class RequestService : ServiceInitializer {
         // (issue #1150), so it is known only now that the session is restored -- and before the gate below.
         EnvAuthRules.fromAdminLogin(cxt)
         // A read-only API key (issue #1402) makes GET requests and nothing else, whatever the section and whatever its
-        // owner may do: refused here, before the gate, so no section can forget to.
-        if (cxt.apiKey?.isReadOnly == true && method != HttpMethod.GET.name) {
-            throw KdrException("This API key is read-only: it may only make GET requests.", code = EXC.notAuthorized)
+        // owner may do: refused here, before the gate, so no section -- and no content page -- can forget to.
+        cxt.apiKey?.refusal(method, sessionOnly = false, path = appPath)?.let {
+            throw KdrException(it, code = EXC.notAuthorized)
         }
         // Whether the request keeps its log lines (issue #1173) is decided here, the first moment the fence can be:
         // the caller's env auth, and whether it is in debug, are only known once the session is restored.
@@ -643,11 +643,7 @@ class RequestService : ServiceInitializer {
                 // copy would say which clients exist.
                 endpoint = endpoint?.takeIf { it.existsFor(cxt) && SchemaService.clientEndpointOpenTo(cxt, it) }
                 // What only a signed-in session may do (issue #1402): manage keys, sign in, switch, log out.
-                if (endpoint != null && endpoint.sessionOnly && cxt.apiKey != null) {
-                    throw KdrException(
-                        "'${endpoint.path}' is not open to API keys; it needs a signed-in session.", code = EXC.notAuthorized,
-                    )
-                }
+                endpoint?.keyRefusal(cxt)?.let { throw KdrException(it, code = EXC.notAuthorized) }
                 if (endpoint != null) {
                     withAuthPermit(endpoint) { executeEndpoint(cxt, handler, endpoint) }
                 }
@@ -675,6 +671,8 @@ class RequestService : ServiceInitializer {
             return
         }
 
+        // A keyed request answered without an error is a use of the key (issue #1402); a refused one is not.
+        cxt.apiKey?.let { ApiKeyService.getOrNull(cxt)?.noteUse(cxt, it) }
         // A polled endpoint's call is counted rather than logged (issue #1395) -- unless the caller asked to see what
         // the request did with a `_debug` tag, `captureLogs` among them, which writes its line as any request's does.
         val endpoint = cxt.request?.endpoint
