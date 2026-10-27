@@ -54,4 +54,20 @@ class SandboxClientsTest {
         assertTrue("source code" in sandboxControl(row("hub", origin = GedraConfigOrigin.source)).text)
         assertNull(sandboxControl(row("gone", status = ClientStatus.notEnabled)).add)
     }
+
+    /**
+     * A sandbox's page leads back to its client whatever is published: by switching back, in a sandbox session with a
+     * user to go back to, or by the link, for an administrator across clients looking from outside. Never from a
+     * client's own page, and never as a switch with no user to switch to.
+     */
+    @Test
+    fun aSandboxsPageLeadsBackToItsClient() {
+        val sandbox = row("acme:sandbox", sandboxOf = "acme")
+        assertEquals("acme", sandboxWayBackTarget(sandbox, acrossClients = false, inSandbox = true, wayBackUserId = 7))
+        assertEquals("acme", sandboxWayBackTarget(sandbox, acrossClients = true, inSandbox = false, wayBackUserId = null))
+        assertNull(sandboxWayBackTarget(sandbox, acrossClients = false, inSandbox = true, wayBackUserId = null))
+        assertNull(sandboxWayBackTarget(sandbox, acrossClients = false, inSandbox = false, wayBackUserId = null))
+        assertNull(sandboxWayBackTarget(row("acme", hasSandbox = true), acrossClients = true, inSandbox = false, wayBackUserId = null))
+        assertNull(sandboxWayBackTarget(null, acrossClients = true, inSandbox = true, wayBackUserId = 7))
+    }
 }

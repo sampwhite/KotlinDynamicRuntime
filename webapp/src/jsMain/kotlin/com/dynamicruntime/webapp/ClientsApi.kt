@@ -144,6 +144,17 @@ fun sandboxRowNote(row: ClientOverview): String? = row.sandboxOf?.let { "sandbox
 class SandboxControl(val text: String, val add: Boolean?)
 
 /**
+ * Where a sandbox's page leads back to its client (issue #1422): the client's id, when this is a sandbox's page and the
+ * caller can go there -- by switching back to their own user in the client ([wayBackUserId], in a sandbox session), or,
+ * for an administrator who sees every client and is not in one, by following the link. Null otherwise: not a sandbox's
+ * page, or a sandbox session with no user to go back to. Not conditional on anything being published. Pure.
+ */
+fun sandboxWayBackTarget(row: ClientOverview?, acrossClients: Boolean, inSandbox: Boolean, wayBackUserId: Long?): String? {
+    val parent = row?.sandboxOf ?: return null
+    return parent.takeIf { if (inSandbox) wayBackUserId != null else acrossClients }
+}
+
+/**
  * The detail's Sandbox section for [row] (issue #932). A sandbox says whose it is; a client defined in source code
  * says its flag is set there; a stored, present client offers adding or removing one, saying what follows. Pure,
  * and covered under `jsNodeTest`.
