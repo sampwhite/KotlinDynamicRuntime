@@ -243,6 +243,15 @@ in a cleanup.
 * **Split a source file at about 2000 lines**, not before. The comments here are long, so a lower limit would split
 files on prose rather than complexity.
 
+### Line length
+
+* **Wrap code, comments, KDoc, and Markdown at 140 columns.** Much older prose wraps at 120; that is within the
+limit and needs no rewrapping. When wrapping a code line would distort it, leave it long.
+
+* **Repair long lines only where a change is being made anyway.** In a method a commit changes, wrap that method's
+lines over 140; in a comment block it changes, rewrap that block. Leave every other long line alone, and never make a
+commit that only rewraps: the noise in the history hides where code came from, because blame then names the rewrap.
+
 ### Endpoints that are not the application: `fixture` and `demo`
 
 Some endpoints exist so a capability can be *exercised* or *shown*, not used. They get one of two section
