@@ -125,7 +125,7 @@ object ClientJoin {
         }
         val missing = role.userLabels.filterNot { it in row.labels }
         if (missing.isNotEmpty()) {
-            row.labels = row.labels + missing
+            row.labels += missing
             users.updateUser(cxt.mkSubContext("clientJoin", client), row)
         }
         return row
