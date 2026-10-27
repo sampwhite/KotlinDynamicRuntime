@@ -33,27 +33,89 @@ environment variable, never in source code or a URL.
 
 ## Call with a key
 
-Send it in the `Authorization` header:
+Send the key in one request header, `Authorization`, after the word `Bearer` and a space. For a GET, that header is all
+the request needs: no cookie, no other header, nothing in the address. Here is the request as it goes over the wire,
+with a made-up key:
+
+```http
+GET /kda/auth/self/info HTTP/1.1
+Host: app.example.com
+Authorization: Bearer kdr_Qx7mP2vLk9Ra_f3Jd8sKq1ZpW6tYh0NcB4rXe7uGm2LaV9iOy5kTn-Hw
+```
+
+- **The whole key, as it was shown,** `kdr_` included: 60 characters, with no quotes and no spaces inside it.
+- **`Bearer` first.** Without it the key is not read at all (see
+  [If the header is not recognized](#if-the-header-is-not-recognized)).
+- **In the header, never in the address.** A key in the query string is never read as a credential, and it would be
+  written into every log the address passes through.
+- **A request with a body** says what the body is: `Content-Type: application/json` for JSON. Without it the body is
+  not read.
+
+To try it with curl, from a shell where `KDR_API_KEY` holds the key:
 
 ```bash
 curl -H "Authorization: Bearer $KDR_API_KEY" https://app.example.com/kda/auth/self/info
 ```
 
-The answer says who the request acted as. Everything else works the same way, with the key in the same header.
+The call to try first is `/kda/auth/self/info`, which answers with who the request acted as. Its answer, cut down to
+what matters here:
+
+```json
+{
+  "requestUri": "GET:/kda/auth/self/info",
+  "results": {
+    "client": "acme",
+    "publicName": "pat@example.com",
+    "userId": 1042,
+    "roles": ["user"]
+  }
+}
+```
+
+Check that `userId` is the key's user. A `userId` of `0` means the request acted as nobody: the header was not
+recognized, and this endpoint, which is open to everyone, answered anyway. Every other call works the same way, with
+the same header.
 
 ## Exchange a key for a token
 
 Post the key to `/kda/auth/token`, asking for the `client_credentials` grant. This is the OAuth 2.0 client-credentials
-grant, so an OAuth client library can do it for you.
+grant, so an OAuth client library can do it for you. On the wire:
+
+```http
+POST /kda/auth/token HTTP/1.1
+Host: app.example.com
+Authorization: Bearer kdr_Qx7mP2vLk9Ra_f3Jd8sKq1ZpW6tYh0NcB4rXe7uGm2LaV9iOy5kTn-Hw
+Content-Type: application/x-www-form-urlencoded
+
+grant_type=client_credentials
+```
+
+A JSON body works too, with its own content type:
+
+```http
+POST /kda/auth/token HTTP/1.1
+Host: app.example.com
+Authorization: Bearer kdr_Qx7mP2vLk9Ra_f3Jd8sKq1ZpW6tYh0NcB4rXe7uGm2LaV9iOy5kTn-Hw
+Content-Type: application/json
+
+{"grant_type": "client_credentials"}
+```
+
+The same with curl, which sends `-d` as a form-encoded body:
 
 ```bash
 curl -H "Authorization: Bearer $KDR_API_KEY" -d grant_type=client_credentials \
   https://app.example.com/kda/auth/token
 ```
 
-The answer is the token and how long it lasts, in seconds:
+The answer is the token and how long it lasts, in seconds, as the whole body:
 
-```json
+```http
+HTTP/1.1 200 OK
+Content-Type: application/json
+Cache-Control: no-store
+Pragma: no-cache
+
 {
   "access_token": "eyJhbGciOiJFUzI1NiIsInR5cCI6ImF0K2p3dCIs…",
   "token_type": "Bearer",
@@ -62,15 +124,26 @@ The answer is the token and how long it lasts, in seconds:
 }
 ```
 
+- **The token is the value of `access_token`** alone: about 400 characters on one line, starting `eyJ`, with two dots
+  in it. Not the whole answer.
 - **The scope** is the key's access: `read` or `full`.
 - **It never outlasts the key.** A key with two hours left gives a token that lasts two hours.
 - **To get another,** ask again with the key. There is no refresh token: the key is what you refresh with. Ask a few
   minutes before `expires_in` runs out, rather than waiting for a refusal.
-- **Keep the token in memory.** It is a credential too, if a short-lived one.
+- **Keep the token in memory.** It is a credential too, if a short-lived one. `Cache-Control: no-store` asks everything
+  between here and your program not to keep a copy.
 
 ## Call with a token
 
-Send it exactly as you would the key:
+Send the token exactly where the key went, in the same header, after the same word:
+
+```http
+GET /kda/auth/self/info HTTP/1.1
+Host: app.example.com
+Authorization: Bearer eyJhbGciOiJFUzI1NiIsInR5cCI6ImF0K2p3dCIs…
+```
+
+With curl, where `TOKEN` holds the `access_token` value:
 
 ```bash
 curl -H "Authorization: Bearer $TOKEN" https://app.example.com/kda/auth/self/info
@@ -196,13 +269,37 @@ def check(token):
 knows a key was revoked. If that matters to you, keep tokens short: the deployment's operator sets their lifetime
 (`KDR_ACCESS_TOKEN_HOURS`).
 
+## If the header is not recognized
+
+A bearer that does not begin with `kdr_`, and is not one of this deployment's tokens, is **ignored, not refused**: the
+request goes on as if it carried no header at all, acting as nobody. So a mistake of that kind shows up exactly as a
+missing header does:
+
+- an endpoint open to everyone answers as usual, as nobody: `/kda/auth/self/info` says `userId` is `0`;
+- an endpoint that needs a signed-in user answers 401, naming the role it requires: "Request requires the 'user' role
+  and no user is logged in." (The token exchange says instead to send the key.)
+
+A message like that, rather than "The API key is not valid.", says the header was never read as a credential. The
+usual causes:
+
+- **`Bearer` is missing**, or something else stands in its place: `Authorization: kdr_…` alone is not read.
+- **Something comes before the `kdr_`**: quotes around the key (`Bearer "kdr_…"`), or the `kdr_` dropped.
+- **The whole token answer was sent** instead of its `access_token` value.
+- **No header reached the deployment.** Some HTTP clients drop `Authorization` when they follow a redirect to another
+  host, so send requests to the deployment's own address.
+
+Everything that does begin with `kdr_` is read as a key, and refused with "The API key is not valid." when it is not
+one: a key cut short, a character changed, a secret mistyped, or a key revoked or expired. A token is refused the same
+way, as "The access token is not valid.", once it is expired or its key is gone. `Bearer` may be written in any case,
+and so may the header's name, as HTTP allows.
+
 ## When a call is refused
 
 Every refusal is a JSON body whose `errorMessage` says what was wrong.
 
 | Status | What it means |
 | --- | --- |
-| 400 | The request is malformed: for a token, the `grant_type` is not `client_credentials`. |
-| 401 | The key or token is not valid: mistyped, expired, revoked, or its user is disabled. Each is answered the same way, on purpose. For a token, get a new one with the key, and if that fails too, the key itself is the problem. |
+| 400 | The request is malformed. For the exchange, the `grant_type` is not `client_credentials`, or the body was not read because its `Content-Type` was missing. |
+| 401 | "The key or token is not valid": mistyped, expired, revoked, or its user is disabled, each answered the same way on purpose. For a token, get a new one with the key; if that fails too, the key itself is the problem. "No user is logged in" means the header was never read: see [If the header is not recognized](#if-the-header-is-not-recognized). |
 | 403 | The key or token is valid but may not do this: a read-only one tried to change something, it called something only a person signed in may do, or a token was sent to `/kda/auth/token` (send the key). |
 | 429 | Too many invalid keys or tokens from your address. Wait, and fix whatever is sending them. |
