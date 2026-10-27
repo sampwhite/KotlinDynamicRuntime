@@ -49,7 +49,8 @@ external interface PublicHomeProps : Props {
 
 /**
  * The public home page (issue #1324), under Home's hero and intro, for a person signed in to `public`: what they can
- * do next on a teaching site, in three parts.
+ * do next on a teaching site, in three parts, under the deployment's word on where to begin when it has one
+ * (`walkThrough`, issue #1429).
  *
  * 1. **Try a demo**, where the deployment offers joining ([HomeConfig.joinOffered], issue #1248): a card per demo
  *    client, its roles, and for each role joined an **Open as** switch; **Join…** leads to the Join page, which says
@@ -67,6 +68,8 @@ val PublicHome = FC<PublicHomeProps> { props ->
     var switchError by useState<Pair<String, DisplayError>?>(null)
     val generation = useRefreshGeneration()
     val bump = useRefreshBump()
+    // The copy's links, as a document's are: `/docs/...` to the in-app document, `/wa/...` under the live app root.
+    val copyLinks = useShellFacts().copyLinkResolver()
 
     useEffect(generation, config.joinOffered) {
         if (!config.joinOffered) return@useEffect
@@ -98,11 +101,19 @@ val PublicHome = FC<PublicHomeProps> { props ->
     div {
         className = ClassName("public-home")
 
+        // A deployment's word on where to begin -- the reference flavor's link to its walk-through (issue #1429).
+        copy.opt("publicHome", "walkThrough")?.takeIf { it.isNotBlank() }?.let { text ->
+            div {
+                className = ClassName("public-home-section")
+                Markdown { source = text; linkResolver = copyLinks }
+            }
+        }
+
         if (config.joinOffered) {
             div {
                 className = ClassName("public-home-section")
                 copy.opt("publicHome", "demosTitle")?.let { h2 { +it } }
-                copy.opt("publicHome", "demosIntro")?.let { Markdown { source = it } }
+                copy.opt("publicHome", "demosIntro")?.let { Markdown { source = it; linkResolver = copyLinks } }
                 demosError?.let { errorText("Couldn't read the demo clients.", it) }
                 val loaded = demos
                 if (loaded == null && demosError == null) p { className = ClassName("subtitle"); +"Loading…" }
@@ -150,7 +161,7 @@ val PublicHome = FC<PublicHomeProps> { props ->
             div {
                 className = ClassName("public-home-section")
                 copy.opt("publicHome", "accountsTitle")?.let { h2 { +it } }
-                copy.opt("publicHome", "accountsIntro")?.let { Markdown { source = it } }
+                copy.opt("publicHome", "accountsIntro")?.let { Markdown { source = it; linkResolver = copyLinks } }
                 ul {
                     className = ClassName("public-accounts")
                     for (user in others) {

@@ -51,8 +51,11 @@ class KdnComponent : ComponentDefinition {
         collector.addModule(confDemoSimulationSchema(cxt))
     }
 
-    /** The conference demo's documentation (issue #1137), the developer docs `docs/demo-client/` holds. */
-    override fun docs(cxt: KdrCxt): List<MarkdownDocDef> = confDemoDocs()
+    /**
+     * The conference demo's documentation (issue #1137), the developer docs `docs/demo-client/` holds, and the
+     * walk-through that starts with the demo (issue #1429).
+     */
+    override fun docs(cxt: KdrCxt): List<MarkdownDocDef> = confDemoDocs() + WalkThrough.doc
 
     /**
      * The conference demo's copy (issue #1139): a fragment file its logistics layout pulls a heading and a description
@@ -71,7 +74,8 @@ class KdnComponent : ComponentDefinition {
 
     /**
      * What kdn changes under a reference deployment (issue #1221): the conference demo is provisioned as the node
-     * starts, and each of its workflow pages links to the walkthrough page that explains it.
+     * starts, each of its workflow pages links to the walkthrough page that explains it, and a signed-in visitor's
+     * home page links to the walk-through (issue #1429).
      */
     override fun flavors(cxt: KdrCxt): List<FlavorContribution> = listOf(
         flavor(FLV.reference) {
