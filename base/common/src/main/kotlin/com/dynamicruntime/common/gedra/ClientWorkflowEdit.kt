@@ -82,10 +82,13 @@ object ClientWorkflowEdit {
             put(CWF.templates, templates.values.map { templateInfo(it.def, own, limits) })
             val names = SetterNames(cxt)
             put(CWF.workflows, own.map { workflowInfo(cxt, client, view, it, templates.keys, names) })
-            put(CWF.traits, usableTraits(cxt, owner))
-            ClientService.get(cxt).displayZoneOf(owner)?.let { put(CWF.timeZone, it) }
+            // The rest from the same view as the workflows (issue #1425): a client with a sandbox saves its traits and its
+            // definition as drafts, which only the sandbox runs, and a workflow made now may collect a draft trait, be
+            // seen by a draft label, and show its windows in a draft time zone.
+            put(CWF.traits, usableTraits(cxt, view))
+            ClientService.get(cxt).displayZoneOf(view)?.let { put(CWF.timeZone, it) }
             // The labels a workflow's visibility may name, as the Users page offers them (issue #1384).
-            ClientService.get(cxt).known(owner)?.userLabels?.takeIf { it.isNotEmpty() }?.let { put(CWF.userLabels, it) }
+            ClientService.get(cxt).known(view)?.userLabels?.takeIf { it.isNotEmpty() }?.let { put(CWF.userLabels, it) }
         }
     }
 
@@ -200,7 +203,10 @@ object ClientWorkflowEdit {
         else -> null
     }
 
-    /** The traits [client]'s workflows may collect: those it supports that a form may carry, with their descriptions. */
+    /**
+     * The traits a workflow running in [client] may collect: those it supports that a form may carry, with their
+     * descriptions. Asked of the client the catalog's workflows are read from -- a client's sandbox, when it has one.
+     */
     private fun usableTraits(cxt: KdrCxt, client: String): List<Map<String, Any?>> {
         val def = ClientService.get(cxt).known(client) ?: return emptyList()
         val collector = SchemaCollector.get(cxt) ?: return emptyList()
