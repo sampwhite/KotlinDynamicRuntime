@@ -25,6 +25,7 @@ import com.dynamicruntime.common.user.ADF
 import com.dynamicruntime.common.user.AEP
 import com.dynamicruntime.common.user.AFLD
 import com.dynamicruntime.common.user.AKEY
+import com.dynamicruntime.common.user.ATOK
 import com.dynamicruntime.common.user.APK
 import com.dynamicruntime.common.user.ApiKeyService
 import com.dynamicruntime.common.user.TestUser
@@ -375,7 +376,9 @@ class ApiKeyTest : StringSpec({
         }
         val forRead = listed(read)
         forRead.any { it[EI.path] == AEP.selfInfo } shouldBe true
-        forRead.none { it[EI.method] != HttpMethod.GET.name } shouldBe true
+        // GET requests, and the one post a read-only key may make: exchanging itself for a token (issue #1403).
+        forRead.none { it[EI.method] != HttpMethod.GET.name && it[EI.path] != ATOK.token } shouldBe true
+        forRead.any { it[EI.path] == ATOK.token } shouldBe true
         val forFull = listed(full)
         forFull.any { it[EI.path] == AEP.profileSetName } shouldBe true
         // Not what only a signed-in session may call.

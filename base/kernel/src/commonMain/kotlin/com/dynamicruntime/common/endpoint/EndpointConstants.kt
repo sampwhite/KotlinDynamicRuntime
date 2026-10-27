@@ -88,6 +88,12 @@ object EI {
 
     /** Free-form tags for slicing the catalog (issue #433). No runtime effect; navigation only. */
     const val tags = "tags"
+
+    /**
+     * Whether the endpoint answers its result as the whole body, with no envelope around it (issue #1403): what a
+     * standard a caller already speaks expects, such as an OAuth token answer or a JSON Web Key Set.
+     */
+    const val bareResponse = "bareResponse"
     const val inputSchema = "inputSchema"
     const val outputSchema = "outputSchema"
 

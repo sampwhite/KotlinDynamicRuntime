@@ -203,6 +203,13 @@ class KdrEndpoint(
      */
     val sessionOnly: Boolean = false,
     /**
+     * (General endpoints only.) Whether the result is sent as the whole body, with no envelope around it (issue #1403),
+     * for a caller speaking a standard that fixes the answer's shape: an OAuth 2.0 token answer (RFC 6749 §5.1), a
+     * JSON Web Key Set (RFC 7517). The output schema is then the result's type itself, and validated as it is. An error
+     * still travels in the standard error envelope.
+     */
+    val bareResponse: Boolean = false,
+    /**
      * (List endpoints only.) Whether the output declares `hasMore` / `numAvailable`, so the executor knows to
      * populate them (issue #499). For a handler that returns a plain `List` the executor fills them from the
      * uncapped size; a [ListPage] supplies its own. `numAvailable` defaults **on** when the endpoint has a
@@ -302,6 +309,14 @@ class KdrEndpoint(
                 property(EI.tags, "Free-form tags for slicing the catalog.", required = true) {
                     type = SCT.array
                     items { type = SCT.string }
+                }
+                property(
+                    EI.bareResponse,
+                    "Whether the result is the whole response body, with no envelope: the output schema is then the " +
+                        "result's type itself.",
+                    required = true,
+                ) {
+                    type = SCT.boolean
                 }
             }
         }
@@ -407,14 +422,20 @@ class SchModuleBuilder(cxt: KdrCxt, namespace: String) : SchTypesBuilder(cxt, na
         polled: Boolean = false,
         /** Refused to an API key, open to a signed-in session only (issue #1402); see [KdrEndpoint.sessionOnly]. */
         sessionOnly: Boolean = false,
+        /** The result is the whole body, with no envelope (issue #1403); see [KdrEndpoint.bareResponse]. */
+        bareResponse: Boolean = false,
         handler: KdrEndpointHandler,
     ) {
-        val output = scalarOutput(EP.results, "Result data (a map object) returned by the endpoint.", outputRef)
+        val output = if (bareResponse) {
+            SchTypeBuilder(cxt, namespace).also { it.ref(outputRef) }.data
+        } else {
+            scalarOutput(EP.results, "Result data (a map object) returned by the endpoint.", outputRef)
+        }
         val (fields, typeRef) = captureInput(inputRef, inputFields)
         endpoints.add(
             KdrEndpoint(path, method, EndpointKind.general, namespace, description, fields, typeRef, false, output,
                 forTestingOnly, handler, publicApi = publicApi, tags = tags, needsClientConfig = needsClientConfig,
-                timingFloor = timingFloor, polled = polled, sessionOnly = sessionOnly),
+                timingFloor = timingFloor, polled = polled, sessionOnly = sessionOnly, bareResponse = bareResponse),
         )
     }
 
@@ -889,6 +910,7 @@ fun renderEndpoint(endpoint: KdrEndpoint, defs: Map<String, Any?>): Map<String, 
     EI.publicApi to endpoint.publicApi,
     // Sorted so a catalog rendering is stable between boots; a Set has no order of its own to promise.
     EI.tags to endpoint.tags.sorted(),
+    EI.bareResponse to endpoint.bareResponse,
 )
 
 /**

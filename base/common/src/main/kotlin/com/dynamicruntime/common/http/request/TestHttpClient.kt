@@ -113,6 +113,18 @@ class TestHttpClient(val instanceConfig: KdrInstanceConfig) {
     }
 
     /**
+     * Sends a POST whose body is [form], form-encoded, as an OAuth 2.0 client library sends a token request (issue
+     * #1403). Only the paths in [RequestHandler.formBodyPaths] read such a body.
+     */
+    fun sendFormRequest(endpoint: String, form: Map<String, Any?>): RequestHandler {
+        val headers = LinkedHashMap(curHeaders).apply { put("content-type", mutableListOf(RequestHandler.formUrlEncoded)) }
+        val handler = RequestHandler(instanceConfig, HttpMethod.POST.name, routed(endpoint), headers, cookies)
+        handler.testPostData = HttpUtil.encodeArgs(form)
+        execute(handler)
+        return handler
+    }
+
+    /**
      * Sends a DELETE. Its input travels as **query params**, like a GET's, because DELETE bodies are legal
      * but poorly handled by intermediaries -- so there is no `data` here to pass.
      */

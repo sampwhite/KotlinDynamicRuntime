@@ -123,6 +123,33 @@ class InstanceConfigService : ServiceInitializer {
             ?: throw KdrException("Stored config '$configName' has no '$field' after it was created.")
     }
 
+    /**
+     * Changes the [configName] row's data under the row's lock, answering the data it holds afterward. [update] is
+     * handed the data as it stands -- null when there is no row -- and answers what to store, or null to leave it as it
+     * is. Read under the lock as [getOrCreateConfig] reads, so two nodes changing the row at once each build on the
+     * other's change rather than the last write winning.
+     */
+    fun updateConfig(
+        cxt: KdrCxt,
+        configType: String,
+        configName: String,
+        instanceName: String = cxt.instanceConfig.instanceName,
+        update: (Map<String, Any?>?) -> Map<String, Any?>?,
+    ): Map<String, Any?>? {
+        val sqlCxt = SqlTopicService.mkSqlCxt(cxt, topic)
+        val tranData = mapOf(IC.instanceName to instanceName, IC.configName to configName)
+        SqlTopicTranProvider.executeTopicTran(sqlCxt, "updateInstanceConfig", null, tranData, tranTableName = tableName) {
+            val next = update(sqlCxt.tranData[IC.configData]?.toJsonMap())
+            if (next == null) {
+                sqlCxt.tranAlreadyDone = true
+            } else {
+                sqlCxt.tranData[IC.configType] = configType
+                sqlCxt.tranData[IC.configData] = next
+            }
+        }
+        return sqlCxt.tranData[IC.configData]?.toJsonMap()
+    }
+
     /** Upserts a configuration entry for this instance via the topic transaction. */
     fun setConfig(cxt: KdrCxt, configType: String, configName: String, data: Map<String, Any?>) {
         val sqlCxt = SqlTopicService.mkSqlCxt(cxt, topic)
