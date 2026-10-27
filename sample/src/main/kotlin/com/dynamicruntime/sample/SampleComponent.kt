@@ -96,6 +96,7 @@ class SampleComponent : ComponentDefinition {
         },
     )
 
+    @Suppress("ConstPropertyName")
     companion object {
         /** The deployment flavor this component owns (issue #1220). */
         const val samplesFlavor = "samples"

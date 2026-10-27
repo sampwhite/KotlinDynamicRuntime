@@ -27,7 +27,7 @@ import com.dynamicruntime.common.util.toOptStr
  * branching on who is asking.
  *
  * **The listing is the meta-only read**: it answers the metadata the file store keeps beside each image and never
- * the image, so a page says what is set -- its type, its size, who uploaded it and when -- without fetching one.
+ * the image, so a page says what is set -- its type, its size, who uploaded it, and when -- without fetching one.
  * The image is the download beside it, which exists for the page of a client that is not the caller's own: the
  * static address everybody else's browser draws from serves only the caller's own client's.
  */

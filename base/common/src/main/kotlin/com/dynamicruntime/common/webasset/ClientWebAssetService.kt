@@ -34,7 +34,7 @@ object LogWebAsset : KdrLogger("webAsset")
  *
  * **Kept in the file store**, in the [bucket], at `clients/<client>/web/<slot>` -- keyed by the client's id, which
  * is an identifier and so a key segment as it stands. The metadata the store keeps beside each image (its type, its
- * size, its hash, who uploaded it and when) is the whole of what this knows about one; there is no table.
+ * size, its hash, who uploaded it, and when) is the whole of what this knows about one; there is no table.
  *
  * **Not configuration.** An upload is not part of a client's stored configuration, so it has no draft and no
  * publish: it replaces the image for everyone in the client as soon as it is stored. That is why a **sandbox has
@@ -154,7 +154,7 @@ class ClientWebAssetService : ServiceInitializer, ContentServer {
      */
     fun knownClient(cxt: KdrCxt, client: String): String = ClientService.get(cxt).requireKnown(client)
 
-    /** The image [client] uploaded to [slot] of its web assets, content and metadata, or null when it uploaded none. */
+    /** The image [client] uploaded to [slot] of its web assets, content, and metadata, or null when it uploaded none. */
     fun uploaded(cxt: KdrCxt, client: String, slot: String): StoredFile? {
         val owner = ownerOf(client)
         return FileStoreService.get(cxt).forOwner(cxt, owner).get(cxt, bucket, keyOf(owner, slotDef(slot).slot))
