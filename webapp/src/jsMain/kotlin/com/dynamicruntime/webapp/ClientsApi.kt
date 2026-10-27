@@ -16,6 +16,7 @@ import com.dynamicruntime.common.gedra.CLD
 import com.dynamicruntime.common.gedra.COV
 import com.dynamicruntime.common.gedra.CPY
 import com.dynamicruntime.common.gedra.EDM
+import com.dynamicruntime.common.gedra.FSR
 import com.dynamicruntime.common.gedra.MNU
 import com.dynamicruntime.common.gedra.ClientFieldEdit
 import com.dynamicruntime.common.gedra.ClientFieldPolicies
@@ -74,6 +75,13 @@ class ClientOverview(
     val planUsage: PlanUsage? = null,
     /** The customer whose root the client is (issue #1182), which may not be retired; null for any other client. */
     val rootOf: String? = null,
+    /** The most forms a recalculation of its form states from its page may take (issue #1412). */
+    val formStatesRecalcLimit: Int = 0,
+    /**
+     * How many forms that recalculation would look at (issue #1412): what the limit is held against, counted as the
+     * backend counts it -- not necessarily [forms].
+     */
+    val formStatesRecalcCount: Int = 0,
 )
 
 /** The overview endpoint's items as rows; one without a client id is not a client. Pure, and covered under `jsNodeTest`. */
@@ -100,6 +108,8 @@ fun parseClientOverview(items: List<Map<String, Any?>>): List<ClientOverview> = 
         staticHere = row[CLD.staticHere] == true,
         planUsage = PlanUsage.fromInfo(row[CLD.planUsage].toJsonMapOrEmpty().ifEmpty { null }),
         rootOf = row[CLD.rootOf].toOptStr(),
+        formStatesRecalcLimit = int(FSR.limit),
+        formStatesRecalcCount = int(FSR.count),
     )
 }
 
@@ -1160,6 +1170,13 @@ object ClientsApi {
     suspend fun setSandbox(clientId: String, on: Boolean): Boolean =
         Http.sendApi("POST", UADEP.clientSandbox, mapOf(CLD.client to clientId, CLD.sandbox to on))[EP.results]
             .toJsonMapOrEmpty()[CLD.sandbox] == true
+
+    /**
+     * Recalculates the stored state of [clientId]'s forms now (issue #1412), synchronously: answers what it did, or
+     * that another recalculation of them was running. Refused (400) for a client holding more forms than its limit.
+     */
+    suspend fun recalculateFormStates(clientId: String): FormStatesRecalc =
+        parseFormStatesRecalc(Http.sendApi("POST", UADEP.clientFormStatesRecalc, mapOf(CLD.client to clientId))[EP.results].toJsonMapOrEmpty())
 
     /** Every slot of [clientId]'s web assets (issue #1130), each with the metadata of the image it holds. */
     suspend fun webAssets(clientId: String): List<WebAssetSlot> =

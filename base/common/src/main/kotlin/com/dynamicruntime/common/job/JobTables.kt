@@ -16,14 +16,27 @@ const val jobTopic = "job"
 /** The batch-job status tables, their columns, and the keys of their `data` blobs (issue #868). Each name matches its value. */
 @Suppress("ConstPropertyName")
 object JOB {
-    /** The launch row: one per job type and [JobLaunchKind]. */
-    const val jobStatus = "JobStatus"
+    /**
+     * The launch row: one per job type and [JobLaunchKind] -- and, for a [JobLaunchKind.client] launch, per client.
+     * Named apart from the table it replaced (`JobStatus`, keyed without the client), since a table's reconciliation
+     * adds columns but never changes an existing table's key (issue #1412).
+     */
+    const val jobStatus = "JobLaunchStatus"
 
     /** The per-client row: one per job type and client, shared by every launch of that type. */
     const val jobClientStatus = "JobClientStatus"
 
     const val jobType = "jobType"
     const val launchKind = "launchKind"
+
+    /**
+     * On a launch row, the one client a [JobLaunchKind.client] launch is confined to (issue #1412), and [anyClient]
+     * for any other launch, which may run on every client.
+     */
+    const val launchClient = "launchClient"
+
+    /** The [launchClient] of a launch confined to no one client. Never a client id, which has no `*`. */
+    const val anyClient = "*"
 
     /** The [JobRunStatus] name; null on a row nothing has claimed yet. */
     const val runStatus = "runStatus"
@@ -75,9 +88,10 @@ object JOBT {
 }
 
 /**
- * The batch-job status tables (issue #868): the **launch row**, keyed by job type and launch kind, and the
- * **per-client row**, keyed by job type and client -- each also keyed by whether it tracks a dry run. The per-client row is where a scheduled launch and an
- * endpoint launch of one type meet, which makes it the client-level lease.
+ * The batch-job status tables (issue #868): the **launch row**, keyed by job type and launch kind -- and a client
+ * launch's by its client too (issue #1412) -- and the **per-client row**, keyed by job type and client, each also keyed
+ * by whether it tracks a dry run. The per-client row is where every launch of one type meets, which makes it the
+ * client-level lease.
  *
  * Rows are reused rather than accumulated: a row is the latest state of its key, with a short history of ended
  * attempts in its `data` blob. Everything but the key is nullable, because a row is first inserted by the
@@ -85,15 +99,16 @@ object JOBT {
  */
 fun jobTables(cxt: KdrCxt): List<KdrTable> =
     tableModule(cxt, namespace = "job", topic = jobTopic) {
-        table(JOB.jobStatus, "The state of the latest launch of a job type, per launch kind (#868).") {
+        table(JOB.jobStatus, "The state of the latest launch of a job type, per launch kind (#868) and client launch (#1412).") {
             column(JOB.jobType, "The job type, the key its registration is made under.", required = true)
-            column(JOB.launchKind, "How the job was launched: scheduled, or from an endpoint.", required = true)
+            column(JOB.launchKind, "How the job was launched: scheduled, from an endpoint, or for one client.", required = true)
+            column(JOB.launchClient, "The client a client launch is confined to; '*' for any other launch.", required = true)
             dryRunColumn()
             statusColumns()
             column(JOB.launchTime, "When the launch whose work this is began; a relaunch by name keeps it.") { dateTime() }
             column(JOB.params, "The launch's parameters.") { type = SCT.kObject }
             column(JOB.abortRequested, "Set by an abort request; the holder's heartbeat picks it up.") { type = SCT.boolean }
-            primaryKey(JOB.jobType, JOB.launchKind, JOB.dryRun)
+            primaryKey(JOB.jobType, JOB.launchKind, JOB.launchClient, JOB.dryRun)
             withTransactions()
         }
         table(JOB.jobClientStatus, "The state of a job type's work on one client (#868).") {

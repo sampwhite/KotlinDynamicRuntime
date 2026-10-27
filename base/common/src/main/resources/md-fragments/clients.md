@@ -74,6 +74,24 @@ What the client's forms hold, and the steps people take to fill them in.
   they see it. Its **time windows** say when it is available at all, and when new forms may join it.
 
 
+# @formStates
+# +whatIsThis
+Each form stores its **state**: which workflows it can take part in, and where it stands in each. The state is
+worked out from the form's data and the client's configuration, and it is stored again whenever someone saves the
+form. A change to the configuration alone leaves the forms nobody has saved since with their old state, so they
+do not offer a new workflow, for example. A recalculation runs every night and catches up, and **Recalculate form
+states** does it now. Recalculate after you:
+
+- **add a workflow**, so that the forms already there offer it;
+- **change a workflow's entry rules**, such as its tests or its time windows, so that each form is offered the
+  workflows it now qualifies for;
+- **publish** such a change, for a client with a sandbox, since the change applies only once it is published.
+
+Recalculating changes no data anybody entered, and keeps every workflow a form has entered and every approval it
+has. It runs while you wait, so it is offered only for a client holding no more forms than the limit the page
+gives; a larger client is brought up to date by the nightly run.
+
+
 # @copy
 # +whatIsThis
 **Copy** is the words the application shows this client's people: headings, help, buttons, and mails. The client can

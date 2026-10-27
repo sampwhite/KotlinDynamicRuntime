@@ -80,6 +80,18 @@ fun clientOverviewSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CLD.overvie
         ) { type = SCT.boolean }
         property(CLD.forms, "How many live form documents the client holds.", required = true) { type = SCT.integer }
         property(
+            FSR.count,
+            "How many forms a recalculation of the client's form states would look at (issue #1412): what its " +
+                "${FSR.limit} is held against.",
+            required = true,
+        ) { type = SCT.integer }
+        property(
+            FSR.limit,
+            "The most forms a recalculation of the client's form states from its page may take (issue #1412); one " +
+                "holding more is brought up to date by the nightly recalculation alone.",
+            required = true,
+        ) { type = SCT.integer }
+        property(
             CLD.users,
             "How many active (enabled) users the client has. Disabled and deleted users are not counted; the count " +
                 "is client-wide whoever asks.",
@@ -213,9 +225,11 @@ fun clientOverviewSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CLD.overvie
     ) { c, _ ->
         // A `public` self-administrator administers only themselves (issue #805); there is no client for them to oversee.
         AdminRules.requireClientAdministrator(c)
-        val present = namableClients(c).map { overviewRow(c, it.clientId, it.name, ClientStatus.present) }
+        // One deployment-wide limit, resolved once for every row.
+        val limit = formStatesRecalcLimit(c)
+        val present = namableClients(c).map { overviewRow(c, it.clientId, it.name, ClientStatus.present, limit) }
         if (!AdminRules.canSeeAllClients(c)) return@listEndpoint present
-        present + absentClients(c).map { overviewRow(c, it.clientId, it.name, it.status) }
+        present + absentClients(c).map { overviewRow(c, it.clientId, it.name, it.status, limit) }
     }
 
     // --- a customer's page (issue #1114), whose clients are rows of the overview above ----------------------------
@@ -249,6 +263,36 @@ fun clientOverviewSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CLD.overvie
         val client = overseenClient(c, request[CLD.client].toOptStr())
         val result = ClientSandboxEdit.set(c, client, request[CLD.sandbox] == true)
         mapOf(CLD.client to result.client, CLD.sandbox to result.sandbox, CLD.publishedOnly to result.publishedOnly)
+    }
+
+    // --- recalculating a client's form states now, rather than overnight (issue #1412) ------------------------------
+    type(FSR.resultTypeName) {
+        type = SCT.kObject
+        description = "What recalculating a client's form states did (issue #1412)."
+        property(FSR.outcome, "What became of the recalculation.", required = true) {
+            option(FSR.completed)
+            option(FSR.stopped)
+            option(FSR.busy)
+        }
+        property(FSR.updated, "How many forms had their state recalculated and stored.") { type = SCT.integer }
+        property(FSR.current, "How many forms were already current, and left as they were.") { type = SCT.integer }
+        property(FSR.failed, "How many forms' recalculated state could not be stored.") { type = SCT.integer }
+        property(FSR.total, "How many forms the recalculation was to look at.") { type = SCT.integer }
+        property(FSR.reason, "Why it stopped, or why nothing ran; absent when it completed.")
+    }
+
+    generalEndpoint(
+        UADEP.clientFormStatesRecalc,
+        "Recalculates the stored state of a client's forms now (issue #1412) -- which workflows each is in, and where -- " +
+            "as the nightly recalculation would, so that a workflow added or changed, or a change published, shows on " +
+            "forms nobody has saved since. Synchronous, and refused for a client holding more forms than its overview " +
+            "row's ${FSR.limit}. Engagements and approvals are never changed. Answers busy, having done nothing, while " +
+            "another recalculation of the client's forms runs.",
+        HttpMethod.POST,
+        outputRef = FSR.resultTypeName,
+        inputFields = { overseenClientField(CLD.client) },
+    ) { c, request ->
+        recalculateFormStates(c, overseenClient(c, request[CLD.client].toOptStr()))
     }
 
     // --- a client created by a customer's root administrator (issue #1112) -----------------------------------------
@@ -540,7 +584,14 @@ internal fun overseenClient(cxt: KdrCxt, named: String?): String {
   *
  * Not private, so a test of a node no caller can sign in to (a production boot) can read a row as the listing does.
  */
-fun overviewRow(cxt: KdrCxt, clientId: String, name: String, status: ClientStatus): Map<String, Any?> {
+fun overviewRow(
+    cxt: KdrCxt,
+    clientId: String,
+    name: String,
+    status: ClientStatus,
+    /** The page's form-state recalculation limit (issue #1412): the same for every row, so a listing resolves it once. */
+    recalcLimit: Int = formStatesRecalcLimit(cxt),
+): Map<String, Any?> {
     val isPresent = status == ClientStatus.present
     val users = UserService.get(cxt).countActiveUsers(cxt, clientId)
     val forms = GedraDataService.get(cxt).countLiveGedras(cxt, GedraDataType.formDoc, clientId)
@@ -553,6 +604,8 @@ fun overviewRow(cxt: KdrCxt, clientId: String, name: String, status: ClientStatu
         // holds its parent's source configs beside the stored ones (issue #932).
         CLD.storedConfigs to GedraConfigLoadService.get(cxt).loadedFor(clientId).count { it.inheritedFrom == null && it.isStored },
         CLD.forms to forms,
+        FSR.count to formStatesRecalcCount(cxt, clientId),
+        FSR.limit to recalcLimit,
         CLD.users to users.total,
         CLD.unclaimedUsers to users.unclaimed,
         CLD.workflowCount to if (isPresent) workflowIdsFor(cxt, clientId).size else 0,

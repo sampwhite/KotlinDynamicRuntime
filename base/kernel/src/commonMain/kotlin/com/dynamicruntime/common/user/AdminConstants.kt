@@ -160,6 +160,12 @@ object UADEP {
     const val clientSandbox = "/${SECT.clientAdmin}/client/sandbox"
 
     /**
+     * Recalculates the stored state of a client's forms, synchronously, for a client holding no more forms than its
+     * page may recalculate (issue #1412) -- the caller's own client unless they may name another.
+     */
+    const val clientFormStatesRecalc = "/${SECT.clientAdmin}/client/formStates/recalculate"
+
+    /**
      * Edits a client's definition from the Clients page (issue #1026): its presentation fields
      * (`ClientPresentationFields`), written to its stored definition and made to take effect as the copy and menu
      * editors' saves are -- live, or a draft for a client with a sandbox. The caller's own client unless they may

@@ -113,6 +113,7 @@ internal fun SchModuleBuilder.customerOverviewEndpoints() {
         val customer = CustomerAccess.customerFor(c, request[CUST.customer].toOptStr())
         val clients = ClientService.get(c)
         val isSource = clients.customers[customer.customerId]?.isSource == true
+        val recalcLimit = formStatesRecalcLimit(c)
         mapOf(
             CUST.customer to customerSummary(c, customer, isSource),
             CUST.clients to CustomerAccess.clientsOf(c, customer.customerId).map { def ->
@@ -121,7 +122,7 @@ internal fun SchModuleBuilder.customerOverviewEndpoints() {
                     def.retired -> ClientStatus.retired
                     else -> ClientStatus.notEnabled
                 }
-                overviewRow(c, def.clientId, def.name, status)
+                overviewRow(c, def.clientId, def.name, status, recalcLimit)
             },
         )
     }

@@ -139,7 +139,10 @@ class JobTraceTest : StringSpec({
         shouldThrow<KdrException> {
             SqlTopicTranProvider.executeTopicTran(
                 sqlCxt, "traceRollbackTest", null,
-                mapOf(JOB.jobType to "jtrRollback", JOB.launchKind to JobLaunchKind.endpoint.name, JOB.dryRun to false),
+                mapOf(
+                    JOB.jobType to "jtrRollback", JOB.launchKind to JobLaunchKind.endpoint.name, JOB.launchClient to JOB.anyClient,
+                    JOB.dryRun to false,
+                ),
                 tranTableName = JOB.jobStatus,
             ) {
                 tracer.record(JobTraceEvent.jobNote, message = "Written mid-transaction.")
@@ -168,10 +171,17 @@ class JobTraceTest : StringSpec({
         ).map { it.name }
     }
 
-    "only the most recent launches' traces are kept" {
+    "only the most recent launches' traces are kept, each launch kind's apart" {
         JobScripts.set("jtrPruned", mapOf(CL.hub to listOf("a1"))) { _, _ -> JobTaskResult.done }
         for (i in 1..5) launch("jtrPruned", "run$i")
         (1..5).map { events("jtrPruned", "run$it").isNotEmpty() } shouldContainExactly listOf(false, false, true, true, true)
+
+        // A burst of client launches (issue #1412) keeps its own most recent, and takes none of the endpoint's.
+        val service = JobService.get(cxt)
+        for (i in 1..4) service.launch(cxt, "jtrPruned", "click$i", JobLaunchKind.client, JobRunMode.sync, clients = listOf(CL.hub))
+        (1..4).map { JobTraceRows.read(cxt, "jtrPruned", JobLaunchKind.client, "click$it").isNotEmpty() } shouldContainExactly
+            listOf(false, true, true, true)
+        (3..5).map { events("jtrPruned", "run$it").isNotEmpty() } shouldContainExactly listOf(true, true, true)
     }
 
     "the operator surface reads a launch's trace" {

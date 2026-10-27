@@ -138,7 +138,8 @@ class JobService : ServiceInitializer, AutoCloseable {
      * -- and runs it in [mode]. A synchronous launch is admitted only for a job that can count its tasks, and
      * only while the count is within its profile's cap; it is refused (400) otherwise, before anything is
      * claimed. A launch whose row another holds live answers [JobLaunchOutcome.lockedOut], and one whose named
-     * work is already complete answers [JobLaunchOutcome.alreadyComplete]; neither runs anything.
+     * work is already complete answers [JobLaunchOutcome.alreadyComplete]; neither runs anything. A
+     * [JobLaunchKind.client] launch names exactly one client in [clients], which its launch row is kept for.
      */
     fun launch(
         cxt: KdrCxt,
@@ -153,19 +154,29 @@ class JobService : ServiceInitializer, AutoCloseable {
         trace: JobTraceLevel? = null,
         /** For a scheduled launch, when its slot's window closes (issue #870). */
         deadline: Instant? = null,
+        /**
+         * For a synchronous launch, its task count when the caller has already counted it (issue #1412): held to the
+         * cap as it stands, rather than counted again.
+         */
+        countedTasks: Long? = null,
     ): JobLaunchResult {
         val def = def(jobType)
         val profile = def.profile.resolve(cxt)
         val runClients = resolveClients(cxt, clients)
+        val launchClient = if (kind == JobLaunchKind.client) {
+            runClients.singleOrNull() ?: throw KdrException.mkInput("A client launch of '$jobType' names exactly one client.")
+        } else {
+            null
+        }
         val params = linkedMapOf(
             JOBP.clients to clients, JOBP.workAreas to workAreas, JOBP.redoWindowHours to redoWindow?.let { it.inWholeMilliseconds / 3_600_000.0 },
             JOBP.mode to mode.name, JOBP.launchedBy to cxt.userProfile.userId, JOBP.trace to trace?.name,
         )
-        val launch = JobLaunch(jobType, kind, name, params, dryRun, redoWindow)
+        val launch = JobLaunch(jobType, kind, name, params, dryRun, redoWindow, launchClient)
         // The job works as the system user, on a context of its own: not the launching request's, which ends
         // with the request, nor its caller's identity, which is recorded above rather than acted as.
         val jobCxt = KdrCxt.mkSimpleCxt("job", cxt.instanceConfig)
-        val counted = if (mode == JobRunMode.sync) admitSync(jobCxt, def, profile, launch, workAreas, runClients) else null
+        val counted = if (mode == JobRunMode.sync) admitSync(jobCxt, def, profile, launch, workAreas, runClients, countedTasks) else null
         val tracer = JobTracer(jobCxt, profile.traceLevel(cxt, trace), launch, profile.traceMaxEntries, profile.traceKeepLaunches)
         val lease = when (val claim = JobStatusRows.claimLaunch(jobCxt, launch, profile.leaseTimeout)) {
             is JobClaim.LockedOut -> {
@@ -189,7 +200,7 @@ class JobService : ServiceInitializer, AutoCloseable {
             data = linkedMapOf(JOB.adopted to lease.adopted, JOB.generationId to lease.generationId, JOB.traceLevel to tracer.level.name),
         )
         val run = JobRun(def, profile, launch, runClients, workAreas, mode, jobCxt, ::pool, counted, tracer, deadline)
-        val key = runKey(jobType, kind, dryRun)
+        val key = runKey(jobType, kind, launchClient, dryRun)
         if (mode != JobRunMode.async) {
             runs[key] = run to null
             try {
@@ -212,14 +223,20 @@ class JobService : ServiceInitializer, AutoCloseable {
     }
 
     /**
-     * Asks the launch of [jobType] as [kind] to abort. Recorded on its row, so the holder's next heartbeat picks
-     * it up whichever node it runs on; a run on this node is also told at once. Answers whether there was an
-     * active launch to ask.
+     * Asks the launch of [jobType] as [kind] -- for [client], a client launch -- to abort. Recorded on its row, so
+     * the holder's next heartbeat picks it up whichever node it runs on; a run on this node is also told at once.
+     * Answers whether there was an active launch to ask.
      */
-    fun abort(cxt: KdrCxt, jobType: String, kind: JobLaunchKind = JobLaunchKind.endpoint, dryRun: Boolean = false): Boolean {
+    fun abort(
+        cxt: KdrCxt,
+        jobType: String,
+        kind: JobLaunchKind = JobLaunchKind.endpoint,
+        dryRun: Boolean = false,
+        client: String? = null,
+    ): Boolean {
         def(jobType)
-        runs[runKey(jobType, kind, dryRun)]?.first?.stop("Abort requested.")
-        return JobStatusRows.requestAbort(cxt, jobType, kind, dryRun)
+        runs[runKey(jobType, kind, client, dryRun)]?.first?.stop("Abort requested.")
+        return JobStatusRows.requestAbort(cxt, jobType, kind, dryRun, client)
     }
 
     /** Stops every run on this node and lets its rows go; called on JVM shutdown. */
@@ -241,7 +258,10 @@ class JobService : ServiceInitializer, AutoCloseable {
         return clients.distinct()
     }
 
-    /** Counts a synchronous launch's tasks and refuses it when it cannot be counted or is over the cap. */
+    /**
+     * Counts a synchronous launch's tasks -- or takes [counted], the caller's count -- and refuses it when it cannot be
+     * counted or is over the cap.
+     */
     private fun admitSync(
         cxt: KdrCxt,
         def: JobDef,
@@ -249,12 +269,13 @@ class JobService : ServiceInitializer, AutoCloseable {
         launch: JobLaunch,
         workAreas: List<String>,
         clients: List<String>,
+        counted: Long?,
     ): Long {
         val counter = def.countTasks ?: throw KdrException.mkInput(
             "Job '${def.jobType}' cannot count its tasks ahead of time, so it cannot run synchronously; launch it " +
                 "asynchronously.",
         )
-        val total = clients.sumOf { client ->
+        val total = counted ?: clients.sumOf { client ->
             counter(JobRunCxt(cxt.mkSubContext("job", client), launch, workAreas, client, 0, null) { null }, client).toLong()
         }
         if (total > profile.syncTaskCap) {
@@ -280,7 +301,8 @@ class JobService : ServiceInitializer, AutoCloseable {
         }
     }
 
-    private fun runKey(jobType: String, kind: JobLaunchKind, dryRun: Boolean) = "$jobType/${kind.name}/$dryRun"
+    private fun runKey(jobType: String, kind: JobLaunchKind, client: String?, dryRun: Boolean) =
+        "$jobType/${kind.name}/${client ?: JOB.anyClient}/$dryRun"
 
     @Suppress("ConstPropertyName")
     companion object {

@@ -500,9 +500,13 @@ object PFRAG {
     const val imagesNs = "images"
     const val menuNs = "menu"
 
+    /** The Clients page's namespace for recalculating a client's form states (issue #1412), within Forms and data. */
+    const val formStatesNs = "formStates"
+
     /** Every namespace of the Clients page whose `whatIsThis` explains a panel or a group of the page. */
     val clientsExplained: List<String> = listOf(
-        aboutNs, behaviorNs, platformNs, runsNs, formsDataNs, copyNs, imagesNs, filesNs, sandboxNs, storedConfigNs, menuNs,
+        aboutNs, behaviorNs, platformNs, runsNs, formsDataNs, formStatesNs, copyNs, imagesNs, filesNs, sandboxNs,
+        storedConfigNs, menuNs,
     )
 
     /**
