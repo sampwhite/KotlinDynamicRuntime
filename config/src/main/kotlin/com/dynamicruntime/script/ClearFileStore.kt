@@ -25,8 +25,10 @@ import kotlin.time.Clock
  *
  * **What stays: the web assets of clients defined in source** -- the sample's Acme, say. A client's favicon and brand
  * mark live only in the file store (`clients/<client>/web/`), in no database row, and a reset recreates a source
- * client with the same id, so keeping them brings its images back unasked. A client made at runtime is not recreated,
- * so its images go with everything else: kept, they would turn up for whoever next made a client of that id.
+ * client with the same id, so keeping them brings its images back unasked. (A source client whose definition names a
+ * web resources package, issue #1301, shows the package's images in any slot with nothing uploaded, whatever the store
+ * holds: what is kept here is uploads made in front of them.) A client made at runtime is not recreated, so its images
+ * go with everything else: kept, they would turn up for whoever next made a client of that id.
  *
  * It boots only to the `collected` stage, with the file store's service alone (issue #1289): the source clients are
  * known from the components' contributions, and nothing reaches the database, which a reset is about to remove.

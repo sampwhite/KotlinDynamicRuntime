@@ -643,6 +643,8 @@ class ClientsPageTest {
         assertEquals(null, whoSetsNote(CLD.domainPrefix, canSeeAllClients = true))
         assertEquals(configurationSetNote, whoSetsNote(CLD.customerId, canSeeAllClients = true))
         assertEquals(sourceSetNote, whoSetsNote(CLD.staticConfig, canSeeAllClients = true))
+        // A web resources package is source code's alone (issue #1301), so no editor offers it.
+        assertEquals(sourceSetNote, whoSetsNote(CLD.webResourcesId, canSeeAllClients = true))
         assertEquals(null, whoSetsNote(CLD.timeZone, canSeeAllClients = false))
     }
 

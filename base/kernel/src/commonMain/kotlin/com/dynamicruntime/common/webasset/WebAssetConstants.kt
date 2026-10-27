@@ -56,6 +56,23 @@ object WAS {
     /** Who uploaded a slot's image, as they were called then; kept with the file, since a user id is no name. */
     const val uploadedByName = "uploadedByName"
 
+    /**
+     * Where a slot's image comes from (issue #1301): [sourceUpload], the client's administrator uploaded it, or
+     * [sourcePackage], the client's web resources package ships it. Absent for an empty slot.
+     */
+    const val source = "source"
+    const val sourceUpload = "upload"
+    const val sourcePackage = "package"
+
+    /** The web resources package the client's definition names, beside a slot it fills or could fill; absent for none. */
+    const val packageId = "packageId"
+
+    /**
+     * Whether the client's package ships an image for the slot (issue #1301): what the slot shows once an upload in
+     * front of it is removed, rather than the deployment's.
+     */
+    const val packaged = "packaged"
+
     /** The schema type of one listed slot. */
     const val slotTypeName = "WebAssetSlot"
 

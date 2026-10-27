@@ -101,11 +101,13 @@ class ClientDefinitionEditTest : StringSpec({
         val client = "defeditnamed"
         defineClient(client)
         val full = TestUser.createFullAdmin(cxt, "full@$client.test")
-        val saved = full.postData(UADEP.clientDefinitionSet, mapOf(CLD.client to client, CLD.name to "Named Edit", CLD.webResourcesId to "pack1"))
+        val saved = full.postData(UADEP.clientDefinitionSet, mapOf(CLD.client to client, CLD.name to "Named Edit"))
         saved[CLD.client] shouldBe client
         saved[CPY.mode] shouldBe EDM.live
         present(client).name shouldBe "Named Edit"
-        present(client).webResourcesId shouldBe "pack1"
+        // A web resources package is named in source code alone (issue #1301): not an input, even for the platform.
+        full.expectError(EXC.badInput, UADEP.clientDefinitionSet, mapOf(CLD.client to client, CLD.webResourcesId to "pack1"))
+        present(client).webResourcesId shouldBe null
         // The full administrator's own, source-defined client is untouched.
         present(full.selfClient()!!).name shouldBe ClientService.get(cxt).present(full.selfClient()!!)!!.name
         val read = full.getItem(UADEP.clientDefinition, mapOf(CLD.client to client))
@@ -122,14 +124,14 @@ class ClientDefinitionEditTest : StringSpec({
         val read = admin.getItem(UADEP.clientDefinition)
         // What the client runs carries the template's labels and resources; what it stores carries neither.
         read[CLD.client].toJsonMapOrEmpty()[CLD.userLabels].toJsonListOfStrings() shouldBe listOf("vip")
-        read[CLD.client].toJsonMapOrEmpty()[CLD.webResourcesId] shouldBe "tplres"
+        read[CLD.client].toJsonMapOrEmpty()[CLD.webResourcesId] shouldBe ExtensionTemplateComponent.packageId
         read[CLD.storedDefinition].toJsonMapOrEmpty().containsKey(CLD.userLabels) shouldBe false
         read[CLD.storedDefinition].toJsonMapOrEmpty().containsKey(CLD.webResourcesId) shouldBe false
         // Adding a label stores only the client's own; the template's still joins it when the client runs.
         val saved = admin.postData(UADEP.clientDefinitionSet, mapOf(CLD.userLabels to listOf("own")))
         saved[CLD.definition].toJsonMapOrEmpty()[CLD.userLabels].toJsonListOfStrings() shouldBe listOf("own")
         present(client).userLabels shouldBe listOf("vip", "own")
-        present(client).webResourcesId shouldBe "tplres"
+        present(client).webResourcesId shouldBe ExtensionTemplateComponent.packageId
     }
 
     "a domain prefix or custom domain another client declares is refused, by whatever write carries it" {
@@ -169,7 +171,7 @@ class ClientDefinitionEditTest : StringSpec({
         val client = "defeditoper"
         defineClient(client)
         val admin = TestUser.create(cxt, "chief@$client.test", level = ROLE.admin, userClient = client)
-        for (field in listOf(CLD.audience to ClientAudience.customer.name, CLD.enabledEnvironments to listOf(ENV.unit), CLD.webResourcesId to "pack2")) {
+        for (field in listOf(CLD.audience to ClientAudience.customer.name, CLD.enabledEnvironments to listOf(ENV.unit))) {
             admin.expectError(EXC.notAuthorized, UADEP.clientDefinitionSet, mapOf(CLD.name to "X", field))
                 .toString() shouldContain "is set by the platform"
         }
@@ -182,7 +184,7 @@ class ClientDefinitionEditTest : StringSpec({
             UADEP.clientDefinitionSet,
             mapOf(
                 CLD.client to client, CLD.usageType to ClientUsageType.production.name, CLD.audience to ClientAudience.customer.name,
-                CLD.enabledEnvironments to listOf(ENV.local, ENV.unit, ENV.dev), CLD.preload to true, CLD.webResourcesId to "pack2",
+                CLD.enabledEnvironments to listOf(ENV.local, ENV.unit, ENV.dev), CLD.preload to true,
             ),
         )[CLD.definition].toJsonMapOrEmpty()
         saved[CLD.usageType] shouldBe ClientUsageType.production.name
@@ -191,7 +193,6 @@ class ClientDefinitionEditTest : StringSpec({
             usageType shouldBe ClientUsageType.production
             audience shouldBe ClientAudience.customer
             preload shouldBe true
-            webResourcesId shouldBe "pack2"
         }
         // A choice is required, and an environment set the load would drop is refused by the write's trial.
         full.expectError(EXC.badInput, UADEP.clientDefinitionSet, mapOf(CLD.client to client, CLD.usageType to ""))

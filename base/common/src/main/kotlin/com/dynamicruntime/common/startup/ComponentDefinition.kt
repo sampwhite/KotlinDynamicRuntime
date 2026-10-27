@@ -9,6 +9,7 @@ import com.dynamicruntime.common.flavor.FlavorContribution
 import com.dynamicruntime.common.flavor.FlavorDef
 import com.dynamicruntime.common.gedra.GedraConfig
 import com.dynamicruntime.common.uiblock.UiBlockSource
+import com.dynamicruntime.common.webasset.WebResourcesDef
 
 /**
  * A component bundles a set of contributions -- schema and services -- that an
@@ -156,6 +157,14 @@ interface ComponentDefinition : KdrProvider {
      * enumerable, so what is declared is what is read, checked, and served.
      */
     fun images(cxt: KdrCxt): List<ComponentImageDef> = emptyList()
+
+    /**
+     * The web resources packages this component ships (issue #1301), each a rooted id (under [ownerRoot]) and a file
+     * per slot under `web-resources/` (`webResources`): the favicon and brand mark a client defined in source code
+     * presents itself with when its definition names the package. `ComponentImageService` checks and holds them,
+     * beside the [images]. Declared for the same reason.
+     */
+    fun webResources(cxt: KdrCxt): List<WebResourcesDef> = emptyList()
 
     /**
      * The `_debug` words this component reads (issue #1334), each declared once as a [DebugTagDef] beside the code

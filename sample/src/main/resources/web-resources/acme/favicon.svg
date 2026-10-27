@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <title>Acme favicon</title>
+  <!-- The brand mark's "A" in white on a filled tile, so it reads at 16px on light and dark tabs alike. -->
+  <rect x="2" y="2" width="60" height="60" rx="14" fill="#EA580C"/>
+  <path fill="#FFFFFF" fill-rule="evenodd" transform="translate(32 33) scale(0.66) translate(-32 -32)"
+        d="M32 6 L60 58 H46 L41.5 49 H22.5 L18 58 H4 Z M32 26 L37.5 39 H26.5 Z"/>
+</svg>

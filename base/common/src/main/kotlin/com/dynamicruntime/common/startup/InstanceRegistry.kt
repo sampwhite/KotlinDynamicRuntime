@@ -13,6 +13,8 @@ import com.dynamicruntime.common.content.MarkdownDocDef
 import com.dynamicruntime.common.content.checkedMarkdownDocs
 import com.dynamicruntime.common.uiblock.UIB
 import com.dynamicruntime.common.uiblock.UiBlockSource
+import com.dynamicruntime.common.webasset.DeclaredWebResources
+import com.dynamicruntime.common.webasset.WRES
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.KdrInstanceConfig
 import com.dynamicruntime.common.exception.KdrException
@@ -148,6 +150,7 @@ object InstanceRegistry {
             val docs = mutableListOf<MarkdownDocDef>()
             val debugTags = mutableListOf<DebugTagDef>()
             val images = mutableListOf<DeclaredComponentImage>()
+            val webResources = mutableListOf<DeclaredWebResources>()
             for (component in loaded) {
                 // With the component in hand, so what it contributes is held to its owner root (issue #950).
                 collector.contributingAs(cxt, component) {
@@ -158,6 +161,10 @@ object InstanceRegistry {
                     debugTags.addAll(component.debugTags(cxt))
                     // With the owner root it is held to (issue #1339), checked when the images are read.
                     component.images(cxt).mapTo(images) { DeclaredComponentImage(it, component.providerName, component.ownerRoot) }
+                    // Likewise the web resources packages (issue #1301), which a client's definition names.
+                    component.webResources(cxt).mapTo(webResources) {
+                        DeclaredWebResources(it, component.providerName, component.ownerRoot)
+                    }
                     // Same loop, so every config is present before any service binds -- which is what lets
                     // SchemaService compile them, and #301 assemble over them, with nothing left to arrive.
                     for (config in component.gedraConfigs(cxt)) {
@@ -197,6 +204,7 @@ object InstanceRegistry {
             config.put(MDOC.registryKey, checkedMarkdownDocs(docs))
             config.put(DebugTags.registryKey, DebugTags.of(debugTags))
             config.put(IMGS.registryKey, images.toList())
+            config.put(WRES.registryKey, webResources.toList())
 
             val startupEntries = mutableListOf<ServiceEntry>()
             val serviceEntries = mutableListOf<ServiceEntry>()

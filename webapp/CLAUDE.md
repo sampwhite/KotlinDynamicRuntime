@@ -99,14 +99,17 @@ frontend too).
 ### A client's own web assets (issue #1130)
 
 A client's administrator may upload a **favicon** and a **brand mark** of its own, which stand in for the
-deployment's for that client's people. They are static content too, under the same root and absent from the
-catalog for the same reason:
+deployment's for that client's people -- and a client defined in source code may name a **web resources package** a
+component ships (issue #1301, `ClientDef.webResourcesId`), whose images it shows in a slot nothing is uploaded to; an
+upload stands in front of the package's, and removing it shows the package's again. To the frontend the two are one
+slot: the shell config names whichever is shown, and the address serves it. They are static content too, under the
+same root and absent from the catalog for the same reason:
 
 **Request:** `GET /st/<appId>/web/<slot:hash>` (e.g. `/st/kdr.en/web/favicon:9f3a…`) -- built by
 `Http.webAssetUrl(name)` from the kernel's `WAS.staticPath`, never spelled by hand.
 
 - You get the `slot:hash` **name** from the shell config, `state.webAssets` (`HomeConfig.webAssets`): a slot
-  (`WAS.favicon`, `WAS.brandMark`) to its name, **only for the slots the client has set**. An absent slot is the
+  (`WAS.favicon`, `WAS.brandMark`) to its name, **only for the slots that show an image** -- uploaded, or the package's. An absent slot is the
   deployment's own image, exactly as before -- so a client with nothing set changes nothing.
 - The image served is the **caller's** client's, whatever the address says: the hash never selects whose. It
   decides only the caching -- the name the config handed you is cached for good, any other gets the current
@@ -772,7 +775,12 @@ bumps the refresh generation, which is what makes the shell redraw its mark and 
 after the page has moved to another client is dropped, result and refusal alike. What is running, the open
 confirmation, and the last failure or refusal beside its row are one `RowActionStatus` (issue #1388, `useRowActions`),
 shared with the Files section: change it only through its transitions, which the hook applies through the state's
-transform, since an action ends after an await.
+transform, since an action ends after an await. A slot showing the client's **web resources package**'s image
+(issue #1301: the listing's `source` is `package`, beside the `packageId`) says it was shipped with the client's
+source code rather than who uploaded it, and offers **Replace…** but no Remove (`webAssetFromPackage`,
+`webAssetRemovable`): an upload stands in front of it, and removing that upload -- whose confirmation says the
+package's image comes back when the listing's `packaged` says it ships one (`webAssetRemoveConsequence`) -- shows it
+again.
 
 The **preview is not the static address**: that serves the caller's own client's, and the client on this page
 need not be the caller's. It is the named download, `GET /clientAdmin/client/web/download {client, slot, hash}`

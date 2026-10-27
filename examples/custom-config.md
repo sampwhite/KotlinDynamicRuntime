@@ -170,9 +170,50 @@ Notes:
   set. Only the deployed app (`appui`) is branded.
 - **The stylesheet is not brandable.** Replacing `app.css` wholesale would fork it and re-create the drift a
   single sheet exists to prevent; theming wants CSS variables instead.
-- **This is the deployment's branding, not a client's.** A client's administrator uploads a favicon and a brand
-  mark of its own from the Clients page (issue #1130), with no code and no redeploy; those stand in for these for
-  that client's signed-in people. The set here is what everybody else sees, and what every page paints first.
+- **This is the deployment's branding, not a client's.** A client defined in source code can bring its own favicon
+  and brand mark as a **web resources package** (issue #1301): a component ships the files under `web-resources/`
+  and declares them (`ComponentDefinition.webResources`), and the client's definition names the package
+  (`webResourcesId`). A client's administrator can also upload a favicon and a brand mark from the Clients page
+  (issue #1130), with no code and no redeploy, and an upload stands in front of the package's. Either stands in for
+  these for that client's signed-in people. The set here is what everybody else sees, and what every page paints
+  first.
+
+### A client's web resources package
+
+The deployment's branding above is one set for everybody. A client defined in source code presents its own through
+a package: a component ships a file per slot under `web-resources/` in its resources, and declares them under its
+owner root.
+
+```kotlin
+class AcmeComponent : ComponentDefinition {
+    override val ownerRoot: String = "acmeco"
+
+    override fun webResources(cxt: KdrCxt) =
+        listOf(webResources("acmeco:acme", favicon = "acme/favicon.svg", brandMark = "acme/brand-mark.svg"))
+}
+```
+
+```
+resources/
+└── web-resources/
+    └── acme/
+        ├── favicon.svg      # the tab icon, at most 256 KB
+        └── brand-mark.svg   # the app bar logo and home hero, at most 1 MB
+```
+
+The client names the package in its source definition, `ClientDef(..., webResourcesId = "acmeco:acme")`.
+
+- **Each file's extension says what it is**: `.svg`, `.png`, `.ico`, `.jpg` (or `.jpeg`), or `.webp`. The boot
+  reads every file and checks it as an upload to its slot is checked: present, no larger than the slot takes, and the
+  image its extension says, an SVG with nothing in it to run. A problem refuses the boot outside production, under
+  `KDR_IMAGE_CHECK`; in production the file is left out and the slot shows the deployment's.
+- **A slot may be left out.** The client shows the deployment's image there.
+- **Only source code names a package.** A client defined in data (stored configuration) cannot name one, and the
+  write that tries is refused. A client built on a template presents the template's package when it names none.
+- **An upload wins.** An image the client's administrator uploads stands in front of the package's; removing the
+  upload shows the package's again.
+- **Two clients may share a package.** A source definition naming a package no component ships refuses the boot
+  outside production.
 
 ## Local files a file ref may name
 

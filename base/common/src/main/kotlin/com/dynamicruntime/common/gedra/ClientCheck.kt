@@ -9,7 +9,9 @@ import com.dynamicruntime.common.user.PERSONASUFFIX
 import com.dynamicruntime.common.user.SessionLifetime
 import com.dynamicruntime.common.util.TZONE
 import com.dynamicruntime.common.util.isPlaceZoneName
+import com.dynamicruntime.common.webasset.WRES
 import kotlinx.datetime.TimeZone
+import java.util.IdentityHashMap
 
 /** What checking the declared clients produced (issue #343). */
 class ClientCheckResult(
@@ -51,7 +53,21 @@ fun checkClientDefs(
     /** The customers the node runs now (issue #1107): what one this reload does not judge keeps. */
     currentCustomers: Map<String, KeptCustomer> = emptyMap(),
 ): ClientCheckResult {
-    val raw = configs.configs.mapNotNull { config -> config.client?.let { config to it } }
+    // A web resources package is source code's to name (issue #1301): a stored definition naming one is refused at
+    // the write, and one already stored loses it here -- the client stands, presenting its template's package, if any.
+    // Reported once, for the client that holds it: a sandbox carries its parent's definition, reported there.
+    val storedPackages = IdentityHashMap<GedraConfig, String>()
+    val raw = configs.configs.mapNotNull { config ->
+        config.client?.let { def ->
+            val named = def.webResourcesId
+            if (named != null && config.isStored) {
+                if (!isSandboxClient(def.clientId)) storedPackages[config] = named
+                config to def.copy(webResourcesId = null)
+            } else {
+                config to def
+            }
+        }
+    }
     // A client built on another takes its defaults from it (issue #945, `ClientExtension.mergeDef`) before anything
     // is judged, so every rule below sees the definition the client will run -- a functional group a template
     // includes is refused in a customer's production client exactly as one written there would be. Merged with the
@@ -92,6 +108,17 @@ fun checkClientDefs(
     // Pass zero: the customers (issue #1107), which the clients name. Judged first, so a client's link is judged
     // against the customers that hold up.
     val customers = checkCustomers(cxt, configs, only, currentCustomers, declared.map { it.second }, current, issues)
+
+    for ((config, named) in storedPackages) {
+        if (only != null && config.gedraId.client !in only) continue
+        val issue = GedraConfigIssue(
+            "Client '${config.gedraId.client}' names the web resources package '$named', which only a client defined in " +
+                "source code may name.",
+            "Dropping it; the client presents the package of the template it extends, if any.",
+        )
+        reportConfigProblem(cxt, issue.heldBy(config, GCEL.client, config.gedraId.client), issues)
+    }
+    val packageIds = WRES.declaredIds(cxt)
 
     // Pass one: what a definition can be judged on by itself, plus whether one client is declared twice.
     for ((config, def) in declared) {
@@ -174,6 +201,19 @@ fun checkClientDefs(
                 )
                 reportConfigProblem(cxt, issue.heldBy(holder, GCEL.client, def.clientId), issues)
                 kept[def.clientId] = kept.getValue(def.clientId).copy(refreshIntervalSeconds = null)
+            }
+        }
+        // A package no component ships costs only itself (issue #1301): the client stands, presenting the deployment's
+        // images. Judged on the definition the client runs, so a template's package is held to it in each client
+        // built on the template -- and refuses the boot outside production, where the template's own does.
+        def.webResourcesId?.let { named ->
+            if (named !in packageIds) {
+                val issue = GedraConfigIssue(
+                    "Client '${def.clientId}' names the web resources package '$named', which no component ships.",
+                    "Dropping it; the client presents the deployment's images until a package of that id is shipped.",
+                )
+                reportConfigProblem(cxt, issue.heldBy(holder, GCEL.client, def.clientId), issues)
+                kept[def.clientId] = kept.getValue(def.clientId).copy(webResourcesId = null)
             }
         }
         // Join roles that cannot be offered cost only themselves (issue #1248): the client stands, and nobody joins it.

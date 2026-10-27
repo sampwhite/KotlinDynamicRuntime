@@ -54,12 +54,32 @@ fun clientWebSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, WAS.namespace) {
         )
         property(WAS.file, "The metadata of the image the slot holds; absent when it is empty.") { ref(FMETA.infoTypeName) }
         property(WAS.uploadedByName, "Who uploaded the image, as they were called then; absent when that was not recorded.")
+        property(
+            WAS.source,
+            "Where the image comes from: uploaded by the client's administrator, or shipped in its web resources " +
+                "package; absent when the slot is empty.",
+        ) {
+            option(WAS.sourceUpload, "Uploaded")
+            option(WAS.sourcePackage, "Its web resources package")
+        }
+        property(
+            WAS.packageId,
+            "The web resources package the client's definition names (issue #1301), whose image the slot shows when " +
+                "nothing is uploaded to it; absent for none.",
+        )
+        property(
+            WAS.packaged,
+            "Whether that package ships an image for the slot, which it shows once an upload in front of it is removed.",
+        ) {
+            type = SCT.boolean
+        }
     }
 
     listEndpoint(
         UADEP.clientWeb,
         "A client's web assets (issue #1130): every slot -- the favicon, the brand mark -- with the metadata of the " +
-            "image it holds and none of its content. A slot holding none is listed without one, and the client's " +
+            "image it shows and none of its content: the one uploaded to it, else the one the client's web resources " +
+            "package ships (issue #1301), saying which. A slot showing neither is listed without one, and the client's " +
             "people then see the deployment's own image. A sandbox lists its parent's, which are what it shows.",
         outputRef = WAS.slotTypeName,
         // The slots are a fixed handful.
@@ -71,7 +91,7 @@ fun clientWebSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, WAS.namespace) {
         val client = assets.knownClient(c, overseenClient(c, request[WAS.client].toOptStr()))
         // The store's own answer, not this node's memo: the page that edits the slots shows what is there.
         val held = assets.slots(c, client, fresh = true)
-        ClientWebAssetService.slotDefs.map { slotItem(it, held[it.slot]) }
+        ClientWebAssetService.slotDefs.map { slotShown(c, assets, client, it, held[it.slot]) }
     }
 
     fileUploadEndpoint(
@@ -93,14 +113,16 @@ fun clientWebSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, WAS.namespace) {
         // A `file` part sent as a plain field is a value, so it passes for "present": it is here that it is no file.
         val content = request[WAS.file] as? ContentData ?: throw KdrException.mkInput("No file was sent.")
         val def = ClientWebAssetService.slotDef(request[WAS.slot].toOptStr().orEmpty())
-        slotItem(def, ClientWebAssetService.get(c).upload(c, client, def.slot, content))
+        val assets = ClientWebAssetService.get(c)
+        slotShown(c, assets, client, def, assets.upload(c, client, def.slot, content))
     }
 
     generalEndpoint(
         UADEP.clientWebRemove,
-        "Empties one slot of a client's web assets (issue #1130), so its people see the deployment's own image " +
-            "again, at once. Answers the slot as it now is; emptying one that held nothing changes nothing. Refused " +
-            "for a sandbox, which shows its parent's.",
+        "Removes the image uploaded to one slot of a client's web assets (issue #1130), so its people see its web " +
+            "resources package's image again, or the deployment's own where the package has none (issue #1301), at " +
+            "once. Answers the slot as it now is; emptying one that held nothing uploaded changes nothing. Refused for " +
+            "a sandbox, which shows its parent's.",
         HttpMethod.POST,
         outputRef = WAS.slotTypeName,
         needsClientConfig = true,
@@ -111,13 +133,14 @@ fun clientWebSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, WAS.namespace) {
     ) { c, request ->
         val client = overseenClient(c, request[WAS.client].toOptStr())
         val def = ClientWebAssetService.slotDef(request[WAS.slot].toOptStr().orEmpty())
-        ClientWebAssetService.get(c).remove(c, client, def.slot)
-        slotItem(def, null)
+        val assets = ClientWebAssetService.get(c)
+        assets.remove(c, client, def.slot)
+        slotShown(c, assets, client, def, null)
     }
 
     fileDownloadEndpoint(
         UADEP.clientWebDownload,
-        "The image in one slot of a client's web assets (issue #1130), as a file: what an administrator looking at " +
+        "The image one slot of a client's web assets shows (issue #1130) -- its upload, else its package's -- as a file: what an administrator looking at " +
             "another client's page previews, since the static address serves only the caller's own client's. A 404 " +
             "when the slot is empty, or the node knows no such client. Sent as a download, so opening its address " +
             "shows no page. An address that carries the hash of the image returned may be kept by the caller's own " +
@@ -138,8 +161,9 @@ fun clientWebSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, WAS.namespace) {
 
     fileMetaEndpoint(
         UADEP.clientWebDownloadMeta,
-        "What the image in one slot of a client's web assets is, without the image (issue #1131): its type, size " +
-            "and hash, the name it was uploaded under, who uploaded it and when. The download's inputs and the same " +
+        "What the image one slot of a client's web assets shows is, without the image (issue #1131): its type, size " +
+            "and hash, the name it was uploaded under, who uploaded it and when -- or for its package's (issue #1301), " +
+            "the file's name in the package and when this node read it. The download's inputs and the same " +
             "404s: an empty slot, or a client the node does not know. Read from the store as it is now, not from " +
             "what this node last read of it.",
         needsClientConfig = true,
@@ -157,7 +181,7 @@ fun clientWebSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, WAS.namespace) {
 /** The slot a download or its meta read names, of the client the request names -- one the node knows. */
 private class NamedSlot(val client: String, val def: WebSlotDef) {
     /** The 404 for an empty slot: one answer from the download and its meta read. */
-    fun empty(): KdrException = KdrException("Client '$client' has no ${def.label.lowercase()} of its own.", code = EXC.notFound)
+    fun empty(): KdrException = KdrException("Client '$client' shows no ${def.label.lowercase()} of its own.", code = EXC.notFound)
 }
 
 private fun namedSlot(cxt: KdrCxt, assets: ClientWebAssetService, request: Map<String, Any?>): NamedSlot = NamedSlot(
@@ -171,16 +195,39 @@ private fun SchTypeBuilder.slotOptions() {
 }
 
 /**
- * One slot as the listing answers it: what the slot is and takes, and -- when it holds an image -- [meta], the
- * image's name by content, and who uploaded it.
+ * [def]'s slot of [client] as it now shows: [uploaded], the image uploaded to it, else its package's (issue #1301).
  */
-fun slotItem(def: WebSlotDef, meta: FileMeta?): Map<String, Any?> = buildMap {
+private fun slotShown(cxt: KdrCxt, assets: ClientWebAssetService, client: String, def: WebSlotDef, uploaded: FileMeta?): Map<String, Any?> {
+    val packageId = assets.packageIdOf(cxt, client)
+    val packaged = assets.packaged(cxt, client, def.slot)?.meta
+    return if (uploaded != null) {
+        slotItem(def, uploaded, WAS.sourceUpload, packageId, packaged != null)
+    } else {
+        slotItem(def, packaged, WAS.sourcePackage, packageId, packaged != null)
+    }
+}
+
+/**
+ * One slot as the listing answers it: what the slot is and takes, the [packageId] the client names and whether it
+ * ships an image for the slot ([packaged]), and -- when it shows an image -- [meta], the image's name by content,
+ * where it comes from ([source]), and who uploaded it.
+ */
+fun slotItem(
+    def: WebSlotDef,
+    meta: FileMeta?,
+    source: String = WAS.sourceUpload,
+    packageId: String? = null,
+    packaged: Boolean = false,
+): Map<String, Any?> = buildMap {
     put(WAS.slot, def.slot)
     put(WAS.label, def.label)
     put(WAS.maxSize, def.maxSize)
     put(WAS.mimeTypes, WebAssetCheck.acceptedMimeTypes)
     put(WAS.kinds, WebAssetCheck.kinds.map { it.label })
+    packageId?.let { put(WAS.packageId, it) }
+    put(WAS.packaged, packaged)
     if (meta != null) {
+        put(WAS.source, source)
         put(WAS.name, WAS.versionedName(def.slot, meta.hash))
         put(WAS.file, meta.toJsonMap())
         meta.extra[WAS.uploadedByName].toOptStr()?.let { put(WAS.uploadedByName, it) }

@@ -16,6 +16,8 @@ import com.dynamicruntime.common.cfact.CFACTS
 import com.dynamicruntime.common.content.ComponentImageDef
 import com.dynamicruntime.common.content.FragmentSource
 import com.dynamicruntime.common.content.componentImage
+import com.dynamicruntime.common.webasset.WebResourcesDef
+import com.dynamicruntime.common.webasset.webResources
 import com.dynamicruntime.common.content.backendFragmentFiles
 import com.dynamicruntime.common.content.fragmentFiles
 import com.dynamicruntime.common.content.fragmentInline
@@ -132,6 +134,10 @@ class SampleComponent : ComponentDefinition {
      */
     /** The images the sample ships (issue #1339): one, shown on acme's home page. */
     override fun images(cxt: KdrCxt): List<ComponentImageDef> = listOf(componentImage(SF.siteVisitFlow, SF.siteVisitFlowFile))
+
+    /** The web resources packages the sample ships (issue #1301): acme's favicon and brand mark. */
+    override fun webResources(cxt: KdrCxt): List<WebResourcesDef> =
+        listOf(webResources(SF.acmeWeb, favicon = "acme/favicon.svg", brandMark = "acme/brand-mark.svg"))
 
     override fun fragments(cxt: KdrCxt): List<FragmentSource> =
         // A fixture: nothing in the application shows it, and it says so by declaring no `shownOn` (issue #933).

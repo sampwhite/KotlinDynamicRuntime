@@ -191,7 +191,7 @@ class ClientCreateEndpointTest : StringSpec({
         // Built on the template: it presents with the template's web resources, which its own definition did not name.
         val def = ClientService.get(cxt).present("kid1054").shouldNotBeNull()
         def.extendsFromClientId shouldBe ExtensionTemplateComponent.template
-        def.webResourcesId shouldBe "tplres"
+        def.webResourcesId shouldBe ExtensionTemplateComponent.packageId
         // A client asking for a sandbox runs only what is published; the create published it, so it is present.
         def.sandbox shouldBe true
         // Its sandbox is live now, and so an id this node knows -- which is still a sandbox's id, said as that

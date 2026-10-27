@@ -81,6 +81,13 @@ object SF {
 
     /** The file [siteVisitFlow] is read from. */
     const val siteVisitFlowFile = "site-visit-flow.svg"
+
+    /**
+     * Acme's web resources package (issue #1301): its favicon and brand mark, made for it in October 2026 -- a bold
+     * geometric "A" that is also a peak. Read from `web-resources/acme/` on the classpath, and named by acme's
+     * definition, so a fresh deployment shows them with nothing uploaded.
+     */
+    const val acmeWeb = "sample:acme"
 }
 
 /** The sample workflows' ids (issue #533): one creation workflow per client, under one shared name. */
@@ -302,6 +309,9 @@ private fun acmeClient(cxt: KdrCxt): GedraConfig =
                 // editors save drafts for it; globex keeps the live-at-once path.
                 sandbox = true,
                 customerId = SC.acme,
+                // Its favicon and brand mark (issue #1301), shipped with the sample; an upload on the Clients page
+                // stands in front of either, and removing it brings the package's back.
+                webResourcesId = SF.acmeWeb,
                 // A visitor to a reference deployment may join acme as an administrator (issue #1248), to look around
                 // a client from its administrator's side: its users, its configuration, its sandbox.
                 joinRoles = listOf(

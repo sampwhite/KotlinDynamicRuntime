@@ -22,7 +22,9 @@ import com.dynamicruntime.common.startup.modeOverride
 import com.dynamicruntime.common.util.MDR
 import com.dynamicruntime.common.util.componentImageNames
 import com.dynamicruntime.common.util.sha256Hex
+import com.dynamicruntime.common.webasset.WRES
 import com.dynamicruntime.common.webasset.WebAssetCheck
+import com.dynamicruntime.common.webasset.readWebResources
 import kotlin.time.Instant
 
 /**
@@ -51,10 +53,10 @@ object IMGS {
     /** What an image problem does at startup. */
     val checkEnvVar = EnvVarDef(
         "KDR_IMAGE_CHECK", group = ENVGRP.content, defaultDoc = "strict (`warn` in `prod`)",
-        description = "What a problem with an image a component ships does at startup -- a file that is missing, too " +
-            "large, or not an image, a name declared twice or under another owner's root: `strict`, `warn` or `off`. " +
-            "Unset means strict everywhere except `prod`, where the image is left out and copy naming it draws its " +
-            "alt text.",
+        description = "What a problem with an image a component ships -- one copy names, or one in a web resources " +
+            "package -- does at startup: a file that is missing, too large, or not an image, a name declared twice or " +
+            "under another owner's root: `strict`, `warn` or `off`. Unset means strict everywhere except `prod`, " +
+            "where the image is left out: copy naming it draws its alt text, and a client's slot shows the deployment's.",
     )
 
     /** The images the boot collected, as declared. */
@@ -112,6 +114,12 @@ fun sharedCopyNamingNoImage(cxt: KdrCxt, sources: List<FragmentSource>): List<St
  * declared once. A problem is a boot problem ([IMGS.checkEnvVar]): refused outside production, and in it reported,
  * the image left out so copy naming it draws its alt text. The same for every caller, and on every kind of node, as
  * the fragments are: nothing here is a client's or kept in the file store.
+ *
+ * It holds the **web resources packages** components ship too (issue #1301, [readWebResources]): images a component
+ * ships, read and checked with the rest under the same switch, though each is a client's favicon or brand mark rather
+ * than copy's -- a client defined in source code names its package, and `ClientWebAssetService` shows a package's
+ * image in a slot the client has uploaded nothing to ([packageFile]). Not served here: a client's slots are served
+ * as its own, under `web/`.
  */
 class ComponentImageService : ServiceInitializer, ContentServer {
     override val serviceName: String = ComponentImageService.serviceName
@@ -119,6 +127,11 @@ class ComponentImageService : ServiceInitializer, ContentServer {
     /** Each image served, by its rooted name. */
     @Volatile
     var served: Map<String, StoredFile> = emptyMap()
+        private set
+
+    /** Each web resources package's files, by its id and then by slot (issue #1301). */
+    @Volatile
+    var packages: Map<String, Map<String, StoredFile>> = emptyMap()
         private set
 
     private var isInit = false
@@ -142,6 +155,9 @@ class ComponentImageService : ServiceInitializer, ContentServer {
             if (file != null) read[name] = file else fault(problem.orEmpty())
         }
         served = read
+        val (packaged, packageFindings) = readWebResources(WRES.declared(cxt), cxt.now())
+        packages = packaged
+        findings.addAll(packageFindings)
         val mode = bootCheckMode(cxt, modeOverride(cxt, IMGS.checkEnvVar), prodMode = BootCheckMode.warn)
         BootCheckRegistry.get(cxt).record(BCHK.images, IMGS.checkEnvVar.name, mode, findings.distinct())
         if (findings.isNotEmpty() && mode != BootCheckMode.off) {
@@ -172,6 +188,12 @@ class ComponentImageService : ServiceInitializer, ContentServer {
         val meta = FileMeta(mimeType = kind.mimeType, size = bytes.size.toLong(), hash = bytes.sha256Hex(), uploadedAt = readAt, fileName = def.fileName)
         return StoredFile(bytes, meta) to null
     }
+
+    /**
+     * The image package [packageId] ships for [slot] (issue #1301), or null: no such package, a slot it leaves empty,
+     * or a file the boot found faulty and left out.
+     */
+    fun packageFile(packageId: String, slot: String): StoredFile? = packages[packageId]?.get(slot)
 
     /** Each image served, by its rooted name, to its name with its hash: what the shell config hands the webapp. */
     fun servedNames(): Map<String, String> = served.mapValues { (name, file) -> IMG.versionedName(name, file.meta.hash) }
