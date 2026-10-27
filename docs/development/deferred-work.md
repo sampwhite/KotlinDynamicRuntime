@@ -190,9 +190,22 @@ looked fragile.
   `check` never needs a headless Chrome; that disable line is the re-enable point. Nothing automated renders a
   component, drives a form, or exercises `fetch`. The coupling that makes this matter is already here: the app
   bar and the profile page both render `UserProfile.displayName`, so a change to one *is* a change to the
-  other, and no existing test would notice. Deferred because it needs a harness decision first — an in-browser
-  DOM suite through the disabled task, or Playwright driving a booted instance — and picking one is most of the
-  work. Note #161 itself is closed: it delivered the pure-logic layer, so nothing currently tracks this.
+  other, and no existing test would notice. Deferred because it needs a harness decision first, and picking one
+  is most of the work. There are three candidates:
+  - **jsdom under the existing Node tests** (or happy-dom, a faster alternative). It is a DOM implemented in
+    JavaScript, which React renders into as it would a browser, usually driven through React Testing Library.
+    antd's own tests run this way. It needs a dev dependency and Kotlin `external` declarations, not a new
+    runner, and is probably the cheapest of the three. It covers behavior — state, events, and the text and
+    errors that appear — but not looks: there is no layout (so antd Select's virtual option list renders
+    nothing unless the test turns it off or picks by keyboard), no real CSS, and stand-in animation frames.
+    #1407 is the kind of bug it catches: a commit-time check that saw the value from before a pick, a React
+    state-timing fault that behaves the same in jsdom as in Chrome.
+  - **An in-browser DOM suite** through the disabled task, which adds what jsdom lacks at the cost of a
+    headless Chrome in `check`.
+  - **Playwright driving a booted instance**, the only one of the three that exercises the real backend and
+    `fetch`.
+
+  Note #161 itself is closed: it delivered the pure-logic layer, so nothing currently tracks this.
 
 
 ## When a listener that outlives its page starts costing something
