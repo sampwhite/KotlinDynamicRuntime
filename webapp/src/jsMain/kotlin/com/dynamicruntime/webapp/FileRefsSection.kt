@@ -65,13 +65,10 @@ val FileRefsSection = FC<FileRefsSectionProps> { props ->
     // Whether what a ref takes was asked for and could not be had: nothing is added from here then, and it is said.
     var takesFailed by useState(false)
     var loadError by useState<DisplayError?>(null)
-    // What is running -- which ref and which action ([webAssetBusyKey]) -- and where the last failure was: a ref's
+    // What is running, which ref's removal is being asked about, and where the last failure was (issue #1388): a ref's
     // id, or [FACT.adding] for the form under the list.
-    var busy by useState<String?>(null)
-    var confirming by useState<String?>(null)
-    var failedAt by useState<String?>(null)
-    var failure by useState<DisplayError?>(null)
-    var problem by useState<String?>(null)
+    val rows = useRowActions()
+    val status = rows.status
     var note by useState<String?>(null)
     // The one row editor open, if any: which ref, and which editor -- rewording it (`FACT.describe`) or pointing it
     // at a file the deployment keeps (`FACT.local`, issue #1189). One at a time in the whole section, as rewording
@@ -107,11 +104,8 @@ val FileRefsSection = FC<FileRefsSectionProps> { props ->
             takes = null
             takesFailed = false
             loadError = null
-            failedAt = null
-            failure = null
-            problem = null
+            rows.clear()
             note = null
-            confirming = null
             editing = null
             describeText = ""
             repointRoot = null
@@ -161,10 +155,7 @@ val FileRefsSection = FC<FileRefsSectionProps> { props ->
     fun run(at: String, action: String, added: Boolean, done: (FileRefChange) -> String, change: suspend () -> FileRefChange) {
         // The client the change is for. By the time it answers the page may be showing another's refs.
         val forClient = props.clientId
-        busy = webAssetBusyKey(at, action)
-        failedAt = null
-        failure = null
-        problem = null
+        rows.start(at, action)
         note = null
         fileRefsScope.launch {
             try {
@@ -183,22 +174,16 @@ val FileRefsSection = FC<FileRefsSectionProps> { props ->
                 }
                 props.onChanged()
             } catch (e: Throwable) {
-                val shown = saveFailure(e, props.onChanged)
-                if (lastClient.current == forClient) {
-                    failedAt = at
-                    failure = shown
-                }
+                if (lastClient.current == forClient) rows.fail(at, e, props.onChanged)
             } finally {
-                busy = null
+                rows.finish()
             }
         }
     }
 
     /** Says [text] beside [at] without sending anything: what the page can tell is wrong by itself. */
     fun refuse(at: String, text: String) {
-        failedAt = at
-        failure = null
-        problem = text
+        rows.refuse(at, text)
         note = null
     }
 
@@ -304,14 +289,14 @@ val FileRefsSection = FC<FileRefsSectionProps> { props ->
                             value = describeText
                             placeholder = "What it is for; leave it empty to clear"
                             maxLength = FREF.maxDescriptionLength
-                            disabled = busy != null
+                            disabled = status.running
                             style = js("({ minWidth: 240 })")
                             onChange = { e -> describeText = e.target.value as String }
                         }
                         Button {
                             type = "primary"
-                            loading = busy == webAssetBusyKey(ref.refId, FACT.describe)
-                            disabled = busy != null && busy != webAssetBusyKey(ref.refId, FACT.describe)
+                            loading = status.isBusy(ref.refId, FACT.describe)
+                            disabled = status.othersBusy(ref.refId, FACT.describe)
                             onClick = {
                                 // What was typed, blank included: blank is how a description is cleared.
                                 run(ref.refId, FACT.describe, added = false, ::fileRefDescribedNote) {
@@ -321,7 +306,7 @@ val FileRefsSection = FC<FileRefsSectionProps> { props ->
                             +"Save"
                         }
                         Button {
-                            disabled = busy != null
+                            disabled = status.running
                             onClick = { editing = null }
                             +"Cancel"
                         }
@@ -369,8 +354,8 @@ val FileRefsSection = FC<FileRefsSectionProps> { props ->
                     div {
                         className = ClassName("web-asset-actions")
                         Button {
-                            loading = busy == webAssetBusyKey(ref.refId, FACT.restore)
-                            disabled = busy != null && busy != webAssetBusyKey(ref.refId, FACT.restore)
+                            loading = status.isBusy(ref.refId, FACT.restore)
+                            disabled = status.othersBusy(ref.refId, FACT.restore)
                             onClick = {
                                 run(ref.refId, FACT.restore, added = false, ::fileRefRestoredNote) {
                                     ClientsApi.restoreFileRef(props.clientId, ref.refId, expected)
@@ -386,8 +371,8 @@ val FileRefsSection = FC<FileRefsSectionProps> { props ->
                             label = "Replace…"
                             accept = taking?.mimeTypes.orEmpty()
                             primary = false
-                            this.busy = busy == webAssetBusyKey(ref.refId, FACT.upload)
-                            disabled = busy != null
+                            this.busy = status.isBusy(ref.refId, FACT.upload)
+                            disabled = status.running
                             onPicked = { file, size ->
                                 val tooLarge = fileRefFileProblem(taking, size)
                                 if (tooLarge != null) {
@@ -402,7 +387,7 @@ val FileRefsSection = FC<FileRefsSectionProps> { props ->
                         }
                         if (fileRefRepointable(ref, taking)) {
                             Button {
-                                disabled = busy != null || editing == ref.refId to FACT.local
+                                disabled = status.running || editing == ref.refId to FACT.local
                                 onClick = {
                                     editing = ref.refId to FACT.local
                                     val (root, path) = fileRefRepointStart(ref)
@@ -414,34 +399,19 @@ val FileRefsSection = FC<FileRefsSectionProps> { props ->
                         }
                         if (fileRefRemovable(ref)) {
                             Button {
-                                disabled = busy != null || editing == ref.refId to FACT.describe
+                                disabled = status.running || editing == ref.refId to FACT.describe
                                 onClick = {
                                     editing = ref.refId to FACT.describe
                                     describeText = ref.description.orEmpty()
                                 }
                                 +"Reword…"
                             }
-                            Popconfirm {
-                                title = fileRefRemoveQuestion(ref, props.clientId, draft)
-                                description = fileRefRemoveConsequence(ref, draft)
-                                okText = "Remove"
-                                cancelText = "Cancel"
-                                placement = "bottomLeft"
-                                open = confirming == ref.refId
-                                onOpenChange = { open -> confirming = if (open) ref.refId else null }
-                                onConfirm = {
-                                    confirming = null
-                                    run(ref.refId, FACT.remove, added = false, ::fileRefRemovedNote) {
-                                        ClientsApi.removeFileRef(props.clientId, ref.refId, expected)
-                                    }
-                                }
-                                okButtonProps = js("({ danger: true })")
-                                disabled = busy != null
-                                Button {
-                                    danger = true
-                                    loading = busy == webAssetBusyKey(ref.refId, FACT.remove)
-                                    disabled = busy != null && busy != webAssetBusyKey(ref.refId, FACT.remove)
-                                    +"Remove"
+                            confirmedRemove(
+                                rows, ref.refId, FACT.remove,
+                                fileRefRemoveQuestion(ref, props.clientId, draft), fileRefRemoveConsequence(ref, draft),
+                            ) {
+                                run(ref.refId, FACT.remove, added = false, ::fileRefRemovedNote) {
+                                    ClientsApi.removeFileRef(props.clientId, ref.refId, expected)
                                 }
                             }
                         }
@@ -450,11 +420,11 @@ val FileRefsSection = FC<FileRefsSectionProps> { props ->
                 if (editing == ref.refId to FACT.local && taking != null) {
                     div {
                         className = ClassName("file-ref-describe")
-                        keptFileFields(fileRefChosenRoot(repointRoot, taking.roots), taking.roots, repointPath, busy != null, { repointRoot = it }, { repointPath = it })
+                        keptFileFields(fileRefChosenRoot(repointRoot, taking.roots), taking.roots, repointPath, status.running, { repointRoot = it }, { repointPath = it })
                         Button {
                             type = "primary"
-                            loading = busy == webAssetBusyKey(ref.refId, FACT.local)
-                            disabled = busy != null && busy != webAssetBusyKey(ref.refId, FACT.local)
+                            loading = status.isBusy(ref.refId, FACT.local)
+                            disabled = status.othersBusy(ref.refId, FACT.local)
                             onClick = {
                                 val root = fileRefChosenRoot(repointRoot, taking.roots)
                                 val wrong = fileRefRepointProblem(ref, root, repointPath)
@@ -471,21 +441,13 @@ val FileRefsSection = FC<FileRefsSectionProps> { props ->
                             +"Use this file"
                         }
                         Button {
-                            disabled = busy != null
+                            disabled = status.running
                             onClick = { editing = null }
                             +"Cancel"
                         }
                     }
                 }
-                if (failedAt == ref.refId) {
-                    problem?.let {
-                        p {
-                            className = ClassName("error-text")
-                            +it
-                        }
-                    }
-                    failure?.let { errorText("Couldn't change the file '${ref.refId}'.", it) }
-                }
+                rowFailure(status, ref.refId, "Couldn't change the file '${ref.refId}'.")
             }
         }
     }
@@ -534,7 +496,7 @@ val FileRefsSection = FC<FileRefsSectionProps> { props ->
                         value = newId
                         placeholder = "Its id, such as heroImage"
                         maxLength = FREF.maxRefIdLength
-                        disabled = busy != null
+                        disabled = status.running
                         // antd gives an Input `flex: 1` in a flex row, where a width alone is ignored: an id is
                         // short and says it does not grow, and what it is for takes the room that leaves.
                         style = js("({ width: 220, flex: 'none' })")
@@ -548,7 +510,7 @@ val FileRefsSection = FC<FileRefsSectionProps> { props ->
                         value = newDescription
                         placeholder = "Optional"
                         maxLength = FREF.maxDescriptionLength
-                        disabled = busy != null
+                        disabled = status.running
                         style = js("({ minWidth: 240 })")
                         onChange = { e -> newDescription = e.target.value as String }
                     }
@@ -559,8 +521,8 @@ val FileRefsSection = FC<FileRefsSectionProps> { props ->
                 FilePickButton {
                     label = "Upload…"
                     accept = taking.mimeTypes
-                    this.busy = busy == webAssetBusyKey(FACT.adding, FACT.upload)
-                    disabled = busy != null
+                    this.busy = status.isBusy(FACT.adding, FACT.upload)
+                    disabled = status.running
                     onPicked = { file, size ->
                         val wrong = fileRefAddUploadProblem(newId, listed, taking, size)
                         if (wrong != null) {
@@ -587,10 +549,10 @@ val FileRefsSection = FC<FileRefsSectionProps> { props ->
                 }
                 div {
                     className = ClassName("file-ref-add-row")
-                    keptFileFields(fileRefChosenRoot(newRoot, taking.roots), taking.roots, newPath, busy != null, { newRoot = it }, { newPath = it })
+                    keptFileFields(fileRefChosenRoot(newRoot, taking.roots), taking.roots, newPath, status.running, { newRoot = it }, { newPath = it })
                     Button {
-                        loading = busy == webAssetBusyKey(FACT.adding, FACT.local)
-                        disabled = busy != null && busy != webAssetBusyKey(FACT.adding, FACT.local)
+                        loading = status.isBusy(FACT.adding, FACT.local)
+                        disabled = status.othersBusy(FACT.adding, FACT.local)
                         onClick = {
                             val root = fileRefChosenRoot(newRoot, taking.roots)
                             val wrong = fileRefLocalProblem(newId, listed, root, newPath)
@@ -609,15 +571,7 @@ val FileRefsSection = FC<FileRefsSectionProps> { props ->
                     }
                 }
             }
-            if (failedAt == FACT.adding) {
-                problem?.let {
-                    p {
-                        className = ClassName("error-text")
-                        +it
-                    }
-                }
-                failure?.let { errorText("Couldn't add the file.", it) }
-            }
+            rowFailure(status, FACT.adding, "Couldn't add the file.")
         }
     }
 }

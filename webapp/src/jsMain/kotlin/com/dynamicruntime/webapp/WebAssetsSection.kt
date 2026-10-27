@@ -42,14 +42,9 @@ external interface WebAssetsSectionProps : Props {
 val WebAssetsSection = FC<WebAssetsSectionProps> { props ->
     var slots by useState<List<WebAssetSlot>?>(null)
     var loadError by useState<DisplayError?>(null)
-    // What is running -- which slot and which action ([webAssetBusyKey]), so the control that was used shows it --
-    // and the slot the last failure was for, with what went wrong: a refusal is shown beside the slot it was about.
-    var busy by useState<String?>(null)
-    // The slot whose removal is being asked about, so one question is open at a time and a click elsewhere closes it.
-    var confirming by useState<String?>(null)
-    var failedSlot by useState<String?>(null)
-    var failure by useState<DisplayError?>(null)
-    var problem by useState<String?>(null)
+    // What is running, which slot's removal is being asked about, and the last failure, beside its slot (issue #1388).
+    val rows = useRowActions()
+    val status = rows.status
     val latest = useRef(0)
     val lastClient = useRef<String>(null)
     val generation = useRefreshGeneration()
@@ -64,10 +59,7 @@ val WebAssetsSection = FC<WebAssetsSectionProps> { props ->
             // The previous client's failure is not this one's: left set, it would be shown over this one's load
             // and keep its "Loading…" from showing.
             loadError = null
-            failedSlot = null
-            failure = null
-            problem = null
-            confirming = null
+            rows.clear()
         }
         webAssetsScope.launch {
             try {
@@ -86,10 +78,7 @@ val WebAssetsSection = FC<WebAssetsSectionProps> { props ->
         // The client the change is for. By the time it answers the page may be showing another's slots, and
         // neither its result nor its refusal belongs beside those.
         val forClient = props.clientId
-        busy = webAssetBusyKey(slot, action)
-        failedSlot = null
-        failure = null
-        problem = null
+        rows.start(slot, action)
         webAssetsScope.launch {
             try {
                 val changed = change()
@@ -100,12 +89,9 @@ val WebAssetsSection = FC<WebAssetsSectionProps> { props ->
                 }
                 props.onChanged()
             } catch (e: Throwable) {
-                if (lastClient.current == forClient) {
-                    failedSlot = slot
-                    failure = userFacingError(e)
-                }
+                if (lastClient.current == forClient) rows.fail(slot, e, props.onChanged)
             } finally {
-                busy = null
+                rows.finish()
             }
         }
     }
@@ -168,14 +154,12 @@ val WebAssetsSection = FC<WebAssetsSectionProps> { props ->
                         className = ClassName("web-asset-actions")
                         WebAssetUpload {
                             this.slot = slot
-                            this.busy = busy == webAssetBusyKey(slot.slot, WACT.upload)
-                            this.disabled = busy != null
+                            this.busy = status.isBusy(slot.slot, WACT.upload)
+                            this.disabled = status.running
                             onPicked = { file, size ->
                                 val tooLarge = webAssetFileProblem(slot, size)
                                 if (tooLarge != null) {
-                                    failedSlot = slot.slot
-                                    failure = null
-                                    problem = tooLarge
+                                    rows.refuse(slot.slot, tooLarge)
                                 } else {
                                     run(slot.slot, WACT.upload) { ClientsApi.uploadWebAsset(props.clientId, slot.slot, file) }
                                 }
@@ -184,39 +168,16 @@ val WebAssetsSection = FC<WebAssetsSectionProps> { props ->
                         if (slot.file != null) {
                             // Gone for the client's people as it is confirmed, so it is asked about, and the
                             // question names where it acts (issue #1049) -- as every delete's does.
-                            Popconfirm {
-                                title = webAssetRemoveQuestion(slot, props.clientId)
-                                description = webAssetRemoveConsequence(slot)
-                                okText = "Remove"
-                                cancelText = "Cancel"
-                                placement = "bottomLeft"
-                                open = confirming == slot.slot
-                                onOpenChange = { open -> confirming = if (open) slot.slot else null }
-                                onConfirm = {
-                                    confirming = null
-                                    run(slot.slot, WACT.remove) { ClientsApi.removeWebAsset(props.clientId, slot.slot) }
-                                }
-                                okButtonProps = js("({ danger: true })")
-                                disabled = busy != null
-                                Button {
-                                    danger = true
-                                    loading = busy == webAssetBusyKey(slot.slot, WACT.remove)
-                                    disabled = busy != null && busy != webAssetBusyKey(slot.slot, WACT.remove)
-                                    +"Remove"
-                                }
+                            confirmedRemove(
+                                rows, slot.slot, WACT.remove,
+                                webAssetRemoveQuestion(slot, props.clientId), webAssetRemoveConsequence(slot),
+                            ) {
+                                run(slot.slot, WACT.remove) { ClientsApi.removeWebAsset(props.clientId, slot.slot) }
                             }
                         }
                     }
                 }
-                if (failedSlot == slot.slot) {
-                    problem?.let {
-                        p {
-                            className = ClassName("error-text")
-                            +it
-                        }
-                    }
-                    failure?.let { errorText("Couldn't change the ${slot.label.lowercase()}.", it) }
-                }
+                rowFailure(status, slot.slot, "Couldn't change the ${slot.label.lowercase()}.")
             }
         }
     }
