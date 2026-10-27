@@ -11,9 +11,11 @@ import com.dynamicruntime.common.webasset.WAS
 
 /**
  * A client's own web assets in the frontend (issue #1130): the tab icon and the brand mark its administrator
- * uploads. Two readers. The **shell** is handed the set slots by the home config (`state.webAssets`) and draws
- * the client's mark and tab icon in place of the deployment's; the **Clients page** lists every slot with what
- * it holds and uploads into or empties one (`WebAssetsSection`).
+ * uploads -- or, for a client defined in source code, its **web resources package** ships (issue #1301), which an
+ * upload stands in front of. Two readers. The **shell** is handed the slots that show an image by the home config
+ * (`state.webAssets`), whichever of the two it is, and draws the client's mark and tab icon in place of the
+ * deployment's; the **Clients page** lists every slot with what it shows and uploads into or empties one
+ * (`WebAssetsSection`).
  *
  * Everything here but [applyClientFavicon] is pure, and covered under `jsNodeTest`. A size is worded by the
  * kernel's `byteSizeText`, which the backend's own refusals use.
@@ -72,7 +74,10 @@ fun storedFileFrom(raw: Any?): WebAssetFile? = raw.toJsonMapOrEmpty().takeIf { i
     )
 }
 
-/** One slot of a client's web assets as the listing answers it: what it takes, and [file] when it holds an image. */
+/**
+ * One slot of a client's web assets as the listing answers it: what it takes, and [file] when it shows an image --
+ * uploaded, or its package's ([source]).
+ */
 class WebAssetSlot(
     val slot: String,
     val label: String,
@@ -83,6 +88,12 @@ class WebAssetSlot(
     val kinds: List<String>,
     val file: WebAssetFile?,
     val uploadedByName: String?,
+    /** Where [file] comes from: [WAS.sourceUpload] or [WAS.sourcePackage]; null for an empty slot. */
+    val source: String? = null,
+    /** The web resources package the client's definition names, or null for none (issue #1301). */
+    val packageId: String? = null,
+    /** Whether that package ships an image for this slot: what shows once an upload is removed. */
+    val packaged: Boolean = false,
 )
 
 /** The listing's items as slots; one without a slot name is not one. */
@@ -97,8 +108,20 @@ fun parseWebAssetSlots(items: List<Map<String, Any?>>): List<WebAssetSlot> = ite
         kinds = item[WAS.kinds].toJsonListOfStrings(),
         file = file,
         uploadedByName = item[WAS.uploadedByName].toOptStr(),
+        source = item[WAS.source].toOptStr().takeIf { file != null },
+        packageId = item[WAS.packageId].toOptStr(),
+        packaged = item[WAS.packaged] == true,
     )
 }
+
+/** Whether [slot] shows its web resources package's image, with nothing uploaded in front of it (issue #1301). */
+fun webAssetFromPackage(slot: WebAssetSlot): Boolean = slot.file != null && slot.source == WAS.sourcePackage
+
+/**
+ * Whether [slot] has an upload to remove: an image that is not its package's (issue #1301), which is the client's
+ * source code's and stays -- an upload replaces it for the client's people instead.
+ */
+fun webAssetRemovable(slot: WebAssetSlot): Boolean = slot.file != null && !webAssetFromPackage(slot)
 
 /** What a slot takes, for the hint under it: `PNG, SVG, ICO, JPEG or WebP, up to 256 KB.` */
 fun webAssetTakesText(slot: WebAssetSlot): String = imageTakesText(slot.kinds, slot.maxSize)
@@ -121,9 +144,16 @@ fun webAssetHoldsText(slot: WebAssetSlot): String {
     return listOfNotNull(file.mimeType.ifEmpty { null }, byteSizeText(file.size), file.fileName).joinToString(" · ")
 }
 
-/** Who uploaded a slot's image and when, or null for an empty slot: `Uploaded Oct 12, 2026, 2:49 PM CT by Chief One`. */
+/**
+ * Who uploaded a slot's image and when, or null for an empty slot: `Uploaded Oct 12, 2026, 2:49 PM CT by Chief One`.
+ * A package's image says whose it is instead (issue #1301): it was shipped, not uploaded.
+ */
 fun webAssetUploadedText(slot: WebAssetSlot): String? {
     val file = slot.file ?: return null
+    if (webAssetFromPackage(slot)) {
+        return "From the client's web resources package${slot.packageId?.let { ", $it" }.orEmpty()}, shipped with its " +
+            "source code. An upload replaces it for the client's people."
+    }
     val at = file.uploadedAt.takeIf { it.isNotEmpty() }?.let { " ${formatTimestamp(it)}" }.orEmpty()
     val by = slot.uploadedByName?.let { " by $it" }.orEmpty()
     return "Uploaded$at$by"
@@ -149,9 +179,16 @@ fun webAssetFileProblem(slot: WebAssetSlot, size: Long): String? =
 fun webAssetRemoveQuestion(slot: WebAssetSlot, clientId: String): String =
     "Remove the ${slot.label.lowercase()} of ${deleteTargetText(clientId)}?"
 
-/** What emptying a slot does, under [webAssetRemoveQuestion]. */
+/**
+ * What emptying a slot does, under [webAssetRemoveQuestion]: its people see its package's image again where the package
+ * ships one (issue #1301), and otherwise the deployment's.
+ */
 fun webAssetRemoveConsequence(slot: WebAssetSlot): String =
-    "Its people see the deployment's ${slot.label.lowercase()} again, at once."
+    if (slot.packaged) {
+        "Its people see the ${slot.label.lowercase()} of its web resources package again, at once."
+    } else {
+        "Its people see the deployment's ${slot.label.lowercase()} again, at once."
+    }
 
 /** The two things done to a slot, as [webAssetBusyKey] names the one under way. */
 @Suppress("ConstPropertyName")

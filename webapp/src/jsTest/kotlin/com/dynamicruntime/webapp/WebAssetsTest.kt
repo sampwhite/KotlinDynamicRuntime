@@ -118,7 +118,9 @@ class WebAssetsTest {
     @Test
     fun aRemovalIsAskedAboutNamingTheClientItActsOnAndIsDrawnFromItsAnswer() {
         assertEquals("Remove the favicon of acme (live data)?", webAssetRemoveQuestion(slot(pngFile), "acme"))
+        // With no package behind it, the deployment's comes back.
         assertEquals("Its people see the deployment's favicon again, at once.", webAssetRemoveConsequence(slot(pngFile)))
+        assertEquals(true, webAssetRemovable(slot(pngFile)))
         assertEquals(
             "Remove the brand mark of globex (live data)?",
             webAssetRemoveQuestion(slot(pngFile, slot = WAS.brandMark, label = "Brand mark"), "globex"),
@@ -135,6 +137,33 @@ class WebAssetsTest {
         assertNull(after[0].file)
         assertEquals("abc123", after[1].file?.hash)
         assertNull(withWebAssetSlot(null, slot()))
+    }
+
+    @Test
+    fun aPackagesImageSaysWhoseItIsAndHasNoUploadToRemove() {
+        val svg = mapOf(FMETA.mimeType to "image/svg+xml", FMETA.size to 600, FMETA.hash to "f00d", FMETA.uploadedAt to "2026-10-27T16:00:00Z", FMETA.fileName to "favicon.svg")
+        fun item(vararg more: Pair<String, Any?>) = mapOf(WAS.slot to WAS.favicon, WAS.label to "Favicon") + more
+        val (shipped, uploaded, empty) = parseWebAssetSlots(
+            listOf(
+                item(WAS.file to svg, WAS.source to WAS.sourcePackage, WAS.packageId to "sample:acme", WAS.packaged to true),
+                item(WAS.file to svg, WAS.source to WAS.sourceUpload, WAS.packageId to "sample:acme", WAS.packaged to true),
+                // A source with no file says nothing: the slot is empty.
+                item(WAS.source to WAS.sourcePackage),
+            ),
+        )
+        // The package's image is the client's source code's: said as such, with no upload to remove.
+        assertEquals(true, webAssetFromPackage(shipped))
+        assertEquals(false, webAssetRemovable(shipped))
+        assertEquals(
+            "From the client's web resources package, sample:acme, shipped with its source code. An upload replaces it for the client's people.",
+            webAssetUploadedText(shipped),
+        )
+        // An upload in front of it is removable, and removing it brings the package's back.
+        assertEquals(true, webAssetRemovable(uploaded))
+        assertEquals("Its people see the favicon of its web resources package again, at once.", webAssetRemoveConsequence(uploaded))
+        assertNull(empty.source)
+        assertEquals(false, webAssetFromPackage(empty))
+        assertEquals(false, webAssetRemovable(empty))
     }
 
     @Test

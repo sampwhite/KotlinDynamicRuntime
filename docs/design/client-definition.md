@@ -78,22 +78,41 @@ For the client configuration itself, the client has the following attributes.
   which is not built; see "Usage types, and what a caller is shown" below.) Because it gates a capability, **only
   the platform sets it** -- source code, or an `allClients` administrator -- and never a client's own
   administrator (issue #1108). The same reasoning limits a database-defined client to extending template clients.
-* `webResourcesId` - An ID that identifies a package of resources that can have things like a 
-  custom favicon (plus other related images), general look and feel images, and CSS file. Note, two different
-  clients can share a `webResourceId`. The mechanics of where these packages of resources are in source
-  code, or in the file store, or in the database will be designed over time. At some future point,
-  we will integrate with a CDN, and the `webResourceId` can potentially define where to find the resources in the CDN.
-  *Not built.* What is built (issue #1130) is narrower and keyed by the client's own id: its administrator
-  uploads a **favicon** and a **brand mark** from the Clients page, kept in the file store and shown to the
-  client's signed-in people in place of the deployment's. They are not configuration -- no draft, no publish --
-  and a sandbox shows its parent's. Beside them (issue #1153) a client's stored configuration holds **file refs**:
+* `webResourcesId` - The **web resources package** the client presents itself with (issue #1301): the id of a
+  package a component ships, whose **favicon** and **brand mark** the client's people see in place of the
+  deployment's. Two clients may share a package, and a client built on a template presents the template's when it
+  names none. **Only source code names one**: a stored definition naming a package is refused at the write (and loses
+  it, reported, should a stored row carry one), so the definition editor does not offer the field and no create sets
+  it. A source definition naming a package no component ships refuses the boot outside production; in production
+  the client stands and shows the deployment's images.
+
+  A package is a set of classpath files a component declares, beside its images
+  (`ComponentDefinition.webResources`, issue #1301): a rooted id under the component's owner root, and a file per slot
+  under `web-resources/`, whose extension says what kind of image it is.
+
+  ```kotlin
+  override fun webResources(cxt: KdrCxt) =
+      listOf(webResources("sample:acme", favicon = "acme/favicon.svg", brandMark = "acme/brand-mark.svg"))
+  ```
+
+  Each file is checked at boot as an upload to its slot would be -- present, no larger than the slot takes, and the
+  image its extension names (an SVG with nothing in it to run) -- under `KDR_IMAGE_CHECK`, as the images copy names
+  are. The sample's Acme names `sample:acme`, so a fresh deployment shows its artwork with nothing uploaded.
+
+  **An upload stands in front of the package.** A client's administrator uploads a favicon or a brand mark from the
+  Clients page (issue #1130), kept in the file store and shown to the client's signed-in people in place of the
+  package's image -- or of the deployment's, for a slot the package leaves empty. Removing the upload shows the
+  package's again; the package's image itself is the source code's, and the page offers no Remove for it. Neither is
+  configuration -- no draft, no publish -- and a sandbox shows its parent's. Where a package could live other than the
+  classpath (the file store, a CDN) is for later.
+
+  Beside them (issue #1153) a client's stored configuration holds **file refs**:
   named images of its own, kept in the file store by the hash of their bytes, and -- unlike the two above --
   drafted, previewed in the sandbox, and published with the rest of its configuration. A ref may also name an
   image already on the machine, under a root the deployment declares (issue #1154) -- how a client is shipped
   with artwork that an upload then overrides. The client's copy shows one as an image by naming it,
   `![Our logo](ref:logo)` (issue #1186), so a replaced image needs no edit to the copy. File refs, and how a
-  template passes them on, are described in [`file-refs.md`](file-refs.md). A package two clients share is still
-  this field's to become.
+  template passes them on, are described in [`file-refs.md`](file-refs.md).
 * `enabledEnvironments` - A list of environments where the client is enabled. Even if not enabled, it
   can still be referred to, but the client will otherwise be considered not to be present. 
   It defaults to the list {'unit', 'local', 'dev'}. It is an error if any environment besides `unit` and `local`
@@ -204,7 +223,8 @@ the missing link, so a demonstration or test client is never held to them.
 
 - **A customer's root administrators make its other clients** (issue #1112), at `POST /clientAdmin/client/create`:
   an id `<customer>_<name>`, holding the creator's choices (its id, name, note, template, and sandbox) and what the
-  root passes on (its customer, environments, usage type, audience, and web resources), with no configuration. The
+  root passes on (its customer, environments, usage type, and audience -- not its web resources, which source code
+  alone names, issue #1301), with no configuration. The
   creator gets their own admin user there, returned rather than switched to -- `/user/self/switchClient` moves the
   session; a creator's user that could not be made is said in the result (`userFailure`), the client made all the
   same. Only the root's client-wide administrators make clients -- not one confined to an organization -- and not on
@@ -282,7 +302,7 @@ read from it.
 | `refreshIntervalSeconds` | copied from the maker | the platform, in the definition editor |
 | `userLabels` | cleared | the definition editor |
 | `usageType`, `audience`, `enabledEnvironments` | copied from the maker | the platform, in the definition editor |
-| `webResourcesId` | copied from the maker | the platform, in the definition editor |
+| `webResourcesId` | cleared (source code only, issue #1301) | source code only |
 | `domainPrefix`, `customDomain` | cleared (a domain routes to one client) | the platform, in the definition editor |
 | `preload` | cleared | the platform, in the definition editor |
 | `customerId` | copied from the maker | the platform, by a configuration write |
@@ -528,9 +548,8 @@ client is, and no registry that can be asked whether one exists or is enabled.
   issue #356.)
 - **Domain routing** (`domainPrefix`, `customDomain`), which needs a client resolved from the request rather
   than from the caller — a new trust level rather than a new lookup.
-- **`webResourcesId` packaging** and `preload`; the specification already calls the last untestable today.
-  (A client's own favicon and brand mark are built, issue #1130, keyed by the client rather than by a package.)
-  (`staticConfig` is built, issue #824.)
+- **`preload`**, which the specification already calls untestable today. (`webResourcesId` packaging is built,
+  issue #1301, for packages a component ships; `staticConfig` is built, issue #824.)
 - **Markdown fragment variants** and **auto-generated per-client endpoints**, both named as future issues.
   (Both since built; the endpoints are issue #387.)
 

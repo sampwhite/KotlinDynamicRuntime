@@ -78,7 +78,7 @@ fun hubClient(cxt: KdrCxt): GedraConfig =
  * `ReadScope.ofUser` is the only width that ever applies and the reach does not exist.
  *
  * Its web resources are the application's default anonymous ones, which is what [ClientDef.webResourcesId]
- * being absent means; the packaging that would let it name a set of its own is later work.
+ * being absent means: it names no package (issue #1301), so its people see the deployment's images.
  */
 fun publicClient(cxt: KdrCxt): GedraConfig =
     gedraConfig(cxt, CLC.publicConfig, clientNamespace(CL.public), client = CL.public) {

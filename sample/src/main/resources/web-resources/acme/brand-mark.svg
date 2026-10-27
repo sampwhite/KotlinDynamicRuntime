@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <title>Acme brand mark</title>
+  <!-- A bold "A" that is also a lit peak (an acme is a summit): the left face catches the light, the right is in
+       shade. Transparent, for the app's dark bar; no lettering, since the app sets the client's name beside it. -->
+  <path fill="#FDBA74" d="M32 6 V26 L26.5 39 H32 V49 H22.5 L18 58 H4 Z"/>
+  <path fill="#EA580C" d="M32 6 L60 58 H46 L41.5 49 H32 V39 H37.5 L32 26 Z"/>
+</svg>

@@ -914,7 +914,8 @@ const val configurationSetNote = "(set in its configuration)"
  * Who sets [field], said beside its read-only value (issue #1116), or null when the caller edits it here: the
  * platform's, for a client's own administrator ([platformSetNote]); and for an administrator who sees every client,
  * a platform field the editor does not offer -- the customer, the template -- which a configuration write sets
- * ([configurationSetNote]), and the static lock, which only source code sets ([sourceSetNote]). Read from the field's
+ * ([configurationSetNote]), and the static lock and the web resources package (issue #1301), which only source code
+ * sets ([sourceSetNote]). Read from the field's
  * policy, so the editor and the notes cannot disagree. Pure, and covered under `jsNodeTest`.
  */
 fun whoSetsNote(field: String, canSeeAllClients: Boolean): String? {
@@ -922,12 +923,12 @@ fun whoSetsNote(field: String, canSeeAllClients: Boolean): String? {
     return when {
         !canSeeAllClients -> platformSetNote
         field in ClientFieldPolicies.platformEditorFields -> null
-        field == CLD.staticConfig -> sourceSetNote
+        field == CLD.staticConfig || field == CLD.webResourcesId -> sourceSetNote
         else -> configurationSetNote
     }
 }
 
-/** The note beside the static lock for an administrator who sees every client: only source code sets it. */
+/** The note beside the static lock and the web resources package for an administrator who sees every client: only source code sets them. */
 const val sourceSetNote = "(set in source code)"
 
 /** The two counts with a listing behind them, which the header links to ([clientHeaderLinks]); see [clientSummaryHref]. */

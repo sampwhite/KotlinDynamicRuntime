@@ -25,7 +25,7 @@ class ClientFieldPoliciesTest : StringSpec({
     "the platform's create, the editor and the platform's own fields are read from the policies" {
         ClientFieldPolicies.createFields shouldContainExactly listOf(
             CLD.clientId, CLD.name, CLD.description, CLD.customerId, CLD.usageType, CLD.audience, CLD.enabledEnvironments,
-            CLD.extendsFromClientId, CLD.domainPrefix, CLD.customDomain, CLD.webResourcesId, CLD.timeZone, CLD.userLabels,
+            CLD.extendsFromClientId, CLD.domainPrefix, CLD.customDomain, CLD.timeZone, CLD.userLabels,
             CLD.sandbox, CLD.preload, CLD.sessionHours, CLD.refreshIntervalSeconds,
         )
         // The client's own administrator edits these (issue #1116); an administrator who sees every client these too.
@@ -33,7 +33,7 @@ class ClientFieldPoliciesTest : StringSpec({
             listOf(CLD.name, CLD.description, CLD.timeZone, CLD.userLabels, CLD.sessionHours)
         // The refresh interval is the platform's (issue #1308): every open tab asks that often.
         ClientPresentationFields.platformNames shouldContainExactly listOf(
-            CLD.refreshIntervalSeconds, CLD.usageType, CLD.audience, CLD.enabledEnvironments, CLD.preload, CLD.domainPrefix, CLD.customDomain, CLD.webResourcesId,
+            CLD.refreshIntervalSeconds, CLD.usageType, CLD.audience, CLD.enabledEnvironments, CLD.preload, CLD.domainPrefix, CLD.customDomain,
         )
         ClientFieldPolicies.platformFields shouldContainExactly listOf(
             CLD.clientId, CLD.customerId, CLD.usageType, CLD.audience, CLD.enabledEnvironments, CLD.extendsFromClientId,
@@ -42,7 +42,8 @@ class ClientFieldPoliciesTest : StringSpec({
         )
     }
 
-    // Issue #1112: a client made by another takes the creator's choices and what its maker passes on, nothing else.
+    // Issue #1112: a client made by another takes the creator's choices and what its maker passes on, nothing else -- not
+    // its web resources package, which source code alone names (issue #1301).
     "a delegated definition is the creator's choices, the parent's passed-on fields, and nothing a create clears" {
         val parent = mapOf(
             CLD.clientId to "acme", CLD.name to "Acme", CLD.customerId to "acme", CLD.usageType to "production",
@@ -52,7 +53,7 @@ class ClientFieldPoliciesTest : StringSpec({
         val given = mapOf(CLD.clientId to "acme_east", CLD.name to "East", CLD.audience to "internal", CLD.sandbox to true)
         ClientFieldPolicies.delegatedDefinition(parent, given) shouldBe mapOf(
             CLD.clientId to "acme_east", CLD.name to "East", CLD.customerId to "acme", CLD.usageType to "production",
-            CLD.audience to "customer", CLD.enabledEnvironments to listOf("unit", "local"), CLD.webResourcesId to "acmeWeb",
+            CLD.audience to "customer", CLD.enabledEnvironments to listOf("unit", "local"),
             CLD.timeZone to "America/Chicago", CLD.sandbox to true,
         )
     }

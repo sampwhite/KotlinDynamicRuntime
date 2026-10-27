@@ -165,7 +165,8 @@ val WebAssetsSection = FC<WebAssetsSectionProps> { props ->
                                 }
                             }
                         }
-                        if (slot.file != null) {
+                        // A package's image is the client's source code's, and has no upload to remove (issue #1301).
+                        if (webAssetRemovable(slot)) {
                             // Gone for the client's people as it is confirmed, so it is asked about, and the
                             // question names where it acts (issue #1049) -- as every delete's does.
                             confirmedRemove(

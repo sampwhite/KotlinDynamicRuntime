@@ -338,6 +338,15 @@ class GedraConfigService : ServiceInitializer {
                     "client takes nothing from the database in production.",
             )
         }
+        // A web resources package is named in source code alone (issue #1301): what a client presents itself with
+        // is a package a component ships, which a stored definition has no way to vouch for.
+        config.client?.webResourcesId?.let { named ->
+            throw KdrException.mkInput(
+                "Config '${config.gedraId}' names the web resources package '$named', which only a client's source " +
+                    "definition may. A client defined in data presents the package of the template it extends, if any, " +
+                    "and its own images are uploaded on the Clients page.",
+            )
+        }
         // A client authors only into its own namespace (issue #949), which no other owner can hold -- so the rule
         // replaces asking who already claimed the namespace.
         clientNamespaceProblem(config.namespace, config.gedraId.client)?.let {

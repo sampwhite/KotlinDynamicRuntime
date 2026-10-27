@@ -161,11 +161,14 @@ object ClientFieldPolicies {
         CLD.enabledEnvironments to p(ClientFieldAtCreate.parent, ClientFieldEdit.platform),
         // The template a client is built on is chosen when it is made; changing it after moves everything it holds.
         CLD.extendsFromClientId to p(ClientFieldAtCreate.creator, ClientFieldEdit.platform),
-        // A domain routes to one client, so a copy would refuse every create; where a client is reached, and what it
-        // presents itself with, are the platform's (issue #1116).
+        // A domain routes to one client, so a copy would refuse every create; where a client is reached is the
+        // platform's (issue #1116).
         CLD.domainPrefix to p(ClientFieldAtCreate.cleared, ClientFieldEdit.platform),
         CLD.customDomain to p(ClientFieldAtCreate.cleared, ClientFieldEdit.platform),
-        CLD.webResourcesId to p(ClientFieldAtCreate.parent, ClientFieldEdit.platform),
+        // What it presents itself with names a package a component ships, which only source code names (issue #1301):
+        // a stored definition naming one is refused, so no create sets it and no editor offers it. A client built on a
+        // template presents the template's.
+        CLD.webResourcesId to p(ClientFieldAtCreate.cleared, ClientFieldEdit.platform),
         // Where the client's people are: a client made by another starts where its maker is (issue #1115).
         CLD.timeZone to p(ClientFieldAtCreate.parent, ClientFieldEdit.definitionEditor),
         CLD.userLabels to p(ClientFieldAtCreate.cleared, ClientFieldEdit.definitionEditor),
@@ -195,7 +198,7 @@ object ClientFieldPolicies {
     /**
      * The definition a client made **by another client** starts from (issue #1112), as a `ClientInfo` map: [given]'s
      * [creatorFields], [parent]'s fields whose policy is [ClientFieldAtCreate.parent] -- its customer, where it runs,
-     * what it is for and whose it is, its web resources -- and none of those a create clears. [parent] is the making
+     * what it is for and whose it is -- and none of those a create clears. [parent] is the making
      * client's definition ([ClientDef.toInfo]).
      */
     fun delegatedDefinition(parent: Map<String, Any?>, given: Map<String, Any?>): Map<String, Any?> = buildMap {
@@ -214,15 +217,15 @@ object ClientFieldPolicies {
 
     /**
      * The [platformFields] the definition editor offers an administrator who sees every client (issue #1116), beside
-     * the client administrator's [editorFields]: where the client is reached and what it presents with, what it is
-     * for and whose it is, where it runs, and its preload. Not its customer or the template it extends, which move
-     * what the client is under or holds and stay a deliberate configuration write; not its static lock (source only),
+     * the client administrator's [editorFields]: where the client is reached, what it is for and whose it is, where it
+     * runs, and its preload. Not its customer or the template it extends, which move what the client is under or holds
+     * and stay a deliberate configuration write; not its static lock or its web resources (source only, #1301),
      * its retirement (its own section, #1182), its test features (a test instance's), or its join roles (#1248, a
      * list of roles the editor's one-line fields cannot hold).
      */
     val platformEditorFields: List<String> = listOf(
         CLD.usageType, CLD.audience, CLD.enabledEnvironments, CLD.preload, CLD.domainPrefix, CLD.customDomain,
-        CLD.webResourcesId, CLD.refreshIntervalSeconds,
+        CLD.refreshIntervalSeconds,
     )
 
     /** The fields the definition editor offers a client's own administrator, in the order it draws them. */
@@ -346,7 +349,6 @@ object ClientPresentationFields {
             "may use it. Set by the platform.",
         CLD.customDomain to "A whole hostname that routes to this client; blank clears it. No other client may use it. " +
             "Set by the platform.",
-        CLD.webResourcesId to "The package of web resources the client presents; blank clears it. Set by the platform.",
     )
 
     /** The fields a client's own administrator edits, in the order an editor draws them. */
@@ -784,8 +786,12 @@ data class ClientDef(
     /** Whose client this is; see [ClientAudience]. Source-code only. */
     val audience: ClientAudience,
     /**
-     * Identifies a package of web resources -- favicon, imagery, CSS. Two clients may share one. Where such a
-     * package lives (source, file store, database, eventually a CDN) is designed later; this is the handle.
+     * The web resources package the client presents itself with (issue #1301): the id of one a component ships
+     * (`webResources`, a rooted name such as `sample:acme`), whose favicon and brand mark the client's people see in a
+     * slot its administrator has uploaded nothing to. Two clients may share one, and a client built on a template takes
+     * the template's when it names none. **Source code only**: a stored definition naming one is refused at the write
+     * and loses it at a load, and one naming a package no component ships loses it at the check (refusing the boot
+     * outside production). Packages from elsewhere -- the file store, a CDN -- are for later.
      */
     val webResourcesId: String? = null,
     /**
@@ -1158,7 +1164,7 @@ data class ClientDef(
             prop(CLD.audience, "Whose client this is: ours, or somebody else's.", required = true) {
                 options(ClientAudience.entries)
             }
-            prop(CLD.webResourcesId, "Identifies the package of web resources the client presents.")
+            prop(CLD.webResourcesId, "The web resources package a component ships that the client presents its images from; named in source code only.")
             prop(CLD.timeZone, "The client's IANA time zone (America/Chicago), which its dates are read and shown in.")
             // The environments there are ([ENV.names]), as choices (issue #1051): a form drawn from this type
             // offers the real ones, and a written definition is held to them.

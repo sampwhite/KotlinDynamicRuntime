@@ -2,6 +2,7 @@ package com.dynamicruntime.common.webasset
 
 import com.dynamicruntime.common.annotation.KdrPrivate
 import com.dynamicruntime.common.content.CMK
+import com.dynamicruntime.common.content.ComponentImageService
 import com.dynamicruntime.common.content.ContentResources
 import com.dynamicruntime.common.content.HashedFileServing
 import com.dynamicruntime.common.context.KdrCxt
@@ -33,7 +34,7 @@ object LogWebAsset : KdrLogger("webAsset")
  *
  * **Kept in the file store**, in the [bucket], at `clients/<client>/web/<slot>` -- keyed by the client's id, which
  * is an identifier and so a key segment as it stands. The metadata the store keeps beside each image (its type, its
- * size, its hash, who uploaded it and when) is the whole of what this knows about one; there is no table.
+ * size, its hash, who uploaded it, and when) is the whole of what this knows about one; there is no table.
  *
  * **Not configuration.** An upload is not part of a client's stored configuration, so it has no draft and no
  * publish: it replaces the image for everyone in the client as soon as it is stored. That is why a **sandbox has
@@ -43,6 +44,13 @@ object LogWebAsset : KdrLogger("webAsset")
  * **Served under the static root**, at `/<appId>/web/<slot:hash>` ([serve]), for the *caller's* client. The
  * address names a slot and the hash of an image, never a client: whose image is served is decided from who is
  * signed in, as a fragment's copy is, so a caller cannot ask for another client's by spelling an address.
+ *
+ * **A package stands behind an upload** (issue #1301). A client defined in source code may name a web resources
+ * package (`ClientDef.webResourcesId`, a package a component ships: `WebResourcesDef`), and a slot it has uploaded
+ * nothing to shows the package's image instead ([shown], [file]) -- in the shell config, under the static address, and
+ * in the listing, which says which it is. Uploading puts the client's own in front of it, and removing the upload
+ * shows the package's again. A package is read once, at boot, and held in memory (`ComponentImageService`), so it
+ * costs the store nothing and is the same on every node.
  *
  * **Other nodes see an upload through the store**, which they share. Each node keeps what a client's slots hold
  * for [memoMs] ([slots]), since the shell config asks on every page load and the answer is a read of the store --
@@ -90,23 +98,50 @@ class ClientWebAssetService : ServiceInitializer, ContentServer {
     }
 
     /**
-     * [client]'s set slots as the shell config carries them: a slot to its image by name and content
+     * The web resources package [client]'s people are shown the images of (issue #1301): the one its definition names
+     * -- its parent's, for a sandbox -- or null for none. Read off the definition this node knows, which a template
+     * fills in when the client names none; a node carrying no clients knows of no package.
+     */
+    fun packageIdOf(cxt: KdrCxt, client: String): String? =
+        ClientService.getOrNull(cxt)?.known(ownerOf(client))?.webResourcesId
+
+    /** The image [client]'s web resources package ships for [slot] ([packageIdOf]), or null when it ships none. */
+    fun packaged(cxt: KdrCxt, client: String, slot: String): StoredFile? {
+        val packageId = packageIdOf(cxt, client) ?: return null
+        return ComponentImageService.getOrNull(cxt)?.packageFile(packageId, slot)
+    }
+
+    /**
+     * What [client]'s people are shown in each slot (issue #1301), by slot: its upload ([slots]), else its package's
+     * image ([packaged]). A slot with neither is absent, and the deployment's own image is shown.
+     */
+    fun shown(cxt: KdrCxt, client: String, fresh: Boolean = false): Map<String, FileMeta> {
+        val uploaded = slots(cxt, client, fresh)
+        return slotDefs.mapNotNull { def ->
+            (uploaded[def.slot] ?: packaged(cxt, client, def.slot)?.meta)?.let { def.slot to it }
+        }.toMap()
+    }
+
+    /**
+     * [client]'s shown slots ([shown]) as the shell config carries them: a slot to its image by name and content
      * ([WAS.versionedName]).
      *
      * **Never fails the shell.** A store that cannot be read costs a client its own images, not its app: the
      * failure is logged and the client shown the deployment's, for [memoMs], so a store that is down is not
-     * asked again by every page load.
+     * asked again by every page load -- or its package's, which no store holds.
      */
     fun versionedNames(cxt: KdrCxt, client: String): Map<String, String> {
         val before = writes.get()
         return try {
-            slots(cxt, client).mapValues { (slot, meta) -> WAS.versionedName(slot, meta.hash) }
+            shown(cxt, client).mapValues { (slot, meta) -> WAS.versionedName(slot, meta.hash) }
         } catch (e: KdrException) {
             LogWebAsset.warn(cxt) { "Could not read the web assets of client '$client'; serving the deployment's. ${e.message}" }
             // Held to the rule a read that succeeded is ([slots]): an upload that landed on this node while the
             // store was failing has already dropped the memo, and "nothing set" must not be written over that.
             memo.compute(ownerOf(client)) { _, held -> if (writes.get() == before) Memo(nanoTime(), emptyMap()) else held }
-            emptyMap()
+            slotDefs.mapNotNull { def ->
+                packaged(cxt, client, def.slot)?.let { def.slot to WAS.versionedName(def.slot, it.meta.hash) }
+            }.toMap()
         }
     }
 
@@ -119,19 +154,27 @@ class ClientWebAssetService : ServiceInitializer, ContentServer {
      */
     fun knownClient(cxt: KdrCxt, client: String): String = ClientService.get(cxt).requireKnown(client)
 
-    /** The image in [slot] of [client]'s web assets, content and metadata, or null when the slot holds none. */
-    fun file(cxt: KdrCxt, client: String, slot: String): StoredFile? {
+    /** The image [client] uploaded to [slot] of its web assets, content, and metadata, or null when it uploaded none. */
+    fun uploaded(cxt: KdrCxt, client: String, slot: String): StoredFile? {
         val owner = ownerOf(client)
         return FileStoreService.get(cxt).forOwner(cxt, owner).get(cxt, bucket, keyOf(owner, slotDef(slot).slot))
     }
 
     /**
-     * The metadata of the image in [slot] of [client]'s web assets, without the image, or null when the slot holds
-     * none (issue #1131). The store's own answer, as [file]'s is, never this node's memo of the slots.
+     * The image [client]'s people are shown in [slot], content and metadata: its upload, else its package's (issue
+     * #1301) -- or null when the slot shows the deployment's.
+     */
+    fun file(cxt: KdrCxt, client: String, slot: String): StoredFile? = uploaded(cxt, client, slot) ?: packaged(cxt, client, slot)
+
+    /**
+     * The metadata of the image [client]'s people are shown in [slot], without the image, or null when it shows the
+     * deployment's (issue #1131): its upload's, else its package's (issue #1301). The store's own answer, as [file]'s
+     * is, never this node's memo of the slots.
      */
     fun meta(cxt: KdrCxt, client: String, slot: String): FileMeta? {
         val owner = ownerOf(client)
         return FileStoreService.get(cxt).forOwner(cxt, owner).meta(cxt, bucket, keyOf(owner, slotDef(slot).slot))
+            ?: packaged(cxt, client, slot)?.meta
     }
 
     /**
@@ -168,7 +211,10 @@ class ClientWebAssetService : ServiceInitializer, ContentServer {
         return meta
     }
 
-    /** Empties [slot] of [client]'s web assets; whether it held an image. Refused for a sandbox ([editableOwner]). */
+    /**
+     * Empties [slot] of [client]'s web assets -- its upload; a package's image is not the client's to remove, and is
+     * shown again once the upload has gone -- and answers whether it held one. Refused for a sandbox ([editableOwner]).
+     */
     fun remove(cxt: KdrCxt, client: String, slot: String): Boolean {
         val def = slotDef(slot)
         val owner = editableOwner(cxt, client)
@@ -208,7 +254,7 @@ class ClientWebAssetService : ServiceInitializer, ContentServer {
 
     /**
      * Serves `/<appId>/web/<slot:hash>` under the static root: the image in that slot of the **caller's** client's
-     * web assets, whatever hash the address carries.
+     * web assets -- its upload, else its package's ([file]) -- whatever hash the address carries.
      *
      * The hash decides only how the answer may be cached, by the rule every content-addressed address here
      * follows ([ContentResources.buildId]): one that names exactly the bytes returned is kept for good, and any

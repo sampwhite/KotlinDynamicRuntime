@@ -41,7 +41,7 @@ class ClientDelegatedCreateTest : StringSpec({
         mapOf(
             CLD.clientId to root, CLD.name to "Delegated", CLD.usageType to ClientUsageType.production.name,
             CLD.audience to ClientAudience.customer.name, CLD.enabledEnvironments to listOf(ENV.unit, ENV.local),
-            CLD.webResourcesId to "dlgWeb", CLD.newCustomer to mapOf(CUST.name to "Delegated Co"),
+            CLD.newCustomer to mapOf(CUST.name to "Delegated Co"),
         ),
     )
     val rootAdmin = TestUser.create(cxt, "admin@dlg1112.test", level = ROLE.admin, userClient = root)
@@ -60,7 +60,6 @@ class ClientDelegatedCreateTest : StringSpec({
         def[CLD.usageType] shouldBe ClientUsageType.production.name
         def[CLD.audience] shouldBe ClientAudience.customer.name
         def[CLD.enabledEnvironments] shouldBe listOf(ENV.unit, ENV.local)
-        def[CLD.webResourcesId] shouldBe "dlgWeb"
         ClientService.get(cxt).customerOf(east).shouldNotBeNull().customerId shouldBe root
 
         // The creator's own admin user there, which the switch lands on.

@@ -29,6 +29,8 @@ import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.startup.ComponentDefinition
 import com.dynamicruntime.common.startup.SchemaCollector
 import com.dynamicruntime.common.startup.SchemaService
+import com.dynamicruntime.common.webasset.WebResourcesDef
+import com.dynamicruntime.common.webasset.webResources
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldContain
@@ -100,7 +102,7 @@ class ClientExtensionTest : StringSpec({
 
     "the client's definition takes the template's defaults" {
         val def = ClientService.get(cxt).present(kid).shouldNotBeNull()
-        def.webResourcesId shouldBe "tplres"
+        def.webResourcesId shouldBe ExtensionTemplateComponent.packageId
         def.userLabels shouldContainExactly listOf("vip", "kidlabel")
         def.includedTraits shouldContain "tplNote"
     }
@@ -165,7 +167,7 @@ class ClientExtensionTest : StringSpec({
         typeOf(client, "tplNote") shouldBe "${clientNamespace(client)}.main.DataNoteEntry"
         typeOf(client, "tplScore") shouldBe "client.tplbase.TplScoreEntry"
         brand(client) shouldBe "TPL"
-        ClientService.get(cxt).present(client)?.webResourcesId shouldBe "tplres"
+        ClientService.get(cxt).present(client)?.webResourcesId shouldBe ExtensionTemplateComponent.packageId
 
         // The next revision drops the redefinition: the copy is rebuilt with the template's trait back in it.
         store(client)
@@ -251,13 +253,19 @@ class ClientExtensionTest : StringSpec({
 class ExtensionTemplateComponent : ComponentDefinition {
     override val providerName: String = "extensionTemplateFixture"
 
+    /** The root its web resources package is under (issue #1301). */
+    override val ownerRoot: String = "tplfix"
+
+    /** The package the template names, which a client built on it presents (issue #1301). */
+    override fun webResources(cxt: KdrCxt): List<WebResourcesDef> = listOf(webResources(packageId, favicon = "fixture/dot.png"))
+
     override fun gedraConfigs(cxt: KdrCxt): List<GedraConfig> = listOf(
         gedraConfig(cxt, "base", "client.tplbase", template) {
             defineClient(
                 ClientDef(
                     clientId = template, name = "Template", usageType = ClientUsageType.template,
                     audience = ClientAudience.internal, enabledEnvironments = setOf(ENV.unit, ENV.local),
-                    webResourcesId = "tplres", includedTraits = listOf("tplNote"), userLabels = listOf("vip"),
+                    webResourcesId = packageId, includedTraits = listOf("tplNote"), userLabels = listOf("vip"),
                 ),
             )
             type("Shared") { type = SCT.kObject; property("code", "A code.") }
@@ -297,6 +305,7 @@ class ExtensionTemplateComponent : ComponentDefinition {
     @Suppress("ConstPropertyName")
     companion object {
         const val template = "tplbase"
+        const val packageId = "tplfix:tplres"
         const val child = "tplkid"
     }
 }
