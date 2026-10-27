@@ -56,6 +56,18 @@ fun identityLabel(loaded: Boolean, isLoggedIn: Boolean, displayName: String?): S
     else -> displayName?.trim()?.ifEmpty { null } ?: signedInFallback
 }
 
+/**
+ * Whether the session ended between two reads of the shell config: signed in on the [previous] read, signed out on
+ * this one ([nowLoggedIn]). A session that timed out, a restarted in-memory instance, or a sign-out in another tab all
+ * look like this, and none of them is a page's to recover from: the page on screen was drawn for a caller who is gone,
+ * and re-reading it as nobody does not work well. So the shell goes home, as **Log out** does.
+ *
+ * Only that transition counts. The first read ([previous] null) is not a change, and a read that failed never gets
+ * here (the server being down, mid-restart, is not a sign-out); signing *in* is handled by whatever signed in. Pure,
+ * and covered under `jsNodeTest`.
+ */
+fun sessionEnded(previous: Boolean?, nowLoggedIn: Boolean): Boolean = previous == true && !nowLoggedIn
+
 /** Shown in place of a name for a signed-in caller who has none -- still says *signed in*, which is the point. */
 const val signedInFallback = "Signed in"
 
@@ -213,6 +225,9 @@ val AppBar = FC<AppBarProps> { props ->
     // clobbering a newer one. Neither is read for rendering, so neither needs to trigger one.
     val everLoaded = useRef(false)
     val genRef = useRef(0)
+    // Whether the last loaded shell config was for a signed-in caller; null until one has loaded. A ref, not state:
+    // it only feeds [sessionEnded], never a render.
+    val loggedInRef = useRef<Boolean>(null)
     val generation = useRefreshGeneration()
     val polls = useIdlePolls()
     val bump = useRefreshBump()
@@ -233,6 +248,18 @@ val AppBar = FC<AppBarProps> { props ->
                 return@launch
             }
             config = cfg
+            // The session ended since the last read (a timeout, a restarted instance, a sign-out in another tab): go
+            // home, as Log out does, rather than leave a page drawn for a caller who is gone. Noticed on the idle
+            // poll too, which is the point -- a tab left open moves home without being touched (a hidden tab polls
+            // nothing, so it moves the moment it is looked at again). A page holding unsaved work is still asked
+            // first, through the leave guard. Nothing here renews a session: it acts only once there is none.
+            val wasLoggedIn = loggedInRef.current
+            loggedInRef.current = cfg.user.isLoggedIn
+            if (sessionEnded(wasLoggedIn, cfg.user.isLoggedIn)) {
+                navigate(emptyList())
+                // Navigating to the address on screen (already home) tells nobody, so bump as logoutAction does.
+                bump()
+            }
             // Moments are shown in the client's zone (issue #1115), set before the facts that redraw the page.
             DisplayZone.set(cfg.timeZone, cfg.timeZoneLabel)
             props.onShellFacts(shellFactsOf(cfg))
