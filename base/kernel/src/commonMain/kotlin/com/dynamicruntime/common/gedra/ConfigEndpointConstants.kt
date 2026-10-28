@@ -81,6 +81,37 @@ object CFEP {
     const val evictedTypes = "evictedTypes"
     const val issues = "issues"
     const val publishedOnlyField = "publishedOnly"
+
+    /**
+     * On a config patch (issue #1434): `true` to run it -- the staleness check, the edits, and the trial -- on the
+     * revisions it builds, storing none of them, and answer with the configurations as they would be written and
+     * [impact]. A patch the save would refuse is refused the same way.
+     */
+    const val dryRun = "dryRun"
+
+    /** On a dry run's answer: what the patch would do to the data the client already stores (`IMP`'s report). */
+    const val impact = "impact"
+
+    /**
+     * On a config patch's edit (issue #1434): the `updatedAt` its entry had when the caller read it. The patch is
+     * refused (409, [staleCode]) if the entry has changed since, or is gone.
+     */
+    const val expectUpdatedAt = "expectUpdatedAt"
+
+    /**
+     * On a config patch's edit (issue #1434): `true` when its entry did not exist when the caller read the
+     * configuration. The patch is refused (409, [staleCode]) if one exists now.
+     */
+    const val expectNew = "expectNew"
+
+    /** The `errorCode` of a patch refused because entries changed since its caller read them (issue #1434). */
+    const val staleCode = "staleEntries"
+
+    /** In a stale refusal's `extraData`: each entry that changed, by [name], [slot], and [key]. */
+    const val conflicts = "conflicts"
+
+    /** On a stale entry: its primary-key fields, as the edit named them. */
+    const val key = "key"
 }
 
 /**
