@@ -60,6 +60,8 @@ fun resolveWorkflowView(
     formFacts: WorkflowFormFacts? = null,
     /** The form's traits locked for this caller (issue #857), as [TraitLocks.describe] gives them; empty for none. */
     lockedTraits: List<Map<String, Any?>> = emptyList(),
+    /** Whether the form is kept to its owner from this caller (issue #1433), so no task of it can be saved; see [OwnerOnly]. */
+    keptToOwner: Boolean = false,
 ): Map<String, Any?> {
     val client: String = cxt.client
     @Suppress("VariableInitializerIsRedundant2")
@@ -164,7 +166,12 @@ fun resolveWorkflowView(
         )
         // Whether this caller may save the task (issue #856), by the rule the save endpoint enforces -- so the page
         // offers Save only where it can succeed. A normal workflow's tasks only; the others have no such rule.
-        if (declared.def.entry == WfEntry.normal) raw[WVF.canSave] = judge.maySave(task, taskFacts)
+        // A form kept to its owner from this caller (issue #1433) can be saved in no task, whichever kind of workflow.
+        if (keptToOwner) {
+            raw[WVF.canSave] = false
+        } else if (declared.def.entry == WfEntry.normal) {
+            raw[WVF.canSave] = judge.maySave(task, taskFacts)
+        }
         task.approval?.let { raw[WVF.approval] = approvalView(it, approvals[task.id]) }
         // How the task is shown (issue #788): usually a selector, which the filter below resolves against this
         // caller's task facts -- so what arrives is the one branch that applies, never the others or their tests.
@@ -229,6 +236,7 @@ fun resolveWorkflowView(
     // otherwise identical view, and only for a caller entitled to it, so an ordinary response never carries it.
     if (DesignView.isOn(cxt)) view[DSV.designBlock] = DesignView.workflowBlock(cxt, declared, defs, clientStore, store)
     if (lockedTraits.isNotEmpty()) view[WVF.lockedTraits] = lockedTraits
+    if (keptToOwner) view[WVF.keptToOwner] = true
     if (declared.def.entry == WfEntry.normal) view[WVF.phase] = WorkflowPhases.of(cxt, client, declared.def).name
     formFacts?.let { f ->
         view[WVF.engaged] = f.engaged

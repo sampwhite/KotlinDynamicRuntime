@@ -790,6 +790,13 @@ fun parseSingletonWorkflows(results: Map<String, Any?>): List<SingletonWorkflow>
     }
 
 /**
+ * Whether the shell says [config]'s caller may create a form for another user (issues #727, #1433): an administrator,
+ * or an editor -- whoever's reads reach the client's forms. The backend's `AdminRules.createsFormsForOthers` is the
+ * rule; this only decides whether the create pages offer the user picker. Pure, covered under `jsNodeTest`.
+ */
+fun createsFormsForOthers(config: HomeConfig): Boolean = config.canManageUsers || config.seesClientForms
+
+/**
  * Whether the caller may delete a form owned by [ownerId] (issue #1432): only its owner or an administrator deletes a
  * form, so a caller who [deletesOwnOnly] -- anyone but an administrator, an editor included -- deletes only its own
  * ([selfUserId]). Pure, covered under `jsNodeTest`.

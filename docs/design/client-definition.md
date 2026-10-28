@@ -712,7 +712,13 @@ assign itself. Its powers:
 - **Users:** it reads them in the **user directory**, the `clientDirectory` section (`CDEP`), which requires `editor` and
   serves the two user reads alone, the same handlers as `clientAdmin`'s. The Users page uses those reads for everyone.
 - **Forms:** it lists and edits every form of its client, and is shown whose each is. Only a form's owner or an
-  administrator deletes one (`EditorDeleteGuard`), and creating a form for someone else stays an administrator's.
+  administrator deletes one (`EditorDeleteGuard`). It creates (and imports) forms for another user of its client
+  (issue #1433, `AdminRules.createsFormsForOthers`), so it can start a form a member then fills in; the form is that
+  user's, so the editor cannot then delete it.
+- **Forms kept to their owner** (issue #1433): a client marks a form so with the framework singleton `kdr:ownerOnly`,
+  which a workflow's singleton rule emits. While it holds, an editor changes the form only as its owner or as a
+  reviewer of an engaged workflow's current task (`OwnerOnlyGuard`), and the pages draw it read-only for anyone else.
+  See [`gedra/states.md`](gedra/states.md#who-uses-state).
 - **Sandboxes:** it opens none, since opening one is an administrator's act. A sandbox's own user given the role acts as
   an editor inside it.
 

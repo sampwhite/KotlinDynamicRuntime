@@ -22,12 +22,12 @@ val CreationPage = FC<Props> {
     var loadError by useState<DisplayError?>(null)
     // Whether the caller may create for another user (issue #727), handed to the workflow form so its create can
     // offer the picker. Defaults off; a failure to read the home config just leaves the picker out.
-    var canManageUsers by useState(false)
+    var createsForOthers by useState(false)
 
     useEffectOnce {
         // The picker flag (issue #727) in its own coroutine, never awaited before the workflow loads (issue #727
         // review): it only decides whether the create offers the picker, so it must not gate the page's load.
-        creationScope.launch { canManageUsers = apiResult { HomeApi.fetchConfig().canManageUsers }.valueOr(false) }
+        creationScope.launch { createsForOthers = apiResult { createsFormsForOthers(HomeApi.fetchConfig()) }.valueOr(false) }
         creationScope.launch {
             try {
                 val wf = WorkflowApi.fetchCreationView()
@@ -60,7 +60,7 @@ val CreationPage = FC<Props> {
         workflow != null -> WorkflowForm {
             view = workflow!!
             gedraId = null
-            allowCreateForUser = canManageUsers
+            allowCreateForUser = createsForOthers
             onDesignEdited = { creationScope.launch { reread() } }
         }
     }

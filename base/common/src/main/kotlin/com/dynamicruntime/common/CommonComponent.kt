@@ -3,6 +3,7 @@ package com.dynamicruntime.common
 import com.dynamicruntime.common.context.DebugTagDef
 import com.dynamicruntime.common.gedra.GDBG
 import com.dynamicruntime.common.gedra.stateRecomputeJob
+import com.dynamicruntime.common.gedra.workflow.OwnerOnlyGuard
 import com.dynamicruntime.common.gedra.workflow.TraitLockGuard
 import com.dynamicruntime.common.gedra.EditorDeleteGuard
 import com.dynamicruntime.common.cfact.addCoreCFacts
@@ -198,6 +199,7 @@ class CommonComponent : ComponentDefinition {
         // path, under the form's lock -- or record the override a permitted writer asked for.
         collector.addWriteGuard(TraitLockGuard)
         collector.addWriteGuard(EditorDeleteGuard)
+        collector.addWriteGuard(OwnerOnlyGuard)
         // The workflow definition schema, published so the types a definition is validated against are the
         // same ones a catalog or a frontend can read.
         collector.defs.putAll(WfDefSchema.defs(cxt))

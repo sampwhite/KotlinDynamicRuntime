@@ -12,6 +12,12 @@ class LockNames(val trait: String, val workflow: String)
  */
 object TraitLockCopy {
     /**
+     * The whole form locked for the caller (issue #1433): kept to its owner (`kdr:ownerOnly`), and the caller an editor
+     * who is neither its owner nor a reviewer of its current work. The guard's refusal and the pages' notice alike.
+     */
+    const val keptToOwner = "This form is kept to its owner and its reviewers, so you can see it but not change it."
+
+    /**
      * A change to locked traits: "Site audit is locked by Audit review and can't be changed now." -- or, with several
      * workflows, each naming what it locks: "Audit review locks Site audit and Site follow-up locks Site follow-up,
      * so they can't be changed now."

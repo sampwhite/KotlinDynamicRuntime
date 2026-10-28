@@ -192,6 +192,11 @@ class WorkflowView(
      */
     val lockedTraits: Map<String, List<TraitLock>> = emptyMap(),
     /**
+     * Whether the whole form is read-only for this caller (issue #1433): kept to its owner, and the caller an editor who
+     * is neither its owner nor a reviewer of its current work. Every task then arrives unsaveable.
+     */
+    val keptToOwner: Boolean = false,
+    /**
      * The Design View block (issue #972): where the workflow and each type the page draws were declared. Present only
      * when this caller asked for Design View and the backend honored it -- null on every ordinary view.
      */
@@ -235,7 +240,8 @@ class WorkflowView(
      * endpoint allows. The endpoint's gates -- the engagement window and the eligibility tests -- are the rule; this
      * only mirrors them, so a page does not offer what the endpoint would refuse.
      */
-    val canEngage: Boolean get() = isNormal && engaged == false && eligible == true && phase == WfPhase.engageable.name
+    val canEngage: Boolean get() =
+        isNormal && engaged == false && eligible == true && phase == WfPhase.engageable.name && !keptToOwner
 }
 
 /** A task's [WVF.status] map as a [WfTaskStatus], or null when the task carried none. */
@@ -309,6 +315,7 @@ fun parseWorkflowView(results: Map<String, Any?>): WorkflowView? {
         engaged = results[WVF.engaged] as? Boolean,
         eligible = results[WVF.eligible] as? Boolean,
         lockedTraits = parseTraitLocks(results[WVF.lockedTraits]).groupBy { it.traitId },
+        keptToOwner = results[WVF.keptToOwner] == true,
         ineligibleReasons = results[WVF.ineligibleReasons].toJsonListOfStrings(),
         design = parseWfDesign(results[DSV.designBlock]),
     )
@@ -692,6 +699,16 @@ class TraitLock(
     /** How a lock message names this lock -- the wording the backend's refusals share ([TraitLockCopy]). */
     val names: LockNames get() = LockNames(name, label)
 }
+
+/**
+ * The locks endpoint's answer (issues #857, #1433): the traits locked for this caller, and whether the whole form is
+ * ([keptToOwner]) -- kept to its owner from them.
+ */
+class FormLocks(val traits: List<TraitLock> = emptyList(), val keptToOwner: Boolean = false)
+
+/** The locks endpoint's results as [FormLocks] (issue #1433). Pure, and covered under `jsNodeTest`. */
+fun parseFormLocks(results: Map<String, Any?>): FormLocks =
+    FormLocks(parseTraitLocks(results[WVF.lockedTraits]), results[WVF.keptToOwner] == true)
 
 /** A view's or the locks endpoint's `lockedTraits` (issue #857). Pure, and covered under `jsNodeTest`. */
 fun parseTraitLocks(raw: Any?): List<TraitLock> = raw.toJsonListOfMaps().mapNotNull { l ->

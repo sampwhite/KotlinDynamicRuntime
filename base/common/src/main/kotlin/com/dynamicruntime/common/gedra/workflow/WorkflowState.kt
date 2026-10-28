@@ -170,6 +170,14 @@ fun addWorkflowSingletonCFacts(collector: SchemaCollector) {
             toFrontend = true,
         ),
     )
+    collector.addCFact(
+        CFactDef(
+            WSC.ownerOnly, WSC.group,
+            "True, about a form, when it is kept to its owner: an editor may change it only as its owner or as a " +
+                "reviewer of an engaged workflow's current task -- contributed by a workflow's singleton rule.",
+            toFrontend = true,
+        ),
+    )
 }
 
 /**

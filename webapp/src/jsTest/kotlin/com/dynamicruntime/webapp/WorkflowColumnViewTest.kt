@@ -5,6 +5,7 @@ import com.dynamicruntime.common.gedra.workflow.WCOL
 import com.dynamicruntime.common.gedra.workflow.WFD
 import com.dynamicruntime.common.gedra.workflow.WFS
 import com.dynamicruntime.common.gedra.workflow.WfColumnCategory
+import com.dynamicruntime.common.gedra.workflow.TraitLockCopy
 import com.dynamicruntime.common.gedra.workflow.WfEntry
 import com.dynamicruntime.common.gedra.workflow.WfPhase
 import kotlin.test.Test
@@ -112,6 +113,15 @@ class WorkflowColumnViewTest {
             }),
             cfacts = emptyMap(), phase = WfPhase.engageable.name, engaged = true,
         ).canWork)
+        // Kept to its owner (issue #1433): said once for the whole form, of any workflow, and no Engage either.
+        fun kept(entry: WfEntry, engaged: Boolean?, eligible: Boolean? = null) = WorkflowView(
+            workflowId = "audit", entry = entry.name, showTaskList = true, tasks = emptyList(), cfacts = emptyMap(),
+            phase = WfPhase.engageable.name.takeIf { entry == WfEntry.normal }, engaged = engaged, eligible = eligible,
+            keptToOwner = true,
+        )
+        assertEquals(TraitLockCopy.keptToOwner, workflowNote(kept(WfEntry.survey, null)))
+        assertEquals(TraitLockCopy.keptToOwner, workflowNote(kept(WfEntry.normal, true)))
+        assertTrue(!kept(WfEntry.normal, false, eligible = true).canEngage)
         // Not eligible: no Engage that could only be refused, and the note leads into the reasons.
         val ineligible = view(WfPhase.engageable, false, eligible = false)
         assertTrue(!ineligible.canEngage)

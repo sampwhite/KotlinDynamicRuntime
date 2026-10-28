@@ -182,6 +182,9 @@ class ConfigParsersTest {
         val plain = homeConfigFrom(uiConfig(features = emptyMap(), state = emptyMap()))
         assertFalse(mayBrowseUsers(plain) || usersReadOnly(plain))
         assertFalse(mayBrowseUsers(null))
+        // Creating a form for another user (issue #1433): an administrator's or an editor's, and no member's.
+        assertTrue(createsFormsForOthers(editor) && createsFormsForOthers(userAdmin))
+        assertFalse(createsFormsForOthers(plain))
         assertFalse(homeConfigFrom(uiConfig(features = emptyMap(), state = emptyMap())).seesClientForms)
 
         // What the shell tells the pages (issue #1091): the caller's fact, and the label of the menu entry that opens

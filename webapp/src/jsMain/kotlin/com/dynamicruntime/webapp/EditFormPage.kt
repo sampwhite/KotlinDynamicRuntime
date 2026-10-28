@@ -91,6 +91,8 @@ val EditFormPage = FC<Props> {
     // The form's traits locked for this caller (issue #857): drawn as a notice, and a changed section of one is sent
     // only as an explicit override -- by someone the lock allows -- with a reason.
     var locks by useState<List<TraitLock>>(emptyList())
+    // The whole form kept to its owner from this caller (issue #1433): drawn read-only, with the reason said once.
+    var keptToOwner by useState(false)
     var overriding by useState(false)
     var overrideReason by useState("")
     var lockError by useState<String?>(null)
@@ -122,6 +124,7 @@ val EditFormPage = FC<Props> {
         seeded = emptyMap()
         hasSurvey = false
         locks = emptyList()
+        keptToOwner = false
         overriding = false
         overrideReason = ""
         lockError = null
@@ -157,7 +160,9 @@ val EditFormPage = FC<Props> {
                     // The locks (issue #857), likewise never awaited: they only decorate the editor, and the backend
                     // refuses a locked change whatever is drawn.
                     editScope.launch {
-                        locks = apiResult { WorkflowApi.fetchLocks(id) }.valueOr(emptyList())
+                        val answer = apiResult { WorkflowApi.fetchLocks(id) }.valueOr(FormLocks())
+                        locks = answer.traits
+                        keptToOwner = answer.keptToOwner
                     }
                     editScope.launch {
                         hasSurvey = apiResult {
@@ -277,11 +282,19 @@ val EditFormPage = FC<Props> {
                 +"This account's surface has no way to edit forms."
             }
             else -> {
-                p {
-                    className = ClassName("subtitle")
-                    +("Change an entry's fields, add a section for a new trait, or switch a section to delete. " +
-                        "Save sends only the sections you leave in place; Reset drops what you have changed; " +
-                        "Done returns to the forms listing.")
+                if (keptToOwner) {
+                    // Kept to its owner (issue #1433): the whole form read-only, said once, in the guard's words.
+                    div {
+                        className = ClassName("lock-notice")
+                        p { +TraitLockCopy.keptToOwner }
+                    }
+                } else {
+                    p {
+                        className = ClassName("subtitle")
+                        +("Change an entry's fields, add a section for a new trait, or switch a section to delete. " +
+                            "Save sends only the sections you leave in place; Reset drops what you have changed; " +
+                            "Done returns to the forms listing.")
+                    }
                 }
 
                 // The traits locked for this caller (issue #857): named, with the workflow locking each, so a refused
@@ -302,7 +315,8 @@ val EditFormPage = FC<Props> {
                 SchemaForm {
                     type = targetType
                     this.values = values
-                    editable = true
+                    // Nothing to change on a form kept from this caller (issue #1433); with no change, Save stays off.
+                    editable = !keptToOwner
                     friendly = true
                     // Promote a keyed trait's primary key out of `data`, up beside the trait choice (issue #642).
                     promoteKeys = true
@@ -412,9 +426,11 @@ val EditFormPage = FC<Props> {
                                         running = false
                                         // The locks may have moved with the save, or beside it -- a review finished,
                                         // a form engaged (issue #857 review) -- so they are asked again, never awaited.
-                                        val before = locks
                                         editScope.launch {
-                                            locks = apiResult { WorkflowApi.fetchLocks(id) }.valueOrNull() ?: before
+                                            apiResult { WorkflowApi.fetchLocks(id) }.valueOrNull()?.let { answer ->
+                                                locks = answer.traits
+                                                keptToOwner = answer.keptToOwner
+                                            }
                                         }
                                     }
                                 }

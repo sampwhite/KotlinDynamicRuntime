@@ -180,7 +180,7 @@ class EditorRoleTest : StringSpec({
         ed.expectError(EXC.notFound, GEP.formDoc, args = mapOf(GDF.gedraId to outsiders))
     }
 
-    "an editor deletes only its own forms, and creates none for anyone else" {
+    "an editor deletes only its own forms, and creates them for others of its client" {
         val ed = editor("deleter@$mine.test")
         val author = TestUser.create(cxt, "kept@$mine.test", userClient = mine)
         val theirsForm = newForm(author, "Not the editor's")
@@ -193,18 +193,31 @@ class EditorRoleTest : StringSpec({
         listedIds(ed) shouldNotContain own
         // An administrator deletes the author's.
         TestUser.create(cxt, "remover@$mine.test", level = ROLE.admin, userClient = mine).deleteData(GEP.formDoc, mapOf(GDF.gedraId to theirsForm))
-        // Creating a form for another user stays an administrator's.
-        ed.expectError(
-            EXC.notAuthorized, GEP.formDocCreate,
+        // It creates a form for another user of its client (issue #1433): the form is theirs, so the editor -- not its
+        // owner -- cannot then delete it.
+        val forAuthor = ed.postItem(
+            GEP.formDocCreate,
             mapOf(EI.user to author.userId.toString(), GDF.entries to listOf(mapOf(GE.traitId to GT.name, GE.data to mapOf(GT.nameField to "For you")))),
-        )
-        // And so does importing one for them, which is creating it by another door.
+        )[GDF.gedraId].toOptStr()!!
+        author.getItems(GEP.formDocs).map { it[GDF.gedraId] } shouldContain forAuthor
+        ed.expectError(EXC.notAuthorized, GEP.formDoc, args = mapOf(GDF.gedraId to forAuthor), method = HttpMethod.DELETE)
+        // And imports one for them, which is creating it by another door.
         val doc = mapOf(GDF.entries to listOf(mapOf(GE.traitId to GT.name, GE.data to mapOf(GT.nameField to "Imported for you"))))
-        ed.expectError(EXC.notAuthorized, GEP.formDocImport, mapOf(EI.user to author.userId.toString(), GIF.data to doc))
-            .toString() shouldContain "Importing forms for another user takes an administrator."
-        author.getItems(GEP.formDocs).none { nameOfRow(it) == "Imported for you" } shouldBe true
-        // For itself it may.
-        ed.postData(GEP.formDocImport, mapOf(GIF.data to doc))
+        ed.postData(GEP.formDocImport, mapOf(EI.user to author.userId.toString(), GIF.data to doc))
+        author.getItems(GEP.formDocs).any { nameOfRow(it) == "Imported for you" } shouldBe true
+        // Not for a user of another client, whom its scope does not reach.
+        val outsider = TestUser.create(cxt, "notreached@$theirs.test", userClient = theirs)
+        ed.expectError(
+            EXC.notFound, GEP.formDocCreate,
+            mapOf(EI.user to outsider.userId.toString(), GDF.entries to listOf(mapOf(GE.traitId to GT.name, GE.data to mapOf(GT.nameField to "Out")))),
+        )
+        ed.expectError(EXC.badInput, GEP.formDocImport, mapOf(EI.user to outsider.userId.toString(), GIF.data to doc))
+            .toString() shouldContain "is within your access"
+        // An ordinary member still creates for nobody else: its scope finds no one but itself.
+        author.expectError(
+            EXC.notFound, GEP.formDocCreate,
+            mapOf(EI.user to ed.userId.toString(), GDF.entries to listOf(mapOf(GE.traitId to GT.name, GE.data to mapOf(GT.nameField to "No")))),
+        )
     }
 
     "an editor confined to an organization is confined, and one in public reaches only its own" {

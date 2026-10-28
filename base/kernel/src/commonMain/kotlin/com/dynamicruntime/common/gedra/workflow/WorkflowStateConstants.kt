@@ -203,11 +203,18 @@ object WSC {
     /** Some workflow the form is engaged with has finished. Drives the `Finished` chip (#789). */
     const val finished = "kdr:finished"
 
+    /**
+     * The form is kept to its owner (issue #1433): an editor (#1432) may change it only as its owner or as a reviewer of
+     * an engaged workflow's current task. Administrators are unaffected, and an ordinary user reaches only their own
+     * forms anyway. Enforced by `OwnerOnlyGuard` on the write, and shown as the locks answer's `readOnly`.
+     */
+    const val ownerOnly = "kdr:ownerOnly"
+
     /** The friendly group these present under in the cfact catalog. */
     const val group = "Workflow"
 
     /** The whole list: what `WfDef.singletons` is checked against. */
-    val all: Set<String> = setOf(needsReview, finished)
+    val all: Set<String> = setOf(needsReview, finished, ownerOnly)
 }
 
 /**
