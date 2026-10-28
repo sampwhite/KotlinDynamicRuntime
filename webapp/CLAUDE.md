@@ -1146,11 +1146,11 @@ A program calls the API as a user with an **API key**, `Authorization: Bearer kd
 `docs/design/api-keys.md` at the repo root says what a key is and what it may do. The UI is three surfaces over one
 component, `ApiKeysSection.kt`, with its pure half in `ApiKeysApi.kt` (covered by `ApiKeysTest`):
 
-- **Profile** draws `ApiKeysSection {}`: the person's own keys, over `/user/self/apiKey*`. Not in a sandbox, whose
-  users cannot hold keys.
+- **Profile** draws `ApiKeysSection {}`: the person's own keys, over `/user/self/apiKey*`, in a sandbox too (issue
+  #1453), where a key acts with what the sandbox's rules give its user and stays in the sandbox.
 - **The Users editor** draws it with `ownerId` for the open user, over `/clientAdmin/apiKey*`. It acts at once, unlike
-  the editor's fields, which wait for OK. Not for a sandbox's user, nor for a `public` self-administrator, whom the
-  administrator's surface refuses. When the open user is the caller, `ownerId` is left off, so one's own keys are
+  the editor's fields, which wait for OK. Not for a `public` self-administrator, whom the administrator's surface
+  refuses. When the open user is the caller, `ownerId` is left off, so one's own keys are
   managed as on Profile.
 - **The API keys page** (`/wa/api-keys`, `ApiKeysPage.kt`) lists every key the caller administers, soonest to expire
   first, filtered by status, each owner linked to the Users editor. A key is made from its user's page, not here: a key

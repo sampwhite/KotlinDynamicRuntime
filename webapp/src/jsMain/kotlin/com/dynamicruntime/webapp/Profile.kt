@@ -530,9 +530,9 @@ val Profile = FC<Props> {
             }
         }
 
-        // The person's API keys (issue #1402), for programs that act as them. Not in a sandbox, whose users take their
-        // standing from the person's users outside it -- which a program with nobody signed in could not ask about.
-        if (!shellFacts.inSandbox) ApiKeysSection {}
+        // The person's API keys (issue #1402), for programs that act as them -- in a sandbox too (issue #1453), where a key
+        // acts with the standing the sandbox's rules give this user, as a session does, and stays in the sandbox.
+        ApiKeysSection {}
 
         div {
             className = ClassName("row")

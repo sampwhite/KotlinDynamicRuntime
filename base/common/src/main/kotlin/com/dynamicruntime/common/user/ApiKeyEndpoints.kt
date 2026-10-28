@@ -236,21 +236,23 @@ private fun refusePublicAdmin(c: KdrCxt) {
 /**
  * Refuses a key for [owner] that would let the caller act as somebody with authority of their own. A key's secret goes
  * to whoever makes it, so making one for somebody is acting as them, and two things follow:
- * - **Every role [owner] holds** -- a level by the ladder, a capability outright -- must be one the caller holds too, as
- *   granting a role asks.
+ * - **Every role [owner] acts with** -- a level by the ladder, a capability outright -- must be one the caller holds too,
+ *   as granting a role asks. Acts with, not holds: a sandbox's user acts with what [SandboxAccess] says, which for a user
+ *   somebody opened the sandbox as is the roles of the user outside they opened it from (issue #1453).
  * - **Another administrator's keys are their own to make.** An administrator acting as a peer could do what only that
  *   peer may: approve a form as a reviewer who is not its owner, defeating the second-person rule (#787), since a
  *   reviewer is an administrator with a label, and labels are not roles. A user below the administrator level holds no
  *   authority to borrow, so their administrator may make their keys -- what keys are for, a program working as them.
  */
 private fun requireMayActAs(c: KdrCxt, owner: AuthUserRow) {
-    if (owner.userId != c.userProfile.userId && RoleLadder.satisfies(owner.roles.toSet(), ROLE.admin)) {
+    val acting = SandboxAccess.standingOf(c, owner).roles
+    if (owner.userId != c.userProfile.userId && RoleLadder.satisfies(acting, ROLE.admin)) {
         throw KdrException.mkInput(
             "User ${owner.userId} is an administrator, whose API keys are theirs to make, from their own profile.",
         )
     }
     val held = c.userProfile.roles
-    val beyond = owner.roles.filterNot { RoleLadder.satisfies(held, it) }
+    val beyond = acting.filterNot { RoleLadder.satisfies(held, it) }
     if (beyond.isNotEmpty()) {
         throw KdrException.mkInput(
             "You cannot make a key for user ${owner.userId}: it would act with ${beyond.joinToString(", ") { "'$it'" }}, " +
