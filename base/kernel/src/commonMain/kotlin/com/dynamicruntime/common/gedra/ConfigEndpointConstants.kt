@@ -3,7 +3,7 @@ package com.dynamicruntime.common.gedra
 import com.dynamicruntime.common.http.request.SECT
 
 /**
- * The client-scoped stored-configuration endpoints (issue #627) -- their paths, type names and field names. The
+ * The client-scoped stored-configuration endpoints (issue #627) -- their paths, type names, and field names. The
  * endpoints themselves are `gedraConfigSchema` in `base:common`, whose documentation says how they work; the
  * names are here, in the kernel, so the frontend reads a stored configuration's summary by the names the backend
  * writes it under (the Clients page, issue #906). The paths lead with [SECT.clientAdmin], the section gate.
@@ -68,7 +68,7 @@ object CFEP {
     const val impliedDelete = "impliedDelete"
 
     /**
-     * On a bundle write, patch or publish (issue #1156): `true` to reload the client once the change is stored, as
+     * On a bundle write, patch, or publish (issue #1156): `true` to reload the client once the change is stored, as
      * [reload] does -- and, on the answer, how that reload went. Absent, the change waits for a reload asked for.
      */
     const val reloadField = "reload"
