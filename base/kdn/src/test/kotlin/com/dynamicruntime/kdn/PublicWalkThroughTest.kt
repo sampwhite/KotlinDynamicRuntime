@@ -331,6 +331,8 @@ class PublicWalkThroughTest : StringSpec({
         val unpublished = founder.getItems(CFEP.bundles).filter { it[CFEP.published] == false }.map { it[CFEP.name].toOptStr()!! }
         unpublished.toSet() shouldBe setOf(CPY.copyConfigName, made[CIT.configName].toOptStr()!!, workflowConfig)
         founder.postData(CFEP.bundlePublish, mapOf(CFEP.names to unpublished))
+        // Back from the profile's Your users, as the page now has it: switching to a user from inside a sandbox leaves
+        // it, by the same call the bar's Back to Book Club makes.
         founder.postData(AEP.leaveSandbox, mapOf(AFLD.userId to administrator))
         founder.selfClient() shouldBe client
         MarkdownFragmentService.get(cxt).effectiveFragmentsFor(cxt, HFRAG.home, client)?.content?.get("home")?.get("title") shouldBe
