@@ -107,6 +107,17 @@ object ADEP {
  * **This is the surface a frontend should call.** It serves both kinds of administrator correctly -- a caller
  * with `allClients` is simply unconfined -- so a console built on it needs no branch on who is asking.
  */
+/**
+ * The **read-only user directory** (issue #1432), in the `clientDirectory` section: the users of the caller's client,
+ * listed and searched, for an editor -- who sees every user of its client and administers none. The same reads as
+ * [UADEP.users] and [UADEP.userSearch], answering the same shape, with nothing beside them that changes a user.
+ */
+@Suppress("ConstPropertyName")
+object CDEP {
+    const val users = "/${SECT.clientDirectory}/users"
+    const val userSearch = "/${SECT.clientDirectory}/userSearch"
+}
+
 @Suppress("ConstPropertyName")
 object UADEP {
     const val users = "/${SECT.clientAdmin}/users"
@@ -446,10 +457,18 @@ object USF {
     const val name = "name"
 
     /**
-     * Case-insensitive **substring** of the persona or the personaSuffix (issue #750) -- `admin`, or the `B` of a UAT
-     * batch -- so a console box finds a person's administrator user, or one member of a batch.
+     * Case-insensitive **exact** persona (issue #750; a picker since #1432) -- `admin` finds a person's administrator
+     * user. The personaSuffix (the `B` of a UAT batch) is matched by the free-text `q`, which also matches the persona.
      */
     const val persona = "persona"
+
+    /**
+     * Case-insensitive **exact** match of any one of the roles a user holds (issue #1432) -- `editor` finds every
+     * editor, `admin` every administrator. The roles the row holds, not those it satisfies: an administrator satisfies
+     * `editor` without holding it, and is found by `admin`. Not part of the free-text `q`, where `user` would match
+     * every account.
+     */
+    const val roles = "roles"
 
     /**
      * **Exact** client id to confine the search to. Only an `allClients` caller can widen past their own

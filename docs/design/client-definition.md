@@ -682,7 +682,7 @@ sample module already does.
 ## Users, clients and personas
 
 A **persona** says what relationship a user has to the application -- `member` (the default: the person
-belongs to the client) or `admin` to start, `reviewer` and `advisor` sketched -- and is a **registry**
+belongs to the client), `editor`, or `admin`, with `reviewer` and `advisor` sketched -- and is a **registry**
 (`PERSONA` in the kernel, issue #750): each has a name, a label, and the roles a user of it starts with. It is
 frozen at creation and part of the user's unique key with its identity, client and `personaSuffix`; changing
 persona means creating a new user with its own data. The relationship with roles runs both ways: a persona
@@ -692,6 +692,29 @@ by an explicit role list, is an `admin`. A persona is deliberately **not a role*
 says how to read the user, and the roles say what they may do -- and no persona's default roles ever include
 `allClients`, which is a grant an administrator makes to a user, never a property of what kind of user they
 are. A client may later add its own personas under this word's reservation.
+
+**An editor** (issue #1432) is the one role between a member and an administrator. It sees every user and every form of
+its client and edits forms, but administers nothing: it changes no user, creates none, and sees none of the client's
+configuration. It edits only itself, on its profile, and carries the labels an administrator gives it, which it cannot
+assign itself. Its powers:
+
+- **The role is `editor`, held outright, not a rung.** `user < operator < admin` is unchanged. An operator does not hold
+  it, and it reaches nothing an operator does. An administrator **implies** it (`RoleLadder.impliedBy`), since an
+  administrator already holds everything it adds, so anything requiring `editor` admits an administrator too.
+- **The `editor` persona** starts a user with `[user, editor]`. An editor below the admin level reads as one
+  (`PERSONA.defaultFor`). An administrator grants the role like any other, and a person cannot give it to themselves:
+  self-registration names no persona, and a claim names a user an administrator made. A member given the role later
+  keeps the persona they had, so the Users page finds editors by the **Roles** filter (`USF.roles`, the roles a user
+  holds), not by persona.
+- **Its reach is an administrator's width** (`ReadScopeRules.forCaller`): its client, or its primary organization within
+  it. Never in `public`, where no client role widens what is readable. Every administrative power stays keyed on the
+  admin level, which it does not hold.
+- **Users:** it reads them in the **user directory**, the `clientDirectory` section (`CDEP`), which requires `editor` and
+  serves the two user reads alone, the same handlers as `clientAdmin`'s. The Users page uses those reads for everyone.
+- **Forms:** it lists and edits every form of its client, and is shown whose each is. Only a form's owner or an
+  administrator deletes one (`EditorDeleteGuard`), and creating a form for someone else stays an administrator's.
+- **Sandboxes:** it opens none, since opening one is an administrator's act. A sandbox's own user given the role acts as
+  an editor inside it.
 
 An administrator provisions a user with a persona and, for a further user of the same address, client and
 persona (a UAT batch), a `personaSuffix`; a person proves such a user by invitation (phase E of #746), or, when the

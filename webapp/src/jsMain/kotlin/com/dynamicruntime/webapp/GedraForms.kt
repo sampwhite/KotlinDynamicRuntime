@@ -789,6 +789,14 @@ fun parseSingletonWorkflows(results: Map<String, Any?>): List<SingletonWorkflow>
         )
     }
 
+/**
+ * Whether the caller may delete a form owned by [ownerId] (issue #1432): only its owner or an administrator deletes a
+ * form, so a caller who [deletesOwnOnly] -- anyone but an administrator, an editor included -- deletes only its own
+ * ([selfUserId]). Pure, covered under `jsNodeTest`.
+ */
+fun mayDeleteForm(ownerId: Long?, selfUserId: Long?, deletesOwnOnly: Boolean): Boolean =
+    !deletesOwnOnly || (ownerId != null && ownerId == selfUserId)
+
 class FormSummary(
     val gedraId: String,
     /**
@@ -816,6 +824,8 @@ class FormSummary(
     val ownerPersona: String? = null,
     /** The owner's personaSuffix, from the `owner` block (issue #1097); empty when the user has none. */
     val ownerPersonaSuffix: String = "",
+    /** The owning user's id, from the row's `userId`: whose form it is, which decides who may delete it (issue #1432). */
+    val ownerId: Long? = null,
     /** The owning client, from the row's `client` (issue #668): what the Client column shows for a caller who
      *  administers across clients. Every row carries it; empty only when the row somehow arrived without one. */
     val client: String = "",
@@ -872,6 +882,7 @@ fun summarizeForm(item: Map<String, Any?>, entriesUnion: SchType?): FormSummary 
         // Which of the person's users owns it (issue #1097): what the cell's persona tag says.
         ownerPersona = owner[DUF.persona] as? String,
         ownerPersonaSuffix = owner[DUF.personaSuffix] as? String ?: "",
+        ownerId = item[GDF.userId].toOptLong(),
         // The owning client (issue #668), attached to every listed row; the Client column shows it for a caller
         // who administers across clients.
         client = item[GDF.client] as? String ?: "",

@@ -29,11 +29,15 @@ class HomeMenuAudiencesTest : StringSpec({
             .map { CFACT.orAlways(it[UIB.cfactExpression].toOptStr()) }.filter { it != CFACT.neverName }.toSet()
 
     "every condition the shipped menu draws for has a name, and every name is of one it draws for" {
-        val named = HomeMenuAudiences.all.map { it.condition }.toSet()
+        val named = HomeMenuAudiences.all.filter { !it.retired }.map { it.condition }.toSet()
         // A new menu item with a new condition lands here: name it in HomeMenuAudiences and decide whether to offer it.
         (shippedConditions() - named).shouldBeEmpty()
-        // And a name left behind by an item that went away is removed with it.
+        // And a name left behind by an item that went away is removed with it -- or retired, for the stored edits that
+        // chose it, and then never offered.
         (named - shippedConditions()).shouldBeEmpty()
+        HomeMenuAudiences.all.filter { it.retired }.none { it.offered } shouldBe true
+        HomeMenuAudiences.of("${CFACTS.loggedIn},~${CFACTS.administersClient},${CFACTS.app}")?.name shouldBe
+            "Signed-in people who are not administrators"
     }
 
     "an audience is one condition and one name" {
@@ -48,7 +52,8 @@ class HomeMenuAudiencesTest : StringSpec({
             "${CFACTS.loggedIn},${CFACTS.app}",
             "${CFACTS.anonymous},${CFACTS.app}",
             "${CFACTS.administersClient},${CFACTS.app}",
-            "${CFACTS.loggedIn},~${CFACTS.administersClient},${CFACTS.app}",
+            "${CFACTS.seesClientForms},${CFACTS.app}",
+            "${CFACTS.loggedIn},~${CFACTS.seesClientForms},${CFACTS.app}",
             "${CFACTS.isClientOperator},${CFACTS.app}",
         )
     }
@@ -66,7 +71,7 @@ class HomeMenuAudiencesTest : StringSpec({
         // None is offered: a client's people are never among them.
         HomeMenuAudiences.offered.filter { it.deployment }.shouldBeEmpty()
         // The administrators again, withheld as a second name for an offered audience, are still a client's people.
-        HomeMenuAudiences.of("${CFACTS.hasAdminLevel},${CFACTS.app}")?.deployment shouldBe false
+        HomeMenuAudiences.of("(${CFACTS.hasAdminLevel}|${CFACTS.isEditor}),${CFACTS.app}")?.deployment shouldBe false
         // And so the items listing says of each item whether it shipped for the deployment's own.
         val items = ClientMenuEdit.itemsFor(cxt, "hub").associateBy { it.itemId }
         items.getValue("systemInfo").deploymentOnly shouldBe true

@@ -1,5 +1,7 @@
 package com.dynamicruntime.common.user
 
+import com.dynamicruntime.common.http.request.ROLE
+
 /**
  * The **shared, declarative description of the user-search fields** (issue #411, the SDUI extra credit).
  *
@@ -25,7 +27,10 @@ enum class UserFilterKind {
     /** A case-insensitive substring, rendered as a text box. */
     substring,
 
-    /** A case-insensitive exact match, rendered as a picker (in the console, only the client). */
+    /**
+     * A case-insensitive exact match, rendered as a picker: of the spec's own [UserSearchFieldSpec.options] when it
+     * has them (the persona, the roles), else of the clients this caller may choose among.
+     */
     exact,
 
     /** A from/to range over an instant, rendered as a pair of date-time pickers (the console's four dates). */
@@ -63,6 +68,40 @@ class UserSearchFieldSpec(
      * data that a future server-driven console can serialize without a rule attached.
      */
     val rangeKeys: Pair<String, String>? = null,
+    /**
+     * For a [UserFilterKind.exact] field, the choices its picker offers (issue #1432), or null for one whose choices
+     * the console fetches (the client). Known to the kernel, so both sides name the same values.
+     */
+    val options: List<UserFilterOption>? = null,
+    /**
+     * Whether a row holds a list of values here, any one of which the filter matches (the roles). It changes only the
+     * words: the chip says `Roles include "Editor"` rather than `is`.
+     */
+    val listValued: Boolean = false,
+)
+
+/** One choice of an exact filter's picker (issue #1432): the value matched, and the label shown for it. */
+class UserFilterOption(
+    val value: String,
+    val label: String,
+    /** Whether only a cross-client (`allClients`) caller is offered it, as [UserSearchFieldSpec.allClientsOnly]. */
+    val allClientsOnly: Boolean = false,
+)
+
+/** The personas a user can have, as the Persona filter offers them (issue #1432): every [PERSONA.defs] entry. */
+val personaFilterOptions: List<UserFilterOption> = PERSONA.defs.map { UserFilterOption(it.name, it.label) }
+
+/**
+ * The roles a user can hold, as the Roles filter offers them (issue #1432). An operator and an `allClients` holder are
+ * the platform's own people, so only a cross-client caller is offered them; within a client the choices are the ones
+ * an administrator grants there.
+ */
+val roleFilterOptions: List<UserFilterOption> = listOf(
+    UserFilterOption(ROLE.user, "User"),
+    UserFilterOption(ROLE.editor, "Editor"),
+    UserFilterOption(ROLE.admin, "Admin"),
+    UserFilterOption(ROLE.operator, "Operator", allClientsOnly = true),
+    UserFilterOption(ROLE.allClients, "All clients", allClientsOnly = true),
 )
 
 /**
@@ -93,8 +132,14 @@ val userSearchFieldSpecs: List<UserSearchFieldSpec> = listOf(
     UserSearchFieldSpec(USF.email, "Email", UserFilterKind.substring, sortable = true),
     UserSearchFieldSpec(USF.name, "Name", UserFilterKind.substring, sortable = true),
     UserSearchFieldSpec(USF.client, "Client", UserFilterKind.exact, sortable = true, allClientsOnly = true),
-    // Which of a person's users this is (issue #750): the persona, and the personaSuffix when there is one.
-    UserSearchFieldSpec(USF.persona, "Persona", UserFilterKind.substring, sortable = true),
+    // Which of a person's users this is (issue #750), picked from the personas (issue #1432). The personaSuffix that
+    // tells a batch apart is found by the free-text term instead.
+    UserSearchFieldSpec(USF.persona, "Persona", UserFilterKind.exact, sortable = true, options = personaFilterOptions),
+    // The roles a user holds (issue #1432), so Editor finds the editors whatever their persona says -- a member made
+    // an editor keeps the persona they had. Not sortable: a list orders by nothing anyone asks for.
+    UserSearchFieldSpec(
+        USF.roles, "Roles", UserFilterKind.exact, sortable = false, options = roleFilterOptions, listValued = true,
+    ),
     // The four dates the console shows (issues #462, #750). `updatedAt` is deliberately absent: the endpoint
     // still sorts on it, but it moves on a login and so answers a question nobody is asking here. `registered`
     // joined once it meant *claimed* -- when the person proved the user is theirs -- which an administrator

@@ -170,19 +170,32 @@ class ConfigParsersTest {
         val publicAdmin = homeConfigFrom(uiConfig(features = mapOf(HFEAT.canManageUsers to true), state = emptyMap()))
         assertTrue(publicAdmin.canManageUsers)
         assertFalse(publicAdmin.administersClient)
+        // An editor (issue #1432): browses users and reads the whole client's forms, administering nothing.
+        val editor = homeConfigFrom(uiConfig(features = mapOf(HFEAT.browsesUsers to true, HFEAT.seesClientForms to true), state = emptyMap()))
+        assertTrue(editor.browsesUsers && editor.seesClientForms)
+        assertFalse(editor.canManageUsers || editor.administersClient)
+        // The Users page: an editor browses it read-only; an administrator edits; a member is not offered it.
+        assertTrue(mayBrowseUsers(editor) && usersReadOnly(editor))
+        val userAdmin = homeConfigFrom(uiConfig(features = mapOf(HFEAT.canManageUsers to true, HFEAT.browsesUsers to false), state = emptyMap()))
+        assertTrue(mayBrowseUsers(userAdmin))
+        assertFalse(usersReadOnly(userAdmin))
+        val plain = homeConfigFrom(uiConfig(features = emptyMap(), state = emptyMap()))
+        assertFalse(mayBrowseUsers(plain) || usersReadOnly(plain))
+        assertFalse(mayBrowseUsers(null))
+        assertFalse(homeConfigFrom(uiConfig(features = emptyMap(), state = emptyMap())).seesClientForms)
 
         // What the shell tells the pages (issue #1091): the caller's fact, and the label of the menu entry that opens
         // the forms listing -- whichever entry it is, by the page it routes to, and by the words the menu has for it.
         fun facts(features: Map<String, Any?>, vararg menu: Map<String, Any?>) =
             shellFactsOf(homeConfigFrom(uiConfig(features = features, state = mapOf(HFLD.menu to menu.toList()))))
         val member = facts(emptyMap(), mapOf(HFLD.id to "forms", HFLD.label to "My forms", UIB.action to "forms"))
-        assertEquals(ShellFacts(administersClient = false, formsEntryLabel = "My forms"), member)
+        assertEquals(ShellFacts(seesClientForms = false, formsEntryLabel = "My forms"), member)
         val admin = facts(
-            mapOf(HFEAT.administersClient to true),
+            mapOf(HFEAT.seesClientForms to true),
             mapOf(HFLD.id to "users", HFLD.label to "Users", UIB.action to "users"),
             mapOf(HFLD.id to "clientForms", HFLD.label to "Audits", UIB.action to "forms"),
         )
-        assertEquals(ShellFacts(administersClient = true, formsEntryLabel = "Audits"), admin)
+        assertEquals(ShellFacts(seesClientForms = true, formsEntryLabel = "Audits"), admin)
         // A "What is this?" link's words are the shell's copy (issue #1330), told once that copy has arrived.
         val config = homeConfigFrom(uiConfig(features = emptyMap(), state = emptyMap()))
         val withCopy = shellFactsOf(config, Copy(mapOf(HFRAG.whatIsThisNs to mapOf(HFRAG.whatIsThisLink to "Why?", HFRAG.whatIsThisHide to "Close"))))

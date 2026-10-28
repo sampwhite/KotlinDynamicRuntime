@@ -54,6 +54,13 @@ external interface FormsTableProps : Props {
     /** Whether the caller's surface carries the delete endpoint, so a Delete action can work. */
     var canDelete: Boolean
 
+    /**
+     * Whether the caller deletes only its own forms -- anyone but an administrator (issue #1432) -- and who it is: a row
+     * owned by someone else offers no Delete, which would only be refused ([mayDeleteForm]).
+     */
+    var deletesOwnOnly: Boolean
+    var selfUserId: Long?
+
     /** The gedra id of a row to flash briefly -- the form just saved on the edit page (issue #592); null for
      *  none. The flash is a one-shot CSS animation on the row, so it fades on its own. */
     var highlightId: String?
@@ -264,6 +271,8 @@ val FormsTable = FC<FormsTableProps> { props ->
             row[GSORT.client] = summary.client.ifBlank { "—" }
             // The workflow cell's items (issue #791), joined to the summary here so the cell only draws.
             row.wfItems = workflowCellOf(summary.states, summary.client, props.workflowSummary)
+            // Whose form it is (issue #1432), so the actions cell asks who may delete it without searching the rows.
+            row.ownerId = summary.ownerId
             // The survey status for the fixed Status column (issue #694): its chip label + colour class, and
             // whether it warrants the CTA (anything but Valid). Absent on a row with no survey state.
             summary.surveyStatus?.let {
@@ -346,7 +355,7 @@ private fun actionsColumn(
             this.onViewWorkflow = onViewWorkflow?.let { open -> { open(id, items) } }
             this.showSurvey = showSurvey
             this.onSurveyView = props.onSurveyView
-            this.canDelete = props.canDelete
+            this.canDelete = props.canDelete && mayDeleteForm(record.ownerId as? Long, props.selfUserId, props.deletesOwnOnly)
             this.confirming = props.confirmingDeleteId == id
             this.deleting = props.deletingId == id
             this.onArmDelete = props.onArmDelete

@@ -14,6 +14,7 @@ import com.dynamicruntime.common.schema.SchLayout
 import com.dynamicruntime.common.schema.SchType
 import com.dynamicruntime.common.util.toJsonListOrEmpty
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
+import com.dynamicruntime.common.util.toOptLong
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.launch
 import react.ChildrenBuilder
@@ -86,9 +87,9 @@ private fun includeUsersArg(on: Boolean): Map<String, Any?> = if (on) mapOf(EI.i
  * The list is a growing listing (issue #1315, `ShowMore.kt`): the first [listingBatch] forms, then more on request up to
  * [listingCap], against the total the scope admits -- re-queried with the larger limit, so the rows on screen are one
  * snapshot, and with the count shown riding the address (`shown`), so the ways home from a form ask for the same rows. It is ordered
- * most recently written first, and a caller who administers other users also gets a scope bar (whose forms)
- * and a User column (issue #562); both key on the shell's `canManageUsers`, the predicate the backend attaches
- * owners on, so the controls appear exactly when the rows carry an owner to show. The open form
+ * most recently written first, and a caller who reads other users' forms -- an administrator, or an editor (issue
+ * #1432) -- also gets a scope bar (whose forms) and a User column (issue #562); both key on that (`seesOthersForms`),
+ * the backend's predicate for attaching owners, so the controls appear exactly when the rows carry an owner to show. The open form
  * lives in the URL (`g=<id>`), like the Users page's open record; a form the loaded page does not hold --
  * a bookmark, or a link to one now past the first page -- is fetched by id, so a deep link always resolves.
  * The stored row renders through the shared [SchemaForm] in friendly, read-only mode, so its derived system
@@ -145,9 +146,13 @@ val FormsPage = FC<FormsPageProps> { props ->
     // search keep it. The backend ignores an unknown column, so a stale sort in a bookmark still lists.
     var sortColumn by useState<String?>(null)
     var sortDescending by useState(false)
-    // Whether the caller administers other users (issue #562), from the shell's UI-config. False until it
-    // answers and false when it cannot, so the administrative controls are never drawn on a guess.
-    var canManageUsers by useState(false)
+    // Whether the caller reads other users' forms -- an administrator (issue #562) or an editor (issue #1432) -- from the
+    // shell's UI-config. False until it answers and false when it cannot, so those controls are never drawn on a guess.
+    var seesOthersForms by useState(false)
+    // Who the caller is, and whether it deletes only its own forms -- anyone but an administrator (issue #1432) -- so a
+    // Delete is offered only where it would be honored.
+    var selfUserId by useState<Long?>(null)
+    var deletesOwnOnly by useState(false)
     // Whether the caller administers across clients (issue #668), from the same UI-config. Gates the Client
     // column and the filter-by-client control; false until known and when it cannot be learned.
     var canSeeAllClients by useState(false)
@@ -283,7 +288,7 @@ val FormsPage = FC<FormsPageProps> { props ->
         beginListAction(grow)
         formsScope.launch {
             try {
-                val page = fetchListPage(ep, limit, search, sortCol, sortDesc, canManageUsers, withSummary)
+                val page = fetchListPage(ep, limit, search, sortCol, sortDesc, seesOthersForms, withSummary)
                 rows = page.rows
                 numAvailable = page.numAvailable
                 scopeAnswer = ScopeAnswer(search[EI.user] as? String, page.scopeUser)
@@ -431,8 +436,13 @@ val FormsPage = FC<FormsPageProps> { props ->
             // to learn them leaves the administrative controls off, which is the safe reading -- the list itself
             // still loads. One config fetch answers both.
             val homeConfig = apiResult { HomeApi.fetchConfig() }.valueOrNull()
-            val canManage = homeConfig?.canManageUsers == true
-            canManageUsers = canManage
+            // An editor (issue #1432) reads every form of its client too, so is shown whose each is, and may narrow to one.
+            val canManage = homeConfig?.canManageUsers == true || homeConfig?.seesClientForms == true
+            seesOthersForms = canManage
+            selfUserId = homeConfig?.user?.userId
+            // Only once the shell has said the caller is no administrator: a config that could not be read leaves
+            // Delete offered as the endpoint does, for the backend to judge, rather than hiding it from everyone.
+            deletesOwnOnly = homeConfig != null && !homeConfig.canManageUsers
             // The freshly-read local, not the state set just above: that setter has not landed yet, so the
             // clients fetch and the chosen-client restore must branch on the value in hand (issue #668).
             val seeAllClients = homeConfig?.canSeeAllClients == true
@@ -477,7 +487,7 @@ val FormsPage = FC<FormsPageProps> { props ->
     useEffect(revisits) {
         if (revisits == 0 || workflowMode) return@useEffect
         viewingId = null
-        loadForClient(null, emptyMap(), null, false, includeUsers = canManageUsers, initialLoad = false)
+        loadForClient(null, emptyMap(), null, false, includeUsers = seesOthersForms, initialLoad = false)
     }
 
     // Open whatever the address named once the first load has run -- a reload in the view, or a link from the
@@ -676,7 +686,9 @@ val FormsPage = FC<FormsPageProps> { props ->
                         // Delete, offered only when the caller's surface carries the endpoint. A two-step
                         // confirm, inline on the same line; on success the view closes and the list reloads
                         // from the top, where the now one-fewer forms are.
-                        deleteEndpoint?.let { de ->
+                        deleteEndpoint?.takeIf {
+                            mayDeleteForm(viewRow?.get(GDF.userId).toOptLong(), selfUserId, deletesOwnOnly)
+                        }?.let { de ->
                             if (!confirmingDelete) {
                                 Button {
                                     danger = true
@@ -860,7 +872,7 @@ val FormsPage = FC<FormsPageProps> { props ->
                 }
                 // Whose forms (issue #562): promoted above the search, and only for a caller who administers
                 // other users -- an ordinary caller's list is their own, so there is nothing to choose.
-                if (canManageUsers) {
+                if (seesOthersForms) {
                     FormsScopeBar {
                         value = searchDraft[EI.user] ?: ""
                         applied = appliedUser
@@ -921,7 +933,7 @@ val FormsPage = FC<FormsPageProps> { props ->
                                 // says why). Re-fetch the chosen client's surface (issue #714); `loadForClient`
                                 // re-whitelists the search to the new client's declared fields and reloads from the
                                 // top. A failed reload shows beside the controls, not as a whole-card error.
-                                loadForClient(chosen, formsSearchForClient(appliedSearch, chosen), sortColumn, sortDescending, canManageUsers, initialLoad = false)
+                                loadForClient(chosen, formsSearchForClient(appliedSearch, chosen), sortColumn, sortDescending, seesOthersForms, initialLoad = false)
                             }
                         }
                     }
@@ -1009,7 +1021,9 @@ val FormsPage = FC<FormsPageProps> { props ->
                     forms = rows.map { (it[GDF.gedraId] as? String ?: "") to summarizeForm(it, union) }
                     onView = { id -> viewingId = id }
                     canDelete = deleteEndpoint != null
-                    showOwner = canManageUsers
+                    this.deletesOwnOnly = deletesOwnOnly
+                    this.selfUserId = selfUserId
+                    showOwner = seesOthersForms
                     // The Client column is for the cross-client view: it tells rows apart by client, and once a
                     // single client is chosen there is nothing to tell apart (issue #714) -- so it is dropped then.
                     showClient = canSeeAllClients && chosenClient == null

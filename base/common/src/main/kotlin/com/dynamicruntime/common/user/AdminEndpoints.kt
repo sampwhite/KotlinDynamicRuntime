@@ -10,6 +10,7 @@ import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.endpoint.HttpMethod
 import com.dynamicruntime.common.endpoint.ListPage
 import com.dynamicruntime.common.endpoint.SchModule
+import com.dynamicruntime.common.endpoint.SchModuleBuilder
 import com.dynamicruntime.common.endpoint.defaultListLimit
 import com.dynamicruntime.common.endpoint.schemaModule
 import com.dynamicruntime.common.exception.EXC
@@ -100,80 +101,7 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
 
     // --- read ---------------------------------------------------------------
 
-    listEndpoint(
-        paths.users,
-        "Lists users, newest first, optionally filtered by a search term over email, username, and name.",
-        outputRef = ADTY.adminUser,
-        hasMore = true,
-        inputFields = {
-            field(ADF.search, "Case-insensitive substring to match against the email, username, or name.")
-        },
-    ) { c, request ->
-        val limit = (request[EP.limit] as? Number)?.toInt() ?: defaultListLimit
-        // listUsers trims to the page and reports the whole-set total (issue #499), so a truncated listing says
-        // how many there are. Only the page is mapped to admin info.
-        val page = userService(c).listUsers(c, request[ADF.search].toOptStr(), limit, ReadScopeRules.forUserAdmin(c))
-        ListPage(page.rows.map { it.toAdminInfo(c) }, numAvailable = page.numAvailable, hasMore = page.numAvailable > limit)
-    }
-
-    // A richer search than the plain listing above: brute force over the user cache (issue #411), with a
-    // per-field filter, a sort, and a fairly large default cap. Active users only -- the cache holds enabled
-    // rows -- so the newest-first listing above stays the way to reach a disabled or deleted account.
-    listEndpoint(
-        paths.userSearch,
-        "Searches active users over the in-memory cache -- email/name substring, client, and update-time " +
-            "range -- sorted by any of those fields (default: newest first). Returns up to '${USF.defaultLimit}'.",
-        outputRef = ADTY.adminUser,
-        hasMore = true,
-        hasNumAvailable = true,
-        // The list builder's auto-appended `limit` defaults to ${defaultListLimit}; this search wants a far
-        // larger default, so it is declared here and the auto one suppressed.
-        noLimit = true,
-        inputFields = {
-            field(
-                EI.q,
-                "Free text matched against email, name, or username at once (any of them, case-insensitive " +
-                    "substring) -- one box for finding a user however you remember them.",
-            ) { emptyIsAbsent = true }
-            field(USF.email, "Case-insensitive substring to match against the email address.")
-            field(USF.name, "Case-insensitive substring to match against the account's real-world name or its username.")
-            field(USF.publicName, "Case-insensitive substring to match against the public name (username or email).")
-            field(
-                USF.client,
-                "Exact client id to confine to. Only meaningful to an '${ROLE.allClients}' caller; anyone " +
-                    "else is already confined to their own client.",
-            )
-            field(USF.persona, "Case-insensitive substring to match against the persona or the personaSuffix.")
-            // One pair per date attribute, generated from the registry (issue #462) rather than written out:
-            // the keys and the wording both follow the root, so adding a date adds its range with them.
-            for (date in userDateFields) {
-                field(date.keys.after, "Only users ${date.keys.phrase} at or after this time (ISO-8601).") { dateTime() }
-                field(date.keys.before, "Only users ${date.keys.phrase} at or before this time (ISO-8601).") { dateTime() }
-            }
-            field(
-                USF.sortBy,
-                "Which attribute to sort by: ${userSearchFields.joinToString(", ") { "'${it.name}'" }}. " +
-                    "Defaults to '${USF.updatedAt}'.",
-            )
-            field(USF.descending, "Sort descending (newest / Z-A first). Defaults to true.") {
-                type = SCT.boolean
-            }
-            field(EP.limit, "The maximum number of users to return; defaults to '${USF.defaultLimit}'.") {
-                type = SCT.integer
-                default = USF.defaultLimit
-                // `?limit=` (empty) reads as no limit given rather than a 400, matching the auto-appended one.
-                emptyIsAbsent = true
-            }
-        },
-    ) { c, request ->
-        val criteria = parseUserSearch(request)
-        val page = userService(c).searchUsers(c, criteria, ReadScopeRules.forUserAdmin(c))
-        ListPage(
-            page.rows.map { it.toAdminInfo(c) },
-            numAvailable = page.numAvailable,
-            hasMore = page.rows.size < page.numAvailable,
-        )
-    }
+    userReadEndpoints(paths.users, paths.userSearch)
 
     // --- create -------------------------------------------------------------
 
@@ -612,6 +540,101 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
  * client both in the `client` column and inside every `GedraId`, so moving one would strand it. Create is the only
  * point at which a user's client is answerable, which is why the console offers the choice only there.
  */
+/**
+ * The user reads -- the newest-first listing at [usersPath] and the cache search at [searchPath] -- shared by every
+ * surface that reads users: the administrator's (`admin`, `clientAdmin`) and the editor's read-only directory
+ * (`clientDirectory`, issue #1432). One definition, so the two cannot drift: what an editor reads is what an
+ * administrator reads, confined the same way, by `ReadScopeRules.forUserAdmin`.
+ */
+private fun SchModuleBuilder.userReadEndpoints(usersPath: String, searchPath: String) {
+    listEndpoint(
+        usersPath,
+        "Lists users, newest first, optionally filtered by a search term over email, username, and name.",
+        outputRef = ADTY.adminUser,
+        hasMore = true,
+        inputFields = {
+            field(ADF.search, "Case-insensitive substring to match against the email, username, or name.")
+        },
+    ) { c, request ->
+        val limit = (request[EP.limit] as? Number)?.toInt() ?: defaultListLimit
+        // listUsers trims to the page and reports the whole-set total (issue #499), so a truncated listing says
+        // how many there are. Only the page is mapped to admin info.
+        val page = userService(c).listUsers(c, request[ADF.search].toOptStr(), limit, ReadScopeRules.forUserAdmin(c))
+        ListPage(page.rows.map { it.toAdminInfo(c) }, numAvailable = page.numAvailable, hasMore = page.numAvailable > limit)
+    }
+
+    // A richer search than the plain listing above: brute force over the user cache (issue #411), with a
+    // per-field filter, a sort, and a fairly large default cap. Active users only -- the cache holds enabled
+    // rows -- so the newest-first listing above stays the way to reach a disabled or deleted account.
+    listEndpoint(
+        searchPath,
+        "Searches active users over the in-memory cache -- email/name substring, client, and update-time " +
+            "range -- sorted by any of those fields (default: newest first). Returns up to '${USF.defaultLimit}'.",
+        outputRef = ADTY.adminUser,
+        hasMore = true,
+        hasNumAvailable = true,
+        // The list builder's auto-appended `limit` defaults to ${defaultListLimit}; this search wants a far
+        // larger default, so it is declared here and the auto one suppressed.
+        noLimit = true,
+        inputFields = {
+            field(
+                EI.q,
+                "Free text matched against email, name, username, persona, or persona suffix at once (any of " +
+                    "them, case-insensitive substring) -- one box for finding a user however you remember them.",
+            ) { emptyIsAbsent = true }
+            field(USF.email, "Case-insensitive substring to match against the email address.")
+            field(USF.name, "Case-insensitive substring to match against the account's real-world name or its username.")
+            field(USF.publicName, "Case-insensitive substring to match against the public name (username or email).")
+            field(
+                USF.client,
+                "Exact client id to confine to. Only meaningful to an '${ROLE.allClients}' caller; anyone " +
+                    "else is already confined to their own client.",
+            )
+            field(USF.persona, "The persona to match exactly (case-insensitive); the free text 'q' also finds the personaSuffix.")
+            field(USF.roles, "A role to match exactly (case-insensitive) against any one of the roles the user holds.")
+            // One pair per date attribute, generated from the registry (issue #462) rather than written out:
+            // the keys and the wording both follow the root, so adding a date adds its range with them.
+            for (date in userDateFields) {
+                field(date.keys.after, "Only users ${date.keys.phrase} at or after this time (ISO-8601).") { dateTime() }
+                field(date.keys.before, "Only users ${date.keys.phrase} at or before this time (ISO-8601).") { dateTime() }
+            }
+            field(
+                USF.sortBy,
+                "Which attribute to sort by: ${userSearchFields.joinToString(", ") { "'${it.name}'" }}. " +
+                    "Defaults to '${USF.updatedAt}'.",
+            )
+            field(USF.descending, "Sort descending (newest / Z-A first). Defaults to true.") {
+                type = SCT.boolean
+            }
+            field(EP.limit, "The maximum number of users to return; defaults to '${USF.defaultLimit}'.") {
+                type = SCT.integer
+                default = USF.defaultLimit
+                // `?limit=` (empty) reads as no limit given rather than a 400, matching the auto-appended one.
+                emptyIsAbsent = true
+            }
+        },
+    ) { c, request ->
+        val criteria = parseUserSearch(request)
+        val page = userService(c).searchUsers(c, criteria, ReadScopeRules.forUserAdmin(c))
+        ListPage(
+            page.rows.map { it.toAdminInfo(c) },
+            numAvailable = page.numAvailable,
+            hasMore = page.rows.size < page.numAvailable,
+        )
+    }
+
+}
+
+/**
+ * The **read-only user directory** (issue #1432): the `clientDirectory` section, which requires [ROLE.editor] -- which an
+ * administrator holds by implication -- and serves the user reads alone ([userReadEndpoints]), confined by scope. An
+ * editor sees the users of its client here; nothing in the section creates, edits, labels, or deletes one.
+ */
+fun userDirectorySchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.${SECT.clientDirectory}") {
+    AuthUserRow.defineAdminType(this)
+    userReadEndpoints(CDEP.users, CDEP.userSearch)
+}
+
 private fun assignableClient(cxt: KdrCxt, named: String?, action: String): String {
     val own = cxt.userProfile.client
     val client = named?.trim()?.ifEmpty { null } ?: return own

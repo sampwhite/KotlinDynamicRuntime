@@ -247,8 +247,9 @@ object AERR {
 /**
  * One persona a user may be created with (issues #747, #750): its wire [name], the [label] a person sees, and
  * the [defaultRoles] a user of it starts with. The roles are applied **at creation only** -- after that they
- * are whatever an administrator makes them, the way the auto-admin rule works -- and are ladder roles alone:
- * a persona never carries `allClients` or any other capability (see `PERSONA`).
+ * are whatever an administrator makes them, the way the auto-admin rule works -- and never include a capability:
+ * a persona never carries `allClients` (see `PERSONA`). Ladder roles, and `editor` (issue #1432), which confers
+ * reach within the user's own client and is no capability.
  */
 class PersonaDef(val name: String, val label: String, val defaultRoles: List<String>)
 
@@ -272,6 +273,13 @@ object PERSONA {
     const val admin = "admin"
 
     /**
+     * Sees every user and form of its client and edits forms, administering nothing (issue #1432): a user created as
+     * one starts with [ROLE.editor]. The name says the relationship -- someone who works on the client's forms -- as
+     * `member` and `admin` do theirs.
+     */
+    const val editor = "editor"
+
+    /**
      * The registry, in the order a chooser offers them. **No capability appears in a default role list, by
      * construction**: `allClients` is a grant an administrator makes to a user, never a property of what kind
      * of user they are, and a persona that could carry it would be the escalation route the email tags were
@@ -279,6 +287,7 @@ object PERSONA {
      */
     val defs: List<PersonaDef> = listOf(
         PersonaDef(member, "Member", listOf(ROLE.user)),
+        PersonaDef(editor, "Editor", listOf(ROLE.user, ROLE.editor)),
         PersonaDef(admin, "Admin", listOf(ROLE.user, ROLE.admin)),
     )
 
@@ -297,10 +306,13 @@ object PERSONA {
      * user on the same rung of `RoleLadder` as [roles] do -- `admin` for an administrator, `member` otherwise
      * (an operator, whose rung no persona names, is a member). So the deployment's first administrator, the
      * fixture's admin-level user and an admin created with an explicit role list all read as what they are.
+     * An editor who is no administrator is an [editor] (issue #1432): the role, off the ladder, shares the member's
+     * rung, so it is asked first, and the rung match below passes over the persona.
      */
     fun defaultFor(roles: Collection<String>): String {
+        if (ROLE.editor in roles && ROLE.admin !in roles) return editor
         val rung = RoleLadder.highestHeld(roles)
-        return defs.lastOrNull { RoleLadder.highestHeld(it.defaultRoles) == rung }?.name ?: member
+        return defs.lastOrNull { it.name != editor && RoleLadder.highestHeld(it.defaultRoles) == rung }?.name ?: member
     }
 
     /**

@@ -29,6 +29,18 @@ object ROLE {
      * roles that are not rungs) and confers no level of its own.
      */
     const val allClients = "allClients"
+
+    /**
+     * Sees every user and every form in its client and edits forms, administering nothing (issue #1432): no user
+     * edits, no user creation, no client configuration. Held outright, **not a rung** of [RoleLadder] -- an operator
+     * does not get it, and it reaches nothing an operator does -- and **implied by [admin]** ([RoleLadder.impliedBy]),
+     * since an administrator already holds everything it adds.
+     *
+     * Neither a level nor a capability: a level says what may be done, a capability qualifies a level, and this
+     * *confers* reach of its own -- client-wide reads of users and forms ([ReadScope][com.dynamicruntime.common.context.ReadScope]),
+     * and the read-only user directory (`SECT.clientDirectory`).
+     */
+    const val editor = "editor"
 }
 
 /**
@@ -69,6 +81,13 @@ object SECT {
      * built for the first time by the cfacts reference it now serves.
      */
     const val clientOperator = "clientOperator"
+
+    /**
+     * The read-only user directory (needs [ROLE.editor], which an `admin` implies; confined by scope, issue #1432): the
+     * users of the caller's client, listed, searched, and read one at a time, with nothing that changes one. Where an
+     * editor reads users, as an administrator does under [clientAdmin].
+     */
+    const val clientDirectory = "clientDirectory"
 }
 
 /**
@@ -94,6 +113,13 @@ object SECT {
 object RoleLadder {
     /** The ladder, least privileged first. Membership here is what makes a role a *level* rather than a capability. */
     val ordered: List<String> = listOf(ROLE.user, ROLE.operator, ROLE.admin)
+
+    /**
+     * Roles off the ladder that a rung implies (issue #1432): holding the rung satisfies a requirement of the role, as
+     * if it were held. [ROLE.editor] is implied by [ROLE.admin], since an administrator already holds everything an
+     * editor adds; an operator holds no part of it, which is why it is not a rung below operator.
+     */
+    val impliedBy: Map<String, String> = mapOf(ROLE.editor to ROLE.admin)
 
     /** [role]'s position on the ladder, or null when it is not a ladder role (a deployment's own capability). */
     fun rankOf(role: String): Int? = ordered.indexOf(role).takeIf { it >= 0 }
@@ -136,10 +162,12 @@ object RoleLadder {
      *
      * On the ladder, any held role that ranks at or above the requirement passes -- so an admin satisfies an
      * operator section without holding `operator`. Off the ladder (either side), the test is exact
-     * membership, which is the pre-ladder behavior and what a deployment's own role should get.
+     * membership, which is the pre-ladder behavior and what a deployment's own role should get -- except that a
+     * role [impliedBy] a rung is satisfied by that rung, or any above it, too.
      */
     fun satisfies(heldRoles: Set<String>, requiredRole: String): Boolean {
-        val required = rankOf(requiredRole) ?: return requiredRole in heldRoles
+        val required = rankOf(requiredRole) ?: return requiredRole in heldRoles ||
+            impliedBy[requiredRole]?.let { satisfies(heldRoles, it) } == true
         return heldRoles.any { held -> (rankOf(held) ?: -1) >= required }
     }
 }

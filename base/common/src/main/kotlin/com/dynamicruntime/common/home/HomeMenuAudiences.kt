@@ -10,7 +10,18 @@ import com.dynamicruntime.common.cfact.CFACTS
  * that it is the deployment's own -- people a client's own are never among -- which the Clients page's menu editor
  * reads to list, by default, only the items a client's people may be offered (issue #1397).
  */
-class MenuAudience(val condition: String, val name: String, val offered: Boolean, val deployment: Boolean = false)
+/**
+ * One audience: a menu condition and what a person calls it. [retired] is one the shipped menu no longer draws for but a
+ * client's stored menu edit may still hold (issue #1432): it keeps its name, so the edit is not shown as custom, and is
+ * never offered.
+ */
+class MenuAudience(
+    val condition: String,
+    val name: String,
+    val offered: Boolean,
+    val deployment: Boolean = false,
+    val retired: Boolean = false,
+)
 
 /**
  * The names of the audiences [homeMenuBlock] draws for (issue #1094), **declared beside the menu** so that a
@@ -18,7 +29,8 @@ class MenuAudience(val condition: String, val name: String, val offered: Boolean
  * shown to chooses by these names; the expression is what is stored, and stays the detail.
  *
  * **Every condition the shipped menu writes is here**, which `HomeMenuAudiencesTest` holds: a new menu item with a
- * new condition fails that test until the condition is given a name and it is decided whether to offer it. A
+ * new condition fails that test until the condition is given a name and it is decided whether to offer it. A condition
+ * the shipped menu stopped writing stays, [retired][MenuAudience.retired], for the clients whose edits chose it. A
  * condition that is not here -- one a source config or another component wrote by hand -- has no name, reads as
  * custom, and is never offered.
  *
@@ -27,8 +39,9 @@ class MenuAudience(val condition: String, val name: String, val offered: Boolean
  * administrator could want to address, or the same people as an offered one.
  * - The deployment's own -- its operators, a test instance, a debug session, the administrators who see every
  *   client -- can only hide an item from the client's people.
- * - `hasAdminLevel` and "administers this client and no other" are, inside a real client, the administrators
- *   again: three names for one audience is the confusion this table exists to remove. `administersClient` is the
+ * - "The administrator level, and editors" (the Users page's, issue #1432) and "administers this client and no other"
+ *   are, inside a real client, "Administrators and editors" and the administrators again: several names for one
+ *   audience is the confusion this table exists to remove. `administersClient` is the
  *   one offered, being the statement about scope the rest of the menu asks. So are a customer's root administrators
  *   (issue #1114), inside the root client.
  * - `#always` differs from "everyone" only on an edge node, which is not a distinction of people at all.
@@ -39,14 +52,20 @@ object HomeMenuAudiences {
         MenuAudience("${CFACTS.loggedIn},${CFACTS.app}", "Everyone signed in", offered = true),
         MenuAudience("${CFACTS.anonymous},${CFACTS.app}", "Signed-out visitors", offered = true),
         MenuAudience("${CFACTS.administersClient},${CFACTS.app}", "Administrators", offered = true),
+        // Editors (issue #1432) see every form of the client, as its administrators do: the forms list's two entries
+        // divide the client's people into those two and everyone else.
+        MenuAudience("${CFACTS.seesClientForms},${CFACTS.app}", "Administrators and editors", offered = true),
         MenuAudience(
-            "${CFACTS.loggedIn},~${CFACTS.administersClient},${CFACTS.app}", "Signed-in people who are not administrators",
+            "${CFACTS.loggedIn},~${CFACTS.seesClientForms},${CFACTS.app}", "Signed-in people who are neither administrators nor editors",
             offered = true,
         ),
         MenuAudience("${CFACTS.isClientOperator},${CFACTS.app}", "Operators and administrators", offered = true),
 
         MenuAudience(CFACT.alwaysName, "Everyone, edge nodes included", offered = false),
-        MenuAudience("${CFACTS.hasAdminLevel},${CFACTS.app}", "Anyone at the administrator level", offered = false),
+        MenuAudience(
+            "(${CFACTS.hasAdminLevel}|${CFACTS.isEditor}),${CFACTS.app}", "Anyone at the administrator level, and editors",
+            offered = false,
+        ),
         MenuAudience("${CFACTS.isDeploymentAdmin},${CFACTS.app}", "Administrators of every client", offered = false, deployment = true),
         MenuAudience(
             "${CFACTS.administersClient},~${CFACTS.isDeploymentAdmin},${CFACTS.app}", "Administrators of this client alone",
@@ -61,6 +80,15 @@ object HomeMenuAudiences {
         MenuAudience("${CFACTS.hasTestAccess},${CFACTS.app}", "Env-authed sessions, on a test instance", offered = false, deployment = true),
         MenuAudience("${CFACTS.isEnvDebug},${CFACTS.app}", "Sessions in debug", offered = false, deployment = true),
         MenuAudience("${CFACTS.canEnableDebug},${CFACTS.app}", "Sessions that may turn debug on", offered = false, deployment = true),
+
+        // Retired by the editor (issue #1432), named still for the stored edits that chose them. The first means what it
+        // says, so it now includes editors -- who are not administrators -- where it once meant everyone who reads only
+        // their own forms, which is "Signed-in people who are neither administrators nor editors" now.
+        MenuAudience(
+            "${CFACTS.loggedIn},~${CFACTS.administersClient},${CFACTS.app}", "Signed-in people who are not administrators",
+            offered = false, retired = true,
+        ),
+        MenuAudience("${CFACTS.hasAdminLevel},${CFACTS.app}", "Anyone at the administrator level", offered = false, retired = true),
     )
 
     private val byCondition: Map<String, MenuAudience> = all.associateBy { it.condition }

@@ -164,6 +164,28 @@ class PersonaFormTest {
     }
 
     @Test
+    fun anEditorIsARoleBesideTheLevelWithAPersonaOfItsOwn() {
+        // The checkbox adds or drops the role and keeps the level; the level keeps the role (issue #1432).
+        assertEquals(listOf(ROLE.user, ROLE.editor), rolesWithEditor(listOf(ROLE.user), granted = true))
+        assertEquals(listOf(ROLE.user), rolesWithEditor(listOf(ROLE.user, ROLE.editor), granted = false))
+        assertEquals(listOf(ROLE.user, ROLE.operator, ROLE.editor), RoleLadder.rolesAtLevel(listOf(ROLE.user, ROLE.editor), ROLE.operator))
+        // The persona follows: an editor below the admin level is an Editor, and an administrator stays one.
+        assertEquals(PERSONA.editor, personaForRoles(ROLE.user, editor = true))
+        assertEquals(PERSONA.member, personaForRoles(ROLE.user, editor = false))
+        assertEquals(PERSONA.admin, personaForRoles(ROLE.admin, editor = true))
+        assertEquals(ROLE.user, levelForPersona(PERSONA.editor))
+        // How the read-only details name a user's access.
+        assertEquals("Editor", accessText(listOf(ROLE.user, ROLE.editor)))
+        assertEquals("Administrator", accessText(listOf(ROLE.user, ROLE.admin, ROLE.editor)))
+        assertEquals("User", accessText(listOf(ROLE.user)))
+        // Not offered in `public`, where it would confer nothing.
+        val offered: (Boolean) -> List<String> = { on -> personaOptions(editorOffered = on).map { it.value as String } }
+        assertTrue(PERSONA.editor in offered(true))
+        assertFalse(PERSONA.editor in offered(false))
+        assertEquals(listOf(PERSONA.member, PERSONA.admin), offered(false))
+    }
+
+    @Test
     fun thePersonaSuffixIsOfferedOnlyForAKeyCollision() {
         val taken = ApiError("A user for a@b.com already exists in client public with persona member.", fromFragment = true, status = 400, errorCode = AERR.userKeyTaken, traceId = null)
         assertTrue(isUserKeyCollision(taken))

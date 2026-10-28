@@ -1,7 +1,8 @@
 # The admin user search, and its server-driven-UI shape (issue #411)
 
-**Status: built** (issue #411). Since then the console has gained a persona field (issue #750) and four date ranges
-(issues #462, #750), and the endpoint a single free-text term matched across several fields (issue #581). The shared
+**Status: built** (issue #411). Since then the console has gained a persona field (issue #750), four date ranges
+(issues #462, #750), and a roles field (issue #1432), and the endpoint a single free-text term matched across several
+fields (issue #581), which the console shows as a search box since #1432. The shared
 spec described here is built; the fully runtime version in
 [The next step: fully runtime SDUI](#the-next-step-fully-runtime-sdui) is not.
 
@@ -25,12 +26,18 @@ the console offers:
   finds the account, the behavior the old single search box had)
 - **client** — exact match; only meaningful to an `allClients` caller, since anyone else is already confined to
   their own client by scope
-- **persona** — case-insensitive substring of the persona or its suffix (issue #750), so `admin` finds the
-  administrators and `B` finds one member of a batch
+- **persona** — picked from the personas, matched exactly (issue #750; a picker since #1432), so Admin finds the
+  administrators. The suffix that tells a batch apart (`B`) is found by the free-text `q`, which matches it and the
+  persona as substrings
+- **roles** — picked from the roles, matching a user who holds that one (issue #1432), so Editor lists the editors
+  whatever their persona. Operator and All clients are offered only to an `allClients` caller. Filter-only: it is not
+  sortable, and the free-text `q` leaves it out, since every account holds `user`
 - **four date ranges**, each a from/to instant pair — edited, last login, registered, and activated
 
-The endpoint also takes axes the console does not show: `publicName`, a range over the update time, and `q`, one
-free-text term matched against every substring field at once — email, name, username, and persona (issue #581).
+Above the filters, always on screen, is a **search box**: `q`, one free-text term matched as a substring against
+email, name, username, persona, and persona suffix at once (issue #581; in the console since #1432). Where the
+filters AND, it is one OR. It is the console's only way to a batch member by suffix, now that the persona is picked.
+The endpoint also takes axes the console does not show: `publicName`, and a range over the update time.
 
 Results are sorted by any field (default `updatedAt` descending, though the console no longer shows the update time,
 since a login moves it), capped at a large default (`USF.defaultLimit` = 500), and report `numItems` /

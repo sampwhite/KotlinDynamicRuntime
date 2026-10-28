@@ -435,7 +435,7 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
         // confines the `user` parameter above: a row's stamped org can outlive its owner's move to another, and
         // the owner is then not this caller's to see even though the row is.
         val includeUsers = request.getOptBool(EI.includeUsers) == true
-        val owners = if (includeUsers && AdminRules.canManageUsers(c)) ownersOf(c, page.rows, callerScope) else emptyMap()
+        val owners = if (includeUsers && AdminRules.seesOthersRows(c)) ownersOf(c, page.rows, callerScope) else emptyMap()
         ListPage(
             page.rows.map { row ->
                 // Compute each entry's g-derived data values on read (issue #712) before the wire map and the
@@ -606,6 +606,12 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
         // only themselves -- see [resolveTargetUser]), or the caller when no user is named. The target's client
         // is the one whose traits the import validates against.
         val targetRow = resolveTargetUser(c, request, callerScope)
+        // Importing makes forms, so importing for somebody else is creating forms for them: an administrator's, as
+        // `createForUserCxt` holds the create to. Reach alone does not grant it -- an editor (issue #1432) reaches every
+        // user of its client and creates forms for none of them.
+        if (targetRow != null && targetRow.userId != c.userProfile.userId && !AdminRules.canManageUsers(c)) {
+            throw KdrException("Importing forms for another user takes an administrator.", code = EXC.notAuthorized)
+        }
         val target = if (targetRow == null) {
             Triple(c.userProfile.client, c.userProfile.userId, c.userProfile.org)
         } else {
@@ -1423,13 +1429,13 @@ private fun gedraSortFor(
         GSORT.contains -> GedraDataService.GedraSort(UsageKind.string, descending) { row ->
             row.entries.mapNotNull { it[GE.traitId].toOptStr() }.joinToString(", ")
         }
-        // The owner (the User column, issue #666): admin-only, as the column is -- an ordinary caller's rows are
-        // all their own. Ordered by the name the column shows (the name, else the email). Resolved in the `prepare`
+        // The owner (the User column, issue #666): for an administrator or an editor (issue #1432), as the column is --
+        // an ordinary caller's rows are all their own. Ordered by the name the column shows (the name, else the email). Resolved in the `prepare`
         // hook by one batch read over the whole matched set ([ownersOf]) -- the cache answers what it holds and the
         // misses share a single session, where a per-row lookup would open one session each on a cache-absent
         // node. A user beyond the caller's scope is absent from the map, so `keyOf` reads blank, which sorts last.
         GSORT.owner -> {
-            if (!AdminRules.canManageUsers(cxt)) {
+            if (!AdminRules.seesOthersRows(cxt)) {
                 null
             } else {
                 val names = HashMap<Long, String>()

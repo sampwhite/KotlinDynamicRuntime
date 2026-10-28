@@ -220,6 +220,13 @@ class RequestService : ServiceInitializer {
      */
     val scopedAdminSections: List<String> = listOf(SECT.clientAdmin)
 
+    /**
+     * Sections requiring [ROLE.editor] and **confined by the caller's scope** (issue #1432): the read-only user directory,
+     * where an editor -- who sees every user of its client and administers none -- reads users. An administrator holds
+     * the role by implication (`RoleLadder.impliedBy`), so passes too; an operator does not.
+     */
+    val editorSections: List<String> = listOf(SECT.clientDirectory)
+
     @KdrPrivate
     var isInit: Boolean = false
 
@@ -361,6 +368,7 @@ class RequestService : ServiceInitializer {
             directReads = true,
         )
         for (s in scopedAdminSections) sectionRulesMap[s] = SectionRules(s, needsLogin = true, requiredRole = ROLE.admin)
+        for (s in editorSections) sectionRulesMap[s] = SectionRules(s, needsLogin = true, requiredRole = ROLE.editor)
         // Operator level, no capability: an operator or admin confined to their own scope (issue #488).
         for (s in clientOperatorSections) sectionRulesMap[s] = SectionRules(s, needsLogin = true, requiredRole = ROLE.operator)
         for (s in adminSections) {

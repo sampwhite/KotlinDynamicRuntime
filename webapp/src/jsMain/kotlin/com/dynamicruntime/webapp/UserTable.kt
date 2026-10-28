@@ -17,7 +17,7 @@ import kotlin.time.Instant
  * spec** ([userSearchFieldSpecs]): their existence, order, header label, and sortability all come from the
  * kernel description, so a field added to the spec becomes a column here with no edit -- the SDUI extra credit.
  * Clicking a sortable header drives a **server-side** re-sort through [onSort], so the order stays correct even
- * when the match ran past the endpoint's cap. The descriptive columns after them (Type, Roles, Status) are
+ * when the match ran past the endpoint's cap. The descriptive columns after them (Type, Status) are
  * static -- they are not search fields.
  *
  * Presentational: every value and the current sort arrive via props. Mirrors [EndpointTable], which solves the
@@ -48,6 +48,12 @@ external interface UserTableProps : Props {
      * of links, so neither is a detour through another page's filters.
      */
     var showLinks: Boolean
+
+    /**
+     * Whether those links include the user's **client** (issue #1432): not for an editor, who reads the client's users
+     * and forms but none of its configuration, which is what the Clients page shows. Null reads as true.
+     */
+    var showClientLinks: Boolean?
 
     /** The clients this node carries, as the page was told them -- which a Forms link may choose ([userFormsSurface]). */
     var carriedClients: Set<String>
@@ -80,7 +86,6 @@ val UserTable = FC<UserTableProps> { props ->
             }
             // Descriptive columns that are not search fields, so they stay static and unsorted.
             add(column("Type", typeColumn, columnWidths[typeColumn]))
-            add(column("Roles", rolesColumn, columnWidths[rolesColumn]))
             add(column("Status", statusColumn, columnWidths[statusColumn]))
             if (props.showLinks) add(userLinksColumn(props))
         }
@@ -106,7 +111,6 @@ val UserTable = FC<UserTableProps> { props ->
             }
             for ((field, at) in userTimes(user)) at?.let { row[timeTipKey(field)] = formatTimestamp(it) }
             row.type = if (user.isEntity) "Business" else "Person"
-            row.roles = rolesCellText(user)
             row.status = statusWords(user).joinToString(", ")
             row
         }.toTypedArray()
@@ -150,6 +154,7 @@ private fun userLinksColumn(props: UserTableProps): dynamic {
             userId = id
             client = record[USF.client] as? String ?: ""
             carriedClients = props.carriedClients
+            showClient = props.showClientLinks != false
         }
     }
     return c
@@ -160,6 +165,8 @@ external interface UserLinksProps : Props {
     var userId: Long
     var client: String
     var carriedClients: Set<String>
+    /** Whether the client link is drawn beside the forms one; null reads as true. */
+    var showClient: Boolean?
 }
 
 /**
@@ -175,7 +182,7 @@ val UserLinks = FC<UserLinksProps> { props ->
             title = "The forms this user owns."
             +"Forms"
         }
-        if (props.client.isNotEmpty()) {
+        if (props.client.isNotEmpty() && props.showClient != false) {
             +" · "
             a {
                 className = ClassName("wf-cell-link")
@@ -212,6 +219,8 @@ fun cellValue(field: String, user: AdminUser, now: Instant): String = when (fiel
     USF.client -> user.client
     // Which of a person's users this is (issue #750): the persona's label, and the personaSuffix when there is one.
     USF.persona -> personaCell(user.persona, user.personaSuffix)
+    // The roles held, and those a sandbox user acts with when they differ (issue #1198).
+    USF.roles -> rolesCellText(user)
     // The tracked dates the console shows (issue #462), relative to [now] (issue #1141). A dash rather than a blank:
     // "never" is a fact about the account -- never logged in, never edited -- and an empty cell reads as a rendering
     // failure. An absent registered date means unclaimed (issue #750), which the Status column also says in a word.
@@ -263,11 +272,10 @@ fun personaCell(persona: String, personaSuffix: String): String =
 /** What [cellValue] returns for a spec field with no display branch -- the tell `UserCellValueTest` catches. */
 const val unmappedCell = "(?)"
 
-// The four columns that are not search fields, so they have no spec to take a name from. Named rather than
+// The columns that are not search fields, so they have no spec to take a name from. Named rather than
 // repeated as literals, because each appears three times -- the column, the row's cell, and its width.
 private const val idColumn = "userId"
 private const val typeColumn = "type"
-private const val rolesColumn = "roles"
 private const val statusColumn = "status"
 private const val linksColumn = "links"
 
@@ -319,7 +327,7 @@ private val columnWidths: Map<String, Int> = mapOf(
     // (`user, admin, allClients`, a full administrator) or a long-named one, which are the minority, and on a
     // sandbox user whose row and acting roles differ, which says both (issue #1198) and may take three or four.
     // The 40px it gave up went to the Registered column (issue #750); a few tall rows beat a scrollbar on all.
-    rolesColumn to 120,
+    USF.roles to 120,
 )
 
 /** Builds an antd column config `{ title, dataIndex, key, width? }`. */
