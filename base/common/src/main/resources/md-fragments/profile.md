@@ -31,7 +31,8 @@ separate account:
 []{.clear}
 
 - **In a client.** A client is an organization's own space in the app, with its own forms and workflows.
-- **With a persona**, such as Member or Admin, which decides what that user may do there.
+- **With a persona**, such as Member or Admin, which names which of your users it is there. What a user may do is
+  its access, which an administrator sets and may change later; when the two differ, the persona says so.
 - **Owning its own content.** Forms belong to the user that made them. One of your users sees another's forms only
   if its access would let it see anybody's.
 - **With its own profile.** The name on this page belongs to the user you are acting as now, so each can be named

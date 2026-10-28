@@ -341,7 +341,7 @@ object DUF {
     /** The client the user belongs to (issue #1095). */
     const val client = "client"
 
-    /** The user's persona (issue #1097): what kind of user this is, `PERSONA`'s value -- `member`, `admin`. */
+    /** The user's persona (issue #1097): which of the person's users this is, `PERSONA`'s value -- `member`, `admin`. */
     const val persona = "persona"
 
     /** What tells same-persona users of one address apart (issue #1097); present only when the user has one. */
@@ -363,7 +363,7 @@ object DUF {
 fun SchTypeBuilder.userBlockProperties() {
     property(DUF.name, "The user's display name, when it is not the email.")
     property(DUF.email, "The user's email (their login id).", required = true)
-    property(DUF.persona, "The user's persona: what kind of user this is ('member', 'admin').", required = true)
+    property(DUF.persona, "The user's persona: which of the person's users this is ('member', 'admin'); it grants nothing.", required = true)
     property(DUF.personaSuffix, "What tells the user apart from the address's other users of the same persona, when it has one.")
 }
 

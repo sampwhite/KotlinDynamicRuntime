@@ -6,6 +6,7 @@ import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.home.HACT
 import com.dynamicruntime.common.uiblock.UiCall
 import com.dynamicruntime.common.uiblock.UiRoute
+import com.dynamicruntime.common.user.PERSONA
 import com.dynamicruntime.common.user.UserChoice
 import com.dynamicruntime.common.util.isVariableName
 import com.dynamicruntime.common.util.splitComma
@@ -75,13 +76,24 @@ const val signedInFallback = "Signed in"
  * The identity badge's text (issue #749): the [label] -- who is signed in -- followed, for a person with more
  * than one user, by **which** of their users this is, in brackets: `Demo Person [hub · Member B]`,
  * `Ada [Admin]`. The bracket holds only what tells this user from the person's others
- * (`UserChoice.qualifierWithin`); a person with one user sees the label alone, as before. Pure, covered under
- * `jsNodeTest`.
+ * (`UserChoice.qualifierWithin`); a person with one user sees the label alone, as before. Given the session's
+ * [roles], a persona shown there says the access the user has when that differs from its persona's (issue #1450):
+ * `Ada [Member (Administrator access)]`. Pure, covered under `jsNodeTest`.
  */
-fun identityBadgeText(label: String, users: List<UserChoice>): String {
+fun identityBadgeText(label: String, users: List<UserChoice>, roles: Collection<String>? = null): String {
     val current = users.firstOrNull { it.isCurrent } ?: return label
-    val qualifier = current.qualifierWithin(users)
+    val qualifier = current.qualifierWithin(users, roles)
     return if (qualifier.isEmpty()) label else "$label [$qualifier]"
+}
+
+/**
+ * The identity badge's tooltip, for the [current] user: which of the person's users this is, by its full label, and
+ * -- given the session's [roles] -- the access it has when that differs from its persona's (issue #1450), so the
+ * tooltip does not say "Member" of someone with administrator access. Pure, covered under `jsNodeTest`.
+ */
+fun identityBadgeTitle(current: UserChoice, roles: Collection<String>?): String {
+    val access = roles?.let { PERSONA.actsAs(current.persona, it) }
+    return "You are signed in as ${current.label()}" + (access?.let { ", with ${PERSONA.accessPhrase(it)}." } ?: ".")
 }
 
 /**
@@ -97,10 +109,11 @@ fun switchableUsers(users: List<UserChoice>): List<UserChoice> =
 /**
  * One row of the identity badge's menu: what tells [user] from the others in [users], in the badge's brackets --
  * or, when nothing does because it is the only entry (a stranded sandbox session's way out, issue #1197), its full
- * label, since an empty pair of brackets names nobody. Pure, covered under `jsNodeTest`.
+ * label, since an empty pair of brackets names nobody. The session's [roles] speak for the current user's row only
+ * (issue #1450): the list carries nobody's roles, and the session knows only its own. Pure, covered under `jsNodeTest`.
  */
-fun userMenuEntryText(user: UserChoice, users: List<UserChoice>): String =
-    user.qualifierWithin(users).let { if (it.isEmpty()) user.label() else "[$it]" }
+fun userMenuEntryText(user: UserChoice, users: List<UserChoice>, roles: Collection<String>? = null): String =
+    user.qualifierWithin(users, roles.takeIf { user.isCurrent }).let { if (it.isEmpty()) user.label() else "[$it]" }
 
 /**
  * What the app bar's brand area should show -- an explicit **three-state** rather than inferring from an absent
@@ -705,10 +718,11 @@ val AppBar = FC<AppBarProps> { props ->
                         asDynamic()["aria-expanded"] = userMenuOpen
                         // The list holds registered, enabled users only, so a session acting as one that is
                         // neither has no current entry here -- the badge then just offers the others.
-                        title = users.firstOrNull { it.isCurrent }?.let { "You are acting as ${it.label()}. Click to switch users." }
+                        title = users.firstOrNull { it.isCurrent }
+                            ?.let { "${identityBadgeTitle(it, config?.user?.roles)} Click to switch users." }
                             ?: "Click to switch users."
                         onClick = { userMenuOpen = !userMenuOpen }
-                        +identityBadgeText(label, users)
+                        +identityBadgeText(label, users, config?.user?.roles)
                         span { className = ClassName("app-menu-caret"); +(if (userMenuOpen) "▲" else "▼") }
                     }
                     if (userMenuOpen) {
@@ -716,7 +730,7 @@ val AppBar = FC<AppBarProps> { props ->
                             className = ClassName("app-menu-overlay")
                             onClick = { userMenuOpen = false }
                         }
-                        userMenu(users) { switchUserAction(it) }
+                        userMenu(users, config?.user?.roles) { switchUserAction(it) }
                     }
                 }
             }
@@ -847,7 +861,7 @@ private fun clearTimer(id: Int) {
  * user marked like the page on screen and inert -- you are already them. Not items from the menu block: they
  * are per caller and change as users are made, so they ride the shell config's `users`.
  */
-private fun ChildrenBuilder.userMenu(users: List<UserChoice>, onSwitch: (Long) -> Unit) {
+private fun ChildrenBuilder.userMenu(users: List<UserChoice>, roles: Collection<String>?, onSwitch: (Long) -> Unit) {
     div {
         className = ClassName("app-menu user-menu")
         asDynamic()["role"] = "menu"
@@ -859,7 +873,7 @@ private fun ChildrenBuilder.userMenu(users: List<UserChoice>, onSwitch: (Long) -
                 disabled = user.isCurrent
                 title = user.label()
                 onClick = { onSwitch(user.userId) }
-                +userMenuEntryText(user, users)
+                +userMenuEntryText(user, users, roles)
             }
         }
     }

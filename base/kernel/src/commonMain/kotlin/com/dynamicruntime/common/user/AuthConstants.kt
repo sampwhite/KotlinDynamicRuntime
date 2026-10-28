@@ -315,6 +315,67 @@ object PERSONA {
         return defs.lastOrNull { it.name != editor && RoleLadder.highestHeld(it.defaultRoles) == rung }?.name ?: member
     }
 
+    /** [accessOf]'s answer for a role list that gives no access at all: a disabled user's, or a stranded sandbox user's. */
+    const val noAccess = "none"
+
+    /** [accessOf]'s answer for an operator who is also an editor: the two reaches are separate, and neither holds the other. */
+    const val operatorAndEditor = "operatorEditor"
+
+    /**
+     * The access [roles] give, read as one answer (issue #1450): the highest rung of `RoleLadder` held -- an `admin`,
+     * which implies `editor`, is just an admin -- with `editor` beside a rung below it, since an operator holds no
+     * part of editor nor an editor of operator ([operatorAndEditor]). [noAccess] for a list holding neither a rung
+     * nor `editor`: the empty list a disabled or stranded user acts with. A capability (`allClients`) and a
+     * deployment's own role are no access level and change nothing here.
+     */
+    fun accessOf(roles: Collection<String>): String {
+        val rung = RoleLadder.highestHeld(roles)
+        val editor = ROLE.editor in roles
+        return when {
+            rung == ROLE.admin -> ROLE.admin
+            rung == ROLE.operator && editor -> operatorAndEditor
+            editor -> ROLE.editor
+            rung != null -> rung
+            else -> noAccess
+        }
+    }
+
+    /** How an [accessOf] answer reads in the console: `Administrator`, `Operator and editor`, `Editor`, `User`, `None`. */
+    fun accessLabel(access: String): String = when (access) {
+        ROLE.admin -> "Administrator"
+        ROLE.operator -> "Operator"
+        operatorAndEditor -> "Operator and editor"
+        ROLE.editor -> "Editor"
+        ROLE.user -> "User"
+        noAccess -> "None"
+        else -> access.replaceFirstChar { it.uppercaseChar() }
+    }
+
+    /** An [accessOf] answer as a phrase beside a persona: `Administrator access`, `No access`. */
+    fun accessPhrase(access: String): String = if (access == noAccess) "No access" else "${accessLabel(access)} access"
+
+    /**
+     * The access a user of [persona] has when its [roles] give other access than the persona's own default roles do
+     * (issue #1450) -- or null when the two agree, or the persona is none the registry holds. A persona names which
+     * of a person's users this is, and is frozen at creation; roles say what it may do. They part when roles move
+     * on -- a member promoted to administrator, an administrator demoted -- and from the start for a level no
+     * persona's defaults name: an operator is a member or an admin given the rung. Either way the persona's label
+     * alone would say the wrong thing.
+     */
+    fun actsAs(persona: String, roles: Collection<String>): String? {
+        val own = def(persona)?.defaultRoles ?: return null
+        return accessOf(roles).takeIf { it != accessOf(own) }
+    }
+
+    /**
+     * [term] -- a persona's label, or its [personaTerm] with the suffix -- as a user of [persona] with [roles] reads
+     * it: `Member (Administrator access)`, `Admin (No access)` when [actsAs] says they part, [term] alone when not, or
+     * when [roles] is not known. Worded as access, never as "acts as", which elsewhere names the user a sandbox user
+     * acts as.
+     */
+    fun withActing(term: String, persona: String, roles: Collection<String>?): String =
+        roles?.let { actsAs(persona, it) }?.let { "$term (${accessPhrase(it)})" } ?: term
+
     /**
      * A persona as a person types it on the claim page (issue #751), `admin` or `member B`, split into the
      * persona name and the personaSuffix suffix (empty when there is none): the first word and whatever follows it,

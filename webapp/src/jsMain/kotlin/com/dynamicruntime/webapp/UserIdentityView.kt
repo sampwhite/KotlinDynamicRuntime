@@ -33,8 +33,10 @@ class IdentitySibling(val user: AdminUser, val label: String, val status: String
 /** What tells [user] apart from the rest of [users] -- the badge's own rule (`UserChoice.qualifierWithin`). */
 private fun qualifierOf(user: AdminUser, users: List<AdminUser>): String {
     val choices = users.map { UserChoice(it.userId, it.client, it.persona, it.personaSuffix, it.name) }
-    return choices.first { it.userId == user.userId }.qualifierWithin(choices)
-        .ifEmpty { personaCell(user.persona, user.personaSuffix) }
+    // Each sibling with what it acts as when that differs from its persona (issue #1450): their roles are in hand.
+    val roles = user.actingRoles ?: user.roles
+    return choices.first { it.userId == user.userId }.qualifierWithin(choices, roles)
+        .ifEmpty { personaCell(user.persona, user.personaSuffix, roles) }
 }
 
 /**

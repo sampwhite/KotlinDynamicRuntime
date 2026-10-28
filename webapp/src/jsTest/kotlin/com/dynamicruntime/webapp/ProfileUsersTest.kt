@@ -1,5 +1,6 @@
 package com.dynamicruntime.webapp
 
+import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.context.CL
 import com.dynamicruntime.common.user.PERSONA
 import com.dynamicruntime.common.user.UserChoice
@@ -54,6 +55,19 @@ class ProfileUsersTest {
         )
         // With no user marked as the one a sign-in lands on, it is said to be the active one.
         assertEquals("Member in Acme", usersHelpData(listOf(member, memberB.copy(signsInAs = false)))["signsInAs"])
+    }
+
+    // Issue #1450: the session's roles speak for the active user only, in its row and in the help.
+    @Test
+    fun theActiveUserSaysTheAccessItHasBesideAPersonaItNoLongerMatches() {
+        val promoted = listOf(ROLE.user, ROLE.admin)
+        val (active, other) = profileUserRows(listOf(member, memberB), promoted)
+        assertEquals("Member (Administrator access)", active.label)
+        assertEquals("Member B", other.label)
+        assertEquals(
+            mapOf("active" to "Member (Administrator access) in Acme", "signsInAs" to "Member B in Acme"),
+            usersHelpData(listOf(member, memberB), promoted),
+        )
     }
 
     @Test

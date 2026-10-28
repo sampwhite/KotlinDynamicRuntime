@@ -1,5 +1,6 @@
 package com.dynamicruntime.webapp
 
+import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.user.PERSONA
 import com.dynamicruntime.common.user.UCF
 import com.dynamicruntime.common.user.UserChoice
@@ -78,6 +79,24 @@ class UserSwitcherTest {
         // No current user in the list, or a single user: the label alone.
         assertEquals("Ada", identityBadgeText("Ada", listOf(ada.copy(isCurrent = false), member)))
         assertEquals("Ada", identityBadgeText("Ada", listOf(ada)))
+    }
+
+    // Issue #1450: the session's roles say the current user's access when it differs from its persona's -- in the
+    // badge and on its own menu row, never on another's, whose roles the session does not know.
+    @Test
+    fun theBadgeAndTheCurrentRowSayWhatTheUserActsAs() {
+        val member = UserChoice(8L, "acme", "member")
+        val demoted = listOf(ROLE.user)
+        assertEquals("Ada [Admin (User access)]", identityBadgeText("Ada", listOf(ada, member), demoted))
+        assertEquals("Ada [Admin]", identityBadgeText("Ada", listOf(ada, member), listOf(ROLE.user, ROLE.admin)))
+        assertEquals("[Admin (User access)]", userMenuEntryText(ada, listOf(ada, member), demoted))
+        assertEquals("[Member]", userMenuEntryText(member, listOf(ada, member), demoted))
+        // The badge's tooltip says it in words, and says nothing more where the two agree.
+        assertEquals("You are signed in as acme / Admin -- Ada Lovelace, with User access.", identityBadgeTitle(ada, demoted))
+        assertEquals("You are signed in as acme / Admin -- Ada Lovelace.", identityBadgeTitle(ada, listOf(ROLE.user, ROLE.admin)))
+        // The Persona column and the editors read the user's own roles.
+        assertEquals("Member B (Administrator access)", personaCell("member", "B", listOf(ROLE.user, ROLE.admin)))
+        assertEquals("Member B", personaCell("member", "B"))
     }
 
     @Test
