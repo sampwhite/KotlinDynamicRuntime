@@ -3,6 +3,9 @@ package com.dynamicruntime.common.gedra
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.gedra.report.RMETA
+import com.dynamicruntime.common.gedra.report.RUSR
+import com.dynamicruntime.common.gedra.report.ReportSource
 import com.dynamicruntime.common.gedra.workflow.WFD
 import com.dynamicruntime.common.gedra.workflow.WFT
 import com.dynamicruntime.common.gedra.workflow.WfDef
@@ -30,6 +33,13 @@ import com.dynamicruntime.common.util.toOptStr
  * same definition would be, with the same words.
  */
 object ClientCreate {
+    /** The configuration a new client's starter report is written to (issue #1429), and the report's id. */
+    @Suppress("ConstPropertyName")
+    const val starterReportsConfig = "reports"
+
+    @Suppress("ConstPropertyName")
+    const val starterReport = "forms"
+
     /** What a create did: the configuration the definition was written to, the definition as stored, and whether this node now carries the client. */
     class Result(
         val client: String,
@@ -112,6 +122,7 @@ object ClientCreate {
                 add(ConfigWrite(config, mustBeNew = true))
                 if (copy.isNotEmpty()) add(ConfigWrite(copyConfig(bound, client, copy), mustBeNew = true))
                 starterConfigs(bound, client, starters).forEach { add(ConfigWrite(it, mustBeNew = true)) }
+                add(ConfigWrite(starterReportConfig(bound, client, definition), mustBeNew = true))
             }
             try {
                 svc.writeConfigs(bound, client, writes, trial = true)
@@ -138,9 +149,10 @@ object ClientCreate {
         // new to refuse; were it to, the configuration stays written and unpublished, and a second create is told the
         // id has one.
         val published = svc.publish(bound, listOf(written.first().configId), trial = true).single()
-        // The copy with it (issue #1336): judged with the definition by the write, so its publish has nothing new to
-        // refuse either. Were it to fail, the client is made all the same -- its definition is published -- so the
-        // copy is left a draft, for its administrator to publish, rather than failing a create that has happened.
+        // The copy, the starter workflows, and the starter report with it (issues #1336, #1346, #1429): judged with the
+        // definition by the write, so their publish has nothing new to refuse either. Were one to fail, the client is
+        // made all the same -- its definition is published -- so that config is left a draft, for its administrator to
+        // publish, rather than failing a create that has happened.
         for (row in written.drop(1)) {
             try {
                 svc.publish(bound, listOf(row.configId), trial = true)
@@ -283,6 +295,29 @@ object ClientCreate {
                 bound, CWF.configPrefix + id, clientNamespace(client), client,
                 mapOf(CCT.workflowDef to listOf(mapOf(CCT.workflowId to id, CCT.definition to overlay))),
             )
+        }
+    }
+
+    /**
+     * The configuration holding a new client's starter report (issue #1429), so its Reports page has a report to run
+     * from the start: every form with its name, its owner, its status, and when it was made, grouped by status. There is
+     * no editor for reports yet, so this is the report a client made from data has. The name column is there only when
+     * [definition] includes the trait it reads, as it does whenever the client starts with the starter workflows: a
+     * report naming a trait the client does not support would be refused at the write.
+     */
+    private fun starterReportConfig(bound: KdrCxt, client: String, definition: Map<String, Any?>): GedraConfig {
+        val included = definition[CLD.includedTraits].toJsonListOfStrings()
+        val withName = GT.name in included || CLD.allGlobal in included
+        return gedraConfig(bound, starterReportsConfig, clientNamespace(client), client) {
+            report(starterReport, "Forms") {
+                description = "Every form, with its name, its owner, its status, and when it was made. Grouped, how many forms " +
+                    "have each status."
+                if (withName) column("name", "Name", "${ReportSource.form.name}.${GT.name}.${GT.nameField}")
+                column("owner", "Owner", "${ReportSource.user.name}.${RUSR.email}")
+                column("status", "Status", "${ReportSource.meta.name}.${RMETA.formStatus}")
+                column("created", "Created", "${ReportSource.meta.name}.${RMETA.createdAt}")
+                groupBy = listOf("status")
+            }
         }
     }
 
