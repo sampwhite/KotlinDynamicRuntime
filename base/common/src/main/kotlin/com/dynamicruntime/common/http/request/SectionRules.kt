@@ -24,6 +24,11 @@ fun sectionOf(appPath: String): String = appPath.removePrefix("/").substringBefo
  * **A section constrains two independent things**, matching the two axes the role model already draws:
  * [requiredRole] is a *level* on `RoleLadder`, where a higher rung satisfies a lower requirement, and
  * [requiredCapability] is an off-ladder *capability* that must be held outright. Both must be met.
+ *
+ * [requiredRole] may also name an off-ladder role on purpose (issue #1432): `editor`, which *confers* reach of its own
+ * -- the `clientDirectory` section requires it -- and which `RoleLadder.impliedBy` lets `admin` satisfy. That is
+ * different from naming a capability there, which makes holding the capability sufficient on its own (the #237 trap):
+ * a capability qualifies a level, while `editor` is meant to admit its holders, and an administrator, and nobody else.
  */
 class SectionRules(
     val section: String,
@@ -33,7 +38,10 @@ class SectionRules(
      * ([directReads]).
      */
     val needsLogin: Boolean,
-    /** Level required to access this section, or null when the section demands no level. */
+    /**
+     * Level required to access this section, or null when the section demands no level -- or `editor`, the one off-ladder
+     * role meant to be required here (see the class note).
+     */
     val requiredRole: String?,
     /**
      * A capability that must additionally be held, or null when the section demands none (issue #225).

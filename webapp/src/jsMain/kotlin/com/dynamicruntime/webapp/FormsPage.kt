@@ -152,7 +152,7 @@ val FormsPage = FC<FormsPageProps> { props ->
     // Who the caller is, and whether it deletes only its own forms -- anyone but an administrator (issue #1432) -- so a
     // Delete is offered only where it would be honored.
     var selfUserId by useState<Long?>(null)
-    var deletesOwnOnly by useState(true)
+    var deletesOwnOnly by useState(false)
     // Whether the caller administers across clients (issue #668), from the same UI-config. Gates the Client
     // column and the filter-by-client control; false until known and when it cannot be learned.
     var canSeeAllClients by useState(false)
@@ -440,7 +440,9 @@ val FormsPage = FC<FormsPageProps> { props ->
             val canManage = homeConfig?.canManageUsers == true || homeConfig?.seesClientForms == true
             seesOthersForms = canManage
             selfUserId = homeConfig?.user?.userId
-            deletesOwnOnly = homeConfig?.canManageUsers != true
+            // Only once the shell has said the caller is no administrator: a config that could not be read leaves
+            // Delete offered as the endpoint does, for the backend to judge, rather than hiding it from everyone.
+            deletesOwnOnly = homeConfig != null && !homeConfig.canManageUsers
             // The freshly-read local, not the state set just above: that setter has not landed yet, so the
             // clients fetch and the chosen-client restore must branch on the value in hand (issue #668).
             val seeAllClients = homeConfig?.canSeeAllClients == true

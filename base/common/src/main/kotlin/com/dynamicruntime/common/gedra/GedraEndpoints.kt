@@ -606,6 +606,12 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
         // only themselves -- see [resolveTargetUser]), or the caller when no user is named. The target's client
         // is the one whose traits the import validates against.
         val targetRow = resolveTargetUser(c, request, callerScope)
+        // Importing makes forms, so importing for somebody else is creating forms for them: an administrator's, as
+        // `createForUserCxt` holds the create to. Reach alone does not grant it -- an editor (issue #1432) reaches every
+        // user of its client and creates forms for none of them.
+        if (targetRow != null && targetRow.userId != c.userProfile.userId && !AdminRules.canManageUsers(c)) {
+            throw KdrException("Importing forms for another user takes an administrator.", code = EXC.notAuthorized)
+        }
         val target = if (targetRow == null) {
             Triple(c.userProfile.client, c.userProfile.userId, c.userProfile.org)
         } else {

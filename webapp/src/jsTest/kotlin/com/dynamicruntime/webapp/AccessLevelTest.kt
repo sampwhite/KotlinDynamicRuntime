@@ -178,6 +178,11 @@ class PersonaFormTest {
         assertEquals("Editor", accessText(listOf(ROLE.user, ROLE.editor)))
         assertEquals("Administrator", accessText(listOf(ROLE.user, ROLE.admin, ROLE.editor)))
         assertEquals("User", accessText(listOf(ROLE.user)))
+        // Not offered in `public`, where it would confer nothing.
+        val offered: (Boolean) -> List<String> = { on -> personaOptions(editorOffered = on).map { it.value as String } }
+        assertTrue(PERSONA.editor in offered(true))
+        assertFalse(PERSONA.editor in offered(false))
+        assertEquals(listOf(PERSONA.member, PERSONA.admin), offered(false))
     }
 
     @Test

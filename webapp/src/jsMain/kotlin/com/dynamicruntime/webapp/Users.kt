@@ -387,6 +387,10 @@ val Users = FC<Props> {
         else -> editing?.userId?.toString()
     }
 
+    /** Whether the page is read-only (an editor, issue #1432), read through a ref by the listener, as the rows are. */
+    val readOnlyRef = useRef(false)
+    readOnlyRef.current = usersReadOnly(config)
+
     /** The rows the listener can resolve against, read through a ref (it is registered once). */
     val usersRef = useRef<List<AdminUser>>(emptyList())
     // The open person's users as well (issue #770): choosing one of them edits a user the search may not hold,
@@ -418,6 +422,8 @@ val Users = FC<Props> {
         val open = routeParams()[HP.user]
         when {
             open == null -> closeEditor()
+            // An editor (issue #1432) creates nobody: an address naming a create opens the list rather than an empty page.
+            (open == HP.newRecord || open == HP.selfRecord) && readOnlyRef.current == true -> closeEditor()
             open == HP.newRecord -> startCreate()
             // Needs the caller's address; until it is known the self form cannot be shown, so the ordinary one
             // opens instead rather than a self form with an empty, locked address.
@@ -579,6 +585,9 @@ val Users = FC<Props> {
     }
 
     val denied = config != null && !mayBrowseUsers(config)
+    // The editor role is not offered in `public` (issue #1432), where no client role widens what a user reads: the user
+    // edited, or the client a new one is made in -- the chosen one, else the caller's.
+    val editorOffered = (editing?.client ?: draftClient.ifEmpty { null } ?: config?.user?.client) != CL.public
     // An editor (issue #1432): every user of its client is shown, and nothing that changes one.
     val readOnly = usersReadOnly(config)
     val inEditor = creating || editing != null
@@ -729,7 +738,7 @@ val Users = FC<Props> {
 
                 // The editor role (issue #1432): beside the level rather than one of its rungs -- an operator does not
                 // hold it -- and offered below the admin level, since an administrator already holds everything it adds.
-                if (draftLevel != ROLE.admin) {
+                if (draftLevel != ROLE.admin && editorOffered) {
                     div {
                         className = ClassName("row")
                         Checkbox {
@@ -838,7 +847,7 @@ val Users = FC<Props> {
                     }
                     Select {
                         value = draftPersona
-                        options = personaOptions()
+                        options = personaOptions(editorOffered = editorOffered)
                         disabled = busy
                         style = choiceStyle()
                         onChange = { v ->
@@ -1356,9 +1365,12 @@ private val accessLevelLabels = mapOf(
 fun offeredAccessLevels(operatorSelectable: Boolean): List<String> =
     RoleLadder.ordered.filter { it != ROLE.operator || operatorSelectable }
 
-/** The persona registry as antd `{ label, value }` option objects (issue #750), in the registry's order. */
-fun personaOptions(): Array<dynamic> =
-    PERSONA.defs.map { def ->
+/**
+ * The persona registry as antd `{ label, value }` option objects (issue #750), in the registry's order -- without the
+ * editor unless [editorOffered] (issue #1432): not in `public`, where it would confer nothing.
+ */
+fun personaOptions(editorOffered: Boolean = true): Array<dynamic> =
+    PERSONA.defs.filter { editorOffered || it.name != PERSONA.editor }.map { def ->
         val obj: dynamic = js("({})")
         obj.label = def.label
         obj.value = def.name

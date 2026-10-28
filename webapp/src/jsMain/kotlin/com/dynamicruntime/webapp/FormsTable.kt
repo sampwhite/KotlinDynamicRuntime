@@ -271,6 +271,8 @@ val FormsTable = FC<FormsTableProps> { props ->
             row[GSORT.client] = summary.client.ifBlank { "—" }
             // The workflow cell's items (issue #791), joined to the summary here so the cell only draws.
             row.wfItems = workflowCellOf(summary.states, summary.client, props.workflowSummary)
+            // Whose form it is (issue #1432), so the actions cell asks who may delete it without searching the rows.
+            row.ownerId = summary.ownerId
             // The survey status for the fixed Status column (issue #694): its chip label + colour class, and
             // whether it warrants the CTA (anything but Valid). Absent on a row with no survey state.
             summary.surveyStatus?.let {
@@ -353,8 +355,7 @@ private fun actionsColumn(
             this.onViewWorkflow = onViewWorkflow?.let { open -> { open(id, items) } }
             this.showSurvey = showSurvey
             this.onSurveyView = props.onSurveyView
-            this.canDelete = props.canDelete &&
-                mayDeleteForm(props.forms.firstOrNull { it.first == id }?.second?.ownerId, props.selfUserId, props.deletesOwnOnly)
+            this.canDelete = props.canDelete && mayDeleteForm(record.ownerId as? Long, props.selfUserId, props.deletesOwnOnly)
             this.confirming = props.confirmingDeleteId == id
             this.deleting = props.deletingId == id
             this.onArmDelete = props.onArmDelete

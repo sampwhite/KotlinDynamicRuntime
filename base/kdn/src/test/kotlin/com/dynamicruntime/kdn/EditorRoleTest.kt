@@ -15,6 +15,7 @@ import com.dynamicruntime.common.gedra.ClientUsageType
 import com.dynamicruntime.common.gedra.GDF
 import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.gedra.GED
+import com.dynamicruntime.common.gedra.GIF
 import com.dynamicruntime.common.gedra.GEP
 import com.dynamicruntime.common.gedra.GPF
 import com.dynamicruntime.common.gedra.GT
@@ -99,6 +100,9 @@ class EditorRoleTest : StringSpec({
         .toJsonListOfMaps().single { it[GE.traitId] == GT.name }[GE.data].toJsonMapOrEmpty()[GT.nameField]
 
     fun listedIds(user: TestUser): List<Any?> = user.getItems(GEP.formDocs).map { it[GDF.gedraId] }
+
+    fun nameOfRow(row: Map<String, Any?>): Any? = row[GDF.entries].toJsonListOfMaps()
+        .firstOrNull { it[GE.traitId] == GT.name }?.get(GE.data).toJsonMapOrEmpty()[GT.nameField]
 
     "the role is held outright: an admin implies it, an operator does not" {
         RoleLadder.satisfies(setOf(ROLE.user, ROLE.editor), ROLE.editor) shouldBe true
@@ -194,6 +198,13 @@ class EditorRoleTest : StringSpec({
             EXC.notAuthorized, GEP.formDocCreate,
             mapOf(EI.user to author.userId.toString(), GDF.entries to listOf(mapOf(GE.traitId to GT.name, GE.data to mapOf(GT.nameField to "For you")))),
         )
+        // And so does importing one for them, which is creating it by another door.
+        val doc = mapOf(GDF.entries to listOf(mapOf(GE.traitId to GT.name, GE.data to mapOf(GT.nameField to "Imported for you"))))
+        ed.expectError(EXC.notAuthorized, GEP.formDocImport, mapOf(EI.user to author.userId.toString(), GIF.data to doc))
+            .toString() shouldContain "Importing forms for another user takes an administrator."
+        author.getItems(GEP.formDocs).none { nameOfRow(it) == "Imported for you" } shouldBe true
+        // For itself it may.
+        ed.postData(GEP.formDocImport, mapOf(GIF.data to doc))
     }
 
     "an editor confined to an organization is confined, and one in public reaches only its own" {

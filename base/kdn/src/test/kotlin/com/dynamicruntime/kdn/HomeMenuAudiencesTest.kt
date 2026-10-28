@@ -29,11 +29,15 @@ class HomeMenuAudiencesTest : StringSpec({
             .map { CFACT.orAlways(it[UIB.cfactExpression].toOptStr()) }.filter { it != CFACT.neverName }.toSet()
 
     "every condition the shipped menu draws for has a name, and every name is of one it draws for" {
-        val named = HomeMenuAudiences.all.map { it.condition }.toSet()
+        val named = HomeMenuAudiences.all.filter { !it.retired }.map { it.condition }.toSet()
         // A new menu item with a new condition lands here: name it in HomeMenuAudiences and decide whether to offer it.
         (shippedConditions() - named).shouldBeEmpty()
-        // And a name left behind by an item that went away is removed with it.
+        // And a name left behind by an item that went away is removed with it -- or retired, for the stored edits that
+        // chose it, and then never offered.
         (named - shippedConditions()).shouldBeEmpty()
+        HomeMenuAudiences.all.filter { it.retired }.none { it.offered } shouldBe true
+        HomeMenuAudiences.of("${CFACTS.loggedIn},~${CFACTS.administersClient},${CFACTS.app}")?.name shouldBe
+            "Signed-in people who are not administrators"
     }
 
     "an audience is one condition and one name" {
