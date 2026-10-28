@@ -32,12 +32,10 @@ import com.dynamicruntime.common.util.toOptStr
  * set, the client it extends a template that exists. So a create is refused for exactly what a bundle write of the
  * same definition would be, with the same words.
  */
+@Suppress("ConstPropertyName")
 object ClientCreate {
     /** The configuration a new client's starter report is written to (issue #1429), and the report's id. */
-    @Suppress("ConstPropertyName")
     const val starterReportsConfig = "reports"
-
-    @Suppress("ConstPropertyName")
     const val starterReport = "forms"
 
     /** What a create did: the configuration the definition was written to, the definition as stored, and whether this node now carries the client. */
