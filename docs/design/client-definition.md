@@ -703,7 +703,9 @@ assign itself. Its powers:
   administrator already holds everything it adds, so anything requiring `editor` admits an administrator too.
 - **The `editor` persona** starts a user with `[user, editor]`. An editor below the admin level reads as one
   (`PERSONA.defaultFor`). An administrator grants the role like any other, and a person cannot give it to themselves:
-  self-registration names no persona, and a claim names a user an administrator made.
+  self-registration names no persona, and a claim names a user an administrator made. A member given the role later
+  keeps the persona they had, so the Users page finds editors by the **Roles** filter (`USF.roles`, the roles a user
+  holds), not by persona.
 - **Its reach is an administrator's width** (`ReadScopeRules.forCaller`): its client, or its primary organization within
   it. Never in `public`, where no client role widens what is readable. Every administrative power stays keyed on the
   admin level, which it does not hold.

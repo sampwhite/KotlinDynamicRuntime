@@ -463,6 +463,14 @@ object USF {
     const val persona = "persona"
 
     /**
+     * Case-insensitive **substring** of any one of the roles a user holds (issue #1432) -- `editor` finds every editor,
+     * `admin` every administrator. The roles the row holds, not those it satisfies: an administrator satisfies
+     * `editor` without holding it, and is found by `admin`. Not part of the free-text `q`, where `user` would match
+     * every account.
+     */
+    const val roles = "roles"
+
+    /**
      * **Exact** client id to confine the search to. Only an `allClients` caller can widen past their own
      * client, so for anyone else this narrows within a client they are already confined to (or, naming
      * another, returns nothing) -- the scope does the enforcing, this only picks among what it allows.

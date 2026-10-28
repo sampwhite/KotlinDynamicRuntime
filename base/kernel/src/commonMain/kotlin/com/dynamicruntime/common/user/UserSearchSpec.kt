@@ -95,6 +95,9 @@ val userSearchFieldSpecs: List<UserSearchFieldSpec> = listOf(
     UserSearchFieldSpec(USF.client, "Client", UserFilterKind.exact, sortable = true, allClientsOnly = true),
     // Which of a person's users this is (issue #750): the persona, and the personaSuffix when there is one.
     UserSearchFieldSpec(USF.persona, "Persona", UserFilterKind.substring, sortable = true),
+    // The roles a user holds (issue #1432), so `editor` finds the editors whatever their persona says -- a member made
+    // an editor keeps the persona they had. Not sortable: a list orders by nothing anyone asks for.
+    UserSearchFieldSpec(USF.roles, "Roles", UserFilterKind.substring, sortable = false),
     // The four dates the console shows (issues #462, #750). `updatedAt` is deliberately absent: the endpoint
     // still sorts on it, but it moves on a login and so answers a question nobody is asking here. `registered`
     // joined once it meant *claimed* -- when the person proved the user is theirs -- which an administrator

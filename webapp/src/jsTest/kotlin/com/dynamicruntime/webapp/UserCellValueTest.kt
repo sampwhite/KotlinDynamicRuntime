@@ -57,7 +57,7 @@ class UserCellValueTest {
         assertEquals("right", pinnedSide("status"))
         // The links column follows the pinned status, so it is pinned with it rather than sliding beneath it.
         assertEquals("right", pinnedSide("links"))
-        for (field in listOf(USF.registered.at, USF.activated.at, "type", "roles")) assertEquals(null, pinnedSide(field))
+        for (field in listOf(USF.registered.at, USF.activated.at, "type", USF.roles)) assertEquals(null, pinnedSide(field))
     }
 
     /** antd's third click on a header cancels the sort; that must land on the default order, not be dropped. */

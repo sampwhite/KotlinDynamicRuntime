@@ -1,7 +1,7 @@
 # The admin user search, and its server-driven-UI shape (issue #411)
 
-**Status: built** (issue #411). Since then the console has gained a persona field (issue #750) and four date ranges
-(issues #462, #750), and the endpoint a single free-text term matched across several fields (issue #581). The shared
+**Status: built** (issue #411). Since then the console has gained a persona field (issue #750), four date ranges
+(issues #462, #750), and a roles field (issue #1432), and the endpoint a single free-text term matched across several fields (issue #581). The shared
 spec described here is built; the fully runtime version in
 [The next step: fully runtime SDUI](#the-next-step-fully-runtime-sdui) is not.
 
@@ -27,6 +27,9 @@ the console offers:
   their own client by scope
 - **persona** — case-insensitive substring of the persona or its suffix (issue #750), so `admin` finds the
   administrators and `B` finds one member of a batch
+- **roles** — case-insensitive substring of any one of the roles a user holds (issue #1432), so `editor` lists the
+  editors whatever their persona. Filter-only: it is not sortable, and the free-text `q` leaves it out, since every
+  account holds `user`
 - **four date ranges**, each a from/to instant pair — edited, last login, registered, and activated
 
 The endpoint also takes axes the console does not show: `publicName`, a range over the update time, and `q`, one

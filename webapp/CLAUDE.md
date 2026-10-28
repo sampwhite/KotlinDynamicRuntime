@@ -355,7 +355,8 @@ whole screen is arranged to prevent. Three of them are **authority**:
   *whose data* they may do it to. Different axes.
 - **Editor** (issue #1432) — an off-ladder **role**, a checkbox beside the level and offered below the admin level,
   since an administrator already holds everything it adds (`rolesWithEditor`). It keeps the level, and the persona
-  follows it while creating until one is chosen (`personaForRoles`).
+  follows it while creating until one is chosen (`personaForRoles`). Ticking it on an existing user leaves the persona
+  alone, so the search's **Roles** filter (`USF.roles`) is how to list the editors.
 - **Organization** — an optional narrowing *within* a client. Blank means client-wide.
 
 A fourth is **belonging**, and behaves unlike the other three:

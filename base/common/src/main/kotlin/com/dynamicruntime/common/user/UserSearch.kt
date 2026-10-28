@@ -61,6 +61,11 @@ class UserSearchField(
      * any date, and an administrator sorting by oldest is hunting exactly those rows.
      */
     val sortOf: (AuthUserRow) -> Comparable<*>?,
+    /**
+     * Whether the free-text term ([UserSearchCriteria.anyText]) looks at this field too. False for the roles, which
+     * every account shares (`user`), so a box for finding a person would match everyone.
+     */
+    val inAnyText: Boolean = true,
 )
 
 /**
@@ -127,6 +132,12 @@ val userSearchFields: List<UserSearchField> = listOf(
     UserSearchField(
         USF.persona, textsOf = { listOfNotNull(it.persona, it.personaSuffix.ifEmpty { null }) }, substring = true,
         sortOf = { (it.persona + " " + it.personaSuffix).trim().lowercase() },
+    ),
+    // The roles the row holds (issue #1432), each matched on its own, so `editor` finds an editor whatever persona
+    // they carry. The console offers no sort on it; the endpoint sorts it as the list reads.
+    UserSearchField(
+        USF.roles, textsOf = { it.roles }, substring = true, sortOf = { it.roles.joinToString(", ").lowercase() },
+        inAnyText = false,
     ),
 ) + userDateFields.map { it.asSearchField() }
 
@@ -208,7 +219,7 @@ fun searchUserRows(rows: List<AuthUserRow>, criteria: UserSearchCriteria): UserS
         matched = matched.filter { row ->
             userSearchFields.any { field ->
                 val textsOf = field.textsOf
-                field.substring && textsOf != null && textsOf(row).any { it.lowercase().contains(term) }
+                field.substring && field.inAnyText && textsOf != null && textsOf(row).any { it.lowercase().contains(term) }
             }
         }
     }
