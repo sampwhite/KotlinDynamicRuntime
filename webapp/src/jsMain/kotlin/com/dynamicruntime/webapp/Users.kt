@@ -881,7 +881,7 @@ val Users = FC<Props> {
                     +personaSuffixHint(collided = personaSuffixCollided)
                 }
             } else {
-                readOnlyField("Persona", personaCell(draftPersona, draftPersonaSuffix))
+                readOnlyField("Persona", personaCell(draftPersona, draftPersonaSuffix, editing?.let { it.actingRoles ?: it.roles }))
             }
 
             // Editable only by someone not confined to an organization: the backend lets a confined
@@ -1447,9 +1447,9 @@ fun personaForLevel(level: String): String = PERSONA.defaultFor(RoleLadder.roles
 fun isUserKeyCollision(error: Throwable): Boolean = (error as? ApiError)?.errorCode == AERR.userKeyTaken
 
 private const val personaHint =
-    "What kind of user this is: a member of the client, or one of its administrators. Chosen once, at " +
-        "creation. It follows the access level until you pick one; picking one sets the level to its usual " +
-        "value, which you may still change."
+    "Which of this person's users this is, when they have more than one in a client -- the name the switcher shows. " +
+        "Chosen once, at creation. It sets the starting access level, which you change with the access level, not " +
+        "here; a user whose access later differs from its persona's says so beside it."
 
 /**
  * Whether [user] may create users at other people's addresses (issue #805): everyone who reaches the page except
@@ -1466,7 +1466,7 @@ fun mayCreateForOthers(user: UserProfile): Boolean = user.client != CL.public ||
 private fun react.ChildrenBuilder.userDetails(user: AdminUser) {
     readOnlyField("Email address", user.primaryId)
     readOnlyField(if (user.isEntity) "Business name" else "Full name", user.name?.takeIf { it.isNotBlank() } ?: "\u2014")
-    readOnlyField("Persona", personaCell(user.persona, user.personaSuffix))
+    readOnlyField("Persona", personaCell(user.persona, user.personaSuffix, user.actingRoles ?: user.roles))
     readOnlyField("Access", accessText(user.actingRoles ?: user.roles))
     user.org?.takeIf { it.isNotBlank() }?.let { readOnlyField("Organization", it) }
     readOnlyField("Labels", user.labels.joinToString(", ").ifEmpty { "\u2014" })
@@ -1504,13 +1504,8 @@ const val editorHint =
     "Sees every user and form of the client and edits forms, but administers nothing: no changes to users, no new " +
         "users, no client configuration. An administrator already has all of this."
 
-/** How a role list reads as one access, for the read-only details an editor sees (issue #1432). */
-fun accessText(roles: List<String>): String = when {
-    ROLE.admin in roles -> "Administrator"
-    ROLE.operator in roles -> "Operator"
-    ROLE.editor in roles -> "Editor"
-    else -> "User"
-}
+/** How a role list reads as one access, for the read-only details an editor sees (issue #1432): the kernel's rule (issue #1450). */
+fun accessText(roles: List<String>): String = PERSONA.accessLabel(PERSONA.accessOf(roles))
 
 fun editorTitle(creating: Boolean, forSelf: Boolean): String = when {
     creating && forSelf -> "Create a user for me"

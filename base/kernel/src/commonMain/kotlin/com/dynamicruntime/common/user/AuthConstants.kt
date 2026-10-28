@@ -316,6 +316,46 @@ object PERSONA {
     }
 
     /**
+     * The access [roles] give, as one of `admin`, `operator`, `editor` or `user` (issue #1450): the highest held, an
+     * administrator first and a plain user last -- the reading the Users page's Access field gives. An `editor` who is
+     * also an operator reads as the operator, as there.
+     */
+    fun accessOf(roles: Collection<String>): String = when {
+        ROLE.admin in roles -> ROLE.admin
+        ROLE.operator in roles -> ROLE.operator
+        ROLE.editor in roles -> ROLE.editor
+        else -> ROLE.user
+    }
+
+    /** How an [accessOf] answer reads: `Administrator`, `Operator`, `Editor`, `User`. */
+    fun accessLabel(access: String): String = when (access) {
+        ROLE.admin -> "Administrator"
+        ROLE.operator -> "Operator"
+        ROLE.editor -> "Editor"
+        else -> "User"
+    }
+
+    /**
+     * What a user of [persona] acts as when its [roles] give other access than the persona's own default roles do
+     * (issue #1450) -- a member promoted to administrator acts as an `admin`, an administrator demoted as a `user` --
+     * or null when the two agree, or the persona is none the registry holds. A persona names which of a person's
+     * users this is, and is frozen at creation; roles say what it may do, and change. Its label alone, beside
+     * roles that moved, would say the wrong thing.
+     */
+    fun actsAs(persona: String, roles: Collection<String>): String? {
+        val own = def(persona)?.defaultRoles ?: return null
+        return accessOf(roles).takeIf { it != accessOf(own) }
+    }
+
+    /**
+     * [term] -- a persona's label, or its [personaTerm] with the suffix -- as a user of
+     * [persona] with [roles] reads it: `Member (acts as administrator)` when [actsAs] says so, [term] alone when not
+     * or when [roles] is not known.
+     */
+    fun withActing(term: String, persona: String, roles: Collection<String>?): String =
+        roles?.let { actsAs(persona, it) }?.let { "$term (acts as ${accessLabel(it).lowercase()})" } ?: term
+
+    /**
      * A persona as a person types it on the claim page (issue #751), `admin` or `member B`, split into the
      * persona name and the personaSuffix suffix (empty when there is none): the first word and whatever follows it,
      * trimmed. Blank is the default persona. What `typed` shows: the two joined by a space, as the invitation

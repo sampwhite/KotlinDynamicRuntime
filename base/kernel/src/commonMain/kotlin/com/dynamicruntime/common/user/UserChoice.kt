@@ -61,9 +61,11 @@ data class UserChoice(
      * they span clients, the persona when they differ in persona **or any of them carries a personaSuffix** (so a
      * batch reads `Member`, `Member B` rather than a bare `B`), and the personaSuffix when there is one -- joined
      * with ` · `. Never empty for a list of two or more, since the key is unique across a person's users; empty
-     * for a person with one user, who has nothing to tell apart. Pure, covered under `jsNodeTest`.
+     * for a person with one user, who has nothing to tell apart. Given the user's [roles], a persona that is shown
+     * says what the user acts as when that differs ([PERSONA.withActing], issue #1450): `Member (acts as
+     * administrator)`. Pure, covered under `jsNodeTest`.
      */
-    fun qualifierWithin(siblings: List<UserChoice>): String {
+    fun qualifierWithin(siblings: List<UserChoice>, roles: Collection<String>? = null): String {
         if (siblings.size < 2) return ""
         val personaShown = siblings.any { it.persona != persona } || siblings.any { it.personaSuffix.isNotEmpty() }
         // The persona and the personaSuffix read as one term (`Member 2`), as they do in the full label.
@@ -71,7 +73,10 @@ data class UserChoice(
         val parts = buildList {
             // By its name when it has one (issue #1110): `Acme East`, not `acme_east`. The id is the tooltip's.
             if (siblings.any { it.client != client }) add(clientName?.ifBlank { null } ?: client)
-            if (personaPart.isNotEmpty()) add(personaPart.joinToString(" "))
+            if (personaPart.isNotEmpty()) {
+                val term = personaPart.joinToString(" ")
+                add(if (personaShown) PERSONA.withActing(term, persona, roles) else term)
+            }
         }
         return parts.joinToString(" · ")
     }

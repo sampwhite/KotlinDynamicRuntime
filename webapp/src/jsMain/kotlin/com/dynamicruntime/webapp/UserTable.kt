@@ -1,6 +1,7 @@
 package com.dynamicruntime.webapp
 
 import com.dynamicruntime.common.user.PERSONA
+import com.dynamicruntime.common.user.personaTerm
 import com.dynamicruntime.common.user.USF
 import com.dynamicruntime.common.user.userSearchFieldSpecs
 import com.dynamicruntime.common.context.UserProfile
@@ -218,7 +219,7 @@ fun cellValue(field: String, user: AdminUser, now: Instant): String = when (fiel
     USF.name -> user.name?.takeIf { it.isNotBlank() } ?: "—"
     USF.client -> user.client
     // Which of a person's users this is (issue #750): the persona's label, and the personaSuffix when there is one.
-    USF.persona -> personaCell(user.persona, user.personaSuffix)
+    USF.persona -> personaCell(user.persona, user.personaSuffix, user.actingRoles ?: user.roles)
     // The roles held, and those a sandbox user acts with when they differ (issue #1198).
     USF.roles -> rolesCellText(user)
     // The tracked dates the console shows (issue #462), relative to [now] (issue #1141). A dash rather than a blank:
@@ -265,9 +266,13 @@ fun statusWords(user: AdminUser): List<String> = buildList {
     if (user.hasPassword == true) add("password set")
 }
 
-/** The Persona column's value: `Member`, `Admin`, `Member B`. Pure, covered under `jsNodeTest`. */
-fun personaCell(persona: String, personaSuffix: String): String =
-    if (personaSuffix.isEmpty()) PERSONA.label(persona) else "${PERSONA.label(persona)} $personaSuffix"
+/**
+ * The Persona column's value: `Member`, `Admin`, `Member B` -- and, given the user's [roles], what it acts as when
+ * that differs from the persona's own (issue #1450): `Member (acts as administrator)`, so a promoted or demoted user
+ * does not read as what it was made. Pure, covered under `jsNodeTest`.
+ */
+fun personaCell(persona: String, personaSuffix: String, roles: Collection<String>? = null): String =
+    PERSONA.withActing(personaTerm(persona, personaSuffix), persona, roles)
 
 /** What [cellValue] returns for a spec field with no display branch -- the tell `UserCellValueTest` catches. */
 const val unmappedCell = "(?)"
