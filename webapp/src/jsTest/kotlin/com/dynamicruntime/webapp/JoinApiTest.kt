@@ -18,8 +18,12 @@ class JoinApiTest {
                 JOIN.clientName to "Conference demo",
                 JOIN.description to "A conference's call for talks.",
                 JOIN.roles to listOf(
+                    mapOf(JOIN.name to "organizer", JOIN.label to "Organizer", JOIN.persona to PERSONA.admin, JOIN.summary to "Run it."),
                     mapOf(JOIN.name to "speaker", JOIN.label to "Speaker", JOIN.persona to PERSONA.member, JOIN.summary to "Submit a talk."),
-                    mapOf(JOIN.name to "committee", JOIN.label to "Committee member", JOIN.persona to PERSONA.admin, JOIN.summary to "Review.", JOIN.userId to 42),
+                    mapOf(
+                        JOIN.name to "committee", JOIN.label to "Committee member", JOIN.persona to PERSONA.editor,
+                        JOIN.summary to "Review.", JOIN.userId to 42,
+                    ),
                 ),
             ),
             // One with no id is not a client; it is skipped rather than drawn.
@@ -33,11 +37,12 @@ class JoinApiTest {
         assertEquals(listOf("confdemo"), rows.map { it.client })
         val demo = rows.single()
         assertEquals("Conference demo", demo.name)
-        assertEquals(listOf("speaker", "committee"), demo.roles.map { it.name })
-        assertNull(demo.roles[0].userId)
-        assertEquals(42L, demo.roles[1].userId)
-        assertTrue(demo.roles[1].isAdmin)
-        assertTrue(!demo.roles[1].removed)
+        assertEquals(listOf("organizer", "speaker", "committee"), demo.roles.map { it.name })
+        assertNull(demo.roles[1].userId)
+        assertEquals(42L, demo.roles[2].userId)
+        assertTrue(demo.roles[0].isAdmin)
+        assertTrue(demo.roles[2].isEditor && !demo.roles[2].isAdmin)
+        assertTrue(!demo.roles[2].removed)
     }
 
     @Test
@@ -66,9 +71,19 @@ class JoinApiTest {
         val text = joinDisclosure(parseJoinable(envelope).single()).joinToString(" ")
         assertTrue("shared demo space" in text, text)
         assertTrue("name and email address" in text, text)
+        // Editors read the users too (issue #1455), and the committee member joins as one.
+        assertTrue("An editor there can see them too." in text, text)
         assertTrue("deleted whenever this site's data is cleared" in text, text)
         // A client offering an administrator's role says the visitor, as one, can do the same.
         assertTrue("As one, you can do the same to theirs." in text, text)
+    }
+
+    @Test
+    fun aClientOfferingAnEditorRoleButNoAdministratorSaysTheEditorSeesTheirUsers() {
+        val editors = JoinableView("x", "X", null, listOf(JoinRoleView("committee", "Committee", PERSONA.editor, "", null)))
+        val text = joinDisclosure(editors).joinToString(" ")
+        assertTrue("As an editor, you can see theirs." in text, text)
+        assertTrue("As one" !in text, text)
     }
 
     @Test

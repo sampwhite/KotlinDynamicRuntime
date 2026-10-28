@@ -17,6 +17,7 @@ class JoinRoleView(
     val name: String, val label: String, val persona: String, val summary: String, val userId: Long?, val removed: Boolean = false,
 ) {
     val isAdmin: Boolean get() = persona == PERSONA.admin
+    val isEditor: Boolean get() = persona == PERSONA.editor
 }
 
 /**
@@ -67,10 +68,15 @@ fun joinDisclosure(client: JoinableView): List<String> = buildList {
     )
     add("Don't put anything here that you wouldn't want other visitors to read.")
     // Every demo offers an administrator's role, whose holder sees the client's users; said whichever role is chosen.
+    // An editor (issue #1432) reads them too, without changing them, and an administrator may make anyone one.
     add(
         "Anyone who joins as an administrator — another visitor — can see the users of ${client.name}, including your " +
-            "name and email address, and can change or disable them." +
-            if (client.roles.any { it.isAdmin }) " As one, you can do the same to theirs." else "",
+            "name and email address, and can change or disable them. An editor there can see them too." +
+            when {
+                client.roles.any { it.isAdmin } -> " As one, you can do the same to theirs."
+                client.roles.any { it.isEditor } -> " As an editor, you can see theirs."
+                else -> ""
+            },
     )
     add("Everything in ${client.name}, the users who joined included, is deleted whenever this site's data is cleared.")
     add("Joining adds a user of your own email in ${client.name}. Your other accounts stay yours, in the account menu.")
@@ -90,8 +96,8 @@ fun joinAcknowledgedBefore(client: JoinableView): String = "You acknowledged thi
 
 /** The standing note a shared demo client's pages carry (issue #1248), behind the bar's "Shared demo" chip. */
 fun sharedDemoNoteText(clientName: String): String =
-    "$clientName is a shared demo space: other visitors who join it see what you add here, and anyone who joins as an " +
-        "administrator can see its users. Everything is deleted whenever this site's data is cleared."
+    "$clientName is a shared demo space: other visitors who join it see what you add here, and its administrators and " +
+        "editors can see its users. Everything is deleted whenever this site's data is cleared."
 
 object JoinApi {
     suspend fun joinable(): List<JoinableView> = parseJoinable(Http.getApi(JOIN.joinablePath))

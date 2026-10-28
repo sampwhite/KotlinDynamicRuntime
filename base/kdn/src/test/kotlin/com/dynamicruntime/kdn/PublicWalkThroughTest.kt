@@ -43,6 +43,7 @@ import com.dynamicruntime.common.gedra.workflow.WfVisibility
 import com.dynamicruntime.common.gedra.workflow.WfVisibilityMode
 import com.dynamicruntime.common.home.HFRAG
 import com.dynamicruntime.common.home.HMENU
+import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.http.request.TestHttpClient
 import com.dynamicruntime.common.mail.MailService
 import com.dynamicruntime.common.schema.SCH
@@ -55,6 +56,7 @@ import com.dynamicruntime.common.user.AFLD
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.user.UADEP
 import com.dynamicruntime.common.util.toJsonListOfMaps
+import com.dynamicruntime.common.util.toJsonListOfStrings
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptLong
 import com.dynamicruntime.common.util.toOptStr
@@ -177,6 +179,8 @@ class PublicWalkThroughTest : StringSpec({
         // Back to the public user, and in again as the committee, with a name of its own.
         visitor.postData(AEP.switchUser, mapOf(AFLD.userId to publicUser))
         val committee = join(visitor, ConfDemo.committeeRole)
+        // An editor (issue #1455), and no administrator.
+        visitor.getData(AEP.selfInfo)[UPF.roles].toJsonListOfStrings() shouldBe listOf(ROLE.user, ROLE.editor)
         val name = tables.getValue(walkNameKey).single()[1].replace(placeholder, firstName)
         visitor.postData(AEP.profileSetName, mapOf(AFLD.name to name))[UPF.name] shouldBe name
 

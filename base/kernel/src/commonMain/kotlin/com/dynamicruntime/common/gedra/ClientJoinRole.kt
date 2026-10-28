@@ -71,8 +71,9 @@ object JOIN {
  * from the person's other users there, and carrying [userLabels] -- and how the Join page presents it: [label], and
  * [summary], a sentence on what the role does. [name] identifies the role on the wire.
  *
- * Two roles of one client differ by persona or suffix, so a person may hold both: in `confdemo`, an organizer and a
- * committee member are both administrators, the second suffixed `committee` and labeled so.
+ * Two roles of one client differ by persona or suffix, so a person may hold both: in `confdemo`, the organizer is an
+ * administrator and the committee member an editor labeled `committee`, and two roles of one persona would take a
+ * suffix to tell them apart.
  */
 data class ClientJoinRole(
     val name: String,
@@ -111,7 +112,7 @@ data class ClientJoinRole(
             builder.type = SCT.kObject
             builder.property(JOIN.name, "The role's id, unique within the client.", required = true)
             builder.property(JOIN.label, "The role as the Join page names it.", required = true)
-            builder.property(JOIN.persona, "The persona a user joining as the role takes (member or admin).", required = true)
+            builder.property(JOIN.persona, "The persona a user joining as the role takes (member, editor or admin).", required = true)
             builder.property(JOIN.personaSuffix, "Tells the user apart from the person's other users of the persona there.")
             builder.property(JOIN.userLabels, "The user labels a user joining as the role carries.") {
                 type = SCT.array

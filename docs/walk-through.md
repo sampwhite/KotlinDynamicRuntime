@@ -80,9 +80,10 @@ Now switch sides. Choose your name in the bar at the top of the page, and choose
 [Join page for the conference demo](/wa/join/confdemo) again, and choose **Join as Committee member**. (You
 acknowledged that the demo is shared when you joined as a speaker, so you are not asked again.)
 
-That gives you a second user in the conference demo, an administrator with the committee's label, so it may review
-talks. Both of your demo users have your email address. To tell them apart in the bar, give this one a name of its
-own: open your [profile](/wa/profile), and under **Your name**, type
+That gives you a second user in the conference demo, an editor with the committee's label, so it may review talks.
+An editor sees and edits everyone's forms in the demo, but administers nothing. Both of your demo users have your
+email address. To tell them apart in the bar, give this one a name of its own: open your [profile](/wa/profile), and
+under **Your name**, type
 
 <!-- kdr-walk: name -->
 | Field | What to type |
@@ -93,7 +94,7 @@ and choose **Save name**. The name belongs to this user alone. Your speaker user
 
 ### Review your talk
 
-As an administrator, you see every talk in the demo, not just your own, so the menu's forms page is **Forms** rather
+As an editor, you see every talk in the demo, not just your own, so the menu's forms page is **Forms** rather
 than **My forms**. Open it, and type your talk's name in **Search** to find it.
 
 Choose **Committee review** in its **Workflows** column, then **Engage**, and then **Edit**. The review has two steps,

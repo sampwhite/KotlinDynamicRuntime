@@ -24,7 +24,7 @@ class PublicHomeTest {
         val users = listOf(
             UserChoice(1, CL.public, PERSONA.member, isCurrent = true),
             UserChoice(2, "acme", PERSONA.admin, clientName = "Acme"),
-            UserChoice(3, "confdemo", PERSONA.admin, personaSuffix = "review"),
+            UserChoice(3, "confdemo", PERSONA.editor),
         )
         assertEquals(listOf(2L, 3L), otherAccounts(users).map { it.userId })
         assertTrue(otherAccounts(listOf(users[0])).isEmpty())
