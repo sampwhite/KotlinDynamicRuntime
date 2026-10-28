@@ -6,7 +6,6 @@ import com.dynamicruntime.common.endpoint.HttpMethod
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.ClientService
-import com.dynamicruntime.common.gedra.isSandboxClient
 import com.dynamicruntime.common.sql.KdrColumn
 import com.dynamicruntime.common.sql.KdrTable
 import com.dynamicruntime.common.sql.PF
@@ -240,11 +239,6 @@ class ApiKeyService : ServiceInitializer {
         val keyAccess = access ?: AKEY.read
         if (keyAccess !in AKEY.accesses) {
             throw KdrException.mkInput("A key's access is '${AKEY.read}' or '${AKEY.full}', not '$keyAccess'.")
-        }
-        // A sandbox's users act with the standing of the person's users outside it (`SandboxAccess`), which a key with
-        // nobody signed in behind it would have no way to ask about.
-        if (isSandboxClient(owner.client)) {
-            throw KdrException.mkInput("A sandbox's users cannot hold API keys; make the key in the client itself.")
         }
         if (!owner.enabled) throw KdrException.mkInput("User ${owner.userId} is disabled, so a key for them would not work.")
         val now = cxt.now()

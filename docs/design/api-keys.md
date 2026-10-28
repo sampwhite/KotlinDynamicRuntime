@@ -120,8 +120,20 @@ endpoint is session-only.
   a key for its owner is (above). An administrator may therefore narrow the key of a user who holds roles they do
   not, and may not widen it again.
 
-A sandbox's users cannot hold keys: they take their standing from the person's users outside the sandbox, which a
-program with nobody signed in could not ask about.
+## Keys in a sandbox (#1453)
+
+A sandbox's users hold keys as anyone's do, and a key on one stays in the sandbox: it works in the sandbox's own data,
+and what it writes to configuration is a draft of the parent's, as a session's write there is.
+
+- **It acts as a session on its user does.** A sandbox user's standing comes from the person's users outside the
+  sandbox (`SandboxAccess`), worked out from stored rows on every request. So a key on one acts with exactly what a
+  session would, and with nothing once nobody outside stands behind its user.
+- **A user somebody opened the sandbox as follows its latest opening.** Such a user acts as the outside user it was
+  opened from, and each opening records that user again. Its keys follow, as its sessions do: always the same person,
+  never more than one of their users outside.
+- **An administrator is held to what the user acts with.** The rules above for a key made for somebody compare the
+  roles the user acts with, not the roles on its row. A user opened from an administrator acts as one, so its keys are
+  that person's to make.
 
 ## How long a key lasts
 
@@ -139,7 +151,7 @@ extension and the server making it land on the same moment.
 
 ## In the webapp
 
-- **Profile** has an "API keys" section with the person's own keys. It is not shown in a sandbox.
+- **Profile** has an "API keys" section with the person's own keys, in a sandbox too.
 - **The Users editor** has the same section for the open user, managed as their administrator. It acts at once, unlike
   the editor's fields, which wait for OK.
 - **The API keys page** (`/wa/api-keys`, "API keys" in the menu for a client's administrators) lists every key the

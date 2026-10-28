@@ -1,6 +1,5 @@
 package com.dynamicruntime.webapp
 
-import com.dynamicruntime.common.gedra.isSandboxClient
 import com.dynamicruntime.common.gedra.sandboxParentOf
 import com.dynamicruntime.common.context.CL
 import com.dynamicruntime.common.context.UserProfile
@@ -991,10 +990,10 @@ val Users = FC<Props> {
             // ---- API keys (issue #1402): the user's, as their administrator manages them ---
             //
             // Live at once, unlike the fields above, which wait for OK: a key is made or revoked as it is asked for.
-            // Not for a sandbox's user, who cannot hold one, nor from `public`, where a self-administrator manages
-            // their own keys on their profile and the administrator's surface refuses them.
+            // A sandbox's users too (issue #1453). Not from `public`, where a self-administrator manages their own keys
+            // on their profile and the administrator's surface refuses them.
             editing?.let { user ->
-                if (!user.deleted && !isSandboxClient(user.client) && config?.user?.let { mayCreateForOthers(it) } != false) {
+                if (!user.deleted && config?.user?.let { mayCreateForOthers(it) } != false) {
                     ApiKeysSection {
                         key = "keys-${user.userId}".unsafeCast<Key>()
                         // One's own keys are managed as on Profile, through the self endpoints.
