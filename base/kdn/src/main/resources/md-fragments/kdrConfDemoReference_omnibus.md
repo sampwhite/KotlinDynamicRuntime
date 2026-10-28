@@ -16,4 +16,5 @@
 # +walkThrough
 New here? Follow [the walk-through](/docs/walk-through.md): it takes you through the site one step at a time,
 starting with the conference demo, where you submit a talk as a speaker and then review it as the committee, and then
-a client of your own, with a workflow you build, try out, and open to the people you invite.
+a client of your own, with a workflow you build, try out, and open to the people you invite, and last, for developers,
+a workflow an AI assistant builds through the API.

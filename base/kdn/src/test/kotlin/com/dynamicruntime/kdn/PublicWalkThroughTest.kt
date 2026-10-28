@@ -3,6 +3,7 @@ package com.dynamicruntime.kdn
 import com.dynamicruntime.common.content.MarkdownFragmentService
 import com.dynamicruntime.common.context.CL
 import com.dynamicruntime.common.context.UPF
+import com.dynamicruntime.common.endpoint.EI
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.gedra.CCT
 import com.dynamicruntime.common.gedra.CFEP
@@ -41,11 +42,13 @@ import com.dynamicruntime.common.gedra.workflow.WfTemplateSlots
 import com.dynamicruntime.common.gedra.workflow.WfTraitRef
 import com.dynamicruntime.common.gedra.workflow.WfVisibility
 import com.dynamicruntime.common.gedra.workflow.WfVisibilityMode
+import com.dynamicruntime.common.gedra.workflow.WorkflowService
 import com.dynamicruntime.common.home.HFRAG
 import com.dynamicruntime.common.home.HMENU
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.http.request.TestHttpClient
 import com.dynamicruntime.common.mail.MailService
+import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.SL
@@ -53,6 +56,7 @@ import com.dynamicruntime.common.startup.SchemaCollector
 import com.dynamicruntime.common.user.ADF
 import com.dynamicruntime.common.user.AEP
 import com.dynamicruntime.common.user.AFLD
+import com.dynamicruntime.common.user.AKEY
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.user.UADEP
 import com.dynamicruntime.common.util.toJsonListOfMaps
@@ -88,6 +92,12 @@ import java.io.File
  * in the sandbox, change the form in Design View, publish, invite somebody and label them, restrict the workflow to the
  * label, have the invited person suggest a book on the changed form, open the workflow to everyone, and run the report
  * a new client starts with.
+ *
+ * Part 3, for developers, has no form for the reader to fill in; its AI writes one. So the test makes the key in the
+ * sandbox as the page says, finds the endpoint the page names in the catalog the key is shown, reads the sandbox's forms
+ * with it, and plays the AI with the bundle one following the page's prompt might write: written with the key as the
+ * parent's draft the sandbox runs, tried on a form that stays the sandbox's, published, and seen by the client's people.
+ * The key is revoked and refused. Every `/kda/...` path part 3 names is one it calls.
  *
  * The page's own buttons and headings are not checked here; following the page in a browser is part of changing it.
  */
@@ -375,6 +385,92 @@ class PublicWalkThroughTest : StringSpec({
         rows.map { it[RRUN.values].toJsonMapOrEmpty()["name"] } shouldBe listOf(cell("invitedForm", "Name"))
     }
 
+
+    // Part 3 (issue #1429, phase 3): an API key made in the sandbox, the catalog, and an AI's workflow written through the
+    // API. The AI is played here by the bundle an assistant following docs/demo-client would write, and the form it makes
+    // to try it, which is enough to hold the page to what a sandbox key may do (issue #1453): read the catalog and the
+    // sandbox's forms, write a bundle as the parent's draft, try it on a form of the sandbox's own, and publish it.
+
+    "part 3: a sandbox key made as the page says builds and publishes a workflow, its trial form stays in the sandbox" {
+        val founder = TestUser.create(cxt, "developer@walk1429.test")
+        val client = founder.postData(AEP.createOwnClient, mapOf(CLD.name to cell("client", "Name")))[CLD.client].toOptStr()
+            .shouldNotBeNull()
+        val administrator = founder.getData(AEP.selfInfo)[UPF.userId].toOptLong().shouldNotBeNull()
+        founder.postData(AEP.openSandbox, emptyMap())
+        val sandbox = sandboxOf(client)
+        val formId = createForm(founder, "sandboxForm")
+
+        // The key, made in the sandbox: Read-only unchecked, so a full key, lasting the days the page picks.
+        cell("apiKey", "Access") shouldBe "Read-only, unchecked"
+        val made = founder.postData(
+            AKEY.selfCreate,
+            mapOf(
+                AKEY.name to cell("apiKey", "New key"), AKEY.access to AKEY.full,
+                AKEY.days to cell("apiKey", "Lasts").removeSuffix(" days").toInt(),
+            ),
+        )
+        val secret = made[AKEY.secret].toOptStr().shouldNotBeNull()
+        val program = TestHttpClient(cxt.instanceConfig).apply { setHeader(AKEY.authorizationHeader, "${AKEY.bearerScheme}$secret") }
+        val keyed = TestUser(program, cxt, founder.getData(AEP.selfInfo))
+        keyed.selfClient() shouldBe sandbox
+
+        // The catalog the key is shown holds the endpoint the page finds.
+        val endpoints = TestUser.endpointsIn(keyed.catalog()).map { it[EI.method].toOptStr() to it[EI.path].toOptStr() }.toSet()
+        // A client gets its own copy of the endpoint only when its schema differs from the shared one. On the reference
+        // deployment every self-serve client's does, since it takes fewer traits than the sample's there; this test
+        // instance carries no sample, so the sandbox varies nothing and the catalog lists the shared endpoint instead.
+        val (method, shown) = tables.getValue("catalog").single()
+        val formDocs = listOf(shown.replace(sandboxIdPlaceholder, sandbox), shown.replace("/$sandboxIdPlaceholder", ""))
+            .firstOrNull { (method to it) in endpoints }
+            .shouldNotBeNull()
+        // Every other path the page names is one this test calls with the key below; the catalog lists only the
+        // published API to a caller without env auth, as a reader on the reference deployment is, so it is not asked.
+        val named = kdaPathRegex.findAll(page.substringAfter(part3Heading)).map { it.groupValues[1] }
+            .filterNot { it.startsWith("/gedra") }.toSet()
+        named shouldBe setOf(AEP.selfInfo, catalogPath, CFEP.bundleWrite)
+        program.sendGetRequest(AEP.selfInfo).rptStatusCode shouldBe 200
+        keyed.getItems(formDocs).map { it[GDF.gedraId] } shouldBe listOf(formId)
+
+        // The AI's bundle: a trait and a workflow, written with the key as the parent's draft, which the sandbox runs --
+        // asking to be reloaded, as the skill the prompt points to says a write that should run at once must.
+        val written = keyed.postData(
+            CFEP.bundleWrite,
+            mapOf(
+                CFEP.name to aiBundle, CFEP.namespaceField to clientNamespace(client), CFEP.slots to aiSlots(client),
+                CFEP.reloadField to true,
+            ),
+        )
+        written[CFEP.client] shouldBe client
+        written[CFEP.published] shouldBe false
+        WorkflowService.get(cxt).forClient(sandbox).workflow(aiWorkflow).shouldNotBeNull()
+        WorkflowService.get(cxt).forClient(client).workflow(aiWorkflow) shouldBe null
+
+        // The AI tries it, as the prompt asks, on a form of its own: the sandbox's.
+        val tried = createForm(keyed, "sandboxForm")
+        keyed.postData(GEP.workflowEngage, mapOf(GDF.gedraId to tried, WFD.workflowId to aiWorkflow))
+        keyed.postData(
+            GEP.workflowSave,
+            mapOf(
+                WFD.workflowId to aiWorkflow, GDF.taskId to aiTask, GDF.saveId to aiSave, GDF.gedraId to tried,
+                GDF.entries to listOf(mapOf(GE.traitId to aiTrait, GE.data to mapOf("rating" to 4, "thoughts" to "A good read."))),
+            ),
+        )
+        GedraId.parse(tried).client shouldBe sandbox
+
+        // Published from the sandbox, then the key revoked there, as the page's last step does: it is refused.
+        keyed.postData(CFEP.bundlePublish, mapOf(CFEP.names to listOf(aiBundle), CFEP.reloadField to true))
+        WorkflowService.get(cxt).forClient(client).workflow(aiWorkflow).shouldNotBeNull()
+        founder.postData(AKEY.selfRevoke, mapOf(AKEY.keyId to made[AKEY.key].toJsonMapOrEmpty()[AKEY.keyId]))
+        program.sendGetRequest(AEP.selfInfo).rptStatusCode shouldBe 401
+
+        // Back in the client: the workflow is there for its people too, and the AI's trial form is not.
+        founder.postData(AEP.leaveSandbox, mapOf(AFLD.userId to administrator))
+        founder.selfClient() shouldBe client
+        founder.getItems(GEP.formDocs, mapOf(EP.limit to 500)).map { it[GDF.gedraId] }.contains(tried) shouldBe false
+        val member = TestUser.create(cxt, "member@walk1429.test", userClient = client)
+        member.getData(GEP.workflowView, mapOf(WFD.workflowId to aiWorkflow))[WVF.found] shouldBe true
+    }
+
 })
 
 /** The page's placeholder for the reader's first name. */
@@ -386,7 +482,53 @@ private fun walkWorkflowKey(workflow: String) = "workflow=$workflow"
 /** The tables of part 2, the reader's own client, by their markers. */
 private val ownClientKeys = setOf(
     "client", "copy", "trait", "fields", "newWorkflow", "sandboxForm", "sandboxSuggestion", "design", "invite", "userLabels",
-    "visibility", "invitedForm", "invitedSuggestion",
+    "visibility", "invitedForm", "invitedSuggestion", "apiKey", "catalog",
+)
+
+/** Part 3's heading, after which every `/kda/...` path the page names is one the key is shown in the catalog. */
+private const val part3Heading = "## Part 3:"
+private const val catalogPath = "/schema/endpoints"
+private val kdaPathRegex = Regex("""/kda(/[A-Za-z/]+[A-Za-z])""")
+
+/** The page's placeholder for the reader's sandbox's id, in a path. */
+private const val sandboxIdPlaceholder = "*your sandbox's id*"
+
+/** The bundle the page's prompt asks an AI for, as one following docs/demo-client might write it. */
+private const val aiBundle = "reviewTheBook"
+private const val aiWorkflow = "reviewTheBook"
+private const val aiTrait = "bookReview"
+private const val aiTask = "review"
+private const val aiSave = "saveReview"
+
+private fun aiSlots(client: String): Map<String, Any?> = mapOf(
+    CCT.traitDef to listOf(
+        mapOf(
+            CCT.traitId to aiTrait, CCT.typeName to "${clientNamespace(client)}.BookReviewEntry", CCT.appliesTo to listOf("formDoc"),
+            CCT.description to "A member's review of a book the club has read.",
+            CCT.dataSchema to mapOf(
+                SCH.properties to mapOf(
+                    "rating" to mapOf(SCH.title to "Rating", SCH.type to SCT.integer, "minimum" to 1, "maximum" to 5),
+                    "thoughts" to mapOf(SCH.title to "What I thought", SCH.type to SCT.string),
+                ),
+                "required" to listOf("rating"),
+            ),
+        ),
+    ),
+    CCT.workflowDef to listOf(
+        mapOf(
+            CCT.workflowId to aiWorkflow,
+            CCT.definition to mapOf(
+                WFD.entry to "normal", WFD.label to "Review the book", WFD.workflowId to aiWorkflow,
+                WFD.tasks to listOf(
+                    mapOf(
+                        WFD.id to aiTask, WFD.label to "Your review",
+                        WFD.saves to listOf(mapOf(WFD.id to aiSave, WFD.label to "Save the review", "kind" to "edit")),
+                        WFD.traits to listOf(mapOf(WFD.traitId to aiTrait, WFD.required to true)),
+                    ),
+                ),
+            ),
+        ),
+    ),
 )
 
 /** The page's placeholder for the address the reader invites. */
