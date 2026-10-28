@@ -617,6 +617,17 @@ Two more things set the config patch apart (#1434):
   with 409 (`errorCode` `staleEntries`), listing each entry under `extraData.conflicts`. The check is per entry, since
   editing an unpublished bundle rewrites it in place without changing its version.
 
+A bundle can also move between clients in **portable form** (#1435). Its data names its client in one way only: the
+client's namespace, `client.<id>`, where its types live. That name appears in a type's `typeName`, a `$ref`, a key of a
+workflow's `types` map, and the bundle's `namespace`. In portable form it is written `client.@self` instead:
+
+- **Reading.** The bundle and entries reads take `portable=true`, and answer in portable form.
+- **Writing.** The bundle write, the patch, and the import accept portable form, and resolve `@self` to the client they
+  write to before anything else looks at the request.
+- **What is rewritten.** A value is rewritten only when it *is* such a name, whole: the namespace, a name beneath it,
+  or a `$defs` pointer to one. Free text that mentions one is left alone, and so are another client's names and
+  global ones. The client's definition and the customers slot are left as stored.
+
 ```json
 {
   "targets": {

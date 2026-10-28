@@ -236,7 +236,7 @@ client), issue #627 — the config id is always built from `cxt.client`, so a ca
 | `/clientAdmin/config/bundle/publish` | POST | publish the latest editable revision of one or more configs, together (`names`; `acknowledgeImpact` to go past an impact report; `reload` to make it live) |
 | `/clientAdmin/config/bundle/impact` | GET | what publishing them together would do to the client's stored data (`names`; `IMP`, issue #935) |
 | `/clientAdmin/config/reload` | POST | reload this client on this node |
-| `/clientAdmin/config/bundle` / `/bundles` | GET | fetch one / list this client's configs |
+| `/clientAdmin/config/bundle` / `/bundles` | GET | fetch one / list this client's configs (`portable=true` on a fetch answers in portable form: the client's own namespace as `client.@self`, which every write resolves to the client it writes to; issue #1435) |
 | `/clientAdmin/config/publishedOnly` | POST | set the protection tier |
 
 **To create a client over HTTP, use `POST /admin/client/create`** (`ADEP.clientCreate`, issue #1054; a full-scope
