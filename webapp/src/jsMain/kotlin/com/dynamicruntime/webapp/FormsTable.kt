@@ -1,5 +1,6 @@
 package com.dynamicruntime.webapp
 
+import com.dynamicruntime.common.util.toJsonListOfMaps
 import react.ChildrenBuilder
 import react.FC
 import react.Key
@@ -55,10 +56,10 @@ external interface FormsTableProps : Props {
     var canDelete: Boolean
 
     /**
-     * Whether the caller deletes only its own forms -- anyone but an administrator (issue #1432) -- and who it is: a row
-     * owned by someone else offers no Delete, which would only be refused ([mayDeleteForm]).
+     * Whether the caller's deletes are limited -- anyone but an administrator (issue #1432) -- and who it is: a row owned
+     * by someone else and in a workflow offers no Delete, which would only be refused ([mayDeleteForm], issue #1452).
      */
-    var deletesOwnOnly: Boolean
+    var limitedDelete: Boolean
     var selfUserId: Long?
 
     /** The gedra id of a row to flash briefly -- the form just saved on the edit page (issue #592); null for
@@ -273,6 +274,8 @@ val FormsTable = FC<FormsTableProps> { props ->
             row.wfItems = workflowCellOf(summary.states, summary.client, props.workflowSummary)
             // Whose form it is (issue #1432), so the actions cell asks who may delete it without searching the rows.
             row.ownerId = summary.ownerId
+            // And its state, so the same cell asks whether it is in a workflow (issue #1452).
+            row.states = summary.states
             // The survey status for the fixed Status column (issue #694): its chip label + colour class, and
             // whether it warrants the CTA (anything but Valid). Absent on a row with no survey state.
             summary.surveyStatus?.let {
@@ -355,7 +358,13 @@ private fun actionsColumn(
             this.onViewWorkflow = onViewWorkflow?.let { open -> { open(id, items) } }
             this.showSurvey = showSurvey
             this.onSurveyView = props.onSurveyView
-            this.canDelete = props.canDelete && mayDeleteForm(record.ownerId as? Long, props.selfUserId, props.deletesOwnOnly)
+            this.canDelete = props.canDelete && mayDeleteForm(
+                record.ownerId as? Long, props.selfUserId, props.limitedDelete,
+                (record.states as Any?).toJsonListOfMaps(),
+            )
+            this.otherOwner = otherOwnerLabel(
+                record.ownerId as? Long, props.selfUserId, record.ownerName as? String, record.ownerEmail as? String,
+            )
             this.confirming = props.confirmingDeleteId == id
             this.deleting = props.deletingId == id
             this.onArmDelete = props.onArmDelete
@@ -506,6 +515,8 @@ private external interface FormRowActionsProps : Props {
     var showSurvey: Boolean
     var onSurveyView: (String) -> Unit
     var canDelete: Boolean
+    /** Whose the form is when it is not the caller's (issue #1452), for the delete question; null otherwise. */
+    var otherOwner: String?
     var confirming: Boolean
     var deleting: Boolean
     var onArmDelete: (String) -> Unit
@@ -541,7 +552,7 @@ private val FormRowActions = FC<FormRowActionsProps> { props ->
             // bottom of a short table -- and antd flips it when that would leave the visible area. It names where
             // the delete acts.
             Popconfirm {
-                title = deleteRowQuestion(props.id)
+                title = deleteRowQuestion(props.id, props.otherOwner)
                 okText = "Delete"
                 cancelText = "Cancel"
                 placement = "left"

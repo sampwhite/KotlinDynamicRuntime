@@ -180,27 +180,30 @@ class EditorRoleTest : StringSpec({
         ed.expectError(EXC.notFound, GEP.formDoc, args = mapOf(GDF.gedraId to outsiders))
     }
 
-    "an editor deletes only its own forms, and creates them for others of its client" {
+    "an editor deletes its own forms and others' in no workflow, and creates them for others of its client" {
         val ed = editor("deleter@$mine.test")
         val author = TestUser.create(cxt, "kept@$mine.test", userClient = mine)
+        // Another user's form in no workflow (issue #1452): the editor deletes it. (Refusing one in a workflow is
+        // `OwnerOnlyTest`'s, whose client has one.)
         val theirsForm = newForm(author, "Not the editor's")
-        ed.expectError(EXC.notAuthorized, GEP.formDoc, args = mapOf(GDF.gedraId to theirsForm), method = HttpMethod.DELETE)
-            .toString() shouldContain "Only a form's owner or an administrator may delete it."
-        nameOf(author, theirsForm) shouldBe "Not the editor's"
+        ed.deleteData(GEP.formDoc, mapOf(GDF.gedraId to theirsForm))[GDF.gedraId] shouldBe theirsForm
+        author.getItems(GEP.formDocs).map { it[GDF.gedraId] } shouldNotContain theirsForm
         // Its own it deletes.
         val own = newForm(ed, "The editor's own")
         ed.deleteData(GEP.formDoc, mapOf(GDF.gedraId to own))
         listedIds(ed) shouldNotContain own
         // An administrator deletes the author's.
-        TestUser.create(cxt, "remover@$mine.test", level = ROLE.admin, userClient = mine).deleteData(GEP.formDoc, mapOf(GDF.gedraId to theirsForm))
-        // It creates a form for another user of its client (issue #1433): the form is theirs, so the editor -- not its
-        // owner -- cannot then delete it.
+        val authors = newForm(author, "The author's")
+        TestUser.create(cxt, "remover@$mine.test", level = ROLE.admin, userClient = mine).deleteData(GEP.formDoc, mapOf(GDF.gedraId to authors))
+        // It creates a form for another user of its client (issue #1433): the form is theirs, and -- in no workflow --
+        // the editor may take it back (issue #1452), as when it was started for the wrong person.
         val forAuthor = ed.postItem(
             GEP.formDocCreate,
             mapOf(EI.user to author.userId.toString(), GDF.entries to listOf(mapOf(GE.traitId to GT.name, GE.data to mapOf(GT.nameField to "For you")))),
         )[GDF.gedraId].toOptStr()!!
         author.getItems(GEP.formDocs).map { it[GDF.gedraId] } shouldContain forAuthor
-        ed.expectError(EXC.notAuthorized, GEP.formDoc, args = mapOf(GDF.gedraId to forAuthor), method = HttpMethod.DELETE)
+        ed.deleteData(GEP.formDoc, mapOf(GDF.gedraId to forAuthor))
+        author.getItems(GEP.formDocs).map { it[GDF.gedraId] } shouldNotContain forAuthor
         // And imports one for them, which is creating it by another door.
         val doc = mapOf(GDF.entries to listOf(mapOf(GE.traitId to GT.name, GE.data to mapOf(GT.nameField to "Imported for you"))))
         ed.postData(GEP.formDocImport, mapOf(EI.user to author.userId.toString(), GIF.data to doc))

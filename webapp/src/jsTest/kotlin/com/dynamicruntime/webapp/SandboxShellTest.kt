@@ -106,6 +106,19 @@ class SandboxShellTest {
         assertEquals("Delete this form from acme's sandbox?", deleteFormQuestion("gd.fd.acme:sandbox.e20261007120000000AbCd"))
         // An id that does not parse names nothing rather than guessing.
         assertEquals("Delete this form?", deleteFormQuestion(null))
+        // Another user's form, which an editor may delete (issue #1452), says whose it is.
+        assertEquals(
+            "Delete Ada Lovelace's form from acme (live data)?",
+            deleteFormQuestion("gd.fd.acme.e20261007120000000AbCd", "Ada Lovelace"),
+        )
+        assertEquals(
+            "Delete Ada Lovelace's form from acme (live data)?",
+            deleteRowQuestion("gd.fd.acme.e20261007120000000AbCd", "Ada Lovelace"),
+        )
+        assertEquals("Ada Lovelace", otherOwnerLabel(8, 7, "Ada Lovelace", "ada@x.com"))
+        assertEquals("ada@x.com", otherOwnerLabel(8, 7, " ", "ada@x.com"))
+        assertEquals(null, otherOwnerLabel(7, 7, "Me", "me@x.com"))
+        assertEquals(null, otherOwnerLabel(null, 7, "Ada", "ada@x.com"))
         // A cross-client listing's row names its own form's client, not the page's.
         assertEquals("Delete from globex (live data)?", deleteRowQuestion("gd.fd.globex.e20261007120000000AbCd"))
         assertEquals("Delete?", deleteRowQuestion("not an id"))

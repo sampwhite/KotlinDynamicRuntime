@@ -1,5 +1,6 @@
 package com.dynamicruntime.webapp
 
+import com.dynamicruntime.common.gedra.workflow.engagedWorkflowIds
 import com.dynamicruntime.common.gedra.workflow.WAGG
 import com.dynamicruntime.common.gedra.workflow.WCOL
 import com.dynamicruntime.common.gedra.workflow.WfPhase
@@ -797,12 +798,14 @@ fun parseSingletonWorkflows(results: Map<String, Any?>): List<SingletonWorkflow>
 fun createsFormsForOthers(config: HomeConfig): Boolean = config.canManageUsers || config.seesClientForms
 
 /**
- * Whether the caller may delete a form owned by [ownerId] (issue #1432): only its owner or an administrator deletes a
- * form, so a caller who [deletesOwnOnly] -- anyone but an administrator, an editor included -- deletes only its own
- * ([selfUserId]). Pure, covered under `jsNodeTest`.
+ * Whether the caller may delete a form owned by [ownerId] whose state is [states] (issues #1432, #1452): an
+ * administrator deletes any; a caller with a [limitedDelete] -- anyone but an administrator, an editor included --
+ * deletes its own ([selfUserId]), and another user's only while the form is in no workflow, by the kernel's own
+ * reading of the engagement ([engagedWorkflowIds]). [states] are the ones the listing was shown, which leave out a
+ * retired workflow's, as the backend's rule does. Pure, covered under `jsNodeTest`.
  */
-fun mayDeleteForm(ownerId: Long?, selfUserId: Long?, deletesOwnOnly: Boolean): Boolean =
-    !deletesOwnOnly || (ownerId != null && ownerId == selfUserId)
+fun mayDeleteForm(ownerId: Long?, selfUserId: Long?, limitedDelete: Boolean, states: List<Map<String, Any?>>): Boolean =
+    !limitedDelete || (ownerId != null && ownerId == selfUserId) || engagedWorkflowIds(states).isEmpty()
 
 class FormSummary(
     val gedraId: String,

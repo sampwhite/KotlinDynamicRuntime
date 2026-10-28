@@ -62,6 +62,15 @@ class OwnerOnlyTest : StringSpec({
         trait("VerdictEntry", "verdict", setOf(GedraDataType.formDoc), "A judge's verdict on the note.") {
             property("ruling", "The ruling.") { type = SCT.string }
         }
+        // The survey may put the fact on a form with no workflow at all (issue #1452), from a note that says "always".
+        workflow("noteSurvey", WfEntry.survey) {
+            function(computeCFactsFromData {
+                trait = "note"
+                valuePath = "kept"
+                map("always", WSC.ownerOnly)
+            })
+            task("fill", "Fill in the note") { trait("note"); save("saveFill", "Save", WfSaveKind.edit) }
+        }
         workflow("privateReview", WfEntry.normal) {
             label = "Private review"
             // Kept to its owner while the note says so -- data-driven, so a form with the fact off is one word away.
@@ -200,6 +209,25 @@ class OwnerOnlyTest : StringSpec({
         view[WVF.keptToOwner] shouldBe true
         view[WFD.tasks].toJsonListOfMaps().map { it[WVF.canSave] } shouldBe listOf(false, false, false)
         owner.getData(GEP.workflowView, mapOf(GDF.workflowId to "privateReview", GDF.gedraId to gid))[WVF.keptToOwner] shouldBe null
+    }
+
+    "an editor deletes another user's form only while it is in no workflow (issue #1452)" {
+        val open = engagedForm(kept = "no")
+        editor.expectError(EXC.notAuthorized, GEP.formDoc, args = mapOf(GDF.gedraId to open), method = HttpMethod.DELETE)[
+            "errorMessage"].toOptStr() shouldBe "This form is in a workflow, so only its owner or an administrator may delete it."
+        // Withdrawn by its owner, it is in no workflow, and the editor deletes it.
+        owner.postData(GEP.workflowEngage, mapOf(GDF.gedraId to open, GDF.workflowId to "privateReview", WFS.engaged to false))
+        editor.deleteData(GEP.formDoc, mapOf(GDF.gedraId to open))[GDF.gedraId] shouldBe open
+    }
+
+    "a form kept to its owner with no workflow is still not an editor's to delete" {
+        val gid = owner.postItem(GEP.formDocCreate, mapOf(GDF.entries to listOf(noteEntry("private", "always"))))[GDF.gedraId].toOptStr()!!
+        // The survey put the fact on it, with no workflow engaged: the delete rule lets the editor through, and the owner-
+        // only rule, which does not ask about workflows, still keeps it out.
+        editor.getData(GEP.formDocLocks, mapOf(GDF.gedraId to gid))[WVF.keptToOwner] shouldBe true
+        editor.expectError(EXC.notAuthorized, GEP.formDoc, args = mapOf(GDF.gedraId to gid), method = HttpMethod.DELETE)[
+            "errorMessage"].toOptStr() shouldBe TraitLockCopy.keptToOwner
+        owner.deleteData(GEP.formDoc, mapOf(GDF.gedraId to gid))[GDF.gedraId] shouldBe gid
     }
 
     "an editor's own kept form is its own to change and delete" {

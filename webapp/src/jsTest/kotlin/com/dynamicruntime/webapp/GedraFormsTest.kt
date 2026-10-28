@@ -1,5 +1,6 @@
 package com.dynamicruntime.webapp
 
+import com.dynamicruntime.common.gedra.workflow.WFS
 import com.dynamicruntime.common.gedra.workflow.WCOL
 import com.dynamicruntime.common.user.PERSONA
 import com.dynamicruntime.common.endpoint.EI
@@ -57,10 +58,19 @@ class GedraFormsTest {
     @Test
     fun onlyAFormsOwnerOrAnAdministratorIsOfferedItsDelete() {
         // Issue #1432: an editor reaches every form of its client but deletes only its own; an administrator deletes any.
-        assertTrue(mayDeleteForm(ownerId = 7, selfUserId = 7, deletesOwnOnly = true))
-        assertFalse(mayDeleteForm(ownerId = 8, selfUserId = 7, deletesOwnOnly = true))
-        assertFalse(mayDeleteForm(ownerId = null, selfUserId = 7, deletesOwnOnly = true))
-        assertTrue(mayDeleteForm(ownerId = 8, selfUserId = 7, deletesOwnOnly = false))
+        // Issue #1452: another user's form only while it is in no workflow.
+        val engaged = listOf(
+            mapOf(GE.traitId to WFS.workflowEngagement, GE.data to mapOf(WFD.workflowId to "audit", WFS.engaged to true)),
+        )
+        val withdrawn = listOf(
+            mapOf(GE.traitId to WFS.workflowEngagement, GE.data to mapOf(WFD.workflowId to "audit", WFS.engaged to false)),
+        )
+        assertTrue(mayDeleteForm(ownerId = 7, selfUserId = 7, limitedDelete = true, states = engaged))
+        assertFalse(mayDeleteForm(ownerId = 8, selfUserId = 7, limitedDelete = true, states = engaged))
+        assertTrue(mayDeleteForm(ownerId = 8, selfUserId = 7, limitedDelete = true, states = emptyList()))
+        assertTrue(mayDeleteForm(ownerId = 8, selfUserId = 7, limitedDelete = true, states = withdrawn))
+        assertFalse(mayDeleteForm(ownerId = null, selfUserId = 7, limitedDelete = true, states = engaged))
+        assertTrue(mayDeleteForm(ownerId = 8, selfUserId = 7, limitedDelete = false, states = engaged))
         // The owner's id rides the row's `userId`.
         assertEquals(42L, summarizeForm(mapOf(GDF.gedraId to "g", GDF.userId to 42), null).ownerId)
     }
