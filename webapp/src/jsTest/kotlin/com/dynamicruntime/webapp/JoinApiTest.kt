@@ -20,7 +20,10 @@ class JoinApiTest {
                 JOIN.roles to listOf(
                     mapOf(JOIN.name to "organizer", JOIN.label to "Organizer", JOIN.persona to PERSONA.admin, JOIN.summary to "Run it."),
                     mapOf(JOIN.name to "speaker", JOIN.label to "Speaker", JOIN.persona to PERSONA.member, JOIN.summary to "Submit a talk."),
-                    mapOf(JOIN.name to "committee", JOIN.label to "Committee member", JOIN.persona to PERSONA.editor, JOIN.summary to "Review.", JOIN.userId to 42),
+                    mapOf(
+                        JOIN.name to "committee", JOIN.label to "Committee member", JOIN.persona to PERSONA.editor,
+                        JOIN.summary to "Review.", JOIN.userId to 42,
+                    ),
                 ),
             ),
             // One with no id is not a client; it is skipped rather than drawn.

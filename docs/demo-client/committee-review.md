@@ -158,13 +158,15 @@ completes this step; you can see it here.* Once the review is recorded, the spea
 
 ## What a committee member sees
 
-A committee member is an editor. An editor sees and edits every form of the client, as an administrator does, but
-administers nothing: no users, no configuration, and no reports. So their forms list is **Forms**, with every
-speaker's talks. An editor is not at an administrator's level, so a talk's abstract, opened to edit, leaves off the
-note for the organizers, as the speaker's does (see [Abstract](abstract.md)). On a talk whose
-survey is done, the member opens **Committee review** and presses **Engage**, as the speaker did for the abstract.
-The **Record the review** step is then editable: a **Score** and **Notes for the speaker**, and a **Save the review**
-button. Once saved, the **Accept the talk** step offers its button. After it is pressed, the step reads *Accepted by*
-and who accepted it, and the talk's status in the forms list is **Finished**.
+A committee member is an editor. An editor sees every form of the client and may edit any of them, except one kept
+to its owner. It administers nothing: no users, no configuration, and no reports. So a committee member's forms list
+is **Forms**, with every speaker's talks. An editor is not at an administrator's level, so when they open a talk's
+abstract to edit it, the form leaves off the note for the organizers, as the speaker's does (see
+[Abstract](abstract.md)).
+
+On a talk whose survey is done, the member opens **Committee review** and presses **Engage**, as the speaker did for
+the abstract. The **Record the review** step is then editable: a **Score** and **Notes for the speaker**, and a
+**Save the review** button. Once saved, the **Accept the talk** step offers its button. After it is pressed, the step
+reads *Accepted by* and who accepted it, and the talk's status in the forms list is **Finished**.
 
 Next: [Workshop logistics](workshop-logistics.md).

@@ -555,9 +555,14 @@ fun provisionConfDemo(cxt: KdrCxt, suffix: String? = null): SimulationReport {
     for (config in confDemoConfigs(cxt, client)) Simulations.provisionConfig(cxt, config)
     val organizer = Simulations.provisionUser(cxt, "organizer@$client.example", client, ROLE.admin, name = "Olive Organizer")
     val speaker = Simulations.provisionUser(cxt, "speaker@$client.example", client, ROLE.user, name = "Pat Speaker")
-    // Reviews talks (issue #1139): an editor (issue #1455) carrying the client's `committee` label.
+    // Reviews talks (issue #1139): an editor (issue #1455) carrying the client's `committee` label. A user found from an
+    // earlier run is taken as it is, and one made before #1455 is an administrator, so its roles are set here with its
+    // labels, by the one update; its persona, part of its key, stays the one it was made with.
     val editor = listOf(ROLE.editor)
-    val reviewer = Simulations.provisionUser(cxt, "committee@$client.example", client, ROLE.user, name = "Casey Committee", capabilities = editor)
+    val reviewer = Simulations.provisionUser(
+        cxt, "committee@$client.example", client, ROLE.user, name = "Casey Committee", capabilities = editor,
+    )
+    reviewer.roles = listOf(ROLE.user) + editor
     Simulations.setLabels(cxt, reviewer, listOf(ConfDemo.committeeLabel))
     return SimulationReport(
         clients = listOf(client),
