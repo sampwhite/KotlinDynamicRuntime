@@ -1,6 +1,7 @@
 package com.dynamicruntime.kdn
 
 import com.dynamicruntime.common.context.ENV
+import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.gedra.ACEP
 import com.dynamicruntime.common.gedra.CCT
@@ -24,9 +25,11 @@ import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonListOfStrings
+import com.dynamicruntime.common.util.toJsonListOrEmpty
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldContainAll
+import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 
 /**
@@ -109,6 +112,34 @@ class ConfigEditorReadTest : StringSpec({
         slotTypes.values.map { it.toString() }.filterNot { it in defs } shouldBe emptyList()
         editor[CFEP.slotKeys].toJsonMapOrEmpty()[CCT.traitDef].toJsonListOfStrings() shouldBe listOf(CCT.traitId)
         editor[CFEP.slotKeys].toJsonMapOrEmpty()[CCT.clientDef].toJsonListOfStrings() shouldBe emptyList()
+    }
+
+    "the editor gives each entry's stamp, which an edit then says it read, and a second edit on the same stamp is stale" {
+        val admin = defineClient("stamps1460")
+        fun stamps() = admin.getItem(CFEP.editor)[CFEP.configs].toJsonListOfMaps().single { it[CFEP.name] == "traits" }[CFEP.latestStamps]
+            .toJsonMapOrEmpty()[CCT.traitDef].toJsonListOrEmpty()
+        val read = stamps().single()
+        read.shouldNotBeNull()
+        val memo = admin.getItem(CFEP.bundle, mapOf(CFEP.name to "traits"))[CFEP.slots].toJsonMapOrEmpty()[CCT.traitDef].toJsonListOfMaps().single()
+        fun patch(description: String) = mapOf(
+            CFEP.configs to listOf(
+                mapOf(
+                    CFEP.name to "traits",
+                    CFEP.edits to listOf(
+                        mapOf(
+                            CFEP.slot to CCT.traitDef, GED.action to GedraEditAction.addOrReplace.name,
+                            GE.data to memo + (CCT.description to description), CFEP.expectUpdatedAt to read,
+                        ),
+                    ),
+                ),
+            ),
+        )
+        // The stamp as read is the entry's: the edit goes ahead, and the entry is stamped anew.
+        admin.postData(CFEP.bundlePatch, patch("First."))
+        (stamps().single() == read) shouldBe false
+        // Saying it read the old one again is refused, naming the entry.
+        val refused = admin.expectError(EXC.conflict, CFEP.bundlePatch, patch("Second."))
+        refused[EP.extraData].toJsonMapOrEmpty()[CFEP.conflicts].toJsonListOfMaps().single()[CFEP.key] shouldBe mapOf(CCT.traitId to "memo")
     }
 
     "a bundle read answers the published revision when asked, and says when there is none" {

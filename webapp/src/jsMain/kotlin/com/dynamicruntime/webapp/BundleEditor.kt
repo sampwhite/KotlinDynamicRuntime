@@ -5,7 +5,11 @@ import com.dynamicruntime.common.gedra.CCT
 import com.dynamicruntime.common.gedra.CFEP
 import com.dynamicruntime.common.gedra.addressesEntry
 import com.dynamicruntime.common.gedra.sandboxParentOf
+import com.dynamicruntime.common.gedra.slotsToPortable
+import com.dynamicruntime.common.gedra.toPortable
+import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.util.toJsonListOfMaps
+import com.dynamicruntime.common.util.toJsonListOrEmpty
 import com.dynamicruntime.common.util.toJsonListOfStrings
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
@@ -21,13 +25,32 @@ class EditorRevision(
     val published: Boolean,
     val slots: Map<String, List<Map<String, Any?>>>,
     val issueCount: Int,
+    /** The configuration's namespace, as stored: `client.<id>`, or beneath it. */
+    val namespace: String = "",
 )
 
-/** One configuration: its [latest] revision, and its [published] one beside it when the latest is a draft over it. */
-class EditorBundle(val name: String, val latest: EditorRevision, val published: EditorRevision?)
+/**
+ * One configuration: its [latest] revision, and its [published] one beside it when the latest is a draft over it.
+ * [stamps] is each latest entry's `updatedAt` by slot, in the slot's order: what an edit of it says it read (issue #1460).
+ */
+class EditorBundle(
+    val name: String,
+    val latest: EditorRevision,
+    val published: EditorRevision?,
+    val stamps: Map<String, List<Any?>> = emptyMap(),
+)
 
-/** The editor read: the client's configurations, and the fields each slot's entries are keyed by. */
-class BundleEditorView(val client: String, val configs: List<EditorBundle>, val slotKeys: Map<String, List<String>>)
+/**
+ * The editor read: the client's configurations, the fields each slot's entries are keyed by, and -- for checking an
+ * edit (issue #1460) -- each slot's entry type ([slotTypes]) with the schema types it needs ([defs]).
+ */
+class BundleEditorView(
+    val client: String,
+    val configs: List<EditorBundle>,
+    val slotKeys: Map<String, List<String>>,
+    val slotTypes: Map<String, String> = emptyMap(),
+    val defs: Map<String, Any?> = emptyMap(),
+)
 
 /** The editor read's answer as the page draws it. */
 fun parseBundleEditor(item: Map<String, Any?>): BundleEditorView {
@@ -38,15 +61,21 @@ fun parseBundleEditor(item: Map<String, Any?>): BundleEditorView {
             published = map[CFEP.published] == true,
             slots = map[CFEP.slots].toJsonMapOrEmpty().mapValues { it.value.toJsonListOfMaps() },
             issueCount = map[CFEP.issues].toJsonListOfMaps().size,
+            namespace = map[CFEP.namespaceField].toOptStr().orEmpty(),
         )
     }
     return BundleEditorView(
         client = item[CFEP.client].toOptStr().orEmpty(),
         configs = item[CFEP.configs].toJsonListOfMaps().mapNotNull { c ->
             val latest = revision(c[CFEP.revisionLatest]) ?: return@mapNotNull null
-            EditorBundle(c[CFEP.name].toOptStr().orEmpty(), latest, revision(c[CFEP.revisionPublished]))
+            EditorBundle(
+                c[CFEP.name].toOptStr().orEmpty(), latest, revision(c[CFEP.revisionPublished]),
+                c[CFEP.latestStamps].toJsonMapOrEmpty().mapValues { it.value.toJsonListOrEmpty() },
+            )
         },
         slotKeys = item[CFEP.slotKeys].toJsonMapOrEmpty().mapValues { it.value.toJsonListOfStrings() },
+        slotTypes = item[CFEP.slotTypes].toJsonMapOrEmpty().mapValues { it.value.toOptStr().orEmpty() },
+        defs = item[SCH.dDefs].toJsonMapOrEmpty(),
     )
 }
 
@@ -148,6 +177,18 @@ fun editorSlots(bundle: EditorBundle, slotKeys: Map<String, List<String>>): List
         EditorSlot(slot, editorSlotLabel(slot), entries)
     }
 }
+
+/**
+ * [bundle]'s latest revision in portable form, for [client] -- the configuration's owner -- as a bundle write takes it:
+ * its name, its namespace, and its slots, with the client's own namespace written `client.@self` (issue #1435), so it
+ * can be written as it is into another client, which every write resolves it for. The client's definition stays as
+ * stored ([slotsToPortable]).
+ */
+fun portableBundle(bundle: EditorBundle, client: String): Map<String, Any?> = linkedMapOf(
+    CFEP.name to bundle.name,
+    CFEP.namespaceField to toPortable(bundle.latest.namespace, client),
+    CFEP.slots to slotsToPortable(bundle.latest.slots, client),
+)
 
 /** What a configuration's line says: its version, and whether what it holds is published. */
 fun bundleSummaryText(bundle: EditorBundle): String {

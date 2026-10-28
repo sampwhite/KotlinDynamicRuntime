@@ -687,6 +687,9 @@ private fun ChildrenBuilder.panelLink(id: String, text: String) {
 external interface DisclosureProps : PropsWithChildren {
     /** The line the closed disclosure shows, which opens it. */
     var summaryText: String
+
+    /** Open to start, as one just added is (issue #1460); closed when unset. */
+    var initiallyOpen: Boolean?
 }
 
 /**
@@ -694,7 +697,7 @@ external interface DisclosureProps : PropsWithChildren {
  * whose table is the page's longest and rarely changed, reads nothing until somebody asks for it.
  */
 val Disclosure = FC<DisclosureProps> { props ->
-    var expanded by useState(false)
+    var expanded by useState(props.initiallyOpen == true)
     details {
         className = ClassName("client-disclosure")
         this.open = expanded

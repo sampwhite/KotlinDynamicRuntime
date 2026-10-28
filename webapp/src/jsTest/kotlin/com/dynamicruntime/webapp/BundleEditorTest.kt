@@ -3,6 +3,9 @@ package com.dynamicruntime.webapp
 import com.dynamicruntime.common.gedra.ACEP
 import com.dynamicruntime.common.gedra.CCT
 import com.dynamicruntime.common.gedra.CFEP
+import com.dynamicruntime.common.schema.SCH
+import com.dynamicruntime.common.util.toJsonListOfMaps
+import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -85,6 +88,24 @@ class BundleEditorTest {
         assertEquals("Show the table — all 3 published", publishingSummaryText(summary(true, true, true)))
         assertEquals("Show the table — its one configuration published", publishingSummaryText(summary(true)))
         assertEquals("Show the table — 1 of 1 configuration unpublished", publishingSummaryText(summary(false)))
+    }
+
+    @Test
+    fun aBundlesPortableFormNamesNoClientButKeepsTheDefinition() {
+        val entry = mapOf(CCT.traitId to "memo", CCT.typeName to "client.acme.MemoEntry", "dataType" to mapOf(SCH.dRef to "#/${SCH.dDefs}/client.acme.Memo"))
+        val bundle = EditorBundle(
+            "traits",
+            EditorRevision(2, false, mapOf(CCT.traitDef to listOf(entry), CCT.clientDef to listOf(mapOf("clientId" to "acme", "homeNs" to "client.acme"))), 0, "client.acme"),
+            null,
+        )
+        val portable = portableBundle(bundle, "acme")
+        assertEquals("client.@self", portable[CFEP.namespaceField])
+        val slots = portable[CFEP.slots].toJsonMapOrEmpty()
+        val written = slots[CCT.traitDef].toJsonListOfMaps().single()
+        assertEquals("client.@self.MemoEntry", written[CCT.typeName])
+        assertEquals(mapOf(SCH.dRef to "#/${SCH.dDefs}/client.@self.Memo"), written["dataType"])
+        // The definition is the client's own, and stays as stored.
+        assertEquals("client.acme", slots[CCT.clientDef].toJsonListOfMaps().single()["homeNs"])
     }
 
     @Test

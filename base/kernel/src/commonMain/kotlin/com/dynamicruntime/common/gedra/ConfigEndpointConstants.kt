@@ -126,6 +126,12 @@ object CFEP {
     /** On the editor's answer: the fields each slot's entries are keyed by; empty for a single-instance slot. */
     const val slotKeys = "slotKeys"
 
+    /**
+     * On the editor's answer, beside each configuration's latest revision (issue #1460): each entry's `updatedAt`, by
+     * slot, in the order the revision's slots hold them -- what an edit of the entry says it read ([expectUpdatedAt]).
+     */
+    const val latestStamps = "latestStamps"
+
     /** The `errorCode` of a patch refused because entries changed since its caller read them (issue #1434). */
     const val staleCode = "staleEntries"
 
