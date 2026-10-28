@@ -21,6 +21,8 @@ Open **Documents** from the menu to read more.
 # @publicHome
 /- The public home page (issue #1324): for a person signed in to `public`, under the intro, what they can do next --
    try a demo, open one of their other accounts, or make a client of their own. -/
+/- Above the sections (issue #1429). Empty as shipped; the `reference` flavor links its walk-through here. -/
+# +walkThrough
 # +demosTitle Try a demo
 # +demosIntro
 Join a demo client with a user of your own email. Each one is shared with everyone who joins it.

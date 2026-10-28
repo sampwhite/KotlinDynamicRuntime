@@ -2,6 +2,7 @@ package com.dynamicruntime.kdn
 
 import com.dynamicruntime.common.context.ACFG
 import com.dynamicruntime.common.context.KdrCxt
+import com.dynamicruntime.common.flavor.FLV
 import com.dynamicruntime.common.gedra.GCFG
 import com.dynamicruntime.common.startup.BootCheckMode
 import com.dynamicruntime.common.user.AuthTiming
@@ -68,4 +69,12 @@ object TestInstances {
     /** With [TraitBaseComponent]'s global trait: for tests that narrow or extend one (issue #1119). */
     fun traitBases(cxtName: String): KdrCxt =
         Startup.mkTestBootCxt(cxtName, "kdnSharedTraitBases", emptyMap(), listOf(TraitBaseComponent()))
+
+    /**
+     * Under the `reference` deployment flavor: joining the demo clients offered, the conference demo provisioned at
+     * boot, and the flavor's copy. For tests of what a visitor to a reference deployment does (issue #1429). The demo
+     * it provisions is shared by everyone who joins it, as on a real one, so a test finds its own forms by name.
+     */
+    fun reference(cxtName: String): KdrCxt =
+        Startup.mkTestBootCxt(cxtName, "kdnSharedReference", mapOf(FLV.deployFlavorsEnvVar.name to FLV.reference))
 }

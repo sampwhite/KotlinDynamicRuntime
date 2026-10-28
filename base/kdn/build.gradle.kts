@@ -12,6 +12,7 @@ dependencies {
 // as Markdown *documents*, so MarkdownDocService serves them in-app -- the arrangement `base/common`'s `embedDocs`
 // uses for the README. A document id cannot hold a `/`, so each file is flattened to `demo-client-<name>.md`: its
 // doc id is `demo-client-<name>`, and its source path, which a link resolves by, stays `docs/demo-client/<name>.md`.
+// The walk-through that starts with the demo (issue #1429) is copied beside them.
 // Keep the ids in step with the documents `KdnComponent` declares.
 val embedDocs by tasks.registering(Copy::class) {
     // Resolved from this module's own directory (base/kdn -> the repo root), so it does not depend on what the
@@ -20,6 +21,9 @@ val embedDocs by tasks.registering(Copy::class) {
         include("*.md")
         rename { "demo-client-$it" }
     }
+    // The walk-through a reference deployment links from a signed-in visitor's home page (issue #1429): its doc id is
+    // its file name, `walk-through`.
+    from(layout.projectDirectory.file("../../docs/walk-through.md"))
     into(layout.buildDirectory.dir("docResources/md-docs"))
 }
 
