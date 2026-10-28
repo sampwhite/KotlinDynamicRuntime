@@ -9,6 +9,7 @@ import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.http.request.SECT
 import com.dynamicruntime.common.logging.LogStartup
+import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.SchOption
 import com.dynamicruntime.common.schema.SchTypeBuilder
@@ -153,6 +154,37 @@ fun gedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CFEP.namespace
         reloadResultProperty()
     }
 
+    // The bundle editor page's one read (issue #1436): each configuration's two revisions, and each slot's shape.
+    type(CFEP.editorBundleType) {
+        type = SCT.kObject
+        description = "One configuration as the bundle editor shows it: its latest revision, and the published one beside it."
+        property(CFEP.name, "The configuration's name (its id within the client).", required = true)
+        property(CFEP.revisionLatest, "Its latest revision: the editable draft, or the published revision when there is none.", required = true) {
+            ref(CFEP.bundleType)
+        }
+        property(
+            CFEP.revisionPublished,
+            "Its latest published revision, when the latest is a draft over it; absent when the latest is published, or " +
+                "nothing is.",
+        ) { ref(CFEP.bundleType) }
+    }
+    type(CFEP.editorType) {
+        type = SCT.kObject
+        description = "Everything the bundle editor page draws (issue #1436)."
+        property(CFEP.client, "The client whose configuration it is.", required = true)
+        property(CFEP.configs, "Every configuration the client stores, most recently written first.", required = true) {
+            type = SCT.array
+            items { ref(CFEP.editorBundleType) }
+        }
+        property(CFEP.slotTypes, "Each slot's entry type, by slot; its `data` property is the shape of one entry's data.", required = true) {
+            type = SCT.kObject
+        }
+        property(CFEP.slotKeys, "The fields each slot's entries are keyed by, by slot; empty for a single-instance slot.", required = true) {
+            type = SCT.kObject
+        }
+        property(SCH.dDefs, "The schema types the slot types need.", required = true) { type = SCT.kObject }
+    }
+
     // What a patch or a publish answers (issue #1352): every configuration it wrote, in the order asked, and the reload
     // when one was asked for -- once, since the configurations change together.
     type(CFEP.patchResultType) {
@@ -224,9 +256,19 @@ fun gedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CFEP.namespace
         outputRef = CFEP.bundleType,
         inputFields = {
             field(CFEP.name, "The configuration's name.", required = true)
+            revisionField()
             portableField()
         },
     ) { c, request -> inConfigScope(c) { cfgBundleBody(it, request) } }
+
+    itemEndpoint(
+        CFEP.editor,
+        "Everything the bundle editor page draws, in one read (issue #1436): every configuration the client stores, with " +
+            "its latest revision and, when that is a draft, the published revision beside it; and each slot's entry " +
+            "type and key fields, with the schema types they need.",
+        HttpMethod.GET,
+        outputRef = CFEP.editorType,
+    ) { c, _ -> inConfigScope(c) { cfgEditorBody(it) } }
 
     generalEndpoint(
         CFEP.bundleWrite,
@@ -378,9 +420,43 @@ private fun publishedVersionsOf(cxt: KdrCxt, client: String): Map<String, Int> =
 private fun cfgBundleBody(c: KdrCxt, request: Map<String, Any?>): Map<String, Any?> {
     AdminRules.requireClientAdministrator(c)
     val name = requireName(request)
-    val row = GedraConfigService.get(c).readLatest(c, configId(c, name))
-        ?: throw KdrException("No configuration '$name' for client '${c.client}'.", code = EXC.notFound)
+    val row = when (val revision = request[CFEP.revision].toOptStr() ?: CFEP.revisionLatest) {
+        CFEP.revisionLatest -> GedraConfigService.get(c).readLatest(c, configId(c, name))
+            ?: throw KdrException("No configuration '$name' for client '${c.client}'.", code = EXC.notFound)
+        // Its latest published revision (issue #1436): what a published-only client runs while the latest is a draft.
+        CFEP.revisionPublished -> GedraConfigService.get(c).configsAt(c, c.client, published = true)
+            .firstOrNull { it.configId.baseId == name }
+            ?: throw KdrException("Configuration '$name' of client '${c.client}' has no published revision.", code = EXC.notFound)
+        else -> throw KdrException.mkInput("'$revision' is not a revision; ask for '${CFEP.revisionLatest}' or '${CFEP.revisionPublished}'.")
+    }
     return bundleOf(c, row, portable = request[PORT.portableField] == true)
+}
+
+/**
+ * The bundle editor page's one read (issue #1436): every configuration the bound client stores, most recently written
+ * first, each its latest revision with its latest published one beside it when the latest is a draft over it; and each
+ * slot's declared shape ([ConfigSlotShapes.served]).
+ */
+private fun cfgEditorBody(c: KdrCxt): Map<String, Any?> {
+    AdminRules.requireClientAdministrator(c)
+    val svc = GedraConfigService.get(c)
+    val published = svc.configsAt(c, c.client, published = true).associateBy { it.configId.baseId }
+    val configs = svc.listConfigs(c).map { latest ->
+        val name = latest.configId.baseId
+        buildMap {
+            put(CFEP.name, name)
+            put(CFEP.revisionLatest, bundleOf(c, latest))
+            published[name]?.takeIf { it.version != latest.version }?.let { put(CFEP.revisionPublished, bundleOf(c, it)) }
+        }
+    }
+    val shapes = ConfigSlotShapes.served(c)
+    return mapOf(
+        CFEP.client to c.client,
+        CFEP.configs to configs,
+        CFEP.slotTypes to shapes.entryTypes,
+        CFEP.slotKeys to shapes.keys,
+        SCH.dDefs to shapes.defs,
+    )
 }
 
 private fun cfgWriteBody(c: KdrCxt, request: Map<String, Any?>): Map<String, Any?> {
@@ -758,6 +834,14 @@ private fun cfgSlotEntriesBody(c: KdrCxt, request: Map<String, Any?>): List<Map<
 private fun editFromPortable(edit: Map<String, Any?>, client: String): Map<String, Any?> =
     if (edit[CFEP.slot] in PORT.keptSlots || GE.data !in edit) edit else edit + (GE.data to fromPortable(edit[GE.data], client))
 
+/** The [CFEP.revision] a bundle read takes (issue #1436): the latest revision, or the latest published one. */
+private fun InputFieldsBuilder.revisionField() {
+    field(CFEP.revision, "Which revision to answer: the latest (the default), or the latest published.") {
+        option(CFEP.revisionLatest)
+        option(CFEP.revisionPublished)
+    }
+}
+
 /** The [PORT.portableField] a bundle or entries read takes (issue #1435). */
 private fun InputFieldsBuilder.portableField() {
     field(
@@ -1088,9 +1172,21 @@ fun adminGedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, ACEP.name
         inputFields = {
             field(CFEP.client, "The client that owns the configuration.", required = true) { clientAttribute() }
             field(CFEP.name, "The configuration's name.", required = true)
+            revisionField()
             portableField()
         },
     ) { c, request -> cfgBundleBody(adminConfigCxt(c, request), request) }
+
+    itemEndpoint(
+        ACEP.editor,
+        "Everything the bundle editor page draws for a named client, in one read (issue #1436), as the client-scoped " +
+            "read answers it.",
+        HttpMethod.GET,
+        outputRef = "${CFEP.namespace}.${CFEP.editorType}",
+        inputFields = {
+            field(CFEP.client, "The client whose configuration to read.", required = true) { clientAttribute() }
+        },
+    ) { c, request -> cfgEditorBody(adminConfigCxt(c, request)) }
 
     generalEndpoint(
         ACEP.bundleWrite,

@@ -11,6 +11,7 @@ import com.dynamicruntime.common.schema.SchFailure
 import com.dynamicruntime.common.schema.SchOpts
 import com.dynamicruntime.common.schema.SchType
 import com.dynamicruntime.common.schema.childPath
+import com.dynamicruntime.common.schema.collectDefClosure
 import com.dynamicruntime.common.schema.inputFailuresException
 import com.dynamicruntime.common.schema.offContractKeyFailures
 import com.dynamicruntime.common.schema.parseSchemaTypes
@@ -58,7 +59,22 @@ object ConfigSlotShapes {
 
     /** The fields an entry of [slot] is keyed by; empty for a single-instance slot, and for one nothing declares. */
     fun primaryKey(cxt: KdrCxtBase, slot: String): List<String> = compiled(cxt).primaryKeys[slot].orEmpty()
+
+    /**
+     * Each slot's declared shape as a page reads it (issue #1436): the qualified name of its entry type -- whose
+     * `data` property is the shape of one entry's data -- and the fields its entries are keyed by, with the `$defs`
+     * those types need. Raw, as declared, for a client to parse with the kernel's own schema code.
+     */
+    fun served(cxt: KdrCxtBase): ServedSlotShapes {
+        val traits = coreConfigTraits(cxt)
+        val all = WfDefSchema.defs(cxt) + ReportDefSchema.defs(cxt) + ClientDefSchema.defs(cxt) + traits.defs
+        val types = traits.configTraits.mapValues { it.value.typeName }
+        return ServedSlotShapes(types, traits.configTraits.mapValues { it.value.primaryKey }, collectDefClosure(types.values, all))
+    }
 }
+
+/** What [ConfigSlotShapes.served] answers: each slot's entry type and key fields, and the `$defs` behind them. */
+class ServedSlotShapes(val entryTypes: Map<String, String>, val keys: Map<String, List<String>>, val defs: Map<String, Any?>)
 
 /**
  * What is wrong with the slots of a configuration about to be **written**, each failure located by its slot, its

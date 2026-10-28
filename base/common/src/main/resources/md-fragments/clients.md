@@ -202,3 +202,32 @@ Upload the image first: copy naming a file the client does not have is refused w
 /- Shown under "Seen by" when a workflow is made from a template (issue #1384). Empty as shipped: the form already says
    who sees the new workflow, and a deployment that teaches -- the `reference` flavor -- adds how to open one up. -/
 # +newWorkflowNote
+
+
+# @bundlePublishing
+# +whatIsThis
+A client keeps its configuration in **bundles**, and each change to a bundle makes a new revision of it. For a client
+with a sandbox, a change is a **draft**: the sandbox runs it at once, so it can be tried there, and the client's own
+people get it only when it is **published**. A client without a sandbox runs every change as soon as it is saved.
+
+- Publish bundles that were changed together at the same time. A workflow in one bundle may need a trait in another,
+  and publishing one without the other is refused.
+- **Check impact** says what publishing would do to the forms the client already has, such as a form that is in a
+  workflow the change removes. A publish that would affect forms asks you to confirm it first.
+- On the client's own page, publishing is offered from its sandbox, after the changes have been tried there.
+
+
+# @bundleList
+# +whatIsThis
+Every bundle the client stores, with what each holds. A bundle is made of **slots**, one for each kind of thing it
+can declare, such as **Traits** or **Workflows**. Each slot holds **entries**, one for each thing declared, named by
+its key: a trait by its id, a workflow by its id.
+
+- Open a bundle to see its slots, a slot to see its entries, and an entry to see its JSON, exactly as stored.
+- When a bundle has a draft over a published revision, each entry is marked **added**, **changed**, **unchanged**,
+  or **removed** compared with the published revision. A changed entry shows the draft and the published JSON side by
+  side.
+- The bundle holding the client's definition is listed first, and the rest by name.
+
+This page shows the configuration; it does not change it yet. Changes are made on the client's page, and in Design
+View.

@@ -1,12 +1,15 @@
 package com.dynamicruntime.webapp
 
 import com.dynamicruntime.common.util.MarkdownHooks
+import com.dynamicruntime.common.util.escapeHtml
+import com.dynamicruntime.common.util.highlightJson
 import com.dynamicruntime.common.util.renderMarkdown
 import com.dynamicruntime.common.util.renderMarkdownInline
 import kotlinx.browser.window
 import react.FC
 import react.Props
 import react.dom.html.ReactHTML.div
+import react.dom.html.ReactHTML.pre
 import react.dom.html.ReactHTML.span
 import react.useMemo
 import web.cssom.ClassName
@@ -151,6 +154,22 @@ val MarkdownInline = FC<MarkdownProps> { props ->
     span {
         className = ClassName("markdown-inline")
         dangerouslySetInnerHTML = useInnerHtml(props.source.renderMarkdownInline(markdownHooksFor(props.linkResolver, props.refAddress, useShellFacts())))
+    }
+}
+
+external interface JsonBlockProps : Props {
+    /** The JSON text to show, laid out as it is to be read. */
+    var text: String
+}
+
+/**
+ * A block of JSON, highlighted as a Markdown ```` ```json ```` block is (issue #1436): each run in its `md-tok-*` class,
+ * which the stylesheet colors, by the kernel's own [highlightJson]. Text the highlighter cannot read is shown plain.
+ * Safe as [Markdown] is: the highlighter escapes every run it emits.
+ */
+val JsonBlock = FC<JsonBlockProps> { props ->
+    pre {
+        dangerouslySetInnerHTML = useInnerHtml(highlightJson(props.text) ?: escapeHtml(props.text))
     }
 }
 
