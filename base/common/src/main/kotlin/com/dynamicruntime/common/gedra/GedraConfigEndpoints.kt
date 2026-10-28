@@ -20,6 +20,8 @@ import com.dynamicruntime.common.util.toJsonListOrEmpty
 import com.dynamicruntime.common.util.toJsonListOfStrings
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
+import com.dynamicruntime.common.util.truncateToMs
+import com.dynamicruntime.common.util.toOptInstantOrNull
 
 /**
  * The read/write surface over stored client configuration (issue #627): the endpoints a client administrator
@@ -155,11 +157,13 @@ fun gedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CFEP.namespace
     // when one was asked for -- once, since the configurations change together.
     type(CFEP.patchResultType) {
         type = SCT.kObject
-        description = "The configurations a patch wrote, together, each as a whole bundle."
+        description = "The configurations a patch wrote, together, each as a whole bundle -- or, for a dry run, would write."
         property(CFEP.configs, "Each configuration written, in the order the patch named them.", required = true) {
             type = SCT.array
             items { ref(CFEP.bundleType) }
         }
+        property(CFEP.dryRun, "Present and true for a dry run (issue #1434): nothing was stored.") { type = SCT.boolean }
+        property(CFEP.impact, "For a dry run: what the patch would do to the data the client already stores.") { ref(IMP.reportType) }
         reloadResultProperty()
     }
 
@@ -236,7 +240,9 @@ fun gedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CFEP.namespace
         "Edits the interior slot entries of one or more configurations (issues #732, #1352): per-slot add/replace/" +
             "merge/delete, addressed by slot + primary key, applied over each one's latest revision, all in one " +
             "transaction and judged together -- so an entry can move from one configuration to another. A " +
-            "configuration not yet written is created. The rest of each is left as it was.",
+            "configuration not yet written is created. The rest of each is left as it was. A dry run answers what the " +
+            "patch would do without storing it, and an edit saying what its caller read is refused if that has " +
+            "changed since (issue #1434).",
         HttpMethod.POST,
         outputRef = CFEP.patchResultType,
         inputFields = { configPatchInput() },
@@ -407,10 +413,12 @@ private fun cfgPatchBody(c: KdrCxt, request: Map<String, Any?>): Map<String, Any
         val name = requireName(one)
         val edits = one[CFEP.edits].toJsonListOfMaps()
         if (edits.isEmpty()) throw KdrException.mkInput("The patch of configuration '$name' must carry at least one edit.")
+        edits.forEach { requireReadAsSaid(name, it) }
         name to edits
     }
     val svc = GedraConfigService.get(c)
     val pk = svc.configSlotPrimaryKeys()
+    val dryRun = request[CFEP.dryRun] == true
     // The edits run through `patchConfigs`, which applies each configuration's to its latest revision read **under
     // the write lock** and reassembles+writes it there, all in one transaction (issue #1352) -- so a per-slot patch
     // reuses the validated bundle write (no separate validation path), cannot be computed off a stale read and
@@ -418,9 +426,9 @@ private fun cfgPatchBody(c: KdrCxt, request: Map<String, Any?>): Map<String, Any
     // `patchConfigs` reads the raw slots, so an untouched `testFeatures` round-trips on a test instance and, off one,
     // the write is refused rather than silently dropping it (the #685 explicit-write rule). A configuration not yet
     // written is created; one named twice is `patchConfigs`' refusal.
-    val written = svc.patchConfigs(c, trial = true) {
+    val patches: ConfigPatches.() -> Unit = {
         for ((name, edits) in byName) {
-            edit(configId(c, name)) { current ->
+            edit(configId(c, name), staleness = { latest -> staleEdits(name, edits, pk, latest) }) { current ->
                 applyConfigSlotEdits(current, edits, pk).also { patched ->
                     // Read strictly (issue #1051). A definition the edits left malformed reads as none, and is not
                     // judged here: `patchConfigs` gates the edited slots next, and refuses it as what it is.
@@ -430,7 +438,64 @@ private fun cfgPatchBody(c: KdrCxt, request: Map<String, Any?>): Map<String, Any
             }
         }
     }
+    if (dryRun) {
+        // The bundles as they would be written, nothing stored (issue #1434), and what they would do to the data the
+        // client stores -- live at once for a client without a sandbox, at publishing for one with -- so it is judged
+        // whatever the client's tier.
+        val wouldWrite = svc.dryRunPatchConfigs(c, patches)
+        return mapOf(
+            CFEP.dryRun to true,
+            CFEP.configs to wouldWrite.map { bundleOf(c, it) },
+            CFEP.impact to ConfigImpact.reportFor(c, c.client, wouldWrite, anyTier = true).toMap(),
+        )
+    }
+    val written = svc.patchConfigs(c, trial = true, patches)
     return mapOf(CFEP.configs to written.map { bundleOf(c, it) }).withReloadIfAsked(c, request)
+}
+
+/**
+ * Refuses an edit that says what its caller read in a way that cannot be judged (issue #1434): an `updatedAt` that is
+ * not a moment, or both an `updatedAt` and [CFEP.expectNew] -- an entry cannot have been both there and not.
+ */
+private fun requireReadAsSaid(name: String, edit: Map<String, Any?>) {
+    val stamp = edit[CFEP.expectUpdatedAt]
+    if (stamp != null && stamp.toOptInstantOrNull() == null) {
+        throw KdrException.mkInput("An edit of configuration '$name' gives '${CFEP.expectUpdatedAt}' as '$stamp', which is not a moment.")
+    }
+    if (stamp != null && edit[CFEP.expectNew] == true) {
+        throw KdrException.mkInput(
+            "An edit of configuration '$name' gives both '${CFEP.expectUpdatedAt}' and '${CFEP.expectNew}'; an entry was " +
+                "either there when read, or not.",
+        )
+    }
+}
+
+/**
+ * The [edits] of configuration [name] whose entries have changed since their caller read them (issue #1434), judged
+ * against [latest] -- the configuration's latest revision, read under the lock -- by each entry's own `updatedAt`, to
+ * the millisecond the store keeps. An edit saying nothing of what it read is not judged. A delete of an entry already
+ * gone is not stale: it is what the delete was for.
+ */
+private fun staleEdits(name: String, edits: List<Map<String, Any?>>, pk: Map<String, List<String>>, latest: GedraConfigRow?): List<StaleEntry> {
+    val stored = latest?.entries.orEmpty()
+    return edits.mapNotNull { edit ->
+        val expectNew = edit[CFEP.expectNew] == true
+        val expected = edit[CFEP.expectUpdatedAt].toOptInstantOrNull()?.truncateToMs()
+        if (!expectNew && expected == null) return@mapNotNull null
+        // An unknown slot is the edit's own refusal, made as it is applied.
+        val slot = edit[CFEP.slot].toOptStr() ?: return@mapNotNull null
+        val keyFields = pk[slot] ?: return@mapNotNull null
+        val data = edit[GE.data].toJsonMapOrEmpty()
+        val entry = stored.firstOrNull { it[GE.traitId].toOptStr() == slot && addressesEntry(keyFields, it[GE.data].toJsonMapOrEmpty(), data) }
+        val found = entry?.get(GE.updatedAt).toOptInstantOrNull()?.truncateToMs()
+        val deleting = edit[GED.action].toOptStr() == GedraEditAction.deleteOrNoOp.name
+        val isStale = when {
+            expectNew -> entry != null
+            entry == null -> !deleting
+            else -> found != expected
+        }
+        if (!isStale) null else StaleEntry(name, slot, keyFields.associateWith { data[it] }, expected, found)
+    }
 }
 
 /**
@@ -801,12 +866,20 @@ private fun InputFieldsBuilder.configPatchInput() {
         "The configurations to edit together, each `{${CFEP.name}, ${CFEP.edits}}`: its name, and the per-slot edits to " +
             "apply to it, in order. Each edit is `{${CFEP.slot}, ${GED.action}, ${GE.data}}`: the slot (`${CCT.traitDef}`, " +
             "`${CCT.workflowDef}`, ...), the action (${GedraEditAction.entries.joinToString(", ") { it.name }}), and the entry data (carrying " +
-            "the slot's primary-key fields, which say which entry is meant).",
+            "the slot's primary-key fields, which say which entry is meant). An edit may also say what its caller read " +
+            "(issue #1434): '${CFEP.expectUpdatedAt}', the entry's updatedAt then, or '${CFEP.expectNew}': true, when it " +
+            "had none; the patch is then refused (409, errorCode '${CFEP.staleCode}') if the entry has changed since.",
         required = true,
     ) {
         type = SCT.array
         items { type = SCT.kObject }
     }
+    field(
+        CFEP.dryRun,
+        "Run the patch -- its checks, its edits, and the trial reload -- without storing it (issue #1434): the answer " +
+            "is the configurations as they would be written, with '${CFEP.impact}', what they would do to the data the " +
+            "client stores. A patch that would be refused is refused as the save would be. Nothing is stored or reloaded.",
+    ) { type = SCT.boolean }
     reloadRequestField()
 }
 
@@ -1005,7 +1078,8 @@ fun adminGedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, ACEP.name
     generalEndpoint(
         ACEP.bundlePatch,
         "Edits the slot entries of one or more of a named client's configurations -- per-slot add/replace/merge/" +
-            "delete over each latest revision, in one transaction judged together (issues #732, #1352).",
+            "delete over each latest revision, in one transaction judged together (issues #732, #1352); with a dry run " +
+            "and a staleness check, as the client-scoped patch has (issue #1434).",
         HttpMethod.POST,
         outputRef = "${CFEP.namespace}.${CFEP.patchResultType}",
         inputFields = {

@@ -605,6 +605,17 @@ is deleted; a patch says what to do with each entry it names and leaves every ot
 (#535), applies its edits through the same patch. A stored configuration bundle is edited slot by slot with the same
 three actions, at `/clientAdmin/config/bundle/patch` and `/admin/client/config/bundle/patch` (#732) -- several of a
 client's bundles at once, in one transaction judged together, so an entry can move from one bundle to another (#1352).
+Two more things set the config patch apart (#1434):
+
+- **A dry run.** `dryRun: true` runs the patch's checks and edits, builds each revision as the save would, and judges
+  them with the trial, but stores nothing. The trial never reads the save's writes back, so the dry run judges exactly
+  what the save would. The answer is the bundles as they would be written, and `impact`: what they would do to the
+  forms the client stores. A patch the save would refuse is refused the same way, with the trial's problems under the
+  error's `extraData.issues`.
+- **A staleness check.** An edit may say what its caller read: `expectUpdatedAt`, the entry's `updatedAt` then, or
+  `expectNew: true` when it had none. If any such entry has changed since, the patch stores nothing and is refused
+  with 409 (`errorCode` `staleEntries`), listing each entry under `extraData.conflicts`. The check is per entry, since
+  editing an unpublished bundle rewrites it in place without changing its version.
 
 ```json
 {

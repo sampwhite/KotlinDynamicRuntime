@@ -88,7 +88,10 @@ object GedraConfigTrial {
         throw KdrException.mkInput(
             "$refusal: loading client '$client' would find ${found.size} problem(s). " +
                 found.joinToString(" ") { it.message },
-        )
+        ).also {
+            // Each problem as data too (issue #1434), so a caller -- a dry run's, say -- can show it beside what it is about.
+            it.extraData[CFEP.issues] = found.map { issue -> issue.toWireMap() }
+        }
     }
 
     /**

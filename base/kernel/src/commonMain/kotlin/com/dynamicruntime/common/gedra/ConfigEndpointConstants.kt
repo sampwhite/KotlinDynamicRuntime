@@ -3,7 +3,7 @@ package com.dynamicruntime.common.gedra
 import com.dynamicruntime.common.http.request.SECT
 
 /**
- * The client-scoped stored-configuration endpoints (issue #627) -- their paths, type names and field names. The
+ * The client-scoped stored-configuration endpoints (issue #627) -- their paths, type names, and field names. The
  * endpoints themselves are `gedraConfigSchema` in `base:common`, whose documentation says how they work; the
  * names are here, in the kernel, so the frontend reads a stored configuration's summary by the names the backend
  * writes it under (the Clients page, issue #906). The paths lead with [SECT.clientAdmin], the section gate.
@@ -68,7 +68,7 @@ object CFEP {
     const val impliedDelete = "impliedDelete"
 
     /**
-     * On a bundle write, patch or publish (issue #1156): `true` to reload the client once the change is stored, as
+     * On a bundle write, patch, or publish (issue #1156): `true` to reload the client once the change is stored, as
      * [reload] does -- and, on the answer, how that reload went. Absent, the change waits for a reload asked for.
      */
     const val reloadField = "reload"
@@ -81,6 +81,37 @@ object CFEP {
     const val evictedTypes = "evictedTypes"
     const val issues = "issues"
     const val publishedOnlyField = "publishedOnly"
+
+    /**
+     * On a config patch (issue #1434): `true` to run it -- the staleness check, the edits, and the trial -- on the
+     * revisions it builds, storing none of them, and answer with the configurations as they would be written and
+     * [impact]. A patch the save would refuse is refused the same way.
+     */
+    const val dryRun = "dryRun"
+
+    /** On a dry run's answer: what the patch would do to the data the client already stores (`IMP`'s report). */
+    const val impact = "impact"
+
+    /**
+     * On a config patch's edit (issue #1434): the `updatedAt` its entry had when the caller read it. The patch is
+     * refused (409, [staleCode]) if the entry has changed since, or is gone.
+     */
+    const val expectUpdatedAt = "expectUpdatedAt"
+
+    /**
+     * On a config patch's edit (issue #1434): `true` when its entry did not exist when the caller read the
+     * configuration. The patch is refused (409, [staleCode]) if one exists now.
+     */
+    const val expectNew = "expectNew"
+
+    /** The `errorCode` of a patch refused because entries changed since its caller read them (issue #1434). */
+    const val staleCode = "staleEntries"
+
+    /** In a stale refusal's `extraData`: each entry that changed, by [name], [slot], and [key]. */
+    const val conflicts = "conflicts"
+
+    /** On a stale entry: its primary-key fields, as the edit named them. */
+    const val key = "key"
 }
 
 /**

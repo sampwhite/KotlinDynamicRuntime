@@ -265,11 +265,34 @@ class GedraConfigService : ServiceInitializer {
      * entries into a config of their own. With [trial], one trial judges every written revision together, as
      * [writeConfigs] does, and a refusal takes them all back. Every config must be one client's, each named once.
      * Returns the written revisions in the order the edits were declared.
+     *
+     * **Stale edits are refused first** (issue #1434): every edit's [ConfigPatch.staleness] is asked of its config's
+     * latest revision, read under the lock, before anything is written -- so a caller that says what it read is told
+     * of every entry changed since, together, in one 409 ([CFEP.staleCode]), and nothing is stored.
      */
     fun patchConfigs(
         cxt: KdrCxt,
         /** As [writeConfig]'s: refuse an edit whose trial reload finds a new problem (issue #843). */
         trial: Boolean = false,
+        block: ConfigPatches.() -> Unit,
+    ): List<GedraConfigRow> = patchUnderLock(cxt, trial, store = true, block)
+
+    /**
+     * Runs a patch as [patchConfigs] does -- staleness, edits, the write guards, and the trial -- but stores nothing
+     * (issue #1434): each revision is built as the save would build it, stamps included, and only the statement that
+     * would store it is skipped. Nothing it judges reads its own writes back -- the trial takes the patched revisions
+     * in hand, as a save's must, since the transaction pins the config cache to what it was -- so it judges exactly
+     * what the save would. Returns the revisions as they would be written. A patch the save would refuse is refused
+     * the same way, by the same exception.
+     */
+    fun dryRunPatchConfigs(cxt: KdrCxt, block: ConfigPatches.() -> Unit): List<GedraConfigRow> =
+        patchUnderLock(cxt, trial = true, store = false, block)
+
+    private fun patchUnderLock(
+        cxt: KdrCxt,
+        trial: Boolean,
+        /** False for a dry run: every revision is built, and none is stored. */
+        store: Boolean,
         block: ConfigPatches.() -> Unit,
     ): List<GedraConfigRow> {
         val patches = ConfigPatches().apply(block).patches
@@ -283,9 +306,13 @@ class GedraConfigService : ServiceInitializer {
         val wcxt = boundToClient(cxt, client)
         return underClientLock(wcxt, tranWrite) { sqlCxt, table ->
             val before = LinkedHashMap<String, GedraConfigRow?>()
+            val latests = ids.map { readLatestUnderLock(wcxt, sqlCxt, table, it) }
+            // Every stale edit, across every config, before anything is written.
+            val stale = patches.flatMapIndexed { i, patch -> patch.staleness(latests[i]) }
+            if (stale.isNotEmpty()) throw staleEntries(stale)
             val written = patches.mapIndexed { i, patch ->
                 val configId = ids[i]
-                val latest = readLatestUnderLock(wcxt, sqlCxt, table, configId)
+                val latest = latests[i]
                 before[configId.fullId] = latest
                 val stored = latest?.entriesBySlot()
                 val edited = patch.applyEdits(stored ?: emptyMap())
@@ -294,12 +321,28 @@ class GedraConfigService : ServiceInitializer {
                 val namespace = latest?.resolvedNamespace() ?: clientNamespace(client)
                 val config = reassembleForWrite(wcxt, configId.baseId, namespace, client, edited, stored)
                 checkWritableConfig(wcxt, config)
-                writeRevisionUnderLock(wcxt, sqlCxt, table, configId, config, latest, impliedDelete = true, patch.restoring)
+                writeRevisionUnderLock(wcxt, sqlCxt, table, configId, config, latest, impliedDelete = true, patch.restoring, store)
             }
             if (trial) trialWritten(wcxt, written, before)
             written
         }
     }
+
+    /**
+     * The 409 a patch whose caller read entries that have changed since is refused with (issue #1434): every one
+     * named in the message, and listed under [CFEP.conflicts] in its `extraData` with [CFEP.staleCode] as its
+     * `errorCode`, so a caller can re-read only those.
+     */
+    private fun staleEntries(stale: List<StaleEntry>): KdrException =
+        KdrException(
+            "${stale.size} entr${if (stale.size == 1) "y has" else "ies have"} changed since they were read, so " +
+                "nothing was stored: ${stale.joinToString("; ") { it.describe() }}. Read them again, and edit what " +
+                "they are now.",
+            code = EXC.conflict,
+        ).also {
+            it.extraData[KdrException.errorCodeKey] = CFEP.staleCode
+            it.extraData[CFEP.conflicts] = stale.map { s -> s.toMap() }
+        }
 
     /**
      * The write-time guards a stored config must pass (#292, #696): its types are not in the reserved
@@ -445,6 +488,8 @@ class GedraConfigService : ServiceInitializer {
         impliedDelete: Boolean,
         /** The file-ref entries the server's own code answers for: see [localFileRefProblem]. */
         vouched: List<Map<String, Any?>> = emptyList(),
+        /** False for a dry run (issue #1434): the revision is built, stamps and all, and not stored. */
+        store: Boolean = true,
     ): GedraConfigRow {
         localFileRefProblem(wcxt, config, latest, vouched)?.let { throw KdrException(it, code = EXC.notAuthorized) }
         // Default workflow parameters are source code's alone (issue #1386): what the database holds of a workflow's
@@ -460,11 +505,11 @@ class GedraConfigService : ServiceInitializer {
         val priorByKey = latest?.let { keyStoredEntries(it.entries) } ?: emptyMap()
         return when {
             latest == null ->
-                insertRevision(wcxt, sqlCxt, table, configId, 1, config.namespace, newBySlot, priorByKey, impliedDelete, null)
+                insertRevision(wcxt, sqlCxt, table, configId, 1, config.namespace, newBySlot, priorByKey, impliedDelete, null, store)
             !latest.isPublished ->
-                updateRevision(wcxt, sqlCxt, table, latest, config.namespace, newBySlot, priorByKey, impliedDelete)
+                updateRevision(wcxt, sqlCxt, table, latest, config.namespace, newBySlot, priorByKey, impliedDelete, store)
             else ->
-                insertRevision(wcxt, sqlCxt, table, configId, latest.version + 1, config.namespace, newBySlot, priorByKey, impliedDelete, latest)
+                insertRevision(wcxt, sqlCxt, table, configId, latest.version + 1, config.namespace, newBySlot, priorByKey, impliedDelete, latest, store)
         }
     }
 
@@ -884,6 +929,8 @@ class GedraConfigService : ServiceInitializer {
         priorByKey: Map<String, Map<String, Any?>>,
         impliedDelete: Boolean,
         prior: GedraConfigRow?,
+        /** False for a dry run (issue #1434): the row is built and returned, and not inserted. */
+        store: Boolean = true,
     ): GedraConfigRow {
         val gedraId = gedraService.intern(configId.withRevision(version))
         val data = mutableMapOf<String, Any?>(
@@ -900,6 +947,9 @@ class GedraConfigService : ServiceInitializer {
         // Stamp the row first, then stamp the entries with the very instant it took, so the row's `updatedAt`
         // column and the entries' own stamps cannot disagree -- the move the patch path makes.
         SqlTopicUtil.prepForStdExecute(cxt, table, data)
+        // A new revision is stamped past the one before it (issue #1434), as an in-place edit is, so an entry it changes
+        // always moves its stamp -- what a patch's staleness check compares, to the millisecond.
+        prior?.updatedAt?.let { data[PF.updatedAt] = SqlTopicUtil.advancePast(data[PF.updatedAt].toOptInstant() ?: cxt.instanceNow(), it) }
         val now = data[PF.updatedAt].toOptInstant() ?: cxt.instanceNow()
         val entries = buildFinalEntries(cxt, configId, newBySlot, priorByKey, now, impliedDelete, prior)
         // Carry the prior revision's unknown keys across the bump, the same forward-compatibility promise an
@@ -911,7 +961,7 @@ class GedraConfigService : ServiceInitializer {
         stored[GD.entries] = entries
         data[GC.data] = stored
         val row = GedraConfigRow.extract(gedraService, data)
-        sqlCxt.sqlDb.executeStatement(cxt, SqlTopicUtil.mkTableInsertStmt(sqlCxt, table), data)
+        if (store) sqlCxt.sqlDb.executeStatement(cxt, SqlTopicUtil.mkTableInsertStmt(sqlCxt, table), data)
         return row
     }
 
@@ -930,6 +980,8 @@ class GedraConfigService : ServiceInitializer {
         newBySlot: Map<String, List<Map<String, Any?>>>,
         priorByKey: Map<String, Map<String, Any?>>,
         impliedDelete: Boolean,
+        /** False for a dry run (issue #1434): the revision is built and returned as it would stand, and not stored. */
+        store: Boolean = true,
     ): GedraConfigRow {
         // The config being written is authoritative on the namespace -- a prior row may predate it being stored.
         latest.namespace = namespace
@@ -946,6 +998,17 @@ class GedraConfigService : ServiceInitializer {
         val entries = buildFinalEntries(cxt, latest.configId, newBySlot, priorByKey, now, impliedDelete, latest)
         // `storedData` merges the prior revision's unknown keys back in, keeping the forward-compatibility promise.
         bind[GC.data] = latest.storedData(entries)
+        if (!store) {
+            // As the read below would answer: the same revision, with the entries and the stamp the write would store.
+            return GedraConfigRow(latest.gedraId, latest.client).also {
+                it.enabled = latest.enabled
+                it.entries = entries
+                it.namespace = namespace
+                it.extra = latest.extra
+                it.createdAt = latest.createdAt
+                it.updatedAt = now
+            }
+        }
         sqlCxt.sqlDb.executeStatement(cxt, stmt, bind)
         return readRowUnderLock(cxt, sqlCxt, table, latest.gedraId)
     }
@@ -1050,14 +1113,15 @@ class ConfigPatches {
 
     /**
      * Edits the config [configId] names -- creating it when it has no revision, when [applyEdits] is handed no
-     * slots. [restoring] is as [ConfigPatch.restoring] says.
+     * slots. [restoring] and [staleness] are as [ConfigPatch]'s say.
      */
     fun edit(
         configId: GedraId,
         restoring: List<Map<String, Any?>> = emptyList(),
+        staleness: (GedraConfigRow?) -> List<StaleEntry> = { emptyList() },
         applyEdits: (Map<String, List<Map<String, Any?>>>) -> Map<String, List<Map<String, Any?>>>,
     ) {
-        patches.add(ConfigPatch(configId, restoring, applyEdits))
+        patches.add(ConfigPatch(configId, restoring, staleness, applyEdits))
     }
 }
 
@@ -1071,5 +1135,37 @@ class ConfigPatch(
      * was read from the stored revision; never anything a request carried.
      */
     val restoring: List<Map<String, Any?>>,
+    /**
+     * The entries this edit addresses that have changed since its caller read them (issue #1434), judged against the
+     * config's latest revision under the lock (null when it has none). Empty -- the default -- when the caller said
+     * nothing of what it read.
+     */
+    val staleness: (GedraConfigRow?) -> List<StaleEntry>,
     val applyEdits: (Map<String, List<Map<String, Any?>>>) -> Map<String, List<Map<String, Any?>>>,
 )
+
+/**
+ * An entry a patch edit addresses that has changed since its caller read it (issue #1434): in configuration [name],
+ * slot [slot], the entry whose primary-key fields are [key]. The caller read it at [expected], or as absent when that
+ * is null; it is now at [found], or gone when that is null.
+ */
+class StaleEntry(val name: String, val slot: String, val key: Map<String, Any?>, val expected: Instant?, val found: Instant?) {
+    fun describe(): String {
+        val what = when {
+            expected == null -> "was added since"
+            found == null -> "was removed since"
+            else -> "was changed since"
+        }
+        val keyText = key.entries.joinToString(", ") { (k, v) -> "$k $v" }.ifEmpty { "its one entry" }
+        return "configuration '$name', slot $slot, entry ($keyText) $what"
+    }
+
+    fun toMap(): Map<String, Any?> = buildMap {
+        put(CFEP.name, name)
+        put(CFEP.slot, slot)
+        put(CFEP.key, key)
+        expected?.let { put(CFEP.expectUpdatedAt, it) }
+        if (expected == null) put(CFEP.expectNew, true)
+        found?.let { put(CFEP.updatedAt, it) }
+    }
+}
