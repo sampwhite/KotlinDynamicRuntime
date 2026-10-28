@@ -393,10 +393,6 @@ fun homeMenuBlock(): UiBlockSource = uiBlock(
         menuItem(HMENU.becomeUser, "Become a user…", UiRoute(HMENU.pageBecomeUser),
             cfactExpression = "${CFACTS.hasTestAccess},${CFACTS.app}", parentId = HMENU.account)
 
-        menuItem(HMENU.catalog, "Endpoint catalog", UiRoute(HMENU.pageCatalog))
-        // The documents page (issue #554). App-only: an edge serves no documents (its `links` are empty), so
-        // offering the listing there would be an entry that opens onto nothing.
-        menuItem(HMENU.docs, "Documents", UiRoute(HMENU.pageDocs), cfactExpression = CFACTS.app)
         // An editor (issue #1432) is offered the page too, which it reads without the controls that change a user.
         menuItem(
             HMENU.users, "Users", UiRoute(HMENU.pageUsers),
@@ -431,8 +427,8 @@ fun homeMenuBlock(): UiBlockSource = uiBlock(
         // The Operator group (issue #540): a parent header and the deployment-operator diagnostic pages under
         // it, plus an "Overview" landing page that explains each. Parent and children share the one cfact
         // (isDeploymentOperator), so a non-operator sees neither the header nor an orphaned child, and the
-        // header never renders bare -- filtering removes the whole group together. Client facts stays
-        // top-level: its gate is client-operator, a different axis, so it does not belong under this header.
+        // header never renders bare -- filtering removes the whole group together. Client facts is not here:
+        // its gate is client-operator, a different axis, and it is under Reference.
         menuItem(HMENU.operator, "Operator", cfactExpression = CFACTS.isDeploymentOperator)
         menuItem(
             HMENU.operatorOverview, "Overview", UiRoute(HMENU.pageOperator),
@@ -467,12 +463,6 @@ fun homeMenuBlock(): UiBlockSource = uiBlock(
             HMENU.fileStore, "File store", UiRoute(HMENU.pageFileStore),
             cfactExpression = "${CFACTS.isDeploymentOperator},${CFACTS.app}", parentId = HMENU.operator,
         )
-        // Offered to a client-scoped operator or admin (issue #488) -- the same caller the `clientOperator`
-        // section admits, asked as a cfact so the menu offer and the gate cannot drift.
-        menuItem(
-            HMENU.cfactReference, "Client facts", UiRoute(HMENU.pageCfacts),
-            cfactExpression = "${CFACTS.isClientOperator},${CFACTS.app}",
-        )
         // Forms are login-gated only (the `gedra` section), so every signed-in caller is offered the list; how
         // far it reaches is a scope question the endpoints answer, not a menu one (issue #408). Only "My forms"
         // is an entry: the list is the hub for the whole lifecycle, so creating a form is reached by its
@@ -494,6 +484,22 @@ fun homeMenuBlock(): UiBlockSource = uiBlock(
         // The workflow pages (issue #792): off by default -- a client with normal workflows turns it on by overlaying
         // this item with a real condition (the sample's acme does), the way an overlay turns an item off.
         menuItem(HMENU.workflows, "Workflows", UiRoute(HMENU.pageWorkflows), cfactExpression = CFACT.neverName)
+
+        // The Reference group: pages read to learn something, visited far less than the daily ones above, so a
+        // level down. Grouped by how often they are visited, not by who sees them -- each child keeps its own
+        // condition, and the header has none: a header whose children are all filtered out is not drawn (the
+        // app bar's `menuTree`), so it needs no union of theirs.
+        menuItem(HMENU.reference, "Reference")
+        // The documents page (issue #554). App-only: an edge serves no documents (its `links` are empty), so
+        // offering the listing there would be an entry that opens onto nothing.
+        menuItem(HMENU.docs, "Documents", UiRoute(HMENU.pageDocs), cfactExpression = CFACTS.app, parentId = HMENU.reference)
+        menuItem(HMENU.catalog, "Endpoint catalog", UiRoute(HMENU.pageCatalog), parentId = HMENU.reference)
+        // Offered to a client-scoped operator or admin (issue #488) -- the same caller the `clientOperator`
+        // section admits, asked as a cfact so the menu offer and the gate cannot drift.
+        menuItem(
+            HMENU.cfactReference, "Client facts", UiRoute(HMENU.pageCfacts),
+            cfactExpression = "${CFACTS.isClientOperator},${CFACTS.app}", parentId = HMENU.reference,
+        )
 
         // Simulations (issue #997): for a caller with test access (issue #1149) -- the simulations exist for nobody
         // else. No login is asked for: provisioning one then signing in as its users is the point.

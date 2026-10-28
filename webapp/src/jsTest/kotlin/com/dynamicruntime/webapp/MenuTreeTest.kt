@@ -1,5 +1,6 @@
 package com.dynamicruntime.webapp
 
+import com.dynamicruntime.common.uiblock.UiRoute
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -9,7 +10,11 @@ import kotlin.test.assertEquals
  */
 class MenuTreeTest {
 
-    private fun item(id: String, parentId: String? = null) = MenuItem(id, id, action = null, parentId = parentId)
+    /** A page: a leaf, with somewhere to go. */
+    private fun item(id: String, parentId: String? = null) = MenuItem(id, id, action = UiRoute(id), parentId = parentId)
+
+    /** A group header: no action of its own. */
+    private fun header(id: String) = MenuItem(id, id, action = null)
 
     @Test
     fun topLevelItemsHaveNoChildren() {
@@ -24,7 +29,7 @@ class MenuTreeTest {
         val tree = menuTree(
             listOf(
                 item("catalog"),
-                item("debug"),
+                header("debug"),
                 item("debugPages", parentId = "debug"),
                 item("debugOff", parentId = "debug"),
             ),
@@ -39,5 +44,20 @@ class MenuTreeTest {
         // The parent's cfact dropped it, so only the child arrived: it must not appear at the top level.
         val tree = menuTree(listOf(item("catalog"), item("debugPages", parentId = "debug")))
         assertEquals(listOf("catalog"), tree.map { it.item.id })
+    }
+
+    @Test
+    fun aHeaderWhoseChildrenWereAllDroppedIsNotDrawn() {
+        // The children's cfacts dropped them all, so only the header arrived: it must not render bare. A group may
+        // mix audiences, so its header shows wherever any child does.
+        val tree = menuTree(
+            listOf(
+                header("reference"),
+                item("forms"),
+                header("operator"),
+                item("bootChecks", parentId = "operator"),
+            ),
+        )
+        assertEquals(listOf("forms", "operator"), tree.map { it.item.id })
     }
 }

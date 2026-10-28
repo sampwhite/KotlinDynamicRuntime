@@ -22,8 +22,8 @@ It is not shared with anyone outside this site, and it is not used for marketing
 else. Within the site, a client's administrators can see the email addresses of its users, so joining a demo shows
 yours to the demo's administrators, as its join page explains.
 
-Open **Documents** from the menu to read how it is put together, starting with the conference demo -- a client
-built from configuration alone, explained piece by piece.
+Open **Documents**, under Reference in the menu, to read how it is put together, starting with the conference demo
+-- a client built from configuration alone, explained piece by piece.
 
 # @publicHome
 # +demosIntro
