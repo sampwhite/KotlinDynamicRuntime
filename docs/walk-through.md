@@ -261,8 +261,21 @@ They are published together, and your client's people now have them.
 
 ### Back to Book Club
 
-Choose **Book Club Sandbox** in the bar, and then **Back to Book Club**. The home page now says **Welcome to the Book
-Club**. The form you made in the sandbox stays there, with the sandbox's other data.
+The quickest way out of the sandbox is in the bar: **Book Club Sandbox**, then **Back to Book Club**. This time,
+leave it from your [profile](/wa/profile) instead, which lists every user your sign-in reaches and lets you move
+between them.
+
+Under **Your users**, each row is a user of yours: your **Member** in **Public**, your **Admin** in **Book Club**, and
+the one you are acting as now, your **Admin** in **Book Club (sandbox)**, marked **Active now**. Users from the
+conference demo, if you made them, are listed too.
+
+Before you switch, choose **What is this?** beside **Your users**. It explains how one email address comes to have
+several users: you sign in once, and each user is an account of its own, in one client, with a persona that decides
+what it may do there and forms that belong to it alone.
+
+On the **Book Club** row, choose **Switch to this user**. You stay on your profile, now as your administrator in Book
+Club, and the bar offers **Open sandbox** again. Open your home page: it says **Welcome to the Book Club**. The form
+you made in the sandbox stays there, with the sandbox's other data.
 
 ### Invite somebody
 
