@@ -32,6 +32,12 @@ object CFEP {
     const val reload = "/${SECT.clientAdmin}/config/reload"
     const val publishedOnly = "/${SECT.clientAdmin}/config/publishedOnly"
 
+    /**
+     * Everything the bundle editor page draws, in one read (issue #1436): every configuration, its latest revision with
+     * the published one beside it when the latest is a draft over it, and each slot's declared shape.
+     */
+    const val editor = "/${SECT.clientAdmin}/config/editor"
+
     // --- type names ---
     const val bundleType = "ConfigBundle"
     const val bundleWriteType = "ConfigBundleWrite"
@@ -41,6 +47,8 @@ object CFEP {
     const val slotEntryType = "ConfigSlotEntry"
     const val reloadResultType = "ConfigReloadResult"
     const val tierType = "ConfigTier"
+    const val editorType = "ConfigEditor"
+    const val editorBundleType = "ConfigEditorBundle"
 
     // --- field names (each matches its value) ---
     const val name = "name"
@@ -104,6 +112,20 @@ object CFEP {
      */
     const val expectNew = "expectNew"
 
+    /**
+     * On a bundle read (issue #1436): which revision to answer, [revisionLatest] (the default) or [revisionPublished].
+     * On the editor's answer, the same two names hold each configuration's two revisions.
+     */
+    const val revision = "revision"
+    const val revisionLatest = "latest"
+    const val revisionPublished = "published"
+
+    /** On the editor's answer (issue #1436): each slot's entry type, whose `data` property is one entry's shape. */
+    const val slotTypes = "slotTypes"
+
+    /** On the editor's answer: the fields each slot's entries are keyed by; empty for a single-instance slot. */
+    const val slotKeys = "slotKeys"
+
     /** The `errorCode` of a patch refused because entries changed since its caller read them (issue #1434). */
     const val staleCode = "staleEntries"
 
@@ -126,6 +148,9 @@ object ACEP {
 
     const val bundles = "/${SECT.admin}/client/config/bundles"
     const val bundle = "/${SECT.admin}/client/config/bundle"
+
+    /** The bundle editor page's one read, for a named client (issue #1436): as [CFEP.editor] answers it. */
+    const val editor = "/${SECT.admin}/client/config/editor"
     const val bundleWrite = "/${SECT.admin}/client/config/bundle/write"
     const val bundlePatch = "/${SECT.admin}/client/config/bundle/patch"
     const val bundlePublish = "/${SECT.admin}/client/config/bundle/publish"

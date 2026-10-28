@@ -1835,3 +1835,12 @@ body.dv-open .app-content { padding-right: calc(var(--dv-panel-width) + 16px); }
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 .api-key-dialog-actions { display: flex; justify-content: flex-end; margin-top: 16px; }
+
+/* The bundle editor (issue #1436): a configuration opens to its slots, a slot to its entries, an entry to its JSON,
+   each indented under the one it opened from; a changed entry's draft and published JSON side by side, each column
+   scrolling on its own rather than widening the page. */
+.bundle-editor .bundle-editor-slot { margin-left: 18px; }
+.bundle-editor .bundle-editor-entry { margin-left: 18px; }
+.bundle-editor-compare { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; }
+@media (max-width: 900px) { .bundle-editor-compare { grid-template-columns: minmax(0, 1fr); } }
+.bundle-editor-json pre { margin: 4px 0 12px; padding: 8px 10px; overflow-x: auto; background: var(--surface-raised); border: 1px solid var(--border); border-radius: 6px; font-size: 12px; }

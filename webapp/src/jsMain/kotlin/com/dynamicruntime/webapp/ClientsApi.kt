@@ -1409,6 +1409,15 @@ object ClientsApi {
         }
     }
 
+    /**
+     * Everything the bundle editor page draws for [clientId] (issue #1436), from the read [bundleEditorPath] names -- or
+     * null, when there is none this caller may ask about that client.
+     */
+    suspend fun bundleEditor(clientId: String, acrossClients: Boolean, ownClient: String): BundleEditorView? {
+        val path = bundleEditorPath(clientId, acrossClients, ownClient) ?: return null
+        return parseBundleEditor(Http.getApi(path)[EP.item].toJsonMapOrEmpty())
+    }
+
     /** What publishing [clientId]'s configurations [names] together would do to the client's stored data (issues #935, #1352). */
     suspend fun bundleImpact(clientId: String, names: List<String>, acrossClients: Boolean): ImpactReportView {
         val path = if (acrossClients) {

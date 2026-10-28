@@ -263,6 +263,7 @@ val App = FC<Props> {
                                 pageWorkflows -> WorkflowsPage {}
                                 pageWorkflowForms -> FormsPage { listing = pageWorkflowForms }
                                 pageClients -> ClientsPage {}
+                                pageBundleEditor -> BundleEditorPage {}
                                 pageCustomers -> CustomersPage {}
                                 pageReports -> ReportsPage {}
                                 pageApiKeys -> ApiKeysPage {}
@@ -415,6 +416,7 @@ private fun currentPage(): String {
         params[HP.page] == pageForms -> pageForms
         params[HP.page] == pageWorkflows -> pageWorkflows
         params[HP.page] == pageClients -> pageClients
+        params[HP.page] == pageBundleEditor -> pageBundleEditor
         params[HP.page] == pageCustomers -> pageCustomers
         params[HP.page] == pageReports -> pageReports
         params[HP.page] == pageApiKeys -> pageApiKeys

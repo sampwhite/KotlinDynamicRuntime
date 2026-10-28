@@ -569,12 +569,24 @@ private fun ChildrenBuilder.clientDetail(
                     className = ClassName("subtitle")
                     +"This node holds no stored configuration for this client."
                 }
-                else -> StoredConfigTable {
-                    this.configs = configs
-                    this.row = row
-                    this.acrossClients = acrossClients
-                    this.clientId = clientId
-                    this.onChanged = onChanged
+                else -> {
+                    StoredConfigTable {
+                        this.configs = configs
+                        this.row = row
+                        this.acrossClients = acrossClients
+                        this.clientId = clientId
+                        this.onChanged = onChanged
+                    }
+                    // Every bundle's contents, on a page of their own (issue #1436).
+                    p {
+                        className = ClassName("subtitle")
+                        a {
+                            className = ClassName("wf-cell-link")
+                            href = bundleEditorHref(clientId)
+                            +"Open every bundle"
+                        }
+                        +": each configuration's slots and entries, as JSON, with a draft's beside what is published."
+                    }
                 }
             }
         }
@@ -681,7 +693,7 @@ external interface DisclosureProps : PropsWithChildren {
  * A section of the page that starts closed (issue #1397), its contents drawn only once opened: the menu's editor,
  * whose table is the page's longest and rarely changed, reads nothing until somebody asks for it.
  */
-private val Disclosure = FC<DisclosureProps> { props ->
+val Disclosure = FC<DisclosureProps> { props ->
     var expanded by useState(false)
     details {
         className = ClassName("client-disclosure")
@@ -892,7 +904,7 @@ private class ImpactDialog(val names: List<String>, val report: ImpactReportView
  * Publishing is judged against the client's stored data (issue #935). A publish that would affect it is refused with a
  * report, which opens a dialog listing what would happen, with **Publish anyway** for the same selection.
  */
-private val StoredConfigTable = FC<StoredConfigTableProps> { props ->
+val StoredConfigTable = FC<StoredConfigTableProps> { props ->
     val bump = useRefreshBump()
     var busy by useState(false)
     var error by useState<DisplayError?>(null)

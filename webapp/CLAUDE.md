@@ -710,6 +710,7 @@ The page has a header, and then panels: each a keyed `section` (`clientPanel`), 
   3. **Copy**.
   4. **Images**: Web assets, then Files.
   5. **Sandbox and publishing**: Sandbox, then Stored configuration. Drafts made in the panels above are published here.
+     Under the table, **Open every bundle** leads to the bundle editor (below).
   6. **Menu**: closed (`Disclosure`), its editor read only once opened. By default it lists only the items a client's people may be offered (`menuItemsForPeople`). It hides those shipped for the deployment's own people, which the items listing marks `deploymentOnly` from `MenuAudience.deployment`.
   7. **Retirement**: last, as a danger zone.
 - **What is not repeated.** The definition does not repeat what the page shows elsewhere: the counts are links in the header, the load is a chip, and the workflows have a panel. The traits are listed in the definition only where the Traits section is not drawn.
@@ -1010,6 +1011,22 @@ configuration now, rather than at the nightly recalculation, through `POST /clie
 is said as counts (`formStatesRecalcText`), including a run that changed nothing, and "busy" while another
 recalculation holds the client. Not asked about first: it changes no data anybody entered. A sandbox's page offers it
 too, since its forms are its own. `kdr-probe --url <your server> form-states-timing [counts...]` times it.
+
+**The bundle editor** (issue #1436, phase 1, read-only; `BundleEditorPage.kt`, its pure half in `BundleEditor.kt`,
+covered by `BundleEditorTest`) is its own page, `page=bundleEditor&client=<id>`, reached from **Open every bundle** on a
+client's page. One read answers it, `GET /clientAdmin/config/editor` or, for a caller who sees every client,
+`/admin/client/config/editor?client=` naming the owner (`bundleEditorPath`, as `storedConfigsPath` decides the listing).
+It answers every configuration's latest revision, with the published one beside it when the latest is a draft over it,
+and each slot's entry type, key fields, and `$defs`, which phase 2's editing will need. The page reuses the client
+page's `StoredConfigTable` for publishing, with its impact report and its "publish from its sandbox", closed to start
+behind a `Disclosure` whose line says how many configurations are unpublished (`publishingSummaryText`), and then lists the
+configurations -- the one holding the client's definition first, then by name (`editorBundlesInOrder`), so a publish or a
+save does not move what was just touched. Each opens, by `Disclosure`, to its slots (`editorSlots`, in `editorSlotOrder`), each slot to its
+entries, matched to the published revision's by their key fields (`addressesEntry`) and marked added, changed,
+unchanged, or removed, and each entry to its JSON, highlighted (`JsonBlock`, the kernel's `highlightJson`, which a
+Markdown `json` block uses). A changed entry shows its draft and published JSON side by side. The
+page is wide (`.card.full`), and draws a level only once it is opened. Both headings, Publishing and Bundles, have a "What is this?" from the `clients` copy file
+(`PFRAG.bundlePublishingNs`, `PFRAG.bundleListNs`).
 
 **Workflows** (issue #1120, `ClientWorkflowsSection.kt`, its pure half in `ClientWorkflows.kt`, covered by
 `ClientWorkflowsTest`): under Traits, offered where they are, from `GET /clientAdmin/client/workflows`

@@ -628,6 +628,13 @@ workflow's `types` map, and the bundle's `namespace`. In portable form it is wri
   or a `$defs` pointer to one. Free text that mentions one is left alone, and so are another client's names and
   global ones. The client's definition and the customers slot are left as stored.
 
+Two reads serve the bundle editor page (#1436). A bundle read takes `revision=published` and answers the latest
+published revision instead of the latest. `GET /clientAdmin/config/editor`, and `/admin/client/config/editor` for a named
+client, answers everything the page draws in one call:
+
+- every configuration's latest revision, with its published one beside it when the latest is a draft over it;
+- each slot's entry type and the fields its entries are keyed by, with the `$defs` those types need.
+
 ```json
 {
   "targets": {
