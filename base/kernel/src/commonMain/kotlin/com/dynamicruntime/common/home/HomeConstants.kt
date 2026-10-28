@@ -246,6 +246,8 @@ object HMENU {
     const val block = "homeMenu"
 
     // Item ids.
+    /** Reference group parent: the pages read to learn something, visited far less than the daily ones. */
+    const val reference = "reference"
     const val catalog = "catalog"
     /** The documents listing page (issue #554). */
     const val docs = "docs"

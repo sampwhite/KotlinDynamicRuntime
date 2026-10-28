@@ -74,7 +74,7 @@ class EdgeMenuTest : StringSpec({
         // Not the application's account pages ("Log in"/"Register" 404 on an edge, and the second invited
         // exactly the account creation #432 removed). What an edge adds: a way into the app, and Log in --
         // not Log out (#493).
-        menuIdsFor(UserProfile()) shouldBe listOf(HMENU.catalog, EDGEUI.openAppItem, EDGEUI.loginItem)
+        menuIdsFor(UserProfile()) shouldBe listOf(HMENU.reference, HMENU.catalog, EDGEUI.openAppItem, EDGEUI.loginItem)
     }
 
     "an env-authed edge caller is offered the catalog, the app, and a way out" {
@@ -82,7 +82,7 @@ class EdgeMenuTest : StringSpec({
         // and Log out -- four items, none of which exist on an edge. The application's items still fail to
         // match; the edge's own are Open application and its env logout (#493), which it genuinely serves.
         menuIdsFor(UserProfile.envAuthed("someone@gyassa.com")) shouldBe
-            listOf(HMENU.catalog, EDGEUI.openAppItem, EDGEUI.logoutItem)
+            listOf(HMENU.reference, HMENU.catalog, EDGEUI.openAppItem, EDGEUI.logoutItem)
     }
 
     "Log in and Log out are one slot seen from opposite sides of a session" {
@@ -126,7 +126,7 @@ class EdgeMenuTest : StringSpec({
         val ids = (UiBlockService.get(scope).resolve(scope, HMENU.block)?.get(HFLD.menu) as? List<*>)
             ?.map { (it as Map<*, *>)[HFLD.id] as String? }
         // No Simulations: this caller has no env auth, so has no test access on the test instance (issue #1149).
-        ids shouldBe listOf(HMENU.account, HMENU.profile, HMENU.logout, HMENU.catalog, HMENU.docs, HMENU.forms)
+        ids shouldBe listOf(HMENU.account, HMENU.profile, HMENU.logout, HMENU.forms, HMENU.reference, HMENU.docs, HMENU.catalog)
     }
 
     "the endpoint an edge does serve reports the same menu, and no Documents for the anonymous landing" {
@@ -137,7 +137,7 @@ class EdgeMenuTest : StringSpec({
             .sendJsonGetRequest(HEP.homeUiConfig)
         val state = (results[com.dynamicruntime.common.endpoint.EP.results] as Map<*, *>)[UIC.state] as Map<*, *>
         (state[HFLD.menu] as List<*>).map { (it as Map<*, *>)[HFLD.id] } shouldBe
-            listOf(HMENU.catalog, EDGEUI.openAppItem, EDGEUI.loginItem)
+            listOf(HMENU.reference, HMENU.catalog, EDGEUI.openAppItem, EDGEUI.loginItem)
         (state[HFLD.links] as List<*>) shouldBe emptyList<Any?>()
     }
 

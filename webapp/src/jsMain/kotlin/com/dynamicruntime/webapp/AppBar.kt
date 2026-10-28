@@ -926,12 +926,16 @@ class MenuNode(val item: MenuItem, val children: List<MenuItem>)
 /**
  * Groups a flat menu into a one-level drill-down (issue #517): each top-level item (no [MenuItem.parentId])
  * paired with the items that name it as their parent, in the order the backend sent them. A child whose named
- * parent is absent (its cfact dropped it) is dropped too, so an orphan never renders parentless. Pure, covered
- * by `jsNodeTest`.
+ * parent is absent (its cfact dropped it) is dropped too, so an orphan never renders parentless. And a group
+ * header -- an item with no action -- whose children were all dropped is dropped as well, so a header never renders
+ * bare: a group may mix audiences, its header showing wherever any of its children does. Pure, covered by
+ * `jsNodeTest`.
  */
 fun menuTree(items: List<MenuItem>): List<MenuNode> {
     val childrenByParent = items.filter { it.parentId != null }.groupBy { it.parentId }
-    return items.filter { it.parentId == null }.map { MenuNode(it, childrenByParent[it.id].orEmpty()) }
+    return items.filter { it.parentId == null }
+        .map { MenuNode(it, childrenByParent[it.id].orEmpty()) }
+        .filter { it.item.action != null || it.children.isNotEmpty() }
 }
 
 /** Renders one leaf menu item -- a route as a link, a call as a button (issue #483); a null action renders

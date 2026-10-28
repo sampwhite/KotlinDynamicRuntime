@@ -8,5 +8,5 @@
 This instance carries the **sample clients**, Acme and Globex: forms, workflows and their copy, built from
 configuration alone. Acme narrows what it takes and adds a trait of its own; Globex takes everything offered.
 
-On a test instance, **Become a user…** under Account signs you in as one of their people. Open **Documents** from
-the menu to read how they are built.
+On a test instance, **Become a user…** under Account signs you in as one of their people. Open **Documents**,
+under Reference, to read how they are built.

@@ -69,8 +69,9 @@ class HomeMenuTest : StringSpec({
             header(HMENU.account, "Account"),
             page(HMENU.login, "Log in", HMENU.pageLogin, HMENU.account),
             page(HMENU.register, "Register", HMENU.pageRegister, HMENU.account),
-            page(HMENU.catalog, "Endpoint catalog", HMENU.pageCatalog),
-            page(HMENU.docs, "Documents", HMENU.pageDocs),
+            header(HMENU.reference, "Reference"),
+            page(HMENU.docs, "Documents", HMENU.pageDocs, HMENU.reference),
+            page(HMENU.catalog, "Endpoint catalog", HMENU.pageCatalog, HMENU.reference),
         )
     }
 
@@ -80,9 +81,10 @@ class HomeMenuTest : StringSpec({
             header(HMENU.account, "Account"),
             page(HMENU.profile, "Profile", HMENU.pageProfile, HMENU.account),
             call(HMENU.logout, "Log out", HACT.logout.name, HMENU.account),
-            page(HMENU.catalog, "Endpoint catalog", HMENU.pageCatalog),
-            page(HMENU.docs, "Documents", HMENU.pageDocs),
             page(HMENU.forms, "My forms", HMENU.pageForms),
+            header(HMENU.reference, "Reference"),
+            page(HMENU.docs, "Documents", HMENU.pageDocs, HMENU.reference),
+            page(HMENU.catalog, "Endpoint catalog", HMENU.pageCatalog, HMENU.reference),
         )
     }
 
@@ -95,8 +97,6 @@ class HomeMenuTest : StringSpec({
             header(HMENU.account, "Account"),
             page(HMENU.profile, "Profile", HMENU.pageProfile, HMENU.account),
             call(HMENU.logout, "Log out", HACT.logout.name, HMENU.account),
-            page(HMENU.catalog, "Endpoint catalog", HMENU.pageCatalog),
-            page(HMENU.docs, "Documents", HMENU.pageDocs),
             page(HMENU.users, "Users", HMENU.pageUsers),
             // One client to oversee, which the page opens directly (issue #1082): the entry says so.
             page(HMENU.myClient, "My client", HMENU.pageClients),
@@ -105,9 +105,12 @@ class HomeMenuTest : StringSpec({
             page(HMENU.reports, "Reports", HMENU.pageReports),
             // The keys of the users they administer (issue #1402), offered as Reports is.
             page(HMENU.apiKeys, "API keys", HMENU.pageApiKeys),
-            page(HMENU.cfactReference, "Client facts", HMENU.pageCfacts),
             // Their listing is every form in their client, not only their own (issue #1091).
             page(HMENU.clientForms, "Forms", HMENU.pageForms),
+            header(HMENU.reference, "Reference"),
+            page(HMENU.docs, "Documents", HMENU.pageDocs, HMENU.reference),
+            page(HMENU.catalog, "Endpoint catalog", HMENU.pageCatalog, HMENU.reference),
+            page(HMENU.cfactReference, "Client facts", HMENU.pageCfacts, HMENU.reference),
         )
     }
 
@@ -155,8 +158,6 @@ class HomeMenuTest : StringSpec({
             header(HMENU.account, "Account"),
             page(HMENU.profile, "Profile", HMENU.pageProfile, HMENU.account),
             call(HMENU.logout, "Log out", HACT.logout.name, HMENU.account),
-            page(HMENU.catalog, "Endpoint catalog", HMENU.pageCatalog),
-            page(HMENU.docs, "Documents", HMENU.pageDocs),
             header(HMENU.operator, "Operator"),
             page(HMENU.operatorOverview, "Overview", HMENU.pageOperator, HMENU.operator),
             page(HMENU.envReference, "Environment", HMENU.pageEnv, HMENU.operator),
@@ -166,8 +167,11 @@ class HomeMenuTest : StringSpec({
             page(HMENU.fragmentsCheck, "Fragments check", HMENU.pageFragmentsCheck, HMENU.operator),
             page(HMENU.cacheState, "Cache state", HMENU.pageCacheState, HMENU.operator),
             page(HMENU.fileStore, "File store", HMENU.pageFileStore, HMENU.operator),
-            page(HMENU.cfactReference, "Client facts", HMENU.pageCfacts),
             page(HMENU.forms, "My forms", HMENU.pageForms),
+            header(HMENU.reference, "Reference"),
+            page(HMENU.docs, "Documents", HMENU.pageDocs, HMENU.reference),
+            page(HMENU.catalog, "Endpoint catalog", HMENU.pageCatalog, HMENU.reference),
+            page(HMENU.cfactReference, "Client facts", HMENU.pageCfacts, HMENU.reference),
         )
     }
 
