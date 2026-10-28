@@ -285,6 +285,11 @@ The sample component declares four reports:
 The conference demo declares two more, `submissionsByTrack` and `questionnaireSummary`, shown bundle by bundle in
 [`demo-client/reports.md`](../demo-client/reports.md).
 
+A client created from data starts with one of its own (issue #1429), since there is no editor for reports yet:
+**`forms`**, in a configuration named `reports` (`ClientCreate.starterReportConfig`), a row per form with its name,
+its owner's email, its status, and when it was made, grouped by status. The name column is left out when the client
+does not include the trait it reads.
+
 A fresh node has no forms, so each runs empty. The `report-demo` simulation (issue #997) creates some on a test
 instance that loads the sample -- run it from the webapp's **Simulations** page, or `kdr-probe --url <the node>
 report-demo` (the flag goes before the scenario): 32 acme forms over three owners, five auditors and five reporting

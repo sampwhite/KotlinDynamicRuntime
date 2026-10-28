@@ -4,6 +4,7 @@ import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.gedra.CCT
 import com.dynamicruntime.common.gedra.CLD
+import com.dynamicruntime.common.gedra.ClientCreate
 import com.dynamicruntime.common.gedra.CPY
 import com.dynamicruntime.common.gedra.CWF
 import com.dynamicruntime.common.gedra.ClientAudience
@@ -15,6 +16,7 @@ import com.dynamicruntime.common.gedra.GedraConfigService
 import com.dynamicruntime.common.gedra.GedraConfigType
 import com.dynamicruntime.common.gedra.GedraId
 import com.dynamicruntime.common.gedra.QUOTA
+import com.dynamicruntime.common.gedra.report.ReportService
 import com.dynamicruntime.common.gedra.PlanLimits
 import com.dynamicruntime.common.gedra.workflow.WFD
 import com.dynamicruntime.common.gedra.workflow.WFT
@@ -80,6 +82,17 @@ class ClientStarterWorkflowsTest : StringSpec({
         WorkflowService.get(cxt).forClient(client).workflows.keys shouldBe emptySet()
         ClientService.get(cxt).known(client).shouldNotBeNull().includedTraits shouldNotContain GT.name
         stored(client, "${CWF.configPrefix}newForm").shouldBeNull()
+    }
+
+    // The report a client created from data has, there being no editor for reports yet (issue #1429).
+    "a new client starts with the Forms report, published, and without the starters it leaves out the name it cannot read" {
+        fun columns(client: String) = ReportService.get(cxt).forClient(client).report(ClientCreate.starterReport).shouldNotBeNull()
+            .bound.report.columns.map { it.columnId }
+        create("report1429")
+        stored("report1429", ClientCreate.starterReportsConfig).shouldNotBeNull().isPublished shouldBe true
+        columns("report1429") shouldContainExactly listOf("name", "owner", "status", "created")
+        create("noname1429", CLD.starterWorkflows to false)
+        columns("noname1429") shouldContainExactly listOf("owner", "status", "created")
     }
 
     "a self-serve client starts with them, live although it has a sandbox, and counts them against its plan" {

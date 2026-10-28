@@ -19,6 +19,7 @@ object WalkThrough {
 
     val doc = MarkdownDocDef(
         docId, "A walk-through", sourcePath,
-        "Try the site one step at a time: the conference demo, as a speaker and as its committee.", listed = false,
+        "Try the site one step at a time: the conference demo, as a speaker and as its committee, and then a client of your own.",
+        listed = false,
     )
 }
