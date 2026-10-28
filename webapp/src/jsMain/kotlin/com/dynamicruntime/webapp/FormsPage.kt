@@ -1,5 +1,6 @@
 package com.dynamicruntime.webapp
 
+import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.home.HFRAG
 import com.dynamicruntime.common.endpoint.EI
 import com.dynamicruntime.common.endpoint.EP
@@ -149,10 +150,10 @@ val FormsPage = FC<FormsPageProps> { props ->
     // Whether the caller reads other users' forms -- an administrator (issue #562) or an editor (issue #1432) -- from the
     // shell's UI-config. False until it answers and false when it cannot, so those controls are never drawn on a guess.
     var seesOthersForms by useState(false)
-    // Who the caller is, and whether it deletes only its own forms -- anyone but an administrator (issue #1432) -- so a
-    // Delete is offered only where it would be honored.
+    // Who the caller is, and whether its deletes are limited -- anyone but an administrator (issue #1432): its own forms,
+    // and another's only while in no workflow (issue #1452) -- so a Delete is offered only where it would be honored.
     var selfUserId by useState<Long?>(null)
-    var deletesOwnOnly by useState(false)
+    var limitedDelete by useState(false)
     // Whether the caller administers across clients (issue #668), from the same UI-config. Gates the Client
     // column and the filter-by-client control; false until known and when it cannot be learned.
     var canSeeAllClients by useState(false)
@@ -442,7 +443,7 @@ val FormsPage = FC<FormsPageProps> { props ->
             selfUserId = homeConfig?.user?.userId
             // Only once the shell has said the caller is no administrator: a config that could not be read leaves
             // Delete offered as the endpoint does, for the backend to judge, rather than hiding it from everyone.
-            deletesOwnOnly = homeConfig != null && !homeConfig.canManageUsers
+            limitedDelete = homeConfig != null && !homeConfig.canManageUsers
             // The freshly-read local, not the state set just above: that setter has not landed yet, so the
             // clients fetch and the chosen-client restore must branch on the value in hand (issue #668).
             val seeAllClients = homeConfig?.canSeeAllClients == true
@@ -687,7 +688,11 @@ val FormsPage = FC<FormsPageProps> { props ->
                         // confirm, inline on the same line; on success the view closes and the list reloads
                         // from the top, where the now one-fewer forms are.
                         deleteEndpoint?.takeIf {
-                            mayDeleteForm(viewRow?.get(GDF.userId).toOptLong(), selfUserId, deletesOwnOnly)
+                            mayDeleteForm(
+                                viewRow?.get(GDF.userId).toOptLong(), selfUserId, limitedDelete,
+                                // Null when the form was read alone, which carries no state (issue #1452 review).
+                                viewRow?.get(GDF.states)?.toJsonListOfMaps(),
+                            )
                         }?.let { de ->
                             if (!confirmingDelete) {
                                 Button {
@@ -698,7 +703,7 @@ val FormsPage = FC<FormsPageProps> { props ->
                             } else {
                                 span {
                                     className = ClassName("subtitle")
-                                    +deleteFormQuestion(viewingId)
+                                    +deleteFormQuestion(viewingId, viewRow?.let { otherOwnerOf(it, selfUserId) })
                                 }
                                 Button {
                                     danger = true
@@ -1021,7 +1026,7 @@ val FormsPage = FC<FormsPageProps> { props ->
                     forms = rows.map { (it[GDF.gedraId] as? String ?: "") to summarizeForm(it, union) }
                     onView = { id -> viewingId = id }
                     canDelete = deleteEndpoint != null
-                    this.deletesOwnOnly = deletesOwnOnly
+                    this.limitedDelete = limitedDelete
                     this.selfUserId = selfUserId
                     showOwner = seesOthersForms
                     // The Client column is for the cross-client view: it tells rows apart by client, and once a

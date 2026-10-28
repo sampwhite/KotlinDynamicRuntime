@@ -9,6 +9,17 @@ import com.dynamicruntime.common.util.toOptStr
 // Pure readers over a form's state entries, in the kernel so the backend's workflow code, a report's evaluator
 // (issue #978) and the frontend all apply one rule. They read maps and nothing else.
 
+/**
+ * The workflow ids [entries] say this form is currently engaged with (issue #794) -- read from the asserted
+ * [WFS.workflowEngagement] entries, in the order they appear. A disengaged entry ([WFS.engaged] false) keeps its
+ * trail but is not engaged, so it is left out. In the kernel since #1452, so the forms page reads it by the same rule.
+ */
+fun engagedWorkflowIds(entries: List<Map<String, Any?>>): List<String> = entries
+    .filter { it[GE.traitId].toOptStr() == WFS.workflowEngagement }
+    .map { it[GE.data].toJsonMapOrEmpty() }
+    .filter { it[WFS.engaged] == true }
+    .mapNotNull { it[WFD.workflowId].toOptStr() }
+
 /** Whether the state [entry] is the engagement entry for [workflowId], engaged or not. */
 fun isEngagementEntryFor(entry: Map<String, Any?>, workflowId: String): Boolean =
     entry[GE.traitId].toOptStr() == WFS.workflowEngagement &&

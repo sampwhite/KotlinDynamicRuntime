@@ -35,13 +35,29 @@ fun markPageSandbox(inSandbox: Boolean) {
  */
 fun deleteTargetText(client: String): String = sandboxParentOf(client)?.let { "$it's sandbox" } ?: "$client (live data)"
 
-/** The form view's delete question for the form [gedraId] names: where it is deleted from, when the id says. */
-fun deleteFormQuestion(gedraId: String?): String =
-    formClientOf(gedraId)?.let { "Delete this form from ${deleteTargetText(it)}?" } ?: "Delete this form?"
+/**
+ * The form view's delete question for the form [gedraId] names: where it is deleted from, when the id says, and whose
+ * it is when that is someone else ([otherOwner], issue #1452) -- an editor may delete another user's form.
+ */
+fun deleteFormQuestion(gedraId: String?, otherOwner: String? = null): String {
+    val what = otherOwner?.let { "$it's form" } ?: "this form"
+    return formClientOf(gedraId)?.let { "Delete $what from ${deleteTargetText(it)}?" } ?: "Delete $what?"
+}
 
-/** The forms listing's compact row question for the form [gedraId] names. */
-fun deleteRowQuestion(gedraId: String?): String =
-    formClientOf(gedraId)?.let { "Delete from ${deleteTargetText(it)}?" } ?: "Delete?"
+/** The forms listing's compact row question for the form [gedraId] names, naming an [otherOwner] (issue #1452). */
+fun deleteRowQuestion(gedraId: String?, otherOwner: String? = null): String {
+    val what = otherOwner?.let { " $it's form" } ?: ""
+    return formClientOf(gedraId)?.let { "Delete$what from ${deleteTargetText(it)}?" } ?: "Delete$what?"
+}
+
+/**
+ * Whose a form is, for a delete question, when it is not the caller's own (issue #1452): the owner's name, else their
+ * email. Null for the caller's own form, and for one whose owner the row does not say. Pure, covered under `jsNodeTest`.
+ */
+fun otherOwnerLabel(ownerId: Long?, selfUserId: Long?, ownerName: String?, ownerEmail: String?): String? {
+    if (ownerId == null || ownerId == selfUserId) return null
+    return ownerName?.takeIf { it.isNotBlank() } ?: ownerEmail?.takeIf { it.isNotBlank() }
+}
 
 /** The Users page's question beside its permanent delete, for a user of [client]. */
 fun deleteUserQuestion(client: String): String = "Delete this user from ${deleteTargetText(client)}?"

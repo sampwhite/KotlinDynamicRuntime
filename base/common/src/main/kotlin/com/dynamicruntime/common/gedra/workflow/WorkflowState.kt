@@ -316,13 +316,3 @@ fun previousEntry(entries: List<Map<String, Any?>>, workflowId: String): Map<Str
     ?.get(GE.data)?.toJsonMapOrEmpty()
     ?: mapOf(WFD.workflowId to workflowId)
 
-/**
- * The workflow ids [entries] say this form is currently engaged with (issue #794) -- read from the asserted
- * [WFS.workflowEngagement] entries, in the order they appear. A disengaged entry ([WFS.engaged] false) keeps its
- * trail but is not engaged, so it is left out.
- */
-fun engagedWorkflowIds(entries: List<Map<String, Any?>>): List<String> = entries
-    .filter { it[GE.traitId].toOptStr() == WFS.workflowEngagement }
-    .map { it[GE.data].toJsonMapOrEmpty() }
-    .filter { it[WFS.engaged] == true }
-    .mapNotNull { it[WFD.workflowId].toOptStr() }

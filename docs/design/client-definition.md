@@ -711,10 +711,13 @@ assign itself. Its powers:
   admin level, which it does not hold.
 - **Users:** it reads them in the **user directory**, the `clientDirectory` section (`CDEP`), which requires `editor` and
   serves the two user reads alone, the same handlers as `clientAdmin`'s. The Users page uses those reads for everyone.
-- **Forms:** it lists and edits every form of its client, and is shown whose each is. Only a form's owner or an
-  administrator deletes one (`EditorDeleteGuard`). It creates (and imports) forms for another user of its client
-  (issue #1433, `AdminRules.createsFormsForOthers`), so it can start a form a member then fills in; the form is that
-  user's, so the editor cannot then delete it.
+- **Forms:** it lists and edits every form of its client, and is shown whose each is. It creates (and imports) forms
+  for another user of its client (issue #1433, `AdminRules.createsFormsForOthers`), so it can start a form a member
+  then fills in; the form is that user's. It deletes its own forms, and another user's only while the form is in no
+  live workflow (issue #1452, `EditorDeleteGuard`) -- one it started for the wrong person, say. Once a form is engaged,
+  it is someone's work under way, and deleting it is its owner's or an administrator's. A live workflow the editor
+  does not see still counts, so there the forms page may offer a Delete the server refuses -- with a refusal that
+  names no workflow, since the editor is not meant to know of it.
 - **Forms kept to their owner** (issue #1433): a client marks a form so with the framework singleton `kdr:ownerOnly`,
   which a workflow's singleton rule emits. While it holds, an editor changes the form only as its owner or as a
   reviewer of an engaged workflow's current task (`OwnerOnlyGuard`), and the pages draw it read-only for anyone else.

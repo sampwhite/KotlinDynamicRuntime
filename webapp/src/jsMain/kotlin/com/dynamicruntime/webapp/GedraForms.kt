@@ -1,5 +1,6 @@
 package com.dynamicruntime.webapp
 
+import com.dynamicruntime.common.gedra.workflow.engagedWorkflowIds
 import com.dynamicruntime.common.gedra.workflow.WAGG
 import com.dynamicruntime.common.gedra.workflow.WCOL
 import com.dynamicruntime.common.gedra.workflow.WfPhase
@@ -797,12 +798,24 @@ fun parseSingletonWorkflows(results: Map<String, Any?>): List<SingletonWorkflow>
 fun createsFormsForOthers(config: HomeConfig): Boolean = config.canManageUsers || config.seesClientForms
 
 /**
- * Whether the caller may delete a form owned by [ownerId] (issue #1432): only its owner or an administrator deletes a
- * form, so a caller who [deletesOwnOnly] -- anyone but an administrator, an editor included -- deletes only its own
- * ([selfUserId]). Pure, covered under `jsNodeTest`.
+ * Whether the caller may delete a form owned by [ownerId] whose state is [states] (issues #1432, #1452): an
+ * administrator deletes any; a caller with a [limitedDelete] -- anyone but an administrator, an editor included --
+ * deletes its own ([selfUserId]), and another user's only while the form is in no workflow, by the kernel's own
+ * reading of the engagement ([engagedWorkflowIds]). [states] are the ones the listing was shown, which leave out a
+ * retired workflow's, as the backend's rule does -- or null when the row carried none (the single-form read), and then
+ * nothing says the form is free, so another user's is not offered. Pure, covered under `jsNodeTest`.
  */
-fun mayDeleteForm(ownerId: Long?, selfUserId: Long?, deletesOwnOnly: Boolean): Boolean =
-    !deletesOwnOnly || (ownerId != null && ownerId == selfUserId)
+fun mayDeleteForm(ownerId: Long?, selfUserId: Long?, limitedDelete: Boolean, states: List<Map<String, Any?>>?): Boolean =
+    !limitedDelete || (ownerId != null && ownerId == selfUserId) || (states != null && engagedWorkflowIds(states).isEmpty())
+
+/**
+ * Whose the form [row] is, for a delete question, when it is not [selfUserId]'s (issue #1452) -- [otherOwnerLabel] read
+ * straight off the row's `userId` and `owner` block, without summarizing the rest of it.
+ */
+fun otherOwnerOf(row: Map<String, Any?>, selfUserId: Long?): String? {
+    val owner = row[GDF.owner].toJsonMapOrEmpty()
+    return otherOwnerLabel(row[GDF.userId].toOptLong(), selfUserId, owner[DUF.name] as? String, owner[DUF.email] as? String)
+}
 
 class FormSummary(
     val gedraId: String,
