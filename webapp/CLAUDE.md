@@ -353,6 +353,9 @@ whole screen is arranged to prevent. Three of them are **authority**:
   `Select`, because the levels are an ordering and holding two is not a thing one can be.
 - **All clients** — an off-ladder **capability**, a checkbox. The level says *what* someone may do; this says
   *whose data* they may do it to. Different axes.
+- **Editor** (issue #1432) — an off-ladder **role**, a checkbox beside the level and offered below the admin level,
+  since an administrator already holds everything it adds (`rolesWithEditor`). It keeps the level, and the persona
+  follows it while creating until one is chosen (`personaForRoles`).
 - **Organization** — an optional narrowing *within* a client. Blank means client-wide.
 
 A fourth is **belonging**, and behaves unlike the other three:
@@ -365,7 +368,7 @@ A fourth is **belonging**, and behaves unlike the other three:
   populate it; a scoped administrator's client is not a decision. The list gains a **Client** column under the
   same condition, because a column that says one thing says nothing.
 - **Persona** (issue #750) — what kind of user this is, from the kernel's `PERSONA` registry (`Member`,
-  `Admin`), chosen at creation and never again, so a `Select` while creating and read-only afterward. Personas
+  `Editor`, `Admin`), chosen at creation and never again, so a `Select` while creating and read-only afterward. Personas
   grant roles by default and roles provide a default persona: until the administrator picks a persona it
   follows the access level (`personaForLevel`), picking one moves the level to its defaults (`levelForPersona`),
   and only a chosen persona is sent, so the backend applies the same rule to an unnamed one. The Status column
@@ -394,6 +397,14 @@ A fourth is **belonging**, and behaves unlike the other three:
   anyone else the Summary leaves those three rows out (`AdminIdentity.identityFactsGiven`) and the Status column
   says nothing of a password. The rule is by who asks, never by what the identity holds, so their absence says
   nothing about the person.
+  **An editor** (issue #1432) browses the page **read-only** (`usersReadOnly`, from `HFEAT.browsesUsers`). It gets the
+  list and search with no create buttons, and a user's details (`userDetails`: address, name, persona, access,
+  organization, labels, status) in place of the editor. Nothing is fetched that only an administrator may read: the
+  person behind the user, label suggestions, and the client choices. The page's reads (`AdminApi.listUsers`,
+  `searchUsers`) are the **user directory's** (`/clientDirectory/*`) for everyone, the same handlers as `clientAdmin`'s,
+  which admit an administrator by implication. So the forms list's user filter works for an editor too, and only the
+  writes go to `clientAdmin`. The forms listing names itself and shows owners by `HFEAT.seesClientForms` (an
+  administrator or an editor; `ShellFacts.seesClientForms`).
   **In `public`** (issue #805) every self-registered user is an administrator of themselves only: the Users page
   lists their own identity's users, "Create user" is not offered (`mayCreateForOthers`; the backend refuses any
   other address and any other client), and "Create a user for me" is how they make variants. Their data reads

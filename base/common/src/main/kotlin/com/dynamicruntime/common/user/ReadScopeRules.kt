@@ -46,11 +46,7 @@ object ReadScopeRules {
         // A primary organization narrows an administrator one width further. Most have none, and then this is
         // exactly the client scope it always was -- organizations are a per-client choice, so having none is
         // the ordinary case rather than a missing value.
-        AdminScope.ownClient -> {
-            val profile = cxt.userProfile
-            val org = profile.org
-            if (org == null) ReadScope.ofClient(profile.client) else ReadScope.ofOrg(profile.client, org)
-        }
+        AdminScope.ownClient -> ownClientWidth(cxt)
         // The capability outranks a primary organization. Someone who may reach every client is not confined
         // by which organization they happen to belong to -- different axes, and this is the wider.
         AdminScope.allClients -> ReadScope.unrestricted
@@ -64,7 +60,18 @@ object ReadScopeRules {
         // accepted the `allClients` capability alone (issue #237), a caller with no admin level reached those
         // endpoints and this handed them every client's rows. Failing closed costs nothing and does not depend
         // on another component staying correct.
-        AdminScope.none -> ReadScope.ofUser(cxt.userProfile.userId)
+        //
+        // An editor (issue #1432) is the one exception: it sees every user and form of its client, administering
+        // nothing, so it reads as far as an administrator of the client does -- organization included -- while every
+        // administrative power stays keyed on the admin level, which it does not hold.
+        AdminScope.none -> if (AdminRules.editsClient(cxt)) ownClientWidth(cxt) else ReadScope.ofUser(cxt.userProfile.userId)
+    }
+
+    /** The caller's own client, or its primary organization within it when it has one. */
+    fun ownClientWidth(cxt: KdrCxt): ReadScope {
+        val profile = cxt.userProfile
+        val org = profile.org
+        return if (org == null) ReadScope.ofClient(profile.client) else ReadScope.ofOrg(profile.client, org)
     }
 
     /**

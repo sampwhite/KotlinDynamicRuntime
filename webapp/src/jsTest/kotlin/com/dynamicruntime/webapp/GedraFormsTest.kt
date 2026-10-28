@@ -55,6 +55,17 @@ class GedraFormsTest {
      * resource and an unrelated POST must both be passed over.
      */
     @Test
+    fun onlyAFormsOwnerOrAnAdministratorIsOfferedItsDelete() {
+        // Issue #1432: an editor reaches every form of its client but deletes only its own; an administrator deletes any.
+        assertTrue(mayDeleteForm(ownerId = 7, selfUserId = 7, deletesOwnOnly = true))
+        assertFalse(mayDeleteForm(ownerId = 8, selfUserId = 7, deletesOwnOnly = true))
+        assertFalse(mayDeleteForm(ownerId = null, selfUserId = 7, deletesOwnOnly = true))
+        assertTrue(mayDeleteForm(ownerId = 8, selfUserId = 7, deletesOwnOnly = false))
+        // The owner's id rides the row's `userId`.
+        assertEquals(42L, summarizeForm(mapOf(GDF.gedraId to "g", GDF.userId to 42), null).ownerId)
+    }
+
+    @Test
     fun findsTheScopedCreatePost() {
         val endpoints = listOf(
             ep(HttpMethod.GET.name, "/gedra/acme/formDoc"),

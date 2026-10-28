@@ -146,11 +146,11 @@ class ClientMenuEditEndpointTest : StringSpec({
         docs[MNU.audiences].toJsonListOfMaps().first() shouldBe mapOf(MNU.condition to CFACTS.app, MNU.name to "Everyone")
         // The deployment's own audiences are not handed to an item that did not ship with one...
         conditionsOffered(docs) shouldNotContain CFACTS.isDeploymentOperator
-        conditionsOffered(docs) shouldNotContain "${CFACTS.hasAdminLevel},${CFACTS.app}"
+        conditionsOffered(docs) shouldNotContain "(${CFACTS.hasAdminLevel}|${CFACTS.isEditor}),${CFACTS.app}"
         // ...while the item that did may go back to it, and its row names it.
         val users = listed.getValue(HMENU.users)
-        users[MNU.baseAudience] shouldBe "Anyone at the administrator level"
-        conditionsOffered(users) shouldContain "${CFACTS.hasAdminLevel},${CFACTS.app}"
+        users[MNU.baseAudience] shouldBe "Anyone at the administrator level, and editors"
+        conditionsOffered(users) shouldContain "(${CFACTS.hasAdminLevel}|${CFACTS.isEditor}),${CFACTS.app}"
         // A withdrawn item has no audience to name.
         items(SC.acme).getValue(HMENU.cfactReference).let {
             it.containsKey(MNU.audience) shouldBe false
@@ -160,15 +160,20 @@ class ClientMenuEditEndpointTest : StringSpec({
         // The write holds to the same list: another item's audience is refused, the item's own is taken.
         val foreign = admin.expectError(
             EXC.badInput, MNU.setPath,
-            data = mapOf(COV.client to SC.globex, COV.itemId to HMENU.docs, MNU.visibility to MNU.show, MNU.condition to "${CFACTS.hasAdminLevel},${CFACTS.app}"),
+            data = mapOf(
+                COV.client to SC.globex, COV.itemId to HMENU.docs, MNU.visibility to MNU.show,
+                MNU.condition to "(${CFACTS.hasAdminLevel}|${CFACTS.isEditor}),${CFACTS.app}",
+            ),
         )
         foreign[EP.errorMessage].toOptStr().orEmpty() shouldContain "not an audience the menu item '${HMENU.docs}' may be shown to"
         edit(SC.globex, HMENU.users, MNU.visibility to MNU.hide).containsKey(MNU.audience) shouldBe false
         // Hidden, it is still offered the audience it shipped under: what it may go back to is the shipped item's.
-        conditionsOffered(items(SC.globex).getValue(HMENU.users)) shouldContain "${CFACTS.hasAdminLevel},${CFACTS.app}"
-        edit(SC.globex, HMENU.users, MNU.visibility to MNU.show, MNU.condition to "${CFACTS.hasAdminLevel},${CFACTS.app}")[MNU.audience] shouldBe
-            "Anyone at the administrator level"
-        admin.postData(MNU.resetPath, mapOf(COV.client to SC.globex, COV.itemId to HMENU.users))[MNU.audience] shouldBe "Anyone at the administrator level"
+        conditionsOffered(items(SC.globex).getValue(HMENU.users)) shouldContain "(${CFACTS.hasAdminLevel}|${CFACTS.isEditor}),${CFACTS.app}"
+        val usersAudience = "(${CFACTS.hasAdminLevel}|${CFACTS.isEditor}),${CFACTS.app}"
+        edit(SC.globex, HMENU.users, MNU.visibility to MNU.show, MNU.condition to usersAudience)[MNU.audience] shouldBe
+            "Anyone at the administrator level, and editors"
+        admin.postData(MNU.resetPath, mapOf(COV.client to SC.globex, COV.itemId to HMENU.users))[MNU.audience] shouldBe
+            "Anyone at the administrator level, and editors"
     }
 
     "a draft this node does not run is not a change the listing reports" {

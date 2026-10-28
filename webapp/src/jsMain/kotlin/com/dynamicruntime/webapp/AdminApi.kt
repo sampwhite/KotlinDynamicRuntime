@@ -9,6 +9,7 @@ import com.dynamicruntime.common.gedra.GDF
 import com.dynamicruntime.common.gedra.GEP
 import com.dynamicruntime.common.gedra.clientLabel
 import com.dynamicruntime.common.user.ADEP
+import com.dynamicruntime.common.user.CDEP
 import com.dynamicruntime.common.user.UADEP
 import com.dynamicruntime.common.user.ADF
 import com.dynamicruntime.common.user.PERSONA
@@ -159,6 +160,11 @@ fun isAllClientsDormant(level: String, granted: Boolean): Boolean =
  * correctly: a caller with `allClients` is simply unconfined there, so this console needs no branch on who is
  * asking, and a client-scoped administrator gets the same screens narrowed to their own client.
  *
+ * **The reads are the user directory's** (`clientDirectory`, issue #1432), not `clientAdmin`'s: the same handlers, scoped
+ * the same way, and open to an editor -- who sees every user of its client and administers none -- as well as to every
+ * administrator, who holds the editor role by implication. So the Users page read-only, and the forms list's user
+ * filter, work for an editor through the same calls an administrator's do; only the writes need the admin level.
+ *
  * As with the other API objects, paths and field names come from the shared kernel constants, so a rename on
  * the backend breaks compilation here rather than at runtime.
  */
@@ -167,7 +173,7 @@ object AdminApi {
     suspend fun listUsers(search: String): List<AdminUser> {
         val term = search.trim()
         // Non-empty only: an empty term lists everyone, and appending `?search=` (empty) is a different call.
-        val path = if (term.isEmpty()) UADEP.users else UADEP.users + queryString(mapOf(ADF.search to term))
+        val path = if (term.isEmpty()) CDEP.users else CDEP.users + queryString(mapOf(ADF.search to term))
         return Http.getApi(path)[EP.items].toJsonListOfMaps().map { it.toAdminUser() }
     }
 
@@ -183,7 +189,7 @@ object AdminApi {
         // no business (issue #581). A type-ahead asks for the few it will show; the console omits it and takes
         // the endpoint's own default.
         val args = userSearchArgs(query) + (limit?.let { mapOf(EP.limit to it) } ?: emptyMap())
-        val env = Http.getApi(UADEP.userSearch + queryString(args))
+        val env = Http.getApi(CDEP.userSearch + queryString(args))
         return UserSearchResult(
             users = env[EP.items].toJsonListOfMaps().map { it.toAdminUser() },
             numAvailable = (env[EP.numAvailable] as? Number)?.toInt() ?: 0,

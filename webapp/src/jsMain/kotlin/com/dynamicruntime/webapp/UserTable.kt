@@ -49,6 +49,12 @@ external interface UserTableProps : Props {
      */
     var showLinks: Boolean
 
+    /**
+     * Whether those links include the user's **client** (issue #1432): not for an editor, who reads the client's users
+     * and forms but none of its configuration, which is what the Clients page shows. Null reads as true.
+     */
+    var showClientLinks: Boolean?
+
     /** The clients this node carries, as the page was told them -- which a Forms link may choose ([userFormsSurface]). */
     var carriedClients: Set<String>
 }
@@ -150,6 +156,7 @@ private fun userLinksColumn(props: UserTableProps): dynamic {
             userId = id
             client = record[USF.client] as? String ?: ""
             carriedClients = props.carriedClients
+            showClient = props.showClientLinks != false
         }
     }
     return c
@@ -160,6 +167,8 @@ external interface UserLinksProps : Props {
     var userId: Long
     var client: String
     var carriedClients: Set<String>
+    /** Whether the client link is drawn beside the forms one; null reads as true. */
+    var showClient: Boolean?
 }
 
 /**
@@ -175,7 +184,7 @@ val UserLinks = FC<UserLinksProps> { props ->
             title = "The forms this user owns."
             +"Forms"
         }
-        if (props.client.isNotEmpty()) {
+        if (props.client.isNotEmpty() && props.showClient != false) {
             +" · "
             a {
                 className = ClassName("wf-cell-link")

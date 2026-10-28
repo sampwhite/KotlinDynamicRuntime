@@ -155,6 +155,24 @@ object AdminRules {
     }
 
     /**
+     * Whether the caller is an **editor** of its client (issue #1432): holds [ROLE.editor] and is not an administrator,
+     * whose reach is [adminScope]'s. An editor reads every user and form of its client and edits forms, administering
+     * nothing. Never in `public`, the placeholder client, where no client role widens what is readable -- as an
+     * administrator there reaches only their own identity.
+     */
+    fun editsClient(cxt: KdrCxt): Boolean {
+        val profile = cxt.userProfile
+        return ROLE.editor in profile.roles && ROLE.admin !in profile.roles && profile.client != CL.public
+    }
+
+    /**
+     * Whether the caller's reads reach **other users' rows** -- an administrator's ([canManageUsers]) or an editor's
+     * ([editsClient], issue #1432). What shapes a surface that names whose row each is: the owner column on the forms
+     * list, and its sort. Like [canManageUsers] it shapes what is shown; `ReadScopeRules.forCaller` decides what is read.
+     */
+    fun seesOthersRows(cxt: KdrCxt): Boolean = canManageUsers(cxt) || editsClient(cxt)
+
+    /**
      * Whether the caller may administer other users -- create them, edit their roles, enable or disable them.
      * The question the home menu asks before offering the Users page.
      *

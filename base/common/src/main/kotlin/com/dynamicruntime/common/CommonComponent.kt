@@ -4,6 +4,7 @@ import com.dynamicruntime.common.context.DebugTagDef
 import com.dynamicruntime.common.gedra.GDBG
 import com.dynamicruntime.common.gedra.stateRecomputeJob
 import com.dynamicruntime.common.gedra.workflow.TraitLockGuard
+import com.dynamicruntime.common.gedra.EditorDeleteGuard
 import com.dynamicruntime.common.cfact.addCoreCFacts
 import com.dynamicruntime.common.gedra.report.ReportDefSchema
 import com.dynamicruntime.common.gedra.workflow.WfDefSchema
@@ -104,6 +105,7 @@ import com.dynamicruntime.common.user.accessTokenSchema
 import com.dynamicruntime.common.user.apiKeySchema
 import com.dynamicruntime.common.user.adminSchema
 import com.dynamicruntime.common.user.scopedUserAdminSchema
+import com.dynamicruntime.common.user.userDirectorySchema
 import com.dynamicruntime.common.user.authSchema
 import com.dynamicruntime.common.user.authTables
 import com.dynamicruntime.common.user.profileSchema
@@ -195,6 +197,7 @@ class CommonComponent : ComponentDefinition {
         // The trait-lock guard (issue #857): a normal workflow's locks refuse an edit of a locked trait on every
         // path, under the form's lock -- or record the override a permitted writer asked for.
         collector.addWriteGuard(TraitLockGuard)
+        collector.addWriteGuard(EditorDeleteGuard)
         // The workflow definition schema, published so the types a definition is validated against are the
         // same ones a catalog or a frontend can read.
         collector.defs.putAll(WfDefSchema.defs(cxt))
@@ -238,6 +241,7 @@ class CommonComponent : ComponentDefinition {
         // The same user-administration operations, scoped to the caller's client (issue #225): the
         // `clientAdmin` section (renamed from `userAdmin` in #466).
         collector.addModule(scopedUserAdminSchema(cxt), appOnly)
+        collector.addModule(userDirectorySchema(cxt), appOnly)
         // The administrators' clients overview (issue #904): the same `clientAdmin` section, and app-only like the
         // user administration -- its counts read the user and gedra caches, which an edge does not carry.
         collector.addModule(clientOverviewSchema(cxt), appOnly)

@@ -29,7 +29,7 @@ val backListings: Map<String, BackListing> = listOf(
     BackListing(HMENU.pageDocs, "Documents"),
     BackListing(HMENU.pageOperator, "Operator"),
     // Named for the caller by [backLabel] (issue #1091); this is its name for one who lists only their own.
-    BackListing(HMENU.pageForms, formsListingName(ShellFacts(administersClient = false))),
+    BackListing(HMENU.pageForms, formsListingName(ShellFacts(seesClientForms = false))),
     // The workflow pages (issue #792): the aggregate, and a workflow's own listing of forms under it.
     BackListing(HMENU.pageWorkflows, "Workflows"),
     BackListing(pageWorkflowForms, "Workflow forms"),

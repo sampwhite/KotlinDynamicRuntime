@@ -230,7 +230,7 @@ val FormsScopeBar = FC<FormsScopeBarProps> { props ->
             +"Showing forms for"
         }
         AutoComplete {
-            placeholder = "everyone you administer — or a name, email, or id"
+            placeholder = "everyone whose forms you see — or a name, email, or id"
             value = props.value
             options = userPickOptions(suggestions)
             allowClear = true

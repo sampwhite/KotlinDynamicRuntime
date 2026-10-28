@@ -15,9 +15,10 @@ import react.use
  *   -- the shipped words, or a client's own if its configuration renamed the entry. The page takes its name from
  *   that, so the two cannot differ. Null when the caller's menu has no such entry (a client hid it), or the shell
  *   has not been told.
- * - [administersClient] is whether the caller's listings reach beyond their own rows (`HFEAT.administersClient`):
- *   what the name falls back on. True for a client's administrator, false for everyone else -- and **null until the
- *   shell has been told**, which is a moment after a hard reload, or for good when its config could not be read.
+ * - [seesClientForms] is whether the caller's listings reach beyond their own rows (`HFEAT.seesClientForms`): what
+ *   the name falls back on. True for a client's administrator and for an editor (issue #1432), false for everyone
+ *   else -- and **null until the shell has been told**, which is a moment after a hard reload, or for good when its
+ *   config could not be read.
  * - [docs] and [sourceRepoBase] are the served documents and the source repository's blob base (issue #1136), what a
  *   link in form copy resolves against -- see [copyLinkResolver]. Empty until the shell has been told, when a link to
  *   a document is drawn as its text (issue #1380).
@@ -36,7 +37,7 @@ import react.use
  * A data class, so that a refresh which says the same thing is the same value and redraws nothing.
  */
 data class ShellFacts(
-    val administersClient: Boolean? = null,
+    val seesClientForms: Boolean? = null,
     val formsEntryLabel: String? = null,
     val docs: List<HomeLink> = emptyList(),
     val sourceRepoBase: String? = null,
@@ -61,7 +62,7 @@ fun useShellFacts(): ShellFacts = use(ShellFactsContext)
  * `jsNodeTest`.
  */
 fun shellFactsOf(config: HomeConfig, shellCopy: Copy? = null): ShellFacts = ShellFacts(
-    administersClient = config.administersClient,
+    seesClientForms = config.seesClientForms,
     formsEntryLabel = config.menu.firstOrNull { (it.action as? UiRoute)?.page == HMENU.pageForms }?.label?.ifBlank { null },
     docs = config.links,
     sourceRepoBase = config.sourceRepoBase,
@@ -102,9 +103,9 @@ fun ShellFacts.copyLinkResolver(): (String) -> String = docLinkResolver("", docs
  *
  * **The menu entry's own label when the shell has it** -- so the page is called what the entry that opens it is
  * called, a client's renaming of that entry included. Otherwise the shipped words by whose forms the listing shows:
- * "My forms" for a caller who lists only their own, "Forms" for one who administers a client -- and "Forms" while
+ * "My forms" for a caller who lists only their own, "Forms" for one who reads a whole client's -- and "Forms" while
  * that is not yet known, since it is true of the page whoever is looking and "My forms" is not. Pure, covered under
  * `jsNodeTest`.
  */
 fun formsListingName(facts: ShellFacts): String =
-    facts.formsEntryLabel ?: if (facts.administersClient == false) "My forms" else "Forms"
+    facts.formsEntryLabel ?: if (facts.seesClientForms == false) "My forms" else "Forms"

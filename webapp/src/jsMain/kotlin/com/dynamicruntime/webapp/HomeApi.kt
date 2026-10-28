@@ -79,6 +79,16 @@ class HomeConfig(
      * `public`, whom [canManageUsers] is true for.
      */
     val administersClient: Boolean = false,
+    /**
+     * Whether the caller is an editor of its client (issue #1432): offered the Users page read-only, over the
+     * `clientDirectory` reads -- see [Users].
+     */
+    val browsesUsers: Boolean = false,
+    /**
+     * Whether the caller's reads reach every form of a client (issue #1432): an administrator of one, or an editor. What
+     * names the forms listing ([formsListingName]) and shows whose form each is.
+     */
+    val seesClientForms: Boolean = false,
     /** When the caller is in a client's sandbox (issue #931): which client's, for the marker and the way back. */
     val sandboxOf: SandboxOf? = null,
     /**
@@ -179,6 +189,8 @@ fun homeConfigFrom(config: UiConfig): HomeConfig {
         sourceRepoBase = config.state[HFLD.sourceRepoBase] as? String,
         canOpenSandbox = config.features[HFEAT.canOpenSandbox] == true,
         administersClient = config.features[HFEAT.administersClient] == true,
+        browsesUsers = config.features[HFEAT.browsesUsers] == true,
+        seesClientForms = config.features[HFEAT.seesClientForms] == true,
         sandboxOf = (config.state[HFLD.sandboxOf] as? String)?.let {
             SandboxOf(it, config.state[HFLD.sandboxOfName] as? String ?: it, stranded = config.state[HFLD.sandboxStranded] == true)
         },

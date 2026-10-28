@@ -27,8 +27,9 @@ class MenuAudience(val condition: String, val name: String, val offered: Boolean
  * administrator could want to address, or the same people as an offered one.
  * - The deployment's own -- its operators, a test instance, a debug session, the administrators who see every
  *   client -- can only hide an item from the client's people.
- * - `hasAdminLevel` and "administers this client and no other" are, inside a real client, the administrators
- *   again: three names for one audience is the confusion this table exists to remove. `administersClient` is the
+ * - "The administrator level, and editors" (the Users page's, issue #1432) and "administers this client and no other"
+ *   are, inside a real client, "Administrators and editors" and the administrators again: several names for one
+ *   audience is the confusion this table exists to remove. `administersClient` is the
  *   one offered, being the statement about scope the rest of the menu asks. So are a customer's root administrators
  *   (issue #1114), inside the root client.
  * - `#always` differs from "everyone" only on an edge node, which is not a distinction of people at all.
@@ -39,14 +40,20 @@ object HomeMenuAudiences {
         MenuAudience("${CFACTS.loggedIn},${CFACTS.app}", "Everyone signed in", offered = true),
         MenuAudience("${CFACTS.anonymous},${CFACTS.app}", "Signed-out visitors", offered = true),
         MenuAudience("${CFACTS.administersClient},${CFACTS.app}", "Administrators", offered = true),
+        // Editors (issue #1432) see every form of the client, as its administrators do: the forms list's two entries
+        // divide the client's people into those two and everyone else.
+        MenuAudience("${CFACTS.seesClientForms},${CFACTS.app}", "Administrators and editors", offered = true),
         MenuAudience(
-            "${CFACTS.loggedIn},~${CFACTS.administersClient},${CFACTS.app}", "Signed-in people who are not administrators",
+            "${CFACTS.loggedIn},~${CFACTS.seesClientForms},${CFACTS.app}", "Signed-in people who are neither administrators nor editors",
             offered = true,
         ),
         MenuAudience("${CFACTS.isClientOperator},${CFACTS.app}", "Operators and administrators", offered = true),
 
         MenuAudience(CFACT.alwaysName, "Everyone, edge nodes included", offered = false),
-        MenuAudience("${CFACTS.hasAdminLevel},${CFACTS.app}", "Anyone at the administrator level", offered = false),
+        MenuAudience(
+            "(${CFACTS.hasAdminLevel}|${CFACTS.isEditor}),${CFACTS.app}", "Anyone at the administrator level, and editors",
+            offered = false,
+        ),
         MenuAudience("${CFACTS.isDeploymentAdmin},${CFACTS.app}", "Administrators of every client", offered = false, deployment = true),
         MenuAudience(
             "${CFACTS.administersClient},~${CFACTS.isDeploymentAdmin},${CFACTS.app}", "Administrators of this client alone",

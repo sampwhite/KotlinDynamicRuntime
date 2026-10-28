@@ -35,17 +35,17 @@ class BackNavigationTest {
     fun labelsAListingByItsName() {
         assertEquals("Operator", backLabel(HMENU.pageOperator))
         // The forms listing is named for the caller (issue #1091): theirs alone, or their client's.
-        assertEquals("My forms", backLabel(HMENU.pageForms, ShellFacts(administersClient = false)))
-        assertEquals("Forms", backLabel(HMENU.pageForms, ShellFacts(administersClient = true)))
+        assertEquals("My forms", backLabel(HMENU.pageForms, ShellFacts(seesClientForms = false)))
+        assertEquals("Forms", backLabel(HMENU.pageForms, ShellFacts(seesClientForms = true)))
         // Before the shell has been told, the name that is true whoever is looking.
         assertEquals("Forms", backLabel(HMENU.pageForms))
         assertEquals("Forms", formsListingName(ShellFacts()))
         // The menu entry's own label wins when the shell has it: the page is called what its entry is called, a
         // client's renaming of the entry included.
-        assertEquals("My audits", backLabel(HMENU.pageForms, ShellFacts(administersClient = false, formsEntryLabel = "My audits")))
-        assertEquals("My audits", formsListingName(ShellFacts(administersClient = true, formsEntryLabel = "My audits")))
+        assertEquals("My audits", backLabel(HMENU.pageForms, ShellFacts(seesClientForms = false, formsEntryLabel = "My audits")))
+        assertEquals("My audits", formsListingName(ShellFacts(seesClientForms = true, formsEntryLabel = "My audits")))
         // Every other listing has one name, whoever asks.
-        assertEquals("Users", backLabel(HMENU.pageUsers, ShellFacts(administersClient = true)))
+        assertEquals("Users", backLabel(HMENU.pageUsers, ShellFacts(seesClientForms = true)))
         // A non-listing page has no name here, so the id shows rather than nothing.
         assertEquals(HMENU.pageProfile, backLabel(HMENU.pageProfile))
     }

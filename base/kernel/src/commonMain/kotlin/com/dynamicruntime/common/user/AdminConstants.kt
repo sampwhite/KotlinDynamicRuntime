@@ -107,6 +107,17 @@ object ADEP {
  * **This is the surface a frontend should call.** It serves both kinds of administrator correctly -- a caller
  * with `allClients` is simply unconfined -- so a console built on it needs no branch on who is asking.
  */
+/**
+ * The **read-only user directory** (issue #1432), in the `clientDirectory` section: the users of the caller's client,
+ * listed and searched, for an editor -- who sees every user of its client and administers none. The same reads as
+ * [UADEP.users] and [UADEP.userSearch], answering the same shape, with nothing beside them that changes a user.
+ */
+@Suppress("ConstPropertyName")
+object CDEP {
+    const val users = "/${SECT.clientDirectory}/users"
+    const val userSearch = "/${SECT.clientDirectory}/userSearch"
+}
+
 @Suppress("ConstPropertyName")
 object UADEP {
     const val users = "/${SECT.clientAdmin}/users"

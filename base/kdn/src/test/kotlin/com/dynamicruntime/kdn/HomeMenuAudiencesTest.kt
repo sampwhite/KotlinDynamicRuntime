@@ -48,7 +48,8 @@ class HomeMenuAudiencesTest : StringSpec({
             "${CFACTS.loggedIn},${CFACTS.app}",
             "${CFACTS.anonymous},${CFACTS.app}",
             "${CFACTS.administersClient},${CFACTS.app}",
-            "${CFACTS.loggedIn},~${CFACTS.administersClient},${CFACTS.app}",
+            "${CFACTS.seesClientForms},${CFACTS.app}",
+            "${CFACTS.loggedIn},~${CFACTS.seesClientForms},${CFACTS.app}",
             "${CFACTS.isClientOperator},${CFACTS.app}",
         )
     }
@@ -66,7 +67,7 @@ class HomeMenuAudiencesTest : StringSpec({
         // None is offered: a client's people are never among them.
         HomeMenuAudiences.offered.filter { it.deployment }.shouldBeEmpty()
         // The administrators again, withheld as a second name for an offered audience, are still a client's people.
-        HomeMenuAudiences.of("${CFACTS.hasAdminLevel},${CFACTS.app}")?.deployment shouldBe false
+        HomeMenuAudiences.of("(${CFACTS.hasAdminLevel}|${CFACTS.isEditor}),${CFACTS.app}")?.deployment shouldBe false
         // And so the items listing says of each item whether it shipped for the deployment's own.
         val items = ClientMenuEdit.itemsFor(cxt, "hub").associateBy { it.itemId }
         items.getValue("systemInfo").deploymentOnly shouldBe true

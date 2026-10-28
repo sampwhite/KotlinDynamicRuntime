@@ -77,6 +77,19 @@ object CFACTS {
      */
     const val administersCustomer = "kdr:administersCustomer"
 
+    /**
+     * The caller is an **editor** of its client (issue #1432): holds the `editor` role and is no administrator. It sees
+     * every user and form of its client and edits forms, administering nothing -- what offers the read-only Users page.
+     */
+    const val isEditor = "kdr:isEditor"
+
+    /**
+     * The caller's reads reach **every form of a client** (issue #1432): an administrator of one ([administersClient])
+     * or an editor ([isEditor]). What names the forms list "Forms" rather than "My forms", so the name agrees with
+     * what it lists.
+     */
+    const val seesClientForms = "kdr:seesClientForms"
+
     /** The session is in ENV DEBUG (issue #517): env auth effective, and debug behaviors on. */
     const val hasEnvAuth = "kdr:hasEnvAuth"
 
@@ -241,6 +254,23 @@ fun addCoreCFacts(collector: SchemaCollector) {
         ),
         // The page's own rule, so the menu entry and the endpoint behind it are one answer.
     ) { CustomerAccess.administeredCustomer(it) != null }
+    collector.addCFact(
+        CFactDef(
+            CFACTS.isEditor, CFGRP.caller,
+            "True when the caller is an editor of its client (issue #1432): holds the `editor` role and is no " +
+                "administrator. An editor sees every user and form of its client and edits forms, but administers " +
+                "nothing -- no user edits, no user creation, no client configuration.",
+        ),
+        // `AdminRules`' own answer, as `administersClient` is: its `public` carve-out stays in one place.
+    ) { AdminRules.editsClient(it) }
+    collector.addCFact(
+        CFactDef(
+            CFACTS.seesClientForms, CFGRP.caller,
+            "True when the caller's reads reach every form of a client: an administrator of one " +
+                "(`${CFACTS.administersClient}`) or an editor (`${CFACTS.isEditor}`), issue #1432. So a surface named " +
+                "for whose forms it shows -- \"Forms\" against \"My forms\" -- asks it.",
+        ),
+    ) { AdminRules.isClientAdministrator(it) || AdminRules.editsClient(it) }
     collector.addCFact(
         CFactDef(
             CFACTS.hasAdminLevel, CFGRP.caller,

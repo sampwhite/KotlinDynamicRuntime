@@ -128,6 +128,21 @@ fun homeSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.home") {
             ) {
                 type = SCT.boolean
             }
+            property(
+                HFEAT.browsesUsers,
+                "Whether the caller is an editor of its client (issue #1432), offered the Users page read-only.",
+                required = true,
+            ) {
+                type = SCT.boolean
+            }
+            property(
+                HFEAT.seesClientForms,
+                "Whether the caller's reads reach every form of a client -- an administrator of one, or an editor (issue " +
+                    "#1432) -- so the forms list is \"Forms\" and shows whose each is.",
+                required = true,
+            ) {
+                type = SCT.boolean
+            }
             property(HFEAT.hasSurvey, "Whether the caller's client declares a survey workflow (issue #695) -- the forms list then offers its survey-status filter.", required = true) {
                 type = SCT.boolean
             }
@@ -240,6 +255,10 @@ fun homeSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.home") {
                 HFEAT.canSeeAllClients to AdminRules.canSeeAllClients(c),
                 // The rule the menu's "Forms" / "My forms" entries ask as a cfact (issue #1091), so they agree.
                 HFEAT.administersClient to AdminRules.isClientAdministrator(c),
+                // What an editor (issue #1432) is shown: the Users page read-only, and every form of its client with
+                // its owner -- the rules the `clientDirectory` section and the forms' read scope enforce.
+                HFEAT.browsesUsers to AdminRules.editsClient(c),
+                HFEAT.seesClientForms to (AdminRules.isClientAdministrator(c) || AdminRules.editsClient(c)),
                 // The caller's own client's registry (issue #695): a cross-client admin working in another
                 // client's surface reads that client's rows, but the filter keys on where the caller belongs.
                 HFEAT.hasSurvey to (WorkflowService.get(c).forClient(c.client).survey != null),
@@ -378,7 +397,11 @@ fun homeMenuBlock(): UiBlockSource = uiBlock(
         // The documents page (issue #554). App-only: an edge serves no documents (its `links` are empty), so
         // offering the listing there would be an entry that opens onto nothing.
         menuItem(HMENU.docs, "Documents", UiRoute(HMENU.pageDocs), cfactExpression = CFACTS.app)
-        menuItem(HMENU.users, "Users", UiRoute(HMENU.pageUsers), cfactExpression = "${CFACTS.hasAdminLevel},${CFACTS.app}")
+        // An editor (issue #1432) is offered the page too, which it reads without the controls that change a user.
+        menuItem(
+            HMENU.users, "Users", UiRoute(HMENU.pageUsers),
+            cfactExpression = "(${CFACTS.hasAdminLevel}|${CFACTS.isEditor}),${CFACTS.app}",
+        )
         // The clients an administrator oversees (issue #905), as two entries for the one page, mutually exclusive by
         // cfact as the two "Debug" entries are, so only ever one shows (issue #1082). An administrator who sees across
         // clients gets a listing, and "Clients". Any other administrator of a client oversees that one, and the page
@@ -456,16 +479,17 @@ fun homeMenuBlock(): UiBlockSource = uiBlock(
         // "New form" button rather than a second, redundant nav item (issue #417).
         //
         // Two entries for the one page, mutually exclusive by cfact (issue #1091): the listing is named for whose
-        // forms it shows. A caller who administers a client lists every form in it -- "Forms". Everyone else lists
-        // their own -- "My forms" -- which is written by exclusion on purpose: whatever kind of caller is invented
-        // later reads their own forms until something says they read more.
+        // forms it shows. A caller who reads every form of a client -- an administrator of it, or an editor (issue
+        // #1432) -- lists them all: "Forms". Everyone else lists their own -- "My forms" -- which is written by
+        // exclusion on purpose: whatever kind of caller is invented later reads their own forms until something says
+        // they read more.
         menuItem(
             HMENU.forms, "My forms", UiRoute(HMENU.pageForms),
-            cfactExpression = "${CFACTS.loggedIn},~${CFACTS.administersClient},${CFACTS.app}",
+            cfactExpression = "${CFACTS.loggedIn},~${CFACTS.seesClientForms},${CFACTS.app}",
         )
         menuItem(
             HMENU.clientForms, "Forms", UiRoute(HMENU.pageForms),
-            cfactExpression = "${CFACTS.administersClient},${CFACTS.app}",
+            cfactExpression = "${CFACTS.seesClientForms},${CFACTS.app}",
         )
         // The workflow pages (issue #792): off by default -- a client with normal workflows turns it on by overlaying
         // this item with a real condition (the sample's acme does), the way an overlay turns an item off.

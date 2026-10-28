@@ -54,6 +54,19 @@ object HFEAT {
     const val administersClient = "administersClient"
 
     /**
+     * Whether the caller is an **editor** of its client (issue #1432): sees every user of it, administering none, so the
+     * Users page is offered read-only -- over the `clientDirectory` reads, with none of the controls that change a user.
+     */
+    const val browsesUsers = "browsesUsers"
+
+    /**
+     * Whether the caller's reads reach **every form of a client** (issue #1432): an administrator of one, or an editor.
+     * What names the forms list "Forms" rather than "My forms" and shows whose form each is, as the menu's
+     * `seesClientForms` cfact does.
+     */
+    const val seesClientForms = "seesClientForms"
+
+    /**
      * Whether the caller may open their own client's **sandbox** (issue #931): an administrator of a client whose
      * definition asks for one, outside it -- what offers the shell's "Open sandbox" action. Asked by the rule the
      * open endpoint enforces (`openSandbox`), so the offer and the gate agree.

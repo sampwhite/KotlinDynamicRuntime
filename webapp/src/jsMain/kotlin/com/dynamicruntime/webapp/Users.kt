@@ -52,11 +52,12 @@ private val userIdentity = setOf(HP.user)
  * things" two irreversible writes and left no way to back out. Cancel simply drops the draft.
  *
  * Whether this page is offered at all is the *backend's* call: the shell's UI-config advertises a
- * `canManageUsers` capability for the current caller and only then includes the Users item in the menu. This
- * page reads the same flag, so arriving by a bookmarked `/wa/users` gives an honest "not available" instead
- * of a wall of failed requests. Neither is enforcement -- every call goes through `AdminApi` to the
- * `clientAdmin` section (issue #466), which refuses a caller without the role (401 anonymous, 403 logged in
- * without it) regardless of what the frontend believes.
+ * `canManageUsers` capability for the current caller -- or `browsesUsers` for an editor (issue #1432), who gets the
+ * page read-only -- and only then includes the Users item in the menu. This page reads the same flags, so arriving by a
+ * bookmarked `/wa/users` gives an honest "not available" instead of a wall of failed requests. Neither is enforcement:
+ * every write goes through `AdminApi` to the `clientAdmin` section (issue #466), and every read to the
+ * `clientDirectory` section, each of which refuses a caller without its role (401 anonymous, 403 logged in without
+ * it) regardless of what the frontend believes.
  *
  * The capability is deliberately not "is an admin", and the narrowing is not hypothetical: a client-scoped
  * administrator already reaches this page, and the backend confines what they see to their own client (or the
@@ -126,6 +127,7 @@ val Users = FC<Props> {
     var draftEmail by useState("")
     var draftLevel by useState(ROLE.user)
     var draftAllClients by useState(false)
+    var draftEditor by useState(false)
     var draftOrg by useState("")
     var draftClient by useState("")
     /** The clients a full-scope administrator may create into; empty for everybody else, who get no choice. */
@@ -133,7 +135,8 @@ val Users = FC<Props> {
     // What the links from a user to their forms and client need (issue #1081), asked once for the list and the
     // editor alike: whether this caller is offered them, and the clients a Forms link may choose -- the ones this
     // node carries, which only a caller who sees across clients is told (so a scoped one's links choose none).
-    val linksOffered = config?.user?.let { userLinksOffered(it) } == true
+    // An editor (issue #1432) is offered the way to a user's forms too, which it reads; the client link is left off.
+    val linksOffered = config?.user?.let { userLinksOffered(it) } == true || usersReadOnly(config)
     val carriedClients = clientChoices.map { it.clientId }.toSet()
     var draftIsEntity by useState(false)
     var draftName by useState("")
@@ -280,7 +283,7 @@ val Users = FC<Props> {
     // no filters, the default sort, the first batch, re-read. Back and Forward restore from the address instead.
     val revisits = useRevisitSinceMount()
     useEffect(revisits) {
-        if (revisits == 0 || config?.canManageUsers != true) return@useEffect
+        if (revisits == 0 || !mayBrowseUsers(config)) return@useEffect
         clearFilters()
     }
 
@@ -288,7 +291,7 @@ val Users = FC<Props> {
         usersScope.launch {
             val c = apiResult { HomeApi.fetchConfig() }.valueOrNull()
             config = c
-            if (c?.canManageUsers == true) {
+            if (mayBrowseUsers(c)) {
                 // The caller's own address, for "Create a user for me" (issue #797). Before the search, so it is
                 // known by the time the rows arrive and a reload inside the self form restores that form. A
                 // failure leaves the button off rather than showing an error: it is a convenience over the
@@ -305,7 +308,7 @@ val Users = FC<Props> {
                 // Only a full-scope administrator is offered a choice of client, and only they can ask for the
                 // list -- it is a cross-client question. A failure leaves the list empty, which falls back to
                 // the read-only field rather than an error: the client is not the reason they came here.
-                if (c.user.roles.contains(ROLE.allClients)) {
+                if (c?.user?.roles?.contains(ROLE.allClients) == true) {
                     clientChoices = apiResult { AdminApi.listClients() }.valueOr(emptyList())
                 }
             }
@@ -317,6 +320,7 @@ val Users = FC<Props> {
         draftEmail = user?.primaryId ?: ""
         draftLevel = user?.level ?: ROLE.user
         draftAllClients = user?.roles?.contains(ROLE.allClients) == true
+        draftEditor = user?.roles?.contains(ROLE.editor) == true
         // A new user starts in the editor's own organization; an existing one shows theirs, blank included.
         draftOrg = (if (user != null) user.org else config?.user?.org) ?: ""
         // The client works the same way, and is the one field with no edit form at all: it is fixed once the
@@ -344,7 +348,7 @@ val Users = FC<Props> {
         // A failure leaves the editor offering only the labels the user already has -- they can still type any
         // other, since labels are free-form -- and is not recorded, so the next open tries again.
         val client = user.client
-        if (labelSuggestionsRef.current?.containsKey(client) != true) {
+        if (config?.canManageUsers == true && labelSuggestionsRef.current?.containsKey(client) != true) {
             usersScope.launch {
                 // A functional update: this runs after the await, when the map captured above may be stale -- two
                 // clients fetched at once would otherwise each write back a map missing the other.
@@ -396,7 +400,8 @@ val Users = FC<Props> {
         val open = editing
         identity = null
         identityFor.current = open?.userId
-        if (open != null && !open.deleted) {
+        // The person behind the user is the administrator's to see (`clientAdmin`); an editor browses the user alone.
+        if (open != null && !open.deleted && config?.canManageUsers == true) {
             usersScope.launch {
                 val result = apiResult { AdminApi.userIdentity(open.userId) }
                 result.failureOrNull()?.let {
@@ -482,7 +487,7 @@ val Users = FC<Props> {
      * lets a level change keep a capability and a capability change keep a level.
      */
     fun draftRoles(current: List<String>): List<String> =
-        rolesWithCapability(RoleLadder.rolesAtLevel(current, draftLevel), ROLE.allClients, draftAllClients)
+        rolesWithEditor(rolesWithCapability(RoleLadder.rolesAtLevel(current, draftLevel), ROLE.allClients, draftAllClients), draftEditor)
 
     /**
      * Applies the draft. Only what actually changed is sent -- the backend has one call per concern (roles,
@@ -573,7 +578,9 @@ val Users = FC<Props> {
         runSearch(query())
     }
 
-    val denied = config?.canManageUsers == false
+    val denied = config != null && !mayBrowseUsers(config)
+    // An editor (issue #1432): every user of its client is shown, and nothing that changes one.
+    val readOnly = usersReadOnly(config)
     val inEditor = creating || editing != null
 
     div {
@@ -596,7 +603,7 @@ val Users = FC<Props> {
                     +"← Back to users"
                 }
             }
-            h1 { +editorTitle(creating, creatingForSelf) }
+            h1 { +(if (readOnly) "User" else editorTitle(creating, creatingForSelf)) }
 
             error?.let { errorText(it) }
 
@@ -625,6 +632,8 @@ val Users = FC<Props> {
                     +("This account was permanently deleted: its email was obfuscated and freed for reuse, and " +
                         "it cannot be recovered, edited, or re-enabled. The name is kept for reference.")
                 }
+            } else if (readOnly) {
+                editing?.let { userDetails(it) }
             } else {
             if (creating && creatingForSelf) {
                 // Locked: the point of this form is that the address is the caller's own.
@@ -709,13 +718,35 @@ val Users = FC<Props> {
                             val level = v as? String ?: ROLE.user
                             draftLevel = level
                             // Roles provide a default persona (issue #750), until one is chosen outright.
-                            if (creating && !personaChosen) draftPersona = personaForLevel(level)
+                            if (creating && !personaChosen) draftPersona = personaForRoles(level, draftEditor)
                         }
                     }
                 }
                 p {
                     className = ClassName("type-hint")
                     +accessLevelHint(operatorSelectable)
+                }
+
+                // The editor role (issue #1432): beside the level rather than one of its rungs -- an operator does not
+                // hold it -- and offered below the admin level, since an administrator already holds everything it adds.
+                if (draftLevel != ROLE.admin) {
+                    div {
+                        className = ClassName("row")
+                        Checkbox {
+                            checked = draftEditor
+                            disabled = busy || self
+                            onChange = { event ->
+                                val on = event.target.checked as Boolean
+                                draftEditor = on
+                                if (creating && !personaChosen) draftPersona = personaForRoles(draftLevel, on)
+                            }
+                            +"Editor"
+                        }
+                    }
+                    p {
+                        className = ClassName("type-hint")
+                        +editorHint
+                    }
                 }
 
                 // Offered only to a caller who holds the capability, because the backend refuses to let anyone
@@ -815,6 +846,7 @@ val Users = FC<Props> {
                             draftPersona = chosen
                             personaChosen = true
                             draftLevel = levelForPersona(chosen)
+                            draftEditor = PERSONA.def(chosen)?.defaultRoles?.contains(ROLE.editor) == true
                         }
                     }
                 }
@@ -995,7 +1027,11 @@ val Users = FC<Props> {
             h1 { +"Users" }
             p {
                 className = ClassName("subtitle")
-                +"Filter and sort active users, then select one to edit — or create a new user."
+                +(if (readOnly) {
+                    "Filter and sort the active users of your client, then select one to see their details."
+                } else {
+                    "Filter and sort active users, then select one to edit — or create a new user."
+                })
             }
 
             error?.let { errorText(it) }
@@ -1027,7 +1063,7 @@ val Users = FC<Props> {
                 className = ClassName("row")
                 // In `public` an administrator creates only users of their own (issue #805), so the ordinary create,
                 // which mails an invitation to any other address, is not offered; "for me" is.
-                if (config?.user?.let { mayCreateForOthers(it) } != false) {
+                if (!readOnly && config?.user?.let { mayCreateForOthers(it) } != false) {
                     Button {
                         onClick = { startCreate() }
                         +"Create user"
@@ -1035,7 +1071,7 @@ val Users = FC<Props> {
                 }
                 // A further user for the caller's own address (issue #797): registered on creation and switchable
                 // at once from the badge, with no invitation -- the case that otherwise meant typing your own address.
-                if (ownAddress != null) {
+                if (!readOnly && ownAddress != null) {
                     Button {
                         onClick = { startCreate(forSelf = true) }
                         +"Create a user for me"
@@ -1151,6 +1187,7 @@ val Users = FC<Props> {
                 UserTable {
                     this.showClient = showClient
                     this.showLinks = linksOffered
+                    this.showClientLinks = !readOnly
                     this.carriedClients = carriedClients
                     this.users = users
                     this.sortBy = sortBy
@@ -1364,6 +1401,59 @@ private const val personaHint =
 fun mayCreateForOthers(user: UserProfile): Boolean = user.client != CL.public || ROLE.allClients in user.roles
 
 /** The editor's heading: which record it is open on (issue #797 adds the caller's own). Pure, jsNodeTest-covered. */
+/**
+ * One user as an editor sees them (issue #1432): who they are, how they act, and their labels -- read-only, since an
+ * editor changes no user. Nothing here is fetched beyond the row the search answered.
+ */
+private fun react.ChildrenBuilder.userDetails(user: AdminUser) {
+    readOnlyField("Email address", user.primaryId)
+    readOnlyField(if (user.isEntity) "Business name" else "Full name", user.name?.takeIf { it.isNotBlank() } ?: "\u2014")
+    readOnlyField("Persona", personaCell(user.persona, user.personaSuffix))
+    readOnlyField("Access", accessText(user.actingRoles ?: user.roles))
+    user.org?.takeIf { it.isNotBlank() }?.let { readOnlyField("Organization", it) }
+    readOnlyField("Labels", user.labels.joinToString(", ").ifEmpty { "\u2014" })
+    readOnlyField("Status", if (user.enabled) "Enabled" else "Disabled")
+    p {
+        className = ClassName("subtitle")
+        +"You can see this user, but changing them takes an administrator of the client."
+    }
+}
+
+/**
+ * Whether the shell says [config]'s caller may browse the Users page at all (issue #1432): an administrator, who edits
+ * users there, or an editor, who reads them. Pure, covered under `jsNodeTest`.
+ */
+fun mayBrowseUsers(config: HomeConfig?): Boolean = config?.canManageUsers == true || config?.browsesUsers == true
+
+/**
+ * Whether the Users page is read-only for [config]'s caller (issue #1432): an editor, who sees every user of its client
+ * and changes none. Never for an administrator, who holds the editor role too. Pure, covered under `jsNodeTest`.
+ */
+fun usersReadOnly(config: HomeConfig?): Boolean = config?.canManageUsers != true && config?.browsesUsers == true
+
+/** [roles] with the editor role (issue #1432) granted or not: [rolesWithCapability] for a role that is not a capability. */
+fun rolesWithEditor(roles: List<String>, granted: Boolean): List<String> = rolesWithCapability(roles, ROLE.editor, granted)
+
+/**
+ * The persona a user created at [level], an editor or not, takes when none is chosen -- [personaForLevel], with the
+ * editor role (issue #1432), which the level alone cannot say. Pure, covered under `jsNodeTest`.
+ */
+fun personaForRoles(level: String, editor: Boolean): String =
+    PERSONA.defaultFor(rolesWithEditor(RoleLadder.rolesAtLevel(emptyList(), level), editor))
+
+/** What the Editor checkbox gives (issue #1432). */
+const val editorHint =
+    "Sees every user and form of the client and edits forms, but administers nothing: no changes to users, no new " +
+        "users, no client configuration. An administrator already has all of this."
+
+/** How a role list reads as one access, for the read-only details an editor sees (issue #1432). */
+fun accessText(roles: List<String>): String = when {
+    ROLE.admin in roles -> "Administrator"
+    ROLE.operator in roles -> "Operator"
+    ROLE.editor in roles -> "Editor"
+    else -> "User"
+}
+
 fun editorTitle(creating: Boolean, forSelf: Boolean): String = when {
     creating && forSelf -> "Create a user for me"
     creating -> "Create a user"
