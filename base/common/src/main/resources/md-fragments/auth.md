@@ -36,7 +36,7 @@
 # +clientLabel Client
 # +personaLabel Persona
 # +personaSuffixLabel Persona suffix
-# +provisionHelp As an administrator across clients, you may place the new account: which client, what kind of user, and a short id for a further user of the same kind. Leave them alone for an ordinary registration.
+# +provisionHelp As an administrator across clients, you may place the new account: which client, which persona (it names which of the person's users this is and starts its access), and a short id for a further user of the same persona. Leave them alone for an ordinary registration.
 # +sendCode Send verification code
 # +codeSent A code was sent to `${user.email}`. Enter it below.
 # +codeLabel Verification code

@@ -2,6 +2,7 @@ package com.dynamicruntime.webapp
 
 import com.dynamicruntime.common.context.CL
 import com.dynamicruntime.common.home.HMENU
+import com.dynamicruntime.common.user.PERSONA
 import com.dynamicruntime.common.user.UserChoice
 import com.dynamicruntime.common.user.passwordRuleError
 import com.dynamicruntime.common.user.personaTerm
@@ -221,7 +222,7 @@ val Profile = FC<Props> {
      * permanent). The help above it says what these users are, filled from the table's own facts.
      */
     fun ChildrenBuilder.usersSection() {
-        val rows = profileUserRows(myUsers)
+        val rows = profileUserRows(myUsers, config?.user?.roles)
         val nameShown = showsNameColumn(myUsers)
         // The status stays in view; the concept behind it -- why one sign-in reaches several users -- is a click away.
         WhatIsThis {
@@ -234,7 +235,7 @@ val Profile = FC<Props> {
                 // The copy may pull the flavor's addition (`users.helpExtra`) with `${@t(...)}`, resolved against this
                 // page's own copy -- empty as shipped, and a reference deployment's overlay fills it.
                 source = t("users", "help", usersHelpDefault)
-                    .evalTemplate(mapOf("users" to usersHelpData(myUsers)), resolver = copy.fragmentResolver())
+                    .evalTemplate(mapOf("users" to usersHelpData(myUsers, config?.user?.roles)), resolver = copy.fragmentResolver())
             }
         }
         // Scrolls inside the card rather than spilling over its edge when the window is too narrow for its columns.
@@ -585,11 +586,15 @@ class ProfileUserRow(
     val canRemove: Boolean,
 )
 
-/** The users table's rows (issue #1330), in the list's order. Pure, covered under `jsNodeTest`. */
-fun profileUserRows(users: List<UserChoice>): List<ProfileUserRow> = users.map { u ->
+/**
+ * The users table's rows (issue #1330), in the list's order. The session's [roles] speak for the active row only
+ * (issue #1450): its persona says the access it has when that differs from the persona's, as the app bar's badge
+ * does. Pure, covered under `jsNodeTest`.
+ */
+fun profileUserRows(users: List<UserChoice>, roles: Collection<String>? = null): List<ProfileUserRow> = users.map { u ->
     ProfileUserRow(
         user = u,
-        label = personaTerm(u.persona, u.personaSuffix),
+        label = PERSONA.withActing(personaTerm(u.persona, u.personaSuffix), u.persona, roles.takeIf { u.isCurrent }),
         clientLabel = u.clientName?.ifBlank { null } ?: u.client,
         isActive = u.isCurrent,
         signsInAs = u.signsInAs,
@@ -609,10 +614,14 @@ fun showsUsersTable(users: List<UserChoice>): Boolean = users.size > 1 || remova
 /**
  * What the users table's help is filled from (issue #1330): `active`, the user the session is acting as, and
  * `signsInAs`, the one a sign-in lands on -- each as `Member B in Acme`. The one a sign-in lands on falls back to the
- * active one when the list marks none. Pure, covered under `jsNodeTest`.
+ * active one when the list marks none. The session's [roles] speak for the active user (issue #1450): `Member
+ * (Administrator access) in Acme`. Pure, covered under `jsNodeTest`.
  */
-fun usersHelpData(users: List<UserChoice>): Map<String, Any?> {
-    fun phrase(u: UserChoice?) = u?.let { "${personaTerm(it.persona, it.personaSuffix)} in ${it.clientName?.ifBlank { null } ?: it.client}" } ?: ""
+fun usersHelpData(users: List<UserChoice>, roles: Collection<String>? = null): Map<String, Any?> {
+    fun phrase(u: UserChoice?) = u?.let {
+        val term = PERSONA.withActing(personaTerm(it.persona, it.personaSuffix), it.persona, roles.takeIf { _ -> it.isCurrent })
+        "$term in ${it.clientName?.ifBlank { null } ?: it.client}"
+    } ?: ""
     val active = users.firstOrNull { it.isCurrent }
     return mapOf("active" to phrase(active), "signsInAs" to phrase(users.firstOrNull { it.signsInAs } ?: active))
 }

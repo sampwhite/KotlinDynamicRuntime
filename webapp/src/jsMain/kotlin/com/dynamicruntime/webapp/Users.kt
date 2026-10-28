@@ -848,7 +848,7 @@ val Users = FC<Props> {
 
             // The persona (issue #750): frozen at creation, like the client, so a selector on create and plain
             // text afterward. Choosing one moves the access level to the persona's default, which the
-            // administrator may still change: the persona says what kind of user this is, the level what they
+            // administrator may still change: the persona says which of the person's users this is, the level what they
             // may do, and the default is only where the two usually agree.
             if (creating) {
                 div {
@@ -1394,11 +1394,7 @@ private fun clearTimer(id: Int) {
  * Built from [RoleLadder.ordered] so a rung added to the ladder cannot be silently missing here; an unlabeled
  * one falls back to its role name rather than vanishing from the list.
  */
-private val accessLevelLabels = mapOf(
-    ROLE.user to "User",
-    ROLE.operator to "Operator",
-    ROLE.admin to "Administrator",
-)
+private val accessLevelLabels = RoleLadder.ordered.associateWith { PERSONA.accessLabel(it) }
 
 /**
  * The level values to offer, lowest first. The **operator** rung is deployment-wide since #464 -- it requires
@@ -1447,9 +1443,10 @@ fun personaForLevel(level: String): String = PERSONA.defaultFor(RoleLadder.roles
 fun isUserKeyCollision(error: Throwable): Boolean = (error as? ApiError)?.errorCode == AERR.userKeyTaken
 
 private const val personaHint =
-    "Which of this person's users this is, when they have more than one in a client -- the name the switcher shows. " +
-        "Chosen once, at creation. It sets the starting access level, which you change with the access level, not " +
-        "here; a user whose access later differs from its persona's says so beside it."
+    "Which of this person's users this is: with the client and the persona suffix, it tells their users apart. " +
+        "Chosen once, at creation, and it grants nothing by itself. Until you pick one it follows the access level; " +
+        "picking one sets the level to its usual value, which you may still change. A later change of access leaves " +
+        "the persona as it is, and the user's persona then says the access it has beside it."
 
 /**
  * Whether [user] may create users at other people's addresses (issue #805): everyone who reaches the page except

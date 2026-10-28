@@ -36,6 +36,22 @@ class UserCellValueTest {
         registeredAt = "2026-08-24T18:00:00.000Z",
     )
 
+    // Issue #1450: the Persona column says the access a user has beside a persona it no longer matches, read from the
+    // roles it acts with -- in a sandbox, those, not its row's.
+    @Test
+    fun thePersonaSaysTheAccessTheUserHasWhenItDiffers() {
+        val now = Clock.System.now()
+        fun member(roles: List<String>, actingRoles: List<String>? = null) = AdminUser(
+            userId = 2L, primaryId = "ada@example.com", username = "ada_l", roles = roles, client = "acme:sandbox",
+            persona = "member", org = null, isEntity = false, name = null, enabled = true, hasPassword = false,
+            deleted = false, actingRoles = actingRoles,
+        )
+        assertEquals("Member (Administrator access)", cellValue(USF.persona, member(listOf("user", "admin")), now))
+        assertEquals("Member", cellValue(USF.persona, member(listOf("user")), now))
+        // In a sandbox the roles it acts with win over its row's -- and acting with nothing says so.
+        assertEquals("Member (No access)", cellValue(USF.persona, member(listOf("user", "admin"), emptyList()), now))
+    }
+
     @Test
     fun theStatusSaysUnclaimedForAUserNobodyHasClaimed() {
         val claimed = populatedUser()

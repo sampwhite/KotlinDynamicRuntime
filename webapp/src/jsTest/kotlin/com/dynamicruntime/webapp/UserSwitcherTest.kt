@@ -81,21 +81,21 @@ class UserSwitcherTest {
         assertEquals("Ada", identityBadgeText("Ada", listOf(ada)))
     }
 
-    // Issue #1450: the session's roles say what the current user acts as when it differs from its persona -- in the
+    // Issue #1450: the session's roles say the current user's access when it differs from its persona's -- in the
     // badge and on its own menu row, never on another's, whose roles the session does not know.
     @Test
     fun theBadgeAndTheCurrentRowSayWhatTheUserActsAs() {
         val member = UserChoice(8L, "acme", "member")
         val demoted = listOf(ROLE.user)
-        assertEquals("Ada [Admin (acts as user)]", identityBadgeText("Ada", listOf(ada, member), demoted))
+        assertEquals("Ada [Admin (User access)]", identityBadgeText("Ada", listOf(ada, member), demoted))
         assertEquals("Ada [Admin]", identityBadgeText("Ada", listOf(ada, member), listOf(ROLE.user, ROLE.admin)))
-        assertEquals("[Admin (acts as user)]", userMenuEntryText(ada, listOf(ada, member), demoted))
+        assertEquals("[Admin (User access)]", userMenuEntryText(ada, listOf(ada, member), demoted))
         assertEquals("[Member]", userMenuEntryText(member, listOf(ada, member), demoted))
         // The badge's tooltip says it in words, and says nothing more where the two agree.
-        assertEquals("You are signed in as acme / Admin -- Ada Lovelace, acting as user.", identityBadgeTitle(ada, demoted))
+        assertEquals("You are signed in as acme / Admin -- Ada Lovelace, with User access.", identityBadgeTitle(ada, demoted))
         assertEquals("You are signed in as acme / Admin -- Ada Lovelace.", identityBadgeTitle(ada, listOf(ROLE.user, ROLE.admin)))
         // The Persona column and the editors read the user's own roles.
-        assertEquals("Member B (acts as administrator)", personaCell("member", "B", listOf(ROLE.user, ROLE.admin)))
+        assertEquals("Member B (Administrator access)", personaCell("member", "B", listOf(ROLE.user, ROLE.admin)))
         assertEquals("Member B", personaCell("member", "B"))
     }
 

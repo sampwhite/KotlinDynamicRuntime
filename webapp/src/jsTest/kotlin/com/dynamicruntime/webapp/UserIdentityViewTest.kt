@@ -10,12 +10,20 @@ import kotlin.test.assertTrue
 class UserIdentityViewTest {
     private fun user(
         id: Long, client: String, persona: String = PERSONA.member, suffix: String = "",
-        enabled: Boolean = true, registered: Boolean = true,
+        enabled: Boolean = true, registered: Boolean = true, roles: List<String> = listOf("user"),
     ) = AdminUser(
-        userId = id, primaryId = "p@example.com", username = "@p", roles = listOf("user"), client = client,
+        userId = id, primaryId = "p@example.com", username = "@p", roles = roles, client = client,
         persona = persona, personaSuffix = suffix, org = null, isEntity = false, name = null, enabled = enabled,
         hasPassword = false, registered = registered, deleted = false,
     )
+
+    // Issue #1450: each sibling's persona says the access it has when that differs, from its own roles.
+    @Test
+    fun aSiblingSaysTheAccessItHasBesideAPersonaItNoLongerMatches() {
+        val promoted = user(1, CL.hub, roles = listOf("user", "admin"))
+        val rows = identitySiblings(listOf(promoted, user(2, CL.hub, persona = PERSONA.admin)), 1L)
+        assertEquals(listOf("Member (Administrator access)", "Admin (User access)"), rows.map { it.label })
+    }
 
     @Test
     fun aPersonWithOneUserHasNoSiblingList() {

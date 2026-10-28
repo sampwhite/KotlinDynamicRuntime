@@ -282,8 +282,9 @@ Current UI-config endpoints:
   is in brackets (`Demo Person [hub · Member B]`, only what tells it from the others -- `UserChoice.qualifierWithin`)
   and becomes the menu that switches; with one user it is the plain label it always was. The default persona
   is `member` (shown `Member`); `editor` and `admin` are the others. Given the session's roles, the current user's
-  persona says what it acts as when that differs (`Member (acts as administrator)`, issue #1450) -- in the badge
-  and on its own menu row only, since the list carries nobody's roles.
+  persona says the access it has when that differs from the persona's (`Member (Administrator access)`, issue
+  #1450) -- in the badge, its tooltip, its own menu row, and the Profile page's active row and help, never on
+  another user's, since the list carries nobody's roles.
 - The **sandbox** (issues #929, #931), login-required (`user` section): `POST /user/self/openSandbox {client?}`
   moves the session into a client's Shadow Sandbox as the person's own user there, created on first use; it is for
   an administrator of the parent (an `allClients` administrator may name any client), and in a sandbox `admin`
@@ -373,9 +374,11 @@ A fourth is **belonging**, and behaves unlike the other three:
 - **Persona** (issue #750) — **which of a person's users this is** (part of the user's key, with the client and
   the persona suffix), from the kernel's `PERSONA` registry (`Member`, `Editor`, `Admin`), chosen at creation and
   never again, so a `Select` while creating and read-only afterward. It is *not* authority: no access decision reads
-  it, and a user's roles move on without it. So wherever a persona is shown beside roles that left it behind -- the
-  Persona column, the editor's read-only field and the person view -- it says what the user acts as
-  (`PERSONA.withActing`, issue #1450: `Member (acts as administrator)`). Personas
+  it, and a user's roles move on without it. So wherever a persona is shown beside roles that differ from its
+  defaults -- the Persona column, the editor's read-only field, an editor's view of a user, and the person view --
+  it says the access the user has (`PERSONA.withActing`, issue #1450: `Member (Administrator access)`, `Admin (No
+  access)` for a sandbox user acting with nothing), read from `actingRoles` where the row has them. It is worded as
+  access, never as "acts as", which on this page names the user a sandbox user acts as. Personas
   grant roles by default and roles provide a default persona: until the administrator picks a persona it
   follows the access level (`personaForLevel`), picking one moves the level to its defaults (`levelForPersona`),
   and only a chosen persona is sent, so the backend applies the same rule to an unnamed one. The Status column

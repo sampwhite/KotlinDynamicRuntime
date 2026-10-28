@@ -77,8 +77,8 @@ const val signedInFallback = "Signed in"
  * than one user, by **which** of their users this is, in brackets: `Demo Person [hub · Member B]`,
  * `Ada [Admin]`. The bracket holds only what tells this user from the person's others
  * (`UserChoice.qualifierWithin`); a person with one user sees the label alone, as before. Given the session's
- * [roles], a persona shown there says what the user acts as when that differs (issue #1450): `Ada [Member (acts as
- * administrator)]`. Pure, covered under `jsNodeTest`.
+ * [roles], a persona shown there says the access the user has when that differs from its persona's (issue #1450):
+ * `Ada [Member (Administrator access)]`. Pure, covered under `jsNodeTest`.
  */
 fun identityBadgeText(label: String, users: List<UserChoice>, roles: Collection<String>? = null): String {
     val current = users.firstOrNull { it.isCurrent } ?: return label
@@ -88,13 +88,12 @@ fun identityBadgeText(label: String, users: List<UserChoice>, roles: Collection<
 
 /**
  * The identity badge's tooltip, for the [current] user: which of the person's users this is, by its full label, and
- * -- given the session's [roles] -- the access it acts with when that differs from its persona's (issue #1450), so the
- * tooltip does not say "Member" of someone acting as an administrator. Pure, covered under `jsNodeTest`.
+ * -- given the session's [roles] -- the access it has when that differs from its persona's (issue #1450), so the
+ * tooltip does not say "Member" of someone with administrator access. Pure, covered under `jsNodeTest`.
  */
 fun identityBadgeTitle(current: UserChoice, roles: Collection<String>?): String {
-    val acting = roles?.let { PERSONA.actsAs(current.persona, it) }
-    return "You are signed in as ${current.label()}" +
-        (acting?.let { ", acting as ${PERSONA.accessLabel(it).lowercase()}." } ?: ".")
+    val access = roles?.let { PERSONA.actsAs(current.persona, it) }
+    return "You are signed in as ${current.label()}" + (access?.let { ", with ${PERSONA.accessPhrase(it)}." } ?: ".")
 }
 
 /**
@@ -719,7 +718,8 @@ val AppBar = FC<AppBarProps> { props ->
                         asDynamic()["aria-expanded"] = userMenuOpen
                         // The list holds registered, enabled users only, so a session acting as one that is
                         // neither has no current entry here -- the badge then just offers the others.
-                        title = users.firstOrNull { it.isCurrent }?.let { "${identityBadgeTitle(it, config?.user?.roles)} Click to switch users." }
+                        title = users.firstOrNull { it.isCurrent }
+                            ?.let { "${identityBadgeTitle(it, config?.user?.roles)} Click to switch users." }
                             ?: "Click to switch users."
                         onClick = { userMenuOpen = !userMenuOpen }
                         +identityBadgeText(label, users, config?.user?.roles)
