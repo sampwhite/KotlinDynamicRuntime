@@ -36,7 +36,7 @@ import io.kotest.matchers.string.shouldContain
  * past its limit is refused with 413 before it is parsed; and the list of those endpoints, fixed at boot, can be read
  * from the node with their full paths.
  *
- * Its own instance: the large-body maximum is instance configuration, set here to [largeMax] so a body over it is
+ * Its own instance: the large-body maximum is instance configuration, set here to `largeMax` so a body over it is
  * quick to build.
  */
 class RequestBodyLimitTest : StringSpec({
