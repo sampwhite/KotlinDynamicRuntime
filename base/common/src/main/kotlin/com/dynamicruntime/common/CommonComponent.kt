@@ -197,9 +197,11 @@ class CommonComponent : ComponentDefinition {
         collector.addWriteHook(DerivedStateWriteHook)
         // The trait-lock guard (issue #857): a normal workflow's locks refuse an edit of a locked trait on every
         // path, under the form's lock -- or record the override a permitted writer asked for.
-        collector.addWriteGuard(TraitLockGuard)
+        // The guards run in this order, so the broadest refusal is the one said: a form an editor may not delete, then
+        // one kept to its owner (issue #1433) -- the whole form, not one trait -- and only then a trait's lock.
         collector.addWriteGuard(EditorDeleteGuard)
         collector.addWriteGuard(OwnerOnlyGuard)
+        collector.addWriteGuard(TraitLockGuard)
         // The workflow definition schema, published so the types a definition is validated against are the
         // same ones a catalog or a frontend can read.
         collector.defs.putAll(WfDefSchema.defs(cxt))

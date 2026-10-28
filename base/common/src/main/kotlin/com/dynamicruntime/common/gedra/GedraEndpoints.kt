@@ -1051,7 +1051,7 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
     generalEndpoint(
         GEP.formDocLocks,
         "Lists the traits of a form locked for the caller by the workflows it is engaged with, and whether the " +
-            "caller may override each lock.",
+            "caller may override each lock -- and, as keptToOwner, whether the whole form is read-only for the caller.",
         HttpMethod.GET,
         outputRef = GEP.formDocLocksType,
         inputFields = { field(GDF.gedraId, "The form.", required = true) },
@@ -1220,9 +1220,9 @@ private fun workflowDrillFilter(c: KdrCxt, request: Map<String, Any?>): GedraSta
  * Creating for someone else is an **administrator's or an editor's** power (issue #1433), and confined to the caller's
  * own scope: the user is resolved through [ReadScopeRules.forCaller], so a client administrator or an editor reaches
  * only their own client (narrowed to their organization if they have one) and a cross-client or out-of-org id simply is
- * not found. An ordinary user's
- * scope resolves only themselves, so they cannot name another. A disabled or deleted target is refused, as it
- * is on the `allClients` on-behalf endpoint -- such an account cannot log in to see or finish the form.
+ * not found. An ordinary user's scope resolves only themselves, so they cannot name another. A disabled or deleted
+ * target is refused, as it is on the `allClients` on-behalf endpoint -- such an account cannot log in to see or finish
+ * the form.
  *
  * Shared by the plain create and the workflow create so the two enforce it identically; the section gate
  * (login) is unchanged, since this is a scope-and-privilege check within an endpoint an ordinary user may call

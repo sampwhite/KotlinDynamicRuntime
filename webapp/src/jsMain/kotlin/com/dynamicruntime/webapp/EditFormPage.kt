@@ -299,14 +299,16 @@ val EditFormPage = FC<Props> {
 
                 // The traits locked for this caller (issue #857): named, with the workflow locking each, so a refused
                 // save is never a surprise. Each locked section is marked too, and the override -- for someone a
-                // lock allows -- sits by Save, where the refusal it answers appears.
-                val overridable = locks.any { it.canOverride }
-                if (locks.isNotEmpty()) {
+                // lock allows -- sits by Save, where the refusal it answers appears. None of it on a form kept to its
+                // owner (issue #1433): nothing of it can be changed, which the notice above already says.
+                val shownLocks = if (keptToOwner) emptyList() else locks
+                val overridable = shownLocks.any { it.canOverride }
+                if (shownLocks.isNotEmpty()) {
                     div {
                         className = ClassName("lock-notice")
                         p {
-                            +("Locked for you: " + locks.joinToString("; ") { "${it.name} (by ${it.label})" } +
-                                ". Changes to ${if (locks.size == 1) "it" else "them"} can't be saved" +
+                            +("Locked for you: " + shownLocks.joinToString("; ") { "${it.name} (by ${it.label})" } +
+                                ". Changes to ${if (shownLocks.size == 1) "it" else "them"} can't be saved" +
                                 if (overridable) " unless you override the lock, by Save." else ".")
                         }
                     }
@@ -329,7 +331,7 @@ val EditFormPage = FC<Props> {
                     // The gedra id is the form being edited, not something to retype; it is seeded and hidden.
                     omit = listOf(GDF.gedraId)
                     // A locked section says so on itself (issue #857), where the person editing it is looking.
-                    elementNote = { _, element -> lockNoteFor(locks, element[GE.traitId].toOptStr()) }
+                    elementNote = { _, element -> lockNoteFor(shownLocks, element[GE.traitId].toOptStr()) }
                     // Let the trait be typed, not only chosen, when this is the cross-client admin surface (#667).
                     this.openTraitEntry = openTraitEntry
                     this.failures = failures
@@ -349,7 +351,8 @@ val EditFormPage = FC<Props> {
                         loading = running
                         // Nothing to send while the fields hold what is stored -- right after a load, and right after
                         // a save that re-seeded them -- so Save waits for a change rather than posting an empty patch.
-                        disabled = !dirty
+                        // Nor on a form kept to its owner (issue #1433), whose answer may land after typing began.
+                        disabled = !dirty || keptToOwner
                         onClick = {
                             val check = checkInput(targetType, values)
                             // An addOrReplace must carry complete data; checkInput does not demand it (the edit's

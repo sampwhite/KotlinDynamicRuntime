@@ -175,10 +175,11 @@ object AdminRules {
     /**
      * Whether the caller may create (or import) a form **for another user** -- an administrator, or an editor (issue
      * #1433), who starts a form a member then fills in. Which users is the caller's read scope's to say: the target is
-     * resolved through `ReadScopeRules.forCaller`, so an editor reaches only its own client (or org). The enforcement
-     * point, unlike [seesOthersRows], which only shapes what is shown.
+     * resolved through `ReadScopeRules.forCaller`, so an editor reaches only its own client (or org). Whoever
+     * [seesOthersRows] by design -- one rule, so the owner column and the create picker cannot disagree -- but named for
+     * the enforcement point it is, where [seesOthersRows] only shapes what is shown.
      */
-    fun createsFormsForOthers(cxt: KdrCxt): Boolean = canManageUsers(cxt) || editsClient(cxt)
+    fun createsFormsForOthers(cxt: KdrCxt): Boolean = seesOthersRows(cxt)
 
     /**
      * Whether the caller may administer other users -- create them, edit their roles, enable or disable them.

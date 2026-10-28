@@ -17,6 +17,7 @@ import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.GedraEditAction
 import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.gedra.workflow.TraitLockCopy
+import com.dynamicruntime.common.gedra.workflow.WFC
 import com.dynamicruntime.common.gedra.workflow.WFD
 import com.dynamicruntime.common.gedra.workflow.WFS
 import com.dynamicruntime.common.gedra.workflow.WSC
@@ -49,7 +50,7 @@ class OwnerOnlyTest : StringSpec({
         defineClient(
             ClientDef(
                 clientId = client, name = client, usageType = ClientUsageType.dev, audience = ClientAudience.customer,
-                enabledEnvironments = setOf(ENV.unit, ENV.local), userLabels = listOf("reviewer"),
+                enabledEnvironments = setOf(ENV.unit, ENV.local), userLabels = listOf("reviewer", "judge"),
             ),
         )
         cfact("keptClosed", "Privacy", "The note asks to be kept to its owner.")
@@ -57,6 +58,9 @@ class OwnerOnlyTest : StringSpec({
         trait("NoteEntry", "note", setOf(GedraDataType.formDoc), "A private note.") {
             property("text", "What the note says.") { type = SCT.string }
             property("kept", "Whether it is kept to its owner: yes or no.") { type = SCT.string }
+        }
+        trait("VerdictEntry", "verdict", setOf(GedraDataType.formDoc), "A judge's verdict on the note.") {
+            property("ruling", "The ruling.") { type = SCT.string }
         }
         workflow("privateReview", WfEntry.normal) {
             label = "Private review"
@@ -72,6 +76,15 @@ class OwnerOnlyTest : StringSpec({
                 approval("noteApproved", "Read it.", "Approve")
                 function(userHasLabel { label = "reviewer" })
             }
+            // A judge's step whose trait is locked to it, so a kept-out editor meets both a trait lock and the owner-only
+            // rule -- and is told the broader one. Optional, so it never holds the current task away from the approval.
+            task("rule", "Rule on it") {
+                trait("verdict", required = false)
+                save("saveVerdict", "Save", WfSaveKind.edit)
+                function(userHasLabel { label = "judge" })
+                saveWhen(WFC.reviewer)
+            }
+            lock("verdict", writableVia = "rule")
         }
     }
     GedraConfigService.get(cxt).writeConfig(cxt.mkSubContext("setup", client).also { it.userId = 14330L }, config)
@@ -144,6 +157,25 @@ class OwnerOnlyTest : StringSpec({
         textOf(gid) shouldBe "By the administrator"
     }
 
+    "a kept-out editor is told the whole form is closed to them, not that one trait is locked" {
+        val gid = engagedForm()
+        val verdict = mapOf(
+            GPF.targets to mapOf(
+                GedraDataType.formDoc.name to listOf(
+                    mapOf(
+                        GDF.gedraId to gid,
+                        GPF.edits to listOf(
+                            mapOf(GED.action to GedraEditAction.addOrReplace.name, GE.traitId to "verdict", GE.data to mapOf("ruling" to "No")),
+                        ),
+                    ),
+                ),
+            ),
+        )
+        refusal(editor, GEP.patch, verdict) shouldBe TraitLockCopy.keptToOwner
+        // The owner, whom the rule admits, still meets the trait's own lock.
+        owner.expectError(EXC.conflict, GEP.patch, verdict)
+    }
+
     "once the workflow moves past the reviewer's task, the reviewer is kept out again" {
         val gid = engagedForm()
         reviewer.postData(GEP.workflowApprove, mapOf(GDF.gedraId to gid, GDF.workflowId to "privateReview", GDF.taskId to "approve"))
@@ -166,7 +198,7 @@ class OwnerOnlyTest : StringSpec({
         keptFor(admin, gid) shouldBe false
         val view = editor.getData(GEP.workflowView, mapOf(GDF.workflowId to "privateReview", GDF.gedraId to gid))
         view[WVF.keptToOwner] shouldBe true
-        view[WFD.tasks].toJsonListOfMaps().map { it[WVF.canSave] } shouldBe listOf(false, false)
+        view[WFD.tasks].toJsonListOfMaps().map { it[WVF.canSave] } shouldBe listOf(false, false, false)
         owner.getData(GEP.workflowView, mapOf(GDF.workflowId to "privateReview", GDF.gedraId to gid))[WVF.keptToOwner] shouldBe null
     }
 

@@ -105,10 +105,7 @@ object OwnerOnly {
  */
 object OwnerOnlyGuard : GedraWriteGuard {
     override fun check(cxt: KdrCxt, write: GedraGuardedWrite): ((List<Map<String, Any?>>) -> List<Map<String, Any?>>)? {
-        // Cheap first: no editor, no state read.
-        if (!AdminRules.editsClient(cxt)) {
-            return null
-        }
+        // `keepsOut` asks whether the caller is an editor before it reads the (lazy) state, so no one else costs a read.
         OwnerOnly.requireMayChange(cxt, write.row, write.states)
         return null
     }
