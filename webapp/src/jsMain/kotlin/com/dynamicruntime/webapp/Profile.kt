@@ -237,74 +237,85 @@ val Profile = FC<Props> {
                     .evalTemplate(mapOf("users" to usersHelpData(myUsers)), resolver = copy.fragmentResolver())
             }
         }
-        table {
-            className = ClassName("op-table profile-users")
-            thead {
-                tr {
-                    th { +t("users", "personaColumn", "Persona") }
-                    th { +t("users", "clientColumn", "Client") }
-                    if (nameShown) th { +t("users", "nameColumn", "Name") }
-                    th { +"" }
-                }
-            }
-            tbody {
-                for (row in rows) {
-                    val target = row.user
+        // Scrolls inside the card rather than spilling over its edge when the window is too narrow for its columns.
+        div {
+            className = ClassName("profile-users-scroll")
+            table {
+                className = ClassName("op-table profile-users")
+                thead {
                     tr {
-                        if (row.isActive) className = ClassName("profile-user-active")
-                        // The marks sit under the user they describe, so the table keeps to three columns.
-                        td {
-                            div { +row.label }
-                            if (row.isActive) span { className = ClassName("user-mark active"); +t("users", "activeMark", "Active now") }
-                            if (row.signsInAs) span { className = ClassName("user-mark"); +t("users", "nextSignInMark", "Next sign-in") }
-                        }
-                        td {
-                            span {
-                                title = target.client
-                                +row.clientLabel
+                        th { +t("users", "personaColumn", "Persona") }
+                        th { +t("users", "statusColumn", "Status") }
+                        th { +t("users", "clientColumn", "Client") }
+                        if (nameShown) th { +t("users", "nameColumn", "Name") }
+                        th { +"" }
+                    }
+                }
+                tbody {
+                    for (row in rows) {
+                        val target = row.user
+                        tr {
+                            if (row.isActive) className = ClassName("profile-user-active")
+                            td { +row.label }
+                            // The marks have a column of their own, side by side, so a row keeps to one line (issue #1445).
+                            td {
+                                if (row.isActive) span {
+                                    className = ClassName("user-mark active")
+                                    +t("users", "activeMark", "Active now")
+                                }
+                                if (row.signsInAs) span {
+                                    className = ClassName("user-mark")
+                                    +t("users", "nextSignInMark", "Next sign-in")
+                                }
                             }
-                        }
-                        if (nameShown) td { +(target.name ?: "") }
-                        td {
-                            div {
-                                className = ClassName("profile-user-actions")
-                                if (confirmingRemove == target.userId) {
-                                    Button {
-                                        danger = true
-                                        size = "small"
-                                        disabled = busy
-                                        onClick = { removePublic(target) }
-                                        +t("placeholder", "confirm", "Permanently remove")
-                                    }
-                                    Button {
-                                        size = "small"
-                                        disabled = busy
-                                        onClick = { confirmingRemove = null }
-                                        +t("placeholder", "cancel", "Cancel")
-                                    }
-                                } else {
-                                    if (row.canSwitch) {
+                            td {
+                                span {
+                                    title = target.client
+                                    +row.clientLabel
+                                }
+                            }
+                            if (nameShown) td { +(target.name ?: "") }
+                            td {
+                                div {
+                                    className = ClassName("profile-user-actions")
+                                    if (confirmingRemove == target.userId) {
                                         Button {
+                                            danger = true
                                             size = "small"
                                             disabled = busy
-                                            onClick = { switchTo(target) }
-                                            +t("users", "switch", "Switch to this user")
+                                            onClick = { removePublic(target) }
+                                            +t("placeholder", "confirm", "Permanently remove")
                                         }
-                                    }
-                                    if (row.canMakeDefault) {
                                         Button {
                                             size = "small"
                                             disabled = busy
-                                            onClick = { makeDefault(target) }
-                                            +t("users", "useForNextSignIn", "Use for next sign-in")
+                                            onClick = { confirmingRemove = null }
+                                            +t("placeholder", "cancel", "Cancel")
                                         }
-                                    }
-                                    if (row.canRemove) {
-                                        Button {
-                                            size = "small"
-                                            disabled = busy
-                                            onClick = { confirmingRemove = target.userId }
-                                            +t("placeholder", "remove", "Remove")
+                                    } else {
+                                        if (row.canSwitch) {
+                                            Button {
+                                                size = "small"
+                                                disabled = busy
+                                                onClick = { switchTo(target) }
+                                                +t("users", "switch", "Switch to this user")
+                                            }
+                                        }
+                                        if (row.canMakeDefault) {
+                                            Button {
+                                                size = "small"
+                                                disabled = busy
+                                                onClick = { makeDefault(target) }
+                                                +t("users", "useForNextSignIn", "Use for next sign-in")
+                                            }
+                                        }
+                                        if (row.canRemove) {
+                                            Button {
+                                                size = "small"
+                                                disabled = busy
+                                                onClick = { confirmingRemove = target.userId }
+                                                +t("placeholder", "remove", "Remove")
+                                            }
                                         }
                                     }
                                 }
@@ -338,7 +349,7 @@ val Profile = FC<Props> {
     }
 
     div {
-        // Wider while the users table shows (issue #1330): three columns and a row of actions do not fit a form's card.
+        // Wider while the users table shows (issue #1330): its columns and a row of actions do not fit a form's card.
         // Wide for a table: the person's users, or their API keys (issue #1402), which every profile outside a sandbox shows.
         className = ClassName(if (showsUsersTable(myUsers) || !shellFacts.inSandbox) "card profile-wide" else "card")
         h1 { +t("profile", "title", "Your profile") }

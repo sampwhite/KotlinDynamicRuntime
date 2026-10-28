@@ -1368,10 +1368,17 @@ textarea.json-edit.json-field { min-height: 4.5rem; }
    one line too wherever the card allows. */
 .profile-users th, .profile-users td { white-space: nowrap; }
 .profile-users td:last-child { width: 100%; white-space: normal; }
-/* ...except the marks under a user, which stack rather than widen its column at the actions' expense. */
-.profile-users td:first-child .user-mark { display: block; width: fit-content; margin-top: 3px; }
-/* The profile's card while it holds that table: room for three columns and a row of actions, still a page to read. */
-.card.profile-wide { width: min(780px, 92vw); }
+/* Where the window is too narrow for even that, the table scrolls inside the card rather than running past its edge
+   (issue #1445). */
+.profile-users-scroll { overflow-x: auto; }
+/* The profile's card while it holds a table (issue #1445): room for its columns -- the marks side by side in their
+   own -- and a `public` user's three buttons on one line, so a row is one line high. Short of a content page's
+   width, since below the table the profile is a form, whose prose keeps to a readable measure. */
+.card.profile-wide { width: min(1040px, 92vw); }
+.card.profile-wide .subtitle { max-width: 80ch; }
+/* A field fills its row, which at this width is far longer than a name, a password, or a key's purpose needs: it
+   keeps the width it had in the 780px card. Descendants rather than children, for the API keys section's own. */
+.card.profile-wide .row > .ant-input, .card.profile-wide .row > .ant-input-affix-wrapper { max-width: 560px; }
 /* "What is this?" (issue #1330): a small, muted link on a heading's line -- or a line of its own -- that opens an
    explanation inline beneath it, set apart by the accent's rule down its edge. The heading keeps its section spacing,
    which the card's rhythm would otherwise flatten now that the heading is not the card's own child. */
