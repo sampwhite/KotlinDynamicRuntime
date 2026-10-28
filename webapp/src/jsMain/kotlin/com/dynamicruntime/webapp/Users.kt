@@ -73,6 +73,9 @@ val Users = FC<Props> {
     // the date-range bounds (update time). A field added to `userSearchFieldSpecs` flows through here untouched.
     var textFilters by useState<Map<String, String>>(emptyMap())
     var rangeFilters by useState<Map<String, DateRange>>(emptyMap())
+    // The free-text term (issue #581; a box of its own since #1432): one OR across email, name, username, persona and
+    // persona suffix, where the filters above AND. Its box is always on screen, so it is not a chip.
+    var anyText by useState("")
     // The sort, driven by the table's column headers. Default: newest first, as the issue specifies.
     var sortBy by useState(defaultUserSortKey)
     var descending by useState(defaultUserSortDescending)
@@ -207,8 +210,8 @@ val Users = FC<Props> {
      */
     fun query(
         texts: Map<String, String> = textFilters, ranges: Map<String, DateRange> = rangeFilters,
-        sort: String = sortBy, desc: Boolean = descending,
-    ): UserSearchQuery = UserSearchQuery(texts, ranges, sort, desc)
+        sort: String = sortBy, desc: Boolean = descending, any: String = anyText,
+    ): UserSearchQuery = UserSearchQuery(texts, ranges, sort, desc, anyText = any.trim().ifEmpty { null })
 
     /**
      * Runs a search. Deliberately *not* through [run]: that sets `busy`, which disables the controls -- and
@@ -255,6 +258,7 @@ val Users = FC<Props> {
         rangeFilters = q.ranges
         sortBy = q.sortBy
         descending = q.descending
+        anyText = q.anyText ?: ""
     }
 
     /** Updates one text filter (email/name/client) and runs; [immediate] fires at once (a select) or debounces
@@ -265,6 +269,12 @@ val Users = FC<Props> {
         textFilters = next
         val q = query(texts = next)
         if (immediate) runSearch(q) else scheduleSearch(q)
+    }
+
+    /** Updates the free-text term and runs, debounced as a typed filter is. */
+    fun setAnyText(value: String) {
+        anyText = value
+        scheduleSearch(query(any = value))
     }
 
     /** Updates one date-range filter and runs at once (a picker is a deliberate choice). An empty range is dropped. */
@@ -469,7 +479,7 @@ val Users = FC<Props> {
     // the open record is in [userIdentity], so a filter change never pushes.
     useEffect(
         editing, creating, restored,
-        textFilters, rangeFilters, sortBy, descending, shown,
+        textFilters, rangeFilters, anyText, sortBy, descending, shown,
     ) {
         if (!restored) {
             return@useEffect
@@ -1059,7 +1069,8 @@ val Users = FC<Props> {
 
             // A whitespace-only term is kept in the map (so it can be typed) but filters nothing, so it does not
             // count as an active filter here -- matching what the query serialization actually sends.
-            val anyFilter = textFilters.values.any { it.isNotBlank() } || rangeFilters.values.any { !it.isEmpty }
+            val anyFilter = textFilters.values.any { it.isNotBlank() } || rangeFilters.values.any { !it.isEmpty } ||
+                anyText.isNotBlank()
             // The sort counts as something to reset too, so Clear returns the whole view to its default.
             val canReset = anyFilter || sortBy != USF.lastEdited.at || !descending
             // What the list is narrowed by, in words (issue #683), for the chips the closed well shows. Derived
@@ -1087,6 +1098,15 @@ val Users = FC<Props> {
                         onClick = { startCreate(forSelf = true) }
                         +"Create a user for me"
                     }
+                }
+                // The free-text search (issue #1432), on screen as the forms list's is: the quickest way to find someone
+                // without knowing which field holds what you remember, and the one way to a batch member by suffix.
+                Input {
+                    placeholder = "Search email, name, username, or persona"
+                    value = anyText
+                    allowClear = true
+                    style = js("({ width: 300 })")
+                    onChange = { event -> setAnyText(event.target.value as? String ?: "") }
                 }
                 // The filters live behind a toggle (issue #683), closed by default, so the table -- what the
                 // page is for -- is on screen without first scrolling past six controls and their hints.

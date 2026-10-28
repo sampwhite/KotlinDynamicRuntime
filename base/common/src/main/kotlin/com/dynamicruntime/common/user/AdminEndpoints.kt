@@ -579,8 +579,8 @@ private fun SchModuleBuilder.userReadEndpoints(usersPath: String, searchPath: St
         inputFields = {
             field(
                 EI.q,
-                "Free text matched against email, name, or username at once (any of them, case-insensitive " +
-                    "substring) -- one box for finding a user however you remember them.",
+                "Free text matched against email, name, username, persona, or persona suffix at once (any of " +
+                    "them, case-insensitive substring) -- one box for finding a user however you remember them.",
             ) { emptyIsAbsent = true }
             field(USF.email, "Case-insensitive substring to match against the email address.")
             field(USF.name, "Case-insensitive substring to match against the account's real-world name or its username.")

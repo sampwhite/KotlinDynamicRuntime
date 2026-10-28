@@ -1,7 +1,8 @@
 # The admin user search, and its server-driven-UI shape (issue #411)
 
 **Status: built** (issue #411). Since then the console has gained a persona field (issue #750), four date ranges
-(issues #462, #750), and a roles field (issue #1432), and the endpoint a single free-text term matched across several fields (issue #581). The shared
+(issues #462, #750), and a roles field (issue #1432), and the endpoint a single free-text term matched across several
+fields (issue #581), which the console shows as a search box since #1432. The shared
 spec described here is built; the fully runtime version in
 [The next step: fully runtime SDUI](#the-next-step-fully-runtime-sdui) is not.
 
@@ -33,8 +34,10 @@ the console offers:
   sortable, and the free-text `q` leaves it out, since every account holds `user`
 - **four date ranges**, each a from/to instant pair — edited, last login, registered, and activated
 
-The endpoint also takes axes the console does not show: `publicName`, a range over the update time, and `q`, one
-free-text term matched against every substring field at once — email, name, username, and persona (issue #581).
+Above the filters, always on screen, is a **search box**: `q`, one free-text term matched as a substring against
+email, name, username, persona, and persona suffix at once (issue #581; in the console since #1432). Where the
+filters AND, it is one OR. It is the console's only way to a batch member by suffix, now that the persona is picked.
+The endpoint also takes axes the console does not show: `publicName`, and a range over the update time.
 
 Results are sorted by any field (default `updatedAt` descending, though the console no longer shows the update time,
 since a login moves it), capped at a large default (`USF.defaultLimit` = 500), and report `numItems` /

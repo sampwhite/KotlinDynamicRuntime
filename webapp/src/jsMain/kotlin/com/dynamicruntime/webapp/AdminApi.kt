@@ -393,8 +393,9 @@ class UserSearchQuery(
     val sortBy: String = defaultUserSortKey,
     val descending: Boolean = defaultUserSortDescending,
     /**
-     * A single free-text term matched across email, name, and username at once (issue #581) -- the OR term the
-     * scope-bar type-ahead sends, distinct from the per-field [textTerms] which AND. Blank is no constraint.
+     * A single free-text term matched across email, name, username, persona, and persona suffix at once (issue #581)
+     * -- the OR term the scope-bar type-ahead and the users console's search box (issue #1432) send, distinct from the
+     * per-field [textTerms] which AND. Blank is no constraint.
      * Appended after the existing parameters so the positional call sites (the users console) are unaffected.
      */
     val anyText: String? = null,
