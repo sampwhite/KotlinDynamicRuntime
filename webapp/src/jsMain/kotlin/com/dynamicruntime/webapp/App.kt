@@ -6,6 +6,8 @@ import com.dynamicruntime.common.gedra.workflow.WAGG
 import com.dynamicruntime.common.home.HMENU
 import com.dynamicruntime.common.operator.OPS
 import com.dynamicruntime.webapp.theme as antdTheme
+import kotlinx.browser.document
+import kotlinx.browser.window
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.launch
 import react.FC
@@ -141,6 +143,20 @@ val App = FC<Props> {
             defaultActiveBg: '#3d4b60', defaultActiveBorderColor: '#64748b', defaultActiveColor: '#f8fafc'
         })"""
     )
+    // A table is themed the same way (issue #1449): the algorithm sat it on a near-black #141414 with a #1d1d1d header
+    // row, so it read as a slot cut into the card, and its header differed from every hand-built `.op-table`. These
+    // put it on the card, with the header row the hand-built tables have. Read from app.css's own variables rather
+    // than spelled here, so the two kinds of table cannot drift apart. The stylesheet is linked ahead of this script,
+    // so they resolve; the hover and sort shades antd derives from the card follow it.
+    val palette = window.getComputedStyle(document.documentElement!!)
+    fun cssVar(name: String): String = palette.getPropertyValue(name).trim()
+    darkTheme.components.Table = js("({})")
+    darkTheme.components.Table.colorBgContainer = cssVar("--surface-raised")
+    darkTheme.components.Table.headerBg = cssVar("--table-head-bg")
+    darkTheme.components.Table.headerColor = cssVar("--text")
+    darkTheme.components.Table.colorText = cssVar("--text")
+    darkTheme.components.Table.borderColor = cssVar("--border")
+    darkTheme.components.Table.headerSplitColor = cssVar("--border")
 
     // Before any consumer's effect runs, so a fetch that consumer makes knows which generation it is for (issue #1313).
     refreshGenerationNow = refresh
