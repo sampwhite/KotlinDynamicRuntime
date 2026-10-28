@@ -41,6 +41,7 @@ Switching moves you from one to another without signing in again.
 
 
 # +personaColumn Persona
+# +statusColumn Status
 # +clientColumn Client
 # +nameColumn Name
 # +activeMark Active now
