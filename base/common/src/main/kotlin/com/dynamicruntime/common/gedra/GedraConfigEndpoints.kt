@@ -224,6 +224,7 @@ fun gedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CFEP.namespace
         outputRef = CFEP.bundleType,
         inputFields = {
             field(CFEP.name, "The configuration's name.", required = true)
+            portableField()
         },
     ) { c, request -> inConfigScope(c) { cfgBundleBody(it, request) } }
 
@@ -294,6 +295,7 @@ fun gedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CFEP.namespace
         noLimit = true,
         inputFields = {
             field(CFEP.name, "The configuration's name.", required = true)
+            portableField()
         },
         // The entry-level VIEW; the matching per-slot **edit** is `bundle/patch` (issue #732), which applies the
         // edits over the current slots and writes the whole set through the validated bundle write rather than
@@ -378,15 +380,16 @@ private fun cfgBundleBody(c: KdrCxt, request: Map<String, Any?>): Map<String, An
     val name = requireName(request)
     val row = GedraConfigService.get(c).readLatest(c, configId(c, name))
         ?: throw KdrException("No configuration '$name' for client '${c.client}'.", code = EXC.notFound)
-    return bundleOf(c, row)
+    return bundleOf(c, row, portable = request[PORT.portableField] == true)
 }
 
 private fun cfgWriteBody(c: KdrCxt, request: Map<String, Any?>): Map<String, Any?> {
     AdminRules.requireClientAdministrator(c)
     val name = requireName(request)
-    val namespace = request[CFEP.namespaceField].toOptStr()
+    // Portable form resolved first (issue #1435), so nothing after it sees `@self`.
+    val namespace = fromPortable(request[CFEP.namespaceField].toOptStr(), c.client)?.toString()
         ?: throw KdrException.mkInput("A configuration bundle must name its '${CFEP.namespaceField}'.")
-    val slots = slotsOf(request[CFEP.slots], GedraConfigService.get(c).knownSlots())
+    val slots = slotsFromPortable(slotsOf(request[CFEP.slots], GedraConfigService.get(c).knownSlots()), c.client)
     // Gate the slots and reassemble the bundle into a GedraConfig (which re-runs the builder, so its contents are
     // validated as source would be), then write it. The config id is built from `c.client`, so on the `/admin`
     // surface the bound client is what the bundle is filed under -- an unwritten client id here is how a brand-new
@@ -411,7 +414,9 @@ private fun cfgPatchBody(c: KdrCxt, request: Map<String, Any?>): Map<String, Any
     if (requested.isEmpty()) throw KdrException.mkInput("A config patch must name at least one configuration in '${CFEP.configs}'.")
     val byName = requested.map { one ->
         val name = requireName(one)
-        val edits = one[CFEP.edits].toJsonListOfMaps()
+        // Portable form resolved first (issue #1435): the staleness check and the edits address entries by keys that
+        // may be type names.
+        val edits = one[CFEP.edits].toJsonListOfMaps().map { edit -> editFromPortable(edit, c.client) }
         if (edits.isEmpty()) throw KdrException.mkInput("The patch of configuration '$name' must carry at least one edit.")
         edits.forEach { requireReadAsSaid(name, it) }
         name to edits
@@ -579,9 +584,10 @@ private fun cfgImportBody(c: KdrCxt, request: Map<String, Any?>): Map<String, An
         try {
             if (client == null) throw KdrException.mkInput("A bundle must name its '${CFEP.client}'.")
             if (name == null) throw KdrException.mkInput("A bundle must name its '${CFEP.name}'.")
-            val namespace = bundle[CFEP.namespaceField].toOptStr()
+            // Each bundle's portable form resolved against its own client (issue #1435).
+            val namespace = fromPortable(bundle[CFEP.namespaceField].toOptStr(), client)?.toString()
                 ?: throw KdrException.mkInput("A bundle must name its '${CFEP.namespaceField}'.")
-            var slots = slotsOf(bundle[CFEP.slots], svc.knownSlots())
+            var slots = slotsFromPortable(slotsOf(bundle[CFEP.slots], svc.knownSlots()), client)
             // Strip testFeatures off a test instance rather than refuse (issue #733): a whole restore is not
             // failed by one field. On a test instance they round-trip. Recorded (and logged) only once the write
             // succeeds, so a bundle that then fails is not also reported as stripped.
@@ -740,8 +746,27 @@ private fun cfgSlotEntriesBody(c: KdrCxt, request: Map<String, Any?>): List<Map<
     // Redacted at the row (issue #696), the same source the bundle read uses -- so testFeatures a cloned config
     // carries is not echoed off a test instance here either. The slot is named as a patch names it, not by the
     // stored envelope's `traitId` (issue #1352).
+    val portable = request[PORT.portableField] == true
     return row.entriesForEmission(c.instanceConfig.isTestInstance).map { entry ->
-        linkedMapOf(CFEP.slot to entry[GE.traitId]) + (entry - GE.traitId)
+        val slot = entry[GE.traitId]
+        val data = if (portable && slot !in PORT.keptSlots) toPortable(entry[GE.data], c.client) else entry[GE.data]
+        linkedMapOf(CFEP.slot to slot) + (entry - GE.traitId) + (GE.data to data)
+    }
+}
+
+/** A patch edit with its data resolved from portable form for [client] (issue #1435), unless its slot is one kept as it is. */
+private fun editFromPortable(edit: Map<String, Any?>, client: String): Map<String, Any?> =
+    if (edit[CFEP.slot] in PORT.keptSlots || GE.data !in edit) edit else edit + (GE.data to fromPortable(edit[GE.data], client))
+
+/** The [PORT.portableField] a bundle or entries read takes (issue #1435). */
+private fun InputFieldsBuilder.portableField() {
+    field(
+        PORT.portableField,
+        "Answer in portable form (issue #1435): the client's own namespace written '${PORT.namespace}', so the data loads " +
+            "as it is into another client, which every write resolves it for. The client's definition is as stored.",
+    ) {
+        type = SCT.boolean
+        allowCoerce = true
     }
 }
 
@@ -991,15 +1016,16 @@ private fun SchTypeBuilder.configIssuesProperty() {
  * [GedraConfigRow.slotsForEmission], so `testFeatures` is stripped from the stored client definition off a test
  * instance at the row -- the one redaction point the trait-level read shares (issue #696).
  */
-private fun bundleOf(cxt: KdrCxt, row: GedraConfigRow): Map<String, Any?> = dropNulls(
+/** [row] as a whole bundle -- in portable form when [portable] (issue #1435), its own namespace written `client.@self`. */
+private fun bundleOf(cxt: KdrCxt, row: GedraConfigRow, portable: Boolean = false): Map<String, Any?> = dropNulls(
     linkedMapOf(
         CFEP.name to row.configId.baseId,
-        CFEP.namespaceField to row.resolvedNamespace(),
+        CFEP.namespaceField to row.resolvedNamespace().let { if (portable) toPortable(it, row.client) else it },
         CFEP.client to row.client,
         CFEP.version to row.version,
         CFEP.published to row.isPublished,
         CFEP.publishedAt to row.publishedAt,
-        CFEP.slots to row.slotsForEmission(cxt.instanceConfig.isTestInstance),
+        CFEP.slots to row.slotsForEmission(cxt.instanceConfig.isTestInstance).let { if (portable) slotsToPortable(it, row.client) else it },
         CFEP.createdAt to row.createdAt,
         CFEP.updatedAt to row.updatedAt,
         CFEP.issues to configIssuesOf(cxt, row),
@@ -1062,6 +1088,7 @@ fun adminGedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, ACEP.name
         inputFields = {
             field(CFEP.client, "The client that owns the configuration.", required = true) { clientAttribute() }
             field(CFEP.name, "The configuration's name.", required = true)
+            portableField()
         },
     ) { c, request -> cfgBundleBody(adminConfigCxt(c, request), request) }
 
@@ -1135,6 +1162,7 @@ fun adminGedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, ACEP.name
         inputFields = {
             field(CFEP.client, "The client that owns the configuration.", required = true) { clientAttribute() }
             field(CFEP.name, "The configuration's name.", required = true)
+            portableField()
         },
     ) { c, request -> cfgSlotEntriesBody(adminConfigCxt(c, request), request) }
 
