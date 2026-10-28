@@ -96,6 +96,14 @@ class RequestHandler : WebRequest {
     var queryParams: MutableMap<String, Any?> = LinkedHashMap()
     var postData: MutableMap<String, Any?>? = null
 
+    /**
+     * The most bytes this request's body may be (issue #1446): [BODY.defaultMaxBytes], or the large-body maximum when
+     * its method and path are an endpoint that takes large bodies -- [bodyLimitIsLarge]. Set by the dispatcher before
+     * the body is read.
+     */
+    var bodyLimit: Int = BODY.defaultMaxBytes
+    var bodyLimitIsLarge: Boolean = false
+
     /** Validated `_debug` value (a comma-separated list of variable names), or null; assigned to [KdrCxt.debug]. */
     var debug: String? = null
 
@@ -261,10 +269,7 @@ class RequestHandler : WebRequest {
         isFromLoadBalancer = userAgent?.contains("ELB-Health") == true
 
         if (contentType.startsWith("application/json") && postData == null) {
-            val body = readBody()
-            if (body.length > 16000) {
-                throw KdrException("JSON body of size ${body.length} exceeds the maximum of 16000.")
-            }
+            val body = readBoundedBody("JSON")
             if (body.isNotBlank()) {
                 postData = body.jsonMap()
             }
@@ -347,16 +352,39 @@ class RequestHandler : WebRequest {
      */
     fun decodeFormBody() {
         if (!contentType.startsWith(formUrlEncoded) || postData != null) return
-        val body = readBody()
-        if (body.length > 16000) {
-            throw KdrException("Form body of size ${body.length} exceeds the maximum of 16000.")
-        }
-        postData = HttpUtil.parseQuery(body).toMutableMap()
+        postData = HttpUtil.parseQuery(readBoundedBody("form")).toMutableMap()
     }
 
-    private fun readBody(): String {
+    /**
+     * The request's body as text, refused (413) when it is larger than [bodyLimit] bytes (issue #1446) -- on its
+     * `Content-Length` when it declares one, before reading anything, and otherwise by reading no more than one byte
+     * past the limit, so an oversized body never sits in memory just to be refused. [what] names the body in the
+     * refusal.
+     */
+    private fun readBoundedBody(what: String): String {
+        val limit = bodyLimit
+        getRequestHeader("Content-Length")?.trim()?.toLongOrNull()?.let { declared ->
+            if (declared > limit) throw bodyTooLarge(what, declared)
+        }
         val req = jettyRequest
-        return if (req != null) Content.Source.asString(req) else (testPostData ?: "")
+        val bytes = if (req != null) {
+            Content.Source.asInputStream(req).use { it.readNBytes(limit + 1) }
+        } else {
+            (testPostData ?: "").encodeToByteArray()
+        }
+        if (bytes.size > limit) throw bodyTooLarge(what, if (req == null) bytes.size.toLong() else null)
+        return bytes.decodeToString()
+    }
+
+    /** The refusal of a body larger than [bodyLimit]: its size when known, the limit, and whether a larger one is taken here. */
+    private fun bodyTooLarge(what: String, size: Long?): KdrException {
+        val sized = size?.let { " of $it bytes" }.orEmpty()
+        val why = if (bodyLimitIsLarge) {
+            "the most this endpoint accepts"
+        } else {
+            "the most an endpoint accepts unless it is one that takes large bodies, and this one is not"
+        }
+        return KdrException("The $what body$sized is larger than $bodyLimit bytes, $why.", code = EXC.payloadTooLarge)
     }
 
     /**

@@ -64,6 +64,22 @@ import java.util.concurrent.CopyOnWriteArrayList
 class RequestService : ServiceInitializer {
     override val serviceName: String = RequestService.serviceName
 
+    /**
+     * The endpoints that accept a large request body (issue #1446), keyed as [KdrEndpoint.collationKey] keys them
+     * (`path:METHOD`): the static endpoints marked [KdrEndpoint.largeBody], collected in [checkInit] and fixed from then
+     * on. Endpoints are otherwise dynamic per client; this list never asks a client's configuration anything, so a
+     * request is measured against it before the endpoint is resolved, and the same list can be handed to a firewall.
+     */
+    var largeBodyEndpoints: Set<String> = emptySet()
+        private set
+
+    /** The most bytes a large-body endpoint's body may be ([BODY.largeMaxBytes]). Bound in [checkInit]. */
+    var largeBodyMaxBytes: Int = BODY.defaultLargeMaxBytes
+        private set
+
+    /** Whether [method] [appPath] is an endpoint that accepts a large body (issue #1446). */
+    fun takesLargeBody(appPath: String, method: String): Boolean = "$appPath:$method" in largeBodyEndpoints
+
     /** The context root under which API endpoints are served; from [ACFG.apiContextRoot]. Bound in [checkInit]. */
     var apiContextRoot: String = ContextRoot.kda
 
@@ -431,6 +447,17 @@ class RequestService : ServiceInitializer {
         // whole declared set. An endpoint **generated** after boot (issue #1083's typed report endpoints) is not
         // seen here, and this check does not run again: `SchemaService.publishGenerated`, which admits generated
         // endpoints into the published schema, asks [unruledSections] of each surface and refuses one (issue #1087).
+        // The endpoints that accept a large body (issue #1446): the static ones marked so, never a client's own copy.
+        largeBodyEndpoints = cxt.getGlobalSchema().endpoints.values
+            .filter { it.largeBody && it.client == null }.mapTo(LinkedHashSet()) { it.collationKey }
+        largeBodyMaxBytes = BODY.largeMaxBytes(cxt.instanceConfig)
+        if (largeBodyMaxBytes < BODY.defaultMaxBytes) {
+            throw KdrException(
+                "Refusing to start: ${BODY.largeMaxBytesKey} is $largeBodyMaxBytes, less than the ${BODY.defaultMaxBytes} " +
+                    "bytes every endpoint accepts, so an endpoint that takes large bodies would take the least.",
+            )
+        }
+
         val unruled = unruledSections(cxt.getGlobalSchema().endpoints.values)
         if (unruled.isNotEmpty()) {
             throw KdrException(
@@ -555,6 +582,11 @@ class RequestService : ServiceInitializer {
         val method = handler.method
 
         handler.sectionRules = sectionRulesMap[handler.section]
+        // How large the body may be (issue #1446), judged on the method and path alone, before anything is read.
+        if (focus == ContextFocus.api && takesLargeBody(appPath, method)) {
+            handler.bodyLimit = largeBodyMaxBytes
+            handler.bodyLimitIsLarge = true
+        }
         handler.decodeRequestData()
         cxt.debug = handler.debug // the request's _debug tag, if any, rides on the context (and into logs)
         cxt.view = handler.view // the requested view (issue #972); honored only where the caller is entitled to it

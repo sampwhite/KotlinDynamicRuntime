@@ -9,8 +9,11 @@ import com.dynamicruntime.common.startup.BootCheckRegistry
 import com.dynamicruntime.common.startup.BootCheckResult
 import com.dynamicruntime.common.endpoint.schemaModule
 import com.dynamicruntime.common.flavor.DeployFlavors
+import com.dynamicruntime.common.http.request.BODY
+import com.dynamicruntime.common.http.request.RequestService
 import com.dynamicruntime.common.http.request.SECT
 import com.dynamicruntime.common.node.NodeService
+import com.dynamicruntime.common.schema.PRES
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.util.formatDate
 import java.lang.management.ManagementFactory
@@ -99,6 +102,18 @@ object OSI {
 /** Schema type name for the system-info output. Free-form by design -- see [operatorSchema]. */
 private const val systemInfoType = "SystemInfo"
 
+/** The large-body readout's names (issue #1446). Each name matches its value. */
+@Suppress("ConstPropertyName")
+private object OLB {
+    const val readoutType = "LargeBodyEndpoints"
+    const val endpointType = "LargeBodyEndpoint"
+    const val defaultMaxBytes = "defaultMaxBytes"
+    const val largeMaxBytes = "largeMaxBytes"
+    const val endpoints = "endpoints"
+    const val method = "method"
+    const val path = "path"
+}
+
 /**
  * The operator surface: endpoints for someone running the deployment rather than using it. The `operator`
  * section requires [com.dynamicruntime.common.http.request.ROLE.operator], so an administrator reaches it too
@@ -124,6 +139,49 @@ fun operatorSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.${SECT.opera
     type(systemInfoType) {
         // No properties on purpose: this is the free-form diagnostic map described above.
         type = SCT.kObject
+    }
+
+    // The endpoints a firewall in front of the deployment has to let large bodies through to (issue #1446).
+    type(OLB.endpointType) {
+        type = SCT.kObject
+        presentation = PRES.table
+        property(OLB.method, "The endpoint's HTTP method.", required = true)
+        property(OLB.path, "The endpoint's full path, the deployment's API context root included.", required = true) {
+            presentation = PRES.identifier
+        }
+    }
+    type(OLB.readoutType) {
+        type = SCT.kObject
+        description = "The endpoints that accept a request body larger than the default, and the two limits."
+        property(OLB.defaultMaxBytes, "The most bytes any other endpoint's request body may be.", required = true) {
+            type = SCT.integer
+        }
+        property(OLB.largeMaxBytes, "The most bytes one of these endpoints' request body may be.", required = true) {
+            type = SCT.integer
+        }
+        property(OLB.endpoints, "Each endpoint that accepts a large body, by method and full path.", required = true) {
+            type = SCT.array
+            items { ref(OLB.endpointType) }
+        }
+    }
+    itemEndpoint(
+        OPS.largeBodiesPath,
+        "The endpoints that accept a request body larger than the default (issue #1446), each by method and full path, " +
+            "the API context root included, with the two limits: what a firewall in front of the deployment has to let " +
+            "through. Fixed when the node starts, so a job keeping the firewall's rules in step may cache it.",
+        HttpMethod.GET,
+        outputRef = OLB.readoutType,
+        tags = setOf(ETAG.internal),
+    ) { c, _ ->
+        val requests = RequestService.get(c)
+        mapOf(
+            OLB.defaultMaxBytes to BODY.defaultMaxBytes,
+            OLB.largeMaxBytes to requests.largeBodyMaxBytes,
+            OLB.endpoints to requests.largeBodyEndpoints.map { key ->
+                // A key is `path:METHOD`; a path has no colon, so the last one divides them.
+                mapOf(OLB.method to key.substringAfterLast(':'), OLB.path to "/${requests.apiContextRoot}${key.substringBeforeLast(':')}")
+            },
+        )
     }
     generalEndpoint(
         OPS.systemInfoPath,

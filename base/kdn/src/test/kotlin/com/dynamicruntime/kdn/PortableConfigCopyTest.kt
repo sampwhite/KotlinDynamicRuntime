@@ -22,7 +22,6 @@ import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldContainAll
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
-import io.kotest.matchers.shouldNotBe
 import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.string.shouldNotContain
 
@@ -69,19 +68,10 @@ class PortableConfigCopyTest : StringSpec({
                 CFEP.slots to slots,
             )
         }
-        // One bundle a call, the definition's first: a request body is held to 16,000 characters, which the demo as a
-        // whole exceeds. Each call is judged with what the copy already holds, so a bundle that needs one not yet in --
-        // a report reading a workflow -- is tried again on the next pass, until a pass brings in nothing new.
-        fun import(bundle: Map<String, Any?>) =
-            operator.postData(ACEP.import, mapOf(ACEP.bundlesField to listOf(bundle)))[ACEP.failures].toJsonListOfMaps()
-        val (definitions, rest) = bundlesIn.partition { it[CFEP.slots].toJsonMapOrEmpty().containsKey(CCT.clientDef) }
-        definitions.forEach { import(it).shouldBeEmpty() }
-        var pending = rest
-        while (pending.isNotEmpty()) {
-            val refused = pending.filter { import(it).isNotEmpty() }
-            refused.map { it[CFEP.name] } shouldNotBe pending.map { it[CFEP.name] }
-            pending = refused
-        }
+        // All of them in one call, judged together: about 25 KB, which the import takes as an endpoint whose input is
+        // a whole configuration (issue #1446).
+        val imported = operator.postData(ACEP.import, mapOf(ACEP.bundlesField to bundlesIn))
+        imported[ACEP.failures].toJsonListOfMaps().shouldBeEmpty()
 
         // It loads clean, with the demo's traits and workflows, in its own namespace.
         ClientService.get(cxt).present(copy).shouldNotBeNull()

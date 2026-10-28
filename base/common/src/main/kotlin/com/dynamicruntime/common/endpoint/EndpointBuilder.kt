@@ -225,6 +225,14 @@ class KdrEndpoint(
      */
     val formBody: Boolean = false,
     /**
+     * Whether this endpoint's request body may be larger than the default limit (issue #1446), up to the configured
+     * large-body maximum ([BODY][com.dynamicruntime.common.http.request.BODY]). For the few endpoints whose input is a
+     * whole configuration. Honored on a static endpoint alone: the request service collects these at boot, so a
+     * client's own copy of an endpoint never widens the list. A firewall in front of the deployment has to let the
+     * same endpoints through, which is why the list is published (`/operator/request/largeBodies`).
+     */
+    val largeBody: Boolean = false,
+    /**
      * (List endpoints only.) Whether the output declares `hasMore` / `numAvailable`, so the executor knows to
      * populate them (issue #499). For a handler that returns a plain `List` the executor fills them from the
      * uncapped size; a [ListPage] supplies its own. `numAvailable` defaults **on** when the endpoint has a
@@ -443,6 +451,8 @@ class SchModuleBuilder(cxt: KdrCxt, namespace: String) : SchTypesBuilder(cxt, na
         keyExchange: Boolean = false,
         /** Reads a form-encoded body as input (issue #1403); see [KdrEndpoint.formBody]. */
         formBody: Boolean = false,
+        /** Accepts a body larger than the default (issue #1446); see [KdrEndpoint.largeBody]. */
+        largeBody: Boolean = false,
         handler: KdrEndpointHandler,
     ) {
         val output = if (bareResponse) {
@@ -455,7 +465,7 @@ class SchModuleBuilder(cxt: KdrCxt, namespace: String) : SchTypesBuilder(cxt, na
             KdrEndpoint(path, method, EndpointKind.general, namespace, description, fields, typeRef, false, output,
                 forTestingOnly, handler, publicApi = publicApi, tags = tags, needsClientConfig = needsClientConfig,
                 timingFloor = timingFloor, polled = polled, sessionOnly = sessionOnly, bareResponse = bareResponse,
-                keyExchange = keyExchange, formBody = formBody),
+                keyExchange = keyExchange, formBody = formBody, largeBody = largeBody),
         )
     }
 
