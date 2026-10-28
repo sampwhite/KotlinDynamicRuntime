@@ -71,6 +71,14 @@ class GedraFormsTest {
         assertTrue(mayDeleteForm(ownerId = 8, selfUserId = 7, limitedDelete = true, states = withdrawn))
         assertFalse(mayDeleteForm(ownerId = null, selfUserId = 7, limitedDelete = true, states = engaged))
         assertTrue(mayDeleteForm(ownerId = 8, selfUserId = 7, limitedDelete = false, states = engaged))
+        // A row read alone carries no state, and nothing then says another user's form is free (#1452 review).
+        assertFalse(mayDeleteForm(ownerId = 8, selfUserId = 7, limitedDelete = true, states = null))
+        assertFalse(mayDeleteForm(ownerId = null, selfUserId = 7, limitedDelete = true, states = null))
+        assertTrue(mayDeleteForm(ownerId = 7, selfUserId = 7, limitedDelete = true, states = null))
+        // Whose it is, off the row itself.
+        val row = mapOf(GDF.userId to 8, GDF.owner to mapOf(DUF.name to "Ada", DUF.email to "ada@x.com"))
+        assertEquals("Ada", otherOwnerOf(row, selfUserId = 7))
+        assertEquals(null, otherOwnerOf(row, selfUserId = 8))
         // The owner's id rides the row's `userId`.
         assertEquals(42L, summarizeForm(mapOf(GDF.gedraId to "g", GDF.userId to 42), null).ownerId)
     }

@@ -716,7 +716,8 @@ assign itself. Its powers:
   then fills in; the form is that user's. It deletes its own forms, and another user's only while the form is in no
   live workflow (issue #1452, `EditorDeleteGuard`) -- one it started for the wrong person, say. Once a form is engaged,
   it is someone's work under way, and deleting it is its owner's or an administrator's. A live workflow the editor
-  does not see still counts, so there the forms page may offer a Delete the server refuses.
+  does not see still counts, so there the forms page may offer a Delete the server refuses -- with a refusal that
+  names no workflow, since the editor is not meant to know of it.
 - **Forms kept to their owner** (issue #1433): a client marks a form so with the framework singleton `kdr:ownerOnly`,
   which a workflow's singleton rule emits. While it holds, an editor changes the form only as its owner or as a
   reviewer of an engaged workflow's current task (`OwnerOnlyGuard`), and the pages draw it read-only for anyone else.

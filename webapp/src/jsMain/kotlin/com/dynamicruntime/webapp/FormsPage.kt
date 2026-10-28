@@ -690,7 +690,8 @@ val FormsPage = FC<FormsPageProps> { props ->
                         deleteEndpoint?.takeIf {
                             mayDeleteForm(
                                 viewRow?.get(GDF.userId).toOptLong(), selfUserId, limitedDelete,
-                                viewRow?.get(GDF.states).toJsonListOfMaps(),
+                                // Null when the form was read alone, which carries no state (issue #1452 review).
+                                viewRow?.get(GDF.states)?.toJsonListOfMaps(),
                             )
                         }?.let { de ->
                             if (!confirmingDelete) {
@@ -702,13 +703,7 @@ val FormsPage = FC<FormsPageProps> { props ->
                             } else {
                                 span {
                                     className = ClassName("subtitle")
-                                    +deleteFormQuestion(
-                                        viewingId,
-                                        viewRow?.let { row ->
-                                            val summary = summarizeForm(row, null)
-                                            otherOwnerLabel(summary.ownerId, selfUserId, summary.ownerName, summary.ownerEmail)
-                                        },
-                                    )
+                                    +deleteFormQuestion(viewingId, viewRow?.let { otherOwnerOf(it, selfUserId) })
                                 }
                                 Button {
                                     danger = true

@@ -10,9 +10,9 @@ import com.dynamicruntime.common.util.toOptStr
 // (issue #978) and the frontend all apply one rule. They read maps and nothing else.
 
 /**
- * The workflow ids [entries] say this form is currently engaged with (issue #794; in the kernel since #1452, so the forms page reads it by the same rule) -- read from the asserted
+ * The workflow ids [entries] say this form is currently engaged with (issue #794) -- read from the asserted
  * [WFS.workflowEngagement] entries, in the order they appear. A disengaged entry ([WFS.engaged] false) keeps its
- * trail but is not engaged, so it is left out.
+ * trail but is not engaged, so it is left out. In the kernel since #1452, so the forms page reads it by the same rule.
  */
 fun engagedWorkflowIds(entries: List<Map<String, Any?>>): List<String> = entries
     .filter { it[GE.traitId].toOptStr() == WFS.workflowEngagement }

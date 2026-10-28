@@ -24,6 +24,11 @@ import com.dynamicruntime.common.gedra.workflow.WSC
 import com.dynamicruntime.common.gedra.workflow.WVF
 import com.dynamicruntime.common.gedra.workflow.WfEntry
 import com.dynamicruntime.common.gedra.workflow.WfSaveKind
+import com.dynamicruntime.common.gedra.workflow.WfParams
+import com.dynamicruntime.common.gedra.workflow.WfVisibility
+import com.dynamicruntime.common.gedra.workflow.WfWindow
+import com.dynamicruntime.common.gedra.workflow.WfWindows
+import com.dynamicruntime.common.gedra.workflow.WorkflowParamsService
 import com.dynamicruntime.common.gedra.workflow.computeCFactsFromData
 import com.dynamicruntime.common.gedra.workflow.userHasLabel
 import com.dynamicruntime.common.http.request.ROLE
@@ -37,6 +42,7 @@ import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
+import kotlin.time.Duration.Companion.hours
 
 /**
  * Forms kept to their owner (issue #1433): a client's workflow maps one of its own cfacts onto `kdr:ownerOnly`, and
@@ -218,6 +224,53 @@ class OwnerOnlyTest : StringSpec({
         // Withdrawn by its owner, it is in no workflow, and the editor deletes it.
         owner.postData(GEP.workflowEngage, mapOf(GDF.gedraId to open, GDF.workflowId to "privateReview", WFS.engaged to false))
         editor.deleteData(GEP.formDoc, mapOf(GDF.gedraId to open))[GDF.gedraId] shouldBe open
+    }
+
+    // A client of its own for the workflows whose parameters these cases change, so the review above is untouched.
+    val other = "editordel1452"
+    val setup = cxt.mkSubContext("setup", other).also { it.userId = 14520L }
+    GedraConfigService.get(cxt).writeConfig(
+        setup,
+        gedraConfig(cxt, "${other}cfg", clientNamespace(other), other) {
+            defineClient(
+                ClientDef(
+                    clientId = other, name = other, usageType = ClientUsageType.dev, audience = ClientAudience.customer,
+                    enabledEnvironments = setOf(ENV.unit, ENV.local),
+                ),
+            )
+            trait("BriefEntry", "brief", setOf(GedraDataType.formDoc), "A brief.") {
+                property("text", "What the brief says.") { type = SCT.string }
+            }
+            workflow("hidden", WfEntry.normal) { task("read", "Read it") { trait("brief"); save("go", "Save", WfSaveKind.edit) } }
+            workflow("ended", WfEntry.normal) { task("read", "Read it") { trait("brief"); save("go", "Save", WfSaveKind.edit) } }
+        },
+    )
+    GedraConfigReload.reloadClient(cxt, other)
+    val otherOwner = TestUser.create(cxt, "owner@$other.test", userClient = other)
+    val otherEditor = TestUser.create(cxt, "editor@$other.test", capabilities = listOf(ROLE.editor), userClient = other)
+    val otherAdmin = TestUser.create(cxt, "admin@$other.test", level = ROLE.admin, userClient = other)
+    fun brief(): String = otherOwner.postItem(
+        GEP.formDocCreate, mapOf(GDF.entries to listOf(mapOf(GE.traitId to "brief", GE.data to mapOf("text" to "b")))),
+    )[GDF.gedraId].toOptStr()!!
+
+    "a workflow the editor does not see still holds the form, and the refusal does not name it (issue #1452 review)" {
+        WorkflowParamsService.get(cxt).save(setup, other, "hidden", WfParams(visibility = WfVisibility.adminsOnly))
+        val gid = brief()
+        otherAdmin.postData(GEP.workflowEngage, mapOf(GDF.gedraId to gid, GDF.workflowId to "hidden"))
+        otherEditor.expectError(EXC.notAuthorized, GEP.formDoc, args = mapOf(GDF.gedraId to gid), method = HttpMethod.DELETE)[
+            "errorMessage"].toOptStr() shouldBe "Only this form's owner or an administrator may delete it."
+    }
+
+    "an engagement with a workflow past its lifetime holds no work, so the editor deletes the form (issue #1452 review)" {
+        val gid = brief()
+        otherOwner.postData(GEP.workflowEngage, mapOf(GDF.gedraId to gid, GDF.workflowId to "ended"))
+        otherEditor.expectError(EXC.notAuthorized, GEP.formDoc, args = mapOf(GDF.gedraId to gid), method = HttpMethod.DELETE)
+        // Its lifetime closed an hour ago: the engagement stays stored, but nothing is under way.
+        val now = cxt.instanceNow()
+        WorkflowParamsService.get(cxt).save(
+            setup, other, "ended", WfParams(WfWindows(lifetime = WfWindow(now - 2.hours, now - 1.hours))),
+        )
+        otherEditor.deleteData(GEP.formDoc, mapOf(GDF.gedraId to gid))[GDF.gedraId] shouldBe gid
     }
 
     "a form kept to its owner with no workflow is still not an editor's to delete" {

@@ -802,10 +802,20 @@ fun createsFormsForOthers(config: HomeConfig): Boolean = config.canManageUsers |
  * administrator deletes any; a caller with a [limitedDelete] -- anyone but an administrator, an editor included --
  * deletes its own ([selfUserId]), and another user's only while the form is in no workflow, by the kernel's own
  * reading of the engagement ([engagedWorkflowIds]). [states] are the ones the listing was shown, which leave out a
- * retired workflow's, as the backend's rule does. Pure, covered under `jsNodeTest`.
+ * retired workflow's, as the backend's rule does -- or null when the row carried none (the single-form read), and then
+ * nothing says the form is free, so another user's is not offered. Pure, covered under `jsNodeTest`.
  */
-fun mayDeleteForm(ownerId: Long?, selfUserId: Long?, limitedDelete: Boolean, states: List<Map<String, Any?>>): Boolean =
-    !limitedDelete || (ownerId != null && ownerId == selfUserId) || engagedWorkflowIds(states).isEmpty()
+fun mayDeleteForm(ownerId: Long?, selfUserId: Long?, limitedDelete: Boolean, states: List<Map<String, Any?>>?): Boolean =
+    !limitedDelete || (ownerId != null && ownerId == selfUserId) || (states != null && engagedWorkflowIds(states).isEmpty())
+
+/**
+ * Whose the form [row] is, for a delete question, when it is not [selfUserId]'s (issue #1452) -- [otherOwnerLabel] read
+ * straight off the row's `userId` and `owner` block, without summarizing the rest of it.
+ */
+fun otherOwnerOf(row: Map<String, Any?>, selfUserId: Long?): String? {
+    val owner = row[GDF.owner].toJsonMapOrEmpty()
+    return otherOwnerLabel(row[GDF.userId].toOptLong(), selfUserId, owner[DUF.name] as? String, owner[DUF.email] as? String)
+}
 
 class FormSummary(
     val gedraId: String,
