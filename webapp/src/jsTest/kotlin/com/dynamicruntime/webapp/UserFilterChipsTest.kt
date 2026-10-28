@@ -56,6 +56,17 @@ class UserFilterChipsTest {
     }
 
     @Test
+    fun aPickedPersonaOrRoleReadsAsItsLabel() {
+        // The picked value's label, as the picker showed it (issue #1432); a list-valued field says `include`.
+        assertEquals(
+            listOf("Persona is \"Editor\"", "Roles include \"All clients\""),
+            userFilterChips(mapOf(USF.persona to "editor", USF.roles to "allClients"), emptyMap()),
+        )
+        // A value no choice names, from a hand-edited link, shows as it came rather than vanishing.
+        assertEquals(listOf("Persona is \"B\""), userFilterChips(mapOf(USF.persona to "B"), emptyMap()))
+    }
+
+    @Test
     fun theSortIsItsOwnChipAndOnlyWhenNotTheDefault() {
         // The default -- newest edit first -- is not a chip.
         assertNull(userSortChip(USF.lastEdited.at, descending = true))

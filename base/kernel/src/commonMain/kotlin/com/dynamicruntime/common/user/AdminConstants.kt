@@ -457,14 +457,14 @@ object USF {
     const val name = "name"
 
     /**
-     * Case-insensitive **substring** of the persona or the personaSuffix (issue #750) -- `admin`, or the `B` of a UAT
-     * batch -- so a console box finds a person's administrator user, or one member of a batch.
+     * Case-insensitive **exact** persona (issue #750; a picker since #1432) -- `admin` finds a person's administrator
+     * user. The personaSuffix (the `B` of a UAT batch) is matched by the free-text `q`, which also matches the persona.
      */
     const val persona = "persona"
 
     /**
-     * Case-insensitive **substring** of any one of the roles a user holds (issue #1432) -- `editor` finds every editor,
-     * `admin` every administrator. The roles the row holds, not those it satisfies: an administrator satisfies
+     * Case-insensitive **exact** match of any one of the roles a user holds (issue #1432) -- `editor` finds every
+     * editor, `admin` every administrator. The roles the row holds, not those it satisfies: an administrator satisfies
      * `editor` without holding it, and is found by `admin`. Not part of the free-text `q`, where `user` would match
      * every account.
      */

@@ -13,6 +13,8 @@ import com.dynamicruntime.common.user.PERSONA
 import com.dynamicruntime.common.user.PERSONASUFFIX
 import com.dynamicruntime.common.user.USF
 import com.dynamicruntime.common.user.UserFilterKind
+import com.dynamicruntime.common.user.UserFilterOption
+import com.dynamicruntime.common.user.UserSearchFieldSpec
 import com.dynamicruntime.common.user.normalizeUserLabels
 import com.dynamicruntime.common.user.userLabelChoices
 import com.dynamicruntime.common.user.userSearchFieldSpecs
@@ -1129,11 +1131,12 @@ val Users = FC<Props> {
                                 onChange = { event -> setText(spec.name, event.target.value as String, immediate = false) }
                             }
                             UserFilterKind.exact -> Select {
-                                // Exact fields render as a picker; today only the client, whose options are the
-                                // clients this caller may choose among.
+                                // Exact fields render as a picker: of the spec's own choices (the persona, the
+                                // roles; issue #1432), else of the clients this caller may choose among.
                                 value = (textFilters[spec.name] ?: "").ifEmpty { null }
-                                options = clientOptions(clientChoices)
-                                placeholder = "Any ${spec.label.lowercase()}"
+                                options = spec.options?.let { filterOptions(it, showClient) } ?: clientOptions(clientChoices)
+                                // "Any roles" would misread a list-valued field; its label above says which.
+                                placeholder = if (spec.listValued) "Any" else "Any ${spec.label.lowercase()}"
                                 allowClear = true
                                 style = js("({ minWidth: 180 })")
                                 onChange = { v -> setText(spec.name, v as? String ?: "", immediate = true) }
@@ -1307,13 +1310,36 @@ fun userFilterChips(texts: Map<String, String>, ranges: Map<String, DateRange>):
     userSearchFieldSpecs.mapNotNull { spec ->
         when (spec.filterKind) {
             UserFilterKind.substring -> textChip(spec.label, texts[spec.name], contains = true)
-            UserFilterKind.exact -> textChip(spec.label, texts[spec.name], contains = false)
+            UserFilterKind.exact -> exactChip(spec, texts[spec.name])
             UserFilterKind.dateRange -> ranges[spec.name]?.let { r ->
                 rangeChip(spec.label, r.after?.let(::formatTimestamp), r.before?.let(::formatTimestamp))
             }
             null -> null
         }
     }
+
+/**
+ * An exact filter as a chip (issue #1432): its choice's label where the spec has choices (`Persona is "Editor"`), and
+ * `include` for a list-valued field (`Roles include "Editor"`). A value no choice names (a hand-edited link) shows as
+ * it came. Pure, and covered under `jsNodeTest`.
+ */
+fun exactChip(spec: UserSearchFieldSpec, value: String?): String? {
+    val v = value?.trim()?.ifEmpty { null } ?: return null
+    val shown = spec.options?.firstOrNull { it.value.equals(v, ignoreCase = true) }?.label ?: v
+    return if (spec.listValued) "${spec.label} include \"$shown\"" else textChip(spec.label, shown, contains = false)
+}
+
+/**
+ * The choices an exact filter's picker offers (issue #1432), without those for a cross-client caller alone unless
+ * [showAllClients].
+ */
+fun filterOptions(options: List<UserFilterOption>, showAllClients: Boolean): Array<dynamic> =
+    options.filter { showAllClients || !it.allClientsOnly }.map { option ->
+        val obj: dynamic = js("({})")
+        obj.label = option.label
+        obj.value = option.value
+        obj
+    }.toTypedArray()
 
 /**
  * The sort as a chip when it is not the default (issue #683) -- `Sorted by Name, A–Z`, `Sorted by Last login,

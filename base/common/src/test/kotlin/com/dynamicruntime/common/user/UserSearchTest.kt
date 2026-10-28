@@ -187,7 +187,20 @@ class UserSearchTest : StringSpec({
         searchUserRows(all, UserSearchCriteria(textTerms = mapOf(USF.email to "   "))).rows.size shouldBe 3
     }
 
-    "a roles substring finds every holder of a role, whatever their persona says (issue #1432)" {
+    "a persona is picked exactly, and its suffix is found by the free text (issue #1432)" {
+        val batchQ = user(30, "m@x.com", "m_m", updatedAt = t1).also { it.personaSuffix = "Q" }
+        val editor = user(31, "e@x.com", "e_e", updatedAt = t2).also { it.persona = PERSONA.editor }
+        val admin = user(32, "a@x.com", "a_a", updatedAt = t3).also { it.persona = PERSONA.admin }
+        val rows = listOf(batchQ, editor, admin)
+        ids(searchUserRows(rows, UserSearchCriteria(textTerms = mapOf(USF.persona to "EDITOR")))) shouldBe listOf(31L)
+        // Exact: a fragment is no persona.
+        ids(searchUserRows(rows, UserSearchCriteria(textTerms = mapOf(USF.persona to "adm")))) shouldBe emptyList()
+        // The suffix that tells a batch apart, and the persona itself, through the free text.
+        ids(searchUserRows(rows, UserSearchCriteria(anyText = "q"))) shouldBe listOf(30L)
+        ids(searchUserRows(rows, UserSearchCriteria(anyText = "edit"))) shouldBe listOf(31L)
+    }
+
+    "a role finds every holder of it, whatever their persona says (issue #1432)" {
         // A member later made an editor keeps the member persona, so only the roles can find them.
         val madeEditor = user(20, "m@x.com", "m_ed", updatedAt = t1).also {
             it.persona = PERSONA.member
@@ -203,6 +216,8 @@ class UserSearchTest : StringSpec({
         ids(searchUserRows(rows, UserSearchCriteria(textTerms = mapOf(USF.roles to "EDITOR")))).sorted() shouldBe
             listOf(20L, 21L)
         ids(searchUserRows(rows, UserSearchCriteria(textTerms = mapOf(USF.roles to "admin")))) shouldBe listOf(22L)
+        // Exact: a fragment is no role.
+        ids(searchUserRows(rows, UserSearchCriteria(textTerms = mapOf(USF.roles to "edit")))) shouldBe emptyList()
         // Not part of the free text: `user` there is a person being looked for, not the role every account holds.
         ids(searchUserRows(rows, UserSearchCriteria(anyText = "user"))) shouldBe emptyList()
     }

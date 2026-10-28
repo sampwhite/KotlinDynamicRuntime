@@ -590,8 +590,8 @@ private fun SchModuleBuilder.userReadEndpoints(usersPath: String, searchPath: St
                 "Exact client id to confine to. Only meaningful to an '${ROLE.allClients}' caller; anyone " +
                     "else is already confined to their own client.",
             )
-            field(USF.persona, "Case-insensitive substring to match against the persona or the personaSuffix.")
-            field(USF.roles, "Case-insensitive substring to match against any one of the roles the user holds.")
+            field(USF.persona, "The persona to match exactly (case-insensitive); the free text 'q' also finds the personaSuffix.")
+            field(USF.roles, "A role to match exactly (case-insensitive) against any one of the roles the user holds.")
             // One pair per date attribute, generated from the registry (issue #462) rather than written out:
             // the keys and the wording both follow the root, so adding a date adds its range with them.
             for (date in userDateFields) {

@@ -25,11 +25,12 @@ the console offers:
   finds the account, the behavior the old single search box had)
 - **client** — exact match; only meaningful to an `allClients` caller, since anyone else is already confined to
   their own client by scope
-- **persona** — case-insensitive substring of the persona or its suffix (issue #750), so `admin` finds the
-  administrators and `B` finds one member of a batch
-- **roles** — case-insensitive substring of any one of the roles a user holds (issue #1432), so `editor` lists the
-  editors whatever their persona. Filter-only: it is not sortable, and the free-text `q` leaves it out, since every
-  account holds `user`
+- **persona** — picked from the personas, matched exactly (issue #750; a picker since #1432), so Admin finds the
+  administrators. The suffix that tells a batch apart (`B`) is found by the free-text `q`, which matches it and the
+  persona as substrings
+- **roles** — picked from the roles, matching a user who holds that one (issue #1432), so Editor lists the editors
+  whatever their persona. Operator and All clients are offered only to an `allClients` caller. Filter-only: it is not
+  sortable, and the free-text `q` leaves it out, since every account holds `user`
 - **four date ranges**, each a from/to instant pair — edited, last login, registered, and activated
 
 The endpoint also takes axes the console does not show: `publicName`, a range over the update time, and `q`, one

@@ -62,10 +62,11 @@ class UserSearchField(
      */
     val sortOf: (AuthUserRow) -> Comparable<*>?,
     /**
-     * Whether the free-text term ([UserSearchCriteria.anyText]) looks at this field too. False for the roles, which
-     * every account shares (`user`), so a box for finding a person would match everyone.
+     * The texts the free-text term ([UserSearchCriteria.anyText]) matches as substrings, or null to leave the field out
+     * of it. By default a substring field's own [textsOf]. The persona is picked exactly but still found by free text,
+     * suffix and all (issue #1432); the roles are left out, since every account holds `user`.
      */
-    val inAnyText: Boolean = true,
+    val anyTextsOf: ((AuthUserRow) -> List<String>)? = textsOf.takeIf { substring },
 )
 
 /**
@@ -126,18 +127,19 @@ val userSearchFields: List<UserSearchField> = listOf(
     ),
     // Exact, not substring: the client is a picked id, not a fragment someone types.
     UserSearchField(USF.client, textsOf = { listOf(it.client) }, substring = false, sortOf = { it.client.lowercase() }),
-    // Which of a person's users this is (issue #750): the persona and the personaSuffix are matched separately, so
-    // `admin` finds the administrators and `B` finds one member of a batch; sorted as the label the console
-    // shows (`Member B`), so a batch sorts together.
+    // Which of a person's users this is (issue #750): the persona, picked exactly (issue #1432), so `admin` finds the
+    // administrators. The free-text term matches the persona and the personaSuffix apart, so `B` finds one member of a
+    // batch. Sorted as the label the console shows (`Member B`), so a batch sorts together.
     UserSearchField(
-        USF.persona, textsOf = { listOfNotNull(it.persona, it.personaSuffix.ifEmpty { null }) }, substring = true,
+        USF.persona, textsOf = { listOf(it.persona) }, substring = false,
         sortOf = { (it.persona + " " + it.personaSuffix).trim().lowercase() },
+        anyTextsOf = { listOfNotNull(it.persona, it.personaSuffix.ifEmpty { null }) },
     ),
-    // The roles the row holds (issue #1432), each matched on its own, so `editor` finds an editor whatever persona
-    // they carry. The console offers no sort on it; the endpoint sorts it as the list reads.
+    // The roles the row holds (issue #1432), each matched exactly on its own, so `editor` finds an editor whatever
+    // persona they carry. The console offers no sort on it; the endpoint sorts it as the list reads.
     UserSearchField(
-        USF.roles, textsOf = { it.roles }, substring = true, sortOf = { it.roles.joinToString(", ").lowercase() },
-        inAnyText = false,
+        USF.roles, textsOf = { it.roles }, substring = false, sortOf = { it.roles.joinToString(", ").lowercase() },
+        anyTextsOf = null,
     ),
 ) + userDateFields.map { it.asSearchField() }
 
@@ -212,14 +214,14 @@ fun searchUserRows(rows: List<AuthUserRow>, criteria: UserSearchCriteria): UserS
             }
         }
     }
-    // The single "any text" term (issue #581): OR across every substring text field's texts, so one box finds a
-    // user by email, real name, username, or persona at once. The exact-match fields (client) are left out -- a client
-    // id is a picked value, not a fragment a person types into a search-for-a-user box.
+    // The single "any text" term (issue #581): OR across every field's free-text texts, so one box finds a user by
+    // email, real name, username, or persona at once. The client is left out -- a client id is a picked value, not a
+    // fragment a person types into a search-for-a-user box -- and so are the roles (see [UserSearchField.anyTextsOf]).
     criteria.anyText?.trim()?.lowercase()?.takeIf { it.isNotEmpty() }?.let { term ->
         matched = matched.filter { row ->
             userSearchFields.any { field ->
                 val textsOf = field.textsOf
-                field.substring && field.inAnyText && textsOf != null && textsOf(row).any { it.lowercase().contains(term) }
+                field.anyTextsOf?.invoke(row)?.any { it.lowercase().contains(term) } == true
             }
         }
     }
