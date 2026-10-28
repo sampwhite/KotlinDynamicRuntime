@@ -69,6 +69,9 @@ object WorkflowEngagement {
         val by = cxt.userProfile.userId
         val registry = SchemaService.get(cxt).cfactsFor(row.client)
         return GedraDataService.get(cxt).changeState(cxt, row) { current ->
+            // A form kept to its owner (issue #1433) is not put into or taken out of a workflow by an editor who may not
+            // change it: taking it out of the workflow that keeps it so would be a way around the rule.
+            OwnerOnly.requireMayChange(cxt, row, current)
             if (engaged && def != null) {
                 // Read off the freshly derived entry. Falling back to an evaluation is only for an entry that is
                 // somehow absent -- the deriver emits one for every declared normal workflow.

@@ -88,12 +88,13 @@ object WorkflowApi {
 
     /**
      * The traits of form [gedraId] locked for the caller (issue #857), from its own client's surface, resolved by the
-     * backend as the chip's lookup is -- what the raw editor draws read-only and may offer to override.
+     * backend as the chip's lookup is -- what the raw editor draws read-only and may offer to override -- and whether
+     * the whole form is kept to its owner from the caller (issue #1433).
      */
-    suspend fun fetchLocks(gedraId: String): List<TraitLock> {
+    suspend fun fetchLocks(gedraId: String): FormLocks {
         val path = fetchFormEndpoint(HttpMethod.GET.name, GEP.formDocLocks, formClientOf(gedraId))
             .endpoints.firstOrNull()?.path ?: GEP.formDocLocks
-        return parseTraitLocks(Http.getApi(path + queryString(mapOf(GDF.gedraId to gedraId)))[EP.results].toJsonMapOrEmpty()[WVF.lockedTraits])
+        return parseFormLocks(Http.getApi(path + queryString(mapOf(GDF.gedraId to gedraId)))[EP.results].toJsonMapOrEmpty())
     }
 
     /** The client's copy of a bare workflow path when a [client] is given, else the shared path. */

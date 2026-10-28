@@ -223,7 +223,7 @@ read than a data read. Inside a write's transaction, state is read from SQL unde
 | `withWorkflowSummary` (#791) | the workflow column's summary, computed over the state of every form the caller can see |
 | `POST /gedra/workflow/engage`, `POST /gedra/workflow/approve`, `POST /gedra/formDoc/recomputeState` | the form's state as it stands after the act (`WorkflowStates`) |
 | `GET /gedra/formDoc/states` (#1366) | one form's state as stored, with no recompute (`WorkflowStates`); with `includeRetired`, the entries of workflows that are not live too, named in `retiredWorkflows` |
-| `GET /gedra/formDoc/locks` (#857) | the traits locked for the caller, worked out from the form's state |
+| `GET /gedra/formDoc/locks` (#857) | the traits locked for the caller, worked out from the form's state, and `keptToOwner` when the whole form is (#1433) |
 | `GET /gedra/formDoc/singletonWorkflows` (#789) | the engaged workflows behind a Needs Review or Finished chip |
 | `GET /admin/gedraState` (#600) | one gedra's state entries, for an administrator of every client |
 
@@ -253,8 +253,18 @@ state can outlive a cfact. Those names join the request's facts when an expressi
 - **Locks.** A `WfLock` is active while the form is engaged with its workflow, the workflow is within its lifetime, and
   the lock's `when` expression matches the form's cfacts together with the workflow's stored cfacts and singletons
   (`TraitLocks.heldFor`). Nothing about a lock is stored, so lifting one writes nothing.
+- **Kept to its owner** (#1433). The framework singleton `kdr:ownerOnly`, emitted like `kdr:needsReview` and
+  `kdr:finished` through a normal workflow's singleton rule, lands in the form's `kdr:cfacts`. While it is there, an
+  **editor** (see [`client-definition.md`](../client-definition.md#users-clients-and-personas)) may change the form only as
+  its owner (the person rule of the second-person check) or as a reviewer of an engaged workflow's current task.
+  `OwnerOnlyGuard`, a write guard, refuses every other editor's patch, workflow save and delete under the form's lock,
+  and engaging or withdrawing the form is refused the same way, since withdrawing it from the workflow that keeps it
+  so would be a way around the rule. Administrators are unaffected, and an ordinary user reaches only their own forms
+  anyway. Nothing about the reviewer is stored: once the workflow moves past their task, they are kept out again.
+  `OwnerOnly.keepsOut` is the one computation behind the refusal, the locks answer's `keptToOwner`, and the workflow
+  view's, so a page draws read-only exactly what would be refused.
 - **The workflow view** reads the form's state once, for where the form stands with the workflow, its locked traits,
-  and its approvals.
+  its approvals, and whether it is kept to its owner from the caller.
 
 **Reports.** A report reads state through its `workflow.<workflowId>.<attr>` paths (`category`, `engaged`, `eligible`,
 `finished`, `tasksDone`, `ctaTask`, `lastEngagedAt`, and an approval task's `approved`, `approvedAt`, `approvedBy`) and

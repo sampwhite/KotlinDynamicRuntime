@@ -606,6 +606,12 @@ unrestricted scope). The rules that follow from that:
   returns to the listing the page was launched from **as it was**, never to the user's client's listing: that
   switched the admin's Client selector to a client they never chose, and the cross-client view shows the new
   row with its Client column anyway.
+  Within the caller's own client, **New form** and the creation workflow offer a user picker
+  (`FormUserPicker`) to whoever `createsFormsForOthers` admits: an administrator or an editor (#1433).
+- **A form kept to its owner** (`kdr:ownerOnly`, #1433) is read-only for an editor who is neither its owner
+  nor a reviewer of its current work: the locks answer and the workflow view say `keptToOwner`, the raw editor
+  draws the form uneditable, and the workflow pages offer no Save or Engage, each saying why once
+  (`TraitLockCopy.keptToOwner`, the server's refusal word for word).
 - **A workflow's listing is its own page** (`page=workflowForms`, issue #792): where a count on the Workflows
   page leads. `FormsPage` draws it in workflow mode -- the workflow as heading, a state switch, `← Workflows` --
   with the workflow and state riding the address as search keys (`formsDrillKeys`) so showing more, sorting and a client

@@ -56,18 +56,18 @@ val NewFormPage = FC<Props> {
     // Named to avoid colliding with the `Button { loading = running }` prop below: an unqualified `loading`
     // inside that builder resolves to this local and fires its setter on every render — an infinite loop.
     var loadingSchema by useState(true)
-    // Whether the caller is an admin who may create for another user (issue #727), and who they picked. The form
-    // is still built in the caller's own client, so the picker only chooses whose form it is; absent is the
-    // ordinary self-create. Defaults off, so an ordinary caller (and any failure to read the home config) gets no
-    // picker.
-    var canManageUsers by useState(false)
+    // Whether the caller may create for another user -- an administrator or an editor (issues #727, #1433) -- and
+    // who they picked. The form is still built in the caller's own client, so the picker only chooses whose form it
+    // is; absent is the ordinary self-create. Defaults off, so an ordinary caller (and any failure to read the home
+    // config) gets no picker.
+    var createsForOthers by useState(false)
     var pickedUser by useState<AdminUser?>(null)
 
     useEffectOnce {
         // Whether to offer the create-for-user picker (issue #727): its own coroutine, never awaited before the
         // form loads (issue #727 review) -- it only decides whether a picker is drawn, so neither its latency nor
         // a stall may hold the create on "Loading…". The picker appears when the answer lands; a failure hides it.
-        formScope.launch { canManageUsers = apiResult { HomeApi.fetchConfig().canManageUsers }.valueOr(false) }
+        formScope.launch { createsForOthers = apiResult { createsFormsForOthers(HomeApi.fetchConfig()) }.valueOr(false) }
         formScope.launch {
             try {
                 // Just this one endpoint's closure, resolved to the caller's own client-scoped copy of the bare
@@ -114,12 +114,13 @@ val NewFormPage = FC<Props> {
                 p {
                     className = ClassName("subtitle")
                     +("Add a section for each trait this form should carry, fill it in, and create the form." +
-                        if (canManageUsers) " Leave the user blank to create it for yourself." else "")
+                        if (createsForOthers) " Leave the user blank to create it for yourself." else "")
                 }
 
-                // Create for another user (issue #727), admin-only: the picker chooses whose form it is; the
-                // form itself is still built in this client's rules. Blank creates it for the caller.
-                if (canManageUsers) {
+                // Create for another user (issue #727), an administrator's or an editor's (issue #1433): the picker
+                // chooses whose form it is; the form itself is still built in this client's rules. Blank creates it
+                // for the caller.
+                if (createsForOthers) {
                     FormUserPicker { onPick = { pickedUser = it } }
                 }
 

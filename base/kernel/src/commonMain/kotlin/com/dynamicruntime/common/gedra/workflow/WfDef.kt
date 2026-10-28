@@ -231,6 +231,13 @@ object WVF {
     const val lockedTraits = "lockedTraits"
     const val canOverride = "canOverride"
 
+    /**
+     * On a view resolved against a form, and the locks endpoint's answer (issue #1433): true when the whole form is
+     * read-only for this caller -- kept to its owner (`kdr:ownerOnly`), and the caller an editor who is neither its
+     * owner nor a reviewer of its current work. Absent (false) otherwise. A view that says so offers no Save.
+     */
+    const val keptToOwner = "keptToOwner"
+
     /** On a locked trait (issue #857): its name as the pages head it -- its title, else its id humanized. */
     const val traitName = "traitName"
 
@@ -958,7 +965,7 @@ object WfDefSchema {
         type(WFD.singletonType) {
             type = SCT.kObject
             description = "One singleton-cfact rule of a normal workflow: a framework singleton cfact, and when it is emitted."
-            property(WFD.cfact, "The framework singleton cfact emitted (needsReview, finished).", required = true)
+            property(WFD.cfact, "The framework singleton cfact emitted (needsReview, finished, ownerOnly).", required = true)
             property(WFD.kWhen, "The cfact expression over the workflow's current cfacts that emits it.", required = true)
         }
         type(WFD.approvalType) {

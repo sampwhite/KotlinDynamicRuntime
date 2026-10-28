@@ -146,7 +146,9 @@ button; for anyone else, a line saying a committee member accepts the talk.
 **A singleton.** The `singletons` list turns the workflow's own fact into one about the whole form: once
 `talkAccepted` holds, the form has `kdr:finished`, and the forms list shows the talk as **Finished**. That is a
 different thing from the workflow finishing, which it does when its tasks are complete, as any workflow does. The
-singleton is what lets a workflow decide that the *talk* is done.
+singleton is what lets a workflow decide that the *talk* is done. The framework has three such facts a workflow
+may map its own onto: `kdr:needsReview` and `kdr:finished`, which the forms list shows as **Needs Review** and
+**Finished**, and `kdr:ownerOnly`, which keeps a form to its owner, its reviewers, and administrators.
 
 ## What the speaker sees
 

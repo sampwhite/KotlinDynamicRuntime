@@ -1,5 +1,6 @@
 package com.dynamicruntime.webapp
 
+import com.dynamicruntime.common.gedra.workflow.TraitLockCopy
 import com.dynamicruntime.common.gedra.workflow.WfPhase
 import com.dynamicruntime.common.gedra.GDF
 import com.dynamicruntime.common.schema.LAYSTR
@@ -536,7 +537,8 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
             }
             // A step with fields this caller may not change (issue #856): say so, rather than leave a read-only
             // panel among editable ones looking broken.
-            if (!task.canSave && task.traits.isNotEmpty()) {
+            // A form kept to its owner says so once, above (issue #1433), rather than on every step.
+            if (!task.canSave && task.traits.isNotEmpty() && !wf.keptToOwner) {
                 p {
                     className = ClassName("subtitle")
                     +"Someone else completes this step; you can see it here."
@@ -864,9 +866,12 @@ private fun ChildrenBuilder.designFramed(
 
 /**
  * Why a normal workflow's tasks are read-only on this page (issue #791), or null when they are not (or the view is
- * a creation or survey). Pure, and covered under `jsNodeTest`.
+ * a creation or survey) -- or, for any view, that the form is kept to its owner from this caller (issue #1433). Pure,
+ * and covered under `jsNodeTest`.
  */
 fun workflowNote(wf: WorkflowView): String? = when {
+    // Kept to its owner (issue #1433): said once for the whole form, whatever kind of workflow draws it.
+    wf.keptToOwner -> TraitLockCopy.keptToOwner
     !wf.isNormal || wf.canWork -> null
     wf.canEngage -> "This form is not in this workflow yet. Engage it to start."
     wf.engaged == false && wf.eligible == false -> "This form cannot be put into this workflow yet:"

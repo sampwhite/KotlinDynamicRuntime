@@ -91,6 +91,8 @@ val EditFormPage = FC<Props> {
     // The form's traits locked for this caller (issue #857): drawn as a notice, and a changed section of one is sent
     // only as an explicit override -- by someone the lock allows -- with a reason.
     var locks by useState<List<TraitLock>>(emptyList())
+    // The whole form kept to its owner from this caller (issue #1433): drawn read-only, with the reason said once.
+    var keptToOwner by useState(false)
     var overriding by useState(false)
     var overrideReason by useState("")
     var lockError by useState<String?>(null)
@@ -122,6 +124,7 @@ val EditFormPage = FC<Props> {
         seeded = emptyMap()
         hasSurvey = false
         locks = emptyList()
+        keptToOwner = false
         overriding = false
         overrideReason = ""
         lockError = null
@@ -157,7 +160,9 @@ val EditFormPage = FC<Props> {
                     // The locks (issue #857), likewise never awaited: they only decorate the editor, and the backend
                     // refuses a locked change whatever is drawn.
                     editScope.launch {
-                        locks = apiResult { WorkflowApi.fetchLocks(id) }.valueOr(emptyList())
+                        val answer = apiResult { WorkflowApi.fetchLocks(id) }.valueOr(FormLocks())
+                        locks = answer.traits
+                        keptToOwner = answer.keptToOwner
                     }
                     editScope.launch {
                         hasSurvey = apiResult {
@@ -277,23 +282,33 @@ val EditFormPage = FC<Props> {
                 +"This account's surface has no way to edit forms."
             }
             else -> {
-                p {
-                    className = ClassName("subtitle")
-                    +("Change an entry's fields, add a section for a new trait, or switch a section to delete. " +
-                        "Save sends only the sections you leave in place; Reset drops what you have changed; " +
-                        "Done returns to the forms listing.")
+                if (keptToOwner) {
+                    // Kept to its owner (issue #1433): the whole form read-only, said once, in the guard's words.
+                    div {
+                        className = ClassName("lock-notice")
+                        p { +TraitLockCopy.keptToOwner }
+                    }
+                } else {
+                    p {
+                        className = ClassName("subtitle")
+                        +("Change an entry's fields, add a section for a new trait, or switch a section to delete. " +
+                            "Save sends only the sections you leave in place; Reset drops what you have changed; " +
+                            "Done returns to the forms listing.")
+                    }
                 }
 
                 // The traits locked for this caller (issue #857): named, with the workflow locking each, so a refused
                 // save is never a surprise. Each locked section is marked too, and the override -- for someone a
-                // lock allows -- sits by Save, where the refusal it answers appears.
-                val overridable = locks.any { it.canOverride }
-                if (locks.isNotEmpty()) {
+                // lock allows -- sits by Save, where the refusal it answers appears. None of it on a form kept to its
+                // owner (issue #1433): nothing of it can be changed, which the notice above already says.
+                val shownLocks = if (keptToOwner) emptyList() else locks
+                val overridable = shownLocks.any { it.canOverride }
+                if (shownLocks.isNotEmpty()) {
                     div {
                         className = ClassName("lock-notice")
                         p {
-                            +("Locked for you: " + locks.joinToString("; ") { "${it.name} (by ${it.label})" } +
-                                ". Changes to ${if (locks.size == 1) "it" else "them"} can't be saved" +
+                            +("Locked for you: " + shownLocks.joinToString("; ") { "${it.name} (by ${it.label})" } +
+                                ". Changes to ${if (shownLocks.size == 1) "it" else "them"} can't be saved" +
                                 if (overridable) " unless you override the lock, by Save." else ".")
                         }
                     }
@@ -302,7 +317,8 @@ val EditFormPage = FC<Props> {
                 SchemaForm {
                     type = targetType
                     this.values = values
-                    editable = true
+                    // Nothing to change on a form kept from this caller (issue #1433); with no change, Save stays off.
+                    editable = !keptToOwner
                     friendly = true
                     // Promote a keyed trait's primary key out of `data`, up beside the trait choice (issue #642).
                     promoteKeys = true
@@ -315,7 +331,7 @@ val EditFormPage = FC<Props> {
                     // The gedra id is the form being edited, not something to retype; it is seeded and hidden.
                     omit = listOf(GDF.gedraId)
                     // A locked section says so on itself (issue #857), where the person editing it is looking.
-                    elementNote = { _, element -> lockNoteFor(locks, element[GE.traitId].toOptStr()) }
+                    elementNote = { _, element -> lockNoteFor(shownLocks, element[GE.traitId].toOptStr()) }
                     // Let the trait be typed, not only chosen, when this is the cross-client admin surface (#667).
                     this.openTraitEntry = openTraitEntry
                     this.failures = failures
@@ -335,7 +351,8 @@ val EditFormPage = FC<Props> {
                         loading = running
                         // Nothing to send while the fields hold what is stored -- right after a load, and right after
                         // a save that re-seeded them -- so Save waits for a change rather than posting an empty patch.
-                        disabled = !dirty
+                        // Nor on a form kept to its owner (issue #1433), whose answer may land after typing began.
+                        disabled = !dirty || keptToOwner
                         onClick = {
                             val check = checkInput(targetType, values)
                             // An addOrReplace must carry complete data; checkInput does not demand it (the edit's
@@ -412,9 +429,11 @@ val EditFormPage = FC<Props> {
                                         running = false
                                         // The locks may have moved with the save, or beside it -- a review finished,
                                         // a form engaged (issue #857 review) -- so they are asked again, never awaited.
-                                        val before = locks
                                         editScope.launch {
-                                            locks = apiResult { WorkflowApi.fetchLocks(id) }.valueOrNull() ?: before
+                                            apiResult { WorkflowApi.fetchLocks(id) }.valueOrNull()?.let { answer ->
+                                                locks = answer.traits
+                                                keptToOwner = answer.keptToOwner
+                                            }
                                         }
                                     }
                                 }

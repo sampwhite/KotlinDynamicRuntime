@@ -31,6 +31,7 @@ import com.dynamicruntime.common.gedra.workflow.WFC
 import com.dynamicruntime.common.gedra.workflow.WorkflowEngagement
 import com.dynamicruntime.common.gedra.workflow.WfEventType
 import com.dynamicruntime.common.gedra.workflow.WorkflowService
+import com.dynamicruntime.common.gedra.workflow.OwnerOnly
 import com.dynamicruntime.common.gedra.workflow.TraitLocks
 import com.dynamicruntime.common.gedra.workflow.WorkflowTaskJudge
 import com.dynamicruntime.common.gedra.workflow.taskEntriesOf
@@ -606,11 +607,11 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
         // only themselves -- see [resolveTargetUser]), or the caller when no user is named. The target's client
         // is the one whose traits the import validates against.
         val targetRow = resolveTargetUser(c, request, callerScope)
-        // Importing makes forms, so importing for somebody else is creating forms for them: an administrator's, as
-        // `createForUserCxt` holds the create to. Reach alone does not grant it -- an editor (issue #1432) reaches every
-        // user of its client and creates forms for none of them.
-        if (targetRow != null && targetRow.userId != c.userProfile.userId && !AdminRules.canManageUsers(c)) {
-            throw KdrException("Importing forms for another user takes an administrator.", code = EXC.notAuthorized)
+        // Importing makes forms, so importing for somebody else is creating forms for them: held to whom
+        // `createForUserCxt` holds the create to -- an administrator, or an editor (issue #1433). Reach alone does not
+        // grant it; the target was resolved in the caller's scope, which is what confines an editor to its client.
+        if (targetRow != null && targetRow.userId != c.userProfile.userId && !AdminRules.createsFormsForOthers(c)) {
+            throw KdrException("Importing forms for another user takes an administrator or an editor.", code = EXC.notAuthorized)
         }
         val target = if (targetRow == null) {
             Triple(c.userProfile.client, c.userProfile.userId, c.userProfile.org)
@@ -814,7 +815,9 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
             val ownerAttributes = prefillOwnerAttributes(c, declared, row?.userId ?: c.userId)
             // A form's approvals (issue #787) -- only read when the workflow has an approval task.
             val approvals = WorkflowApprovals.forView(c, declared.def, row?.gedraId?.fullId)
-            resolveWorkflowView(c, declared, entriesByTask, ownerAttributes, approvals, formFacts, lockedTraits)
+            // Kept to its owner (issue #1433): the whole form read-only for this caller, as the guard would refuse a save.
+            val keptToOwner = row != null && states != null && OwnerOnly.keepsOut(c, row, states)
+            resolveWorkflowView(c, declared, entriesByTask, ownerAttributes, approvals, formFacts, lockedTraits, keptToOwner)
         }
     }
 
@@ -1040,12 +1043,15 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
                 property(WVF.canOverride, "Whether this caller may override the lock, with a reason.", required = true) { type = SCT.boolean }
             }
         }
+        property(WVF.keptToOwner, "True when the whole form is read-only for the caller: kept to its owner and its reviewers.") {
+            type = SCT.boolean
+        }
     }
 
     generalEndpoint(
         GEP.formDocLocks,
         "Lists the traits of a form locked for the caller by the workflows it is engaged with, and whether the " +
-            "caller may override each lock.",
+            "caller may override each lock -- and, as keptToOwner, whether the whole form is read-only for the caller.",
         HttpMethod.GET,
         outputRef = GEP.formDocLocksType,
         inputFields = { field(GDF.gedraId, "The form.", required = true) },
@@ -1054,10 +1060,12 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
     ) { c, request ->
         val row = stateTargetRow(c, request)
         val states = GedraDataService.get(c).readState(c, row.gedraId, ReadScopeRules.forCaller(c))
-        mapOf(
-            GDF.gedraId to row.gedraId.fullId,
-            WVF.lockedTraits to TraitLocks.describe(c, row.client, TraitLocks.heldFor(c, row.client, row.entries, states)),
-        )
+        buildMap {
+            put(GDF.gedraId, row.gedraId.fullId)
+            put(WVF.lockedTraits, TraitLocks.describe(c, row.client, TraitLocks.heldFor(c, row.client, row.entries, states)))
+            // The whole form, read-only for this caller (issue #1433), by the computation the write's guard refuses by.
+            if (OwnerOnly.keepsOut(c, row, states)) put(WVF.keptToOwner, true)
+        }
     }
 
     // Recomputes one form's derived state on demand (issue #794). The batch job (issue #793, `stateRecomputeJob`)
@@ -1209,11 +1217,12 @@ private fun workflowDrillFilter(c: KdrCxt, request: Map<String, Any?>): GedraSta
  * as owner (client / user / org), with [c]'s actor left in place so `createdBy` stays the caller -- the same
  * owner/actor split (#325) `adminFormDocForUser` makes.
  *
- * Creating for someone else is an **admin** power, and confined to the caller's own scope: the user is resolved
- * through [ReadScopeRules.forCaller], so a client administrator reaches only their own client (narrowed to their
- * organization if they have one) and a cross-client or out-of-org id simply is not found. An ordinary user's
- * scope resolves only themselves, so they cannot name another. A disabled or deleted target is refused, as it
- * is on the `allClients` on-behalf endpoint -- such an account cannot log in to see or finish the form.
+ * Creating for someone else is an **administrator's or an editor's** power (issue #1433), and confined to the caller's
+ * own scope: the user is resolved through [ReadScopeRules.forCaller], so a client administrator or an editor reaches
+ * only their own client (narrowed to their organization if they have one) and a cross-client or out-of-org id simply is
+ * not found. An ordinary user's scope resolves only themselves, so they cannot name another. A disabled or deleted
+ * target is refused, as it is on the `allClients` on-behalf endpoint -- such an account cannot log in to see or finish
+ * the form.
  *
  * Shared by the plain create and the workflow create so the two enforce it identically; the section gate
  * (login) is unchanged, since this is a scope-and-privilege check within an endpoint an ordinary user may call
@@ -1229,10 +1238,10 @@ private fun createForUserCxt(c: KdrCxt, request: Map<String, Any?>): KdrCxt {
         ?: throw KdrException("No user matching '$ref'.", code = EXC.notFound)
     // Naming yourself is the ordinary self-create -- no escalation, no rebind.
     if (target.userId == c.userProfile.userId) return c
-    // Creating for another user is an administrator's power (client-scoped is enough; the scope above already
-    // confined *which* user). Checked after resolving so naming yourself never trips it.
-    if (!AdminRules.canManageUsers(c)) {
-        throw KdrException("Creating a form for another user requires an administrator.", code = EXC.notAuthorized)
+    // Creating for another user is an administrator's or an editor's power (client-scoped is enough; the scope above
+    // already confined *which* user). Checked after resolving so naming yourself never trips it.
+    if (!AdminRules.createsFormsForOthers(c)) {
+        throw KdrException("Creating a form for another user requires an administrator or an editor.", code = EXC.notAuthorized)
     }
     // Same client only (issue #727 review): these are the ordinary, client-scoped create surfaces -- the form is
     // built in and owned by `c.client`, so a target in another client would create it cross-client, stamped with

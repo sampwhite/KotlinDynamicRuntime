@@ -36,6 +36,17 @@ class TraitLockViewTest {
     }
 
     @Test
+    fun theLocksAnswerSaysWhenTheWholeFormIsKeptToItsOwner() {
+        // Issue #1433: the trait locks as before, and the whole form read-only only when the answer says so.
+        val kept = parseFormLocks(mapOf(WVF.lockedTraits to emptyList<Any?>(), WVF.keptToOwner to true))
+        assertTrue(kept.keptToOwner)
+        assertEquals(emptyList(), kept.traits)
+        val open = parseFormLocks(mapOf(WVF.lockedTraits to listOf(mapOf(WFD.traitId to "t", WFD.label to "W"))))
+        assertFalse(open.keptToOwner)
+        assertEquals(listOf("t"), open.traits.map { it.traitId })
+    }
+
+    @Test
     fun aLockCarriesTheNameTheServerGivesAndFallsBackToTheHumanizedId() {
         val locks = parseTraitLocks(
             listOf(
