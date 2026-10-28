@@ -21,6 +21,9 @@ object EXC {
     const val notFound = 404
     const val conflict = 409
 
+    /** The request's body is larger than its endpoint accepts (issue #1446). */
+    const val payloadTooLarge = 413
+
     /** The caller has made too many attempts and is being throttled (rate limiting). */
     const val tooManyRequests = 429
 

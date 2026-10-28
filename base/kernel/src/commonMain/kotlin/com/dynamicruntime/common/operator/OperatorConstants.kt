@@ -42,6 +42,12 @@ object OPS {
     /** Reports this node's in-memory table caches and the change dates every node shares. */
     const val cacheStatePath = "/${SECT.operator}/cache/state"
 
+    /**
+     * The endpoints that accept a request body larger than the default (issue #1446), with their full paths and the
+     * two limits: what a firewall in front of the deployment has to let through.
+     */
+    const val largeBodiesPath = "/${SECT.operator}/request/largeBodies"
+
     /** Forces this node's table cache(s) to reload now -- one table, or all. */
     const val cacheReloadPath = "/${SECT.operator}/cache/reload"
 

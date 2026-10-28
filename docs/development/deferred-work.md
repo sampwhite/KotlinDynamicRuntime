@@ -807,3 +807,13 @@ client waits for the nightly run.
   deployment's own database before raising it.
 - **An asynchronous launch from the page.** The same client launch with `JobRunMode.async`, answering at once, and
   the page following the launch row's progress until it ends.
+
+## When the node table exists
+
+The endpoints that accept a large request body are collected at boot and read from `GET /operator/request/largeBodies`
+(issue #1446), which a job keeping a firewall's rules in step can poll.
+
+- **Publish the large-body list in the node table** *(#1446, deferred here 2026-10-28).* Each node writes the
+  endpoints it accepts large bodies on, with the large-body maximum, so the Edge server and the other nodes can read
+  them without asking every node. The Edge server needs it once it enforces body limits of its own, which it does not
+  today.

@@ -319,6 +319,17 @@ non-2xx body is a standardized envelope (issue #103), built by `RequestHandler.e
 - **`extraData`** — whatever remains of the exception's bag (e.g. `offset` / `line` / `lineCol`), **nested**
   under its own key so it can never shadow a protocol field. Absent when empty.
 
+### Request body size (issue #1446)
+
+A JSON or form body is refused with **413** over `BODY.defaultMaxBytes` (16,000 bytes, a little under what a web
+application firewall commonly inspects), measured in bytes and checked before the body is read in full. An endpoint
+whose input may be a whole configuration -- the bundle write, the patch, and the import -- passes `largeBody = true`
+to `generalEndpoint`, and its body is held to the large-body maximum instead (`BODY.largeMaxBytesKey` in instance
+config, default 128 KB). The request service collects these at boot from the **static** endpoints only, so a client's
+own copy of an endpoint never widens the list, and it is read before the endpoint is resolved. A firewall in front of
+the deployment has to let the same endpoints through: `GET /operator/request/largeBodies` lists them with their full
+paths, the API context root included. Mark an endpoint only when its input genuinely is that large.
+
 ## Request context
 
 `cxt.request` (`KdrRequest?`) carries the original request data deep in the stack; `cxt.userProfile` carries

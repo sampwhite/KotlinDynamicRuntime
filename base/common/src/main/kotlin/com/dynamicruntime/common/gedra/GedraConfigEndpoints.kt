@@ -274,6 +274,8 @@ fun gedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CFEP.namespace
         CFEP.bundleWrite,
         "Writes a configuration from a whole bundle, applying the version/publish and diff-before-stamp rules.",
         HttpMethod.POST,
+        // Its input may be a whole configuration, past the default body limit (issue #1446).
+        largeBody = true,
         outputRef = CFEP.bundleType,
         inputRef = CFEP.bundleWriteType,
     ) { c, request -> inConfigScope(c, mutating = true) { cfgWriteBody(it, request) } }
@@ -287,6 +289,8 @@ fun gedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CFEP.namespace
             "patch would do without storing it, and an edit saying what its caller read is refused if that has " +
             "changed since (issue #1434).",
         HttpMethod.POST,
+        // Its input may be a whole configuration, past the default body limit (issue #1446).
+        largeBody = true,
         outputRef = CFEP.patchResultType,
         inputFields = { configPatchInput() },
     ) { c, request -> inConfigScope(c, mutating = true) { cfgPatchBody(it, request) } }
@@ -1192,6 +1196,8 @@ fun adminGedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, ACEP.name
         ACEP.bundleWrite,
         "Writes a named client's configuration from a whole bundle -- create or replace (issue #685).",
         HttpMethod.POST,
+        // Its input may be a whole configuration, past the default body limit (issue #1446).
+        largeBody = true,
         outputRef = "${CFEP.namespace}.${CFEP.bundleType}",
         inputRef = ACEP.writeType,
         // The one endpoint that may name a not-yet-existing client: writing a `clientDef` slot for a fresh id is
@@ -1204,6 +1210,8 @@ fun adminGedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, ACEP.name
             "delete over each latest revision, in one transaction judged together (issues #732, #1352); with a dry run " +
             "and a staleness check, as the client-scoped patch has (issue #1434).",
         HttpMethod.POST,
+        // Its input may be a whole configuration, past the default body limit (issue #1446).
+        largeBody = true,
         outputRef = "${CFEP.namespace}.${CFEP.patchResultType}",
         inputFields = {
             field(CFEP.client, "The client that owns the configuration.", required = true) { clientAttribute() }
@@ -1327,6 +1335,8 @@ fun adminGedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, ACEP.name
         "Bulk-imports a set of client configurations (issue #733): each client's bundles written and judged as one " +
             "set, testFeatures stripped+logged off a test instance, affected clients reloaded.",
         HttpMethod.POST,
+        // Its input may be a whole configuration, past the default body limit (issue #1446).
+        largeBody = true,
         outputRef = "${ACEP.namespace}.${ACEP.importResultType}",
         inputFields = {
             field(ACEP.bundlesField, "The configuration bundles to import, each `{${CFEP.client}, ${CFEP.name}, " +
