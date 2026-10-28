@@ -35,8 +35,7 @@ which is the first thing to use them, explains them.
     {
       "name": "committee",
       "label": "Committee member",
-      "persona": "admin",
-      "personaSuffix": "review",
+      "persona": "editor",
       "userLabels": ["committee"],
       "summary": "Review the talks whose survey is complete, and accept them."
     }
@@ -55,7 +54,7 @@ which is the first thing to use them, explains them.
 | `preload`, `staticConfig` | Two switches for production clients, both off here. |
 | `includedTraits` | The shared traits the client uses. Here there is one, `kdr:name`, the trait that gives a form its name. |
 | `userLabels` | Labels an administrator can put on a user. A workflow can ask whether a user has one; [Committee review](committee-review.md) asks for `committee`. |
-| `joinRoles` | The roles a visitor can join the demo as, on a site that offers joining. Joining gives the visitor a user of their own email in the client. Its `persona` decides whether that user is an ordinary user (`member`) or an administrator (`admin`). Its `personaSuffix` tells two administrator roles apart, so that one person can hold both, and its `userLabels` are put on the user. The Join page shows each role's `label` and `summary`. |
+| `joinRoles` | The roles a visitor can join the demo as, on a site that offers joining. Joining gives the visitor a user of their own email in the client. Its `persona` decides what kind of user that is: an ordinary user (`member`), an editor (`editor`), who sees and edits every form of the client but administers nothing, or an administrator (`admin`). The demo's three roles each take a different persona, so one person can hold all three. (Two roles of the same persona would each need a `personaSuffix` to tell them apart.) Its `userLabels` are put on the user. The Join page shows each role's `label` and `summary`. |
 
 ## Traits
 

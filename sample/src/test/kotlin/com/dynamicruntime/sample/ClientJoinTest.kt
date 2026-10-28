@@ -94,7 +94,7 @@ class ClientJoinTest : StringSpec({
         join(again, SC.acme, PERSONA.admin)[JOIN.userId] shouldBe result[JOIN.userId]
     }
 
-    "each conference-demo role is a user of its own, with the role's persona, suffix and labels" {
+    "each conference-demo role is a user of its own, with the role's persona, roles and labels" {
         val visitor = TestUser.create(reference, "conf@join1248.test")
         val committee = join(visitor, ConfDemo.client, ConfDemo.committeeRole)[JOIN.userId].toOptLong().shouldNotBeNull()
         val inPublic = TestUser.create(reference, "conf@join1248.test", userClient = CL.public)
@@ -102,8 +102,10 @@ class ClientJoinTest : StringSpec({
         organizer shouldNotBe committee
         val users = UserService.get(reference)
         val committeeRow = users.queryByUserId(reference, committee).shouldNotBeNull()
-        committeeRow.persona shouldBe PERSONA.admin
-        committeeRow.personaSuffix shouldBe ConfDemo.committeeSuffix
+        // An editor (issue #1455): the persona's roles, so it reaches every talk and is no administrator.
+        committeeRow.persona shouldBe PERSONA.editor
+        committeeRow.personaSuffix shouldBe ""
+        committeeRow.roles shouldBe listOf(ROLE.user, ROLE.editor)
         committeeRow.labels shouldBe listOf(ConfDemo.committeeLabel)
         val organizerRow = users.queryByUserId(reference, organizer).shouldNotBeNull()
         organizerRow.personaSuffix shouldBe ""

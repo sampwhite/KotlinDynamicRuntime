@@ -35,8 +35,7 @@ The client, its traits, its columns in the forms list, its shared type, its fact
         {
           "name": "committee",
           "label": "Committee member",
-          "persona": "admin",
-          "personaSuffix": "review",
+          "persona": "editor",
           "userLabels": ["committee"],
           "summary": "Review the talks whose survey is complete, and accept them."
         }

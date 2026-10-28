@@ -120,16 +120,13 @@ object ConfDemo {
     const val talkAccepted = "talkAccepted"
     const val cfactGroup = "confDemo"
 
-    /** The label an administrator carries to review talks. */
+    /** The label a committee member carries to review talks. */
     const val committeeLabel = "committee"
 
     // The roles a visitor joins the demo as (issue #1248).
     const val speakerRole = "speaker"
     const val organizerRole = "organizer"
     const val committeeRole = "committee"
-
-    /** A committee member's user is an administrator told apart from an organizer by this suffix (at most 8 characters). */
-    const val committeeSuffix = "review"
 
     // The client's own traits, and their fields.
     const val session = "session"
@@ -235,8 +232,8 @@ fun confDemoBase(cxt: KdrCxtBase = LiteCxt(), client: String = ConfDemo.client):
                     ClientJoinRole(
                         name = ConfDemo.committeeRole,
                         label = "Committee member",
-                        persona = PERSONA.admin,
-                        personaSuffix = ConfDemo.committeeSuffix,
+                        // An editor (issue #1455): it sees and edits every talk, and administers nothing.
+                        persona = PERSONA.editor,
                         userLabels = listOf(ConfDemo.committeeLabel),
                         summary = "Review the talks whose survey is complete, and accept them.",
                     ),
@@ -550,23 +547,27 @@ fun confDemoConfigs(cxt: KdrCxtBase = LiteCxt(), client: String = ConfDemo.clien
     )
 
 /**
- * Provisions the demo (issue #1137): each bundle written, published, and made live on every node, then an organizer and
- * a speaker to sign in as. [suffix] makes a fresh copy, `confdemo<suffix>` (see [SIM.suffix]).
+ * Provisions the demo (issue #1137): each bundle written, published, and made live on every node, then an organizer, a
+ * speaker, and a committee member to sign in as. [suffix] makes a fresh copy, `confdemo<suffix>` (see [SIM.suffix]).
  */
 fun provisionConfDemo(cxt: KdrCxt, suffix: String? = null): SimulationReport {
     val client = ConfDemo.client + Simulations.checkedSuffix(suffix)
     for (config in confDemoConfigs(cxt, client)) Simulations.provisionConfig(cxt, config)
     val organizer = Simulations.provisionUser(cxt, "organizer@$client.example", client, ROLE.admin, name = "Olive Organizer")
     val speaker = Simulations.provisionUser(cxt, "speaker@$client.example", client, ROLE.user, name = "Pat Speaker")
-    // Reviews talks (issue #1139): an administrator carrying the client's `committee` label.
-    val reviewer = Simulations.provisionUser(cxt, "committee@$client.example", client, ROLE.admin, name = "Casey Committee")
+    // Reviews talks (issue #1139): an editor (issue #1455) carrying the client's `committee` label.
+    val editor = listOf(ROLE.editor)
+    val reviewer = Simulations.provisionUser(cxt, "committee@$client.example", client, ROLE.user, name = "Casey Committee", capabilities = editor)
     Simulations.setLabels(cxt, reviewer, listOf(ConfDemo.committeeLabel))
     return SimulationReport(
         clients = listOf(client),
         users = listOf(
             Simulations.reported(speaker, ROLE.user, "a speaker -- submits talks"),
             Simulations.reported(organizer, ROLE.admin, "an organizer -- an administrator, who sees every talk"),
-            Simulations.reported(reviewer, ROLE.admin, "a committee member -- an administrator carrying the 'committee' label, who reviews and accepts talks"),
+            Simulations.reported(
+                reviewer, ROLE.user, "a committee member -- an editor carrying the 'committee' label, who reviews and accepts talks",
+                capabilities = editor,
+            ),
         ),
         startPage = "page=${HMENU.pageNewForm}",
         summary = "Client '$client' is ready. Sign in as the speaker to submit a talk.",
@@ -578,9 +579,9 @@ fun confDemoSimulationSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.co
     simulationEndpoint(
         ConfDemo.simulationName,
         "Provisions the conference demo -- the client the developer documentation in docs/demo-client walks through -- " +
-            "and a speaker and an organizer to sign in as. Give a suffix for a fresh copy (confdemo2), so you can change " +
-            "it without changing the one the documentation describes. A rerun rewrites that client's configuration; its " +
-            "users and forms stay.",
+            "and a speaker, an organizer and a committee member to sign in as. Give a suffix for a fresh copy (confdemo2), " +
+            "so you can change it without changing the one the documentation describes. A rerun rewrites that client's " +
+            "configuration; its users and forms stay.",
         inputFields = {
             field(SIM.suffix, "Appended to the client id for a fresh copy; lowercase letters and digits. Absent, the demo client itself.")
         },

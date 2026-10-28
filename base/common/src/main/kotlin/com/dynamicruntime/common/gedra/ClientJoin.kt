@@ -157,7 +157,7 @@ fun clientJoinSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, JOIN.namespace)
         description = "A role a visitor may join a demo client as."
         property(JOIN.name, "The role's id, to send when joining.", required = true)
         property(JOIN.label, "The role as the Join page names it.", required = true)
-        property(JOIN.persona, "The persona joining as the role gives (member or admin).", required = true)
+        property(JOIN.persona, "The persona joining as the role gives (member, editor or admin).", required = true)
         property(JOIN.summary, "A sentence on what the role does.", required = true)
         property(JOIN.userId, "The caller's user holding the role, when they have joined as it.") { type = SCT.integer }
         property(
