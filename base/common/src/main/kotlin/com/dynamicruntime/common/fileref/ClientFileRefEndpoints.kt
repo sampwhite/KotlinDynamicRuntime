@@ -151,6 +151,7 @@ fun clientFileRefSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, FREF.namespa
             "of the file -- the file store's, or for a local file what the disk says of it -- and none of its content. For a client with a sandbox these are the " +
             "sandbox's -- the latest revision, drafts included -- each saying whether the client's own people are " +
             "served it yet, and after them those its people are served that a draft removed (`${FREF.removedInDraft}`).",
+        publicApi = true,
         outputRef = FREF.refTypeName,
         // Bounded by the cap a write holds a client to.
         noLimit = true,
@@ -168,6 +169,7 @@ fun clientFileRefSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, FREF.namespa
             "SVG, ICO, JPEG or WebP -- that is what it says it is, up to the size a ref takes. The bytes are stored " +
             "under their hash and the ref's entry written into the client's stored configuration, in one call. Live " +
             "at once for a client without a sandbox; for one with, a draft its sandbox shows until it is published.",
+        publicApi = true,
         outputRef = FREF.changeTypeName,
         needsClientConfig = true,
         inputFields = {
@@ -316,6 +318,7 @@ fun clientFileRefSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, FREF.namespa
             "clients (those `${UADEP.clientFilesRoots}` lists). The deployment's answer and no client's -- it is " +
             "what a page asks before it offers to add a ref, so that it says what the backend will hold it to.",
         HttpMethod.GET,
+        publicApi = true,
         outputRef = FREF.takesTypeName,
         inputFields = { overseenClientField(FREF.client) },
         needsClientConfig = true,
@@ -360,6 +363,7 @@ fun clientFileRefSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, FREF.namespa
         "What the file of one of a client's file refs is, without the file (issue #1131): the record the listing " +
             "shows of it -- the file store's, or for a local file what the disk says of it now. The download's inputs " +
             "and the same 404s: no such ref, or its file is missing.",
+        publicApi = true,
         needsClientConfig = true,
         inputFields = {
             overseenClientField(FREF.client)

@@ -146,6 +146,18 @@ catalog. Noticeable because somebody sits down to write it.
   `g-allowCoerce: false`). The rules are in `docs/development/code-guide.md`'s "Relaxed validation and coercion is the
   default" section.
 
+## When an endpoint the documentation names turns out not to be published
+
+Noticeable when a reader, or an AI following the walk-through, cannot find an endpoint in the catalog that a page
+told them to call: a caller without env auth is shown only `publicApi` endpoints.
+
+- **A check that every endpoint the documentation tells a caller to use is `publicApi`** *(from #1483).* #1483
+  publishes what an AI needs to configure one client and its users, decided endpoint by endpoint, and a page naming
+  an endpoint is a prompt to decide rather than the decision (the reference describes `bundle/publish`, which stays
+  unpublished). A test could read the documents `RepoDocLinksTest` already reads, find each endpoint path, and fail
+  on one that is neither marked nor on a short list of endpoints deliberately left unpublished, so a page that
+  starts telling readers to call something unpublished is caught rather than found by a reader.
+
 ## When fragment copy computes with its data
 
 Today a fragment *substitutes* values. The trigger fires the first time one **compares or calculates** with

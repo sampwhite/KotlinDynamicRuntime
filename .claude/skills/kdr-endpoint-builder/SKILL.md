@@ -123,9 +123,17 @@ may call an endpoint.
 - **`publicApi = true`** marks the endpoint as part of the documented, supported API. The catalog is
   filterable by it, and a caller **without env auth** (an ordinary production user) is served *only* the
   `publicApi` set (plus, for a client's administrator, the endpoints generated for that client -- see below) — so a client-facing endpoint should carry it and an internal one must not. A published mark
-  is only allowed in the user-facing sections (`user`/`profile`/`gedra`/`auth`); `RequestService` refuses to
-  boot if one sits in a privileged/internal section (`admin`/`operator`/`node`/…), since that would publish
-  the very surface the audit exists to hide.
+  is only allowed in the user-facing sections (`user`/`profile`/`gedra`/`auth`) and the client-scoped
+  `clientAdmin` (issue #1483); `RequestService` refuses to boot if one sits in a deployment-wide or internal
+  section (`admin`/`operator`/`node`/`clientOperator`/…), since that would publish the very surface the audit
+  exists to hide.
+- **What to publish in `clientAdmin`** is decided endpoint by endpoint: what an AI configuring **one client and its
+  users** needs, and no more. Publishing a draft is left to the client's own people, and a shortcut a page uses is
+  left unpublished when a bundle write or patch already does the same (the per-kind editors, `config/editor`,
+  `config/reload`). Users and file refs' bytes have no bundle form, so their calls are published. Web assets are
+  not: a sandbox may not change them, and a change reaches everyone in the client at once, as a publish does. A
+  page that names an endpoint is a prompt to decide, not the decision. `PublishedClientAdminCatalogTest` pins the
+  published set whole, so a change to it is made there too.
 - **`tags = setOf(ETAG.internal)`** attaches free-form tags, filterable in the catalog by **any-of** (OR). The
   shared vocabulary is the `ETAG` object (`base/kernel`, `endpoint/EndpointConstants.kt`): `internal`
   (ops/introspection — health, system info, cache state) and `frontend` (consumed by a UI widget-group — the

@@ -77,7 +77,6 @@ private class ConfigReferenceWriter(private val shapes: ServedSlotShapes, privat
         line("| `GET ${CFEP.slotEntries}` | One bundle's entries, each with its slot and its own accounting. |")
         line("| `POST ${CFEP.bundleWrite}` | Writes a whole bundle. |")
         line("| `POST ${CFEP.bundlePatch}` | Edits entries of one or more bundles, together. |")
-        line("| `POST ${CFEP.bundlePublish}` | Publishes bundles' latest revisions, together. |")
         line()
         line(
             "Each acts on the caller's own client. An administrator of every client (`allClients`) reaches a named " +
@@ -106,7 +105,8 @@ private class ConfigReferenceWriter(private val shapes: ServedSlotShapes, privat
                 "a client with a sandbox, that revision is a draft: the sandbox runs it at once, and the client's own " +
                 "people get it only when the bundle is published. So the way you divide a configuration into bundles is " +
                 "the way you can release it. To publish a change to one workflow and nothing else, keep that workflow " +
-                "in a bundle of its own.",
+                "in a bundle of its own. Publishing is done by the client's own people in the app, after trying the changes " +
+                "in the sandbox, so a change written through the endpoints below stays a draft until then.",
         )
         line()
         line(
@@ -149,7 +149,7 @@ private class ConfigReferenceWriter(private val shapes: ServedSlotShapes, privat
         line()
         line(
             "Publishing follows the same rule. Publishing a workflow's bundle without the bundle holding a new trait " +
-                "it collects is refused, so publish bundles that were changed together at the same time.",
+                "it collects is refused, so bundles that were changed together are published together.",
         )
     }
 
