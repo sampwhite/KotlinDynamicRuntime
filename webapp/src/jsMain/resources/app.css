@@ -48,6 +48,9 @@
     --content-width: min(1400px, 95vw);
     /* Every border in the app, the hairline between sections, and a hover wash. */
     --border: #334155;
+    /* A table's header row (issue #1449), halfway from the card to the border: every table's, antd's included, which
+       App.kt reads from here. Opaque, so a sticky header covers the rows scrolling under it. */
+    --table-head-bg: #283548;
 
     /* Body text, and the three steps down from it. */
     --text: #e2e8f0;
@@ -730,7 +733,7 @@ a:not([class]):hover { color: var(--accent-brighter); text-decoration: underline
        when a word genuinely cannot fit, so an ordinary word stays whole. */
     overflow-wrap: break-word;
 }
-.markdown th { color: var(--text-dim); font-weight: 600; }
+.markdown th { color: var(--text); font-weight: 600; background: var(--table-head-bg); }
 /* A first cell that is only a code span is an identifier -- a key, a keyword -- and is never broken: a hyphen is a
    break opportunity, so `g-optionalContents` split across two lines (issue #1347). Table auto-layout then sizes the
    column to its longest identifier and shares out the rest; prose, or a cell mixing code and words, wraps as before.
@@ -1008,7 +1011,9 @@ button.wf-cell-more { font-size: .8rem; margin-top: 2px; }
     border-bottom: 1px solid var(--border);
     vertical-align: top;
 }
-.op-table th { color: var(--text-dim); font-weight: 600; font-size: .85rem; }
+/* One header style for every table (issue #1449), the antd tables' too: the body's size and color, set apart by its
+   weight and the header row's tint rather than by being smaller or dimmer. */
+.op-table th { color: var(--text); font-weight: 600; background: var(--table-head-bg); }
 /* A numeric column (issue #905): its header and cells right-aligned, so counts line up by magnitude. */
 .op-table th.op-num, .op-table td.op-num { text-align: right; }
 /* A long value kept to one line in a cell (the Clients page's copy tables, issue #917): clamped after the Markdown
@@ -1032,12 +1037,11 @@ button.wf-cell-more { font-size: .8rem; margin-top: 2px; }
 .op-table-scroll::-webkit-scrollbar-thumb { background: var(--border); border-radius: 5px; }
 .op-table-scroll::-webkit-scrollbar-thumb:hover { background: var(--text-faint); }
 .op-table-scroll::-webkit-scrollbar-track { background: rgba(255, 255, 255, .04); border-radius: 5px; }
-/* The header stays put while a tall table scrolls vertically within its box. Needs a solid background to cover
-   the rows sliding under. */
+/* The header stays put while a tall table scrolls vertically within its box, covering the rows sliding under with
+   the header row's own opaque tint. */
 .op-table-scroll > .op-table > thead > tr > th {
     position: sticky;
     top: 0;
-    background: var(--surface-raised);
     z-index: 1;
 }
 /* But a *nested* sub-table's header must NOT stick: its scroll box has `overflow: visible`, so its sticky
