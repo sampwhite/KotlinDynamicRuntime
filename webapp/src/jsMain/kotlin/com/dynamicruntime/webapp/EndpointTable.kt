@@ -27,7 +27,7 @@ val EndpointTable = FC<EndpointTableProps> { props ->
             row.key = ep.key
             row.method = ep.method
             row.path = ep.path
-            row.description = ep.description ?: ""
+            row.description = catalogRowText(ep.description)
             row
         }.toTypedArray()
         // Make a whole row clickable; look the endpoint back up by its key.
@@ -51,3 +51,13 @@ private fun column(title: String, dataIndex: String, width: Int?): dynamic {
     if (width != null) c.width = width
     return c
 }
+
+/**
+ * An endpoint's description as its catalog row shows it (issue #1476): a link as its text alone, since a link in a row
+ * would compete with the row's own click, and the endpoint's page draws the description with its links. The rest is as
+ * written, as it always was here. Pure, covered under `jsNodeTest`.
+ */
+fun catalogRowText(description: String?): String = description.orEmpty().replace(markdownLinkRegex, "$1")
+
+// Every bracket escaped: JS reads a regex in Unicode mode, where a bare `]` is an error rather than a character.
+private val markdownLinkRegex = Regex("""\[([^\]]*)\]\([^)\s]*\)""")

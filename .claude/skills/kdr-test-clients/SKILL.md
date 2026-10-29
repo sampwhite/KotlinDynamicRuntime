@@ -240,6 +240,13 @@ client), issue #627 — the config id is always built from `cxt.client`, so a ca
 | `/clientAdmin/config/bundle` / `/bundles` | GET | fetch one / list this client's configs (`portable=true` on a fetch answers in portable form: the client's own namespace as `client.@self`, which every write resolves to the client it writes to; issue #1435) |
 | `/clientAdmin/config/publishedOnly` | POST | set the protection tier |
 
+**What a slot's entries hold, and what each edit action's `data` must carry** (the key alone for `deleteOrNoOp`, the
+fields to change for `addOrMerge`, the whole entry for `addOrReplace`), is the generated client configuration
+reference (issue #1476): its Markdown at `GET /st/<appId>/doc/client-configuration` on a running server, or **Documents** →
+**Client configuration**; its stub is [`docs/reference/client-configuration.md`](../../../docs/reference/client-configuration.md).
+The endpoints' input schema types an edit's envelope (`slot`, `action`, `expectUpdatedAt`, `expectNew`) and leaves
+`data` an object for the gate to judge.
+
 **To create a client over HTTP, use `POST /admin/client/create`** (`ADEP.clientCreate`, issue #1054; a full-scope
 admin): typed fields in, and the client written, published and present on return -- no bundle to build and no reload
 to remember. `ClientCreateEndpointTest.kt` is the reference. The bundle write still creates one, and is what adds

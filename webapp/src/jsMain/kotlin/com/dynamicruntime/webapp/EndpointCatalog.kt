@@ -49,6 +49,8 @@ private val catalogScope = MainScope()
  * simple view swap on the selection; a "Back to catalog" link clears it.
  */
 val EndpointCatalog = FC<Props> {
+    // An endpoint's description is Markdown (issue #1476): its links -- to a reference document -- resolve as form copy's.
+    val copyLinks = useShellFacts().copyLinkResolver()
     var catalog by useState<Catalog?>(null)
     var selected by useState<EndpointInfo?>(null)
     var values by useState<Map<String, Any?>>(emptyMap())
@@ -396,7 +398,10 @@ val EndpointCatalog = FC<Props> {
             current.description?.let {
                 p {
                     className = ClassName("subtitle")
-                    +it
+                    MarkdownInline {
+                        source = it
+                        linkResolver = copyLinks
+                    }
                 }
             }
 

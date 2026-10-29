@@ -5,6 +5,11 @@ and nothing in front of it but Caddy, which handles HTTPS. The node keeps its da
 the application as a systemd service of its own user. The reference instance at `dynamicruntime.org` runs this way,
 with the `reference` deployment flavor.
 
+**The reference instance is part of the public documentation.** The repository's documents link to it, to try the
+demo and to read the documents a running server generates, so it is kept reasonably current with `main`: a merged
+change that adds a generated document, or changes one a page relies on, is followed by a deploy. Clearing its data
+does not touch those documents, since they are made from code.
+
 The guide has two parts. **One-time setup** is done once per node, partly with `sudo`. **Deploying a build** is
 done every time, from your own machine, and needs no `sudo`: `kdr-deploy` does it in one command. Looking at a
 node, reading its log, and clearing its data are `kdr-node`'s, from the same machine.

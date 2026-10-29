@@ -36,7 +36,10 @@ external interface WhatIsThisProps : Props {
      */
     var text: String
 
-    /** How links in the explanation resolve, as the rest of the page's copy does. */
+    /**
+     * How links in the explanation resolve, as the rest of the page's copy does. Absent, as form copy's do (issue
+     * #1476): a link to a served document -- a reference the explanation points to -- opens it in the app.
+     */
     var linkResolver: ((String) -> String)?
 }
 
@@ -102,7 +105,7 @@ val WhatIsThis = FC<WhatIsThisProps> { props ->
             className = ClassName("what-is-this-text")
             Markdown {
                 source = text
-                props.linkResolver?.let { linkResolver = it }
+                linkResolver = props.linkResolver ?: facts.copyLinkResolver()
             }
         }
     }

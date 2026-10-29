@@ -63,7 +63,8 @@ separate client, `confdemomine`, that you can edit freely.
 ## How a client is stored
 
 A client's configuration is stored in **bundles**. A bundle is a named piece of configuration that is written, read,
-and published on its own.
+and published on its own. What the client runs is every bundle's configuration taken together, so which bundle holds
+what is a choice you make.
 
 Inside a bundle, the configuration is sorted into **slots**. Each slot holds one kind of definition, as a list of
 entries:
@@ -84,8 +85,8 @@ Here the slots are `kdr:clientDef` and `kdr:workflowDef`. Their entries are shor
 follow show each one in full.
 
 The demo keeps the client in one bundle, and each workflow in a bundle of its own. That is a choice worth copying: a
-bundle is published as a whole, so two workflows in one bundle are always published together, and there is no way to
-move one out later.
+bundle is published as a whole, so two workflows in one bundle are published together, and publishing one alone means
+first moving it to a bundle of its own.
 
 | Bundle | What it holds |
 | --- | --- |
@@ -98,6 +99,8 @@ move one out later.
 | `reports` | The two reports an organizer runs |
 
 The JSON on these pages is what a running instance returns for each bundle. The reference says
-[how to read it](reference.md#reading-the-json-on-these-pages).
+[how to read it](reference.md#reading-the-json-on-these-pages). Every slot, what its entries hold, and what an edit of
+one must send are in [the client configuration reference](../reference/client-configuration.md), which is generated
+by a running server: open **Documents** from the menu, and choose **Client configuration**.
 
 Next: [Client](client.md).

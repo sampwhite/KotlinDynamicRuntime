@@ -215,6 +215,18 @@ removes".
 
 * When a file is open for a change anyway, fix an old instance of either in it too.
 
+### Linking a generated document
+
+A document a running server generates (the schema dialect, the client configuration reference) has a stub in the
+repository at its source path, under `docs/reference/`. **Link the stub, by its relative path**, never the server's
+address. On GitHub the link opens the stub, and in the app the same link opens the generated document. The stub says
+where the document is in the app and gives its address on the public reference site, `dynamicruntime.org`, so that
+address is written once per document, in its stub.
+
+That makes the reference site part of the documentation: a reader on GitHub follows the stub's link to it. A change
+that adds a generated document, or changes one a page relies on, is therefore followed by a deploy to the reference
+site (see [the deploy guide](../deploy/lightweight-node.md)), or the stub's link reaches nothing.
+
 ### Strings with a literal `$`
 
 A string that holds a literal `${...}` -- common in tests of the template evaluator -- is written as a multi-dollar
