@@ -222,6 +222,8 @@ fun cellValue(field: String, user: AdminUser, now: Instant): String = when (fiel
     USF.persona -> personaCell(user.persona, user.personaSuffix, user.actingRoles ?: user.roles)
     // The roles held, and those a sandbox user acts with when they differ (issue #1198).
     USF.roles -> rolesCellText(user)
+    // The labels applied (issues #786, #1481), as the read-only editor lists them; most users carry none.
+    USF.labels -> user.labels.joinToString(", ").ifEmpty { "—" }
     // The tracked dates the console shows (issue #462), relative to [now] (issue #1141). A dash rather than a blank:
     // "never" is a fact about the account -- never logged in, never edited -- and an empty cell reads as a rendering
     // failure. An absent registered date means unclaimed (issue #750), which the Status column also says in a word.
@@ -333,6 +335,9 @@ private val columnWidths: Map<String, Int> = mapOf(
     // sandbox user whose row and acting roles differ, which says both (issue #1198) and may take three or four.
     // The 40px it gave up went to the Registered column (issue #750); a few tall rows beat a scrollbar on all.
     USF.roles to 120,
+    // Also a list that may wrap, and usually a dash. It takes the table past the 1440 budget above, which the pinned
+    // columns make cheap: what scrolls is the middle, and the who and the status stay in view.
+    USF.labels to 110,
 )
 
 /** Builds an antd column config `{ title, dataIndex, key, width? }`. */

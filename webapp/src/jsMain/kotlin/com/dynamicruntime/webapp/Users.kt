@@ -11,6 +11,7 @@ import com.dynamicruntime.common.user.AERR
 import com.dynamicruntime.common.user.PERSONA
 import com.dynamicruntime.common.user.PERSONASUFFIX
 import com.dynamicruntime.common.user.USF
+import com.dynamicruntime.common.user.UserFilterChoices
 import com.dynamicruntime.common.user.UserFilterKind
 import com.dynamicruntime.common.user.UserFilterOption
 import com.dynamicruntime.common.user.UserSearchFieldSpec
@@ -72,8 +73,8 @@ val Users = FC<Props> {
     // the date-range bounds (update time). A field added to `userSearchFieldSpecs` flows through here untouched.
     var textFilters by useState<Map<String, String>>(emptyMap())
     var rangeFilters by useState<Map<String, DateRange>>(emptyMap())
-    // The free-text term (issue #581; a box of its own since #1432): one OR across email, name, username, persona and
-    // persona suffix, where the filters above AND. Its box is always on screen, so it is not a chip.
+    // The free-text term (issue #581; a box of its own since #1432): one OR across email, name, username, persona,
+    // persona suffix, and label, where the filters above AND. Its box is always on screen, so it is not a chip.
     var anyText by useState("")
     // The sort, driven by the table's column headers. Default: newest first, as the issue specifies.
     var sortBy by useState(defaultUserSortKey)
@@ -350,24 +351,39 @@ val Users = FC<Props> {
         error = null
     }
 
+    /**
+     * Fetches [client]'s label suggestions the first time something asks for them: the editor of one of its users, the
+     * create form once it names the client, or the Labels filter. Only an administrator may read them; an editor's
+     * label controls offer nothing and take what is typed. A failure leaves the control offering only the labels
+     * already in it -- any other can still be typed, since labels are free-form -- and is not recorded, so the next
+     * ask tries again.
+     */
+    fun ensureLabelSuggestions(client: String) {
+        if (client.isBlank() || config?.canManageUsers != true) return
+        if (labelSuggestionsRef.current?.containsKey(client) == true) return
+        usersScope.launch {
+            // A functional update: this runs after the await, when the map captured above may be stale -- two
+            // clients fetched at once would otherwise each write back a map missing the other.
+            apiResult { AdminApi.labelSuggestions(client) }.valueOrNull()?.let { fetched ->
+                setLabelSuggestions { current -> current + (client to fetched) }
+            }
+        }
+    }
+
+    // The Labels filter offers the suggestions of the client being searched: the one the Client filter names, else the
+    // caller's own. Fetched once the well is open, so a page nobody filters asks for nothing.
+    val labelFilterClient = textFilters[USF.client]?.trim()?.ifEmpty { null } ?: config?.user?.client ?: ""
+    useEffect(filtersOpen, labelFilterClient) {
+        if (filtersOpen) ensureLabelSuggestions(labelFilterClient)
+    }
+
     /** Opens the editor on [user], seeding the draft from their current state. */
     fun startEdit(user: AdminUser) {
         editing = user
         creating = false
         seedDraft(user)
-        // The suggestions of the *user's* client, not the editor's, fetched the first time that client is edited.
-        // A failure leaves the editor offering only the labels the user already has -- they can still type any
-        // other, since labels are free-form -- and is not recorded, so the next open tries again.
-        val client = user.client
-        if (config?.canManageUsers == true && labelSuggestionsRef.current?.containsKey(client) != true) {
-            usersScope.launch {
-                // A functional update: this runs after the await, when the map captured above may be stale -- two
-                // clients fetched at once would otherwise each write back a map missing the other.
-                apiResult { AdminApi.labelSuggestions(client) }.valueOrNull()?.let { fetched ->
-                    setLabelSuggestions { current -> current + (client to fetched) }
-                }
-            }
-        }
+        // The suggestions of the *user's* client, not the editor's.
+        ensureLabelSuggestions(user.client)
     }
 
     /** Opens the editor on a new user -- for the caller's own address when [forSelf] (issue #797). */
@@ -377,6 +393,8 @@ val Users = FC<Props> {
         creatingForSelf = forSelf
         seedDraft(null)
         if (forSelf) draftEmail = ownAddressRef.current ?: ""
+        // The new user's client is the caller's own until an `allClients` caller picks another (which fetches again).
+        ensureLabelSuggestions(config?.user?.client ?: "")
     }
 
     fun closeEditor() {
@@ -532,6 +550,7 @@ val Users = FC<Props> {
                     isEntity = draftIsEntity, name = draftName.trim().ifEmpty { null },
                     client = draftClient.trim().ifEmpty { null }, enabled = draftEnabled,
                     persona = if (personaChosen) draftPersona else null, personaSuffix = draftPersonaSuffix,
+                    labels = normalizeUserLabels(draftLabels),
                 )
             } catch (e: Throwable) {
                 // A collision on (address, client, persona) is what the personaSuffix is for: offer it, keep the
@@ -817,7 +836,10 @@ val Users = FC<Props> {
                         options = clientOptions(clientChoices)
                         disabled = busy
                         style = choiceStyle()
-                        onChange = { v -> draftClient = v as? String ?: draftClient }
+                        onChange = { v ->
+                            draftClient = v as? String ?: draftClient
+                            ensureLabelSuggestions(draftClient)
+                        }
                     }
                 }
                 p {
@@ -896,32 +918,30 @@ val Users = FC<Props> {
                 readOnlyField("Organization", draftOrg.ifEmpty { "—" })
             }
 
-            // Labels (issue #786): on an existing user only -- a new one has no client suggestions fetched yet, and
-            // is labelled after it exists. A tags select: the client's suggestions are offered, and anything else
-            // may be typed, because a label is free-form by design.
-            if (!creating) {
-                div {
-                    className = ClassName("row")
-                    span {
-                        className = ClassName("field-label")
-                        +"Labels"
-                    }
-                    Select {
-                        mode = "tags"
-                        value = draftLabels.toTypedArray()
-                        options = labelSelectOptions(
-                            userLabelChoices(labelSuggestions[editing?.client].orEmpty(), draftLabels),
-                        )
-                        placeholder = "(none)"
-                        disabled = busy
-                        style = choiceStyle()
-                        onChange = { v -> draftLabels = (v.unsafeCast<Array<String>>()).toList() }
-                    }
+            // Labels (issues #786, #1481), on a new user as on an existing one. A tags select: the suggestions of the
+            // user's client -- on a new user, the client the form names -- are offered, and anything else may be typed,
+            // because a label is free-form by design.
+            div {
+                className = ClassName("row")
+                span {
+                    className = ClassName("field-label")
+                    +"Labels"
                 }
-                p {
-                    className = ClassName("type-hint")
-                    +labelsHint
+                Select {
+                    mode = "tags"
+                    value = draftLabels.toTypedArray()
+                    options = labelSelectOptions(
+                        userLabelChoices(labelSuggestions[editing?.client ?: draftClient].orEmpty(), draftLabels),
+                    )
+                    placeholder = "(none)"
+                    disabled = busy
+                    style = choiceStyle()
+                    onChange = { v -> draftLabels = (v.unsafeCast<Array<String>>()).toList() }
                 }
+            }
+            p {
+                className = ClassName("type-hint")
+                +labelsHint
             }
 
             div {
@@ -1101,7 +1121,7 @@ val Users = FC<Props> {
                 // The free-text search (issue #1432), on screen as the forms list's is: the quickest way to find someone
                 // without knowing which field holds what you remember, and the one way to a batch member by suffix.
                 Input {
-                    placeholder = "Search email, name, username, or persona"
+                    placeholder = "Search email, name, username, persona, or label"
                     value = anyText
                     allowClear = true
                     style = js("({ width: 300 })")
@@ -1149,16 +1169,32 @@ val Users = FC<Props> {
                                 style = js("({ width: '100%', maxWidth: 420 })")
                                 onChange = { event -> setText(spec.name, event.target.value as String, immediate = false) }
                             }
-                            UserFilterKind.exact -> Select {
-                                // Exact fields render as a picker: of the spec's own choices (the persona, the
-                                // roles; issue #1432), else of the clients this caller may choose among.
-                                value = (textFilters[spec.name] ?: "").ifEmpty { null }
-                                options = spec.options?.let { filterOptions(it, showClient) } ?: clientOptions(clientChoices)
-                                // "Any roles" would misread a list-valued field; its label above says which.
-                                placeholder = if (spec.listValued) "Any" else "Any ${spec.label.lowercase()}"
-                                allowClear = true
-                                style = js("({ minWidth: 180 })")
-                                onChange = { v -> setText(spec.name, v as? String ?: "", immediate = true) }
+                            UserFilterKind.exact -> if (spec.choices == UserFilterChoices.labels) {
+                                // The labels (issues #786, #1481): the client's suggestions, or any label typed, since
+                                // a label need not be one of them. A pick searches at once; typing waits, as a text
+                                // box does.
+                                AutoComplete {
+                                    value = textFilters[spec.name] ?: ""
+                                    options = labelSelectOptions(labelSuggestions[labelFilterClient].orEmpty())
+                                    placeholder = "Any"
+                                    allowClear = true
+                                    style = js("({ minWidth: 180 })")
+                                    onChange = { v -> setText(spec.name, v as? String ?: "", immediate = false) }
+                                    onSelect = { v -> setText(spec.name, v as? String ?: "", immediate = true) }
+                                }
+                            } else {
+                                Select {
+                                    // Exact fields render as a picker: of the spec's own choices (the persona, the
+                                    // roles; issue #1432), else of the clients this caller may choose among.
+                                    value = (textFilters[spec.name] ?: "").ifEmpty { null }
+                                    options = spec.options?.let { filterOptions(it, showClient) }
+                                        ?: clientOptions(clientChoices)
+                                    // "Any roles" would misread a list-valued field; its label above says which.
+                                    placeholder = if (spec.listValued) "Any" else "Any ${spec.label.lowercase()}"
+                                    allowClear = true
+                                    style = js("({ minWidth: 180 })")
+                                    onChange = { v -> setText(spec.name, v as? String ?: "", immediate = true) }
+                                }
                             }
                             UserFilterKind.dateRange -> {
                                 val range = rangeFilters[spec.name] ?: DateRange()

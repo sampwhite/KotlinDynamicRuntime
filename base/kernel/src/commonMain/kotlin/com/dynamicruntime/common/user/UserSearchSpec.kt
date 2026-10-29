@@ -38,6 +38,25 @@ enum class UserFilterKind {
 }
 
 /**
+ * Where an [UserFilterKind.exact] field's picker takes its choices from. A closed operational set: each is a different
+ * thing the console fetches, or does not.
+ */
+@Suppress("EnumEntryName")
+enum class UserFilterChoices {
+    /** The spec's own [UserSearchFieldSpec.options] (the persona, the roles). */
+    listed,
+
+    /** The clients this caller may choose among, which the console fetches. */
+    clients,
+
+    /**
+     * The label suggestions of the client being searched (issues #786, #1481), with any other label typed as well:
+     * labels are free-form, so a suggestion list can name only some of them.
+     */
+    labels,
+}
+
+/**
  * One user-search field, described once for both sides (issue #411).
  */
 class UserSearchFieldSpec(
@@ -70,9 +89,11 @@ class UserSearchFieldSpec(
     val rangeKeys: Pair<String, String>? = null,
     /**
      * For a [UserFilterKind.exact] field, the choices its picker offers (issue #1432), or null for one whose choices
-     * the console fetches (the client). Known to the kernel, so both sides name the same values.
+     * the console fetches (see [choices]). Known to the kernel, so both sides name the same values.
      */
     val options: List<UserFilterOption>? = null,
+    /** For a [UserFilterKind.exact] field, where its picker's choices come from; [options] when it has them. */
+    val choices: UserFilterChoices = if (options != null) UserFilterChoices.listed else UserFilterChoices.clients,
     /**
      * Whether a row holds a list of values here, any one of which the filter matches (the roles). It changes only the
      * words: the chip says `Roles include "Editor"` rather than `is`.
@@ -140,6 +161,12 @@ val userSearchFieldSpecs: List<UserSearchFieldSpec> = listOf(
     // an editor keeps the persona they had. Not sortable: a list orders by nothing anyone asks for.
     UserSearchFieldSpec(
         USF.roles, "Roles", UserFilterKind.exact, sortable = false, options = roleFilterOptions, listValued = true,
+    ),
+    // The user's free-form labels (issues #786, #1481), so `reviewer` finds the reviewers. Picked from the client's
+    // suggestions or typed, since a label need not be one of them. Not sortable, as the roles are not.
+    UserSearchFieldSpec(
+        USF.labels, "Labels", UserFilterKind.exact, sortable = false, choices = UserFilterChoices.labels,
+        listValued = true,
     ),
     // The four dates the console shows (issues #462, #750). `updatedAt` is deliberately absent: the endpoint
     // still sorts on it, but it moves on a login and so answers a question nobody is asking here. `registered`

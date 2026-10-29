@@ -222,6 +222,23 @@ class UserSearchTest : StringSpec({
         ids(searchUserRows(rows, UserSearchCriteria(anyText = "user"))) shouldBe emptyList()
     }
 
+    "a label finds every user carrying it, exactly, and the free text finds it too (issues #786, #1481)" {
+        val reviewer = user(40, "r@x.com", "r_rv", updatedAt = t1).also { it.labels = listOf("reviewer", "siteLead") }
+        val upper = user(41, "u@x.com", "u_rv", updatedAt = t2).also { it.labels = listOf("Reviewer") }
+        val lead = user(42, "l@x.com", "l_sl", updatedAt = t3).also { it.labels = listOf("siteLead") }
+        val rows = listOf(reviewer, upper, lead, ada)
+        // Any one of the labels matches, ignoring case as every search here does -- `Reviewer` and `reviewer` are two
+        // labels to a workflow, but one thing to look for.
+        ids(searchUserRows(rows, UserSearchCriteria(textTerms = mapOf(USF.labels to "reviewer")))).sorted() shouldBe
+            listOf(40L, 41L)
+        ids(searchUserRows(rows, UserSearchCriteria(textTerms = mapOf(USF.labels to "siteLead")))).sorted() shouldBe
+            listOf(40L, 42L)
+        // Exact: a fragment is no label.
+        ids(searchUserRows(rows, UserSearchCriteria(textTerms = mapOf(USF.labels to "review")))) shouldBe emptyList()
+        // The free text is a substring over the labels, as over a name: a person remembers a user by one.
+        ids(searchUserRows(rows, UserSearchCriteria(anyText = "lead"))).sorted() shouldBe listOf(40L, 42L)
+    }
+
     // --- the shared spec agrees with the backend registry (issue #411, SDUI) ---------------------------
     //
     // The console renders from `userSearchFieldSpecs` (base/kernel) while the actual filtering/sorting runs off

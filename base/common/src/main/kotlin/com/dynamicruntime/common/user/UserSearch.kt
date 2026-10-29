@@ -141,6 +141,12 @@ val userSearchFields: List<UserSearchField> = listOf(
         USF.roles, textsOf = { it.roles }, substring = false, sortOf = { it.roles.joinToString(", ").lowercase() },
         anyTextsOf = null,
     ),
+    // The user's labels (issues #786, #1481), each matched exactly on its own as the roles are, and found by the free
+    // text too: unlike a role, a label is something a person searching for a user remembers them by.
+    UserSearchField(
+        USF.labels, textsOf = { it.labels }, substring = false, sortOf = { it.labels.joinToString(", ").lowercase() },
+        anyTextsOf = { it.labels },
+    ),
 ) + userDateFields.map { it.asSearchField() }
 
 
@@ -160,9 +166,10 @@ class UserSearchCriteria(
     val textTerms: Map<String, String> = emptyMap(),
     /**
      * A single free-text term matched across *every* substring text field at once -- the account's email, real
-     * name, username, or persona (issue #581). Where [textTerms] AND (each named field must match), this is one OR: a
-     * row matches when the term is a substring of any of those. It backs a single type-ahead box that finds a
-     * user however the person searching remembers them; null (or blank, dropped before here) is no constraint.
+     * name, username, persona, or label (issues #581, #786, #1481). Where [textTerms] AND (each named field must
+     * match), this is one OR: a row matches when the term is a substring of any of those. It backs a single
+     * type-ahead box that finds a user however the person searching remembers them; null (or blank, dropped
+     * before here) is no constraint.
      */
     val anyText: String? = null,
     /**
@@ -215,8 +222,9 @@ fun searchUserRows(rows: List<AuthUserRow>, criteria: UserSearchCriteria): UserS
         }
     }
     // The single "any text" term (issue #581): OR across every field's free-text texts, so one box finds a user by
-    // email, real name, username, or persona at once. The client is left out -- a client id is a picked value, not a
-    // fragment a person types into a search-for-a-user box -- and so are the roles (see [UserSearchField.anyTextsOf]).
+    // email, real name, username, persona, or label at once. The client is left out -- a client id is a picked value,
+    // not a fragment a person types into a search-for-a-user box -- and so are the roles (see
+    // [UserSearchField.anyTextsOf]).
     criteria.anyText?.trim()?.lowercase()?.takeIf { it.isNotEmpty() }?.let { term ->
         matched = matched.filter { row ->
             userSearchFields.any { field ->

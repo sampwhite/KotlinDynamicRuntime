@@ -21,6 +21,7 @@ import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.http.request.RoleLadder
 import com.dynamicruntime.common.http.request.SECT
 import com.dynamicruntime.common.schema.SCT
+import com.dynamicruntime.common.schema.SchTypeBuilder
 import com.dynamicruntime.common.util.getOptBool
 import com.dynamicruntime.common.util.getReqNonBlankStr
 import com.dynamicruntime.common.util.isEmailAddress
@@ -137,6 +138,10 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
             field(ADF.enabled, "Whether the account starts active; defaults to true. False creates it disabled.") {
                 type = SCT.boolean
             }
+            // Issues #786, #1481.
+            field(ADF.labels, "Free-form labels the new user starts with; absent or empty for none.") {
+                labelList()
+            }
         },
     ) { c, request ->
         // Normalized first (issue #743), so the shape check, the duplicate check and the stored row all see one spelling.
@@ -215,8 +220,16 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
         // ride the insert; it is a follow-up disable through the same durable path the Enabled toggle uses.
         // Defaults to enabled, so a caller that omits the field (every existing one) is unaffected.
         val enabled = request.getOptBool(ADF.enabled) ?: true
-        if (!enabled) {
-            loadUser(c, userId).let { it.enabled = false; service.updateUser(c, it) }
+        // The labels ride the same follow-up write rather than `provisionUser`'s data map: recovering a disabled
+        // user rewrites its data from the row, whose labels would win. Given, they replace whatever a recovered user
+        // carried. Labels alone are part of the creation, not an edit of it, so they leave the Edited date unstamped.
+        val labels = request[ADF.labels].toJsonListOfStrings()
+        if (!enabled || labels.isNotEmpty()) {
+            loadUser(c, userId).let { row ->
+                if (!enabled) row.enabled = false
+                if (labels.isNotEmpty()) row.labels = labels // the row normalizes
+                service.updateUser(c, row, isEdit = !enabled)
+            }
         }
         // Somebody else's user, live: invite them to claim it. A disabled one waits for its enable, and the
         // administrator sends the invitation then (`userInvite`). A mail that cannot go out (the provider down)
@@ -232,7 +245,7 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
         LogAuth.info(c) {
             "Admin ${c.userProfile.userId} created user $userId ('$primaryId', persona '$persona'" +
                 (if (personaSuffix.isEmpty()) "" else ", personaSuffix '$personaSuffix'") + ") with roles $roles" +
-                (if (!enabled) " (disabled)." else ".")
+                (if (labels.isEmpty()) "" else ", labels $labels") + (if (!enabled) " (disabled)." else ".")
         }
         loadUser(c, userId).toAdminInfo(c)
     }
@@ -465,18 +478,8 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
         outputRef = ADTY.adminUser,
         inputFields = {
             field(ADF.userId, "Id of the user to edit.", required = true) { type = SCT.integer }
-            // Not bound to the client's suggestions: labels are free-form by design, and the suggestion list is
-            // what a label editor *offers* (see userLabelSuggestions), not what it permits. Bounded, though: labels
-            // are the first free-text list on the user row, which every node holds in its user cache. And a real
-            // array only -- no coercing a string, which would comma-split it and make a comma unsendable.
             field(ADF.labels, "The complete new set of labels (replaces, not merges); empty to clear them.", required = true) {
-                type = SCT.array
-                allowCoerce = false
-                maxItems = ULIM.maxLabels
-                items {
-                    type = SCT.string
-                    maxLength = ULIM.maxLabelLength
-                }
+                labelList()
             }
         },
     ) { c, request ->
@@ -579,7 +582,7 @@ private fun SchModuleBuilder.userReadEndpoints(usersPath: String, searchPath: St
         inputFields = {
             field(
                 EI.q,
-                "Free text matched against email, name, username, persona, or persona suffix at once (any of " +
+                "Free text matched against email, name, username, persona, persona suffix, or label at once (any of " +
                     "them, case-insensitive substring) -- one box for finding a user however you remember them.",
             ) { emptyIsAbsent = true }
             field(USF.email, "Case-insensitive substring to match against the email address.")
@@ -592,6 +595,7 @@ private fun SchModuleBuilder.userReadEndpoints(usersPath: String, searchPath: St
             )
             field(USF.persona, "The persona to match exactly (case-insensitive); the free text 'q' also finds the personaSuffix.")
             field(USF.roles, "A role to match exactly (case-insensitive) against any one of the roles the user holds.")
+            field(USF.labels, "A label to match exactly (case-insensitive) against any one of the user's labels.")
             // One pair per date attribute, generated from the registry (issue #462) rather than written out:
             // the keys and the wording both follow the root, so adding a date adds its range with them.
             for (date in userDateFields) {
@@ -677,6 +681,23 @@ private fun requireAssignableOrg(cxt: KdrCxt, org: String?) {
         throw KdrException.mkInput(
             "You can only assign the '$actingOrg' organization; you are confined to it.",
         )
+    }
+}
+
+/**
+ * The wire shape of a user's label list (issues #786, #1481), on create and on replace alike. Not bound to the client's
+ * suggestions: labels are free-form by design, and the suggestion list is what a label editor *offers* (see
+ * `userLabelSuggestions`), not what it permits. Bounded, though: labels are free text on the user row, which every node
+ * holds in its user cache. And a real array only -- no coercing a string, which would comma-split it and make a comma
+ * unsendable.
+ */
+private fun SchTypeBuilder.labelList() {
+    type = SCT.array
+    allowCoerce = false
+    maxItems = ULIM.maxLabels
+    items {
+        type = SCT.string
+        maxLength = ULIM.maxLabelLength
     }
 }
 

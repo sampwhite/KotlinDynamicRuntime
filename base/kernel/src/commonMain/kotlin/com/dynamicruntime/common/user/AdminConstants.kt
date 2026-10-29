@@ -471,6 +471,14 @@ object USF {
     const val roles = "roles"
 
     /**
+     * Case-insensitive **exact** match of any one of the user's free-form labels (issues #786, #1481) -- `reviewer`
+     * finds every reviewer. A label is stored case and all, but a search is a finding tool, so it ignores case as the
+     * persona's does. Also part of the free-text `q`, so the one search box finds a user by a label as it does by a
+     * name.
+     */
+    const val labels = "labels"
+
+    /**
      * **Exact** client id to confine the search to. Only an `allClients` caller can widen past their own
      * client, so for anyone else this narrows within a client they are already confined to (or, naming
      * another, returns nothing) -- the scope does the enforcing, this only picks among what it allows.

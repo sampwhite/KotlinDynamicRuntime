@@ -86,9 +86,13 @@ One more is neither authority nor identity:
 - **Labels** (issue #786) — free-form words an administrator puts on a user (`reviewer`) for a workflow's
   `userHasLabel` function to test. They **grant nothing**, which is why they sit apart from the access level
   rather than beside it. A tags `Select` offering the *user's* client's suggestions (`labelSuggestions`, fetched
-  the first time that client is edited and kept keyed by client, so a slow reply can only fill its own client's
-  entry — never land on the next user's editor) while accepting any other label typed. On an existing user
-  only: create has no labels field. Editable on your **own** row too, deliberately — a label is not privilege,
+  by `ensureLabelSuggestions` the first time that client is asked for and kept keyed by client, so a slow reply can
+  only fill its own client's entry — never land on the next user's editor) while accepting any other label typed.
+  On the create form too, offering the suggestions of the client the form names, and sent with the create (the
+  backend applies them in the same follow-up write as a disable, so they are not counted as an edit). The list
+  has a **Labels** column and filter (`USF.labels`, `UserFilterChoices.labels`: an `AutoComplete` of the searched
+  client's suggestions that also takes a typed label), and the search box matches a label too. Editable on your
+  **own** row too, deliberately — a label is not privilege,
   and the approve endpoint (#787) enforces the second-person rule itself: a reviewer can never approve a form
   they own (in production, a form owned by any of their users). Saving compares
   after `normalizeUserLabels`, the kernel rule the backend stores by, so re-spacing a label is no change.

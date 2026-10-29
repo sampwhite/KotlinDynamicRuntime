@@ -2,6 +2,7 @@ package com.dynamicruntime.kdn
 
 import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.KdrCxt
+import com.dynamicruntime.common.endpoint.EI
 import com.dynamicruntime.common.endpoint.clientPath
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
@@ -29,6 +30,7 @@ import com.dynamicruntime.common.user.ADF
 import com.dynamicruntime.common.user.UADEP
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.user.ULIM
+import com.dynamicruntime.common.user.USF
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonListOrEmpty
 import com.dynamicruntime.common.util.toOptStr
@@ -161,6 +163,25 @@ class UserLabelsTest : StringSpec({
         GedraConfigService.get(cxt).writeConfig(asClient(bad), labelsConfig(bad, "reviwer"))
         val e = shouldThrow<KdrException> { GedraConfigReload.reloadClient(cxt, bad) }
         e.message.orEmpty() shouldContain "does not suggest"
+    }
+
+    "a user is created with labels, normalized, and the search finds them by one" {
+        val made = admin.postData(
+            UADEP.userCreate,
+            mapOf(ADF.primaryId to "made@$client.test", ADF.labels to listOf(" reviewer", "reviewer", "siteLead")),
+        )
+        labelsOf(made) shouldContainExactly listOf("reviewer", "siteLead")
+        // Starting with labels is part of the creation, not an edit of it.
+        made[USF.lastEdited.at] shouldBe null
+        fun found(args: Map<String, Any?>) = admin.getItems(UADEP.userSearch, args).map { it[ADF.primaryId] }
+        // The Labels filter matches one label exactly, ignoring case; the free text finds a fragment of one.
+        found(mapOf(USF.labels to "REVIEWER")) shouldContain "made@$client.test"
+        found(mapOf(USF.labels to "review")) shouldNotContain "made@$client.test"
+        found(mapOf(EI.q to "sitel")) shouldContain "made@$client.test"
+        // The create takes the label list in the shape the replace does: a string is not split into one.
+        admin.expectError(
+            EXC.badInput, UADEP.userCreate, data = mapOf(ADF.primaryId to "split@$client.test", ADF.labels to "a, b"),
+        )
     }
 
     "a permanently deleted user keeps no labels" {
