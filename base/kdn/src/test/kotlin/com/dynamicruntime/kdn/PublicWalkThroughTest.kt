@@ -514,7 +514,7 @@ class PublicWalkThroughTest : StringSpec({
         // published API to a caller without env auth, as a reader on the reference deployment is, so it is not asked.
         val named = kdaPathRegex.findAll(page.substringAfter(part3Heading)).map { it.groupValues[1] }
             .filterNot { it.startsWith("/gedra") }.toSet()
-        named shouldBe setOf(AEP.selfInfo, catalogPath, CFEP.bundlePatch)
+        named shouldBe setOf(AEP.selfInfo, CFEP.bundlePatch)
         // The bundle editor's save, which the page has the AI send with the key: the key is shown it.
         (HttpMethod.POST.name to CFEP.bundlePatch) shouldBe endpoints.single { it.second == CFEP.bundlePatch }
         program.sendGetRequest(AEP.selfInfo).rptStatusCode shouldBe 200
@@ -567,7 +567,6 @@ private const val part3Heading = "## Part 3:"
 private const val partHeadingPrefix = "## Part "
 private val bannerRegex = Regex("""!\[[^\]]+]\(([^)]+)\)""")
 private const val markdownRule = "---"
-private const val catalogPath = "/schema/endpoints"
 private val kdaPathRegex = Regex("""/kda(/[A-Za-z/]+[A-Za-z])""")
 
 /** The page's placeholder for the reader's sandbox's id, in a path. */

@@ -504,20 +504,19 @@ and your client's id where the JSON says `@self`. A program holding a key could 
 
 ### Or have an AI build it
 
-An AI coding assistant can read the project's documentation and use the API with your key. Clone the
-[KotlinDynamicRuntime repository](https://github.com/sampwhite/KotlinDynamicRuntime) and start the assistant in the
-checkout, as its `CONTRIBUTING.md` describes; one that can browse the web can read the repository online instead. Ask
-it for the workflow, along these lines, with your site's address, your sandbox's id, and your key put in:
+An AI assistant learns the site's API from the site itself: its API guide, served as Markdown at `/st/api/doc/api-guide`,
+says what it needs to know, so the assistant needs no copy of the code, only your site's address and your key. Any
+assistant that can make web requests will do. Ask it for the workflow, along these lines, with your site's address,
+your sandbox's id, and your key put in:
 
 ```text
 I have an API key for the sandbox <your sandbox's id> of my client on the KotlinDynamicRuntime site at
-<your site's address>. The key is <your key>. Read docs/demo-client, which shows how a client is configured, the
-kdr-test-clients skill, which lists the endpoints that read and write a client's stored configuration, and the
-endpoint catalog at <your site's address>/kda/schema/endpoints. Then add a workflow to my client called "Review the
-book": after the club has read a book, a member records a rating from 1 to 5 and a few sentences on what they thought.
-Part 3 of docs/walk-through.md shows it as JSON. Put it in a new bundle of its own, with the same request the bundle
-editor's Save sends: a /kda/clientAdmin/config/bundle/patch that adds each entry as new and asks for a reload, so that
-my sandbox runs it at once. Do not publish it. Try it by making a form in the sandbox and filling in the workflow.
+<your site's address>. The key is <your key>. Start with the site's API guide, at
+<your site's address>/st/api/doc/api-guide. Then add a workflow to my client called "Review the book": after the club
+has read a book, a member records a rating from 1 to 5 and a few sentences on what they thought. Part 3 of the site's
+walk-through, at <your site's address>/st/api/doc/walk-through, shows it as JSON. Put it in a new bundle of its own,
+with one patch that adds each entry as new and asks for a reload, so that my sandbox runs it at once. Do not publish
+it. Try it by making a form in the sandbox and filling in the workflow.
 ```
 
 The AI sends the request a save in the bundle editor sends, with the key, so what it writes is a draft too. Since

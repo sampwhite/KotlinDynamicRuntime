@@ -584,7 +584,7 @@ private fun homeLinksFor(cxt: KdrCxt): List<Map<String, Any?>> {
 /**
  * The documents `base/common` serves (issue #492): the README plus the repo docs it links to, declared by the common
  * component. Other components declare their own (`docs`, issue #1136). The listing offers the README, the extending
- * guide, the API keys and tokens guide (issue #1403), the code guide, the schema dialect reference (generated, issue
+ * guide, the API guide (issue #1493), the API keys and tokens guide (issue #1403), the code guide, the schema dialect reference (generated, issue
  * #1347), and the license; the design documents are served but unlisted, reached from the README's
  * links (issue #1238).
  */
@@ -593,6 +593,8 @@ fun coreDocs(): List<MarkdownDocDef> = listOf(
         "What the runtime is, where it came from, and how to set it up."),
     MarkdownDocDef(HDOC.extending, "Extending", "docs/extending.md",
         "How a deployment, a component, or a client varies what the runtime does, and the rule behind it."),
+    MarkdownDocDef(HDOC.apiGuide, "Using the API", "docs/api-guide.md",
+        "For a program or an AI assistant with a key: the model, the conventions every call shares, and a recipe for each job."),
     MarkdownDocDef(HDOC.apiKeysAndTokens, "API keys and access tokens", "docs/api-keys-and-tokens.md",
         "How a program calls the API with a key or a token, and how another service checks a token."),
     MarkdownDocDef(HDOC.codeGuide, "Code guide", "docs/development/code-guide.md",

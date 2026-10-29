@@ -79,6 +79,7 @@ val embedDocs by tasks.registering(Copy::class) {
     val inAppDocs = mapOf(
         "docs/extending.md" to "extending",
         "docs/api-keys-and-tokens.md" to "api-keys-and-tokens",
+        "docs/api-guide.md" to "api-guide",
         "docs/development/code-guide.md" to "code-guide",
         "docs/development/deferred-work.md" to "deferred-work",
         "docs/design/client-definition.md" to "client-definition",
