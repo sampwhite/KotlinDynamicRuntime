@@ -19,3 +19,14 @@ fun normalizeUserLabels(labels: List<String>): List<String> = labels.mapNotNull 
  */
 fun userLabelChoices(suggestions: List<String>, current: List<String>): List<String> =
     normalizeUserLabels(suggestions + current)
+
+/**
+ * The labels a label control offers for a client (issue #1481): the client's own [suggestions] in their order, then the
+ * labels its users already carry ([inUse]) -- each once **ignoring case**, the client's own spelling winning. A label is
+ * stored case and all, but a search matches it ignoring case, so `Reviewer` beside `reviewer` would be two entries that
+ * find the same users, and an invitation to a second spelling of a label the client already names.
+ */
+fun mergeLabelSuggestions(suggestions: List<String>, inUse: List<String>): List<String> {
+    val seen = mutableSetOf<String>()
+    return normalizeUserLabels(suggestions + inUse).filter { seen.add(it.lowercase()) }
+}

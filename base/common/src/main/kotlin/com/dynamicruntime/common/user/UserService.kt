@@ -28,6 +28,7 @@ import com.dynamicruntime.common.util.mkUniqueId
 import com.dynamicruntime.common.util.normalizeLoginId
 import com.dynamicruntime.common.util.toJsonMap
 import com.dynamicruntime.common.util.toOptInstant
+import com.dynamicruntime.common.util.toOptLong
 import com.dynamicruntime.common.util.toOptStr
 import com.dynamicruntime.common.util.toT
 import kotlin.time.Instant
@@ -768,16 +769,29 @@ class UserService : ServiceInitializer {
     }
 
     /**
-     * The labels [client]'s active users carry (issue #1481), each once, alphabetically ignoring case: what a label
+     * The labels [client]'s active users carry (issue #1481), alphabetically and each once ignoring case: what a label
      * editor offers beside the client's own suggestions. Confined by [scope] as the search is -- an administrator
      * confined to an organization is offered only what their own organization's users carry.
+     *
+     * Read off the raw rows, as [countActiveUsers] reads them: a label, an organization, and the ids [scope] checks are
+     * all a row's own, so no identity is looked up per row -- and a row whose identity has gone missing does not fail
+     * the read for the whole client. Through [scope]'s own index when it names this client, so a `public`
+     * administrator, confined to their own users, pays for those and not for every self-registered person.
      */
-    fun labelsInUse(cxt: KdrCxt, client: String, scope: ReadScope): List<String> =
-        visibleEnabledUsers(cxt, ReadScope.ofClient(client))
-            .filter { scope.admitsUserRow(it.client, it.org, it.userId, it.identityId) }
-            .flatMap { it.labels }
-            .distinct()
+    fun labelsInUse(cxt: KdrCxt, client: String, scope: ReadScope): List<String> {
+        val rows = enabledUserRows(cxt, if (scope.client == client) scope else ReadScope.ofClient(client))
+        return rows.flatMap { row ->
+            val userData = row[AU.authUserData]?.toJsonMap() ?: emptyMap()
+            val userId = row[AU.userId].toOptLong()
+            val identityId = row[AU.identityId].toOptStr()
+            val org = userData[AD.org].toOptStr()?.ifEmpty { null }
+            val admitted = userId != null && identityId != null &&
+                scope.admitsUserRow(row[PF.client].toOptStr() ?: "", org, userId, identityId)
+            if (admitted) (userData[AD.labels] as? List<*>)?.mapNotNull { it?.toString() }.orEmpty() else emptyList()
+        }
             .sortedWith(String.CASE_INSENSITIVE_ORDER)
+            .distinctBy { it.lowercase() }
+    }
 
     /**
      * The active (enabled) users [scope] may see, extracted from the cache when it is present (the cache holds

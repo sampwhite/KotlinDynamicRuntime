@@ -117,6 +117,29 @@ class UserLabelsTest : StringSpec({
         labelsOf(read) shouldNotContain "adHoc1481"
     }
 
+    "an administrator confined to an organization is offered only the labels their reach carries (issue #1481)" {
+        fun labelled(email: String, org: String?, label: String) {
+            val user = TestUser.create(cxt, email, userClient = client)
+            org?.let { admin.postData(UADEP.userSetOrg, mapOf(ADF.userId to user.userId, ADF.org to it)) }
+            admin.postData(UADEP.userSetLabels, mapOf(ADF.userId to user.userId, ADF.labels to listOf(label)))
+        }
+        labelled("east@$client.test", "east", "eastOnly1481")
+        labelled("west@$client.test", "west", "westOnly1481")
+        // No organization: the client's, which every organization of it sees (the lenient rule).
+        labelled("noorg@$client.test", null, "anyOrg1481")
+        val chief = TestUser.create(cxt, "chief@$client.test", userClient = client, level = ROLE.admin)
+        admin.postData(UADEP.userSetOrg, mapOf(ADF.userId to chief.userId, ADF.org to "east"))
+        // Signed in again, so the organization is on the profile the scope is read from.
+        val eastChief = TestUser.create(cxt, "chief@$client.test", userClient = client)
+        val inUse = eastChief.getData(UADEP.userLabelSuggestions)[ADF.labelsInUse].toJsonListOrEmpty().map { it.toOptStr() }
+        inUse shouldContain "eastOnly1481"
+        inUse shouldContain "anyOrg1481"
+        inUse shouldNotContain "westOnly1481"
+        // The client's administrator, confined to no organization, is offered all three.
+        val all = admin.getData(UADEP.userLabelSuggestions)[ADF.labelsInUse].toJsonListOrEmpty().map { it.toOptStr() }
+        all.containsAll(listOf("eastOnly1481", "westOnly1481", "anyOrg1481")) shouldBe true
+    }
+
     "the full-scope admin surface serves the same calls, and allClients reads another client's suggestions" {
         // Wired on both surfaces from one module; this pins the `admin` half, which the rest of the suite leaves
         // to the `clientAdmin` paths.

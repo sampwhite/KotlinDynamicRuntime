@@ -149,13 +149,16 @@ val Users = FC<Props> {
     // The user's free-form labels (issue #786), and what each client suggests -- keyed by client, since a
     // full-scope administrator edits users in many clients and each suggests its own. Keyed rather than one
     // "current" list so a slow reply can only ever fill in *its own* client: opening an acme user and then a globex
-    // one cannot leave acme's suggestions on the globex editor. It also means a client is fetched once per page.
+    // one cannot leave acme's suggestions on the globex editor. A client is fetched once, and again after a save
+    // writes labels (see [forgetLabelSuggestions]).
     var draftLabels by useState<List<String>>(emptyList())
     val (labelSuggestions, setLabelSuggestions) = useState<Map<String, List<String>>>(emptyMap())
-    // Read through a ref by [startEdit], which the once-registered route listener reaches -- it would otherwise
-    // see the empty map of the first render and refetch on every open (the reason [usersRef] exists, too).
+    // Read through a ref by [ensureLabelSuggestions], whose fetch outlives the render that started it.
     val labelSuggestionsRef = useRef<Map<String, List<String>>>(emptyMap())
     labelSuggestionsRef.current = labelSuggestions
+    // How many times each client's suggestions have been dropped after a save. A fetch already under way when one is
+    // dropped carries the labels from before that save, so it is discarded and asked again rather than written back.
+    val labelGenerations = useRef(mutableMapOf<String, Int>())
     // The persona and personaSuffix (issue #750): chosen at creation, shown read-only afterward. The suffix box
     // is on every create form (issue #797): a first "Member B" needs it as much as a second one does. A create
     // that collides with an existing user of the same address, client and persona sets [personaSuffixCollided],
@@ -182,6 +185,8 @@ val Users = FC<Props> {
     // than the query captured when it was scheduled: a sort click landing during the debounce updates it, and
     // firing the stale capture would re-fetch the old sort and clobber the sort the user just chose.
     val queryRef = useRef(UserSearchQuery())
+    // The wire arguments of the search last run, so a debounced search that would only repeat it is skipped.
+    val lastRunArgs = useRef<Map<String, Any?>>(null)
 
     /** Runs a backend [block] with busy/error bookkeeping. Used by the actions, never by the search field. */
     fun run(block: suspend () -> Unit) {
@@ -222,6 +227,7 @@ val Users = FC<Props> {
      */
     fun runSearch(q: UserSearchQuery, limit: Int = listingBatch) {
         queryRef.current = q
+        lastRunArgs.current = userSearchArgs(q)
         shown = limit
         searchSeq.current = (searchSeq.current ?: 0) + 1
         val seq = searchSeq.current
@@ -236,7 +242,11 @@ val Users = FC<Props> {
                     error = null
                 }
             } catch (e: Throwable) {
-                if (seq == searchSeq.current) error = userFacingError(e)
+                if (seq == searchSeq.current) {
+                    error = userFacingError(e)
+                    // A failed search is not one already run: the same terms asked again should ask again.
+                    lastRunArgs.current = null
+                }
             }
         }
     }
@@ -244,12 +254,16 @@ val Users = FC<Props> {
     /**
      * Debounces [runSearch] so typing does not fire a request per character. Records [q] as the latest intent
      * and, when the timer fires, runs whatever the latest intent is by then -- so a sort click during the
-     * debounce is honoured rather than overwritten by this text change's stale snapshot.
+     * debounce is honoured rather than overwritten by this text change's stale snapshot. Skipped when that intent
+     * is the search last run, as when a pick from a type-ahead was searched at once (issue #1481).
      */
     fun scheduleSearch(q: UserSearchQuery) {
         queryRef.current = q
         searchTimer.current?.let { clearTimer(it) }
-        searchTimer.current = setTimer({ queryRef.current?.let { runSearch(it) } }, searchDebounceMs)
+        searchTimer.current = setTimer(
+            { queryRef.current?.takeIf { userSearchArgs(it) != lastRunArgs.current }?.let { runSearch(it) } },
+            searchDebounceMs,
+        )
     }
 
     /** Sets the visible filter/sort controls from [q] -- used to reflect a URL (a shared link, Back/Forward). */
@@ -361,12 +375,16 @@ val Users = FC<Props> {
     fun ensureLabelSuggestions(client: String) {
         if (client.isBlank() || config?.canManageUsers != true) return
         if (labelSuggestionsRef.current?.containsKey(client) == true) return
+        val generation = labelGenerations.current?.get(client) ?: 0
         usersScope.launch {
+            val fetched = apiResult { AdminApi.labelSuggestions(client) }.valueOrNull() ?: return@launch
+            if ((labelGenerations.current?.get(client) ?: 0) != generation) {
+                ensureLabelSuggestions(client)
+                return@launch
+            }
             // A functional update: this runs after the await, when the map captured above may be stale -- two
             // clients fetched at once would otherwise each write back a map missing the other.
-            apiResult { AdminApi.labelSuggestions(client) }.valueOrNull()?.let { fetched ->
-                setLabelSuggestions { current -> current + (client to fetched) }
-            }
+            setLabelSuggestions { current -> current + (client to fetched) }
         }
     }
 
@@ -398,6 +416,7 @@ val Users = FC<Props> {
      * then on.
      */
     fun forgetLabelSuggestions(client: String) {
+        labelGenerations.current?.let { it[client] = (it[client] ?: 0) + 1 }
         setLabelSuggestions { current -> current - client }
     }
 
@@ -1193,20 +1212,21 @@ val Users = FC<Props> {
                                 // The labels (issues #786, #1481): the client's suggestions, or any label typed, since
                                 // a label need not be one of them. Every suggestion stays offered whatever is in the
                                 // box (see "Choice widgets" in the webapp's CLAUDE.md). A pick or a clear searches at
-                                // once; typing waits, as a text box does -- one handler, since antd reports a pick to
-                                // `onChange` as well as `onSelect`, and two would search twice.
+                                // once; typing waits, as a text box does, even when the word typed so far is itself
+                                // a label (`lead` on the way to `leader`). antd reports a pick to `onChange` as well
+                                // as `onSelect`; the debounced half then finds that search already run, and skips.
                                 UserFilterChoices.labels -> AutoComplete {
-                                    val suggested = labelSuggestions[labelFilterClient].orEmpty()
                                     value = textFilters[spec.name] ?: ""
-                                    options = labelSelectOptions(suggested)
+                                    options = labelSelectOptions(labelSuggestions[labelFilterClient].orEmpty())
                                     filterOption = false
                                     placeholder = "Any"
                                     allowClear = true
                                     style = js("({ minWidth: 180 })")
                                     onChange = { v ->
                                         val label = v as? String ?: ""
-                                        setText(spec.name, label, immediate = label.isEmpty() || label in suggested)
+                                        setText(spec.name, label, immediate = label.isEmpty())
                                     }
+                                    onSelect = { v -> setText(spec.name, v as? String ?: "", immediate = true) }
                                 }
                                 // The spec's own options (the persona, the roles), else the clients this caller may
                                 // choose among.
@@ -1638,7 +1658,8 @@ private const val orgHint =
 /** Says what a label is for -- and, since it sits beside the access level, what it is not. */
 private const val labelsHint =
     "Free-form labels a workflow can test for -- \"reviewer\" can make someone a reviewer of a workflow's " +
-        "task. They grant no access. The client's suggestions are offered; type to add any other."
+        "task. They grant no access. The client's suggestions are offered, then the labels its users already " +
+        "carry; type to add any other."
 
 /** A label list as antd `Select` `{ label, value }` options -- a label is its own caption. */
 private fun labelSelectOptions(labels: List<String>): Array<dynamic> = labels.map { label ->

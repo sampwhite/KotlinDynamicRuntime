@@ -223,7 +223,8 @@ fun cellValue(field: String, user: AdminUser, now: Instant): String = when (fiel
     // The roles held, and those a sandbox user acts with when they differ (issue #1198).
     USF.roles -> rolesCellText(user)
     // The labels applied (issues #786, #1481), as the read-only editor lists them; most users carry none.
-    USF.labels -> user.labels.joinToString(", ").ifEmpty { "—" }
+    // Alphabetically, as the column sorts them (issue #1481), so a sorted column reads in order.
+    USF.labels -> user.labels.sortedWith(String.CASE_INSENSITIVE_ORDER).joinToString(", ").ifEmpty { "—" }
     // The tracked dates the console shows (issue #462), relative to [now] (issue #1141). A dash rather than a blank:
     // "never" is a fact about the account -- never logged in, never edited -- and an empty cell reads as a rendering
     // failure. An absent registered date means unclaimed (issue #750), which the Status column also says in a word.

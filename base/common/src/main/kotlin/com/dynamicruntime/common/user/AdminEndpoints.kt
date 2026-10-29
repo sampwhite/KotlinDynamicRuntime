@@ -531,7 +531,7 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
 
     type(ADTY.labelSuggestions) {
         type = SCT.kObject
-        description = "A client's suggested user labels."
+        description = "A client's suggested user labels, and the labels its users already carry."
         property(ADF.client, "The client the suggestions belong to.", required = true)
         property(ADF.labels, "The suggested labels, in the client's order.", required = true) {
             type = SCT.array

@@ -15,7 +15,7 @@ import com.dynamicruntime.common.user.ADF
 import com.dynamicruntime.common.user.PERSONA
 import com.dynamicruntime.common.user.USF
 import com.dynamicruntime.common.user.UserFilterKind
-import com.dynamicruntime.common.user.normalizeUserLabels
+import com.dynamicruntime.common.user.mergeLabelSuggestions
 import com.dynamicruntime.common.user.userSearchFieldSpecs
 import com.dynamicruntime.common.user.userSearchFieldSpecsByName
 import com.dynamicruntime.common.util.toJsonListOfMaps
@@ -280,7 +280,7 @@ object AdminApi {
     suspend fun labelSuggestions(client: String?): List<String> {
         val args = client?.let { mapOf(ADF.client to it) } ?: emptyMap()
         val results = Http.getApi(UADEP.userLabelSuggestions + queryString(args))[EP.results].toJsonMapOrEmpty()
-        return normalizeUserLabels(results[ADF.labels].toJsonListOfStrings() + results[ADF.labelsInUse].toJsonListOfStrings())
+        return mergeLabelSuggestions(results[ADF.labels].toJsonListOfStrings(), results[ADF.labelsInUse].toJsonListOfStrings())
     }
 
     /** Replaces a user's roles -- the call that grants or revokes administrator rights. */
