@@ -222,6 +222,9 @@ fun cellValue(field: String, user: AdminUser, now: Instant): String = when (fiel
     USF.persona -> personaCell(user.persona, user.personaSuffix, user.actingRoles ?: user.roles)
     // The roles held, and those a sandbox user acts with when they differ (issue #1198).
     USF.roles -> rolesCellText(user)
+    // The labels applied (issues #786, #1481), as the read-only editor lists them; most users carry none.
+    // Alphabetically, as the column sorts them (issue #1481), so a sorted column reads in order.
+    USF.labels -> user.labels.sortedWith(String.CASE_INSENSITIVE_ORDER).joinToString(", ").ifEmpty { "—" }
     // The tracked dates the console shows (issue #462), relative to [now] (issue #1141). A dash rather than a blank:
     // "never" is a fact about the account -- never logged in, never edited -- and an empty cell reads as a rendering
     // failure. An absent registered date means unclaimed (issue #750), which the Status column also says in a word.
@@ -287,7 +290,7 @@ private const val linksColumn = "links"
 /**
  * Which edge a column is pinned to while the middle scrolls, or null for one that scrolls (issue #750). The
  * columns that say *who* -- id, email, name, client, persona -- hold the left; the one that says whether they
- * are live holds the right; the dates, type and roles are what you scroll to read. Pure, covered under
+ * are live holds the right; the dates, type, roles, and labels are what you scroll to read. Pure, covered under
  * `jsNodeTest`.
  */
 fun pinnedSide(dataIndex: String): String? = when (dataIndex) {
@@ -309,9 +312,10 @@ fun pinnedSide(dataIndex: String): String? = when (dataIndex) {
  * one that holds the widest of those and the header with its sort arrow, not a preference. A column whose content
  * cannot grow should never be the one that wraps. (They were 175 when they held `2026-08-27 19:23 UTC`.)
  *
- * The total is kept near what a 1440-wide window can show, so nothing is pushed off the right-hand edge and
- * behind a scrollbar. Above that the surplus is shared out; below it the table scrolls inside the card. The
- * columns that absorb the difference are the two whose content has no bound.
+ * The total was kept near what a 1440-wide window can show, so nothing was pushed off the right-hand edge and
+ * behind a scrollbar; the Labels column (issue #1481) takes it past that, which the pinned columns make cheap (see
+ * its entry). Above the total the surplus is shared out; below it the table scrolls inside the card. The columns
+ * that absorb the difference are the two whose content has no bound.
  */
 private val columnWidths: Map<String, Int> = mapOf(
     idColumn to 50,
@@ -333,6 +337,9 @@ private val columnWidths: Map<String, Int> = mapOf(
     // sandbox user whose row and acting roles differ, which says both (issue #1198) and may take three or four.
     // The 40px it gave up went to the Registered column (issue #750); a few tall rows beat a scrollbar on all.
     USF.roles to 120,
+    // Also a list that may wrap, and usually a dash. It takes the table past the 1440 budget above, which the pinned
+    // columns make cheap: what scrolls is the middle, and the who and the status stay in view.
+    USF.labels to 110,
 )
 
 /** Builds an antd column config `{ title, dataIndex, key, width? }`. */

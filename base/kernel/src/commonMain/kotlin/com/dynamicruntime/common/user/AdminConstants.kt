@@ -354,6 +354,13 @@ object ADF {
     const val labels = "labels"
 
     /**
+     * The labels a client's active users already carry (issue #1481), which a label editor offers beside the client's
+     * own suggestions -- so a label typed for one user is offered for the next. Only the client's own list is what a
+     * workflow may name.
+     */
+    const val labelsInUse = "labelsInUse"
+
+    /**
      * In a sandbox (issue #1198): the roles the user **acts** with, which the sandbox's rules decide and [roles] --
      * what its row holds -- need not say (`SandboxAccess`). Absent outside a sandbox, where the two are one.
      */
@@ -469,6 +476,14 @@ object USF {
      * every account.
      */
     const val roles = "roles"
+
+    /**
+     * Case-insensitive **exact** match of any one of the user's free-form labels (issues #786, #1481) -- `reviewer`
+     * finds every reviewer. A label is stored case and all, but a search is a finding tool, so it ignores case as the
+     * persona's does. Also part of the free-text `q`, so the one search box finds a user by a label as it does by a
+     * name.
+     */
+    const val labels = "labels"
 
     /**
      * **Exact** client id to confine the search to. Only an `allClients` caller can widen past their own

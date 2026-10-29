@@ -30,6 +30,15 @@ class UserLabelsTest {
     }
 
     @Test
+    fun theLabelsInUseFollowTheClientsOwnAndAreOfferedOnceIgnoringCase() {
+        // Issue #1481: the client's spelling wins over a user's, and two users' spellings collapse to the first.
+        assertEquals(
+            listOf("Reviewer", "siteLead", "adHoc"),
+            mergeLabelSuggestions(listOf("Reviewer", "siteLead"), listOf("adHoc", "ADHOC", "reviewer", " siteLead ")),
+        )
+    }
+
+    @Test
     fun aClientsSuggestionsAreHeldToTheSameRule() {
         fun client(labels: List<String>) = ClientDef(
             clientId = "labels", name = "Labels", usageType = ClientUsageType.dev, audience = ClientAudience.internal,

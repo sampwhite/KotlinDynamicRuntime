@@ -11,6 +11,7 @@ import com.dynamicruntime.common.user.AERR
 import com.dynamicruntime.common.user.PERSONA
 import com.dynamicruntime.common.user.PERSONASUFFIX
 import com.dynamicruntime.common.user.USF
+import com.dynamicruntime.common.user.UserFilterChoices
 import com.dynamicruntime.common.user.UserFilterKind
 import com.dynamicruntime.common.user.UserFilterOption
 import com.dynamicruntime.common.user.UserSearchFieldSpec
@@ -72,8 +73,8 @@ val Users = FC<Props> {
     // the date-range bounds (update time). A field added to `userSearchFieldSpecs` flows through here untouched.
     var textFilters by useState<Map<String, String>>(emptyMap())
     var rangeFilters by useState<Map<String, DateRange>>(emptyMap())
-    // The free-text term (issue #581; a box of its own since #1432): one OR across email, name, username, persona and
-    // persona suffix, where the filters above AND. Its box is always on screen, so it is not a chip.
+    // The free-text term (issue #581; a box of its own since #1432): one OR across email, name, username, persona,
+    // persona suffix, and label, where the filters above AND. Its box is always on screen, so it is not a chip.
     var anyText by useState("")
     // The sort, driven by the table's column headers. Default: newest first, as the issue specifies.
     var sortBy by useState(defaultUserSortKey)
@@ -148,13 +149,16 @@ val Users = FC<Props> {
     // The user's free-form labels (issue #786), and what each client suggests -- keyed by client, since a
     // full-scope administrator edits users in many clients and each suggests its own. Keyed rather than one
     // "current" list so a slow reply can only ever fill in *its own* client: opening an acme user and then a globex
-    // one cannot leave acme's suggestions on the globex editor. It also means a client is fetched once per page.
+    // one cannot leave acme's suggestions on the globex editor. A client is fetched once, and again after a save
+    // writes labels (see [forgetLabelSuggestions]).
     var draftLabels by useState<List<String>>(emptyList())
     val (labelSuggestions, setLabelSuggestions) = useState<Map<String, List<String>>>(emptyMap())
-    // Read through a ref by [startEdit], which the once-registered route listener reaches -- it would otherwise
-    // see the empty map of the first render and refetch on every open (the reason [usersRef] exists, too).
+    // Read through a ref by [ensureLabelSuggestions], whose fetch outlives the render that started it.
     val labelSuggestionsRef = useRef<Map<String, List<String>>>(emptyMap())
     labelSuggestionsRef.current = labelSuggestions
+    // How many times each client's suggestions have been dropped after a save. A fetch already under way when one is
+    // dropped carries the labels from before that save, so it is discarded and asked again rather than written back.
+    val labelGenerations = useRef(mutableMapOf<String, Int>())
     // The persona and personaSuffix (issue #750): chosen at creation, shown read-only afterward. The suffix box
     // is on every create form (issue #797): a first "Member B" needs it as much as a second one does. A create
     // that collides with an existing user of the same address, client and persona sets [personaSuffixCollided],
@@ -181,6 +185,8 @@ val Users = FC<Props> {
     // than the query captured when it was scheduled: a sort click landing during the debounce updates it, and
     // firing the stale capture would re-fetch the old sort and clobber the sort the user just chose.
     val queryRef = useRef(UserSearchQuery())
+    // The wire arguments of the search last run, so a debounced search that would only repeat it is skipped.
+    val lastRunArgs = useRef<Map<String, Any?>>(null)
 
     /** Runs a backend [block] with busy/error bookkeeping. Used by the actions, never by the search field. */
     fun run(block: suspend () -> Unit) {
@@ -221,6 +227,7 @@ val Users = FC<Props> {
      */
     fun runSearch(q: UserSearchQuery, limit: Int = listingBatch) {
         queryRef.current = q
+        lastRunArgs.current = userSearchArgs(q)
         shown = limit
         searchSeq.current = (searchSeq.current ?: 0) + 1
         val seq = searchSeq.current
@@ -235,7 +242,11 @@ val Users = FC<Props> {
                     error = null
                 }
             } catch (e: Throwable) {
-                if (seq == searchSeq.current) error = userFacingError(e)
+                if (seq == searchSeq.current) {
+                    error = userFacingError(e)
+                    // A failed search is not one already run: the same terms asked again should ask again.
+                    lastRunArgs.current = null
+                }
             }
         }
     }
@@ -243,12 +254,16 @@ val Users = FC<Props> {
     /**
      * Debounces [runSearch] so typing does not fire a request per character. Records [q] as the latest intent
      * and, when the timer fires, runs whatever the latest intent is by then -- so a sort click during the
-     * debounce is honoured rather than overwritten by this text change's stale snapshot.
+     * debounce is honoured rather than overwritten by this text change's stale snapshot. Skipped when that intent
+     * is the search last run, as when a pick from a type-ahead was searched at once (issue #1481).
      */
     fun scheduleSearch(q: UserSearchQuery) {
         queryRef.current = q
         searchTimer.current?.let { clearTimer(it) }
-        searchTimer.current = setTimer({ queryRef.current?.let { runSearch(it) } }, searchDebounceMs)
+        searchTimer.current = setTimer(
+            { queryRef.current?.takeIf { userSearchArgs(it) != lastRunArgs.current }?.let { runSearch(it) } },
+            searchDebounceMs,
+        )
     }
 
     /** Sets the visible filter/sort controls from [q] -- used to reflect a URL (a shared link, Back/Forward). */
@@ -350,24 +365,66 @@ val Users = FC<Props> {
         error = null
     }
 
+    /**
+     * Fetches [client]'s label suggestions the first time something asks for them: the editor of one of its users, the
+     * create form once it names the client, or the Labels filter. Only an administrator may read them; an editor's
+     * label controls offer nothing and take what is typed. A failure leaves the control offering only the labels
+     * already in it -- any other can still be typed, since labels are free-form -- and is not recorded, so the next
+     * ask tries again.
+     */
+    fun ensureLabelSuggestions(client: String) {
+        if (client.isBlank() || config?.canManageUsers != true) return
+        if (labelSuggestionsRef.current?.containsKey(client) == true) return
+        val generation = labelGenerations.current?.get(client) ?: 0
+        usersScope.launch {
+            val fetched = apiResult { AdminApi.labelSuggestions(client) }.valueOrNull() ?: return@launch
+            if ((labelGenerations.current?.get(client) ?: 0) != generation) {
+                ensureLabelSuggestions(client)
+                return@launch
+            }
+            // A functional update: this runs after the await, when the map captured above may be stale -- two
+            // clients fetched at once would otherwise each write back a map missing the other.
+            setLabelSuggestions { current -> current + (client to fetched) }
+        }
+    }
+
+    // The editor's Labels field offers the suggestions of the user's client -- on a new user, the client the form names,
+    // the caller's own until it names one. Fetched from an effect rather than from `startEdit`/`startCreate`, which the
+    // once-registered route listener reaches with the first render's (empty) config, and which would read a just-set
+    // client back as the one it replaced.
+    val editorLabelClient = editing?.client ?: draftClient.ifEmpty { null } ?: config?.user?.client ?: ""
+    val editorOpen = editing != null || creating
+    // Keyed on whether the client's entry is there too, so suggestions dropped after a save are fetched again.
+    useEffect(editorOpen, editorLabelClient, config?.canManageUsers, editorLabelClient in labelSuggestions) {
+        if (editorOpen) ensureLabelSuggestions(editorLabelClient)
+    }
+
+    // The Labels filter offers the suggestions of the client being searched: the one the Client filter names -- which
+    // only an `allClients` caller is offered, so a shared link naming another client asks nothing of anyone else --
+    // else the caller's own. For an `allClients` caller searching every client, that is their own client's list, and
+    // any other label is typed. Fetched once the well is open, so a page nobody filters asks for nothing.
+    val searchesAllClients = config?.user?.roles?.contains(ROLE.allClients) == true
+    val labelFilterClient = textFilters[USF.client]?.trim()?.ifEmpty { null }?.takeIf { searchesAllClients }
+        ?: config?.user?.client ?: ""
+    useEffect(filtersOpen, labelFilterClient, config?.canManageUsers, labelFilterClient in labelSuggestions) {
+        if (filtersOpen) ensureLabelSuggestions(labelFilterClient)
+    }
+
+    /**
+     * Drops [client]'s suggestions after a save that wrote labels, so the next label control to ask re-reads them --
+     * they include the labels the client's users carry (issue #1481), and a label just typed should be offered from
+     * then on.
+     */
+    fun forgetLabelSuggestions(client: String) {
+        labelGenerations.current?.let { it[client] = (it[client] ?: 0) + 1 }
+        setLabelSuggestions { current -> current - client }
+    }
+
     /** Opens the editor on [user], seeding the draft from their current state. */
     fun startEdit(user: AdminUser) {
         editing = user
         creating = false
         seedDraft(user)
-        // The suggestions of the *user's* client, not the editor's, fetched the first time that client is edited.
-        // A failure leaves the editor offering only the labels the user already has -- they can still type any
-        // other, since labels are free-form -- and is not recorded, so the next open tries again.
-        val client = user.client
-        if (config?.canManageUsers == true && labelSuggestionsRef.current?.containsKey(client) != true) {
-            usersScope.launch {
-                // A functional update: this runs after the await, when the map captured above may be stale -- two
-                // clients fetched at once would otherwise each write back a map missing the other.
-                apiResult { AdminApi.labelSuggestions(client) }.valueOrNull()?.let { fetched ->
-                    setLabelSuggestions { current -> current + (client to fetched) }
-                }
-            }
-        }
     }
 
     /** Opens the editor on a new user -- for the caller's own address when [forSelf] (issue #797). */
@@ -532,6 +589,7 @@ val Users = FC<Props> {
                     isEntity = draftIsEntity, name = draftName.trim().ifEmpty { null },
                     client = draftClient.trim().ifEmpty { null }, enabled = draftEnabled,
                     persona = if (personaChosen) draftPersona else null, personaSuffix = draftPersonaSuffix,
+                    labels = normalizeUserLabels(draftLabels),
                 )
             } catch (e: Throwable) {
                 // A collision on (address, client, persona) is what the personaSuffix is for: offer it, keep the
@@ -540,6 +598,7 @@ val Users = FC<Props> {
                 throw e
             }
             note = "Created ${created.primaryId}."
+            if (created.labels.isNotEmpty()) forgetLabelSuggestions(created.client)
         } else {
             var changed = false
             // A sandbox user somebody opened has no roles or organization of its own to set (issue #1198): the
@@ -574,6 +633,7 @@ val Users = FC<Props> {
             val desiredLabels = normalizeUserLabels(draftLabels)
             if (desiredLabels != target.labels) {
                 AdminApi.setLabels(target.userId, desiredLabels)
+                forgetLabelSuggestions(target.client)
                 changed = true
             }
             note = if (changed) "Saved ${target.primaryId}." else "No changes to ${target.primaryId}."
@@ -896,32 +956,30 @@ val Users = FC<Props> {
                 readOnlyField("Organization", draftOrg.ifEmpty { "—" })
             }
 
-            // Labels (issue #786): on an existing user only -- a new one has no client suggestions fetched yet, and
-            // is labelled after it exists. A tags select: the client's suggestions are offered, and anything else
-            // may be typed, because a label is free-form by design.
-            if (!creating) {
-                div {
-                    className = ClassName("row")
-                    span {
-                        className = ClassName("field-label")
-                        +"Labels"
-                    }
-                    Select {
-                        mode = "tags"
-                        value = draftLabels.toTypedArray()
-                        options = labelSelectOptions(
-                            userLabelChoices(labelSuggestions[editing?.client].orEmpty(), draftLabels),
-                        )
-                        placeholder = "(none)"
-                        disabled = busy
-                        style = choiceStyle()
-                        onChange = { v -> draftLabels = (v.unsafeCast<Array<String>>()).toList() }
-                    }
+            // Labels (issues #786, #1481), on a new user as on an existing one. A tags select: the suggestions of the
+            // user's client -- on a new user, the client the form names -- are offered, and anything else may be typed,
+            // because a label is free-form by design.
+            div {
+                className = ClassName("row")
+                span {
+                    className = ClassName("field-label")
+                    +"Labels"
                 }
-                p {
-                    className = ClassName("type-hint")
-                    +labelsHint
+                Select {
+                    mode = "tags"
+                    value = draftLabels.toTypedArray()
+                    options = labelSelectOptions(
+                        userLabelChoices(labelSuggestions[editorLabelClient].orEmpty(), draftLabels),
+                    )
+                    placeholder = "(none)"
+                    disabled = busy
+                    style = choiceStyle()
+                    onChange = { v -> draftLabels = (v.unsafeCast<Array<String>>()).toList() }
                 }
+            }
+            p {
+                className = ClassName("type-hint")
+                +labelsHint
             }
 
             div {
@@ -1101,7 +1159,7 @@ val Users = FC<Props> {
                 // The free-text search (issue #1432), on screen as the forms list's is: the quickest way to find someone
                 // without knowing which field holds what you remember, and the one way to a batch member by suffix.
                 Input {
-                    placeholder = "Search email, name, username, or persona"
+                    placeholder = "Search email, name, username, persona, or label"
                     value = anyText
                     allowClear = true
                     style = js("({ width: 300 })")
@@ -1149,16 +1207,42 @@ val Users = FC<Props> {
                                 style = js("({ width: '100%', maxWidth: 420 })")
                                 onChange = { event -> setText(spec.name, event.target.value as String, immediate = false) }
                             }
-                            UserFilterKind.exact -> Select {
-                                // Exact fields render as a picker: of the spec's own choices (the persona, the
-                                // roles; issue #1432), else of the clients this caller may choose among.
-                                value = (textFilters[spec.name] ?: "").ifEmpty { null }
-                                options = spec.options?.let { filterOptions(it, showClient) } ?: clientOptions(clientChoices)
-                                // "Any roles" would misread a list-valued field; its label above says which.
-                                placeholder = if (spec.listValued) "Any" else "Any ${spec.label.lowercase()}"
-                                allowClear = true
-                                style = js("({ minWidth: 180 })")
-                                onChange = { v -> setText(spec.name, v as? String ?: "", immediate = true) }
+                            // Exact fields render as a picker, its choices from where the spec says (issue #1432).
+                            UserFilterKind.exact -> when (spec.choices) {
+                                // The labels (issues #786, #1481): the client's suggestions, or any label typed, since
+                                // a label need not be one of them. Every suggestion stays offered whatever is in the
+                                // box (see "Choice widgets" in the webapp's CLAUDE.md). A pick or a clear searches at
+                                // once; typing waits, as a text box does, even when the word typed so far is itself
+                                // a label (`lead` on the way to `leader`). antd reports a pick to `onChange` as well
+                                // as `onSelect`; the debounced half then finds that search already run, and skips.
+                                UserFilterChoices.labels -> AutoComplete {
+                                    value = textFilters[spec.name] ?: ""
+                                    options = labelSelectOptions(labelSuggestions[labelFilterClient].orEmpty())
+                                    filterOption = false
+                                    placeholder = "Any"
+                                    allowClear = true
+                                    style = js("({ minWidth: 180 })")
+                                    onChange = { v ->
+                                        val label = v as? String ?: ""
+                                        setText(spec.name, label, immediate = label.isEmpty())
+                                    }
+                                    onSelect = { v -> setText(spec.name, v as? String ?: "", immediate = true) }
+                                }
+                                // The spec's own options (the persona, the roles), else the clients this caller may
+                                // choose among.
+                                UserFilterChoices.listed, UserFilterChoices.clients, null -> Select {
+                                    value = (textFilters[spec.name] ?: "").ifEmpty { null }
+                                    options = if (spec.choices == UserFilterChoices.listed) {
+                                        filterOptions(spec.options.orEmpty(), showClient)
+                                    } else {
+                                        clientOptions(clientChoices)
+                                    }
+                                    // "Any roles" would misread a list-valued field; its label above says which.
+                                    placeholder = if (spec.listValued) "Any" else "Any ${spec.label.lowercase()}"
+                                    allowClear = true
+                                    style = js("({ minWidth: 180 })")
+                                    onChange = { v -> setText(spec.name, v as? String ?: "", immediate = true) }
+                                }
                             }
                             UserFilterKind.dateRange -> {
                                 val range = rangeFilters[spec.name] ?: DateRange()
@@ -1338,9 +1422,9 @@ fun userFilterChips(texts: Map<String, String>, ranges: Map<String, DateRange>):
     }
 
 /**
- * An exact filter as a chip (issue #1432): its choice's label where the spec has choices (`Persona is "Editor"`), and
- * `include` for a list-valued field (`Roles include "Editor"`). A value no choice names (a hand-edited link) shows as
- * it came. Pure, and covered under `jsNodeTest`.
+ * An exact filter as a chip (issue #1432): its option's label where the spec lists options (`Persona is "Editor"`),
+ * and `include` for a list-valued field (`Roles include "Editor"`, `Labels include "reviewer"`). A value no option
+ * names -- a label, or a hand-edited link -- shows as it came. Pure, and covered under `jsNodeTest`.
  */
 fun exactChip(spec: UserSearchFieldSpec, value: String?): String? {
     val v = value?.trim()?.ifEmpty { null } ?: return null
@@ -1574,7 +1658,8 @@ private const val orgHint =
 /** Says what a label is for -- and, since it sits beside the access level, what it is not. */
 private const val labelsHint =
     "Free-form labels a workflow can test for -- \"reviewer\" can make someone a reviewer of a workflow's " +
-        "task. They grant no access. The client's suggestions are offered; type to add any other."
+        "task. They grant no access. The client's suggestions are offered, then the labels its users already " +
+        "carry; type to add any other."
 
 /** A label list as antd `Select` `{ label, value }` options -- a label is its own caption. */
 private fun labelSelectOptions(labels: List<String>): Array<dynamic> = labels.map { label ->

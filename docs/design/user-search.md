@@ -1,9 +1,9 @@
 # The admin user search, and its server-driven-UI shape (issue #411)
 
 **Status: built** (issue #411). Since then the console has gained a persona field (issue #750), four date ranges
-(issues #462, #750), and a roles field (issue #1432), and the endpoint a single free-text term matched across several
-fields (issue #581), which the console shows as a search box since #1432. The shared
-spec described here is built; the fully runtime version in
+(issues #462, #750), a roles field (issue #1432), and a labels field (issues #786, #1481), and the endpoint a
+single free-text term matched across several fields (issue #581), which the console shows as a search box since
+#1432. The shared spec described here is built; the fully runtime version in
 [The next step: fully runtime SDUI](#the-next-step-fully-runtime-sdui) is not.
 
 The admin console's user search is a **brute-force scan of the in-memory `AuthUsers` cache**, not a SQL query.
@@ -32,10 +32,14 @@ the console offers:
 - **roles** — picked from the roles, matching a user who holds that one (issue #1432), so Editor lists the editors
   whatever their persona. Operator and All clients are offered only to an `allClients` caller. Filter-only: it is not
   sortable, and the free-text `q` leaves it out, since every account holds `user`
+- **labels** — matching a user who carries that label (issues #786, #1481), exactly but ignoring case. Picked from the
+  searched client's suggestions -- its own list, then the labels its users already carry -- or typed, since labels
+  are free-form (`UserFilterChoices.labels`). Unlike the roles, sortable (alphabetically on a user's sorted labels,
+  the unlabeled last either way) and part of the free-text `q`: a label is something a person remembers a user by
 - **four date ranges**, each a from/to instant pair — edited, last login, registered, and activated
 
 Above the filters, always on screen, is a **search box**: `q`, one free-text term matched as a substring against
-email, name, username, persona, and persona suffix at once (issue #581; in the console since #1432). Where the
+email, name, username, persona, persona suffix, and label at once (issue #581; in the console since #1432). Where the
 filters AND, it is one OR. It is the console's only way to a batch member by suffix, now that the persona is picked.
 The endpoint also takes axes the console does not show: `publicName`, and a range over the update time.
 

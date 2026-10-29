@@ -66,6 +66,12 @@ class UserFilterChipsTest {
         assertEquals(listOf("Persona is \"B\""), userFilterChips(mapOf(USF.persona to "B"), emptyMap()))
     }
 
+    // Issue #1481: a label has no option to take a label from, so it shows as typed, case kept, and says `include`.
+    @Test
+    fun aLabelReadsAsTypedAndIsIncluded() {
+        assertEquals(listOf("Labels include \"siteLead\""), userFilterChips(mapOf(USF.labels to "siteLead"), emptyMap()))
+    }
+
     @Test
     fun theSortIsItsOwnChipAndOnlyWhenNotTheDefault() {
         // The default -- newest edit first -- is not a chip.

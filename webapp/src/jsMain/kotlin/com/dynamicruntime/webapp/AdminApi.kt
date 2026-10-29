@@ -15,6 +15,7 @@ import com.dynamicruntime.common.user.ADF
 import com.dynamicruntime.common.user.PERSONA
 import com.dynamicruntime.common.user.USF
 import com.dynamicruntime.common.user.UserFilterKind
+import com.dynamicruntime.common.user.mergeLabelSuggestions
 import com.dynamicruntime.common.user.userSearchFieldSpecs
 import com.dynamicruntime.common.user.userSearchFieldSpecsByName
 import com.dynamicruntime.common.util.toJsonListOfMaps
@@ -197,13 +198,13 @@ object AdminApi {
     }
 
     /**
-     * Creates a user directly (no email verification); [roles], [org], and name data are optional. No username: the
-     * person chooses one when they sign in (issue #1298).
+     * Creates a user directly (no email verification); [roles], [org], name data, and [labels] are optional. No
+     * username: the person chooses one when they sign in (issue #1298).
      */
     suspend fun createUser(
         primaryId: String, roles: List<String>?, org: String?,
         isEntity: Boolean = false, name: String? = null, client: String? = null, enabled: Boolean = true,
-        persona: String? = null, personaSuffix: String? = null,
+        persona: String? = null, personaSuffix: String? = null, labels: List<String> = emptyList(),
     ): AdminUser {
         val body = buildMap<String, Any?> {
             put(ADF.primaryId, primaryId.trim())
@@ -221,6 +222,9 @@ object AdminApi {
             // Sent only to create a disabled account: the backend defaults to enabled, so the common case
             // stays a shorter body and existing callers are unchanged.
             if (!enabled) put(ADF.enabled, false)
+            // The labels it starts with (issues #786, #1481), always sent: given, even empty, they replace any a
+            // recovered disabled user carried, so a re-created user does not come back with a label nobody chose.
+            put(ADF.labels, labels)
         }
         return Http.sendApi("POST", UADEP.userCreate, body).results().toAdminUser()
     }
@@ -268,13 +272,15 @@ object AdminApi {
     }
 
     /**
-     * The labels [client] suggests (issue #786) -- what the label editor offers. The caller's own client when
-     * null; naming another takes `allClients`, which is the only caller who edits users outside their own.
+     * The labels a label control offers for [client] (issue #786): the client's own suggestions in its order, then the
+     * labels its users already carry (issue #1481), so a label typed for one user is offered for the next. The
+     * caller's own client when null; naming another takes `allClients`, which is the only caller who edits users
+     * outside their own.
      */
     suspend fun labelSuggestions(client: String?): List<String> {
         val args = client?.let { mapOf(ADF.client to it) } ?: emptyMap()
-        return Http.getApi(UADEP.userLabelSuggestions + queryString(args))[EP.results].toJsonMapOrEmpty()[ADF.labels]
-            .toJsonListOfStrings()
+        val results = Http.getApi(UADEP.userLabelSuggestions + queryString(args))[EP.results].toJsonMapOrEmpty()
+        return mergeLabelSuggestions(results[ADF.labels].toJsonListOfStrings(), results[ADF.labelsInUse].toJsonListOfStrings())
     }
 
     /** Replaces a user's roles -- the call that grants or revokes administrator rights. */
@@ -393,8 +399,8 @@ class UserSearchQuery(
     val sortBy: String = defaultUserSortKey,
     val descending: Boolean = defaultUserSortDescending,
     /**
-     * A single free-text term matched across email, name, username, persona, and persona suffix at once (issue #581)
-     * -- the OR term the scope-bar type-ahead and the users console's search box (issue #1432) send, distinct from the
+     * A single free-text term matched across email, name, username, persona, persona suffix, and label at once (issues
+     * #581, #1481) -- the OR term the scope-bar type-ahead and the users console's search box (issue #1432) send, distinct from the
      * per-field [textTerms] which AND. Blank is no constraint.
      * Appended after the existing parameters so the positional call sites (the users console) are unaffected.
      */

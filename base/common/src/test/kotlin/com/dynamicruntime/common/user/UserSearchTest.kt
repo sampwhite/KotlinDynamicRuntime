@@ -222,6 +222,33 @@ class UserSearchTest : StringSpec({
         ids(searchUserRows(rows, UserSearchCriteria(anyText = "user"))) shouldBe emptyList()
     }
 
+    "a label finds every user carrying it, exactly, and the free text finds it too (issues #786, #1481)" {
+        val reviewer = user(40, "r@x.com", "r_rv", updatedAt = t1).also { it.labels = listOf("reviewer", "siteLead") }
+        val upper = user(41, "u@x.com", "u_rv", updatedAt = t2).also { it.labels = listOf("Reviewer") }
+        val lead = user(42, "l@x.com", "l_sl", updatedAt = t3).also { it.labels = listOf("siteLead") }
+        val rows = listOf(reviewer, upper, lead, ada)
+        // Any one of the labels matches, ignoring case as every search here does -- `Reviewer` and `reviewer` are two
+        // labels to a workflow, but one thing to look for.
+        ids(searchUserRows(rows, UserSearchCriteria(textTerms = mapOf(USF.labels to "reviewer")))).sorted() shouldBe
+            listOf(40L, 41L)
+        ids(searchUserRows(rows, UserSearchCriteria(textTerms = mapOf(USF.labels to "siteLead")))).sorted() shouldBe
+            listOf(40L, 42L)
+        // Exact: a fragment is no label.
+        ids(searchUserRows(rows, UserSearchCriteria(textTerms = mapOf(USF.labels to "review")))) shouldBe emptyList()
+        // The free text is a substring over the labels, as over a name: a person remembers a user by one.
+        ids(searchUserRows(rows, UserSearchCriteria(anyText = "lead"))).sorted() shouldBe listOf(40L, 42L)
+    }
+
+    "the labels sort alphabetically on the sorted list, with the unlabeled last either way (issue #1481)" {
+        // Applied out of order: the sort reads `alpha, zeta`, not the order they were applied in.
+        val za = user(50, "za@x.com", "za_l", updatedAt = t1).also { it.labels = listOf("zeta", "Alpha") }
+        val beta = user(51, "b@x.com", "b_l", updatedAt = t2).also { it.labels = listOf("beta") }
+        val none = user(52, "n@x.com", "n_l", updatedAt = t3)
+        val rows = listOf(none, beta, za)
+        ids(searchUserRows(rows, UserSearchCriteria(sortBy = USF.labels, descending = false))) shouldBe listOf(50L, 51L, 52L)
+        ids(searchUserRows(rows, UserSearchCriteria(sortBy = USF.labels, descending = true))) shouldBe listOf(51L, 50L, 52L)
+    }
+
     // --- the shared spec agrees with the backend registry (issue #411, SDUI) ---------------------------
     //
     // The console renders from `userSearchFieldSpecs` (base/kernel) while the actual filtering/sorting runs off
@@ -251,6 +278,16 @@ class UserSearchTest : StringSpec({
                 // A sort-only field would carry no filter input; none exist today, but the mapping stays total.
                 null -> (field.textsOf == null) shouldBe true
             }
+        }
+    }
+
+    "a picker's choices are declared only where there is a picker, and agree with its options (issue #1481)" {
+        for (spec in userSearchFieldSpecs) {
+            // Only an exact field has a picker; listed exactly when the spec carries its own options.
+            (spec.choices != null) shouldBe (spec.filterKind == UserFilterKind.exact)
+            (spec.choices == UserFilterChoices.listed) shouldBe (spec.options != null)
+            // A user carries several labels, so the labels picker is list-valued wherever it appears.
+            if (spec.choices == UserFilterChoices.labels) spec.listValued shouldBe true
         }
     }
 

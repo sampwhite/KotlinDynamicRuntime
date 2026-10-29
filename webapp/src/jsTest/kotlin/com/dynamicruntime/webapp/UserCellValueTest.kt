@@ -34,6 +34,7 @@ class UserCellValueTest {
         lastLoggedInAt = "2026-08-24T18:00:00.000Z",
         activatedAt = "2026-08-24T18:00:00.000Z",
         registeredAt = "2026-08-24T18:00:00.000Z",
+        labels = listOf("reviewer", "siteLead"),
     )
 
     // Issue #1450: the Persona column says the access a user has beside a persona it no longer matches, read from the
@@ -96,6 +97,17 @@ class UserCellValueTest {
     fun thePersonaColumnShowsTheLabelAndThePersonaSuffix() {
         assertEquals("Admin B", personaCell("admin", "B"))
         assertEquals("Member", personaCell("member", ""))
+    }
+
+    // Issue #786: the Labels column lists them, and a dash for none, as an absent date has.
+    @Test
+    fun theLabelsColumnListsTheLabels() {
+        assertEquals("reviewer, siteLead", cellValue(USF.labels, populatedUser(), Clock.System.now()))
+        val unlabeled = AdminUser(
+            userId = 2L, primaryId = "b@example.com", username = "b", roles = listOf("user"), client = "acme",
+            org = null, isEntity = false, name = null, enabled = true, hasPassword = false, deleted = false,
+        )
+        assertEquals("—", cellValue(USF.labels, unlabeled, Clock.System.now()))
     }
 
     @Test
