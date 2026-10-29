@@ -119,3 +119,18 @@ sourceSets {
 tasks.named("processResources") {
     dependsOn(embedDocs)
 }
+
+// RepoDocLinksTest (issues #1294, #1474) reads the repository's Markdown straight from the tree, not from the
+// classpath, so Gradle knows nothing of it: a change to Markdown alone would leave this task up to date, and a broken
+// link would pass the build. Declaring the documents it reads as inputs reruns the test when any of them changes.
+// Keep the list in step with `documents()` in the test. A link's target outside these files (a source file, an
+// image) is not an input, so a deleted target is caught on the next run that has another reason to happen.
+tasks.named<Test>("test") {
+    val repoRoot = layout.projectDirectory.dir("../..")
+    inputs.files(
+        repoRoot.file("README.md"),
+        repoRoot.file("CLAUDE.md"),
+        repoRoot.file("webapp/CLAUDE.md"),
+        listOf("docs", "examples", ".claude/skills").map { tree -> fileTree(repoRoot.dir(tree)) { include("**/*.md") } },
+    ).withPathSensitivity(PathSensitivity.RELATIVE).withPropertyName("repoDocs")
+}

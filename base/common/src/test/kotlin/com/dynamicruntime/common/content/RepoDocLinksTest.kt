@@ -20,6 +20,8 @@ class RepoDocLinksTest : StringSpec({
     // The tests run in the module's directory (base/common), two below the repository root.
     val repoRoot = File("../..").canonicalFile
 
+    // The same files are this task's inputs in base/common/build.gradle.kts (issue #1474), so a change to Markdown
+    // alone reruns the test; keep the two lists in step.
     fun documents(): List<File> {
         val roots = listOf(File(repoRoot, "README.md"), File(repoRoot, "CLAUDE.md"), File(repoRoot, "webapp/CLAUDE.md"))
         // The skills too (issue #1468): `kdr-webapp-pages` is an index linking its page files by relative path.
