@@ -1,6 +1,14 @@
 ---
 name: kdr-demo-docs
-description: Write or edit the developer documentation in `docs/demo-client/` — the conference demo (`confdemo`) walkthrough, which shows a client's stored JSON bundle by bundle and workflow by workflow for a human developer reader. Covers the page shape, the voice and word rules Sam settled in review (you/the demo, keys vs fields, no house verbs, wordier and plainer), the `<!-- kdr-doc: ... -->` markers and what `ConfDemoDocsTest` holds them to, and the process (page before DSL, append traits never insert, try the page's own steps on your own server). Use when adding a page for a new workflow, editing an existing page, extending the reference page, or changing `ConfDemo.kt` in a way that changes a bundle the pages show. Expect to augment this skill as pages accumulate; it was written after the first four.
+description: >-
+  Write or edit the developer documentation in `docs/demo-client/` — the conference demo (`confdemo`) walkthrough,
+  which shows a client's stored JSON bundle by bundle and workflow by workflow for a human developer reader. Covers
+  the page shape, the voice and word rules Sam settled in review (you/the demo, keys vs fields, no house verbs,
+  wordier and plainer), the `<!-- kdr-doc: ... -->` markers and what `ConfDemoDocsTest` holds them to, and the process
+  (page before DSL, append traits never insert, try the page's own steps on your own server). Use when adding a page
+  for a new workflow, editing an existing page, extending the reference page, or changing `ConfDemo.kt` in a way that
+  changes a bundle the pages show. Expect to augment this skill as pages accumulate; it was written after the first
+  four.
 ---
 
 # Writing the conference demo's documentation
