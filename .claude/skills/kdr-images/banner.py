@@ -61,8 +61,8 @@ PARTS = [
   'Part 2 of the walk-through: create a client, open its sandbox, change its words, design a trait, make a workflow, publish, invite somebody, and read the report.',
   [('building','Client'),('sandbox','Sandbox'),('words','Words'),('fields','Trait'),('flow','Workflow'),('publish','Publish'),('mail','Invite'),('bars','Report')]),
  ('walk-part3.svg', 'Part 3', 'For developers', 'amber', WALK_ABOUT,
-  'Part 3 of the walk-through: make an API key, find an endpoint in the catalog, call it, have an AI assistant build a workflow, and revoke the key.',
-  [('key','API key'),('braces','Catalog'),('terminal','Call it'),('spark','AI builds'),('flow','Workflow'),('revoke','Revoke')]),
+  'Part 3 of the walk-through: make an API key, find an endpoint in the catalog, call it, build a workflow from its JSON in the bundle editor or with an AI assistant, and revoke the key.',
+  [('key','API key'),('braces','Catalog'),('terminal','Call it'),('spark','Editor or AI'),('flow','Workflow'),('revoke','Revoke')]),
 ]
 
 # The layout: a 960x160 strip, the steps spread evenly 90 in from each side, 26-radius circles, 13px labels.

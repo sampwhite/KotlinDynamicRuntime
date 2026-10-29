@@ -371,16 +371,16 @@ the sandbox is not there: it belongs to the sandbox.
 
 ## Part 3: For developers
 
-![Part 3: API key, catalog, call it, AI builds, workflow, and revoke](images/walk-part3.svg)
+![Part 3: API key, catalog, call it, editor or AI, workflow, and revoke](images/walk-part3.svg)
 
 Everything you did in the pages, a program can do through the site's API, and every page you used is built on it. In
-this part you make an API key, find an endpoint in the catalog and call it with the key, and then have an AI assistant
-build a workflow for your Book Club through the API, from a description in your own words.
+this part you make an API key, find an endpoint in the catalog and call it with the key, and then build a workflow for
+your Book Club from its JSON: by hand in the bundle editor, or by having an AI assistant write it through the API.
 
-All of it happens in your sandbox. The key is your sandbox user's, so what the AI writes is a draft, and the forms it
-makes to try its workflow are the sandbox's, not your client's people's.
+All of it happens in your sandbox. What you save there is a draft, and the forms made to try the workflow are the
+sandbox's, not your client's people's.
 
-Everything here is temporary, like the rest of the site: your key, your client, and whatever the AI builds all go when
+Everything here is temporary, like the rest of the site: your key, your client, and the workflow you build all go when
 the site's data is cleared.
 
 ### Make an API key
@@ -395,7 +395,8 @@ shows **Book Club Sandbox**. Then open your [profile](/wa/profile), and under **
 | Access | Read-only, unchecked |
 | Lasts | 30 days |
 
-**Read-only** starts checked. Uncheck it, since the AI will write configuration with this key. Choose **Create key**.
+**Read-only** starts checked. Uncheck it, so that the key can write configuration, as an AI building the workflow
+below would. Choose **Create key**.
 
 The key is shown once, and never again: only a hash of it is kept. Choose **Copy**, and keep it somewhere you can paste
 it from for the rest of this part. The dialog also shows a `curl` command that calls the site with the key, with this
@@ -425,12 +426,88 @@ To call it with the key instead, take the dialog's `curl` command and replace it
 `/kda/gedra/` and your sandbox's id and `/formDocs`. The answer is the sandbox's forms, the one you made in part 2
 among them, as a program sees them.
 
-### Have an AI build a workflow
+### The workflow as JSON
+
+The workflow to build is **Review the book**: after the club has read a book, a member records a rating from 1 to 5
+and a few sentences on what they thought. Like every workflow, it is stored as JSON, as an entry in one of your
+client's **bundles**: the pieces your client's configuration is stored in, each made of **slots**, one for each kind
+of thing it holds. The [client configuration reference](reference/client-configuration.md) describes them all. This
+workflow needs two entries: a trait for the review, and the workflow that collects it.
+
+The trait, an entry in the **Traits** slot (`kdr:traitDef`):
+
+<!-- kdr-walk: entry=kdr:traitDef -->
+```json
+{
+  "traitId": "bookReview",
+  "typeName": "client.@self.BookReviewEntry",
+  "appliesTo": ["formDoc"],
+  "description": "A member's review of a book the club has read.",
+  "dataSchema": {
+    "properties": {
+      "rating": {"title": "Rating", "type": "integer", "minimum": 1, "maximum": 5},
+      "thoughts": {"title": "What I thought", "type": "string"}
+    },
+    "required": ["rating"]
+  }
+}
+```
+
+Its data schema is JSON Schema: the rating is a whole number from 1 to 5, which the form requires, and what the
+member thought is text. The type it declares is named in your client's own namespace, which the JSON writes as
+`client.@self`. That is the **portable form**: the site reads `@self` as whichever client the JSON is saved to, so the
+same JSON works for every reader's client.
+
+The workflow, an entry in the **Workflows** slot (`kdr:workflowDef`):
+
+<!-- kdr-walk: entry=kdr:workflowDef -->
+```json
+{
+  "workflowId": "reviewTheBook",
+  "definition": {
+    "workflowId": "reviewTheBook",
+    "label": "Review the book",
+    "entry": "normal",
+    "tasks": [
+      {
+        "id": "review",
+        "label": "Your review",
+        "traits": [{"traitId": "bookReview", "required": true}],
+        "saves": [{"id": "saveReview", "label": "Save the review", "kind": "edit"}]
+      }
+    ]
+  }
+}
+```
+
+It has one step, **Your review**, which collects the trait by its id, and a button that saves it.
+
+Build it one of the two ways below, not both. The second would be refused, since the trait's id and the workflow's
+would already be taken.
+
+### Build it in the bundle editor
+
+This way needs no key. Still in the sandbox, open **My client**, and under **Publishing**, choose **Open every
+bundle**. The page lists your client's bundles, and what you save on it is a draft that your sandbox runs.
+
+1. Under **Bundles**, type `reviewTheBook` in **New bundle's name**, and choose **Add bundle**.
+2. In the new bundle, choose **Traits (kdr:traitDef)** from **Add a slot…**. A new entry opens, with the field its
+   key needs.
+3. Check **Portable** beside it, so that the page reads `client.@self` as your client. Replace the entry's text with
+   the trait's JSON above.
+4. Choose **Workflows (kdr:workflowDef)** from **Add a slot…**, and replace the text of its new entry with the
+   workflow's JSON.
+
+Each entry is checked as you type, and says **edited, not saved** once it passes. Choose **Show the call**, which
+shows the request that **Save** sends: a `POST` to `/kda/clientAdmin/config/bundle/patch` with both entries in it,
+and your client's id where the JSON says `@self`. A program holding a key could send the same request. Choose **Save**.
+
+### Or have an AI build it
 
 An AI coding assistant can read the project's documentation and use the API with your key. Clone the
 [KotlinDynamicRuntime repository](https://github.com/sampwhite/KotlinDynamicRuntime) and start the assistant in the
 checkout, as its `CONTRIBUTING.md` describes; one that can browse the web can read the repository online instead. Ask
-it for a workflow in words, along these lines, with your site's address, your sandbox's id, and your key put in:
+it for the workflow, along these lines, with your site's address, your sandbox's id, and your key put in:
 
 ```text
 I have an API key for the sandbox <your sandbox's id> of my client on the KotlinDynamicRuntime site at
@@ -438,33 +515,48 @@ I have an API key for the sandbox <your sandbox's id> of my client on the Kotlin
 kdr-test-clients skill, which lists the endpoints that read and write a client's stored configuration, and the
 endpoint catalog at <your site's address>/kda/schema/endpoints. Then add a workflow to my client called "Review the
 book": after the club has read a book, a member records a rating from 1 to 5 and a few sentences on what they thought.
-Put it in a new bundle of its own, written with /kda/clientAdmin/config/bundle/write so that my sandbox runs it at
-once, and do not publish it. Try it by making a form in the sandbox and filling in the workflow.
+Part 3 of docs/walk-through.md shows it as JSON. Put it in a new bundle of its own, with the same request the bundle
+editor's Save sends: a /kda/clientAdmin/config/bundle/patch that adds each entry as new and asks for a reload, so that
+my sandbox runs it at once. Do not publish it. Try it by making a form in the sandbox and filling in the workflow.
 ```
 
-What the AI writes with the key is a draft of your client's configuration, which your sandbox runs and your client's
-people do not see, and the form it makes is the sandbox's. Open **Forms**, and try the new workflow from a form's
-**Workflows** column: the AI's, or the one you made in part 2. If it is not what you wanted, tell the AI what to
-change, and try it again.
+The AI sends the request a save in the bundle editor sends, with the key, so what it writes is a draft too. Since
+the page's JSON is a known answer, you can compare the AI's work with it, or ask it for something more, such as a
+question asking whether the member would recommend the book. A change it makes later can be a patch of the one entry
+it changes, leaving the rest of the bundle as it is.
+
+### Try it, and publish it
+
+Open **Forms**, and in a form's **Workflows** column, choose **Review the book**, then **Engage**, and then **Edit**.
+The form from part 2 will do, or one the AI made:
+
+<!-- kdr-walk: reviewForm -->
+| Field | What to enter |
+| --- | --- |
+| Rating | 4 |
+| What I thought | A good read, slow to start. |
+
+Choose **Save the review**. If the workflow is not what you wanted, change its JSON in the bundle editor, or tell the
+AI what to change, and try it again.
 
 When it is right, open **My client**, and under **Publishing**, choose **Select all unpublished** and **Publish
 selected**, as in part 2.
 
 ### Revoke the key
 
-The key is now in the AI session's transcript, so end it. Still in the sandbox, open your [profile](/wa/profile), and
-under **API keys**, choose **Revoke** on **Walk-through**, and **Revoke** again to confirm. Any request made with it
-from now on is refused.
+If you gave the key to an AI, it is now in the session's transcript, so end the session. Either way, revoke the key:
+still in the sandbox, open your [profile](/wa/profile), and under **API keys**, choose **Revoke** on **Walk-through**,
+and **Revoke** again to confirm. Any request made with it from now on is refused.
 
 Then go back to Book Club, and open a form in your client: the new workflow is in its **Workflows** column, for your
-client's people too. The forms the AI made are not there: they stayed in the sandbox.
+client's people too. The forms made in the sandbox are not there: they stayed in the sandbox.
 
 ### What you have seen
 
 - **One API for the pages and for programs.** The catalog documents the published endpoints, the forms' among them,
   with what each takes and answers, and a key calls them as you.
-- **Configuration is data.** The workflow the AI wrote is JSON, stored and published as the workflows you made in the
-  pages are.
+- **Configuration is data.** The workflow you saved, or the AI wrote, is JSON, stored and published as the workflows
+  you made in the pages are. The bundle editor's save is a call to the same API a program makes.
 - **A key is yours, and narrower than you.** It acts as one of your users, never above it, and cannot sign in, make
   keys, or switch users. A key made in the sandbox stays in the sandbox.
 

@@ -6,6 +6,7 @@ import com.dynamicruntime.common.context.CL
 import com.dynamicruntime.common.context.UPF
 import com.dynamicruntime.common.endpoint.EI
 import com.dynamicruntime.common.endpoint.EP
+import com.dynamicruntime.common.endpoint.HttpMethod
 import com.dynamicruntime.common.gedra.CCT
 import com.dynamicruntime.common.gedra.CFEP
 import com.dynamicruntime.common.gedra.CIT
@@ -19,11 +20,13 @@ import com.dynamicruntime.common.gedra.DSV
 import com.dynamicruntime.common.gedra.EDM
 import com.dynamicruntime.common.gedra.GDF
 import com.dynamicruntime.common.gedra.GE
+import com.dynamicruntime.common.gedra.GED
 import com.dynamicruntime.common.gedra.GEP
 import com.dynamicruntime.common.gedra.GID
 import com.dynamicruntime.common.gedra.GT
 import com.dynamicruntime.common.gedra.GedraConfigService
 import com.dynamicruntime.common.gedra.GedraConfigType
+import com.dynamicruntime.common.gedra.GedraEditAction
 import com.dynamicruntime.common.gedra.GedraId
 import com.dynamicruntime.common.gedra.JOIN
 import com.dynamicruntime.common.gedra.TraitChoiceDesign
@@ -49,7 +52,6 @@ import com.dynamicruntime.common.home.HMENU
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.http.request.TestHttpClient
 import com.dynamicruntime.common.mail.MailService
-import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.SL
@@ -60,6 +62,7 @@ import com.dynamicruntime.common.user.AFLD
 import com.dynamicruntime.common.user.AKEY
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.user.UADEP
+import com.dynamicruntime.common.util.jsonMap
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.resolveDocLink
 import com.dynamicruntime.common.util.toJsonListOfStrings
@@ -73,6 +76,7 @@ import io.kotest.matchers.collections.shouldContainAll
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
+import io.kotest.matchers.string.shouldContain
 import java.io.File
 
 /**
@@ -95,11 +99,13 @@ import java.io.File
  * label, have the invited person suggest a book on the changed form, open the workflow to everyone, and run the report
  * a new client starts with.
  *
- * Part 3, for developers, has no form for the reader to fill in; its AI writes one. So the test makes the key in the
- * sandbox as the page says, finds the endpoint the page names in the catalog the key is shown, reads the sandbox's forms
- * with it, and plays the AI with the bundle one following the page's prompt might write: written with the key as the
- * parent's draft the sandbox runs, tried on a form that stays the sandbox's, published, and seen by the client's people.
- * The key is revoked and refused. Every `/kda/...` path part 3 names is one it calls.
+ * Part 3, for developers, builds a workflow from the JSON the page shows (issue #1487), each entry marked on the line
+ * before its block (`<!-- kdr-walk: entry=kdr:traitDef -->`), one of two ways. The bundle editor's way is followed
+ * through the patch its save sends: the page's entries as new ones, in the portable form the page pastes them in, then
+ * the form the page fills in. The AI's way makes the key in the sandbox as the page says, finds the endpoint the page
+ * names in the catalog the key is shown, reads the sandbox's forms with it, and plays the AI by sending the editor's
+ * patch with the key, as the parent's draft the sandbox runs, tried on a form that stays the sandbox's, published, and
+ * seen by the client's people. The key is revoked and refused. Every `/kda/...` path part 3 names is one the key is shown.
  *
  * Each part opens with its banner and closes with a rule (issue #1463), and each banner is named by its path in the
  * repository, which the app resolves to the image it serves from the same file.
@@ -110,6 +116,13 @@ class PublicWalkThroughTest : StringSpec({
     val cxt = TestInstances.reference("publicWalkThrough1429")
     val page = File(File("../..").canonicalFile, WalkThrough.sourcePath).readText()
     val tables = walkTables(page)
+    /** Part 3's JSON, each entry by its slot, as the reader pastes it: in portable form. */
+    val pageEntries = walkJsonEntries(page)
+    val pageTrait = pageEntries.getValue(CCT.traitDef)
+    val pageWorkflow = pageEntries.getValue(CCT.workflowDef)
+    val reviewWorkflow = pageWorkflow[CCT.workflowId].toOptStr().shouldNotBeNull()
+    val reviewTask = pageWorkflow[CCT.definition].toJsonMapOrEmpty()[WFD.tasks].toJsonListOfMaps().single()
+    val reviewSave = reviewTask[WFD.saves].toJsonListOfMaps().single()
     // What the reader's `*your first name*` becomes here: unusual enough to find this test's talk on a shared demo.
     val firstName = "Walker1429"
 
@@ -415,6 +428,56 @@ class PublicWalkThroughTest : StringSpec({
     // to try it, which is enough to hold the page to what a sandbox key may do (issue #1453): read the catalog and the
     // sandbox's forms, write a bundle as the parent's draft, try it on a form of the sandbox's own, and publish it.
 
+    /**
+     * Saves the page's two entries as new into its bundle, as the bundle editor's Save does and the page has the AI do:
+     * one patch, each entry in the portable form the page shows, said to be new, and the client reloaded.
+     */
+    fun patchPageEntries(by: TestUser): Map<String, Any?> {
+        val edits = listOf(CCT.traitDef to pageTrait, CCT.workflowDef to pageWorkflow).map { (slot, data) ->
+            mapOf(CFEP.slot to slot, GED.action to GedraEditAction.addOrReplace.name, GE.data to data, CFEP.expectNew to true)
+        }
+        return by.postData(
+            CFEP.bundlePatch,
+            mapOf(CFEP.configs to listOf(mapOf(CFEP.name to reviewBundle, CFEP.edits to edits)), CFEP.reloadField to true),
+        )
+    }
+
+    /** Engages the page's workflow on the form [gid], and saves its one step as the page's review table fills it in. */
+    fun review(by: TestUser, gid: String) {
+        by.postData(GEP.workflowEngage, mapOf(GDF.gedraId to gid, WFD.workflowId to reviewWorkflow))
+        by.postData(
+            GEP.workflowSave,
+            mapOf(
+                WFD.workflowId to reviewWorkflow, GDF.taskId to reviewTask[WFD.id], GDF.saveId to reviewSave[WFD.id],
+                GDF.gedraId to gid, GDF.entries to shownEntries(by, "reviewForm", reviewWorkflow, gid),
+            ),
+        )
+    }
+
+    "part 3, in the bundle editor: the page's JSON, saved as the editor saves it, runs in the sandbox as a draft" {
+        val founder = TestUser.create(cxt, "editor@walk1429.test")
+        val client = founder.postData(AEP.createOwnClient, mapOf(CLD.name to cell("client", "Name")))[CLD.client].toOptStr()
+            .shouldNotBeNull()
+        founder.postData(AEP.openSandbox, emptyMap())
+        val sandbox = sandboxOf(client)
+        val formId = createForm(founder, "sandboxForm")
+
+        // The page's bundle, by the name it has the reader type, and the button the page names, from the JSON.
+        page shouldContain "type `$reviewBundle` in **New bundle's name**"
+        page shouldContain "**${reviewSave[WFD.label]}**"
+        // Its save: one patch, each entry new as the editor sends one (it read none), in the portable form pasted.
+        pageTrait[CCT.typeName].toOptStr().shouldNotBeNull() shouldContain "client.@self."
+        patchPageEntries(founder)
+        WorkflowService.get(cxt).forClient(sandbox).workflow(reviewWorkflow).shouldNotBeNull()
+        WorkflowService.get(cxt).forClient(client).workflow(reviewWorkflow) shouldBe null
+
+        // Tried on the form from part 2's steps, filled in as the page's table says: its fields are the trait's.
+        review(founder, formId)
+        val saved = founder.getItem(GEP.formDoc, mapOf(GDF.gedraId to formId))[GDF.entries].toJsonListOfMaps()
+            .single { it[GE.traitId] == pageTrait[CCT.traitId] }[GE.data].toJsonMapOrEmpty()
+        saved.values.map { it.toString() } shouldBe tables.getValue("reviewForm").map { it[1] }
+    }
+
     "part 3: a sandbox key made as the page says builds and publishes a workflow, its trial form stays in the sandbox" {
         val founder = TestUser.create(cxt, "developer@walk1429.test")
         val client = founder.postData(AEP.createOwnClient, mapOf(CLD.name to cell("client", "Name")))[CLD.client].toOptStr()
@@ -451,39 +514,28 @@ class PublicWalkThroughTest : StringSpec({
         // published API to a caller without env auth, as a reader on the reference deployment is, so it is not asked.
         val named = kdaPathRegex.findAll(page.substringAfter(part3Heading)).map { it.groupValues[1] }
             .filterNot { it.startsWith("/gedra") }.toSet()
-        named shouldBe setOf(AEP.selfInfo, catalogPath, CFEP.bundleWrite)
+        named shouldBe setOf(AEP.selfInfo, catalogPath, CFEP.bundlePatch)
+        // The bundle editor's save, which the page has the AI send with the key: the key is shown it.
+        (HttpMethod.POST.name to CFEP.bundlePatch) shouldBe endpoints.single { it.second == CFEP.bundlePatch }
         program.sendGetRequest(AEP.selfInfo).rptStatusCode shouldBe 200
         keyed.getItems(formDocs).map { it[GDF.gedraId] } shouldBe listOf(formId)
 
-        // The AI's bundle: a trait and a workflow, written with the key as the parent's draft, which the sandbox runs --
-        // asking to be reloaded, as the skill the prompt points to says a write that should run at once must.
-        val written = keyed.postData(
-            CFEP.bundleWrite,
-            mapOf(
-                CFEP.name to aiBundle, CFEP.namespaceField to clientNamespace(client), CFEP.slots to aiSlots(client),
-                CFEP.reloadField to true,
-            ),
-        )
+        // The AI's bundle: the page's trait and workflow, sent with the key as the bundle editor's save sends them, as
+        // the parent's draft, which the sandbox runs once reloaded, as the prompt asks.
+        val written = patchPageEntries(keyed)[CFEP.configs].toJsonListOfMaps().single()
         written[CFEP.client] shouldBe client
         written[CFEP.published] shouldBe false
-        WorkflowService.get(cxt).forClient(sandbox).workflow(aiWorkflow).shouldNotBeNull()
-        WorkflowService.get(cxt).forClient(client).workflow(aiWorkflow) shouldBe null
+        WorkflowService.get(cxt).forClient(sandbox).workflow(reviewWorkflow).shouldNotBeNull()
+        WorkflowService.get(cxt).forClient(client).workflow(reviewWorkflow) shouldBe null
 
         // The AI tries it, as the prompt asks, on a form of its own: the sandbox's.
         val tried = createForm(keyed, "sandboxForm")
-        keyed.postData(GEP.workflowEngage, mapOf(GDF.gedraId to tried, WFD.workflowId to aiWorkflow))
-        keyed.postData(
-            GEP.workflowSave,
-            mapOf(
-                WFD.workflowId to aiWorkflow, GDF.taskId to aiTask, GDF.saveId to aiSave, GDF.gedraId to tried,
-                GDF.entries to listOf(mapOf(GE.traitId to aiTrait, GE.data to mapOf("rating" to 4, "thoughts" to "A good read."))),
-            ),
-        )
+        review(keyed, tried)
         GedraId.parse(tried).client shouldBe sandbox
 
         // Published from the sandbox, then the key revoked there, as the page's last step does: it is refused.
-        keyed.postData(CFEP.bundlePublish, mapOf(CFEP.names to listOf(aiBundle), CFEP.reloadField to true))
-        WorkflowService.get(cxt).forClient(client).workflow(aiWorkflow).shouldNotBeNull()
+        keyed.postData(CFEP.bundlePublish, mapOf(CFEP.names to listOf(reviewBundle), CFEP.reloadField to true))
+        WorkflowService.get(cxt).forClient(client).workflow(reviewWorkflow).shouldNotBeNull()
         founder.postData(AKEY.selfRevoke, mapOf(AKEY.keyId to made[AKEY.key].toJsonMapOrEmpty()[AKEY.keyId]))
         program.sendGetRequest(AEP.selfInfo).rptStatusCode shouldBe 401
 
@@ -492,7 +544,7 @@ class PublicWalkThroughTest : StringSpec({
         founder.selfClient() shouldBe client
         founder.getItems(GEP.formDocs, mapOf(EP.limit to 500)).map { it[GDF.gedraId] }.contains(tried) shouldBe false
         val member = TestUser.create(cxt, "member@walk1429.test", userClient = client)
-        member.getData(GEP.workflowView, mapOf(WFD.workflowId to aiWorkflow))[WVF.found] shouldBe true
+        member.getData(GEP.workflowView, mapOf(WFD.workflowId to reviewWorkflow))[WVF.found] shouldBe true
     }
 
 })
@@ -506,7 +558,7 @@ private fun walkWorkflowKey(workflow: String) = "workflow=$workflow"
 /** The tables of part 2, the reader's own client, by their markers. */
 private val ownClientKeys = setOf(
     "client", "copy", "trait", "fields", "newWorkflow", "sandboxForm", "sandboxSuggestion", "design", "invite", "userLabels",
-    "visibility", "invitedForm", "invitedSuggestion", "apiKey", "catalog",
+    "visibility", "invitedForm", "invitedSuggestion", "apiKey", "catalog", "reviewForm",
 )
 
 /** Part 3's heading, after which every `/kda/...` path the page names is one the key is shown in the catalog. */
@@ -521,43 +573,11 @@ private val kdaPathRegex = Regex("""/kda(/[A-Za-z/]+[A-Za-z])""")
 /** The page's placeholder for the reader's sandbox's id, in a path. */
 private const val sandboxIdPlaceholder = "*your sandbox's id*"
 
-/** The bundle the page's prompt asks an AI for, as one following docs/demo-client might write it. */
-private const val aiBundle = "reviewTheBook"
-private const val aiWorkflow = "reviewTheBook"
-private const val aiTrait = "bookReview"
-private const val aiTask = "review"
-private const val aiSave = "saveReview"
+/** The bundle part 3 has the reader add, in the bundle editor or by an AI's write. */
+private const val reviewBundle = "reviewTheBook"
 
-private fun aiSlots(client: String): Map<String, Any?> = mapOf(
-    CCT.traitDef to listOf(
-        mapOf(
-            CCT.traitId to aiTrait, CCT.typeName to "${clientNamespace(client)}.BookReviewEntry", CCT.appliesTo to listOf("formDoc"),
-            CCT.description to "A member's review of a book the club has read.",
-            CCT.dataSchema to mapOf(
-                SCH.properties to mapOf(
-                    "rating" to mapOf(SCH.title to "Rating", SCH.type to SCT.integer, "minimum" to 1, "maximum" to 5),
-                    "thoughts" to mapOf(SCH.title to "What I thought", SCH.type to SCT.string),
-                ),
-                "required" to listOf("rating"),
-            ),
-        ),
-    ),
-    CCT.workflowDef to listOf(
-        mapOf(
-            CCT.workflowId to aiWorkflow,
-            CCT.definition to mapOf(
-                WFD.entry to "normal", WFD.label to "Review the book", WFD.workflowId to aiWorkflow,
-                WFD.tasks to listOf(
-                    mapOf(
-                        WFD.id to aiTask, WFD.label to "Your review",
-                        WFD.saves to listOf(mapOf(WFD.id to aiSave, WFD.label to "Save the review", "kind" to "edit")),
-                        WFD.traits to listOf(mapOf(WFD.traitId to aiTrait, WFD.required to true)),
-                    ),
-                ),
-            ),
-        ),
-    ),
-)
+/** The marker of a JSON block holding one entry: the slot it goes in follows. */
+private const val entryMarkerPrefix = "entry="
 
 /** The page's placeholder for the address the reader invites. */
 private const val addressPlaceholder = "*an address of yours*"
@@ -595,12 +615,30 @@ private fun walkTables(page: String): Map<String, List<List<String>>> {
     val out = linkedMapOf<String, List<List<String>>>()
     for ((i, line) in lines.withIndex()) {
         val marker = walkMarkerRegex.find(line)?.groupValues?.get(1) ?: continue
+        if (marker.startsWith(entryMarkerPrefix)) continue
         val rows = lines.drop(i + 1).takeWhile { it.trimStart().startsWith("|") }.drop(2).map { row ->
             val cells = row.trim().removePrefix("|").removeSuffix("|").split("|").map { it.trim() }
             listOf(cells[0].removeSurrounding("**")) + cells.drop(1)
         }
         check(marker !in out) { "The walk-through marks two tables '$marker'." }
         out[marker] = rows
+    }
+    return out
+}
+
+/**
+ * Each marked JSON block of [page] (`<!-- kdr-walk: entry=kdr:traitDef -->` on the line before its fence), parsed, by
+ * the slot its marker names.
+ */
+private fun walkJsonEntries(page: String): Map<String, Map<String, Any?>> {
+    val lines = page.lines()
+    val out = linkedMapOf<String, Map<String, Any?>>()
+    for ((i, line) in lines.withIndex()) {
+        val marker = walkMarkerRegex.find(line)?.groupValues?.get(1) ?: continue
+        if (!marker.startsWith(entryMarkerPrefix)) continue
+        check(lines[i + 1].trim() == "```json") { "The walk-through's '$marker' is not followed by a JSON block." }
+        val body = lines.drop(i + 2).takeWhile { it.trim() != "```" }.joinToString("\n")
+        out[marker.removePrefix(entryMarkerPrefix)] = body.jsonMap() ?: error("The walk-through's '$marker' is not a JSON object.")
     }
     return out
 }
