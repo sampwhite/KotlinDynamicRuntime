@@ -69,7 +69,7 @@ monotonic token, so a client this node does not carry still shows what the listi
 (`CFEP`, `ACEP`, `CCT`, `GCI`) live in the kernel for that reason.
 
 **The detail's layout** (issue #1397; the pure half is `ClientDetailLayout.kt`, covered by `ClientDetailLayoutTest`).
-The page has a header, and then panels: each a keyed `section` (`clientPanel`), set apart as a copy file is.
+The page has a header, and then panels: each a keyed `section` (the shared `panel`, `Panels.kt`, issue #1477), set apart as a copy file is.
 
 - **The header** holds the client's name. Next to it are its chips (`clientStatusChips`: the load, and how it relates to a sandbox), then its links, **N forms · N users · Reports** (`clientHeaderLinks`). The header also holds:
   - a line saying how a save takes effect here (`clientSaveEffectLine`);
@@ -240,7 +240,8 @@ download (`refPreviewAddressFrom`), never the static root, which answers the cal
 **Reset**, for a stored value only, removes it -- data cannot remove
 what source code or the shipped file says (`copyRowOffersReset`). Neither saves: each is a **pending** change
 (`pendingAfterEdit`; typed back to the value it is no change), marked down the key's left edge with a **Revert**, and
-the panel shows it as it will read once saved (`copyRowShownValue`). A sticky bar saves every pending change to the
+the panel shows it as it will read once saved (`copyRowShownValue`). A sticky bar (the shared `SaveBar`, issue #1477:
+**Save copy** and **Discard**) saves every pending change to the
 file **together** -- `POST /clientAdmin/client/copy/apply` (`copyApplyRequest`), one stored config (the one already
 setting any of the keys, else the first overlaying the file, else `copy`, created on first use), one trial, one
 publish and reload, so the changes go live at once -- or discards them. A save is of one file, so while one file has
