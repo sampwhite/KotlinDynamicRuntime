@@ -70,7 +70,7 @@ class UserAdminPaths(
 
 /** The **full-scope** surface: the `admin` section, which requires [ROLE.allClients]. */
 fun adminSchema(cxt: KdrCxt): SchModule = userAdminModule(
-    cxt, "kdr.${SECT.admin}",
+    cxt, "kdr.${SECT.admin}", published = false,
     UserAdminPaths(
         ADEP.users, ADEP.userSearch, ADEP.userCreate, ADEP.userSetRoles, ADEP.userSetEnabled, ADEP.userSetOrg,
         ADEP.userSetName, ADEP.userInvite, ADEP.userDelete, ADEP.userSetLabels, ADEP.userLabelSuggestions,
@@ -86,9 +86,13 @@ fun adminSchema(cxt: KdrCxt): SchModule = userAdminModule(
  * surfaces is *who may enter*, not what they do once inside: the scope is derived from the caller's roles, so
  * one handler serves a client-scoped administrator and a full-scope one correctly. Copying the handlers would
  * mean two implementations of the same rules, and the copy is the one that would miss a fix.
+ *
+ * The one other difference is publication (issue #1483): here, the listing and the calls that create a user and set
+ * their roles, labels, enablement, name, and organization are `publicApi`, as what an AI configuring one client's users
+ * needs. The `admin` build publishes none, since that section may not be published at all.
  */
 fun scopedUserAdminSchema(cxt: KdrCxt): SchModule = userAdminModule(
-    cxt, "kdr.${SECT.clientAdmin}",
+    cxt, "kdr.${SECT.clientAdmin}", published = true,
     UserAdminPaths(
         UADEP.users, UADEP.userSearch, UADEP.userCreate, UADEP.userSetRoles, UADEP.userSetEnabled, UADEP.userSetOrg,
         UADEP.userSetName, UADEP.userInvite, UADEP.userDelete, UADEP.userSetLabels, UADEP.userLabelSuggestions,
@@ -96,13 +100,13 @@ fun scopedUserAdminSchema(cxt: KdrCxt): SchModule = userAdminModule(
     ),
 )
 
-private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPaths): SchModule =
+private fun userAdminModule(cxt: KdrCxt, namespace: String, published: Boolean, paths: UserAdminPaths): SchModule =
     schemaModule(cxt, namespace) {
     AuthUserRow.defineAdminType(this)
 
     // --- read ---------------------------------------------------------------
 
-    userReadEndpoints(paths.users, paths.userSearch)
+    userReadEndpoints(paths.users, paths.userSearch, published)
 
     // --- create -------------------------------------------------------------
 
@@ -110,6 +114,7 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
         paths.userCreate,
         "Creates a user directly, bypassing self-service email verification.",
         HttpMethod.POST,
+        publicApi = published,
         outputRef = ADTY.adminUser,
         inputFields = {
             field(ADF.primaryId, "The new user's primary email address.", required = true)
@@ -304,6 +309,7 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
         paths.userSetRoles,
         "Replaces a user's roles -- the call that grants or revokes administrator privileges.",
         HttpMethod.POST,
+        publicApi = published,
         outputRef = ADTY.adminUser,
         inputFields = {
             field(ADF.userId, "Id of the user to edit.", required = true) { type = SCT.integer }
@@ -364,6 +370,7 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
         paths.userSetEnabled,
         "Enables or disables a user's account (a disabled account cannot log in).",
         HttpMethod.POST,
+        publicApi = published,
         outputRef = ADTY.adminUser,
         inputFields = {
             field(ADF.userId, "Id of the user to edit.", required = true) { type = SCT.integer }
@@ -428,6 +435,7 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
         paths.userSetOrg,
         "Sets or clears a user's primary organization within their client.",
         HttpMethod.POST,
+        publicApi = published,
         outputRef = ADTY.adminUser,
         inputFields = {
             field(ADF.userId, "Id of the user to edit.", required = true) { type = SCT.integer }
@@ -458,6 +466,7 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
         paths.userSetName,
         "Sets a user's name, and whether the account is a business rather than a person.",
         HttpMethod.POST,
+        publicApi = published,
         outputRef = ADTY.adminUser,
         inputFields = {
             field(ADF.userId, "Id of the user to edit.", required = true) { type = SCT.integer }
@@ -484,6 +493,7 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
         paths.userSetLabels,
         "Replaces a user's free-form labels -- what a workflow can test for (a reviewer, say). Labels grant nothing.",
         HttpMethod.POST,
+        publicApi = published,
         outputRef = ADTY.adminUser,
         inputFields = {
             field(ADF.userId, "Id of the user to edit.", required = true) { type = SCT.integer }
@@ -569,10 +579,11 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
  * (`clientDirectory`, issue #1432). One definition, so the two cannot drift: what an editor reads is what an
  * administrator reads, confined the same way, by `ReadScopeRules.forUserAdmin`.
  */
-private fun SchModuleBuilder.userReadEndpoints(usersPath: String, searchPath: String) {
+private fun SchModuleBuilder.userReadEndpoints(usersPath: String, searchPath: String, published: Boolean = false) {
     listEndpoint(
         usersPath,
         "Lists users, newest first, optionally filtered by a search term over email, username, and name.",
+        publicApi = published,
         outputRef = ADTY.adminUser,
         hasMore = true,
         inputFields = {

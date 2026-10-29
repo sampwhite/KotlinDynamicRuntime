@@ -15,7 +15,7 @@ import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 
 /**
- * Publication is restricted to the user sections, and refused at boot (issue #433).
+ * Publication is restricted to the user sections and `clientAdmin` (issues #433, #1483), and refused at boot elsewhere.
  *
  * **What this protects is not access.** `publicApi` decides what the catalog advertises, so a stray mark
  * cannot expose anything -- the section gate still refuses an anonymous caller at an admin endpoint. What it
@@ -44,6 +44,17 @@ class PublicApiSectionTest : StringSpec({
         initWith(endpoint("/user/thing", publicApi = true))
         initWith(endpoint("/profile/thing", publicApi = true))
         initWith(endpoint("/gedra/thing", publicApi = true))
+    }
+
+    /**
+     * The client-scoped administration is publishable too (issue #1483): a client's own administrator, and an AI they
+     * let configure the client, are users of the product, and its path says truthfully what an endpoint there is for.
+     * Its operator counterpart, like every deployment-wide section, is not.
+     */
+    "a published endpoint in clientAdmin is accepted, and one in clientOperator is not" {
+        initWith(endpoint("/clientAdmin/thing", publicApi = true))
+        val e = shouldThrow<KdrException> { initWith(endpoint("/clientOperator/thing", publicApi = true)) }
+        e.fullMessage() shouldContain "/clientOperator/thing"
     }
 
     "an unpublished endpoint may sit anywhere" {

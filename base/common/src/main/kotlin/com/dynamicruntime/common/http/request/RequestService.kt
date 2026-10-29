@@ -517,10 +517,15 @@ class RequestService : ServiceInitializer {
         // on a running node. Kept minimal here (no mode override of its own) to leave that less to unpick.
         // The user sections plus `auth` (issue #489): the published set is the *user-facing* surface, and the
         // anonymous auth section (register/login/self-info) is as much a part of that as the login-required
-        // user/profile/gedra sections -- an integrator authenticates through it. What the rule still keeps
-        // publicApi out of is the privileged and internal sections (admin, operator, node, clientAdmin,
-        // clientOperator), where a published mark would hide the very thing the audit exists to surface.
-        val publishableSections = userSections + "auth"
+        // user/profile/gedra sections -- an integrator authenticates through it. And the client-scoped clientAdmin
+        // (issue #1483): a client's own administrator is a user of the product, and so is an AI they let configure
+        // the client. Its path says truthfully what an endpoint there is for -- one client, administered by its own
+        // people -- so the reason for a twin does not apply. Which of its endpoints are published is decided one by
+        // one: what an AI needs to configure one client and its users, short of publishing, and not the frontend's
+        // shortcuts that a bundle write or patch already covers. What the rule still keeps publicApi out of is the
+        // deployment-wide and internal sections (admin, operator, node, clientOperator), where a published mark
+        // would hide the very thing the audit exists to surface.
+        val publishableSections = userSections + listOf("auth", SECT.clientAdmin)
         val published = cxt.getGlobalSchema().endpoints.values.filter { it.publicApi }
         val misplaced = published.filter { sectionOf(it.path) !in publishableSections }.map { it.path }.sorted()
         if (misplaced.isNotEmpty()) {

@@ -50,6 +50,13 @@ import com.dynamicruntime.common.util.toOptInstantOrNull
  * own client ([KdrCxt.client]): the config id is built from that client and the supplied name, so a caller
  * cannot read or write another client's configuration by naming it.
  *
+ * ### What is published
+ *
+ * The list, the bundle and entry reads, the write, and the patch are `publicApi` (issue #1483): what an AI configuring
+ * one client needs. The rest are not -- publishing and what it weighs ([CFEP.bundlePublish], [CFEP.bundleImpact],
+ * [CFEP.publishedOnly]), which a client's own people do, and the shortcuts a write or patch already covers
+ * ([CFEP.editor], and [CFEP.reload], which a write takes as a flag).
+ *
  * ### What is here, and what is elsewhere
  *
  * Reload (#616, [CFEP.reload]) and the protection tier (#617, [CFEP.publishedOnly]) are endpoints here too.
@@ -251,6 +258,7 @@ fun gedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CFEP.namespace
     listEndpoint(
         CFEP.bundles,
         "Lists the configurations this client carries, each as a summary of its latest revision.",
+        publicApi = true,
         outputRef = CFEP.summaryType,
         noLimit = true,
     ) { c, _ -> inConfigScope(c) { cfgBundlesBody(it) } }
@@ -259,6 +267,7 @@ fun gedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CFEP.namespace
         CFEP.bundle,
         "Fetches one configuration's latest revision as a whole bundle.",
         HttpMethod.GET,
+        publicApi = true,
         outputRef = CFEP.bundleType,
         inputFields = {
             field(CFEP.name, "The configuration's name.", required = true)
@@ -283,6 +292,7 @@ fun gedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CFEP.namespace
         HttpMethod.POST,
         // Its input may be a whole configuration, past the default body limit (issue #1446).
         largeBody = true,
+        publicApi = true,
         outputRef = CFEP.bundleType,
         inputRef = CFEP.bundleWriteType,
     ) { c, request -> inConfigScope(c, mutating = true) { cfgWriteBody(it, request) } }
@@ -299,6 +309,7 @@ fun gedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CFEP.namespace
         HttpMethod.POST,
         // Its input may be a whole configuration, past the default body limit (issue #1446).
         largeBody = true,
+        publicApi = true,
         outputRef = CFEP.patchResultType,
         inputFields = { configPatchInput(slots) },
     ) { c, request -> inConfigScope(c, mutating = true) { cfgPatchBody(it, request) } }
@@ -345,6 +356,7 @@ fun gedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CFEP.namespace
     listEndpoint(
         CFEP.slotEntries,
         "The interior of one configuration: its stored slot entries, each with its own accounting.",
+        publicApi = true,
         outputRef = CFEP.slotEntryType,
         noLimit = true,
         inputFields = {
