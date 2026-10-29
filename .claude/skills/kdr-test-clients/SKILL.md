@@ -234,6 +234,7 @@ client), issue #627 — the config id is always built from `cxt.client`, so a ca
 | `/clientAdmin/config/bundle/write` | POST | write a whole bundle (authoritative; `impliedDelete` default true; `reload` to make it live) |
 | `/clientAdmin/config/bundle/patch` | POST | edit slot entries of one or more configs in one transaction, judged together (`configs: [{name, edits}]`; a config not yet written is created; `reload` to make it live; issue #1352). `dryRun` answers without storing; an edit's `expectUpdatedAt`/`expectNew` refuses (409) a stale write (issue #1434) |
 | `/clientAdmin/config/bundle/publish` | POST | publish the latest editable revision of one or more configs, together (`names`; `acknowledgeImpact` to go past an impact report; `reload` to make it live) |
+| `/clientAdmin/config/bundle/delete` | POST | delete an empty config -- its latest and published revisions hold no entries (`name`, `expectUpdatedAt` as read; 409 if written since; `reload`; issue #1461). Its revisions are disabled, so one made again under the name starts past them |
 | `/clientAdmin/config/bundle/impact` | GET | what publishing them together would do to the client's stored data (`names`; `IMP`, issue #935) |
 | `/clientAdmin/config/editor` | GET | every config's latest revision, with the published one beside a draft, and each slot's entry type, key fields, and `$defs` -- the bundle editor page's one read (issue #1436). A bundle fetch takes `revision=published` for the published revision alone |
 | `/clientAdmin/config/reload` | POST | reload this client on this node |

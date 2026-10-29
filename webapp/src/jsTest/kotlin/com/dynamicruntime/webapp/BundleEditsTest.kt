@@ -117,6 +117,33 @@ class BundleEditsTest {
     }
 
     @Test
+    fun aBundleAddedOnThePageIsDiscardedWithItsEntries() {
+        val added = BundleEdits().addingBundle("facts").adding("facts", CCT.cfactDef, "{}").first
+        assertEquals(0, added.withoutNewBundle("facts").let { it.drafts.size + it.newBundles.size })
+    }
+
+    @Test
+    fun jsonPastedFromAnotherClientIsOfferedAsThisClients() {
+        val pasted = mapOf(
+            CCT.typeName to "client.globex.Memo",
+            "dataType" to mapOf(SCH.dRef to "#/${SCH.dDefs}/client.initech.forms.Note"),
+            // Its own, and the portable form, are not another client's.
+            "mine" to "client.acme.Memo", "neutral" to "client.@self.Memo", "plain" to "a client.globex mention",
+        )
+        assertEquals(setOf("globex", "initech"), foreignClients(pasted, "acme"))
+        assertTrue(foreignClientsText(listOf("globex"), "acme").contains("another client's namespace: client.globex"))
+
+        val fixed = withClientsAsSelf(pasted, listOf("globex", "initech"))
+        assertEquals("client.@self.Memo", fixed[CCT.typeName])
+        assertEquals(mapOf(SCH.dRef to "#/${SCH.dDefs}/client.@self.forms.Note"), fixed["dataType"])
+        assertEquals(emptySet(), foreignClients(fixed, "acme"))
+
+        // Taken as this client's, a pasted schema type is checked as acme's: here, one the client already holds.
+        val (added, id) = BundleEdits().adding("traits", CCT.schemaDef, entryText(withClientsAsSelf(memoType + (CCT.typeName to "client.globex.Memo"), listOf("globex"))), "acme")
+        assertTrue(checkEntry(id, view, added, types).problems.single().contains("already in bundle more"))
+    }
+
+    @Test
     fun aClientWithASandboxIsEditedFromItsSandbox() {
         assertTrue(bundleEditGate(row()).editable)
         assertTrue(bundleEditGate(row(sandboxOf = "acme")).editable)

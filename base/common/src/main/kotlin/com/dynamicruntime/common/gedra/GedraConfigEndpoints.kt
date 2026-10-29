@@ -82,6 +82,20 @@ fun gedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CFEP.namespace
             "The latest published revision's version (issue #1001) -- what a published-only client runs while the " +
                 "latest is a draft; absent when no revision is published.",
         ) { type = SCT.integer }
+        property(CFEP.slotCount, "How many slots the latest revision holds entries in (issue #1461).", required = true) {
+            type = SCT.integer
+        }
+        property(CFEP.entryCount, "How many entries the latest revision holds; none, and it may be deleted.", required = true) {
+            type = SCT.integer
+        }
+        property(CFEP.publishedSlotCount, "How many slots the latest published revision holds entries in; absent when none is.") {
+            type = SCT.integer
+        }
+        property(
+            CFEP.publishedEntryCount,
+            "How many entries the latest published revision holds; absent when none is. Unless none, the configuration is " +
+                "not deleted until an emptied revision is published.",
+        ) { type = SCT.integer }
         property(CFEP.createdAt, "When this revision was created.") { dateTime() }
         property(CFEP.updatedAt, "When this revision was last written.") { dateTime() }
         configIssuesProperty()
@@ -211,6 +225,14 @@ fun gedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CFEP.namespace
         }
         property(CFEP.dryRun, "Present and true for a dry run (issue #1434): nothing was stored.") { type = SCT.boolean }
         property(CFEP.impact, "For a dry run: what the patch would do to the data the client already stores.") { ref(IMP.reportType) }
+        reloadResultProperty()
+    }
+
+    type(CFEP.deleteResultType) {
+        type = SCT.kObject
+        description = "The configuration a delete took away (issue #1461)."
+        property(CFEP.name, "The configuration's name.", required = true)
+        property(CFEP.version, "Its latest revision's version, as it stood.", required = true) { type = SCT.integer }
         reloadResultProperty()
     }
 
@@ -353,6 +375,14 @@ fun gedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CFEP.namespace
         },
     ) { c, request -> inConfigScope(c, mutating = true) { cfgRevertBody(it, request) } }
 
+    generalEndpoint(
+        CFEP.bundleDelete,
+        deleteDescription,
+        HttpMethod.POST,
+        outputRef = CFEP.deleteResultType,
+        inputFields = { deleteInput() },
+    ) { c, request -> inConfigScope(c, mutating = true) { cfgDeleteBody(it, request) } }
+
     listEndpoint(
         CFEP.slotEntries,
         "The interior of one configuration: its stored slot entries, each with its own accounting.",
@@ -433,13 +463,13 @@ fun gedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CFEP.namespace
 
 private fun cfgBundlesBody(c: KdrCxt): List<Map<String, Any?>> {
     AdminRules.requireClientAdministrator(c)
-    val published = publishedVersionsOf(c, c.client)
+    val published = publishedRevisionsOf(c, c.client)
     return GedraConfigService.get(c).listConfigs(c).map { summaryOf(c, it, published) }
 }
 
-/** The version of each of [client]'s config classes' latest published revision, by config name (issue #1001). */
-private fun publishedVersionsOf(cxt: KdrCxt, client: String): Map<String, Int> =
-    GedraConfigService.get(cxt).configsAt(cxt, client, published = true).associate { it.configId.baseId to it.version }
+/** Each of [client]'s config classes' latest published revision, by config name (issues #1001, #1461). */
+private fun publishedRevisionsOf(cxt: KdrCxt, client: String): Map<String, GedraConfigRow> =
+    GedraConfigService.get(cxt).configsAt(cxt, client, published = true).associateBy { it.configId.baseId }
 
 private fun cfgBundleBody(c: KdrCxt, request: Map<String, Any?>): Map<String, Any?> {
     AdminRules.requireClientAdministrator(c)
@@ -843,6 +873,34 @@ private fun cfgRevertBody(c: KdrCxt, request: Map<String, Any?>): Map<String, An
     return summaryOf(c, GedraConfigService.get(c).revertToEditable(c, configId(c, name)))
 }
 
+private const val deleteDescription =
+    "Deletes an empty configuration (issue #1461): one whose latest revision and latest published revision hold no " +
+        "entries -- so a published one is emptied, the empty revision published, and then deleted. Refused when either " +
+        "holds entries (400), and when the configuration has been written since it was read (409, errorCode " +
+        "'${CFEP.staleCode}'). Its revisions stop being loaded, listed, and read; one made again under its name starts " +
+        "past every revision it had."
+
+/** What a delete takes: the configuration, what its caller read of it, and whether to reload. */
+private fun InputFieldsBuilder.deleteInput() {
+    field(CFEP.name, "The configuration's name.", required = true)
+    field(
+        CFEP.expectUpdatedAt,
+        "When the configuration's latest revision was written, as its caller read it: the delete is refused if it has " +
+            "been written since.",
+        required = true,
+    ) { dateTime() }
+    reloadRequestField()
+}
+
+private fun cfgDeleteBody(c: KdrCxt, request: Map<String, Any?>): Map<String, Any?> {
+    AdminRules.requireClientAdministrator(c)
+    val name = requireName(request)
+    val read = request[CFEP.expectUpdatedAt].toOptInstantOrNull()
+        ?: throw KdrException.mkInput("A delete says when the configuration was written as it was read, in '${CFEP.expectUpdatedAt}'.")
+    val deleted = GedraConfigService.get(c).deleteConfig(c, configId(c, name), read)
+    return mapOf(CFEP.name to name, CFEP.version to deleted.version).withReloadIfAsked(c, request)
+}
+
 private fun cfgSlotEntriesBody(c: KdrCxt, request: Map<String, Any?>): List<Map<String, Any?>> {
     AdminRules.requireClientAdministrator(c)
     val name = requireName(request)
@@ -1144,12 +1202,13 @@ fun applyConfigSlotEdits(
 
 /**
  * A listing summary of one config revision, with the version of its class's latest published revision (issue #1001)
- * -- read from [publishedVersions] when the caller has the client's at hand, as a listing does.
+ * and what each holds (issue #1461) -- read from [publishedRevisions] when the caller has the client's at hand, as a
+ * listing does.
  */
 private fun summaryOf(
     cxt: KdrCxt,
     row: GedraConfigRow,
-    publishedVersions: Map<String, Int> = publishedVersionsOf(cxt, row.client),
+    publishedRevisions: Map<String, GedraConfigRow> = publishedRevisionsOf(cxt, row.client),
 ): Map<String, Any?> = dropNulls(
     linkedMapOf(
         CFEP.name to row.configId.baseId,
@@ -1157,7 +1216,11 @@ private fun summaryOf(
         CFEP.version to row.version,
         CFEP.published to row.isPublished,
         CFEP.publishedAt to row.publishedAt,
-        CFEP.publishedVersion to publishedVersions[row.configId.baseId],
+        CFEP.publishedVersion to publishedRevisions[row.configId.baseId]?.version,
+        CFEP.slotCount to row.entriesBySlot().size,
+        CFEP.entryCount to row.entries.size,
+        CFEP.publishedSlotCount to publishedRevisions[row.configId.baseId]?.entriesBySlot()?.size,
+        CFEP.publishedEntryCount to publishedRevisions[row.configId.baseId]?.entries?.size,
         CFEP.createdAt to row.createdAt,
         CFEP.updatedAt to row.updatedAt,
         CFEP.issues to configIssuesOf(cxt, row),
@@ -1338,6 +1401,17 @@ fun adminGedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, ACEP.name
             field(CFEP.name, "The configuration's name.", required = true)
         },
     ) { c, request -> cfgRevertBody(adminConfigCxt(c, request), request) }
+
+    generalEndpoint(
+        ACEP.bundleDelete,
+        deleteDescription,
+        HttpMethod.POST,
+        outputRef = "${CFEP.namespace}.${CFEP.deleteResultType}",
+        inputFields = {
+            field(CFEP.client, "The client that owns the configuration.", required = true) { clientAttribute() }
+            deleteInput()
+        },
+    ) { c, request -> cfgDeleteBody(adminConfigCxt(c, request), request) }
 
     listEndpoint(
         ACEP.slotEntries,

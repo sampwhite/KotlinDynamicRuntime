@@ -142,4 +142,45 @@ class BundleRowsTest {
         // The scoped listing, asked in the sandbox, lists the parent's already.
         assertEquals(CFEP.bundles, storedConfigsPath("acme:sandbox", acrossClients = false, ownClient = "acme:sandbox"))
     }
+
+    @Test
+    fun aRowSaysWhatItsBundleHoldsAndAnEmptyOneIsDeletedWherePublishingIs() {
+        fun held(name: String, entries: Int, publishedEntries: Int?, published: Boolean = false) = ConfigSummaryView(
+            name, 3, published, null, "2026-10-29T00:00:00.000Z", 0, publishedEntries?.let { if (published) 3 else 2 },
+            slotCount = if (entries == 0) 0 else 2, entryCount = entries,
+            publishedSlotCount = publishedEntries?.let { if (it == 0) 0 else 1 }, publishedEntryCount = publishedEntries,
+        )
+        val inUse = held("main", 5, 5, published = true)
+        val emptied = held("old", 0, 3)
+        val gone = held("gone", 0, 0, published = true)
+        val neverPublished = held("fresh", 0, null)
+        assertEquals("2 slots, 5 entries", bundleContentsText(inUse))
+        // The emptying is not published yet: what is published still holds entries, so it is said.
+        assertEquals("Empty; v2: 1 slot, 3 entries", bundleContentsText(emptied))
+        assertEquals("Empty", bundleContentsText(gone))
+        val one = ConfigSummaryView("one", 1, false, null, null, 0, slotCount = 1, entryCount = 1)
+        assertEquals("1 slot, 1 entry", bundleContentsText(one))
+        val parsed = parseConfigSummaries(
+            listOf(
+                mapOf(CFEP.name to "old", CFEP.slotCount to 0, CFEP.entryCount to 0, CFEP.publishedSlotCount to 1, CFEP.publishedEntryCount to 3),
+            ),
+        ).single()
+        assertEquals(listOf(0, 0, 1, 3), listOf(parsed.slotCount, parsed.entryCount, parsed.publishedSlotCount, parsed.publishedEntryCount))
+
+        val configs = listOf(inUse, emptied, gone, neverPublished)
+        assertEquals(listOf("gone", "fresh"), deletableBundles(client(), configs))
+        assertEquals(listOf("gone", "fresh"), deletableBundles(client("acme:sandbox", sandboxOf = "acme"), configs))
+        // Not where publishing is not: a client with a sandbox publishes from it, and one static here stores nothing.
+        assertEquals(emptyList(), deletableBundles(client(hasSandbox = true), configs))
+        assertEquals(emptyList(), deletableBundles(client(staticHere = true), configs))
+        assertEquals(emptyList(), deletableBundles(null, configs))
+
+        val request = bundleDeleteRequest("acme:sandbox", true, "gone", gone.updatedAt)
+        assertEquals(ACEP.bundleDelete, request.path)
+        assertEquals(
+            mapOf(CFEP.client to "acme", CFEP.name to "gone", CFEP.expectUpdatedAt to "2026-10-29T00:00:00.000Z", CFEP.reloadField to true),
+            request.body,
+        )
+        assertEquals(CFEP.bundleDelete, bundleDeleteRequest("acme", false, "gone", null).path)
+    }
 }

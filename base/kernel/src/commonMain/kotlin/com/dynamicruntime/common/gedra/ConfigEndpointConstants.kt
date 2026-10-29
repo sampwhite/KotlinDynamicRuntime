@@ -21,6 +21,12 @@ object CFEP {
     const val bundlePublish = "/${SECT.clientAdmin}/config/bundle/publish"
     const val bundleRevert = "/${SECT.clientAdmin}/config/bundle/revert"
 
+    /**
+     * Deletes an empty configuration (issue #1461): one whose latest and latest published revisions hold no entries,
+     * as last read ([expectUpdatedAt]).
+     */
+    const val bundleDelete = "/${SECT.clientAdmin}/config/bundle/delete"
+
     /** What publishing a configuration would do to the client's stored data (issue #935); the names are [IMP]'s. */
     const val bundleImpact = "/${SECT.clientAdmin}/config/bundle/impact"
     /**
@@ -43,6 +49,7 @@ object CFEP {
     const val bundleWriteType = "ConfigBundleWrite"
     const val summaryType = "ConfigSummary"
     const val patchResultType = "ConfigPatchResult"
+    const val deleteResultType = "ConfigDeleteResult"
     const val publishResultType = "ConfigPublishResult"
     const val slotEntryType = "ConfigSlotEntry"
     const val reloadResultType = "ConfigReloadResult"
@@ -72,6 +79,16 @@ object CFEP {
      * latest revision is a draft, this is the one a published-only client runs.
      */
     const val publishedVersion = "publishedVersion"
+
+    /**
+     * On a summary (issue #1461): how many slots, and how many entries in all, the latest revision holds -- and, with
+     * the `published` prefix, the latest published revision, absent when none is. What says a bundle is empty, so
+     * can be deleted.
+     */
+    const val slotCount = "slotCount"
+    const val entryCount = "entryCount"
+    const val publishedSlotCount = "publishedSlotCount"
+    const val publishedEntryCount = "publishedEntryCount"
     const val slots = "slots"
     const val impliedDelete = "impliedDelete"
 
@@ -161,6 +178,7 @@ object ACEP {
     const val bundlePatch = "/${SECT.admin}/client/config/bundle/patch"
     const val bundlePublish = "/${SECT.admin}/client/config/bundle/publish"
     const val bundleRevert = "/${SECT.admin}/client/config/bundle/revert"
+    const val bundleDelete = "/${SECT.admin}/client/config/bundle/delete"
     const val bundleImpact = "/${SECT.admin}/client/config/bundle/impact"
     const val slotEntries = "/${SECT.admin}/client/config/entries"
     const val reload = "/${SECT.admin}/client/config/reload"

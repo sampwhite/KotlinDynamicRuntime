@@ -6,6 +6,7 @@ import com.dynamicruntime.common.gedra.ClientPresentationFields
 import com.dynamicruntime.common.gedra.ClientStatus
 import com.dynamicruntime.common.gedra.MNU
 import com.dynamicruntime.common.gedra.clientLabel
+import com.dynamicruntime.common.gedra.sandboxParentOf
 import com.dynamicruntime.common.home.HMENU
 import com.dynamicruntime.common.home.PFRAG
 import com.dynamicruntime.common.util.humanizeFieldName
@@ -813,6 +814,9 @@ external interface StoredConfigTableProps : Props {
     var acrossClients: Boolean
     var clientId: String
     var onChanged: () -> Unit
+
+    /** Bundles the page holds unsaved edits of (issue #1461): not deleted until those are saved or discarded. */
+    var deleteBlocked: Set<String>?
 }
 
 /**
@@ -835,6 +839,12 @@ private class ImpactDialog(val names: List<String>, val report: ImpactReportView
  *
  * Publishing is judged against the client's stored data (issue #935). A publish that would affect it is refused with a
  * report, which opens a dialog listing what would happen, with **Publish anyway** for the same selection.
+ *
+ * **Deleting is here too** (issue #1461), beside what decides it: each row says what its bundle holds
+ * ([bundleContentsText]), and one empty in its latest revision and its published one offers **Delete**
+ * ([deletableBundles]), per row behind a confirmation -- so a bundle no longer used is emptied, the emptying published,
+ * and the bundle deleted, all in this table. Where the page holds unsaved edits of it
+ * ([StoredConfigTableProps.deleteBlocked]), Delete waits for them.
  */
 val StoredConfigTable = FC<StoredConfigTableProps> { props ->
     val bump = useRefreshBump()
@@ -842,14 +852,19 @@ val StoredConfigTable = FC<StoredConfigTableProps> { props ->
     var error by useState<DisplayError?>(null)
     var impact by useState<ImpactDialog?>(null)
     var selected by useState<Set<String>>(emptySet())
+    // The bundle being deleted (issue #1461), and why the last delete was not made.
+    var deleting by useState<String?>(null)
+    var deleteError by useState<DisplayError?>(null)
     // What the Published and Updated columns read their relative times against (issue #1141).
     val now = useRelativeClock()
-    useEffect(props.clientId) { error = null; impact = null; selected = emptySet() }
+    useEffect(props.clientId) { error = null; impact = null; selected = emptySet(); deleteError = null }
     val publishedOnly = props.row?.let { it.publishedOnly || it.sandboxOf != null } ?: true
     val group = publishGroup(props.row, props.configs)
     val selectable = selectableBundles(props.row, props.configs)
     // A bundle published meanwhile, or no longer listed, drops out of the selection by itself.
     val chosen = selectedBundles(selected, selectable)
+    val deletable = deletableBundles(props.row, props.configs)
+    val owner = sandboxParentOf(props.clientId) ?: props.clientId
 
     fun publish(names: List<String>, acknowledge: Boolean) {
         busy = true
@@ -865,6 +880,23 @@ val StoredConfigTable = FC<StoredConfigTableProps> { props ->
                 if (refusedOver != null) impact = ImpactDialog(names, refusedOver, refused = true, canPublish = true) else error = userFacingError(e)
             } finally {
                 busy = false
+            }
+        }
+    }
+
+    fun delete(bundle: ConfigSummaryView) {
+        deleting = bundle.name
+        deleteError = null
+        clientsScope.launch {
+            try {
+                ClientsApi.deleteBundle(props.clientId, props.acrossClients, bundle.name, bundle.updatedAt)
+                selected = selected - bundle.name
+            } catch (e: Throwable) {
+                deleteError = userFacingError(e)
+            } finally {
+                deleting = null
+                // Deleted, or refused because it changed since it was read: either way, read it again.
+                props.onChanged()
             }
         }
     }
@@ -965,11 +997,13 @@ val StoredConfigTable = FC<StoredConfigTableProps> { props ->
                 tr {
                     th { className = ClassName("op-select"); +"" }
                     th { +"Name" }
+                    th { +"Contents" }
                     th { className = ClassName("op-num"); +"Version" }
                     th { +"Published" }
                     th { +"Updated" }
                     th { +"Live" }
                     th { className = ClassName("op-num"); +"Issues" }
+                    if (deletable.isNotEmpty()) th { +"" }
                 }
             }
             tbody {
@@ -991,6 +1025,7 @@ val StoredConfigTable = FC<StoredConfigTableProps> { props ->
                             }
                         }
                         td { +c.name }
+                        td { +bundleContentsText(c) }
                         td { className = ClassName("op-num"); +c.version.toString() }
                         td {
                             val at = c.publishedAt
@@ -1007,18 +1042,55 @@ val StoredConfigTable = FC<StoredConfigTableProps> { props ->
                         // A sandbox runs its parent's latest, so for it every row is what it runs (issue #1001).
                         td { +(if (props.row?.sandboxOf != null) "Runs here" else bundleLiveText(c, publishedOnly)) }
                         td { className = ClassName("op-num"); +c.issueCount.toString() }
+                        if (deletable.isNotEmpty()) {
+                            td {
+                                if (c.name in deletable) {
+                                    deleteButton(c, owner, deleting, blocked = c.name in props.deleteBlocked.orEmpty()) { delete(c) }
+                                }
+                            }
+                        }
                     }
                 }
             }
         }
     }
     error?.let { errorText("Couldn't publish the configurations, check their impact, or open the sandbox.", it) }
+    deleteError?.let { errorText("The bundle was not deleted.", it) }
     ImpactReportDialog {
         dialog = impact
         formsOpenable = impactFormsOpenable(props.acrossClients, onSandboxPage = props.row?.sandboxOf != null)
         publishing = busy
         onClose = { impact = null }
         onPublish = { names, acknowledge -> publish(names, acknowledge) }
+    }
+}
+
+/**
+ * **Delete** for the empty [bundle] (issue #1461), behind a confirmation naming whose configuration it is ([owner]);
+ * disabled while another delete runs, or while the page holds unsaved edits of it ([blocked]).
+ */
+private fun ChildrenBuilder.deleteButton(
+    bundle: ConfigSummaryView,
+    owner: String,
+    deleting: String?,
+    blocked: Boolean,
+    onDelete: () -> Unit,
+) {
+    Popconfirm {
+        title = "Delete the empty bundle ${bundle.name} from $owner's configuration?"
+        description = "Its revisions are no longer loaded or listed. A bundle made later under this name is a new one."
+        okText = "Delete"
+        cancelText = "Cancel"
+        disabled = blocked || deleting != null
+        onConfirm = { onDelete() }
+        Button {
+            size = "small"
+            danger = true
+            this.loading = deleting == bundle.name
+            disabled = blocked || deleting != null
+            if (blocked) asDynamic()["title"] = "Save or discard this bundle's edits below, and it can be deleted."
+            +"Delete"
+        }
     }
 }
 

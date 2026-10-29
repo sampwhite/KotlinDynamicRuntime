@@ -5,6 +5,7 @@ import com.dynamicruntime.common.gedra.CCT
 import com.dynamicruntime.common.gedra.CFEP
 import com.dynamicruntime.common.gedra.PORT
 import com.dynamicruntime.common.home.PFRAG
+import com.dynamicruntime.common.util.jsonMapResult
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toJsonStr
 import kotlinx.coroutines.MainScope
@@ -239,6 +240,8 @@ val BundleEditorPage = FC<Props> {
                     this.acrossClients = acrossClients
                     this.clientId = clientId
                     onChanged = { bump() }
+                    // Delete is here (issue #1461); a bundle with edits on the page waits for them.
+                    deleteBlocked = edits.drafts.values.filter { it.isEdit }.map { it.bundle }.toSet()
                 }
             }
             WhatIsThis {
@@ -297,10 +300,19 @@ val BundleEditorPage = FC<Props> {
                     Disclosure {
                         summaryText = bundleLineText(bundle, ed)
                         initiallyOpen = bundle.name in edits.newBundles
-                        // The whole bundle, client-neutral, as a bundle write takes it: to write into another client.
-                        if (bundle.name !in edits.newBundles) {
-                            div {
-                                className = ClassName("bundle-editor-actions")
+                        div {
+                            className = ClassName("bundle-editor-actions")
+                            if (bundle.name in edits.newBundles) {
+                                // Not written yet: nothing to delete, only the page's own bundle to drop.
+                                if (gate.editable) {
+                                    Button {
+                                        size = "small"
+                                        onClick = { changeEdits(edits.withoutNewBundle(bundle.name)) }
+                                        +"Discard this bundle"
+                                    }
+                                }
+                            } else {
+                                // The whole bundle, client-neutral, as a bundle write takes it: to write into another client.
                                 CopyButton {
                                     text = portableBundle(bundle, shown.client).toJsonStr()
                                     label = "Copy this bundle as portable JSON, as stored, without unsaved edits"
@@ -423,7 +435,7 @@ private fun ChildrenBuilder.entryView(bundle: EditorBundle, slot: String, entry:
                     if (before != null) className = ClassName("bundle-editor-compare")
                     div {
                         className = ClassName("bundle-editor-json")
-                        columnHeading("Editing", slot, ed, withSwitch = true)
+                        columnHeading("Editing", slot, ed, withSwitch = true, copyText = draft.text)
                         entryEditor(id, draft, check, ed)
                     }
                     if (before != null) jsonColumn(publishedHeading, slot, before, ed)
@@ -482,7 +494,8 @@ private fun ChildrenBuilder.newEntries(bundle: String, slot: String, ed: EditCon
             className = ClassName("bundle-editor-entry bundle-editor-new")
             div {
                 className = ClassName("bundle-editor-json")
-                columnHeading("New entry${draftMark(draft, ed.checks[id])?.let { " — $it" } ?: ""}", slot, ed, withSwitch = true)
+                val heading = "New entry${draftMark(draft, ed.checks[id])?.let { " — $it" } ?: ""}"
+                columnHeading(heading, slot, ed, withSwitch = true, copyText = draft.text)
                 entryEditor(id, draft, ed.checks[id], ed)
             }
             Button { size = "small"; onClick = { ed.change(ed.edits.without(id)) }; +"Discard" }
@@ -506,6 +519,20 @@ private fun ChildrenBuilder.entryEditor(id: String, draft: EntryDraft, check: En
         asDynamic()["className"] = "bundle-editor-text"
         asDynamic()["autoSize"] = js("({ minRows: 4, maxRows: 30 })")
         onChange = { e -> ed.change(ed.edits.with(id, draft.withText(e.target.value as String))) }
+    }
+    // JSON pasted from another client names its namespace: offered as this client's, written client.@self (issue #1461).
+    val parsed = draft.text.jsonMapResult().valueOrNull()
+    val others = if (parsed == null || draft.slot in PORT.keptSlots) emptySet() else foreignClients(parsed, ed.view.client)
+    if (parsed != null && others.isNotEmpty()) {
+        div {
+            className = ClassName("bundle-editor-fixup")
+            span { +foreignClientsText(others, ed.view.client) }
+            Button {
+                size = "small"
+                onClick = { ed.change(ed.edits.with(id, draft.withText(entryText(withClientsAsSelf(parsed, others))))) }
+                +"Take it as ${ed.view.client}'s"
+            }
+        }
     }
     val problems = check?.problems.orEmpty()
     if (problems.isNotEmpty()) {
@@ -612,17 +639,20 @@ private fun ChildrenBuilder.saveBar(
 private fun ChildrenBuilder.jsonColumn(heading: String, slot: String, data: Map<String, Any?>, ed: EditContext, withSwitch: Boolean = false) {
     div {
         className = ClassName("bundle-editor-json")
-        columnHeading(heading, slot, ed, withSwitch)
-        JsonBlock { text = ed.shownData(data, slot).toJsonStr() }
+        val json = ed.shownData(data, slot).toJsonStr()
+        columnHeading(heading, slot, ed, withSwitch, copyText = json)
+        JsonBlock { text = json }
     }
 }
 
 /**
  * A column's [heading], saying when it is portable, and -- [withSwitch], on an entry's first column -- the page's switch
  * between portable form and as stored. Not on a slot left as stored either way ([PORT.keptSlots]), where it would
- * change nothing, and disabled while an edited text does not parse, since it could not be rewritten.
+ * change nothing, and disabled while an edited text does not parse, since it could not be rewritten. And **Copy**, for
+ * the column's JSON as shown ([copyText]) -- portable when the switch is, the text as typed in an editor -- whether or
+ * not the page edits.
  */
-private fun ChildrenBuilder.columnHeading(heading: String, slot: String, ed: EditContext, withSwitch: Boolean) {
+private fun ChildrenBuilder.columnHeading(heading: String, slot: String, ed: EditContext, withSwitch: Boolean, copyText: String) {
     val applies = slot !in PORT.keptSlots
     div {
         className = ClassName("bundle-editor-heading")
@@ -640,6 +670,10 @@ private fun ChildrenBuilder.columnHeading(heading: String, slot: String, ed: Edi
                 }
                 +"Portable"
             }
+        }
+        CopyButton {
+            text = copyText
+            label = if (ed.portable && applies) "Copy this JSON, in portable form" else "Copy this JSON"
         }
     }
 }
