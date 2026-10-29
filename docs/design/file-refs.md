@@ -340,3 +340,12 @@ an image declared by a component (`ComponentDefinition.images`), read from its c
 file is (`WebAssetCheck`, at most a ref's size), and served the same way (`HashedFileServing`, at
 `/<staticRoot>/<appId>/img/<name:hash>`). It is the same for every client, so it is a separate namespace from refs:
 a client wanting another image changes its copy to name a ref of its own.
+
+**A component image kept in the repository** (issue #1463). A served document is written for a Git checkout, so its
+links are repo-relative, and `resolveDocLink` sends a link to a plain repo file into the source repository. For an
+image, that is a page rather than an image. So a component image whose file lives in the repository (copied into the
+resources by the module's build, as `embedDocs` copies a document) declares that file's `sourcePath`, unique across
+images. The shell config serves each path with the image's name (`imagePaths`), and a document's link to that path
+resolves to the image's served address. One plain `![Part 1](images/walk-part1.svg)` then draws on GitHub from the
+file and in the app from the image served from it. The Pandoc-style `{.float-left}` suffix still reads as text on
+GitHub, so an image meant for both places is a plain one.

@@ -218,6 +218,13 @@ object HFLD {
      * `IMG.staticPath`. The same for every caller.
      */
     const val images = "images"
+
+    /**
+     * In the shell config's state (issue #1463): each image a component ships that is kept in the repository, by its
+     * path there (`docs/images/walk-part1.svg`) to its rooted name, a key of [images]. A document's link to that path is
+     * drawn as the image, so one plain Markdown image shows both on GitHub and in the app. The same for every caller.
+     */
+    const val imagePaths = "imagePaths"
 }
 
 /** Home schema type names (the backend's output type refs; also useful to the frontend). */

@@ -25,3 +25,18 @@ fun componentImageNamesFrom(raw: Any?): Map<String, String> = raw.toJsonMapOrEmp
  */
 fun imageAddressFrom(names: Map<String, String>, addressOf: (String) -> String): (String) -> String? =
     { name -> names[name]?.let(addressOf) }
+
+/** `state.imagePaths` as repository path to rooted name (issue #1463); an entry whose name is not a string is left out. */
+fun componentImagePathsFrom(raw: Any?): Map<String, String> =
+    raw.toJsonMapOrEmpty().mapNotNull { (path, name) -> (name as? String)?.let { path to it } }.toMap()
+
+/**
+ * Where a document's link to the repository path an image is kept at leads (issue #1463): each of [paths] (path to
+ * rooted name) to the address of the image [names] serves under that name, made by [addressOf]. A path naming an image
+ * not among them is left out, so a link to it resolves as any repo file's would. Pure, covered under `jsNodeTest`.
+ */
+fun componentImageAddressByPath(
+    paths: Map<String, String>,
+    names: Map<String, String>,
+    addressOf: (String) -> String = Http::componentImageUrl,
+): Map<String, String> = paths.mapNotNull { (path, name) -> names[name]?.let { path to addressOf(it) } }.toMap()

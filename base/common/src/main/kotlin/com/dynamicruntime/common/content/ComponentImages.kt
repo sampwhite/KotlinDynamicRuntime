@@ -31,12 +31,18 @@ import kotlin.time.Instant
  * An image a component ships in its resources (issue #1339): its rooted [name] (`sample:diagram`), what copy names it
  * by as `![alt](img:sample:diagram)`, and the [fileName] it is read from, under [IMGS.resourceDir] on the classpath. A
  * name under another owner's root names that root in [contributesTo], as a cfact's does.
+ *
+ * An image whose file is kept in the repository and copied into the resources by the build names that file in
+ * [sourcePath] (`docs/images/walk-part1.svg`, issue #1463), as a served document names its own. A document then shows
+ * it as a plain `![alt](images/walk-part1.svg)`: GitHub draws the file, and the app the image it serves from the same
+ * file, since a document's links to that path are resolved to the image's address. Unique across images, as a
+ * document's is across documents.
  */
-class ComponentImageDef(val name: String, val fileName: String, val contributesTo: String? = null)
+class ComponentImageDef(val name: String, val fileName: String, val contributesTo: String? = null, val sourcePath: String? = null)
 
 /** Declares an image a component ships: see [ComponentImageDef]. */
-fun componentImage(name: String, fileName: String, contributesTo: String? = null): ComponentImageDef =
-    ComponentImageDef(name, fileName, contributesTo)
+fun componentImage(name: String, fileName: String, contributesTo: String? = null, sourcePath: String? = null): ComponentImageDef =
+    ComponentImageDef(name, fileName, contributesTo, sourcePath)
 
 /** A [def] as the boot collected it: with the component that declared it, and that component's owner root. */
 class DeclaredComponentImage(val def: ComponentImageDef, val component: String, val ownerRoot: String?)
@@ -66,6 +72,14 @@ object IMGS {
 
     /** The names of the images the boot collected: what copy may name. */
     fun declaredNames(cxt: KdrCxt): Set<String> = declared(cxt).mapTo(HashSet()) { it.def.name }
+
+    /**
+     * Whether [path] may be an image's [ComponentImageDef.sourcePath] (issue #1463): relative to the repository root,
+     * as a document's link resolves it -- segments with no leading or doubled slash, and no `.` or `..` -- so the path
+     * a link resolves to is the one declared.
+     */
+    fun isRepoPath(path: String): Boolean =
+        path.isNotEmpty() && path.split('/').all { it.isNotEmpty() && it != "." && it != ".." }
 
     /** Whether [fileName] may name a file in [resourceDir]: a plain name and an extension, never a path. */
     fun isSafeFileName(fileName: String): Boolean {
@@ -129,6 +143,11 @@ class ComponentImageService : ServiceInitializer, ContentServer {
     var served: Map<String, StoredFile> = emptyMap()
         private set
 
+    /** Each image served that is kept in the repository, by its path there to its rooted name (issue #1463). */
+    @Volatile
+    var paths: Map<String, String> = emptyMap()
+        private set
+
     /** Each web resources package's files, by its id and then by slot (issue #1301). */
     @Volatile
     var packages: Map<String, Map<String, StoredFile>> = emptyMap()
@@ -143,18 +162,31 @@ class ComponentImageService : ServiceInitializer, ContentServer {
         val read = LinkedHashMap<String, StoredFile>()
         val declared = IMGS.declared(cxt)
         val counts = declared.groupingBy { it.def.name }.eachCount()
+        val pathCounts = declared.mapNotNull { it.def.sourcePath }.groupingBy { it }.eachCount()
+        val readPaths = LinkedHashMap<String, String>()
         for (image in declared) {
             val name = image.def.name
+            val sourcePath = image.def.sourcePath
             fun fault(why: String) = findings.add("Component '${image.component}' declares the image '$name': $why")
             val nameProblem = componentNameProblem(OwnedNameKind.image, name, image.ownerRoot, image.def.contributesTo)
             val (file, problem) = when {
                 nameProblem != null -> null to nameProblem
                 (counts[name] ?: 0) > 1 -> null to "it is declared ${counts[name]} times; each image is declared once."
+                sourcePath != null && !IMGS.isRepoPath(sourcePath) ->
+                    null to "its source path '$sourcePath' is not a path in the repository, such as 'docs/images/x.svg'."
+                sourcePath != null && (pathCounts[sourcePath] ?: 0) > 1 ->
+                    null to "its source path '$sourcePath' is declared ${pathCounts[sourcePath]} times; a file is one image."
                 else -> readImage(image.def, cxt.now())
             }
-            if (file != null) read[name] = file else fault(problem.orEmpty())
+            if (file != null) {
+                read[name] = file
+                sourcePath?.let { readPaths[it] = name }
+            } else {
+                fault(problem.orEmpty())
+            }
         }
         served = read
+        paths = readPaths
         val (packaged, packageFindings) = readWebResources(WRES.declared(cxt), cxt.now())
         packages = packaged
         findings.addAll(packageFindings)

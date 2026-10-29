@@ -1,6 +1,8 @@
 package com.dynamicruntime.webapp
 
+import com.dynamicruntime.common.util.renderMarkdown
 import kotlin.test.Test
+import kotlin.test.assertContains
 import kotlin.test.assertEquals
 
 /**
@@ -76,5 +78,31 @@ class DocLinkResolverTest {
         assertEquals("", resolve("LICENSE"))
         assertEquals("/docs/code-guide", resolve("code-guide.md"))
         assertEquals("/test/simulations", resolve("/wa/test/simulations"))
+    }
+
+    @Test
+    fun aLinkToARepoPathAComponentImageIsKeptAtDrawsThatImage() {
+        // Issue #1463: one plain image shows on GitHub from the file and in the app from the image served from it.
+        val names = mapOf("kdn:part1" to "kdn:part1:abc", "kdn:part2" to "kdn:part2:def")
+        val paths = mapOf("docs/images/part1.svg" to "kdn:part1", "docs/images/gone.svg" to "kdn:gone")
+        val addresses = componentImageAddressByPath(paths, names) { "/st/img/$it" }
+        // A path naming an image not served is left out, so it resolves as any repo file's would.
+        assertEquals(mapOf("docs/images/part1.svg" to "/st/img/kdn:part1:abc"), addresses)
+        val resolve = docLinkResolver("docs/walk-through.md", links, base, addresses)
+        assertEquals("/st/img/kdn:part1:abc", resolve("images/part1.svg"))
+        assertEquals("$base/docs/images/gone.svg", resolve("images/gone.svg"))
+        // Drawn by the renderer as the image, at its served address.
+        assertContains("![Part 1](images/part1.svg)".renderMarkdown(resolve), "<img src=\"/st/img/kdn:part1:abc\" alt=\"Part 1\"")
+        // Without a source repository too: the image is the app's own.
+        assertEquals("/st/img/kdn:part1:abc", docLinkResolver("docs/walk-through.md", links, null, addresses)("images/part1.svg"))
+    }
+
+    @Test
+    fun imagePathsAreReadAsTheShellConfigServesThem() {
+        assertEquals(
+            mapOf("docs/images/part1.svg" to "kdn:part1"),
+            componentImagePathsFrom(mapOf("docs/images/part1.svg" to "kdn:part1", "docs/images/odd.svg" to 3)),
+        )
+        assertEquals(emptyMap(), componentImagePathsFrom(null))
     }
 }

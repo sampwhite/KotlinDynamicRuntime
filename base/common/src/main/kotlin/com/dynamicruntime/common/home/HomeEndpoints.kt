@@ -229,6 +229,11 @@ fun homeSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.home") {
                     "(`<name>:<hash>`), served at the static root's `/<appId>/img/<name>`: what copy naming an image " +
                     "`img:<name>` is drawn from. The same for every caller.",
             ) { mapOfValues { type = SCT.string } }
+            property(
+                HFLD.imagePaths,
+                "The images components ship that are kept in the repository (issue #1463), each path there to its " +
+                    "rooted name, a key of `${HFLD.images}`: a document's link to that path is drawn as the image.",
+            ) { mapOfValues { type = SCT.string } }
         }
     }
 
@@ -321,7 +326,11 @@ fun homeSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.home") {
                 // The images its copy may name (issue #1186), as the static root serves them to this caller.
                 FileRefService.getOrNull(c)?.let { put(HFLD.fileRefs, it.servedNames(c, c.client)) }
                 // The images components ship (issue #1339): copy's `img:` names, the same for every caller.
-                ComponentImageService.getOrNull(c)?.let { put(HFLD.images, it.servedNames()) }
+                ComponentImageService.getOrNull(c)?.let {
+                    put(HFLD.images, it.servedNames())
+                    // And the paths in the repository a document names some of them by (issue #1463).
+                    put(HFLD.imagePaths, it.paths)
+                }
             },
         )
     }
