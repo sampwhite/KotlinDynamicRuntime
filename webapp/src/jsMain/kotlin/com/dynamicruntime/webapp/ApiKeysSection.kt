@@ -251,6 +251,9 @@ private fun ChildrenBuilder.extendEditor(
 external interface ApiKeysSectionProps : Props {
     /** The user whose keys these are, for an administrator; null for the signed-in user's own. */
     var ownerId: Long?
+
+    /** Drawn inside a page's API keys panel (issue #1478), which carries the heading: none of its own. */
+    var inPanel: Boolean?
 }
 
 /**
@@ -284,8 +287,8 @@ val ApiKeysSection = FC<ApiKeysSectionProps> { props ->
     }
 
     div {
-        className = ClassName("api-keys-section")
-        h2 { +"API keys" }
+        className = ClassName(if (props.inPanel == true) "api-keys-in-panel" else "api-keys-section")
+        if (props.inPanel != true) h2 { +"API keys" }
         p {
             className = ClassName("subtitle")
             +"${apiKeysIntro(forSelf)} "

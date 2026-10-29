@@ -171,9 +171,14 @@ val Users = FC<Props> {
     // and only a chosen persona is sent, so the backend applies the same rule to an unnamed one.
     var personaChosen by useState(false)
 
-    // Whether the permanent-delete danger button has been armed -- a two-step confirm, since there is no
-    // Popconfirm wrapper and an irreversible delete is the one action here a stray click must not perform.
-    var confirmingDelete by useState(false)
+    // Each panel's own result (issue #1478, rule 3 of #1477): the User panel's save, the Invitation panel's send, and
+    // the danger zone's delete each say how it went where it was asked for. A save's failure part way through says what
+    // it had saved first ([userSaveFailureLead]), since it is one call per change rather than one transaction.
+    var saveError by useState<DisplayError?>(null)
+    var saveErrorLead by useState<String?>(null)
+    var inviteNote by useState<String?>(null)
+    var inviteError by useState<DisplayError?>(null)
+    var deleteError by useState<DisplayError?>(null)
 
     val generation = useRefreshGeneration()
     val bump = useRefreshBump()
@@ -188,8 +193,11 @@ val Users = FC<Props> {
     // The wire arguments of the search last run, so a debounced search that would only repeat it is skipped.
     val lastRunArgs = useRef<Map<String, Any?>>(null)
 
-    /** Runs a backend [block] with busy/error bookkeeping. Used by the actions, never by the search field. */
-    fun run(block: suspend () -> Unit) {
+    /**
+     * Runs a backend [block] with busy/error bookkeeping. Used by the actions, never by the search field. A failure
+     * goes to [onError] -- the panel that asked -- and to the page's own line when none is given.
+     */
+    fun run(onError: ((DisplayError) -> Unit)? = null, block: suspend () -> Unit) {
         busy = true
         error = null
         usersScope.launch {
@@ -201,7 +209,9 @@ val Users = FC<Props> {
                 // refresh bus's intent: a bump that changed nothing costs one re-fetch.
                 bump()
             } catch (e: Throwable) {
-                error = userFacingError(e)
+                val shown = userFacingError(e)
+                // Not `?: run { }`: inside this function `run` is this function.
+                if (onError != null) onError(shown) else error = shown
             } finally {
                 busy = false
             }
@@ -341,8 +351,8 @@ val Users = FC<Props> {
         }
     }
 
-    /** Seeds the draft from [user]'s current state, or empties it for a user being created. */
-    fun seedDraft(user: AdminUser?) {
+    /** Sets the draft's fields from [user]'s current state, or empties them for a user being created. */
+    fun seedFields(user: AdminUser?) {
         draftEmail = user?.primaryId ?: ""
         draftLevel = user?.level ?: ROLE.user
         draftAllClients = user?.roles?.contains(ROLE.allClients) == true
@@ -360,7 +370,16 @@ val Users = FC<Props> {
         draftPersonaSuffix = user?.personaSuffix ?: ""
         personaSuffixCollided = false
         personaChosen = false
-        confirmingDelete = false
+    }
+
+    /** Seeds the editor for [user] (or a new one): its fields, and no result yet in any panel. */
+    fun seedDraft(user: AdminUser?) {
+        seedFields(user)
+        saveError = null
+        saveErrorLead = null
+        inviteNote = null
+        inviteError = null
+        deleteError = null
         note = null
         error = null
     }
@@ -455,6 +474,11 @@ val Users = FC<Props> {
         else -> editing?.userId?.toString()
     }
 
+    // The record open now, read through a ref by the listener: an address naming what is already open -- the one the
+    // leave guard puts back after a "stay" (issue #1478) -- reopens nothing, so it cannot re-seed the draft it kept.
+    val openRecordRef = useRef<String>(null)
+    openRecordRef.current = openRecord()
+
     /** Whether the page is read-only (an editor, issue #1432), read through a ref by the listener, as the rows are. */
     val readOnlyRef = useRef(false)
     readOnlyRef.current = usersReadOnly(config)
@@ -488,6 +512,7 @@ val Users = FC<Props> {
     /** Opens the editor on what the address names, or closes it. Used by the route listener below. */
     fun applyEditorRoute() {
         val open = routeParams()[HP.user]
+        if (open != null && open == openRecordRef.current) return
         when {
             open == null -> closeEditor()
             // An editor (issue #1432) creates nobody: an address naming a create opens the list rather than an empty page.
@@ -563,23 +588,58 @@ val Users = FC<Props> {
     fun draftRoles(current: List<String>): List<String> =
         rolesWithEditor(rolesWithCapability(RoleLadder.rolesAtLevel(current, draftLevel), ROLE.allClients, draftAllClients), draftEditor)
 
+    /** Whether the open user is a sandbox user somebody opened (issue #1198), whose roles and organization are a record. */
+    val openedNote = editing?.let { openedUserNote(it) }
+
+    /** What the draft changes on the open user: the calls a save makes, and what makes the draft dirty. */
+    fun draftChanges(target: AdminUser): List<UserChange> = userDraftChanges(
+        target, draftRoles(target.roles), draftOrg, draftName, draftIsEntity, draftEnabled, draftLabels,
+        opened = openedUserNote(target) != null,
+    )
+
+    // Whether the User panel holds edits nobody has saved (issue #1478): its heading says so, its Save is offered, and
+    // leaving -- Back, another of the person's users, or any other address -- asks first.
+    val readOnlyView = usersReadOnly(config)
+    val draftDirty = !readOnlyView && when {
+        creating -> createDraftDirty(draftEmail, creatingForSelf, draftName, draftPersonaSuffix, draftLabels)
+        else -> editing?.takeIf { !it.deleted }?.let { draftChanges(it).isNotEmpty() } == true
+    }
+    val leaveQuestion = "You have unsaved changes to this user. Leave and lose them?"
+    useEffect(draftDirty, openRecord()) {
+        if (draftDirty) {
+            val here = openRecord()
+            LeaveGuard.arm({ h -> h[HP.page] == HMENU.pageUsers && h[HP.user] == here }) {
+                LeaveGuard.confirmLeave(leaveQuestion)
+            }
+        } else {
+            LeaveGuard.disarm()
+        }
+    }
+
+    /** Runs [then] -- a move within the page away from the draft -- once the reader agrees to lose unsaved edits. */
+    fun leaveDraft(then: () -> Unit) {
+        if (!draftDirty || LeaveGuard.confirmLeave(leaveQuestion)) then()
+    }
+
     /**
-     * Applies the draft. Only what actually changed is sent -- the backend has one call per concern (roles,
-     * enabled), so an untouched field means no request rather than a redundant write.
+     * Applies the draft. Only what actually changed is sent -- the backend has one call per concern, so an untouched
+     * field means no request rather than a redundant write -- in [userDraftChanges]' order. A failure part way leads
+     * with what was saved before it ([userSaveFailureLead]): those calls are not undone.
      *
      * The note distinguishes the two outcomes rather than saying "Saved" either way. A confirmation that
      * appears when nothing was written is worse than none: it is indistinguishable from a real save, so a
      * change that silently failed to register still reads as success -- which is exactly how a control that
      * was not updating its draft went unnoticed.
      */
-    fun save() = run {
+    fun save() = run({ saveError = it }) {
+        saveErrorLead = null
         val target = editing
         if (target == null) {
             // Caught here so a mistyped address is an immediate, local message rather than a round trip -- the
             // backend runs this same check (base/kernel), so it is the authority; this only spares the trip.
             val email = draftEmail.normalizeEmail()
             if (!email.isEmailAddress()) {
-                error = DisplayError.expected("\"$email\" is not a valid email address.")
+                saveError = DisplayError.expected("\"$email\" is not a valid email address.")
                 return@run
             }
             val created = try {
@@ -595,59 +655,53 @@ val Users = FC<Props> {
                 // A collision on (address, client, persona) is what the personaSuffix is for: offer it, keep the
                 // form, and let the refusal show as it is.
                 if (isUserKeyCollision(e)) personaSuffixCollided = true
+                saveErrorLead = "Couldn't create the user."
                 throw e
             }
             note = "Created ${created.primaryId}."
             if (created.labels.isNotEmpty()) forgetLabelSuggestions(created.client)
         } else {
-            var changed = false
-            // A sandbox user somebody opened has no roles or organization of its own to set (issue #1198): the
-            // editor offers neither, and nothing is sent even should its draft not reproduce the row exactly --
-            // one refused call would abort a save that only touched its name or labels.
-            val opened = openedUserNote(target) != null
-            // Compared as sets rather than by level, because the draft now carries two independent things: a
-            // rung and a capability. Testing the level alone would silently drop a capability-only edit.
-            val desired = draftRoles(target.roles)
-            if (!opened && desired.toSet() != target.roles.toSet()) {
-                AdminApi.setRoles(target.userId, desired)
-                changed = true
+            val changes = draftChanges(target)
+            val saved = mutableListOf<UserChange>()
+            for (change in changes) {
+                try {
+                    when (change) {
+                        UserChange.roles -> AdminApi.setRoles(target.userId, draftRoles(target.roles))
+                        UserChange.org -> AdminApi.setOrg(target.userId, draftOrg.trim().ifEmpty { null })
+                        // The name and what kind of account it is travel together: the flag labels the name rather
+                        // than selecting a different field, so one call carries both.
+                        UserChange.accountName -> AdminApi.setName(target.userId, draftName.trim().ifEmpty { null }, draftIsEntity)
+                        UserChange.enabled -> AdminApi.setEnabled(target.userId, draftEnabled)
+                        UserChange.labels -> {
+                            AdminApi.setLabels(target.userId, normalizeUserLabels(draftLabels))
+                            forgetLabelSuggestions(target.client)
+                        }
+                    }
+                } catch (e: Throwable) {
+                    saveErrorLead = userSaveFailureLead(saved, change)
+                    throw e
+                }
+                saved += change
             }
-            if (!opened && draftOrg.trim().ifEmpty { null } != target.org) {
-                AdminApi.setOrg(target.userId, draftOrg.trim().ifEmpty { null })
-                changed = true
-            }
-            // The name and what kind of account it is travel together: the flag labels the name rather than
-            // selecting a different field, so one call carries both. The trimmed name is compared so
-            // whitespace-only edits are not a change.
-            val draftNameValue = draftName.trim().ifEmpty { null }
-            if (draftNameValue != target.name || draftIsEntity != target.isEntity) {
-                AdminApi.setName(target.userId, draftNameValue, draftIsEntity)
-                changed = true
-            }
-            if (draftEnabled != target.enabled) {
-                AdminApi.setEnabled(target.userId, draftEnabled)
-                changed = true
-            }
-            // Compared after the kernel's normalization -- the rule the backend stores by -- so re-spacing or
-            // repeating a label is no change, rather than a write that stores what was already there.
-            val desiredLabels = normalizeUserLabels(draftLabels)
-            if (desiredLabels != target.labels) {
-                AdminApi.setLabels(target.userId, desiredLabels)
-                forgetLabelSuggestions(target.client)
-                changed = true
-            }
-            note = if (changed) "Saved ${target.primaryId}." else "No changes to ${target.primaryId}."
+            note = if (changes.isNotEmpty()) "Saved ${target.primaryId}." else "No changes to ${target.primaryId}."
         }
         closeEditor()
         runSearch(query())
     }
 
+    /** Sends (again) the open user's invitation (issue #751), saying so in the Invitation panel. */
+    fun sendInvitation() = run({ inviteError = it }) {
+        val target = editing ?: return@run
+        inviteNote = null
+        AdminApi.inviteUser(target.userId)
+        inviteNote = "Invitation sent to ${target.primaryId}."
+    }
+
     /**
-     * Permanently deletes the user being edited: the email and identity are obfuscated irrecoverably. Armed
-     * by [confirmingDelete] so the danger button is a deliberate two-step, not a single stray click. The
-     * recoverable "delete" is the Enabled checkbox, not this.
+     * Permanently deletes the user being edited: the email and identity are obfuscated irrecoverably. Reached through
+     * [DangerConfirm], a deliberate two-step. The recoverable "delete" is the Enabled checkbox, not this.
      */
-    fun performDelete() = run {
+    fun performDelete() = run({ deleteError = it }) {
         val target = editing ?: return@run
         val result = AdminApi.deleteUser(target.userId, permanent = true)
         note = "Permanently deleted ${target.primaryId}: ${result.primaryId}."
@@ -660,7 +714,7 @@ val Users = FC<Props> {
     // edited, or the client a new one is made in -- the chosen one, else the caller's.
     val editorOffered = (editing?.client ?: draftClient.ifEmpty { null } ?: config?.user?.client) != CL.public
     // An editor (issue #1432): every user of its client is shown, and nothing that changes one.
-    val readOnly = usersReadOnly(config)
+    val readOnly = readOnlyView
     val inEditor = creating || editing != null
 
     div {
@@ -673,48 +727,99 @@ val Users = FC<Props> {
                 +"You do not have permission to manage users."
             }
         } else if (inEditor) {
-            // ---- editor -----------------------------------------------------
+            // ---- editor (issue #1478) -----------------------------------------
+            //
+            // Built to the page structure of #1477: a header, the structure line, then panels -- the User draft, whose
+            // one Save covers every field in it; the live Invitation and API keys, which act as they are pressed; the
+            // read-only Activity; and the danger zone last. Each says how its own action went.
+            val open = editing
+            // Editing yourself: the backend refuses to let anyone change their own administrator status or disable
+            // their own account, so those controls are locked here rather than offered and then rejected. The
+            // backend remains the enforcement point -- this only keeps the UI honest.
+            val self = open != null && open.userId == config?.user?.userId
             div {
                 className = ClassName("row")
                 Button {
                     type = "link"
                     disabled = busy
-                    onClick = { closeEditor() }
+                    onClick = { leaveDraft { closeEditor() } }
                     +"← Back to users"
                 }
             }
-            h1 { +(if (readOnly) "User" else editorTitle(creating, creatingForSelf)) }
+            h1 { +(open?.let { it.name?.takeIf { n -> n.isNotBlank() } ?: it.primaryId } ?: editorTitle(creating, creatingForSelf)) }
+            if (open != null) {
+                div {
+                    className = ClassName("client-header-line")
+                    userStatusChips(open).forEach { chip ->
+                        span {
+                            key = chip.unsafeCast<Key>()
+                            className = ClassName("user-mark")
+                            +chip
+                        }
+                    }
+                    // Where this user's forms and client are (issue #1081), to the callers the list offers them.
+                    if (linksOffered) {
+                        UserLinks {
+                            userId = open.userId
+                            client = open.client
+                            this.carriedClients = carriedClients
+                        }
+                    }
+                }
+                // The person behind the user (issue #770): the person's users, each of which opens in its turn.
+                if (!open.deleted) {
+                    userStructureLine(userStructure(open, identity?.users), disabled = busy) { picked ->
+                        leaveDraft { startEdit(picked) }
+                    }
+                }
+            }
 
             error?.let { errorText(it) }
 
-            // The person behind the user (issue #770), above the editable data: their other users, and a summary.
-            val open = editing
-            val person = identity
-            if (open != null && person != null && !open.deleted) {
-                identityPanel(person, open, disabled = busy) { startEdit(it) }
-            }
-
-            if (editing?.deleted == true) {
-                // A permanently-deleted tombstone: nothing to edit, and re-enabling it is precisely the bug
-                // this read-only view exists to prevent. Show what survives and stop -- the backend refuses an
-                // edit either way (loadEditableUser), so this is a courtesy over an enforced rule. The login
-                // identity is obfuscated; the name and organization are kept so the record stays recognizable
-                // to somebody debugging what the account owned.
-                readOnlyField("Email address", draftEmail)
-                readOnlyField("Id", editing?.userId?.toString() ?: "")
-                readOnlyField(
-                    if (editing?.isEntity == true) "Business name" else "Full name",
-                    editing?.name?.takeIf { it.isNotBlank() } ?: "\u2014",
-                )
-                editing?.org?.takeIf { it.isNotBlank() }?.let { readOnlyField("Organization", it) }
-                p {
-                    className = ClassName("subtitle")
-                    +("This account was permanently deleted: its email was obfuscated and freed for reuse, and " +
-                        "it cannot be recovered, edited, or re-enabled. The name is kept for reference.")
+            if (open?.deleted == true) {
+                // A permanently-deleted tombstone: nothing to edit, and re-enabling it is precisely the bug this
+                // read-only view exists to prevent. Show what survives and stop -- the backend refuses an edit either
+                // way (loadEditableUser), so this is a courtesy over an enforced rule. The login identity is
+                // obfuscated; the name and organization are kept so the record stays recognizable to somebody
+                // debugging what the account owned.
+                panel(panelUser, "User") {
+                    readOnlyField("Email address", draftEmail)
+                    readOnlyField("Id", open.userId.toString())
+                    readOnlyField(if (open.isEntity) "Business name" else "Full name", open.name?.takeIf { it.isNotBlank() } ?: "—")
+                    open.org?.takeIf { it.isNotBlank() }?.let { readOnlyField("Organization", it) }
+                    p {
+                        className = ClassName("subtitle")
+                        +("This account was permanently deleted: its email was obfuscated and freed for reuse, and " +
+                            "it cannot be recovered, edited, or re-enabled. The name is kept for reference.")
+                    }
                 }
             } else if (readOnly) {
-                editing?.let { userDetails(it) }
+                // An editor's view (issue #1432): the same panels, with nothing to save or press.
+                open?.let { user ->
+                    panel(panelUser, "User") { userDetails(user) }
+                    panel(panelActivity, "Activity") {
+                        for ((label, value) in identitySummary(null, user)) readOnlyField(label, value)
+                    }
+                }
             } else {
+            val invitationShown = open != null && !open.registered && open.enabled
+            val keysShown = open != null && config?.user?.let { mayCreateForOthers(it) } != false
+            val dangerShown = open != null && !self
+            if (open != null) {
+                val shown = buildList {
+                    add(panelUser to "User")
+                    if (invitationShown) add(panelInvitation to "Invitation")
+                    add(panelActivity to "Activity")
+                    if (keysShown) add(panelKeys to "API keys")
+                    if (dangerShown) add(panelDanger to "Danger zone")
+                }
+                if (shown.size > 2) panelLinks(shown)
+            }
+
+            // ---- User: the draft, saved together -----------------------------
+            val editorShown = openedNote == null && draftLevel != ROLE.admin && editorOffered
+            val allClientsShown = openedNote == null && config?.user?.roles?.contains(ROLE.allClients) == true
+            panel(panelUser, "User", kind = PanelKind.draft, dirty = draftDirty) {
             if (creating && creatingForSelf) {
                 // Locked: the point of this form is that the address is the caller's own.
                 readOnlyField("Email address", draftEmail)
@@ -734,7 +839,7 @@ val Users = FC<Props> {
                 // Identity is display-only: the backend offers no rename, and showing an editable field that
                 // silently discards its value would be worse than showing none.
                 readOnlyField("Email address", draftEmail)
-                readOnlyField("Id", editing?.userId?.toString() ?: "")
+                readOnlyField("Id", open?.userId?.toString() ?: "")
             }
 
             // What kind of account this is, and its name. Sits with identity rather than down beside the
@@ -758,17 +863,11 @@ val Users = FC<Props> {
                 +nameHint
             }
 
-            // Editing yourself: the backend refuses to let anyone change their own administrator status or
-            // disable their own account, so those controls are locked here rather than offered and then
-            // rejected. The backend remains the enforcement point -- this only keeps the UI honest.
-            val self = editing != null && editing?.userId == config?.user?.userId
-
             // A sandbox user somebody opened (issue #1198) acts with the roles and organization of the user it was
             // opened from, so its own are a record: what it acts with is shown, and nothing is offered to change --
             // the backend refuses either edit, and a control that could only fail is the drift this page avoids.
-            val openedNote = editing?.let { openedUserNote(it) }
             if (openedNote != null) {
-                readOnlyField("Acts with", editing?.actingRoles.orEmpty().joinToString(", ").ifEmpty { "no roles" })
+                readOnlyField("Acts with", open?.actingRoles.orEmpty().joinToString(", ").ifEmpty { "no roles" })
                 p {
                     className = ClassName("type-hint")
                     +openedNote
@@ -777,9 +876,9 @@ val Users = FC<Props> {
                 // The Operator rung is deployment-wide since #464 (it requires allClients), so offer it only to a
                 // caller who can grant that reach -- one holding allClients -- or when the edited user already is an
                 // operator, so the value shows and can be kept (anti-escalation checks adding, not the result set).
-                // Withholding a choice that would only 400 is the rule the All-clients checkbox below already keeps.
+                // Withholding a choice that would only 400 is the rule the All-clients checkbox keeps.
                 val operatorSelectable = config?.user?.roles?.contains(ROLE.allClients) == true ||
-                    editing?.roles?.contains(ROLE.operator) == true
+                    open?.roles?.contains(ROLE.operator) == true
 
                 div {
                     className = ClassName("row")
@@ -806,65 +905,13 @@ val Users = FC<Props> {
                     className = ClassName("type-hint")
                     +accessLevelHint(operatorSelectable)
                 }
-
-                // The editor role (issue #1432): beside the level rather than one of its rungs -- an operator does not
-                // hold it -- and offered below the admin level, since an administrator already holds everything it adds.
-                if (draftLevel != ROLE.admin && editorOffered) {
-                    div {
-                        className = ClassName("row")
-                        Checkbox {
-                            checked = draftEditor
-                            disabled = busy || self
-                            onChange = { event ->
-                                val on = event.target.checked as Boolean
-                                draftEditor = on
-                                if (creating && !personaChosen) draftPersona = personaForRoles(draftLevel, on)
-                            }
-                            +"Editor"
-                        }
-                    }
-                    p {
-                        className = ClassName("type-hint")
-                        +editorHint
-                    }
-                }
-
-                // Offered only to a caller who holds the capability, because the backend refuses to let anyone
-                // grant reach they do not have themselves -- a control that could only ever produce a 400 is the
-                // advertise-versus-serve drift this codebase keeps removing, just relocated into a form.
-                if (config?.user?.roles?.contains(ROLE.allClients) == true) {
-                    div {
-                        className = ClassName("row")
-                        Checkbox {
-                            checked = draftAllClients
-                            disabled = busy || self
-                            onChange = { event -> draftAllClients = event.target.checked as Boolean }
-                            +"All clients"
-                        }
-                    }
-                    p {
-                        className = ClassName("type-hint")
-                        +allClientsHint
-                    }
-                    // Granting the capability below the admin level is allowed and saves cleanly, and it also does
-                    // nothing -- the full-scope surface wants both. Without this the checkbox reads as conferring
-                    // reach it is not conferring, which is the advertise-versus-serve drift noted above, in the
-                    // one direction a hidden control cannot fix: here the state is legal and worth keeping.
-                    if (isAllClientsDormant(draftLevel, draftAllClients)) {
-                        p {
-                            className = ClassName("type-hint")
-                            +allClientsDormantHint
-                        }
-                    }
-                }
-
             }
 
             // Chosen at creation and never again (issue #352). A user's content carries their client both in
             // its `client` column and inside every gedra id, so moving one would strand it -- there is no
             // set-client call for an editor to offer, which is why this is a selector on create and plain text
-            // afterward. Offered only to a caller holding the capability, for the same reason the checkbox
-            // above is: a scoped administrator naming another client could only ever produce a 400.
+            // afterward. Offered only to a caller holding the capability: a scoped administrator naming another
+            // client could only ever produce a 400.
             if (creating && clientChoices.isNotEmpty()) {
                 div {
                     className = ClassName("row")
@@ -886,23 +933,6 @@ val Users = FC<Props> {
                 }
             } else {
                 readOnlyField("Client", draftClient.ifEmpty { "—" })
-            }
-            // Where this user's forms and client are (issue #1081) -- for a user who exists, since a new one has
-            // neither yet, and to the callers the list offers the same links.
-            val open = editing
-            if (!creating && open != null && linksOffered) {
-                div {
-                    className = ClassName("row")
-                    span {
-                        className = ClassName("field-label")
-                        +"Go to"
-                    }
-                    UserLinks {
-                        userId = open.userId
-                        client = open.client
-                        this.carriedClients = carriedClients
-                    }
-                }
             }
 
             // The persona (issue #750): frozen at creation, like the client, so a selector on create and plain
@@ -934,13 +964,8 @@ val Users = FC<Props> {
                     className = ClassName("type-hint")
                     +personaHint
                 }
-                textField("Persona suffix", draftPersonaSuffix, disabled = busy) { draftPersonaSuffix = it }
-                p {
-                    className = ClassName("type-hint")
-                    +personaSuffixHint(collided = personaSuffixCollided)
-                }
             } else {
-                readOnlyField("Persona", personaCell(draftPersona, draftPersonaSuffix, editing?.let { it.actingRoles ?: it.roles }))
+                readOnlyField("Persona", personaCell(draftPersona, draftPersonaSuffix, open?.let { it.actingRoles ?: it.roles }))
             }
 
             // Editable only by someone not confined to an organization: the backend lets a confined
@@ -955,147 +980,206 @@ val Users = FC<Props> {
             } else {
                 readOnlyField("Organization", draftOrg.ifEmpty { "—" })
             }
-
-            // Labels (issues #786, #1481), on a new user as on an existing one. A tags select: the suggestions of the
-            // user's client -- on a new user, the client the form names -- are offered, and anything else may be typed,
-            // because a label is free-form by design.
-            div {
-                className = ClassName("row")
-                span {
-                    className = ClassName("field-label")
-                    +"Labels"
-                }
-                Select {
-                    mode = "tags"
-                    value = draftLabels.toTypedArray()
-                    options = labelSelectOptions(
-                        userLabelChoices(labelSuggestions[editorLabelClient].orEmpty(), draftLabels),
-                    )
-                    placeholder = "(none)"
-                    disabled = busy
-                    style = choiceStyle()
-                    onChange = { v -> draftLabels = (v.unsafeCast<Array<String>>()).toList() }
-                }
-            }
-            p {
-                className = ClassName("type-hint")
-                +labelsHint
-            }
-
-            div {
-                className = ClassName("row")
-                Checkbox {
-                    checked = draftEnabled
-                    disabled = busy || self
-                    onChange = { event -> draftEnabled = event.target.checked as Boolean }
-                    +"Enabled"
-                }
-            }
-            p {
-                className = ClassName("type-hint")
-                // Names what unchecking this actually is. The two modes differ: creating disabled makes an
-                // account that exists but cannot yet sign in; unchecking on an existing user is the recoverable
-                // half of "deleting" one, as distinct from -- not a duplicate of -- the permanent delete below.
-                +(if (creating) {
-                    "Leave checked for an active account. Uncheck to create it already disabled: the user " +
-                        "exists but cannot sign in until you enable them here."
-                } else {
-                    "Unchecking disables the account — a recoverable delete: the user cannot sign in, but you " +
-                        "can re-enable them here. To remove the account for good, use Delete user below."
-                })
-            }
             if (self) {
                 p {
                     className = ClassName("type-hint")
                     +"This is your own account: another administrator has to change your role or disable you."
                 }
             }
-            // An unclaimed user (issue #751): the person has not accepted their invitation. Offer to send it
-            // again -- a lapsed link, a lost mail, a user created disabled and enabled since. The backend
-            // refuses a claimed or disabled one, so the button is shown only where it can succeed.
-            if (editing?.registered == false && editing?.enabled == true) {
+
+            // The rest, on request (rule 5 of #1477): open by itself whenever any of it is set away from its default.
+            MoreOptions {
+                recordKey = openRecord() ?: HP.newRecord
+                inForce = userMoreOptionsInForce(
+                    editor = editorShown && draftEditor, allClients = allClientsShown && draftAllClients,
+                    labels = draftLabels, enabled = draftEnabled, creating = creating,
+                    personaSuffix = if (creating) draftPersonaSuffix else "",
+                    suffixNeeded = creating && personaSuffixCollided,
+                )
+                // The editor role (issue #1432): beside the level rather than one of its rungs -- an operator does not
+                // hold it -- and offered below the admin level, since an administrator already holds everything it adds.
+                if (editorShown) {
+                    div {
+                        className = ClassName("row")
+                        Checkbox {
+                            checked = draftEditor
+                            disabled = busy || self
+                            onChange = { event ->
+                                val on = event.target.checked as Boolean
+                                draftEditor = on
+                                if (creating && !personaChosen) draftPersona = personaForRoles(draftLevel, on)
+                            }
+                            +"Editor"
+                        }
+                    }
+                    p {
+                        className = ClassName("type-hint")
+                        +editorHint
+                    }
+                }
+                // Offered only to a caller who holds the capability, because the backend refuses to let anyone
+                // grant reach they do not have themselves -- a control that could only ever produce a 400 is the
+                // advertise-versus-serve drift this codebase keeps removing, just relocated into a form.
+                if (allClientsShown) {
+                    div {
+                        className = ClassName("row")
+                        Checkbox {
+                            checked = draftAllClients
+                            disabled = busy || self
+                            onChange = { event -> draftAllClients = event.target.checked as Boolean }
+                            +"All clients"
+                        }
+                    }
+                    p {
+                        className = ClassName("type-hint")
+                        +allClientsHint
+                    }
+                    // Granting the capability below the admin level is allowed and saves cleanly, and it also does
+                    // nothing -- the full-scope surface wants both. Without this the checkbox reads as conferring
+                    // reach it is not conferring; here the state is legal and worth keeping.
+                    if (isAllClientsDormant(draftLevel, draftAllClients)) {
+                        p {
+                            className = ClassName("type-hint")
+                            +allClientsDormantHint
+                        }
+                    }
+                }
+                // The persona suffix (issue #797): on every create form -- a first "Member B" needs it as much as a
+                // second one does -- and asked for outright after a collision.
+                if (creating) {
+                    textField("Persona suffix", draftPersonaSuffix, disabled = busy) { draftPersonaSuffix = it }
+                    p {
+                        className = ClassName("type-hint")
+                        +personaSuffixHint(collided = personaSuffixCollided)
+                    }
+                }
+                // Labels (issues #786, #1481), on a new user as on an existing one. A tags select: the suggestions of
+                // the user's client -- on a new user, the client the form names -- are offered, and anything else may
+                // be typed, because a label is free-form by design.
                 div {
                     className = ClassName("row")
-                    Button {
+                    span {
+                        className = ClassName("field-label")
+                        +"Labels"
+                    }
+                    Select {
+                        mode = "tags"
+                        value = draftLabels.toTypedArray()
+                        options = labelSelectOptions(
+                            userLabelChoices(labelSuggestions[editorLabelClient].orEmpty(), draftLabels),
+                        )
+                        placeholder = "(none)"
                         disabled = busy
-                        onClick = { run { AdminApi.inviteUser(editing!!.userId); note = "Invitation sent to ${editing?.primaryId}." } }
-                        +"Send invitation again"
+                        style = choiceStyle()
+                        onChange = { v -> draftLabels = (v.unsafeCast<Array<String>>()).toList() }
                     }
                 }
                 p {
                     className = ClassName("type-hint")
-                    +"Nobody has accepted this account's invitation yet. Sending again mails a fresh link, good for seven days."
-                }
-            }
-
-            div {
-                className = ClassName("row")
-                Button {
-                    type = "primary"
-                    loading = busy
-                    disabled = creating && draftEmail.isBlank()
-                    onClick = { save() }
-                    +"OK"
-                }
-                Button {
-                    type = "link"
-                    disabled = busy
-                    onClick = { closeEditor() }
-                    +"Cancel"
-                }
-            }
-
-            // ---- API keys (issue #1402): the user's, as their administrator manages them ---
-            //
-            // Live at once, unlike the fields above, which wait for OK: a key is made or revoked as it is asked for.
-            // A sandbox's users too (issue #1453). Not from `public`, where a self-administrator manages their own keys
-            // on their profile and the administrator's surface refuses them.
-            editing?.let { user ->
-                if (!user.deleted && config?.user?.let { mayCreateForOthers(it) } != false) {
-                    ApiKeysSection {
-                        key = "keys-${user.userId}".unsafeCast<Key>()
-                        // One's own keys are managed as on Profile, through the self endpoints.
-                        ownerId = user.userId.takeIf { it != config?.user?.userId }
-                    }
-                }
-            }
-
-            // ---- permanent delete (edit mode only, never your own account) ---
-            //
-            // Deliberately *only* the irreversible delete: the recoverable "delete" is the Enabled checkbox
-            // above, so offering it a second time here as a plain disable would be the same action twice.
-            if (editing != null && !self) {
-                p {
-                    className = ClassName("type-hint")
-                    +("Delete permanently: the email is obfuscated and freed for reuse, and the account cannot " +
-                        "be recovered. To only suspend the user, uncheck Enabled instead.")
+                    +labelsHint
                 }
                 div {
                     className = ClassName("row")
-                    if (!confirmingDelete) {
-                        Button {
-                            danger = true
-                            disabled = busy
-                            onClick = { confirmingDelete = true }
-                            +"Delete user…"
-                        }
+                    Checkbox {
+                        checked = draftEnabled
+                        disabled = busy || self
+                        onChange = { event -> draftEnabled = event.target.checked as Boolean }
+                        +"Enabled"
+                    }
+                }
+                p {
+                    className = ClassName("type-hint")
+                    +enabledHint(creating)
+                }
+            }
+
+            SaveBar {
+                saveText = if (creating) "Create user" else "Save user"
+                saving = busy
+                canSave = if (creating) draftEmail.isNotBlank() else draftDirty
+                failure = saveError
+                failureLead = saveErrorLead
+                onSave = { save() }
+                // A new user's Cancel leaves the form, asking first when anything was typed; an existing one's
+                // takes the fields back to what is saved, and stays on the user.
+                onDiscard = {
+                    if (creating) {
+                        leaveDraft { closeEditor() }
                     } else {
-                        span {
-                            className = ClassName("subtitle")
-                            editing?.let { +deleteUserQuestion(it.client) }
+                        seedFields(open)
+                        saveError = null
+                        saveErrorLead = null
+                    }
+                }
+            }
+            }
+
+            if (open != null) {
+                // ---- Invitation: live (issue #751) ---------------------------
+                //
+                // The person has not accepted their invitation. Offer to send it again -- a lapsed link, a lost mail,
+                // a user created disabled and enabled since. The backend refuses a claimed or disabled one, so the
+                // panel is shown only where it can succeed.
+                if (invitationShown) {
+                    panel(panelInvitation, "Invitation", kind = PanelKind.live) {
+                        p {
+                            className = ClassName("type-hint")
+                            +"Nobody has accepted this account's invitation yet. Sending it again mails a fresh link, good for seven days."
                         }
-                        Button {
-                            danger = true
-                            loading = busy
-                            onClick = { performDelete() }
-                            +"Confirm permanent delete"
+                        div {
+                            className = ClassName("row")
+                            Button {
+                                disabled = busy
+                                onClick = { sendInvitation() }
+                                +"Send invitation"
+                            }
                         }
-                        Button {
-                            type = "link"
-                            disabled = busy
-                            onClick = { confirmingDelete = false }
-                            +"Keep user"
+                        panelNote(inviteError, inviteNote, "Couldn't send the invitation.")
+                    }
+                }
+
+                // ---- Activity: read-only (issue #770) ------------------------
+                panel(panelActivity, "Activity") {
+                    for ((label, value) in identitySummary(identity, open)) readOnlyField(label, value)
+                }
+
+                // ---- API keys: live (issue #1402) ----------------------------
+                //
+                // A key is made or revoked as it is asked for. A sandbox's users too (issue #1453). Not from `public`,
+                // where a self-administrator manages their own keys on their profile and the administrator's surface
+                // refuses them.
+                if (keysShown) {
+                    panel(panelKeys, "API keys", kind = PanelKind.live) {
+                        ApiKeysSection {
+                            key = "keys-${open.userId}".unsafeCast<Key>()
+                            // One's own keys are managed as on Profile, through the self endpoints.
+                            ownerId = open.userId.takeIf { it != config?.user?.userId }
+                            inPanel = true
                         }
+                    }
+                }
+
+                // ---- Danger zone: the permanent delete, never your own account ---
+                //
+                // Deliberately *only* the irreversible delete: the recoverable "delete" is the Enabled box under
+                // More options, so offering it a second time here as a plain disable would be the same action twice.
+                if (dangerShown) {
+                    panel(panelDanger, "Danger zone", kind = PanelKind.danger) {
+                        p {
+                            className = ClassName("type-hint")
+                            +("Delete permanently: the email is obfuscated and freed for reuse, and the account cannot " +
+                                "be recovered. To only suspend the user, uncheck Enabled under More options instead.")
+                        }
+                        DangerConfirm {
+                            recordKey = open.userId.toString()
+                            actionText = "Delete user…"
+                            question = deleteUserQuestion(open.client)
+                            confirmText = "Confirm permanent delete"
+                            keepText = "Keep user"
+                            inProgress = busy
+                            onConfirm = { performDelete() }
+                        }
+                        panelNote(deleteError, null, "Couldn't delete the user.")
                     }
                 }
             }
@@ -1389,6 +1473,13 @@ fun searchRouteParams(query: UserSearchQuery): List<Pair<String, String>> =
         }
     }
 
+/** The editor's panels' element ids (issue #1478), which its panel links lead to. */
+private const val panelUser = "user-panel"
+private const val panelInvitation = "user-invitation"
+private const val panelActivity = "user-activity"
+private const val panelKeys = "user-api-keys"
+private const val panelDanger = "user-danger"
+
 /** The filter well's element id, so the toggle can name what it controls (`aria-controls`). */
 private const val usersFiltersWellId = "users-filters"
 
@@ -1581,8 +1672,8 @@ fun personaForRoles(level: String, editor: Boolean): String =
 
 /** What the Editor checkbox gives (issue #1432). */
 const val editorHint =
-    "Sees every user and form of the client and edits forms, but administers nothing: no changes to users, no new " +
-        "users, no client configuration. An administrator already has all of this."
+    "Use this when someone should see every user and form of the client and edit forms, but administer nothing: no " +
+        "changes to users, no new users, no client configuration. An administrator already has all of this."
 
 /** How a role list reads as one access, for the read-only details an editor sees (issue #1432): the kernel's rule (issue #1450). */
 fun accessText(roles: List<String>): String = PERSONA.accessLabel(PERSONA.accessOf(roles))
@@ -1615,8 +1706,9 @@ fun personaSuffixHint(collided: Boolean): String = if (collided) {
     "A user of this address, client and persona already exists. Give this one a short suffix (up to " +
         "${PERSONASUFFIX.maxLength} letters or digits: 1, 2, A, B) to create it as a further user of the same kind."
 } else {
-    "Optional. A short suffix (up to ${PERSONASUFFIX.maxLength} letters or digits: 1, 2, A, B) for a further " +
-        "user of the same address, client and persona -- shown as \"Member B\". Leave blank for the first one."
+    "Use this when the person needs a further user of the same address, client and persona: a short suffix (up to " +
+        "${PERSONASUFFIX.maxLength} letters or digits: 1, 2, A, B), shown as \"Member B\". Leave blank for the " +
+        "first one."
 }
 
 /** The [offeredAccessLevels] as antd `{ label, value }` option objects. */
@@ -1638,8 +1730,8 @@ private const val clientHint =
  * scope design rests on, and the one a checkbox beside a dropdown will not convey on its own.
  */
 private const val allClientsHint =
-    "Access level says what someone may do; this says whose data they may do it to. Without it an " +
-        "administrator manages only their own client. It is also what the full-scope admin endpoints require."
+    "Use this when an administrator should manage every client, not only their own: the access level says what " +
+        "someone may do, this says whose data. It is also what the full-scope admin endpoints require."
 
 /**
  * Shown when the capability is checked below the Administrator level, where it is stored but inert. Says that
@@ -1657,9 +1749,21 @@ private const val orgHint =
 
 /** Says what a label is for -- and, since it sits beside the access level, what it is not. */
 private const val labelsHint =
-    "Free-form labels a workflow can test for -- \"reviewer\" can make someone a reviewer of a workflow's " +
-        "task. They grant no access. The client's suggestions are offered, then the labels its users already " +
-        "carry; type to add any other."
+    "Use this when a workflow tests for a label -- \"reviewer\" can make someone a reviewer of a workflow's task. " +
+        "Labels grant no access. The client's suggestions are offered, then the labels its users already carry; " +
+        "type to add any other."
+
+/**
+ * What the Enabled box under More options is for (issue #1478): on a create, starting the account disabled; on an
+ * existing user, the recoverable half of deleting one, as distinct from -- not a duplicate of -- the danger zone's.
+ */
+fun enabledHint(creating: Boolean): String = if (creating) {
+    "Use this when the account should exist before it can sign in: uncheck to create it disabled, and enable it " +
+        "here later."
+} else {
+    "Use this when the user should stop signing in for now: unchecking disables the account, a recoverable delete " +
+        "you can undo here. To remove the account for good, use the danger zone."
+}
 
 /** A label list as antd `Select` `{ label, value }` options -- a label is its own caption. */
 private fun labelSelectOptions(labels: List<String>): Array<dynamic> = labels.map { label ->

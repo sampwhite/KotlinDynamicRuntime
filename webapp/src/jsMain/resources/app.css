@@ -1843,8 +1843,18 @@ body.dv-open .app-content { padding-right: calc(var(--dv-panel-width) + 16px); }
 .disclosure[open] > summary { margin-bottom: 10px; }
 .disclosure > * + * { margin-top: 14px; }
 
-/* API keys (issue #1402): the listing, a key's extension under its row, the create form, and the one-time dialog. */
+/* API keys (issue #1402): the listing, a key's extension under its row, the create form, and the one-time dialog.
+   Inside a page's API keys panel (issue #1478) the panel carries the heading and the spacing. */
 .api-keys-section { margin-top: 24px; }
+.api-keys-in-panel > * + * { margin-top: 12px; }
+
+/* The Users editor's structure line (issue #1478): the person's address, their users -- the open one marked, the
+   others links -- and the open one's access, read in one line under the heading. */
+.user-structure { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; }
+.user-structure-person { font-weight: 600; }
+.user-structure-arrow { color: var(--text-faint); }
+.user-structure .user-mark { margin: 0; }
+.user-structure-current { border-color: var(--accent-bright); color: var(--text); }
 .api-keys .api-key-dead td { color: var(--text-muted); }
 .api-key-actions { display: flex; gap: 4px; flex-wrap: wrap; }
 .api-key-extend { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }

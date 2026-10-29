@@ -1,5 +1,27 @@
 ## The admin console: editing someone's identity and authority (issue #225)
 
+**The editor's layout** (issue #1478) follows the page structure of #1477 (`Panels.kt`; the pure half is
+`UserEditorLayout.kt`, covered by `UserEditorLayoutTest`). A header -- the back link, the user's name or address, its
+chips (`userStatusChips`: enabled or disabled, invitation pending or unclaimed, sandbox), and its Forms and Client
+links -- then the structure line, the links to the panels, and the panels in order:
+
+1. **User** (a draft): the identity and authority fields, with **More options** (`MoreOptions`, keyed by the record)
+   holding Editor, All clients, the persona suffix on a create, labels, and Enabled -- open by itself when any is set
+   (`userMoreOptionsInForce`), each with a "Use this when" hint. One footer, **Save user** or **Create user**, enabled
+   only when the draft changed (`userDraftChanges`, the calls a save makes, in order; `createDraftDirty`). An
+   existing user's **Cancel** takes the fields back and stays; a create's leaves. A save is one call per change, not
+   one transaction, so a failure part way says what it saved first (`userSaveFailureLead`). While dirty the heading
+   says "Unsaved changes" and `LeaveGuard` is armed; Back and the structure line's links ask first, and the route
+   listener reopens nothing for an address naming the record already open, so a guard's "stay" keeps the draft.
+2. **Invitation** (live), for an unclaimed, enabled user: **Send invitation**, its result in the panel.
+3. **Activity** (read-only).
+4. **API keys** (live): `ApiKeysSection` with `inPanel`, which leaves the heading to the panel.
+5. **Danger zone**, never on your own row: **Delete user…** through `DangerConfirm`, keyed by the user, so a confirm
+   armed on one user is not waiting on the next one the structure line opens.
+
+A create is the User panel alone; an editor's view (issue #1432) is the User and Activity panels with nothing to
+press; a deleted tombstone is the User panel, read-only.
+
 The Users page edits several **independent** things, and treating any two as one control is the mistake the
 whole screen is arranged to prevent. Three of them are **authority**:
 
@@ -45,11 +67,12 @@ A fourth is **belonging**, and behaves unlike the other three:
   the page bumps the refresh bus, so a user created, disabled or deleted for yourself shows in the badge's
   switcher at once. The list shows both in a **Persona** column (`Member B`), and a **Registered** column says
   when the person claimed the user.
-  **The person behind the user** (issue #770): the editor opens with the identity's view from
-  `GET /clientAdmin/user/identity?userId=` (`AdminIdentity`) -- the person's other users as a list, when there
-  is more than one, each choosable to edit that one instead (the open one marked, what tells each apart as the
-  badge says it, its status), then a read-only **Summary**: whether the address is proven, whether a password
-  is set, which user an unnamed login lands on, and the open user's dates. The read runs through the same
+  **The person behind the user** (issue #770): the editor reads the identity's view from
+  `GET /clientAdmin/user/identity?userId=` (`AdminIdentity`). The person's users are the editor's **structure
+  line** (issue #1478, `userStructure`/`userStructureLine`): the address, then each user -- the open one marked,
+  each other one a link that opens it instead, labeled by what tells it apart as the badge says it, its status as
+  the hover -- then the open one's access. The **Activity** panel is the read-only summary: whether the address is
+  proven, whether a password is set, which user an unnamed login lands on, and the open user's dates. The read runs through the same
   user-admin scope as the rest, so a client administrator sees only the person's users in their own client,
   and "Signs in as" is a dash rather than a hint when the login lands outside it (`identitySiblings`,
   `identitySummary`). The identity's own facts -- the address proven, a password set, where a login lands, and

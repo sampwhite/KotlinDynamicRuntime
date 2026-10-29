@@ -210,11 +210,14 @@ external interface SaveBarProps : Props {
      */
     var canSave: Boolean?
 
-    /** The save's failure, drawn here, where the save was asked for. */
-    var error: DisplayError?
+    /**
+     * The save's failure, drawn here, where the save was asked for. Not `error`: a page's own `error` state would win
+     * over the prop inside the builder, and setting it there sets state during the render.
+     */
+    var failure: DisplayError?
 
     /** Leads the failure ("Couldn't save the copy."). */
-    var errorLead: String?
+    var failureLead: String?
 
     /**
      * In view at the window's bottom while the page scrolls -- for a draft too long for its footer to stay in sight, as
@@ -254,7 +257,7 @@ val SaveBar = FC<SaveBarProps> { props ->
                 +it
             }
         }
-        props.error?.let { error -> props.errorLead?.let { errorText(it, error) } ?: errorText(error) }
+        props.failure?.let { failure -> props.failureLead?.let { errorText(it, failure) } ?: errorText(failure) }
     }
 }
 
@@ -294,7 +297,8 @@ external interface DangerConfirmProps : Props {
     /** The way back ("Keep user"). */
     var keepText: String
 
-    var busy: Boolean?
+    /** While the delete runs: the confirm spins, and nothing can be pressed. Not `busy`, for the reason of [SaveBarProps.failure]. */
+    var inProgress: Boolean?
 
     var onConfirm: () -> Unit
 }
@@ -314,7 +318,7 @@ val DangerConfirm = FC<DangerConfirmProps> { props ->
         if (!armed) {
             Button {
                 danger = true
-                disabled = props.busy == true
+                disabled = props.inProgress == true
                 onClick = { armedFor = props.recordKey }
                 +props.actionText
             }
@@ -325,13 +329,13 @@ val DangerConfirm = FC<DangerConfirmProps> { props ->
             }
             Button {
                 danger = true
-                loading = props.busy == true
+                loading = props.inProgress == true
                 onClick = { props.onConfirm() }
                 +props.confirmText
             }
             Button {
                 type = "link"
-                disabled = props.busy == true
+                disabled = props.inProgress == true
                 onClick = { armedFor = null }
                 +props.keepText
             }
