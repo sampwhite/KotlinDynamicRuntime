@@ -239,6 +239,16 @@ class UserSearchTest : StringSpec({
         ids(searchUserRows(rows, UserSearchCriteria(anyText = "lead"))).sorted() shouldBe listOf(40L, 42L)
     }
 
+    "the labels sort alphabetically on the sorted list, with the unlabeled last either way (issue #1481)" {
+        // Applied out of order: the sort reads `alpha, zeta`, not the order they were applied in.
+        val za = user(50, "za@x.com", "za_l", updatedAt = t1).also { it.labels = listOf("zeta", "Alpha") }
+        val beta = user(51, "b@x.com", "b_l", updatedAt = t2).also { it.labels = listOf("beta") }
+        val none = user(52, "n@x.com", "n_l", updatedAt = t3)
+        val rows = listOf(none, beta, za)
+        ids(searchUserRows(rows, UserSearchCriteria(sortBy = USF.labels, descending = false))) shouldBe listOf(50L, 51L, 52L)
+        ids(searchUserRows(rows, UserSearchCriteria(sortBy = USF.labels, descending = true))) shouldBe listOf(51L, 50L, 52L)
+    }
+
     // --- the shared spec agrees with the backend registry (issue #411, SDUI) ---------------------------
     //
     // The console renders from `userSearchFieldSpecs` (base/kernel) while the actual filtering/sorting runs off

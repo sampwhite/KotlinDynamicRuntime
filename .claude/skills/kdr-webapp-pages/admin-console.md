@@ -92,9 +92,11 @@ One more is neither authority nor identity:
   given, even empty, they replace any a recovered disabled user carried. The backend applies them in the same
   follow-up write as a disable, so labels alone are not counted as an edit. The suggestions are fetched from
   effects keyed on the editor's client, not from `startEdit`/`startCreate`, which the route listener reaches with
-  stale closures. The list
-  has a **Labels** column and filter (`USF.labels`, `UserFilterChoices.labels`: an `AutoComplete` of the searched
-  client's suggestions that also takes a typed label), and the search box matches a label too. Editable on your
+  stale closures. The suggestions are the client's own list, then the labels its users already carry
+  (`labelsInUse`, issue #1481), so a label typed once is offered after; a save that writes labels drops the client's
+  entry, and the effects fetch it again. The list has a sortable **Labels** column (alphabetical, unlabeled last) and a
+  filter (`USF.labels`, `UserFilterChoices.labels`: an `AutoComplete` of the searched client's suggestions that also
+  takes a typed label), and the search box matches a label too. Editable on your
   **own** row too, deliberately — a label is not privilege,
   and the approve endpoint (#787) enforces the second-person rule itself: a reviewer can never approve a form
   they own (in production, a form owned by any of their users). Saving compares

@@ -768,6 +768,18 @@ class UserService : ServiceInitializer {
     }
 
     /**
+     * The labels [client]'s active users carry (issue #1481), each once, alphabetically ignoring case: what a label
+     * editor offers beside the client's own suggestions. Confined by [scope] as the search is -- an administrator
+     * confined to an organization is offered only what their own organization's users carry.
+     */
+    fun labelsInUse(cxt: KdrCxt, client: String, scope: ReadScope): List<String> =
+        visibleEnabledUsers(cxt, ReadScope.ofClient(client))
+            .filter { scope.admitsUserRow(it.client, it.org, it.userId, it.identityId) }
+            .flatMap { it.labels }
+            .distinct()
+            .sortedWith(String.CASE_INSENSITIVE_ORDER)
+
+    /**
      * The active (enabled) users [scope] may see, extracted from the cache when it is present (the cache holds
      * raw maps -- see [AuthUserCache] -- so each is extracted fresh, as `cachedUser` does).
      *

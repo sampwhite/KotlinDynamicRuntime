@@ -143,9 +143,12 @@ val userSearchFields: List<UserSearchField> = listOf(
         anyTextsOf = null,
     ),
     // The user's labels (issues #786, #1481), each matched exactly on its own as the roles are, and found by the free
-    // text too: unlike a role, a label is something a person searching for a user remembers them by.
+    // text too: unlike a role, a label is something a person searching for a user remembers them by. Sorted on the
+    // labels in alphabetical order, so the order a user's were applied in does not matter; a user with none has no
+    // value, and so sorts last in either direction.
     UserSearchField(
-        USF.labels, textsOf = { it.labels }, substring = false, sortOf = { it.labels.joinToString(", ").lowercase() },
+        USF.labels, textsOf = { it.labels }, substring = false,
+        sortOf = { row -> row.labels.map { it.lowercase() }.sorted().joinToString(", ").ifEmpty { null } },
         anyTextsOf = { it.labels },
     ),
 ) + userDateFields.map { it.asSearchField() }

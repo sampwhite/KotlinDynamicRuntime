@@ -354,6 +354,13 @@ object ADF {
     const val labels = "labels"
 
     /**
+     * The labels a client's active users already carry (issue #1481), which a label editor offers beside the client's
+     * own suggestions -- so a label typed for one user is offered for the next. Only the client's own list is what a
+     * workflow may name.
+     */
+    const val labelsInUse = "labelsInUse"
+
+    /**
      * In a sandbox (issue #1198): the roles the user **acts** with, which the sandbox's rules decide and [roles] --
      * what its row holds -- need not say (`SandboxAccess`). Absent outside a sandbox, where the two are one.
      */

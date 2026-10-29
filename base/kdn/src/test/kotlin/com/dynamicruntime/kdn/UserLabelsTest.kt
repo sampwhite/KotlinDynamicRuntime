@@ -108,6 +108,15 @@ class UserLabelsTest : StringSpec({
         admin.expectError(EXC.badInput, UADEP.userLabelSuggestions, args = mapOf(ADF.client to "someOtherClient"))
     }
 
+    "the suggestions also carry the labels the client's users already have, apart from its own list (issue #1481)" {
+        val carrier = TestUser.create(cxt, "carrier@$client.test", userClient = client)
+        admin.postData(UADEP.userSetLabels, mapOf(ADF.userId to carrier.userId, ADF.labels to listOf("adHoc1481")))
+        val read = admin.getData(UADEP.userLabelSuggestions)
+        read[ADF.labelsInUse].toJsonListOrEmpty().map { it.toOptStr() } shouldContain "adHoc1481"
+        // Only the client's own list is what a workflow may name, so the label in use does not join it.
+        labelsOf(read) shouldNotContain "adHoc1481"
+    }
+
     "the full-scope admin surface serves the same calls, and allClients reads another client's suggestions" {
         // Wired on both surfaces from one module; this pins the `admin` half, which the rest of the suite leaves
         // to the `clientAdmin` paths.

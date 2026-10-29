@@ -172,9 +172,10 @@ val userSearchFieldSpecs: List<UserSearchFieldSpec> = listOf(
         USF.roles, "Roles", UserFilterKind.exact, sortable = false, options = roleFilterOptions, listValued = true,
     ),
     // The user's free-form labels (issues #786, #1481), so `reviewer` finds the reviewers. Picked from the client's
-    // suggestions or typed, since a label need not be one of them. Not sortable, as the roles are not.
+    // suggestions or typed, since a label need not be one of them. Sortable, unlike the roles: alphabetically, which
+    // gathers the users of one label together, and the unlabeled -- most users -- out of the way at the end.
     UserSearchFieldSpec(
-        USF.labels, "Labels", UserFilterKind.exact, sortable = false, choices = UserFilterChoices.labels,
+        USF.labels, "Labels", UserFilterKind.exact, sortable = true, choices = UserFilterChoices.labels,
         listValued = true,
     ),
     // The four dates the console shows (issues #462, #750). `updatedAt` is deliberately absent: the endpoint

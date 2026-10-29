@@ -33,8 +33,9 @@ the console offers:
   whatever their persona. Operator and All clients are offered only to an `allClients` caller. Filter-only: it is not
   sortable, and the free-text `q` leaves it out, since every account holds `user`
 - **labels** — matching a user who carries that label (issues #786, #1481), exactly but ignoring case. Picked from the
-  searched client's suggestions or typed, since labels are free-form (`UserFilterChoices.labels`). Filter-only, like
-  the roles, but part of the free-text `q`: a label is something a person remembers a user by
+  searched client's suggestions -- its own list, then the labels its users already carry -- or typed, since labels
+  are free-form (`UserFilterChoices.labels`). Unlike the roles, sortable (alphabetically on a user's sorted labels,
+  the unlabeled last either way) and part of the free-text `q`: a label is something a person remembers a user by
 - **four date ranges**, each a from/to instant pair — edited, last login, registered, and activated
 
 Above the filters, always on screen, is a **search box**: `q`, one free-text term matched as a substring against

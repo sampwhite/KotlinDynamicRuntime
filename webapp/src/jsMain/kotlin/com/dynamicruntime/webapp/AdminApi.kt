@@ -15,6 +15,7 @@ import com.dynamicruntime.common.user.ADF
 import com.dynamicruntime.common.user.PERSONA
 import com.dynamicruntime.common.user.USF
 import com.dynamicruntime.common.user.UserFilterKind
+import com.dynamicruntime.common.user.normalizeUserLabels
 import com.dynamicruntime.common.user.userSearchFieldSpecs
 import com.dynamicruntime.common.user.userSearchFieldSpecsByName
 import com.dynamicruntime.common.util.toJsonListOfMaps
@@ -271,13 +272,15 @@ object AdminApi {
     }
 
     /**
-     * The labels [client] suggests (issue #786) -- what the label editor offers. The caller's own client when
-     * null; naming another takes `allClients`, which is the only caller who edits users outside their own.
+     * The labels a label control offers for [client] (issue #786): the client's own suggestions in its order, then the
+     * labels its users already carry (issue #1481), so a label typed for one user is offered for the next. The
+     * caller's own client when null; naming another takes `allClients`, which is the only caller who edits users
+     * outside their own.
      */
     suspend fun labelSuggestions(client: String?): List<String> {
         val args = client?.let { mapOf(ADF.client to it) } ?: emptyMap()
-        return Http.getApi(UADEP.userLabelSuggestions + queryString(args))[EP.results].toJsonMapOrEmpty()[ADF.labels]
-            .toJsonListOfStrings()
+        val results = Http.getApi(UADEP.userLabelSuggestions + queryString(args))[EP.results].toJsonMapOrEmpty()
+        return normalizeUserLabels(results[ADF.labels].toJsonListOfStrings() + results[ADF.labelsInUse].toJsonListOfStrings())
     }
 
     /** Replaces a user's roles -- the call that grants or revokes administrator rights. */

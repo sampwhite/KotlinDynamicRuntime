@@ -375,8 +375,10 @@ val Users = FC<Props> {
     // once-registered route listener reaches with the first render's (empty) config, and which would read a just-set
     // client back as the one it replaced.
     val editorLabelClient = editing?.client ?: draftClient.ifEmpty { null } ?: config?.user?.client ?: ""
-    useEffect(editing != null || creating, editorLabelClient, config?.canManageUsers) {
-        if (editing != null || creating) ensureLabelSuggestions(editorLabelClient)
+    val editorOpen = editing != null || creating
+    // Keyed on whether the client's entry is there too, so suggestions dropped after a save are fetched again.
+    useEffect(editorOpen, editorLabelClient, config?.canManageUsers, editorLabelClient in labelSuggestions) {
+        if (editorOpen) ensureLabelSuggestions(editorLabelClient)
     }
 
     // The Labels filter offers the suggestions of the client being searched: the one the Client filter names -- which
@@ -386,8 +388,17 @@ val Users = FC<Props> {
     val searchesAllClients = config?.user?.roles?.contains(ROLE.allClients) == true
     val labelFilterClient = textFilters[USF.client]?.trim()?.ifEmpty { null }?.takeIf { searchesAllClients }
         ?: config?.user?.client ?: ""
-    useEffect(filtersOpen, labelFilterClient, config?.canManageUsers) {
+    useEffect(filtersOpen, labelFilterClient, config?.canManageUsers, labelFilterClient in labelSuggestions) {
         if (filtersOpen) ensureLabelSuggestions(labelFilterClient)
+    }
+
+    /**
+     * Drops [client]'s suggestions after a save that wrote labels, so the next label control to ask re-reads them --
+     * they include the labels the client's users carry (issue #1481), and a label just typed should be offered from
+     * then on.
+     */
+    fun forgetLabelSuggestions(client: String) {
+        setLabelSuggestions { current -> current - client }
     }
 
     /** Opens the editor on [user], seeding the draft from their current state. */
@@ -568,6 +579,7 @@ val Users = FC<Props> {
                 throw e
             }
             note = "Created ${created.primaryId}."
+            if (created.labels.isNotEmpty()) forgetLabelSuggestions(created.client)
         } else {
             var changed = false
             // A sandbox user somebody opened has no roles or organization of its own to set (issue #1198): the
@@ -602,6 +614,7 @@ val Users = FC<Props> {
             val desiredLabels = normalizeUserLabels(draftLabels)
             if (desiredLabels != target.labels) {
                 AdminApi.setLabels(target.userId, desiredLabels)
+                forgetLabelSuggestions(target.client)
                 changed = true
             }
             note = if (changed) "Saved ${target.primaryId}." else "No changes to ${target.primaryId}."

@@ -512,7 +512,8 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
 
     generalEndpoint(
         paths.userLabelSuggestions,
-        "The user labels a client suggests -- what a label editor offers. Suggestions only: any label may be applied.",
+        "The user labels a client suggests, and those its users already carry -- what a label editor offers. " +
+            "Suggestions only: any label may be applied.",
         HttpMethod.GET,
         outputRef = ADTY.labelSuggestions,
         inputFields = {
@@ -524,6 +525,7 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
         mapOf(
             ADF.client to client,
             ADF.labels to (ClientService.get(c).present(client)?.userLabels ?: emptyList()),
+            ADF.labelsInUse to userService(c).labelsInUse(c, client, ReadScopeRules.forUserAdmin(c)),
         )
     }
 
@@ -532,6 +534,15 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
         description = "A client's suggested user labels."
         property(ADF.client, "The client the suggestions belong to.", required = true)
         property(ADF.labels, "The suggested labels, in the client's order.", required = true) {
+            type = SCT.array
+            items { type = SCT.string }
+        }
+        property(
+            ADF.labelsInUse,
+            "The labels the client's active users carry (those the caller can see), alphabetically. Unlike the " +
+                "suggestions, not what a workflow may name.",
+            required = true,
+        ) {
             type = SCT.array
             items { type = SCT.string }
         }
