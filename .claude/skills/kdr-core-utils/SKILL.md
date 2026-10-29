@@ -160,7 +160,7 @@ a component ships, `![a](img:sample:diagram)` (`imageAddress`, issue #1339; `Str
   an in-app document link or a source-repo link, per the doc registry and configured repo base.
 - `CollectionUtil` — `Map.deepClone()` (depth-capped).
 
-Both Markdown utilities belong to the static-content story; see `webapp/CLAUDE.md`.
+Both Markdown utilities belong to the static-content story; see the `kdr-webapp-pages` skill (`static-content.md`).
 
 ## Source
 

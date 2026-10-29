@@ -123,7 +123,8 @@ fun dateSpec(
 /**
  * The user-search fields the **console** presents, in the order it lays them out (issue #411). The backend
  * registry is a superset -- it also carries `publicName`, an API-only axis the console does not surface because
- * it hides the username (the `name` field already matches the username, see `webapp/CLAUDE.md`).
+ * it hides the username (the `name` field already matches the username, see `admin-console.md` in the
+ * `kdr-webapp-pages` skill).
  *
  * Add a field here (and its accessors to the backend registry) and it becomes a filter input and, if
  * [UserSearchFieldSpec.sortable], a sortable column -- with no further front-end change.

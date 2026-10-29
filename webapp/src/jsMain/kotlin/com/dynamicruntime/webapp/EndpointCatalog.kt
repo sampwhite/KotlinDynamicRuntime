@@ -131,8 +131,9 @@ val EndpointCatalog = FC<Props> {
     }
 
     // Offer the client selector only to a caller holding `allClients` -- reading the client list is itself a
-    // cross-client question only they can ask (the same rule the Users page follows; see webapp/CLAUDE.md). A
-    // failure leaves it hidden rather than erroring: the client is not why anyone came to the catalog.
+    // cross-client question only they can ask (the same rule the Users page follows; see `admin-console.md` in the
+    // `kdr-webapp-pages` skill). A failure leaves it hidden rather than erroring: the client is not why anyone came to
+    // the catalog.
     useEffectOnce {
         catalogScope.launch {
             val cfg = apiResult { HomeApi.fetchConfig() }.valueOrNull()

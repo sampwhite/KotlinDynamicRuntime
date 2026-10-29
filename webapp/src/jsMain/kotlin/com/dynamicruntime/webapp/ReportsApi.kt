@@ -319,7 +319,8 @@ fun reportsRouteParams(client: String?, reportId: String?, view: String?): List<
 /**
  * The link from a detail row to its form, on the forms page. For an administrator looking across clients the forms
  * page is told which client, as the Clients page's links tell it. It carries no `from`: the forms page owns its
- * address and its ways home (see "The forms listing across clients" in `webapp/CLAUDE.md`), so its own back link is to
+ * address and its ways home (see "The forms listing across clients" in the `kdr-webapp-pages` skill's `forms-listing.md`), so its
+ * own back link is to
  * the forms listing, and the way back to the report is the browser's Back, which returns to the report that was open
  * (at its first page: the walk's cursor does not outlive leaving the page).
  */
