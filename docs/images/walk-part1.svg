@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 160" width="960" height="160" role="img">
+  <title>Part 1 of the walk-through: join the conference demo as a speaker, submit a talk, answer the survey, write the abstract, join the committee, review the talk, and see the result.</title>
+  <!-- A banner opening a part of the walk-through (docs/walk-through.md, issue #1429): the part's steps in order.
+       Drawn on its own dark ground so it reads on GitHub's light and dark pages as in the app. Generated with the
+       other parts' banners from one layout; edit the three together. -->
+  <rect x="1" y="1" width="958" height="158" rx="14" fill="#1E293B" stroke="#334155" stroke-width="2"/>
+  <text x="28" y="36" font-family="system-ui, -apple-system, Segoe UI, Helvetica, Arial, sans-serif" font-size="14" font-weight="700" letter-spacing="2" fill="#818CF8">PART 1</text>
+  <text x="107.52" y="36" font-family="system-ui, -apple-system, Segoe UI, Helvetica, Arial, sans-serif" font-size="14" letter-spacing="1" fill="#CBD5E1">The conference demo</text>
+  <path d="M116.0 86 H844.0" stroke="#475569" stroke-width="2" stroke-dasharray="2 6" stroke-linecap="round"/>
+  <circle cx="90.0" cy="86" r="26" fill="#818CF8" fill-opacity="0.14" stroke="#818CF8" stroke-width="2"/>
+  <g transform="translate(75.0 71) scale(1.25)" fill="none" stroke="#818CF8" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="3" width="12" height="18" rx="2"/><circle cx="12" cy="10" r="2.5"/><path d="M9 16 H15"/></g>
+  <text x="90.0" y="136" text-anchor="middle" font-family="system-ui, -apple-system, Segoe UI, Helvetica, Arial, sans-serif" font-size="13" fill="#CBD5E1">Join</text>
+  <circle cx="220.0" cy="86" r="26" fill="#818CF8" fill-opacity="0.14" stroke="#818CF8" stroke-width="2"/>
+  <g transform="translate(205.0 71) scale(1.25)" fill="none" stroke="#818CF8" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="1"/><path d="M12 16 V20 M8 20 H16"/></g>
+  <text x="220.0" y="136" text-anchor="middle" font-family="system-ui, -apple-system, Segoe UI, Helvetica, Arial, sans-serif" font-size="13" fill="#CBD5E1">Submit a talk</text>
+  <circle cx="350.0" cy="86" r="26" fill="#818CF8" fill-opacity="0.14" stroke="#818CF8" stroke-width="2"/>
+  <g transform="translate(335.0 71) scale(1.25)" fill="none" stroke="#818CF8" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M8 8.5 L9.5 10 L12.5 7 M8 14 H16 M8 17 H14"/></g>
+  <text x="350.0" y="136" text-anchor="middle" font-family="system-ui, -apple-system, Segoe UI, Helvetica, Arial, sans-serif" font-size="13" fill="#CBD5E1">Survey</text>
+  <circle cx="480.0" cy="86" r="26" fill="#818CF8" fill-opacity="0.14" stroke="#818CF8" stroke-width="2"/>
+  <g transform="translate(465.0 71) scale(1.25)" fill="none" stroke="#818CF8" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20 V16 L15 5 L19 9 L8 20 Z M13 7 L17 11"/></g>
+  <text x="480.0" y="136" text-anchor="middle" font-family="system-ui, -apple-system, Segoe UI, Helvetica, Arial, sans-serif" font-size="13" fill="#CBD5E1">Abstract</text>
+  <circle cx="610.0" cy="86" r="26" fill="#818CF8" fill-opacity="0.14" stroke="#818CF8" stroke-width="2"/>
+  <g transform="translate(595.0 71) scale(1.25)" fill="none" stroke="#818CF8" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3"/><circle cx="17" cy="9" r="2.5"/><path d="M3 20 C3 16 6 14 9 14 S15 16 15 20 M15.5 14.2 C18.5 14.2 21 16 21 19.5"/></g>
+  <text x="610.0" y="136" text-anchor="middle" font-family="system-ui, -apple-system, Segoe UI, Helvetica, Arial, sans-serif" font-size="13" fill="#CBD5E1">Committee</text>
+  <circle cx="740.0" cy="86" r="26" fill="#818CF8" fill-opacity="0.14" stroke="#818CF8" stroke-width="2"/>
+  <g transform="translate(725.0 71) scale(1.25)" fill="none" stroke="#818CF8" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 L14.6 8.9 L21 9.5 L16.2 13.8 L17.6 20.1 L12 16.8 L6.4 20.1 L7.8 13.8 L3 9.5 L9.4 8.9 Z"/></g>
+  <text x="740.0" y="136" text-anchor="middle" font-family="system-ui, -apple-system, Segoe UI, Helvetica, Arial, sans-serif" font-size="13" fill="#CBD5E1">Review</text>
+  <circle cx="870.0" cy="86" r="26" fill="#818CF8" fill-opacity="0.14" stroke="#818CF8" stroke-width="2"/>
+  <g transform="translate(855.0 71) scale(1.25)" fill="none" stroke="#818CF8" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M8 12 L11 15 L16 9"/></g>
+  <text x="870.0" y="136" text-anchor="middle" font-family="system-ui, -apple-system, Segoe UI, Helvetica, Arial, sans-serif" font-size="13" fill="#CBD5E1">Result</text>
+</svg>

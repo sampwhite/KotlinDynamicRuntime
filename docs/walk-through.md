@@ -16,6 +16,8 @@ break anything for long.
 
 ## Part 1: The conference demo
 
+![Part 1: join, submit a talk, survey, abstract, committee, review, and result](images/walk-part1.svg)
+
 The conference demo is a small conference's call for talks. Speakers submit the talks they want to give, and a
 committee reviews each one and accepts it for the program. You play both parts: first a speaker, then a member of the
 committee who reviews your own talk.
@@ -130,7 +132,11 @@ Every one of these comes from the demo's configuration. There is no code written
 how each piece is configured, read [the conference demo's pages](demo-client/README.md), which go through its
 configuration one workflow at a time.
 
+---
+
 ## Part 2: A client of your own
+
+![Part 2: client, sandbox, words, trait, workflow, publish, invite, and report](images/walk-part2.svg)
 
 A client is an organization's own corner of the site: its people, its forms, its workflows, and the words its pages
 use. In this part you make one for a small book club, whose members suggest the books it reads next. You build its
@@ -361,7 +367,11 @@ the sandbox is not there: it belongs to the sandbox.
 - **A workflow tried with a few people first.** A label let one person use the workflow before it was opened to
   everyone.
 
+---
+
 ## Part 3: For developers
+
+![Part 3: API key, catalog, call it, AI builds, workflow, and revoke](images/walk-part3.svg)
 
 Everything you did in the pages, a program can do through the site's API, and every page you used is built on it. In
 this part you make an API key, find an endpoint in the catalog and call it with the key, and then have an AI assistant
@@ -457,3 +467,5 @@ client's people too. The forms the AI made are not there: they stayed in the san
   pages are.
 - **A key is yours, and narrower than you.** It acts as one of your users, never above it, and cannot sign in, make
   keys, or switch users. A key made in the sandbox stays in the sandbox.
+
+---

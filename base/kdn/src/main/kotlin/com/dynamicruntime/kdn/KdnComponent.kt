@@ -1,5 +1,6 @@
 package com.dynamicruntime.kdn
 
+import com.dynamicruntime.common.content.ComponentImageDef
 import com.dynamicruntime.common.content.FragmentSource
 import com.dynamicruntime.common.content.MarkdownDocDef
 import com.dynamicruntime.common.content.FragmentAudience
@@ -56,6 +57,9 @@ class KdnComponent : ComponentDefinition {
      * walk-through that starts with the demo (issue #1429).
      */
     override fun docs(cxt: KdrCxt): List<MarkdownDocDef> = confDemoDocs() + WalkThrough.doc
+
+    /** The walk-through's banners, one opening each part (issues #1429, #1463). */
+    override fun images(cxt: KdrCxt): List<ComponentImageDef> = WalkThrough.images
 
     /**
      * The conference demo's copy (issue #1139): a fragment file its logistics layout pulls a heading and a description

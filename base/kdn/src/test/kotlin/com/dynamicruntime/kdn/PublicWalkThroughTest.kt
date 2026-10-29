@@ -1,5 +1,6 @@
 package com.dynamicruntime.kdn
 
+import com.dynamicruntime.common.content.ComponentImageService
 import com.dynamicruntime.common.content.MarkdownFragmentService
 import com.dynamicruntime.common.context.CL
 import com.dynamicruntime.common.context.UPF
@@ -60,6 +61,7 @@ import com.dynamicruntime.common.user.AKEY
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.user.UADEP
 import com.dynamicruntime.common.util.toJsonListOfMaps
+import com.dynamicruntime.common.util.resolveDocLink
 import com.dynamicruntime.common.util.toJsonListOfStrings
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptLong
@@ -98,6 +100,9 @@ import java.io.File
  * with it, and plays the AI with the bundle one following the page's prompt might write: written with the key as the
  * parent's draft the sandbox runs, tried on a form that stays the sandbox's, published, and seen by the client's people.
  * The key is revoked and refused. Every `/kda/...` path part 3 names is one it calls.
+ *
+ * Each part opens with its banner and closes with a rule (issue #1463), and each banner is named by its path in the
+ * repository, which the app resolves to the image it serves from the same file.
  *
  * The page's own buttons and headings are not checked here; following the page in a browser is part of changing it.
  */
@@ -164,6 +169,25 @@ class PublicWalkThroughTest : StringSpec({
 
     "the page has a table for every form it has the reader fill in, and for each step of the reader's own client" {
         tables.keys shouldBe traitsByForm.keys.map { walkWorkflowKey(it) }.toSet() + walkNameKey + ownClientKeys
+    }
+
+    "each part opens with its banner, which the app serves from the path the page names, and closes with a rule" {
+        val lines = page.lines()
+        val heads = lines.indices.filter { lines[it].startsWith(partHeadingPrefix) }
+        heads.size shouldBe WalkThrough.partCount
+        // What a link from the page to a repo path resolves to in the app: here, the image's name for its address.
+        val served = ComponentImageService.get(cxt).paths
+        fun resolve(target: String) = resolveDocLink(target, WalkThrough.sourcePath, emptyMap(), null, served) { _, _ -> "" }
+        for ((index, head) in heads.withIndex()) {
+            val image = WalkThrough.images[index]
+            val banner = lines.drop(head + 1).first { it.isNotBlank() }
+            val target = bannerRegex.matchEntire(banner).shouldNotBeNull().groupValues[1]
+            resolve(target) shouldBe image.name
+            served[image.sourcePath] shouldBe image.name
+            // The part before it closes with a rule; the first has none before it.
+            if (index > 0) lines.take(head).last { it.isNotBlank() } shouldBe markdownRule
+        }
+        lines.last { it.isNotBlank() } shouldBe markdownRule
     }
 
     "every role the page has the reader join is one the conference demo offers, by its label" {
@@ -487,6 +511,10 @@ private val ownClientKeys = setOf(
 
 /** Part 3's heading, after which every `/kda/...` path the page names is one the key is shown in the catalog. */
 private const val part3Heading = "## Part 3:"
+/** A part's heading, and the banner on the first line under it: an image named by its repo path (issue #1463). */
+private const val partHeadingPrefix = "## Part "
+private val bannerRegex = Regex("""!\[[^\]]+]\(([^)]+)\)""")
+private const val markdownRule = "---"
 private const val catalogPath = "/schema/endpoints"
 private val kdaPathRegex = Regex("""/kda(/[A-Za-z/]+[A-Za-z])""")
 
