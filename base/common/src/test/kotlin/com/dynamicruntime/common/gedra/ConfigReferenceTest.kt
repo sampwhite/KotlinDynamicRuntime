@@ -34,7 +34,7 @@ class ConfigReferenceTest : StringSpec({
 })
 
 private val headingRegex = Regex("""(?m)^#{1,6} (.+)$""")
-private val anchorRegex = Regex("""\]\(#([^)]+)\)""")
+private val anchorRegex = Regex("""]\(#([^)]+)\)""")
 
 /** A heading's anchor as the renderer and GitHub make it: lowercased, spaces to hyphens, other punctuation dropped. */
 private fun slug(text: String): String = text.lowercase().filter { it.isLetterOrDigit() || it == '-' || it == '_' || it == ' ' }.replace(' ', '-')
