@@ -70,4 +70,15 @@ class CatalogModelTest {
         assertTrue(catalog.fieldLayouts.isEmpty())
         assertTrue(catalog.defTypes.containsKey(questionnaire))
     }
+
+    @Test
+    fun aCatalogRowShowsALinkAsItsTextAlone() {
+        // Issue #1476: the endpoint's page draws the link; its row, which is itself a click, keeps only the words.
+        assertEquals(
+            "What each slot holds is in the client configuration reference.",
+            catalogRowText("What each slot holds is in [the client configuration reference](/docs/reference/client-configuration.md)."),
+        )
+        assertEquals("Plain, with `code` kept.", catalogRowText("Plain, with `code` kept."))
+        assertEquals("", catalogRowText(null))
+    }
 }

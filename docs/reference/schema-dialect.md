@@ -7,7 +7,8 @@ beyond the keywords' shapes.
 
 **The reference is generated, so it is not kept in this file.** A running server makes it from the tables its
 schema parser reads, so it cannot disagree with the parser. Read it on the server's **Documents** page, under
-**Schema dialect**, where anyone may open it without signing in. The same content is served as JSON, as a schema for
+**Schema dialect**, where anyone may open it without signing in. On the public reference site it is at
+[dynamicruntime.org/wa/docs/schema-dialect](https://dynamicruntime.org/wa/docs/schema-dialect). The same content is served as JSON, as a schema for
 schemas, at `GET /schema/metaSchema`.
 
 On a running server, a link to this file opens the reference itself.

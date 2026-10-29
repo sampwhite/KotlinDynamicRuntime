@@ -58,6 +58,8 @@ import com.dynamicruntime.common.util.toOptInstantOrNull
  */
 @Suppress("DuplicatedCode")
 fun gedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CFEP.namespace) {
+    // The slots a configuration is made of (issue #1476): what an edit names, and what a bundle's slots are.
+    val slots = coreConfigTraits(cxt).configTraits.keys
 
     // A config's identity and accounting, without its contents -- what a listing row shows.
     type(CFEP.summaryType) {
@@ -224,9 +226,7 @@ fun gedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CFEP.namespace
         description = "A configuration to write, as a whole bundle."
         property(CFEP.name, "The configuration's name (its id within the client).", required = true)
         property(CFEP.namespaceField, "The namespace the configuration's generated types live in.", required = true)
-        property(CFEP.slots, "The configuration's contents, one array of entries per config slot.", required = true) {
-            type = SCT.kObject
-        }
+        bundleSlotsProperty(slots)
         property(CFEP.impliedDelete, "Whether a slot the bundle omits is dropped (true, the default) or carried forward (false).") {
             type = SCT.boolean
         }
@@ -278,7 +278,8 @@ fun gedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CFEP.namespace
 
     generalEndpoint(
         CFEP.bundleWrite,
-        "Writes a configuration from a whole bundle, applying the version/publish and diff-before-stamp rules.",
+        "Writes a configuration from a whole bundle, applying the version/publish and diff-before-stamp rules. What each " +
+            "slot's entries hold is in $configReferenceLink.",
         HttpMethod.POST,
         // Its input may be a whole configuration, past the default body limit (issue #1446).
         largeBody = true,
@@ -293,12 +294,13 @@ fun gedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CFEP.namespace
             "transaction and judged together -- so an entry can move from one configuration to another. A " +
             "configuration not yet written is created. The rest of each is left as it was. A dry run answers what the " +
             "patch would do without storing it, and an edit saying what its caller read is refused if that has " +
-            "changed since (issue #1434).",
+            "changed since (issue #1434). What each slot's entries hold, and what each action's data must carry, is in " +
+            "$configReferenceLink.",
         HttpMethod.POST,
         // Its input may be a whole configuration, past the default body limit (issue #1446).
         largeBody = true,
         outputRef = CFEP.patchResultType,
-        inputFields = { configPatchInput() },
+        inputFields = { configPatchInput(slots) },
     ) { c, request -> inConfigScope(c, mutating = true) { cfgPatchBody(it, request) } }
 
     generalEndpoint(
@@ -981,22 +983,77 @@ private fun slotsOf(raw: Any?, knownSlots: Set<String>): Map<String, List<Map<St
     }
 }
 
-/** The shared input of the per-slot config patch (issue #732): the config name, and the edits to apply. Each
- *  edit is an open object `{slot, action, data}` -- its `data` is a slot-specific shape validated on reassemble,
- *  not here. */
-private fun InputFieldsBuilder.configPatchInput() {
+/**
+ * The [CFEP.slots] a whole-bundle write takes (issue #1476): one array of entries per slot, each entry an object whose
+ * shape is the gate's to judge and the reference's to say ([configReferenceLink]). Open to other keys so that an unknown
+ * slot reaches the handler, whose refusal names the slots there are.
+ */
+private fun SchTypeBuilder.bundleSlotsProperty(slots: Collection<String>) {
+    property(
+        CFEP.slots,
+        "The configuration's contents, one array of entries per config slot. What each slot's entries hold is in " +
+            "$configReferenceLink.",
+        required = true,
+    ) {
+        type = SCT.kObject
+        for (slot in slots) {
+            property(slot, "The slot's entries, each its data alone.") {
+                type = SCT.array
+                items { type = SCT.kObject }
+            }
+        }
+        additionalProperties = true
+    }
+}
+
+/** Where an endpoint's description sends a caller for what a configuration's slots hold (issue #1476). */
+private const val configReferenceLink = "[the client configuration reference](/docs/reference/client-configuration.md)"
+
+/**
+ * The shared input of the per-slot config patch (issues #732, #1476): the configurations to edit, each its name and its
+ * edits. An edit's envelope is typed -- its [slots], its action, what it says it read -- and its `data` is an object: a
+ * slot's shape, and what an action needs of it, is the gate's to judge and the reference's to say ([configReferenceLink]),
+ * since typed here it would refuse what the gate rightly accepts (a schema body naming a sibling type, a template
+ * workflow's overlay).
+ */
+private fun InputFieldsBuilder.configPatchInput(slots: Collection<String>) {
     field(
         CFEP.configs,
-        "The configurations to edit together, each `{${CFEP.name}, ${CFEP.edits}}`: its name, and the per-slot edits to " +
-            "apply to it, in order. Each edit is `{${CFEP.slot}, ${GED.action}, ${GE.data}}`: the slot (`${CCT.traitDef}`, " +
-            "`${CCT.workflowDef}`, ...), the action (${GedraEditAction.entries.joinToString(", ") { it.name }}), and the entry data (carrying " +
-            "the slot's primary-key fields, which say which entry is meant). An edit may also say what its caller read " +
-            "(issue #1434): '${CFEP.expectUpdatedAt}', the entry's updatedAt then, or '${CFEP.expectNew}': true, when it " +
-            "had none; the patch is then refused (409, errorCode '${CFEP.staleCode}') if the entry has changed since.",
+        "The configurations to edit together, each its name and its edits, applied in order. What each slot's entries " +
+            "hold, and what each action's data must carry, is in $configReferenceLink.",
         required = true,
     ) {
         type = SCT.array
-        items { type = SCT.kObject }
+        items {
+            type = SCT.kObject
+            property(CFEP.name, "The configuration's name. One not yet written is created.", required = true)
+            property(CFEP.edits, "The edits to apply to it, in order.", required = true) {
+                type = SCT.array
+                items {
+                    type = SCT.kObject
+                    property(CFEP.slot, "The slot the entry is in.", required = true) { slots.forEach { option(it) } }
+                    property(GED.action, "What to do with the entry.", required = true) { options(GedraEditAction.entries) }
+                    property(
+                        GE.data,
+                        "The entry's data, carrying the slot's key fields, which say which entry is meant: the key alone " +
+                            "for a delete, the fields to change for a merge, the whole entry for a replace. Only a delete " +
+                            "from a slot with one entry may leave it out.",
+                    ) { type = SCT.kObject }
+                    property(
+                        CFEP.expectUpdatedAt,
+                        "The entry's updatedAt when the caller read it (issue #1434): the patch is refused (409, errorCode " +
+                            "'${CFEP.staleCode}') if the entry has changed since, or is gone.",
+                    ) { dateTime() }
+                    property(
+                        CFEP.expectNew,
+                        "True when the caller read no such entry: the patch is refused (409, errorCode '${CFEP.staleCode}') " +
+                            "if one exists now.",
+                    ) {
+                        type = SCT.boolean
+                    }
+                }
+            }
+        }
     }
     field(
         CFEP.dryRun,
@@ -1152,6 +1209,7 @@ private fun dropNulls(map: Map<String, Any?>): Map<String, Any?> =
  */
 @Suppress("DuplicatedCode")
 fun adminGedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, ACEP.namespace) {
+    val slots = coreConfigTraits(cxt).configTraits.keys
     // What a caller sends to write a named client's bundle: the client, plus the bundle-write fields the
     // client-scoped surface takes (its `client` is implicit there, the caller's own).
     type(ACEP.writeType) {
@@ -1162,9 +1220,7 @@ fun adminGedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, ACEP.name
         property(CFEP.client, "The client to write the configuration for.", required = true)
         property(CFEP.name, "The configuration's name (its id within the client).", required = true)
         property(CFEP.namespaceField, "The namespace the configuration's generated types live in.", required = true)
-        property(CFEP.slots, "The configuration's contents, one array of entries per config slot.", required = true) {
-            type = SCT.kObject
-        }
+        bundleSlotsProperty(slots)
         property(CFEP.impliedDelete, "Whether a slot the bundle omits is dropped (true, the default) or carried forward (false).") {
             type = SCT.boolean
         }
@@ -1205,7 +1261,8 @@ fun adminGedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, ACEP.name
 
     generalEndpoint(
         ACEP.bundleWrite,
-        "Writes a named client's configuration from a whole bundle -- create or replace (issue #685).",
+        "Writes a named client's configuration from a whole bundle -- create or replace (issue #685). What each slot's " +
+            "entries hold is in $configReferenceLink.",
         HttpMethod.POST,
         // Its input may be a whole configuration, past the default body limit (issue #1446).
         largeBody = true,
@@ -1219,14 +1276,15 @@ fun adminGedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, ACEP.name
         ACEP.bundlePatch,
         "Edits the slot entries of one or more of a named client's configurations -- per-slot add/replace/merge/" +
             "delete over each latest revision, in one transaction judged together (issues #732, #1352); with a dry run " +
-            "and a staleness check, as the client-scoped patch has (issue #1434).",
+            "and a staleness check, as the client-scoped patch has (issue #1434). What each slot's entries hold, and what " +
+            "each action's data must carry, is in $configReferenceLink.",
         HttpMethod.POST,
         // Its input may be a whole configuration, past the default body limit (issue #1446).
         largeBody = true,
         outputRef = "${CFEP.namespace}.${CFEP.patchResultType}",
         inputFields = {
             field(CFEP.client, "The client that owns the configuration.", required = true) { clientAttribute() }
-            configPatchInput()
+            configPatchInput(slots)
         },
     ) { c, request -> cfgPatchBody(adminConfigCxt(c, request), request) }
 

@@ -221,7 +221,8 @@ people get it only when it is **published**. A client without a sandbox runs eve
 # +whatIsThis
 Every bundle the client stores, with what each holds. A bundle is made of **slots**, one for each kind of thing it
 can declare, such as **Traits** or **Workflows**. Each slot holds **entries**, one for each thing declared, named by
-its key: a trait by its id, a workflow by its id.
+its key: a trait by its id, a workflow by its id. What each slot's entries hold, and what an edit of one must send,
+is in [the client configuration reference](/docs/reference/client-configuration.md).
 
 - Open a bundle to see its slots, a slot to see its entries, and an entry to see its JSON, exactly as stored.
 - When a bundle has a draft over a published revision, each entry is marked **added**, **changed**, **unchanged**,

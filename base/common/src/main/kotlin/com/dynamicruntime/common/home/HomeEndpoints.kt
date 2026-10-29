@@ -3,6 +3,7 @@ package com.dynamicruntime.common.home
 import com.dynamicruntime.common.user.SandboxAccess
 import com.dynamicruntime.common.content.ComponentImageService
 import com.dynamicruntime.common.fileref.FileRefService
+import com.dynamicruntime.common.gedra.clientConfigurationMarkdown
 import com.dynamicruntime.common.gedra.sandboxParentOf
 import com.dynamicruntime.common.gedra.ClientService
 import com.dynamicruntime.common.gedra.ClientJoin
@@ -623,6 +624,9 @@ fun coreDocs(): List<MarkdownDocDef> = listOf(
     MarkdownDocDef(HDOC.schemaDialect, "Schema dialect", "docs/reference/schema-dialect.md",
         "Every keyword the runtime reads in a JSON Schema, the ones it refuses, and its own -- made from the parser's tables.",
         generate = ::schemaDialectMarkdown),
+    MarkdownDocDef(HDOC.clientConfiguration, "Client configuration", "docs/reference/client-configuration.md",
+        "Every slot of a client's configuration, what its entries hold, and what a write or an edit of one must send.",
+        generate = ::clientConfigurationMarkdown),
     MarkdownDocDef(HDOC.license, "License", "LICENSE",
         "The MIT license the runtime is released under.", order = lastDocOrder),
 )
