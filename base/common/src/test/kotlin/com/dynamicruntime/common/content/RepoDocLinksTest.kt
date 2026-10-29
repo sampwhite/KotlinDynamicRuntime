@@ -7,8 +7,8 @@ import io.kotest.matchers.ints.shouldBeGreaterThan
 import java.io.File
 
 /**
- * Every link in the repository's documentation resolves (issue #1294): `README.md`, `CLAUDE.md`, everything under
- * `docs/`, and the guides in `examples/`. A link names a page or file that exists in the repository, and a
+ * Every link in the repository's documentation resolves (issue #1294): `README.md`, both `CLAUDE.md` files, everything
+ * under `docs/` and `.claude/skills/`, and the guides in `examples/`. A link names a page or file that exists in the repository, and a
  * `#section` that is a heading of the page it names -- as GitHub mints heading anchors, which the app's renderer
  * matches (`headingSlug`). An outside address, a `mailto:`, and a page of the app (`/wa/...`, or `#page=...` from
  * before paths) are left alone.
@@ -21,8 +21,9 @@ class RepoDocLinksTest : StringSpec({
     val repoRoot = File("../..").canonicalFile
 
     fun documents(): List<File> {
-        val roots = listOf(File(repoRoot, "README.md"), File(repoRoot, "CLAUDE.md"))
-        val trees = listOf("docs", "examples").map { File(repoRoot, it) }
+        val roots = listOf(File(repoRoot, "README.md"), File(repoRoot, "CLAUDE.md"), File(repoRoot, "webapp/CLAUDE.md"))
+        // The skills too (issue #1468): `kdr-webapp-pages` is an index linking its page files by relative path.
+        val trees = listOf("docs", "examples", ".claude/skills").map { File(repoRoot, it) }
             .flatMap { dir -> dir.walkTopDown().filter { it.isFile && it.name.endsWith(".md") }.toList() }
         return (roots + trees).filter { it.exists() }.sortedBy { it.path }
     }

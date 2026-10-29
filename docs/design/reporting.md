@@ -259,7 +259,8 @@ button cannot push the nightly series out. The snapshots of a report since remov
 listable under its id.
 
 The webapp's Reports page shows a report's history as a bar chart over days (its **History** view), with the
-metric to chart, a table of the same numbers, and **Snapshot now**; `webapp/CLAUDE.md` describes it.
+metric to chart, a table of the same numbers, and **Snapshot now**; the `kdr-webapp-pages` skill describes it
+(`reports-page.md`).
 
 **Client-wide only.** Both endpoints are in the `clientAdmin` section and scoped as the run is, and both refuse an
 administrator whose administration is confined to an organization: their own runs narrow to their organization's

@@ -45,7 +45,7 @@ class UserSearchField(
      * matches the field when it matches **any** of them (OR) -- most fields return one, but [USF.name] returns
      * the real-world name *and* the public name (username), so the console's Name box finds an account by the
      * handle somebody logs in with as well as by the name it is shown under (restoring the pre-#411 behavior
-     * the old single search box had; see `webapp/CLAUDE.md`).
+     * the old single search box had; see `admin-console.md` in the `kdr-webapp-pages` skill).
      */
     val textsOf: ((AuthUserRow) -> List<String>)?,
     /** True: a case-insensitive **substring** match. False: a case-insensitive **exact** match (the client). */
