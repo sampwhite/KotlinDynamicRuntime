@@ -27,6 +27,7 @@ subtly wrong.
 | `kdr-test-clients` | a new client per test scenario on a shared instance: the `gedraConfig` DSL, stored config, reload |
 | `kdr-deploy-flavors` | deployment flavors (`KDR_DEPLOY_FLAVORS`): declaring and contributing, precedence, the refusals |
 | `kdr-demo-docs` | writing `docs/demo-client/`: the page shape, the voice and word rules, the `kdr-doc` markers and their test |
+| `kdr-images` | images we ship: where they live and how copy and documents name them, what the boot refuses, the house look, `banner.py` |
 
 **A skill's code examples are compiled as tests** (`*SkillExamplesTest`), so a signature change breaks the
 build rather than quietly staling the documentation. (`kdr-demo-docs` has prose examples instead; the pages it
