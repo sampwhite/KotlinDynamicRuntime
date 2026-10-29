@@ -669,7 +669,7 @@ class GedraConfigService : ServiceInitializer {
                 "c:${PF.enabled} = :${PF.enabled}, c:${GC.isCurrent} = :${GC.isCurrent}", "c:${GC.gedraId} = :${GC.gedraId}",
             )
             for (row in enabled) {
-                val bind = mutableMapOf<String, Any?>(GC.gedraId to row[GC.gedraId], PF.enabled to false, GC.isCurrent to false)
+                val bind = mutableMapOf(GC.gedraId to row[GC.gedraId], PF.enabled to false, GC.isCurrent to false)
                 SqlTopicUtil.prepForStdUpdate(wcxt, table, bind, row[PF.updatedAt].toOptInstant())
                 sqlCxt.sqlDb.executeStatement(wcxt, stmt, bind)
             }
