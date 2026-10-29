@@ -438,9 +438,14 @@ class GedraFormsTest {
         assertNull(entriesUnionOf(null))
     }
 
-    /** One computed display value, as the backend attaches it (issue #537). */
-    private fun displayValue(traitId: String, label: String, value: String, kind: UsageKind = UsageKind.string): Map<String, Any?> =
-        mapOf(UF.traitId to traitId, UF.label to label, UF.value to value, UF.kind to kind.name)
+    /** One computed display value, as the backend attaches it (issue #537): under its column, the trait's id unless named (#1490). */
+    private fun displayValue(
+        traitId: String,
+        label: String,
+        value: String,
+        kind: UsageKind = UsageKind.string,
+        columnId: String = traitId,
+    ): Map<String, Any?> = mapOf(UF.columnId to columnId, UF.traitId to traitId, UF.label to label, UF.value to value, UF.kind to kind.name)
 
     /** The moment the presentation tests read against, in UTC. */
     private val env = ScriptEnv(ScriptZone.of(FixedOffsetTimeZone(UtcOffset.ZERO)), Instant.parse("2026-10-17T22:00:00Z"))
@@ -460,6 +465,8 @@ class GedraFormsTest {
                 displayValue("site", "Site", "Austin"),
                 displayValue("amount", "Amount", "1234.5", UsageKind.number),
                 displayValue("due", "Due", "2026-10-18T01:00:00Z", UsageKind.date),
+                // A second column of the amount trait (issue #1490), under its own name and with no presentation.
+                displayValue("amount", "Amount (raw)", "1234.5", UsageKind.number, columnId = "amountRaw"),
             ),
             GDF.entries to listOf(
                 mapOf(GE.traitId to "site", GE.data to mapOf("city" to "Austin", "state" to "TX")),
@@ -469,14 +476,22 @@ class GedraFormsTest {
         )
         val columns = ListingColumn.listFrom(
             listOf(
-                mapOf(UF.traitId to "site", UF.label to "Site", UF.kind to "string", UF.presentation to $$"${city}, ${state}"),
-                mapOf(UF.traitId to "amount", UF.label to "Amount", UF.kind to "number", UF.presentation to $$"""${currency(value, "USD")}"""),
-                mapOf(UF.traitId to "due", UF.label to "Due", UF.kind to "date"),
+                mapOf(
+                    UF.columnId to "site", UF.traitId to "site", UF.label to "Site", UF.kind to "string",
+                    UF.presentation to $$"${city}, ${state}",
+                ),
+                mapOf(
+                    UF.columnId to "amount", UF.traitId to "amount", UF.label to "Amount", UF.kind to "number",
+                    UF.presentation to $$"""${currency(value, "USD")}""",
+                ),
+                mapOf(UF.columnId to "due", UF.traitId to "due", UF.label to "Due", UF.kind to "date"),
+                mapOf(UF.columnId to "amountRaw", UF.traitId to "amount", UF.label to "Amount (raw)", UF.kind to "number"),
             ),
         )
         val info = summarizeForm(item, entriesUnion())
-        val shown = info.displayValues.map { dv -> presentedValue(dv, columns.firstOrNull { it.traitId == dv.traitId }, env) }
-        assertEquals(listOf("Austin, TX", "$1,234.50", "in 3h"), shown)
+        val shown = info.displayValues.map { dv -> presentedValue(dv, columns.firstOrNull { it.columnId == dv.columnId }, env) }
+        // The two columns of one trait each read through their own presentation.
+        assertEquals(listOf("Austin, TX", "$1,234.50", "in 3h", "1234.5"), shown)
         assertEquals("Austin, TX", formHeading(info, columns, env))
         // On hover: the value behind a reworded cell, a date's as its moment; a cell showing its value has none.
         assertEquals("1234.5", presentedCellTip(info.displayValues[1], shown[1]))

@@ -231,7 +231,7 @@ class GedraConfigTest : StringSpec({
         config.configTraits.getValue(CCT.reportDef).primaryKey shouldBe listOf(CCT.reportId)
         config.configTraits.getValue(CCT.schemaDef).primaryKey shouldBe listOf(CCT.typeName)
         config.configTraits.getValue(CCT.traitDef).primaryKey shouldBe listOf(CCT.traitId)
-        config.configTraits.getValue(CCT.usageDef).primaryKey shouldBe listOf(CCT.traitId)
+        config.configTraits.getValue(CCT.usageDef).primaryKey shouldBe listOf(CCT.traitId, CCT.label)
         config.configTraits.getValue(CCT.fragmentDef).primaryKey shouldBe listOf(CCT.fileId)
         config.configTraits.getValue(CCT.uiBlockDef).primaryKey shouldBe listOf(CCT.blockId)
         config.configTraits.getValue(CCT.cfactDef).primaryKey shouldBe listOf(CCT.name)

@@ -357,9 +357,11 @@ fun confDemoBase(cxt: KdrCxtBase = LiteCxt(), client: String = ConfDemo.client):
         }
 
         // The forms listing's columns (issue #1138). A client that declares any replaces the default name column, so
-        // the name is declared here too.
+        // the name is declared here too. Two columns read the questionnaire (issue #1490), each named for its search.
         traitUsage(GT.name, "Talk", $$"${name}", substring = true)
         traitUsage(ConfDemo.session, "Track", $$"${track}")
+        traitUsage(ConfDemo.questionnaire, "Audience", $$"${audienceLevel}", columnId = "audience")
+        traitUsage(ConfDemo.questionnaire, "First talk", $$"${firstTalk}", columnId = "firstTalk")
     }
 
 /** The `createTalk` bundle: the workflow that runs when a speaker starts a submission. */

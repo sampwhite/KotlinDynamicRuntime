@@ -51,9 +51,9 @@ import com.dynamicruntime.common.gedra.GCEL
 import com.dynamicruntime.common.gedra.checkMode
 import com.dynamicruntime.common.gedra.issue
 import com.dynamicruntime.common.gedra.reportConfigProblem
-import com.dynamicruntime.common.gedra.duplicateUsageTraitIds
 import com.dynamicruntime.common.gedra.reservedQueryFieldNames
 import com.dynamicruntime.common.gedra.searchParamCollisions
+import com.dynamicruntime.common.gedra.usageColumnClashes
 import com.dynamicruntime.common.gedra.withSearchProperties
 import com.dynamicruntime.common.content.MarkdownFragmentService
 import com.dynamicruntime.common.job.JobDef
@@ -421,24 +421,25 @@ class SchemaService : ServiceInitializer, ClientSchemaSource {
                 reportConfigProblem(
                     cxt,
                     holder.issue(
-                        "Client '$scope' declares a presentation for trait '${usage.traitId}' that does not parse: " +
+                        "Client '$scope' declares a presentation for column '${usage.columnKey}' that does not parse: " +
                             faults.joinToString("; ") { it.message } + ".",
                         "Showing the column's value as it is. Correct the presentation.",
-                        GCEL.usage, usage.traitId,
+                        GCEL.usage, usage.columnKey,
                     ),
                     issues,
                 )
             }
-            val duplicates = duplicateUsageTraitIds(usages)
-            if (duplicates.isNotEmpty()) {
+            // Two columns of one name, or whose search parameters meet (issue #1490); one trait may have several.
+            val clashes = usageColumnClashes(usages)
+            if (clashes.isNotEmpty()) {
                 reportConfigProblem(
                     cxt,
                     holder.issue(
-                        "Client '$scope' declares more than one trait-usage rule for trait(s) " +
-                            "${duplicates.joinToString(", ")}; a trait presents as a single column.",
-                        "Keeping the rules as declared, but that trait's column, search and sort read only one " +
-                            "of them and collide. Declare one usage per trait.",
-                        GCEL.usage, duplicates.joinToString(","),
+                        "Client '$scope' declares listing columns that share the name(s) " +
+                            "${clashes.joinToString(", ")}, as a column or a search parameter.",
+                        "Keeping the columns as declared, but their values, search and sort collide. Give a second " +
+                            "column of a trait a columnId of its own.",
+                        GCEL.usage, clashes.joinToString(","),
                     ),
                     issues,
                 )

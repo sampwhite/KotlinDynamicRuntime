@@ -581,6 +581,8 @@ class GedraConfigBuilder(
      * [presentation] is how the cell reads (issue #1323): a string script over the trait's data, with the column's
      * value as `value`, evaluated where the listing is drawn -- `${'$'}{currency(value, "USD")}`. The column still
      * sorts and searches by its value.
+     *
+     * [columnId] names the column when the trait already has one (issue #1490); see [ClientTraitUsage.columnId].
      */
     fun traitUsage(
         traitId: String,
@@ -589,8 +591,9 @@ class GedraConfigBuilder(
         kind: UsageKind = UsageKind.string,
         substring: Boolean = false,
         presentation: String? = null,
+        columnId: String? = null,
     ) {
-        usages.add(ClientTraitUsage(traitId, label, display, kind, substring, presentation))
+        usages.add(ClientTraitUsage(traitId, label, display, kind, substring, presentation, columnId))
     }
 
     /**

@@ -38,14 +38,14 @@ import io.kotest.matchers.string.shouldContain
 
 /**
  * The boot checks over a client's trait-usage rules (`SchemaService.checkUsageRules`), exercised through the real
- * startup path -- the wiring the pure detectors (`searchParamCollisions`, `duplicateUsageTraitIds`, both in
+ * startup path -- the wiring the pure detectors (`searchParamCollisions`, `usageColumnClashes`, both in
  * `GedraSearchTest`) cannot cover: that `checkInit` actually runs the checks, and that the config-check mode
  * decides their consequence (strict refuses, warn logs and boots).
  *
  * Every one of `checkUsageRules`' sub-checks lives here, so a boot refusal over a usage rule is one class rather
  * than one per variation: a usage whose **search parameter collides with a reserved listing field** (issue #538),
- * **two usage rules for one trait id** (issue #681), and **a presentation that does not parse** (issue #1323). Each fixture is gated on its own load flag, so it perturbs
- * no other boot; a spec sets the flag for the fixture it wants.
+ * **two columns of one name** (issues #681, #1490), and **a presentation that does not parse** (issue #1323). Each
+ * fixture is gated on its own load flag, so it perturbs no other boot; a spec sets the flag for the fixture it wants.
  */
 class UsageRuleBootCheckTest : StringSpec({
 
@@ -60,7 +60,7 @@ class UsageRuleBootCheckTest : StringSpec({
             )
         }
         thrown.fullMessage() shouldContain DuplicateUsageComponent.dupeTrait
-        thrown.fullMessage() shouldContain "more than one trait-usage rule"
+        thrown.fullMessage() shouldContain "share the name"
     }
 
     "a presentation that does not parse refuses the boot in strict mode (issue #1323)" {

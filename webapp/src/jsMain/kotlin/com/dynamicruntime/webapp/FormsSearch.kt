@@ -80,10 +80,10 @@ private fun stringOptions(values: List<String>): Array<dynamic> = values.map { v
  * the one control a person expects: a text box, or a from-to pair. Derived from the listing endpoint's own
  * input schema (issue #538), so it is exactly what the client's variant advertises -- a control appears only
  * when the backend will accept its parameter. The parameter *names* are what the box sends; the [label] is
- * the column's, with the role's own words removed, falling back to the trait id.
+ * the column's, with the role's own words removed, falling back to the column's name ([columnKey], issue #1490).
  */
 class SearchGroup(
-    val traitId: String,
+    val columnKey: String,
     val label: String,
     val kind: UsageKind,
     /** The exact-match parameter, when declared. */
@@ -113,7 +113,7 @@ class SearchGroup(
  * inverted rather than a second spelling of it. Pure, and covered under `jsNodeTest`.
  */
 fun searchGroups(inputSchema: Map<String, Any?>): List<SearchGroup> {
-    class Draft(val traitId: String, val kind: UsageKind) {
+    class Draft(val columnKey: String, val kind: UsageKind) {
         var label: String? = null
         var exact: String? = null
         var contains: String? = null
@@ -128,7 +128,7 @@ fun searchGroups(inputSchema: Map<String, Any?>): List<SearchGroup> {
         if (name in reservedQueryFieldNames) continue
         val prop = body.toJsonMapOrEmpty()
         val shape = decodeSearchParam(name, prop, properties.keys)
-        val draft = drafts.getOrPut(shape.traitId) { Draft(shape.traitId, shape.kind) }
+        val draft = drafts.getOrPut(shape.columnKey) { Draft(shape.columnKey, shape.kind) }
         // The caption is the column label: the parameter's title with the role's own words removed.
         if (draft.label == null) draft.label = (prop[SCH.title] as? String)?.removeSuffix(shape.role.labelSuffix)
         when (shape.role) {
@@ -138,7 +138,7 @@ fun searchGroups(inputSchema: Map<String, Any?>): List<SearchGroup> {
             SearchRole.max -> draft.max = name
         }
     }
-    return drafts.values.map { SearchGroup(it.traitId, it.label ?: it.traitId, it.kind, it.exact, it.contains, it.min, it.max) }
+    return drafts.values.map { SearchGroup(it.columnKey, it.label ?: it.columnKey, it.kind, it.exact, it.contains, it.min, it.max) }
 }
 
 /**
@@ -390,7 +390,7 @@ val FormsSearch = FC<FormsSearchProps> { props ->
                         val fetch = props.fetchValues
                         if (fetch != null) {
                             FilterValueBox {
-                                this.traitId = group.traitId
+                                this.columnKey = group.columnKey
                                 this.placeholder = placeholder
                                 this.value = props.values[name] ?: ""
                                 this.onChange = { v -> props.onChange(name, v) }
@@ -428,13 +428,13 @@ val FormsSearch = FC<FormsSearchProps> { props ->
 }
 
 /**
- * One text-trait filter box with a value type-ahead (issue #581): as the person types, it suggests the distinct
- * values that trait takes across the caller's documents. Its own component so each box holds its own suggestion
+ * One text-column filter box with a value type-ahead (issue #581): as the person types, it suggests the distinct
+ * values that column takes across the caller's documents. Its own component so each box holds its own suggestion
  * state and debounce. The value it holds is still a plain "contains" fragment -- picking a suggestion only
  * fills the box, and the panel's Apply is what searches -- so an empty or failed fetch leaves it a text input.
  */
 private external interface FilterValueBoxProps : Props {
-    var traitId: String
+    var columnKey: String
     var placeholder: String
     var value: String
     var onChange: (String) -> Unit
@@ -453,7 +453,7 @@ private val FilterValueBox = FC<FilterValueBoxProps> { props ->
         if (term.isEmpty()) {
             suggestions = emptyList()
         } else {
-            timer.current = setTimer({ props.fetchValues(props.traitId, term) { suggestions = it } }, suggestDebounceMs)
+            timer.current = setTimer({ props.fetchValues(props.columnKey, term) { suggestions = it } }, suggestDebounceMs)
         }
     }
 

@@ -12,6 +12,10 @@ package com.dynamicruntime.common.gedra
  *
  * Pure model in `base/kernel`, beside the config that carries it; the value is *computed* on the backend (it
  * needs a row's data), so a client never authors the presented string, only the rule that makes it.
+ *
+ * A trait may have several columns (issue #1490): what tells them apart is the column's own name, [columnKey] --
+ * its [columnId], else its trait id -- which names its search parameters, its sort, and its value on a row. The
+ * stored entry is keyed by trait and label, so two columns of one trait differ in their headings.
  */
 class ClientTraitUsage(
     /** The trait whose data this presents. */
@@ -41,7 +45,26 @@ class ClientTraitUsage(
      * ([columnPresentation]).
      */
     val presentation: String? = null,
-)
+    /**
+     * The column's own name (issue #1490), when it is not the trait id: needed only on a second column of the same
+     * trait, whose search parameters and sort would otherwise share the first's. An identifier, since it names
+     * query parameters.
+     */
+    val columnId: String? = null,
+) {
+    /**
+     * The column's machine name (issue #1490): [columnId], else the trait id. What its search parameters are named
+     * from, what its sort and its value on a row are keyed by -- so a column without a [columnId] keeps the names it
+     * always had.
+     */
+    val columnKey: String get() = columnId ?: traitId
+}
+
+/**
+ * What a [ClientTraitUsage.columnId] must look like (issue #1490): letters, digits, and underscores, starting with a
+ * letter -- since it names query parameters and a sort key.
+ */
+const val columnIdPattern = "^[A-Za-z][A-Za-z0-9_]*$"
 
 /** The kinds a [ClientTraitUsage] value can be: what a listing shows and a search (issue #538) filters on. */
 @Suppress("EnumEntryName")
@@ -53,8 +76,11 @@ enum class UsageKind { string, number, date }
  */
 @Suppress("ConstPropertyName")
 object UF {
-    /** The trait the value came from -- the stable column key. */
+    /** The trait the value came from. */
     const val traitId = "traitId"
+
+    /** The column's machine name ([ClientTraitUsage.columnKey], issue #1490): what a row's value and a column are keyed by. */
+    const val columnId = "columnId"
 
     /** The column header, from the usage's label. */
     const val label = "label"

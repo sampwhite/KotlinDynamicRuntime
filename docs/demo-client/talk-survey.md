@@ -126,7 +126,15 @@ in the `kdr:usageDef` slot of its `base` bundle.
 ```json
 [
   { "traitId": "kdr:name", "label": "Talk", "display": "${name}", "kind": "string", "substring": true },
-  { "traitId": "session", "label": "Track", "display": "${track}", "kind": "string", "substring": false }
+  { "traitId": "session", "label": "Track", "display": "${track}", "kind": "string", "substring": false },
+  {
+    "traitId": "questionnaire", "label": "Audience", "display": "${audienceLevel}", "kind": "string", "substring": false,
+    "columnId": "audience"
+  },
+  {
+    "traitId": "questionnaire", "label": "First talk", "display": "${firstTalk}", "kind": "string", "substring": false,
+    "columnId": "firstTalk"
+  }
 ]
 ```
 
@@ -137,9 +145,11 @@ in the `kdr:usageDef` slot of its `base` bundle.
 | `display` | The column's value: a template over the trait's data, in which `${track}` is the `track` field's value. The column sorts and searches by it, and shows it unless the column has a presentation. |
 | `kind` | How a search treats the value: as text, a number, or a date. A date column with no presentation reads relative to now, such as `in 3h`. |
 | `substring` | Whether a search may match part of the value. On the talk's name, a search for `scale` finds `Kotlin at scale`. |
+| `columnId` | The column's name in a search, when it is not the trait's id. The Audience column is searched with `audience`. |
 
-In this example, the demo promotes two fields to be columns: `name`, from the built-in `kdr:name` trait, and `track`,
-from its own `session` trait. A promoted value also becomes available for search.
+In this example, the demo promotes four fields to be columns: `name`, from the built-in `kdr:name` trait, `track`,
+from its own `session` trait, and two answers from its `questionnaire` trait. A promoted value also becomes available
+for search.
 As soon as a client declares columns of its own, the platform's default column, the form's name, disappears. So the
 demo redeclares the name column too, but relabels the heading to be **Talk**.
 
@@ -148,7 +158,15 @@ the column's cells read, with the column's value available as `value`. For examp
 an amount as `$1,234.50`, and `${city}, ${state}` composes two fields of the trait. The column still sorts and
 searches by its value, so a formatted amount never sorts as text.
 
-The track column shows the stored value, such as `workshop`, rather than the choice's label.
+One trait can give more than one column. The demo's questionnaire gives two, so the program committee can see at a
+glance who each talk is for and which speakers are new to the stage, and can search for either. Each column of a trait
+needs its own heading, and every column after the first also needs a `columnId`: a name of letters, digits, and
+underscores. A column without a `columnId` is searched by its trait's id, so two of them from one trait would share a
+search. The demo names both questionnaire columns, and a search for `firstTalk` with the value `true` finds the
+first-time speakers.
+
+The Track and Audience columns show the stored value, such as `workshop` or `beginner`, rather than the choice's
+label. The First talk column shows `true` or `false`, and a dash until the speaker answers.
 
 ## Survey
 

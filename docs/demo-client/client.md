@@ -75,7 +75,7 @@ bundle as a whole, kept current as the pages add to it.
 | --- | --- | --- |
 | `kdr:clientDef` | The client's definition, above. | This page |
 | `kdr:traitDef` | Five traits: `session` and `questionnaire`, `abstract`, `review`, and `logistics`. | [Talk survey](talk-survey.md), [Abstract](abstract.md), [Committee review](committee-review.md), [Workshop logistics](workshop-logistics.md) |
-| `kdr:usageDef` | The two columns of the forms list, Talk and Track. | [Talk survey](talk-survey.md#columns-in-the-forms-list) |
+| `kdr:usageDef` | The four columns of the forms list: Talk, Track, Audience, and First talk. | [Talk survey](talk-survey.md#columns-in-the-forms-list) |
 | `kdr:schemaDef` | The shared `Speaker` type. | [Abstract](abstract.md#a-shared-type) |
 | `kdr:cfactDef` | The client's two facts, `isWorkshop` and `talkAccepted`. | [Workshop logistics](workshop-logistics.md#a-computed-fact) |
 | `kdr:uiBlockDef` | The menu entry that turns the Workflows page on. | [Abstract](abstract.md#what-the-speaker-sees) |

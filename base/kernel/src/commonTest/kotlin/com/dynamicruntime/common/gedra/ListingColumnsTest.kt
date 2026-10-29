@@ -58,12 +58,14 @@ class ListingColumnsTest {
     @Test
     fun theColumnsRoundTripTheWire() {
         val columns = listOf(
-            ListingColumn("amount", "Amount", UsageKind.number, $$"""${currency(value, "USD")}"""),
-            ListingColumn("due", "Due", UsageKind.date, null),
+            ListingColumn("amount", "amount", "Amount", UsageKind.number, $$"""${currency(value, "USD")}"""),
+            // A second column of the trait (issue #1490), under a name of its own.
+            ListingColumn("amountDue", "amount", "Due", UsageKind.date, null),
         )
         val read = ListingColumn.listFrom(columns.map { it.toMap() })
-        assertEquals(columns.map { listOf(it.traitId, it.label, it.kind, it.presentation) }, read.map { listOf(it.traitId, it.label, it.kind, it.presentation) })
+        fun fields(c: ListingColumn) = listOf(c.columnId, c.traitId, c.label, c.kind, c.presentation)
+        assertEquals(columns.map { fields(it) }, read.map { fields(it) })
         // No presentation is no key.
-        assertEquals(setOf(UF.traitId, UF.label, UF.kind), columns[1].toMap().keys)
+        assertEquals(setOf(UF.columnId, UF.traitId, UF.label, UF.kind), columns[1].toMap().keys)
     }
 }

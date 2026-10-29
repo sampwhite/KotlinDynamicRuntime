@@ -199,9 +199,10 @@ trait gives it a rooted id (`kdr:…`, or its component's root), so it can never
   and gedra kind; a client's own id within that client, and another client may declare the same one and get its
   own. This is what lets stored data carry a trait id and nothing else: the gedra holding an entry names its
   client, so the id resolves among that client's own traits and the global ones, with never two answers. (A
-  string usage's search parameter is named for the trait, so a global trait's carries its root too:
-  `kdr:name`, `kdr:nameContains`.) An entry met *outside* its gedra -- in a log line, an export, a queue message -- is
-  unambiguous only beside the gedra's id (or its client), so anything carrying entries out carries that too.
+  string usage's search parameter is named for its column, which is the trait unless the column has a `columnId`
+  of its own (#1490), so a global trait's carries its root too: `kdr:name`, `kdr:nameContains`.) An entry met
+  *outside* its gedra -- in a log line, an export, a queue message -- is unambiguous only beside the gedra's id
+  (or its client), so anything carrying entries out carries that too.
 - **Type names are namespaced** — so two config bundles may each generate a `NameEntry` without colliding.
 
 The namespace is not scoping traits. It is scoping the *types* that traits create. Anybody who "fixes" the

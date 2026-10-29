@@ -28,9 +28,10 @@ import kotlinx.datetime.TimeZone
 @Suppress("EnumEntryName")
 enum class SearchRole(
     /**
-     * What the role appends to the trait id to make the parameter's wire name: `name` for the exact match,
-     * `nameContains`, `yearMin`, `yearMax`. [gedraSearchParams] writes it and [decodeSearchParam] reads it back,
-     * so a control that groups a trait's parameters (issue #562) cannot disagree with the names it must send.
+     * What the role appends to the column's name ([ClientTraitUsage.columnKey]) to make the parameter's wire name:
+     * `name` for the exact match, `nameContains`, `yearMin`, `yearMax`. [gedraSearchParams] writes it and
+     * [decodeSearchParam] reads it back, so a control that groups a column's parameters (issue #562) cannot disagree
+     * with the names it must send.
      */
     val nameSuffix: String,
     /** What the role appends to the column label for a control's caption, said in words. */
@@ -50,29 +51,30 @@ enum class SearchRole(
 }
 
 /**
- * One search parameter a usage contributes: its wire [name], the column [label] it belongs to, the [traitId]
- * whose display value it filters, the [role] (how to compare), and the [kind] (how to read both sides). Built
- * once by [gedraSearchParams] and used to generate the schema property *and* to run the predicate, so the two
- * stay in step.
+ * One search parameter a usage contributes: its wire [name], the column [label] it belongs to, the [columnKey]
+ * whose display value it filters ([ClientTraitUsage.columnKey]), the [role] (how to compare), and the [kind] (how to
+ * read both sides). Built once by [gedraSearchParams] and used to generate the schema property *and* to run the
+ * predicate, so the two stay in step.
  */
 class GedraSearchParam(
     val name: String,
     val label: String,
-    val traitId: String,
+    val columnKey: String,
     val role: SearchRole,
     val kind: UsageKind,
 )
 
 /**
- * The search parameters [usages] contribute, in declaration order. A `string` gives an exact parameter named
- * for the trait (the design's "the trait id becomes a search parameter") and, when [ClientTraitUsage.substring]
- * is set, a `<traitId>Contains` beside it; a `number` or `date` gives `<traitId>Min` and `<traitId>Max`.
+ * The search parameters [usages] contribute, in declaration order. A `string` gives an exact parameter named for the
+ * column ([ClientTraitUsage.columnKey]: the trait id, unless the column has a name of its own -- issue #1490) and,
+ * when [ClientTraitUsage.substring] is set, a `<column>Contains` beside it; a `number` or `date` gives `<column>Min`
+ * and `<column>Max`.
  *
  * A usage one of whose names the listing keeps for itself ([reservedQueryFieldNames]) contributes **nothing**
  * (issue #987): it is left out here, at the one place every reader starts from, so the advertised schema and
  * the predicate drop it together -- a predicate that still read it would filter by the listing's own `offset`.
- * The whole usage goes, not the one name: a `<traitId>Contains` left standing alone would read back
- * ([decodeSearchParam]) as the exact match of some other trait. The usage keeps its column;
+ * The whole usage goes, not the one name: a `<column>Contains` left standing alone would read back
+ * ([decodeSearchParam]) as the exact match of some other column. The usage keeps its column;
  * [searchParamCollisions] is what reports it.
  */
 fun gedraSearchParams(usages: List<ClientTraitUsage>): List<GedraSearchParam> = usages.flatMap { usage ->
@@ -82,7 +84,7 @@ fun gedraSearchParams(usages: List<ClientTraitUsage>): List<GedraSearchParam> = 
 
 /** Every parameter [usage] would mint by name alone, a reserved name included -- see [gedraSearchParams]. */
 private fun mintedSearchParams(usage: ClientTraitUsage): List<GedraSearchParam> = buildList {
-    fun param(role: SearchRole) = GedraSearchParam(usage.traitId + role.nameSuffix, usage.label, usage.traitId, role, usage.kind)
+    fun param(role: SearchRole) = GedraSearchParam(usage.columnKey + role.nameSuffix, usage.label, usage.columnKey, role, usage.kind)
     when (usage.kind) {
         UsageKind.string -> {
             add(param(SearchRole.exact))
@@ -107,9 +109,9 @@ fun searchParamProperties(params: List<GedraSearchParam>): Map<String, Any?> {
         prop[SCH.title] = searchLabel(param)
         when {
             param.role == SearchRole.contains ->
-                prop[SCH.description] = "Substring match (case-insensitive) on the '${param.traitId}' value."
+                prop[SCH.description] = "Substring match (case-insensitive) on the '${param.columnKey}' value."
             param.role == SearchRole.exact ->
-                prop[SCH.description] = "Exact match (case-insensitive) on the '${param.traitId}' value."
+                prop[SCH.description] = "Exact match (case-insensitive) on the '${param.columnKey}' value."
             param.kind == UsageKind.number -> {
                 prop[SCH.type] = SCT.number
                 prop[SCH.allowCoerce] = true
@@ -130,24 +132,24 @@ fun searchParamProperties(params: List<GedraSearchParam>): Map<String, Any?> {
 private fun searchLabel(param: GedraSearchParam): String = param.label + param.role.labelSuffix
 
 /**
- * One search parameter read back off the listing's input schema (issue #562): the [traitId] whose display value
- * it filters, its [role], and the [kind] both sides are read as -- what [gedraSearchParams] wrote, recovered
- * from the wire name and the property's schema. For a UI that groups a trait's parameters into one control (a
+ * One search parameter read back off the listing's input schema (issue #562): the column ([columnKey]) whose display
+ * value it filters, its [role], and the [kind] both sides are read as -- what [gedraSearchParams] wrote, recovered
+ * from the wire name and the property's schema. For a UI that groups a column's parameters into one control (a
  * text box, or a from-to pair) rather than showing each as a peer.
  */
-class SearchParamShape(val traitId: String, val role: SearchRole, val kind: UsageKind)
+class SearchParamShape(val columnKey: String, val role: SearchRole, val kind: UsageKind)
 
 /**
  * The inverse of [gedraSearchParams]'s naming, for one property [name] with its schema [prop] among the
- * [declared] property names of the same query type: the trait, the role, and the kind the parameter was
+ * [declared] property names of the same query type: the column, the role, and the kind the parameter was
  * generated from.
  *
  * The schema decides the family and the spelling decides the role within it: a `number` type or `date` format
  * says the parameter is a bound, and then a `Min`/`Max` ending says which. Plain text ending in `Contains` is
  * the substring parameter **only when the name it shortens to is declared too** -- the generator never writes a
- * substring parameter without the exact one beside it -- so a trait whose own id ends in `Contains` reads as
- * the exact match on its full name rather than as some other trait's substring. Reading the kind first does the
- * same for a text trait whose id ends in `Min`. A parameter the generator would not have written -- a typed one
+ * substring parameter without the exact one beside it -- so a column whose own name ends in `Contains` reads as
+ * the exact match on its full name rather than as some other column's substring. Reading the kind first does the
+ * same for a text column whose name ends in `Min`. A parameter the generator would not have written -- a typed one
  * with neither ending -- reads as an exact match on its own name, so it still gets a control rather than
  * vanishing.
  */
@@ -173,7 +175,7 @@ fun decodeSearchParam(name: String, prop: Map<String, Any?>, declared: Set<Strin
 
 private fun boundDescription(param: GedraSearchParam): String {
     val relation = if (param.role == SearchRole.min) "at or above" else "at or below"
-    return "Keep rows whose '${param.traitId}' value is $relation this."
+    return "Keep rows whose '${param.columnKey}' value is $relation this."
 }
 
 /** The `$defs` key of the listing's query type: [GEP.formDocsQuery] qualified in the gedra namespace. */
@@ -205,15 +207,21 @@ fun searchParamCollisions(usages: List<ClientTraitUsage>): List<String> =
     usages.flatMap { mintedSearchParams(it) }.map { it.name }.filter { it in reservedQueryFieldNames }.distinct()
 
 /**
- * The trait ids [usages] name more than once (issue #681), in first-seen order and without repeats -- the boot
- * check for a client declaring two usages of the same trait. The whole presentation model is keyed by trait id:
- * `computeDisplayValues`/`searchFilter` collapse a row's display values into a map keyed by it (a second usage's
- * value silently overwrites the first's), `matchesSearch` reads a parameter's value by it, the sort resolves its
- * column by it, and the frontend keys a column by it -- so a trait carrying two usages does not get two columns,
- * it gets one broken one. Empty is the ordinary case; a non-empty result is a client-config mistake to report.
+ * The names two of [usages] would share (issues #681, #1490), in first-seen order and without repeats -- the boot
+ * check, which a write's trial also runs. The presentation model is keyed by the column's name
+ * ([ClientTraitUsage.columnKey]): a row's display values are a map keyed by it (a second column's value would
+ * silently overwrite the first's), `matchesSearch` reads a parameter's value by it, the sort resolves its column by
+ * it, and the frontend keys a column by it -- so two columns of one name are one broken column. Their search
+ * parameters must not meet either: a text column named `yearMin` would take a number column `year`'s lower bound.
+ * Two columns of one **trait** are fine, as long as their names differ. Empty is the ordinary case; a non-empty
+ * result is a client-config mistake to report.
  */
-fun duplicateUsageTraitIds(usages: List<ClientTraitUsage>): List<String> =
-    usages.groupBy { it.traitId }.filter { it.value.size > 1 }.keys.toList()
+fun usageColumnClashes(usages: List<ClientTraitUsage>): List<String> {
+    val keys = usages.groupBy { it.columnKey }.filter { it.value.size > 1 }.keys
+    val params = usages.flatMap { usage -> mintedSearchParams(usage).map { it.name to usage.columnKey }.distinct() }
+        .groupBy({ it.first }, { it.second }).filter { it.value.distinct().size > 1 }.keys
+    return (keys + params).distinct()
+}
 
 /**
  * [baseDef] (a JSON-Schema object type -- the listing's stable query type) with the search properties [usages]
@@ -238,31 +246,31 @@ fun withSearchProperties(baseDef: Any?, usages: List<ClientTraitUsage>): Map<Str
 
 /**
  * Whether a row satisfies every active search parameter (AND across them), given the row's display values keyed
- * by trait id ([displayByTrait]) and the [active] parameters paired with the value the caller supplied. A row
- * that carries no value for a parameter's trait -- an empty display string -- matches none of that trait's
- * parameters, which drops it from a search rather than faulting the page. A date bound given as a day is the
+ * by column ([displayByColumn], [ClientTraitUsage.columnKey]) and the [active] parameters paired with the value the
+ * caller supplied. A row that carries no value for a parameter's column -- an empty display string -- matches none
+ * of that column's parameters, which drops it from a search rather than faulting the page. A date bound given as a day is the
  * start of that day in [zone], the client's (issue #1115).
  */
 fun matchesSearch(
-    displayByTrait: Map<String, String>,
+    displayByColumn: Map<String, String>,
     active: List<Pair<GedraSearchParam, String>>,
     zone: TimeZone = serverTimeZone,
-): Boolean = active.all { (param, query) -> matchesOne(displayByTrait[param.traitId].orEmpty(), param, query, zone) }
+): Boolean = active.all { (param, query) -> matchesOne(displayByColumn[param.columnKey].orEmpty(), param, query, zone) }
 
-/** The trait ids of the `string` usages -- the fields the free-text term ([EI.q]) searches across. */
-fun textSearchTraitIds(usages: List<ClientTraitUsage>): List<String> =
-    usages.filter { it.kind == UsageKind.string }.map { it.traitId }
+/** The columns ([ClientTraitUsage.columnKey]) of the `string` usages -- the fields the free-text term ([EI.q]) searches across. */
+fun textSearchColumns(usages: List<ClientTraitUsage>): List<String> =
+    usages.filter { it.kind == UsageKind.string }.map { it.columnKey }
 
 /**
  * Whether a row's display values match the free-text term [query] (issue #562): a case-insensitive substring
- * match against **any** of the [textTraitIds] (OR across fields), so one box finds a document by whichever of
+ * match against **any** of the [textColumns] (OR across fields), so one box finds a document by whichever of
  * its searchable text values the person remembers. A blank term matches everything -- an empty box is no
  * search, not a search for nothing -- and a row with no text values matches only a blank term.
  */
-fun matchesAnyText(displayByTrait: Map<String, String>, textTraitIds: List<String>, query: String): Boolean {
+fun matchesAnyText(displayByColumn: Map<String, String>, textColumns: List<String>, query: String): Boolean {
     val term = query.trim()
     if (term.isEmpty()) return true
-    return textTraitIds.any { displayByTrait[it].orEmpty().contains(term, ignoreCase = true) }
+    return textColumns.any { displayByColumn[it].orEmpty().contains(term, ignoreCase = true) }
 }
 
 private fun matchesOne(value: String, param: GedraSearchParam, query: String, zone: TimeZone): Boolean = when (param.role) {
@@ -324,17 +332,17 @@ object GSORT {
     const val desc = "desc"
 
     /**
-     * The wire prefix a **display-column** sort key carries (issue #666), so a trait named like a fixed column
-     * (`updated`/`created`) cannot collide with it: a display column sorts under `display_<traitId>`, a fixed
-     * column under its bare name. The same `display_` the forms table keys its display *cells* by, kept here so
-     * the endpoint's decode and the table's encode read one constant.
+     * The wire prefix a **display-column** sort key carries (issue #666), so a column named like a fixed one
+     * (`updated`/`created`) cannot collide with it: a display column sorts under `display_<column>` (its
+     * [ClientTraitUsage.columnKey], issue #1490), a fixed column under its bare name. The same `display_` the forms
+     * table keys its display *cells* by, kept here so the endpoint's decode and the table's encode read one constant.
      */
     const val displayColumnPrefix = "display_"
 
-    /** The display trait id a sort [column] names ([displayColumnPrefix] stripped), or null when it is a fixed
-     *  column (`updated`/`created`) or otherwise not a display key -- so a trait called `updated` still decodes
-     *  to its own value rather than the protocol date. */
-    fun displayTraitId(column: String): String? =
+    /** The display column ([ClientTraitUsage.columnKey]) a sort [column] names ([displayColumnPrefix] stripped), or
+     *  null when it is a fixed column (`updated`/`created`) or otherwise not a display key -- so a column called
+     *  `updated` still decodes to its own value rather than the protocol date. */
+    fun displayColumnKey(column: String): String? =
         if (column.startsWith(displayColumnPrefix) && column.length > displayColumnPrefix.length) {
             column.removePrefix(displayColumnPrefix)
         } else {

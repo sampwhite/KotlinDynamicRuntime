@@ -69,6 +69,7 @@ fun ClientTraitUsage.toRuleMap(includeDisplay: Boolean = true): Map<String, Any?
     put(CCT.kind, kind.name)
     put(CCT.substring, substring)
     presentation?.let { put(CCT.presentation, it) }
+    columnId?.let { put(CCT.columnId, it) }
 }
 
 /** The schema of [toRuleMap] -- called inside a `type(...) { }` block; [includeDisplay] mirrors the map's. */
@@ -81,4 +82,5 @@ fun SchTypeBuilder.usageRuleFields(includeDisplay: Boolean = true) {
     property(CCT.kind, "How the value is read and compared.", required = true) { options(UsageKind.entries) }
     property(CCT.substring, "Whether a string column also offers a contains search.", required = true) { type = SCT.boolean }
     property(CCT.presentation, "How the column's cell reads: a string script over the trait's data, with the column's value as `value`.")
+    property(CCT.columnId, "The column's own name, when it is not the trait id (issue #1490).")
 }

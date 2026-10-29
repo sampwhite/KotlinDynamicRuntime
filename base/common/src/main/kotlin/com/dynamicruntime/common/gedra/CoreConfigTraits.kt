@@ -28,7 +28,7 @@ import com.dynamicruntime.common.schema.SchTypeBuilder
  *   `<Name>Entry`/`<Name>Data` types the declaration generates: a trait is a declaration re-run on load, not a
  *   schema (the trait-vs-schema line #316's review drew). There is no state-trait slot (issue #873): state is
  *   global, declared by components, and a stored config is always a client's.
- * - **[CCT.usageDef]** -- a trait-usage rule ([ClientTraitUsage]), by trait id.
+ * - **[CCT.usageDef]** -- a trait-usage rule ([ClientTraitUsage]), by trait id and label (issue #1490).
  * - **[CCT.workflowDef]** -- a workflow, by workflow id, by **reference** to the definition schema under
  *   [WFD.namespace]. Its tasks travel inside it: a task has no standalone type, so there is no task slot.
  * - **[CCT.schemaDef]** -- a type the config declares **directly** (`type(...)`), by type name, its body
@@ -90,8 +90,9 @@ fun coreConfigTraits(cxt: KdrCxtBase): GedraConfig = gedraConfig(cxt, CCT.config
     }
     configTrait(
         "UsageDefEntry", CCT.usageDef, setOf(GedraConfigType.configDoc),
-        "How this client presents one trait in a listing, keyed by trait id.",
-        primaryKey = listOf(CCT.traitId),
+        "One column of this client's forms listing, reading a trait, keyed by the trait and the column's label.",
+        // Trait and label (issue #1490): a trait may have several columns, told apart by their headings.
+        primaryKey = listOf(CCT.traitId, CCT.label),
     ) {
         property(CCT.traitId, "The trait this usage rule is for.", required = true)
         property(CCT.label, "The column label the listing shows.", required = true)
@@ -107,6 +108,12 @@ fun coreConfigTraits(cxt: KdrCxtBase): GedraConfig = gedraConfig(cxt, CCT.config
         // Parse-checked at the write as `display` is (issue #1323): it is evaluated where the listing is drawn, and a
         // presentation that does not parse would only ever show the value.
         property(CCT.presentation, "A string script over the trait's data, with the column's value as `value`, that the cell reads through.")
+        // The column's own name (issue #1490), needed only on a second column of one trait. It names query parameters.
+        property(
+            CCT.columnId,
+            "The column's name in its search parameters and its sort, when it is not the trait id: needed on a second " +
+                "column of the same trait. Letters, digits, and underscores, starting with a letter.",
+        ) { pattern = columnIdPattern }
     }
     configTrait(
         "WorkflowDefEntry", CCT.workflowDef, setOf(GedraConfigType.configDoc),

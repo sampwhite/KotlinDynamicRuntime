@@ -162,7 +162,7 @@ val FormsTable = FC<FormsTableProps> { props ->
     // column's presentation too (issue #1323), so a due date's "in 3h" moves with them.
     val now = useRelativeClock()
     val env = DisplayZone.scriptEnv(now)
-    val columnsById = displayCols.associateBy { it.traitId }
+    val columnsById = displayCols.associateBy { it.columnId }
     // Opens the drilled workflow on a row (issue #792), on the task its cell link would -- the current task of an
     // engaged form, ready to edit; the last of a finished one; the workflow itself for an eligible one.
     fun openWorkflow(id: String, items: List<WorkflowCellItem>) {
@@ -195,7 +195,7 @@ val FormsTable = FC<FormsTableProps> { props ->
         rowKey = "key"
         // Server-side sort (issue #666): antd reports the header the caller clicked and its direction. The
         // dataIndex it reports **is** the endpoint's sort key -- a display column's is namespaced
-        // (`display_<traitId>`), which is exactly what keeps a trait named like a fixed column from colliding
+        // (`display_<column>`), which is exactly what keeps a column named like a fixed one from colliding
         // with it, so it is sent as-is. Order is undefined on the third click, which clears the sort.
         onChange = { _, _, sorter ->
             val order = sorter.order as? String
@@ -203,15 +203,15 @@ val FormsTable = FC<FormsTableProps> { props ->
             if (order == null || field == null) props.onSort(null, false) else props.onSort(field, order == "descend")
         }
         val cols = buildList {
-            // Namespaced key: a usage trait id must not shadow the reserved row key ("key") or a fixed column
+            // Namespaced key: a column's name must not shadow the reserved row key ("key") or a fixed column
             // ("contains"/"owner"/"updated"/"created"/"actions") -- overwriting the row key would break which
             // form a click opens.
-            // Sortable (issue #666): a display column orders by its trait, the date columns by their value. The
+            // Sortable (issue #666): a display column orders by its value, the date columns by theirs. The
             // header arrow is antd's, controlled from `sortColumn`/`sortDescending`; the sort key sent to the
             // endpoint is the column's dataIndex -- namespaced for a display column, `updated`/`created` for a date.
             displayCols.forEach {
                 // Drawn as a time column is (issue #1323): the presented text, with the value behind it on hover.
-                add(timeColumn(sortableColumn(it.label, displayColKey(it.traitId), 160, props.sortColumn, props.sortDescending)))
+                add(timeColumn(sortableColumn(it.label, displayColKey(it.columnId), 160, props.sortColumn, props.sortDescending)))
             }
             add(sortableColumn("Contains", GSORT.contains, null, props.sortColumn, props.sortDescending))
             if (props.showOwner) add(ownerColumn(props.sortColumn, props.sortDescending))
@@ -249,8 +249,8 @@ val FormsTable = FC<FormsTableProps> { props ->
             // Each declared column's value for this row, read through its presentation (issue #1323), under the same
             // namespaced key as its column; a blank cell where the row has none. A reworded value is on hover.
             summary.displayValues.forEach {
-                val key = displayColKey(it.traitId)
-                val shown = presentedValue(it, columnsById[it.traitId], env)
+                val key = displayColKey(it.columnId)
+                val shown = presentedValue(it, columnsById[it.columnId], env)
                 row[key] = shown.ifBlank { "—" }
                 presentedCellTip(it, shown)?.let { tip -> row[timeTipKey(key)] = tip }
             }
@@ -587,14 +587,14 @@ private fun minTableWidth(cols: List<dynamic>): dynamic {
     return scroll
 }
 
-/** The antd row/column key for a display column: a trait id, namespaced so it cannot shadow the reserved
+/** The antd row/column key for a display column: its name (issue #1490), namespaced so it cannot shadow the reserved
  *  row key ("key") or the fixed "contains"/"owner"/"updated"/"created"/"actions" columns (issue #537). */
-private fun displayColKey(traitId: String): String = GSORT.displayColumnPrefix + traitId
+private fun displayColKey(columnId: String): String = GSORT.displayColumnPrefix + columnId
 
 /**
  * An antd column that sorts server-side (issue #666): `sorter = true` with a **controlled** `sortOrder`, so the
  * arrow reflects [sortColumn]/[descending] the parent holds rather than antd sorting the page itself. The
- * [dataIndex] is both the row-data key and the endpoint's sort key -- namespaced (`display_<traitId>`) for a
+ * [dataIndex] is both the row-data key and the endpoint's sort key -- namespaced (`display_<column>`) for a
  * display column, so it cannot be read as a fixed `updated`/`created` column.
  */
 private fun sortableColumn(
