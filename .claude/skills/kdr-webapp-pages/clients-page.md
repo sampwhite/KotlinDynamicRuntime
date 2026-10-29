@@ -116,7 +116,7 @@ each say why instead. A retired client stays in the listing, as "Retired", which
 
 **Files** (issue #1176, `FileRefsSection.kt`, its pure half in `FileRefs.kt`, covered by `FileRefsTest`): under
 Web assets and drawn as they are, a client's **file refs** -- the named images its configuration holds (the calls
-are listed under "A client's file refs" in `static-content.md`). A row a ref: a preview, its id with a mark for what is unusual
+are listed under "A client's file refs" in `client-web-assets.md`). A row a ref: a preview, its id with a mark for what is unusual
 (`fileRefTags`: a draft, a missing file, one the client was shipped with), its description, what the file is
 (`fileRefHoldsText`), where it is by its source and which configuration holds it (`fileRefWhereText`), and the
 address it is served at; then **Replace…** (and **Use a kept file…** where a root is open to clients), and for a

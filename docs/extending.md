@@ -72,7 +72,7 @@ interface is a place it can contribute; each has a default that contributes noth
 | **Endpoints and their types** | `addSchema`, with a schema module: the endpoint builders and the `Sch*` schema DSL. | the `kdr-endpoint-builder` and `kdr-schema-builder` skills |
 | **Tables, and caches over them** | `addSchema`, through the collector. | the `kdr-table-cache` skill |
 | **Traits, workflows, clients, reports, and cfacts** | `gedraConfigs`, with the `gedraConfig { ... }` DSL. These are the same definitions a client stores. | the `kdr-test-clients` skill, [`design/client-definition.md`](design/client-definition.md) |
-| **Copy** | `fragments`: Markdown fragment files, and overlays on another component's files. | the `kdr-webapp-pages` skill (`static-content.md`) |
+| **Copy** | `fragments`: Markdown fragment files, and overlays on another component's files. | `webapp/CLAUDE.md` |
 | **Presentation structure** | `uiBlocks`: blocks such as the menu, and overlays on another component's blocks. | [`design/ui-block.md`](design/ui-block.md) |
 | **Documents** | `docs`: Markdown pages served in-app and offered on the Documents page. | `ComponentDefinition` |
 | **Services** | `startupServices` and `services`. | `ComponentDefinition` |

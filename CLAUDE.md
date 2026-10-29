@@ -31,9 +31,10 @@ subtly wrong.
 
 **A skill's code examples are compiled as tests** (`*SkillExamplesTest`), so a signature change breaks the
 build rather than quietly staling the documentation. (`kdr-demo-docs` has prose examples instead; the pages it
-describes are held to the code by `ConfDemoDocsTest`.) When you change an API, change its skill in the same
-edit — the test will tell you which one, and a skill is read *instead of* the source, so a wrong one is
-followed rather than noticed.
+describes are held to the code by `ConfDemoDocsTest`. `kdr-webapp-pages` is prose with no test behind it at
+all: only the rule that a page's change updates its file in the same edit keeps it current.) When you change an
+API, change its skill in the same edit — the test will tell you which one, and a skill is read *instead of* the
+source, so a wrong one is followed rather than noticed.
 
 ## Before a pull request
 

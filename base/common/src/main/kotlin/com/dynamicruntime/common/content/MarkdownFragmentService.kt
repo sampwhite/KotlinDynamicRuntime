@@ -47,7 +47,7 @@ import java.util.concurrent.ConcurrentHashMap
  * Serves Markdown *fragment* files as a two-tier `namespace -> (key -> value)` JSON map (issue #59), under the
  * static context root (`ContextRoot.st`). A [ContentServer], not a JSON API endpoint: it needs a permanent
  * `Cache-Control` and returns a free-form map, and it deliberately does **not** appear in the `/schema/endpoints`
- * API catalog. See the `kdr-webapp-pages` skill (`static-content.md`) for the frontend-facing contract.
+ * API catalog. See `webapp/CLAUDE.md` for the frontend-facing contract.
  *
  * Request shape: `/<staticRoot>/<appId>/md/<fileId:buildId>`, e.g. `/st/myapp/md/emailForms:9f3ac1`.
  *  - `appId` stays **opaque and unread**. It is frontend-constructed, so whose content a caller receives must
