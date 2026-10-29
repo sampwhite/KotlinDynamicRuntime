@@ -221,8 +221,9 @@ object AdminApi {
             // Sent only to create a disabled account: the backend defaults to enabled, so the common case
             // stays a shorter body and existing callers are unchanged.
             if (!enabled) put(ADF.enabled, false)
-            // The labels it starts with (issues #786, #1481), sent only when there are some.
-            if (labels.isNotEmpty()) put(ADF.labels, labels)
+            // The labels it starts with (issues #786, #1481), always sent: given, even empty, they replace any a
+            // recovered disabled user carried, so a re-created user does not come back with a label nobody chose.
+            put(ADF.labels, labels)
         }
         return Http.sendApi("POST", UADEP.userCreate, body).results().toAdminUser()
     }
@@ -395,8 +396,8 @@ class UserSearchQuery(
     val sortBy: String = defaultUserSortKey,
     val descending: Boolean = defaultUserSortDescending,
     /**
-     * A single free-text term matched across email, name, username, persona, and persona suffix at once (issue #581)
-     * -- the OR term the scope-bar type-ahead and the users console's search box (issue #1432) send, distinct from the
+     * A single free-text term matched across email, name, username, persona, persona suffix, and label at once (issues
+     * #581, #1481) -- the OR term the scope-bar type-ahead and the users console's search box (issue #1432) send, distinct from the
      * per-field [textTerms] which AND. Blank is no constraint.
      * Appended after the existing parameters so the positional call sites (the users console) are unaffected.
      */

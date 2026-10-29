@@ -88,8 +88,11 @@ One more is neither authority nor identity:
   rather than beside it. A tags `Select` offering the *user's* client's suggestions (`labelSuggestions`, fetched
   by `ensureLabelSuggestions` the first time that client is asked for and kept keyed by client, so a slow reply can
   only fill its own client's entry — never land on the next user's editor) while accepting any other label typed.
-  On the create form too, offering the suggestions of the client the form names, and sent with the create (the
-  backend applies them in the same follow-up write as a disable, so they are not counted as an edit). The list
+  On the create form too, offering the suggestions of the client the form names, and always sent with the create:
+  given, even empty, they replace any a recovered disabled user carried. The backend applies them in the same
+  follow-up write as a disable, so labels alone are not counted as an edit. The suggestions are fetched from
+  effects keyed on the editor's client, not from `startEdit`/`startCreate`, which the route listener reaches with
+  stale closures. The list
   has a **Labels** column and filter (`USF.labels`, `UserFilterChoices.labels`: an `AutoComplete` of the searched
   client's suggestions that also takes a typed label), and the search box matches a label too. Editable on your
   **own** row too, deliberately — a label is not privilege,

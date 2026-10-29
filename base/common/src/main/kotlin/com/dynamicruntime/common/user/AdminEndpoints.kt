@@ -139,7 +139,11 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
                 type = SCT.boolean
             }
             // Issues #786, #1481.
-            field(ADF.labels, "Free-form labels the new user starts with; absent or empty for none.") {
+            field(
+                ADF.labels,
+                "Free-form labels the new user starts with. Given, they replace any a recovered disabled user carried " +
+                    "(empty clears them); absent, a recovered user keeps its own.",
+            ) {
                 labelList()
             }
         },
@@ -222,12 +226,17 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
         val enabled = request.getOptBool(ADF.enabled) ?: true
         // The labels ride the same follow-up write rather than `provisionUser`'s data map: recovering a disabled
         // user rewrites its data from the row, whose labels would win. Given, they replace whatever a recovered user
-        // carried. Labels alone are part of the creation, not an edit of it, so they leave the Edited date unstamped.
-        val labels = request[ADF.labels].toJsonListOfStrings()
-        if (!enabled || labels.isNotEmpty()) {
-            loadUser(c, userId).let { row ->
+        // carried -- an empty list too, since a label can back approval authority (#787) and a re-created user should
+        // not come back with one nobody asked for. Written only when that changes something, so a new user given none
+        // costs no write. Labels alone are part of the creation, not an edit of it, so they leave the Edited date
+        // unstamped.
+        val labels = request[ADF.labels]?.let { normalizeUserLabels(it.toJsonListOfStrings()) }
+        if (!enabled || labels != null) {
+            val row = loadUser(c, userId)
+            val relabel = labels != null && labels != row.labels
+            if (!enabled || relabel) {
                 if (!enabled) row.enabled = false
-                if (labels.isNotEmpty()) row.labels = labels // the row normalizes
+                if (relabel) row.labels = labels.orEmpty()
                 service.updateUser(c, row, isEdit = !enabled)
             }
         }
@@ -245,7 +254,7 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
         LogAuth.info(c) {
             "Admin ${c.userProfile.userId} created user $userId ('$primaryId', persona '$persona'" +
                 (if (personaSuffix.isEmpty()) "" else ", personaSuffix '$personaSuffix'") + ") with roles $roles" +
-                (if (labels.isEmpty()) "" else ", labels $labels") + (if (!enabled) " (disabled)." else ".")
+                (if (labels.isNullOrEmpty()) "" else ", labels $labels") + (if (!enabled) " (disabled)." else ".")
         }
         loadUser(c, userId).toAdminInfo(c)
     }
@@ -571,8 +580,9 @@ private fun SchModuleBuilder.userReadEndpoints(usersPath: String, searchPath: St
     // rows -- so the newest-first listing above stays the way to reach a disabled or deleted account.
     listEndpoint(
         searchPath,
-        "Searches active users over the in-memory cache -- email/name substring, client, and update-time " +
-            "range -- sorted by any of those fields (default: newest first). Returns up to '${USF.defaultLimit}'.",
+        "Searches active users over the in-memory cache -- email and name substrings, client, persona, roles, labels, " +
+            "and date ranges -- sorted by most of those fields (default: newest first). Returns up to " +
+            "'${USF.defaultLimit}'.",
         outputRef = ADTY.adminUser,
         hasMore = true,
         hasNumAvailable = true,

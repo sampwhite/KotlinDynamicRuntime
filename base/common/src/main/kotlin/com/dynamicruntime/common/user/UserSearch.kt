@@ -63,8 +63,9 @@ class UserSearchField(
     val sortOf: (AuthUserRow) -> Comparable<*>?,
     /**
      * The texts the free-text term ([UserSearchCriteria.anyText]) matches as substrings, or null to leave the field out
-     * of it. By default a substring field's own [textsOf]. The persona is picked exactly but still found by free text,
-     * suffix and all (issue #1432); the roles are left out, since every account holds `user`.
+     * of it. By default a substring field's own [textsOf]. Two exact fields are still found by free text: the persona,
+     * suffix and all (issue #1432), and the labels (issues #786, #1481), each something a person remembers a user by.
+     * The roles are left out, since every account holds `user`.
      */
     val anyTextsOf: ((AuthUserRow) -> List<String>)? = textsOf.takeIf { substring },
 )
@@ -165,8 +166,8 @@ class UserSearchCriteria(
      */
     val textTerms: Map<String, String> = emptyMap(),
     /**
-     * A single free-text term matched across *every* substring text field at once -- the account's email, real
-     * name, username, persona, or label (issues #581, #786, #1481). Where [textTerms] AND (each named field must
+     * A single free-text term matched across every field's [UserSearchField.anyTextsOf] at once -- the account's
+     * email, real name, username, persona, persona suffix, or label (issues #581, #786, #1481). Where [textTerms] AND (each named field must
      * match), this is one OR: a row matches when the term is a substring of any of those. It backs a single
      * type-ahead box that finds a user however the person searching remembers them; null (or blank, dropped
      * before here) is no constraint.

@@ -289,7 +289,7 @@ private const val linksColumn = "links"
 /**
  * Which edge a column is pinned to while the middle scrolls, or null for one that scrolls (issue #750). The
  * columns that say *who* -- id, email, name, client, persona -- hold the left; the one that says whether they
- * are live holds the right; the dates, type and roles are what you scroll to read. Pure, covered under
+ * are live holds the right; the dates, type, roles, and labels are what you scroll to read. Pure, covered under
  * `jsNodeTest`.
  */
 fun pinnedSide(dataIndex: String): String? = when (dataIndex) {
@@ -311,9 +311,10 @@ fun pinnedSide(dataIndex: String): String? = when (dataIndex) {
  * one that holds the widest of those and the header with its sort arrow, not a preference. A column whose content
  * cannot grow should never be the one that wraps. (They were 175 when they held `2026-08-27 19:23 UTC`.)
  *
- * The total is kept near what a 1440-wide window can show, so nothing is pushed off the right-hand edge and
- * behind a scrollbar. Above that the surplus is shared out; below it the table scrolls inside the card. The
- * columns that absorb the difference are the two whose content has no bound.
+ * The total was kept near what a 1440-wide window can show, so nothing was pushed off the right-hand edge and
+ * behind a scrollbar; the Labels column (issue #1481) takes it past that, which the pinned columns make cheap (see
+ * its entry). Above the total the surplus is shared out; below it the table scrolls inside the card. The columns
+ * that absorb the difference are the two whose content has no bound.
  */
 private val columnWidths: Map<String, Int> = mapOf(
     idColumn to 50,

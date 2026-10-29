@@ -858,7 +858,8 @@ class UserService : ServiceInitializer {
         // `lastEditedAt` moves on an ordinary write and is opted *out* of, not into (issue #462). The failure
         // modes are not symmetric: a new edit path that forgot to opt in would silently stop tracking, which
         // nothing would ever show, while a non-edit write that forgets to opt out moves a timestamp it should
-        // not -- rarer, and visible. Two callers opt out today: the login stamp and re-enabling an account.
+        // not -- rarer, and visible. The callers that opt out are writes nobody made as an edit -- among them the login
+        // stamp, re-enabling an account, and a create's own follow-up write of its labels.
         if (isEdit) {
             row.lastEditedAt = cxt.now()
         }

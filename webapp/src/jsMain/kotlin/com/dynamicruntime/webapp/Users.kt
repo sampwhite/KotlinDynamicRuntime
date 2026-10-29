@@ -370,10 +370,23 @@ val Users = FC<Props> {
         }
     }
 
-    // The Labels filter offers the suggestions of the client being searched: the one the Client filter names, else the
-    // caller's own. Fetched once the well is open, so a page nobody filters asks for nothing.
-    val labelFilterClient = textFilters[USF.client]?.trim()?.ifEmpty { null } ?: config?.user?.client ?: ""
-    useEffect(filtersOpen, labelFilterClient) {
+    // The editor's Labels field offers the suggestions of the user's client -- on a new user, the client the form names,
+    // the caller's own until it names one. Fetched from an effect rather than from `startEdit`/`startCreate`, which the
+    // once-registered route listener reaches with the first render's (empty) config, and which would read a just-set
+    // client back as the one it replaced.
+    val editorLabelClient = editing?.client ?: draftClient.ifEmpty { null } ?: config?.user?.client ?: ""
+    useEffect(editing != null || creating, editorLabelClient, config?.canManageUsers) {
+        if (editing != null || creating) ensureLabelSuggestions(editorLabelClient)
+    }
+
+    // The Labels filter offers the suggestions of the client being searched: the one the Client filter names -- which
+    // only an `allClients` caller is offered, so a shared link naming another client asks nothing of anyone else --
+    // else the caller's own. For an `allClients` caller searching every client, that is their own client's list, and
+    // any other label is typed. Fetched once the well is open, so a page nobody filters asks for nothing.
+    val searchesAllClients = config?.user?.roles?.contains(ROLE.allClients) == true
+    val labelFilterClient = textFilters[USF.client]?.trim()?.ifEmpty { null }?.takeIf { searchesAllClients }
+        ?: config?.user?.client ?: ""
+    useEffect(filtersOpen, labelFilterClient, config?.canManageUsers) {
         if (filtersOpen) ensureLabelSuggestions(labelFilterClient)
     }
 
@@ -382,8 +395,6 @@ val Users = FC<Props> {
         editing = user
         creating = false
         seedDraft(user)
-        // The suggestions of the *user's* client, not the editor's.
-        ensureLabelSuggestions(user.client)
     }
 
     /** Opens the editor on a new user -- for the caller's own address when [forSelf] (issue #797). */
@@ -393,8 +404,6 @@ val Users = FC<Props> {
         creatingForSelf = forSelf
         seedDraft(null)
         if (forSelf) draftEmail = ownAddressRef.current ?: ""
-        // The new user's client is the caller's own until an `allClients` caller picks another (which fetches again).
-        ensureLabelSuggestions(config?.user?.client ?: "")
     }
 
     fun closeEditor() {
@@ -836,10 +845,7 @@ val Users = FC<Props> {
                         options = clientOptions(clientChoices)
                         disabled = busy
                         style = choiceStyle()
-                        onChange = { v ->
-                            draftClient = v as? String ?: draftClient
-                            ensureLabelSuggestions(draftClient)
-                        }
+                        onChange = { v -> draftClient = v as? String ?: draftClient }
                     }
                 }
                 p {
@@ -931,7 +937,7 @@ val Users = FC<Props> {
                     mode = "tags"
                     value = draftLabels.toTypedArray()
                     options = labelSelectOptions(
-                        userLabelChoices(labelSuggestions[editing?.client ?: draftClient].orEmpty(), draftLabels),
+                        userLabelChoices(labelSuggestions[editorLabelClient].orEmpty(), draftLabels),
                     )
                     placeholder = "(none)"
                     disabled = busy
@@ -1169,26 +1175,35 @@ val Users = FC<Props> {
                                 style = js("({ width: '100%', maxWidth: 420 })")
                                 onChange = { event -> setText(spec.name, event.target.value as String, immediate = false) }
                             }
-                            UserFilterKind.exact -> if (spec.choices == UserFilterChoices.labels) {
+                            // Exact fields render as a picker, its choices from where the spec says (issue #1432).
+                            UserFilterKind.exact -> when (spec.choices) {
                                 // The labels (issues #786, #1481): the client's suggestions, or any label typed, since
-                                // a label need not be one of them. A pick searches at once; typing waits, as a text
-                                // box does.
-                                AutoComplete {
+                                // a label need not be one of them. Every suggestion stays offered whatever is in the
+                                // box (see "Choice widgets" in the webapp's CLAUDE.md). A pick or a clear searches at
+                                // once; typing waits, as a text box does -- one handler, since antd reports a pick to
+                                // `onChange` as well as `onSelect`, and two would search twice.
+                                UserFilterChoices.labels -> AutoComplete {
+                                    val suggested = labelSuggestions[labelFilterClient].orEmpty()
                                     value = textFilters[spec.name] ?: ""
-                                    options = labelSelectOptions(labelSuggestions[labelFilterClient].orEmpty())
+                                    options = labelSelectOptions(suggested)
+                                    filterOption = false
                                     placeholder = "Any"
                                     allowClear = true
                                     style = js("({ minWidth: 180 })")
-                                    onChange = { v -> setText(spec.name, v as? String ?: "", immediate = false) }
-                                    onSelect = { v -> setText(spec.name, v as? String ?: "", immediate = true) }
+                                    onChange = { v ->
+                                        val label = v as? String ?: ""
+                                        setText(spec.name, label, immediate = label.isEmpty() || label in suggested)
+                                    }
                                 }
-                            } else {
-                                Select {
-                                    // Exact fields render as a picker: of the spec's own choices (the persona, the
-                                    // roles; issue #1432), else of the clients this caller may choose among.
+                                // The spec's own options (the persona, the roles), else the clients this caller may
+                                // choose among.
+                                UserFilterChoices.listed, UserFilterChoices.clients, null -> Select {
                                     value = (textFilters[spec.name] ?: "").ifEmpty { null }
-                                    options = spec.options?.let { filterOptions(it, showClient) }
-                                        ?: clientOptions(clientChoices)
+                                    options = if (spec.choices == UserFilterChoices.listed) {
+                                        filterOptions(spec.options.orEmpty(), showClient)
+                                    } else {
+                                        clientOptions(clientChoices)
+                                    }
                                     // "Any roles" would misread a list-valued field; its label above says which.
                                     placeholder = if (spec.listValued) "Any" else "Any ${spec.label.lowercase()}"
                                     allowClear = true
@@ -1374,9 +1389,9 @@ fun userFilterChips(texts: Map<String, String>, ranges: Map<String, DateRange>):
     }
 
 /**
- * An exact filter as a chip (issue #1432): its choice's label where the spec has choices (`Persona is "Editor"`), and
- * `include` for a list-valued field (`Roles include "Editor"`). A value no choice names (a hand-edited link) shows as
- * it came. Pure, and covered under `jsNodeTest`.
+ * An exact filter as a chip (issue #1432): its option's label where the spec lists options (`Persona is "Editor"`),
+ * and `include` for a list-valued field (`Roles include "Editor"`, `Labels include "reviewer"`). A value no option
+ * names -- a label, or a hand-edited link -- shows as it came. Pure, and covered under `jsNodeTest`.
  */
 fun exactChip(spec: UserSearchFieldSpec, value: String?): String? {
     val v = value?.trim()?.ifEmpty { null } ?: return null

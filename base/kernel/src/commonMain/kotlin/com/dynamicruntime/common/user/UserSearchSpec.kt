@@ -28,8 +28,9 @@ enum class UserFilterKind {
     substring,
 
     /**
-     * A case-insensitive exact match, rendered as a picker: of the spec's own [UserSearchFieldSpec.options] when it
-     * has them (the persona, the roles), else of the clients this caller may choose among.
+     * A case-insensitive exact match, rendered as a picker whose choices come from where the spec's
+     * [UserSearchFieldSpec.choices] says: its own options (the persona, the roles), the clients this caller may choose
+     * among, or the searched client's label suggestions.
      */
     exact,
 
@@ -89,14 +90,22 @@ class UserSearchFieldSpec(
     val rangeKeys: Pair<String, String>? = null,
     /**
      * For a [UserFilterKind.exact] field, the choices its picker offers (issue #1432), or null for one whose choices
-     * the console fetches (see [choices]). Known to the kernel, so both sides name the same values.
+     * the console fetches -- the clients, or the label suggestions, which also leave a label to be typed (see
+     * [choices]). Known to the kernel, so both sides name the same values.
      */
     val options: List<UserFilterOption>? = null,
-    /** For a [UserFilterKind.exact] field, where its picker's choices come from; [options] when it has them. */
-    val choices: UserFilterChoices = if (options != null) UserFilterChoices.listed else UserFilterChoices.clients,
     /**
-     * Whether a row holds a list of values here, any one of which the filter matches (the roles). It changes only the
-     * words: the chip says `Roles include "Editor"` rather than `is`.
+     * For a [UserFilterKind.exact] field, where its picker's choices come from: [UserFilterChoices.listed] when it has
+     * [options], else the clients unless it says otherwise. Null for every other kind, which has no picker.
+     */
+    val choices: UserFilterChoices? = when {
+        filterKind != UserFilterKind.exact -> null
+        options != null -> UserFilterChoices.listed
+        else -> UserFilterChoices.clients
+    },
+    /**
+     * Whether a row holds a list of values here, any one of which the filter matches (the roles, the labels). It
+     * changes only the words: the chip says `Roles include "Editor"` rather than `is`.
      */
     val listValued: Boolean = false,
 )

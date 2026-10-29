@@ -271,6 +271,16 @@ class UserSearchTest : StringSpec({
         }
     }
 
+    "a picker's choices are declared only where there is a picker, and agree with its options (issue #1481)" {
+        for (spec in userSearchFieldSpecs) {
+            // Only an exact field has a picker; listed exactly when the spec carries its own options.
+            (spec.choices != null) shouldBe (spec.filterKind == UserFilterKind.exact)
+            (spec.choices == UserFilterChoices.listed) shouldBe (spec.options != null)
+            // A user carries several labels, so the labels picker is list-valued wherever it appears.
+            if (spec.choices == UserFilterChoices.labels) spec.listValued shouldBe true
+        }
+    }
+
     "the shared sort keys are exactly the sortable spec fields" {
         userSortKeys shouldBe userSearchFieldSpecs.filter { it.sortable }.map { it.name }.toSet()
         // And each is a real registry entry the endpoint will accept as a sort field.

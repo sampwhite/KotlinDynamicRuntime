@@ -27,6 +27,7 @@ import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.user.ADEP
 import com.dynamicruntime.common.user.ADF
+import com.dynamicruntime.common.user.CDEP
 import com.dynamicruntime.common.user.UADEP
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.user.ULIM
@@ -182,6 +183,46 @@ class UserLabelsTest : StringSpec({
         admin.expectError(
             EXC.badInput, UADEP.userCreate, data = mapOf(ADF.primaryId to "split@$client.test", ADF.labels to "a, b"),
         )
+    }
+
+    "an editor finds users by label through the read-only directory the console reads (issue #1481)" {
+        val labelled = TestUser.create(cxt, "dir@$client.test", userClient = client)
+        admin.postData(UADEP.userSetLabels, mapOf(ADF.userId to labelled.userId, ADF.labels to listOf("siteLead")))
+        val editor = TestUser.create(cxt, "editor@$client.test", capabilities = listOf(ROLE.editor), userClient = client)
+        fun found(args: Map<String, Any?>) = editor.getItems(CDEP.userSearch, args).map { it[ADF.primaryId] }
+        found(mapOf(USF.labels to "sitelead")) shouldContain "dir@$client.test"
+        found(mapOf(EI.q to "lead")) shouldContain "dir@$client.test"
+    }
+
+    "a user created disabled starts with its labels, and the disable is what stamps Edited" {
+        val made = admin.postData(
+            UADEP.userCreate,
+            mapOf(ADF.primaryId to "off@$client.test", ADF.enabled to false, ADF.labels to listOf("reviewer")),
+        )
+        made[ADF.enabled] shouldBe false
+        labelsOf(made) shouldContainExactly listOf("reviewer")
+        (made[USF.lastEdited.at] != null) shouldBe true
+    }
+
+    "re-creating a disabled user: given labels replace its old ones, empty clears them, absent keeps them" {
+        fun recreate(email: String, labels: List<String>?): Map<String, Any?> {
+            val id = admin.postData(UADEP.userCreate, mapOf(ADF.primaryId to email, ADF.labels to listOf("reviewer")))[ADF.userId]
+            admin.postData(UADEP.userSetEnabled, mapOf(ADF.userId to id, ADF.enabled to false))
+            val again = admin.postData(
+                UADEP.userCreate,
+                buildMap {
+                    put(ADF.primaryId, email)
+                    labels?.let { put(ADF.labels, it) }
+                },
+            )
+            // The same user, recovered rather than a second one made.
+            again[ADF.userId] shouldBe id
+            return again
+        }
+        labelsOf(recreate("again1@$client.test", listOf("siteLead"))) shouldContainExactly listOf("siteLead")
+        // A label can back approval authority (#787): a re-created user given none does not come back with one.
+        labelsOf(recreate("again2@$client.test", emptyList())) shouldContainExactly emptyList()
+        labelsOf(recreate("again3@$client.test", null)) shouldContainExactly listOf("reviewer")
     }
 
     "a permanently deleted user keeps no labels" {
