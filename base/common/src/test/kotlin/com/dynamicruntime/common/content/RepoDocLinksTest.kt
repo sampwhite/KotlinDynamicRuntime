@@ -1,31 +1,41 @@
 package com.dynamicruntime.common.content
 
+import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.util.headingSlug
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.ints.shouldBeGreaterThan
 import java.io.File
 
+@Suppress("ConstPropertyName")
+object RDL {
+    /** The system property `docLinksTest` passes the documents in, separated by the platform's path separator. */
+    const val repoDocsProperty = "kdr.repoDocs"
+}
+
 /**
- * Every link in the repository's documentation resolves (issue #1294): `README.md`, both `CLAUDE.md` files, everything
- * under `docs/` and `.claude/skills/`, and the guides in `examples/`. A link names a page or file that exists in the repository, and a
- * `#section` that is a heading of the page it names -- as GitHub mints heading anchors, which the app's renderer
- * matches (`headingSlug`). An outside address, a `mailto:`, and a page of the app (`/wa/...`, or `#page=...` from
- * before paths) are left alone.
+ * Every link in the repository's documentation resolves (issue #1294): every Markdown file at the repository's root,
+ * `webapp/CLAUDE.md`, and everything under `docs/`, `examples/`, and `.claude/skills/`. A link names a page or file that
+ * exists in the repository, and a `#section` that is a heading of the page it names -- as GitHub mints heading anchors,
+ * which the app's renderer matches (`headingSlug`). An outside address, a `mailto:`, and a page of the app (`/wa/...`,
+ * or `#page=...` from before paths) are left alone.
  *
  * The documents link to each other by relative paths, which a move breaks without a word; this is what makes a
  * broken one fail the build. Links inside code -- fenced blocks and inline code spans -- are not links.
+ *
+ * The list of documents is not here: base/common's build declares it once and passes it in ([RDL.repoDocsProperty]),
+ * as the inputs of the `docLinksTest` task that runs this (issue #1474), so a change to Markdown alone reruns it. Run
+ * it with `./gradlew :base:common:docLinksTest`; the module's `test` task leaves it out.
  */
 class RepoDocLinksTest : StringSpec({
     // The tests run in the module's directory (base/common), two below the repository root.
     val repoRoot = File("../..").canonicalFile
 
     fun documents(): List<File> {
-        val roots = listOf(File(repoRoot, "README.md"), File(repoRoot, "CLAUDE.md"), File(repoRoot, "webapp/CLAUDE.md"))
-        // The skills too (issue #1468): `kdr-webapp-pages` is an index linking its page files by relative path.
-        val trees = listOf("docs", "examples", ".claude/skills").map { File(repoRoot, it) }
-            .flatMap { dir -> dir.walkTopDown().filter { it.isFile && it.name.endsWith(".md") }.toList() }
-        return (roots + trees).filter { it.exists() }.sortedBy { it.path }
+        val paths = System.getProperty(RDL.repoDocsProperty)
+            ?: throw KdrException("No '${RDL.repoDocsProperty}' system property: run this through Gradle, as " +
+                "`./gradlew :base:common:docLinksTest`, which passes the documents to check.")
+        return paths.split(File.pathSeparator).filter { it.isNotEmpty() }.map { File(it) }.filter { it.exists() }
     }
 
     "every link in the documentation resolves, to a file that exists and a section it has" {

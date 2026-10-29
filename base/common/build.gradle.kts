@@ -119,3 +119,51 @@ sourceSets {
 tasks.named("processResources") {
     dependsOn(embedDocs)
 }
+
+// RepoDocLinksTest (issues #1294, #1474) reads the repository's Markdown straight from the tree, not from the
+// classpath, so Gradle would know nothing of it: a change to Markdown alone would leave the tests up to date, and a
+// broken link would pass the build. So the documents are listed once, here, and handed to the test as a system
+// property by an argument provider whose properties are the task's inputs: what the test reads and what reruns it
+// cannot drift apart. The other files of the documentation trees are inputs too, since documents link to them (an
+// image, an example file). A link to source code needs nothing more, since the sources are on the classpath.
+//
+// The check runs in a task of its own, so a change to Markdown reruns it alone rather than the module's whole suite;
+// `test` leaves it out, and `check` runs both. Run it alone with `./gradlew :base:common:docLinksTest`.
+class RepoDocsArgument(
+    @get:InputFiles @get:PathSensitive(PathSensitivity.RELATIVE) val docs: FileCollection,
+    @get:InputFiles @get:PathSensitive(PathSensitivity.RELATIVE) val linkTargets: FileCollection,
+) : CommandLineArgumentProvider {
+    override fun asArguments() = listOf("-Dkdr.repoDocs=" + docs.files.sorted().joinToString(File.pathSeparator))
+}
+
+val docLinksTestClass = "com.dynamicruntime.common.content.RepoDocLinksTest"
+val docTrees = listOf("docs", "examples", ".claude/skills")
+// Resolved from this module's own directory (base/common -> the repo root), as `embedDocs` is.
+val repoRoot = layout.projectDirectory.dir("../..")
+
+val docLinksTest by tasks.registering(Test::class) {
+    description = "Checks that every link in the repository's documentation resolves."
+    group = "verification"
+    testClassesDirs = sourceSets.test.get().output.classesDirs
+    classpath = sourceSets.test.get().runtimeClasspath
+    filter.includeTestsMatching(docLinksTestClass)
+    jvmArgumentProviders.add(
+        RepoDocsArgument(
+            // Every Markdown file at the repository's root, `webapp/CLAUDE.md`, and the Markdown of the trees.
+            docs = files(
+                repoRoot.asFile.listFiles { f -> f.isFile && f.name.endsWith(".md") }.orEmpty(),
+                repoRoot.file("webapp/CLAUDE.md"),
+                docTrees.map { tree -> fileTree(repoRoot.dir(tree)) { include("**/*.md") } },
+            ),
+            linkTargets = files(docTrees.map { tree -> fileTree(repoRoot.dir(tree)) { exclude("**/*.md") } }),
+        ),
+    )
+}
+
+tasks.named<Test>("test") {
+    filter.excludeTestsMatching(docLinksTestClass)
+}
+
+tasks.named("check") {
+    dependsOn(docLinksTest)
+}

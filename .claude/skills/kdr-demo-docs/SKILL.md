@@ -119,7 +119,8 @@ cleanly fails there -- then, for every `.md` in `docs/demo-client/`:
 
 Links are checked with the rest of the repository's documentation by `RepoDocLinksTest` (`base:common`, issue
 #1294): a page or repo file that exists, and a `#section` that is a heading of the page it names (slugs are
-GitHub's, which `headingSlug` matches). Links to a page of the app (`/wa/...`) and outside URLs are left alone.
+GitHub's, which `headingSlug` matches). Links to a page of the app (`/wa/...`) and outside URLs are left alone. It
+runs in a task of its own: `./gradlew :base:common:docLinksTest`.
 
 What the test does **not** check is prose: a claim like "the form shows one field" is yours to verify (below).
 
