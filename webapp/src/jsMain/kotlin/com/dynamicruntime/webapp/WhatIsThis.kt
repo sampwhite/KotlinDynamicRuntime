@@ -7,6 +7,7 @@ import react.dom.html.ReactHTML.div
 import react.dom.html.ReactHTML.h1
 import react.dom.html.ReactHTML.h2
 import react.dom.html.ReactHTML.h3
+import react.dom.html.ReactHTML.span
 import react.ChildrenBuilder
 import react.useState
 import web.cssom.ClassName
@@ -41,6 +42,12 @@ external interface WhatIsThisProps : Props {
      * #1476): a link to a served document -- a reference the explanation points to -- opens it in the app.
      */
     var linkResolver: ((String) -> String)?
+
+    /**
+     * A short state drawn beside the heading, in its line (issue #1477): a draft panel's "Unsaved changes" while it
+     * holds edits. Null for none.
+     */
+    var marker: String?
 }
 
 /** A sequence for the ids that tie a link to the text it opens, unique for the page's lifetime. */
@@ -73,6 +80,12 @@ val WhatIsThis = FC<WhatIsThisProps> { props ->
         tag {
             props.headingId?.let { id = ElementId(it) }
             if (props.headingMarkdown == true) MarkdownInline { source = text } else +text
+            props.marker?.let {
+                span {
+                    className = ClassName("heading-marker")
+                    +it
+                }
+            }
         }
     }
 

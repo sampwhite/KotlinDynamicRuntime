@@ -1247,23 +1247,27 @@ pre.copy-value-raw { margin: 0; white-space: pre-wrap; word-break: break-word; f
 .copy-key-was > p { margin: 6px 0 2px; }
 .copy-key > textarea.copy-edit { margin-top: 4px; }
 .copy-key .type-hint { margin: 4px 0; }
-/* Pending changes are saved from a bar that stays in view at the bottom of the window while the file scrolls. */
-.copy-save-bar {
-    position: sticky;
-    bottom: 0;
-    z-index: 5;
+/* A draft's one save (issue #1477, `SaveBar`): a footer at the bottom of the panel it covers, its effect line and its
+   failure on lines of their own. A draft spanning several panels -- the copy file -- keeps the bar in view at the
+   bottom of the window while the page scrolls. */
+.save-bar {
     display: flex;
     align-items: center;
     gap: 12px;
     flex-wrap: wrap;
     margin-top: 12px;
+}
+.save-bar-sticky {
+    position: sticky;
+    bottom: 0;
+    z-index: 5;
     padding: 10px 14px;
     border: 1px solid var(--accent-bright);
     border-radius: 8px;
     background: var(--surface-raised);
     box-shadow: 0 -8px 24px rgba(0, 0, 0, .35);
 }
-.copy-save-bar > .type-hint, .copy-save-bar > .error-text, .copy-save-bar > .internal-error { flex-basis: 100%; margin: 0; }
+.save-bar > .type-hint, .save-bar > .error-text, .save-bar > .internal-error { flex-basis: 100%; margin: 0; }
 /* Unapplied edits: the well is visibly pending until the change is loaded into the form. */
 textarea.json-edit.edited { border-color: var(--accent-bright); }
 /* The same well inside a form row (issue #251). A free-form map field is usually a handful of keys, so it
@@ -1794,8 +1798,10 @@ body.dv-open .app-content { padding-right: calc(var(--dv-panel-width) + 16px); }
     border-radius: 8px;
 }
 .client-issues > h2 { margin: 0 0 4px; font-size: var(--h3-size); }
-.client-sections { display: flex; flex-wrap: wrap; gap: 4px 14px; padding-top: 4px; font-size: .9rem; }
-.client-panel {
+/* A page's panels (issues #1397, #1477; `Panels.kt`): the links to them at its top, each a shaded box, a live one's
+   note under its heading, a draft's unsaved marker beside it, and the danger zone set apart in red. */
+.panel-links { display: flex; flex-wrap: wrap; gap: 4px 14px; padding-top: 4px; font-size: .9rem; }
+.panel {
     margin-top: 20px;
     padding: 16px 20px 20px;
     border: 1px solid var(--border);
@@ -1803,25 +1809,36 @@ body.dv-open .app-content { padding-right: calc(var(--dv-panel-width) + 16px); }
     background: color-mix(in oklab, var(--surface-raised), var(--surface-page) 40%);
     scroll-margin-top: 84px;
 }
-.card > .client-panel { margin-top: 20px; }
-.client-panel > * + * { margin-top: 14px; }
-.client-panel > h3, .client-panel > .what-is-this-heading:not(:first-child) { margin-top: 24px; }
-.client-panel > .what-is-this-heading:first-child { margin-top: 0; }
+.card > .panel { margin-top: 20px; }
+.panel > * + * { margin-top: 14px; }
+.panel > h3, .panel > .what-is-this-heading:not(:first-child) { margin-top: 24px; }
+.panel > .what-is-this-heading:first-child { margin-top: 0; }
 /* A panel with no explanation of its own (Definition, publishing, Retirement) is headed by a bare h2, whose own top
    margin would otherwise open a gap above it that the explained panels do not have. */
-.client-panel > h2:first-child { margin-top: 0; }
-.client-panel > h3 + *, .client-panel > .what-is-this-heading + * { margin-top: 8px; }
-.client-panel-danger { border-color: color-mix(in oklab, var(--danger) 45%, var(--border)); }
+.panel > h2:first-child { margin-top: 0; }
+.panel > h3 + *, .panel > .what-is-this-heading + * { margin-top: 8px; }
+.panel-danger { border-color: color-mix(in oklab, var(--danger) 45%, var(--border)); }
+.panel > .panel-live-note { margin-top: 4px; font-size: .9rem; color: var(--text-muted); }
+.heading-marker {
+    margin-left: 10px;
+    padding: 1px 8px;
+    border: 1px solid var(--accent-bright);
+    border-radius: 999px;
+    font-size: .75rem;
+    font-weight: 500;
+    color: var(--accent-bright);
+    vertical-align: middle;
+}
 /* The definition's groups, side by side where there is room, each a block of label and value rows. */
 .client-def-groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 18px 32px; }
 .client-def-group > * + * { margin-top: 6px; }
 .client-def-group > .what-is-this-heading { margin-bottom: 4px; }
 .client-def-group .field-label { min-width: 170px; }
 @media (max-width: 560px) { .client-def-groups { grid-template-columns: 1fr; } }
-.client-disclosure > summary { cursor: pointer; color: var(--accent-bright); }
-.client-disclosure > summary:hover { color: var(--accent-brighter); }
-.client-disclosure[open] > summary { margin-bottom: 10px; }
-.client-disclosure > * + * { margin-top: 14px; }
+.disclosure > summary { cursor: pointer; color: var(--accent-bright); }
+.disclosure > summary:hover { color: var(--accent-brighter); }
+.disclosure[open] > summary { margin-bottom: 10px; }
+.disclosure > * + * { margin-top: 14px; }
 
 /* API keys (issue #1402): the listing, a key's extension under its row, the create form, and the one-time dialog. */
 .api-keys-section { margin-top: 24px; }

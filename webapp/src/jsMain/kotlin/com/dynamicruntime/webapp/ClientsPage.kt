@@ -21,21 +21,16 @@ import react.FC
 import react.Fragment
 import react.Key
 import react.Props
-import react.PropsWithChildren
 import react.create
 import react.dom.html.ReactHTML.a
 import react.dom.html.ReactHTML.code
-import react.dom.html.ReactHTML.details
 import react.dom.html.ReactHTML.div
 import react.dom.html.ReactHTML.h1
 import react.dom.html.ReactHTML.h2
 import react.dom.html.ReactHTML.h3
 import react.dom.html.ReactHTML.li
-import react.dom.html.ReactHTML.nav
 import react.dom.html.ReactHTML.p
-import react.dom.html.ReactHTML.section
 import react.dom.html.ReactHTML.span
-import react.dom.html.ReactHTML.summary
 import react.dom.html.ReactHTML.table
 import react.dom.html.ReactHTML.tbody
 import react.dom.html.ReactHTML.td
@@ -46,8 +41,6 @@ import react.dom.html.ReactHTML.ul
 import react.useEffect
 import react.useRef
 import react.useState
-import kotlinx.browser.document
-import web.dom.ElementId
 import web.cssom.ClassName
 import web.window.WindowTarget
 import web.window._blank
@@ -377,18 +370,10 @@ private fun ChildrenBuilder.clientDetail(
                 }
             }
             if (panels.size > 2) {
-                nav {
-                    className = ClassName("client-sections")
-                    panels.forEach { (id, title) ->
-                        span {
-                            key = id.unsafeCast<Key>()
-                            panelLink(id, title)
-                        }
-                    }
-                }
+                panelLinks(panels)
             }
         }
-        clientPanel(panelDefinition, "Definition", "") {
+        panel(panelDefinition, "Definition", "") {
             // Editing the definition (issue #1026): the presentation fields of a client defined in stored configuration.
             def?.stored?.let { stored ->
                 if (definitionEditable(row)) {
@@ -448,7 +433,7 @@ private fun ChildrenBuilder.clientDetail(
             }
         }
         if (workflowsShown) {
-            clientPanel(panelFormsData, "Forms and data", pageCopy.explanation(PFRAG.formsDataNs)) {
+            panel(panelFormsData, "Forms and data", pageCopy.explanation(PFRAG.formsDataNs)) {
                 // The global traits it includes (issue #1117), a field of its stored definition chosen apart from the
                 // definition editor, and offered where that editor is: a save lands in the same configuration under the
                 // same rules.
@@ -487,7 +472,7 @@ private fun ChildrenBuilder.clientDetail(
         // What the client's own configuration changes about what its people see (issue #917): the copy it rewords,
         // file by file, and its editor (issues #918, #1062).
         if (!overridesRefused) {
-            clientPanel(panelCopy, "Copy", pageCopy.explanation(PFRAG.copyNs)) {
+            panel(panelCopy, "Copy", pageCopy.explanation(PFRAG.copyNs)) {
                 when {
                     overridesError != null -> errorText("Couldn't load this client's copy changes.", overridesError)
                     overrides == null -> p {
@@ -516,7 +501,7 @@ private fun ChildrenBuilder.clientDetail(
         // carries, whose people there are to see them. A sandbox shows its parent's web assets, and says so; its own
         // page lists the files its parent has drafted.
         if (present && row != null) {
-            clientPanel(panelImages, "Images", pageCopy.explanation(PFRAG.imagesNs)) {
+            panel(panelImages, "Images", pageCopy.explanation(PFRAG.imagesNs)) {
                 h3 { +"Web assets" }
                 WebAssetsSection {
                     this.clientId = clientId
@@ -540,7 +525,7 @@ private fun ChildrenBuilder.clientDetail(
         // Its sandbox (issue #932), then the configuration it stores, where the drafts the panels above make are
         // published. A sandbox holds no configuration of its own; it runs its parent's latest (issue #1001), listed
         // here as such.
-        clientPanel(panelPublishing, publishingHeading(row), "") {
+        panel(panelPublishing, publishingHeading(row), "") {
             row?.let { overview ->
                 WhatIsThis {
                     heading = "Sandbox"
@@ -592,7 +577,7 @@ private fun ChildrenBuilder.clientDetail(
         }
         // The home menu and its editor (issue #919), collapsed: changing it is rare, and it is the longest table here.
         if (!overridesRefused) {
-            clientPanel(panelMenu, "Menu", pageCopy.explanation(PFRAG.menuNs)) {
+            panel(panelMenu, "Menu", pageCopy.explanation(PFRAG.menuNs)) {
                 when {
                     overridesError != null -> errorText("Couldn't load this client's menu changes.", overridesError)
                     overrides == null -> p {
@@ -626,7 +611,7 @@ private fun ChildrenBuilder.clientDetail(
         // every client -- who alone can reach a retired client's page, through the listing. Last, being the rarest.
         if (acrossClients) {
             row?.let { overview ->
-                clientPanel(panelRetirement, "Retirement", "", extraClass = "client-panel-danger") {
+                panel(panelRetirement, "Retirement", kind = PanelKind.danger) {
                     RetirementSection {
                         this.row = overview
                         storedConfig = def?.storedConfig
@@ -650,62 +635,6 @@ private const val panelRetirement = "client-retirement"
 
 /** The publishing panel's heading: a sandbox has no sandbox of its own, only its parent's configuration. */
 private fun publishingHeading(row: ClientOverview?): String = if (row?.sandboxOf != null) "Publishing" else "Sandbox and publishing"
-
-/**
- * A panel of the client page (issue #1397): a keyed `section` set apart from the others, headed by [heading] with
- * its "What is this?" [explanation] (none when blank), its element id [id] what a section link leads to.
- */
-private fun ChildrenBuilder.clientPanel(id: String, heading: String, explanation: String, extraClass: String? = null, body: ChildrenBuilder.() -> Unit) {
-    section {
-        key = id.unsafeCast<Key>()
-        this.id = ElementId(id)
-        className = ClassName(listOfNotNull("client-panel", extraClass).joinToString(" "))
-        WhatIsThis {
-            this.heading = heading
-            text = explanation
-        }
-        body()
-    }
-}
-
-/**
- * A link to a panel of the page (issue #1397), scrolled to rather than navigated to: the address is the page's, and a
- * hash would be read as one. Centred, not at the top: the app bar is fixed and would cover a heading scrolled under it.
- */
-private fun ChildrenBuilder.panelLink(id: String, text: String) {
-    a {
-        className = ClassName("wf-cell-link")
-        href = "#"
-        onClick = { e ->
-            e.preventDefault()
-            document.getElementById(id)?.asDynamic()?.scrollIntoView(js("({ block: 'start', behavior: 'smooth' })"))
-        }
-        +text
-    }
-}
-
-external interface DisclosureProps : PropsWithChildren {
-    /** The line the closed disclosure shows, which opens it. */
-    var summaryText: String
-
-    /** Open to start, as one just added is (issue #1460); closed when unset. */
-    var initiallyOpen: Boolean?
-}
-
-/**
- * A section of the page that starts closed (issue #1397), its contents drawn only once opened: the menu's editor,
- * whose table is the page's longest and rarely changed, reads nothing until somebody asks for it.
- */
-val Disclosure = FC<DisclosureProps> { props ->
-    var expanded by useState(props.initiallyOpen == true)
-    details {
-        className = ClassName("client-disclosure")
-        this.open = expanded
-        onToggle = { e -> expanded = e.currentTarget.asDynamic().open == true }
-        summary { +props.summaryText }
-        if (expanded) +props.children
-    }
-}
 
 external interface DefinitionEditorProps : Props {
     var clientId: String

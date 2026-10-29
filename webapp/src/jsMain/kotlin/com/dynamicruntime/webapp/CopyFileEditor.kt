@@ -318,30 +318,22 @@ val CopyFileEditor = FC<CopyFileEditorProps> { props ->
     }
 
     if (pending.isNotEmpty()) {
-        div {
-            className = ClassName("copy-save-bar")
-            span { +"${pendingCopyText(pending)}." }
-            Button {
-                type = "primary"
-                this.loading = saving
-                onClick = { save() }
-                +"Save"
+        SaveBar {
+            sticky = true
+            pendingText = "${pendingCopyText(pending)}."
+            saveText = "Save"
+            discardText = "Discard"
+            effectText = "${saveEffectText(props.savesDraft)} The changes are saved together: if the checks fault any " +
+                "of them, none is saved."
+            this.saving = saving
+            error = saveError
+            errorLead = "Couldn't save the copy."
+            onSave = { save() }
+            onDiscard = {
+                pending = emptyMap()
+                editing = emptySet()
+                saveError = null
             }
-            Button {
-                type = "link"
-                disabled = saving
-                onClick = {
-                    pending = emptyMap()
-                    editing = emptySet()
-                    saveError = null
-                }
-                +"Discard"
-            }
-            p {
-                className = ClassName("type-hint")
-                +"${saveEffectText(props.savesDraft)} The changes are saved together: if the checks fault any of them, none is saved."
-            }
-            saveError?.let { errorText("Couldn't save the copy.", it) }
         }
     } else {
         note?.let {

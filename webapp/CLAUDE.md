@@ -326,6 +326,42 @@ Hover moves away from the background, as a link's does.
 - **Disabled buttons keep antd's colours too.**
 - **Primary and link buttons are untouched.**
 
+## Page structure: panels, drafts, and live actions (issue #1477)
+
+A page that edits something reads the same way everywhere, so a reader always knows which button commits which
+controls. The building blocks are in `Panels.kt`; the client page (issue #1397) is the page built this way first.
+
+1. **A page is a stack of panels.** Each is a shaded box (`panel(id, heading, explanation, kind)`) with a heading and,
+   optionally, "What is this?". Every control belongs to exactly one panel.
+2. **A panel is a draft or live, never both** (`PanelKind`; `view` for a read-only panel, or a section holding editors
+   that each follow these rules, as the client page's do).
+   - **Draft**: edits wait for a save. One footer per draft, at the bottom of what it covers (`SaveBar`). It holds
+     a primary verb naming the thing ("Save user", "Save name", "Create user"), a link "Cancel" or "Discard", and a
+     line in the style of `saveEffectText`. Save is disabled until something changed, and the panel's heading says
+     "Unsaved changes" while the draft is dirty (`panel(..., dirty = ...)`). A draft spanning several panels uses one
+     sticky `SaveBar` instead, as the copy editor does.
+   - **Live**: each button acts at once and is labeled with its verb ("Send invitation", "Create key"); the panel
+     says so under its heading ("Changes here take effect immediately.").
+   - **One primary button per panel.** "OK" is not a label.
+3. **Results show where the action was taken.** Each panel draws its own failure and note (`panelNote`), never one
+   line shared by the page.
+4. **A longer page, or tabs.** The default is one scrolling page of panels, with links to them at the top
+   (`panelLinks`). Tabs only for sections that are separate tasks, visited one at a time, on a page past about three
+   screens — no page meets that yet, so there are no `Tabs` bindings. **A draft never spans tabs**: Save must not
+   commit what is out of sight.
+5. **Simple first, the rest on request — per panel, not a global mode.** An "advanced mode" switch hides state: a
+   reader in simple mode cannot see that a user holds All clients. A draft panel shows its common fields and puts the
+   rest under `MoreOptions`, which opens itself when anything inside is set and names what is in its summary ("More
+   options · Editor, labels: reviewer"); both come from its one `inForce` list, so they cannot disagree. Each option
+   inside has a one-line hint beginning "Use this when".
+6. **Delete appears only when it can succeed** — an existing record, never one being created, never your own row
+   — in a last `PanelKind.danger` panel, behind `DangerConfirm` (the danger button, then the question naming where
+   it acts, `deleteTargetText` (issue #1049), the confirm, and the way back). Every danger button is confirmed.
+7. **Show how things fit together before the knobs.** A page about a user opens with a read-only line of its
+   structure — the person's address, their users by client and persona, this user's access — before any field.
+
+Disclosures are `Disclosure` (closed until asked for, its contents drawn only once opened), and `MoreOptions` is one.
+
 ## Times in tables (issue #1141)
 
 A table column shows a time **relative to now** (`RelativeTime.kt`): `just now` within a minute either way, then two

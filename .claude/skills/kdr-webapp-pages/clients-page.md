@@ -69,7 +69,7 @@ monotonic token, so a client this node does not carry still shows what the listi
 (`CFEP`, `ACEP`, `CCT`, `GCI`) live in the kernel for that reason.
 
 **The detail's layout** (issue #1397; the pure half is `ClientDetailLayout.kt`, covered by `ClientDetailLayoutTest`).
-The page has a header, and then panels: each a keyed `section` (`clientPanel`), set apart as a copy file is.
+The page has a header, and then panels: each a keyed `section` (the shared `panel`, `Panels.kt`, issue #1477), set apart as a copy file is.
 
 - **The header** holds the client's name. Next to it are its chips (`clientStatusChips`: the load, and how it relates to a sandbox), then its links, **N forms · N users · Reports** (`clientHeaderLinks`). The header also holds:
   - a line saying how a save takes effect here (`clientSaveEffectLine`);
