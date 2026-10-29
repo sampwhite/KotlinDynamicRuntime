@@ -1248,8 +1248,8 @@ pre.copy-value-raw { margin: 0; white-space: pre-wrap; word-break: break-word; f
 .copy-key > textarea.copy-edit { margin-top: 4px; }
 .copy-key .type-hint { margin: 4px 0; }
 /* A draft's one save (issue #1477, `SaveBar`): a footer at the bottom of the panel it covers, its effect line and its
-   failure on lines of their own. A draft spanning several panels -- the copy file -- keeps the bar in view at the
-   bottom of the window while the page scrolls. */
+   failure on lines of their own. A draft too long for its footer to stay in sight -- a copy file -- keeps the bar in
+   view at the bottom of the window while the page scrolls. */
 .save-bar {
     display: flex;
     align-items: center;
@@ -1798,8 +1798,8 @@ body.dv-open .app-content { padding-right: calc(var(--dv-panel-width) + 16px); }
     border-radius: 8px;
 }
 .client-issues > h2 { margin: 0 0 4px; font-size: var(--h3-size); }
-/* A page's panels (issues #1397, #1477; `Panels.kt`): the links to them at its top, each a shaded box, a live one's
-   note under its heading, a draft's unsaved marker beside it, and the danger zone set apart in red. */
+/* A page's panels (issues #1397, #1477; `Panels.kt`): the links to them at its top, each a shaded box, a draft's
+   unsaved marker beside its heading, and the danger zone set apart in red. */
 .panel-links { display: flex; flex-wrap: wrap; gap: 4px 14px; padding-top: 4px; font-size: .9rem; }
 .panel {
     margin-top: 20px;
@@ -1818,7 +1818,10 @@ body.dv-open .app-content { padding-right: calc(var(--dv-panel-width) + 16px); }
 .panel > h2:first-child { margin-top: 0; }
 .panel > h3 + *, .panel > .what-is-this-heading + * { margin-top: 8px; }
 .panel-danger { border-color: color-mix(in oklab, var(--danger) 45%, var(--border)); }
-.panel > .panel-live-note { margin-top: 4px; font-size: .9rem; color: var(--text-muted); }
+/* A line under a heading (`WhatIsThis.subline`): a live panel's "Changes here take effect immediately." Close under the
+   heading, by a selector more specific than the panel's own heading spacing, so it does not depend on rule order. */
+.heading-subline { font-size: .9rem; color: var(--text-muted); }
+.panel > :is(h2, h3, .what-is-this-heading) + .heading-subline { margin-top: 4px; }
 .heading-marker {
     margin-left: 10px;
     padding: 1px 8px;

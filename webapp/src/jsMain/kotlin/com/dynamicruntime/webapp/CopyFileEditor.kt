@@ -321,7 +321,8 @@ val CopyFileEditor = FC<CopyFileEditorProps> { props ->
         SaveBar {
             sticky = true
             pendingText = "${pendingCopyText(pending)}."
-            saveText = "Save"
+            saveText = "Save copy"
+            canSave = true
             discardText = "Discard"
             effectText = "${saveEffectText(props.savesDraft)} The changes are saved together: if the checks fault any " +
                 "of them, none is saved."

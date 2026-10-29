@@ -7,6 +7,7 @@ import react.dom.html.ReactHTML.div
 import react.dom.html.ReactHTML.h1
 import react.dom.html.ReactHTML.h2
 import react.dom.html.ReactHTML.h3
+import react.dom.html.ReactHTML.p
 import react.dom.html.ReactHTML.span
 import react.ChildrenBuilder
 import react.useState
@@ -48,6 +49,12 @@ external interface WhatIsThisProps : Props {
      * holds edits. Null for none.
      */
     var marker: String?
+
+    /**
+     * A line under the heading and above any opened explanation (issue #1477): a live panel's "Changes here take effect
+     * immediately." Null for none.
+     */
+    var subline: String?
 }
 
 /** A sequence for the ids that tie a link to the text it opens, unique for the page's lifetime. */
@@ -89,8 +96,19 @@ val WhatIsThis = FC<WhatIsThisProps> { props ->
         }
     }
 
+    // The subline, under the heading's line and above the explanation once opened.
+    fun ChildrenBuilder.subline() {
+        props.subline?.let {
+            p {
+                className = ClassName("heading-subline")
+                +it
+            }
+        }
+    }
+
     if (text.isEmpty()) {
         props.heading?.let { heading(it) }
+        subline()
         return@FC
     }
 
@@ -112,6 +130,7 @@ val WhatIsThis = FC<WhatIsThisProps> { props ->
             +if (open) facts.whatIsThisHide ?: "Hide" else facts.whatIsThisLink ?: "What is this?"
         }
     }
+    subline()
     if (open) {
         div {
             id = ElementId(panelId)

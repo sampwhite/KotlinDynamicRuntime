@@ -287,10 +287,10 @@ a row is dense and a full button per row would not fit. Everywhere else, a destr
 button. The three surfaces share `formsEditorHeader` (back link, title, right-aligned actions), so a new action
 lands in the same place on each; classify it by the rule above before picking its type.
 
-**Link colour lives in `app.css`, for `<a>` links and link buttons alike, and it is measured.** `.back-link` and
+**Link color lives in `app.css`, for `<a>` links and link buttons alike, and it is measured.** `.back-link` and
 `.ant-btn.ant-btn-link` both read `--accent-bright` at rest and `--accent-brighter` (one step up the same indigo
 ramp) on hover, with an underline — scoped to live, non-destructive link buttons: a `danger` link keeps antd's red
-and a disabled one keeps antd's dimmed colour with no hover, both of which a bare colour rule silently overrides.
+and a disabled one keeps antd's dimmed color with no hover, both of which a bare color rule silently overrides.
 It is a CSS rule and **not** an antd token on purpose: antd's dark algorithm
 re-derives a `colorLink` *seed* to a dimmer shade (measured: `#818cf8` came out `#717ad6`, 3.8:1), so a token
 cannot pin the palette's value. The rule exists because antd's stock dark link (`#1668dc`) measures **2.8:1**
@@ -298,17 +298,17 @@ against the slate card and its derived hover *darkens* to **1.5:1** — the algo
 near-black backgrounds, where a darker hover still reads; on this shell it vanishes. On the scheme's indigo the
 rest state is 4.9:1 and hover 7.3:1, moving *away* from the background.
 
-Two things about verifying it were learned the hard way. **The hover and active colours need `!important`.**
-antd 6 applies its state colours through *nested* rules (`&:not(:disabled):not(.ant-btn-disabled):hover`) whose
+Two things about verifying it were learned the hard way. **The hover and active colors need `!important`.**
+antd 6 applies its state colors through *nested* rules (`&:not(:disabled):not(.ant-btn-disabled):hover`) whose
 effective specificity beats any reasonable app selector, and a stylesheet walk will not even find them unless it
 recurses into nested rules — so a plain override *looks* right in the CSS and still loses on screen. And **a
-hover colour can only be verified with a real pointer**: `:hover` cannot be synthesised from script, so reading
-the rule's declared colour proves nothing. Put the pointer on the control (the browser pane's `hover` action, by
+hover color can only be verified with a real pointer**: `:hover` cannot be synthesized from script, so reading
+the rule's declared color proves nothing. Put the pointer on the control (the browser pane's `hover` action, by
 ref), wait out antd's `0.2s` transition, then read `getComputedStyle(el).color`. If a link ever looks dim,
 measure that way against its surface before touching the palette, and keep hover brighter than rest.
 
 **A default (secondary) button is themed by antd component tokens** (issue #1399), set in `App.kt`'s
-`ConfigProvider` as `components.Button`. The dark algorithm gave it antd's own container colour, a near-black
+`ConfigProvider` as `components.Button`. The dark algorithm gave it antd's own container color, a near-black
 `#141414` under a `#424242` hairline. That is darker than the slate card and panels it sits on, so it read as an inset
 slot rather than something to press. It now has:
 
@@ -323,26 +323,32 @@ Hover moves away from the background, as a link's does.
   component token as given. Measured on screen, including a real-pointer hover.
 - **Danger buttons keep antd's dark fill on purpose.** Their red text measures about 4.2:1 on it, and would drop to
   about 2.4:1 on the slate one.
-- **Disabled buttons keep antd's colours too.**
+- **Disabled buttons keep antd's colors too.**
 - **Primary and link buttons are untouched.**
 
 ## Page structure: panels, drafts, and live actions (issue #1477)
 
 A page that edits something reads the same way everywhere, so a reader always knows which button commits which
-controls. The building blocks are in `Panels.kt`; the client page (issue #1397) is the page built this way first.
+controls. The building blocks are in `Panels.kt`. The client page (issue #1397) supplied the panels and the links to
+them; its editors, its Retirement confirm, and the bundle editor's sticky bar (`.bundle-editor-savebar`) predate the
+save and confirm rules below and have not moved onto them yet. The Users editor (#1478) and Profile (#1479) are the
+first pages built to all of them.
 
 1. **A page is a stack of panels.** Each is a shaded box (`panel(id, heading, explanation, kind)`) with a heading and,
    optionally, "What is this?". Every control belongs to exactly one panel.
 2. **A panel is a draft or live, never both** (`PanelKind`; `view` for a read-only panel, or a section holding editors
-   that each follow these rules, as the client page's do).
+   of its own, as the client page's do).
    - **Draft**: edits wait for a save. One footer per draft, at the bottom of what it covers (`SaveBar`). It holds
-     a primary verb naming the thing ("Save user", "Save name", "Create user"), a link "Cancel" or "Discard", and a
-     line in the style of `saveEffectText`. Save is disabled until something changed, and the panel's heading says
-     "Unsaved changes" while the draft is dirty (`panel(..., dirty = ...)`). A draft spanning several panels uses one
-     sticky `SaveBar` instead, as the copy editor does.
+     a primary verb naming the thing ("Save user", "Save name", "Save copy"), a link "Cancel" or "Discard", and a
+     line in the style of `saveEffectText`. Save is disabled until something changed: `SaveBar` enables it only
+     when told `canSave = true`, so a footer that forgets shows a Save that cannot be pressed. The panel's heading
+     says "Unsaved changes" while the draft is dirty (`panel(..., dirty = ...)`). A draft too long for its footer to
+     stay in sight uses a sticky `SaveBar` instead, as the copy editor does for a copy file.
    - **Live**: each button acts at once and is labeled with its verb ("Send invitation", "Create key"); the panel
      says so under its heading ("Changes here take effect immediately.").
    - **One primary button per panel.** "OK" is not a label.
+   - The draft's Cancel and Discard are links, as a back link is: they drop the draft and leave. The form view and
+     edit pages keep their own rule (Buttons and links, issue #726), where Done and Cancel are buttons in the header.
 3. **Results show where the action was taken.** Each panel draws its own failure and note (`panelNote`), never one
    line shared by the page.
 4. **A longer page, or tabs.** The default is one scrolling page of panels, with links to them at the top
@@ -352,15 +358,20 @@ controls. The building blocks are in `Panels.kt`; the client page (issue #1397) 
 5. **Simple first, the rest on request — per panel, not a global mode.** An "advanced mode" switch hides state: a
    reader in simple mode cannot see that a user holds All clients. A draft panel shows its common fields and puts the
    rest under `MoreOptions`, which opens itself when anything inside is set and names what is in its summary ("More
-   options · Editor, labels: reviewer"); both come from its one `inForce` list, so they cannot disagree. Each option
-   inside has a one-line hint beginning "Use this when".
-6. **Delete appears only when it can succeed** — an existing record, never one being created, never your own row
-   — in a last `PanelKind.danger` panel, behind `DangerConfirm` (the danger button, then the question naming where
-   it acts, `deleteTargetText` (issue #1049), the confirm, and the way back). Every danger button is confirmed.
+   options · Editor, labels: reviewer"); both come from its one `inForce` list, so they cannot disagree. It takes the
+   record it belongs to (`recordKey`), so another record starts it afresh rather than as the reader left the last
+   one. Each option inside has a one-line hint beginning "Use this when".
+6. **Deleting the thing the page is about appears only when it can succeed** — an existing record, never one being
+   created, never your own row — in a last `PanelKind.danger` panel, behind `DangerConfirm` (the danger button, then
+   the question naming where it acts, `deleteTargetText` (issue #1049), the confirm, and the way back). It is armed
+   for one record only (`recordKey`), so a page that swaps the record in place never shows a confirm left waiting by
+   the last one. Removing a row from a list on the page is not this: it stays the row's own `confirmedRemove`
+   (`RowActionStatus.kt`), or a `Popconfirm` beside the row. Either way, every danger button is confirmed.
 7. **Show how things fit together before the knobs.** A page about a user opens with a read-only line of its
    structure — the person's address, their users by client and persona, this user's access — before any field.
 
-Disclosures are `Disclosure` (closed until asked for, its contents drawn only once opened), and `MoreOptions` is one.
+Disclosures are `Disclosure`, its contents drawn only once opened: closed to start unless `initiallyOpen`, and opened
+by `openWhen`, which is how `MoreOptions` opens itself.
 
 ## Times in tables (issue #1141)
 

@@ -52,7 +52,7 @@ enum class PanelKind {
     /** Each control acts at once; a line under the heading says so. */
     live,
 
-    /** The last panel, holding what cannot be undone, set apart in the danger colour. */
+    /** The last panel, holding what cannot be undone, set apart in the danger color. */
     danger,
 }
 
@@ -77,12 +77,7 @@ fun ChildrenBuilder.panel(
             this.heading = heading
             text = explanation
             marker = PNL.unsaved.takeIf { kind == PanelKind.draft && dirty }
-        }
-        if (kind == PanelKind.live) {
-            p {
-                className = ClassName("panel-live-note")
-                +PNL.liveNote
-            }
+            subline = PNL.liveNote.takeIf { kind == PanelKind.live }
         }
         body()
     }
@@ -138,8 +133,9 @@ external interface DisclosureProps : PropsWithChildren {
 }
 
 /**
- * A section of the page that starts closed (issue #1397), its contents drawn only once opened: the menu's editor,
- * whose table is the page's longest and rarely changed, reads nothing until somebody asks for it.
+ * A section of the page shown on request (issue #1397), its contents drawn only once opened: the menu's editor,
+ * whose table is the page's longest and rarely changed, reads nothing until somebody asks for it. Closed to start
+ * unless [DisclosureProps.initiallyOpen], and opened by [DisclosureProps.openWhen] as [MoreOptions] uses it.
  */
 val Disclosure = FC<DisclosureProps> { props ->
     var expanded by useState(props.initiallyOpen == true || props.openWhen == true)
@@ -157,6 +153,12 @@ val Disclosure = FC<DisclosureProps> { props ->
 
 external interface MoreOptionsProps : PropsWithChildren {
     /**
+     * The record the options belong to (a user's id, say). Another record starts the disclosure afresh -- open when its
+     * own options are set -- rather than keeping how the reader left the last one, which could hide a setting in effect.
+     */
+    var recordKey: String
+
+    /**
      * What is set inside, each said shortly ("Editor", "labels: reviewer"); empty when everything is at its default.
      * It is the summary line, and it opens the disclosure: one list, so the two cannot disagree.
      */
@@ -170,6 +172,7 @@ external interface MoreOptionsProps : PropsWithChildren {
  */
 val MoreOptions = FC<MoreOptionsProps> { props ->
     Disclosure {
+        key = props.recordKey.unsafeCast<Key>()
         summaryText = moreOptionsSummary(props.inForce)
         openWhen = moreOptionsOpens(props.inForce)
         +props.children
@@ -190,7 +193,10 @@ external interface SaveBarProps : Props {
     /** The primary verb, naming what it saves ("Save user", "Save name"). Never "OK". */
     var saveText: String
 
-    /** The way back: "Cancel" (the default) or "Discard". */
+    /**
+     * The way back: "Cancel" (the default) or "Discard". Link-styled: it drops the draft and leaves the save, as a back
+     * link leaves a page.
+     */
     var discardText: String?
 
     /** How a save takes effect, in the style of `saveEffectText`, said with the buttons. */
@@ -198,7 +204,10 @@ external interface SaveBarProps : Props {
 
     var saving: Boolean
 
-    /** Whether there is anything to save; Save is disabled until there is. Default true. */
+    /**
+     * Whether there is anything to save. Save is disabled unless this is true, so a footer that forgets it shows a Save
+     * that cannot be pressed -- noticed at once -- rather than one pressable before anything changed.
+     */
     var canSave: Boolean?
 
     /** The save's failure, drawn here, where the save was asked for. */
@@ -207,7 +216,10 @@ external interface SaveBarProps : Props {
     /** Leads the failure ("Couldn't save the copy."). */
     var errorLead: String?
 
-    /** In view at the window's bottom while the page scrolls -- for a draft spanning several panels. Default false. */
+    /**
+     * In view at the window's bottom while the page scrolls -- for a draft too long for its footer to stay in sight, as
+     * a copy file is. Default false.
+     */
     var sticky: Boolean?
 
     var onSave: () -> Unit
@@ -226,7 +238,7 @@ val SaveBar = FC<SaveBarProps> { props ->
         Button {
             type = "primary"
             loading = props.saving
-            disabled = props.canSave == false
+            disabled = props.canSave != true
             onClick = { props.onSave() }
             +props.saveText
         }
@@ -264,6 +276,12 @@ fun ChildrenBuilder.panelNote(error: DisplayError?, note: String?, errorLead: St
 }
 
 external interface DangerConfirmProps : Props {
+    /**
+     * The record it acts on (a user's id, say). Armed for one record, it is not armed for the next: a page that swaps
+     * the record in place shows the first press again, never a confirm left waiting by the last one.
+     */
+    var recordKey: String
+
     /** The danger button that arms it, ending in an ellipsis since it asks first ("Delete user…"). */
     var actionText: String
 
@@ -284,17 +302,20 @@ external interface DangerConfirmProps : Props {
 /**
  * The one confirmation for what cannot be undone (issue #1477, rule 6): a danger button that, pressed, is replaced in
  * place by the question, the danger confirm, and the way back -- two deliberate presses, the second beside the words
- * saying what it does. Keyed by the record it acts on, so opening another resets it.
+ * saying what it does. Armed only for the record it was pressed for ([DangerConfirmProps.recordKey]).
  */
 val DangerConfirm = FC<DangerConfirmProps> { props ->
-    var armed by useState(false)
+    // Which record it was armed for, so another record reads as unarmed from its first render -- not after an effect
+    // has caught up, a frame in which a click would delete the wrong one.
+    var armedFor by useState<String?>(null)
+    val armed = armedFor == props.recordKey
     div {
         className = ClassName("row")
         if (!armed) {
             Button {
                 danger = true
                 disabled = props.busy == true
-                onClick = { armed = true }
+                onClick = { armedFor = props.recordKey }
                 +props.actionText
             }
         } else {
@@ -311,7 +332,7 @@ val DangerConfirm = FC<DangerConfirmProps> { props ->
             Button {
                 type = "link"
                 disabled = props.busy == true
-                onClick = { armed = false }
+                onClick = { armedFor = null }
                 +props.keepText
             }
         }
