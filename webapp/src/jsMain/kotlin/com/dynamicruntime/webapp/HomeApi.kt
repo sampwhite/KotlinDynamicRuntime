@@ -124,6 +124,11 @@ class HomeConfig(
      */
     val images: Map<String, String> = emptyMap(),
     /**
+     * The images components ship that are kept in the repository (issue #1463), each path there to its rooted name, a
+     * key of [images]: a document's link to that path is drawn as the image ([componentImageAddressByPath]).
+     */
+    val imagePaths: Map<String, String> = emptyMap(),
+    /**
      * The IANA time zone the caller's moments are shown in (issue #1115, [DisplayZone]): their client's, else the
      * deployment's display default; null when neither is set, for the deployment's day start.
      */
@@ -201,6 +206,7 @@ fun homeConfigFrom(config: UiConfig): HomeConfig {
         webAssets = webAssetNamesFrom(config.state[HFLD.webAssets]),
         fileRefs = fileRefNamesFrom(config.state[HFLD.fileRefs]),
         images = componentImageNamesFrom(config.state[HFLD.images]),
+        imagePaths = componentImagePathsFrom(config.state[HFLD.imagePaths]),
         timeZone = (config.state[HFLD.timeZone] as? String)?.ifBlank { null },
         timeZoneLabel = (config.state[HFLD.timeZoneLabel] as? String)?.ifBlank { null },
     )
@@ -233,17 +239,23 @@ private const val docAppRoot = "/wa/"
  * interior relative links become in-app document links (`/wa/docs/<id>`, via [docHref] so the format cannot drift
  * from what [routeParams] reads) or links into the source repo, per the kernel's [resolveDocLink], and a link to a
  * page of the app ([docAppRoot]) is put under the app's live root. With a null [sourceRepoBase] a non-document
- * relative link resolves to empty, which the renderer draws as its text (issue #1380). Pure over its inputs;
- * covered by `jsNodeTest`.
+ * relative link resolves to empty, which the renderer draws as its text (issue #1380). A link to the path an image a
+ * component ships is kept at becomes that image's address in [imageAddressByPath] (issue #1463), so a document's plain
+ * `![alt](images/x.svg)` draws in the app as it does on GitHub. Pure over its inputs; covered by `jsNodeTest`.
  */
-fun docLinkResolver(currentSourcePath: String, links: List<HomeLink>, sourceRepoBase: String?): (String) -> String {
+fun docLinkResolver(
+    currentSourcePath: String,
+    links: List<HomeLink>,
+    sourceRepoBase: String?,
+    imageAddressByPath: Map<String, String> = emptyMap(),
+): (String) -> String {
     val byPath = docKeyByPath(links)
     return { raw ->
         val url = raw.trim()
         if (url.startsWith(docAppRoot)) {
             appRootPrefix() + url.substring(docAppRoot.length - 1)
         } else {
-            resolveDocLink(raw, currentSourcePath, byPath, sourceRepoBase) { key, section -> docHref(key, section) }
+            resolveDocLink(raw, currentSourcePath, byPath, sourceRepoBase, imageAddressByPath) { key, section -> docHref(key, section) }
         }
     }
 }

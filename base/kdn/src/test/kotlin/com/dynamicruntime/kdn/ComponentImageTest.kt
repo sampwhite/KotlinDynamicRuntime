@@ -40,6 +40,8 @@ import io.kotest.matchers.string.shouldContain
  */
 class ComponentImageTest : StringSpec({
     val dot = componentImage(ImageFixture.dot, "fixture-dot.png")
+    // Kept in the repository at a path a document names it by (issue #1463).
+    val pathed = componentImage(ImageFixture.pathed, "fixture-dot.png", sourcePath = ImageFixture.pathedPath)
     val faulty = listOf(
         componentImage("imgfix:script", "fixture-script.svg"),
         componentImage("imgfix:text", "fixture-text.svg"),
@@ -47,10 +49,13 @@ class ComponentImageTest : StringSpec({
         componentImage("elsewhere:dot", "fixture-dot.png"),
         componentImage("imgfix:twice", "fixture-dot.png"),
         componentImage("imgfix:twice", "fixture-dot.png"),
+        componentImage("imgfix:climbs", "fixture-dot.png", sourcePath = "../outside.png"),
+        componentImage("imgfix:sharesA", "fixture-dot.png", sourcePath = "docs/images/shared.png"),
+        componentImage("imgfix:sharesB", "fixture-dot.png", sourcePath = "docs/images/shared.png"),
     )
     // Image problems reported rather than refused, as in production: the faulty ones are left out.
     val cxt = Startup.mkTestBootCxt(
-        "img1339", "img1339", mapOf(IMGS.checkEnvVar.name to "warn"), listOf(ImageFixture(listOf(dot) + faulty)),
+        "img1339", "img1339", mapOf(IMGS.checkEnvVar.name to "warn"), listOf(ImageFixture(listOf(dot, pathed) + faulty)),
     )
     val images = ComponentImageService.get(cxt)
     val served = images.servedNames().getValue(ImageFixture.dot)
@@ -63,13 +68,16 @@ class ComponentImageTest : StringSpec({
         message shouldContain "imgfix:script"
         // Reported, one finding a fault.
         val findings = BootCheckRegistry.get(cxt).results().single { it.name == BCHK.images }.findings
-        findings shouldHaveSize 5
+        findings shouldHaveSize 8
         findings.single { "imgfix:script" in it } shouldContain "not an image"
         findings.single { "imgfix:missing" in it } shouldContain "no resource"
         findings.single { "elsewhere:dot" in it } shouldContain "not the component's own root"
         findings.single { "imgfix:twice" in it } shouldContain "declared 2 times"
+        // A source path is a path in the repository, and one file is one image (issue #1463).
+        findings.single { "imgfix:climbs" in it } shouldContain "not a path in the repository"
+        findings.filter { "docs/images/shared.png' is declared 2 times" in it } shouldHaveSize 2
         // The fixture's own: core ships images of its own beside them (issue #1382).
-        images.served.keys.filter { it.startsWith("imgfix:") } shouldContainExactly listOf(ImageFixture.dot)
+        images.served.keys.filter { it.startsWith("imgfix:") } shouldContainExactly listOf(ImageFixture.dot, ImageFixture.pathed)
     }
 
     "an image is served by name and content, as a file ref is" {
@@ -94,7 +102,13 @@ class ComponentImageTest : StringSpec({
     "the shell config hands the webapp each image's served name" {
         val state = TestHttpClient(cxt.instanceConfig).sendJsonGetRequest(HEP.homeUiConfig)[EP.results].toJsonMapOrEmpty()
             .let { it[UIC.state].toJsonMapOrEmpty() }
-        state[HFLD.images].toJsonMapOrEmpty().filterKeys { it.startsWith("imgfix:") } shouldBe mapOf(ImageFixture.dot to served)
+        state[HFLD.images].toJsonMapOrEmpty().filterKeys { it.startsWith("imgfix:") }.keys shouldBe
+            setOf(ImageFixture.dot, ImageFixture.pathed)
+        state[HFLD.images].toJsonMapOrEmpty()[ImageFixture.dot] shouldBe served
+        // And the path in the repository a document names one by, for the image it is (issue #1463); a faulty one's
+        // is left out with it.
+        state[HFLD.imagePaths].toJsonMapOrEmpty().filterValues { (it as String).startsWith("imgfix:") } shouldBe
+            mapOf(ImageFixture.pathedPath to ImageFixture.pathed)
     }
 
     "copy every client shares naming an image no component ships is a fragment problem" {
@@ -136,5 +150,7 @@ class ImageFixture(private val images: List<ComponentImageDef>) : ComponentDefin
     @Suppress("ConstPropertyName")
     companion object {
         const val dot = "imgfix:dot"
+        const val pathed = "imgfix:pathed"
+        const val pathedPath = "docs/images/fixture-dot.png"
     }
 }

@@ -17,11 +17,13 @@ class DocLinkUtilTest : StringSpec({
         "docs/demo-client/review.md" to "demo-client-review",
     )
     val base = "https://github.com/o/r/blob/main"
+    // An image a component ships, kept in the repo at this path (issue #1463).
+    val imagesByPath = mapOf("docs/images/part1.svg" to "/st/app/img/kdn:part1:abc")
 
     // The app's in-app document href, as the frontend builds it (a same-page hash link), with the section a link
     // names (issue #1136).
     fun resolve(url: String, from: String = "README.md", repo: String? = base) =
-        resolveDocLink(url, from, docsByPath, repo) { key, anchor -> "#doc=$key" + (anchor?.let { "&section=$it" } ?: "") }
+        resolveDocLink(url, from, docsByPath, repo, imagesByPath) { key, anchor -> "#doc=$key" + (anchor?.let { "&section=$it" } ?: "") }
 
     "a relative link to a registered document becomes an in-app link" {
         resolve("code-guide.md") shouldBe "#doc=code-guide"
@@ -32,6 +34,14 @@ class DocLinkUtilTest : StringSpec({
         resolve("code-guide.md#") shouldBe "#doc=code-guide"
         // The README's `[MIT](LICENSE)` link: an extension-less registered document resolves in-app (issue #555).
         resolve("LICENSE") shouldBe "#doc=license"
+    }
+
+    "a relative path to an image a component ships becomes its served address, with or without a source repo" {
+        resolve("images/part1.svg", from = "docs/walk-through.md") shouldBe "/st/app/img/kdn:part1:abc"
+        resolve("/docs/images/part1.svg") shouldBe "/st/app/img/kdn:part1:abc"
+        resolve("docs/images/part1.svg", repo = null) shouldBe "/st/app/img/kdn:part1:abc"
+        // Another image in the same directory is a repo file like any other.
+        resolve("docs/images/part2.svg") shouldBe "$base/docs/images/part2.svg"
     }
 
     "a relative link to an unregistered repo file goes to the source repo" {

@@ -11,6 +11,9 @@ package com.dynamicruntime.common.util
  *    ([docHref] mints the app's own URL for it), so the whole doc set browses without leaving the app. Its
  *    `#section`, if it has one, is handed to [docHref] too (issue #1136): headings carry the same GitHub-style ids
  *    in the app as on GitHub, so one link reaches the same section in both;
+ *  - a target that is **an image a component ships** ([imageAddressByPath], issue #1463) becomes the address the app
+ *    serves that image at, so one plain `![alt](images/x.svg)` draws on GitHub from the file and in the app from the
+ *    served copy of the same file -- a link into the source repository would be a page, not an image;
  *  - any other repo file becomes a link into the **source repository** ([repoBlobBase], e.g.
  *    `https://github.com/owner/repo/blob/main`);
  *  - an absolute `http(s)`/`mailto` link, or anything scheme-bearing, is left exactly as written;
@@ -21,8 +24,8 @@ package com.dynamicruntime.common.util
  * passed to [renderMarkdown] as its `resolveUrl` hook; the renderer still runs the result through `safeUrl`,
  * so this can only ever retarget a link, never make one executable.
  *
- * When [repoBlobBase] is null (the deployment turned the source repo off), a non-document relative link has
- * nowhere to go, and neither has one that climbs above the repo root: each resolves to **empty**, which
+ * When [repoBlobBase] is null (the deployment turned the source repo off), a relative link naming neither a document
+ * nor an image has nowhere to go, and neither has one that climbs above the repo root: each resolves to **empty**, which
  * [renderMarkdown] draws as the link's text rather than as a link (issue #1380). Left as written, it would resolve
  * against the app's own path and open a page that does not exist.
  *
@@ -31,6 +34,7 @@ package com.dynamicruntime.common.util
  *   which a relative target is resolved.
  * @param docKeyByPath repo source path -> the app's key for the in-app document served from it.
  * @param repoBlobBase the source repository's blob base (`.../blob/<branch>`), or null when turned off.
+ * @param imageAddressByPath repo source path -> the address the app serves the component image kept there at.
  * @param docHref how the app addresses an in-app document by its key and, when the link names one, the heading
  *   anchor within it (its own URL scheme).
  */
@@ -39,6 +43,7 @@ fun resolveDocLink(
     currentSourcePath: String,
     docKeyByPath: Map<String, String>,
     repoBlobBase: String?,
+    imageAddressByPath: Map<String, String> = emptyMap(),
     docHref: (docKey: String, anchor: String?) -> String,
 ): String {
     val url = rawUrl.trim()
@@ -65,6 +70,8 @@ fun resolveDocLink(
         val anchor = url.substringAfter('#', "").ifEmpty { null }
         return docHref(docKey, anchor)
     }
+    // An image a component ships from this file (issue #1463): its served address, whatever the link carried after it.
+    imageAddressByPath[repoPath]?.let { return it }
     return if (repoBlobBase != null) joinUrl(repoBlobBase, repoPath) + url.substring(cut) else ""
 }
 

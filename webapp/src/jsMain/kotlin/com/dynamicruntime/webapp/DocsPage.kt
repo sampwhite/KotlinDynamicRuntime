@@ -120,7 +120,11 @@ val DocsPage = FC<Props> {
                         source = text
                         // Interior repo-relative links become in-app document links or source-repo links as
                         // the document renders (issue #492).
-                        linkResolver = docLinkResolver(doc.sourcePath, links, current.sourceRepoBase)
+                        // An image kept in the repository that a component ships draws as that image (issue #1463).
+                        linkResolver = docLinkResolver(
+                            doc.sourcePath, links, current.sourceRepoBase,
+                            componentImageAddressByPath(current.imagePaths, current.images),
+                        )
                     }
                 }
             }
