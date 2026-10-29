@@ -229,5 +229,12 @@ its key: a trait by its id, a workflow by its id.
   side.
 - The bundle holding the client's definition is listed first, and the rest by name.
 
-This page shows the configuration; it does not change it yet. Changes are made on the client's page, and in Design
-View.
+Where the client's configuration is edited here -- a client without a sandbox, or a sandbox's page -- an entry's JSON
+can be edited in place, and entries, slots, and bundles added, or entries removed. Each edit is checked as it is typed:
+its JSON, its slot's schema, and its key. The edits are kept on the page until **Save** sends them all together. A save
+is tried first, and an effect on the client's forms is shown to confirm before it is made. **Show the call** shows the
+request a save sends, to make it yourself. A client with a sandbox is edited from its sandbox.
+
+Tick **Portable**, beside an entry's heading, to see and edit the JSON ready to copy into another client: the
+client's own name is written `@self`, which is filled in for whichever client it is written to. **Copy as portable
+JSON** on a bundle copies all of it that way.

@@ -167,6 +167,12 @@ fun gedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CFEP.namespace
             "Its latest published revision, when the latest is a draft over it; absent when the latest is published, or " +
                 "nothing is.",
         ) { ref(CFEP.bundleType) }
+        property(
+            CFEP.latestStamps,
+            "Each entry of its latest revision's `updatedAt`, by slot, in the order the slots hold the entries: what an " +
+                "edit says it read (issue #1460).",
+            required = true,
+        ) { type = SCT.kObject }
     }
     type(CFEP.editorType) {
         type = SCT.kObject
@@ -450,6 +456,11 @@ private fun cfgEditorBody(c: KdrCxt): Map<String, Any?> {
         buildMap {
             put(CFEP.name, name)
             put(CFEP.revisionLatest, bundleOf(c, latest))
+            // Each entry's stamp, beside the bundle's slots and in their order (issue #1460): what an edit says it read.
+            put(
+                CFEP.latestStamps,
+                latest.entries.groupBy { it[GE.traitId].toOptStr().orEmpty() }.mapValues { (_, entries) -> entries.map { it[GE.updatedAt] } },
+            )
             published[name]?.takeIf { it.version != latest.version }?.let { put(CFEP.revisionPublished, bundleOf(c, it)) }
         }
     }

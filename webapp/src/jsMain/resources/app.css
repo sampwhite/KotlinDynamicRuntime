@@ -1848,3 +1848,17 @@ body.dv-open .app-content { padding-right: calc(var(--dv-panel-width) + 16px); }
 .bundle-editor-compare { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; }
 @media (max-width: 900px) { .bundle-editor-compare { grid-template-columns: minmax(0, 1fr); } }
 .bundle-editor-json pre { margin: 4px 0 12px; padding: 8px 10px; overflow-x: auto; background: var(--surface-raised); border: 1px solid var(--border); border-radius: 6px; font-size: 12px; }
+/* Editing (issue #1460): the save bar, and what a save answers, stay in view below the app bar while the bundles
+   scroll beneath them; a long answer (an impact report) scrolls within. */
+.bundle-editor-save { position: sticky; top: 64px; z-index: 5; margin: 8px 0; padding: 8px 10px; max-height: 50vh; overflow-y: auto; background: var(--surface-raised); border: 1px solid var(--border); border-radius: 6px; }
+.bundle-editor-savebar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.bundle-editor-savebar > span { margin-right: auto; }
+/* An entry's column heading, and beside the first the page's switch to portable form. */
+.bundle-editor-heading { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.bundle-editor-heading .ant-checkbox-wrapper { font-size: 12px; }
+.bundle-editor-text { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; margin: 4px 0; }
+.bundle-editor-problems { margin: 0 0 8px; padding-left: 20px; color: var(--danger); font-size: 13px; }
+.bundle-editor-actions, .bundle-editor-add { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 4px 0 12px; }
+.bundle-editor-new { margin-bottom: 12px; padding-left: 8px; border-left: 3px solid var(--accent-bright); }
+.bundle-editor-notice { margin: 8px 0; padding: 8px 12px; border: 1px solid var(--border); border-radius: 6px; }
+.bundle-editor-notice .ant-btn { margin-right: 8px; }

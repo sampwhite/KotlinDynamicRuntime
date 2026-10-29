@@ -21,7 +21,7 @@ rather than all of them:
 
 | File | Covers |
 | --- | --- |
-| [`clients-page.md`](clients-page.md) | The Clients page: the listing, a client's detail and panels, the definition editor, web assets and file refs, the menu and audiences, traits, bundles, sandbox and publishing, the time-zone picker |
+| [`clients-page.md`](clients-page.md) | The Clients page: the listing, a client's detail and panels, the definition editor, web assets and file refs, the menu and audiences, traits, sandbox and publishing, the bundle editor and editing bundles as JSON, the time-zone picker |
 | [`admin-console.md`](admin-console.md) | The admin console (Users): editing someone's identity and authority -- levels, the `allClients` capability, the editor role, labels, user search |
 | [`forms-listing.md`](forms-listing.md) | The forms listing: named for whose forms it shows, and the listing across clients (its address and its ways home) |
 | [`reports-page.md`](reports-page.md) | The Reports page: running a report, its parameters, the growing table, snapshots and charts |

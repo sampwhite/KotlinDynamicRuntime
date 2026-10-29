@@ -35,6 +35,8 @@ external interface CopyButtonProps : Props {
     var text: String
     /** What the copy is of, for whoever does not see the button: "Copy the address". */
     var label: String
+    /** The button's words, when "Copy" alone would not say what is copied. */
+    var buttonText: String?
 }
 
 /**
@@ -57,7 +59,7 @@ val CopyButton = FC<CopyButtonProps> { props ->
         asDynamic()["title"] = props.label
         asDynamic()["aria-label"] = props.label
         onClick = { writeToClipboard(props.text, done = { copied = true }, refused = { copied = false }) }
-        +"Copy"
+        +(props.buttonText ?: "Copy")
     }
     // Always in the page, empty until there is something to say: a live region is announced when what it holds
     // changes, and one that arrives already holding its words is not.

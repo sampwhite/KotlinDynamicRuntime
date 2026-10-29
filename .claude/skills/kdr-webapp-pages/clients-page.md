@@ -384,12 +384,12 @@ is said as counts (`formStatesRecalcText`), including a run that changed nothing
 recalculation holds the client. Not asked about first: it changes no data anybody entered. A sandbox's page offers it
 too, since its forms are its own. `kdr-probe --url <your server> form-states-timing [counts...]` times it.
 
-**The bundle editor** (issue #1436, phase 1, read-only; `BundleEditorPage.kt`, its pure half in `BundleEditor.kt`,
+**The bundle editor** (issues #1436, #1460; `BundleEditorPage.kt`, its pure half in `BundleEditor.kt`,
 covered by `BundleEditorTest`) is its own page, `page=bundleEditor&client=<id>`, reached from **Open every bundle** on a
 client's page. One read answers it, `GET /clientAdmin/config/editor` or, for a caller who sees every client,
 `/admin/client/config/editor?client=` naming the owner (`bundleEditorPath`, as `storedConfigsPath` decides the listing).
 It answers every configuration's latest revision, with the published one beside it when the latest is a draft over it,
-and each slot's entry type, key fields, and `$defs`, which phase 2's editing will need. The page reuses the client
+and each slot's entry type, key fields, and `$defs`, and each entry's stamp (`latestStamps`), which editing needs. The page reuses the client
 page's `StoredConfigTable` for publishing, with its impact report and its "publish from its sandbox", closed to start
 behind a `Disclosure` whose line says how many configurations are unpublished (`publishingSummaryText`), and then lists the
 configurations -- the one holding the client's definition first, then by name (`editorBundlesInOrder`), so a publish or a
@@ -399,6 +399,50 @@ unchanged, or removed, and each entry to its JSON, highlighted (`JsonBlock`, the
 Markdown `json` block uses). A changed entry shows its draft and published JSON side by side. The
 page is wide (`.card.full`), and draws a level only once it is opened. Both headings, Publishing and Bundles, have a "What is this?" from the `clients` copy file
 (`PFRAG.bundlePublishingNs`, `PFRAG.bundleListNs`).
+
+**Editing on it** (issue #1460, phase 2a; the pure half is `BundleEdits.kt`, covered by `BundleEditsTest`). The page edits
+where publishing would (`bundleEditGate`): a client without a sandbox edits its own configuration, and a sandbox's page
+edits its parent's, as drafts. A client with a sandbox stays read-only and says to edit from the sandbox. What it does:
+
+- **An entry is edited as its JSON**, in a text area beside the published JSON when there is one. Entries can be added to
+  a keyed slot, starting from its key fields (`newEntryText`), and removed, except the client's definition. A bundle can be
+  given a slot it does not hold (`addableSlots`), starting with one entry, and a bundle can be added by name
+  (`newBundleNameProblem`). A new bundle is created when the save writes its first entry.
+- **Every edit is checked as it is typed** (`checkEntry`):
+  - the JSON must parse, and a syntax error is said with its line;
+  - the data is held to its slot's data type, which `slotDataTypes` reads from the editor read's `slotTypes` and `$defs`
+    with the kernel's parser and validator. It leaves to the trial what the backend's gate leaves to it (`ConfigSlotGate`);
+  - an existing entry's key fields cannot change;
+  - a new entry's key cannot be one the client holds, unless it is being removed from another bundle (a move).
+- **The edits are kept on the page** (`BundleEdits`) until saved or discarded. Leaving the page with some asks first.
+  An existing entry's id is its bundle, slot, and key values (`existingEntryId`), so it names the same entry after a
+  re-read.
+- **One save sends them all** in one patch (`bundlePatchRequest`): per bundle, removals, then changes, then new entries.
+  Each says what it read: the entry's stamp, which the editor read gives as `latestStamps`, as `expectUpdatedAt`, or
+  `expectNew`. The save is a dry run first. A refusal shows in the backend's words. An impact on the client's forms
+  (`IMP`'s report under the dry run's `impact`) is shown in the save area and needs **Save anyway**. Then the patch is sent
+  with `reload`, and the page reads everything again.
+- **A stale save** (`CFEP.staleCode`) names its entries (`staleEntriesOf`). **Read them again** drops the edits of those
+  entries (`staleDraftIds`), keeps the rest, and re-reads.
+- **Show the call** shows the save's request, its method and whole path (`patchCallLine`) and its body, highlighted, only
+  while every edit passes its checks.
+- **Portable form** (issue #1435) is a **Portable** checkbox beside the heading over an entry's first column, where
+  JSON is copied from and pasted into. It is one setting for the page, remembered in local storage, and shows and edits
+  every entry with the client's namespace written `client.@self` (`entryShown`, the kernel's `toPortable`). Both columns
+  follow it, so a side-by-side comparison does not differ on every namespaced line.
+  - Not on the client's definition or customers (`PORT.keptSlots`), which are as stored either way.
+  - A draft remembers the form its text is in, so opening an entry in portable form is no edit (`EntryDraft.isEdit`).
+  - Checks read the text resolved for the owner (`entryResolved`), whichever form it was typed in, and the save sends
+    the resolved form, so **Show the call** shows the stored form.
+  - Switching rewrites the texts being edited (`BundleEdits.inForm`). It is disabled while one does not parse
+    (`formSwitchable`).
+  - Each written bundle also has **Copy as portable JSON** (`portableBundle`): its latest revision as a bundle write
+    takes it, without unsaved edits.
+  - JSON copied from another client *as stored* (`client.globex.*`) still fails its checks here: fixing it up is #1461.
+- **The save area sticks below the app bar** (`.bundle-editor-save`). A save's answer is drawn inside it, so it shows
+  wherever the page is scrolled.
+
+Deleting a bundle, and fixups for JSON pasted from another client, are #1461.
 
 **Workflows** (issue #1120, `ClientWorkflowsSection.kt`, its pure half in `ClientWorkflows.kt`, covered by
 `ClientWorkflowsTest`): under Traits, offered where they are, from `GET /clientAdmin/client/workflows`
