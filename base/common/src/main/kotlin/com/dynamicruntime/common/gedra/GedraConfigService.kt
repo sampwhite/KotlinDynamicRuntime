@@ -504,8 +504,11 @@ class GedraConfigService : ServiceInitializer {
         val newBySlot = gedraConfigToEntries(config)
         val priorByKey = latest?.let { keyStoredEntries(it.entries) } ?: emptyMap()
         return when {
-            latest == null ->
-                insertRevision(wcxt, sqlCxt, table, configId, 1, config.namespace, newBySlot, priorByKey, impliedDelete, null, store)
+            // Past any revision of a configuration deleted under this name (issue #1461), so no revision id is reused.
+            latest == null -> insertRevision(
+                wcxt, sqlCxt, table, configId, ConfigCurrentRevisions.firstFreeVersion(wcxt, sqlCxt, table, configId.fullId),
+                config.namespace, newBySlot, priorByKey, impliedDelete, null, store,
+            )
             !latest.isPublished ->
                 updateRevision(wcxt, sqlCxt, table, latest, config.namespace, newBySlot, priorByKey, impliedDelete, store)
             else ->
@@ -615,6 +618,62 @@ class GedraConfigService : ServiceInitializer {
                 wcxt, sqlCxt, table, configId, latest.version + 1, latest.resolvedNamespace(),
                 slots, priorByKey, impliedDelete = true, prior = latest,
             )
+        }
+    }
+
+    /**
+     * Deletes the configuration [configClassId] names (issue #1461), which must be empty: its latest revision and its
+     * latest published one hold no entries. So a published configuration is emptied, the empty revision published, and
+     * then deleted -- by which time it changes nothing the client runs, and needs no trial or reload to be safe.
+     *
+     * Refused, under the client's lock, when the configuration's latest revision was stamped other than
+     * [expectUpdatedAt] -- what its caller read, to the millisecond -- with a 409 whose `errorCode` is [CFEP.staleCode];
+     * when there is no such configuration, with a 404; and when either revision holds entries, with a 400 saying which.
+     *
+     * Every revision is **disabled**, its `updatedAt` moved so the config cache hears of it, rather than removed: it
+     * stops being loaded, listed and read, while an id that named one of its revisions still resolves to what it
+     * always held. A configuration made again under the name starts past every revision it had
+     * ([ConfigCurrentRevisions.firstFreeVersion]). Refused too for a client static here ([isStaticHere]). Returns the
+     * latest revision as it stood.
+     */
+    fun deleteConfig(cxt: KdrCxt, configClassId: GedraId, expectUpdatedAt: Instant): GedraConfigRow {
+        val configId = configClassId.revisionClass()
+        val name = configId.baseId
+        requireNotStaticHere(cxt, configId.client, "deleting its stored configuration")
+        val wcxt = boundToClient(cxt, configId.client)
+        return underClientLock(wcxt, tranDelete) { sqlCxt, table ->
+            val latest = readLatestUnderLock(wcxt, sqlCxt, table, configId)
+                ?: throw KdrException("No configuration '$name' for client '${configId.client}'.", code = EXC.notFound)
+            if (latest.updatedAt?.toEpochMilliseconds() != expectUpdatedAt.toEpochMilliseconds()) {
+                throw KdrException(
+                    "Configuration '$name' was not deleted: it has changed since it was read (written at ${latest.updatedAt}, " +
+                        "read as written at $expectUpdatedAt). Read it again.",
+                    code = EXC.conflict,
+                ).also { it.extraData[KdrException.errorCodeKey] = CFEP.staleCode }
+            }
+            val enabled = ConfigCurrentRevisions.classRows(wcxt, sqlCxt, table, configId.fullId).filter { it[PF.enabled] == true }
+            if (latest.entries.isNotEmpty()) {
+                throw KdrException.mkInput(
+                    "Configuration '$name' was not deleted: its latest revision (version ${latest.version}) holds " +
+                        "${latest.entries.size} entr${if (latest.entries.size == 1) "y" else "ies"}. Remove them first.",
+                )
+            }
+            latestPublishedRow(enabled)?.let { GedraConfigRow.extract(gedraService, it) }?.takeIf { it.entries.isNotEmpty() }?.let {
+                throw KdrException.mkInput(
+                    "Configuration '$name' was not deleted: its published revision (version ${it.version}) holds " +
+                        "${it.entries.size} entr${if (it.entries.size == 1) "y" else "ies"}. Publish the emptied revision first.",
+                )
+            }
+            val stmt = SqlTopicUtil.mkPartialUpdateStmt(
+                sqlCxt, table, "uGedraConfigDelete",
+                "c:${PF.enabled} = :${PF.enabled}, c:${GC.isCurrent} = :${GC.isCurrent}", "c:${GC.gedraId} = :${GC.gedraId}",
+            )
+            for (row in enabled) {
+                val bind = mutableMapOf<String, Any?>(GC.gedraId to row[GC.gedraId], PF.enabled to false, GC.isCurrent to false)
+                SqlTopicUtil.prepForStdUpdate(wcxt, table, bind, row[PF.updatedAt].toOptInstant())
+                sqlCxt.sqlDb.executeStatement(wcxt, stmt, bind)
+            }
+            latest
         }
     }
 
@@ -1098,6 +1157,9 @@ class GedraConfigService : ServiceInitializer {
 
         /** The transaction that publishes a config revision. */
         const val tranPublish = "publishGedraConfig"
+
+        /** The transaction that deletes an empty config (issue #1461). */
+        const val tranDelete = "deleteGedraConfig"
 
         fun get(cxt: KdrCxt): GedraConfigService = cxt.instanceConfig.get(serviceName) as? GedraConfigService
             ?: throw KdrException("The $serviceName is not available on this node.")

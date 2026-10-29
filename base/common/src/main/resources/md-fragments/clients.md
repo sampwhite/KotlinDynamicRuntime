@@ -162,6 +162,9 @@ own. Every saved change makes a new **revision** of its part.
   publishes from the sandbox's page, where its drafts can be seen first.
 - **Check impact** says first what publishing would do to the forms the client already holds. A publish that would
   change them asks before it goes ahead.
+- **Contents** says how many slots and entries each part holds, and what its published revision holds when that
+  differs. A part that holds nothing, in its latest revision and its published one, can be **deleted**. To delete one
+  that holds entries, remove them from it on the bundles page, save, and publish the emptied part.
 
 Configuration written in source code is not listed here: it changes with a release of the application.
 
@@ -215,6 +218,8 @@ people get it only when it is **published**. A client without a sandbox runs eve
 - **Check impact** says what publishing would do to the forms the client already has, such as a form that is in a
   workflow the change removes. A publish that would affect forms asks you to confirm it first.
 - On the client's own page, publishing is offered from its sandbox, after the changes have been tried there.
+- A bundle that holds nothing, in its latest revision and its published one, can be **deleted** here. To delete one
+  that holds entries, remove them below, save, and publish the emptied bundle; then **Delete** is offered.
 
 
 # @bundleList
@@ -237,5 +242,7 @@ is tried first, and an effect on the client's forms is shown to confirm before i
 request a save sends, to make it yourself. A client with a sandbox is edited from its sandbox.
 
 Tick **Portable**, beside an entry's heading, to see and edit the JSON ready to copy into another client: the
-client's own name is written `@self`, which is filled in for whichever client it is written to. **Copy as portable
-JSON** on a bundle copies all of it that way.
+client's own name is written `@self`, which is filled in for whichever client it is written to. **Copy**, beside
+each JSON heading, copies that JSON as shown; **Copy as portable JSON** on a bundle copies all of it. JSON pasted
+from another client, naming that client's own name, is offered as this client's: take it, and its names are written
+`@self` too.

@@ -439,11 +439,32 @@ edits its parent's, as drafts. A client with a sandbox stays read-only and says 
     (`formSwitchable`).
   - Each written bundle also has **Copy as portable JSON** (`portableBundle`): its latest revision as a bundle write
     takes it, without unsaved edits.
-  - JSON copied from another client *as stored* (`client.globex.*`) still fails its checks here: fixing it up is #1461.
+  - Every JSON column's heading has **Copy** (`columnHeading`'s `copyText`), whether or not the page edits: the
+    column's JSON as shown -- portable when the switch is -- or the text as typed in an editor.
+  - **JSON pasted from another client** as that client stored it names its namespace (`client.globex.*`), and fails
+    its checks here. When an entry's text names another client's namespace (`foreignClients`, over every string and
+    key, `$defs` pointers included), the page says so beneath it and offers **Take it as <client>'s**, which writes
+    those namespaces as `client.@self` (`withClientsAsSelf`, issue #1461), which the save resolves. Not on the client's
+    definition or customers.
 - **The save area sticks below the app bar** (`.bundle-editor-save`). A save's answer is drawn inside it, so it shows
   wherever the page is scrolled.
 
-Deleting a bundle, and fixups for JSON pasted from another client, are #1461.
+**Deleting a bundle** (issue #1461) is in the Stored configuration table (`StoredConfigTable`), on the client's page
+and in the bundle editor's Publishing section alike, beside the publishing it depends on. A **Contents** column says
+what each bundle holds (`bundleContentsText`: "2 slots, 5 entries", "Empty", or "Empty; v2: 1 slot, 3 entries" while
+the published revision under a draft holds something else), from the listing summary's `slotCount`/`entryCount` and
+`publishedSlotCount`/`publishedEntryCount`. A bundle whose latest revision and latest published one hold no entries
+offers **Delete** on its row (`deletableBundles`), behind a confirmation naming whose configuration it is -- where the
+page publishes (`deletesBundlesHere`): a client without a sandbox, and a sandbox's page for its parent's; not a client
+with a sandbox, nor one static here. So a bundle no longer used is emptied in the editor, the emptying published, and
+the bundle deleted, all in that table. In the editor, a bundle with unsaved edits on the page waits for them
+(`deleteBlocked`). Delete sends `POST /clientAdmin/config/bundle/delete` -- or, for a caller who sees every client,
+`/admin/client/config/bundle/delete` naming the owner (`bundleDeleteRequest`) -- with the latest revision's
+`updatedAt` as listed (`expectUpdatedAt`), and `reload`. The backend refuses a bundle holding entries (400) and one
+written since it was read (409, `CFEP.staleCode`); either way the table reads it again. It **disables** every revision
+rather than removing it (`GedraConfigService.deleteConfig`), so a revision id still resolves, and a bundle made again
+under the name starts past every revision it had. A bundle the editor added and has not written is not deleted but
+**discarded**, with its entries, from the bundle's own actions.
 
 **Workflows** (issue #1120, `ClientWorkflowsSection.kt`, its pure half in `ClientWorkflows.kt`, covered by
 `ClientWorkflowsTest`): under Traits, offered where they are, from `GET /clientAdmin/client/workflows`

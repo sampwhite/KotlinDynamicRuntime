@@ -7,6 +7,7 @@ import com.dynamicruntime.common.sql.SqlCxt
 import com.dynamicruntime.common.sql.SqlStmtUtil
 import com.dynamicruntime.common.sql.SqlTopicUtil
 import com.dynamicruntime.common.util.toOptInstant
+import com.dynamicruntime.common.util.toOptLong
 import com.dynamicruntime.common.util.toOptStr
 
 /**
@@ -96,6 +97,18 @@ object ConfigCurrentRevisions {
         }
         return configIds.size
     }
+
+    /** Every revision row of the config [configId] names (a revision class), enabled or not, current or not. */
+    fun classRows(cxt: KdrCxt, sqlCxt: SqlCxt, table: KdrTable, configId: String): List<Map<String, Any?>> =
+        sqlCxt.sqlDb.queryStatement(cxt, classRowsQuery(sqlCxt, table), mapOf(GC.configId to configId))
+
+    /**
+     * The version a new revision of [configId] takes when it has no enabled revision (issue #1461): one past every
+     * revision it ever had, so a configuration deleted and made again under its name never reuses a revision id, and
+     * an id that named a deleted revision still names exactly the content it always did.
+     */
+    fun firstFreeVersion(cxt: KdrCxt, sqlCxt: SqlCxt, table: KdrTable, configId: String): Int =
+        (classRows(cxt, sqlCxt, table, configId).maxOfOrNull { it[GC.version].toOptLong() ?: 0L }?.toInt() ?: 0) + 1
 
     private fun classRowsQuery(sqlCxt: SqlCxt, table: KdrTable) = SqlStmtUtil.prepareSql(
         sqlCxt, "qGedraConfigClassRows", table.columns,

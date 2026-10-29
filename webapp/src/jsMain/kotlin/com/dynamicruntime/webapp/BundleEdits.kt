@@ -14,6 +14,8 @@ import com.dynamicruntime.common.gedra.sandboxOf
 import com.dynamicruntime.common.gedra.sandboxParentOf
 import com.dynamicruntime.common.gedra.toPortable
 import com.dynamicruntime.common.gedra.workflow.WFD
+import com.dynamicruntime.common.naming.OWNR
+import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SchOpts
 import com.dynamicruntime.common.schema.SchType
 import com.dynamicruntime.common.schema.parseSchemaTypes
@@ -102,6 +104,9 @@ class BundleEdits(
     }
 
     fun addingBundle(name: String) = BundleEdits(drafts, newBundles + name, nextNew)
+
+    /** Without the bundle [name] added on the page, and its new entries. */
+    fun withoutNewBundle(name: String) = BundleEdits(drafts.filterValues { it.bundle != name }, newBundles - name, nextNew)
 
     /** Without the drafts [ids] -- those a stale save named, say. */
     fun withoutAll(ids: Collection<String>) = BundleEdits(drafts - ids.toSet(), newBundles, nextNew)
@@ -358,6 +363,45 @@ fun staleDraftIds(stale: List<StaleEntryView>, view: BundleEditorView, edits: Bu
         val data = d.original ?: d.text.jsonMapResult().valueOrNull()?.let { entryResolved(it, d.slot, d.client) } ?: return@filter false
         stale.any { s -> s.bundle == d.bundle && s.slot == d.slot && addressesEntry(view.slotKeys[d.slot].orEmpty(), data, s.key) }
     }.keys.toList()
+
+/**
+ * The other clients whose namespaces [data] names (issue #1461): JSON pasted from another client's configuration, as
+ * it stored it, names `client.<other>` in its type names and `$defs` pointers. Every string and key is looked at;
+ * [client]'s own namespace and the portable one (`client.@self`) are not another's.
+ */
+fun foreignClients(data: Any?, client: String): Set<String> {
+    val found = LinkedHashSet<String>()
+    val prefix = "${OWNR.clientRoot}${OWNR.namespaceSep}"
+    fun look(s: String) {
+        val name = s.removePrefix("#/${SCH.dDefs}/")
+        if (!name.startsWith(prefix)) return
+        val other = name.substring(prefix.length).substringBefore(OWNR.namespaceSep)
+        if (other.isNotEmpty() && other != client && other != PORT.self) found.add(other)
+    }
+    fun walk(value: Any?) {
+        when (value) {
+            is Map<*, *> -> value.forEach { (k, v) -> (k as? String)?.let { look(it) }; walk(v) }
+            is List<*> -> value.forEach { walk(it) }
+            is String -> look(value)
+        }
+    }
+    walk(data)
+    return found
+}
+
+/**
+ * [data] with the namespaces of [others] written as the portable one (issue #1461), so JSON pasted from another
+ * client is taken as this client's: a save resolves `client.@self` for whichever client it is written to.
+ */
+fun withClientsAsSelf(data: Map<String, Any?>, others: Collection<String>): Map<String, Any?> =
+    others.fold(data) { at, other -> toPortable(at, other).toJsonMapOrEmpty() }
+
+/** What the page says of JSON naming [others]' namespaces, beside its offer to take it as this client's. */
+fun foreignClientsText(others: Collection<String>, client: String): String {
+    val named = others.joinToString(", ") { "${OWNR.clientRoot}${OWNR.namespaceSep}$it" }
+    val whose = if (others.size == 1) "another client's namespace" else "other clients' namespaces"
+    return "This JSON names $whose: $named. Pasted from there, it can be taken as $client's, written client.@self."
+}
 
 /** What the save bar says of the edits held. */
 fun editCountText(count: Int, failing: Int): String {

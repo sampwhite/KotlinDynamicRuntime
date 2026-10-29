@@ -891,6 +891,12 @@ class ConfigSummaryView(
     val issueCount: Int,
     /** The latest published revision's version (issue #1001), or null when none is. */
     val publishedVersion: Int? = null,
+    /** How many slots, and entries in all, the latest revision holds (issue #1461). */
+    val slotCount: Int = 0,
+    val entryCount: Int = 0,
+    /** How many slots, and entries in all, the latest published revision holds; null when none is. */
+    val publishedSlotCount: Int? = null,
+    val publishedEntryCount: Int? = null,
 )
 
 /** The issues of a definition or a stored configuration, as the wire carries them. */
@@ -922,6 +928,10 @@ fun parseConfigSummaries(items: List<Map<String, Any?>>): List<ConfigSummaryView
         updatedAt = row[CFEP.updatedAt].toOptStr(),
         issueCount = row[CFEP.issues].toJsonListOfMaps().size,
         publishedVersion = (row[CFEP.publishedVersion] as? Number)?.toInt(),
+        slotCount = (row[CFEP.slotCount] as? Number)?.toInt() ?: 0,
+        entryCount = (row[CFEP.entryCount] as? Number)?.toInt() ?: 0,
+        publishedSlotCount = (row[CFEP.publishedSlotCount] as? Number)?.toInt(),
+        publishedEntryCount = (row[CFEP.publishedEntryCount] as? Number)?.toInt(),
     )
 }
 
@@ -1409,6 +1419,12 @@ object ClientsApi {
         }
     }
 
+    /** Deletes [clientId]'s empty configuration [name], as it was read at [expectUpdatedAt], and reloads (issue #1461). */
+    suspend fun deleteBundle(clientId: String, acrossClients: Boolean, name: String, expectUpdatedAt: Any?) {
+        val request = bundleDeleteRequest(clientId, acrossClients, name, expectUpdatedAt)
+        Http.sendApi("POST", request.path, request.body)
+    }
+
     /**
      * Everything the bundle editor page draws for [clientId] (issue #1436), from the read [bundleEditorPath] names -- or
      * null, when there is none this caller may ask about that client.
@@ -1444,6 +1460,21 @@ fun publishBundleRequest(clientId: String, names: List<String>, acrossClients: B
         if (acknowledgeImpact) put(IMP.acknowledgeImpact, true)
     }
     return ApiRequest(if (acrossClients) ACEP.bundlePublish else CFEP.bundlePublish, body)
+}
+
+/**
+ * The delete of [clientId]'s empty configuration [name] (issue #1461), saying when its latest revision was written as
+ * read ([expectUpdatedAt]), so a bundle written since is not deleted; reloading the client. From across clients it
+ * names the owner, a sandbox's parent. Pure.
+ */
+fun bundleDeleteRequest(clientId: String, acrossClients: Boolean, name: String, expectUpdatedAt: Any?): ApiRequest {
+    val body = buildMap {
+        if (acrossClients) put(CFEP.client, sandboxParentOf(clientId) ?: clientId)
+        put(CFEP.name, name)
+        put(CFEP.expectUpdatedAt, expectUpdatedAt)
+        put(CFEP.reloadField, true)
+    }
+    return ApiRequest(if (acrossClients) ACEP.bundleDelete else CFEP.bundleDelete, body)
 }
 
 /** One finding of a publish impact report (issue #935): rows a publish would affect the same way. */
@@ -1631,6 +1662,39 @@ fun toggleAllUnpublished(selected: Set<String>, selectable: List<String>): Set<S
  * so a bundle somebody published meanwhile, or one no longer listed, drops out of the selection by itself. Pure.
  */
 fun selectedBundles(selected: Set<String>, selectable: List<String>): List<String> = selectable.filter { it in selected }
+
+/**
+ * What a bundle holds (issue #1461): its latest revision's slots and entries -- "Empty" for none -- and, when a
+ * published revision under it holds something else, that too, by its version (`Empty; v2: 1 slot, 3 entries`). So the
+ * table shows at a glance which bundles are no longer used, and which must publish their emptying first. Pure.
+ */
+fun bundleContentsText(bundle: ConfigSummaryView): String {
+    fun text(slots: Int, entries: Int) =
+        if (entries == 0) "Empty" else "$slots slot${if (slots == 1) "" else "s"}, $entries entr${if (entries == 1) "y" else "ies"}"
+    val latest = text(bundle.slotCount, bundle.entryCount)
+    val publishedEntries = bundle.publishedEntryCount
+    val publishedVersion = bundle.publishedVersion
+    if (bundle.published || publishedEntries == null || publishedVersion == null) return latest
+    val published = text(bundle.publishedSlotCount ?: 0, publishedEntries)
+    return if (published == latest) latest else "$latest; v$publishedVersion: $published"
+}
+
+/**
+ * Whether the page of the client [row] deletes its bundles (issue #1461): where it publishes them -- a client without a
+ * sandbox, and a sandbox's page for its parent's -- since a bundle is deleted only once its emptying is published. Not
+ * a client static here, which takes nothing stored. Pure.
+ */
+fun deletesBundlesHere(row: ClientOverview?): Boolean = row != null && !row.staticHere && !row.hasSandbox
+
+/**
+ * The bundles a row offers **Delete** for (issue #1461): those whose latest revision and latest published revision
+ * both hold no entries, as the delete requires, on a page that deletes them ([deletesBundlesHere]). Pure.
+ */
+fun deletableBundles(row: ClientOverview?, configs: List<ConfigSummaryView>): List<String> = if (!deletesBundlesHere(row)) {
+    emptyList()
+} else {
+    configs.filter { it.entryCount == 0 && (it.publishedEntryCount ?: 0) == 0 }.map { it.name }
+}
 
 /** The names of a group as a sentence names them: `main`, or `main and extra`, or `a, b and c`. Pure. */
 fun bundleNamesText(names: List<String>): String =
