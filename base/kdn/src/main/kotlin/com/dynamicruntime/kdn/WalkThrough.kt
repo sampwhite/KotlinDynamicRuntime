@@ -1,6 +1,8 @@
 package com.dynamicruntime.kdn
 
+import com.dynamicruntime.common.content.ComponentImageDef
 import com.dynamicruntime.common.content.MarkdownDocDef
+import com.dynamicruntime.common.content.componentImage
 
 /**
  * The walk-through (issue #1429): a page for a person signed in to a reference deployment that takes them through the
@@ -22,4 +24,16 @@ object WalkThrough {
         "Try the site one step at a time: the conference demo, as a speaker and as its committee, and then a client of your own.",
         listed = false,
     )
+
+    /** How many parts the page has, each opening with its banner. */
+    const val partCount = 3
+
+    /**
+     * Each part's banner (issue #1463): kept in the repository at `docs/images/walk-part<n>.svg`, which the page names
+     * it by, so it draws on GitHub from the file and in the app from the image served from it. The build copies the files
+     * onto the classpath.
+     */
+    val images: List<ComponentImageDef> = (1..partCount).map {
+        componentImage("kdr:walkPart$it", "walk-part$it.svg", sourcePath = "docs/images/walk-part$it.svg")
+    }
 }

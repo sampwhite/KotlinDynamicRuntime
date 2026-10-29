@@ -27,13 +27,22 @@ val embedDocs by tasks.registering(Copy::class) {
     into(layout.buildDirectory.dir("docResources/md-docs"))
 }
 
+// The walk-through's banners (issues #1429, #1463), copied from the repo's `docs/images/` beside the documents, where the
+// page names them by their repo path so GitHub draws them too. `WalkThrough.images` declares them with that path.
+val embedImages by tasks.registering(Copy::class) {
+    from(layout.projectDirectory.dir("../../docs/images")) {
+        include("walk-part*.svg")
+    }
+    into(layout.buildDirectory.dir("docResources/component-images"))
+}
+
 sourceSets {
     main {
-        // The generated docs join this module's resources, so they land on the runtime classpath.
+        // The generated docs and images join this module's resources, so they land on the runtime classpath.
         resources.srcDir(layout.buildDirectory.dir("docResources"))
     }
 }
 
 tasks.named("processResources") {
-    dependsOn(embedDocs)
+    dependsOn(embedDocs, embedImages)
 }

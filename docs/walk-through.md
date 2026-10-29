@@ -2,7 +2,8 @@
      Its tables are what the reader types, and PublicWalkThroughTest (base/kdn) enters each one, through the same
      endpoints the pages use, so a label or a choice the demo renames fails the build. A table is marked on the line
      before it: in part 1, `kdr-walk: workflow=<id>` for a form of that workflow and `kdr-walk: name` for a name on the
-     profile; in part 2, a name for each step (`kdr-walk: copy`, `kdr-walk: fields`, and so on), which the test lists.
+     profile; in parts 2 and 3, a name for each step (`kdr-walk: copy`, `kdr-walk: apiKey`, and so on), which the test
+     lists. Part 3's `/kda/...` paths are the ones the test calls with an API key.
      `*your first name*` and `*an address of yours*` are placeholders the test fills in. -->
 
 # A walk-through
@@ -14,6 +15,8 @@ Everything you make here is kept in a temporary database, which is cleared from 
 break anything for long.
 
 ## Part 1: The conference demo
+
+![Part 1: join, submit a talk, survey, abstract, committee, review, and result](images/walk-part1.svg)
 
 The conference demo is a small conference's call for talks. Speakers submit the talks they want to give, and a
 committee reviews each one and accepts it for the program. You play both parts: first a speaker, then a member of the
@@ -129,7 +132,11 @@ Every one of these comes from the demo's configuration. There is no code written
 how each piece is configured, read [the conference demo's pages](demo-client/README.md), which go through its
 configuration one workflow at a time.
 
+---
+
 ## Part 2: A client of your own
+
+![Part 2: client, sandbox, words, trait, workflow, publish, invite, and report](images/walk-part2.svg)
 
 A client is an organization's own corner of the site: its people, its forms, its workflows, and the words its pages
 use. In this part you make one for a small book club, whose members suggest the books it reads next. You build its
@@ -359,3 +366,106 @@ the sandbox is not there: it belongs to the sandbox.
   Design View how that step's form asks for it.
 - **A workflow tried with a few people first.** A label let one person use the workflow before it was opened to
   everyone.
+
+---
+
+## Part 3: For developers
+
+![Part 3: API key, catalog, call it, AI builds, workflow, and revoke](images/walk-part3.svg)
+
+Everything you did in the pages, a program can do through the site's API, and every page you used is built on it. In
+this part you make an API key, find an endpoint in the catalog and call it with the key, and then have an AI assistant
+build a workflow for your Book Club through the API, from a description in your own words.
+
+All of it happens in your sandbox. The key is your sandbox user's, so what the AI writes is a draft, and the forms it
+makes to try its workflow are the sandbox's, not your client's people's.
+
+Everything here is temporary, like the rest of the site: your key, your client, and whatever the AI builds all go when
+the site's data is cleared.
+
+### Make an API key
+
+A key lets a program act as one of your users, without signing in. Choose **Open sandbox** in the bar, so that the bar
+shows **Book Club Sandbox**. Then open your [profile](/wa/profile), and under **API keys**:
+
+<!-- kdr-walk: apiKey -->
+| Field | What to enter |
+| --- | --- |
+| New key | Walk-through |
+| Access | Read-only, unchecked |
+| Lasts | 30 days |
+
+**Read-only** starts checked. Uncheck it, since the AI will write configuration with this key. Choose **Create key**.
+
+The key is shown once, and never again: only a hash of it is kept. Choose **Copy**, and keep it somewhere you can paste
+it from for the rest of this part. The dialog also shows a `curl` command that calls the site with the key, with this
+site's address in it, which the steps below use. Choose **I have copied it**.
+
+The key acts as your administrator in the sandbox, which may change your client's configuration and publish it. So
+anybody holding the key can do the same until it is revoked: treat it as a password. The last step of this part
+revokes it.
+
+### Find an endpoint in the catalog
+
+Open **Endpoint catalog** from the menu. It lists the endpoints published for programs, among them the ones that read
+and write a client's forms, each with what it takes and what it answers. The key may call what you may, except what
+only a signed-in session may do, such as making more keys. Find the row
+
+<!-- kdr-walk: catalog -->
+| Method | Endpoint |
+| --- | --- |
+| GET | /gedra/*your sandbox's id*/formDocs |
+
+Your browser's find, looking for `formDocs`, is the quickest way to it. Your sandbox's id is your client's id followed
+by `:sandbox`, as **My client** shows it. The row says what the endpoint does: it lists the forms you may see. Choose
+it, and then **View output schema**, which shows the JSON it answers with, the fields of your own traits included.
+**Run** calls it as you.
+
+To call it with the key instead, take the dialog's `curl` command and replace its path, `/kda/auth/self/info`, with
+`/kda/gedra/` and your sandbox's id and `/formDocs`. The answer is the sandbox's forms, the one you made in part 2
+among them, as a program sees them.
+
+### Have an AI build a workflow
+
+An AI coding assistant can read the project's documentation and use the API with your key. Clone the
+[KotlinDynamicRuntime repository](https://github.com/sampwhite/KotlinDynamicRuntime) and start the assistant in the
+checkout, as its `CONTRIBUTING.md` describes; one that can browse the web can read the repository online instead. Ask
+it for a workflow in words, along these lines, with your site's address, your sandbox's id, and your key put in:
+
+```text
+I have an API key for the sandbox <your sandbox's id> of my client on the KotlinDynamicRuntime site at
+<your site's address>. The key is <your key>. Read docs/demo-client, which shows how a client is configured, the
+kdr-test-clients skill, which lists the endpoints that read and write a client's stored configuration, and the
+endpoint catalog at <your site's address>/kda/schema/endpoints. Then add a workflow to my client called "Review the
+book": after the club has read a book, a member records a rating from 1 to 5 and a few sentences on what they thought.
+Put it in a new bundle of its own, written with /kda/clientAdmin/config/bundle/write so that my sandbox runs it at
+once, and do not publish it. Try it by making a form in the sandbox and filling in the workflow.
+```
+
+What the AI writes with the key is a draft of your client's configuration, which your sandbox runs and your client's
+people do not see, and the form it makes is the sandbox's. Open **Forms**, and try the new workflow from a form's
+**Workflows** column: the AI's, or the one you made in part 2. If it is not what you wanted, tell the AI what to
+change, and try it again.
+
+When it is right, open **My client**, and under **Publishing**, choose **Select all unpublished** and **Publish
+selected**, as in part 2.
+
+### Revoke the key
+
+The key is now in the AI session's transcript, so end it. Still in the sandbox, open your [profile](/wa/profile), and
+under **API keys**, choose **Revoke** on **Walk-through**, and **Revoke** again to confirm. Any request made with it
+from now on is refused.
+
+Then go back to Book Club, and open a form in your client: the new workflow is in its **Workflows** column, for your
+client's people too. The forms the AI made are not there: they stayed in the sandbox.
+
+### What you have seen
+
+- **One API for the pages and for programs.** The catalog documents the published endpoints, the forms' among them,
+  with what each takes and answers, and a key calls them as you.
+- **Configuration is data.** The workflow the AI wrote is JSON, stored and published as the workflows you made in the
+  pages are.
+- **A key is yours, and narrower than you.** It acts as one of your users, never above it, and cannot sign in, make
+  keys, or switch users. A key made in the sandbox stays in the sandbox.
+
+---
