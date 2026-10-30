@@ -1,7 +1,12 @@
 package com.dynamicruntime.common.gedra
 
+import com.dynamicruntime.common.schema.SCH
+import com.dynamicruntime.common.schema.SCT
+import com.dynamicruntime.common.schema.SchOption
+import com.dynamicruntime.common.schema.parseSchemaTypes
 import com.dynamicruntime.common.util.ScriptEnv
 import com.dynamicruntime.common.util.ScriptZone
+import com.dynamicruntime.common.util.loneFieldPath
 import kotlinx.datetime.FixedOffsetTimeZone
 import kotlinx.datetime.UtcOffset
 import kotlin.test.Test
@@ -10,8 +15,8 @@ import kotlin.test.assertNull
 import kotlin.time.Instant
 
 /**
- * A listing cell read through its column's presentation (issue #1323). In `commonTest`, since the browser draws the
- * cells and the backend's tests read the same rule.
+ * A listing cell read through its column's presentation (issue #1323), and the choices a column's field offers (issue
+ * #1500). In `commonTest`, since the browser draws the cells and the backend's tests read the same rule.
  */
 class ListingColumnsTest {
     private val env = ScriptEnv(
@@ -67,5 +72,72 @@ class ListingColumnsTest {
         assertEquals(columns.map { fields(it) }, read.map { fields(it) })
         // No presentation is no key.
         assertEquals(setOf(UF.columnId, UF.traitId, UF.label, UF.kind), columns[1].toMap().keys)
+        // Choices travel in their order (issue #1500), and none is no key.
+        val level = ListingColumn("level", "q", "Level", UsageKind.string, null, levels)
+        assertEquals(levels, ListingColumn.listFrom(listOf(level.toMap())).single().choices)
+        assertEquals(null, columns[0].toMap()[UF.choices])
+    }
+
+    private val levels = listOf(SchOption("beginner", "Beginners"), SchOption("advanced", "Experts"))
+
+    /** A trait's data type: a choice field, a boolean, plain text, a number with options, and a nested object. */
+    private val dataType = parseSchemaTypes(
+        mapOf(
+            "t.Data" to mapOf(
+                SCH.type to SCT.kObject,
+                SCH.properties to mapOf(
+                    "level" to mapOf(
+                        SCH.type to SCT.string,
+                        SCH.options to levels.map { mapOf(SCH.label to it.label, SCH.value to it.value) },
+                    ),
+                    "firstTalk" to mapOf(SCH.type to SCT.boolean),
+                    "note" to mapOf(SCH.type to SCT.string),
+                    "venue" to mapOf(
+                        SCH.type to SCT.kObject,
+                        SCH.properties to mapOf(
+                            "room" to mapOf(
+                                SCH.type to SCT.string,
+                                SCH.options to listOf(mapOf(SCH.label to "Lab A", SCH.value to "labA")),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        ),
+    ).getValue("t.Data")
+
+    @Test
+    fun aLoneSubstitutionNamesItsFieldAndNothingElseDoes() {
+        assertEquals(listOf("level"), $$"${level}".loneFieldPath())
+        assertEquals(listOf("venue", "room"), $$"${ venue.room }".loneFieldPath())
+        assertNull($$"Level: ${level}".loneFieldPath())
+        assertNull($$"${level} ".loneFieldPath())
+        assertNull($$"${upper(level)}".loneFieldPath())
+        assertNull($$"${level}${note}".loneFieldPath())
+        assertNull($$"${level".loneFieldPath())
+        assertNull("level".loneFieldPath())
+    }
+
+    @Test
+    fun aColumnOfOneFieldOffersWhatItsSchemaSays() {
+        assertEquals(levels, deducedColumnChoices($$"${level}", UsageKind.string, dataType))
+        assertEquals(listOf("true", "false"), deducedColumnChoices($$"${firstTalk}", UsageKind.string, dataType).map { it.value })
+        assertEquals(listOf(SchOption("labA", "Lab A")), deducedColumnChoices($$"${venue.room}", UsageKind.string, dataType))
+        // Nothing for plain text, a computed display, a field the type lacks, no type, or a column searched by a range.
+        assertEquals(emptyList(), deducedColumnChoices($$"${note}", UsageKind.string, dataType))
+        assertEquals(emptyList(), deducedColumnChoices($$"${upper(level)}", UsageKind.string, dataType))
+        assertEquals(emptyList(), deducedColumnChoices($$"${missing}", UsageKind.string, dataType))
+        assertEquals(emptyList(), deducedColumnChoices($$"${level}", UsageKind.string, null))
+        assertEquals(emptyList(), deducedColumnChoices($$"${level}", UsageKind.number, dataType))
+    }
+
+    @Test
+    fun aColumnWithChoicesShowsTheLabelUnlessItHasAPresentation() {
+        assertEquals("Beginners", presentColumnValue("beginner", UsageKind.string, null, emptyMap(), env, levels))
+        // A value from before the choices narrowed is shown as it is; a blank stays blank.
+        assertEquals("intermediate", presentColumnValue("intermediate", UsageKind.string, null, emptyMap(), env, levels))
+        assertEquals("", presentColumnValue("", UsageKind.string, null, emptyMap(), env, levels))
+        // The column's own presentation wins over the label.
+        assertEquals("[beginner]", presentColumnValue("beginner", UsageKind.string, $$"[${value}]", emptyMap(), env, levels))
     }
 }

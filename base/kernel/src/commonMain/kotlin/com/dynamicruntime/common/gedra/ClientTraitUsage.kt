@@ -100,4 +100,10 @@ object UF {
 
     /** A listing column's presentation ([ClientTraitUsage.presentation]), on the listing's [GDF.columns] (issue #1323). */
     const val presentation = "presentation"
+
+    /**
+     * A listing column's choices, on the listing's [GDF.columns] (issue #1500): each a `{value, label}`, deduced from
+     * the field a lone `${field}` display reads. What its filter suggests and its cells name; absent when there are none.
+     */
+    const val choices = "choices"
 }

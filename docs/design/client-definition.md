@@ -384,6 +384,17 @@ deployment's zone (`serverTimeZone`, a fixed UTC-8), as every client was before.
   by -- is its `columnId`, else the trait id, so a column without one keeps the names it always had. A second
   column of a trait needs a `columnId`: two columns resolving to one name, or whose search parameters would meet,
   are refused where configuration is written, and reported at boot.
+- **A column of one field searches by that field's schema** (#1500). When a usage's `display` is a lone `${field}`,
+  the column's value is that field's, so the listing deduces what it can be from the trait's data as the client
+  declares it (narrowed, if the client narrowed it): the field's choices with their labels, or `true` and `false` for
+  a boolean, on a text column. The listing's summary carries them on the column (`choices`). A column with choices and
+  no presentation shows a value's label; its search, exact or contains, and the free-text term match the value or the
+  label; and it sorts in the choices' declared order, a value not among them after them. Its filter box suggests the
+  choices, ahead of the values in the data, before anything is typed, and stays open to anything typed or pasted:
+  a search finding nothing is a harmless answer, so a closed list would protect nothing. A computed `display` deduces
+  nothing. A `date` column's range is a pair of day pickers whatever its `display`, and a day as its upper bound includes the
+  whole of that day. Nothing is added to the
+  configuration, and `kind` stays what sorts and searches.
 
 **The definition has a schema, and a written one is held to it** (issue #1051). The attributes above are declared
 once (`ClientDef.defineInfoType`) and make two types. `ClientInfo` is what the client endpoints answer with.

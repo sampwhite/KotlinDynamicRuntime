@@ -1,6 +1,7 @@
 package com.dynamicruntime.common.gedra
 
 import com.dynamicruntime.common.context.KdrCxt
+import com.dynamicruntime.common.schema.SchOption
 import com.dynamicruntime.common.startup.SchemaService
 import com.dynamicruntime.common.util.ScriptEnv
 import com.dynamicruntime.common.util.analyzeTemplate
@@ -55,4 +56,23 @@ private fun displayValue(
         UF.value to value,
         UF.kind to usage.kind.name,
     )
+}
+
+/**
+ * The choices each of [usages]' columns offers (issue #1500), by column ([ClientTraitUsage.columnKey]): what
+ * [deducedColumnChoices] finds in the trait's data as [cxt]'s client declares it -- narrowed, if the client narrowed
+ * it, and a global trait's own schema otherwise. A column with none is absent. Deduced per request, from the schema
+ * the request already holds, since a global column such as the name can offer different choices in different
+ * clients; it is a few map lookups per column.
+ */
+fun columnChoicesOf(cxt: KdrCxt, usages: List<ClientTraitUsage>): Map<String, List<SchOption>> {
+    if (usages.isEmpty()) return emptyMap()
+    val union = cxt.getClientSchema().types["${GCFG.globalNamespace}.${GU.unionName(GedraDataType.formDoc)}"]
+    return buildMap {
+        for (usage in usages) {
+            val data = union?.variants?.select(usage.traitId)?.properties?.get(GE.data)?.valueType
+            val choices = deducedColumnChoices(usage.display, usage.kind, data)
+            if (choices.isNotEmpty()) put(usage.columnKey, choices)
+        }
+    }
 }

@@ -50,6 +50,7 @@ import com.dynamicruntime.common.gedra.workflow.noWorkflowView
 import com.dynamicruntime.common.gedra.workflow.resolveWorkflowView
 import com.dynamicruntime.common.gedra.workflow.saveWorkflow
 import com.dynamicruntime.common.schema.SCT
+import com.dynamicruntime.common.schema.SchOption
 import com.dynamicruntime.common.schema.SchTypeBuilder
 import com.dynamicruntime.common.startup.SchemaService
 import com.dynamicruntime.common.user.AdminRules
@@ -353,7 +354,8 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
     // One of the listing's columns (issue #1323), with the presentation its cells read through.
     type(GEP.listingColumnType) {
         type = SCT.kObject
-        description = "One column of the forms listing: its name, the trait it reads, its header, its kind, and its presentation."
+        description =
+            "One column of the forms listing: its name, the trait it reads, its header, its kind, its presentation, and its choices."
         property(
             UF.columnId,
             "The column's name: its own (issue #1490), else the trait id. Each row's display value for it carries the same " +
@@ -364,6 +366,19 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
         property(UF.label, "The column header.", required = true)
         property(UF.kind, "What the column's value is, and so how it sorts and searches.", required = true) { options(UsageKind.entries) }
         property(UF.presentation, "A string script over the trait's data, with the column's value as `value`, that the cell reads through. Absent shows the value -- relative to now for a date.")
+        property(
+            UF.choices,
+            "What the column's value can be (issue #1500), in order, when it is a single field that offers choices or is a " +
+                "boolean: what its filter suggests, and, with no presentation, the label its cells show. Its search matches a " +
+                "value or its label, and it sorts in this order. Absent when there are none.",
+        ) {
+            type = SCT.array
+            items {
+                type = SCT.kObject
+                property(UF.value, "The stored value.", required = true)
+                property(UF.label, "What the column shows for it.", required = true)
+            }
+        }
     }
     type(GEP.formDocsSummary) {
         type = SCT.kObject
@@ -412,8 +427,11 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
         // parameters (issue #538). A search parameter the caller filled becomes an in-memory predicate applied
         // before paging, so the page and its `numAvailable` are both over the matched set (see `listGedras`).
         val usages = SchemaService.get(c).traitUsagesFor(c.client)
-        val filter = searchFilter(c, request, usages)
-        val sort = gedraSortFor(c, request, usages, scope)
+        // What each column's field offers (issue #1500): its search matches a choice's label too, it sorts in their
+        // order, and the summary hands them to the table and its filters.
+        val choices = columnChoicesOf(c, usages)
+        val filter = searchFilter(c, request, usages, choices)
+        val sort = gedraSortFor(c, request, usages, scope, choices)
         // The survey-status filter (issue #695): a predicate over a row's state entries, through the same rule
         // the status column reads them by, applied by `listGedras` over the states cache before paging. The
         // schema has already settled the value: a blank is absent (`emptyIsAbsent`), anything but the three
@@ -468,7 +486,9 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
             // And the columns (issue #1323), with the presentation each cell reads through: once here, not on every
             // row, and always, so a listing that matched nothing still says what its columns are.
             summary = buildMap {
-                if (usages.isNotEmpty()) put(GDF.columns, usages.map { ListingColumn.of(it).toMap() })
+                if (usages.isNotEmpty()) {
+                    put(GDF.columns, usages.map { ListingColumn.of(it, choices[it.columnKey].orEmpty()).toMap() })
+                }
                 if (withStates && request.getOptBool(GDF.withWorkflowSummary) == true) {
                     putAll(FormWorkflowSummary.of(c, svc.statesInScope(c, formDoc, callerScope)))
                 }
@@ -1376,7 +1396,8 @@ private fun resolveTargetUser(c: KdrCxt, request: Map<String, Any?>, callerScope
  * The forms-list search predicate (issue #538), or null when the caller filled no search field. Built from the
  * client's [usages]: each contributes parameters ([gedraSearchParams]), and a filled one becomes a condition on
  * the row's **display value** for that column -- the same value the listing shows in it, so a person searches what
- * they see. A row satisfies the filter only when it satisfies every filled parameter.
+ * they see. A row satisfies the filter only when it satisfies every filled parameter. A column with [choices] (issue
+ * #1500) matches a value's label as well, since that is what it shows.
  *
  * A number/date parameter arrives coerced (a `Number`); it is compared as text against the row's display value,
  * so both sides read through the same parse. Applied by [GedraDataService.listGedras] before paging, over the
@@ -1386,8 +1407,9 @@ private fun searchFilter(
     c: KdrCxt,
     request: Map<String, Any?>,
     usages: List<ClientTraitUsage>,
+    choices: Map<String, List<SchOption>>,
 ): ((GedraDataRow) -> Boolean)? {
-    val active = gedraSearchParams(usages).mapNotNull { param ->
+    val active = gedraSearchParams(usages, choices).mapNotNull { param ->
         request[param.name]?.let { it.fmt().ifBlank { null } }?.let { param to it }
     }
     // The free-text term (issue #562), searched across every text field; blank is no term.
@@ -1402,7 +1424,7 @@ private fun searchFilter(
         val byColumn = computeDisplayValues(c, withDerivedEntries(c, row), usages, c.client).associate { display ->
             (display[UF.columnId].toOptStr() ?: "") to (display[UF.value].toOptStr() ?: "")
         }
-        matchesSearch(byColumn, active, c.clientTimeZone) && (term == null || matchesAnyText(byColumn, textColumns, term))
+        matchesSearch(byColumn, active, c.clientTimeZone) && (term == null || matchesAnyText(byColumn, textColumns, term, choices))
     }
 }
 
@@ -1425,13 +1447,15 @@ private fun ownerSortName(owner: AuthUserRow): String = owner.name?.trim()?.ifEm
  * and orders by that column's value under its declared [UsageKind] -- the namespacing is what keeps a column
  * named like a fixed one from being read as one. An unknown column returns null (the default order) rather
  * than faulting a stale bookmark. The direction is `desc` when [GSORT.sortDir] says so, ascending otherwise; the
- * column's value is read the way the column shows it ([computeDisplayValues] for just that usage).
+ * column's value is read the way the column shows it ([computeDisplayValues] for just that usage), in the order of
+ * its [choices] when it has some (issue #1500).
  */
 private fun gedraSortFor(
     cxt: KdrCxt,
     request: Map<String, Any?>,
     usages: List<ClientTraitUsage>,
     scope: ReadScope,
+    choices: Map<String, List<SchOption>>,
 ): GedraDataService.GedraSort? {
     val column = request[GSORT.sort].toOptStr()?.ifBlank { null } ?: return null
     val descending = request[GSORT.sortDir].toOptStr()?.equals(GSORT.desc, ignoreCase = true) == true
@@ -1470,7 +1494,7 @@ private fun gedraSortFor(
         else -> {
             val key = GSORT.displayColumnKey(column) ?: return null
             val usage = usages.firstOrNull { it.columnKey == key } ?: return null
-            GedraDataService.GedraSort(usage.kind, descending) { row ->
+            GedraDataService.GedraSort(usage.kind, descending, choices = choices[key].orEmpty()) { row ->
                 // Over the derived entries (issue #712 review), so a sort by a derived-field column orders on the
                 // value the column shows, not the blank the stored data holds.
                 computeDisplayValues(cxt, withDerivedEntries(cxt, row), listOf(usage), cxt.client)

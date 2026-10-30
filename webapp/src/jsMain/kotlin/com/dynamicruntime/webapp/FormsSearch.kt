@@ -3,10 +3,12 @@ package com.dynamicruntime.webapp
 import com.dynamicruntime.common.endpoint.EI
 import com.dynamicruntime.common.gedra.SearchRole
 import com.dynamicruntime.common.gedra.UsageKind
+import com.dynamicruntime.common.gedra.choiceLabel
 import com.dynamicruntime.common.gedra.decodeSearchParam
 import com.dynamicruntime.common.gedra.reservedQueryFieldNames
 import com.dynamicruntime.common.gedra.workflow.SVY
 import com.dynamicruntime.common.schema.SCH
+import com.dynamicruntime.common.schema.SchOption
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import react.FC
 import react.Props
@@ -66,6 +68,21 @@ private fun surveyStatusOptions(): Array<dynamic> = SurveyStatus.entries.map { s
     o.value = s.wire
     o
 }.toTypedArray()
+
+/**
+ * What a text filter box suggests for the typed [term] (issue #1500): a column's [choices] first, by label, in their
+ * declared order -- every one for a blank term, so a focused box offers them before anything is typed -- then the
+ * values [fetched] from the data that are not among them, so a value from before the client narrowed its choices can
+ * still be found. A choice matches the term by its label or its value; a fetched value that is a choice is shown by its
+ * label, once. The box takes the label, which the column shows and its search matches. Without choices, the fetched
+ * values as they are. Pure, and covered under `jsNodeTest`.
+ */
+fun valueSuggestions(term: String, choices: List<SchOption>, fetched: List<String>): List<String> {
+    val t = term.trim()
+    val offered = choices.filter { t.isEmpty() || it.label.contains(t, ignoreCase = true) || it.value.contains(t, ignoreCase = true) }
+        .map { it.label }
+    return (offered + fetched.map { choiceLabel(it, choices) ?: it }).distinct()
+}
 
 /** antd `{value}` options for value suggestions, where the shown label is the value itself. */
 private fun stringOptions(values: List<String>): Array<dynamic> = values.map { v ->
@@ -321,6 +338,12 @@ external interface FormsSearchProps : Props {
      */
     var fetchValues: ((String, String, (List<String>) -> Unit) -> Unit)?
 
+    /**
+     * The choices each column's field offers (issue #1500), by column ([SearchGroup.columnKey]), from the listing's
+     * columns: what a column's box suggests ahead of the values in the data ([valueSuggestions]). Unset or absent for
+     * a column means none.
+     */
+    var choices: Map<String, List<SchOption>>?
 }
 
 val FormsSearch = FC<FormsSearchProps> { props ->
@@ -374,21 +397,24 @@ val FormsSearch = FC<FormsSearchProps> { props ->
         groups.forEach { group ->
             filterGroup(group.label) {
                 if (group.isRange) {
-                    val hint = if (group.kind == UsageKind.date) " yyyy-mm-dd" else ""
+                    // A date's ends are day pickers (issue #1500), which still take a typed day.
+                    fun react.ChildrenBuilder.end(name: String?, placeholder: String) =
+                        if (group.kind == UsageKind.date) dayBoundInput(props, name, placeholder) else boundInput(props, name, placeholder)
                     div {
                         className = ClassName("filter-range")
-                        boundInput(props, group.min, "from$hint")
+                        end(group.min, "from")
                         span {
                             className = ClassName("type-hint")
                             +"to"
                         }
-                        boundInput(props, group.max, "to$hint")
+                        end(group.max, "to")
                     }
                 } else {
                     group.text?.let { name ->
                         val placeholder = if (group.contains != null) "contains" else "is exactly"
                         val fetch = props.fetchValues
-                        if (fetch != null) {
+                        val choices = props.choices?.get(group.columnKey).orEmpty()
+                        if (fetch != null || choices.isNotEmpty()) {
                             FilterValueBox {
                                 this.columnKey = group.columnKey
                                 this.placeholder = placeholder
@@ -396,6 +422,7 @@ val FormsSearch = FC<FormsSearchProps> { props ->
                                 this.onChange = { v -> props.onChange(name, v) }
                                 this.onSearch = { props.onSearch() }
                                 this.fetchValues = fetch
+                                this.choices = choices
                             }
                         } else {
                             Input {
@@ -432,6 +459,9 @@ val FormsSearch = FC<FormsSearchProps> { props ->
  * values that column takes across the caller's documents. Its own component so each box holds its own suggestion
  * state and debounce. The value it holds is still a plain "contains" fragment -- picking a suggestion only
  * fills the box, and the panel's Apply is what searches -- so an empty or failed fetch leaves it a text input.
+ *
+ * A column whose field offers [choices] (issue #1500) suggests them too, ahead of the fetched values and before
+ * anything is typed ([valueSuggestions]). The list stays open: anything typed or pasted is searched for as it is.
  */
 private external interface FilterValueBoxProps : Props {
     var columnKey: String
@@ -439,28 +469,30 @@ private external interface FilterValueBoxProps : Props {
     var value: String
     var onChange: (String) -> Unit
     var onSearch: () -> Unit
-    var fetchValues: (String, String, (List<String>) -> Unit) -> Unit
+    var fetchValues: ((String, String, (List<String>) -> Unit) -> Unit)?
+    var choices: List<SchOption>
 }
 
 private val FilterValueBox = FC<FilterValueBoxProps> { props ->
-    var suggestions by useState<List<String>>(emptyList())
+    var fetched by useState<List<String>>(emptyList())
     val timer = useRef<Int>(null)
 
     useEffect(props.value) {
         timer.current?.let { clearTimer(it) }
         timer.current = null
         val term = props.value.trim()
-        if (term.isEmpty()) {
-            suggestions = emptyList()
+        val fetch = props.fetchValues
+        if (term.isEmpty() || fetch == null) {
+            fetched = emptyList()
         } else {
-            timer.current = setTimer({ props.fetchValues(props.columnKey, term) { suggestions = it } }, suggestDebounceMs)
+            timer.current = setTimer({ fetch(props.columnKey, term) { fetched = it } }, suggestDebounceMs)
         }
     }
 
     AutoComplete {
         placeholder = props.placeholder
         value = props.value
-        options = stringOptions(suggestions)
+        options = stringOptions(valueSuggestions(props.value, props.choices, fetched))
         allowClear = true
         filterOption = false
         // Picking a suggestion only fills the box; Enter runs the search, as the plain input it replaces did.
@@ -470,6 +502,32 @@ private val FilterValueBox = FC<FilterValueBoxProps> { props ->
         onInputKeyDown = { event -> if (event.key == "Enter") props.onSearch() }
     }
 }
+
+/**
+ * One end of a date's from-to pair (issue #1500): a day picker for the bound parameter [name], or nothing when the pair
+ * lacks it. It holds the day as the parameter takes it, `yyyy-mm-dd`, and a cleared picker is no bound.
+ *
+ * A bound that does not read as a date -- from an old link, say -- is shown in a text box instead, as it was before
+ * the picker: a picker would draw it empty while it is still sent, a filter nobody can see or clear.
+ */
+private fun react.ChildrenBuilder.dayBoundInput(props: FormsSearchProps, name: String?, placeholder: String) {
+    if (name == null) return
+    val day = props.values[name]?.trim().orEmpty()
+    val picked = day.ifEmpty { null }?.let { dayjs(it) }
+    if (picked != null && !picked.isValid()) {
+        boundInput(props, name, placeholder)
+        return
+    }
+    DatePicker {
+        this.placeholder = placeholder
+        value = picked
+        style = js("({ width: 150 })")
+        onChange = { date, _ -> props.onChange(name, date?.format(dayPattern) ?: "") }
+    }
+}
+
+/** How a day picker writes its day for a date bound: the `yyyy-mm-dd` a date search parameter reads. */
+private const val dayPattern = "YYYY-MM-DD"
 
 /** One end of a from-to pair: a text box for the bound parameter [name], or nothing when the pair lacks it. */
 private fun react.ChildrenBuilder.boundInput(props: FormsSearchProps, name: String?, placeholder: String) {

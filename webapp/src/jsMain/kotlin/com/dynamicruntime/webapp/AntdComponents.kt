@@ -225,6 +225,9 @@ external interface DatePickerProps : PropsWithChildren {
     /** Whether to pick a time as well as a day; set for a `date-time` field so the time is not lost. */
     var showTime: Boolean?
 
+    /** What the empty picker says, such as a range end's "from" (issue #1500). */
+    var placeholder: String?
+
     /**
      * Whether the panel offers "Now". Off for a time entered in the client's zone (issue #1235): antd's now is the
      * browser's wall clock, which read in the client's zone is not now there.

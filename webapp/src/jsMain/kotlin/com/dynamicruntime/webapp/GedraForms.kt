@@ -709,7 +709,11 @@ class DisplayValue(
  * against its clock -- the value as it is when there is no column for it.
  */
 fun presentedValue(display: DisplayValue, column: ListingColumn?, env: ScriptEnv): String =
-    if (column == null) display.value else presentColumnValue(display.value, column.kind, column.presentation, display.data, env)
+    if (column == null) {
+        display.value
+    } else {
+        presentColumnValue(display.value, column.kind, column.presentation, display.data, env, column.choices)
+    }
 
 /**
  * A form's heading (issue #537): the first of its display values that is not blank, read through its column's
