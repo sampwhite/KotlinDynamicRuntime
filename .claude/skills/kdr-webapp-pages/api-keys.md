@@ -4,10 +4,11 @@ A program calls the API as a user with an **API key**, `Authorization: Bearer kd
 `docs/design/api-keys.md` at the repo root says what a key is and what it may do. The UI is three surfaces over one
 component, `ApiKeysSection.kt`, with its pure half in `ApiKeysApi.kt` (covered by `ApiKeysTest`):
 
-- **Profile** draws `ApiKeysSection {}`: the person's own keys, over `/user/self/apiKey*`, in a sandbox too (issue
-  #1453), where a key acts with what the sandbox's rules give its user and stays in the sandbox.
+- **Profile** draws it inside its API keys panel (issue #1479): the person's own keys, over
+  `/user/self/apiKey*`, in a sandbox too (issue #1453), where a key acts with what the sandbox's rules give its user
+  and stays in the sandbox.
 - **The Users editor** draws it with `ownerId` for the open user, over `/clientAdmin/apiKey*`, inside its API keys
-  panel (`inPanel`, issue #1478: the panel carries the heading, and says its changes take effect at once, unlike the
+  panel (issue #1478: the panel carries the heading, and says its changes take effect at once, unlike the
   User panel's fields, which wait for **Save user**). Not for a `public` self-administrator, whom the administrator's surface
   refuses. When the open user is the caller, `ownerId` is left off, so one's own keys are
   managed as on Profile.
@@ -25,6 +26,8 @@ What the component holds to:
 - **An extension's date is shown before it is saved**, from the kernel's `ApiKeyRules` -- the rule the server applies,
   calendar months in UTC (`addMonths`) -- by `apiKeyExtensionPreview`, which also says when it would pass the
   deployment's furthest expiry (the listing's summary, `maxDays`).
+- **Create key is its one primary button** (rule 2 of #1477): an extension's **Save** is an ordinary button, since
+  both can show at once inside the panel.
 - **What a create may ask for comes from the listing's summary** (`ApiKeyLimits`: the default life, the furthest
   expiry, the most live keys and, for one user's listing, how many they hold). At the limit the form gives way to a
   sentence (`apiKeyCreateBlock`).

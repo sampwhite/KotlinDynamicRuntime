@@ -83,46 +83,71 @@ fun identitySummary(identity: AdminIdentity?, editing: AdminUser): List<Pair<Str
 }
 
 /**
- * The editor's structure line (issue #1478, rule 7 of #1477): the person's address, then the person's users -- the
- * open one marked, each other one a link that opens it instead ([onPick]) -- then the access the open one has. Read
- * before any field, so the reader sees what the user is part of before what can be changed about it. Another user that
- * is not simply live says so beside its link ([userStructureFlag]), not only on hover. For a screen reader it is a
- * labeled group, the arrows are not read, and the open user is the current one.
+ * One user on a structure line (rule 7 of #1477): its [key], how it reads ([label]), what its hover says ([title]),
+ * what it says beside itself when it is not simply live ([flag]), and whether it is the one the page is about
+ * ([current]).
  */
-fun ChildrenBuilder.userStructureLine(structure: UserStructure, disabled: Boolean, onPick: (AdminUser) -> Unit) {
+class StructureRow(val key: String, val label: String, val title: String, val flag: String?, val current: Boolean)
+
+/** A structure line (rule 7 of #1477): the person's address, their users, and the access of the one the page is about. */
+class StructureLine(val person: String, val rows: List<StructureRow>, val access: String)
+
+/**
+ * A page's structure line (rule 7 of #1477), read before any field, so the reader sees what a user is part of before
+ * what can be changed about it: the person's address, then the person's users -- the current one marked, each other
+ * one a link that opens it ([onPick], given its [StructureRow.key]) or, with no [onPick], its words alone -- then the
+ * access the current one has. A user that is not simply live says so beside itself, not only on hover. For a screen
+ * reader it is a group labeled [ariaLabel], the arrows are not read, and the current user's row is marked
+ * `aria-current`.
+ */
+fun ChildrenBuilder.structureLine(
+    line: StructureLine,
+    ariaLabel: String,
+    disabled: Boolean = false,
+    onPick: ((String) -> Unit)? = null,
+) {
+    // An extension, so an arrow lands in the line's own div rather than in the builder the line was called on.
+    fun ChildrenBuilder.arrow() = span {
+        className = ClassName("user-structure-arrow")
+        asDynamic()["aria-hidden"] = "true"
+        +"→"
+    }
     div {
         className = ClassName("user-structure")
         asDynamic()["role"] = "group"
-        asDynamic()["aria-label"] = "How this user is put together"
+        asDynamic()["aria-label"] = ariaLabel
         span {
             className = ClassName("user-structure-person")
-            +structure.person
+            +line.person
         }
-        span {
-            className = ClassName("user-structure-arrow")
-            asDynamic()["aria-hidden"] = "true"
-            +"→"
-        }
-        for (row in structure.users) {
-            if (row.selected) {
+        arrow()
+        for (row in line.rows) {
+            if (row.current) {
                 span {
-                    key = row.user.userId.toString().unsafeCast<Key>()
+                    key = row.key.unsafeCast<Key>()
                     className = ClassName("user-mark user-structure-current")
                     asDynamic()["aria-current"] = "true"
-                    title = row.status
+                    title = row.title
                     +row.label
                 }
             } else {
                 span {
-                    key = row.user.userId.toString().unsafeCast<Key>()
-                    button {
-                        className = ClassName("wf-cell-link")
-                        title = "${row.status} — open this user"
-                        this.disabled = disabled
-                        onClick = { onPick(row.user) }
-                        +row.label
+                    key = row.key.unsafeCast<Key>()
+                    if (onPick != null) {
+                        button {
+                            className = ClassName("wf-cell-link")
+                            title = row.title
+                            this.disabled = disabled
+                            onClick = { onPick(row.key) }
+                            +row.label
+                        }
+                    } else {
+                        span {
+                            title = row.title
+                            +row.label
+                        }
                     }
-                    userStructureFlag(row.user)?.let {
+                    row.flag?.let {
                         span {
                             className = ClassName("type-hint user-structure-flag")
                             +" ($it)"
@@ -131,11 +156,26 @@ fun ChildrenBuilder.userStructureLine(structure: UserStructure, disabled: Boolea
                 }
             }
         }
-        span {
-            className = ClassName("user-structure-arrow")
-            asDynamic()["aria-hidden"] = "true"
-            +"→"
-        }
-        span { +structure.access }
+        arrow()
+        span { +line.access }
+    }
+}
+
+/**
+ * The Users editor's structure line (issue #1478): [structure] drawn by [structureLine], each user other than the open
+ * one a link that opens it instead ([onPick]), flagged when it is not simply live ([userStructureFlag]).
+ */
+fun ChildrenBuilder.userStructureLine(structure: UserStructure, disabled: Boolean, onPick: (AdminUser) -> Unit) {
+    val rows = structure.users.map { row ->
+        StructureRow(
+            key = row.user.userId.toString(),
+            label = row.label,
+            title = if (row.selected) row.status else "${row.status} — open this user",
+            flag = if (row.selected) null else userStructureFlag(row.user),
+            current = row.selected,
+        )
+    }
+    structureLine(StructureLine(structure.person, rows, structure.access), "How this user is put together", disabled) { key ->
+        structure.users.firstOrNull { it.user.userId.toString() == key }?.let { onPick(it.user) }
     }
 }

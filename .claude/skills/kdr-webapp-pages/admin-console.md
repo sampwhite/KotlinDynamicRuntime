@@ -24,7 +24,7 @@ group with the open user marked current.
    draft.
 2. **Invitation** (live), for an unclaimed, enabled user: **Send invitation**, its result in the panel.
 3. **Activity** (read-only).
-4. **API keys** (live): `ApiKeysSection` with `inPanel`, which leaves the heading to the panel.
+4. **API keys** (live): `ApiKeysSection`, which leaves the heading to the panel.
 5. **Danger zone**, never on your own row: **Delete user…** through `DangerConfirm`, keyed by the user, so a confirm
    armed on one user is not waiting on the next one the structure line opens.
 
