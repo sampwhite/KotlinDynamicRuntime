@@ -312,15 +312,15 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
             emptyIsAbsent = true
             WAGG.drillStates.forEach { option(it.name) }
         }
-        // The sort (issue #666): a column to order by -- a display trait id, or a fixed column -- and a
+        // The sort (issue #666): a column to order by -- a display column, or a fixed one -- and a
         // direction. Absent means the default (most recently written first). Not admin-gated: any caller may
         // order the rows they can already see (`${GSORT.owner}` and `${GSORT.client}` are admin/allClients-only,
-        // as their columns are, and are ignored otherwise). Open text, since the column names a client's own trait;
+        // as their columns are, and are ignored otherwise). Open text, since a display column is a client's own name;
         // an unknown column falls back to the default order rather than faulting a stale bookmark.
         property(
             GSORT.sort,
-            "Order by this column: a display trait id, or `${GSORT.updated}` / `${GSORT.created}` / " +
-                "`${GSORT.contains}` / `${GSORT.owner}` (admin-only) / `${GSORT.client}` (allClients-only). " +
+            "Order by this column: a display column, `${GSORT.displayColumnPrefix}<column>`, or `${GSORT.updated}` / " +
+                "`${GSORT.created}` / `${GSORT.contains}` / `${GSORT.owner}` (admin-only) / `${GSORT.client}` (allClients-only). " +
                 "Defaults to most recently written.",
         ) {
             emptyIsAbsent = true
@@ -353,8 +353,14 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
     // One of the listing's columns (issue #1323), with the presentation its cells read through.
     type(GEP.listingColumnType) {
         type = SCT.kObject
-        description = "One column of the forms listing: the trait it reads, its header, its kind, and its presentation."
-        property(UF.traitId, "The trait the column reads; each row's display value for it carries the same id.", required = true)
+        description = "One column of the forms listing: its name, the trait it reads, its header, its kind, and its presentation."
+        property(
+            UF.columnId,
+            "The column's name: its own (issue #1490), else the trait id. Each row's display value for it carries the same " +
+                "name, and its search parameters and sort are named from it.",
+            required = true,
+        )
+        property(UF.traitId, "The trait the column reads.", required = true)
         property(UF.label, "The column header.", required = true)
         property(UF.kind, "What the column's value is, and so how it sorts and searches.", required = true) { options(UsageKind.entries) }
         property(UF.presentation, "A string script over the trait's data, with the column's value as `value`, that the cell reads through. Absent shows the value -- relative to now for a date.")
@@ -477,19 +483,19 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
     // many distinct values matched (numAvailable) beside the capped page the box shows.
     type(GEP.fieldValueType) {
         type = SCT.kObject
-        description = "One distinct value a text trait takes across the caller's documents (issue #581)."
+        description = "One distinct value a text column takes across the caller's documents (issue #581)."
         property(UF.value, "The distinct display value.", required = true)
     }
 
     listEndpoint(
         GEP.formDocValues,
-        "Distinct values a text trait takes across the caller's own form documents, for a filter box's " +
+        "Distinct values a text column takes across the caller's own form documents, for a filter box's " +
             "type-ahead. Case-insensitive, capped, and confined to what the caller may see.",
         outputRef = GEP.fieldValueType,
         hasNumAvailable = true,
         hasMore = true,
         inputFields = {
-            field(GE.traitId, "The text trait whose values to suggest -- a search field the client declared.", required = true) {
+            field(UF.columnId, "The text column whose values to suggest -- a search field the client declared.", required = true) {
                 emptyIsAbsent = true
             }
             field(EI.q, "Only values containing this fragment (case-insensitive). Absent lists the first values.") {
@@ -503,15 +509,15 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
         // negative one would otherwise reach `List.take` and throw a 500 rather than the harmless empty page
         // a nonsensical `?limit=-1` should get.
         val limit = ((request[EP.limit] as? Number)?.toInt() ?: defaultListLimit).coerceAtLeast(0)
-        val traitId = (request[GE.traitId] as? String)?.trim()?.ifEmpty { null }
-            ?: throw KdrException.mkInput("A ${GE.traitId} is required.")
+        val column = (request[UF.columnId] as? String)?.trim()?.ifEmpty { null }
+            ?: throw KdrException.mkInput("A ${UF.columnId} is required.")
         val term = (request[EI.q] as? String)?.trim()?.ifEmpty { null }
-        // The trait must be one the client declared a *text* usage for -- the same set the search boxes are
-        // built from. A number or date, or an unknown trait, has no value list to suggest and is a 400 rather
-        // than an empty page, so a caller learns the parameter was wrong rather than that nothing matched.
-        val usage = SchemaService.get(c).traitUsagesFor(c.client).firstOrNull { it.traitId == traitId && it.kind == UsageKind.string }
-            ?: throw KdrException.mkInput("'$traitId' is not a text search field of this client.")
-        // Scan the caller's scope up to a cap, compute this one trait's display value per row, and keep the
+        // The column must be one of the client's *text* columns -- the same set the search boxes are built from. A
+        // number or date, or an unknown column, has no value list to suggest and is a 400 rather than an empty page,
+        // so a caller learns the parameter was wrong rather than that nothing matched.
+        val usage = SchemaService.get(c).traitUsagesFor(c.client).firstOrNull { it.columnKey == column && it.kind == UsageKind.string }
+            ?: throw KdrException.mkInput("'$column' is not a text search field of this client.")
+        // Scan the caller's scope up to a cap, compute this one column's display value per row, and keep the
         // distinct non-blank ones. The cap bounds the work: a suggestion list is a convenience, not a report,
         // so scanning the most-recent [fieldValueScanCap] documents is enough to surface the common values.
         val scope = ReadScopeRules.forCaller(c)
@@ -1369,8 +1375,8 @@ private fun resolveTargetUser(c: KdrCxt, request: Map<String, Any?>, callerScope
 /**
  * The forms-list search predicate (issue #538), or null when the caller filled no search field. Built from the
  * client's [usages]: each contributes parameters ([gedraSearchParams]), and a filled one becomes a condition on
- * the row's **display value** for that trait -- the same value the listing shows in its column, so a person
- * searches what they see. A row satisfies the filter only when it satisfies every filled parameter.
+ * the row's **display value** for that column -- the same value the listing shows in it, so a person searches what
+ * they see. A row satisfies the filter only when it satisfies every filled parameter.
  *
  * A number/date parameter arrives coerced (a `Number`); it is compared as text against the row's display value,
  * so both sides read through the same parse. Applied by [GedraDataService.listGedras] before paging, over the
@@ -1389,14 +1395,14 @@ private fun searchFilter(
     if (active.isEmpty() && term == null) {
         return null
     }
-    val textTraits = textSearchTraitIds(usages)
+    val textColumns = textSearchColumns(usages)
     return { row ->
         // Over the derived entries (issue #712 review), so a search on a derived-field column matches the value
         // the column shows rather than the blank the stored data would yield.
-        val byTrait = computeDisplayValues(c, withDerivedEntries(c, row), usages, c.client).associate { display ->
-            (display[UF.traitId].toOptStr() ?: "") to (display[UF.value].toOptStr() ?: "")
+        val byColumn = computeDisplayValues(c, withDerivedEntries(c, row), usages, c.client).associate { display ->
+            (display[UF.columnId].toOptStr() ?: "") to (display[UF.value].toOptStr() ?: "")
         }
-        matchesSearch(byTrait, active, c.clientTimeZone) && (term == null || matchesAnyText(byTrait, textTraits, term))
+        matchesSearch(byColumn, active, c.clientTimeZone) && (term == null || matchesAnyText(byColumn, textColumns, term))
     }
 }
 
@@ -1415,11 +1421,11 @@ private fun ownerSortName(owner: AuthUserRow): String = owner.name?.trim()?.ifEm
 
 /**
  * The sort a listing request asks for (issue #666), or null for the default order. `updated` / `created` order
- * by the row's protocol dates; a display column arrives namespaced (`display_<traitId>`, [GSORT.displayTraitId])
- * and orders by that trait's value under its declared [UsageKind] -- the namespacing is what keeps a trait
- * named like a fixed column from being read as one. An unknown column returns null (the default order) rather
+ * by the row's protocol dates; a display column arrives namespaced (`display_<column>`, [GSORT.displayColumnKey])
+ * and orders by that column's value under its declared [UsageKind] -- the namespacing is what keeps a column
+ * named like a fixed one from being read as one. An unknown column returns null (the default order) rather
  * than faulting a stale bookmark. The direction is `desc` when [GSORT.sortDir] says so, ascending otherwise; the
- * trait's value is read the way the column shows it ([computeDisplayValues] for just that usage).
+ * column's value is read the way the column shows it ([computeDisplayValues] for just that usage).
  */
 private fun gedraSortFor(
     cxt: KdrCxt,
@@ -1462,8 +1468,8 @@ private fun gedraSortFor(
             if (!AdminRules.canSeeAllClients(cxt)) null
             else GedraDataService.GedraSort(UsageKind.string, descending) { it.client }
         else -> {
-            val traitId = GSORT.displayTraitId(column) ?: return null
-            val usage = usages.firstOrNull { it.traitId == traitId } ?: return null
+            val key = GSORT.displayColumnKey(column) ?: return null
+            val usage = usages.firstOrNull { it.columnKey == key } ?: return null
             GedraDataService.GedraSort(usage.kind, descending) { row ->
                 // Over the derived entries (issue #712 review), so a sort by a derived-field column orders on the
                 // value the column shows, not the blank the stored data holds.

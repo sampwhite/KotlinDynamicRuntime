@@ -219,13 +219,13 @@ class UsageSearchTest : StringSpec({
         fun values(args: Map<String, Any?>) = user.getItems(path, args).map { it[UF.value] }
 
         // All distinct values, sorted, the duplicate collapsed to one.
-        values(mapOf(GE.traitId to GT.name)) shouldBe listOf("Annual budget", "Quarterly plan")
+        values(mapOf(UF.columnId to GT.name)) shouldBe listOf("Annual budget", "Quarterly plan")
         // A case-insensitive contains filter.
-        values(mapOf(GE.traitId to GT.name, EI.q to "QUART")) shouldBe listOf("Quarterly plan")
+        values(mapOf(UF.columnId to GT.name, EI.q to "QUART")) shouldBe listOf("Quarterly plan")
         // A fragment matching nothing: an empty list, not an error.
-        values(mapOf(GE.traitId to GT.name, EI.q to "zzz")).size shouldBe 0
+        values(mapOf(UF.columnId to GT.name, EI.q to "zzz")).size shouldBe 0
         // A nonsensical negative limit is the harmless empty page, not a 500 (the limit is floored at 0).
-        values(mapOf(GE.traitId to GT.name, EP.limit to -1)).size shouldBe 0
+        values(mapOf(UF.columnId to GT.name, EP.limit to -1)).size shouldBe 0
     }
 
     "formDocValues is scoped to the caller: one user's values are not another's" {
@@ -234,9 +234,9 @@ class UsageSearchTest : StringSpec({
         postName(alice, "Alice plan zzscopemark")
         val path = clientPath(GEP.formDocValues, SC.globex)
         // Bob, scoped to his own rows, sees none of alice's distinct values.
-        bob.getItems(path, mapOf(GE.traitId to GT.name, EI.q to "zzscopemark")).size shouldBe 0
+        bob.getItems(path, mapOf(UF.columnId to GT.name, EI.q to "zzscopemark")).size shouldBe 0
         // Alice sees her own.
-        alice.getItems(path, mapOf(GE.traitId to GT.name, EI.q to "zzscopemark")).map { it[UF.value] } shouldBe
+        alice.getItems(path, mapOf(UF.columnId to GT.name, EI.q to "zzscopemark")).map { it[UF.value] } shouldBe
             listOf("Alice plan zzscopemark")
     }
 

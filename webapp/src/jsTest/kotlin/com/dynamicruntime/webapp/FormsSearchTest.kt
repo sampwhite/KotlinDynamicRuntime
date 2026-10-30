@@ -39,7 +39,7 @@ class FormsSearchTest {
     @Test
     fun keepsTheDeclaredTraitsInOrderAndDropsTheReservedFields() {
         val groups = searchGroups(inputSchema)
-        assertEquals(listOf("name", "year"), groups.map { it.traitId })
+        assertEquals(listOf("name", "year"), groups.map { it.columnKey })
         assertEquals(listOf("Name", "Year"), groups.map { it.label })
         // A lone lower bound is still a range control, with no upper box.
         assertEquals("yearMin", groups[1].min)
@@ -55,7 +55,7 @@ class FormsSearchTest {
     @Test
     fun theFreeTextTermIsReservedToo() {
         val schema = mapOf(SCH.properties to linkedMapOf(EI.q to mapOf<String, Any?>(), "name" to mapOf(SCH.title to "Name")))
-        assertEquals(listOf("name"), searchGroups(schema).map { it.traitId })
+        assertEquals(listOf("name"), searchGroups(schema).map { it.columnKey })
     }
 
     /** The reserved names are the kernel's one list (issue #987), the cursor field `after` among them. */
@@ -64,14 +64,14 @@ class FormsSearchTest {
         val own = reservedQueryFieldNames.associateWith { mapOf<String, Any?>() }
         val schema = mapOf(SCH.properties to LinkedHashMap(own).apply { put("name", mapOf(SCH.title to "Name")) })
         assertTrue(EP.after in reservedQueryFieldNames)
-        assertEquals(listOf("name"), searchGroups(schema).map { it.traitId })
+        assertEquals(listOf("name"), searchGroups(schema).map { it.columnKey })
     }
 
     /** The survey-status filter (issue #695) is reserved -- its own control, never a trait box -- and chips by label. */
     @Test
     fun theSurveyStatusFilterIsReservedAndChipsByLabel() {
         val schema = mapOf(SCH.properties to linkedMapOf(SVY.surveyStatus to mapOf<String, Any?>(), "name" to mapOf(SCH.title to "Name")))
-        assertEquals(listOf("name"), searchGroups(schema).map { it.traitId })
+        assertEquals(listOf("name"), searchGroups(schema).map { it.columnKey })
         assertEquals("Status: Needs Info", surveyStatusChip(mapOf(SVY.surveyStatus to SVYS.needsInfo)))
         assertNull(surveyStatusChip(mapOf(SVY.surveyStatus to "")))
         assertNull(surveyStatusChip(mapOf(SVY.surveyStatus to "bogus")))
@@ -99,7 +99,7 @@ class FormsSearchTest {
     @Test
     fun groupsEachTraitsParametersIntoOneControl() {
         val groups = searchGroups(groupedSchema)
-        assertEquals(listOf("name", "year", "due", "site"), groups.map { it.traitId })
+        assertEquals(listOf("name", "year", "due", "site"), groups.map { it.columnKey })
         // The caption is the column label, the role's own words removed.
         assertEquals(listOf("Name", "Year", "Due", "Site"), groups.map { it.label })
         val name = groups[0]

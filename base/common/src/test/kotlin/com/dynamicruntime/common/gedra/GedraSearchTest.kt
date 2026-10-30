@@ -15,8 +15,8 @@ import io.kotest.matchers.shouldBe
  * is really a substring -- rather than throwing.
  */
 class GedraSearchTest : StringSpec({
-    fun usage(traitId: String, kind: UsageKind, substring: Boolean = false) =
-        ClientTraitUsage(traitId, traitId.replaceFirstChar { it.uppercase() }, $$"${x}", kind, substring)
+    fun usage(traitId: String, kind: UsageKind, substring: Boolean = false, columnId: String? = null) =
+        ClientTraitUsage(traitId, traitId.replaceFirstChar { it.uppercase() }, $$"${x}", kind, substring, columnId = columnId)
 
     "a string usage gives an exact parameter, and a substring one only when asked" {
         gedraSearchParams(listOf(usage("name", UsageKind.string))).map { it.name to it.role } shouldBe
@@ -125,15 +125,15 @@ class GedraSearchTest : StringSpec({
         }
     }
 
-    "duplicateUsageTraitIds names a trait declared more than once, once, in first-seen order" {
-        // Two usages of one trait id -- the case that silently collides (issue #681): reported once.
-        duplicateUsageTraitIds(listOf(usage("year", UsageKind.number), usage("year", UsageKind.string))) shouldBe
+    "usageColumnClashes names a column declared more than once, once, in first-seen order" {
+        // Two columns of one trait with no name of their own -- the case that silently collides (issue #681).
+        usageColumnClashes(listOf(usage("year", UsageKind.number), usage("year", UsageKind.string))) shouldBe
             listOf("year")
         // Distinct trait ids: nothing to report.
-        duplicateUsageTraitIds(listOf(usage("year", UsageKind.number), usage("note", UsageKind.string))) shouldBe
+        usageColumnClashes(listOf(usage("year", UsageKind.number), usage("note", UsageKind.string))) shouldBe
             emptyList()
         // Two distinct duplicates among singles: each named once, in the order first seen.
-        duplicateUsageTraitIds(
+        usageColumnClashes(
             listOf(
                 usage("year", UsageKind.number),
                 usage("note", UsageKind.string),
@@ -141,6 +141,21 @@ class GedraSearchTest : StringSpec({
                 usage("note", UsageKind.number),
             ),
         ) shouldBe listOf("year", "note")
+    }
+
+    "a second column of a trait is told apart by its own name, which names its search parameters" {
+        // Issue #1490: the trait twice, the second named, is two columns -- and the first keeps the names it had.
+        val two = listOf(usage("amount", UsageKind.number), usage("amount", UsageKind.string, substring = true, columnId = "amountText"))
+        usageColumnClashes(two) shouldBe emptyList()
+        gedraSearchParams(two).map { it.name to it.columnKey } shouldBe listOf(
+            "amountMin" to "amount", "amountMax" to "amount", "amountText" to "amountText", "amountTextContains" to "amountText",
+        )
+        // A name of its own may be anything but another column's.
+        usageColumnClashes(listOf(usage("year", UsageKind.number), usage("note", UsageKind.string, columnId = "year"))) shouldBe
+            listOf("year")
+        // Nor may the columns' search parameters meet: a text column named `yearMin` would take the number column's bound.
+        usageColumnClashes(listOf(usage("year", UsageKind.number), usage("note", UsageKind.string, columnId = "yearMin"))) shouldBe
+            listOf("yearMin")
     }
 
     "withSearchProperties merges into the base and leaves a usage-less base untouched" {
@@ -157,10 +172,13 @@ class GedraSearchTest : StringSpec({
         withSearchProperties(base, emptyList()) shouldBe base
     }
     // The free-text term (issue #562): one box searched across every text field.
-    "textSearchTraitIds is the string usages only, in order" {
-        textSearchTraitIds(
-            listOf(usage("name", UsageKind.string), usage("year", UsageKind.number), usage("auditor", UsageKind.string, substring = true)),
-        ) shouldBe listOf("name", "auditor")
+    "textSearchColumns is the string usages only, in order, by their columns" {
+        textSearchColumns(
+            listOf(
+                usage("name", UsageKind.string), usage("year", UsageKind.number), usage("auditor", UsageKind.string, substring = true),
+                usage("auditor", UsageKind.string, columnId = "auditorAgain"),
+            ),
+        ) shouldBe listOf("name", "auditor", "auditorAgain")
     }
 
     "matchesAnyText ORs a case-insensitive substring across the text fields, and a blank term matches all" {
@@ -198,7 +216,7 @@ class GedraSearchTest : StringSpec({
         val props = searchParamProperties(params)
         for (param in params) {
             val shape = decodeSearchParam(param.name, props[param.name].toJsonMapOrEmpty(), props.keys)
-            Triple(shape.traitId, shape.role, shape.kind) shouldBe Triple(param.traitId, param.role, param.kind)
+            Triple(shape.columnKey, shape.role, shape.kind) shouldBe Triple(param.columnKey, param.role, param.kind)
         }
         // A trait a client could not have generated -- typed, but with neither ending -- still reads as a control.
         decodeSearchParam("year", mapOf(SCH.type to SCT.number), setOf("year")).role shouldBe SearchRole.exact
@@ -232,16 +250,16 @@ class GedraSearchTest : StringSpec({
     }
 
 
-    "GSORT.displayTraitId decodes a namespaced display column, and leaves a fixed or bare one alone" {
-        GSORT.displayTraitId("${GSORT.displayColumnPrefix}year") shouldBe "year"
-        // A trait named like a fixed column still decodes to its own id -- the namespacing is what prevents the
-        // collision (issue #666 review): `display_updated` is the trait `updated`, not the protocol date column.
-        GSORT.displayTraitId("${GSORT.displayColumnPrefix}${GSORT.updated}") shouldBe GSORT.updated
+    "GSORT.displayColumnKey decodes a namespaced display column, and leaves a fixed or bare one alone" {
+        GSORT.displayColumnKey("${GSORT.displayColumnPrefix}year") shouldBe "year"
+        // A column named like a fixed one still decodes to its own name -- the namespacing is what prevents the
+        // collision (issue #666 review): `display_updated` is the column `updated`, not the protocol date column.
+        GSORT.displayColumnKey("${GSORT.displayColumnPrefix}${GSORT.updated}") shouldBe GSORT.updated
         // A bare fixed column, or a bare name, is not a display key.
-        GSORT.displayTraitId(GSORT.updated) shouldBe null
-        GSORT.displayTraitId("year") shouldBe null
-        // The prefix alone names no trait.
-        GSORT.displayTraitId(GSORT.displayColumnPrefix) shouldBe null
+        GSORT.displayColumnKey(GSORT.updated) shouldBe null
+        GSORT.displayColumnKey("year") shouldBe null
+        // The prefix alone names no column.
+        GSORT.displayColumnKey(GSORT.displayColumnPrefix) shouldBe null
     }
 
 })

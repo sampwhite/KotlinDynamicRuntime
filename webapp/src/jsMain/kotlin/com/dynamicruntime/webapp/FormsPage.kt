@@ -983,16 +983,16 @@ val FormsPage = FC<FormsPageProps> { props ->
                             applySearch(ep, kept)
                         }
                         // A text box's value type-ahead (issue #581), only when the caller's surface can supply
-                        // it. Fetches the distinct values the trait takes across the caller's own documents.
+                        // it. Fetches the distinct values the column takes across the caller's own documents.
                         fetchValues = valuesEndpoint?.let { ve ->
-                            { traitId, prefix, cb ->
+                            { column, prefix, cb ->
                                 formsScope.launch {
                                     cb(
                                         apiResult {
                                             val resp = SchemaCatalogApi.invoke(
                                                 ve,
                                                 buildMap {
-                                                    put(GE.traitId, traitId)
+                                                    put(UF.columnId, column)
                                                     if (prefix.isNotBlank()) put(EI.q, prefix)
                                                     put(EP.limit, maxValueSuggestions)
                                                 },

@@ -6,11 +6,13 @@ import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toOptStr
 
 /**
- * One column of a forms listing as the listing's summary says it (issue #1323): the [traitId] it reads, its [label],
- * the [kind] its value sorts and searches by, and the [presentation] the cell reads through, if the client gave one.
- * Said once for the listing ([GDF.columns]); each row carries only its value.
+ * One column of a forms listing as the listing's summary says it (issue #1323): its name [columnId] (the usage's
+ * [ClientTraitUsage.columnKey], issue #1490), the [traitId] it reads, its [label], the [kind] its value sorts and
+ * searches by, and the [presentation] the cell reads through, if the client gave one. Said once for the listing
+ * ([GDF.columns]); each row carries only its value, under the same [columnId].
  */
 class ListingColumn(
+    val columnId: String,
     val traitId: String,
     val label: String,
     val kind: UsageKind,
@@ -18,6 +20,7 @@ class ListingColumn(
 ) {
     /** This column on the wire, keyed by [UF]: the presentation only when there is one. */
     fun toMap(): Map<String, Any?> = buildMap {
+        put(UF.columnId, columnId)
         put(UF.traitId, traitId)
         put(UF.label, label)
         put(UF.kind, kind.name)
@@ -26,11 +29,13 @@ class ListingColumn(
 
     companion object {
         /** The column [usage] draws. */
-        fun of(usage: ClientTraitUsage): ListingColumn = ListingColumn(usage.traitId, usage.label, usage.kind, usage.presentation)
+        fun of(usage: ClientTraitUsage): ListingColumn =
+            ListingColumn(usage.columnKey, usage.traitId, usage.label, usage.kind, usage.presentation)
 
         /** The columns of a listing's [GDF.columns], in order; a kind the kernel does not know reads as text. */
         fun listFrom(wire: Any?): List<ListingColumn> = wire.toJsonListOfMaps().map { m ->
             ListingColumn(
+                columnId = m[UF.columnId].toOptStr().orEmpty(),
                 traitId = m[UF.traitId].toOptStr().orEmpty(),
                 label = m[UF.label].toOptStr().orEmpty(),
                 kind = UsageKind.entries.firstOrNull { it.name == m[UF.kind].toOptStr() } ?: UsageKind.string,

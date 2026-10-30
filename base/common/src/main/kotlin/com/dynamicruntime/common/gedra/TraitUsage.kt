@@ -12,12 +12,12 @@ import com.dynamicruntime.common.util.toOptStr
  * and read endpoints attach under [GDF.displayValues], so the forms table shows the columns a client declared
  * rather than a hardcoded `name`.
  *
- * One entry per declared [usages] rule, in declaration order (the column order), whether or not the row
- * carries that trait -- so every row presents the same column set and the table can build its headers from any
- * one of them. A rule whose trait the row does not carry, or whose expression cannot resolve against the data
- * present, yields an **empty** value rather than dropping the column or failing the listing: a blank cell is
- * the honest presentation of "this row has nothing to show here", and one row's missing field must never fail
- * the page for the rest.
+ * One entry per declared [usages] rule, in declaration order (the column order), under the column's name
+ * ([ClientTraitUsage.columnKey], issue #1490), whether or not the row carries that trait -- so every row presents the
+ * same column set and the table can build its headers from any one of them. A rule whose trait the row does not
+ * carry, or whose expression cannot resolve against the data present, yields an **empty** value rather than
+ * dropping the column or failing the listing: a blank cell is the honest presentation of "this row has nothing to
+ * show here", and one row's missing field must never fail the page for the rest.
  *
  * [usages] are [usageClient]'s. A rule over one of that client's **own** traits applies only to that client's
  * rows (issue #807): another client may declare a trait with the same id and a different shape, so on its row --
@@ -49,6 +49,7 @@ private fun displayValue(
     // problem the report carries, and for a *presentation* value it is not a fault -- it is a blank cell.
     val value = if (data == null) "" else usage.display.analyzeTemplate(evaluateWith = data, env = env).value ?: ""
     return linkedMapOf(
+        UF.columnId to usage.columnKey,
         UF.traitId to usage.traitId,
         UF.label to usage.label,
         UF.value to value,

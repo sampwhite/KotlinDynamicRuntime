@@ -378,6 +378,12 @@ deployment's zone (`serverTimeZone`, a fixed UTC-8), as every client was before.
   reads relative to now, as the table's Updated and Created columns do, and a day alone is shown as it is. A
   presentation is parsed where configuration is written and at boot, and one that cannot be evaluated against a row
   shows the value. A report's columns and a CSV read the value.
+- **A trait may have several columns** (#1490). A usage is stored keyed by its trait and its label, so two columns
+  of one trait differ in their headings. A column's machine name -- what its search parameters (`<column>`,
+  `<column>Contains`, `<column>Min`, `<column>Max`), its sort (`display_<column>`), and its value on a row are named
+  by -- is its `columnId`, else the trait id, so a column without one keeps the names it always had. A second
+  column of a trait needs a `columnId`: two columns resolving to one name, or whose search parameters would meet,
+  are refused where configuration is written, and reported at boot.
 
 **The definition has a schema, and a written one is held to it** (issue #1051). The attributes above are declared
 once (`ClientDef.defineInfoType`) and make two types. `ClientInfo` is what the client endpoints answer with.

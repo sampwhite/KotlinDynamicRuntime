@@ -70,14 +70,18 @@ class ConfigSlotGateTest : StringSpec({
 
     "a usage rule is held to its shape, and its display and presentation to being templates that parse" {
         codes(CCT.usageDef, usage()).shouldBeEmpty()
-        codes(CCT.usageDef, usage() - CCT.label) shouldBe mapOf("${CCT.usageDef}[a].${CCT.label}" to SchFailCode.missingRequired)
-        codes(CCT.usageDef, usage() + (CCT.kind to "text")) shouldBe mapOf("${CCT.usageDef}[a].${CCT.kind}" to SchFailCode.invalidOption)
+        // Keyed by trait and label (issue #1490), so an entry without its label has no key and is named by its place.
+        codes(CCT.usageDef, usage() - CCT.label) shouldBe mapOf("${CCT.usageDef}[#0].${CCT.label}" to SchFailCode.missingRequired)
+        codes(CCT.usageDef, usage() + (CCT.kind to "text")) shouldBe
+            mapOf("${CCT.usageDef}[a,A].${CCT.kind}" to SchFailCode.invalidOption)
         // A flag is a boolean: the reassembly reads anything else as false.
-        codes(CCT.usageDef, usage() + (CCT.substring to "yes")) shouldBe mapOf("${CCT.usageDef}[a].${CCT.substring}" to SchFailCode.wrongType)
-        codes(CCT.usageDef, usage() + ("lable" to "A")) shouldBe mapOf("${CCT.usageDef}[a].lable" to SchFailCode.additionalProperty)
+        codes(CCT.usageDef, usage() + (CCT.substring to "yes")) shouldBe
+            mapOf("${CCT.usageDef}[a,A].${CCT.substring}" to SchFailCode.wrongType)
+        codes(CCT.usageDef, usage() + ("lable" to "A")) shouldBe
+            mapOf("${CCT.usageDef}[a,A].lable" to SchFailCode.additionalProperty)
         // A template that does not parse blanks its column for every row and says nothing; here it is said.
         val malformed = configSlotFailures(cxt, mapOf(CCT.usageDef to listOf(usage(display = "\${name"))))
-        malformed.single().path shouldBe "${CCT.usageDef}[a].${CCT.display}"
+        malformed.single().path shouldBe "${CCT.usageDef}[a,A].${CCT.display}"
         malformed.single().code shouldBe SchFailCode.badValue
         malformed.single().message shouldContain "not a template that parses"
         // A presentation (issue #1323) is parsed as a display is: an unknown function, a wrong number of arguments
@@ -85,11 +89,12 @@ class ConfigSlotGateTest : StringSpec({
         codes(CCT.usageDef, usage() + (CCT.presentation to $$"""${currency(value, "USD")}""")).shouldBeEmpty()
         for (bad in listOf($$"${formtNumber(value)}", $$"${formatNumber(value, 1, 2)}", $$"""${formatDate(value, "relatve")}""")) {
             codes(CCT.usageDef, usage() + (CCT.presentation to bad)) shouldBe
-                mapOf("${CCT.usageDef}[a].${CCT.presentation}" to SchFailCode.badValue)
+                mapOf("${CCT.usageDef}[a,A].${CCT.presentation}" to SchFailCode.badValue)
         }
         // An entry with no key is named by its place, and its missing key is among its failures.
         // By place, counted from 0 as an array's items are: `[#1]` is the second entry.
-        codes(CCT.usageDef, usage(), usage() - CCT.traitId) shouldBe mapOf("${CCT.usageDef}[#1].${CCT.traitId}" to SchFailCode.missingRequired)
+        codes(CCT.usageDef, usage(), usage() - CCT.traitId) shouldBe
+            mapOf("${CCT.usageDef}[#1].${CCT.traitId}" to SchFailCode.missingRequired)
     }
 
     // Issue #1153. The gate is the only thing that holds a typed file ref to its shape -- the write keeps no guard
@@ -325,7 +330,7 @@ class ConfigSlotGateTest : StringSpec({
             ),
         )
         failuresOf(refused).keys shouldBe setOf(
-            "${CCT.usageDef}[${GT.name}].${CCT.display}", "${CCT.usageDef}[${GT.name}].${CCT.kind}",
+            "${CCT.usageDef}[${GT.name},A].${CCT.display}", "${CCT.usageDef}[${GT.name},A].${CCT.kind}",
             "${CCT.cfactDef}[ready].${CCT.group}", "${CCT.cfactDef}[ready].${CCT.description}", "${CCT.cfactDef}[ready].${CCT.toFrontend}",
         )
         refused[EP.errorMessage].toString() shouldContain "Configuration 'listing' cannot be written"
@@ -423,27 +428,36 @@ class ConfigSlotGateTest : StringSpec({
         GedraConfigReload.reloadClient(cxt, client)
 
         // A patch of another slot goes through: the rule is carried unchanged, so it is not judged again.
-        onlyConfig(admin.postData(ACEP.bundlePatch, patch("legacy", CCT.cfactDef, GedraEditAction.addOrReplace, cfact("legacyReady"))))[CFEP.slots]
-            .toJsonMapOrEmpty().keys shouldBe setOf(CCT.usageDef, CCT.cfactDef)
+        val otherSlot = patch("legacy", CCT.cfactDef, GedraEditAction.addOrReplace, cfact("legacyReady"))
+        onlyConfig(admin.postData(ACEP.bundlePatch, otherSlot))[CFEP.slots].toJsonMapOrEmpty().keys shouldBe
+            setOf(CCT.usageDef, CCT.cfactDef)
         // So does the bundle read and written back as it is.
         val read = admin.getItem(ACEP.bundle, mapOf(CFEP.client to client, CFEP.name to "legacy"))
         admin.postData(ACEP.bundleWrite, bundle("legacy", read[CFEP.slots].toJsonMapOrEmpty()))[CFEP.slots]
             .toJsonMapOrEmpty().keys shouldBe setOf(CCT.usageDef, CCT.cfactDef)
         // And imported as it is: an import of a client's own bundles back into it is a restore, not a new write.
-        val restored = admin.postData(ACEP.import, mapOf(ACEP.bundlesField to listOf(bundle("legacy", read[CFEP.slots].toJsonMapOrEmpty()))))
+        val restored =
+            admin.postData(ACEP.import, mapOf(ACEP.bundlesField to listOf(bundle("legacy", read[CFEP.slots].toJsonMapOrEmpty()))))
         restored[ACEP.failures].toJsonListOfMaps().shouldBeEmpty()
         restored[ACEP.written].toJsonListOfMaps().map { it[CFEP.name] } shouldBe listOf("legacy")
         // Changing the rule and leaving it at fault is refused: it is the write's own now.
         failuresOf(
             admin.expectError(
                 EXC.badInput, ACEP.bundlePatch,
-                patch("legacy", CCT.usageDef, GedraEditAction.addOrMerge, mapOf(CCT.traitId to GT.name, CCT.label to "Full name")),
+                // Addressed by its trait and label (issue #1490).
+                patch(
+                    "legacy", CCT.usageDef, GedraEditAction.addOrMerge,
+                    mapOf(CCT.traitId to GT.name, CCT.label to "Name", CCT.substring to true),
+                ),
             ),
-        ).keys shouldBe setOf("${CCT.usageDef}[${GT.name}].${CCT.display}")
+        ).keys shouldBe setOf("${CCT.usageDef}[${GT.name},Name].${CCT.display}")
         // And mending it is how it stops being one.
         onlyConfig(admin.postData(
             ACEP.bundlePatch,
-            patch("legacy", CCT.usageDef, GedraEditAction.addOrMerge, mapOf(CCT.traitId to GT.name, CCT.display to "\${name}")),
+            patch(
+                "legacy", CCT.usageDef, GedraEditAction.addOrMerge,
+                mapOf(CCT.traitId to GT.name, CCT.label to "Name", CCT.display to "\${name}"),
+            ),
         ))[CFEP.slots].toJsonMapOrEmpty()[CCT.usageDef].toJsonListOfMaps().single()[CCT.display] shouldBe "\${name}"
     }
 })

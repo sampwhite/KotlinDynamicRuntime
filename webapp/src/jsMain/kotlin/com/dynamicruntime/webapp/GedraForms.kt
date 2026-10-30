@@ -690,11 +690,13 @@ fun editDataCompletenessFailures(targetType: SchType?, values: Map<String, Any?>
 fun entriesUnionOf(type: SchType?): SchType? = type?.properties?.get(GDF.entries)?.valueType?.itemType
 
 /**
- * One computed display value from a client's trait-usage rule (issue #537): a column and its cell's value, as the
- * backend evaluated it -- what the column sorts and searches by -- and the [data] of the row's entry of the trait,
- * which the column's presentation reads (issue #1323). [data] is empty when the row has no such entry.
+ * One computed display value from a client's trait-usage rule (issue #537): a column ([columnId], its name, issue
+ * #1490) and its cell's value, as the backend evaluated it -- what the column sorts and searches by -- and the [data]
+ * of the row's entry of the trait it reads ([traitId]), which the column's presentation reads (issue #1323). [data] is
+ * empty when the row has no such entry.
  */
 class DisplayValue(
+    val columnId: String,
     val traitId: String,
     val label: String,
     val value: String,
@@ -716,7 +718,7 @@ fun presentedValue(display: DisplayValue, column: ListingColumn?, env: ScriptEnv
  */
 fun formHeading(summary: FormSummary, columns: List<ListingColumn>, env: ScriptEnv): String? {
     val first = summary.displayValues.firstOrNull { it.value.isNotBlank() } ?: return null
-    return presentedValue(first, columns.firstOrNull { it.traitId == first.traitId }, env)
+    return presentedValue(first, columns.firstOrNull { it.columnId == first.columnId }, env)
 }
 
 /**
@@ -881,6 +883,7 @@ fun summarizeForm(item: Map<String, Any?>, entriesUnion: SchType?): FormSummary 
     val displayValues = item[GDF.displayValues].toJsonListOfMaps().map {
         val traitId = it[UF.traitId] as? String ?: ""
         DisplayValue(
+            columnId = it[UF.columnId] as? String ?: "",
             traitId = traitId,
             label = it[UF.label] as? String ?: "",
             value = it[UF.value] as? String ?: "",
