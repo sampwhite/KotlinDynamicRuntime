@@ -85,11 +85,14 @@ fun identitySummary(identity: AdminIdentity?, editing: AdminUser): List<Pair<Str
 /**
  * The editor's structure line (issue #1478, rule 7 of #1477): the person's address, then the person's users -- the
  * open one marked, each other one a link that opens it instead ([onPick]) -- then the access the open one has. Read
- * before any field, so the reader sees what the user is part of before what can be changed about it.
+ * before any field, so the reader sees what the user is part of before what can be changed about it. Another user that
+ * is not simply live says so beside its link ([userStructureFlag]), not only on hover. For a screen reader it is a
+ * labeled group, the arrows are not read, and the open user is the current one.
  */
 fun ChildrenBuilder.userStructureLine(structure: UserStructure, disabled: Boolean, onPick: (AdminUser) -> Unit) {
     div {
         className = ClassName("user-structure")
+        asDynamic()["role"] = "group"
         asDynamic()["aria-label"] = "How this user is put together"
         span {
             className = ClassName("user-structure-person")
@@ -97,6 +100,7 @@ fun ChildrenBuilder.userStructureLine(structure: UserStructure, disabled: Boolea
         }
         span {
             className = ClassName("user-structure-arrow")
+            asDynamic()["aria-hidden"] = "true"
             +"→"
         }
         for (row in structure.users) {
@@ -104,22 +108,32 @@ fun ChildrenBuilder.userStructureLine(structure: UserStructure, disabled: Boolea
                 span {
                     key = row.user.userId.toString().unsafeCast<Key>()
                     className = ClassName("user-mark user-structure-current")
+                    asDynamic()["aria-current"] = "true"
                     title = row.status
                     +row.label
                 }
             } else {
-                button {
+                span {
                     key = row.user.userId.toString().unsafeCast<Key>()
-                    className = ClassName("wf-cell-link")
-                    title = "${row.status} -- open this user"
-                    this.disabled = disabled
-                    onClick = { onPick(row.user) }
-                    +row.label
+                    button {
+                        className = ClassName("wf-cell-link")
+                        title = "${row.status} — open this user"
+                        this.disabled = disabled
+                        onClick = { onPick(row.user) }
+                        +row.label
+                    }
+                    userStructureFlag(row.user)?.let {
+                        span {
+                            className = ClassName("type-hint user-structure-flag")
+                            +" ($it)"
+                        }
+                    }
                 }
             }
         }
         span {
             className = ClassName("user-structure-arrow")
+            asDynamic()["aria-hidden"] = "true"
             +"→"
         }
         span { +structure.access }

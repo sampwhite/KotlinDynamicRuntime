@@ -78,4 +78,15 @@ class UserIdentityViewTest {
         val summary = identitySummary(AdminIdentity(null, null, null, listOf(me)), me).toMap()
         assertEquals(listOf("Registered", "Activated", "Last login", "Last edited", "Updated"), summary.keys.toList())
     }
+
+    // Issue #1478: the editor's view, and an administrator's before the person loads, have no identity -- the dates
+    // alone, with nothing said about the address, password, or where a login lands.
+    @Test
+    fun withNoIdentityTheSummaryIsTheUsersDatesAlone() {
+        val me = user(1, CL.hub)
+        assertEquals(
+            listOf("Registered", "Activated", "Last login", "Last edited", "Updated"),
+            identitySummary(null, me).map { it.first },
+        )
+    }
 }

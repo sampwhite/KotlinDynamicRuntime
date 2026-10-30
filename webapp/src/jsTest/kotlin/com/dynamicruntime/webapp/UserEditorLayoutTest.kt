@@ -47,6 +47,24 @@ class UserEditorLayoutTest {
         assertEquals("User access", both.access)
         // A list that does not hold the open user (a stale load) is not drawn as its person's.
         assertEquals(listOf("acme / Member"), userStructure(member, listOf(admin)).users.map { it.label })
+        // A person with this one user: the user alone, as before the load.
+        assertEquals(listOf("acme / Member"), userStructure(member, listOf(member)).users.map { it.label })
+        // A sandbox user somebody opened has the access of whom it acts as (issue #1198), not its row's.
+        val opened = AdminUser(
+            userId = 5L, primaryId = "ada@acme.test", username = "@ada", roles = listOf(ROLE.user), client = "acme:sandbox",
+            org = null, isEntity = false, name = null, enabled = true, hasPassword = false, deleted = false,
+            actingRoles = listOf(ROLE.user, ROLE.admin),
+        )
+        assertEquals("Administrator access", userStructure(opened, null).access)
+    }
+
+    @Test
+    fun anotherUserSaysBesideItsLinkWhenItIsNotSimplyLive() {
+        assertEquals(null, userStructureFlag(user()))
+        assertEquals("disabled", userStructureFlag(user(enabled = false)))
+        assertEquals("unclaimed", userStructureFlag(user(registered = false)))
+        assertEquals("disabled, unclaimed", userStructureFlag(user(enabled = false, registered = false)))
+        assertEquals("deleted", userStructureFlag(user(deleted = true, registered = false)))
     }
 
     @Test
@@ -57,8 +75,13 @@ class UserEditorLayoutTest {
             userMoreOptionsInForce(true, true, listOf(" reviewer", "siteLead", "reviewer"), enabled = false, creating = false),
         )
         // On a create: the suffix, a collision asking for one, and starting disabled.
-        assertEquals(listOf("persona suffix B"), userMoreOptionsInForce(false, false, emptyList(), true, true, personaSuffix = " B "))
-        assertEquals(listOf("a persona suffix is needed"), userMoreOptionsInForce(false, false, emptyList(), true, true, suffixNeeded = true))
+        assertEquals(
+            listOf("persona suffix B"), userMoreOptionsInForce(false, false, emptyList(), true, true, personaSuffix = " B "),
+        )
+        assertEquals(
+            listOf("a persona suffix is needed"),
+            userMoreOptionsInForce(false, false, emptyList(), true, true, suffixNeeded = true),
+        )
         assertEquals(listOf("starts disabled"), userMoreOptionsInForce(false, false, emptyList(), enabled = false, creating = true))
         // What it says is what opens it.
         assertTrue(moreOptionsOpens(userMoreOptionsInForce(true, false, emptyList(), true, false)))
@@ -67,20 +90,54 @@ class UserEditorLayoutTest {
     @Test
     fun aDraftChangesOnlyWhatTheBackendWouldStoreDifferently() {
         val target = user(org = "east", name = "Ada", labels = listOf("reviewer"))
+        val member = UserAuthority(ROLE.user, editor = false, allClients = false)
         fun changes(
-            roles: List<String> = listOf(ROLE.user), org: String = "east", name: String = "Ada", isEntity: Boolean = false,
+            authority: UserAuthority = member, org: String = "east", name: String = "Ada", isEntity: Boolean = false,
             enabled: Boolean = true, labels: List<String> = listOf("reviewer"), opened: Boolean = false,
-        ) = userDraftChanges(target, roles, org, name, isEntity, enabled, labels, opened)
+        ) = userDraftChanges(target, authority, editorOffered = true, org, name, isEntity, enabled, labels, opened)
         // Re-spacing, repeating, or reordering is no change.
         assertEquals(emptyList(), changes(org = " east ", name = "Ada ", labels = listOf(" reviewer", "reviewer")))
         // Each change is one call, in the order a save sends them.
         assertEquals(
             listOf(UserChange.roles, UserChange.org, UserChange.accountName, UserChange.enabled, UserChange.labels),
-            changes(listOf(ROLE.user, ROLE.admin), "", "Ada L", enabled = false, labels = emptyList()),
+            changes(member.copy(level = ROLE.admin), "", "Ada L", enabled = false, labels = emptyList()),
         )
         assertEquals(listOf(UserChange.accountName), changes(isEntity = true))
         // A sandbox user somebody opened has no roles or organization of its own to set.
-        assertEquals(emptyList(), changes(listOf(ROLE.user, ROLE.admin), "west", opened = true))
+        assertEquals(emptyList(), changes(member.copy(level = ROLE.admin), "west", opened = true))
+    }
+
+    @Test
+    fun authorityIsComparedAsTheEditorControlsItSoAnOddListOpensClean() {
+        // Two rungs, or `editor` beside `admin`: the editor draws one rung and no Editor box, and opens unchanged.
+        for (roles in listOf(
+            listOf(ROLE.user, ROLE.operator, ROLE.admin),
+            listOf(ROLE.user, ROLE.admin, ROLE.editor),
+            listOf(ROLE.admin),
+        )) {
+            val target = user(roles = roles)
+            val draft = draftAuthority(target.level, ROLE.editor in roles, ROLE.allClients in roles, editorOffered = true)
+            assertEquals(emptyList(), userDraftChanges(target, draft, true, "", "", false, true, emptyList(), false), "$roles")
+        }
+        // In `public`, where the Editor box is not drawn, a stored `editor` is not a difference either.
+        val publicEditor = user(client = "public", roles = listOf(ROLE.user, ROLE.editor))
+        val draft = draftAuthority(ROLE.user, editor = true, allClients = false, editorOffered = false)
+        assertEquals(emptyList(), userDraftChanges(publicEditor, draft, false, "", "", false, true, emptyList(), false))
+    }
+
+    @Test
+    fun aSavedAuthorityKeepsWhatTheEditorDoesNotDrawAndDropsAHiddenEditor() {
+        val twoRungs = listOf(ROLE.user, ROLE.operator, ROLE.admin)
+        // Same rung, a box ticked: the list as it is, plus the capability.
+        assertEquals(
+            (twoRungs + ROLE.allClients).toSet(),
+            rolesForAuthority(twoRungs, UserAuthority(ROLE.admin, editor = false, allClients = true)).toSet(),
+        )
+        // Another rung: moved, as RoleLadder moves it.
+        assertEquals(setOf(ROLE.user), rolesForAuthority(twoRungs, UserAuthority(ROLE.user, false, false)).toSet())
+        // Editor ticked, then the level raised to Administrator: the box is hidden, so no `editor` is sent.
+        val hidden = draftAuthority(ROLE.admin, editor = true, allClients = false, editorOffered = true)
+        assertEquals(setOf(ROLE.user, ROLE.admin), rolesForAuthority(emptyList(), hidden).toSet())
     }
 
     @Test
@@ -95,11 +152,30 @@ class UserEditorLayoutTest {
     }
 
     @Test
-    fun aCreateIsDirtyOnceAnythingWasTyped() {
-        assertFalse(createDraftDirty("", forSelf = false, name = "", personaSuffix = "", labels = emptyList()))
-        assertTrue(createDraftDirty("a@b.test", forSelf = false, name = "", personaSuffix = "", labels = emptyList()))
-        // The caller's own address is filled in for them, so it alone is nothing typed.
-        assertFalse(createDraftDirty("me@b.test", forSelf = true, name = "", personaSuffix = "", labels = emptyList()))
-        assertTrue(createDraftDirty("", forSelf = false, name = "", personaSuffix = "", labels = listOf("reviewer")))
+    fun aCreateIsDirtyOnceAnyFieldDiffersFromWhatItOpenedWith() {
+        val seeded = CreateDraft(
+            "", "", false, ROLE.user, false, false, "", "acme", PERSONA.member, "", emptyList(), enabled = true,
+        )
+        assertFalse(createDraftDirty(seeded, seeded))
+        // Whitespace alone, or a label typed twice and taken back, is nothing changed.
+        assertFalse(createDraftDirty(seeded.copy(name = "  ", personaSuffix = " "), seeded))
+        // Every field counts: not only what is typed, but a client, a persona, a rung, a box, or Enabled.
+        for (changed in listOf(
+            seeded.copy(email = "a@b.test"), seeded.copy(client = "globex"), seeded.copy(persona = PERSONA.admin),
+            seeded.copy(level = ROLE.admin), seeded.copy(allClients = true), seeded.copy(org = "east"),
+            seeded.copy(enabled = false), seeded.copy(labels = listOf("reviewer")),
+        )) {
+            assertTrue(createDraftDirty(changed, seeded), "$changed")
+        }
+        // The caller's own address, filled in for them, is what the form opened with.
+        val forSelf = seeded.copy(email = "me@b.test")
+        assertFalse(createDraftDirty(forSelf, forSelf))
+    }
+
+    @Test
+    fun theHintsUnderMoreOptionsSayWhenToUseThem() {
+        for (hint in listOf(editorHint, enabledHint(creating = true), enabledHint(creating = false))) {
+            assertTrue(hint.startsWith("Use this when"), hint)
+        }
     }
 }

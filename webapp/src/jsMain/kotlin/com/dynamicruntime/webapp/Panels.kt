@@ -194,8 +194,8 @@ external interface SaveBarProps : Props {
     var saveText: String
 
     /**
-     * The way back: "Cancel" (the default) or "Discard". Link-styled: it drops the draft and leaves the save, as a back
-     * link leaves a page.
+     * The way back: "Cancel" (the default) or "Discard". Link-styled, as a back link is: it drops the draft -- leaving
+     * a form that makes something new, or taking an existing record's fields back to what is stored.
      */
     var discardText: String?
 

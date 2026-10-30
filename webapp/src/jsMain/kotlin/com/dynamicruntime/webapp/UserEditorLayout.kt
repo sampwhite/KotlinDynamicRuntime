@@ -1,6 +1,8 @@
 package com.dynamicruntime.webapp
 
 import com.dynamicruntime.common.gedra.isSandboxClient
+import com.dynamicruntime.common.http.request.ROLE
+import com.dynamicruntime.common.http.request.RoleLadder
 import com.dynamicruntime.common.user.PERSONA
 import com.dynamicruntime.common.user.normalizeUserLabels
 import com.dynamicruntime.common.user.personaTerm
@@ -48,6 +50,52 @@ fun userStructure(user: AdminUser, siblings: List<AdminUser>?): UserStructure {
 }
 
 /**
+ * What a row of the structure line says beside a user that is not simply live: deleted, disabled, or nobody's yet --
+ * shown, not left to a hover, so a reader sees it before opening the user. Null for a user that is just live. Pure,
+ * covered under `jsNodeTest`.
+ */
+fun userStructureFlag(user: AdminUser): String? = listOfNotNull(
+    when {
+        user.deleted -> "deleted"
+        !user.enabled -> "disabled"
+        else -> null
+    },
+    "unclaimed".takeIf { !user.registered && !user.deleted },
+).joinToString(", ").ifEmpty { null }
+
+/**
+ * A user's authority as the editor controls it (issue #1478): the rung, the Editor box, and the All clients box. Kept
+ * apart from the role list, which may hold more than the editor draws -- two rungs, or `editor` beside `admin` -- so a
+ * user opened and left alone compares as unchanged rather than as a list the editor would rewrite.
+ */
+data class UserAuthority(val level: String, val editor: Boolean, val allClients: Boolean)
+
+/**
+ * The authority [roles] hold as the editor shows it. Editor counts only where its box is drawn -- offered in the client
+ * ([editorOffered]) and below Administrator, which implies it. Pure, covered under `jsNodeTest`.
+ */
+fun userAuthority(roles: List<String>, editorOffered: Boolean): UserAuthority {
+    val level = RoleLadder.highestHeld(roles) ?: ROLE.user
+    return draftAuthority(level, ROLE.editor in roles, ROLE.allClients in roles, editorOffered)
+}
+
+/** The authority a draft describes: its [editor] box counts only where it is drawn, as [userAuthority] has it. */
+fun draftAuthority(level: String, editor: Boolean, allClients: Boolean, editorOffered: Boolean): UserAuthority =
+    UserAuthority(level, editor && editorOffered && level != ROLE.admin, allClients)
+
+/**
+ * The role list [authority] asks for, given what [current] holds: on the same rung, [current] as it is, so a second
+ * rung or a role the editor does not draw is kept; on another, the rung moved ([RoleLadder.rolesAtLevel]). Then the
+ * two boxes, each on or off. A hidden Editor box is off: a role nobody can see is not sent. Pure, covered under
+ * `jsNodeTest`.
+ */
+fun rolesForAuthority(current: List<String>, authority: UserAuthority): List<String> {
+    val sameRung = current.isNotEmpty() && (RoleLadder.highestHeld(current) ?: ROLE.user) == authority.level
+    val rung = if (sameRung) current else RoleLadder.rolesAtLevel(current, authority.level)
+    return rolesWithEditor(rolesWithCapability(rung, ROLE.allClients, authority.allClients), authority.editor)
+}
+
+/**
  * What a user's More options holds that is not at its default, each said shortly, for its summary and for whether it
  * opens itself (rule 5 of #1477). [editor] only when the Editor box is offered; [personaSuffix] and [suffixNeeded]
  * only on a create, where a collision asks for a suffix. Pure, covered under `jsNodeTest`.
@@ -83,13 +131,14 @@ enum class UserChange(val words: String) {
 
 /**
  * What the draft changes on [target] -- the calls a save makes, in order, and what makes the draft dirty. Each is
- * compared as the backend stores it: the roles as a set, the organization and name trimmed, the labels normalized. A
- * sandbox user somebody [opened] (issue #1198) has no roles or organization of its own to set, so neither is a change.
- * Pure, covered under `jsNodeTest`.
+ * compared as the backend stores it: the authority as the editor controls it ([userAuthority]), the organization and
+ * name trimmed, the labels normalized. A sandbox user somebody [opened] (issue #1198) has no roles or organization of
+ * its own to set, so neither is a change. Pure, covered under `jsNodeTest`.
  */
 fun userDraftChanges(
     target: AdminUser,
-    roles: List<String>,
+    authority: UserAuthority,
+    editorOffered: Boolean,
     org: String,
     name: String,
     isEntity: Boolean,
@@ -97,7 +146,7 @@ fun userDraftChanges(
     labels: List<String>,
     opened: Boolean,
 ): List<UserChange> = buildList {
-    if (!opened && roles.toSet() != target.roles.toSet()) add(UserChange.roles)
+    if (!opened && authority != userAuthority(target.roles, editorOffered)) add(UserChange.roles)
     if (!opened && org.trim().ifEmpty { null } != target.org) add(UserChange.org)
     if (name.trim().ifEmpty { null } != target.name || isEntity != target.isEntity) add(UserChange.accountName)
     if (enabled != target.enabled) add(UserChange.enabled)
@@ -105,7 +154,7 @@ fun userDraftChanges(
 }
 
 /**
- * What leads a save's failure: the save is one call per change, not one transaction, so a failure part way says what
+ * What leads a save's failure: the save is one call per change, not one transaction, so a failure partway says what
  * was saved before it as well as what was not. Pure, covered under `jsNodeTest`.
  */
 fun userSaveFailureLead(saved: List<UserChange>, failed: UserChange?): String {
@@ -122,8 +171,29 @@ fun listPhrase(items: List<String>): String = when (items.size) {
 }
 
 /**
- * Whether a create form holds anything a reader typed: the address (unless it is the caller's own, filled in for
- * them), a name, a persona suffix, or a label. Pure, covered under `jsNodeTest`.
+ * A create form's fields (issue #1478), compared with what it opened with to say whether anything was changed: every
+ * field, so a client, persona, organization, rung, or box chosen and left is asked about as a typed address is.
  */
-fun createDraftDirty(email: String, forSelf: Boolean, name: String, personaSuffix: String, labels: List<String>): Boolean =
-    (!forSelf && email.isNotBlank()) || name.isNotBlank() || personaSuffix.isNotBlank() || normalizeUserLabels(labels).isNotEmpty()
+data class CreateDraft(
+    val email: String,
+    val name: String,
+    val isEntity: Boolean,
+    val level: String,
+    val editor: Boolean,
+    val allClients: Boolean,
+    val org: String,
+    val client: String,
+    val persona: String,
+    val personaSuffix: String,
+    val labels: List<String>,
+    val enabled: Boolean,
+) {
+    /** The fields as a save would send them: trimmed, and the labels normalized. */
+    fun normalized(): CreateDraft = copy(
+        email = email.trim(), name = name.trim(), org = org.trim(), client = client.trim(),
+        personaSuffix = personaSuffix.trim(), labels = normalizeUserLabels(labels),
+    )
+}
+
+/** Whether a create form holds anything changed from what it opened with ([seeded]). Pure, under `jsNodeTest`. */
+fun createDraftDirty(current: CreateDraft, seeded: CreateDraft): Boolean = current.normalized() != seeded.normalized()

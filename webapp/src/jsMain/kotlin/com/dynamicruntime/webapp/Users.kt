@@ -172,9 +172,11 @@ val Users = FC<Props> {
     var personaChosen by useState(false)
 
     // Each panel's own result (issue #1478, rule 3 of #1477): the User panel's save, the Invitation panel's send, and
-    // the danger zone's delete each say how it went where it was asked for. A save's failure part way through says what
+    // the danger zone's delete each say how it went where it was asked for. A save's failure partway through says what
     // it had saved first ([userSaveFailureLead]), since it is one call per change rather than one transaction.
     var saveError by useState<DisplayError?>(null)
+    // What a create form opened with, so a field changed and left is asked about on leaving (issue #1478).
+    var createSeed by useState<CreateDraft?>(null)
     var saveErrorLead by useState<String?>(null)
     var inviteNote by useState<String?>(null)
     var inviteError by useState<DisplayError?>(null)
@@ -194,10 +196,10 @@ val Users = FC<Props> {
     val lastRunArgs = useRef<Map<String, Any?>>(null)
 
     /**
-     * Runs a backend [block] with busy/error bookkeeping. Used by the actions, never by the search field. A failure
-     * goes to [onError] -- the panel that asked -- and to the page's own line when none is given.
+     * Runs a backend [block] with busy bookkeeping. Used by the actions, never by the search field. A failure goes to
+     * [onError], the panel that asked (rule 3 of #1477).
      */
-    fun run(onError: ((DisplayError) -> Unit)? = null, block: suspend () -> Unit) {
+    fun run(onError: (DisplayError) -> Unit, block: suspend () -> Unit) {
         busy = true
         error = null
         usersScope.launch {
@@ -209,9 +211,7 @@ val Users = FC<Props> {
                 // refresh bus's intent: a bump that changed nothing costs one re-fetch.
                 bump()
             } catch (e: Throwable) {
-                val shown = userFacingError(e)
-                // Not `?: run { }`: inside this function `run` is this function.
-                if (onError != null) onError(shown) else error = shown
+                onError(userFacingError(e))
             } finally {
                 busy = false
             }
@@ -351,30 +351,42 @@ val Users = FC<Props> {
         }
     }
 
-    /** Sets the draft's fields from [user]'s current state, or empties them for a user being created. */
-    fun seedFields(user: AdminUser?) {
-        draftEmail = user?.primaryId ?: ""
-        draftLevel = user?.level ?: ROLE.user
-        draftAllClients = user?.roles?.contains(ROLE.allClients) == true
-        draftEditor = user?.roles?.contains(ROLE.editor) == true
-        // A new user starts in the editor's own organization; an existing one shows theirs, blank included.
-        draftOrg = (if (user != null) user.org else config?.user?.org) ?: ""
-        // The client works the same way, and is the one field with no edit form at all: it is fixed once the
-        // user exists, so an existing row shows theirs read-only.
-        draftClient = (if (user != null) user.client else config?.user?.client) ?: ""
-        draftIsEntity = user?.isEntity == true
-        draftName = user?.name ?: ""
-        draftEnabled = user?.enabled ?: true
-        draftLabels = user?.labels ?: emptyList()
-        draftPersona = user?.persona ?: PERSONA.member
-        draftPersonaSuffix = user?.personaSuffix ?: ""
+    /**
+     * Sets the draft's fields from [user]'s current state, or empties them for a user being created -- at [email] when
+     * it is the caller's own -- and records what a create opened with ([createSeed]).
+     */
+    fun seedFields(user: AdminUser?, email: String = "") {
+        // A new user starts in the editor's own organization and client; an existing one shows theirs, blank
+        // included. The client is the one field with no edit form at all: fixed once the user exists, so read-only.
+        val seed = CreateDraft(
+            email = user?.primaryId ?: email, name = user?.name ?: "", isEntity = user?.isEntity == true,
+            level = user?.level ?: ROLE.user, editor = user?.roles?.contains(ROLE.editor) == true,
+            allClients = user?.roles?.contains(ROLE.allClients) == true,
+            org = (if (user != null) user.org else config?.user?.org) ?: "",
+            client = (if (user != null) user.client else config?.user?.client) ?: "",
+            persona = user?.persona ?: PERSONA.member, personaSuffix = user?.personaSuffix ?: "",
+            labels = user?.labels ?: emptyList(), enabled = user?.enabled ?: true,
+        )
+        draftEmail = seed.email
+        draftLevel = seed.level
+        draftAllClients = seed.allClients
+        draftEditor = seed.editor
+        draftOrg = seed.org
+        draftClient = seed.client
+        draftIsEntity = seed.isEntity
+        draftName = seed.name
+        draftEnabled = seed.enabled
+        draftLabels = seed.labels
+        draftPersona = seed.persona
+        draftPersonaSuffix = seed.personaSuffix
         personaSuffixCollided = false
         personaChosen = false
+        createSeed = seed.takeIf { user == null }
     }
 
-    /** Seeds the editor for [user] (or a new one): its fields, and no result yet in any panel. */
-    fun seedDraft(user: AdminUser?) {
-        seedFields(user)
+    /** Seeds the editor for [user] (or a new one, at [email]): its fields, and no result yet in any panel. */
+    fun seedDraft(user: AdminUser?, email: String = "") {
+        seedFields(user, email)
         saveError = null
         saveErrorLead = null
         inviteNote = null
@@ -451,8 +463,7 @@ val Users = FC<Props> {
         editing = null
         creating = true
         creatingForSelf = forSelf
-        seedDraft(null)
-        if (forSelf) draftEmail = ownAddressRef.current ?: ""
+        seedDraft(null, if (forSelf) ownAddressRef.current ?: "" else "")
     }
 
     fun closeEditor() {
@@ -580,28 +591,38 @@ val Users = FC<Props> {
         applyRouteWrite(params, userIdentity, reachable)
     }
 
-    /**
-     * The role list this draft describes, given what [current] holds now: the level sets the rung (preserving
-     * anything off the ladder) and the capability toggle is applied on top. Composing in that order is what
-     * lets a level change keep a capability and a capability change keep a level.
-     */
-    fun draftRoles(current: List<String>): List<String> =
-        rolesWithEditor(rolesWithCapability(RoleLadder.rolesAtLevel(current, draftLevel), ROLE.allClients, draftAllClients), draftEditor)
+    val denied = config != null && !mayBrowseUsers(config)
+    // The editor role is not offered in `public` (issue #1432), where no client role widens what a user reads: the user
+    // edited, or the client a new one is made in -- the chosen one, else the caller's.
+    val editorOffered = (editing?.client ?: draftClient.ifEmpty { null } ?: config?.user?.client) != CL.public
+
+    /** The authority the draft describes, as the editor controls it (the Editor box only where it is drawn). */
+    val draftAuthorityNow = draftAuthority(draftLevel, draftEditor, draftAllClients, editorOffered)
+
+    /** The role list this draft describes, given what [current] holds now ([rolesForAuthority]). */
+    fun draftRoles(current: List<String>): List<String> = rolesForAuthority(current, draftAuthorityNow)
 
     /** Whether the open user is a sandbox user somebody opened (issue #1198), whose roles and organization are a record. */
     val openedNote = editing?.let { openedUserNote(it) }
 
     /** What the draft changes on the open user: the calls a save makes, and what makes the draft dirty. */
     fun draftChanges(target: AdminUser): List<UserChange> = userDraftChanges(
-        target, draftRoles(target.roles), draftOrg, draftName, draftIsEntity, draftEnabled, draftLabels,
+        target, draftAuthorityNow, editorOffered, draftOrg, draftName, draftIsEntity, draftEnabled, draftLabels,
         opened = openedUserNote(target) != null,
     )
 
     // Whether the User panel holds edits nobody has saved (issue #1478): its heading says so, its Save is offered, and
-    // leaving -- Back, another of the person's users, or any other address -- asks first.
+    // leaving -- Back, another of the person's users, or any other address -- asks first. Never on a page the caller may
+    // no longer use (signed out, or switched to a user who may not), whose draft is out of sight.
     val readOnlyView = usersReadOnly(config)
-    val draftDirty = !readOnlyView && when {
-        creating -> createDraftDirty(draftEmail, creatingForSelf, draftName, draftPersonaSuffix, draftLabels)
+    val draftDirty = !readOnlyView && !denied && when {
+        creating -> createSeed?.let { seeded ->
+            val current = CreateDraft(
+                draftEmail, draftName, draftIsEntity, draftLevel, draftEditor, draftAllClients, draftOrg, draftClient,
+                draftPersona, draftPersonaSuffix, draftLabels, draftEnabled,
+            )
+            createDraftDirty(current, seeded)
+        } == true
         else -> editing?.takeIf { !it.deleted }?.let { draftChanges(it).isNotEmpty() } == true
     }
     val leaveQuestion = "You have unsaved changes to this user. Leave and lose them?"
@@ -615,6 +636,25 @@ val Users = FC<Props> {
             LeaveGuard.disarm()
         }
     }
+    // And never left armed by a page that has gone: its draft went with it.
+    useEffectOnce {
+        try {
+            awaitCancellation()
+        } finally {
+            LeaveGuard.disarm()
+        }
+    }
+
+    /**
+     * Reads the open user afresh after a save that wrote some of its changes before one failed: the editor then shows
+     * what is stored, so Cancel puts back what the user now holds and a retry sends only what is still unsaved.
+     */
+    suspend fun refreshOpenUser(userId: Long) {
+        val fresh = apiResult { AdminApi.userIdentity(userId) }.valueOrNull() ?: return
+        fresh.users.firstOrNull { it.userId == userId }?.let { editing = it }
+        if (identityFor.current == userId) identity = fresh
+        runSearch(query())
+    }
 
     /** Runs [then] -- a move within the page away from the draft -- once the reader agrees to lose unsaved edits. */
     fun leaveDraft(then: () -> Unit) {
@@ -623,15 +663,13 @@ val Users = FC<Props> {
 
     /**
      * Applies the draft. Only what actually changed is sent -- the backend has one call per concern, so an untouched
-     * field means no request rather than a redundant write -- in [userDraftChanges]' order. A failure part way leads
-     * with what was saved before it ([userSaveFailureLead]): those calls are not undone.
-     *
-     * The note distinguishes the two outcomes rather than saying "Saved" either way. A confirmation that
-     * appears when nothing was written is worse than none: it is indistinguishable from a real save, so a
-     * change that silently failed to register still reads as success -- which is exactly how a control that
-     * was not updating its draft went unnoticed.
+     * field means no request rather than a redundant write -- in [userDraftChanges]' order. Save is offered only when
+     * something did change, so there is always something to say was saved. A failure partway leads with what was
+     * saved before it ([userSaveFailureLead]): those calls are not undone, and the user is read again
+     * ([refreshOpenUser]).
      */
     fun save() = run({ saveError = it }) {
+        saveError = null
         saveErrorLead = null
         val target = editing
         if (target == null) {
@@ -679,11 +717,12 @@ val Users = FC<Props> {
                     }
                 } catch (e: Throwable) {
                     saveErrorLead = userSaveFailureLead(saved, change)
+                    if (saved.isNotEmpty()) refreshOpenUser(target.userId)
                     throw e
                 }
                 saved += change
             }
-            note = if (changes.isNotEmpty()) "Saved ${target.primaryId}." else "No changes to ${target.primaryId}."
+            note = "Saved ${target.primaryId}."
         }
         closeEditor()
         runSearch(query())
@@ -693,6 +732,7 @@ val Users = FC<Props> {
     fun sendInvitation() = run({ inviteError = it }) {
         val target = editing ?: return@run
         inviteNote = null
+        inviteError = null
         AdminApi.inviteUser(target.userId)
         inviteNote = "Invitation sent to ${target.primaryId}."
     }
@@ -709,10 +749,6 @@ val Users = FC<Props> {
         runSearch(query())
     }
 
-    val denied = config != null && !mayBrowseUsers(config)
-    // The editor role is not offered in `public` (issue #1432), where no client role widens what a user reads: the user
-    // edited, or the client a new one is made in -- the chosen one, else the caller's.
-    val editorOffered = (editing?.client ?: draftClient.ifEmpty { null } ?: config?.user?.client) != CL.public
     // An editor (issue #1432): every user of its client is shown, and nothing that changes one.
     val readOnly = readOnlyView
     val inEditor = creating || editing != null
@@ -757,12 +793,15 @@ val Users = FC<Props> {
                             +chip
                         }
                     }
-                    // Where this user's forms and client are (issue #1081), to the callers the list offers them.
-                    if (linksOffered) {
+                    // Where this user's forms and client are (issue #1081), to the callers the list offers them -- the
+                    // client link not to an editor, whom the Clients page refuses, as on the list -- and not for a
+                    // deleted user, who has neither any more.
+                    if (linksOffered && !open.deleted) {
                         UserLinks {
                             userId = open.userId
                             client = open.client
                             this.carriedClients = carriedClients
+                            showClient = !readOnly
                         }
                     }
                 }
@@ -773,8 +812,6 @@ val Users = FC<Props> {
                     }
                 }
             }
-
-            error?.let { errorText(it) }
 
             if (open?.deleted == true) {
                 // A permanently-deleted tombstone: nothing to edit, and re-enabling it is precisely the bug this
@@ -1095,6 +1132,9 @@ val Users = FC<Props> {
 
             SaveBar {
                 saveText = if (creating) "Create user" else "Save user"
+                // How a save takes effect (rule 2 of #1477): one call per change, not one transaction.
+                effectText = if (creating) null else "Each change is saved on its own, in turn: if one fails, those " +
+                    "before it stay saved, and the panel says which."
                 saving = busy
                 canSave = if (creating) draftEmail.isNotBlank() else draftDirty
                 failure = saveError
