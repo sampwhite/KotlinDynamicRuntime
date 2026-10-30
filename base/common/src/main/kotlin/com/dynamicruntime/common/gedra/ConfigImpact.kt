@@ -232,22 +232,29 @@ object ConfigImpact {
             ) {
                 // A trait newly supported counts too: its entries were never checked, and every edit now checks them.
                 report.add(ImpactKind.dataInvalid, row, traitId = traitId)
-            } else if (knownNext && recomputes(cxt, entry, next?.variants?.select(traitId))) {
+            } else if (knownNext &&
+                recomputes(cxt, entry, now?.variants?.select(traitId)?.takeIf { knownNow }, next?.variants?.select(traitId))
+            ) {
                 report.add(ImpactKind.valuesRecomputed, row, traitId = traitId)
             }
         }
     }
 
     /**
-     * Whether [entry]'s stored data differs from what the `g-onWrite` functions of [branch]'s data type would store
-     * from it (issue #1501). Judged against what is stored rather than against the running functions' output, so a
-     * value already stale under them counts too: the next write or recalculation changes it either way.
+     * Whether the `g-onWrite` functions of [next]'s data type would store other values for [entry] than the running
+     * functions of [now]'s do (issue #1501) -- or than what is stored, for a trait the client does not run now. Judged
+     * against the running functions rather than the stored values, so the report names what *publishing* changes: a
+     * value already stale under the running functions is the recompute job's to settle, whatever is published.
      */
-    private fun recomputes(cxt: KdrCxt, entry: Map<String, Any?>, branch: SchType?): Boolean {
-        val dataType = branch?.properties?.get(GE.data)?.valueType ?: return false
-        val functions = SchemaService.get(cxt).writeFunctionsFor(cxt, dataType)
-        if (functions.isEmpty()) return false
-        return !entryDataUnchanged(entry, runWriteFunctions(cxt, functions, entry[GE.data].toJsonMapOrEmpty()))
+    private fun recomputes(cxt: KdrCxt, entry: Map<String, Any?>, now: SchType?, next: SchType?): Boolean {
+        val schema = SchemaService.get(cxt)
+        fun functionsOf(branch: SchType?) = branch?.properties?.get(GE.data)?.valueType?.let { schema.writeFunctionsFor(cxt, it) }.orEmpty()
+        val nextFunctions = functionsOf(next)
+        val nowFunctions = functionsOf(now)
+        if (nextFunctions.isEmpty() && nowFunctions.isEmpty()) return false
+        val data = entry[GE.data].toJsonMapOrEmpty()
+        val running = if (now == null) data else runWriteFunctions(cxt, nowFunctions, data)
+        return !entryDataUnchanged(entry + (GE.data to running), runWriteFunctions(cxt, nextFunctions, data))
     }
 
     /**

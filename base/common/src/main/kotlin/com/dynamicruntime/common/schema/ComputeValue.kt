@@ -54,6 +54,7 @@ class ComputeValueFn(
 ) : SchWriteFunction {
     override val fn: String = CVF.fn
     override val writes: Set<String> = setOf(target)
+    override val reads: Set<String> = (expression.paths.required + expression.paths.optional).map { it.substringBefore('.') }.toSet()
 
     override fun onWrite(cxt: KdrCxt, data: Map<String, Any?>): Map<String, Any?> {
         val value = try {
@@ -95,7 +96,7 @@ class ComputeValueFn(
  * Builds a [ComputeValueFn] from a usage (issue #1501), holding it to the type it runs on: the target must be a
  * property the type declares `g-derived` (so no caller supplies it) and does not gate with `g-visibleWhen` (whose
  * question is who may change it, while this changes it for everyone); the script must parse, pull no fragment copy,
- * and read only properties the type declares, never its own target. Registered in `CommonComponent` through
+ * and read only properties the type declares. Registered in `CommonComponent` through
  * `SchemaCollector.addSchemaFunction`.
  */
 object ComputeValueCreation : SchFunctionCreation {
@@ -139,10 +140,9 @@ object ComputeValueCreation : SchFunctionCreation {
         if (expression.pullsFragments) {
             refuse("the script '$script' pulls copy with '@t', which there is none of where data is written.")
         }
+        // Reading its own target, or another function's not yet computed, is refused where the type's functions are
+        // resolved together (`resolveWriteFunctions`), which knows what each of them writes.
         val read = expression.paths.required + expression.paths.optional
-        read.firstOrNull { it == target || it.startsWith("$target.") }?.let {
-            refuse("the script reads '$it', the value it computes.")
-        }
         read.firstOrNull { !declaresPath(dataType, it) }?.let {
             refuse("the script reads '$it', which the type does not declare.")
         }
@@ -163,6 +163,8 @@ object ComputeValueCreation : SchFunctionCreation {
     }
 
     // Parsed once and kept: the schema is a constant of the runtime, as each workflow function kind keeps its own.
+    // Volatile, since boots, reloads, and trials resolve on their own threads; a race only parses it twice.
+    @Volatile
     private var parsed: SchType? = null
 
     private fun initDataType(cxt: KdrCxt): SchType =

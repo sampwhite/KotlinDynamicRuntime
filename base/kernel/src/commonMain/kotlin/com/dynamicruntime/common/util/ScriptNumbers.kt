@@ -38,14 +38,15 @@ fun numberText(value: Number, decimals: Int? = null): String {
 /**
  * [value] rounded to [decimals] decimals (issue #1501), half away from zero on its decimal text as [numberText] writes
  * it -- so `round(1.005, 2)` is `1.01`, and a value and its written form agree. At 0 decimals a whole number, as a
- * `Long`; otherwise a `Double`. A `Long` is already whole and comes back as it is, and a value that is not finite, or
- * too large to round on its text, is returned unchanged.
+ * `Long` while one holds it; otherwise a `Double`. A `Long` is already whole and comes back as it is, a value too large
+ * to write without an exponent is already whole too, and one that is not finite is returned unchanged.
  */
 fun roundedNumber(value: Number, decimals: Int): Number {
     if (value !is Double) return value.toLong()
     if (!value.isFinite()) return value
     val rounded = numberText(value, decimals).replace(",", "").toDoubleOrNull() ?: return value
-    return if (decimals == 0 && kotlin.math.abs(rounded) < 9.0e15) rounded.toLong() else rounded
+    // Every double this large is already whole, so only the `Long` range bounds the whole number it becomes.
+    return if (decimals == 0 && kotlin.math.abs(rounded) < 9.2e18) rounded.toLong() else rounded
 }
 
 /** [digits] plus one in its last place, carrying: `"0999"` is `"1000"`, `"99"` is `"100"`. */

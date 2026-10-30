@@ -382,7 +382,13 @@ fun diffOverlay(spec: MergeSpec, base: Map<String, Any?>, edited: Map<String, An
         }
     }
     for (key in base.keys) {
-        if (key !in edited && key != spec.directiveKey) out[key] = null
+        if (key in edited || key == spec.directiveKey) continue
+        // A removal, which an append-only list cannot take: reported here, where the edit is judged, not on a later merge.
+        if (spec.ruleFor(key) == MergeRule.Append && base[key] != null) {
+            problems.add(Problem(OverlayMergeError.cannotStateChange, appendOnlyMessage, ProblemLocation(childPath(path, key))))
+        } else {
+            out[key] = null
+        }
     }
     return DiffOutcome(out, problems)
 }
@@ -392,6 +398,10 @@ private class Stated(val value: Any?)
 
 /** The overlay value making [base] into the different [edited] under [rule], or null when it cannot be stated. */
 private fun diffValue(rule: MergeRule, base: Any?, edited: Any?, path: String, problems: MutableList<Problem>): Stated? {
+    if (edited == null && base != null && rule == MergeRule.Append) {
+        problems.add(Problem(OverlayMergeError.cannotStateChange, appendOnlyMessage, ProblemLocation(path)))
+        return null
+    }
     if (edited == null || base == null) return Stated(edited)
     return when (rule) {
         MergeRule.Replace -> Stated(edited)

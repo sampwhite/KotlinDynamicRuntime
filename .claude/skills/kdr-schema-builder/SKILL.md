@@ -341,8 +341,9 @@ type("ExpenseData") {
   as a whole number; anything else should say how to round it (`round(a * b)`), since a floating-point near miss
   (`3.0000000000000004`) is not whole.
 - **Checked when the type is loaded**: the kind is registered, its settings validate, the target is declared, derived,
-  and not gated by `g-visibleWhen`, the script parses, pulls no `@t` copy, and reads only declared properties, never its
-  own target, and no two functions write one property. A usage that fails is reported and skipped; the type's others
+  and not gated by `g-visibleWhen`, the script parses, pulls no `@t` copy, and reads only declared properties, and no
+  two functions write one property. A script may read what an earlier function computed, but never its own target or a
+  later function's, so one pass settles every value. A usage that fails is reported and skipped; the type's others
   run. Stored configuration is held to this when written (the trial reload).
 - **A client's alteration only adds to them** (`MergeRule.Append`): its functions follow the type's own, which it can
   neither change nor remove.

@@ -55,6 +55,12 @@ class OverlayMergeTest : StringSpec({
         added.problems.shouldBeEmpty()
         diffOverlay(spec("f" to MergeRule.Append), base, mapOf("f" to listOf("b"))).problems.map { it.code } shouldBe
             listOf(OverlayMergeError.cannotStateChange)
+        // Removing the list, by a null or by leaving the key out, is refused where the edit is judged; nothing is stated.
+        for (edited in listOf(mapOf("f" to null), emptyMap())) {
+            val removed = diffOverlay(spec("f" to MergeRule.Append), base, edited)
+            removed.overlay shouldBe emptyMap()
+            removed.problems.map { it.code } shouldBe listOf(OverlayMergeError.cannotStateChange)
+        }
     }
 
     "a type's g-onWrite merges by appending: an alteration's functions follow the type's own" {

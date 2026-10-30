@@ -54,6 +54,12 @@ interface SchWriteFunction : SchFunction {
     val writes: Set<String>
 
     /**
+     * The top-level properties it reads, so that one reading what it or a function after it writes -- a value not
+     * yet computed, or a cycle that would change the data on every write -- is caught when the type is checked.
+     */
+    val reads: Set<String>
+
+    /**
      * The data to store, from [data] as the write has it -- an edit already merged, the functions listed before this
      * one already run. A fault that depends on the data (a value missing, a division by zero) never fails the write:
      * the function clears what it writes, and says so in the log when it was more than a value not filled in yet.
@@ -67,7 +73,9 @@ class SchFunctionResolution(val usage: SchFunctionUsage, val function: SchWriteF
 /**
  * Each of [dataType]'s `g-onWrite` usages resolved against the registered [creations] (issue #1501), in run order: a
  * usage that names no kind, a kind nobody registered, a kind of another event, or settings its kind refuses resolves to
- * a problem; so does one writing a property an earlier function already writes, since the two would race for it.
+ * a problem; so does one writing a property an earlier function already writes, since the two would race for it, and
+ * one reading a property that it or a function after it writes. A function may read what an earlier one wrote, so
+ * the values follow from the data in one pass: no order of writes or recomputes changes what is stored.
  */
 fun resolveWriteFunctions(
     cxt: KdrCxt,
@@ -75,7 +83,7 @@ fun resolveWriteFunctions(
     dataType: SchType,
 ): List<SchFunctionResolution> {
     val written = HashSet<String>()
-    return dataType.onWrite.map { usage ->
+    val resolved = dataType.onWrite.map { usage ->
         val fn = usage.fn
         val creation = fn?.let { creations[it] }
         fun refused(problem: String) = SchFunctionResolution(usage, null, problem)
@@ -101,6 +109,23 @@ fun resolveWriteFunctions(
             } catch (e: KdrException) {
                 refused(e.message ?: "'$fn' cannot run on this type.")
             }
+        }
+    }
+    // A second pass, once every function's writes are known: what each reads must already be computed when it runs.
+    val writtenBefore = HashSet<String>()
+    return resolved.map { r ->
+        val function = r.function ?: return@map r
+        val pending = function.reads.firstOrNull { it in written && it !in writtenBefore }
+        writtenBefore.addAll(function.writes)
+        when {
+            pending == null -> r
+            pending in function.writes -> SchFunctionResolution(r.usage, null, "'${function.fn}' reads '$pending', the value it computes.")
+            else -> SchFunctionResolution(
+                r.usage,
+                null,
+                "'${function.fn}' reads '$pending', which a function after it computes; list that one first, by " +
+                    "'${SFU.priority}' or by order.",
+            )
         }
     }
 }

@@ -73,6 +73,8 @@ class ScriptNumberTest {
         assertEquals(-3L, round("round(-2.5)"))
         assertEquals(1.01, round("round(x, 2)", "x" to 1.005))
         assertEquals(7L, round("round(x)", "x" to 7L))
+        // Past where the evaluator writes an exponent, still a whole number an integer property takes.
+        assertEquals(10_000_000_000_000_000L, round("round(x)", "x" to 1.0e16))
         assertEquals("4", eval($$"${round(x)}", "x" to 3.6))
         val e = assertFailsWith<KdrException> { ScriptExpression.parse("round(x, 9)") }
         assertTrue(e.message.orEmpty().contains("'round' takes a count of decimals"))

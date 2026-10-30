@@ -46,7 +46,13 @@ class SchemaWriteFunctionsTest : StringSpec({
     fun asClient(client: String): KdrCxt = cxt.mkSubContext("onWrite", client).also { it.userId = 9150L }
 
     /** Writes [client]'s configuration: a trait with two amounts and a total its [script] computes, then reloads it. */
-    fun writeClient(client: String, script: String = "a * b", target: String = "total", reload: Boolean = true) {
+    fun writeClient(
+        client: String,
+        script: String = "a * b",
+        target: String = "total",
+        reload: Boolean = true,
+        kinds: List<String> = listOf("travel", "meals"),
+    ) {
         val config = gedraConfig(cxt, "${client}cfg", clientNamespace(client), client) {
             defineClient(
                 ClientDef(
@@ -57,6 +63,7 @@ class SchemaWriteFunctionsTest : StringSpec({
             trait("ExpenseEntry", trait, setOf(GedraDataType.formDoc), "An expense.") {
                 property("a", "Amount per item.") { type = SCT.number }
                 property("b", "How many items.") { type = SCT.number }
+                property("kind", "What the expense is for.") { for (k in kinds) option(k) }
                 property("total", "The total; computed, not supplied.") {
                     type = SCT.number
                     derived = true
@@ -117,6 +124,19 @@ class SchemaWriteFunctionsTest : StringSpec({
         val after = read(client, gid)
         stored(after)["total"] shouldBe 60.0
         service().computedDataCurrent(cxt, after) shouldBe true
+    }
+
+    "recomputed values the entry would not validate with are left as stored, and not taken up again" {
+        val client = "onwrite1501d"
+        writeClient(client)
+        val gid = create(client, mapOf("a" to 2.0, "b" to 3.0, "kind" to "meals")).gedraId
+        // The script changes and, in the same revision, 'meals' stops being a choice: the entry no longer validates,
+        // so the new total cannot be stored with it.
+        writeClient(client, script = "a * b * 10", kinds = listOf("travel"))
+        val row = read(client, gid)
+        service().computedDataCurrent(cxt, row) shouldBe true
+        service().recomputeDerivedState(cxt, row)
+        stored(read(client, gid))["total"] shouldBe 6.0
     }
 
     "a usage that cannot run on its type is refused when the configuration loads" {

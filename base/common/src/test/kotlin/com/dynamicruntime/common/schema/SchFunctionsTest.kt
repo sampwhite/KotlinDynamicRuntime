@@ -106,6 +106,17 @@ class SchFunctionsTest : StringSpec({
         functions(dataType(computeValue("count", "nested.x * 2"))).single().shouldNotBeNull()
     }
 
+    "a script may read what an earlier function computed, but not what a later one does" {
+        // Listed first, the count would read a total not yet computed: refused, and the total still runs.
+        val early = dataType(computeValue("count", "total + 1"), computeValue("total", "a * b"))
+        functions(early).map { it.writes } shouldBe listOf(setOf("total"))
+        problems(early).single() shouldContain "which a function after it computes"
+        // Two reading each other would change the data on every write; whichever runs first is refused.
+        val cycle = dataType(computeValue("total", "count + 1"), computeValue("count", "total + 1"))
+        functions(cycle).map { it.writes } shouldBe listOf(setOf("count"))
+        problems(cycle).single() shouldContain "reads 'count', which a function after it computes"
+    }
+
     "two functions writing one property: the later is refused" {
         val type = dataType(computeValue("total", "a"), computeValue("total", "b"))
         functions(type) shouldHaveSize 1
