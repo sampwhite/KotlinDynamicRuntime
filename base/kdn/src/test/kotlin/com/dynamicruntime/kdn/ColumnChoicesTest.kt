@@ -82,8 +82,10 @@ class ColumnChoicesTest : StringSpec({
         columns.getValue("firstTalk").choices.map { it.value } shouldBe listOf("true", "false")
         columns.getValue("note").choices shouldBe emptyList()
         // The row's value stays the stored one; the table shows the label.
-        user.getItems(formDocs).first()[GDF.displayValues].toJsonListOfMaps().first { it[UF.columnId] == "level" }[UF.value] shouldBe
-            "intermediate"
+        val values = user.getItems(formDocs).map { row ->
+            row[GDF.displayValues].toJsonListOfMaps().associate { it[UF.columnId] to it[UF.value] }
+        }
+        values.first { it["note"].toString().startsWith("C") }["level"] shouldBe "intermediate"
     }
 
     "a search matches a choice's value or its label, as the free-text term does" {
