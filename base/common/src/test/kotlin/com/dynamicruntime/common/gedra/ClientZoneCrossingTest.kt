@@ -40,7 +40,7 @@ class ClientZoneCrossingTest : StringSpec({
     }
 
     "a search's date bound is the start of its day in the zone" {
-        val lower = gedraSearchParams(listOf(ClientTraitUsage("due", "Due", $$"${x}", UsageKind.date, false)))
+        val lower = gedraSearchParams(declaredColumns(listOf(ClientTraitUsage("due", "Due", $$"${x}", UsageKind.date, false))))
             .first { it.role == SearchRole.min }
         val row = mapOf("due" to "2026-10-17T06:00:00.000Z")
         // Past midnight in Chicago (05:00 UTC), before it in the server's zone (08:00 UTC).

@@ -88,11 +88,13 @@ unrestricted scope). The rules that follow from that:
   in locals and publishes them together, so a failed switch leaves the previous surface whole rather than X's
   controls over the old rows.
 
-## A column's filter and cells follow its field (issue #1500)
+## A column's filter and cells follow its field (issues #1500, #1508)
 
 The listing's summary carries each column's `choices` when its `display` is a lone `${field}` over a field that
-offers them, or is a boolean (`ListingColumn.choices`, deduced on the backend from the client's own schema). The page
-reads them from the columns it already has; there is no second fetch.
+offers them (`ListingColumn.choices`, from the column's search shape, which the backend resolves
+against the client's schema). The page reads them from the columns it already has; there is no second fetch. A column
+over a number field arrives with kind `number` even when its usage declares none, so the page draws a range for it;
+the query schema says the same.
 
 - **The cell shows the label** (`presentedValue` → `presentColumnValue`), unless the column has a presentation of its
   own. The row's value stays the stored one, which is what the backend searches and sorts by.
@@ -100,6 +102,10 @@ reads them from the columns it already has; there is no second fetch.
   ahead of the values the values endpoint finds (`valueSuggestions`, pure). It stays an `AutoComplete`, open to
   anything typed or pasted. A box is drawn even where the surface has no values endpoint, when the column has choices.
   A pick fills the label, which the backend's search matches as well as the value.
+- **A boolean column is a yes-or-no** (kind `boolean`, issue #1508): its cells read Yes or No (`yesNoText`, unless
+  it has a presentation), its filter is a closed Yes/No `Select` cleared for any, as the Status filter is, and its
+  chip says `First talk: Yes`. Closed, unlike a choice column's box: a boolean has only two answers, and none can
+  have gone stale.
 - **A date column's range is two day pickers** (`dayBoundInput`), writing the `yyyy-mm-dd` the bound takes; the
   backend reads a day as the upper bound as the whole day. A bound that does not read as a date (an old link) gets
   the text box instead, so it can be seen and cleared. The number range keeps its text boxes.

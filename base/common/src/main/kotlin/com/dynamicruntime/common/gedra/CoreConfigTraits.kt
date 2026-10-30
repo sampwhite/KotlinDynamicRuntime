@@ -100,7 +100,11 @@ fun coreConfigTraits(cxt: KdrCxtBase): GedraConfig = gedraConfig(cxt, CCT.config
         // its failures swallowed, so a typo blanks the column for every row rather than surfacing -- which is why a
         // write parse-checks it (`checkTemplateSyntax`, in `configSlotFailures`, issue #1052): a shape cannot say it.
         property(CCT.display, "The string-script expression evaluated against the trait's data for the value.", required = true)
-        property(CCT.kind, "How the value reads -- what a search treats it as.") { options(UsageKind.entries) }
+        property(
+            CCT.kind,
+            $$"How the value reads -- what a search treats it as. Absent, a lone `${field}` display reads its field's schema " +
+                "(issue #1508), and a computed one is text.",
+        ) { options(UsageKind.entries) }
         property(CCT.substring, "For a string value, whether the search also offers a substring match.") {
             type = SCT.boolean
             allowCoerce = false

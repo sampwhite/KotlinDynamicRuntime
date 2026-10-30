@@ -26,6 +26,7 @@ import com.dynamicruntime.common.gedra.TraitDesign
 import com.dynamicruntime.common.gedra.TraitFieldDesign
 import com.dynamicruntime.common.gedra.TraitFieldKind
 import com.dynamicruntime.common.gedra.TraitNarrowing
+import com.dynamicruntime.common.gedra.formDocsQueryDefName
 import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.gedra.sandboxOf
 import com.dynamicruntime.common.gedra.traitDesignFromInfo
@@ -95,6 +96,27 @@ class ClientTraitNarrowTest : StringSpec({
 
     fun refusalOf(user: TestUser, data: Map<String, Any?>) =
         user.expectError(EXC.badInput, GEP.formDocCreate, mapOf(GDF.entries to listOf(mapOf(GE.traitId to survey, GE.data to data))))
+
+    "a column over a narrowed field offers only the choices the client kept (issue #1508)" {
+        val client = "nrwcol1508"
+        defineClient(client)
+        // A listing column over the trait's choice field, in a configuration of the client's own.
+        val setup = cxt.mkSubContext("setup", client).also { it.userId = 15080L }
+        val svc = GedraConfigService.get(cxt)
+        svc.writeConfig(setup, gedraConfig(cxt, "cols", clientNamespace(client), client) { traitUsage(survey, "Topic", $$"${topic}") })
+        svc.publish(setup, listOf(GedraId.of(GedraConfigType.configDoc, client, "cols")))
+        GedraConfigReload.reloadClient(cxt, client)
+        val schema = SchemaService.get(cxt)
+        fun columnChoices() = schema.listingColumnsFor(client).single { it.traitId == survey }.choices.map { it.value }
+        fun advertised() = schema.storeFor(client).types.getValue(formDocsQueryDefName()).properties
+            .getValue(survey).valueType.options?.map { it.value }
+        columnChoices() shouldBe listOf("a", "b")
+        advertised() shouldBe listOf("a", "b")
+        // Narrowed: the column and the client's query type offer what the client kept.
+        narrow(admin(client), TraitNarrowing(survey, choices = mapOf("topic" to listOf("b"))))
+        columnChoices() shouldBe listOf("b")
+        advertised() shouldBe listOf("b")
+    }
 
     "a narrowing hides in the layout, and requires and restricts in the data" {
         val client = "nrw1119"

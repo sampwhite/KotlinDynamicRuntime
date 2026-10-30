@@ -360,15 +360,21 @@ The trigger is a client asking for it; none has. When one does:
 
 ## When a customer wants choices or a picker on a computed column
 
-A listing column whose `display` is a lone `${field}` offers what the field's schema says it can be: its choices with
-their labels, or `true` and `false` for a boolean (issue #1500). A computed `display` -- `${city}, ${state}`, or
-`${upper(code)}` -- deduces nothing, and its filter suggests only the values the forms hold.
+A listing column whose `display` is a lone `${field}` is searched as the field's schema says: its choices with their
+labels, a yes-or-no for a boolean, or a range for a number or a date (issues #1500, #1508). A computed
+`display` -- `${city}, ${state}`, or `${upper(code)}` -- deduces nothing: a declared `kind` gives it a range, but its
+filter suggests only the values the forms hold.
 
 - **A schema declared on the usage** *(#1500, deferred here 2026-10-30).* An optional schema on the column, a `$ref`
   to a type the client sees (its own, a global one, or a JSON Schema built-in) or an inline one, read for the same
   choices, labels, and picker the deduction gives. A declared schema would win over a deduced one. Left out because a
   computed value with a closed set of values is rare, and a declared schema over a single field could disagree with
   the trait's own.
+- **A multi-choice field as a column** *(#1508, deferred here 2026-10-30).* A lone `${field}` over an array of choices
+  (the conference demo's Topics) has no search shape, so it is searched as text. A "holds this choice" search, with
+  the item's choices offered, would serve it.
+- **A fallback over one field** *(#1508, deferred here 2026-10-30).* `${level ?: "unknown"}` is computed, though both
+  sides could be judged the same field and given its shape.
 
 ## When a client wants a gated trait from the traits editor
 

@@ -5,10 +5,10 @@ package com.dynamicruntime.common.gedra
  * thing a client's definition changes about a page it does not own: the forms *list*.
  *
  * A usage names a trait, a **display expression** that pulls a value out of that trait's stored data (a string
- * script -- substitution only for now, e.g. `${'$'}{name}`), a **label** for the column it drives, and a
- * **value kind**. The kind is what the search (issue #538) reads: it treats a `number` or `date` value as a
- * range and a `string` as text ([gedraSearchParams]), and it is cheaper to declare the kind with the display
- * than to infer it at search time.
+ * script -- substitution only for now, e.g. `${'$'}{name}`), a **label** for the column it drives, and optionally a
+ * **value kind**. How the column is searched (issue #538) is its [ColumnSearchShape]: a `number` or `date` value as a
+ * range and a `string` as text ([gedraSearchParams]). A display that is a lone `${'$'}{field}` takes its shape from the
+ * field's schema (issue #1508), so it needs no kind; a computed one is text unless it declares one.
  *
  * Pure model in `base/kernel`, beside the config that carries it; the value is *computed* on the backend (it
  * needs a row's data), so a client never authors the presented string, only the rule that makes it.
@@ -28,8 +28,12 @@ class ClientTraitUsage(
      * arrive with the workflow function work.
      */
     val display: String,
-    /** How the value reads -- text, a number, or a date; what a later search treats it as. */
-    val kind: UsageKind = UsageKind.string,
+    /**
+     * How the value reads -- text, a number, or a date -- when the usage says (issue #1508). Null takes it from the
+     * field a lone `${'$'}{field}` display reads, and is text for a computed display ([resolveUsageColumn]). One that
+     * contradicts its field is a configuration problem, and the declared kind is kept.
+     */
+    val kind: UsageKind? = null,
     /**
      * For a `string` kind, whether the search (issue #538) also offers a **substring** parameter beside the
      * exact one -- two ways to find the value. Ignored for `number` and `date`, which are always searched as a
@@ -66,9 +70,12 @@ class ClientTraitUsage(
  */
 const val columnIdPattern = "^[A-Za-z][A-Za-z0-9_]*$"
 
-/** The kinds a [ClientTraitUsage] value can be: what a listing shows and a search (issue #538) filters on. */
+/**
+ * The kinds a [ClientTraitUsage] value can be: what a listing shows and a search (issue #538) filters on. A `boolean`
+ * (issue #1508) is searched by one yes-or-no parameter and reads as Yes or No.
+ */
 @Suppress("EnumEntryName")
-enum class UsageKind { string, number, date }
+enum class UsageKind { string, number, date, boolean }
 
 /**
  * The field names of one **computed** display value on a stored-row's wire map (issue #537) -- what the list

@@ -125,14 +125,14 @@ in the `kdr:usageDef` slot of its `base` bundle.
 <!-- kdr-doc: bundle=base pointer=/kdr:usageDef -->
 ```json
 [
-  { "traitId": "kdr:name", "label": "Talk", "display": "${name}", "kind": "string", "substring": true },
-  { "traitId": "session", "label": "Track", "display": "${track}", "kind": "string", "substring": false },
+  { "traitId": "kdr:name", "label": "Talk", "display": "${name}", "substring": true },
+  { "traitId": "session", "label": "Track", "display": "${track}", "substring": false },
   {
-    "traitId": "questionnaire", "label": "Audience", "display": "${audienceLevel}", "kind": "string", "substring": false,
+    "traitId": "questionnaire", "label": "Audience", "display": "${audienceLevel}", "substring": false,
     "columnId": "audience"
   },
   {
-    "traitId": "questionnaire", "label": "First talk", "display": "${firstTalk}", "kind": "string", "substring": false,
+    "traitId": "questionnaire", "label": "First talk", "display": "${firstTalk}", "substring": false,
     "columnId": "firstTalk"
   }
 ]
@@ -143,7 +143,7 @@ in the `kdr:usageDef` slot of its `base` bundle.
 | `traitId` | The trait the column takes its value from. |
 | `label` | The column's heading. |
 | `display` | The column's value: a template over the trait's data, in which `${track}` is the `track` field's value. The column sorts and searches by it, and shows it unless the column has a presentation. |
-| `kind` | How a search treats the value: as text, a number, or a date. A date column with no presentation reads relative to now, such as `in 3h`. |
+| `kind` | Optional, and left out of the demo's columns. How a search treats the value: as text, a number, or a date. Without it, a column that shows one field takes it from that field, so a number field is searched by a range. A column that computes its value is text unless it says otherwise. A date column with no presentation reads relative to now, such as `in 3h`. |
 | `substring` | Whether a search may match part of the value. On the talk's name, a search for `scale` finds `Kotlin at scale`. |
 | `columnId` | The column's name in a search, when it is not the trait's id. The Audience column is searched with `audience`. |
 
@@ -168,8 +168,9 @@ first-time speakers.
 The Track and Audience columns each read a single field that offers choices, so each shows the choice's label, such
 as **Workshop (hands-on)** or **Beginners**, and sorts in the order the choices are listed. A search on either matches
 the stored value or the label. Its filter suggests the choices as soon as it is clicked, and anything else can still
-be typed. The First talk column reads a yes-or-no field, so its filter suggests `true` and `false`, and the column
-shows a dash until the speaker answers. A column whose `display` does more than name one field, such as
+be typed. The First talk column reads a yes-or-no field, so it shows **Yes** or **No**, and a dash until the speaker
+answers. Its filter is a choice between Yes and No, and its search, `firstTalk`, takes `true` or `false` (or `yes`
+or `no`). A column whose `display` does more than name one field, such as
 `${city}, ${state}`, works as the name column does: its filter suggests only the values the forms hold.
 
 ## Survey

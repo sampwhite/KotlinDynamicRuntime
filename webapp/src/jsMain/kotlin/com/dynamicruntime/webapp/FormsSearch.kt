@@ -6,6 +6,7 @@ import com.dynamicruntime.common.gedra.UsageKind
 import com.dynamicruntime.common.gedra.choiceLabel
 import com.dynamicruntime.common.gedra.decodeSearchParam
 import com.dynamicruntime.common.gedra.reservedQueryFieldNames
+import com.dynamicruntime.common.gedra.yesNoText
 import com.dynamicruntime.common.gedra.workflow.SVY
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SchOption
@@ -58,6 +59,14 @@ private fun userPickOptions(picks: List<UserPick>): Array<dynamic> = picks.map {
     val o: dynamic = js("({})")
     o.label = pick.label
     o.value = pick.value
+    o
+}.toTypedArray()
+
+/** antd `{label, value}` options for a yes-or-no filter (issue #1508): Yes and No, as the column's cells read. */
+private fun yesNoOptions(): Array<dynamic> = listOf("true" to "Yes", "false" to "No").map { (value, label) ->
+    val o: dynamic = js("({})")
+    o.label = label
+    o.value = value
     o
 }.toTypedArray()
 
@@ -171,6 +180,9 @@ fun activeFilterChips(groups: List<SearchGroup>, applied: Map<String, Any?>): Li
     // as the one box that sends it does.
     if (g.isRange) {
         rangeChip(g.label, valueOf(g.min), valueOf(g.max))
+    } else if (g.kind == UsageKind.boolean) {
+        // A yes-or-no reads as the cells do (issue #1508).
+        valueOf(g.exact)?.let { yesNoText(it) }?.let { "${g.label}: $it" }
     } else {
         textChip(g.label, valueOf(g.contains), contains = true) ?: textChip(g.label, valueOf(g.exact), contains = false)
     }
@@ -291,11 +303,11 @@ val FormsScopeBar = FC<FormsScopeBarProps> { props ->
 /**
  * The forms-list search (issue #538, regrouped in #562, type-ahead in #581): one box that searches every text
  * field at once, and behind a toggle the per-trait filters the client's usage rules declared -- one text box
- * per text trait, a from-to pair per number or date -- so the list keeps the screen and the filters are there
- * when wanted. While the panel is closed, the applied filters are summarized as chips so a narrowed list never
- * looks like the whole -- the toggle, the chips and the well are the shell `FilterPanel.kt` shares with the
- * users console (issue #683). A text trait's box suggests the distinct values that trait takes, when the
- * caller's surface can supply them ([fetchValues]).
+ * per text trait, a from-to pair per number or date, a Yes/No choice per boolean (issue #1508) -- so the list keeps
+ * the screen and the filters are there when wanted. While the panel is closed, the applied filters are summarized as
+ * chips so a narrowed list never looks like the whole -- the toggle, the chips and the well are the shell
+ * `FilterPanel.kt` shares with the users console (issue #683). A text trait's box suggests the distinct values that
+ * trait takes, when the caller's surface can supply them ([fetchValues]).
  *
  * The parent owns the values and every action; the widgets own only their own suggestion state and debounce.
  */
@@ -396,7 +408,18 @@ val FormsSearch = FC<FormsSearchProps> { props ->
         }
         groups.forEach { group ->
             filterGroup(group.label) {
-                if (group.isRange) {
+                val yesNo = group.exact?.takeIf { group.kind == UsageKind.boolean }
+                if (yesNo != null) {
+                    // A yes-or-no (issue #1508): a closed choice, as a boolean has only two answers. Cleared means any.
+                    Select {
+                        value = props.values[yesNo]?.ifBlank { null }
+                        options = yesNoOptions()
+                        allowClear = true
+                        placeholder = "Any"
+                        style = js("({ minWidth: 120 })")
+                        onChange = { v -> props.onChange(yesNo, (v as? String) ?: "") }
+                    }
+                } else if (group.isRange) {
                     // A date's ends are day pickers (issue #1500), which still take a typed day.
                     fun react.ChildrenBuilder.end(name: String?, placeholder: String) =
                         if (group.kind == UsageKind.date) dayBoundInput(props, name, placeholder) else boundInput(props, name, placeholder)

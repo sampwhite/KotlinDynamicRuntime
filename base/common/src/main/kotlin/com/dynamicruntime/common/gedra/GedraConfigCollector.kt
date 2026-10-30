@@ -429,6 +429,16 @@ class GedraConfigCollector {
     }
 
     /**
+     * Every scope's own usage rules (issue #1508), by client, global's under the global client: what [usagesFor] picks
+     * from, taken whole so a published schema can hold the rules it was built with. A scope that declared none is
+     * absent.
+     */
+    fun usagesByClient(): Map<String, List<ClientTraitUsage>> = read().configsById.values
+        .groupBy({ it.gedraId.client }, { it.usages })
+        .mapValues { (_, lists) -> lists.flatten() }
+        .filterValues { it.isNotEmpty() }
+
+    /**
      * The named reports [client] sees (issue #979): the global ones, then its own, each in contribution order. Unlike
      * [usagesFor] these are **both**, not one or the other -- a component's report ids are rooted and a client's bare
      * (#921), so a client's report never shadows a global one and both are there to run. A client built on a template

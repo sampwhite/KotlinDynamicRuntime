@@ -233,14 +233,14 @@ The client, its traits, its columns in the forms list, its shared type, its fact
     }
   ],
   "kdr:usageDef": [
-    {"display": "${name}", "kind": "string", "label": "Talk", "substring": true, "traitId": "kdr:name"},
-    {"display": "${track}", "kind": "string", "label": "Track", "substring": false, "traitId": "session"},
+    {"display": "${name}", "label": "Talk", "substring": true, "traitId": "kdr:name"},
+    {"display": "${track}", "label": "Track", "substring": false, "traitId": "session"},
     {
-      "columnId": "audience", "display": "${audienceLevel}", "kind": "string", "label": "Audience", "substring": false,
+      "columnId": "audience", "display": "${audienceLevel}", "label": "Audience", "substring": false,
       "traitId": "questionnaire"
     },
     {
-      "columnId": "firstTalk", "display": "${firstTalk}", "kind": "string", "label": "First talk", "substring": false,
+      "columnId": "firstTalk", "display": "${firstTalk}", "label": "First talk", "substring": false,
       "traitId": "questionnaire"
     }
   ],
