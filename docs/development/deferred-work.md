@@ -509,6 +509,29 @@ full rationale live in the fragment design doc, `kdr-design/thoughts-on-fragment
   UiBlock merge, and both render paths when built. Revisit sooner if component content (not just a client's) is
   ever authored as data, or a preload/bundling path needs the static pull-set.
 
+## When a client adds a step to a template's workflow while the template is still changing
+
+A workflow made from a template (#1120) stores an overlay that may change labels, which traits each step collects, and
+layouts. Every other change is refused, adding a step included. A client wanting a step the template lacks writes the
+workflow whole, without `fromTemplate`, through the bundle editor or a patch. It then gives up later fixes to the
+template. With few templates and few clients, that and a programmatic patch across similar workflows (the bundle patch
+endpoint with a dry run) are enough. Overlays that place a new entry earn their machinery only when two owners'
+changes have to keep meeting.
+
+- **Anchors and siblings in an overlay** *(from the grants design discussion, 2026-10-30).*
+  - An overlay entry with no id to match is placed `before` or `after` a named entry, or `into` an anchor: an
+    entry with only an id, which the template puts where it expects additions and which renders as nothing.
+  - An anchor declares its kind, so it validates against its own branch of the list's schema rather than a real
+    entry's required fields. Anchors survive every overlay layer and are removed in one final step, so nothing
+    downstream sees one.
+  - Removal is a tombstone. A lost anchor is refused at write, forgiven at load, and reported in the client's issue
+    list.
+  - The merge rules for each list (its key, and whether it merges, is restated, or allows removal) are declared in the
+    definition's meta-schema, so one engine (#985's) serves workflows, traits, reports, and client definitions.
+
+  Nothing stored has to change to add it: the workflow's lists already carry stable keys (tasks, saves, eligibility
+  tests, trait references, locks, and singletons). The design discussion is in Sam's private design notes.
+
 ## When a client declared in source needs its definitions changed as data
 
 A real client, not a sample, whose configuration is declared in **source** and which needs a workflow's copy,
