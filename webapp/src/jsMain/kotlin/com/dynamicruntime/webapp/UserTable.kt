@@ -61,6 +61,12 @@ external interface UserTableProps : Props {
 
     /** Whether a row offers to become its user (issue #1511, [becomeOffered]); null for a caller who is offered none. */
     var offersBecome: ((AdminUser) -> Boolean)?
+
+    /** [BecomeLinkProps.disabled]. */
+    var becomeDisabled: Boolean?
+
+    /** [BecomeLinkProps.onOutcome]. */
+    var onBecomeOutcome: (BecomeFailure?) -> Unit
 }
 
 val UserTable = FC<UserTableProps> { props ->
@@ -144,14 +150,15 @@ val UserTable = FC<UserTableProps> { props ->
  * `onCell` stops it from also opening the row's editor -- as the forms table's workflow cell does.
  */
 private fun userLinksColumn(props: UserTableProps): dynamic {
-    val c = column("Go to", linksColumn, columnWidths[linksColumn])
+    val c = column("Go to", linksColumn, if (props.offersBecome != null) linksWithBecomeWidth else columnWidths[linksColumn])
     c.onCell = {
         val cellProps: dynamic = js("({})")
         cellProps.onClick = { event: dynamic -> event.stopPropagation() }
         cellProps
     }
     // Read off the row itself -- its key is the user's id, and its client cell the client -- rather than found
-    // again among the users, once a row, on every render.
+    // again among the users, once a row, on every render. Only a caller offered Become, on a test instance, needs the
+    // user itself, and a page of users is short.
     c.render = fun(_: dynamic, record: dynamic, _: dynamic): dynamic {
         val id = (record.key as? String)?.toLongOrNull() ?: return null
         return UserLinks.create {
@@ -160,7 +167,9 @@ private fun userLinksColumn(props: UserTableProps): dynamic {
             carriedClients = props.carriedClients
             showForms = props.showLinks
             showClient = props.showLinks && props.showClientLinks != false
-            become = props.users.firstOrNull { it.userId == id }?.takeIf { props.offersBecome?.invoke(it) == true }
+            become = props.offersBecome?.let { offered -> props.users.firstOrNull { it.userId == id }?.takeIf(offered) }
+            becomeDisabled = props.becomeDisabled
+            onBecomeOutcome = props.onBecomeOutcome
         }
     }
     return c
@@ -182,6 +191,12 @@ external interface UserLinksProps : Props {
 
     /** Beside [become]: [BecomeLinkProps.beforeBecome]. */
     var beforeBecome: ((() -> Unit) -> Unit)?
+
+    /** Beside [become]: [BecomeLinkProps.disabled]. */
+    var becomeDisabled: Boolean?
+
+    /** Beside [become]: [BecomeLinkProps.onOutcome]. */
+    var onBecomeOutcome: (BecomeFailure?) -> Unit
 }
 
 /**
@@ -216,6 +231,8 @@ val UserLinks = FC<UserLinksProps> { props ->
             BecomeLink {
                 user = target
                 beforeBecome = props.beforeBecome
+                disabled = props.becomeDisabled
+                onOutcome = props.onBecomeOutcome
             }
         }
     }
@@ -343,6 +360,9 @@ fun pinnedSide(dataIndex: String): String? = when (dataIndex) {
  * its entry). Above the total the surplus is shared out; below it the table scrolls inside the card. The columns
  * that absorb the difference are the two whose content has no bound.
  */
+/** The links column for a caller offered Become too (issue #1511): "Forms · Client · Become", on one line. */
+private const val linksWithBecomeWidth = 170
+
 private val columnWidths: Map<String, Int> = mapOf(
     idColumn to 50,
     // The two that genuinely vary, and so the two that give way. An address longer than this wraps, which is
@@ -357,8 +377,7 @@ private val columnWidths: Map<String, Int> = mapOf(
     // Bounded vocabularies: "Person"/"Business", and "enabled"/"disabled"/"deleted".
     typeColumn to 80, statusColumn to 85,
     // "Forms · Client", which never varies.
-    // Forms · Client · Become, on one line.
-    linksColumn to 170,
+    linksColumn to 115,
     // A list, so it is the other one that may wrap -- and now does, on the rows that hold three roles
     // (`user, admin, allClients`, a full administrator) or a long-named one, which are the minority, and on a
     // sandbox user whose row and acting roles differ, which says both (issue #1198) and may take three or four.

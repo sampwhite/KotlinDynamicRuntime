@@ -62,7 +62,8 @@ class BecomeUserTest {
 
     @Test
     fun theUsersPageOffersToBecomeAUserOnlyWhereItCanWork() {
-        fun offered(user: AdminUser, testAccess: Boolean = true, caller: Long? = 1L) = becomeOffered(user, testAccess, caller)
+        fun offered(user: AdminUser, testAccess: Boolean = true, caller: Long? = 1L, carried: Boolean = true) =
+            becomeOffered(user, testAccess, caller, carried)
         assertTrue(offered(adminUser()))
         // The fixture exists only for a caller with test access.
         assertFalse(offered(adminUser(), testAccess = false))
@@ -72,6 +73,7 @@ class BecomeUserTest {
         assertFalse(offered(adminUser(enabled = false)))
         assertFalse(offered(adminUser(deleted = true)))
         assertFalse(offered(adminUser(opened = true)))
+        assertFalse(offered(adminUser(), carried = false))
         // An unclaimed user is offered, and asks first: becoming it claims it.
         assertTrue(offered(adminUser(registered = false)))
         assertTrue(becomeClaims(adminUser(registered = false)))
@@ -82,7 +84,11 @@ class BecomeUserTest {
     fun becomingFromTheUsersPageNamesExactlyThatUser() {
         // By its whole key, so a second user of the address is the one become, not the address's default.
         assertEquals(
-            mapOf(TEP.email to "pat@acme.test", TEP.client to "acme", TEP.persona to "admin", TEP.personaSuffix to "B"),
+            mapOf(
+                TEP.email to "pat@acme.test", TEP.client to "acme", TEP.persona to "admin", TEP.personaSuffix to "B",
+                // One gone since the page read it is refused, rather than made anew in its place.
+                TEP.failIfUserMissing to true,
+            ),
             becomeUserBody(adminUser(persona = "admin", suffix = "B")),
         )
         assertFalse(TEP.personaSuffix in becomeUserBody(adminUser()))

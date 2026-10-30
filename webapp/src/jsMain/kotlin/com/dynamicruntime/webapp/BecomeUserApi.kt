@@ -86,16 +86,21 @@ private fun becomeBody(email: String, client: String, persona: String, personaSu
 fun becomeAgainBody(identity: RecentIdentity): Map<String, Any?> =
     becomeBody(identity.email, identity.client, identity.persona, identity.personaSuffix)
 
-/** The request that becomes [user] from the Users page (issue #1511): that one of its address's users, by its whole key. */
-fun becomeUserBody(user: AdminUser): Map<String, Any?> = becomeBody(user.primaryId, user.client, user.persona, user.personaSuffix)
+/**
+ * The request that becomes [user] from the Users page (issue #1511): that one of its address's users, by its whole key,
+ * and refused if it has gone since the page read it, rather than a new user made in its place.
+ */
+fun becomeUserBody(user: AdminUser): Map<String, Any?> =
+    becomeBody(user.primaryId, user.client, user.persona, user.personaSuffix) + (TEP.failIfUserMissing to true)
 
 /**
  * Whether the Users page offers to become [user] (issue #1511): to a caller with test access ([testAccess]), for whom
- * the fixture exists, and not on their own user ([callerUserId]), a user who could not sign in (disabled or deleted), or
- * a sandbox user somebody opened, who is reached by opening the sandbox. Pure, covered under `jsNodeTest`.
+ * the fixture exists, and not on their own user ([callerUserId]), a user who could not sign in (disabled, deleted, or
+ * in a client this node does not carry, [carried] false), or a sandbox user somebody opened, who is reached by opening
+ * the sandbox. Pure, covered under `jsNodeTest`.
  */
-fun becomeOffered(user: AdminUser, testAccess: Boolean, callerUserId: Long?): Boolean =
-    testAccess && user.userId != callerUserId && user.enabled && !user.deleted && !user.opened
+fun becomeOffered(user: AdminUser, testAccess: Boolean, callerUserId: Long?, carried: Boolean): Boolean =
+    testAccess && user.userId != callerUserId && user.enabled && !user.deleted && !user.opened && carried
 
 /** Whether becoming [user] would claim it (issue #1511), as the fixture does, which ends its invitation, so it asks first. */
 fun becomeClaims(user: AdminUser): Boolean = !user.registered

@@ -32,6 +32,9 @@ object TEP {
     const val capabilities = "capabilities"
     const val failIfUserAlreadyExists = "failIfUserAlreadyExists"
 
+    /** Fail instead of creating the user when none is found (issue #1511): for naming a user already on screen. */
+    const val failIfUserMissing = "failIfUserMissing"
+
     /** The created user's real-world name (issue #736) -- a person's full name, distinct from the username /
      *  `publicName`. Ignored when the user already exists. Absent leaves the account unnamed, as before. */
     const val name = "name"

@@ -299,7 +299,8 @@ does**, not by where it sits:
   survey view into edit mode or hops to the raw editor, so the two read-only views draw the same primary
   `Edit`.
 - A **link-styled control** (`type = "link"`, or the shared `<a class="back-link">`) goes somewhere else
-  without changing anything: an alternate view of the same form (`View raw`, `Raw edit`, the listing's
+  without changing anything (off these surfaces, the Users page's test-only Become sits among a row's links, and is
+  a button so styled, issue #1511): an alternate view of the same form (`View raw`, `Raw edit`, the listing's
   `View Info`), the way back (`formsBackLink()` / `formsBackToListing()` — never a hand-rolled link-button),
   and the pager.
 
@@ -357,7 +358,8 @@ all of them.
 
 1. **A page is a stack of panels.** Each is a shaded box (`panel(id, heading, explanation, kind)`) with a heading and,
    optionally, "What is this?". Every control belongs to exactly one panel, except the page's way out — a back link
-   at its top, or Profile's Log out at its foot — which belongs to the page.
+   at its top, or Profile's Log out at its foot — which belongs to the page, as does Become in the Users editor's
+   header, which only a caller with test access is offered (issue #1511).
 2. **A panel is a draft or live, never both** (`PanelKind`; `view` for a read-only panel, or a section holding editors
    of its own, as the client page's do).
    - **Draft**: edits wait for a save. One footer per draft, at the bottom of what it covers (`SaveBar`). It holds

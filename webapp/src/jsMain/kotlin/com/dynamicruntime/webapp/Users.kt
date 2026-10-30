@@ -110,6 +110,8 @@ val Users = FC<Props> {
     var note by useState<String?>(null)
     // Whether [note] reports something the administrator must act on, rather than something done (issue #1504).
     var noteFailed by useState(false)
+    // A Become that failed (issue #1511), said here rather than in the table cell or header line it was pressed in.
+    var becomeFailure by useState<BecomeFailure?>(null)
 
     // The user being edited, or null in the list view. `creating` opens the same editor with an empty draft.
     var editing by useState<AdminUser?>(null)
@@ -147,7 +149,8 @@ val Users = FC<Props> {
     val carriedClients = clientChoices.map { it.clientId }.toSet()
 
     /** Whether the page offers to become [user] (issue #1511). */
-    fun offersBecome(user: AdminUser): Boolean = becomeOffered(user, appConfig().hasTestAccess, config?.user?.userId)
+    fun offersBecome(user: AdminUser): Boolean =
+        becomeOffered(user, appConfig().hasTestAccess, config?.user?.userId, clientCarried(user.client, carriedClients))
 
     var draftIsEntity by useState(false)
     var draftName by useState("")
@@ -404,6 +407,7 @@ val Users = FC<Props> {
         note = null
         noteFailed = false
         error = null
+        becomeFailure = null
     }
 
     /**
@@ -481,6 +485,7 @@ val Users = FC<Props> {
         creating = false
         creatingForSelf = false
         error = null
+        becomeFailure = null
     }
 
     // --- the editor as a place you can come back to (issue #324) ---------------------------------------
@@ -844,12 +849,9 @@ val Users = FC<Props> {
                             showClient = linksOffered && !readOnly
                             become = openBecome
                             // The session changes before the move home, so unsaved edits are asked about first.
-                            beforeBecome = { go ->
-                                leaveDraft {
-                                    LeaveGuard.disarm()
-                                    go()
-                                }
-                            }
+                            beforeBecome = { go -> leaveDraft(go) }
+                            becomeDisabled = busy
+                            onBecomeOutcome = { becomeFailure = it }
                         }
                     }
                 }
@@ -860,6 +862,8 @@ val Users = FC<Props> {
                     }
                 }
             }
+
+            becomeFailure?.let { errorText(it.lead, it.error) }
 
             if (open?.deleted == true) {
                 // A permanently-deleted tombstone: nothing to edit, and re-enabling it is precisely the bug this
@@ -1337,6 +1341,7 @@ val Users = FC<Props> {
             }
 
             error?.let { errorText(it) }
+            becomeFailure?.let { errorText(it.lead, it.error) }
             note?.let {
                 p {
                     className = ClassName(if (noteFailed) "error-text" else "form-ok")
@@ -1527,6 +1532,8 @@ val Users = FC<Props> {
                     this.showClient = showClient
                     this.showLinks = linksOffered
                     this.offersBecome = ::offersBecome.takeIf { appConfig().hasTestAccess }
+                    becomeDisabled = busy
+                    onBecomeOutcome = { becomeFailure = it }
                     this.showClientLinks = !readOnly
                     this.carriedClients = carriedClients
                     this.users = users

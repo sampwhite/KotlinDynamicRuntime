@@ -11,10 +11,12 @@ group with the open user marked current.
 
 **Become** (issue #1511; `BecomeLink`, `becomeOffered`) sits beside those links on each row of the list and in the
 header, for a caller with test access only: the `becomeUser` fixture by the user's whole key, so a second user of an
-address is the one become. Not on the caller's own user, a disabled or deleted one, or a sandbox user somebody opened.
-A button styled as a link, since it changes the session. An unclaimed user asks first, because becoming it claims it
-and ends its invitation; unsaved edits in the editor are asked about first too, since the session changes before the
-move home. The Email address has a **Copy** button (`readOnlyField`'s `copyLabel`), not on a deleted user.
+address is the one become, with `failIfUserMissing`, so one gone since the page read it is refused, not made anew. Not
+on the caller's own user, a disabled or deleted one, one in a client this node does not carry, or a sandbox user
+somebody opened. A button styled as a link, since it changes the session, and waiting while the page is busy. An
+unclaimed user asks first, because becoming it claims it and ends its invitation; unsaved edits in the editor are
+asked about first too, since the session changes before the move home, and the leave guard goes only once it has
+succeeded. A failure is said by the page, a table cell having no room. The Email address has a **Copy** button (`readOnlyField`'s `copyLabel`), not on a deleted user.
 
 1. **User** (a draft): the identity and authority fields, with **More options** (`MoreOptions`, keyed by the record)
    holding Editor, All clients, the persona suffix on a create, labels, Enabled, and on a create **Send invitation** --

@@ -548,7 +548,8 @@ class AuthFormHandler(
      * [RoleLadder.rolesAtLevel], which is also what the admin console composes with) and [capabilities] adds
      * roles that are *not* rungs -- `allClients` and the like, which no level can express. On an existing
      * user both are ignored: you become whoever is already there, roles and all. When
-     * [failIfUserAlreadyExists] is set, an existing user is an error instead of a login.
+     * [failIfUserAlreadyExists] is set, an existing user is an error instead of a login; when [failIfUserMissing] is, a
+     * user who cannot be found is an error instead of a create.
      *
      * No verification code or password is involved -- it exists purely to seed an authenticated session for
      * tests and local simulations, which is why it is reachable only through a `forTestingOnly` endpoint. Like
@@ -557,9 +558,10 @@ class AuthFormHandler(
     fun becomeUserByEmail(
         cxt: KdrCxt, email: String, level: String, capabilities: List<String>, failIfUserAlreadyExists: Boolean,
         client: String? = null, name: String? = null, persona: String? = null, personaSuffix: String = "",
+        failIfUserMissing: Boolean = false,
     ): Map<String, Any?> {
         val found = findOrProvisionUser(
-            cxt, email, level, capabilities, failIfUserAlreadyExists, client, name, persona, personaSuffix,
+            cxt, email, level, capabilities, failIfUserAlreadyExists, client, name, persona, personaSuffix, failIfUserMissing,
         )
         // The fixture is proof by fiat (issue #749): becoming a user nobody has claimed registers it.
         return if (found.existed) {
@@ -577,6 +579,7 @@ class AuthFormHandler(
     fun findOrProvisionUser(
         cxt: KdrCxt, email: String, level: String, capabilities: List<String>, failIfUserAlreadyExists: Boolean,
         client: String? = null, name: String? = null, persona: String? = null, personaSuffix: String = "",
+        failIfUserMissing: Boolean = false,
     ): ProvisionedUser {
         val address = email.normalizeEmail()
         // A username as the login id resolves directly; an address resolves to its identity's users, and the
@@ -601,6 +604,8 @@ class AuthFormHandler(
             }
             return ProvisionedUser(existing, existed = true)
         }
+        // A caller naming a user on screen (issue #1511) means that user: one gone since is not to be made anew.
+        if (failIfUserMissing) throw KdrException("That user no longer exists.", code = EXC.notFound)
         val roles = RoleLadder.rolesAtLevel(emptyList(), level) + capabilities.filter { it.isNotBlank() }
         val userId = userService.provisionUser(
             cxt, address, namedClientOrRefuse(cxt, client, roles), roles,
