@@ -13,7 +13,6 @@ import com.dynamicruntime.common.uiblock.UiRoute
 import com.dynamicruntime.common.user.ACCT
 import com.dynamicruntime.common.user.AFEAT
 import com.dynamicruntime.common.user.AFLD
-import com.dynamicruntime.common.user.AccountHistory
 import com.dynamicruntime.common.webasset.WAS
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -303,13 +302,13 @@ class ConfigParsersTest {
                     AFLD.userInfo to sampleUserInfo,
                     AFLD.loginId to "ada@example.com",
                     // The user's own history (issue #1480), dates as the wire carries them; an unproven address absent.
-                    AFLD.account to mapOf(ACCT.registeredAt to "2026-10-01T16:00:00Z", ACCT.lastLoggedInAt to "2026-10-29T17:30:00Z"),
+                    AFLD.account to mapOf(ACCT.registeredAt to "2026-10-01T16:00:00Z", ACCT.previousLoggedInAt to "2026-10-29T17:30:00Z"),
                 ),
             ),
         )
-        assertEquals(Instant.parse("2026-10-01T16:00:00Z"), cfg.account.registeredAt)
-        assertEquals(Instant.parse("2026-10-29T17:30:00Z"), cfg.account.lastLoggedInAt)
-        assertNull(cfg.account.verifiedAt)
+        assertEquals(Instant.parse("2026-10-01T16:00:00Z"), cfg.account?.registeredAt)
+        assertEquals(Instant.parse("2026-10-29T17:30:00Z"), cfg.account?.previousLoggedInAt)
+        assertNull(cfg.account?.verifiedAt)
         assertTrue(cfg.features.hasPassword)
         assertTrue(cfg.features.canSetPassword)
         assertFalse(cfg.features.codeReadBack)
@@ -324,7 +323,8 @@ class ConfigParsersTest {
         assertFalse(cfg.features.canSetPassword)
         assertFalse(cfg.features.codeReadBack)
         assertEquals("", cfg.loginId)
-        assertEquals(AccountHistory(), cfg.account)
+        // A config with no history -- a node from before it -- is told apart from one saying nothing has happened.
+        assertNull(cfg.account)
         // An empty state yields the default (system) profile, which is not "logged in".
         assertFalse(UserProfile.fromUserInfo(emptyMap()).isLoggedIn)
     }

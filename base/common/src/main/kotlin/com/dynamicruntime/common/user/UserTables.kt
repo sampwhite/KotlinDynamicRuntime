@@ -182,6 +182,9 @@ object AD {
     const val lastLoggedInAt = "lastLoggedInAt"
     const val lastEditedAt = "lastEditedAt"
 
+    /** The sign-in before [lastLoggedInAt] (issue #1480): what a person reading their own account wants to see. */
+    const val previousLoggedInAt = "previousLoggedInAt"
+
     /**
      * Whether this account belongs to a **business** rather than a person. It says how to read [name] -- a
      * business's name rather than a person's -- and is absent (i.e., false) for an ordinary personal account.

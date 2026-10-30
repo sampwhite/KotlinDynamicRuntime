@@ -35,8 +35,11 @@ class ProfileConfig(
      * is a display name, and resolves as a login id only by coincidence of today's fallback.
      */
     val loginId: String,
-    /** The user's own dates and their address's proof (issue #1480); all absent from a config that carries none. */
-    val account: AccountHistory = AccountHistory(),
+    /**
+     * The user's own history (issue #1480); null from a config that carries none -- a node from before it -- so the
+     * page says nothing of it rather than that nothing has happened.
+     */
+    val account: AccountHistory? = null,
 )
 
 /**
@@ -52,7 +55,7 @@ fun profileConfigFrom(config: UiConfig): ProfileConfig = ProfileConfig(
     ),
     user = UserProfile.fromUserInfo(config.state[AFLD.userInfo].toJsonMapOrEmpty()),
     loginId = config.state.getOptStr(AFLD.loginId) ?: "",
-    account = AccountHistory.fromInfo(config.state[AFLD.account].toJsonMapOrEmpty()),
+    account = config.state[AFLD.account]?.let { AccountHistory.fromInfo(it.toJsonMapOrEmpty()) },
 )
 
 /**

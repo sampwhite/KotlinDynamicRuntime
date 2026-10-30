@@ -145,8 +145,10 @@ Current UI-config endpoints:
   `showErrorDetail` is on, so a developer has the exact string to register.
 - `GET /profile/ui/config` — **login-required** (`profile` section); features `{hasPassword, canSetPassword,
   codeReadBack}`, state `{userInfo, loginId, account}`. `account` is the user's own history (issue #1480), the kernel's
-  `AccountHistory` (`ACCT` names its fields): registered, activated, last sign-in, and when the address was proven --
-  this user's row and its identity only. Fragment file `profile`.
+  `AccountHistory` (`ACCT` names its fields): when the user was registered, the sign-in before this one (a switch
+  between users, into or out of a sandbox, is not a sign-in and moves neither stamp), and when the address was proven
+  -- this user's row and its identity only. A session's only, as the page's own: an API key is refused. Fragment
+  file `profile`.
 - The **switcher** (issue #749), login-required (`user` section): `GET /user/self/users` lists the `UserChoice`s
   the signed-in person may act as (registered, enabled users of their identity in clients this node carries, each
   with its `clientName`, issue #1110; `isCurrent` / `isDefault` marked), `POST /user/self/switch {userId}` reissues
@@ -160,17 +162,21 @@ Current UI-config endpoints:
   person's default user, or ends it when none remains. The **profile page** (issue #1330) is built to the page
   structure (issue #1479): under its title the structure line (the address, the person's users, the access of the one
   acted as, `profileStructure`), then the panels Your account (read-only: who, client, persona and access,
-  organization, account type, the address's proof and the user's own moments -- absolute, in the display zone, as a
-  user's own page shows them (issue #1480) -- the time zone, and "What you can do here" from `ShellFacts.reach`, the roles, and the
-  organization -- `profileAccountFacts` and `profileAbilities` in `ProfileLayout.kt`, covered by `ProfileLayoutTest`),
-  Your users (live), Your name (a draft), Sign-in (live, then a draft once a code is sent; Remove password through
-  `DangerConfirm`), and API keys (live), each drawing its own result; Log out stays below them. It describes a
-  `public` user's access without the `admin` every registrant there is given (`profileShownRoles`), since in `public`
-  an administrator is no different from an ordinary user, and it takes the shell's facts only once they are this
-  user's (`ShellFacts.describes`), not before the bar has been told or for a moment after a switch. For a person with more than one user or a `public` one, it shows them all in a
-  table ("Your users": Persona, Client, and Name only when the users are named differently): the active one tinted
-  and marked **Active now**, and the one a sign-in lands on marked **Next sign-in** from the list's `signsInAs` --
-  the default rule worked out (`defaultUserOf`), which differs from `isDefault` (the choice alone) when sign-in passes a chosen default over.
+  organization, account type, when the address was proven, the user's registration and previous sign-in -- absolute,
+  each labeled with its zone, as a user's own page shows them (issue #1480); not its activation, which reads out of
+  order there, nor a password row, which Sign-in already gives -- the time zone, and "What you can do here" from
+  `ShellFacts.reach`, the roles, and the organization -- `profileAccountFacts` and `profileAbilities` in
+  `ProfileLayout.kt`, covered by `ProfileLayoutTest`), Your users (live), Your name (a draft), Sign-in (live, then a
+  draft once a code is sent; Remove password through `DangerConfirm`), and API keys (live), each drawing its own
+  result; Log out stays below them. It describes a `public` user's access without the `admin` every registrant there
+  is given (`profileShownRoles`), since in `public` an administrator is no different from an ordinary user, and it
+  takes the shell's facts -- what the caller can do, the time zone -- only once they are this user's
+  (`ShellFacts.describes`), not before the bar has been told or for a moment after a switch; a moment shown before
+  then still names its zone. For a person with more than one user or a `public` one, it shows them all in a table
+  ("Your users": Persona, Client, and Name only when the users are named differently): the active one tinted and
+  marked **Active now**, and the one a sign-in lands on marked **Next sign-in** from the list's `signsInAs` -- the
+  default rule worked out (`defaultUserOf`), which differs from `isDefault` (the choice alone) when sign-in passes a
+  chosen default over.
   Each row offers **Switch to this user**, which stays on the profile page (`afterSessionChange` with the profile's
   address; the leave from inside a sandbox, read from `ShellFacts.inSandbox`), **Use for next sign-in** (`setDefault`)
   where a sign-in does not already land, and **Remove** on a `public` row, two-step, saying when it is the whole

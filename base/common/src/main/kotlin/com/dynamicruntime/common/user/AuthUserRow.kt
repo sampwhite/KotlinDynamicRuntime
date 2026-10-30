@@ -103,8 +103,17 @@ class AuthUserRow(
     /** When the account most recently became active -- at creation, and on each re-enable. */
     var activatedAt: Instant? = null
 
-    /** When a login sequence last completed. A presented session cookie is not a login and does not move it. */
+    /**
+     * When a login sequence last completed. A presented session cookie is not a login and does not move it, nor does a
+     * switch to another of the person's users, into or out of a sandbox (issue #1480).
+     */
     var lastLoggedInAt: Instant? = null
+
+    /**
+     * The sign-in before [lastLoggedInAt] (issue #1480), moved here as a new one is stamped: what Profile shows the
+     * person, since the last one is the sign-in they are using. Null until the user's second sign-in.
+     */
+    var previousLoggedInAt: Instant? = null
 
     /**
      * When the account was last edited: anything that is not a login and not an activation.
@@ -264,6 +273,7 @@ class AuthUserRow(
         putDate(newAuthData, AD.registeredAt, registeredAt)
         putDate(newAuthData, AD.activatedAt, activatedAt)
         putDate(newAuthData, AD.lastLoggedInAt, lastLoggedInAt)
+        putDate(newAuthData, AD.previousLoggedInAt, previousLoggedInAt)
         putDate(newAuthData, AD.lastEditedAt, lastEditedAt)
         val retData = data.toMutableMap()
         retData[AU.identityId] = identityId
@@ -410,7 +420,7 @@ class AuthUserRow(
                 // filter ranges come from, so a date is one entry rather than four places that must agree.
                 property(USF.registered.at, "When the account was first created; never overwritten.") { dateTime() }
                 property(USF.activated.at, "When the account most recently became active -- at creation, and on each re-enable.") { dateTime() }
-                property(USF.lastLoggedIn.at, "When a login sequence last completed; a refreshed cookie does not count.") { dateTime() }
+                property(USF.lastLoggedIn.at, "When a login sequence last completed; a refreshed cookie does not count, nor does a switch between users.") { dateTime() }
                 property(USF.lastEdited.at, "When the account was last edited -- not a login, not an activation.") { dateTime() }
                 // In a sandbox (issue #1198): what the user acts with, which its row need not say.
                 property(ADF.actingRoles, "In a sandbox, the roles the user acts with; absent outside one.") {
@@ -460,6 +470,7 @@ class AuthUserRow(
             row.registeredAt = userData[AD.registeredAt].toOptInstant()
             row.activatedAt = userData[AD.activatedAt].toOptInstant()
             row.lastLoggedInAt = userData[AD.lastLoggedInAt].toOptInstant()
+            row.previousLoggedInAt = userData[AD.previousLoggedInAt].toOptInstant()
             row.lastEditedAt = userData[AD.lastEditedAt].toOptInstant()
             // A real column, read from the row rather than the auth-data blob (unlike org/name/deletedAt).
             row.updatedAt = data[PF.updatedAt].toOptInstant()

@@ -6,38 +6,38 @@ import com.dynamicruntime.common.util.toOptInstantOrNull
 import kotlin.time.Instant
 
 /**
- * Field names of an [AccountHistory] (issue #1480). Each matches its value, and the user's dates are those the admin
- * console reads a user by (`USF.registered.at`, ...) and the identity's proof the name its person view gives it
- * (`ADF.verifiedAt`), so a date travels under one name whichever surface shows it.
+ * Field names of an [AccountHistory] (issue #1480). Each matches its value; the registration and the proof travel
+ * under the names the admin console gives them (`USF.registered.at`, `ADF.verifiedAt`), so a date is called one thing
+ * whichever surface shows it.
  */
 @Suppress("ConstPropertyName")
 object ACCT {
     const val registeredAt = "registeredAt"
-    const val activatedAt = "activatedAt"
-    const val lastLoggedInAt = "lastLoggedInAt"
+    const val previousLoggedInAt = "previousLoggedInAt"
     const val verifiedAt = "verifiedAt"
 }
 
 /**
- * The signed-in user's own history (issue #1480), what Profile's account panel shows of it: when the user was
- * [registeredAt] (its person claimed it) and [activatedAt] (it came into being, or was recovered), its [lastLoggedInAt],
- * and when the person's address was proven ([verifiedAt], the identity's). Each is null while it has not happened. Only
- * the caller's own row and identity: nothing about the person's other users.
+ * The signed-in user's own history (issue #1480), what Profile's account panel shows of it: when its person claimed it
+ * ([registeredAt]), the sign-in before the one in use ([previousLoggedInAt]; a switch between users is none), and when
+ * the person's address was proven ([verifiedAt], the identity's). Each is null while it has not happened. Only the
+ * caller's own row and identity: nothing about the person's other users.
+ *
+ * Not the user's activation, which an invitation or a re-enable moves, so it reads out of order on a person's own page,
+ * nor whether a password is set, which the profile config's features already say and the Sign-in panel shows.
  *
  * In the kernel so the page reads it by the names the backend writes, and its schema type is defined beside the
  * serialization ([defineInfoType]).
  */
 data class AccountHistory(
     val registeredAt: Instant? = null,
-    val activatedAt: Instant? = null,
-    val lastLoggedInAt: Instant? = null,
+    val previousLoggedInAt: Instant? = null,
     val verifiedAt: Instant? = null,
 ) {
     /** The history as it travels: a date that has not happened is left out. */
     fun toInfo(): Map<String, Any?> = buildMap {
         registeredAt?.let { put(ACCT.registeredAt, it) }
-        activatedAt?.let { put(ACCT.activatedAt, it) }
-        lastLoggedInAt?.let { put(ACCT.lastLoggedInAt, it) }
+        previousLoggedInAt?.let { put(ACCT.previousLoggedInAt, it) }
         verifiedAt?.let { put(ACCT.verifiedAt, it) }
     }
 
@@ -49,8 +49,7 @@ data class AccountHistory(
         /** The mirror of [toInfo]: a date absent, or not one, is null. */
         fun fromInfo(info: Map<String, Any?>): AccountHistory = AccountHistory(
             registeredAt = info[ACCT.registeredAt].toOptInstantOrNull(),
-            activatedAt = info[ACCT.activatedAt].toOptInstantOrNull(),
-            lastLoggedInAt = info[ACCT.lastLoggedInAt].toOptInstantOrNull(),
+            previousLoggedInAt = info[ACCT.previousLoggedInAt].toOptInstantOrNull(),
             verifiedAt = info[ACCT.verifiedAt].toOptInstantOrNull(),
         )
 
@@ -59,11 +58,14 @@ data class AccountHistory(
             builder.type(infoTypeName) {
                 type = SCT.kObject
                 property(ACCT.registeredAt, "When the user's person claimed it; absent while nobody has.") { dateTime() }
-                property(ACCT.activatedAt, "When the user came into being, or was last recovered.") { dateTime() }
-                property(ACCT.lastLoggedInAt, "When the user last signed in.") { dateTime() }
-                property(ACCT.verifiedAt, "When the person's address was proven (a code or an invitation link); absent while unproven.") {
-                    dateTime()
-                }
+                property(
+                    ACCT.previousLoggedInAt,
+                    "The sign-in before the one in use; absent until the second. A switch between users is not one.",
+                ) { dateTime() }
+                property(
+                    ACCT.verifiedAt,
+                    "When the person's address was proven (a code, an invitation link, or a Google sign-in); absent while unproven.",
+                ) { dateTime() }
             }
         }
     }

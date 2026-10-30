@@ -44,16 +44,19 @@ fun profileSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.profile") {
             type = SCT.kObject
             property(AFLD.userInfo, "The current user's info.", required = true) { ref(UserProfile.infoTypeName) }
             property(AFLD.loginId, "The id this user signs in with, for the password calls.", required = true)
-            property(AFLD.account, "The user's own dates and whether their address is proven (issue #1480).", required = true) {
+            property(AFLD.account, "The user's registration, previous sign-in, and when their address was proven (issue #1480).", required = true) {
                 ref(AccountHistory.infoTypeName)
             }
         }
     }
 
     // The manifest for building the profile page. Login-required (the `profile` section), so it always runs for
-    // a real user; it loads that user's row for the password status, the info, and the user's own history.
+    // a real user; it loads that user's row for the password status, the info, and the user's own history. A
+    // session's only (issue #1480): the page's own, and what it says of the person's identity -- whether a password is
+    // set, when the address was proven -- is the person's to read, not a program's holding a key an administrator
+    // made for their user.
     generalEndpoint(AEP.profileUiConfig, "Returns the config for constructing the profile page.",
-        HttpMethod.GET, outputRef = ATYPE.profileUiConfig, tags = setOf(ETAG.frontend)) { c, _ ->
+        HttpMethod.GET, outputRef = ATYPE.profileUiConfig, tags = setOf(ETAG.frontend), sessionOnly = true) { c, _ ->
         val row = UserService.get(c).queryByUserId(c, c.userProfile.userId)
             ?: throw KdrException("The current user could not be found.", code = EXC.notFound)
         mapOf(
@@ -96,13 +99,12 @@ fun profileSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.profile") {
 }
 
 /**
- * The history of [row], the caller's own user (issue #1480): its dates, and when its person's address was proven --
- * the identity's, read for this one user, so nothing about the person's other users is said. An identity that cannot
- * be found leaves the proof unsaid rather than failing the page.
+ * The history of [row], the caller's own user (issue #1480): when it was registered, the sign-in before this one, and
+ * when its person's address was proven -- the identity's, read for this one user, so nothing about the person's other
+ * users is said.
  */
 fun accountHistoryOf(cxt: KdrCxt, row: AuthUserRow): AccountHistory = AccountHistory(
     registeredAt = row.registeredAt,
-    activatedAt = row.activatedAt,
-    lastLoggedInAt = row.lastLoggedInAt,
-    verifiedAt = UserService.get(cxt).queryIdentityById(cxt, row.identityId)?.verifiedAt,
+    previousLoggedInAt = row.previousLoggedInAt,
+    verifiedAt = UserService.get(cxt).identityOfUser(cxt, row).verifiedAt,
 )

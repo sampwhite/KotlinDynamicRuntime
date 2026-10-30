@@ -78,7 +78,7 @@ class ProfileLayoutTest {
         assertEquals(
             mapOf(
                 PRFA.email to "ada@acme.test", PRFA.client to "Acme", PRFA.persona to "Member", PRFA.access to "User",
-                PRFA.accountType to "Personal", PRFA.address to "Not yet proven", PRFA.timeZone to "America/Chicago (CT)",
+                PRFA.accountType to "Personal", PRFA.timeZone to "America/Chicago (CT)",
             ),
             plain,
         )
@@ -95,10 +95,13 @@ class ProfileLayoutTest {
         // The order the panel reads in.
         assertEquals(
             listOf(
-                PRFA.signedInAs, PRFA.email, PRFA.client, PRFA.persona, PRFA.access, PRFA.org, PRFA.accountType, PRFA.address,
-                PRFA.timeZone,
+                PRFA.signedInAs, PRFA.email, PRFA.emailProven, PRFA.client, PRFA.persona, PRFA.access, PRFA.org,
+                PRFA.accountType, PRFA.registered, PRFA.previousSignIn, PRFA.timeZone,
             ),
-            profileAccountFacts(profile(org = "east", name = "Ada"), "a@b.test", listOf(member), facts).map { it.key },
+            profileAccountFacts(
+                profile(org = "east", name = "Ada"), "a@b.test", listOf(member), facts,
+                AccountHistory(Instant.parse("2026-10-01T16:00:00Z"), Instant.parse("2026-10-28T09:00:00Z")),
+            ).map { it.key },
         )
         // A value's words are the copy's when it has them.
         val reworded = profileAccountFacts(profile(), "a@b.test", listOf(member), facts) { key, shipped ->
@@ -110,31 +113,27 @@ class ProfileLayoutTest {
     }
 
     @Test
-    fun theUsersOwnHistoryReadsAsMomentsBeforeTheZoneTheyAreIn() {
+    fun theUsersOwnHistoryReadsAsAbsoluteMoments() {
         val registered = Instant.parse("2026-10-01T16:00:00Z")
-        val activated = Instant.parse("2026-09-30T12:00:00Z")
-        val signedIn = Instant.parse("2026-10-29T17:30:00Z")
+        val previous = Instant.parse("2026-10-28T09:00:00Z")
         val proven = Instant.parse("2026-10-01T15:59:00Z")
-        val history = AccountHistory(registered, activated, signedIn, proven)
-        val facts = profileAccountFacts(
+        fun facts(history: AccountHistory?) = profileAccountFacts(
             profile(), "ada@acme.test", listOf(member), ShellFacts(), history, moment = { "at $it" },
-        )
-        assertEquals(
-            listOf(
-                PRFA.address to "Proven at $proven", PRFA.registered to "at $registered", PRFA.activated to "at $activated",
-                PRFA.lastSignIn to "at $signedIn", PRFA.timeZone to "This site's default (GMT-8)",
-            ),
-            facts.dropWhile { it.key != PRFA.address }.map { it.key to it.value },
-        )
-        // A moment that has not happened is no line; an unproven address says so.
-        val invited = profileAccountFacts(
-            profile(), "ada@acme.test", listOf(member), ShellFacts(), AccountHistory(activatedAt = activated), moment = { "at $it" },
         ).associate { it.key to it.value }
-        assertEquals("Not yet proven", invited[PRFA.address])
-        assertEquals(null to null, invited[PRFA.registered] to invited[PRFA.lastSignIn])
-        // The moment is the display zone's, absolute, as a user's own page shows it (issue #1141).
-        val shown = profileAccountFacts(profile(), "ada@acme.test", listOf(member), ShellFacts(), history)
-        assertEquals(formatTimestamp(registered.toString()), shown.first { it.key == PRFA.registered }.value)
+        val all = facts(AccountHistory(registered, previous, proven))
+        assertEquals("at $proven", all[PRFA.emailProven])
+        assertEquals("at $registered" to "at $previous", all[PRFA.registered] to all[PRFA.previousSignIn])
+        // A first sign-in has no previous one, and an address nobody has proven says so.
+        val first = facts(AccountHistory(registeredAt = registered))
+        assertEquals("Not yet", first[PRFA.emailProven])
+        assertFalse(PRFA.previousSignIn in first)
+        // A node that serves no history says nothing of it, rather than that the address is unproven.
+        val none = facts(null)
+        assertFalse(PRFA.emailProven in none || PRFA.registered in none)
+        // Shown absolute, in the display zone and labeled with it, as a user's own page shows a moment (issue #1141).
+        val shown = profileAccountFacts(profile(), "ada@acme.test", listOf(member), ShellFacts(), AccountHistory(registered))
+            .first { it.key == PRFA.registered }.value
+        assertTrue(shown.endsWith("GMT-8") && "2026" in shown, shown)
     }
 
     @Test
