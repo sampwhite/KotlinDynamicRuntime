@@ -171,7 +171,7 @@ fun String.analyzeTemplate(
 
 /**
  * The field path this template reads when it is nothing but one bare substitution (issue #1500): `${audienceLevel}`
- * gives `[audienceLevel]`, and `${address.city}` gives `[address, city]`. Null for anything else -- text beside the
+ * gives `audienceLevel`, and `${address.city}` gives `[address, city]`. Null for anything else -- text beside the
  * block, a function call or an operator, a second block, or a block that does not parse -- since the template's
  * value is then not simply that field's.
  */
