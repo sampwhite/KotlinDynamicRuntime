@@ -727,6 +727,31 @@ nothing to the server's classpath.
   (an SSH client, a cloud provider's SDK), so it stays out of every release. That module also needs its own way onto
   `kdr-run`'s classpath, since `kdr-run` launches from the `launch` project's pathing jar.
 
+## When a deployment that is not a test instance needs smoke tests
+
+A smoke test has to sign in without a person reading a mailed code. On the reference instance it already can: a
+request made on the node over SSH carries env auth (`KDR_ASSUME_ENV_AUTH`, see "Env auth on the node itself" in
+[`lightweight-node.md`](../deploy/lightweight-node.md)), so `/fixture/becomeUser` called there returns a session that
+works through the public URL as an ordinary user. A deployment without `KDR_TEST_INSTANCE` has no fixtures, and a
+request made on its node may only read (#1255). Cedar's answer was to turn off the familiar-device check for the test
+accounts and sign in with a password, which weakens sign-in for those accounts everywhere.
+
+- **A sign-in code for a smoke account, from the node only.** An operator endpoint that only a request made on the
+  node can call, making a verification code for an account marked as a smoke account without mailing it. It is the
+  one write such a request may make, named as an exception where #1255's rule is stated, and every code it makes is
+  logged with its account. A versioned command (`bin/kdr-smoke-code <target> <account>`, reading the host and port
+  from `deploy/targets/`, as `kdr-deploy` does) runs it over SSH and prints the code.
+  - **The test signs in through the public URL** with the ordinary code sign-in, so it covers the real sign-in path,
+    the cookies, and the proxy. The node is used only to get the code. Cedar's runner could reach nodes directly and
+    drifted into privileged calls, which tests a path no user takes.
+  - **Smoke accounts are pre-provisioned** by a narrow versioned command, never any user. They belong to a client
+    of their own, so their data never sits beside a customer's and reports can leave them out.
+  - **The code must work on whichever node the sign-in reaches:** computed from a shared secret, as the claim codes
+    are, or stored where every node can read it.
+  - **It depends on two items under "When a deployment serves real clients".** Until verification tokens are
+    single-use, the code is short-lived but can be reused. Until the server-side session store exists, each run
+    leaves a session valid until it expires, unless the run disables its user at the end.
+
 ## When a client wants to start its sandbox over
 
 A client's sandbox ([`docs/design/sandboxes.md`](../design/sandboxes.md)) keeps users and data of its own, under the
