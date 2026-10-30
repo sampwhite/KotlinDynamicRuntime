@@ -5,12 +5,14 @@ import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.UPF
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.exception.EXC
+import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.ClientAudience
 import com.dynamicruntime.common.gedra.ClientDef
 import com.dynamicruntime.common.gedra.ClientUsageType
 import com.dynamicruntime.common.gedra.GedraConfigReload
 import com.dynamicruntime.common.gedra.GedraConfigService
 import com.dynamicruntime.common.gedra.gedraConfig
+import com.dynamicruntime.common.gedra.sandboxOf
 import com.dynamicruntime.common.home.HMENU
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.http.request.TestHttpClient
@@ -21,12 +23,15 @@ import com.dynamicruntime.common.user.ADF
 import com.dynamicruntime.common.user.AEP
 import com.dynamicruntime.common.user.AFLD
 import com.dynamicruntime.common.user.PERSONA
+import com.dynamicruntime.common.user.RL
 import com.dynamicruntime.common.user.TestUser
+import com.dynamicruntime.common.user.UADEP
 import com.dynamicruntime.common.user.UCF
 import com.dynamicruntime.common.user.USF
 import com.dynamicruntime.common.user.UserService
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonMap
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.nulls.shouldBeNull
@@ -154,13 +159,18 @@ class InvitationTest : StringSpec({
         mailed.text shouldNotContain HMENU.pageInvite
     }
 
-    "a reminder is refused where it does not fit: unclaimed, disabled, or a sandbox's" {
+    "a reminder is refused for anyone who could not use it, saying why" {
         val admin = TestUser.createFullAdmin(cxt, "remind-admin2@other.test")
+        fun refusal(userId: Any?) = admin.expectError(EXC.badInput, ADEP.userRemind, mapOf(ADF.userId to userId))[EP.errorMessage].toString()
+
         val unclaimed = admin.postData(ADEP.userCreate, mapOf(ADF.primaryId to "remind-unclaimed@other.test", ADF.client to CL.hub))
-        admin.expectError(EXC.badInput, ADEP.userRemind, mapOf(ADF.userId to unclaimed[ADF.userId]))
+        refusal(unclaimed[ADF.userId]) shouldContain "send an invitation instead"
         val off = TestUser.create(cxt, "remind-off@other.test", userClient = CL.hub)
         admin.postData(ADEP.userSetEnabled, mapOf(ADF.userId to off.userId, ADF.enabled to false))
-        admin.expectError(EXC.badInput, ADEP.userRemind, mapOf(ADF.userId to off.userId))
+        refusal(off.userId) shouldContain "is disabled"
+        val gone = TestUser.create(cxt, "remind-gone@other.test", userClient = CL.hub)
+        admin.client.sendDeleteRequest(ADEP.userDelete, mapOf(ADF.userId to gone.userId, ADF.permanent to true))
+        refusal(gone.userId) shouldContain "deleted"
 
         val parent = "remindsbx"
         GedraConfigService.get(cxt).writeConfig(
@@ -176,8 +186,57 @@ class InvitationTest : StringSpec({
         )
         GedraConfigReload.reloadClient(cxt, parent)
         val chief = TestUser.create(cxt, "chief@$parent.test", level = ROLE.admin, userClient = parent)
-        val sandboxUser = chief.postData(AEP.openSandbox, emptyMap())[UPF.userId]
-        admin.expectError(EXC.badInput, ADEP.userRemind, mapOf(ADF.userId to sandboxUser))
+        // A user somebody opened in the sandbox is reached only through opening it...
+        refusal(chief.postData(AEP.openSandbox, emptyMap())[UPF.userId]) shouldContain "opened in a sandbox"
+        // ...where a sandbox's own claimed user signs in like any other.
+        val tester = users.provisionUser(
+            cxt, "remind-tester@other.test", sandboxOf(parent), listOf(ROLE.user), createdAt = cxt.now(), verifiedAt = cxt.now(), registered = true,
+        )
+        admin.postData(ADEP.userRemind, mapOf(ADF.userId to tester))
+        MailService.get(cxt).lastEmailTo("remind-tester@other.test").shouldNotBeNull()
+    }
+
+    "a client administrator reminds the users they reach, and no others" {
+        val chief = TestUser.create(cxt, "chief-remind@other.test", level = ROLE.admin, userClient = CL.hub)
+        val colleague = TestUser.create(cxt, "colleague-remind@other.test", userClient = CL.hub)
+        chief.postData(UADEP.userRemind, mapOf(ADF.userId to colleague.userId))
+        MailService.get(cxt).lastEmailTo("colleague-remind@other.test").shouldNotBeNull().subject shouldContain "Your account at"
+        // Another client's user reads as absent, and gets nothing.
+        val outsider = TestUser.create(cxt, "outsider-remind@other.test")
+        chief.expectError(EXC.notFound, UADEP.userRemind, mapOf(ADF.userId to outsider.userId))
+        MailService.get(cxt).lastEmailTo("outsider-remind@other.test").shouldBeNull()
+    }
+
+    "the mail an administrator sends one address is limited, and a create that is refused says it sent none" {
+        val admin = TestUser.createFullAdmin(cxt, "limit-admin@other.test")
+        val address = "limited@other.test"
+        val person = TestUser.create(cxt, address, userClient = CL.hub)
+        repeat(RL.sendPerContactMax) { admin.postData(ADEP.userRemind, mapOf(ADF.userId to person.userId)) }
+        admin.expectError(EXC.tooManyRequests, ADEP.userRemind, mapOf(ADF.userId to person.userId))
+        // The address's limit reached, a further user at it is still made, and the answer does not claim a mail went.
+        val made = admin.postData(ADEP.userCreate, mapOf(ADF.primaryId to address, ADF.client to CL.hub, ADF.persona to PERSONA.admin))
+        made[ADF.invitationSent] shouldBe false
+        made[ADF.userId].shouldNotBeNull()
+    }
+
+    "a create at the caller's own address mails nothing, and says so" {
+        val address = "own-address@other.test"
+        val admin = TestUser.createFullAdmin(cxt, address)
+        val made = admin.postData(ADEP.userCreate, mapOf(ADF.primaryId to address, ADF.client to CL.hub, ADF.persona to PERSONA.member))
+        made[ADF.invitationSent] shouldBe false
+        MailService.get(cxt).lastEmailTo(address).shouldBeNull()
+    }
+
+    "a reminder needs the deployment's own URL, since a request's headers are the caller's to set" {
+        val real = TestInstances.notTestInstance("remindNoUrl1504")
+        real.instanceConfig.isTestInstance shouldBe false // guard the premise, or the next line proves nothing
+        val realUsers = UserService.get(real)
+        val person = realUsers.provisionUser(
+            real, "remind-real-person@other.test", CL.hub, listOf(ROLE.user), createdAt = real.now(), verifiedAt = real.now(), registered = true,
+        )
+        // In process: such a node has no fixture to sign an administrator in with.
+        val refused = shouldThrow<KdrException> { realUsers.authFormHandler.remindUser(real, realUsers.queryByUserId(real, person).shouldNotBeNull()) }
+        refused.message.orEmpty() shouldContain "public URL"
     }
 
     "an invitation to a registered person attaches the user to them, and needs no code" {

@@ -13,7 +13,8 @@ group with the open user marked current.
    open by itself when any is set away from its default (`userMoreOptionsInForce`), each with a "Use this when" hint.
    Send invitation (issue #1504) is on by default, is not drawn at the caller's own address, and waits, saying why,
    while Enabled is off, since a disabled user is never invited. The note after a create says whether the mail went
-   (`createdNote`, from the answer's `invitationSent`: a mail that fails does not fail the create). One footer: **Save user**, enabled only when the draft
+   (`createdNote`, from the answer's `invitationSent`: a mail that fails does not fail the create, and that note is
+   drawn as a failure). One footer: **Save user**, enabled only when the draft
    changed (`userDraftChanges`, the calls a save makes, in order), or **Create user**, enabled once there is an
    address. Authority is compared as the editor controls it (`UserAuthority`: the rung and the two boxes, Editor only
    where its box is drawn), so a stored list holding more -- two rungs, `editor` beside `admin` -- opens clean and keeps
@@ -26,9 +27,10 @@ group with the open user marked current.
    the route listener reopens nothing for an address naming the record already open, so a guard's "stay" keeps the
    draft.
 2. **Invitation** (live), for an unclaimed, enabled user: **Send invitation**, its result in the panel. For a claimed,
-   enabled user the same place is **Sign-in reminder** (live, issue #1504; `userMailOffer`), except on the caller's own
-   user and a sandbox's: a mail with the ordinary sign-in page (`userRemind`), since an invitation's link would sign in
-   whoever held the mail.
+   enabled user the same place is **Sign-in reminder** (live, issue #1504; `userMailOffer`): a mail with the ordinary
+   sign-in page (`userRemind`), since an invitation's link would sign in whoever held the mail. Not at the caller's own
+   address, nor for a sandbox user somebody opened or a client this node does not carry, who could not sign in. A
+   refused send reads the user again, so the panel follows a user claimed or disabled while open.
 3. **Activity** (read-only).
 4. **API keys** (live): `ApiKeysSection`, which leaves the heading to the panel.
 5. **Danger zone**, never on your own row: **Delete user…** through `DangerConfirm`, keyed by the user, so a confirm

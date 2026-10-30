@@ -152,7 +152,22 @@ class UserEditorLayoutTest {
     }
 
     @Test
-    fun moreOptionsNamesAHeldBackInvitation() {
+    fun anInvitationIsOfferedExceptAtTheCallersOwnAddress() {
+        assertTrue(invitationOfferedFor(forSelf = false, "pat@acme.test", "me@acme.test"))
+        // The form for yourself, or your own address typed, however it is spelled.
+        assertFalse(invitationOfferedFor(forSelf = true, "me@acme.test", "me@acme.test"))
+        assertFalse(invitationOfferedFor(forSelf = false, " ME@acme.test ", "me@acme.test"))
+        // Until the caller's own address is known, the backend's rule is what answers.
+        assertTrue(invitationOfferedFor(forSelf = false, "me@acme.test", null))
+    }
+
+    @Test
+    fun moreOptionsNamesAnInvitationHeldBackOnlyWhileOneWouldGo() {
+        assertTrue(invitationHeld(offered = true, enabled = true, invite = false))
+        assertFalse(invitationHeld(offered = true, enabled = true, invite = true))
+        // A disabled user is never invited, and nothing is mailed at your own address: nothing is held back.
+        assertFalse(invitationHeld(offered = true, enabled = false, invite = false))
+        assertFalse(invitationHeld(offered = false, enabled = true, invite = false))
         assertEquals(
             listOf("no invitation"), userMoreOptionsInForce(false, false, emptyList(), true, true, invitationHeld = true),
         )
@@ -160,31 +175,52 @@ class UserEditorLayoutTest {
 
     @Test
     fun theNoteAfterACreateSaysWhetherTheInvitationWent() {
-        assertEquals("Created a@b.test. Invitation sent.", createdNote("a@b.test", invitable = true, wanted = true, sent = true))
+        fun note(invitable: Boolean, wanted: Boolean, sent: Boolean) = createdNote("a@b.test", invitable, wanted, sent)
+        assertEquals("Created a@b.test. Invitation sent.", note(invitable = true, wanted = true, sent = true).text)
         assertEquals(
-            "Created a@b.test. No invitation sent: open the user to send one.",
-            createdNote("a@b.test", invitable = true, wanted = false, sent = false),
+            "Created a@b.test. No invitation sent: open the user to send one.", note(invitable = true, wanted = false, sent = false).text,
         )
-        // A mail that failed did not fail the create, so the note must not claim it went.
-        assertEquals(
-            "Created a@b.test, but its invitation could not be sent: open the user to send it again.",
-            createdNote("a@b.test", invitable = true, wanted = true, sent = false),
-        )
+        // A mail that failed did not fail the create, so the note must not claim it went, and is drawn as a failure.
+        val failed = note(invitable = true, wanted = true, sent = false)
+        assertEquals("Created a@b.test, but its invitation could not be sent: open the user to send it.", failed.text)
+        assertTrue(failed.failed)
+        assertFalse(note(invitable = true, wanted = true, sent = true).failed)
         // The caller's own address, or a disabled user: no invitation was in question.
-        assertEquals("Created a@b.test.", createdNote("a@b.test", invitable = false, wanted = true, sent = false))
+        assertEquals("Created a@b.test.", note(invitable = false, wanted = true, sent = false).text)
+        assertFalse(note(invitable = false, wanted = true, sent = false).failed)
+    }
+
+    @Test
+    fun aClientIsCarriedByWhatTheCallerWasTold() {
+        // A scoped administrator is told no clients, and works in one that is carried.
+        assertTrue(clientCarried("acme", emptySet()))
+        assertTrue(clientCarried("acme", setOf("acme", "hub")))
+        assertFalse(clientCarried("retired", setOf("acme", "hub")))
+        // A sandbox goes with its parent.
+        assertTrue(clientCarried("acme:sandbox", setOf("acme")))
+        assertFalse(clientCarried("retired:sandbox", setOf("acme")))
     }
 
     @Test
     fun aUserIsOfferedTheMailThatFitsThem() {
-        assertEquals(UserMailOffer.invitation, userMailOffer(user(registered = false), self = false))
-        assertEquals(UserMailOffer.reminder, userMailOffer(user(), self = false))
+        fun offer(target: AdminUser, own: Boolean = false, carried: Boolean = true) = userMailOffer(target, own, carried)
+        assertEquals(UserMailOffer.invitation, offer(user(registered = false)))
+        assertEquals(UserMailOffer.reminder, offer(user()))
         // A claimed user's invitation would sign in whoever held the mail, and nobody reminds themself.
-        assertEquals(UserMailOffer.none, userMailOffer(user(), self = true))
-        assertEquals(UserMailOffer.none, userMailOffer(user(client = "acme:sandbox"), self = false))
+        assertEquals(UserMailOffer.none, offer(user(), own = true))
+        // A sandbox's own user signs in; one somebody opened, or a client not carried here, cannot.
+        assertEquals(UserMailOffer.reminder, offer(user(client = "acme:sandbox")))
+        val opened = AdminUser(
+            userId = 5L, primaryId = "ada@acme.test", username = "@ada", roles = listOf(ROLE.user), client = "acme:sandbox",
+            org = null, isEntity = false, name = null, enabled = true, hasPassword = false, deleted = false, registered = true,
+            opened = true,
+        )
+        assertEquals(UserMailOffer.none, offer(opened))
+        assertEquals(UserMailOffer.none, offer(user(), carried = false))
         // Nobody can sign in to a disabled or deleted user.
-        assertEquals(UserMailOffer.none, userMailOffer(user(enabled = false), self = false))
-        assertEquals(UserMailOffer.none, userMailOffer(user(enabled = false, registered = false), self = false))
-        assertEquals(UserMailOffer.none, userMailOffer(user(deleted = true, registered = false), self = false))
+        assertEquals(UserMailOffer.none, offer(user(enabled = false)))
+        assertEquals(UserMailOffer.none, offer(user(enabled = false, registered = false)))
+        assertEquals(UserMailOffer.none, offer(user(deleted = true, registered = false)))
     }
 
     @Test
@@ -210,10 +246,7 @@ class UserEditorLayoutTest {
 
     @Test
     fun theHintsUnderMoreOptionsSayWhenToUseThem() {
-        for (hint in listOf(
-            editorHint, enabledHint(creating = true), enabledHint(creating = false), sendInvitationHint(enabled = true),
-            sendInvitationHint(enabled = false),
-        )) {
+        for (hint in listOf(editorHint, enabledHint(creating = true), enabledHint(creating = false), sendInvitationHint)) {
             assertTrue(hint.startsWith("Use this when"), hint)
         }
     }

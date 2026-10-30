@@ -147,7 +147,7 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, published: Boolean, 
             field(
                 ADF.sendInvitation,
                 "Whether to mail the invitation; defaults to true. False makes the user and mails nobody: send it later " +
-                    "through the invite call. Nothing is sent for a disabled user, or at your own address, either way.",
+                    "from the Users page. Nothing is sent for a disabled user, or at your own address, either way.",
             ) { type = SCT.boolean }
             // Issues #786, #1481.
             field(
@@ -288,7 +288,7 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, published: Boolean, 
     }
 
     // Remind a claimed user where and how to sign in (issue #1504): the ordinary sign-in page, since an invitation's
-    // link would sign in whoever holds the mail. Refused for a user nobody has claimed, and a disabled or sandbox one.
+    // link would sign in whoever holds the mail. Refused for a user nobody has claimed, or one that could not sign in.
     generalEndpoint(
         paths.userRemind,
         "Mails a claimed user a reminder of where and how to sign in.",

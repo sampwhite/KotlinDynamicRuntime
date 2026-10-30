@@ -1,5 +1,5 @@
-/- The mails the auth flows send (issue #773): a verification code, an invitation, and the claim page's
-   answers. A backend file -- never served, read by `MailCopy` for the client of the user the mail is about --
+/- The mails the auth flows send (issue #773): a verification code, an invitation, a sign-in reminder, and the claim
+   page's answers. A backend file -- never served, read by `MailCopy` for the client of the user the mail is about --
    so a client's overlay can reword a mail and name itself in it. Each mail is one namespace holding its
    `subject` and its `body`; the body is Markdown, rendered once to plain text for the text part and once to
    HTML for the HTML part (issue #795), so it may carry emphasis and neither part shows a mark of syntax. The
@@ -77,7 +77,8 @@ You have an account for [${address}]{.value} at [${clientName}]{.value}, as [${p
 
 Sign in here: ${url}
 
-Use this address, with your password if you set one, or a code sent to it.
+Use this address, with your password if you set one, or a code sent to it. If you have more than one user here, you can
+switch to this one after you sign in.
 
 
 /- The claim page's answers (issue #751). `InvitationTest` reads the code out of "code for claiming the account

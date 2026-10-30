@@ -1,11 +1,13 @@
 package com.dynamicruntime.webapp
 
 import com.dynamicruntime.common.gedra.isSandboxClient
+import com.dynamicruntime.common.gedra.sandboxParentOf
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.http.request.RoleLadder
 import com.dynamicruntime.common.user.PERSONA
 import com.dynamicruntime.common.user.normalizeUserLabels
 import com.dynamicruntime.common.user.personaTerm
+import com.dynamicruntime.common.util.normalizeEmail
 
 /*
  * The Users editor's layout (issue #1478), the pure half: what its header, its structure line, its More options, and
@@ -122,16 +124,38 @@ fun userMoreOptionsInForce(
 }
 
 /**
+ * Whether a create mails an invitation at all (issue #1504): not for a form opened for the caller's own address
+ * ([forSelf]), nor when the address typed is theirs ([ownAddress], null until known), however it was spelled. Pure,
+ * covered under `jsNodeTest`.
+ */
+fun invitationOfferedFor(forSelf: Boolean, email: String, ownAddress: String?): Boolean =
+    !forSelf && email.normalizeEmail() != ownAddress
+
+/** Whether a create holds its invitation back: one is offered, the user will be live, and the box is off. */
+fun invitationHeld(offered: Boolean, enabled: Boolean, invite: Boolean): Boolean = offered && enabled && !invite
+
+/** The note after a create (issue #1504), and whether it reports something the administrator must act on ([failed]). */
+class CreatedNote(val text: String, val failed: Boolean = false)
+
+/**
  * What the note after a create says of its invitation (issue #1504). [invitable] is whether one could go at all: not at
  * the caller's own address, nor for a disabled user, of which the note says nothing. [wanted] is the Send invitation
  * box, and [sent] the backend's answer, since a mail that fails does not fail the create. Pure, under `jsNodeTest`.
  */
-fun createdNote(address: String, invitable: Boolean, wanted: Boolean, sent: Boolean): String = when {
-    !invitable -> "Created $address."
-    !wanted -> "Created $address. No invitation sent: open the user to send one."
-    sent -> "Created $address. Invitation sent."
-    else -> "Created $address, but its invitation could not be sent: open the user to send it again."
+fun createdNote(address: String, invitable: Boolean, wanted: Boolean, sent: Boolean): CreatedNote = when {
+    !invitable -> CreatedNote("Created $address.")
+    !wanted -> CreatedNote("Created $address. No invitation sent: open the user to send one.")
+    sent -> CreatedNote("Created $address. Invitation sent.")
+    else -> CreatedNote("Created $address, but its invitation could not be sent: open the user to send it.", failed = true)
 }
+
+/**
+ * Whether this node carries [client], going by [told], the clients it was told it does. Only a caller who sees across
+ * clients is told any, and the client a scoped administrator works in is carried, so an empty list says yes. A sandbox
+ * is carried with its parent. Pure, under `jsNodeTest`.
+ */
+fun clientCarried(client: String, told: Set<String>): Boolean =
+    told.isEmpty() || client in told || sandboxParentOf(client) in told
 
 /** What the Users editor offers to mail a user (issue #1504). */
 @Suppress("EnumEntryName")
@@ -139,13 +163,14 @@ enum class UserMailOffer { invitation, reminder, none }
 
 /**
  * What to offer [user]: the invitation for an enabled user nobody has claimed, a sign-in reminder for a claimed one --
- * whose invitation link would sign in whoever held the mail -- except the caller's own ([self]) and a sandbox's, who
- * signs in through its parent. Nothing for a disabled or deleted user. Pure, under `jsNodeTest`.
+ * whose invitation link would sign in whoever held the mail -- except at the caller's own address ([own]), one opened in
+ * a sandbox, and one in a client this node does not carry ([carried] false), who could not sign in. Nothing for a
+ * disabled or deleted user. Pure, under `jsNodeTest`.
  */
-fun userMailOffer(user: AdminUser, self: Boolean): UserMailOffer = when {
+fun userMailOffer(user: AdminUser, own: Boolean, carried: Boolean): UserMailOffer = when {
     !user.enabled || user.deleted -> UserMailOffer.none
     !user.registered -> UserMailOffer.invitation
-    self || isSandboxClient(user.client) -> UserMailOffer.none
+    own || user.opened || !carried -> UserMailOffer.none
     else -> UserMailOffer.reminder
 }
 

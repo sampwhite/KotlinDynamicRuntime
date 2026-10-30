@@ -179,6 +179,17 @@ class AuthFormHandler(
         }
     }
 
+    /**
+     * Throttles the mail an administrator sends to [address] (issue #1504), an invitation or a reminder, as
+     * [requireSendAllowed] does a verification mail's: per address, so one person cannot be flooded. Not per sender, since
+     * an administrator inviting a whole team mails many addresses in a sitting.
+     */
+    private fun requireAdminMailAllowed(cxt: KdrCxt, address: String) {
+        if (!rateLimiter.allow("admail:$address", RL.sendPerContactMax, RL.sendPerContactWindowMs, cxt.now().toEpochMilliseconds())) {
+            throw KdrException("Too many mails to $address just now; try again later.", code = EXC.tooManyRequests)
+        }
+    }
+
     /** The code mail, as [client] words it (issue #773); the password framing is its own copy. */
     private fun sendVerifyEmail(cxt: KdrCxt, address: String, verifyCode: String, addPassword: Boolean, client: String?) {
         val which = if (addPassword) MCOPY.verifyCodePassword else MCOPY.verifyCode
@@ -647,8 +658,9 @@ class AuthFormHandler(
      * had), with no code to type, since the token reached only the inbox. Returns the token, for a test.
      */
     fun inviteUser(cxt: KdrCxt, user: AuthUserRow): String {
-        if (user.isRegistered) throw KdrException.mkInput("User ${user.userId} has already been claimed; there is nothing to invite them to.")
-        if (!user.enabled) throw KdrException.mkInput("User ${user.userId} is disabled; enable the account before inviting.")
+        if (user.isRegistered) throw KdrException.mkInput("${user.primaryId} has already claimed this user; there is nothing to invite them to.")
+        if (!user.enabled) throw KdrException.mkInput("This user of ${user.primaryId} is disabled; enable the account before inviting.")
+        requireAdminMailAllowed(cxt, user.primaryId)
         val token = InvitationToken(user.identityId, user.userId, cxt.now().toEpochMilliseconds() + AUTHC.invitationMillis).encode(node)
         val url = INVITE.invitationUrl(INVITE.publicUrlFor(cxt), token)
         // The copy (issue #773) carries the link and, beside it, the recipe for the login page's "claim" path
@@ -661,7 +673,9 @@ class AuthFormHandler(
                 MCOPY.personaLabelParam to PERSONA.typed(PERSONA.label(user.persona), user.personaSuffix),
             ),
         )
-        LogAuth.info(cxt) { "Invited user ${user.userId} ('${user.primaryId}') to '${user.client}' as '${user.persona}'." }
+        LogAuth.info(cxt) {
+            "User ${cxt.userProfile.userId} invited user ${user.userId} ('${user.primaryId}') to '${user.client}' as '${user.persona}'."
+        }
         return token
     }
 
@@ -669,13 +683,23 @@ class AuthFormHandler(
      * Mails [user]'s person a reminder of where and how to sign in (issue #1504): for a user already claimed, which an
      * invitation is refused for, since its link signs its holder in with no code. The mail carries the ordinary sign-in
      * page, so it gives nobody access the address did not already have. Not for a user nobody has claimed (their
-     * invitation says more), a disabled or deleted one (who could not sign in), or a sandbox's, who is reached through
-     * the parent's sandbox and never signs in by themself.
+     * invitation says more), nor one that could not sign in: disabled, in a client this node does not carry, or opened
+     * in a sandbox by somebody, which is reached through the sandbox's opening alone.
+     *
+     * Only where the deployment names its own URL: a person is told to sign in with their password at this link, so it
+     * cannot be built from a request's headers, which are the caller's to set. A test instance may fall back on them.
      */
     fun remindUser(cxt: KdrCxt, user: AuthUserRow) {
-        if (!user.isRegistered) throw KdrException.mkInput("User ${user.userId} has not been claimed; send an invitation instead.")
-        if (!user.enabled) throw KdrException.mkInput("User ${user.userId} is disabled; enable the account before reminding them.")
-        if (isSandboxClient(user.client)) throw KdrException.mkInput("User ${user.userId} is a sandbox's, and does not sign in by itself.")
+        if (!user.isRegistered) throw KdrException.mkInput("${user.primaryId} has not claimed this user; send an invitation instead.")
+        if (!user.enabled) throw KdrException.mkInput("This user of ${user.primaryId} is disabled; enable the account before reminding them.")
+        if (user.isOpenedSandboxUser) throw KdrException.mkInput("This user of ${user.primaryId} was opened in a sandbox, and is not signed in to.")
+        if (!ClientService.get(cxt).isPresent(user.client)) {
+            throw KdrException.mkInput("The client '${user.client}' is not available here, so ${user.primaryId} could not sign in to it.")
+        }
+        if (INVITE.configuredPublicUrl(cxt) == null && !cxt.instanceConfig.isTestInstance) {
+            throw KdrException.mkInput("A reminder needs this deployment's public URL: set ${INVITE.publicUrl.name}.")
+        }
+        requireAdminMailAllowed(cxt, user.primaryId)
         mail.sendFragmentMail(
             cxt, user.primaryId, user.client, MCOPY.signInReminder,
             mapOf(
@@ -684,7 +708,9 @@ class AuthFormHandler(
                 MCOPY.personaLabelParam to PERSONA.typed(PERSONA.label(user.persona), user.personaSuffix),
             ),
         )
-        LogAuth.info(cxt) { "Sent user ${user.userId} ('${user.primaryId}') a sign-in reminder for '${user.client}'." }
+        LogAuth.info(cxt) {
+            "User ${cxt.userProfile.userId} sent user ${user.userId} ('${user.primaryId}') a sign-in reminder for '${user.client}'."
+        }
     }
 
     /**

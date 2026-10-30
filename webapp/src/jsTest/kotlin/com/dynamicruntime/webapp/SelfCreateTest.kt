@@ -26,6 +26,8 @@ class SelfCreateTest {
         // Your own address: registered at once, nothing mailed. Anyone else's: an invitation.
         assertTrue(createAddressHint(forSelf = true).contains("no invitation is sent"))
         assertTrue(createAddressHint(forSelf = false).contains("invitation is mailed"))
+        // The hint names what stops it, rather than promise a mail regardless (issue #1504).
+        assertTrue(createAddressHint(forSelf = false).contains("turn it off or disable the user"))
         // The old hint claimed every address was taken as confirmed, which stopped being true with invitations.
         assertTrue(!createAddressHint(forSelf = false).contains("skips email verification"))
     }

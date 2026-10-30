@@ -296,7 +296,7 @@ Open **Users** from the menu, and choose **Create user**:
 
 The site sends a real invitation to this address, so use one whose mail you can read. Many mail services deliver
 an address with a `+` and a word added to its name, such as `you+test@example.com`, to `you@example.com`, which
-suits this step. Choose **OK**. The invitation's subject is **You are invited to the Book Club**.
+suits this step. Choose **Create user**. The invitation's subject is **You are invited to the Book Club**.
 
 Then choose the new user's row, and give it a label: type it in **Labels**, and press Enter.
 
@@ -305,7 +305,7 @@ Then choose the new user's row, and give it a label: type it in **Labels**, and 
 | --- | --- |
 | Labels | pilot |
 
-Choose **OK**. A label grants nothing by itself. Its use is in what a workflow does with it, which is the next step.
+Choose **Save user**. A label grants nothing by itself. Its use is in what a workflow does with it, which is the next step.
 
 ### Let only the pilot see the workflow
 
