@@ -983,8 +983,13 @@ class AuthFormHandler(
         // The one place a login *completes* -- byCode, byPassword and Google all funnel through here -- which
         // is why the stamp goes here and not at each of them (issue #462). It is also why "a refreshed cookie
         // does not count" needs no enforcing: `extractSessionAuth` restores a profile from a cookie and never
-        // reaches this method. `isEdit = false`, because signing in is not an edit of the account.
-        row.lastLoggedInAt = cxt.now()
+        // reaches this method. `isEdit = false`, because signing in is not an edit of the account. A session change is
+        // not a sign-in either (issue #1480), so a switch or a sandbox's opening leaves the stamps as they were; a
+        // sign-in moves the last one to the previous, which is what Profile shows the person.
+        if (!sessionChange) {
+            row.previousLoggedInAt = row.lastLoggedInAt
+            row.lastLoggedInAt = cxt.now()
+        }
         UserService.get(cxt).updateUser(cxt, row, isEdit = false)
 
         // The password status comes from the identity in hand rather than the row: a row read before the

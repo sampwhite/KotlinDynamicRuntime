@@ -6,6 +6,7 @@ import com.dynamicruntime.common.context.UserProfile
 import com.dynamicruntime.common.home.HFEAT
 import com.dynamicruntime.common.home.HFLD
 import com.dynamicruntime.common.http.request.ROLE
+import com.dynamicruntime.common.user.AccountHistory
 import com.dynamicruntime.common.user.PERSONA
 import com.dynamicruntime.common.user.UserChoice
 import kotlin.test.Test
@@ -13,6 +14,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlin.time.Instant
 
 /** The Profile page's layout (issue #1479): its structure line, its account panel, and what the caller can do. */
 class ProfileLayoutTest {
@@ -92,8 +94,14 @@ class ProfileLayoutTest {
         assertEquals("Business", business[PRFA.accountType])
         // The order the panel reads in.
         assertEquals(
-            listOf(PRFA.signedInAs, PRFA.email, PRFA.client, PRFA.persona, PRFA.access, PRFA.org, PRFA.accountType, PRFA.timeZone),
-            profileAccountFacts(profile(org = "east", name = "Ada"), "a@b.test", listOf(member), facts).map { it.key },
+            listOf(
+                PRFA.signedInAs, PRFA.email, PRFA.emailProven, PRFA.client, PRFA.persona, PRFA.access, PRFA.org,
+                PRFA.accountType, PRFA.registered, PRFA.previousSignIn, PRFA.timeZone,
+            ),
+            profileAccountFacts(
+                profile(org = "east", name = "Ada"), "a@b.test", listOf(member), facts,
+                AccountHistory(Instant.parse("2026-10-01T16:00:00Z"), Instant.parse("2026-10-28T09:00:00Z")),
+            ).map { it.key },
         )
         // A value's words are the copy's when it has them.
         val reworded = profileAccountFacts(profile(), "a@b.test", listOf(member), facts) { key, shipped ->
@@ -102,6 +110,30 @@ class ProfileLayoutTest {
         assertEquals("Individual", reworded.first { it.key == PRFA.accountType }.value)
         // Every label and word has its shipped words.
         assertTrue(profileAccountDefaults.values.all { it.isNotBlank() })
+    }
+
+    @Test
+    fun theUsersOwnHistoryReadsAsAbsoluteMoments() {
+        val registered = Instant.parse("2026-10-01T16:00:00Z")
+        val previous = Instant.parse("2026-10-28T09:00:00Z")
+        val proven = Instant.parse("2026-10-01T15:59:00Z")
+        fun facts(history: AccountHistory?) = profileAccountFacts(
+            profile(), "ada@acme.test", listOf(member), ShellFacts(), history, moment = { "at $it" },
+        ).associate { it.key to it.value }
+        val all = facts(AccountHistory(registered, previous, proven))
+        assertEquals("at $proven", all[PRFA.emailProven])
+        assertEquals("at $registered" to "at $previous", all[PRFA.registered] to all[PRFA.previousSignIn])
+        // A first sign-in has no previous one, and an address nobody has proven says so.
+        val first = facts(AccountHistory(registeredAt = registered))
+        assertEquals("Not yet", first[PRFA.emailProven])
+        assertFalse(PRFA.previousSignIn in first)
+        // A node that serves no history says nothing of it, rather than that the address is unproven.
+        val none = facts(null)
+        assertFalse(PRFA.emailProven in none || PRFA.registered in none)
+        // Shown absolute, in the display zone and labeled with it, as a user's own page shows a moment (issue #1141).
+        val shown = profileAccountFacts(profile(), "ada@acme.test", listOf(member), ShellFacts(), AccountHistory(registered))
+            .first { it.key == PRFA.registered }.value
+        assertTrue(shown.endsWith("GMT-8") && "2026" in shown, shown)
     }
 
     @Test

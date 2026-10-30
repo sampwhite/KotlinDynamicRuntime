@@ -4,13 +4,15 @@ import com.dynamicruntime.common.context.CL
 import com.dynamicruntime.common.context.UserProfile
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.http.request.RoleLadder
+import com.dynamicruntime.common.user.AccountHistory
 import com.dynamicruntime.common.user.PERSONA
 import com.dynamicruntime.common.user.UserChoice
 import com.dynamicruntime.common.user.personaTerm
+import kotlin.time.Instant
 
 /*
- * The Profile page's layout (issue #1479), the pure half: its structure line, what its account panel says, and what
- * the caller may do. Built on the page structure of #1477 (`Panels.kt`); covered under `jsNodeTest`.
+ * The Profile page's layout (issues #1479, #1480), the pure half: its structure line, what its account panel says,
+ * and what the caller may do. Built on the page structure of #1477 (`Panels.kt`); covered under `jsNodeTest`.
  */
 
 /** The ids of the Profile page's panels, what its links at the top lead to. */
@@ -38,12 +40,16 @@ object PRFA {
     const val access = "access"
     const val org = "org"
     const val accountType = "accountType"
+    const val emailProven = "emailProven"
+    const val registered = "registered"
+    const val previousSignIn = "previousSignIn"
     const val timeZone = "timeZone"
 
     const val personal = "personal"
     const val business = "business"
     const val everyClient = "everyClient"
     const val siteZone = "siteZone"
+    const val notYet = "notYet"
 
     const val canAllClients = "canAllClients"
     const val canAdministerClient = "canAdministerClient"
@@ -66,11 +72,15 @@ val profileAccountDefaults: Map<String, String> = mapOf(
     PRFA.access to "Access",
     PRFA.org to "Organization",
     PRFA.accountType to "Account type",
+    PRFA.emailProven to "Email proven",
+    PRFA.registered to "Registered",
+    PRFA.previousSignIn to "Previous sign-in",
     PRFA.timeZone to "Time zone",
     PRFA.personal to "Personal",
     PRFA.business to "Business",
     PRFA.everyClient to "across every client",
     PRFA.siteZone to "This site's default",
+    PRFA.notYet to "Not yet",
     PRFA.canAllClients to "Administer every client: its users, its configuration, and its forms.",
     PRFA.canAdministerClient to "Administer your client: its users, its configuration, and every form in it.",
     PRFA.canAdministerOrg to "Administer your client's configuration, and the users and forms of your organization.",
@@ -126,18 +136,23 @@ fun profileAbilities(reach: CallerReach, roles: Set<String>, org: String?): List
 class AccountFact(val key: String, val value: String)
 
 /**
- * What the account panel says of the signed-in user (issue #1479), in order: who they are signed in as -- when that is
- * not simply their address -- their address, their client, their persona and access, organization, account type, and
- * the time zone their moments are shown in. Each from data the page or the shell already has: the [profile], the
- * [loginId], the person's [users] (the current one carries the persona's suffix and the client's name), and the
- * shell's [facts]. A value's words come from [words] (a key and its shipped words), so a deployment's copy can reword
- * them. A line with nothing to say is left out. Pure, covered under `jsNodeTest`.
+ * What the account panel says of the signed-in user (issues #1479, #1480), in order: who they are signed in as -- when
+ * that is not simply their address -- their address and when it was proven, their client, their persona and access,
+ * organization, account type, when the user was registered and the sign-in before this one, and last the time zone.
+ * Each from data the page or the shell already has: the [profile], the [loginId], the person's [users] (the current
+ * one carries the persona's suffix and the client's name), the user's own [history] -- none from a node that serves
+ * none, when its lines are left out rather than said to be unproven -- and the shell's [facts]. A moment is absolute
+ * ([moment], in the display zone and labeled with it, as a user's own page shows one). A value's words come from
+ * [words] (a key and its shipped words), so a deployment's copy can reword them. A line with nothing to say is left
+ * out. Pure, covered under `jsNodeTest`.
  */
 fun profileAccountFacts(
     profile: UserProfile,
     loginId: String,
     users: List<UserChoice>,
     facts: ShellFacts,
+    history: AccountHistory? = null,
+    moment: (Instant) -> String = { formatTimestamp(it.toString()) },
     words: (String, String) -> String = { _, shipped -> shipped },
 ): List<AccountFact> {
     fun word(key: String) = words(key, profileAccountDefault(key))
@@ -147,12 +162,15 @@ fun profileAccountFacts(
     return buildList {
         profile.displayName?.ifBlank { null }?.takeIf { it != loginId }?.let { add(AccountFact(PRFA.signedInAs, it)) }
         loginId.ifBlank { null }?.let { add(AccountFact(PRFA.email, it)) }
+        history?.let { h -> add(AccountFact(PRFA.emailProven, h.verifiedAt?.let(moment) ?: word(PRFA.notYet))) }
         add(AccountFact(PRFA.client, profileClientName(users, profile.client)))
         // The persona alone: the access is the next line, so the persona does not say it again.
         persona?.let { add(AccountFact(PRFA.persona, personaTerm(it, current?.personaSuffix.orEmpty()))) }
         add(AccountFact(PRFA.access, profileAccessText(roles, word(PRFA.everyClient))))
         profile.org?.ifBlank { null }?.let { add(AccountFact(PRFA.org, it)) }
         add(AccountFact(PRFA.accountType, word(if (profile.isEntity) PRFA.business else PRFA.personal)))
+        history?.registeredAt?.let { add(AccountFact(PRFA.registered, moment(it))) }
+        history?.previousLoggedInAt?.let { add(AccountFact(PRFA.previousSignIn, moment(it))) }
         add(AccountFact(PRFA.timeZone, profileTimeZoneText(facts.timeZone, facts.timeZoneLabel, word(PRFA.siteZone))))
     }
 }

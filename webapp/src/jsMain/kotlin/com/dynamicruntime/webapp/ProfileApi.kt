@@ -3,6 +3,7 @@ package com.dynamicruntime.webapp
 import com.dynamicruntime.common.context.UserProfile
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.user.AEP
+import com.dynamicruntime.common.user.AccountHistory
 import com.dynamicruntime.common.user.AFEAT
 import com.dynamicruntime.common.user.AFLD
 import com.dynamicruntime.common.util.getOptStr
@@ -34,11 +35,16 @@ class ProfileConfig(
      * is a display name, and resolves as a login id only by coincidence of today's fallback.
      */
     val loginId: String,
+    /**
+     * The user's own history (issue #1480); null from a config that carries none -- a node from before it -- so the
+     * page says nothing of it rather than that nothing has happened.
+     */
+    val account: AccountHistory? = null,
 )
 
 /**
  * The pure [UiConfig] -> [ProfileConfig] mapping, separated from the fetch so it is unit-testable (issue #161):
- * the password affordance flags, the caller's profile, and the login id its password calls need.
+ * the password affordance flags, the caller's profile, the login id its password calls need, and the user's history.
  */
 fun profileConfigFrom(config: UiConfig): ProfileConfig = ProfileConfig(
     fragment = config.fragment,
@@ -49,6 +55,7 @@ fun profileConfigFrom(config: UiConfig): ProfileConfig = ProfileConfig(
     ),
     user = UserProfile.fromUserInfo(config.state[AFLD.userInfo].toJsonMapOrEmpty()),
     loginId = config.state.getOptStr(AFLD.loginId) ?: "",
+    account = config.state[AFLD.account]?.let { AccountHistory.fromInfo(it.toJsonMapOrEmpty()) },
 )
 
 /**
