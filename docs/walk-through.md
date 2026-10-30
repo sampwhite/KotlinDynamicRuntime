@@ -63,7 +63,7 @@ Choose **Save**. Back in the forms list, the talk's status is **Valid**, and the
 ### Write the abstract
 
 A talk can be in several workflows at once, each working on its own part of the form. Choose **Write the abstract**
-in your talk's **Workflows** column, then **Engage**, which starts the workflow on your talk, and then **Edit**:
+in your talk's **Workflows** column, then **Engage**, which starts the workflow on your talk and opens it for editing:
 
 <!-- kdr-walk: workflow=abstract -->
 | Field | What to enter |
@@ -100,7 +100,7 @@ and choose **Save name**. The name belongs to this user alone. Your speaker user
 As an editor, you see every talk in the demo, not just your own, so the menu's forms page is **Forms** rather
 than **My forms**. Open it, and type your talk's name in **Search** to find it.
 
-Choose **Committee review** in its **Workflows** column, then **Engage**, and then **Edit**. The review has two steps,
+Choose **Committee review** in its **Workflows** column, then **Engage**. The review has two steps,
 listed at the top: **Record the review**, and **Accept the talk**. The first one asks for:
 
 <!-- kdr-walk: workflow=review -->
@@ -526,7 +526,7 @@ it changes, leaving the rest of the bundle as it is.
 
 ### Try it, and publish it
 
-Open **Forms**, and in a form's **Workflows** column, choose **Review the book**, then **Engage**, and then **Edit**.
+Open **Forms**, and in a form's **Workflows** column, choose **Review the book**, then **Engage**.
 The form from part 2 will do, or one the AI made:
 
 <!-- kdr-walk: reviewForm -->

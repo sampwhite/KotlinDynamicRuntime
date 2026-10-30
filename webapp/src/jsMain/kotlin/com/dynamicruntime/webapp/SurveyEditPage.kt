@@ -251,13 +251,20 @@ val SurveyEditPage = FC<Props> {
                     }
                 }
                 // Engage (issue #791): put the form into the workflow, then reload the view, which now says it is
-                // engaged and opens the tasks. A refusal -- not eligible after all -- is shown with its reasons.
+                // engaged and opens the tasks -- ready to edit (issue #1496), since engaging says the user means to
+                // work on the form now. A refusal -- not eligible after all -- is shown with its reasons.
                 val engageClient = workflowClient
                 onEngage = workflowId?.let { wfId ->
                     {
                         surveyEditScope.launch {
                             try {
                                 WorkflowApi.engage(gedraId, wfId, engageClient)
+                                // Only while the page still shows this form and workflow (the #758 rule), so an engage
+                                // landing after a move elsewhere does not rewrite that address.
+                                val h = routeParams()
+                                if (h[HP.page] == pageSurveyEdit && h[HP.gedra] == gedraId && h[HP.workflow] == wfId) {
+                                    replaceRoute(engagedRoute(h))
+                                }
                                 reloads += 1
                             } catch (e: Throwable) {
                                 engageError = userFacingError(e)
@@ -269,6 +276,16 @@ val SurveyEditPage = FC<Props> {
         }
     }
 }
+
+/**
+ * The address after a successful engage (issue #1496): [params] in edit mode, as the forms list's link to an engaged
+ * workflow opens it (`workflowPageRoute`). Replaced rather than pushed, since engaging refines where the user is, and
+ * held in the address so a reload stays in editing. The remount still asks the view whether the task shown is the
+ * caller's to edit, so a workflow whose open step is someone else's lands read-only. Pure, and covered under
+ * `jsNodeTest`.
+ */
+fun engagedRoute(params: Map<String, String>): List<Pair<String, String>> =
+    params.filterKeys { it != HP.edit }.toList() + (HP.edit to "1")
 
 /**
  * The view the survey page shows (issue #827): normal workflow [workflowId] against form [gedraId] when one is named,
