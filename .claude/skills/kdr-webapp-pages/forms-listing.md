@@ -70,6 +70,10 @@ unrestricted scope). The rules that follow from that:
   nor a reviewer of its current work: the locks answer and the workflow view say `keptToOwner`, the raw editor
   draws the form uneditable, and the workflow pages offer no Save or Engage, each saying why once
   (`TraitLockCopy.keptToOwner`, the server's refusal word for word).
+- **Engaging opens the form for editing** (#1496). A workflow page's **Engage**, once it succeeds, puts `edit=1` in
+  the address (`engagedRoute`, replaced rather than pushed) before the view is read again, so the page lands where
+  the Workflows column's link to an engaged workflow opens (`workflowPageRoute(..., edit = true)`). The remount
+  still asks `offersEdit` of the task shown, so a workflow whose open step is someone else's lands read-only.
 - **A workflow's listing is its own page** (`page=workflowForms`, issue #792): where a count on the Workflows
   page leads. `FormsPage` draws it in workflow mode -- the workflow as heading, a state switch, `← Workflows` --
   with the workflow and state riding the address as search keys (`formsDrillKeys`) so showing more, sorting and a client

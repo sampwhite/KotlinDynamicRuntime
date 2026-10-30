@@ -140,6 +140,14 @@ class WorkflowColumnViewTest {
     }
 
     @Test
+    fun engagingOpensTheWorkflowInEditMode() {
+        val before = mapOf(HP.page to pageSurveyEdit, HP.from to "forms", HP.gedra to "g1", HP.workflow to "audit")
+        assertEquals(before.toList() + (HP.edit to "1"), engagedRoute(before))
+        // An address already in edit mode keeps one flag, not two.
+        assertEquals(listOf(HP.page to pageSurveyEdit, HP.edit to "1"), engagedRoute(mapOf(HP.page to pageSurveyEdit, HP.edit to "1")))
+    }
+
+    @Test
     fun theWorkflowKeyIsNavigationNotASearchFilter() {
         assertEquals(mapOf("q" to "x"), formsSearchFromRoute(mapOf(HP.page to "surveyEdit", HP.workflow to "audit", "q" to "x")))
     }
