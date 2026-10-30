@@ -331,8 +331,8 @@ Hover moves away from the background, as a link's does.
 A page that edits something reads the same way everywhere, so a reader always knows which button commits which
 controls. The building blocks are in `Panels.kt`. The client page (issue #1397) supplied the panels and the links to
 them; its editors, its Retirement confirm, and the bundle editor's sticky bar (`.bundle-editor-savebar`) predate the
-save and confirm rules below and have not moved onto them yet. The Users editor (#1478) and Profile (#1479) are the
-first pages built to all of them.
+save and confirm rules below and have not moved onto them yet. The Users editor (#1478) is the first page built to all
+of them; Profile (#1479) is to follow.
 
 1. **A page is a stack of panels.** Each is a shaded box (`panel(id, heading, explanation, kind)`) with a heading and,
    optionally, "What is this?". Every control belongs to exactly one panel.
@@ -347,8 +347,10 @@ first pages built to all of them.
    - **Live**: each button acts at once and is labeled with its verb ("Send invitation", "Create key"); the panel
      says so under its heading ("Changes here take effect immediately.").
    - **One primary button per panel.** "OK" is not a label.
-   - The draft's Cancel and Discard are links, as a back link is: they drop the draft and leave. The form view and
-     edit pages keep their own rule (Buttons and links, issue #726), where Done and Cancel are buttons in the header.
+   - The draft's Cancel and Discard are links, as a back link is: they drop the draft — leaving a form that makes
+     something new, or taking an existing record's fields back to what is stored and staying on it, as the Users
+     editor does. The form view and edit pages keep their own rule (Buttons and links, issue #726), where Done and
+     Cancel are buttons in the header.
 3. **Results show where the action was taken.** Each panel draws its own failure and note (`panelNote`), never one
    line shared by the page.
 4. **A longer page, or tabs.** The default is one scrolling page of panels, with links to them at the top
@@ -368,7 +370,8 @@ first pages built to all of them.
    the last one. Removing a row from a list on the page is not this: it stays the row's own `confirmedRemove`
    (`RowActionStatus.kt`), or a `Popconfirm` beside the row. Either way, every danger button is confirmed.
 7. **Show how things fit together before the knobs.** A page about a user opens with a read-only line of its
-   structure — the person's address, their users by client and persona, this user's access — before any field.
+   structure — the person's address, their users (each by what tells it apart from the others), this user's access —
+   before any field.
 
 Disclosures are `Disclosure`, its contents drawn only once opened: closed to start unless `initiallyOpen`, and opened
 by `openWhen`, which is how `MoreOptions` opens itself.

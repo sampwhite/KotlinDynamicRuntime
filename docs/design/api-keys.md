@@ -153,7 +153,7 @@ extension and the server making it land on the same moment.
 
 - **Profile** has an "API keys" section with the person's own keys, in a sandbox too.
 - **The Users editor** has the same section for the open user, managed as their administrator. It acts at once, unlike
-  the editor's fields, which wait for OK.
+  the editor's fields, which wait for **Save user**.
 - **The API keys page** (`/wa/api-keys`, "API keys" in the menu for a client's administrators) lists every key the
   caller administers, soonest to expire first, filtered by status, each owner linked to the Users editor.
 

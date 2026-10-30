@@ -34,7 +34,8 @@ class SelfCreateTest {
     fun theSuffixHintExplainsTheFieldAndThenTheCollision() {
         val plain = personaSuffixHint(collided = false)
         val collided = personaSuffixHint(collided = true)
-        assertTrue(plain.startsWith("Optional."))
+        // Under More options (issue #1478), it says when to use it.
+        assertTrue(plain.startsWith("Use this when"))
         assertTrue(collided.contains("already exists"))
         assertNotEquals(plain, collided)
         // Both state the limit the backend enforces.

@@ -1,5 +1,36 @@
 ## The admin console: editing someone's identity and authority (issue #225)
 
+**The editor's layout** (issue #1478) follows the page structure of #1477 (`Panels.kt`; the pure half is
+`UserEditorLayout.kt`, covered by `UserEditorLayoutTest`). A header -- the back link, the user's name or address, its
+chips (`userStatusChips`: enabled, disabled, or deleted; invitation pending or unclaimed; sandbox), and its Forms and
+Client links (not for a deleted user; the Client link not for an editor, whom the Clients page refuses) -- then the
+structure line, the links to the panels, and the panels in order. In the structure line another of the person's users
+that is not simply live says so beside its link (`userStructureFlag`), and for a screen reader the line is a labeled
+group with the open user marked current.
+
+1. **User** (a draft): the identity and authority fields, with **More options** (`MoreOptions`, keyed by the record)
+   holding Editor, All clients, the persona suffix on a create, labels, and Enabled -- open by itself when any is set
+   (`userMoreOptionsInForce`), each with a "Use this when" hint. One footer: **Save user**, enabled only when the draft
+   changed (`userDraftChanges`, the calls a save makes, in order), or **Create user**, enabled once there is an
+   address. Authority is compared as the editor controls it (`UserAuthority`: the rung and the two boxes, Editor only
+   where its box is drawn), so a stored list holding more -- two rungs, `editor` beside `admin` -- opens clean and keeps
+   what the editor does not draw (`rolesForAuthority`). An existing user's **Cancel** takes the fields back and stays;
+   a create's leaves. A save is one call per change, not one transaction: the footer says so, a failure partway says
+   what it saved first (`userSaveFailureLead`), and the user is read again so the editor shows what is stored. The
+   draft is dirty when any field differs -- on a create, from what the form opened with (`CreateDraft`,
+   `createDraftDirty`). While dirty the heading says "Unsaved changes" and `LeaveGuard` is armed (disarmed when the
+   page goes, and never on a page the caller may no longer use); Back and the structure line's links ask first, and
+   the route listener reopens nothing for an address naming the record already open, so a guard's "stay" keeps the
+   draft.
+2. **Invitation** (live), for an unclaimed, enabled user: **Send invitation**, its result in the panel.
+3. **Activity** (read-only).
+4. **API keys** (live): `ApiKeysSection` with `inPanel`, which leaves the heading to the panel.
+5. **Danger zone**, never on your own row: **Delete user…** through `DangerConfirm`, keyed by the user, so a confirm
+   armed on one user is not waiting on the next one the structure line opens.
+
+A create is the User panel alone; an editor's view (issue #1432) is the User and Activity panels with nothing to
+press; a deleted tombstone is the User panel, read-only.
+
 The Users page edits several **independent** things, and treating any two as one control is the mistake the
 whole screen is arranged to prevent. Three of them are **authority**:
 
@@ -45,17 +76,18 @@ A fourth is **belonging**, and behaves unlike the other three:
   the page bumps the refresh bus, so a user created, disabled or deleted for yourself shows in the badge's
   switcher at once. The list shows both in a **Persona** column (`Member B`), and a **Registered** column says
   when the person claimed the user.
-  **The person behind the user** (issue #770): the editor opens with the identity's view from
-  `GET /clientAdmin/user/identity?userId=` (`AdminIdentity`) -- the person's other users as a list, when there
-  is more than one, each choosable to edit that one instead (the open one marked, what tells each apart as the
-  badge says it, its status), then a read-only **Summary**: whether the address is proven, whether a password
-  is set, which user an unnamed login lands on, and the open user's dates. The read runs through the same
+  **The person behind the user** (issue #770): the editor reads the identity's view from
+  `GET /clientAdmin/user/identity?userId=` (`AdminIdentity`). The person's users are the editor's **structure
+  line** (issue #1478, `userStructure`/`userStructureLine`): the address, then each user -- the open one marked,
+  each other one a link that opens it instead, labeled by what tells it apart as the badge says it, its status as
+  the hover -- then the open one's access. The **Activity** panel is the read-only summary: whether the address is
+  proven, whether a password is set, which user an unnamed login lands on, and the open user's dates. The read runs through the same
   user-admin scope as the rest, so a client administrator sees only the person's users in their own client,
   and "Signs in as" is a dash rather than a hint when the login lands outside it (`identitySiblings`,
   `identitySummary`). The identity's own facts -- the address proven, a password set, where a login lands, and
   each row's `hasPassword` -- describe the person's users in every client, so the backend gives them only to a
   caller who sees every client, or about their own identity (issue #1298, `AdminRules.seesIdentityFacts`); for
-  anyone else the Summary leaves those three rows out (`AdminIdentity.identityFactsGiven`) and the Status column
+  anyone else the Activity panel leaves those three rows out (`AdminIdentity.identityFactsGiven`) and the Status column
   says nothing of a password. The rule is by who asks, never by what the identity holds, so their absence says
   nothing about the person.
   **An editor** (issue #1432) browses the page **read-only** (`usersReadOnly`, from `HFEAT.browsesUsers`). It gets the
@@ -160,7 +192,7 @@ Paths, field names and the ladder all come from `base/kernel`, so a backend rena
 rather than at runtime.
 
 **From a user to what is theirs** (issue #1081): each row ends in a **Go to** column -- `Forms · Client`, the
-`UserLinks` component -- and the editor of an existing user shows the same two links under its Client field. `Forms`
+`UserLinks` component -- and the editor of an existing user shows the same two links in its header. `Forms`
 is `userFormsHref`: the forms listing confined to that user **by id, never by address**. The listing's `user` takes
 either, but an address names a person, and the backend resolves it to one of their users the caller may see -- their
 *default* when it is one of those, else their first (issue #1293) -- which for somebody with users in two clients (or

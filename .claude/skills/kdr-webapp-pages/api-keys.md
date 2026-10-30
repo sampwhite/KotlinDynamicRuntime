@@ -6,8 +6,9 @@ component, `ApiKeysSection.kt`, with its pure half in `ApiKeysApi.kt` (covered b
 
 - **Profile** draws `ApiKeysSection {}`: the person's own keys, over `/user/self/apiKey*`, in a sandbox too (issue
   #1453), where a key acts with what the sandbox's rules give its user and stays in the sandbox.
-- **The Users editor** draws it with `ownerId` for the open user, over `/clientAdmin/apiKey*`. It acts at once, unlike
-  the editor's fields, which wait for OK. Not for a `public` self-administrator, whom the administrator's surface
+- **The Users editor** draws it with `ownerId` for the open user, over `/clientAdmin/apiKey*`, inside its API keys
+  panel (`inPanel`, issue #1478: the panel carries the heading, and says its changes take effect at once, unlike the
+  User panel's fields, which wait for **Save user**). Not for a `public` self-administrator, whom the administrator's surface
   refuses. When the open user is the caller, `ownerId` is left off, so one's own keys are
   managed as on Profile.
 - **The API keys page** (`/wa/api-keys`, `ApiKeysPage.kt`) lists every key the caller administers, soonest to expire

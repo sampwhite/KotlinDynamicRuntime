@@ -2,8 +2,9 @@ package com.dynamicruntime.webapp
 
 import com.dynamicruntime.common.user.UserChoice
 import react.ChildrenBuilder
+import react.Key
+import react.dom.html.ReactHTML.button
 import react.dom.html.ReactHTML.div
-import react.dom.html.ReactHTML.h2
 import react.dom.html.ReactHTML.span
 import web.cssom.ClassName
 
@@ -52,22 +53,25 @@ fun identitySiblings(users: List<AdminUser>, editingUserId: Long): List<Identity
         users.map { IdentitySibling(it, qualifierOf(it, users), statusWords(it).joinToString(", "), it.userId == editingUserId) }
     }
 
+/** Which of the person's users an unnamed login lands on, as the summary says it. */
+private fun signsInAsText(identity: AdminIdentity, editing: AdminUser): String = when (val id = identity.signsInAsUserId) {
+    null -> "—"
+    editing.userId -> "This user"
+    else -> identity.users.firstOrNull { it.userId == id }?.let { qualifierOf(it, identity.users) } ?: "—"
+}
+
 /**
  * The editor's read-only summary (issue #770), as label/value pairs: the identity's facts -- whether the
  * address is proven, whether a password is set, which user an unnamed login lands on -- when the caller is told
- * them ([AdminIdentity.identityFactsGiven]), then the open user's dates. Pure, covered under `jsNodeTest`.
+ * them ([AdminIdentity.identityFactsGiven]; none while [identity] is null -- not loaded, or an editor's view), then
+ * the open user's dates. Pure, covered under `jsNodeTest`.
  */
-fun identitySummary(identity: AdminIdentity, editing: AdminUser): List<Pair<String, String>> {
-    val signsInAs = when (val id = identity.signsInAsUserId) {
-        null -> "—"
-        editing.userId -> "This user"
-        else -> identity.users.firstOrNull { it.userId == id }?.let { qualifierOf(it, identity.users) } ?: "—"
-    }
+fun identitySummary(identity: AdminIdentity?, editing: AdminUser): List<Pair<String, String>> {
     fun date(iso: String?) = iso?.let { formatTimestamp(it) } ?: "—"
-    val facts = if (!identity.identityFactsGiven) emptyList() else listOf(
+    val facts = if (identity == null || !identity.identityFactsGiven) emptyList() else listOf(
         "Address" to (identity.verifiedAt?.let { "Proven ${formatTimestamp(it)}" } ?: "Not yet proven"),
         "Password" to (if (identity.hasPassword == true) "Set" else "Not set"),
-        "Signs in as" to signsInAs,
+        "Signs in as" to signsInAsText(identity, editing),
     )
     return facts + listOf(
         "Registered" to date(editing.registeredAt),
@@ -79,38 +83,59 @@ fun identitySummary(identity: AdminIdentity, editing: AdminUser): List<Pair<Stri
 }
 
 /**
- * The person behind the user open in the editor (issue #770): the list of the person's users, when there is
- * more than one, each choosable to edit that one instead ([onPick]), then the read-only summary.
+ * The editor's structure line (issue #1478, rule 7 of #1477): the person's address, then the person's users -- the
+ * open one marked, each other one a link that opens it instead ([onPick]) -- then the access the open one has. Read
+ * before any field, so the reader sees what the user is part of before what can be changed about it. Another user that
+ * is not simply live says so beside its link ([userStructureFlag]), not only on hover. For a screen reader it is a
+ * labeled group, the arrows are not read, and the open user is the current one.
  */
-fun ChildrenBuilder.identityPanel(identity: AdminIdentity, editing: AdminUser, disabled: Boolean, onPick: (AdminUser) -> Unit) {
-    val siblings = identitySiblings(identity.users, editing.userId)
-    if (siblings.isNotEmpty()) {
-        h2 { +"This person's users" }
-        for (sibling in siblings) {
-            div {
-                className = ClassName("row")
-                if (sibling.selected) {
-                    span {
-                        className = ClassName("field-label")
-                        +"▶ ${sibling.label}"
-                    }
-                } else {
-                    Button {
-                        type = "link"
-                        this.disabled = disabled
-                        onClick = { onPick(sibling.user) }
-                        +sibling.label
-                    }
-                }
+fun ChildrenBuilder.userStructureLine(structure: UserStructure, disabled: Boolean, onPick: (AdminUser) -> Unit) {
+    div {
+        className = ClassName("user-structure")
+        asDynamic()["role"] = "group"
+        asDynamic()["aria-label"] = "How this user is put together"
+        span {
+            className = ClassName("user-structure-person")
+            +structure.person
+        }
+        span {
+            className = ClassName("user-structure-arrow")
+            asDynamic()["aria-hidden"] = "true"
+            +"→"
+        }
+        for (row in structure.users) {
+            if (row.selected) {
                 span {
-                    className = ClassName("type-hint")
-                    +sibling.status
+                    key = row.user.userId.toString().unsafeCast<Key>()
+                    className = ClassName("user-mark user-structure-current")
+                    asDynamic()["aria-current"] = "true"
+                    title = row.status
+                    +row.label
+                }
+            } else {
+                span {
+                    key = row.user.userId.toString().unsafeCast<Key>()
+                    button {
+                        className = ClassName("wf-cell-link")
+                        title = "${row.status} — open this user"
+                        this.disabled = disabled
+                        onClick = { onPick(row.user) }
+                        +row.label
+                    }
+                    userStructureFlag(row.user)?.let {
+                        span {
+                            className = ClassName("type-hint user-structure-flag")
+                            +" ($it)"
+                        }
+                    }
                 }
             }
         }
-    }
-    h2 { +"Summary" }
-    for ((label, value) in identitySummary(identity, editing)) {
-        readOnlyField(label, value)
+        span {
+            className = ClassName("user-structure-arrow")
+            asDynamic()["aria-hidden"] = "true"
+            +"→"
+        }
+        span { +structure.access }
     }
 }

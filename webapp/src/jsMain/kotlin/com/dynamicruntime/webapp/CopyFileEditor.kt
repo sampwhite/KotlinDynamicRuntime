@@ -327,8 +327,8 @@ val CopyFileEditor = FC<CopyFileEditorProps> { props ->
             effectText = "${saveEffectText(props.savesDraft)} The changes are saved together: if the checks fault any " +
                 "of them, none is saved."
             this.saving = saving
-            error = saveError
-            errorLead = "Couldn't save the copy."
+            failure = saveError
+            failureLead = "Couldn't save the copy."
             onSave = { save() }
             onDiscard = {
                 pending = emptyMap()
