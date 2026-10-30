@@ -3,10 +3,18 @@
 **The editor's layout** (issue #1478) follows the page structure of #1477 (`Panels.kt`; the pure half is
 `UserEditorLayout.kt`, covered by `UserEditorLayoutTest`). A header -- the back link, the user's name or address, its
 chips (`userStatusChips`: enabled, disabled, or deleted; unclaimed; sandbox), and its Forms and
-Client links (not for a deleted user; the Client link not for an editor, whom the Clients page refuses) -- then the
+Client links (not for a deleted user; the Client link not for an editor, whom the Clients page refuses), with
+**Become** after them for a caller with test access -- then the
 structure line, the links to the panels, and the panels in order. In the structure line another of the person's users
 that is not simply live says so beside its link (`userStructureFlag`), and for a screen reader the line is a labeled
 group with the open user marked current.
+
+**Become** (issue #1511; `BecomeLink`, `becomeOffered`) sits beside those links on each row of the list and in the
+header, for a caller with test access only: the `becomeUser` fixture by the user's whole key, so a second user of an
+address is the one become. Not on the caller's own user, a disabled or deleted one, or a sandbox user somebody opened.
+A button styled as a link, since it changes the session. An unclaimed user asks first, because becoming it claims it
+and ends its invitation; unsaved edits in the editor are asked about first too, since the session changes before the
+move home. The Email address has a **Copy** button (`readOnlyField`'s `copyLabel`), not on a deleted user.
 
 1. **User** (a draft): the identity and authority fields, with **More options** (`MoreOptions`, keyed by the record)
    holding Editor, All clients, the persona suffix on a create, labels, Enabled, and on a create **Send invitation** --

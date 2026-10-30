@@ -12,6 +12,7 @@ import react.FC
 import react.Key
 import react.Props
 import react.dom.html.ReactHTML.a
+import react.dom.html.ReactHTML.button
 import react.dom.html.ReactHTML.div
 import react.dom.html.ReactHTML.h1
 import react.dom.html.ReactHTML.h2
@@ -67,6 +68,57 @@ fun becomeAndGo(body: Map<String, Any?>, bump: () -> Unit, onError: (DisplayErro
             else -> result.failureOrNull()?.let { onError(userFacingError(it)) }
         }
     }
+}
+
+external interface BecomeLinkProps : Props {
+    /** The user to become. */
+    var user: AdminUser
+
+    /**
+     * Runs what it is given once the page agrees to the move, for a page holding unsaved edits. Asked before becoming,
+     * since the session changes first and the move home after it. Null goes straight on.
+     */
+    var beforeBecome: ((() -> Unit) -> Unit)?
+}
+
+/**
+ * Becomes [BecomeLinkProps.user] from the Users page (issue #1511): styled as the row's other links, though a button,
+ * since it changes the session. An unclaimed user asks first ([becomeClaims]). The user joins the recent identities,
+ * and the caller lands on Home, as every way of becoming does.
+ */
+val BecomeLink = FC<BecomeLinkProps> { props ->
+    val bump = useRefreshBump()
+    var failure by useState<DisplayError?>(null)
+
+    fun become() {
+        failure = null
+        val go = { becomeAndGo(becomeUserBody(props.user), bump) { failure = it } }
+        props.beforeBecome?.invoke(go) ?: go()
+    }
+
+    fun ChildrenBuilder.link(press: (() -> Unit)?) {
+        button {
+            className = ClassName("wf-cell-link")
+            title = "Sign in as this user."
+            press?.let { act -> onClick = { act() } }
+            +"Become"
+        }
+    }
+
+    if (becomeClaims(props.user)) {
+        Popconfirm {
+            title = "Become this user?"
+            description = "This claims the user, and its invitation will stop working."
+            okText = "Become"
+            cancelText = "Cancel"
+            placement = "left"
+            onConfirm = { become() }
+            link(null)
+        }
+    } else {
+        link { become() }
+    }
+    failure?.let { errorText("Couldn't become this user.", it) }
 }
 
 /** Becomes the deployment admin: `admin` plus `allClients` (issue #1183). */

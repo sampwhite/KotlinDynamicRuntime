@@ -58,6 +58,9 @@ external interface UserTableProps : Props {
 
     /** The clients this node carries, as the page was told them -- which a Forms link may choose ([userFormsSurface]). */
     var carriedClients: Set<String>
+
+    /** Whether a row offers to become its user (issue #1511, [becomeOffered]); null for a caller who is offered none. */
+    var offersBecome: ((AdminUser) -> Boolean)?
 }
 
 val UserTable = FC<UserTableProps> { props ->
@@ -88,7 +91,7 @@ val UserTable = FC<UserTableProps> { props ->
             // Descriptive columns that are not search fields, so they stay static and unsorted.
             add(column("Type", typeColumn, columnWidths[typeColumn]))
             add(column("Status", statusColumn, columnWidths[statusColumn]))
-            if (props.showLinks) add(userLinksColumn(props))
+            if (props.showLinks || props.offersBecome != null) add(userLinksColumn(props))
         }
         // The columns that identify a user stay in view while the rest scroll (issue #750): who this is on the
         // left, and whether they are live on the right. antd pins a column only when the table has an explicit
@@ -155,7 +158,9 @@ private fun userLinksColumn(props: UserTableProps): dynamic {
             userId = id
             client = record[USF.client] as? String ?: ""
             carriedClients = props.carriedClients
-            showClient = props.showClientLinks != false
+            showForms = props.showLinks
+            showClient = props.showLinks && props.showClientLinks != false
+            become = props.users.firstOrNull { it.userId == id }?.takeIf { props.offersBecome?.invoke(it) == true }
         }
     }
     return c
@@ -168,28 +173,49 @@ external interface UserLinksProps : Props {
     var carriedClients: Set<String>
     /** Whether the client link is drawn beside the forms one; null reads as true. */
     var showClient: Boolean?
+
+    /** Whether the forms link is drawn; null reads as true. False for a caller offered only [become]. */
+    var showForms: Boolean?
+
+    /** The user to offer to become (issue #1511), when they are offered: a [BecomeLink] after the others. */
+    var become: AdminUser?
+
+    /** Beside [become]: [BecomeLinkProps.beforeBecome]. */
+    var beforeBecome: ((() -> Unit) -> Unit)?
 }
 
 /**
  * A user's forms and a user's client, as two links (issue #1081) -- on each row of the list and in the editor of
- * the user who is open. Links, not buttons: each goes somewhere and changes nothing.
+ * the user who is open. Links, not buttons: each goes somewhere and changes nothing. Then, for a caller with test
+ * access, the way to become the user (issue #1511), which is a [BecomeLink].
  */
 val UserLinks = FC<UserLinksProps> { props ->
+    val formsShown = props.showForms != false
+    val clientShown = props.client.isNotEmpty() && props.showClient != false
     span {
         className = ClassName("user-links")
-        a {
-            className = ClassName("wf-cell-link")
-            href = userFormsHref(props.userId, userFormsSurface(props.client, props.carriedClients))
-            title = "The forms this user owns."
-            +"Forms"
+        if (formsShown) {
+            a {
+                className = ClassName("wf-cell-link")
+                href = userFormsHref(props.userId, userFormsSurface(props.client, props.carriedClients))
+                title = "The forms this user owns."
+                +"Forms"
+            }
         }
-        if (props.client.isNotEmpty() && props.showClient != false) {
-            +" · "
+        if (clientShown) {
+            if (formsShown) +" · "
             a {
                 className = ClassName("wf-cell-link")
                 href = clientDetailHref(props.client)
                 title = "The client this user belongs to: ${props.client}."
                 +"Client"
+            }
+        }
+        props.become?.let { target ->
+            if (formsShown || clientShown) +" · "
+            BecomeLink {
+                user = target
+                beforeBecome = props.beforeBecome
             }
         }
     }
@@ -331,7 +357,8 @@ private val columnWidths: Map<String, Int> = mapOf(
     // Bounded vocabularies: "Person"/"Business", and "enabled"/"disabled"/"deleted".
     typeColumn to 80, statusColumn to 85,
     // "Forms · Client", which never varies.
-    linksColumn to 115,
+    // Forms · Client · Become, on one line.
+    linksColumn to 170,
     // A list, so it is the other one that may wrap -- and now does, on the rows that hold three roles
     // (`user, admin, allClients`, a full administrator) or a long-named one, which are the minority, and on a
     // sandbox user whose row and acting roles differ, which says both (issue #1198) and may take three or four.

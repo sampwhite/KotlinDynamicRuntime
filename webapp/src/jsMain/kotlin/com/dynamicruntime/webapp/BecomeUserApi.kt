@@ -74,13 +74,31 @@ fun rememberIdentity(prior: List<RecentIdentity>, identity: RecentIdentity): Lis
 fun forgetIdentity(identities: List<RecentIdentity>, key: String): List<RecentIdentity> =
     identities.filter { it.identityKey != key }
 
-/** The request that becomes [identity] again: the address and which of its users. */
-fun becomeAgainBody(identity: RecentIdentity): Map<String, Any?> = buildMap {
-    put(TEP.email, identity.email)
-    if (identity.client.isNotEmpty()) put(TEP.client, identity.client)
-    put(TEP.persona, identity.persona)
-    if (identity.personaSuffix.isNotEmpty()) put(TEP.personaSuffix, identity.personaSuffix)
+/** The request that becomes one user: the address and which of its users. */
+private fun becomeBody(email: String, client: String, persona: String, personaSuffix: String): Map<String, Any?> = buildMap {
+    put(TEP.email, email)
+    if (client.isNotEmpty()) put(TEP.client, client)
+    put(TEP.persona, persona)
+    if (personaSuffix.isNotEmpty()) put(TEP.personaSuffix, personaSuffix)
 }
+
+/** The request that becomes [identity] again. */
+fun becomeAgainBody(identity: RecentIdentity): Map<String, Any?> =
+    becomeBody(identity.email, identity.client, identity.persona, identity.personaSuffix)
+
+/** The request that becomes [user] from the Users page (issue #1511): that one of its address's users, by its whole key. */
+fun becomeUserBody(user: AdminUser): Map<String, Any?> = becomeBody(user.primaryId, user.client, user.persona, user.personaSuffix)
+
+/**
+ * Whether the Users page offers to become [user] (issue #1511): to a caller with test access ([testAccess]), for whom
+ * the fixture exists, and not on their own user ([callerUserId]), a user who could not sign in (disabled or deleted), or
+ * a sandbox user somebody opened, who is reached by opening the sandbox. Pure, covered under `jsNodeTest`.
+ */
+fun becomeOffered(user: AdminUser, testAccess: Boolean, callerUserId: Long?): Boolean =
+    testAccess && user.userId != callerUserId && user.enabled && !user.deleted && !user.opened
+
+/** Whether becoming [user] would claim it (issue #1511), as the fixture does, which ends its invitation, so it asks first. */
+fun becomeClaims(user: AdminUser): Boolean = !user.registered
 
 /** How a remembered identity is shown: `pat@acme.test · acme / Member B -- Pat Lee`. */
 fun identityLabel(identity: RecentIdentity): String =

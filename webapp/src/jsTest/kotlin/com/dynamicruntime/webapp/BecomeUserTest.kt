@@ -5,8 +5,10 @@ import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.test.TEP
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
-/** Becoming someone on a test instance (issue #1183): the deployment admin's request, and the identities kept. */
+/** Becoming someone on a test instance (issues #1183, #1511): the requests, and the identities kept. */
 class BecomeUserTest {
     private fun identity(email: String, client: String = "acme", persona: String = "member", suffix: String = "", dataId: String? = "d1") =
         RecentIdentity(email, client, persona, suffix, name = null, dataId = dataId, at = "2026-10-13T12:00:00Z")
@@ -47,6 +49,43 @@ class BecomeUserTest {
         val many = (1..20).fold(emptyList<RecentIdentity>()) { acc, i -> rememberIdentity(acc, identity("u$i@acme.test")) }
         assertEquals(recentIdentitiesLimit, many.size)
         assertEquals("u20@acme.test", many.first().email)
+    }
+
+    private fun adminUser(
+        id: Long = 7L, enabled: Boolean = true, registered: Boolean = true, deleted: Boolean = false, opened: Boolean = false,
+        persona: String = "member", suffix: String = "",
+    ) = AdminUser(
+        userId = id, primaryId = "pat@acme.test", username = "@pat", roles = listOf("user"), client = "acme", persona = persona,
+        personaSuffix = suffix, org = null, isEntity = false, name = null, enabled = enabled, hasPassword = false,
+        registered = registered, deleted = deleted, opened = opened,
+    )
+
+    @Test
+    fun theUsersPageOffersToBecomeAUserOnlyWhereItCanWork() {
+        fun offered(user: AdminUser, testAccess: Boolean = true, caller: Long? = 1L) = becomeOffered(user, testAccess, caller)
+        assertTrue(offered(adminUser()))
+        // The fixture exists only for a caller with test access.
+        assertFalse(offered(adminUser(), testAccess = false))
+        // Not the caller's own user.
+        assertFalse(offered(adminUser(id = 1L)))
+        // Nobody signs in to these.
+        assertFalse(offered(adminUser(enabled = false)))
+        assertFalse(offered(adminUser(deleted = true)))
+        assertFalse(offered(adminUser(opened = true)))
+        // An unclaimed user is offered, and asks first: becoming it claims it.
+        assertTrue(offered(adminUser(registered = false)))
+        assertTrue(becomeClaims(adminUser(registered = false)))
+        assertFalse(becomeClaims(adminUser()))
+    }
+
+    @Test
+    fun becomingFromTheUsersPageNamesExactlyThatUser() {
+        // By its whole key, so a second user of the address is the one become, not the address's default.
+        assertEquals(
+            mapOf(TEP.email to "pat@acme.test", TEP.client to "acme", TEP.persona to "admin", TEP.personaSuffix to "B"),
+            becomeUserBody(adminUser(persona = "admin", suffix = "B")),
+        )
+        assertFalse(TEP.personaSuffix in becomeUserBody(adminUser()))
     }
 
     @Test
