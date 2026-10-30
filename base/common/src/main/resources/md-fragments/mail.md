@@ -68,6 +68,18 @@ A code will then be sent to [${address}]{.value}.
 The link expires in seven days.
 
 
+/- A reminder to a user who has already claimed their account (issue #1504), sent by an administrator. It carries the
+   ordinary sign-in page, never a link that signs in by itself: holding this mail proves nothing. -/
+# @signInReminder
+# +subject Your account at ${clientName}
+# +body
+You have an account for [${address}]{.value} at [${clientName}]{.value}, as [${personaLabel}]{.value}.
+
+Sign in here: ${url}
+
+Use this address, with your password if you set one, or a code sent to it.
+
+
 /- The claim page's answers (issue #751). `InvitationTest` reads the code out of "code for claiming the account
    ... is <code>." -- keep that phrase. The page always reports a code as sent; these say what actually matched,
    as specifically as the inbox's owner is entitled to. -/

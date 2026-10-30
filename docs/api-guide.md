@@ -315,8 +315,8 @@ GET /kda/clientAdmin/users?search=pat
 ```
 
 Create one. **This sends mail:** unless the address is your own, the site mails it at once, inviting its owner to
-claim the user. To make a user without mailing anybody, send `"enabled": false`; a person then sends the invitation
-from the Users page when it is wanted.
+claim the user. To make a user without mailing anybody, send `"sendInvitation": false`; a person then sends the
+invitation from the Users page when it is wanted. A user created with `"enabled": false` is not invited either.
 
 <!-- kdr-api: createUser -->
 ```http

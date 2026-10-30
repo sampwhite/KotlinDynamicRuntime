@@ -24,8 +24,8 @@ class UserEditorLayoutTest {
         assertEquals(listOf("Enabled"), userStatusChips(user()))
         assertEquals(listOf("Disabled"), userStatusChips(user(enabled = false)))
         assertEquals(listOf("Deleted"), userStatusChips(user(deleted = true, registered = false)))
-        // Unclaimed: an invitation is out for a live user; a disabled one waits for its enable.
-        assertEquals(listOf("Enabled", "Invitation pending"), userStatusChips(user(registered = false)))
+        // Unclaimed, with no word on an invitation: one may have been held back (issue #1504).
+        assertEquals(listOf("Enabled", "Unclaimed"), userStatusChips(user(registered = false)))
         assertEquals(listOf("Disabled", "Unclaimed"), userStatusChips(user(enabled = false, registered = false)))
         assertEquals(listOf("Enabled", "Sandbox"), userStatusChips(user(client = "acme:sandbox")))
     }
@@ -152,6 +152,42 @@ class UserEditorLayoutTest {
     }
 
     @Test
+    fun moreOptionsNamesAHeldBackInvitation() {
+        assertEquals(
+            listOf("no invitation"), userMoreOptionsInForce(false, false, emptyList(), true, true, invitationHeld = true),
+        )
+    }
+
+    @Test
+    fun theNoteAfterACreateSaysWhetherTheInvitationWent() {
+        assertEquals("Created a@b.test. Invitation sent.", createdNote("a@b.test", invitable = true, wanted = true, sent = true))
+        assertEquals(
+            "Created a@b.test. No invitation sent: open the user to send one.",
+            createdNote("a@b.test", invitable = true, wanted = false, sent = false),
+        )
+        // A mail that failed did not fail the create, so the note must not claim it went.
+        assertEquals(
+            "Created a@b.test, but its invitation could not be sent: open the user to send it again.",
+            createdNote("a@b.test", invitable = true, wanted = true, sent = false),
+        )
+        // The caller's own address, or a disabled user: no invitation was in question.
+        assertEquals("Created a@b.test.", createdNote("a@b.test", invitable = false, wanted = true, sent = false))
+    }
+
+    @Test
+    fun aUserIsOfferedTheMailThatFitsThem() {
+        assertEquals(UserMailOffer.invitation, userMailOffer(user(registered = false), self = false))
+        assertEquals(UserMailOffer.reminder, userMailOffer(user(), self = false))
+        // A claimed user's invitation would sign in whoever held the mail, and nobody reminds themself.
+        assertEquals(UserMailOffer.none, userMailOffer(user(), self = true))
+        assertEquals(UserMailOffer.none, userMailOffer(user(client = "acme:sandbox"), self = false))
+        // Nobody can sign in to a disabled or deleted user.
+        assertEquals(UserMailOffer.none, userMailOffer(user(enabled = false), self = false))
+        assertEquals(UserMailOffer.none, userMailOffer(user(enabled = false, registered = false), self = false))
+        assertEquals(UserMailOffer.none, userMailOffer(user(deleted = true, registered = false), self = false))
+    }
+
+    @Test
     fun aCreateIsDirtyOnceAnyFieldDiffersFromWhatItOpenedWith() {
         val seeded = CreateDraft(
             "", "", false, ROLE.user, false, false, "", "acme", PERSONA.member, "", emptyList(), enabled = true,
@@ -163,7 +199,7 @@ class UserEditorLayoutTest {
         for (changed in listOf(
             seeded.copy(email = "a@b.test"), seeded.copy(client = "globex"), seeded.copy(persona = PERSONA.admin),
             seeded.copy(level = ROLE.admin), seeded.copy(allClients = true), seeded.copy(org = "east"),
-            seeded.copy(enabled = false), seeded.copy(labels = listOf("reviewer")),
+            seeded.copy(enabled = false), seeded.copy(labels = listOf("reviewer")), seeded.copy(invite = false),
         )) {
             assertTrue(createDraftDirty(changed, seeded), "$changed")
         }
@@ -174,7 +210,10 @@ class UserEditorLayoutTest {
 
     @Test
     fun theHintsUnderMoreOptionsSayWhenToUseThem() {
-        for (hint in listOf(editorHint, enabledHint(creating = true), enabledHint(creating = false))) {
+        for (hint in listOf(
+            editorHint, enabledHint(creating = true), enabledHint(creating = false), sendInvitationHint(enabled = true),
+            sendInvitationHint(enabled = false),
+        )) {
             assertTrue(hint.startsWith("Use this when"), hint)
         }
     }

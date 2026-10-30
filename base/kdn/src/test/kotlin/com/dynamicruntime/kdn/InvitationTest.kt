@@ -1,13 +1,21 @@
 package com.dynamicruntime.kdn
 
 import com.dynamicruntime.common.context.CL
+import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.UPF
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.exception.EXC
+import com.dynamicruntime.common.gedra.ClientAudience
+import com.dynamicruntime.common.gedra.ClientDef
+import com.dynamicruntime.common.gedra.ClientUsageType
+import com.dynamicruntime.common.gedra.GedraConfigReload
+import com.dynamicruntime.common.gedra.GedraConfigService
+import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.home.HMENU
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.http.request.TestHttpClient
 import com.dynamicruntime.common.mail.MailService
+import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.user.ADEP
 import com.dynamicruntime.common.user.ADF
 import com.dynamicruntime.common.user.AEP
@@ -25,6 +33,7 @@ import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
+import io.kotest.matchers.string.shouldNotContain
 import kotlin.time.Duration.Companion.days
 
 /**
@@ -101,6 +110,74 @@ class InvitationTest : StringSpec({
         results(accept(TestHttpClient(cxt.instanceConfig), tokenMailedTo(address)))[UPF.userId] shouldBe userId
         // Once claimed, there is nothing to re-send.
         later.expectError(EXC.badInput, ADEP.userInvite, mapOf(ADF.userId to userId))
+    }
+
+    // Issue #1504: whether a create mails is the administrator's choice, and its answer says what happened.
+    "a create invites by default, not when told not to, and never a disabled user" {
+        val admin = TestUser.createFullAdmin(cxt, "invite-choice-admin@other.test")
+        val mail = MailService.get(cxt)
+        fun create(address: String, vararg more: Pair<String, Any?>) =
+            admin.postData(ADEP.userCreate, mapOf(ADF.primaryId to address, ADF.client to CL.hub) + more)
+
+        val sent = "invite-default@other.test"
+        create(sent)[ADF.invitationSent] shouldBe true
+        mail.lastEmailTo(sent).shouldNotBeNull()
+
+        val held = "invite-held@other.test"
+        val heldUser = create(held, ADF.sendInvitation to false)
+        heldUser[ADF.invitationSent] shouldBe false
+        heldUser[USF.registered.at].shouldBeNull()
+        mail.lastEmailTo(held).shouldBeNull()
+        // Held back, not lost: the invitation can be sent later, and works.
+        admin.postData(ADEP.userInvite, mapOf(ADF.userId to heldUser[ADF.userId]))
+        results(accept(TestHttpClient(cxt.instanceConfig), tokenMailedTo(held)))[UPF.userId] shouldBe heldUser[ADF.userId]
+
+        val disabled = "invite-disabled@other.test"
+        create(disabled, ADF.enabled to false)[ADF.invitationSent] shouldBe false
+        mail.lastEmailTo(disabled).shouldBeNull()
+        // Asking for one does not override a disabled user.
+        val disabledAsked = "invite-disabled-asked@other.test"
+        create(disabledAsked, ADF.enabled to false, ADF.sendInvitation to true)[ADF.invitationSent] shouldBe false
+        mail.lastEmailTo(disabledAsked).shouldBeNull()
+    }
+
+    "a claimed user can be reminded where to sign in, by a mail that signs nobody in" {
+        val admin = TestUser.createFullAdmin(cxt, "remind-admin@other.test")
+        val address = "remind-claimed@other.test"
+        val claimed = TestUser.create(cxt, address, userClient = CL.hub)
+        admin.postData(ADEP.userRemind, mapOf(ADF.userId to claimed.userId))
+        val mailed = MailService.get(cxt).lastEmailTo(address).shouldNotBeNull()
+        mailed.text shouldContain "/wa/${HMENU.pageLogin}"
+        mailed.text shouldContain address
+        // The ordinary sign-in page: no token, so holding the mail proves nothing.
+        mailed.text shouldNotContain HMENU.inviteTokenParam
+        mailed.text shouldNotContain HMENU.pageInvite
+    }
+
+    "a reminder is refused where it does not fit: unclaimed, disabled, or a sandbox's" {
+        val admin = TestUser.createFullAdmin(cxt, "remind-admin2@other.test")
+        val unclaimed = admin.postData(ADEP.userCreate, mapOf(ADF.primaryId to "remind-unclaimed@other.test", ADF.client to CL.hub))
+        admin.expectError(EXC.badInput, ADEP.userRemind, mapOf(ADF.userId to unclaimed[ADF.userId]))
+        val off = TestUser.create(cxt, "remind-off@other.test", userClient = CL.hub)
+        admin.postData(ADEP.userSetEnabled, mapOf(ADF.userId to off.userId, ADF.enabled to false))
+        admin.expectError(EXC.badInput, ADEP.userRemind, mapOf(ADF.userId to off.userId))
+
+        val parent = "remindsbx"
+        GedraConfigService.get(cxt).writeConfig(
+            cxt.mkSubContext("setup", parent).also { it.userId = 15040L },
+            gedraConfig(cxt, "main", clientNamespace(parent), parent) {
+                defineClient(
+                    ClientDef(
+                        clientId = parent, name = "Client $parent", usageType = ClientUsageType.dev,
+                        audience = ClientAudience.internal, enabledEnvironments = setOf(ENV.unit, ENV.local), sandbox = true,
+                    ),
+                )
+            },
+        )
+        GedraConfigReload.reloadClient(cxt, parent)
+        val chief = TestUser.create(cxt, "chief@$parent.test", level = ROLE.admin, userClient = parent)
+        val sandboxUser = chief.postData(AEP.openSandbox, emptyMap())[UPF.userId]
+        admin.expectError(EXC.badInput, ADEP.userRemind, mapOf(ADF.userId to sandboxUser))
     }
 
     "an invitation to a registered person attaches the user to them, and needs no code" {

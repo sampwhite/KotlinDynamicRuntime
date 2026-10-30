@@ -143,6 +143,7 @@ class EditorRoleTest : StringSpec({
         ed.expectError(EXC.notAuthorized, UADEP.users)
         ed.expectError(EXC.notAuthorized, UADEP.userCreate, mapOf(ADF.primaryId to "made@$mine.test"))
         ed.expectError(EXC.notAuthorized, UADEP.userInvite, mapOf(ADF.userId to colleague.userId))
+        ed.expectError(EXC.notAuthorized, UADEP.userRemind, mapOf(ADF.userId to colleague.userId))
         ed.expectError(EXC.notAuthorized, UADEP.userSetRoles, mapOf(ADF.userId to colleague.userId, ADF.roles to listOf(ROLE.user, ROLE.admin)))
         ed.expectError(EXC.notAuthorized, UADEP.userSetName, mapOf(ADF.userId to colleague.userId, ADF.name to "Renamed"))
         ed.expectError(EXC.notAuthorized, UADEP.userDelete, args = mapOf(ADF.userId to colleague.userId), method = HttpMethod.DELETE)

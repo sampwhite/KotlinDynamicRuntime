@@ -62,6 +62,7 @@ class UserAdminPaths(
     val userSetOrg: String,
     val userSetName: String,
     val userInvite: String,
+    val userRemind: String,
     val userDelete: String,
     val userSetLabels: String,
     val userLabelSuggestions: String,
@@ -73,7 +74,7 @@ fun adminSchema(cxt: KdrCxt): SchModule = userAdminModule(
     cxt, "kdr.${SECT.admin}", published = false,
     UserAdminPaths(
         ADEP.users, ADEP.userSearch, ADEP.userCreate, ADEP.userSetRoles, ADEP.userSetEnabled, ADEP.userSetOrg,
-        ADEP.userSetName, ADEP.userInvite, ADEP.userDelete, ADEP.userSetLabels, ADEP.userLabelSuggestions,
+        ADEP.userSetName, ADEP.userInvite, ADEP.userRemind, ADEP.userDelete, ADEP.userSetLabels, ADEP.userLabelSuggestions,
         ADEP.userIdentity,
     ),
 )
@@ -95,7 +96,7 @@ fun scopedUserAdminSchema(cxt: KdrCxt): SchModule = userAdminModule(
     cxt, "kdr.${SECT.clientAdmin}", published = true,
     UserAdminPaths(
         UADEP.users, UADEP.userSearch, UADEP.userCreate, UADEP.userSetRoles, UADEP.userSetEnabled, UADEP.userSetOrg,
-        UADEP.userSetName, UADEP.userInvite, UADEP.userDelete, UADEP.userSetLabels, UADEP.userLabelSuggestions,
+        UADEP.userSetName, UADEP.userInvite, UADEP.userRemind, UADEP.userDelete, UADEP.userSetLabels, UADEP.userLabelSuggestions,
         UADEP.userIdentity,
     ),
 )
@@ -143,6 +144,11 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, published: Boolean, 
             field(ADF.enabled, "Whether the account starts active; defaults to true. False creates it disabled.") {
                 type = SCT.boolean
             }
+            field(
+                ADF.sendInvitation,
+                "Whether to mail the invitation; defaults to true. False makes the user and mails nobody: send it later " +
+                    "through the invite call. Nothing is sent for a disabled user, or at your own address, either way.",
+            ) { type = SCT.boolean }
             // Issues #786, #1481.
             field(
                 ADF.labels,
@@ -245,13 +251,16 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, published: Boolean, 
                 service.updateUser(c, row, isEdit = !enabled)
             }
         }
-        // Somebody else's user, live: invite them to claim it. A disabled one waits for its enable, and the
-        // administrator sends the invitation then (`userInvite`). A mail that cannot go out (the provider down)
-        // does not fail the create -- the user exists, and a retry would only be refused as a duplicate -- it is
-        // logged, and the editor offers to send the invitation again.
-        if (!ownAddress && enabled) {
+        // Somebody else's user, live: invite them to claim it, unless the administrator said not to (issue #1504). A
+        // disabled one waits for its enable, and the administrator sends the invitation then (`userInvite`), as they do
+        // for one they held back. A mail that cannot go out (the provider down) does not fail the create -- the user
+        // exists, and a retry would only be refused as a duplicate -- it is logged, and the editor offers to send the
+        // invitation again.
+        var invitationSent = false
+        if (!ownAddress && enabled && request.getOptBool(ADF.sendInvitation) != false) {
             try {
                 authHandler(c).inviteUser(c, loadUser(c, userId))
+                invitationSent = true
             } catch (e: KdrException) {
                 LogAuth.warn(c) { "User $userId ('$primaryId') was created but its invitation could not be sent: ${e.message}" }
             }
@@ -261,7 +270,7 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, published: Boolean, 
                 (if (personaSuffix.isEmpty()) "" else ", personaSuffix '$personaSuffix'") + ") with roles $roles" +
                 (if (labels.isNullOrEmpty()) "" else ", labels $labels") + (if (!enabled) " (disabled)." else ".")
         }
-        loadUser(c, userId).toAdminInfo(c)
+        loadUser(c, userId).toAdminInfo(c) + (ADF.invitationSent to invitationSent)
     }
 
     // (Re)send the invitation for a user nobody has claimed (issue #751): a lapsed link, a lost mail, or a
@@ -275,6 +284,20 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, published: Boolean, 
     ) { c, request ->
         val row = loadEditableUser(c, requireUserId(request))
         authHandler(c).inviteUser(c, row)
+        row.toAdminInfo(c)
+    }
+
+    // Remind a claimed user where and how to sign in (issue #1504): the ordinary sign-in page, since an invitation's
+    // link would sign in whoever holds the mail. Refused for a user nobody has claimed, and a disabled or sandbox one.
+    generalEndpoint(
+        paths.userRemind,
+        "Mails a claimed user a reminder of where and how to sign in.",
+        HttpMethod.POST,
+        outputRef = ADTY.adminUser,
+        inputFields = { field(ADF.userId, "Id of the claimed user to remind.", required = true) { type = SCT.integer } },
+    ) { c, request ->
+        val row = loadEditableUser(c, requireUserId(request))
+        authHandler(c).remindUser(c, row)
         row.toAdminInfo(c)
     }
 

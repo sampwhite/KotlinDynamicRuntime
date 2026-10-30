@@ -24,8 +24,8 @@ fun userStatusChips(user: AdminUser): List<String> = buildList {
             else -> "Disabled"
         },
     )
-    // Unclaimed (issue #751): an invitation is out for a live user, and waits for an enable on a disabled one.
-    if (!user.registered && !user.deleted) add(if (user.enabled) "Invitation pending" else "Unclaimed")
+    // Unclaimed (issue #751), with no word on an invitation: one may not have gone (issue #1504), and nothing records it.
+    if (!user.registered && !user.deleted) add("Unclaimed")
     if (isSandboxClient(user.client)) add("Sandbox")
 }
 
@@ -108,6 +108,7 @@ fun userMoreOptionsInForce(
     creating: Boolean,
     personaSuffix: String = "",
     suffixNeeded: Boolean = false,
+    invitationHeld: Boolean = false,
 ): List<String> = buildList {
     if (editor) add("Editor")
     if (allClients) add("All clients")
@@ -117,6 +118,35 @@ fun userMoreOptionsInForce(
     }
     normalizeUserLabels(labels).takeIf { it.isNotEmpty() }?.let { add("labels: ${it.joinToString(", ")}") }
     if (!enabled) add(if (creating) "starts disabled" else "disabled")
+    if (invitationHeld) add("no invitation")
+}
+
+/**
+ * What the note after a create says of its invitation (issue #1504). [invitable] is whether one could go at all: not at
+ * the caller's own address, nor for a disabled user, of which the note says nothing. [wanted] is the Send invitation
+ * box, and [sent] the backend's answer, since a mail that fails does not fail the create. Pure, under `jsNodeTest`.
+ */
+fun createdNote(address: String, invitable: Boolean, wanted: Boolean, sent: Boolean): String = when {
+    !invitable -> "Created $address."
+    !wanted -> "Created $address. No invitation sent: open the user to send one."
+    sent -> "Created $address. Invitation sent."
+    else -> "Created $address, but its invitation could not be sent: open the user to send it again."
+}
+
+/** What the Users editor offers to mail a user (issue #1504). */
+@Suppress("EnumEntryName")
+enum class UserMailOffer { invitation, reminder, none }
+
+/**
+ * What to offer [user]: the invitation for an enabled user nobody has claimed, a sign-in reminder for a claimed one --
+ * whose invitation link would sign in whoever held the mail -- except the caller's own ([self]) and a sandbox's, who
+ * signs in through its parent. Nothing for a disabled or deleted user. Pure, under `jsNodeTest`.
+ */
+fun userMailOffer(user: AdminUser, self: Boolean): UserMailOffer = when {
+    !user.enabled || user.deleted -> UserMailOffer.none
+    !user.registered -> UserMailOffer.invitation
+    self || isSandboxClient(user.client) -> UserMailOffer.none
+    else -> UserMailOffer.reminder
 }
 
 /** What a save of an existing user writes, in the order it writes them: each is one call. */
@@ -187,6 +217,7 @@ data class CreateDraft(
     val personaSuffix: String,
     val labels: List<String>,
     val enabled: Boolean,
+    val invite: Boolean = true,
 ) {
     /** The fields as a save would send them: trimmed, and the labels normalized. */
     fun normalized(): CreateDraft = copy(

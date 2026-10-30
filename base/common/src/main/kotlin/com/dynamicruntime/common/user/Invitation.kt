@@ -89,6 +89,9 @@ object INVITE {
         return if (uri.port == -1) host else "$host:${uri.port}"
     }
 
+    /** The sign-in page's URL under [publicUrl] (issue #1504), or the page's path alone when the deployment's URL is unknown. */
+    fun signInUrl(publicUrl: String?): String = "${publicUrl ?: ""}/${ContextRoot.wa}/${HMENU.pageLogin}"
+
     /** The invitation page's URL for [token] under [publicUrl], or the page's path alone when the deployment's URL is unknown. */
     fun invitationUrl(publicUrl: String?, token: String): String =
         "${publicUrl ?: ""}/${ContextRoot.wa}/${HMENU.pageInvite}#${HMENU.inviteTokenParam}=$token"

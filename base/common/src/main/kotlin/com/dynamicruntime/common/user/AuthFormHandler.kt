@@ -666,6 +666,28 @@ class AuthFormHandler(
     }
 
     /**
+     * Mails [user]'s person a reminder of where and how to sign in (issue #1504): for a user already claimed, which an
+     * invitation is refused for, since its link signs its holder in with no code. The mail carries the ordinary sign-in
+     * page, so it gives nobody access the address did not already have. Not for a user nobody has claimed (their
+     * invitation says more), a disabled or deleted one (who could not sign in), or a sandbox's, who is reached through
+     * the parent's sandbox and never signs in by themself.
+     */
+    fun remindUser(cxt: KdrCxt, user: AuthUserRow) {
+        if (!user.isRegistered) throw KdrException.mkInput("User ${user.userId} has not been claimed; send an invitation instead.")
+        if (!user.enabled) throw KdrException.mkInput("User ${user.userId} is disabled; enable the account before reminding them.")
+        if (isSandboxClient(user.client)) throw KdrException.mkInput("User ${user.userId} is a sandbox's, and does not sign in by itself.")
+        mail.sendFragmentMail(
+            cxt, user.primaryId, user.client, MCOPY.signInReminder,
+            mapOf(
+                MCOPY.addressParam to user.primaryId, MCOPY.clientParam to user.client,
+                MCOPY.urlParam to INVITE.signInUrl(INVITE.publicUrlFor(cxt)),
+                MCOPY.personaLabelParam to PERSONA.typed(PERSONA.label(user.persona), user.personaSuffix),
+            ),
+        )
+        LogAuth.info(cxt) { "Sent user ${user.userId} ('${user.primaryId}') a sign-in reminder for '${user.client}'." }
+    }
+
+    /**
      * What an invitation [token] is for, before it is accepted: the address, client, persona, personaSuffix, and
      * name of the invited user. So the page can say what accepting means, and so that merely *opening* the
      * link -- which a mail scanner does -- accepts nothing.
