@@ -7,11 +7,16 @@ import com.dynamicruntime.common.gedra.workflow.WAGG
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.SFMT
+import com.dynamicruntime.common.schema.SchOption
 import com.dynamicruntime.common.schema.qualifyTypeName
 import com.dynamicruntime.common.util.parseDateOrNull
 import com.dynamicruntime.common.util.serverTimeZone
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
+import kotlinx.datetime.DateTimeUnit
+import kotlinx.datetime.LocalDate
 import kotlinx.datetime.TimeZone
+import kotlinx.datetime.atStartOfDayIn
+import kotlinx.datetime.plus
 
 /**
  * Turns a client's trait-usage rules into forms-list **search** (issue #538): the parameters the listing
@@ -52,9 +57,9 @@ enum class SearchRole(
 
 /**
  * One search parameter a usage contributes: its wire [name], the column [label] it belongs to, the [columnKey]
- * whose display value it filters ([ClientTraitUsage.columnKey]), the [role] (how to compare), and the [kind] (how to
- * read both sides). Built once by [gedraSearchParams] and used to generate the schema property *and* to run the
- * predicate, so the two stay in step.
+ * whose display value it filters ([ClientTraitUsage.columnKey]), the [role] (how to compare), the [kind] (how to
+ * read both sides), and the column's [choices] (issue #1500), whose labels a text match also reads. Built once by
+ * [gedraSearchParams] and used to generate the schema property *and* to run the predicate, so the two stay in step.
  */
 class GedraSearchParam(
     val name: String,
@@ -62,6 +67,7 @@ class GedraSearchParam(
     val columnKey: String,
     val role: SearchRole,
     val kind: UsageKind,
+    val choices: List<SchOption> = emptyList(),
 )
 
 /**
@@ -76,15 +82,22 @@ class GedraSearchParam(
  * The whole usage goes, not the one name: a `<column>Contains` left standing alone would read back
  * ([decodeSearchParam]) as the exact match of some other column. The usage keeps its column;
  * [searchParamCollisions] is what reports it.
+ *
+ * [choices] are each column's ([deducedColumnChoices], by [ClientTraitUsage.columnKey]), for the predicate; the names
+ * do not depend on them.
  */
-fun gedraSearchParams(usages: List<ClientTraitUsage>): List<GedraSearchParam> = usages.flatMap { usage ->
-    val minted = mintedSearchParams(usage)
+fun gedraSearchParams(
+    usages: List<ClientTraitUsage>,
+    choices: Map<String, List<SchOption>> = emptyMap(),
+): List<GedraSearchParam> = usages.flatMap { usage ->
+    val minted = mintedSearchParams(usage, choices[usage.columnKey].orEmpty())
     if (minted.any { it.name in reservedQueryFieldNames }) emptyList() else minted
 }
 
 /** Every parameter [usage] would mint by name alone, a reserved name included -- see [gedraSearchParams]. */
-private fun mintedSearchParams(usage: ClientTraitUsage): List<GedraSearchParam> = buildList {
-    fun param(role: SearchRole) = GedraSearchParam(usage.columnKey + role.nameSuffix, usage.label, usage.columnKey, role, usage.kind)
+private fun mintedSearchParams(usage: ClientTraitUsage, choices: List<SchOption> = emptyList()): List<GedraSearchParam> = buildList {
+    fun param(role: SearchRole) =
+        GedraSearchParam(usage.columnKey + role.nameSuffix, usage.label, usage.columnKey, role, usage.kind, choices)
     when (usage.kind) {
         UsageKind.string -> {
             add(param(SearchRole.exact))
@@ -108,10 +121,11 @@ fun searchParamProperties(params: List<GedraSearchParam>): Map<String, Any?> {
         val prop = LinkedHashMap<String, Any?>()
         prop[SCH.title] = searchLabel(param)
         when {
+            // "Or its label" (issue #1500): a column whose field offers choices shows, and matches, the choice's label.
             param.role == SearchRole.contains ->
-                prop[SCH.description] = "Substring match (case-insensitive) on the '${param.columnKey}' value."
+                prop[SCH.description] = "Substring match (case-insensitive) on the '${param.columnKey}' value, or its label."
             param.role == SearchRole.exact ->
-                prop[SCH.description] = "Exact match (case-insensitive) on the '${param.columnKey}' value."
+                prop[SCH.description] = "Exact match (case-insensitive) on the '${param.columnKey}' value, or its label."
             param.kind == UsageKind.number -> {
                 prop[SCH.type] = SCT.number
                 prop[SCH.allowCoerce] = true
@@ -175,7 +189,8 @@ fun decodeSearchParam(name: String, prop: Map<String, Any?>, declared: Set<Strin
 
 private fun boundDescription(param: GedraSearchParam): String {
     val relation = if (param.role == SearchRole.min) "at or above" else "at or below"
-    return "Keep rows whose '${param.columnKey}' value is $relation this."
+    val wholeDay = if (param.role == SearchRole.max && param.kind == UsageKind.date) " A day alone includes the whole day." else ""
+    return "Keep rows whose '${param.columnKey}' value is $relation this.$wholeDay"
 }
 
 /** The `$defs` key of the listing's query type: [GEP.formDocsQuery] qualified in the gedra namespace. */
@@ -264,22 +279,52 @@ fun textSearchColumns(usages: List<ClientTraitUsage>): List<String> =
 /**
  * Whether a row's display values match the free-text term [query] (issue #562): a case-insensitive substring
  * match against **any** of the [textColumns] (OR across fields), so one box finds a document by whichever of
- * its searchable text values the person remembers. A blank term matches everything -- an empty box is no
- * search, not a search for nothing -- and a row with no text values matches only a blank term.
+ * its searchable text values the person remembers -- a value's label too, for a column with [choices] (issue #1500).
+ * A blank term matches everything -- an empty box is no search, not a search for nothing -- and a row with no text
+ * values matches only a blank term.
  */
-fun matchesAnyText(displayByColumn: Map<String, String>, textColumns: List<String>, query: String): Boolean {
+fun matchesAnyText(
+    displayByColumn: Map<String, String>,
+    textColumns: List<String>,
+    query: String,
+    choices: Map<String, List<SchOption>> = emptyMap(),
+): Boolean {
     val term = query.trim()
     if (term.isEmpty()) return true
-    return textColumns.any { displayByColumn[it].orEmpty().contains(term, ignoreCase = true) }
+    return textColumns.any { column ->
+        valueAndLabel(displayByColumn[column].orEmpty(), choices[column].orEmpty()).any { it.contains(term, ignoreCase = true) }
+    }
 }
 
+/**
+ * [value], and its label when [choices] give it one (issue #1500): what a text search on the column matches, since
+ * the column shows the label, and a person types or pastes what they see.
+ */
+private fun valueAndLabel(value: String, choices: List<SchOption>): List<String> =
+    listOfNotNull(value, choiceLabel(value, choices))
+
 private fun matchesOne(value: String, param: GedraSearchParam, query: String, zone: TimeZone): Boolean = when (param.role) {
-    SearchRole.exact -> value.trim().equals(query.trim(), ignoreCase = true)
-    SearchRole.contains -> value.contains(query.trim(), ignoreCase = true)
+    SearchRole.exact -> valueAndLabel(value, param.choices).any { it.trim().equals(query.trim(), ignoreCase = true) }
+    SearchRole.contains -> valueAndLabel(value, param.choices).any { it.contains(query.trim(), ignoreCase = true) }
     // A bound over a value that is not a number/date at all -- an empty or malformed display -- is a non-match,
     // not a fault: a range asks "is this within the bounds", and a value that is not on the line is not.
     SearchRole.min -> compareBound(value, param.kind, query, zone)?.let { it >= 0 } ?: false
-    SearchRole.max -> compareBound(value, param.kind, query, zone)?.let { it <= 0 } ?: false
+    SearchRole.max ->
+        if (param.kind == UsageKind.date && isDayText(query.trim())) {
+            beforeDayEnds(value, query.trim(), zone)
+        } else {
+            compareBound(value, param.kind, query, zone)?.let { it <= 0 } ?: false
+        }
+}
+
+/**
+ * Whether the date [value] falls before the end of [day] in [zone] (issue #1500 review): a day as a date range's upper
+ * bound includes the whole of that day, as a day picker reads, rather than stopping at its first moment.
+ */
+private fun beforeDayEnds(value: String, day: String, zone: TimeZone): Boolean {
+    val v = value.parseDateOrNull(zone) ?: return false
+    val end = LocalDate.parse(day).plus(1, DateTimeUnit.DAY).atStartOfDayIn(zone)
+    return v < end
 }
 
 /** Compares a row's [value] to the [query] bound as [kind]; null when either side does not read as that kind. */
@@ -357,15 +402,51 @@ object GSORT {
  * and text case-insensitively, reversed for [descending]. The caller composes this with a total tiebreak (the
  * id), so equal values still page in a stable order. The same string-then-parse-per-kind reading search's bounds
  * use ([matchesOne]); pure, and tested in the kernel.
+ *
+ * A text column with choices orders by them instead (issue #1500), given as their [choiceRanks]: in their declared
+ * order, which is often meaningful (beginners, then some experience, then experts) where the stored values'
+ * alphabetical order is not, and the labels the column shows would not read as sorted by value. A value that is not
+ * one of them follows them, by text.
  */
-fun compareForSort(a: String, b: String, kind: UsageKind, descending: Boolean): Int = when (kind) {
+fun compareForSort(
+    a: String,
+    b: String,
+    kind: UsageKind,
+    descending: Boolean,
+    ranks: Map<String, Int> = emptyMap(),
+): Int = when (kind) {
+    UsageKind.string -> if (ranks.isEmpty()) {
+        nullsLastForSort(a.trim().lowercase().ifEmpty { null }, b.trim().lowercase().ifEmpty { null }, descending)
+    } else {
+        compareByChoices(a, b, ranks, descending)
+    }
     UsageKind.number -> nullsLastForSort(a.trim().toDoubleOrNull(), b.trim().toDoubleOrNull(), descending)
     UsageKind.date -> nullsLastForSort(
         a.parseDateOrNull(),
         b.parseDateOrNull(),
         descending,
     )
-    UsageKind.string -> nullsLastForSort(a.trim().lowercase().ifEmpty { null }, b.trim().lowercase().ifEmpty { null }, descending)
+}
+
+/**
+ * Each of [choices]' values by its place among them (issue #1500): what [compareForSort] orders a column with choices by,
+ * built once per sort rather than searched on every comparison.
+ */
+fun choiceRanks(choices: List<SchOption>): Map<String, Int> = buildMap {
+    // A repeated value keeps its first place, as the list reads.
+    choices.forEachIndexed { i, choice -> if (choice.value !in this) put(choice.value, i) }
+}
+
+/** [compareForSort] for a column with [ranks]: by place among its choices, then by text, a blank last either way. */
+private fun compareByChoices(a: String, b: String, ranks: Map<String, Int>, descending: Boolean): Int {
+    fun keyOf(value: String): Pair<Int, String>? = value.trim().ifEmpty { null }?.let { v ->
+        (ranks[v] ?: Int.MAX_VALUE) to v.lowercase()
+    }
+    val ka = keyOf(a)
+    val kb = keyOf(b)
+    if (ka == null || kb == null) return nullsLastForSort(ka?.second, kb?.second, descending)
+    val c = compareValuesBy(ka, kb, { it.first }, { it.second })
+    return if (descending) -c else c
 }
 
 /** Orders [a] against [b] with a null (a blank or unreadable value) always **last**, and the non-null pair

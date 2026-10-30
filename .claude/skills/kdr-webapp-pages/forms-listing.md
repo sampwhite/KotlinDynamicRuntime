@@ -87,3 +87,19 @@ unrestricted scope). The rules that follow from that:
 - **Publish the surface with its rows.** `loadForClient` stages the catalog, endpoints, search and first page
   in locals and publishes them together, so a failed switch leaves the previous surface whole rather than X's
   controls over the old rows.
+
+## A column's filter and cells follow its field (issue #1500)
+
+The listing's summary carries each column's `choices` when its `display` is a lone `${field}` over a field that
+offers them, or is a boolean (`ListingColumn.choices`, deduced on the backend from the client's own schema). The page
+reads them from the columns it already has; there is no second fetch.
+
+- **The cell shows the label** (`presentedValue` → `presentColumnValue`), unless the column has a presentation of its
+  own. The row's value stays the stored one, which is what the backend searches and sorts by.
+- **The filter box suggests the choices by label** before anything is typed, then the choices matching what is typed
+  ahead of the values the values endpoint finds (`valueSuggestions`, pure). It stays an `AutoComplete`, open to
+  anything typed or pasted. A box is drawn even where the surface has no values endpoint, when the column has choices.
+  A pick fills the label, which the backend's search matches as well as the value.
+- **A date column's range is two day pickers** (`dayBoundInput`), writing the `yyyy-mm-dd` the bound takes; the
+  backend reads a day as the upper bound as the whole day. A bound that does not read as a date (an old link) gets
+  the text box instead, so it can be seen and cleared. The number range keeps its text boxes.

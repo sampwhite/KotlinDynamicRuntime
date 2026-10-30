@@ -169,6 +169,17 @@ fun String.analyzeTemplate(
     return TemplateAnalysis(issues, paths, refs, parsed.blockCount, render.value)
 }
 
+/**
+ * The field path this template reads when it is nothing but one bare substitution (issue #1500): `${audienceLevel}`
+ * gives `audienceLevel`, and `${address.city}` gives `[address, city]`. Null for anything else -- text beside the
+ * block, a function call or an operator, a second block, or a block that does not parse -- since the template's
+ * value is then not simply that field's.
+ */
+fun String.loneFieldPath(prefix: Char = '$'): List<String>? {
+    val block = parseTemplate(ScriptState(this, prefix)).pieces.singleOrNull() as? ParsedBlock ?: return null
+    return (block.node as? PathNode)?.segments
+}
+
 /** A path read in both a guarded and an unguarded place is required: the unguarded read is what decides. */
 private fun mkPaths(required: Set<String>, optional: Set<String>) =
     TemplatePaths(required, optional - required)

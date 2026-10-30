@@ -10,6 +10,7 @@ import com.dynamicruntime.common.gedra.workflow.WorkflowPhases
 import com.dynamicruntime.common.gedra.workflow.WorkflowRegistry
 import com.dynamicruntime.common.gedra.workflow.WorkflowService
 import com.dynamicruntime.common.schema.SchFailure
+import com.dynamicruntime.common.schema.SchOption
 import com.dynamicruntime.common.schema.SchType
 import com.dynamicruntime.common.schema.holdsGatedValue
 import com.dynamicruntime.common.schema.keepGatedFields
@@ -1828,8 +1829,9 @@ class GedraDataService : ServiceInitializer {
 
     /**
      * A chosen sort over a gedra listing (issue #666): [keyOf] gives the row's value for the sort column (a
-     * display value, or a protocol date as text), compared as [kind] in the [descending] direction. Composed
-     * with the id tiebreak so the order stays total; the default order applies when no sort is chosen.
+     * display value, or a protocol date as text), compared as [kind] in the [descending] direction -- in the order of
+     * the column's [choices] when it has some (issue #1500). Composed with the id tiebreak so the order stays total;
+     * the default order applies when no sort is chosen.
      *
      * [prepare], when set, is handed the whole matched set once before any key is read -- the hook a sort key
      * that needs a batch read (the owner name, issue #666) uses to resolve every row in one query instead of one
@@ -1839,8 +1841,12 @@ class GedraDataService : ServiceInitializer {
         val kind: UsageKind,
         val descending: Boolean,
         val prepare: ((List<GedraDataRow>) -> Unit)? = null,
+        val choices: List<SchOption> = emptyList(),
         val keyOf: (GedraDataRow) -> String,
-    )
+    ) {
+        /** [choices] by place, built once for the sort's comparisons. */
+        val choiceRanks: Map<String, Int> = choiceRanks(choices)
+    }
 
     /** [rows] ordered by [sort] (issue #666): [GedraSort.prepare] run once over the whole set, then each row's key
      *  computed **once** and compared by kind and direction, with the id descending as the total tiebreak (as the
@@ -1850,7 +1856,7 @@ class GedraDataService : ServiceInitializer {
         return rows.map { it to sort.keyOf(it) }
             .sortedWith(
                 Comparator { a, b ->
-                    val c = compareForSort(a.second, b.second, sort.kind, sort.descending)
+                    val c = compareForSort(a.second, b.second, sort.kind, sort.descending, sort.choiceRanks)
                     if (c != 0) c else b.first.gedraId.fullId.compareTo(a.first.gedraId.fullId)
                 },
             )

@@ -9,6 +9,7 @@ import com.dynamicruntime.common.gedra.workflow.SVYS
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.SFMT
+import com.dynamicruntime.common.schema.SchOption
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -151,5 +152,17 @@ class FormsSearchTest {
             ),
         )
         assertEquals(emptyList(), searchGroups(schema))
+    }
+
+    @Test
+    fun aColumnsChoicesAreSuggestedByLabelAheadOfTheValuesInTheData() {
+        val tracks = listOf(SchOption("kotlin", "Kotlin"), SchOption("web", "The web"), SchOption("workshop", "Workshop (hands-on)"))
+        // Before anything is typed: every choice, in order (issue #1500).
+        assertEquals(listOf("Kotlin", "The web", "Workshop (hands-on)"), valueSuggestions("", tracks, emptyList()))
+        // Typed: the choices matching by label or value, then the data's values that are not among them, a choice's by label.
+        assertEquals(listOf("Workshop (hands-on)", "workflows"), valueSuggestions("work", tracks, listOf("workshop", "workflows")))
+        assertEquals(listOf("The web"), valueSuggestions("WEB", tracks, emptyList()))
+        // Without choices, the fetched values as they are.
+        assertEquals(listOf("Lunch", "Hotel"), valueSuggestions("h", emptyList(), listOf("Lunch", "Hotel")))
     }
 }

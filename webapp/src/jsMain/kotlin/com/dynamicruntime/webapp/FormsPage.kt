@@ -969,6 +969,8 @@ val FormsPage = FC<FormsPageProps> { props ->
                         values = searchDraft
                         applied = appliedSearch
                         showSurveyStatus = surveyFilterOffered
+                        // What each column's field offers (issue #1500), for its box to suggest.
+                        choices = listingColumns.filter { it.choices.isNotEmpty() }.associate { it.columnId to it.choices }
                         panelOpen = filtersOpen
                         onTogglePanel = { filtersOpen = !filtersOpen }
                         onChange = { name, value -> searchDraft = searchDraft + (name to value) }

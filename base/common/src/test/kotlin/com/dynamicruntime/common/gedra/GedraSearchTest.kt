@@ -4,9 +4,11 @@ import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.SFMT
+import com.dynamicruntime.common.schema.SchOption
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
+import kotlinx.datetime.TimeZone
 
 /**
  * The pure search logic behind issue #538: what parameters a set of usage rules contributes, the schema
@@ -81,6 +83,10 @@ class GedraSearchTest : StringSpec({
         matchesSearch(mapOf("due" to "2026-06-01"), listOf(lower to "2026-01-01")) shouldBe true
         matchesSearch(mapOf("due" to "2025-12-31"), listOf(lower to "2026-01-01")) shouldBe false
         matchesSearch(mapOf("due" to "2026-06-01"), listOf(upper to "2026-12-31")) shouldBe true
+        // A day as the upper bound includes the whole day (issue #1500 review); a moment is the moment.
+        matchesSearch(mapOf("due" to "2026-12-31T23:30:00Z"), listOf(upper to "2026-12-31"), TimeZone.UTC) shouldBe true
+        matchesSearch(mapOf("due" to "2027-01-01T00:00:00Z"), listOf(upper to "2026-12-31"), TimeZone.UTC) shouldBe false
+        matchesSearch(mapOf("due" to "2026-12-31T23:30:00Z"), listOf(upper to "2026-12-31T12:00:00Z"), TimeZone.UTC) shouldBe false
     }
 
     "a row with no value for a searched trait fails that trait's parameter" {
@@ -249,6 +255,34 @@ class GedraSearchTest : StringSpec({
         compareForSort("", "", UsageKind.string, descending = false) shouldBe 0
     }
 
+
+    // A column whose field offers choices (issue #1500): Beginners, Some experience, Experts, in that order.
+    val levels = listOf(SchOption("beginner", "Beginners"), SchOption("mid", "Some experience"), SchOption("advanced", "Experts"))
+
+    "a column with choices matches a value or its label, exactly or in part" {
+        val params = gedraSearchParams(listOf(usage("level", UsageKind.string, substring = true)), mapOf("level" to levels))
+        val exact = params.first { it.role == SearchRole.exact }
+        val contains = params.first { it.role == SearchRole.contains }
+        val row = mapOf("level" to "advanced")
+        matchesSearch(row, listOf(exact to "advanced")) shouldBe true
+        matchesSearch(row, listOf(exact to "experts")) shouldBe true
+        matchesSearch(row, listOf(exact to "exp")) shouldBe false
+        matchesSearch(row, listOf(contains to "pert")) shouldBe true
+        matchesSearch(row, listOf(contains to "vanc")) shouldBe true
+        // A value that is not a choice has no label to match.
+        matchesSearch(mapOf("level" to "guru"), listOf(exact to "experts")) shouldBe false
+        // The free-text term reads the label too.
+        matchesAnyText(row, listOf("level"), "expert", mapOf("level" to levels)) shouldBe true
+        matchesAnyText(row, listOf("level"), "expert") shouldBe false
+    }
+
+    "compareForSort orders a column with choices in their declared order, others after them" {
+        fun sorted(descending: Boolean) = listOf("advanced", "", "guru", "beginner", "mid", "alpha")
+            .sortedWith { a, b -> compareForSort(a, b, UsageKind.string, descending, choiceRanks(levels)) }
+        sorted(descending = false) shouldBe listOf("beginner", "mid", "advanced", "alpha", "guru", "")
+        // Reversed, with the blank still last.
+        sorted(descending = true) shouldBe listOf("guru", "alpha", "advanced", "mid", "beginner", "")
+    }
 
     "GSORT.displayColumnKey decodes a namespaced display column, and leaves a fixed or bare one alone" {
         GSORT.displayColumnKey("${GSORT.displayColumnPrefix}year") shouldBe "year"

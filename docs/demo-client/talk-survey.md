@@ -8,7 +8,7 @@ survey asks each speaker for the talk's track and one background question.
 Adding a survey takes three pieces of configuration, and this page shows all three:
 
 - [two traits](#traits) for the survey to collect, in the `base` bundle;
-- [two columns](#columns-in-the-forms-list) for the forms list, also in the `base` bundle;
+- [four columns](#columns-in-the-forms-list) for the forms list, also in the `base` bundle;
 - [the survey itself](#survey), in the `talkSurvey` bundle.
 
 The traits and the columns are the `base` bundle's first additions beyond the client itself. The
@@ -165,8 +165,12 @@ underscores. A column without a `columnId` is searched by its trait's id, so two
 search. The demo names both questionnaire columns, and a search for `firstTalk` with the value `true` finds the
 first-time speakers.
 
-The Track and Audience columns show the stored value, such as `workshop` or `beginner`, rather than the choice's
-label. The First talk column shows `true` or `false`, and a dash until the speaker answers.
+The Track and Audience columns each read a single field that offers choices, so each shows the choice's label, such
+as **Workshop (hands-on)** or **Beginners**, and sorts in the order the choices are listed. A search on either matches
+the stored value or the label. Its filter suggests the choices as soon as it is clicked, and anything else can still
+be typed. The First talk column reads a yes-or-no field, so its filter suggests `true` and `false`, and the column
+shows a dash until the speaker answers. A column whose `display` does more than name one field, such as
+`${city}, ${state}`, works as the name column does: its filter suggests only the values the forms hold.
 
 ## Survey
 
