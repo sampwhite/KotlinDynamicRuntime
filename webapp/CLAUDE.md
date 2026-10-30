@@ -634,8 +634,8 @@ never read their window as confirmation of your edit.
 **In the UI** (issue #1183), for a caller with test access: **Become deployment admin** (one click: `admin` plus
 `allClients`, as `TEP.deploymentAdminEmail`) and **Become a user…** (`/wa/test/become-user`, the fixture's form drawn from
 its own schema) under Account in the menu, and the same as a card at the top of Home. Each identity one becomes is kept in
-`localStorage` against the app config's `dataId` and offered again in one click, greyed once the data is reset. Each
-has an × that forgets it from this browser's list (issue #1503); the user stays, and becoming them again adds them back
+`localStorage` against the app config's `dataId` and offered again in one click, grayed once the data is reset. Each
+has an ✕ that forgets it from this browser's list (issue #1503); the user stays, and becoming them again adds them back
 (`BecomeUserApi.kt`, `BecomeUserPage.kt`, covered by `BecomeUserTest`). The fetch below is still the way in from
 script.
 

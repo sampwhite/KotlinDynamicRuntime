@@ -12,7 +12,6 @@ import react.FC
 import react.Key
 import react.Props
 import react.dom.html.ReactHTML.a
-import react.dom.html.ReactHTML.button
 import react.dom.html.ReactHTML.div
 import react.dom.html.ReactHTML.h1
 import react.dom.html.ReactHTML.h2
@@ -83,6 +82,13 @@ val TestAccessCard = FC<Props> {
     // Read from storage on every draw, so a user just become shows; this only asks for a draw after an entry is forgotten.
     var forgotten by useState(0)
     val (current, _) = identitiesFor(storedIdentities(), appConfig().dataId)
+
+    fun forget(identityKey: String) {
+        error = null
+        forgetStoredIdentity(identityKey)
+        forgotten++
+    }
+
     div {
         className = ClassName("test-access-card")
         h2 { +"This is a test instance" }
@@ -99,10 +105,7 @@ val TestAccessCard = FC<Props> {
                 +"Become a user…"
             }
         }
-        recentIdentityButtons(current, bump, { key ->
-            forgetStoredIdentity(key)
-            forgotten++
-        }) { error = it }
+        recentIdentityButtons(current, bump, ::forget) { error = it }
         error?.let { errorText("Couldn't become that user.", it) }
     }
 }
@@ -110,7 +113,7 @@ val TestAccessCard = FC<Props> {
 /**
  * The `/wa/test/become-user` page (issue #1183): the deployment admin in one click, the fixture's form -- drawn
  * from the endpoint's own schema, as the Simulations page draws each simulation's -- and the identities this
- * browser remembers, the ones from data since reset greyed with no button, since their users are gone.
+ * browser remembers, the ones from data since reset grayed with no way to become them, since their users are gone.
  */
 val BecomeUserPage = FC<Props> {
     val bump = useRefreshBump()
@@ -133,6 +136,12 @@ val BecomeUserPage = FC<Props> {
     }
 
     val (current, stale) = identitiesFor(recent, appConfig().dataId)
+
+    fun forget(identityKey: String) {
+        error = null
+        setRecent(forgetStoredIdentity(identityKey))
+    }
+
     div {
         className = ClassName("card wide")
         h1 { +"Become a user" }
@@ -154,13 +163,13 @@ val BecomeUserPage = FC<Props> {
         }
         if (current.isNotEmpty() || stale.isNotEmpty()) {
             h2 { +"Recent" }
-            recentIdentityButtons(current, bump, { setRecent(forgetStoredIdentity(it)) }) { error = it }
+            recentIdentityButtons(current, bump, ::forget) { error = it }
             for (identity in stale) {
                 p {
                     key = identity.identityKey.unsafeCast<Key>()
                     className = ClassName("type-hint sim-recent-stale")
                     +"${identityLabel(identity)} (from data since reset)"
-                    forgetIdentityButton(identity) { setRecent(forgetStoredIdentity(it)) }
+                    forgetIdentityButton(identity, ::forget)
                 }
             }
             Button {
@@ -233,6 +242,8 @@ private fun ChildrenBuilder.recentIdentityButtons(
                 key = identity.identityKey.unsafeCast<Key>()
                 className = ClassName("become-recent-entry")
                 Button {
+                    // The whole label, for one the entry's width cuts short.
+                    asDynamic()["title"] = identityLabel(identity)
                     onClick = { becomeAndGo(becomeAgainBody(identity), bump, onError) }
                     +identityLabel(identity)
                 }
@@ -242,14 +253,15 @@ private fun ChildrenBuilder.recentIdentityButtons(
     }
 }
 
-/** The × beside a remembered [identity] (issue #1503), telling [onForget] its key. */
+/** The control beside a remembered [identity] (issue #1503), telling [onForget] its key; as a schema form's remove is. */
 private fun ChildrenBuilder.forgetIdentityButton(identity: RecentIdentity, onForget: (String) -> Unit) {
-    button {
-        className = ClassName("become-forget")
+    Button {
+        type = "link"
+        size = "small"
         val what = "Forget ${identityLabel(identity)}"
-        title = what
+        asDynamic()["title"] = what
         asDynamic()["aria-label"] = what
         onClick = { onForget(identity.identityKey) }
-        +"×"
+        +"✕"
     }
 }
