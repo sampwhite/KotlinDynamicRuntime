@@ -4,6 +4,7 @@ import com.dynamicruntime.common.content.MarkdownDocDef
 import com.dynamicruntime.common.content.MarkdownDocService
 import com.dynamicruntime.common.content.checkedMarkdownDocs
 import io.kotest.matchers.collections.shouldContainExactly
+import com.dynamicruntime.common.content.firstDocOrder
 import com.dynamicruntime.common.content.lastDocOrder
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.KdrException
@@ -126,7 +127,7 @@ class HomeUiConfigEndpointTest : StringSpec({
             .obj(UIC.state).list(HFLD.links).map { it!!.toJsonMap() }
         val ids = links.map { it[HFLD.id] }
         val core = listOf(
-            HDOC.readme, HDOC.extending, HDOC.apiKeysAndTokens, HDOC.codeGuide, HDOC.clientDefinition, HDOC.deferredWork,
+            HDOC.startHere, HDOC.readme, HDOC.extending, HDOC.apiKeysAndTokens, HDOC.codeGuide, HDOC.clientDefinition, HDOC.deferredWork,
             HDOC.gedraConfigAndData, HDOC.gedraEntry, HDOC.gedraStates, HDOC.uiBlock, HDOC.reporting,
             HDOC.fileRefs, HDOC.sandboxes, HDOC.userSearch, HDOC.apiKeys, HDOC.gedraWorkflow,
             HDOC.schemaDialect, HDOC.license,
@@ -136,13 +137,17 @@ class HomeUiConfigEndpointTest : StringSpec({
         links.forEach { (it[HFLD.sourcePath] as String).isNotEmpty() shouldBe true }
         // And the one-line description the Documents listing shows beside each (issue #554).
         links.forEach { (it[HFLD.description] as String).isNotEmpty() shouldBe true }
-        // The listing offers the README, the extending guide, the API keys and tokens guide (issue #1403), the code guide,
+        // The listing offers "Start here" (issue #1510), the README, the extending guide, the API keys and tokens guide (issue #1403), the code guide,
         // the schema dialect reference (issue #1347),
         // and the license (issue #1238); the design documents are served but unlisted, as a suite's inner pages -- the
         // conference demo's, say -- are (issue #1136).
         val listed = links.filter { it[HFLD.listed] == true }.map { it[HFLD.id] }
-        val offered = listOf(HDOC.readme, HDOC.extending, HDOC.apiKeysAndTokens, HDOC.codeGuide, HDOC.schemaDialect, HDOC.license)
+        val offered = listOf(
+            HDOC.startHere, HDOC.readme, HDOC.extending, HDOC.apiKeysAndTokens, HDOC.codeGuide, HDOC.schemaDialect, HDOC.license,
+        )
         listed shouldContainAll offered
+        // "Start here" reads first, ahead of the README (issue #1510): it is the map of the rest.
+        listed.first() shouldBe HDOC.startHere
         // The license reads last, after the documents components loaded after `common` contribute (issue #1238).
         listed.last() shouldBe HDOC.license
         core.filterNot { it in offered }.forEach { it shouldNotBeIn listed }
@@ -164,8 +169,10 @@ class HomeUiConfigEndpointTest : StringSpec({
         page[HFLD.listed] shouldBe false
         page[HFLD.sourcePath] shouldBe "docs/test-suite/page.md"
         (page[HFLD.buildId] as String).isNotEmpty() shouldBe true
-        // The core documents are still there, listed, ahead of it: component order is display order.
-        links.first()[HFLD.id] shouldBe HDOC.readme
+        // The core documents are still there, listed, ahead of it: component order is display order, after "Start here",
+        // which reads first whichever component declares a document (issue #1510).
+        links.first()[HFLD.id] shouldBe HDOC.startHere
+        links[1][HFLD.id] shouldBe HDOC.readme
     }
 
     "two documents with one id, or one source path, are refused at boot" {
@@ -174,7 +181,9 @@ class HomeUiConfigEndpointTest : StringSpec({
         shouldThrow<KdrException> { checkedMarkdownDocs(listOf(doc("a", "x.md"), doc("b", "x.md"))) }.message shouldContain "'x.md'"
         // Listing order (issue #1238): by order, and within one order as declared.
         val last = MarkdownDocDef("z", "z", "z.md", "d", order = lastDocOrder)
-        checkedMarkdownDocs(listOf(last, doc("a", "a.md"), doc("b", "b.md"))).map { it.docId } shouldContainExactly listOf("a", "b", "z")
+        val first = MarkdownDocDef("f", "f", "f.md", "d", order = firstDocOrder)
+        checkedMarkdownDocs(listOf(last, doc("a", "a.md"), first, doc("b", "b.md"))).map { it.docId } shouldContainExactly
+            listOf("f", "a", "b", "z")
         shouldThrow<KdrException> { checkedMarkdownDocs(listOf(doc("demo/x", "x.md"))) }.message shouldContain "'demo/x'"
     }
 

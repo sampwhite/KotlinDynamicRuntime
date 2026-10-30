@@ -1,7 +1,7 @@
 """Draws a step-strip banner: a part's steps as a row of stroke icons, the part named above them (issue #1465).
 
-The walk-through's part banners (docs/images/walk-part<n>.svg, issue #1429) are what the PARTS list draws, byte for
-byte; to make another, add an entry and run with the output directory:
+The walk-through's part banners (docs/images/walk-part<n>.svg, issue #1429) and the README's (docs/images/overview.svg,
+issue #1510) are what the PARTS list draws, byte for byte; to make another, add an entry and run with the output directory:
 
     python3 -I .claude/skills/kdr-images/banner.py docs/images
 
@@ -52,6 +52,13 @@ WALK_ABOUT = [
     "       other parts' banners from one layout; edit the three together. -->",
 ]
 
+# The README's banner (issue #1510): what an application built on the runtime does, from configuring it to its report.
+OVERVIEW_ABOUT = [
+    "  <!-- The README's banner (README.md, issue #1510): an application built on the runtime, from its configuration to",
+    "       its report. Drawn on its own dark ground so it reads on GitHub's light and dark pages as in the app. Generated",
+    "       by the kdr-images skill's banner.py, in the walk-through banners' layout. -->",
+]
+
 # Each banner: its file, kicker, title, accent (a PALETTE key), comment lines, <title> text, and steps as (icon, label).
 PARTS = [
  ('walk-part1.svg', 'Part 1', 'The conference demo', 'accent-bright', WALK_ABOUT,
@@ -60,6 +67,9 @@ PARTS = [
  ('walk-part2.svg', 'Part 2', 'A client of your own', 'design', WALK_ABOUT,
   'Part 2 of the walk-through: create a client, open its sandbox, change its words, design a trait, make a workflow, publish, invite somebody, and read the report.',
   [('building','Client'),('sandbox','Sandbox'),('words','Words'),('fields','Trait'),('flow','Workflow'),('publish','Publish'),('mail','Invite'),('bars','Report')]),
+ ('overview.svg', 'KotlinDynamicRuntime', 'Forms, workflows, and reports, from configuration', 'accent-bright', OVERVIEW_ABOUT,
+  'An application built on KotlinDynamicRuntime: configure its forms and workflows, try them in a sandbox, publish, and people fill in forms, review them, approve them, and read the report.',
+  [('braces','Configure'),('sandbox','Try it'),('publish','Publish'),('survey','Fill in'),('people','Review'),('check','Approve'),('bars','Report')]),
  ('walk-part3.svg', 'Part 3', 'For developers', 'amber', WALK_ABOUT,
   'Part 3 of the walk-through: make an API key, find an endpoint in the catalog, call it, build a workflow from its JSON in the bundle editor or with an AI assistant, and revoke the key.',
   [('key','API key'),('braces','Catalog'),('terminal','Call it'),('spark','Editor or AI'),('flow','Workflow'),('revoke','Revoke')]),

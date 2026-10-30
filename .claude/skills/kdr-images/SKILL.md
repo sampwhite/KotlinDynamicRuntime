@@ -38,8 +38,8 @@ as kdn's `embedImages` does beside its `embedDocs`. Keep the file once, in `docs
 `src/main/resources`.
 
 The core images are in `base/common` (`email-to-users.png`, `file-refs.svg`, `sandbox.svg`, declared in
-`CommonComponent.images`), the sample's in `sample` (`site-visit-flow.svg`), and the walk-through's banners in
-`docs/images/` (kdn).
+`CommonComponent.images`), the sample's in `sample` (`site-visit-flow.svg`), and the document images in `docs/images/`:
+the README's banner (`overview.svg`, common's `embedImages`) and the walk-through's (kdn's).
 
 ### What the boot refuses
 
@@ -115,7 +115,8 @@ python3 -I .claude/skills/kdr-images/banner.py docs/images
 
 To make another, add an entry to `PARTS` (its file, kicker, title, accent as a `PALETTE` key, comment lines, `<title>`
 text, and steps as `(icon, label)`), run it, and commit the script and what it wrote together. Run unchanged, it
-rewrites the walk-through's banners byte for byte, which is a quick check that an edit to the layout left them alone.
+rewrites the walk-through's banners and the README's byte for byte, which is a quick check that an edit to the layout
+left them alone.
 
 **Its limit:** the labels are drawn into the image, so on a phone they shrink with it (a 960-wide strip at 375 pixels
 draws 13-pixel labels at about 5). Fine for a banner whose alt text lists the steps; not for an image whose words are

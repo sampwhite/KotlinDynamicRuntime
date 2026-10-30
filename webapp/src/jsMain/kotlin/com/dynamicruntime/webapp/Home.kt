@@ -38,6 +38,9 @@ val Home = FC<Props> {
     var error by useState<DisplayError?>(null)
 
     val generation = useRefreshGeneration()
+    // The copy's links, as a document's are (issue #1510): `/docs/...` to the in-app document, `/wa/...` under the live
+    // app root, so the intro can point to "Start here" as the public home's sections point to the walk-through.
+    val copyLinks = useShellFacts().copyLinkResolver()
 
     // Re-read the home config on every refresh generation (issue #115): on mount, and whenever a navigation or
     // state mutation bumps it.
@@ -117,13 +120,13 @@ val Home = FC<Props> {
                             }
                         }
                         copy.opt(HFRAG.homeNs, HFRAG.title)?.let { h1 { +it } }
-                        copy.opt(HFRAG.homeNs, HFRAG.intro)?.let { Markdown { source = it } }
+                        copy.opt(HFRAG.homeNs, HFRAG.intro)?.let { Markdown { source = it; linkResolver = copyLinks } }
                         // A note beneath the intro (issue #1221), empty as shipped: room for a component's own word on
                         // a deployment -- a flavor's, say -- without its competing with whoever rewords the intro.
                         copy.opt(HFRAG.homeNs, HFRAG.note)?.takeIf { it.isNotBlank() }?.let {
                             div {
                                 className = ClassName("home-note")
-                                Markdown { source = it }
+                                Markdown { source = it; linkResolver = copyLinks }
                             }
                         }
                         // The public home page (issue #1324): for someone signed in to `public` -- never a visitor who

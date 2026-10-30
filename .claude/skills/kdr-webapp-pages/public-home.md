@@ -57,6 +57,11 @@ anyway leaves the card in place with a note naming which (`imageUploadsNote`) an
 client exists, and the image is added from My client. The client's own note is labeled "Internal note" here, to keep
 it apart from the home page's.
 
+**Home's copy resolves links as a document's do** (issue #1510). The intro and the note are drawn with the shell's
+`copyLinkResolver`, as `PublicHome`'s sections are, so `[start here](/docs/start-here.md)` opens the in-app document
+rather than asking the server for `/docs/...`, which is a 404. Both the shared intro and the `reference` flavor's
+point to "Start here" that way.
+
 ## The public home page (issue #1324)
 
 For a caller **signed in** to `public` (`isPublicHome`), Home draws `PublicHome` under its hero and intro: what a
