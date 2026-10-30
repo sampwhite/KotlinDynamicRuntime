@@ -29,6 +29,9 @@ import react.use
  * - [sandboxWayBackUserId] is, in a sandbox, the user the app bar's "Back to <client>" switches to ([sandboxWayBack]),
  *   so a page can offer the same way back where it is wanted (a sandbox's own Clients page, issue #1422). Null outside
  *   a sandbox, when the person has no user to go back to, and until the shell has been told.
+ * - [reach] is what the caller may do (issue #1479), [timeZone] and [timeZoneLabel] the zone their moments are shown in,
+ *   and [sandboxOfName] the client whose sandbox they are in -- what Profile's account panel says of them. Nothing
+ *   (no reach, no zone, no sandbox) until the shell has been told.
  * - [whatIsThisLink] and [whatIsThisHide] are the words of every "What is this?" link and of closing what it opened
  *   ([WhatIsThis], issue #1330): the app's words, not a page's, so they are the shell's copy (the `home` file's
  *   `whatIsThis` namespace) rather than each page's. Null until the shell's copy has arrived, when the link says it
@@ -45,8 +48,26 @@ data class ShellFacts(
     val images: Map<String, String> = emptyMap(),
     val inSandbox: Boolean = false,
     val sandboxWayBackUserId: Long? = null,
+    val reach: CallerReach = CallerReach(),
+    val timeZone: String? = null,
+    val timeZoneLabel: String? = null,
+    val sandboxOfName: String? = null,
     val whatIsThisLink: String? = null,
     val whatIsThisHide: String? = null,
+)
+
+/**
+ * What the caller may do (issue #1479), as the shell's flags say it: administer users at all ([managesUsers]), across
+ * every client ([allClients]), a client of their own or every one ([administersClient]), be an editor of their client
+ * ([editsClient]), and open its sandbox ([opensSandbox]). What Profile's "What you can do here" is built from
+ * ([profileAbilities]); the pages each flag drives keep reading the shell config they always have.
+ */
+data class CallerReach(
+    val managesUsers: Boolean = false,
+    val allClients: Boolean = false,
+    val administersClient: Boolean = false,
+    val editsClient: Boolean = false,
+    val opensSandbox: Boolean = false,
 )
 
 /** The context carrying the [ShellFacts]; [App] is the sole provider. The default is "not yet told". */
@@ -70,6 +91,16 @@ fun shellFactsOf(config: HomeConfig, shellCopy: Copy? = null): ShellFacts = Shel
     images = config.images,
     inSandbox = switchesFromSandbox(config),
     sandboxWayBackUserId = config.sandboxOf?.let { sandboxWayBack(it, config.users)?.userId },
+    reach = CallerReach(
+        managesUsers = config.canManageUsers,
+        allClients = config.canSeeAllClients,
+        administersClient = config.administersClient,
+        editsClient = config.browsesUsers,
+        opensSandbox = config.canOpenSandbox,
+    ),
+    timeZone = config.timeZone,
+    timeZoneLabel = config.timeZoneLabel,
+    sandboxOfName = config.sandboxOf?.name,
     whatIsThisLink = shellCopy?.opt(HFRAG.whatIsThisNs, HFRAG.whatIsThisLink)?.ifBlank { null },
     whatIsThisHide = shellCopy?.opt(HFRAG.whatIsThisNs, HFRAG.whatIsThisHide)?.ifBlank { null },
 )

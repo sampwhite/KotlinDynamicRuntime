@@ -11,10 +11,12 @@ import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.launch
 import react.ChildrenBuilder
 import react.FC
+import react.Key
 import react.Props
 import react.dom.html.ReactHTML.div
 import react.dom.html.ReactHTML.h1
-import react.dom.html.ReactHTML.h2
+import react.dom.html.ReactHTML.h3
+import react.dom.html.ReactHTML.li
 import react.dom.html.ReactHTML.p
 import react.dom.html.ReactHTML.span
 import react.dom.html.ReactHTML.table
@@ -23,6 +25,7 @@ import react.dom.html.ReactHTML.td
 import react.dom.html.ReactHTML.th
 import react.dom.html.ReactHTML.thead
 import react.dom.html.ReactHTML.tr
+import react.dom.html.ReactHTML.ul
 import react.useEffect
 import react.useState
 import web.cssom.ClassName
@@ -49,10 +52,16 @@ val Profile = FC<Props> {
     var code by useState("")
     // The form token, set once a verification code has been sent, also marks the "enter the code" step.
     var token by useState<String?>(null)
-    var error by useState<DisplayError?>(null)
-    var note by useState<String?>(null)
     var busy by useState(false)
     var devFilled by useState(false)
+    // Each panel's own result (rule 3 of #1477), drawn inside it, never in one line shared by the page.
+    var usersError by useState<DisplayError?>(null)
+    var usersNote by useState<String?>(null)
+    var nameError by useState<DisplayError?>(null)
+    var nameNote by useState<String?>(null)
+    var signInError by useState<DisplayError?>(null)
+    var signInNote by useState<String?>(null)
+    var logoutError by useState<DisplayError?>(null)
 
     /**
      * The name field's draft. Seeded from the loaded config rather than held independently, so a refresh bump
@@ -104,15 +113,14 @@ val Profile = FC<Props> {
 
     fun t(ns: String, key: String, dflt: String): String = copy.t(ns, key, dflt)
 
-    /** Runs a "suspend" [block] with busy/error bookkeeping. */
-    fun run(block: suspend () -> Unit) {
+    /** Runs a "suspend" [block] with busy bookkeeping, its failure told to [onError] -- the panel it was asked from. */
+    fun run(onError: (DisplayError) -> Unit, block: suspend () -> Unit) {
         busy = true
-        error = null
         profileScope.launch {
             try {
                 block()
             } catch (e: Throwable) {
-                error = userFacingError(e)
+                onError(userFacingError(e))
             } finally {
                 busy = false
             }
@@ -122,8 +130,9 @@ val Profile = FC<Props> {
     /** Step one of a password change: email a code, framed for setting a password. */
     fun sendCode() {
         val cfg = config ?: return
-        note = null
-        run {
+        signInError = null
+        signInNote = null
+        run({ signInError = it }) {
             val tk = AuthApi.createToken()
             AuthApi.sendVerifyUser(cfg.loginId, tk, addPassword = true)
             token = tk
@@ -136,17 +145,23 @@ val Profile = FC<Props> {
         }
     }
 
+    /** Takes the password step back to its start: no code, no password typed. */
+    fun resetPasswordStep() {
+        token = null
+        code = ""
+        password = ""
+        devFilled = false
+    }
+
     /** Step two: save the new password against the emailed code. */
     fun savePassword() {
         val cfg = config ?: return
         val tk = token ?: return
-        run {
+        signInError = null
+        run({ signInError = it }) {
             AuthApi.setPassword(cfg.loginId, password, tk, code.trim())
-            password = ""
-            code = ""
-            token = null
-            devFilled = false
-            note = t("password", "saved", "Your password was saved.")
+            resetPasswordStep()
+            signInNote = t("password", "saved", "Your password was saved.")
             // Bump instead of reloading by hand: the generation effect above re-reads config + copy, and the
             // account menu follows too (issue #115).
             bump()
@@ -157,21 +172,29 @@ val Profile = FC<Props> {
      * Saves the name the caller is shown under (issue #323). A blank value clears it, which is a legitimate
      * thing to want -- it falls the display back to the login name -- so it is not treated as an empty form.
      */
-    fun saveName() = run {
-        ProfileApi.setName(draftName.trim())
-        note = if (draftName.isBlank()) {
-            t("profile", "nameCleared", "Your name was cleared.")
-        } else {
-            t("profile", "nameSaved", "Your name was saved.")
+    fun saveName() {
+        nameError = null
+        nameNote = null
+        run({ nameError = it }) {
+            ProfileApi.setName(draftName.trim())
+            nameNote = if (draftName.isBlank()) {
+                t("profile", "nameCleared", "Your name was cleared.")
+            } else {
+                t("profile", "nameSaved", "Your name was saved.")
+            }
+            // Bump so the app bar follows: it shows the same displayName this page just changed.
+            bump()
         }
-        // Bump so the app bar follows: it shows the same displayName this page just changed.
-        bump()
     }
 
-    fun removePassword() = run {
-        ProfileApi.clearPassword()
-        note = t("password", "removedNote", "Your password was removed. You can still sign in with a code.")
-        bump()
+    fun removePassword() {
+        signInError = null
+        signInNote = null
+        run({ signInError = it }) {
+            ProfileApi.clearPassword()
+            signInNote = t("password", "removedNote", "Your password was removed. You can still sign in with a code.")
+            bump()
+        }
     }
 
     /**
@@ -179,37 +202,52 @@ val Profile = FC<Props> {
      * moves the session to another of theirs, so the app goes home and re-reads, as after a switch (issue #1015);
      * removing another only needs the page and the badge to re-read.
      */
-    fun removePublic(target: UserChoice) = run {
-        AuthApi.removePublicUser(target.userId)
-        confirmingRemove = null
-        if (target.isCurrent) {
-            afterSessionChange(bump)
-        } else {
-            note = t("placeholder", "removedNote", "The public account was removed.")
-            bump()
+    fun removePublic(target: UserChoice) {
+        usersError = null
+        usersNote = null
+        run({ usersError = it }) {
+            AuthApi.removePublicUser(target.userId)
+            confirmingRemove = null
+            if (target.isCurrent) {
+                afterSessionChange(bump)
+            } else {
+                usersNote = t("placeholder", "removedNote", "The public account was removed.")
+                bump()
+            }
         }
     }
 
     /**
      * Becomes [target] and **stays on this page** (issue #1330): a fresh session as that user, then a bump, so the
      * page, the table and the bar re-read as the new user. From inside a sandbox the switch is the leave (issue #1197),
-     * as the bar's switcher makes it.
+     * as the bar's switcher makes it. Every panel's result is of the user left behind, so each is cleared.
      */
-    fun switchTo(target: UserChoice) = run {
-        if (shellFacts.inSandbox) AuthApi.leaveSandbox(target.userId) else AuthApi.switchUser(target.userId)
-        confirmingRemove = null
-        note = null
-        afterSessionChange(bump, listOf(HP.page to HMENU.pageProfile))
+    fun switchTo(target: UserChoice) {
+        usersError = null
+        usersNote = null
+        nameNote = null
+        nameError = null
+        signInNote = null
+        signInError = null
+        run({ usersError = it }) {
+            if (shellFacts.inSandbox) AuthApi.leaveSandbox(target.userId) else AuthApi.switchUser(target.userId)
+            confirmingRemove = null
+            afterSessionChange(bump, listOf(HP.page to HMENU.pageProfile))
+        }
     }
 
     /** Chooses [target] as the user a sign-in by the address lands on (issue #1330); the bar's list follows the bump. */
-    fun makeDefault(target: UserChoice) = run {
-        myUsers = AuthApi.setDefaultUser(target.userId)
-        note = t("users", "nextSignInSet", "Your next sign-in now takes you to that user.")
-        bump()
+    fun makeDefault(target: UserChoice) {
+        usersError = null
+        usersNote = null
+        run({ usersError = it }) {
+            myUsers = AuthApi.setDefaultUser(target.userId)
+            usersNote = t("users", "nextSignInSet", "Your next sign-in now takes you to that user.")
+            bump()
+        }
     }
 
-    fun logout() = run {
+    fun logout() = run({ logoutError = it }) {
         AuthApi.logout()
         navigate(emptyList())
         bump()
@@ -221,14 +259,9 @@ val Profile = FC<Props> {
      * make it the one a sign-in lands on, or remove it when it is a `public` one (issue #752, two steps, since it is
      * permanent). The help above it says what these users are, filled from the table's own facts.
      */
-    fun ChildrenBuilder.usersSection() {
+    fun ChildrenBuilder.usersTable() {
         val rows = profileUserRows(myUsers, config?.user?.roles)
         val nameShown = showsNameColumn(myUsers)
-        // The status stays in view; the concept behind it -- why one sign-in reaches several users -- is a click away.
-        WhatIsThis {
-            heading = t("users", "title", "Your users")
-            text = copy.explanation("users")
-        }
         div {
             className = ClassName("subtitle")
             Markdown {
@@ -347,192 +380,206 @@ val Profile = FC<Props> {
                 }
             }
         }
+        panelNote(usersError, usersNote)
+    }
+
+    /**
+     * Setting, changing, or removing a password (issue #96): the status, then "Email me a code", then the code and the
+     * new password, saved by the panel's one Save; "Remove password" asks first (rule 6 of #1477).
+     */
+    fun ChildrenBuilder.signInBody(cfg: ProfileConfig) {
+        val has = cfg.features.hasPassword
+        p {
+            className = ClassName("subtitle")
+            +if (has) {
+                t("password", "hasPassword", "You have a password set. You can change it or remove it.")
+            } else {
+                t("password", "noPassword", "You have not set a password. You currently sign in with a verification code.")
+            }
+        }
+        if (token == null) {
+            // The emailed copy is framed for a password up front, so the code is requested explicitly.
+            div {
+                className = ClassName("row")
+                Button {
+                    loading = busy
+                    onClick = { sendCode() }
+                    // The button says what the code is for -- on its own it reads as unrelated to passwords.
+                    +if (has) {
+                        t("password", "sendCodeChange", "Email me a code so I can change my password")
+                    } else {
+                        t("password", "sendCodeSet", "Email me a code so I can set a password")
+                    }
+                }
+            }
+            if (has) {
+                DangerConfirm {
+                    recordKey = cfg.user.userId.toString()
+                    actionText = t("password", "remove", "Remove password") + "…"
+                    question = t(
+                        "password", "removeQuestion",
+                        "Remove your password? You can still sign in with a verification code, and set a password again later.",
+                    )
+                    confirmText = t("password", "removeConfirm", "Remove password")
+                    keepText = t("password", "keep", "Keep password")
+                    inProgress = busy
+                    onConfirm = { removePassword() }
+                }
+            }
+            panelNote(signInError, signInNote)
+        } else {
+            p {
+                className = ClassName("subtitle")
+                MarkdownInline {
+                    source = t("password", "codeSent", $$"We emailed a verification code to `${user.email}`.")
+                        .evalTemplate(mapOf("user" to mapOf("email" to cfg.loginId)))
+                }
+            }
+            // Code first, then the new password -- the order the copy above just described ("we emailed a
+            // code"), and the same order the registration flow uses, so the one step that appears in both
+            // places does not swap its fields depending on where you reached it from.
+            textField(
+                t("password", "codeLabel", "Verification code"), code, disabled = busy,
+                autoComplete = AC.oneTimeCode,
+            ) { code = it }
+            textField(
+                t("password", "newPasswordLabel", "New password"), password, isPassword = true,
+                disabled = busy, autoComplete = AC.newPassword,
+            ) { password = it }
+
+            // The shared rule the backend enforces, surfaced as a correction below the field rather than an
+            // instruction under it -- and only once there is something to correct. Further rules (an upper-case
+            // character, a digit) will arrive through the same one message.
+            val passwordRule = if (password.isEmpty()) null else passwordRuleError(password)
+            passwordRule?.let {
+                p {
+                    className = ClassName("error-text")
+                    +it
+                }
+            }
+            if (devFilled) {
+                p {
+                    className = ClassName("type-hint")
+                    +"Code auto-filled from the simulated email (local dev only)."
+                }
+            }
+            SaveBar {
+                saveText = t("password", "save", "Save password")
+                discardText = t("password", "cancel", "Cancel")
+                saving = busy
+                canSave = password.isNotEmpty() && code.isNotBlank() && passwordRule == null
+                failure = signInError
+                failureLead = t("password", "saveFailed", "Couldn't save your password.")
+                onSave = { savePassword() }
+                onDiscard = {
+                    resetPasswordStep()
+                    signInError = null
+                }
+            }
+        }
     }
 
     div {
-        // Wider while the users table shows (issue #1330): its columns and a row of actions do not fit a form's card.
-        // Wide for a table: the person's users, or their API keys (issue #1402), which every profile outside a sandbox shows.
-        className = ClassName(if (showsUsersTable(myUsers) || !shellFacts.inSandbox) "card profile-wide" else "card")
+        // Wide for its tables (issues #1330, #1402): the person's users, and their API keys, which every profile shows
+        // -- a sandbox's too (issue #1453) -- so the card is always wide.
+        className = ClassName("card profile-wide")
         h1 { +t("profile", "title", "Your profile") }
 
-        val user = config?.user
-        p {
-            className = ClassName("subtitle")
-            // Markdown, so the copy can set the name apart from the prose; substitution runs first, so a name
-            // carrying Markdown or HTML is escaped as text rather than interpreted.
-            MarkdownInline {
-                // The entity's business name when this is an entity account, the personal name otherwise --
-                // one rule, on UserProfile.displayName, shared with the app bar (entity accounts).
-                source = t("profile", "signedInAs", $$"Signed in as **${user.publicName}**")
-                    .evalTemplate(mapOf("user" to mapOf("publicName" to (user?.displayName ?: "your account"))))
-            }
-        }
+        val cfg = config
+        val user = cfg?.user
+        if (cfg != null && user != null) {
+            // How the account is put together (rule 7 of #1477), before any panel: the address, the person's users, and
+            // the access of the one acted as.
+            structureLine(profileStructure(cfg.loginId, myUsers, user), t("profile", "structureLabel", "How your account is put together"))
 
-        // The account's email address -- the identity the display name sits on top of, and the one thing not
-        // otherwise visible on this page once a name is set. It is the login id (`loginId` = the primary
-        // contact), rendered in a code span like the "we emailed a code to ..." line uses, so it reads as an
-        // address rather than prose. Absent only for an account with no primary contact, which the page has
-        // no other business showing.
-        config?.loginId?.takeIf { it.isNotBlank() }?.let { email ->
-            p {
-                className = ClassName("subtitle")
-                MarkdownInline {
-                    source = t("profile", "emailLine", $$"Email: `${user.email}`")
-                        .evalTemplate(mapOf("user" to mapOf("email" to email)))
+            val usersShown = showsUsersTable(myUsers)
+            val signInShown = cfg.features.canSetPassword
+            val panels = buildList {
+                add(PRFP.account to t("account", "title", "Your account"))
+                if (usersShown) add(PRFP.users to t("users", "title", "Your users"))
+                add(PRFP.name to t("profile", "nameTitle", "Your name"))
+                if (signInShown) add(PRFP.signIn to t("password", "title", "Sign-in"))
+                add(PRFP.keys to t("profile", "keysTitle", "API keys"))
+            }
+            panelLinks(panels)
+
+            // ---- Your account: read-only (issue #1479) ---------------------
+            panel(PRFP.account, t("account", "title", "Your account")) {
+                for (fact in profileAccountFacts(user, cfg.loginId, myUsers, shellFacts)) {
+                    readOnlyField(t("account", fact.key, fact.label), fact.value)
                 }
-            }
-        }
-
-        // The client this user belongs to (issue #1330), by its name -- what a person calls it -- with the id when it has
-        // none. Taken from the person's own entry in their users, which carries the name; the profile carries the id.
-        val clientId = user?.client?.ifBlank { null }
-        if (clientId != null) {
-            p {
-                className = ClassName("subtitle")
-                MarkdownInline {
-                    source = t("profile", "clientLine", $$"Client: **${user.clientName}**")
-                        .evalTemplate(mapOf("user" to mapOf("clientName" to profileClientName(myUsers, clientId))))
-                }
-            }
-        }
-
-        // The person's users (issues #1330, #752): who they can act as, which one they are, and which one a sign-in
-        // lands on -- the thing the person most often finds confusing -- with the switch, the default and a `public`
-        // user's removal on each row. Shown when there is more than one user, or a `public` one to remove; a person
-        // with one ordinary user has nothing to choose, and the client line above says where they are.
-        if (showsUsersTable(myUsers)) usersSection()
-
-        // Sits with the identity line, not among the password controls: what you are called is not a
-        // credential, which is also why saving it needs no emailed code.
-        h2 { +t("profile", "nameTitle", "Your name") }
-        p {
-            className = ClassName("subtitle")
-            +t(
-                "profile", "nameHelp",
-                "The name you are shown under. It need not be unique, and is not how you sign in. " +
-                    "Leave it empty to be shown by your login email instead.",
-            )
-        }
-        textField(t("profile", "nameLabel", "Name"), draftName, disabled = busy) { draftName = it }
-        div {
-            className = ClassName("row")
-            Button {
-                type = "primary"
-                loading = busy
-                disabled = draftName.trim() == (config?.user?.name ?: "")
-                onClick = { saveName() }
-                +t("profile", "nameSave", "Save name")
-            }
-        }
-
-        error?.let { errorText(it) }
-        note?.let {
-            p {
-                className = ClassName("form-ok")
-                +it
-            }
-        }
-
-        val features = config?.features
-        if (features?.canSetPassword == true) {
-            val has = features.hasPassword
-            h2 { +if (has) t("password", "changeTitle", "Change your password") else t("password", "setTitle", "Set a password") }
-            p {
-                className = ClassName("subtitle")
-                +if (has) {
-                    t("password", "hasPassword", "You have a password set. You can change it or remove it.")
-                } else {
-                    t("password", "noPassword", "You have not set a password. You currently sign in with a verification code.")
-                }
-            }
-
-            if (token == null) {
-                // The emailed copy is framed for a password up front, so the code is requested explicitly.
-                div {
-                    className = ClassName("row")
-                    Button {
-                        loading = busy
-                        onClick = { sendCode() }
-                        // The button says what the code is for -- on its own it reads as unrelated to passwords.
-                        +if (has) {
-                            t("password", "sendCodeChange", "Email me a code so I can change my password")
-                        } else {
-                            t("password", "sendCodeSet", "Email me a code so I can set a password")
-                        }
-                    }
-                    if (has) {
-                        Button {
-                            danger = true
-                            disabled = busy
-                            onClick = { removePassword() }
-                            +t("password", "remove", "Remove password")
+                h3 { +t("account", "canDoTitle", "What you can do here") }
+                ul {
+                    className = ClassName("profile-abilities")
+                    for (ability in profileAbilities(shellFacts.reach)) {
+                        li {
+                            key = ability.unsafeCast<Key>()
+                            +t("account", ability, profileAbilityDefaults[ability] ?: ability)
                         }
                     }
                 }
-            } else {
+            }
+
+            // ---- Your users: live (issues #1330, #752) ---------------------
+            //
+            // Who the person can act as, which one they are, and which one a sign-in lands on -- the thing the person
+            // most often finds confusing -- with the switch, the default and a `public` user's removal on each row.
+            // Shown when there is more than one user, or a `public` one to remove; a person with one ordinary user has
+            // nothing to choose, and the account panel says where they are.
+            if (usersShown) {
+                panel(PRFP.users, t("users", "title", "Your users"), copy.explanation("users"), PanelKind.live) {
+                    usersTable()
+                }
+            }
+
+            // ---- Your name: a draft (issue #323) ---------------------------
+            //
+            // Its own panel, not among the password controls: what you are called is not a credential, which is also
+            // why saving it needs no emailed code.
+            val nameDirty = draftName.trim() != (user.name ?: "")
+            panel(PRFP.name, t("profile", "nameTitle", "Your name"), kind = PanelKind.draft, dirty = nameDirty) {
                 p {
                     className = ClassName("subtitle")
-                    MarkdownInline {
-                        source = t("password", "codeSent", $$"We emailed a verification code to `${user.email}`.")
-                            .evalTemplate(mapOf("user" to mapOf("email" to (config?.loginId ?: ""))))
+                    +t(
+                        "profile", "nameHelp",
+                        "The name you are shown under. It need not be unique, and is not how you sign in. " +
+                            "Leave it empty to be shown by your login email instead.",
+                    )
+                }
+                textField(t("profile", "nameLabel", "Name"), draftName, disabled = busy) {
+                    draftName = it
+                    nameNote = null
+                }
+                SaveBar {
+                    saveText = t("profile", "nameSave", "Save name")
+                    saving = busy
+                    canSave = nameDirty
+                    failure = nameError
+                    failureLead = t("profile", "nameFailed", "Couldn't save your name.")
+                    onSave = { saveName() }
+                    onDiscard = {
+                        draftName = user.name ?: ""
+                        nameError = null
                     }
                 }
-                // Code first, then the new password -- the order the copy above just described ("we emailed a
-                // code"), and the same order the registration flow uses, so the one step that appears in both
-                // places does not swap its fields depending on where you reached it from.
-                textField(
-                    t("password", "codeLabel", "Verification code"), code, disabled = busy,
-                    autoComplete = AC.oneTimeCode,
-                ) { code = it }
-                textField(
-                    t("password", "newPasswordLabel", "New password"), password, isPassword = true,
-                    disabled = busy, autoComplete = AC.newPassword,
-                ) { password = it }
+                panelNote(null, nameNote)
+            }
 
-                // The shared rule the backend enforces, surfaced as a correction below the action rather than
-                // an instruction under the field -- and only once there is something to correct. Further rules
-                // (an upper-case character, a digit) will arrive through the same one message.
-                val passwordError = if (password.isEmpty()) null else passwordRuleError(password)
-
-                div {
-                    className = ClassName("row")
-                    Button {
-                        type = "primary"
-                        loading = busy
-                        disabled = password.isEmpty() || code.isBlank() || passwordError != null
-                        onClick = { savePassword() }
-                        +t("password", "save", "Save password")
-                    }
-                    Button {
-                        type = "link"
-                        disabled = busy
-                        onClick = {
-                            token = null
-                            code = ""
-                            password = ""
-                            devFilled = false
-                        }
-                        +t("password", "cancel", "Cancel")
-                    }
-                }
-                passwordError?.let {
-                    p {
-                        className = ClassName("error-text")
-                        +it
-                    }
-                }
-                if (devFilled) {
-                    p {
-                        className = ClassName("type-hint")
-                        +"Code auto-filled from the simulated email (local dev only)."
-                    }
+            // ---- Sign-in: a draft, its removal confirmed (issue #96) -------
+            if (signInShown) {
+                panel(PRFP.signIn, t("password", "title", "Sign-in"), kind = PanelKind.draft, dirty = token != null && password.isNotEmpty()) {
+                    signInBody(cfg)
                 }
             }
-        }
 
-        // The person's API keys (issue #1402), for programs that act as them -- in a sandbox too (issue #1453), where a key
-        // acts with the standing the sandbox's rules give this user, as a session does, and stays in the sandbox.
-        ApiKeysSection {}
+            // ---- API keys: live (issue #1402) ------------------------------
+            //
+            // For programs that act as the person -- in a sandbox too (issue #1453), where a key acts with the standing
+            // the sandbox's rules give this user, as a session does, and stays in the sandbox.
+            panel(PRFP.keys, t("profile", "keysTitle", "API keys"), kind = PanelKind.live) {
+                ApiKeysSection { inPanel = true }
+            }
+        }
 
         div {
             className = ClassName("row")
@@ -543,6 +590,7 @@ val Profile = FC<Props> {
                 +t("profile", "logout", "Log out")
             }
         }
+        logoutError?.let { errorText(t("profile", "logoutFailed", "Couldn't log out."), it) }
     }
 }
 

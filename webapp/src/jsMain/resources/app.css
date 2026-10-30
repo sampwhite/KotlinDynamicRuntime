@@ -1387,6 +1387,9 @@ textarea.json-edit.json-field { min-height: 4.5rem; }
 /* A field fills its row, which at this width is far longer than a name, a password, or a key's purpose needs: it
    keeps the width it had in the 780px card. Descendants rather than children, for the API keys section's own. */
 .card.profile-wide .row > .ant-input, .card.profile-wide .row > .ant-input-affix-wrapper { max-width: 560px; }
+/* What the caller can do here (issue #1479), a short list under the account panel's facts. */
+.profile-abilities { margin-bottom: 0; padding-left: 20px; }
+.profile-abilities > li + li { margin-top: 2px; }
 /* "What is this?" (issue #1330): a small, muted link on a heading's line -- or a line of its own -- that opens an
    explanation inline beneath it, set apart by the accent's rule down its edge. The heading keeps its section spacing,
    which the card's rhythm would otherwise flatten now that the heading is not the card's own child. */

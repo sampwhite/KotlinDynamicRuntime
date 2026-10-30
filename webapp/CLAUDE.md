@@ -155,11 +155,16 @@ Current UI-config endpoints:
   address logs in as, and `POST /user/self/removePublic {userId}` permanently removes one of the person's own
   `public` users (issue #752), down to nothing -- a `public` user's owner registered themselves and can register
   again, so the last user may go too, retiring the identity. Removing the acting user moves the session to the
-  person's default user, or ends it when none remains. The **profile page** (issue #1330) names the user's client
-  and, for a person with more than one user or a `public` one, shows them all in a table ("Your users": Persona,
-  Client, and Name only when the users are named differently): the active one tinted and marked **Active now**, and
-  the one a sign-in lands on marked **Next sign-in** from the list's `signsInAs` -- the default rule worked out
-  (`defaultUserOf`), which differs from `isDefault` (the choice alone) when sign-in passes a chosen default over.
+  person's default user, or ends it when none remains. The **profile page** (issue #1330) is built to the page
+  structure (issue #1479): under its title the structure line (the address, the person's users, the access of the one
+  acted as, `profileStructure`), then the panels Your account (read-only: who, client and sandbox, persona and access,
+  organization, account type, time zone, and "What you can do here" from `ShellFacts.reach`, `profileAccountFacts`
+  and `profileAbilities` in `ProfileLayout.kt`, covered by `ProfileLayoutTest`), Your users (live), Your name (a
+  draft), Sign-in (a draft; Remove password through `DangerConfirm`), and API keys (live), each drawing its own
+  result; Log out stays below them. For a person with more than one user or a `public` one, it shows them all in a
+  table ("Your users": Persona, Client, and Name only when the users are named differently): the active one tinted
+  and marked **Active now**, and the one a sign-in lands on marked **Next sign-in** from the list's `signsInAs` --
+  the default rule worked out (`defaultUserOf`), which differs from `isDefault` (the choice alone) when sign-in passes a chosen default over.
   Each row offers **Switch to this user**, which stays on the profile page (`afterSessionChange` with the profile's
   address; the leave from inside a sandbox, read from `ShellFacts.inSandbox`), **Use for next sign-in** (`setDefault`)
   where a sign-in does not already land, and **Remove** on a `public` row, two-step, saying when it is the whole
@@ -331,8 +336,8 @@ Hover moves away from the background, as a link's does.
 A page that edits something reads the same way everywhere, so a reader always knows which button commits which
 controls. The building blocks are in `Panels.kt`. The client page (issue #1397) supplied the panels and the links to
 them; its editors, its Retirement confirm, and the bundle editor's sticky bar (`.bundle-editor-savebar`) predate the
-save and confirm rules below and have not moved onto them yet. The Users editor (#1478) is the first page built to all
-of them; Profile (#1479) is to follow.
+save and confirm rules below and have not moved onto them yet. The Users editor (#1478) and Profile (#1479) are built to
+all of them.
 
 1. **A page is a stack of panels.** Each is a shaded box (`panel(id, heading, explanation, kind)`) with a heading and,
    optionally, "What is this?". Every control belongs to exactly one panel.

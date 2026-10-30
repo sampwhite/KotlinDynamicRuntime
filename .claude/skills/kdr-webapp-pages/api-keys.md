@@ -4,8 +4,9 @@ A program calls the API as a user with an **API key**, `Authorization: Bearer kd
 `docs/design/api-keys.md` at the repo root says what a key is and what it may do. The UI is three surfaces over one
 component, `ApiKeysSection.kt`, with its pure half in `ApiKeysApi.kt` (covered by `ApiKeysTest`):
 
-- **Profile** draws `ApiKeysSection {}`: the person's own keys, over `/user/self/apiKey*`, in a sandbox too (issue
-  #1453), where a key acts with what the sandbox's rules give its user and stays in the sandbox.
+- **Profile** draws it inside its API keys panel (`inPanel`, issue #1479): the person's own keys, over
+  `/user/self/apiKey*`, in a sandbox too (issue #1453), where a key acts with what the sandbox's rules give its user
+  and stays in the sandbox.
 - **The Users editor** draws it with `ownerId` for the open user, over `/clientAdmin/apiKey*`, inside its API keys
   panel (`inPanel`, issue #1478: the panel carries the heading, and says its changes take effect at once, unlike the
   User panel's fields, which wait for **Save user**). Not for a `public` self-administrator, whom the administrator's surface
