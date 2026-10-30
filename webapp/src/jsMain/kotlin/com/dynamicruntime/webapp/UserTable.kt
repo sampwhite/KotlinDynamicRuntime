@@ -58,6 +58,15 @@ external interface UserTableProps : Props {
 
     /** The clients this node carries, as the page was told them -- which a Forms link may choose ([userFormsSurface]). */
     var carriedClients: Set<String>
+
+    /** Whether a row offers to become its user (issue #1511, [becomeOffered]); null for a caller who is offered none. */
+    var offersBecome: ((AdminUser) -> Boolean)?
+
+    /** [BecomeLinkProps.disabled]. */
+    var becomeDisabled: Boolean?
+
+    /** [BecomeLinkProps.onOutcome]. */
+    var onBecomeOutcome: (BecomeFailure?) -> Unit
 }
 
 val UserTable = FC<UserTableProps> { props ->
@@ -88,7 +97,7 @@ val UserTable = FC<UserTableProps> { props ->
             // Descriptive columns that are not search fields, so they stay static and unsorted.
             add(column("Type", typeColumn, columnWidths[typeColumn]))
             add(column("Status", statusColumn, columnWidths[statusColumn]))
-            if (props.showLinks) add(userLinksColumn(props))
+            if (props.showLinks || props.offersBecome != null) add(userLinksColumn(props))
         }
         // The columns that identify a user stay in view while the rest scroll (issue #750): who this is on the
         // left, and whether they are live on the right. antd pins a column only when the table has an explicit
@@ -141,21 +150,26 @@ val UserTable = FC<UserTableProps> { props ->
  * `onCell` stops it from also opening the row's editor -- as the forms table's workflow cell does.
  */
 private fun userLinksColumn(props: UserTableProps): dynamic {
-    val c = column("Go to", linksColumn, columnWidths[linksColumn])
+    val c = column("Go to", linksColumn, if (props.offersBecome != null) linksWithBecomeWidth else columnWidths[linksColumn])
     c.onCell = {
         val cellProps: dynamic = js("({})")
         cellProps.onClick = { event: dynamic -> event.stopPropagation() }
         cellProps
     }
     // Read off the row itself -- its key is the user's id, and its client cell the client -- rather than found
-    // again among the users, once a row, on every render.
+    // again among the users, once a row, on every render. Only a caller offered Become, on a test instance, needs the
+    // user itself, and a page of users is short.
     c.render = fun(_: dynamic, record: dynamic, _: dynamic): dynamic {
         val id = (record.key as? String)?.toLongOrNull() ?: return null
         return UserLinks.create {
             userId = id
             client = record[USF.client] as? String ?: ""
             carriedClients = props.carriedClients
-            showClient = props.showClientLinks != false
+            showForms = props.showLinks
+            showClient = props.showLinks && props.showClientLinks != false
+            become = props.offersBecome?.let { offered -> props.users.firstOrNull { it.userId == id }?.takeIf(offered) }
+            becomeDisabled = props.becomeDisabled
+            onBecomeOutcome = props.onBecomeOutcome
         }
     }
     return c
@@ -168,28 +182,57 @@ external interface UserLinksProps : Props {
     var carriedClients: Set<String>
     /** Whether the client link is drawn beside the forms one; null reads as true. */
     var showClient: Boolean?
+
+    /** Whether the forms link is drawn; null reads as true. False for a caller offered only [become]. */
+    var showForms: Boolean?
+
+    /** The user to offer to become (issue #1511), when they are offered: a [BecomeLink] after the others. */
+    var become: AdminUser?
+
+    /** Beside [become]: [BecomeLinkProps.beforeBecome]. */
+    var beforeBecome: ((() -> Unit) -> Unit)?
+
+    /** Beside [become]: [BecomeLinkProps.disabled]. */
+    var becomeDisabled: Boolean?
+
+    /** Beside [become]: [BecomeLinkProps.onOutcome]. */
+    var onBecomeOutcome: (BecomeFailure?) -> Unit
 }
 
 /**
  * A user's forms and a user's client, as two links (issue #1081) -- on each row of the list and in the editor of
- * the user who is open. Links, not buttons: each goes somewhere and changes nothing.
+ * the user who is open. Links, not buttons: each goes somewhere and changes nothing. Then, for a caller with test
+ * access, the way to become the user (issue #1511), which is a [BecomeLink].
  */
 val UserLinks = FC<UserLinksProps> { props ->
+    val formsShown = props.showForms != false
+    val clientShown = props.client.isNotEmpty() && props.showClient != false
     span {
         className = ClassName("user-links")
-        a {
-            className = ClassName("wf-cell-link")
-            href = userFormsHref(props.userId, userFormsSurface(props.client, props.carriedClients))
-            title = "The forms this user owns."
-            +"Forms"
+        if (formsShown) {
+            a {
+                className = ClassName("wf-cell-link")
+                href = userFormsHref(props.userId, userFormsSurface(props.client, props.carriedClients))
+                title = "The forms this user owns."
+                +"Forms"
+            }
         }
-        if (props.client.isNotEmpty() && props.showClient != false) {
-            +" · "
+        if (clientShown) {
+            if (formsShown) +" · "
             a {
                 className = ClassName("wf-cell-link")
                 href = clientDetailHref(props.client)
                 title = "The client this user belongs to: ${props.client}."
                 +"Client"
+            }
+        }
+        props.become?.let { target ->
+            if (formsShown || clientShown) +" · "
+            BecomeLink {
+                user = target
+                beforeBecome = props.beforeBecome
+                disabled = props.becomeDisabled
+                onOutcome = props.onBecomeOutcome
             }
         }
     }
@@ -317,6 +360,9 @@ fun pinnedSide(dataIndex: String): String? = when (dataIndex) {
  * its entry). Above the total the surplus is shared out; below it the table scrolls inside the card. The columns
  * that absorb the difference are the two whose content has no bound.
  */
+/** The links column for a caller offered Become too (issue #1511): "Forms · Client · Become", on one line. */
+private const val linksWithBecomeWidth = 170
+
 private val columnWidths: Map<String, Int> = mapOf(
     idColumn to 50,
     // The two that genuinely vary, and so the two that give way. An address longer than this wraps, which is

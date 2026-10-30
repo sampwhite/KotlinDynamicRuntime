@@ -111,6 +111,18 @@ class BecomeUserEndpointTest : StringSpec({
         handler.rptStatusCode shouldBe EXC.badInput
     }
 
+    "failIfUserMissing becomes a user who exists, and refuses rather than creates one who does not" {
+        val cxt = TestInstances.default("becomeMissing")
+        val client = TestHttpClient(cxt.instanceConfig).alwaysWithTestAccess()
+        val body = mapOf(TEP.email to "become-missing@example.com", TEP.failIfUserMissing to true)
+        client.sendEditRequest(TEP.becomeUser, null, body, HttpMethod.POST).rptStatusCode shouldBe EXC.notFound
+        // Refused, not made: nothing exists at the address.
+        UserService.get(cxt).queryIdentityByAddress(cxt, "become-missing@example.com") shouldBe null
+
+        val created = TestUser.create(cxt, "become-missing@example.com")
+        client.sendJsonPostRequest(TEP.becomeUser, body)[EP.results].toJsonMapOrEmpty()[UPF.userId].toOptLong() shouldBe created.userId
+    }
+
     "failIfUserAlreadyExists rejects an existing user with a 400" {
         val cxt = TestInstances.default("becomeFail")
         val client = TestHttpClient(cxt.instanceConfig).alwaysWithTestAccess()

@@ -110,6 +110,8 @@ val Users = FC<Props> {
     var note by useState<String?>(null)
     // Whether [note] reports something the administrator must act on, rather than something done (issue #1504).
     var noteFailed by useState(false)
+    // A Become that failed (issue #1511), said here rather than in the table cell or header line it was pressed in.
+    var becomeFailure by useState<BecomeFailure?>(null)
 
     // The user being edited, or null in the list view. `creating` opens the same editor with an empty draft.
     var editing by useState<AdminUser?>(null)
@@ -145,6 +147,11 @@ val Users = FC<Props> {
     // An editor (issue #1432) is offered the way to a user's forms too, which it reads; the client link is left off.
     val linksOffered = config?.user?.let { userLinksOffered(it) } == true || usersReadOnly(config)
     val carriedClients = clientChoices.map { it.clientId }.toSet()
+
+    /** Whether the page offers to become [user] (issue #1511). */
+    fun offersBecome(user: AdminUser): Boolean =
+        becomeOffered(user, appConfig().hasTestAccess, config?.user?.userId, clientCarried(user.client, carriedClients))
+
     var draftIsEntity by useState(false)
     var draftName by useState("")
     var draftEnabled by useState(true)
@@ -400,6 +407,7 @@ val Users = FC<Props> {
         note = null
         noteFailed = false
         error = null
+        becomeFailure = null
     }
 
     /**
@@ -477,6 +485,7 @@ val Users = FC<Props> {
         creating = false
         creatingForSelf = false
         error = null
+        becomeFailure = null
     }
 
     // --- the editor as a place you can come back to (issue #324) ---------------------------------------
@@ -830,12 +839,19 @@ val Users = FC<Props> {
                     // Where this user's forms and client are (issue #1081), to the callers the list offers them -- the
                     // client link not to an editor, whom the Clients page refuses, as on the list -- and not for a
                     // deleted user, who has neither any more.
-                    if (linksOffered && !open.deleted) {
+                    val openBecome = open.takeIf { offersBecome(it) }
+                    if ((linksOffered || openBecome != null) && !open.deleted) {
                         UserLinks {
                             userId = open.userId
                             client = open.client
                             this.carriedClients = carriedClients
-                            showClient = !readOnly
+                            showForms = linksOffered
+                            showClient = linksOffered && !readOnly
+                            become = openBecome
+                            // The session changes before the move home, so unsaved edits are asked about first.
+                            beforeBecome = { go -> leaveDraft(go) }
+                            becomeDisabled = busy
+                            onBecomeOutcome = { becomeFailure = it }
                         }
                     }
                 }
@@ -846,6 +862,8 @@ val Users = FC<Props> {
                     }
                 }
             }
+
+            becomeFailure?.let { errorText(it.lead, it.error) }
 
             if (open?.deleted == true) {
                 // A permanently-deleted tombstone: nothing to edit, and re-enabling it is precisely the bug this
@@ -916,7 +934,7 @@ val Users = FC<Props> {
             } else {
                 // Identity is display-only: the backend offers no rename, and showing an editable field that
                 // silently discards its value would be worse than showing none.
-                readOnlyField("Email address", draftEmail)
+                readOnlyField("Email address", draftEmail, copyEmailLabel)
                 readOnlyField("Id", open?.userId?.toString() ?: "")
             }
 
@@ -1323,6 +1341,7 @@ val Users = FC<Props> {
             }
 
             error?.let { errorText(it) }
+            becomeFailure?.let { errorText(it.lead, it.error) }
             note?.let {
                 p {
                     className = ClassName(if (noteFailed) "error-text" else "form-ok")
@@ -1512,6 +1531,9 @@ val Users = FC<Props> {
                 UserTable {
                     this.showClient = showClient
                     this.showLinks = linksOffered
+                    this.offersBecome = ::offersBecome.takeIf { appConfig().hasTestAccess }
+                    becomeDisabled = busy
+                    onBecomeOutcome = { becomeFailure = it }
                     this.showClientLinks = !readOnly
                     this.carriedClients = carriedClients
                     this.users = users
@@ -1535,8 +1557,11 @@ val Users = FC<Props> {
     }
 }
 
-/** A label plus a static value, for the identity fields the backend does not let an administrator change. */
-internal fun react.ChildrenBuilder.readOnlyField(label: String, value: String) {
+/**
+ * A label plus a static value, for the identity fields the backend does not let an administrator change, with a
+ * [CopyButton] saying [copyLabel] when the value is one a person wants elsewhere (issue #1511).
+ */
+internal fun react.ChildrenBuilder.readOnlyField(label: String, value: String, copyLabel: String? = null) {
     div {
         className = ClassName("row")
         span {
@@ -1544,8 +1569,17 @@ internal fun react.ChildrenBuilder.readOnlyField(label: String, value: String) {
             +label
         }
         span { +value }
+        copyLabel?.let {
+            CopyButton {
+                text = value
+                this.label = it
+            }
+        }
     }
 }
+
+/** What a read-only email address's [CopyButton] says it copies (issue #1511). */
+private const val copyEmailLabel = "Copy this user's email address"
 
 /**
  * The [UserSearchQuery] a shared/bookmarked URL encodes (issue #411), read generically from the shared spec:
@@ -1761,7 +1795,7 @@ fun mayCreateForOthers(user: UserProfile): Boolean = user.client != CL.public ||
  * editor changes no user. Nothing here is fetched beyond the row the search answered.
  */
 private fun react.ChildrenBuilder.userDetails(user: AdminUser) {
-    readOnlyField("Email address", user.primaryId)
+    readOnlyField("Email address", user.primaryId, copyEmailLabel)
     readOnlyField(if (user.isEntity) "Business name" else "Full name", user.name?.takeIf { it.isNotBlank() } ?: "\u2014")
     readOnlyField("Persona", personaCell(user.persona, user.personaSuffix, user.actingRoles ?: user.roles))
     readOnlyField("Access", accessText(user.actingRoles ?: user.roles))

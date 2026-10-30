@@ -995,6 +995,7 @@ button.op-status:focus-visible { outline: 2px solid var(--accent-bright); outlin
 }
 .wf-cell-link:hover, button.wf-cell-more:hover { color: var(--accent-brighter); text-decoration: underline; }
 .wf-cell-link:focus-visible, button.wf-cell-more:focus-visible { outline: 2px solid var(--accent-bright); outline-offset: 1px; }
+button.wf-cell-link:disabled { opacity: .5; cursor: default; text-decoration: none; }
 .wf-cell-cat { color: var(--text-dim); font-size: .8rem; }
 /* A user's forms and client (issue #1081), on a row of the Users list and in the editor: one line, never wrapped --
    two short links read as a pair only side by side. */

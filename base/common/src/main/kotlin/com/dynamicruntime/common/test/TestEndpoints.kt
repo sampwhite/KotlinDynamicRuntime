@@ -80,6 +80,9 @@ fun testSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.test") {
                 "Fail instead of logging in when a user with this email already exists.") {
                 type = SCT.boolean
             }
+            field(TEP.failIfUserMissing, "Fail instead of creating the user when none is found.") {
+                type = SCT.boolean
+            }
             field(
                 TEP.client,
                 "Client of the user to become: with `persona` / `personaSuffix` it names WHICH of the address's users " +
@@ -112,6 +115,7 @@ fun testSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.test") {
             level = request.getOptStr(TEP.level) ?: ROLE.user,
             capabilities = request[TEP.capabilities].toJsonListOfStrings(),
             failIfUserAlreadyExists = request[TEP.failIfUserAlreadyExists] == true,
+            failIfUserMissing = request[TEP.failIfUserMissing] == true,
             client = request.getOptStr(TEP.client),
             name = request.getOptStr(TEP.name),
             persona = request.getOptStr(TEP.persona),

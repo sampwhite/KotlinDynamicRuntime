@@ -12,6 +12,7 @@ import react.FC
 import react.Key
 import react.Props
 import react.dom.html.ReactHTML.a
+import react.dom.html.ReactHTML.button
 import react.dom.html.ReactHTML.div
 import react.dom.html.ReactHTML.h1
 import react.dom.html.ReactHTML.h2
@@ -53,15 +54,17 @@ fun forgetStoredIdentity(key: String): List<RecentIdentity> {
 
 /**
  * Becomes the user [body] describes, remembers them, and goes home re-reading (`afterSessionChange`), with no reload --
- * what the one-click item, the card, the form and a recent identity all do. A refusal is handed to [onError].
+ * what the one-click item, the card, the form and a recent identity all do. [beforeMove] runs once it has succeeded,
+ * before the move. A refusal is handed to [onError].
  */
-fun becomeAndGo(body: Map<String, Any?>, bump: () -> Unit, onError: (DisplayError) -> Unit = {}) {
+fun becomeAndGo(body: Map<String, Any?>, bump: () -> Unit, beforeMove: () -> Unit = {}, onError: (DisplayError) -> Unit = {}) {
     becomeScope.launch {
         when (val result = BecomeUserApi.become(body)) {
             is ApiResult.Ok -> {
                 val info = result.value[EP.results].toJsonMapOrEmpty()
                 val identity = recentIdentityOf(body, info, appConfig().dataId, Clock.System.now().toString())
                 localStorageSet(recentIdentitiesKey, encodeIdentities(rememberIdentity(storedIdentities(), identity)), recentIdentitiesWhat)
+                beforeMove()
                 afterSessionChange(bump)
             }
             else -> result.failureOrNull()?.let { onError(userFacingError(it)) }
@@ -69,8 +72,80 @@ fun becomeAndGo(body: Map<String, Any?>, bump: () -> Unit, onError: (DisplayErro
     }
 }
 
+/** A failed Become from the Users page (issue #1511): which user, as [lead] says it, and why. */
+class BecomeFailure(val lead: String, val error: DisplayError)
+
+external interface BecomeLinkProps : Props {
+    /** The user to become. */
+    var user: AdminUser
+
+    /**
+     * Runs what it is given once the page agrees to the move, for a page holding unsaved edits. Asked before becoming,
+     * since the session changes first and the move home after it. Null goes straight on.
+     */
+    var beforeBecome: ((() -> Unit) -> Unit)?
+
+    /** While the page is at work on something else: a session changed under a save would finish it as somebody else. */
+    var disabled: Boolean?
+
+    /** The page's place to say how it went, a table cell having no room: null as an attempt starts, then any failure. */
+    var onOutcome: (BecomeFailure?) -> Unit
+}
+
+/**
+ * Becomes [BecomeLinkProps.user] from the Users page (issue #1511): styled as the row's other links, though a button,
+ * since it changes the session. An unclaimed user asks first ([becomeClaims]). The user joins the recent identities,
+ * and the caller lands on Home, as every way of becoming does. Any leave guard goes only once it has succeeded: one that
+ * fails leaves the page, and its draft, as they were.
+ */
+val BecomeLink = FC<BecomeLinkProps> { props ->
+    val bump = useRefreshBump()
+    var going by useState(false)
+    val blocked = going || props.disabled == true
+
+    fun go() {
+        going = true
+        props.onOutcome(null)
+        becomeAndGo(becomeUserBody(props.user), bump, beforeMove = { LeaveGuard.disarm() }) {
+            going = false
+            props.onOutcome(BecomeFailure("Couldn't become ${props.user.primaryId}.", it))
+        }
+    }
+
+    fun become() {
+        val ask = props.beforeBecome
+        if (ask != null) ask(::go) else go()
+    }
+
+    fun ChildrenBuilder.link(press: (() -> Unit)?) {
+        button {
+            className = ClassName("wf-cell-link")
+            title = "Sign in as this user."
+            disabled = blocked
+            press?.let { act -> onClick = { act() } }
+            +"Become"
+        }
+    }
+
+    if (becomeClaims(props.user)) {
+        Popconfirm {
+            title = "Become this user?"
+            description = "This claims the user, and its invitation will stop working."
+            okText = "Become"
+            cancelText = "Cancel"
+            placement = "left"
+            disabled = blocked
+            onConfirm = { become() }
+            link(null)
+        }
+    } else {
+        link { become() }
+    }
+}
+
 /** Becomes the deployment admin: `admin` plus `allClients` (issue #1183). */
-fun becomeDeploymentAdmin(bump: () -> Unit, onError: (DisplayError) -> Unit = {}) = becomeAndGo(deploymentAdminBody(), bump, onError)
+fun becomeDeploymentAdmin(bump: () -> Unit, onError: (DisplayError) -> Unit = {}) =
+    becomeAndGo(deploymentAdminBody(), bump, onError = onError)
 
 /**
  * The card on the Home page (issue #1183), for a caller with test access: become the deployment admin, open the form
@@ -244,7 +319,7 @@ private fun ChildrenBuilder.recentIdentityButtons(
                 Button {
                     // The whole label, for one the entry's width cuts short.
                     asDynamic()["title"] = identityLabel(identity)
-                    onClick = { becomeAndGo(becomeAgainBody(identity), bump, onError) }
+                    onClick = { becomeAndGo(becomeAgainBody(identity), bump, onError = onError) }
                     +identityLabel(identity)
                 }
                 forgetIdentityButton(identity, onForget)
