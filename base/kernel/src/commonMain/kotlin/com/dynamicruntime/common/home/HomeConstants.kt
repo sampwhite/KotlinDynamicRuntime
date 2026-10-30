@@ -575,6 +575,13 @@ object HDOC {
     const val schemaDialect = "schema-dialect"
     const val clientConfiguration = "client-configuration"
     const val apiKeysAndTokens = "api-keys-and-tokens"
+    /** The guide for a program or an AI assistant using a site's API (issue #1493), which the endpoint catalog names. */
+    const val apiGuide = "api-guide"
+    /**
+     * The app id in a document's address handed to a program (issue #1493): `/st/api/doc/api-guide`. An app id is
+     * opaque and unread, so any would do; one fixed word gives every address the guide names the same shape.
+     */
+    const val apiAppId = "api"
     const val apiKeys = "api-keys"
     const val license = "license"
 }

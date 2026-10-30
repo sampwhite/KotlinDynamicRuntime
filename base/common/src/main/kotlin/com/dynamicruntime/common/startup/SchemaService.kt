@@ -14,6 +14,10 @@ import com.dynamicruntime.common.cfact.buildCFactRegistries
 import com.dynamicruntime.common.cfact.referencedNames
 import com.dynamicruntime.common.context.ClientSchemaSource
 import com.dynamicruntime.common.context.KdrCxt
+import com.dynamicruntime.common.http.request.ContextRoot
+import com.dynamicruntime.common.home.HDOC
+import com.dynamicruntime.common.content.CMK
+import com.dynamicruntime.common.context.ACFG
 import com.dynamicruntime.common.context.KdrSchemaStore
 import com.dynamicruntime.common.endpoint.EI
 import com.dynamicruntime.common.endpoint.EP
@@ -1315,6 +1319,13 @@ class SchemaService : ServiceInitializer, ClientSchemaSource {
                     type = SCT.kObject
                 }
                 property(
+                    EI.guide,
+                    "Where to start (issue #1493): the address of the API guide, as Markdown -- what a client, a " +
+                        "form, a workflow, and a bundle are, the conventions every call shares, and a recipe for each " +
+                        "common job.",
+                    required = true,
+                )
+                property(
                     EI.filtersAvailable,
                     "Whether this caller may slice the catalog (issue #489): true when env-authed. When false, " +
                         "only the published endpoints are listed -- and those generated for a client the caller " +
@@ -1773,6 +1784,16 @@ class SchemaService : ServiceInitializer, ClientSchemaSource {
         }
 
         /**
+         * The address of the API guide's Markdown (issue #1493) under this node's static context root, as the catalog
+         * hands it out: `/st/api/doc/api-guide` on a node that keeps the default root.
+         */
+        @KdrPrivate
+        fun apiGuideAddress(cxt: KdrCxt): String {
+            val root = cxt.instanceConfig.get(ACFG.staticContextRoot) as? String ?: ContextRoot.st
+            return "/$root/${HDOC.apiAppId}/${CMK.doc}/${HDOC.apiGuide}"
+        }
+
+        /**
          * Handler for `/schema/endpoints`: filter/sort/limit the registered endpoints, render each with its
          * `$ref`s intact, and pair the renderings with a shared `$defs` bag resolving every referenced type.
          * The client resolves the `$ref`s itself, so a type shared by many endpoints is returned once.
@@ -1978,6 +1999,7 @@ class SchemaService : ServiceInitializer, ClientSchemaSource {
                 // listing and the single-lookup, so the two cannot disagree about it -- and read against the
                 // effective env auth, the same gate `endpointCatalog` restricts the listing by.
                 EI.filtersAvailable to cxt.isEnvAuthEffective,
+                EI.guide to apiGuideAddress(cxt),
                 EI.cfacts to deliveredCfacts,
                 // The layouts for exactly the types the closure carries (issue #585): what the friendly forms
                 // off-workflow (`NewFormPage`, `EditFormPage`, the read-only view) join to a type by name. Over

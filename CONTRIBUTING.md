@@ -6,6 +6,9 @@ and the [code guide](docs/development/code-guide.md). An agent that starts from 
 what the maintainers' own sessions write, which is what lets an outside contribution be reviewed without being
 rewritten.
 
+**Using a site's API rather than changing the code?** None of this applies: read [Using the API](docs/api-guide.md),
+which is all a program or an AI assistant with a key needs, and is served by every site at `/st/api/doc/api-guide`.
+
 AI assistance is recommended, not required. What is required is the outcome: code that follows the conventions and
 passes the full test suite. If your employer does not allow AI tools, you are just as welcome; the guidance files
 are ordinary documentation and read the same way to a person.

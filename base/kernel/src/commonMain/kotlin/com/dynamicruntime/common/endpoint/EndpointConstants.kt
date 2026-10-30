@@ -109,6 +109,12 @@ object EI {
     const val filtersAvailable = "filtersAvailable"
 
     /**
+     * Where a program new to the API starts (issue #1493): the address of the API guide's Markdown, on the catalog
+     * response, so that a caller whose first request is the catalog finds the guide without being told of it.
+     */
+    const val guide = "guide"
+
+    /**
      * The frontend-delivered cfacts carried on the catalog response (issue #564) so the client can evaluate a
      * property's `g-visibleWhen` itself: a map from cfact name to whether it is present for this caller. The
      * whole vocabulary a `CFactDef` marks `toFrontend` (present and absent), so the client can parse a gate
