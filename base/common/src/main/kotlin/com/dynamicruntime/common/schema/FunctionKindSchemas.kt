@@ -84,10 +84,10 @@ private fun SchTypesBuilder.functionUnion(name: String, description: String, bra
             type = SCT.kObject
             this.description = "$description No kind of it is registered here."
             additionalProperties = true
-            property(SFN.fn, "Which kind of function this is.", required = true)
+            property(SFU.fn, "Which kind of function this is.", required = true)
         }
     } else {
-        variantType(name, description, on = SFN.fn, branches = branches.sorted())
+        variantType(name, description, on = SFU.fn, branches = branches.sorted())
     }
 }
 

@@ -30,8 +30,8 @@ object CVF {
  * code-built and a stored usage are indistinguishable downstream.
  */
 fun computeValue(target: String, script: String, priority: Int? = null): Map<String, Any?> = buildMap {
-    put(SFN.fn, CVF.fn)
-    if (priority != null) put(SFN.priority, priority)
+    put(SFU.fn, CVF.fn)
+    if (priority != null) put(SFU.priority, priority)
     put(CVF.target, target)
     put(CVF.script, script)
 }
@@ -80,7 +80,8 @@ class ComputeValueFn(
     /**
      * [value] as a whole number when the target is an integer and the script computed one as a fraction-free double --
      * `a + b` over two amounts entered as decimals, say. A script's arithmetic keeps a double a double, and an integer
-     * type takes no double, so without this every such total would be refused and cleared.
+     * type takes no double, so without this every such total would be refused and cleared. Exactly whole only: a near
+     * miss (`3.0000000000000004`) is the script's to round, with `round(...)`, rather than this one's to guess at.
      */
     private fun wholeAsInteger(value: Any): Any =
         if (targetType.jsonType == SCT.integer && value is Double && value % 1.0 == 0.0 && kotlin.math.abs(value) < 9.0e15) {
@@ -106,8 +107,8 @@ object ComputeValueCreation : SchFunctionCreation {
         type(CVF.initDataType) {
             type = SCT.kObject
             description = "Store the value of a script, computed over the object's own data, in one of its derived properties."
-            property(SFN.fn, "The function's kind; always '${CVF.fn}' here.", required = true) { const = CVF.fn }
-            property(SFN.priority, "Run order among the type's write functions, lower first.") { type = SCT.integer }
+            property(SFU.fn, "The function's kind; always '${CVF.fn}' here.", required = true) { const = CVF.fn }
+            property(SFU.priority, "Run order among the type's write functions, lower first.") { type = SCT.integer }
             property(CVF.target, "The property the value is stored in, one the type declares '${SCH.derived}'.", required = true)
             property(
                 CVF.script,

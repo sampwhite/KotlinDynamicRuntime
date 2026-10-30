@@ -57,6 +57,8 @@ class SchFunctionsTest : StringSpec({
         // A whole number computed from decimals is stored as one; a fraction would be refused and cleared.
         out["count"] shouldBe 5L
         runWriteFunctions(cxt, functions(type), mapOf("b" to 4.5)).containsKey("count") shouldBe false
+        // Unless the script rounds it, as it says.
+        runWriteFunctions(cxt, functions(dataType(computeValue("count", "round(b * 1.5)"))), mapOf("b" to 4.5))["count"] shouldBe 7L
     }
 
     "functions run in priority order, each seeing what the ones before it wrote" {
@@ -87,7 +89,7 @@ class SchFunctionsTest : StringSpec({
             functions(type) shouldHaveSize 1
             return problems(type).single()
         }
-        refusal(mapOf(SFN.fn to "noSuchKind")) shouldContain "no component registered"
+        refusal(mapOf(SFU.fn to "noSuchKind")) shouldContain "no component registered"
         refusal(mapOf(CVF.target to "count")) shouldContain "names no kind"
         refusal(computeValue("missing", "a")) shouldContain "declares no property 'missing'"
         refusal(computeValue("a", "b")) shouldContain "is not 'g-derived'"
@@ -97,7 +99,7 @@ class SchFunctionsTest : StringSpec({
         refusal(computeValue("count", "c * 2")) shouldContain "reads 'c', which the type does not declare"
         refusal(computeValue("count", "nested.y")) shouldContain "reads 'nested.y'"
         refusal(computeValue("count", "count + 1")) shouldContain "the value it computes"
-        refusal(mapOf(SFN.fn to CVF.fn, CVF.target to "count")) shouldContain "settings are invalid"
+        refusal(mapOf(SFU.fn to CVF.fn, CVF.target to "count")) shouldContain "settings are invalid"
     }
 
     "a nested property the type declares may be read" {

@@ -5,7 +5,7 @@ import com.dynamicruntime.common.util.toOptStr
 
 /** The fields every schema function usage carries (issue #1501), whatever its kind. Each name matches its value. */
 @Suppress("ConstPropertyName")
-object SFN {
+object SFU {
     /** Which registered function kind the usage is, as `traitId` says which trait an entry is. */
     const val fn = "fn"
 
@@ -40,10 +40,10 @@ enum class SchEventType(
  */
 class SchFunctionUsage(val initData: Map<String, Any?>) : JsonMappable {
     /** The function-kind discriminator, e.g. `computeValue`; null when the usage names none. */
-    val fn: String? = initData[SFN.fn].toOptStr()
+    val fn: String? = initData[SFU.fn].toOptStr()
 
     /** Run order within the list -- lower first, ties keeping the order written. */
-    val priority: Int = (initData[SFN.priority] as? Number)?.toInt() ?: 0
+    val priority: Int = (initData[SFU.priority] as? Number)?.toInt() ?: 0
 
     /** The usage is its own settings, so a code-built and a stored definition round-trip identically. */
     override fun toJsonMap(): Map<String, Any?> = initData

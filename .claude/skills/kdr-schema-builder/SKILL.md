@@ -337,7 +337,9 @@ type("ExpenseData") {
   the unchanged check), and an import. On any other type they do nothing, and the load says so.
 - **The script reads only the object's own data**, written bare -- the template grammar without `${}`
   (`ScriptExpression`). A value that cannot be computed (an input missing, a division by zero) or that the target's
-  type will not take **clears the target** rather than failing the write.
+  type will not take **clears the target** rather than failing the write. An integer target takes a fraction-free result
+  as a whole number; anything else should say how to round it (`round(a * b)`), since a floating-point near miss
+  (`3.0000000000000004`) is not whole.
 - **Checked when the type is loaded**: the kind is registered, its settings validate, the target is declared, derived,
   and not gated by `g-visibleWhen`, the script parses, pulls no `@t` copy, and reads only declared properties, never its
   own target, and no two functions write one property. A usage that fails is reported and skipped; the type's others

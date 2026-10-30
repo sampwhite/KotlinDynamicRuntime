@@ -80,7 +80,7 @@ fun resolveWriteFunctions(
         val creation = fn?.let { creations[it] }
         fun refused(problem: String) = SchFunctionResolution(usage, null, problem)
         when {
-            fn == null -> refused("A '${SCH.onWrite}' function names no kind; each says which it is in '${SFN.fn}'.")
+            fn == null -> refused("A '${SCH.onWrite}' function names no kind; each says which it is in '${SFU.fn}'.")
             creation == null -> refused(
                 "A '${SCH.onWrite}' function names the kind '$fn', which no component registered" +
                     (if (creations.isEmpty()) "." else " (known: ${creations.keys.sorted().joinToString(", ")})."),

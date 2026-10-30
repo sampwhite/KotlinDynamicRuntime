@@ -16,6 +16,7 @@ object SFN {
     const val formatDay = "formatDay"
     const val formatNumber = "formatNumber"
     const val currency = "currency"
+    const val round = "round"
 }
 
 /**
@@ -115,10 +116,17 @@ val scriptFunctions: Map<String, ScriptFunction> = listOf(
     },
     // Numbers as a person reads them (issue #1322): grouped, and to a fixed number of decimals when asked. A unit is
     // ordinary text after the call.
-    ScriptFunction(SFN.formatNumber, 1, 2, checkArgs = ::checkDecimalsLiteral) { state, args ->
+    ScriptFunction(SFN.formatNumber, 1, 2, checkArgs = decimalsLiteralCheck(SFN.formatNumber)) { state, args ->
         val n = numberArg(state, SFN.formatNumber, args[0])
-        val decimals = args.getOrNull(1)?.let { decimalsOrNull(it) ?: throw mkDecimalsError(state, it) }
+        val decimals = args.getOrNull(1)?.let { decimalsOrNull(it) ?: throw mkDecimalsError(state, SFN.formatNumber, it) }
         numberText(n, decimals)
+    },
+    // A number rounded, as a number (issue #1501): to a whole one by default, which a computed value stored in an
+    // integer property needs -- the script's arithmetic keeps a fraction as a fraction. Rounded as `formatNumber` writes.
+    ScriptFunction(SFN.round, 1, 2, checkArgs = decimalsLiteralCheck(SFN.round)) { state, args ->
+        val n = numberArg(state, SFN.round, args[0])
+        val decimals = args.getOrNull(1)?.let { decimalsOrNull(it) ?: throw mkDecimalsError(state, SFN.round, it) } ?: 0
+        roundedNumber(n, decimals)
     },
     ScriptFunction(SFN.currency, 2, 2, checkArgs = ::checkCurrencyLiteral) { state, args ->
         val n = numberArg(state, SFN.currency, args[0])
@@ -135,15 +143,14 @@ private fun numberArg(state: ScriptState, fn: String, v: Any?): Number =
 private fun decimalsOrNull(v: Any?): Int? = (numOf(v) as? Long)?.takeIf { it in 0..maxNumberDecimals.toLong() }?.toInt()
 
 /** Refuses a literal count of decimals that is not one when the template is parsed (issue #1322). */
-private fun checkDecimalsLiteral(state: ScriptState, args: List<ScriptNode>) {
-    val decimals = (args.getOrNull(1) as? LiteralNode ?: return).value
-    if (decimalsOrNull(decimals) == null) throw mkDecimalsError(state, decimals, ScriptError.syntaxError)
+private fun decimalsLiteralCheck(fn: String): (ScriptState, List<ScriptNode>) -> Unit = check@{ state, args ->
+    val decimals = (args.getOrNull(1) as? LiteralNode ?: return@check).value
+    if (decimalsOrNull(decimals) == null) throw mkDecimalsError(state, fn, decimals, ScriptError.syntaxError)
 }
 
-private fun mkDecimalsError(state: ScriptState, v: Any?, code: ScriptError = ScriptError.typeMismatch) = mkScriptException(
+private fun mkDecimalsError(state: ScriptState, fn: String, v: Any?, code: ScriptError = ScriptError.typeMismatch) = mkScriptException(
     state, code,
-    "Template function '${SFN.formatNumber}' takes a count of decimals from 0 to $maxNumberDecimals but was given " +
-        "${describeValue(v)}.",
+    "Template function '$fn' takes a count of decimals from 0 to $maxNumberDecimals but was given ${describeValue(v)}.",
 )
 
 /** Refuses a literal currency code that is not shaped like one when the template is parsed (issue #1322). */
