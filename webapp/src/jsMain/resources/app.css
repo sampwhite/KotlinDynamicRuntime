@@ -159,6 +159,18 @@
     gap: 8px;
     margin: 10px 0;
 }
+/* An identity and the × that forgets it (issue #1503), which stay together when the row wraps. */
+.become-recent-entry { display: inline-flex; align-items: center; }
+.become-forget {
+    padding: 0 6px;
+    border: 0;
+    background: none;
+    color: var(--text-muted);
+    font-size: 1rem;
+    line-height: 1;
+    cursor: pointer;
+}
+.become-forget:hover { color: var(--text); }
 
 * { box-sizing: border-box; }
 

@@ -12,10 +12,12 @@ import react.FC
 import react.Key
 import react.Props
 import react.dom.html.ReactHTML.a
+import react.dom.html.ReactHTML.button
 import react.dom.html.ReactHTML.div
 import react.dom.html.ReactHTML.h1
 import react.dom.html.ReactHTML.h2
 import react.dom.html.ReactHTML.p
+import react.dom.html.ReactHTML.span
 import react.useEffectOnce
 import react.useState
 import web.cssom.ClassName
@@ -35,6 +37,20 @@ private const val recentIdentitiesWhat = "recent identities"
 
 /** The identities this browser remembers, newest first. */
 fun storedIdentities(): List<RecentIdentity> = decodeIdentities(localStorageGet(recentIdentitiesKey, recentIdentitiesWhat))
+
+/**
+ * Drops the identity under [key] from this browser's list (issue #1503) and answers what is left: forgetting it, not
+ * deleting the user, who can be become again.
+ */
+fun forgetStoredIdentity(key: String): List<RecentIdentity> {
+    val left = forgetIdentity(storedIdentities(), key)
+    if (left.isEmpty()) {
+        localStorageRemove(recentIdentitiesKey, recentIdentitiesWhat)
+    } else {
+        localStorageSet(recentIdentitiesKey, encodeIdentities(left), recentIdentitiesWhat)
+    }
+    return left
+}
 
 /**
  * Becomes the user [body] describes, remembers them, and goes home re-reading (`afterSessionChange`), with no reload --
@@ -64,6 +80,8 @@ fun becomeDeploymentAdmin(bump: () -> Unit, onError: (DisplayError) -> Unit = {}
 val TestAccessCard = FC<Props> {
     val bump = useRefreshBump()
     var error by useState<DisplayError?>(null)
+    // Read from storage on every draw, so a user just become shows; this only asks for a draw after an entry is forgotten.
+    var forgotten by useState(0)
     val (current, _) = identitiesFor(storedIdentities(), appConfig().dataId)
     div {
         className = ClassName("test-access-card")
@@ -81,7 +99,10 @@ val TestAccessCard = FC<Props> {
                 +"Become a user…"
             }
         }
-        recentIdentityButtons(current, bump) { error = it }
+        recentIdentityButtons(current, bump, { key ->
+            forgetStoredIdentity(key)
+            forgotten++
+        }) { error = it }
         error?.let { errorText("Couldn't become that user.", it) }
     }
 }
@@ -133,12 +154,13 @@ val BecomeUserPage = FC<Props> {
         }
         if (current.isNotEmpty() || stale.isNotEmpty()) {
             h2 { +"Recent" }
-            recentIdentityButtons(current, bump) { error = it }
+            recentIdentityButtons(current, bump, { setRecent(forgetStoredIdentity(it)) }) { error = it }
             for (identity in stale) {
                 p {
                     key = identity.identityKey.unsafeCast<Key>()
                     className = ClassName("type-hint sim-recent-stale")
                     +"${identityLabel(identity)} (from data since reset)"
+                    forgetIdentityButton(identity) { setRecent(forgetStoredIdentity(it)) }
                 }
             }
             Button {
@@ -196,17 +218,38 @@ val BecomeUserPage = FC<Props> {
     }
 }
 
-/** A button per remembered identity [identities], each becoming that user again. */
-private fun ChildrenBuilder.recentIdentityButtons(identities: List<RecentIdentity>, bump: () -> Unit, onError: (DisplayError) -> Unit) {
+/** A button per remembered identity [identities], each becoming that user again, with an × forgetting it ([onForget]). */
+private fun ChildrenBuilder.recentIdentityButtons(
+    identities: List<RecentIdentity>,
+    bump: () -> Unit,
+    onForget: (String) -> Unit,
+    onError: (DisplayError) -> Unit,
+) {
     if (identities.isEmpty()) return
     div {
         className = ClassName("become-recent")
         for (identity in identities) {
-            Button {
+            span {
                 key = identity.identityKey.unsafeCast<Key>()
-                onClick = { becomeAndGo(becomeAgainBody(identity), bump, onError) }
-                +identityLabel(identity)
+                className = ClassName("become-recent-entry")
+                Button {
+                    onClick = { becomeAndGo(becomeAgainBody(identity), bump, onError) }
+                    +identityLabel(identity)
+                }
+                forgetIdentityButton(identity, onForget)
             }
         }
+    }
+}
+
+/** The × beside a remembered [identity] (issue #1503), telling [onForget] its key. */
+private fun ChildrenBuilder.forgetIdentityButton(identity: RecentIdentity, onForget: (String) -> Unit) {
+    button {
+        className = ClassName("become-forget")
+        val what = "Forget ${identityLabel(identity)}"
+        title = what
+        asDynamic()["aria-label"] = what
+        onClick = { onForget(identity.identityKey) }
+        +"×"
     }
 }

@@ -70,6 +70,10 @@ fun recentIdentityOf(body: Map<String, Any?>, userInfo: Map<String, Any?>, dataI
 fun rememberIdentity(prior: List<RecentIdentity>, identity: RecentIdentity): List<RecentIdentity> =
     (listOf(identity) + prior.filter { it.identityKey != identity.identityKey }).take(recentIdentitiesLimit)
 
+/** [identities] without the one under [key] (issue #1503), the rest as they were. Forgets it; the user is untouched. */
+fun forgetIdentity(identities: List<RecentIdentity>, key: String): List<RecentIdentity> =
+    identities.filter { it.identityKey != key }
+
 /** The request that becomes [identity] again: the address and which of its users. */
 fun becomeAgainBody(identity: RecentIdentity): Map<String, Any?> = buildMap {
     put(TEP.email, identity.email)
