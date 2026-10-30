@@ -50,6 +50,18 @@ class BecomeUserTest {
     }
 
     @Test
+    fun forgettingDropsOnlyThatUserAndLeavesTheOrder() {
+        val ada = identity("ada@acme.test")
+        val adaB = identity("ada@acme.test", suffix = "B")
+        val pat = identity("pat@acme.test")
+        // By the whole key: the address's other user stays.
+        assertEquals(listOf(ada, pat), forgetIdentity(listOf(ada, adaB, pat), adaB.identityKey))
+        assertEquals(emptyList(), forgetIdentity(listOf(ada), ada.identityKey))
+        // One not in the list changes nothing.
+        assertEquals(listOf(ada, pat), forgetIdentity(listOf(ada, pat), adaB.identityKey))
+    }
+
+    @Test
     fun identitiesFromDataSinceResetAreToldApart() {
         val (current, stale) = identitiesFor(listOf(identity("a@acme.test"), identity("b@acme.test", dataId = "old")), "d1")
         assertEquals(listOf("a@acme.test"), current.map { it.email })
