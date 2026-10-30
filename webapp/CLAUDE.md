@@ -222,14 +222,18 @@ Current UI-config endpoints:
   in a sandbox protects nobody who wrongly believes they are in one, every delete confirmation names where it acts,
   from the form's or user's own client (`deleteTargetText`: "acme (live data)" or "acme's sandbox").
 - **Invitations** (issue #751), anonymous like the rest of the auth flow: an administrator's create for an
-  address that is not their own -- new, or another person's -- provisions an unclaimed user and mails a link
-  to `/wa/invite#token=<token>` (built under `KDR_PUBLIC_URL`, else the request's scheme and host). The
+  address that is not their own -- new, or another person's -- provisions an unclaimed user and, unless it is created
+  disabled or with `sendInvitation` false (issue #1504), mails a link to `/wa/invite#token=<token>` (built under
+  `KDR_PUBLIC_URL`, else the request's scheme and host); the answer's `invitationSent` says whether it went. The
   **invite page** (`InvitePage`) POSTs `/auth/invitation/preview {invitationToken}` to say what the account is
   and waits for **Accept**, which POSTs `/auth/invitation/accept`: the link is the proof, so accepting registers
   the user, verifies a new identity, signs the browser in, and goes home re-reading (`afterSessionChange`, issue
   #1015). Nothing happens on merely opening the
-  link. `POST /clientAdmin/user/invite {userId}` re-sends a lapsed one (the editor offers it for an unclaimed
-  user). The **register form** shows Client / Persona / Persona suffix to an `allClients` caller only; set, they ride
+  link. `POST /clientAdmin/user/invite {userId}` sends one, or a fresh one for a lapsed link (the editor offers it for
+  an unclaimed user). A claimed user is refused one, since the link signs its holder in: `POST
+  /clientAdmin/user/remind {userId}` instead mails the ordinary sign-in page (issue #1504), and only where
+  `KDR_PUBLIC_URL` is set or on a test instance, so the link a person is told to use their password at is never built
+  from a request's headers. Either send is limited per address. The **register form** shows Client / Persona / Persona suffix to an `allClients` caller only; set, they ride
   `createInitial` and the backend refuses them from anyone else.
 - **Claiming from the login page** (issue #751), since a mailed link cannot be required: the auth flow's third
   mode, `/wa/claim` ("Claim an account created for you", linked from the login page). The person types the
@@ -241,7 +245,7 @@ Current UI-config endpoints:
   it claims an unclaimed one and simply signs in as a claimed one -- the one way to log in as a particular
   non-default user by address alone.
 - **The mails are fragment copy** (issue #773): every mail the auth flows send -- the code, the invitation, the
-  claim page's answers -- is authored in the **backend** fragment file `mail.md` (never served; one namespace
+  sign-in reminder, the claim page's answers -- is authored in the **backend** fragment file `mail.md` (never served; one namespace
   per mail, `subject` + `body`, a shared `common.footer` and `common.htmlStyle`) and goes out as one message
   with a text part (the kernel's `renderMarkdownText`) and an HTML part (`renderMarkdown`, issue #795). `MailCopy`
   renders it for the client of the user the mail is *about* -- an invitation's user, a claim's key -- so a

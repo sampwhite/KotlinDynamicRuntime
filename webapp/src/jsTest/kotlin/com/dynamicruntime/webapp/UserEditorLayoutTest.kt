@@ -24,8 +24,8 @@ class UserEditorLayoutTest {
         assertEquals(listOf("Enabled"), userStatusChips(user()))
         assertEquals(listOf("Disabled"), userStatusChips(user(enabled = false)))
         assertEquals(listOf("Deleted"), userStatusChips(user(deleted = true, registered = false)))
-        // Unclaimed: an invitation is out for a live user; a disabled one waits for its enable.
-        assertEquals(listOf("Enabled", "Invitation pending"), userStatusChips(user(registered = false)))
+        // Unclaimed, with no word on an invitation: one may have been held back (issue #1504).
+        assertEquals(listOf("Enabled", "Unclaimed"), userStatusChips(user(registered = false)))
         assertEquals(listOf("Disabled", "Unclaimed"), userStatusChips(user(enabled = false, registered = false)))
         assertEquals(listOf("Enabled", "Sandbox"), userStatusChips(user(client = "acme:sandbox")))
     }
@@ -152,6 +152,78 @@ class UserEditorLayoutTest {
     }
 
     @Test
+    fun anInvitationIsOfferedExceptAtTheCallersOwnAddress() {
+        assertTrue(invitationOfferedFor(forSelf = false, "pat@acme.test", "me@acme.test"))
+        // The form for yourself, or your own address typed, however it is spelled.
+        assertFalse(invitationOfferedFor(forSelf = true, "me@acme.test", "me@acme.test"))
+        assertFalse(invitationOfferedFor(forSelf = false, " ME@acme.test ", "me@acme.test"))
+        // Until the caller's own address is known, the backend's rule is what answers.
+        assertTrue(invitationOfferedFor(forSelf = false, "me@acme.test", null))
+    }
+
+    @Test
+    fun moreOptionsNamesAnInvitationHeldBackOnlyWhileOneWouldGo() {
+        assertTrue(invitationHeld(offered = true, enabled = true, invite = false))
+        assertFalse(invitationHeld(offered = true, enabled = true, invite = true))
+        // A disabled user is never invited, and nothing is mailed at your own address: nothing is held back.
+        assertFalse(invitationHeld(offered = true, enabled = false, invite = false))
+        assertFalse(invitationHeld(offered = false, enabled = true, invite = false))
+        assertEquals(
+            listOf("no invitation"), userMoreOptionsInForce(false, false, emptyList(), true, true, invitationHeld = true),
+        )
+    }
+
+    @Test
+    fun theNoteAfterACreateSaysWhetherTheInvitationWent() {
+        fun note(invitable: Boolean, wanted: Boolean, sent: Boolean) = createdNote("a@b.test", invitable, wanted, sent)
+        assertEquals("Created a@b.test. Invitation sent.", note(invitable = true, wanted = true, sent = true).text)
+        assertEquals(
+            "Created a@b.test. No invitation sent: open the user to send one.", note(invitable = true, wanted = false, sent = false).text,
+        )
+        // A mail that failed did not fail the create, so the note must not claim it went, and is drawn as a failure.
+        val failed = note(invitable = true, wanted = true, sent = false)
+        assertEquals("Created a@b.test, but its invitation could not be sent: open the user to send it.", failed.text)
+        assertTrue(failed.failed)
+        assertFalse(note(invitable = true, wanted = true, sent = true).failed)
+        // The caller's own address, or a disabled user: no invitation was in question.
+        assertEquals("Created a@b.test.", note(invitable = false, wanted = true, sent = false).text)
+        assertFalse(note(invitable = false, wanted = true, sent = false).failed)
+    }
+
+    @Test
+    fun aClientIsCarriedByWhatTheCallerWasTold() {
+        // A scoped administrator is told no clients, and works in one that is carried.
+        assertTrue(clientCarried("acme", emptySet()))
+        assertTrue(clientCarried("acme", setOf("acme", "hub")))
+        assertFalse(clientCarried("retired", setOf("acme", "hub")))
+        // A sandbox goes with its parent.
+        assertTrue(clientCarried("acme:sandbox", setOf("acme")))
+        assertFalse(clientCarried("retired:sandbox", setOf("acme")))
+    }
+
+    @Test
+    fun aUserIsOfferedTheMailThatFitsThem() {
+        fun offer(target: AdminUser, own: Boolean = false, carried: Boolean = true) = userMailOffer(target, own, carried)
+        assertEquals(UserMailOffer.invitation, offer(user(registered = false)))
+        assertEquals(UserMailOffer.reminder, offer(user()))
+        // A claimed user's invitation would sign in whoever held the mail, and nobody reminds themself.
+        assertEquals(UserMailOffer.none, offer(user(), own = true))
+        // A sandbox's own user signs in; one somebody opened, or a client not carried here, cannot.
+        assertEquals(UserMailOffer.reminder, offer(user(client = "acme:sandbox")))
+        val opened = AdminUser(
+            userId = 5L, primaryId = "ada@acme.test", username = "@ada", roles = listOf(ROLE.user), client = "acme:sandbox",
+            org = null, isEntity = false, name = null, enabled = true, hasPassword = false, deleted = false, registered = true,
+            opened = true,
+        )
+        assertEquals(UserMailOffer.none, offer(opened))
+        assertEquals(UserMailOffer.none, offer(user(), carried = false))
+        // Nobody can sign in to a disabled or deleted user.
+        assertEquals(UserMailOffer.none, offer(user(enabled = false)))
+        assertEquals(UserMailOffer.none, offer(user(enabled = false, registered = false)))
+        assertEquals(UserMailOffer.none, offer(user(deleted = true, registered = false)))
+    }
+
+    @Test
     fun aCreateIsDirtyOnceAnyFieldDiffersFromWhatItOpenedWith() {
         val seeded = CreateDraft(
             "", "", false, ROLE.user, false, false, "", "acme", PERSONA.member, "", emptyList(), enabled = true,
@@ -163,7 +235,7 @@ class UserEditorLayoutTest {
         for (changed in listOf(
             seeded.copy(email = "a@b.test"), seeded.copy(client = "globex"), seeded.copy(persona = PERSONA.admin),
             seeded.copy(level = ROLE.admin), seeded.copy(allClients = true), seeded.copy(org = "east"),
-            seeded.copy(enabled = false), seeded.copy(labels = listOf("reviewer")),
+            seeded.copy(enabled = false), seeded.copy(labels = listOf("reviewer")), seeded.copy(invite = false),
         )) {
             assertTrue(createDraftDirty(changed, seeded), "$changed")
         }
@@ -174,7 +246,7 @@ class UserEditorLayoutTest {
 
     @Test
     fun theHintsUnderMoreOptionsSayWhenToUseThem() {
-        for (hint in listOf(editorHint, enabledHint(creating = true), enabledHint(creating = false))) {
+        for (hint in listOf(editorHint, enabledHint(creating = true), enabledHint(creating = false), sendInvitationHint)) {
             assertTrue(hint.startsWith("Use this when"), hint)
         }
     }

@@ -411,6 +411,7 @@ class AuthUserRow(
                     ADF.hasPassword,
                     "Whether the person has a password set; only for a caller who sees every client, or about their own identity.",
                 ) { type = SCT.boolean }
+                property(ADF.invitationSent, "On a create only: whether the invitation was mailed.") { type = SCT.boolean }
                 property(ADF.deleted, "Whether the account was permanently deleted (an obfuscated tombstone).", required = true) {
                     type = SCT.boolean
                 }

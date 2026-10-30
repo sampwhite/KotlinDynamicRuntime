@@ -1,5 +1,5 @@
-/- The mails the auth flows send (issue #773): a verification code, an invitation, and the claim page's
-   answers. A backend file -- never served, read by `MailCopy` for the client of the user the mail is about --
+/- The mails the auth flows send (issue #773): a verification code, an invitation, a sign-in reminder, and the claim
+   page's answers. A backend file -- never served, read by `MailCopy` for the client of the user the mail is about --
    so a client's overlay can reword a mail and name itself in it. Each mail is one namespace holding its
    `subject` and its `body`; the body is Markdown, rendered once to plain text for the text part and once to
    HTML for the HTML part (issue #795), so it may carry emphasis and neither part shows a mark of syntax. The
@@ -66,6 +66,19 @@ If the link does not work for you, go to the login page, choose "Claim an accoun
 A code will then be sent to [${address}]{.value}.
 
 The link expires in seven days.
+
+
+/- A reminder to a user who has already claimed their account (issue #1504), sent by an administrator. It carries the
+   ordinary sign-in page, never a link that signs in by itself: holding this mail proves nothing. -/
+# @signInReminder
+# +subject Your account at ${clientName}
+# +body
+You have an account for [${address}]{.value} at [${clientName}]{.value}, as [${personaLabel}]{.value}.
+
+Sign in here: ${url}
+
+Use this address, with your password if you set one, or a code sent to it. If you have more than one user here, you can
+switch to this one after you sign in.
 
 
 /- The claim page's answers (issue #751). `InvitationTest` reads the code out of "code for claiming the account

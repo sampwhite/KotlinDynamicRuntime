@@ -102,6 +102,8 @@ class AdminUser(
     val labels: List<String> = emptyList(),
     /** In a sandbox (issue #1198): the roles the user acts with, which [roles] -- its row's -- need not say; null outside one. */
     val actingRoles: List<String>? = null,
+    /** On a create's answer only (issue #1504): whether the invitation was mailed. */
+    val invitationSent: Boolean = false,
     /** Whether this is a sandbox user somebody opened (issue #1198), which has no roles or organization of its own to set. */
     val opened: Boolean = false,
     /**
@@ -205,6 +207,7 @@ object AdminApi {
         primaryId: String, roles: List<String>?, org: String?,
         isEntity: Boolean = false, name: String? = null, client: String? = null, enabled: Boolean = true,
         persona: String? = null, personaSuffix: String? = null, labels: List<String> = emptyList(),
+        sendInvitation: Boolean = true,
     ): AdminUser {
         val body = buildMap<String, Any?> {
             put(ADF.primaryId, primaryId.trim())
@@ -222,6 +225,8 @@ object AdminApi {
             // Sent only to create a disabled account: the backend defaults to enabled, so the common case
             // stays a shorter body and existing callers are unchanged.
             if (!enabled) put(ADF.enabled, false)
+            // Likewise sent only to hold the invitation back (issue #1504).
+            if (!sendInvitation) put(ADF.sendInvitation, false)
             // The labels it starts with (issues #786, #1481), always sent: given, even empty, they replace any a
             // recovered disabled user carried, so a re-created user does not come back with a label nobody chose.
             put(ADF.labels, labels)
@@ -316,6 +321,11 @@ object AdminApi {
         Http.sendApi("POST", UADEP.userInvite, mapOf(ADF.userId to userId))
     }
 
+    /** Mails a claimed user where and how to sign in (issue #1504); refused for an unclaimed, disabled, or sandbox one. */
+    suspend fun remindUser(userId: Long) {
+        Http.sendApi("POST", UADEP.userRemind, mapOf(ADF.userId to userId))
+    }
+
     /** Sets a user's name, and whether the account is a business; the name survives a change of [isEntity]. */
     suspend fun setName(userId: Long, name: String?, isEntity: Boolean) {
         Http.sendApi("POST", UADEP.userSetName, buildMap {
@@ -367,6 +377,7 @@ object AdminApi {
         activatedAt = this[USF.activated.at] as? String,
         labels = this[ADF.labels].toJsonListOfStrings(),
         actingRoles = this[ADF.actingRoles]?.let { it.toJsonListOfStrings() },
+        invitationSent = this[ADF.invitationSent] == true,
         opened = this[ADF.opened] == true,
         openedBy = this[ADF.openedBy].toOptLong(),
         actsAsClient = this[ADF.actsAsClient] as? String,

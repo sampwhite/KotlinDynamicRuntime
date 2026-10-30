@@ -49,6 +49,7 @@ object MCOPY {
     const val verifyCode = "verifyCode"
     const val verifyCodePassword = "verifyCodePassword"
     const val invitation = "invitation"
+    const val signInReminder = "signInReminder"
     const val claimCode = "claimCode"
     const val claimNoMatch = "claimNoMatch"
     const val claimNoMatchInClient = "claimNoMatchInClient"
@@ -56,7 +57,8 @@ object MCOPY {
 
     /** Every mail namespace, for a check that each has its subject and body. */
     val mails: List<String> = listOf(
-        verifyCode, verifyCodePassword, invitation, claimCode, claimNoMatch, claimNoMatchInClient, claimNoMatchNamed,
+        verifyCode, verifyCodePassword, invitation, signInReminder, claimCode, claimNoMatch, claimNoMatchInClient,
+        claimNoMatchNamed,
     )
 
     // The params.

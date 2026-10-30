@@ -38,6 +38,9 @@ object ADEP {
     const val userLabelSuggestions = "/${SECT.admin}/user/labelSuggestions"
     /** (Re)sends the invitation for a user nobody has claimed yet (issue #751). */
     const val userInvite = "/${SECT.admin}/user/invite"
+
+    /** Mails a claimed user a reminder of where and how to sign in (issue #1504): the ordinary sign-in page, no link that signs in. */
+    const val userRemind = "/${SECT.admin}/user/remind"
     /**
      * The person behind a user (issue #770): their identity's facts and the other users of that identity the
      * caller may administer -- what the Users page's editor shows above the editable data.
@@ -134,6 +137,9 @@ object UADEP {
     const val userLabelSuggestions = "/${SECT.clientAdmin}/user/labelSuggestions"
     /** The scoped counterpart to [ADEP.userInvite]. */
     const val userInvite = "/${SECT.clientAdmin}/user/invite"
+
+    /** The scoped counterpart to [ADEP.userRemind]. */
+    const val userRemind = "/${SECT.clientAdmin}/user/remind"
     /** The scoped counterpart to [ADEP.userIdentity]: the siblings listed are the ones in the caller's scope. */
     const val userIdentity = "/${SECT.clientAdmin}/user/identity"
     /** `DELETE`, like [ADEP.userDelete], and scoped to the caller's own client. */
@@ -345,6 +351,12 @@ object ADF {
     const val isEntity = "isEntity"
     const val name = "name"
     const val enabled = "enabled"
+
+    /** On a create (issue #1504): whether to mail the invitation. Absent is true; a disabled user is never invited. */
+    const val sendInvitation = "sendInvitation"
+
+    /** In a create's answer (issue #1504): whether the invitation went. A mail that fails does not fail the create. */
+    const val invitationSent = "invitationSent"
 
     /**
      * A user's free-form **labels** (issue #786): strings an administrator applies -- `reviewer`, say -- that a

@@ -108,6 +108,8 @@ val Users = FC<Props> {
     var busy by useState(false)
     var error by useState<DisplayError?>(null)
     var note by useState<String?>(null)
+    // Whether [note] reports something the administrator must act on, rather than something done (issue #1504).
+    var noteFailed by useState(false)
 
     // The user being edited, or null in the list view. `creating` opens the same editor with an empty draft.
     var editing by useState<AdminUser?>(null)
@@ -146,6 +148,7 @@ val Users = FC<Props> {
     var draftIsEntity by useState(false)
     var draftName by useState("")
     var draftEnabled by useState(true)
+    var draftInvite by useState(true)
     // The user's free-form labels (issue #786), and what each client suggests -- keyed by client, since a
     // full-scope administrator edits users in many clients and each suggests its own. Keyed rather than one
     // "current" list so a slow reply can only ever fill in *its own* client: opening an acme user and then a globex
@@ -171,7 +174,7 @@ val Users = FC<Props> {
     // and only a chosen persona is sent, so the backend applies the same rule to an unnamed one.
     var personaChosen by useState(false)
 
-    // Each panel's own result (issue #1478, rule 3 of #1477): the User panel's save, the Invitation panel's send, and
+    // Each panel's own result (issue #1478, rule 3 of #1477): the User panel's save, the mail panel's send, and
     // the danger zone's delete each say how it went where it was asked for. A save's failure partway through says what
     // it had saved first ([userSaveFailureLead]), since it is one call per change rather than one transaction.
     var saveError by useState<DisplayError?>(null)
@@ -180,6 +183,7 @@ val Users = FC<Props> {
     var saveErrorLead by useState<String?>(null)
     var inviteNote by useState<String?>(null)
     var inviteError by useState<DisplayError?>(null)
+    var inviteErrorLead by useState<String?>(null)
     var deleteError by useState<DisplayError?>(null)
 
     val generation = useRefreshGeneration()
@@ -376,6 +380,7 @@ val Users = FC<Props> {
         draftIsEntity = seed.isEntity
         draftName = seed.name
         draftEnabled = seed.enabled
+        draftInvite = seed.invite
         draftLabels = seed.labels
         draftPersona = seed.persona
         draftPersonaSuffix = seed.personaSuffix
@@ -393,6 +398,7 @@ val Users = FC<Props> {
         inviteError = null
         deleteError = null
         note = null
+        noteFailed = false
         error = null
     }
 
@@ -611,6 +617,8 @@ val Users = FC<Props> {
         opened = openedUserNote(target) != null,
     )
 
+    // Whether a create may mail an invitation at all: not for the caller's own address, however it came to be typed.
+    val invitationOffered = creating && invitationOfferedFor(creatingForSelf, draftEmail, ownAddress)
     // Whether the User panel holds edits nobody has saved (issue #1478): its heading says so, its Save is offered, and
     // leaving -- Back, another of the person's users, or any other address -- asks first. Never on a page the caller may
     // no longer use (signed out, or switched to a user who may not), whose draft is out of sight.
@@ -619,7 +627,7 @@ val Users = FC<Props> {
         creating -> createSeed?.let { seeded ->
             val current = CreateDraft(
                 draftEmail, draftName, draftIsEntity, draftLevel, draftEditor, draftAllClients, draftOrg, draftClient,
-                draftPersona, draftPersonaSuffix, draftLabels, draftEnabled,
+                draftPersona, draftPersonaSuffix, draftLabels, draftEnabled, draftInvite,
             )
             createDraftDirty(current, seeded)
         } == true
@@ -687,7 +695,7 @@ val Users = FC<Props> {
                     isEntity = draftIsEntity, name = draftName.trim().ifEmpty { null },
                     client = draftClient.trim().ifEmpty { null }, enabled = draftEnabled,
                     persona = if (personaChosen) draftPersona else null, personaSuffix = draftPersonaSuffix,
-                    labels = normalizeUserLabels(draftLabels),
+                    labels = normalizeUserLabels(draftLabels), sendInvitation = !invitationOffered || draftInvite,
                 )
             } catch (e: Throwable) {
                 // A collision on (address, client, persona) is what the personaSuffix is for: offer it, keep the
@@ -696,7 +704,11 @@ val Users = FC<Props> {
                 saveErrorLead = "Couldn't create the user."
                 throw e
             }
-            note = "Created ${created.primaryId}."
+            // A user registered at once was the caller's own, whatever the form could tell.
+            val invitable = invitationOffered && draftEnabled && !created.registered
+            val made = createdNote(created.primaryId, invitable, draftInvite, created.invitationSent)
+            note = made.text
+            noteFailed = made.failed
             if (created.labels.isNotEmpty()) forgetLabelSuggestions(created.client)
         } else {
             val changes = draftChanges(target)
@@ -723,18 +735,39 @@ val Users = FC<Props> {
                 saved += change
             }
             note = "Saved ${target.primaryId}."
+            noteFailed = false
         }
         closeEditor()
         runSearch(query())
     }
 
-    /** Sends (again) the open user's invitation (issue #751), saying so in the Invitation panel. */
-    fun sendInvitation() = run({ inviteError = it }) {
-        val target = editing ?: return@run
-        inviteNote = null
-        inviteError = null
-        AdminApi.inviteUser(target.userId)
-        inviteNote = "Invitation sent to ${target.primaryId}."
+    /**
+     * Runs [send], a mail to the open user, with its result in the mail panel. A refusal can mean the user moved on while
+     * open -- claimed, or disabled -- so the user is read again, and the panel shows what now fits, with the refusal in it.
+     */
+    fun sendMail(failureLead: String, sentNote: (AdminUser) -> String, send: suspend (AdminUser) -> Unit) =
+        run({ inviteError = it }) {
+            val target = editing ?: return@run
+            inviteNote = null
+            inviteError = null
+            inviteErrorLead = failureLead
+            try {
+                send(target)
+            } catch (e: Throwable) {
+                refreshOpenUser(target.userId)
+                throw e
+            }
+            inviteNote = sentNote(target)
+        }
+
+    /** Sends the open user's invitation (issue #751), saying so in the Invitation panel. */
+    fun sendInvitation() = sendMail("Couldn't send the invitation.", { "Invitation sent to ${it.primaryId}." }) {
+        AdminApi.inviteUser(it.userId)
+    }
+
+    /** Sends the open, claimed user a reminder of where to sign in (issue #1504), saying so in its panel. */
+    fun sendReminder() = sendMail("Couldn't send the reminder.", { "Reminder sent to ${it.primaryId}." }) {
+        AdminApi.remindUser(it.userId)
     }
 
     /**
@@ -745,6 +778,7 @@ val Users = FC<Props> {
         val target = editing ?: return@run
         val result = AdminApi.deleteUser(target.userId, permanent = true)
         note = "Permanently deleted ${target.primaryId}: ${result.primaryId}."
+        noteFailed = false
         closeEditor()
         runSearch(query())
     }
@@ -766,8 +800,8 @@ val Users = FC<Props> {
             // ---- editor (issue #1478) -----------------------------------------
             //
             // Built to the page structure of #1477: a header, the structure line, then panels -- the User draft, whose
-            // one Save covers every field in it; the live Invitation and API keys, which act as they are pressed; the
-            // read-only Activity; and the danger zone last. Each says how its own action went.
+            // one Save covers every field in it; the live Invitation or Sign-in reminder, and API keys, which act as
+            // they are pressed; the read-only Activity; and the danger zone last. Each says how its own action went.
             val open = editing
             // Editing yourself: the backend refuses to let anyone change their own administrator status or disable
             // their own account, so those controls are locked here rather than offered and then rejected. The
@@ -839,13 +873,20 @@ val Users = FC<Props> {
                     }
                 }
             } else {
-            val invitationShown = open != null && !open.registered && open.enabled
+            // Another user at the caller's own address is theirs too: nobody mails themself a reminder.
+            val mailOffer = open?.let {
+                userMailOffer(it, own = self || it.primaryId == ownAddress, carried = clientCarried(it.client, carriedClients))
+            } ?: UserMailOffer.none
             val keysShown = open != null && config?.user?.let { mayCreateForOthers(it) } != false
             val dangerShown = open != null && !self
             if (open != null) {
                 val shown = buildList {
                     add(panelUser to "User")
-                    if (invitationShown) add(panelInvitation to "Invitation")
+                    when (mailOffer) {
+                        UserMailOffer.invitation -> add(panelInvitation to "Invitation")
+                        UserMailOffer.reminder -> add(panelInvitation to "Sign-in reminder")
+                        UserMailOffer.none -> {}
+                    }
                     add(panelActivity to "Activity")
                     if (keysShown) add(panelKeys to "API keys")
                     if (dangerShown) add(panelDanger to "Danger zone")
@@ -1030,6 +1071,7 @@ val Users = FC<Props> {
                 inForce = userMoreOptionsInForce(
                     editor = editorShown && draftEditor, allClients = allClientsShown && draftAllClients,
                     labels = draftLabels, enabled = draftEnabled, creating = creating,
+                    invitationHeld = invitationHeld(invitationOffered, draftEnabled, draftInvite),
                     personaSuffix = if (creating) draftPersonaSuffix else "",
                     suffixNeeded = creating && personaSuffixCollided,
                 )
@@ -1128,6 +1170,29 @@ val Users = FC<Props> {
                     className = ClassName("type-hint")
                     +enabledHint(creating)
                 }
+                // Not at the caller's own address, where nothing is mailed. A disabled user is never invited, so the
+                // box waits, saying why, rather than promising a mail that will not go.
+                if (invitationOffered) {
+                    div {
+                        className = ClassName("row")
+                        Checkbox {
+                            checked = draftInvite && draftEnabled
+                            disabled = busy || !draftEnabled
+                            onChange = { event -> draftInvite = event.target.checked as Boolean }
+                            +"Send invitation"
+                        }
+                    }
+                    p {
+                        className = ClassName("type-hint")
+                        +sendInvitationHint
+                    }
+                    if (!draftEnabled) {
+                        p {
+                            className = ClassName("type-hint")
+                            +sendInvitationWaitsHint
+                        }
+                    }
+                }
             }
 
             SaveBar {
@@ -1157,14 +1222,14 @@ val Users = FC<Props> {
             if (open != null) {
                 // ---- Invitation: live (issue #751) ---------------------------
                 //
-                // The person has not accepted their invitation. Offer to send it again -- a lapsed link, a lost mail,
-                // a user created disabled and enabled since. The backend refuses a claimed or disabled one, so the
-                // panel is shown only where it can succeed.
-                if (invitationShown) {
+                // Nobody has claimed the user. Offer to send an invitation -- a lapsed link, a lost mail, one held back
+                // at the create, a user created disabled and enabled since. The backend refuses a claimed or disabled
+                // one, so the panel is shown only where it can succeed.
+                if (mailOffer == UserMailOffer.invitation) {
                     panel(panelInvitation, "Invitation", kind = PanelKind.live) {
                         p {
                             className = ClassName("type-hint")
-                            +"Nobody has accepted this account's invitation yet. Sending it again mails a fresh link, good for seven days."
+                            +"Nobody has claimed this account yet. Sending an invitation mails a fresh link, good for seven days."
                         }
                         div {
                             className = ClassName("row")
@@ -1174,7 +1239,29 @@ val Users = FC<Props> {
                                 +"Send invitation"
                             }
                         }
-                        panelNote(inviteError, inviteNote, "Couldn't send the invitation.")
+                        panelNote(inviteError, inviteNote, inviteErrorLead)
+                    }
+                }
+
+                // ---- Sign-in reminder: live (issue #1504) --------------------
+                //
+                // For a claimed user, whom an invitation is refused for: its link would sign in whoever held the mail.
+                if (mailOffer == UserMailOffer.reminder) {
+                    panel(panelInvitation, "Sign-in reminder", kind = PanelKind.live) {
+                        p {
+                            className = ClassName("type-hint")
+                            +("This person has already claimed the account. A reminder mails them where to sign in, " +
+                                "with a link to the sign-in page, which still asks for a code or their password.")
+                        }
+                        div {
+                            className = ClassName("row")
+                            Button {
+                                disabled = busy
+                                onClick = { sendReminder() }
+                                +"Send sign-in reminder"
+                            }
+                        }
+                        panelNote(inviteError, inviteNote, inviteErrorLead)
                     }
                 }
 
@@ -1238,7 +1325,7 @@ val Users = FC<Props> {
             error?.let { errorText(it) }
             note?.let {
                 p {
-                    className = ClassName("form-ok")
+                    className = ClassName(if (noteFailed) "error-text" else "form-ok")
                     +it
                 }
             }
@@ -1724,16 +1811,17 @@ fun editorTitle(creating: Boolean, forSelf: Boolean): String = when {
 }
 
 /**
- * What happens at the address a create names (issues #751, #797) -- the backend's rule, said before the click:
- * the caller's own address gives a user registered at once, and anyone else's gets an invitation. Pure,
- * jsNodeTest-covered.
+ * What happens at the address a create names (issues #751, #797, #1504) -- the backend's rule, said before the click:
+ * the caller's own address gives a user registered at once, and anyone else's gets an invitation unless it is held
+ * back or the user starts disabled. Pure, jsNodeTest-covered.
  */
 fun createAddressHint(forSelf: Boolean): String = if (forSelf) {
     "Your own address. The new user is registered as soon as it is created, no invitation is sent, and it " +
         "appears in your account menu to switch to."
 } else {
-    "An invitation is mailed to this address, and the user is claimed when its owner accepts it. If it is " +
-        "your own address, the user is registered at once instead, and no invitation is sent."
+    "An invitation is mailed to this address, unless you turn it off or disable the user under More options, and the " +
+        "user is claimed when its owner accepts it. If it is your own address, the user is registered at once " +
+        "instead, and no invitation is sent."
 }
 
 /**
@@ -1803,6 +1891,14 @@ fun enabledHint(creating: Boolean): String = if (creating) {
     "Use this when the user should stop signing in for now: unchecking disables the account, a recoverable delete " +
         "you can undo here. To remove the account for good, use the danger zone."
 }
+
+/** What the Send invitation box under More options is for (issue #1504). */
+const val sendInvitationHint =
+    "Use this when you will tell the person yourself: uncheck to create the user without mailing anyone, and send the " +
+        "invitation later from this page."
+
+/** Beside [sendInvitationHint] while Enabled is off, why the box waits. */
+private const val sendInvitationWaitsHint = "Waits for Enabled: a disabled user is not invited."
 
 /** A label list as antd `Select` `{ label, value }` options -- a label is its own caption. */
 private fun labelSelectOptions(labels: List<String>): Array<dynamic> = labels.map { label ->
