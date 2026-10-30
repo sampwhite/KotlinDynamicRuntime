@@ -187,7 +187,7 @@ fun reassembleGedraConfig(
             e[CCT.traitId].toOptStr().orEmpty(),
             e[CCT.label].toOptStr().orEmpty(),
             e[CCT.display].toOptStr().orEmpty(),
-            UsageKind.entries.firstOrNull { it.name == e[CCT.kind].toOptStr() } ?: UsageKind.string,
+            UsageKind.entries.firstOrNull { it.name == e[CCT.kind].toOptStr() },
             e[CCT.substring] as? Boolean ?: false,
             e[CCT.presentation].toOptStr()?.ifBlank { null },
             e[CCT.columnId].toOptStr()?.ifBlank { null },

@@ -55,6 +55,10 @@ import com.dynamicruntime.common.gedra.reservedQueryFieldNames
 import com.dynamicruntime.common.gedra.searchParamCollisions
 import com.dynamicruntime.common.gedra.usageColumnClashes
 import com.dynamicruntime.common.gedra.withSearchProperties
+import com.dynamicruntime.common.gedra.UsageColumn
+import com.dynamicruntime.common.gedra.declaredColumns
+import com.dynamicruntime.common.gedra.resolveColumns
+import java.util.concurrent.ConcurrentHashMap
 import com.dynamicruntime.common.content.MarkdownFragmentService
 import com.dynamicruntime.common.job.JobDef
 import com.dynamicruntime.common.schema.collectDefs
@@ -135,7 +139,22 @@ class SchemaService : ServiceInitializer, ClientSchemaSource {
          * because the catalog asks it of an endpoint it is about to show (issue #1128).
          */
         val generatedKeys: Set<String> = emptySet(),
+        /**
+         * The usage rules this snapshot's schema was built with (issue #1508), each client's own and global's under
+         * the global client: what [columns] are resolved from, so they pair this snapshot's usages with its types
+         * even when a failed reload republishes it after the collector moved on.
+         */
+        val usages: Map<String, List<ClientTraitUsage>> = emptyMap(),
     ) {
+        /** [client]'s usage rules as this snapshot holds them: its own if it declared any, else global's. */
+        fun usagesFor(client: String): List<ClientTraitUsage> = usages[client] ?: usages[GID.globalClient].orEmpty()
+
+        /**
+         * Each client's listing columns as this snapshot's schema resolves them (issue #1508), filled on first ask and
+         * replaced with the snapshot -- so a reload resolves them afresh against the client's rebuilt types.
+         */
+        val columns = ConcurrentHashMap<String, List<UsageColumn>>()
+
         /**
          * The clients some endpoint is bound to (issue #1087): a client's copies of the client-shaped endpoints, and
          * any generated for it. Not the keys of [clientStores]: a client that varies nothing has no store of its own
@@ -234,12 +253,14 @@ class SchemaService : ServiceInitializer, ClientSchemaSource {
         // each, merged onto the authored query type. The global scope's set is merged here, so the shared
         // listing advertises and accepts them; the pristine base is kept for the per-client build, which merges
         // each client's own set onto *it* (never onto the global-augmented one, or an overriding client would
-        // inherit global's parameters too).
+        // inherit global's parameters too). As declared for now: what each column's field says is known only
+        // once the types are parsed, below (issue #1508).
         val queryName = formDocsQueryDefName()
         val queryBase = collected.defs[queryName]
         this.queryBase = queryBase
+        val globalUsages = collected.gedraConfigs.usagesFor(GID.globalClient)
         if (queryBase != null) {
-            collected.defs[queryName] = withSearchProperties(queryBase, collected.gedraConfigs.usagesFor(GID.globalClient))
+            collected.defs[queryName] = withSearchProperties(queryBase, declaredColumns(globalUsages))
         }
 
         // The cfact registries come first (issue #841): the global document and each client's variant are repaired
@@ -261,6 +282,16 @@ class SchemaService : ServiceInitializer, ClientSchemaSource {
         repairGlobalDefs(cxt, collected, repairContext(collected, cfacts.global))
         var types = parseSchemaTypes(collected.defs)
         if (dropFaultyGlobalLayouts(cxt, collected, types)) types = parseSchemaTypes(collected.defs)
+        // The search fields again, now from the columns as the parsed types resolve them (issue #1508): a column over
+        // a number field searches by a range, and one over a choice field offers its choices. Only the query type is
+        // parsed again, against the rest.
+        if (queryBase != null) {
+            val query = withSearchProperties(queryBase, resolveColumns(globalUsages, types))
+            if (query != collected.defs[queryName]) {
+                collected.defs[queryName] = query
+                types = types + parseSchemaTypes(mapOf(queryName to query), types)
+            }
+        }
         val endpoints = availableEndpoints.associateBy { it.collationKey }
         val tables = collected.tables.associateBy { it.tableName }
         // The raw defs ride along so the /schema/endpoints catalog can serve types with their `$ref`s intact.
@@ -282,7 +313,7 @@ class SchemaService : ServiceInitializer, ClientSchemaSource {
         // the later service tier -- see the note there on why it cannot live here.)
 
         sharedEndpoints = endpoints
-        publish(cxt, SchemaSnapshot(store, emptyMap(), cfacts))
+        publish(cxt, SchemaSnapshot(store, emptyMap(), cfacts, usages = collected.gedraConfigs.usagesByClient()))
         // Built after the global store, from it (issue #356). A variant is the same document with one
         // client's overlays applied and re-parsed, so it cannot exist until the document is complete.
         val dropped = HashMap<String, Set<String>>()
@@ -359,21 +390,21 @@ class SchemaService : ServiceInitializer, ClientSchemaSource {
 
     /**
      * Refuses (or warns, per the check mode of the rules' holder, issue #839) a client whose trait-usage rules would
-     * not present as declared. Two checks, over one pass of the usage set each scope's listing actually generates from
-     * -- its own if it declared any, else global's (`usagesFor`) -- across the same scopes: `global`, and every client
-     * that declared a usage. Both read that one set per scope, so they cannot come to disagree about which scopes or
-     * usages they judge.
+     * not present as declared. The checks below, over one pass of the columns each scope's listing actually generates
+     * from -- its own usages if it declared any, else global's (`usagesFor`), resolved against the schema it runs
+     * ([columnsOf], issue #1508) -- across the same scopes: `global`, and every client that declared a usage. All read
+     * that one set per scope, so they cannot come to disagree about which scopes or columns they judge.
      *
      * - A **search parameter colliding with a reserved forms-listing field** (issue #538): a usage on a trait
      *   named `user`, say, asks for an exact parameter `user`, the listing's own user filter. `gedraSearchParams`
      *   leaves a reserved name out regardless, so the effect is a silently unsearchable trait -- worth reporting
      *   so the client learns their usage did not take. The cursor field `after` is among them (issue #987).
-     * - **Two usage rules for one trait id** (issue #681): the presentation model is keyed by trait id
-     *   throughout -- the display-value map, the search predicate's value lookup, the sort's column resolution,
-     *   and the frontend's column key -- so a second usage does not add a second column; it silently collides
-     *   with the first (the display map keeps the last, the sort takes the first, both columns share one key),
-     *   leaving that trait's search comparing against the wrong value. A trait presents once; two columns from
-     *   one trait would need a per-usage key.
+     * - **Two columns of one name, or whose search parameters meet** (issues #681, #1490): the presentation model is
+     *   keyed by the column's name throughout -- the display-value map, the search predicate's value lookup, the
+     *   sort's column resolution, and the frontend's column key -- so two columns of one name silently collide. A
+     *   trait may have several columns, each with a name of its own (`columnId`).
+     * - **A declared kind its field contradicts** (issue #1508): a `string` column over a number field would sort
+     *   "100" before "9" ([UsageColumn.kindConflict]). The declared kind is kept, so a load stays forgiving.
      * - **A presentation that does not parse** (issue #1323): it is evaluated where the listing is drawn, which
      *   shows the value when it cannot be, so an unknown function or a bad date style would never be seen. The write
      *   gate refuses one in stored configuration; this catches one declared in source, and is the trial's word too.
@@ -383,6 +414,11 @@ class SchemaService : ServiceInitializer, ClientSchemaSource {
         collected: SchemaCollector,
         /** Check only this scope (issue #842, a reload); null checks every scope, as the boot does. */
         onlyScope: String? = null,
+        /**
+         * A scope's columns as its listing would run them (issue #1508): the published ones, except in a trial, whose
+         * candidate schema is never published.
+         */
+        columnsOf: (String) -> List<UsageColumn> = { listingColumnsFor(it) },
     ) {
         val issues = mutableListOf<GedraConfigIssue>()
         val usageScopes = (
@@ -390,7 +426,8 @@ class SchemaService : ServiceInitializer, ClientSchemaSource {
                 collected.gedraConfigs.configs.filter { it.usages.isNotEmpty() }.map { it.gedraId.client }
             ).distinct().filter { onlyScope == null || it == onlyScope }
         for (scope in usageScopes) {
-            val usages = collected.gedraConfigs.usagesFor(scope)
+            // As the scope's listing runs them (issue #1508), so a column's search parameters are judged as generated.
+            val columns = columnsOf(scope)
             // The rules' holder (issue #839): the scope's own usage-declaring configs, or global's when it inherits
             // them -- a stored one first, since a stored rule joining a source one is what made the set collide.
             val declaring = collected.gedraConfigs.configs.filter { it.usages.isNotEmpty() }
@@ -400,7 +437,7 @@ class SchemaService : ServiceInitializer, ClientSchemaSource {
             if (holder == null || holder.checkMode(cxt) == BootCheckMode.off) {
                 continue
             }
-            val collisions = searchParamCollisions(usages)
+            val collisions = searchParamCollisions(columns)
             if (collisions.isNotEmpty()) {
                 reportConfigProblem(
                     cxt,
@@ -415,7 +452,23 @@ class SchemaService : ServiceInitializer, ClientSchemaSource {
                     issues,
                 )
             }
-            for (usage in usages) {
+            for (column in columns) {
+                val usage = column.usage
+                // A declared kind its field contradicts (issue #1508): a `string` column over a number would sort "100"
+                // before "9". The declared kind is kept, as a load is forgiving; a write is refused.
+                if (column.kindConflict) {
+                    reportConfigProblem(
+                        cxt,
+                        holder.issue(
+                            "Client '$scope' declares column '${usage.columnKey}' as kind '${usage.kind?.name}', but its " +
+                                "field reads as '${column.fieldShape?.kind?.name}'.",
+                            "Searching and sorting the column as '${usage.kind?.name}'. Leave the kind out to take the " +
+                                "field's, or make the display computed to keep your own.",
+                            GCEL.usage, usage.columnKey,
+                        ),
+                        issues,
+                    )
+                }
                 val faults = usage.presentation?.checkTemplateSyntax().orEmpty()
                 if (faults.isEmpty()) continue
                 reportConfigProblem(
@@ -430,7 +483,7 @@ class SchemaService : ServiceInitializer, ClientSchemaSource {
                 )
             }
             // Two columns of one name, or whose search parameters meet (issue #1490); one trait may have several.
-            val clashes = usageColumnClashes(usages)
+            val clashes = usageColumnClashes(columns)
             if (clashes.isNotEmpty()) {
                 reportConfigProblem(
                     cxt,
@@ -607,7 +660,9 @@ class SchemaService : ServiceInitializer, ClientSchemaSource {
             cxt, scratch, global, queryBase, def?.let { mapOf(client to it) } ?: emptyMap(),
             onlyClient = client, repair = repairContext(scratch), droppedTypes = dropped,
         )[client]
-        checkUsageRules(cxt, scratch, onlyScope = client)
+        // Judged against the columns the write would produce (issue #1508): the trial's usages over its candidate types.
+        val candidateTypes = (variant ?: global).types
+        checkUsageRules(cxt, scratch, onlyScope = client) { scope -> resolveColumns(scratch.gedraConfigs.usagesFor(scope), candidateTypes) }
         // The candidate store -- the client's variant, or global's when it varies nothing -- for the checks that run
         // after this one and judge against the schema the write would produce (a workflow's type alterations #984,
         // a report's bindings #980).
@@ -934,6 +989,18 @@ class SchemaService : ServiceInitializer, ClientSchemaSource {
         collector?.gedraConfigs?.usagesFor(client) ?: emptyList()
 
     /**
+     * [client]'s listing columns (issue #1508): its usage rules resolved against the schema it runs under, both as the
+     * published schema holds them, so they are what its listing query type was generated from. What the listing, its
+     * search, its sort, and its value suggestions read. Resolved once per published schema.
+     */
+    fun listingColumnsFor(client: String): List<UsageColumn> {
+        val snap = snapshot
+        return snap.columns.getOrPut(client) {
+            resolveColumns(snap.usagesFor(client), (snap.clientStores[client] ?: snap.store).types)
+        }
+    }
+
+    /**
      * The schema each client sees, for the clients that vary something. Absent from this map means the global
      * store; see [storeFor].
      */
@@ -997,7 +1064,10 @@ class SchemaService : ServiceInitializer, ClientSchemaSource {
         )
         val global = withGenerated(from.store)
         val clientStores = from.varyingClients.associateWith { client -> from.variants[client]?.let(::withGenerated) ?: global }
-        return SchemaSnapshot(global, clientStores, cfacts, generatedEndpoints.mapTo(HashSet()) { it.collationKey })
+        return SchemaSnapshot(
+            global, clientStores, cfacts, generatedEndpoints.mapTo(HashSet()) { it.collationKey },
+            usages = collector?.gedraConfigs?.usagesByClient().orEmpty(),
+        )
     }
 
     /**

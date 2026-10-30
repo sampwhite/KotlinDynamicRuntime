@@ -3,6 +3,8 @@ package com.dynamicruntime.common.gedra
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.SchOption
 import com.dynamicruntime.common.schema.SchType
+import com.dynamicruntime.common.schema.isDateFormat
+import com.dynamicruntime.common.schema.parseExactBool
 import com.dynamicruntime.common.util.ScriptEnv
 import com.dynamicruntime.common.util.analyzeTemplate
 import com.dynamicruntime.common.util.loneFieldPath
@@ -21,7 +23,7 @@ class ListingColumn(
     val label: String,
     val kind: UsageKind,
     val presentation: String?,
-    /** The choices its field offers ([deducedColumnChoices]), in their declared order; empty when there are none. */
+    /** The choices its field offers ([ColumnSearchShape.choices]), in their declared order; empty when there are none. */
     val choices: List<SchOption> = emptyList(),
 ) {
     /** This column on the wire, keyed by [UF]: the presentation and the choices only when there are some. */
@@ -35,9 +37,9 @@ class ListingColumn(
     }
 
     companion object {
-        /** The column [usage] draws, offering [choices]. */
-        fun of(usage: ClientTraitUsage, choices: List<SchOption> = emptyList()): ListingColumn =
-            ListingColumn(usage.columnKey, usage.traitId, usage.label, usage.kind, usage.presentation, choices)
+        /** The listing column [column] draws. */
+        fun of(column: UsageColumn): ListingColumn =
+            ListingColumn(column.columnKey, column.traitId, column.label, column.kind, column.usage.presentation, column.choices)
 
         /** The columns of a listing's [GDF.columns], in order; a kind the kernel does not know reads as text. */
         fun listFrom(wire: Any?): List<ListingColumn> = wire.toJsonListOfMaps().map { m ->
@@ -56,28 +58,99 @@ class ListingColumn(
 }
 
 /**
- * The choices a column offers (issue #1500), deduced from the trait's [dataType] when the column's [display] is a lone
- * `${field}`: the column's value is then that field's, so its schema says what the value can be -- the field's
- * options, with their labels, or `true` and `false` for a boolean. In their declared order, which is how the column
- * sorts. Empty for a computed display, a field the type does not declare, or one with neither, and for a column that
- * is not text: a number or date column is searched by a range, which choices do not help.
+ * How a listing column is searched and sorted (issue #1508): as text, a number range, or a date range ([kind]), and,
+ * for text, the [choices] its field offers, in their declared order -- what its filter suggests, its cells name, and it
+ * sorts by (issue #1500). A number range is a number range whether its field is an integer or not: a bound of 40.5 on
+ * an integer field is a harmless search, and typing the bound `integer` would refuse it.
+ *
+ * Built from a few facts about the field ([fieldSearchShape]), never copied from its schema: most of a field's schema
+ * says what may be **stored** -- required, lengths, bounds, patterns, visibility, conditionals -- and none of it
+ * belongs in a search, where a value that is not there finds nothing, which is a harmless answer.
  */
-fun deducedColumnChoices(display: String, kind: UsageKind, dataType: SchType?): List<SchOption> {
-    if (kind != UsageKind.string || dataType == null) return emptyList()
-    val path = display.loneFieldPath() ?: return emptyList()
+class ColumnSearchShape(
+    val kind: UsageKind,
+    val choices: List<SchOption> = emptyList(),
+)
+
+/**
+ * The field a column's [display] reads in the trait's [dataType], when the display is a lone `${field}` (issue
+ * #1500): a nested path walks the nested objects. Null for a computed display, a field the type does not declare,
+ * or no type.
+ */
+fun columnField(display: String, dataType: SchType?): SchType? {
+    if (dataType == null) return null
+    val path = display.loneFieldPath() ?: return null
     var field: SchType = dataType
     for (segment in path) {
-        field = field.properties[segment]?.valueType ?: return emptyList()
+        field = field.properties[segment]?.valueType ?: return null
     }
-    return when {
-        !field.options.isNullOrEmpty() -> field.options
-        field.jsonType == SCT.boolean -> booleanChoices
-        else -> emptyList()
-    }
+    return field
 }
 
-/** A boolean field's choices: its two values, which read as themselves. */
-private val booleanChoices = listOf(SchOption("true", "true"), SchOption("false", "false"))
+/**
+ * The search shape [field]'s schema gives (issue #1508): an integer or a number is a number range; a string with a
+ * date format a date range; a string text, with its options as choices; and a boolean a yes-or-no. Null for anything
+ * else -- an array, an object, a union -- whose column falls back to its declared kind.
+ */
+fun fieldSearchShape(field: SchType): ColumnSearchShape? = when (field.jsonType) {
+    SCT.integer, SCT.number -> ColumnSearchShape(UsageKind.number)
+    SCT.boolean -> ColumnSearchShape(UsageKind.boolean)
+    SCT.string -> when {
+        isDateFormat(field.format) -> ColumnSearchShape(UsageKind.date)
+        else -> ColumnSearchShape(UsageKind.string, choices = field.options.orEmpty())
+    }
+    else -> null
+}
+
+/**
+ * A listing column as a client runs it (issue #1508): its [usage], and the [shape] it is searched and sorted by. What
+ * the listing, its search, its sort, and its value suggestions read, so that all of them agree with the query
+ * parameters the client's schema advertises, which are generated from the same shapes. [fieldShape] is what the
+ * field alone would give, null for a computed display, kept so a kind contradicting its field can be reported.
+ */
+class UsageColumn(val usage: ClientTraitUsage, val shape: ColumnSearchShape, val fieldShape: ColumnSearchShape? = null) {
+    val columnKey: String get() = usage.columnKey
+    val traitId: String get() = usage.traitId
+    val label: String get() = usage.label
+    val kind: UsageKind get() = shape.kind
+    val choices: List<SchOption> get() = shape.choices
+
+    /**
+     * Whether the usage declares a kind its field contradicts -- a `string` column over a number, say, which would sort
+     * "100" before "9", or a `date` over a boolean, whose range would match nothing. Plain text contradicts nothing:
+     * text holding a number or a day may be read as one. Text with choices is not plain text.
+     */
+    val kindConflict: Boolean
+        get() {
+            val field = fieldShape ?: return false
+            val declared = usage.kind ?: return false
+            val plainText = field.kind == UsageKind.string && field.choices.isEmpty()
+            return !plainText && field.kind != declared
+        }
+}
+
+/**
+ * [usage] as a client runs it (issue #1508), given the trait's [dataType] as that client declares it. A lone
+ * `${field}` display takes the field's shape ([fieldSearchShape]) unless the usage declares another kind, which then
+ * stands: over a plain text field that is a reading of its text (a day kept as text, searched as a date), and over any
+ * other a contradiction ([UsageColumn.kindConflict]). A computed display, or a field with no shape, is its declared kind,
+ * else text.
+ */
+fun resolveUsageColumn(usage: ClientTraitUsage, dataType: SchType?): UsageColumn {
+    val fieldShape = columnField(usage.display, dataType)?.let { fieldSearchShape(it) }
+    val declared = usage.kind
+    val shape = when {
+        fieldShape != null && (declared == null || declared == fieldShape.kind) -> fieldShape
+        else -> ColumnSearchShape(declared ?: UsageKind.string)
+    }
+    return UsageColumn(usage, shape, fieldShape)
+}
+
+/**
+ * [usages] as columns searched by their declared kind alone, text where none is declared -- what a column is before
+ * its trait's schema is known, and what a test that needs no schema builds.
+ */
+fun declaredColumns(usages: List<ClientTraitUsage>): List<UsageColumn> = usages.map { resolveUsageColumn(it, null) }
 
 /** The label [choices] give [value], or null when it is not one of them. */
 fun choiceLabel(value: String, choices: List<SchOption>): String? = choices.firstOrNull { it.value == value.trim() }?.label
@@ -94,16 +167,23 @@ fun columnPresentation(kind: UsageKind, presentation: String?): String? =
 
 /**
  * [value] as its script reads it (issue #1323): a `number` column's as a number, so `formatNumber` and `currency` take
- * it; any other, and a number that does not read as one, as the text.
+ * it, and a `boolean` column's as a boolean (issue #1508), so a presentation can choose its own words; any other, and
+ * a value that does not read as its kind, as the text.
  */
-fun typedColumnValue(value: String, kind: UsageKind): Any =
-    if (kind != UsageKind.number) value else value.trim().let { it.toLongOrNull() ?: it.toDoubleOrNull() } ?: value
+fun typedColumnValue(value: String, kind: UsageKind): Any = when (kind) {
+    UsageKind.number -> value.trim().let { it.toLongOrNull() ?: it.toDoubleOrNull() } ?: value
+    UsageKind.boolean -> parseExactBool(value) ?: value
+    else -> value
+}
+
+/** What a `boolean` column's cell says for [value] with no presentation of its own (issue #1508): Yes or No. */
+fun yesNoText(value: String): String? = parseExactBool(value)?.let { if (it) "Yes" else "No" }
 
 /**
  * What a listing cell shows (issue #1323): [value] -- the column's value, as the backend evaluated it -- read through
  * the column's presentation ([columnPresentation]) over the trait's [data], with the value as `value`, in [env]'s zone
  * and against its clock. A column with [choices] and no presentation of its own shows the value's label (issue #1500),
- * as the form does; a value that is not one of them is shown as it is.
+ * as the form does, and a `boolean` one Yes or No (issue #1508); a value that is neither is shown as it is.
  *
  * A blank value is blank: the row has nothing here (or the column is another client's trait, #807), and there is
  * nothing to present. A day alone in a `date` column with no presentation of its own is shown as it is, since a day
@@ -121,6 +201,7 @@ fun presentColumnValue(
 ): String {
     if (value.isBlank()) return value
     if (presentation.isNullOrBlank() && choices.isNotEmpty()) return choiceLabel(value, choices) ?: value
+    if (presentation.isNullOrBlank() && kind == UsageKind.boolean) return yesNoText(value) ?: value
     val script = columnPresentation(kind, presentation) ?: return value
     if (presentation.isNullOrBlank() && isDayText(value)) return value
     return script.analyzeTemplate(evaluateWith = data + ("value" to typedColumnValue(value, kind)), env = env).value ?: value

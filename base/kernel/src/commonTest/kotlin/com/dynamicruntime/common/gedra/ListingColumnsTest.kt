@@ -2,6 +2,7 @@ package com.dynamicruntime.common.gedra
 
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SCT
+import com.dynamicruntime.common.schema.SFMT
 import com.dynamicruntime.common.schema.SchOption
 import com.dynamicruntime.common.schema.parseSchemaTypes
 import com.dynamicruntime.common.util.ScriptEnv
@@ -11,6 +12,8 @@ import kotlinx.datetime.FixedOffsetTimeZone
 import kotlinx.datetime.UtcOffset
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 import kotlin.test.assertNull
 import kotlin.time.Instant
 
@@ -80,7 +83,7 @@ class ListingColumnsTest {
 
     private val levels = listOf(SchOption("beginner", "Beginners"), SchOption("advanced", "Experts"))
 
-    /** A trait's data type: a choice field, a boolean, plain text, a number with options, and a nested object. */
+    /** A trait's data type: a choice field, a boolean, text, an integer, a number, a date, a list, and a nested object. */
     private val dataType = parseSchemaTypes(
         mapOf(
             "t.Data" to mapOf(
@@ -91,7 +94,11 @@ class ListingColumnsTest {
                         SCH.options to levels.map { mapOf(SCH.label to it.label, SCH.value to it.value) },
                     ),
                     "firstTalk" to mapOf(SCH.type to SCT.boolean),
-                    "note" to mapOf(SCH.type to SCT.string),
+                    "note" to mapOf(SCH.type to SCT.string, SCH.minLength to 5),
+                    "count" to mapOf(SCH.type to SCT.integer, SCH.minimum to 1),
+                    "amount" to mapOf(SCH.type to SCT.number),
+                    "due" to mapOf(SCH.type to SCT.string, SCH.format to SFMT.dateTime),
+                    "tags" to mapOf(SCH.type to SCT.array, SCH.items to mapOf(SCH.type to SCT.string)),
                     "venue" to mapOf(
                         SCH.type to SCT.kObject,
                         SCH.properties to mapOf(
@@ -118,17 +125,63 @@ class ListingColumnsTest {
         assertNull("level".loneFieldPath())
     }
 
+    /** [display] over [dataType] as a column, with the [kind] the usage declares. */
+    private fun column(display: String, kind: UsageKind? = null) = resolveUsageColumn(ClientTraitUsage("t", "T", display, kind), dataType)
+
+    /** A column's search shape in brief: its kind, and its choices' values. */
+    private fun shapeOf(display: String, kind: UsageKind? = null) =
+        column(display, kind).shape.let { it.kind to it.choices.map { c -> c.value } }
+
     @Test
-    fun aColumnOfOneFieldOffersWhatItsSchemaSays() {
-        assertEquals(levels, deducedColumnChoices($$"${level}", UsageKind.string, dataType))
-        assertEquals(listOf("true", "false"), deducedColumnChoices($$"${firstTalk}", UsageKind.string, dataType).map { it.value })
-        assertEquals(listOf(SchOption("labA", "Lab A")), deducedColumnChoices($$"${venue.room}", UsageKind.string, dataType))
-        // Nothing for plain text, a computed display, a field the type lacks, no type, or a column searched by a range.
-        assertEquals(emptyList(), deducedColumnChoices($$"${note}", UsageKind.string, dataType))
-        assertEquals(emptyList(), deducedColumnChoices($$"${upper(level)}", UsageKind.string, dataType))
-        assertEquals(emptyList(), deducedColumnChoices($$"${missing}", UsageKind.string, dataType))
-        assertEquals(emptyList(), deducedColumnChoices($$"${level}", UsageKind.string, null))
-        assertEquals(emptyList(), deducedColumnChoices($$"${level}", UsageKind.number, dataType))
+    fun aColumnOfOneFieldIsSearchedAsItsSchemaSays() {
+        assertEquals(levels, column($$"${level}").choices)
+        assertEquals(Pair(UsageKind.boolean, emptyList()), shapeOf($$"${firstTalk}"))
+        assertEquals(listOf(SchOption("labA", "Lab A")), column($$"${venue.room}").choices)
+        // Numbers and dates are ranges (issue #1508), an integer's as any number's; the field's own bounds are not carried.
+        assertEquals(Pair(UsageKind.number, emptyList()), shapeOf($$"${count}"))
+        assertEquals(Pair(UsageKind.number, emptyList()), shapeOf($$"${amount}"))
+        assertEquals(Pair(UsageKind.date, emptyList()), shapeOf($$"${due}"))
+        assertEquals(Pair(UsageKind.string, emptyList()), shapeOf($$"${note}"))
+    }
+
+    @Test
+    fun aComputedColumnOrAFieldWithNoShapeIsItsDeclaredKindElseText() {
+        assertEquals(Pair(UsageKind.string, emptyList()), shapeOf($$"${upper(level)}"))
+        assertEquals(Pair(UsageKind.number, emptyList()), shapeOf($$"${count} min", UsageKind.number))
+        assertEquals(Pair(UsageKind.string, emptyList()), shapeOf($$"${tags}"))
+        assertEquals(Pair(UsageKind.string, emptyList()), shapeOf($$"${missing}"))
+        assertEquals(UsageKind.date, resolveUsageColumn(ClientTraitUsage("t", "T", $$"${level}", UsageKind.date), null).kind)
+    }
+
+    @Test
+    fun aDeclaredKindAgreeingWithItsFieldKeepsItsShapeAndOneContradictingAnythingButPlainTextIsFlagged() {
+        // Agreeing: the field's shape, its choices included, still applies.
+        assertEquals(Pair(UsageKind.number, emptyList()), shapeOf($$"${count}", UsageKind.number))
+        assertEquals(levels, column($$"${level}", UsageKind.string).choices)
+        assertFalse(column($$"${count}", UsageKind.number).kindConflict)
+        // Contradicting: the declared kind stands, and the column says so.
+        val text = column($$"${count}", UsageKind.string)
+        assertEquals(Pair(UsageKind.string, emptyList()), shapeOf($$"${count}", UsageKind.string))
+        assertTrue(text.kindConflict)
+        // A computed display has no field to contradict, and plain text may be read as a number or a day.
+        assertFalse(column($$"${count} min", UsageKind.string).kindConflict)
+        assertFalse(column($$"${note}", UsageKind.date).kindConflict)
+        // A boolean or a choice field is not plain text: a range over one would match nothing.
+        assertTrue(column($$"${firstTalk}", UsageKind.date).kindConflict)
+        assertTrue(column($$"${level}", UsageKind.number).kindConflict)
+        assertEquals(Pair(UsageKind.date, emptyList()), shapeOf($$"${note}", UsageKind.date))
+    }
+
+    @Test
+    fun aBooleanColumnReadsAsYesOrNoUnlessItHasAPresentation() {
+        assertEquals("Yes", presentColumnValue("true", UsageKind.boolean, null, emptyMap(), env))
+        assertEquals("No", presentColumnValue("false", UsageKind.boolean, null, emptyMap(), env))
+        // Unanswered stays blank; a value that is not a boolean is shown as it is.
+        assertEquals("", presentColumnValue("", UsageKind.boolean, null, emptyMap(), env))
+        assertEquals("maybe", presentColumnValue("maybe", UsageKind.boolean, null, emptyMap(), env))
+        // Its own presentation reads the value as a boolean, to choose its own words.
+        val words = $$"""${value ? "First talk" : "Returning"}"""
+        assertEquals("First talk", presentColumnValue("true", UsageKind.boolean, words, emptyMap(), env))
     }
 
     @Test

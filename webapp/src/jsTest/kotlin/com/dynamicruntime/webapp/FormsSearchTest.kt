@@ -165,4 +165,15 @@ class FormsSearchTest {
         // Without choices, the fetched values as they are.
         assertEquals(listOf("Lunch", "Hotel"), valueSuggestions("h", emptyList(), listOf("Lunch", "Hotel")))
     }
+
+    @Test
+    fun aBooleanParameterIsAYesOrNoGroupAndItsChipSaysYesOrNo() {
+        val schema = mapOf(SCH.properties to mapOf("firstTalk" to mapOf(SCH.type to SCT.boolean, SCH.title to "First talk")))
+        val group = searchGroups(schema).single()
+        assertEquals(UsageKind.boolean, group.kind)
+        assertEquals("firstTalk", group.exact)
+        assertFalse(group.isRange)
+        assertEquals(listOf("First talk: Yes"), activeFilterChips(listOf(group), mapOf("firstTalk" to "true")))
+        assertEquals(listOf("First talk: No"), activeFilterChips(listOf(group), mapOf("firstTalk" to "false")))
+    }
 }

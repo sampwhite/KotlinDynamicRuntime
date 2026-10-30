@@ -8,6 +8,7 @@ import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.SFMT
 import com.dynamicruntime.common.schema.SchOption
+import com.dynamicruntime.common.schema.parseExactBool
 import com.dynamicruntime.common.schema.qualifyTypeName
 import com.dynamicruntime.common.util.parseDateOrNull
 import com.dynamicruntime.common.util.serverTimeZone
@@ -24,9 +25,9 @@ import kotlinx.datetime.plus
  * usage model it reads -- the same computed **display value** a listing shows in a column is the value a
  * search matches against, so what a person sees is what they search, in one place.
  *
- * A usage contributes a parameter by its [ClientTraitUsage.kind]: a `string` an exact one (and a substring one
- * when the usage asks -- [ClientTraitUsage.substring]); a `number` or `date` a `>=`/`<=` pair, so a value can
- * be bounded from either end or both. The parameter names are derived here and read nowhere by hand -- the
+ * A column contributes a parameter by its search shape's kind ([UsageColumn.shape], issue #1508): a `string` an
+ * exact one (and a substring one when the usage asks -- [ClientTraitUsage.substring]); a `number` or `date` a
+ * `>=`/`<=` pair, so a value can be bounded from either end or both. The parameter names are derived here and read nowhere by hand -- the
  * schema properties and the predicate are both built from [gedraSearchParams], so an advertised parameter and
  * the field the predicate reads cannot drift.
  */
@@ -42,7 +43,7 @@ enum class SearchRole(
     /** What the role appends to the column label for a control's caption, said in words. */
     val labelSuffix: String,
 ) {
-    /** A `string` exact match (case-insensitive). */
+    /** A `string` exact match (case-insensitive), or a `boolean`'s yes-or-no (issue #1508). */
     exact("", ""),
 
     /** A `string` substring match (case-insensitive). */
@@ -58,8 +59,9 @@ enum class SearchRole(
 /**
  * One search parameter a usage contributes: its wire [name], the column [label] it belongs to, the [columnKey]
  * whose display value it filters ([ClientTraitUsage.columnKey]), the [role] (how to compare), the [kind] (how to
- * read both sides), and the column's [choices] (issue #1500), whose labels a text match also reads. Built once by
- * [gedraSearchParams] and used to generate the schema property *and* to run the predicate, so the two stay in step.
+ * read both sides), and the column's [choices] (issue #1500), whose labels a text match also reads and the schema
+ * property offers (issue #1508). Built once by [gedraSearchParams] and used to
+ * generate the schema property *and* to run the predicate, so the two stay in step.
  */
 class GedraSearchParam(
     val name: String,
@@ -71,10 +73,11 @@ class GedraSearchParam(
 )
 
 /**
- * The search parameters [usages] contribute, in declaration order. A `string` gives an exact parameter named for the
+ * The search parameters [columns] contribute, in declaration order. A `string` gives an exact parameter named for the
  * column ([ClientTraitUsage.columnKey]: the trait id, unless the column has a name of its own -- issue #1490) and,
  * when [ClientTraitUsage.substring] is set, a `<column>Contains` beside it; a `number` or `date` gives `<column>Min`
- * and `<column>Max`.
+ * and `<column>Max`. Which it is, and the choices the parameters carry, are the column's search shape
+ * ([UsageColumn.shape], issue #1508).
  *
  * A usage one of whose names the listing keeps for itself ([reservedQueryFieldNames]) contributes **nothing**
  * (issue #987): it is left out here, at the one place every reader starts from, so the advertised schema and
@@ -82,31 +85,28 @@ class GedraSearchParam(
  * The whole usage goes, not the one name: a `<column>Contains` left standing alone would read back
  * ([decodeSearchParam]) as the exact match of some other column. The usage keeps its column;
  * [searchParamCollisions] is what reports it.
- *
- * [choices] are each column's ([deducedColumnChoices], by [ClientTraitUsage.columnKey]), for the predicate; the names
- * do not depend on them.
  */
-fun gedraSearchParams(
-    usages: List<ClientTraitUsage>,
-    choices: Map<String, List<SchOption>> = emptyMap(),
-): List<GedraSearchParam> = usages.flatMap { usage ->
-    val minted = mintedSearchParams(usage, choices[usage.columnKey].orEmpty())
+fun gedraSearchParams(columns: List<UsageColumn>): List<GedraSearchParam> = columns.flatMap { column ->
+    val minted = mintedSearchParams(column)
     if (minted.any { it.name in reservedQueryFieldNames }) emptyList() else minted
 }
 
-/** Every parameter [usage] would mint by name alone, a reserved name included -- see [gedraSearchParams]. */
-private fun mintedSearchParams(usage: ClientTraitUsage, choices: List<SchOption> = emptyList()): List<GedraSearchParam> = buildList {
-    fun param(role: SearchRole) =
-        GedraSearchParam(usage.columnKey + role.nameSuffix, usage.label, usage.columnKey, role, usage.kind, choices)
-    when (usage.kind) {
+/** Every parameter [column] would mint by name alone, a reserved name included -- see [gedraSearchParams]. */
+private fun mintedSearchParams(column: UsageColumn): List<GedraSearchParam> = buildList {
+    val shape = column.shape
+    fun param(role: SearchRole) = GedraSearchParam(
+        column.columnKey + role.nameSuffix, column.label, column.columnKey, role, shape.kind, shape.choices,
+    )
+    when (shape.kind) {
         UsageKind.string -> {
             add(param(SearchRole.exact))
-            if (usage.substring) add(param(SearchRole.contains))
+            if (column.usage.substring) add(param(SearchRole.contains))
         }
         UsageKind.number, UsageKind.date -> {
             add(param(SearchRole.min))
             add(param(SearchRole.max))
         }
+        UsageKind.boolean -> add(param(SearchRole.exact))
     }
 }
 
@@ -114,6 +114,11 @@ private fun mintedSearchParams(usage: ClientTraitUsage, choices: List<SchOption>
  * The JSON-Schema `properties` fragment for [params] -- a `{ name -> propertySchema }` map to merge into the
  * listing's query type. Every parameter is optional (a search is), and a query param arrives as text, so a
  * `number` bound carries `g-allowCoerce` (a `date` coerces from its format already; see the schema layer).
+ *
+ * Generated from the parameter's few facts, never copied from the field's schema (issue #1508): a text parameter of a
+ * column with choices offers them -- **open**, since a search for a value that is not there is a harmless answer, and
+ * a value from before the client narrowed its choices must stay findable. A number bound is a `number`, an integer
+ * field's too, for the same reason.
  */
 fun searchParamProperties(params: List<GedraSearchParam>): Map<String, Any?> {
     val props = LinkedHashMap<String, Any?>()
@@ -121,6 +126,11 @@ fun searchParamProperties(params: List<GedraSearchParam>): Map<String, Any?> {
         val prop = LinkedHashMap<String, Any?>()
         prop[SCH.title] = searchLabel(param)
         when {
+            // A yes-or-no (issue #1508): typed, so it coerces from `yes`, `1`, `on` and their opposites.
+            param.kind == UsageKind.boolean -> {
+                prop[SCH.type] = SCT.boolean
+                prop[SCH.description] = "Whether the '${param.columnKey}' value is true or false."
+            }
             // "Or its label" (issue #1500): a column whose field offers choices shows, and matches, the choice's label.
             param.role == SearchRole.contains ->
                 prop[SCH.description] = "Substring match (case-insensitive) on the '${param.columnKey}' value, or its label."
@@ -136,6 +146,10 @@ fun searchParamProperties(params: List<GedraSearchParam>): Map<String, Any?> {
                 prop[SCH.format] = SFMT.date
                 prop[SCH.description] = boundDescription(param)
             }
+        }
+        if (param.choices.isNotEmpty() && (param.role == SearchRole.exact || param.role == SearchRole.contains)) {
+            prop[SCH.options] = param.choices.map { mapOf(SCH.label to it.label, SCH.value to it.value) }
+            prop[SCH.openOptions] = true
         }
         props[param.name] = prop
     }
@@ -169,6 +183,7 @@ class SearchParamShape(val columnKey: String, val role: SearchRole, val kind: Us
  */
 fun decodeSearchParam(name: String, prop: Map<String, Any?>, declared: Set<String>): SearchParamShape {
     val kind = when {
+        prop[SCH.type] == SCT.boolean -> UsageKind.boolean
         prop[SCH.type] == SCT.number -> UsageKind.number
         prop[SCH.format] == SFMT.date -> UsageKind.date
         else -> UsageKind.string
@@ -183,6 +198,7 @@ fun decodeSearchParam(name: String, prop: Map<String, Any?>, declared: Set<Strin
             hasSuffix(SearchRole.max) -> SearchRole.max
             else -> SearchRole.exact
         }
+        UsageKind.boolean -> SearchRole.exact
     }
     return SearchParamShape(name.removeSuffix(role.nameSuffix), role, kind)
 }
@@ -213,16 +229,16 @@ val reservedQueryFieldNames: Set<String> = setOf(
 )
 
 /**
- * The search parameter names [usages] ask for that are a [reservedQueryFieldNames] entry -- the boot check. A
+ * The search parameter names [columns] ask for that are a [reservedQueryFieldNames] entry -- the boot check. A
  * `string` usage on a trait named `user` (say) asks for an exact parameter `user`, the listing's own user
  * filter; [gedraSearchParams] leaves the usage out, so the trait shows as a column and cannot be searched. Empty is the
  * ordinary case; a non-empty result is a client-config mistake to report.
  */
-fun searchParamCollisions(usages: List<ClientTraitUsage>): List<String> =
-    usages.flatMap { mintedSearchParams(it) }.map { it.name }.filter { it in reservedQueryFieldNames }.distinct()
+fun searchParamCollisions(columns: List<UsageColumn>): List<String> =
+    columns.flatMap { mintedSearchParams(it) }.map { it.name }.filter { it in reservedQueryFieldNames }.distinct()
 
 /**
- * The names two of [usages] would share (issues #681, #1490), in first-seen order and without repeats -- the boot
+ * The names two of [columns] would share (issues #681, #1490), in first-seen order and without repeats -- the boot
  * check, which a write's trial also runs. The presentation model is keyed by the column's name
  * ([ClientTraitUsage.columnKey]): a row's display values are a map keyed by it (a second column's value would
  * silently overwrite the first's), `matchesSearch` reads a parameter's value by it, the sort resolves its column by
@@ -231,16 +247,16 @@ fun searchParamCollisions(usages: List<ClientTraitUsage>): List<String> =
  * Two columns of one **trait** are fine, as long as their names differ. Empty is the ordinary case; a non-empty
  * result is a client-config mistake to report.
  */
-fun usageColumnClashes(usages: List<ClientTraitUsage>): List<String> {
-    val keys = usages.groupBy { it.columnKey }.filter { it.value.size > 1 }.keys
-    val params = usages.flatMap { usage -> mintedSearchParams(usage).map { it.name to usage.columnKey }.distinct() }
+fun usageColumnClashes(columns: List<UsageColumn>): List<String> {
+    val keys = columns.groupBy { it.columnKey }.filter { it.value.size > 1 }.keys
+    val params = columns.flatMap { column -> mintedSearchParams(column).map { it.name to column.columnKey }.distinct() }
         .groupBy({ it.first }, { it.second }).filter { it.value.distinct().size > 1 }.keys
     return (keys + params).distinct()
 }
 
 /**
- * [baseDef] (a JSON-Schema object type -- the listing's stable query type) with the search properties [usages]
- * contribute merged into its `properties` (issue #538). The base is returned untouched when the usages
+ * [baseDef] (a JSON-Schema object type -- the listing's stable query type) with the search properties [columns]
+ * contribute merged into its `properties` (issue #538). The base is returned untouched when the columns
  * contribute nothing, so a scope with no usages shares the base rather than a distinct-but-equal copy -- which
  * is what lets the per-client build hand back the global type when a client's search fields do not differ.
  *
@@ -248,9 +264,9 @@ fun usageColumnClashes(usages: List<ClientTraitUsage>): List<String> {
  * arise while every base field is in [reservedQueryFieldNames], which [gedraSearchParams] leaves out; this is
  * the structural backstop for a field added to the type and not to the list.
  */
-fun withSearchProperties(baseDef: Any?, usages: List<ClientTraitUsage>): Map<String, Any?> {
+fun withSearchProperties(baseDef: Any?, columns: List<UsageColumn>): Map<String, Any?> {
     val base = baseDef.toJsonMapOrEmpty()
-    val props = searchParamProperties(gedraSearchParams(usages))
+    val props = searchParamProperties(gedraSearchParams(columns))
     if (props.isEmpty()) return base
     val merged = LinkedHashMap(base[SCH.properties].toJsonMapOrEmpty())
     for ((name, prop) in props) {
@@ -272,27 +288,21 @@ fun matchesSearch(
     zone: TimeZone = serverTimeZone,
 ): Boolean = active.all { (param, query) -> matchesOne(displayByColumn[param.columnKey].orEmpty(), param, query, zone) }
 
-/** The columns ([ClientTraitUsage.columnKey]) of the `string` usages -- the fields the free-text term ([EI.q]) searches across. */
-fun textSearchColumns(usages: List<ClientTraitUsage>): List<String> =
-    usages.filter { it.kind == UsageKind.string }.map { it.columnKey }
+/** The text columns -- the fields the free-text term ([EI.q]) searches across. */
+fun textSearchColumns(columns: List<UsageColumn>): List<UsageColumn> = columns.filter { it.kind == UsageKind.string }
 
 /**
  * Whether a row's display values match the free-text term [query] (issue #562): a case-insensitive substring
  * match against **any** of the [textColumns] (OR across fields), so one box finds a document by whichever of
- * its searchable text values the person remembers -- a value's label too, for a column with [choices] (issue #1500).
+ * its searchable text values the person remembers -- a value's label too, for a column with choices (issue #1500).
  * A blank term matches everything -- an empty box is no search, not a search for nothing -- and a row with no text
  * values matches only a blank term.
  */
-fun matchesAnyText(
-    displayByColumn: Map<String, String>,
-    textColumns: List<String>,
-    query: String,
-    choices: Map<String, List<SchOption>> = emptyMap(),
-): Boolean {
+fun matchesAnyText(displayByColumn: Map<String, String>, textColumns: List<UsageColumn>, query: String): Boolean {
     val term = query.trim()
     if (term.isEmpty()) return true
     return textColumns.any { column ->
-        valueAndLabel(displayByColumn[column].orEmpty(), choices[column].orEmpty()).any { it.contains(term, ignoreCase = true) }
+        valueAndLabel(displayByColumn[column.columnKey].orEmpty(), column.choices).any { it.contains(term, ignoreCase = true) }
     }
 }
 
@@ -303,7 +313,13 @@ fun matchesAnyText(
 private fun valueAndLabel(value: String, choices: List<SchOption>): List<String> =
     listOfNotNull(value, choiceLabel(value, choices))
 
-private fun matchesOne(value: String, param: GedraSearchParam, query: String, zone: TimeZone): Boolean = when (param.role) {
+private fun matchesOne(value: String, param: GedraSearchParam, query: String, zone: TimeZone): Boolean = when {
+    // Read as booleans (issue #1508), so `yes` finds a true value; a blank value is no answer, and matches neither.
+    param.kind == UsageKind.boolean -> parseExactBool(value)?.let { it == parseExactBool(query) } ?: false
+    else -> matchesText(value, param, query, zone)
+}
+
+private fun matchesText(value: String, param: GedraSearchParam, query: String, zone: TimeZone): Boolean = when (param.role) {
     SearchRole.exact -> valueAndLabel(value, param.choices).any { it.trim().equals(query.trim(), ignoreCase = true) }
     SearchRole.contains -> valueAndLabel(value, param.choices).any { it.contains(query.trim(), ignoreCase = true) }
     // A bound over a value that is not a number/date at all -- an empty or malformed display -- is a non-match,
@@ -339,8 +355,8 @@ private fun compareBound(value: String, kind: UsageKind, query: String, zone: Ti
         val q = query.parseDateOrNull(zone)
         if (v == null || q == null) null else v.compareTo(q)
     }
-    // A string is never a bound; guarded by construction (a string usage makes no min/max param), null here.
-    UsageKind.string -> null
+    // A string or a boolean is never a bound; guarded by construction (it makes no min/max param), null here.
+    UsageKind.string, UsageKind.boolean -> null
 }
 
 /**
@@ -426,6 +442,8 @@ fun compareForSort(
         b.parseDateOrNull(),
         descending,
     )
+    // No before Yes (issue #1508); a blank, or a value that is not a boolean, last.
+    UsageKind.boolean -> nullsLastForSort(parseExactBool(a), parseExactBool(b), descending)
 }
 
 /**

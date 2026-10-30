@@ -571,8 +571,9 @@ class GedraConfigBuilder(
 
     /**
      * Declares how [traitId] presents in a listing (issue #537): a [display] string-script expression
-     * evaluated against the trait's data, a [label] column header, and a value [kind]. The client owns this,
-     * and it is the first thing a client's config changes about a page other than its own form.
+     * evaluated against the trait's data, a [label] column header, and optionally a value [kind]. The client owns
+     * this, and it is the first thing a client's config changes about a page other than its own form. With no [kind],
+     * a lone `${'$'}{field}` display is searched as its field's schema says (issue #1508), and a computed one as text.
      *
      * A usage is also **searchable** (issue #538): the forms-list gets a parameter per usage -- an exact one
      * for a `string`, a `>=`/`<=` pair for a `number` or `date`. [substring] adds a contains parameter beside
@@ -588,7 +589,7 @@ class GedraConfigBuilder(
         traitId: String,
         label: String,
         display: String,
-        kind: UsageKind = UsageKind.string,
+        kind: UsageKind? = null,
         substring: Boolean = false,
         presentation: String? = null,
         columnId: String? = null,

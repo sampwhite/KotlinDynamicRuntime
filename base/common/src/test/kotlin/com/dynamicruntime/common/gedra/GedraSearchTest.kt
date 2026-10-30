@@ -17,8 +17,11 @@ import kotlinx.datetime.TimeZone
  * is really a substring -- rather than throwing.
  */
 class GedraSearchTest : StringSpec({
-    fun usage(traitId: String, kind: UsageKind, substring: Boolean = false, columnId: String? = null) =
-        ClientTraitUsage(traitId, traitId.replaceFirstChar { it.uppercase() }, $$"${x}", kind, substring, columnId = columnId)
+    // A column searched as declared: the schema-free shape (issue #1508), which these cases are about.
+    fun usage(traitId: String, kind: UsageKind, substring: Boolean = false, columnId: String? = null) = resolveUsageColumn(
+        ClientTraitUsage(traitId, traitId.replaceFirstChar { it.uppercase() }, $$"${x}", kind, substring, columnId = columnId),
+        null,
+    )
 
     "a string usage gives an exact parameter, and a substring one only when asked" {
         gedraSearchParams(listOf(usage("name", UsageKind.string))).map { it.name to it.role } shouldBe
@@ -184,12 +187,12 @@ class GedraSearchTest : StringSpec({
                 usage("name", UsageKind.string), usage("year", UsageKind.number), usage("auditor", UsageKind.string, substring = true),
                 usage("auditor", UsageKind.string, columnId = "auditorAgain"),
             ),
-        ) shouldBe listOf("name", "auditor", "auditorAgain")
+        ).map { it.columnKey } shouldBe listOf("name", "auditor", "auditorAgain")
     }
 
     "matchesAnyText ORs a case-insensitive substring across the text fields, and a blank term matches all" {
         val byTrait = mapOf("name" to "Quarterly plan", "auditor" to "Ada Lovelace", "year" to "2026")
-        val text = listOf("name", "auditor")
+        val text = listOf(usage("name", UsageKind.string), usage("auditor", UsageKind.string))
         // Found via either field -- any one match is enough.
         matchesAnyText(byTrait, text, "quarter") shouldBe true
         matchesAnyText(byTrait, text, "LOVELACE") shouldBe true
@@ -256,11 +259,27 @@ class GedraSearchTest : StringSpec({
     }
 
 
+    "a boolean column is one typed yes-or-no parameter, read as a boolean, sorting No before Yes" {
+        val params = gedraSearchParams(listOf(usage("first", UsageKind.boolean)))
+        params.map { it.name to it.role } shouldBe listOf("first" to SearchRole.exact)
+        (searchParamProperties(params).getValue("first") as Map<*, *>)[SCH.type] shouldBe SCT.boolean
+        val yes = params.single()
+        matchesSearch(mapOf("first" to "true"), listOf(yes to "true")) shouldBe true
+        matchesSearch(mapOf("first" to "true"), listOf(yes to "yes")) shouldBe true
+        matchesSearch(mapOf("first" to "false"), listOf(yes to "true")) shouldBe false
+        // Unanswered matches neither answer.
+        matchesSearch(mapOf("first" to ""), listOf(yes to "false")) shouldBe false
+        listOf("true", "", "false").sortedWith { a, b -> compareForSort(a, b, UsageKind.boolean, false) } shouldBe
+            listOf("false", "true", "")
+    }
+
     // A column whose field offers choices (issue #1500): Beginners, Some experience, Experts, in that order.
     val levels = listOf(SchOption("beginner", "Beginners"), SchOption("mid", "Some experience"), SchOption("advanced", "Experts"))
 
     "a column with choices matches a value or its label, exactly or in part" {
-        val params = gedraSearchParams(listOf(usage("level", UsageKind.string, substring = true)), mapOf("level" to levels))
+        val shape = ColumnSearchShape(UsageKind.string, choices = levels)
+        val level = UsageColumn(usage("level", UsageKind.string, substring = true).usage, shape)
+        val params = gedraSearchParams(listOf(level))
         val exact = params.first { it.role == SearchRole.exact }
         val contains = params.first { it.role == SearchRole.contains }
         val row = mapOf("level" to "advanced")
@@ -272,8 +291,8 @@ class GedraSearchTest : StringSpec({
         // A value that is not a choice has no label to match.
         matchesSearch(mapOf("level" to "guru"), listOf(exact to "experts")) shouldBe false
         // The free-text term reads the label too.
-        matchesAnyText(row, listOf("level"), "expert", mapOf("level" to levels)) shouldBe true
-        matchesAnyText(row, listOf("level"), "expert") shouldBe false
+        matchesAnyText(row, listOf(level), "expert") shouldBe true
+        matchesAnyText(row, listOf(usage("level", UsageKind.string)), "expert") shouldBe false
     }
 
     "compareForSort orders a column with choices in their declared order, others after them" {

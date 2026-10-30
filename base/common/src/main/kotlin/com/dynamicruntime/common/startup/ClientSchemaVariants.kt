@@ -6,6 +6,7 @@ import com.dynamicruntime.common.gedra.ClientDef
 import com.dynamicruntime.common.gedra.GCFG
 import com.dynamicruntime.common.gedra.GU
 import com.dynamicruntime.common.gedra.formDocsQueryDefName
+import com.dynamicruntime.common.gedra.resolveColumns
 import com.dynamicruntime.common.gedra.withSearchProperties
 import com.dynamicruntime.common.gedra.entryEditUnionDefs
 import com.dynamicruntime.common.gedra.entryUnionDefs
@@ -103,7 +104,11 @@ fun buildClientVariants(
         // pristine query base -- never onto the global-augmented type, or an overriding client would inherit
         // global's parameters too. Folded in only when they differ from the global type, like the unions
         // below: a generated overlay returning only the difference, so an inheriting client shares the store.
-        val clientQuery = withSearchProperties(queryBase, collected.gedraConfigs.usagesFor(client))
+        // Its columns are resolved against the global types here (issue #1508), which are its own when it alters
+        // none -- the case where it shares the global store; one that alters a type has them resolved again,
+        // against its own, once they are parsed below.
+        val usages = collected.gedraConfigs.usagesFor(client)
+        val clientQuery = withSearchProperties(queryBase, resolveColumns(usages, global.types))
         val queryOverlay = if (clientQuery != global.defs[queryName]) mapOf(queryName to clientQuery) else emptyMap()
         // The unions and the query overlay are applied **after** the authored overlay, and so replace rather
         // than merge. `overlayDefs` is built for an authored alteration, where an unmentioned key means "leave
@@ -154,6 +159,13 @@ fun buildClientVariants(
         }
         if (defs === global.defs) {
             continue
+        }
+        // The search fields from the columns as the client's own types resolve them (issue #1508): a field the client
+        // narrowed offers only the choices it kept. Only the query type is parsed again, against the rest.
+        val ownQuery = withSearchProperties(queryBase, resolveColumns(usages, types))
+        if (queryBase != null && ownQuery != defs[queryName]) {
+            defs = defs + (queryName to ownQuery)
+            types = types + parseSchemaTypes(mapOf(queryName to ownQuery), types)
         }
         out[client] = KdrSchemaStore(
             types = types,

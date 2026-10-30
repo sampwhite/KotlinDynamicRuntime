@@ -20,7 +20,7 @@ class FormDocsQueryReservedTest : StringSpec({
         val cxt = TestInstances.default("formDocsReserved")
         val schema = SchemaService.get(cxt)
         // The type as served carries the global usage rules' search fields too; what is left is its own.
-        val searchFields = gedraSearchParams(schema.traitUsagesFor(GID.globalClient)).map { it.name }.toSet()
+        val searchFields = gedraSearchParams(schema.listingColumnsFor(GID.globalClient)).map { it.name }.toSet()
         val declared = schema.storeFor(null).types.getValue(formDocsQueryDefName()).properties.keys - searchFields
         declared shouldBe reservedQueryFieldNames - setOf(EP.limit, EP.after)
     }

@@ -66,7 +66,7 @@ fun ClientTraitUsage.toRuleMap(includeDisplay: Boolean = true): Map<String, Any?
     if (includeDisplay) {
         put(CCT.display, display)
     }
-    put(CCT.kind, kind.name)
+    kind?.let { put(CCT.kind, it.name) }
     put(CCT.substring, substring)
     presentation?.let { put(CCT.presentation, it) }
     columnId?.let { put(CCT.columnId, it) }
@@ -79,7 +79,9 @@ fun SchTypeBuilder.usageRuleFields(includeDisplay: Boolean = true) {
     if (includeDisplay) {
         property(CCT.display, "The string-script expression evaluated against the trait's data for the value.", required = true)
     }
-    property(CCT.kind, "How the value is read and compared.", required = true) { options(UsageKind.entries) }
+    property(CCT.kind, "How the value is read and compared, when the rule says; absent takes it from the field (issue #1508).") {
+        options(UsageKind.entries)
+    }
     property(CCT.substring, "Whether a string column also offers a contains search.", required = true) { type = SCT.boolean }
     property(CCT.presentation, "How the column's cell reads: a string script over the trait's data, with the column's value as `value`.")
     property(CCT.columnId, "The column's own name, when it is not the trait id (issue #1490).")
