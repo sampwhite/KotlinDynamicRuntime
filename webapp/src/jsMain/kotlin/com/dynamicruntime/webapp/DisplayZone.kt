@@ -24,6 +24,21 @@ val deploymentZone: String = run {
 }
 
 /**
+ * The [deploymentZone] as its moments are labeled (`GMT-8`, `GMT`), for a page that names the zone itself (Profile,
+ * issue #1479): whole hours, with the minutes only where the offset has them.
+ */
+val deploymentZoneLabel: String = run {
+    val seconds = serverTimeZone.offsetAt(Clock.System.now()).totalSeconds
+    val hours = abs(seconds) / 3600
+    val minutes = abs(seconds) % 3600 / 60
+    when {
+        seconds == 0 -> "GMT"
+        minutes == 0 -> "GMT${if (seconds < 0) "-" else "+"}$hours"
+        else -> "GMT${if (seconds < 0) "-" else "+"}$hours:${minutes.toString().padStart(2, '0')}"
+    }
+}
+
+/**
  * The zone the webapp shows moments in (issue #1115): the IANA zone the shell config says ([HomeConfig.timeZone]) --
  * the caller's client's, else the deployment's display default -- or the [deploymentZone] when it says none. The app
  * bar sets it on every config it reads. A module value rather than a context, because what reads it --

@@ -97,7 +97,8 @@ class StructureLine(val person: String, val rows: List<StructureRow>, val access
  * what can be changed about it: the person's address, then the person's users -- the current one marked, each other
  * one a link that opens it ([onPick], given its [StructureRow.key]) or, with no [onPick], its words alone -- then the
  * access the current one has. A user that is not simply live says so beside itself, not only on hover. For a screen
- * reader it is a group labeled [ariaLabel], the arrows are not read, and the current user is the current one.
+ * reader it is a group labeled [ariaLabel], the arrows are not read, and the current user's row is marked
+ * `aria-current`.
  */
 fun ChildrenBuilder.structureLine(
     line: StructureLine,

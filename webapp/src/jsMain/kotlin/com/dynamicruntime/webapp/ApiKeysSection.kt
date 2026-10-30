@@ -13,7 +13,6 @@ import react.Props
 import react.dom.html.ReactHTML.a
 import react.dom.html.ReactHTML.code
 import react.dom.html.ReactHTML.div
-import react.dom.html.ReactHTML.h2
 import react.dom.html.ReactHTML.p
 import react.dom.html.ReactHTML.span
 import react.dom.html.ReactHTML.table
@@ -226,8 +225,8 @@ private fun ChildrenBuilder.extendEditor(
             style = js("({ minWidth: 110 })")
             onChange = { v -> onUnit(v as String) }
         }
+        // Not primary: Create key is the panel's one primary button (rule 2 of #1477).
         Button {
-            this.type = "primary"
             size = "small"
             this.loading = saving
             disabled = preview.problem != null || preview.expiry == null
@@ -251,16 +250,13 @@ private fun ChildrenBuilder.extendEditor(
 external interface ApiKeysSectionProps : Props {
     /** The user whose keys these are, for an administrator; null for the signed-in user's own. */
     var ownerId: Long?
-
-    /** Drawn inside a page's API keys panel (issue #1478), which carries the heading: none of its own. */
-    var inPanel: Boolean?
 }
 
 /**
  * A user's API keys (issue #1402): on Profile the signed-in person's own, and in the Users editor -- with
- * [ApiKeysSectionProps.ownerId] --
- * a user's as their administrator manages them. The listing, a way to make one, and the dialog showing a new key the
- * one time it can be seen: it is held in this component's state alone, and gone when the dialog closes.
+ * [ApiKeysSectionProps.ownerId] -- a user's as their administrator manages them. Drawn inside each page's API keys
+ * panel (issues #1478, #1479), which carries the heading. The listing, a way to make one, and the dialog showing a new
+ * key the one time it can be seen: it is held in this component's state alone, and gone when the dialog closes.
  */
 val ApiKeysSection = FC<ApiKeysSectionProps> { props ->
     val generation = useRefreshGeneration()
@@ -287,8 +283,7 @@ val ApiKeysSection = FC<ApiKeysSectionProps> { props ->
     }
 
     div {
-        className = ClassName(if (props.inPanel == true) "api-keys-in-panel" else "api-keys-section")
-        if (props.inPanel != true) h2 { +"API keys" }
+        className = ClassName("api-keys-in-panel")
         p {
             className = ClassName("subtitle")
             +"${apiKeysIntro(forSelf)} "

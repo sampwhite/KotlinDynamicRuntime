@@ -157,11 +157,14 @@ Current UI-config endpoints:
   again, so the last user may go too, retiring the identity. Removing the acting user moves the session to the
   person's default user, or ends it when none remains. The **profile page** (issue #1330) is built to the page
   structure (issue #1479): under its title the structure line (the address, the person's users, the access of the one
-  acted as, `profileStructure`), then the panels Your account (read-only: who, client and sandbox, persona and access,
-  organization, account type, time zone, and "What you can do here" from `ShellFacts.reach`, `profileAccountFacts`
-  and `profileAbilities` in `ProfileLayout.kt`, covered by `ProfileLayoutTest`), Your users (live), Your name (a
-  draft), Sign-in (a draft; Remove password through `DangerConfirm`), and API keys (live), each drawing its own
-  result; Log out stays below them. For a person with more than one user or a `public` one, it shows them all in a
+  acted as, `profileStructure`), then the panels Your account (read-only: who, client, persona and access,
+  organization, account type, time zone, and "What you can do here" from `ShellFacts.reach`, the roles, and the
+  organization -- `profileAccountFacts` and `profileAbilities` in `ProfileLayout.kt`, covered by `ProfileLayoutTest`),
+  Your users (live), Your name (a draft), Sign-in (live, then a draft once a code is sent; Remove password through
+  `DangerConfirm`), and API keys (live), each drawing its own result; Log out stays below them. It describes a
+  `public` user's access without the `admin` every registrant there is given (`profileShownRoles`), since in `public`
+  an administrator is no different from an ordinary user, and it takes the shell's facts only once they are this
+  user's (`ShellFacts.describes`), not before the bar has been told or for a moment after a switch. For a person with more than one user or a `public` one, it shows them all in a
   table ("Your users": Persona, Client, and Name only when the users are named differently): the active one tinted
   and marked **Active now**, and the one a sign-in lands on marked **Next sign-in** from the list's `signsInAs` --
   the default rule worked out (`defaultUserOf`), which differs from `isDefault` (the choice alone) when sign-in passes a chosen default over.
@@ -340,7 +343,8 @@ save and confirm rules below and have not moved onto them yet. The Users editor 
 all of them.
 
 1. **A page is a stack of panels.** Each is a shaded box (`panel(id, heading, explanation, kind)`) with a heading and,
-   optionally, "What is this?". Every control belongs to exactly one panel.
+   optionally, "What is this?". Every control belongs to exactly one panel, except the page's way out — a back link
+   at its top, or Profile's Log out at its foot — which belongs to the page.
 2. **A panel is a draft or live, never both** (`PanelKind`; `view` for a read-only panel, or a section holding editors
    of its own, as the client page's do).
    - **Draft**: edits wait for a save. One footer per draft, at the bottom of what it covers (`SaveBar`). It holds
@@ -351,6 +355,9 @@ all of them.
      stay in sight uses a sticky `SaveBar` instead, as the copy editor does for a copy file.
    - **Live**: each button acts at once and is labeled with its verb ("Send invitation", "Create key"); the panel
      says so under its heading ("Changes here take effect immediately.").
+   - **A panel may change kind with its state, never be both at once.** Profile's Sign-in is live (ask for a code,
+     remove the password) until a code is sent, then a draft (the code and the new password) until it is saved or
+     canceled.
    - **One primary button per panel.** "OK" is not a label.
    - The draft's Cancel and Discard are links, as a back link is: they drop the draft — leaving a form that makes
      something new, or taking an existing record's fields back to what is stored and staying on it, as the Users

@@ -1379,9 +1379,9 @@ textarea.json-edit.json-field { min-height: 4.5rem; }
 /* Where the window is too narrow for even that, the table scrolls inside the card rather than running past its edge
    (issue #1445). */
 .profile-users-scroll { overflow-x: auto; }
-/* The profile's card while it holds a table (issue #1445): room for its columns -- the marks side by side in their
-   own -- and a `public` user's three buttons on one line, so a row is one line high. Short of a content page's
-   width, since below the table the profile is a form, whose prose keeps to a readable measure. */
+/* The profile's card (issues #1445, #1479), always wide for its tables -- the person's users and their API keys: room
+   for the users' columns -- the marks side by side in their own -- and a `public` user's three buttons on one line, so
+   a row is one line high. Short of a content page's width, since its prose keeps to a readable measure. */
 .card.profile-wide { width: min(1040px, 92vw); }
 .card.profile-wide .subtitle { max-width: 80ch; }
 /* A field fills its row, which at this width is far longer than a name, a password, or a key's purpose needs: it
@@ -1849,8 +1849,7 @@ body.dv-open .app-content { padding-right: calc(var(--dv-panel-width) + 16px); }
 .disclosure > * + * { margin-top: 14px; }
 
 /* API keys (issue #1402): the listing, a key's extension under its row, the create form, and the one-time dialog.
-   Inside a page's API keys panel (issue #1478) the panel carries the heading and the spacing. */
-.api-keys-section { margin-top: 24px; }
+   Always inside a page's API keys panel (issues #1478, #1479), which carries the heading and the spacing. */
 .api-keys-in-panel > * + * { margin-top: 12px; }
 
 /* The Users editor's structure line (issue #1478): the person's address, their users -- the open one marked, the

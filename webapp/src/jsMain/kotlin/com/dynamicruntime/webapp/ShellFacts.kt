@@ -29,9 +29,10 @@ import react.use
  * - [sandboxWayBackUserId] is, in a sandbox, the user the app bar's "Back to <client>" switches to ([sandboxWayBack]),
  *   so a page can offer the same way back where it is wanted (a sandbox's own Clients page, issue #1422). Null outside
  *   a sandbox, when the person has no user to go back to, and until the shell has been told.
- * - [reach] is what the caller may do (issue #1479), [timeZone] and [timeZoneLabel] the zone their moments are shown in,
- *   and [sandboxOfName] the client whose sandbox they are in -- what Profile's account panel says of them. Nothing
- *   (no reach, no zone, no sandbox) until the shell has been told.
+ * - [userId] is whose facts these are (issue #1479): null until the shell has been told, and for a moment after a switch
+ *   another user's than the page's, so a page describing the caller from them asks [describes] first. [reach] is
+ *   what that user may do, and [timeZone] and [timeZoneLabel] the zone their moments are shown in -- what Profile's
+ *   account panel says of them.
  * - [whatIsThisLink] and [whatIsThisHide] are the words of every "What is this?" link and of closing what it opened
  *   ([WhatIsThis], issue #1330): the app's words, not a page's, so they are the shell's copy (the `home` file's
  *   `whatIsThis` namespace) rather than each page's. Null until the shell's copy has arrived, when the link says it
@@ -48,13 +49,16 @@ data class ShellFacts(
     val images: Map<String, String> = emptyMap(),
     val inSandbox: Boolean = false,
     val sandboxWayBackUserId: Long? = null,
+    val userId: Long? = null,
     val reach: CallerReach = CallerReach(),
     val timeZone: String? = null,
     val timeZoneLabel: String? = null,
-    val sandboxOfName: String? = null,
     val whatIsThisLink: String? = null,
     val whatIsThisHide: String? = null,
-)
+) {
+    /** Whether these are [userId]'s facts, told by the shell: not before it has been, nor another user's (issue #1479). */
+    fun describes(userId: Long): Boolean = this.userId == userId
+}
 
 /**
  * What the caller may do (issue #1479), as the shell's flags say it: administer users at all ([managesUsers]), across
@@ -91,6 +95,7 @@ fun shellFactsOf(config: HomeConfig, shellCopy: Copy? = null): ShellFacts = Shel
     images = config.images,
     inSandbox = switchesFromSandbox(config),
     sandboxWayBackUserId = config.sandboxOf?.let { sandboxWayBack(it, config.users)?.userId },
+    userId = config.user.userId.takeIf { config.user.isLoggedIn },
     reach = CallerReach(
         managesUsers = config.canManageUsers,
         allClients = config.canSeeAllClients,
@@ -100,7 +105,6 @@ fun shellFactsOf(config: HomeConfig, shellCopy: Copy? = null): ShellFacts = Shel
     ),
     timeZone = config.timeZone,
     timeZoneLabel = config.timeZoneLabel,
-    sandboxOfName = config.sandboxOf?.name,
     whatIsThisLink = shellCopy?.opt(HFRAG.whatIsThisNs, HFRAG.whatIsThisLink)?.ifBlank { null },
     whatIsThisHide = shellCopy?.opt(HFRAG.whatIsThisNs, HFRAG.whatIsThisHide)?.ifBlank { null },
 )

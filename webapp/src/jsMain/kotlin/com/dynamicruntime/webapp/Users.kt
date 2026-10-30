@@ -1194,7 +1194,6 @@ val Users = FC<Props> {
                             key = "keys-${open.userId}".unsafeCast<Key>()
                             // One's own keys are managed as on Profile, through the self endpoints.
                             ownerId = open.userId.takeIf { it != config?.user?.userId }
-                            inPanel = true
                         }
                     }
                 }

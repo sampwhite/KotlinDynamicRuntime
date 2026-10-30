@@ -52,7 +52,10 @@ val Profile = FC<Props> {
     var code by useState("")
     // The form token, set once a verification code has been sent, also marks the "enter the code" step.
     var token by useState<String?>(null)
-    var busy by useState(false)
+    // Which panel's action is under way (a [PRFP] id, or [logoutWork]): every control waits while one runs, and only
+    // that panel's own button spins.
+    var working by useState<String?>(null)
+    val busy = working != null
     var devFilled by useState(false)
     // Each panel's own result (rule 3 of #1477), drawn inside it, never in one line shared by the page.
     var usersError by useState<DisplayError?>(null)
@@ -68,9 +71,15 @@ val Profile = FC<Props> {
      * (or a change made elsewhere) re-seeds it instead of leaving a stale value sitting in the field.
      */
     var draftName by useState("")
+    // The stored name the draft was last seeded from: until the seed has caught up with what is stored, the draft is not
+    // an edit, so a name arriving does not flash as unsaved for the render before its seed.
+    var nameSeededFrom by useState<String?>(null)
     // The person's users (issues #752, #1330): the table of them, from which the person switches, chooses the one a
     // sign-in lands on, or removes a `public` one; and which removal is armed (a two-step confirm, it being permanent).
     var myUsers by useState<List<UserChoice>>(emptyList())
+    // Whether the users have been read once, so the page draws the structure line and the client by their names rather
+    // than by ids for a moment first.
+    var usersLoaded by useState(false)
     var confirmingRemove by useState<Long?>(null)
     val generation = useRefreshGeneration()
     val bump = useRefreshBump()
@@ -93,13 +102,19 @@ val Profile = FC<Props> {
 
     // Seeded from the stored name, and again only when that changes (a save) -- never from a re-read, which a refresh
     // makes whether or not anything changed and which would wipe a name being typed (issue #1313).
-    val storedName = config?.user?.name
-    useEffect(storedName) { draftName = storedName ?: "" }
+    val storedName = config?.user?.name.orEmpty()
+    useEffect(storedName) {
+        draftName = storedName
+        nameSeededFrom = storedName
+    }
 
     // Re-read the config (and its copy) on every refresh generation (issue #115) -- on mount, and whenever a
     // navigation or state mutation bumps it, so a password change here reloads the page's affordances.
     useEffect(generation) {
-        profileScope.launch { myUsers = apiResult { AuthApi.fetchUsers() }.valueOr(emptyList()) }
+        profileScope.launch {
+            myUsers = apiResult { AuthApi.fetchUsers() }.valueOr(emptyList())
+            usersLoaded = true
+        }
         loadConfig { c ->
             profileScope.launch {
                 // Recover a stale build id (a rolling deploy) via the shared retry, rather than silently
@@ -113,16 +128,19 @@ val Profile = FC<Props> {
 
     fun t(ns: String, key: String, dflt: String): String = copy.t(ns, key, dflt)
 
-    /** Runs a "suspend" [block] with busy bookkeeping, its failure told to [onError] -- the panel it was asked from. */
-    fun run(onError: (DisplayError) -> Unit, block: suspend () -> Unit) {
-        busy = true
+    /**
+     * Runs a "suspend" [block] for the panel [panelId], every control waiting while it runs, its failure told to
+     * [onError] -- the panel it was asked from.
+     */
+    fun run(panelId: String, onError: (DisplayError) -> Unit, block: suspend () -> Unit) {
+        working = panelId
         profileScope.launch {
             try {
                 block()
             } catch (e: Throwable) {
                 onError(userFacingError(e))
             } finally {
-                busy = false
+                working = null
             }
         }
     }
@@ -132,16 +150,25 @@ val Profile = FC<Props> {
         val cfg = config ?: return
         signInError = null
         signInNote = null
-        run({ signInError = it }) {
+        run(PRFP.signIn, { signInError = it }) {
             val tk = AuthApi.createToken()
             AuthApi.sendVerifyUser(cfg.loginId, tk, addPassword = true)
-            token = tk
-            if (cfg.features.codeReadBack) {
-                AuthApi.fetchDevCode(cfg.loginId)?.let {
-                    code = it
-                    devFilled = true
+            // The dev read-back is a convenience: when it fails, the code is typed from the mail as anywhere else, and
+            // the step still opens -- a failure here is no failure to save a password.
+            val devCode = if (cfg.features.codeReadBack) {
+                try {
+                    AuthApi.fetchDevCode(cfg.loginId)
+                } catch (_: Throwable) {
+                    null
                 }
+            } else {
+                null
             }
+            devCode?.let {
+                code = it
+                devFilled = true
+            }
+            token = tk
         }
     }
 
@@ -158,10 +185,10 @@ val Profile = FC<Props> {
         val cfg = config ?: return
         val tk = token ?: return
         signInError = null
-        run({ signInError = it }) {
+        run(PRFP.signIn, { signInError = it }) {
             AuthApi.setPassword(cfg.loginId, password, tk, code.trim())
             resetPasswordStep()
-            signInNote = t("password", "saved", "Your password was saved.")
+            signInNote = t("password", "saved", "Your password was saved. You can use it to sign in from this browser next time.")
             // Bump instead of reloading by hand: the generation effect above re-reads config + copy, and the
             // account menu follows too (issue #115).
             bump()
@@ -175,7 +202,7 @@ val Profile = FC<Props> {
     fun saveName() {
         nameError = null
         nameNote = null
-        run({ nameError = it }) {
+        run(PRFP.name, { nameError = it }) {
             ProfileApi.setName(draftName.trim())
             nameNote = if (draftName.isBlank()) {
                 t("profile", "nameCleared", "Your name was cleared.")
@@ -190,9 +217,9 @@ val Profile = FC<Props> {
     fun removePassword() {
         signInError = null
         signInNote = null
-        run({ signInError = it }) {
+        run(PRFP.signIn, { signInError = it }) {
             ProfileApi.clearPassword()
-            signInNote = t("password", "removedNote", "Your password was removed. You can still sign in with a code.")
+            signInNote = t("password", "removedNote", "Your password was removed. You can still sign in with a verification code.")
             bump()
         }
     }
@@ -205,7 +232,7 @@ val Profile = FC<Props> {
     fun removePublic(target: UserChoice) {
         usersError = null
         usersNote = null
-        run({ usersError = it }) {
+        run(PRFP.users, { usersError = it }) {
             AuthApi.removePublicUser(target.userId)
             confirmingRemove = null
             if (target.isCurrent) {
@@ -229,7 +256,7 @@ val Profile = FC<Props> {
         nameError = null
         signInNote = null
         signInError = null
-        run({ usersError = it }) {
+        run(PRFP.users, { usersError = it }) {
             if (shellFacts.inSandbox) AuthApi.leaveSandbox(target.userId) else AuthApi.switchUser(target.userId)
             confirmingRemove = null
             afterSessionChange(bump, listOf(HP.page to HMENU.pageProfile))
@@ -240,27 +267,31 @@ val Profile = FC<Props> {
     fun makeDefault(target: UserChoice) {
         usersError = null
         usersNote = null
-        run({ usersError = it }) {
+        run(PRFP.users, { usersError = it }) {
             myUsers = AuthApi.setDefaultUser(target.userId)
             usersNote = t("users", "nextSignInSet", "Your next sign-in now takes you to that user.")
             bump()
         }
     }
 
-    fun logout() = run({ logoutError = it }) {
-        AuthApi.logout()
-        navigate(emptyList())
-        bump()
+    fun logout() {
+        logoutError = null
+        run(logoutWork, { logoutError = it }) {
+            AuthApi.logout()
+            navigate(emptyList())
+            bump()
+        }
     }
 
     /**
      * The person's users as a table (issue #1330): each one's persona and client, the active one highlighted, the one
      * a sign-in lands on marked, and on each row what may be done with it -- switch to it (staying on this page),
      * make it the one a sign-in lands on, or remove it when it is a `public` one (issue #752, two steps, since it is
-     * permanent). The help above it says what these users are, filled from the table's own facts.
+     * permanent). The help above it says what these users are, filled from the table's own facts; [roles] are the
+     * active user's as the page describes them ([profileShownRoles]).
      */
-    fun ChildrenBuilder.usersTable() {
-        val rows = profileUserRows(myUsers, config?.user?.roles)
+    fun ChildrenBuilder.usersTable(roles: Set<String>) {
+        val rows = profileUserRows(myUsers, roles)
         val nameShown = showsNameColumn(myUsers)
         div {
             className = ClassName("subtitle")
@@ -268,7 +299,7 @@ val Profile = FC<Props> {
                 // The copy may pull the flavor's addition (`users.helpExtra`) with `${@t(...)}`, resolved against this
                 // page's own copy -- empty as shipped, and a reference deployment's overlay fills it.
                 source = t("users", "help", usersHelpDefault)
-                    .evalTemplate(mapOf("users" to usersHelpData(myUsers, config?.user?.roles)), resolver = copy.fragmentResolver())
+                    .evalTemplate(mapOf("users" to usersHelpData(myUsers, roles)), resolver = copy.fragmentResolver())
             }
         }
         // Scrolls inside the card rather than spilling over its edge when the window is too narrow for its columns.
@@ -384,8 +415,9 @@ val Profile = FC<Props> {
     }
 
     /**
-     * Setting, changing, or removing a password (issue #96): the status, then "Email me a code", then the code and the
-     * new password, saved by the panel's one Save; "Remove password" asks first (rule 6 of #1477).
+     * Setting, changing, or removing a password (issue #96): the status, then "Email me a code" and "Remove password",
+     * which act at once -- the removal asking first (rule 6 of #1477) -- then, once a code is sent, the code and the new
+     * password, saved by the panel's one Save.
      */
     fun ChildrenBuilder.signInBody(cfg: ProfileConfig) {
         val has = cfg.features.hasPassword
@@ -402,7 +434,8 @@ val Profile = FC<Props> {
             div {
                 className = ClassName("row")
                 Button {
-                    loading = busy
+                    loading = working == PRFP.signIn
+                    disabled = busy
                     onClick = { sendCode() }
                     // The button says what the code is for -- on its own it reads as unrelated to passwords.
                     +if (has) {
@@ -422,7 +455,7 @@ val Profile = FC<Props> {
                     )
                     confirmText = t("password", "removeConfirm", "Remove password")
                     keepText = t("password", "keep", "Keep password")
-                    inProgress = busy
+                    inProgress = working == PRFP.signIn
                     onConfirm = { removePassword() }
                 }
             }
@@ -466,8 +499,8 @@ val Profile = FC<Props> {
             SaveBar {
                 saveText = t("password", "save", "Save password")
                 discardText = t("password", "cancel", "Cancel")
-                saving = busy
-                canSave = password.isNotEmpty() && code.isNotBlank() && passwordRule == null
+                saving = working == PRFP.signIn
+                canSave = !busy && password.isNotEmpty() && code.isNotBlank() && passwordRule == null
                 failure = signInError
                 failureLead = t("password", "saveFailed", "Couldn't save your password.")
                 onSave = { savePassword() }
@@ -487,7 +520,9 @@ val Profile = FC<Props> {
 
         val cfg = config
         val user = cfg?.user
-        if (cfg != null && user != null) {
+        // Drawn once the users are in too, so the structure line and the client are named rather than shown by id first.
+        if (cfg != null && user != null && usersLoaded) {
+            val roles = profileShownRoles(user)
             // How the account is put together (rule 7 of #1477), before any panel: the address, the person's users, and
             // the access of the one acted as.
             structureLine(profileStructure(cfg.loginId, myUsers, user), t("profile", "structureLabel", "How your account is put together"))
@@ -495,7 +530,7 @@ val Profile = FC<Props> {
             val usersShown = showsUsersTable(myUsers)
             val signInShown = cfg.features.canSetPassword
             val panels = buildList {
-                add(PRFP.account to t("account", "title", "Your account"))
+                add(PRFP.account to t(PRFA.account, "title", "Your account"))
                 if (usersShown) add(PRFP.users to t("users", "title", "Your users"))
                 add(PRFP.name to t("profile", "nameTitle", "Your name"))
                 if (signInShown) add(PRFP.signIn to t("password", "title", "Sign-in"))
@@ -504,17 +539,26 @@ val Profile = FC<Props> {
             panelLinks(panels)
 
             // ---- Your account: read-only (issue #1479) ---------------------
-            panel(PRFP.account, t("account", "title", "Your account")) {
-                for (fact in profileAccountFacts(user, cfg.loginId, myUsers, shellFacts)) {
-                    readOnlyField(t("account", fact.key, fact.label), fact.value)
+            panel(PRFP.account, t(PRFA.account, "title", "Your account")) {
+                // A removal that leaves one ordinary user takes the users panel away with it, so its note is said here.
+                if (!usersShown) panelNote(null, usersNote)
+                // What the shell says of the caller, only once it is about this user: before it has been told, or for a
+                // moment after a switch, it would describe somebody else.
+                val facts = shellFacts.takeIf { it.describes(user.userId) } ?: ShellFacts()
+                val words: (String, String) -> String = { key, shipped -> t(PRFA.account, key, shipped) }
+                for (fact in profileAccountFacts(user, cfg.loginId, myUsers, facts, words)) {
+                    if (fact.key == PRFA.timeZone && !shellFacts.describes(user.userId)) continue
+                    readOnlyField(t(PRFA.account, fact.key, profileAccountDefault(fact.key)), fact.value)
                 }
-                h3 { +t("account", "canDoTitle", "What you can do here") }
-                ul {
-                    className = ClassName("profile-abilities")
-                    for (ability in profileAbilities(shellFacts.reach)) {
-                        li {
-                            key = ability.unsafeCast<Key>()
-                            +t("account", ability, profileAbilityDefaults[ability] ?: ability)
+                if (shellFacts.describes(user.userId)) {
+                    h3 { +t(PRFA.account, "canDoTitle", "What you can do here") }
+                    ul {
+                        className = ClassName("profile-abilities")
+                        for (ability in profileAbilities(shellFacts.reach, roles, user.org)) {
+                            li {
+                                key = ability.unsafeCast<Key>()
+                                +t(PRFA.account, ability, profileAccountDefault(ability))
+                            }
                         }
                     }
                 }
@@ -528,7 +572,7 @@ val Profile = FC<Props> {
             // nothing to choose, and the account panel says where they are.
             if (usersShown) {
                 panel(PRFP.users, t("users", "title", "Your users"), copy.explanation("users"), PanelKind.live) {
-                    usersTable()
+                    usersTable(roles)
                 }
             }
 
@@ -536,7 +580,7 @@ val Profile = FC<Props> {
             //
             // Its own panel, not among the password controls: what you are called is not a credential, which is also
             // why saving it needs no emailed code.
-            val nameDirty = draftName.trim() != (user.name ?: "")
+            val nameDirty = nameSeededFrom == storedName && draftName.trim() != storedName
             panel(PRFP.name, t("profile", "nameTitle", "Your name"), kind = PanelKind.draft, dirty = nameDirty) {
                 p {
                     className = ClassName("subtitle")
@@ -546,28 +590,42 @@ val Profile = FC<Props> {
                             "Leave it empty to be shown by your login email instead.",
                     )
                 }
-                textField(t("profile", "nameLabel", "Name"), draftName, disabled = busy) {
+                // A business account's name is its business's, as the Users editor labels it.
+                val nameLabel = if (user.isEntity) {
+                    t("profile", "businessNameLabel", "Business name")
+                } else {
+                    t("profile", "nameLabel", "Name")
+                }
+                textField(nameLabel, draftName, disabled = busy) {
                     draftName = it
                     nameNote = null
                 }
                 SaveBar {
                     saveText = t("profile", "nameSave", "Save name")
-                    saving = busy
-                    canSave = nameDirty
+                    saving = working == PRFP.name
+                    canSave = nameDirty && !busy
                     failure = nameError
                     failureLead = t("profile", "nameFailed", "Couldn't save your name.")
                     onSave = { saveName() }
                     onDiscard = {
-                        draftName = user.name ?: ""
+                        draftName = storedName
                         nameError = null
                     }
                 }
                 panelNote(null, nameNote)
             }
 
-            // ---- Sign-in: a draft, its removal confirmed (issue #96) -------
+            // ---- Sign-in: live, then a draft once a code is sent (issue #96) --
+            //
+            // Asking for a code and removing the password act at once; the code and the new password then wait for the
+            // panel's one Save, so the panel is a draft only while that step is open.
             if (signInShown) {
-                panel(PRFP.signIn, t("password", "title", "Sign-in"), kind = PanelKind.draft, dirty = token != null && password.isNotEmpty()) {
+                val drafting = token != null
+                panel(
+                    PRFP.signIn, t("password", "title", "Sign-in"),
+                    kind = if (drafting) PanelKind.draft else PanelKind.live,
+                    dirty = drafting && password.isNotEmpty(),
+                ) {
                     signInBody(cfg)
                 }
             }
@@ -577,14 +635,16 @@ val Profile = FC<Props> {
             // For programs that act as the person -- in a sandbox too (issue #1453), where a key acts with the standing
             // the sandbox's rules give this user, as a session does, and stays in the sandbox.
             panel(PRFP.keys, t("profile", "keysTitle", "API keys"), kind = PanelKind.live) {
-                ApiKeysSection { inPanel = true }
+                ApiKeysSection {}
             }
         }
 
+        // The page's way out, like a back link at a page's top, belongs to no panel (rule 1 of #1477).
         div {
             className = ClassName("row")
             Button {
                 type = "link"
+                loading = working == logoutWork
                 disabled = busy
                 onClick = { logout() }
                 +t("profile", "logout", "Log out")
@@ -593,6 +653,9 @@ val Profile = FC<Props> {
         logoutError?.let { errorText(t("profile", "logoutFailed", "Couldn't log out."), it) }
     }
 }
+
+/** What [Profile]'s working marker names while a log out runs: no panel's. */
+private const val logoutWork = "logout"
 
 /**
  * The person's users the profile page offers to remove (issue #752): every `public` one. A person may remove
