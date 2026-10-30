@@ -6,6 +6,7 @@ import com.dynamicruntime.common.context.UserProfile
 import com.dynamicruntime.common.home.HFEAT
 import com.dynamicruntime.common.home.HFLD
 import com.dynamicruntime.common.http.request.ROLE
+import com.dynamicruntime.common.user.AccountHistory
 import com.dynamicruntime.common.user.PERSONA
 import com.dynamicruntime.common.user.UserChoice
 import kotlin.test.Test
@@ -13,6 +14,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlin.time.Instant
 
 /** The Profile page's layout (issue #1479): its structure line, its account panel, and what the caller can do. */
 class ProfileLayoutTest {
@@ -76,7 +78,7 @@ class ProfileLayoutTest {
         assertEquals(
             mapOf(
                 PRFA.email to "ada@acme.test", PRFA.client to "Acme", PRFA.persona to "Member", PRFA.access to "User",
-                PRFA.accountType to "Personal", PRFA.timeZone to "America/Chicago (CT)",
+                PRFA.accountType to "Personal", PRFA.address to "Not yet proven", PRFA.timeZone to "America/Chicago (CT)",
             ),
             plain,
         )
@@ -92,7 +94,10 @@ class ProfileLayoutTest {
         assertEquals("Business", business[PRFA.accountType])
         // The order the panel reads in.
         assertEquals(
-            listOf(PRFA.signedInAs, PRFA.email, PRFA.client, PRFA.persona, PRFA.access, PRFA.org, PRFA.accountType, PRFA.timeZone),
+            listOf(
+                PRFA.signedInAs, PRFA.email, PRFA.client, PRFA.persona, PRFA.access, PRFA.org, PRFA.accountType, PRFA.address,
+                PRFA.timeZone,
+            ),
             profileAccountFacts(profile(org = "east", name = "Ada"), "a@b.test", listOf(member), facts).map { it.key },
         )
         // A value's words are the copy's when it has them.
@@ -102,6 +107,34 @@ class ProfileLayoutTest {
         assertEquals("Individual", reworded.first { it.key == PRFA.accountType }.value)
         // Every label and word has its shipped words.
         assertTrue(profileAccountDefaults.values.all { it.isNotBlank() })
+    }
+
+    @Test
+    fun theUsersOwnHistoryReadsAsMomentsBeforeTheZoneTheyAreIn() {
+        val registered = Instant.parse("2026-10-01T16:00:00Z")
+        val activated = Instant.parse("2026-09-30T12:00:00Z")
+        val signedIn = Instant.parse("2026-10-29T17:30:00Z")
+        val proven = Instant.parse("2026-10-01T15:59:00Z")
+        val history = AccountHistory(registered, activated, signedIn, proven)
+        val facts = profileAccountFacts(
+            profile(), "ada@acme.test", listOf(member), ShellFacts(), history, moment = { "at $it" },
+        )
+        assertEquals(
+            listOf(
+                PRFA.address to "Proven at $proven", PRFA.registered to "at $registered", PRFA.activated to "at $activated",
+                PRFA.lastSignIn to "at $signedIn", PRFA.timeZone to "This site's default (GMT-8)",
+            ),
+            facts.dropWhile { it.key != PRFA.address }.map { it.key to it.value },
+        )
+        // A moment that has not happened is no line; an unproven address says so.
+        val invited = profileAccountFacts(
+            profile(), "ada@acme.test", listOf(member), ShellFacts(), AccountHistory(activatedAt = activated), moment = { "at $it" },
+        ).associate { it.key to it.value }
+        assertEquals("Not yet proven", invited[PRFA.address])
+        assertEquals(null to null, invited[PRFA.registered] to invited[PRFA.lastSignIn])
+        // The moment is the display zone's, absolute, as a user's own page shows it (issue #1141).
+        val shown = profileAccountFacts(profile(), "ada@acme.test", listOf(member), ShellFacts(), history)
+        assertEquals(formatTimestamp(registered.toString()), shown.first { it.key == PRFA.registered }.value)
     }
 
     @Test

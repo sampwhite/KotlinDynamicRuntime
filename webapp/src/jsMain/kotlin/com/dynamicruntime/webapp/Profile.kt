@@ -546,7 +546,7 @@ val Profile = FC<Props> {
                 // moment after a switch, it would describe somebody else.
                 val facts = shellFacts.takeIf { it.describes(user.userId) } ?: ShellFacts()
                 val words: (String, String) -> String = { key, shipped -> t(PRFA.account, key, shipped) }
-                for (fact in profileAccountFacts(user, cfg.loginId, myUsers, facts, words)) {
+                for (fact in profileAccountFacts(user, cfg.loginId, myUsers, facts, cfg.account, words = words)) {
                     if (fact.key == PRFA.timeZone && !shellFacts.describes(user.userId)) continue
                     readOnlyField(t(PRFA.account, fact.key, profileAccountDefault(fact.key)), fact.value)
                 }

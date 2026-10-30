@@ -85,6 +85,9 @@ object AFLD {
 
     /** A login identifier for looking up an existing account: a username **or** an email address. */
     const val loginId = "loginId"
+
+    /** The profile config's history of the signed-in user (issue #1480): an `AccountHistory`. */
+    const val account = "account"
     const val password = "password"
     const val formAuthToken = "formAuthToken"
     const val verifyCode = "verifyCode"

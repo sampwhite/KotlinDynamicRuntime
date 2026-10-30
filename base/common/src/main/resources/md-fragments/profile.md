@@ -21,8 +21,10 @@
 
 /- The account panel (issue #1479): what the page and the shell already know of the signed-in user, read-only. Each
    label's value is supplied by the page, made of the words below where it is not data: `personal` or `business` for
-   the account type; `everyClient` after an administrator's or operator's access when they hold `allClients`; and
-   `siteZone`, followed by the zone's label, when the client names no time zone. `canDoTitle` heads what the user may
+   the account type; `everyClient` after an administrator's or operator's access when they hold `allClients`;
+   `proven` before the moment the address was proven, or `notProven` (issue #1480); and `siteZone`, followed by the
+   zone's label, when the client names no time zone. The user's own moments -- registered, activated, last sign-in --
+   are absolute, in the zone the last line names. `canDoTitle` heads what the user may
    do here, one line per thing, chosen from the `can*` keys: every client, else their own client (`canAdministerOrg`
    for one confined to an organization), else their own address's users (an administrator in `public`); an editor's,
    as far; an operator's; opening the sandbox; and, for a user who administers and edits no client, their own forms. -/
@@ -35,11 +37,17 @@
 # +access Access
 # +org Organization
 # +accountType Account type
+# +address Address
+# +registered Registered
+# +activated Activated
+# +lastSignIn Last sign-in
 # +timeZone Time zone
 # +personal Personal
 # +business Business
 # +everyClient across every client
 # +siteZone This site's default
+# +proven Proven
+# +notProven Not yet proven
 # +canDoTitle What you can do here
 # +canAllClients Administer every client: its users, its configuration, and its forms.
 # +canAdministerClient Administer your client: its users, its configuration, and every form in it.

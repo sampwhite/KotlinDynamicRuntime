@@ -143,8 +143,10 @@ Current UI-config endpoints:
   there is no error for `GoogleSignInButton` to catch, and its `onFail` covers only a script that cannot be
   *fetched*. What the component does instead is state the page's own origin beside the button where
   `showErrorDetail` is on, so a developer has the exact string to register.
-- `GET /profile/ui/config` — **login-required** (`profile` section); features `{hasPassword, canSetPassword}`,
-  state `{userInfo}`. Fragment file `profile`.
+- `GET /profile/ui/config` — **login-required** (`profile` section); features `{hasPassword, canSetPassword,
+  codeReadBack}`, state `{userInfo, loginId, account}`. `account` is the user's own history (issue #1480), the kernel's
+  `AccountHistory` (`ACCT` names its fields): registered, activated, last sign-in, and when the address was proven --
+  this user's row and its identity only. Fragment file `profile`.
 - The **switcher** (issue #749), login-required (`user` section): `GET /user/self/users` lists the `UserChoice`s
   the signed-in person may act as (registered, enabled users of their identity in clients this node carries, each
   with its `clientName`, issue #1110; `isCurrent` / `isDefault` marked), `POST /user/self/switch {userId}` reissues
@@ -158,7 +160,8 @@ Current UI-config endpoints:
   person's default user, or ends it when none remains. The **profile page** (issue #1330) is built to the page
   structure (issue #1479): under its title the structure line (the address, the person's users, the access of the one
   acted as, `profileStructure`), then the panels Your account (read-only: who, client, persona and access,
-  organization, account type, time zone, and "What you can do here" from `ShellFacts.reach`, the roles, and the
+  organization, account type, the address's proof and the user's own moments -- absolute, in the display zone, as a
+  user's own page shows them (issue #1480) -- the time zone, and "What you can do here" from `ShellFacts.reach`, the roles, and the
   organization -- `profileAccountFacts` and `profileAbilities` in `ProfileLayout.kt`, covered by `ProfileLayoutTest`),
   Your users (live), Your name (a draft), Sign-in (live, then a draft once a code is sent; Remove password through
   `DangerConfirm`), and API keys (live), each drawing its own result; Log out stays below them. It describes a
