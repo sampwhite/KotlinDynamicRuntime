@@ -102,7 +102,7 @@ fun coreConfigTraits(cxt: KdrCxtBase): GedraConfig = gedraConfig(cxt, CCT.config
         property(CCT.display, "The string-script expression evaluated against the trait's data for the value.", required = true)
         property(
             CCT.kind,
-            "How the value reads -- what a search treats it as. Absent, a lone `\${field}` display reads its field's schema " +
+            $$"How the value reads -- what a search treats it as. Absent, a lone `${field}` display reads its field's schema " +
                 "(issue #1508), and a computed one is text.",
         ) { options(UsageKind.entries) }
         property(CCT.substring, "For a string value, whether the search also offers a substring match.") {
