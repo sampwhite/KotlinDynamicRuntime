@@ -188,6 +188,12 @@ class SchType(
      */
     val primaryKey: List<String> = emptyList(),
     /**
+     * Custom `g-onWrite` keyword (issue #1501): the functions run on this object's data each time it is written, in
+     * run order. Usages only -- what each does is registered Kotlin, resolved against the usage in `base:common` --
+     * so a type parses the same with or without the kinds present. Empty for a type that declares none.
+     */
+    val onWrite: List<SchFunctionUsage> = emptyList(),
+    /**
      * Custom `g-presentation` keyword (resolved): how a read-only surface should display this type/field
      * (issue #540) -- a [PRES] value (`status`/`table`/`identifier`), or null for ordinary rendering. Advisory
      * only: it never affects validation, and a renderer that does not recognize the value ignores it. Surfaced

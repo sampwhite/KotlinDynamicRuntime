@@ -140,6 +140,25 @@ class SchemaSkillExamplesTest : StringSpec({
         parseSchemaTypes(defs)["cat.Query"]!!.properties.getValue(EI.client).valueType.options shouldBe null
     }
 
+    // Transcribed from the skill's "Functions on write: `g-onWrite`" section.
+    "a type's write function stores the computed total as the skill shows" {
+        val defs = schemaDefs(cxt, "exp") {
+            type("ExpenseData") {
+                type = SCT.kObject
+                property("perItemAmount", "Amount per item.") { type = SCT.number }
+                property("itemCount", "How many items.") { type = SCT.integer }
+                property("totalAmount", "Computed, not supplied.") {
+                    type = SCT.number
+                    derived = true
+                }
+                onWrite(computeValue("totalAmount", "perItemAmount * itemCount"))
+            }
+        }
+        val type = parseSchemaTypes(defs).getValue("exp.ExpenseData")
+        val functions = resolveWriteFunctions(cxt, mapOf(CVF.fn to ComputeValueCreation), type).mapNotNull { it.function }
+        runWriteFunctions(cxt, functions, mapOf("perItemAmount" to 2.5, "itemCount" to 4L))["totalAmount"] shouldBe 10.0
+    }
+
     // Transcribed from the skill's "Layouts: `g-layout`" section.
     "the layout builder writes the g-layout block the skill shows, and the store keeps it out of the schema" {
         val defs = schemaDefs(cxt, "lay") {

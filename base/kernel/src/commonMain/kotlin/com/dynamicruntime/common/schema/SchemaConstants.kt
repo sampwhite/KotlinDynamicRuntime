@@ -225,6 +225,14 @@ object SCH {
     const val derived = "g-derived"
 
     /**
+     * The functions run on an object's data each time it is written (issue #1501): a list of function usages, each
+     * a `{fn, ...}` object naming a registered kind and carrying that kind's settings (see [SchFunctionUsage]). The
+     * first of the data's life-cycle events a schema may attach functions to ([SchEventType]); on a trait's data
+     * type, they run after an edit is merged, before what is stored is judged. Always a list, even of one.
+     */
+    const val onWrite = "g-onWrite"
+
+    /**
      * A property whose value is itself a **JSON Schema type body** (issue #316), validated by parsing it with
      * the same parser the schema store uses. The precedent is a date field, which validates by parsing rather than
      * by describing ISO 8601. What the parser does not understand, the check does not claim to have checked.

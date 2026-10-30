@@ -252,6 +252,15 @@ open class SchTypeBuilder(
     var derived: Any? by SchAttr(data, SCH.derived)
 
     /**
+     * Declares the functions run on this type's data each time it is written (issue #1501), as `g-onWrite`: each a
+     * usage object naming its kind in `fn` -- `computeValue(...)` in `base:common` builds one. Replaces any declared
+     * before; on a trait's data type, they run after an edit is merged.
+     */
+    fun onWrite(vararg usages: Map<String, Any?>) {
+        data[SCH.onWrite] = usages.toList()
+    }
+
+    /**
      * A read-only **presentation hint** (issue #540): a [PRES] value saying how a display surface should show
      * this type/field (`status`/`table`/`identifier`). Advisory only -- it never touches validation. Set as
      * `presentation = PRES.table`, mirroring how the wire keyword ([SCH.presentation]) reads.

@@ -312,6 +312,44 @@ everyone); or sits on a **required** property (the field is hidden client-side b
 so a caller it hides could never submit). In a client's own definitions the keyword is dropped instead — see
 *A client's own definitions* below.
 
+## Functions on write: `g-onWrite` (issue #1501)
+
+A type may list functions run on its data **each time it is written** -- the custom `g-onWrite` keyword, written with
+`onWrite(...)`. Each is a usage `{fn, priority?, ...}` naming a kind a component registered
+(`SchemaCollector.addSchemaFunction`); the first kind, `computeValue`, stores a script's value in a `g-derived`
+property, coerced to that property's type:
+
+```kotlin
+type("ExpenseData") {
+    type = SCT.kObject
+    property("perItemAmount", "Amount per item.") { type = SCT.number }
+    property("itemCount", "How many items.") { type = SCT.integer }
+    property("totalAmount", "Computed, not supplied.") {
+        type = SCT.number
+        derived = true
+    }
+    onWrite(computeValue("totalAmount", "perItemAmount * itemCount"))
+}
+```
+
+- **Always a list, even of one.** A lone object is refused by the keyword's shape (`SchGKeywords`), not read.
+- **They run on a trait's data type, where it is written**: a create, a patch (after the merge, under the lock, before
+  the unchanged check), and an import. On any other type they do nothing, and the load says so.
+- **The script reads only the object's own data**, written bare -- the template grammar without `${}`
+  (`ScriptExpression`). A value that cannot be computed (an input missing, a division by zero) or that the target's
+  type will not take **clears the target** rather than failing the write.
+- **Checked when the type is loaded**: the kind is registered, its settings validate, the target is declared, derived,
+  and not gated by `g-visibleWhen`, the script parses, pulls no `@t` copy, and reads only declared properties, never its
+  own target, and no two functions write one property. A usage that fails is reported and skipped; the type's others
+  run. Stored configuration is held to this when written (the trial reload).
+- **A client's alteration only adds to them** (`MergeRule.Append`): its functions follow the type's own, which it can
+  neither change nor remove.
+- **Stored values follow a changed script** through the derived-state recompute (nightly, or Recalculate form states),
+  and the publish impact report counts the forms a change would recompute (`ImpactKind.valuesRecomputed`).
+- **Published typed**: each kind's settings type and the `kdr.fn.WriteFunction` union over them are in the catalog, and
+  the meta-schema types `g-onWrite`'s items with it; workflow function lists are typed the same way
+  (`kdr.fn.WorkflowFunction`, `kdr.fn.WorkflowTaskFunction`).
+
 ## Presentation hints (read-only display)
 
 A type or field may declare **how a read-only surface should display it** (issue #540) — advisory only, with

@@ -1558,6 +1558,9 @@ fun impactFindingText(f: ImpactFindingView): String {
             "$forms ${verb("takes", "take")} part in workflow ${f.workflowId}, which ${verb("its owner", "their owners")} " +
                 "would no longer see: nothing would show them ${verb("its", "their")} part in it, though the progress is " +
                 "kept for whoever still sees it."
+        ImpactKind.valuesRecomputed.name ->
+            "$forms ${verb("holds", "hold")} entries of trait ${f.traitId} whose computed values would change, at " +
+                "${verb("its", "their")} next save or when the client's forms are recalculated."
         else -> "$forms would be affected (${f.kind})."
     }
 }

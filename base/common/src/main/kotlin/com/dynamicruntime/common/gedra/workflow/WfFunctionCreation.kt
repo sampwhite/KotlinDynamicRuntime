@@ -5,6 +5,7 @@ import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.schema.SchType
 import com.dynamicruntime.common.schema.coerceAndValidate
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
+import com.dynamicruntime.common.context.KdrCxtBase
 
 /**
  * The `base:common` half of a workflow function kind (issue #677): the Kotlin that turns a kernel
@@ -22,6 +23,15 @@ interface WfFunctionCreation {
 
     /** The event (and [WfEventType.scope]) functions of this kind attach to. */
     val event: WfEventType
+
+    /**
+     * The qualified name of the type a usage's settings are validated against (issue #1501) -- and published under, as
+     * a branch of the catalog's union of workflow functions for this kind's scope, so the two cannot disagree.
+     */
+    val initDataTypeName: String
+
+    /** The `$defs` declaring [initDataTypeName] and anything it references, each under its qualified name (issue #1501). */
+    fun initDataDefs(cxt: KdrCxtBase): Map<String, Any?>
 
     /**
      * Builds a runnable function from [usage], **validating and coercing** its initialization data against this

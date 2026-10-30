@@ -5,7 +5,6 @@ import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.GedraConfig
-import com.dynamicruntime.common.gedra.GedraDataDeriver
 import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.GedraPrepForSaveFn
 import com.dynamicruntime.common.gedra.GedraStateContext
@@ -20,6 +19,7 @@ import com.dynamicruntime.common.util.toOptStr
 import kotlinx.datetime.UtcOffset
 import kotlinx.datetime.asTimeZone
 import kotlinx.datetime.toLocalDateTime
+import com.dynamicruntime.common.schema.computeValue
 
 /** The sample traits' names, kept beside the config that declares them. */
 @Suppress("ConstPropertyName")
@@ -167,12 +167,13 @@ fun sampleTraits(cxt: KdrCxt): GedraConfig = gedraConfig(cxt, ST.sampleTraits, S
             visibleWhen = CFACTS.hasAdminLevel
         }
         // Derived: the caller does not supply it, the form draws no control for it, and one echoed back is
-        // dropped. Something has to produce it, and for a real trait that something is code bound to the
-        // trait; here it is the fixture's own fill-out.
+        // dropped. The type's own `g-onWrite` function computes it on every write (issue #1501), and clears it
+        // while either number is missing.
         property(ST.totalAmount, "Total claimed; computed from the two above, not supplied.") {
             type = SCT.number
             derived = true
         }
+        onWrite(computeValue(ST.totalAmount, "${ST.perItemAmount} * ${ST.itemCount}"))
         // A layout `hint` (issue #587) over the field's bounds context: `${'$'}{min}` / `${'$'}{max}` resolve to this
         // field's own minimum/maximum on the frontend, replacing the derived "range: 2000 to 2100". The boot
         // check confirms the placeholders name bounds the field actually declares.
@@ -344,36 +345,6 @@ fun sampleTraits(cxt: KdrCxt): GedraConfig = gedraConfig(cxt, ST.sampleTraits, S
  * feature (acme does), so it neither reaches production nor surprises a client that did not ask for it.
  */
 /**
- * The expense report's derived total from its two supplied numbers, or empty when either is absent (issue
- * #712) -- the smallest honest pre-processor, exactly as the trait's `totalAmount` note describes. Shared by
- * the on-read [ExpenseTotalDeriver] and the fixture's `fillOut`, so the two producers of the same value cannot
- * drift: one computation, called from both.
- */
-fun expenseTotalFields(data: Map<String, Any?>): Map<String, Any?> {
-    val perItem = (data[ST.perItemAmount] as? Number)?.toDouble() ?: return emptyMap()
-    val count = (data[ST.itemCount] as? Number)?.toDouble() ?: return emptyMap()
-    return mapOf(ST.totalAmount to perItem * count)
-}
-
-/**
- * The expense report's total, computed **on read** (issue #712): the production producer of the `totalAmount`
- * the trait declares `g-derived`. A caller never supplies it and the form draws no control for it, so it is
- * filled whenever the form is read -- in the single-document view, the survey view, and any display column over
- * it -- from the per-item amount and item count beside it, and never stored.
- *
- * Ungated (no [featureName]): unlike the demo [TraitPresenceByYearDeriver], this is a *real* derivation -- a
- * value that genuinely follows from a form's own data -- so it runs for every client that carries the
- * `expenseReport` trait rather than only a test-instance opt-in. It is the data twin of a [GedraStateDeriver]:
- * the same registration seam, run on read rather than on write.
- */
-object ExpenseTotalDeriver : GedraDataDeriver {
-    override val appliesTo: Set<GedraDataType> = setOf(GedraDataType.formDoc)
-    override val traitId: String = ST.expenseReport
-
-    override fun derive(cxt: KdrCxt, data: Map<String, Any?>): Map<String, Any?> = expenseTotalFields(data)
-}
-
-/**
  * A trait save-time **validation** (issue #728): an expense report's reporting year may not be in the future,
  * refused before the write. The demonstrating half of the trait-function mechanism -- a check that JSON Schema
  * cannot express, because it turns on the runtime clock (`cxt.instanceNow()`) rather than a static bound, unlike
@@ -384,7 +355,7 @@ object ExpenseTotalDeriver : GedraDataDeriver {
  * [GedraPrepForSaveFn] on why a save-time function must be fragment-safe). It returns the data unchanged -- a
  * pure validation -- and throws `KdrException.mkInput` to reject, which surfaces to the caller as a 400.
  *
- * Ungated, like [ExpenseTotalDeriver]: a real rule for every client that carries the trait.
+ * Ungated: a real rule for every client that carries the trait.
  */
 object ExpenseReportPrepForSaveFn : GedraPrepForSaveFn {
     override val appliesTo: Set<GedraDataType> = setOf(GedraDataType.formDoc)

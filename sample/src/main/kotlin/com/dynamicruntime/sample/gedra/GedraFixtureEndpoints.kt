@@ -14,6 +14,8 @@ import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.util.toJsonListOrEmpty
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
+import com.dynamicruntime.common.startup.SchemaService
+import com.dynamicruntime.common.schema.runWriteFunctions
 
 /** Field names and debug tags for the Gedra entry fixture (issue #301). */
 @Suppress("ConstPropertyName")
@@ -84,7 +86,7 @@ object GedraFixtureEndpoints {
         ) { c, request ->
             val now = c.instanceNow()
             val entries = request[GFX.entries].toJsonListOrEmpty().mapIndexed { index, raw ->
-                filledOut(raw.toJsonMapOrEmpty()).asStoredEntry(
+                filledOut(c, raw.toJsonMapOrEmpty()).asStoredEntry(
                     entryId = "e-${index + 1}",
                     // A real endpoint deduces this from who is calling; a fixture says what it is.
                     source = GFX.fixtureSource,
@@ -101,21 +103,17 @@ object GedraFixtureEndpoints {
     }
 
     /**
-     * Produces what the caller does not supply, which for a real trait is code bound to that trait.
-     *
-     * Only `expenseReport` has anything derived, and it is the smallest honest version of a pre-processor:
-     * read the two supplied numbers, write the one that follows from them. A trait whose data does not need
-     * it passes through untouched.
+     * Produces what the caller does not supply, as storing the entry would (issue #1501): the trait's own
+     * `g-onWrite` functions, from the caller's client's schema, run over its data -- an expense report's total from
+     * the two numbers beside it, say. A trait whose type declares none passes through untouched.
      */
-    private fun filledOut(entry: Map<String, Any?>): Map<String, Any?> {
-        if (entry[GE.traitId].toOptStr() != ST.expenseReport) {
-            return entry
-        }
-        val data = entry[GE.data].toJsonMapOrEmpty()
-        // The same computation the on-read [ExpenseTotalDeriver] runs (issue #712), so the fixture and the real
-        // producer cannot drift. Empty when a supplied number is missing, and the entry then passes through.
-        val derived = expenseTotalFields(data)
-        return if (derived.isEmpty()) entry else entry + (GE.data to data + derived)
+    private fun filledOut(cxt: KdrCxt, entry: Map<String, Any?>): Map<String, Any?> {
+        val traitId = entry[GE.traitId].toOptStr() ?: return entry
+        val union = cxt.getClientSchema().types["${GCFG.globalNamespace}.${GU.unionName(GedraDataType.formDoc)}"]
+        val dataType = union?.variants?.select(traitId)?.properties?.get(GE.data)?.valueType ?: return entry
+        val functions = SchemaService.get(cxt).writeFunctionsFor(cxt, dataType)
+        if (functions.isEmpty()) return entry
+        return entry + (GE.data to runWriteFunctions(cxt, functions, entry[GE.data].toJsonMapOrEmpty()))
     }
 
     /**

@@ -218,7 +218,7 @@ Send each page's `next` back as `after` until a page has none.
 
 A run is computed in memory over the caches, as the forms listing's search is: the client's live form ids from the
 gedra cache, then the forms through a cache-first batch read (`GedraDataService.readGedras`). Each join is paid only
-when a column needs it — entries, with fields computed on read (an expense total), for form paths; the form's states
+when a column needs it — entries, computed fields as stored (an expense total), for form paths; the form's states
 for workflow paths and the form's status and cfacts; the owners' accounts for user paths. A detail run that excludes
 nothing reads only its page's forms.
 

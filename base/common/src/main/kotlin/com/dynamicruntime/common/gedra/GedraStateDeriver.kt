@@ -101,3 +101,19 @@ fun mergeCfactContributions(entries: List<Map<String, Any?>>): List<Map<String, 
     val first = entries.indexOfFirst(isCfacts)
     return entries.filterIndexed { i, e -> i == first || !isCfacts(e) }.map { if (isCfacts(it)) merged else it }
 }
+
+/**
+ * Whether a gedra deriver's opt-in [featureName] is on for [client] (issue #599): a null feature always runs; a
+ * named one runs only when [client] lists it in [ClientDef.testFeatures]. Shared by the state derivers and the save-time
+ * functions so the gate is one rule -- the test-instance half lives at the boundary (`ClientService.present` strips
+ * `testFeatures` from a non-test node), so this is simply a membership test. [client] is the **gedra's** client:
+ * the write path passes its owner-bound `cxt.client`, the read path the row's own client, so the gate keys off
+ * the form rather than off whoever triggered the derivation.
+ */
+fun gedraFeatureEnabled(cxt: KdrCxt, client: String, featureName: String?): Boolean {
+    if (featureName == null) {
+        return true
+    }
+    val present = ClientService.get(cxt).present(client) ?: return false
+    return featureName in present.testFeatures
+}

@@ -89,7 +89,7 @@ trait or workflow names a function, and a component registers the function with 
 | Hook | What it does | Registered with |
 |---|---|---|
 | **Options provider** | Supplies the choices a field offers at run time (`g-optionsSource`). Stored configuration may name only a provider registered as allowed to be named. | `addOptionsProvider` |
-| **Data deriver** | Computes a trait's derived values when a form is read, for display. Nothing is stored. | `addDataDeriver` |
+| **Schema function** | The Kotlin behind a function a type lists under a life-cycle keyword, such as `g-onWrite`, which runs each time the type's data is written. `computeValue`, which stores a script's value in a derived property, is the first. | `addSchemaFunction` |
 | **State deriver** | Computes a form's derived state from its data, in the same transaction as each write. | `addStateDeriver` |
 | **Prep-for-save function** | Adjusts a trait's data before it is saved. | `addPrepForSaveFn` |
 | **Write guard** | Checks a write to an existing form under the form's lock, and may refuse it. Workflow locks are built on this. | `addWriteGuard` |

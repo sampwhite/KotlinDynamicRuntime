@@ -22,6 +22,7 @@ import com.dynamicruntime.common.user.UserService
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
 import kotlin.time.Instant
+import com.dynamicruntime.common.schema.runWriteFunctions
 
 /**
  * A **publish impact report** (issue #935): what publishing one of a client's stored configurations would do to the
@@ -109,7 +110,7 @@ object ConfigImpact {
                 for (id in batch) {
                     val row = rows[id] ?: continue
                     report.scanned++
-                    judgeEntries(report, row, now.union(kind), next.union(kind))
+                    judgeEntries(cxt, report, row, now.union(kind), next.union(kind))
                     judgeStates(cxt, report, row, states[id].orEmpty(), now.workflows, next.workflows, at)
                 }
             }
@@ -215,8 +216,11 @@ object ConfigImpact {
         fun union(kind: GedraDataType): SchType? = types["${GCFG.globalNamespace}.${GU.unionName(kind)}"]
     }
 
-    /** A trait the candidate drops, and an entry it no longer accepts that the running configuration did. */
-    private fun judgeEntries(report: ImpactReport, row: GedraDataRow, now: SchType?, next: SchType?) {
+    /**
+     * A trait the candidate drops, an entry it no longer accepts that the running configuration did, and an entry whose
+     * computed values its trait's `g-onWrite` functions would change (issue #1501).
+     */
+    private fun judgeEntries(cxt: KdrCxt, report: ImpactReport, row: GedraDataRow, now: SchType?, next: SchType?) {
         for (entry in row.entries) {
             val traitId = entry[GE.traitId].toOptStr() ?: continue
             val knownNow = now?.variants?.isKnown(traitId) == true
@@ -228,8 +232,22 @@ object ConfigImpact {
             ) {
                 // A trait newly supported counts too: its entries were never checked, and every edit now checks them.
                 report.add(ImpactKind.dataInvalid, row, traitId = traitId)
+            } else if (knownNext && recomputes(cxt, entry, next?.variants?.select(traitId))) {
+                report.add(ImpactKind.valuesRecomputed, row, traitId = traitId)
             }
         }
+    }
+
+    /**
+     * Whether [entry]'s stored data differs from what the `g-onWrite` functions of [branch]'s data type would store
+     * from it (issue #1501). Judged against what is stored rather than against the running functions' output, so a
+     * value already stale under them counts too: the next write or recalculation changes it either way.
+     */
+    private fun recomputes(cxt: KdrCxt, entry: Map<String, Any?>, branch: SchType?): Boolean {
+        val dataType = branch?.properties?.get(GE.data)?.valueType ?: return false
+        val functions = SchemaService.get(cxt).writeFunctionsFor(cxt, dataType)
+        if (functions.isEmpty()) return false
+        return !entryDataUnchanged(entry, runWriteFunctions(cxt, functions, entry[GE.data].toJsonMapOrEmpty()))
     }
 
     /**
@@ -335,6 +353,7 @@ class ImpactFinding(val kind: ImpactKind, val traitId: String?, val workflowId: 
             ImpactKind.workflowFrozen -> "workflow '$workflowId' would stop being tracked now, freezing what it shows"
             ImpactKind.workflowHidden -> "workflow '$workflowId' would be outside its lifetime now, and not shown"
             ImpactKind.workflowUnseen -> "workflow '$workflowId' would no longer be seen by the form's owner"
+            ImpactKind.valuesRecomputed -> "values computed for trait '$traitId' would change at the form's next write"
         }
         return "${rows.size} row(s), $what"
     }

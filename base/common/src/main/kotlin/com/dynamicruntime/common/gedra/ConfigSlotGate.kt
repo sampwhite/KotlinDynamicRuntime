@@ -19,6 +19,10 @@ import com.dynamicruntime.common.schema.validate
 import com.dynamicruntime.common.util.checkTemplateSyntax
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
+import com.dynamicruntime.common.schema.withTypedWorkflowFunctions
+import com.dynamicruntime.common.schema.functionKindDefs
+import com.dynamicruntime.common.schema.SchFunctionCreation
+import com.dynamicruntime.common.gedra.workflow.WfFunctionCreation
 
 /*
  * The gate a client configuration **write** passes before it is reassembled (issues #1051, #1052).
@@ -65,9 +69,21 @@ object ConfigSlotShapes {
      * `data` property is the shape of one entry's data -- and the fields its entries are keyed by, with the `$defs`
      * those types need. Raw, as declared, for a client to parse with the kernel's own schema code.
      */
-    fun served(cxt: KdrCxtBase): ServedSlotShapes {
+    fun served(
+        cxt: KdrCxtBase,
+        workflowKinds: List<WfFunctionCreation> = emptyList(),
+        schemaKinds: List<SchFunctionCreation> = emptyList(),
+    ): ServedSlotShapes {
         val traits = coreConfigTraits(cxt)
-        val all = WfDefSchema.defs(cxt) + ReportDefSchema.defs(cxt) + ClientDefSchema.defs(cxt) + traits.defs
+        val definitions = WfDefSchema.defs(cxt) + ReportDefSchema.defs(cxt) + ClientDefSchema.defs(cxt)
+        // A workflow's function lists typed by the registered kinds, where the caller has them (issue #1501): a booted
+        // node does, and a generated document -- which depends on nothing but code -- does not.
+        val typed = if (workflowKinds.isEmpty() && schemaKinds.isEmpty()) {
+            definitions
+        } else {
+            withTypedWorkflowFunctions(definitions) + functionKindDefs(cxt, workflowKinds, schemaKinds)
+        }
+        val all = typed + traits.defs
         val types = traits.configTraits.mapValues { it.value.typeName }
         return ServedSlotShapes(types, traits.configTraits.mapValues { it.value.primaryKey }, collectDefClosure(types.values, all))
     }

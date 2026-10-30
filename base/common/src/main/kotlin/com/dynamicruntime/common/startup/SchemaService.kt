@@ -35,7 +35,6 @@ import com.dynamicruntime.common.gedra.ClientDef
 import com.dynamicruntime.common.gedra.ClientService
 import com.dynamicruntime.common.gedra.ClientTraitUsage
 import com.dynamicruntime.common.gedra.supportedTraits
-import com.dynamicruntime.common.gedra.GedraDataDeriver
 import com.dynamicruntime.common.gedra.GedraPrepForSaveFn
 import com.dynamicruntime.common.gedra.GedraStateDeriver
 import com.dynamicruntime.common.gedra.GedraWriteGuard
@@ -98,6 +97,18 @@ import com.dynamicruntime.common.util.checkTemplateSyntax
 import com.dynamicruntime.common.util.formatDate
 import com.dynamicruntime.common.util.toJsonListOfStrings
 import com.dynamicruntime.common.util.toJsonMap
+import com.dynamicruntime.common.schema.SchFunctionCreation
+import com.dynamicruntime.common.schema.SchWriteFunction
+import com.dynamicruntime.common.schema.resolveWriteFunctions
+import com.dynamicruntime.common.schema.writeFunctionProblems
+import com.dynamicruntime.common.schema.skippedWriteFunction
+import java.util.Collections
+import java.util.WeakHashMap
+import com.dynamicruntime.common.schema.withTypedWriteFunctions
+import com.dynamicruntime.common.schema.withTypedWorkflowFunctions
+import com.dynamicruntime.common.schema.functionKindDefs
+import com.dynamicruntime.common.gedra.workflow.WFD
+import com.dynamicruntime.common.gedra.workflow.WfFunctionCreation
 
 /**
  * Startup service that compiles the collected schema into the read-only
@@ -263,6 +274,12 @@ class SchemaService : ServiceInitializer, ClientSchemaSource {
             collected.defs[queryName] = withSearchProperties(queryBase, declaredColumns(globalUsages))
         }
 
+        // Every registered function kind's settings type, and the unions over them a workflow's and a type's function
+        // lists are published as (issue #1501). The definition schema's own lists stay untyped where definitions are
+        // read, so a bad usage costs only itself; here they document what each usage takes.
+        collected.defs.putAll(functionKindDefs(cxt, collected.workflowFunctions, collected.schemaFunctions))
+        collected.defs.putAll(withTypedWorkflowFunctions(collected.defs).filterKeys { it.startsWith("${WFD.namespace}.") })
+
         // The cfact registries come first (issue #841): the global document and each client's variant are repaired
         // against the global registry -- a `g-visibleWhen` naming what does not parse is dropped as the document is
         // compiled -- so it must exist before either does. Built from the declarations alone, so nothing here
@@ -292,6 +309,9 @@ class SchemaService : ServiceInitializer, ClientSchemaSource {
                 types = types + parseSchemaTypes(mapOf(queryName to query), types)
             }
         }
+        // A `g-onWrite` function that cannot run on its type (issue #1501): reported as source config, and skipped where
+        // the type is written. Nothing is dropped from the document, so the type is served as it was declared.
+        checkGlobalWriteFunctions(cxt, collected, types)
         val endpoints = availableEndpoints.associateBy { it.collationKey }
         val tables = collected.tables.associateBy { it.tableName }
         // The raw defs ride along so the /schema/endpoints catalog can serve types with their `$ref`s intact.
@@ -345,7 +365,7 @@ class SchemaService : ServiceInitializer, ClientSchemaSource {
         // listing field (issue #538), or two usages for one trait id (issue #681) -- are caught here rather than
         // left to silently drop the search or collide at request time.
         checkUsageRules(cxt, collected)
-        // A derivation or save-time function bound to a trait no client can share (issue #807).
+        // A save-time function bound to a trait no client can share (issue #807).
         checkTraitBindings(cxt, collected)
         // A `g-layout` naming a field its type does not declare is caught at boot (issue #584), not discovered
         // as a control that renders nothing.
@@ -636,6 +656,15 @@ class SchemaService : ServiceInitializer, ClientSchemaSource {
         return dropped
     }
 
+    /** Reports each global type's `g-onWrite` problems (issue #1501) -- see [writeFunctionProblems]. */
+    private fun checkGlobalWriteFunctions(cxt: KdrCxt, collected: SchemaCollector, types: Map<String, SchType>) {
+        val issues = mutableListOf<GedraConfigIssue>()
+        val creations = collected.schemaFunctions.associateBy { it.fn }
+        for ((name, message) in writeFunctionProblems(cxt, creations, types, types.keys)) {
+            reportConfigProblem(cxt, globalTypeIssue(collected, name, message, skippedWriteFunction), issues)
+        }
+    }
+
     private fun globalTypeIssue(collected: SchemaCollector, name: String, message: String, degradedTo: String) =
         collected.gedraConfigs.contributorOf(GID.globalClient, name)?.issue(message, degradedTo, GCEL.type, name)
             ?: GedraConfigIssue(
@@ -670,11 +699,11 @@ class SchemaService : ServiceInitializer, ClientSchemaSource {
     }
 
     /**
-     * A trait's code bindings -- its data derivers (issue #712) and save-time functions (issue #728) -- name their
-     * trait by bare id, so they must name a **global** trait (issue #807): a client's trait id may be another
-     * client's too, and a binding to it would run on both. No client may reuse a global id, so a binding to one
-     * reaches that trait alone. Judged as source config, since the bindings are code: outside production an
-     * offending binding refuses the boot; in production it is dropped and the node serves.
+     * A trait's code bindings -- its save-time functions (issue #728) -- name their trait by bare id, so they must name a
+     * **global** trait (issue #807): a client's trait id may be another client's too, and a binding to it would run on
+     * both. No client may reuse a global id, so a binding to one reaches that trait alone. Judged as source config, since
+     * the bindings are code: outside production an offending binding refuses the boot; in production it is dropped and
+     * the node serves.
      */
     private fun checkTraitBindings(cxt: KdrCxt, collected: SchemaCollector) {
         val issues = mutableListOf<GedraConfigIssue>()
@@ -693,7 +722,6 @@ class SchemaService : ServiceInitializer, ClientSchemaSource {
             )
             return true
         }
-        collected.dataDerivers.removeAll { unbound("data deriver", it.traitId) }
         collected.prepForSaveFns.removeAll { unbound("save-time function", it.traitId) }
     }
 
@@ -966,17 +994,31 @@ class SchemaService : ServiceInitializer, ClientSchemaSource {
     fun jobDefs(): List<JobDef> = collector?.jobs ?: emptyList()
 
     /**
-     * The registered data derivations (issue #712) -- what a read surface runs through `deriveEntryData` to
-     * compute a gedra entry's `g-derived` data value on read. Empty on a node whose components registered none.
-     */
-    fun dataDerivers(): List<GedraDataDeriver> = collector?.dataDerivers ?: emptyList()
-
-    /**
      * The registered trait save-time functions (issue #728) -- what a create or update runs through
      * `prepForSaveData` before its transaction to calculate or validate a trait's data. Empty on a node whose
      * components registered none.
      */
     fun prepForSaveFns(): List<GedraPrepForSaveFn> = collector?.prepForSaveFns ?: emptyList()
+
+    /** The workflow function kinds components registered (issue #677), as registered. */
+    fun workflowFunctionKinds(): List<WfFunctionCreation> = collector?.workflowFunctions ?: emptyList()
+
+    /** The schema function kinds components registered (issue #1501), by `fn`. */
+    fun schemaFunctions(): Map<String, SchFunctionCreation> = collector?.schemaFunctions?.associateBy { it.fn } ?: emptyMap()
+
+    // Each type's resolved `g-onWrite` functions (issue #1501), by the type's identity: a reload parses new types, so
+    // a replaced type's entry goes with it rather than going stale.
+    private val writeFunctionCache: MutableMap<SchType, List<SchWriteFunction>> = Collections.synchronizedMap(WeakHashMap())
+
+    /**
+     * The functions to run when an object of [type] is written (issue #1501), in run order: its `g-onWrite` usages
+     * resolved once against the registered kinds, a usage that cannot run on the type left out -- the boot, reload or
+     * trial that compiled the type has already reported it.
+     */
+    fun writeFunctionsFor(cxt: KdrCxt, type: SchType): List<SchWriteFunction> {
+        if (type.onWrite.isEmpty()) return emptyList()
+        return writeFunctionCache.getOrPut(type) { resolveWriteFunctions(cxt, schemaFunctions(), type).mapNotNull { it.function } }
+    }
 
     /** The registered post-write hooks (issue #675), in registration order. */
     fun writeHooks(): List<GedraWriteHook> = collector?.writeHooks ?: emptyList()
@@ -1485,10 +1527,11 @@ class SchemaService : ServiceInitializer, ClientSchemaSource {
                     "generated from the tables its parser reads, with the rules of the dialect the document cannot state.",
                 HttpMethod.GET,
                 outputRef = "MetaSchema",
-            ) { _, _ ->
+            ) { c, _ ->
                 mapOf(
                     MSCH.nodeType to MSCH.nodeTypeName,
-                    SCH.dDefs to SchMetaSchema.defs,
+                    // The functions `g-onWrite` lists, typed by the registered kinds (issue #1501).
+                    SCH.dDefs to withTypedWriteFunctions(c, SchMetaSchema.defs, SchemaService.get(c).schemaFunctions().values.toList()),
                     MSCH.notStated to SchMetaSchema.notStated,
                     MSCH.notChecked to SchMetaSchema.notChecked,
                 )

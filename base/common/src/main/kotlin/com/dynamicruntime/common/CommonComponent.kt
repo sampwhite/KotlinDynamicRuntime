@@ -121,6 +121,7 @@ import com.dynamicruntime.common.webasset.ClientWebAssetService
 import com.dynamicruntime.common.webasset.clientWebSchema
 import com.dynamicruntime.common.startup.LayoutCheckService
 import com.dynamicruntime.common.startup.SchemaService
+import com.dynamicruntime.common.schema.ComputeValueCreation
 import com.dynamicruntime.common.startup.Presence
 import com.dynamicruntime.common.startup.ServiceEntry
 import com.dynamicruntime.common.startup.service
@@ -192,6 +193,9 @@ class CommonComponent : ComponentDefinition {
         collector.addWorkflowFunction(PrefillFromOwnerCreation)
         // The first viewerCfacts function (issue #786): a temporary cfact about the viewer, from a user label.
         collector.addWorkflowFunction(UserHasLabelCreation)
+        // The first schema function (issue #1501): a type's `g-onWrite` usages compute a derived property from the
+        // object's own data each time it is written.
+        collector.addSchemaFunction(ComputeValueCreation)
         // The built-in post-write hook (issue #675): recompute derived state after every gedra data write, inside
         // its transaction. This is what makes a raw patch (not only the survey save) keep survey state fresh.
         collector.addWriteHook(DerivedStateWriteHook)
