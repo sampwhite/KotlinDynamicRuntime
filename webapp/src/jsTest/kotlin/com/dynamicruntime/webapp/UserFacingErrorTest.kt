@@ -45,13 +45,27 @@ class UserFacingErrorTest {
     }
 
     @Test
-    fun aStatuslessErrorReadsAsServerUnreachable() {
-        // A network failure / client-side throw never reached the backend, so its raw message ("Failed to fetch")
-        // is not shown; a plain "server could not be reached" is, in either mode. The raw cause is on the console.
-        val plain = RuntimeException("Failed to fetch")
-        assertEquals(DisplayError.Kind.message, userFacingError(plain, obfuscate = true).kind)
-        assertTrue(userFacingError(plain, obfuscate = false).text.startsWith("The server could not be reached"))
-        assertFalse(userFacingError(plain, obfuscate = false).text.contains("Failed to fetch"))
+    fun noUsableAnswerReadsAsServerUnreachable() {
+        // A dropped connection never reached the backend, so its raw message ("Failed to fetch") is not shown; a plain
+        // "server could not be reached" is, in either mode. The raw cause is on the console.
+        val dropped = ApiFailure("GET /x could not be completed: Failed to fetch")
+        assertEquals(DisplayError.Kind.message, userFacingError(dropped, obfuscate = true).kind)
+        assertTrue(userFacingError(dropped, obfuscate = false).text.startsWith("The server could not be reached"))
+        assertFalse(userFacingError(dropped, obfuscate = false).text.contains("Failed to fetch"))
+    }
+
+    @Test
+    fun aFaultInThePageIsNotAnUnreachableServer() {
+        // Thrown after the server answered -- a delivered layout the page's parse refuses, say -- so the server was
+        // reached, and the page's own message says what went wrong where the deployment does not obfuscate.
+        val fault = IllegalStateException("Type 'a.B': a 'g-layout' block must list at least one 'schemaFields' entry")
+        val shown = userFacingError(fault, obfuscate = false)
+        assertEquals(DisplayError.Kind.fault, shown.kind)
+        assertTrue("g-layout" in shown.text)
+        assertFalse("could not be reached" in shown.text)
+        val hidden = userFacingError(fault, obfuscate = true)
+        assertTrue(hidden.text.startsWith("Something went wrong on this page"))
+        assertFalse("g-layout" in hidden.text)
     }
 
     @Test

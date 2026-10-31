@@ -570,14 +570,16 @@ backend sets from the caller's test access (a test instance, with env auth effec
 crash in the *shell* happens before the config fetch returns, so the detail is withheld there even on a test
 instance and the console is where you read it.
 
-### An HTTP caller must throw `ApiError` on a non-2xx, or a real 4xx reads as "unreachable"
+### An HTTP caller must throw `ApiError` on a non-2xx, or a real 4xx loses its status
 
 `userFacingError` (`ApiError.kt`) is how a caught failure becomes what the user sees, and it branches on the
-throwable being an **`ApiError`**: an `ApiError` with a 4xx status shows its message ("No user matching '2' is
-within your access"); **anything else** — a bare `error(...)`, a `RuntimeException`, a raw `fetch` rejection —
-has no status, so it is treated as a request that never reached the backend and shows *"The server could not be
-reached. Please try again."* So a handler that replies with a perfectly good 400 message can surface as an
-unreachable-server error purely because the caller threw the wrong type. This bit `SchemaCatalogApi.invoke`,
+throwable's type: an `ApiError` with a 4xx status shows its message ("No user matching '2' is within your
+access"); an `ApiFailure` — no usable answer, which `fetchCompleted` makes of a dropped connection — shows *"The
+server could not be reached. Please try again."*; and **anything else** — a bare `error(...)`, a
+`RuntimeException`, a kernel parse refusing what was delivered — is a fault in the page, shown with its own message
+(or *"Something went wrong on this page"* where the deployment obfuscates). So a handler that replies with a
+perfectly good 400 message can surface as a page fault, its status lost, purely because the caller threw the wrong
+type. This bit `SchemaCatalogApi.invoke`,
 which had its own `fetch` path (for multipart uploads and downloads) and threw `error(map["message"])` on a
 non-2xx (issue #545).
 
