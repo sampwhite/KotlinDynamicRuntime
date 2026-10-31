@@ -77,6 +77,7 @@ val embedDocs by tasks.registering(Copy::class) {
     // the files' move under docs/ (issue #1294), so in-app links to them still work. Keep this map in step with
     // the HDOC registry and coreDocs() in HomeEndpoints, which carries the same paths.
     val inAppDocs = mapOf(
+        "docs/start-here.md" to "start-here",
         "docs/extending.md" to "extending",
         "docs/api-keys-and-tokens.md" to "api-keys-and-tokens",
         "docs/api-guide.md" to "api-guide",
@@ -110,15 +111,24 @@ val embedDocs by tasks.registering(Copy::class) {
     into(layout.buildDirectory.dir("docResources/md-docs"))
 }
 
+// The images the README shows (issue #1510), kept once in docs/images/ so GitHub draws them from the file, and copied
+// onto the classpath as component images so the app serves the same file (the kdr-images skill; kdn's `embedImages`).
+val embedImages by tasks.registering(Copy::class) {
+    from(layout.projectDirectory.dir("../../docs/images")) {
+        include("overview.svg")
+    }
+    into(layout.buildDirectory.dir("docResources/component-images"))
+}
+
 sourceSets {
     main {
-        // The generated docs join this module's resources, so they land on the runtime classpath.
+        // The generated docs and images join this module's resources, so they land on the runtime classpath.
         resources.srcDir(layout.buildDirectory.dir("docResources"))
     }
 }
 
 tasks.named("processResources") {
-    dependsOn(embedDocs)
+    dependsOn(embedDocs, embedImages)
 }
 
 // RepoDocLinksTest (issues #1294, #1474) reads the repository's Markdown straight from the tree, not from the

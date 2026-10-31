@@ -9,6 +9,7 @@ import com.dynamicruntime.common.gedra.ClientService
 import com.dynamicruntime.common.gedra.ClientJoin
 import com.dynamicruntime.common.content.MDOC
 import com.dynamicruntime.common.content.MarkdownDocDef
+import com.dynamicruntime.common.content.firstDocOrder
 import com.dynamicruntime.common.content.lastDocOrder
 import com.dynamicruntime.common.content.MarkdownDocService
 import com.dynamicruntime.common.content.UIC
@@ -583,12 +584,16 @@ private fun homeLinksFor(cxt: KdrCxt): List<Map<String, Any?>> {
 
 /**
  * The documents `base/common` serves (issue #492): the README plus the repo docs it links to, declared by the common
- * component. Other components declare their own (`docs`, issue #1136). The listing offers the README, the extending
+ * component. Other components declare their own (`docs`, issue #1136). The listing offers "Start here" first (issue
+ * #1510), the documentation's map by audience, then the README, the extending
  * guide, the API guide (issue #1493), the API keys and tokens guide (issue #1403), the code guide, the schema dialect reference (generated, issue
  * #1347), and the license; the design documents are served but unlisted, reached from the README's
  * links (issue #1238).
  */
 fun coreDocs(): List<MarkdownDocDef> = listOf(
+    MarkdownDocDef(HDOC.startHere, "Start here", "docs/start-here.md",
+        "What to read for what you want to do: use a site, run a client, build on the runtime, or have an AI configure it.",
+        order = firstDocOrder),
     MarkdownDocDef(HDOC.readme, "Read me", "README.md",
         "What the runtime is, where it came from, and how to set it up."),
     MarkdownDocDef(HDOC.extending, "Extending", "docs/extending.md",

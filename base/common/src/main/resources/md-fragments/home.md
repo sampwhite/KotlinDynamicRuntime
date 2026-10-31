@@ -11,7 +11,8 @@
 This is the **KotlinDynamicRuntime** runtime shell. Everything you see is assembled from data the backend
 serves: the layout below comes from a UI-config endpoint, and this copy comes from a Markdown fragment file.
 
-Open **Documents**, under Reference in the menu, to read more.
+To find your way around, [start here](/docs/start-here.md): it is first under **Documents**, in the menu's Reference
+section, and says what to read for what you want to do.
 
 /- Beneath the intro, and empty as shipped, so nothing shows (issue #1221): room for a component's own word on a
    deployment -- a deployment flavor's, say -- without its competing with whoever rewords the intro. -/

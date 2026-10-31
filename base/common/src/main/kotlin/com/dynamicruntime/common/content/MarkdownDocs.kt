@@ -27,8 +27,8 @@ class MarkdownDocDef(
     val listed: Boolean = true,
     /**
      * Where the document sorts in the listing (issue #1238): documents are listed by rising [order], and within one
-     * order as declared, component by component. Most leave it at 0; the license is declared last so that it reads
-     * last whichever components contribute documents after the one declaring it.
+     * order as declared, component by component. Most leave it at 0; "Start here" is declared first and the license
+     * last, so that each keeps its place whichever components contribute documents beside the one declaring it.
      */
     val order: Int = 0,
     /**
@@ -45,6 +45,9 @@ class MarkdownDocDef(
     /** The generated text, or null for a document kept as a file. */
     val generatedText: String? by lazy { generate?.invoke() }
 }
+
+/** The [MarkdownDocDef.order] of a document that reads first: "Start here" (issue #1510). */
+const val firstDocOrder = -100
 
 /** The [MarkdownDocDef.order] of a document that reads last: the license. */
 const val lastDocOrder = 100

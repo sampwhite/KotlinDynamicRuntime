@@ -1,13 +1,48 @@
 # KotlinDynamicRuntime
 
-Dynamic schema and config: a Kotlin reimplementation of a dynamic,
-schema-driven application runtime. The proposal for this project can be found at
+![Configure, try it, publish, fill in, review, approve, and report](docs/images/overview.svg)
+
+KotlinDynamicRuntime runs applications built around forms. People enter information, others review and approve it, and
+it ends up in reports or another system: a call for talks, a grant program, a vendor's onboarding. Such an application
+is not written as code. Its forms, workflows, reports, and wording are configuration: data, with the information a
+form collects described in JSON Schema. The configuration changes while the site runs, is tried in a sandbox first,
+and reaches people when it is published. An AI assistant can do the configuring too, through a documented API.
+
+It is open source, under the [MIT license](LICENSE), and written in Kotlin, with one code base for the server and the
+browser, so the same validation runs in both.
+
+**Try it** on [dynamicruntime.org](https://dynamicruntime.org), a public reference site: register, and follow the
+walk-through your home page offers.
+
+**[Start here](docs/start-here.md)** says what to read for what you want to do:
+
+- [Use a site](docs/start-here.md#use-a-site): fill in forms, review them, and approve them.
+- [Run a client](docs/start-here.md#run-a-client): set up your organization's forms, workflows, and people, and look
+  after them.
+- [Build on it](docs/start-here.md#build-on-it): run the runtime yourself, extend it, or contribute to it.
+- [Have an AI configure it](docs/start-here.md#have-an-ai-configure-it): give a program or an AI assistant a key.
+
+## Background
+
+The proposal for this project is
 [Kotlin, KMP, JSON Schema, SDUI, and Claude — the AI's rewrite](https://gyassa.com/personal/kdr-project-ai.html).
 The coding philosophy and conventions for the project are described in
 [`docs/development/code-guide.md`](docs/development/code-guide.md).
 
 Many applications are built from this one runtime. How a deployment, a component, or a client varies what it does --
 and the rule that keeps those variations out of the core -- is mapped in [`docs/extending.md`](docs/extending.md).
+
+## How this was made
+
+Claude, an AI model, wrote most of this repository: the code, and most of the documentation's prose, including the
+words the app shows. People chose what to build, made the design decisions, reviewed each change, tested it, and
+corrected what it said. The commit history shows the split: each commit names its AI co-author, and review edits are
+commits of their own.
+
+That is deliberate. Content that turns out to have been written by AI is usually seen as a lapse. For a business tool
+that has to change as fast as the business does, we think it is the goal: an AI should be able to write the forms,
+workflows, wording, and documentation, and keep them current, while people decide what is right. This project tests
+how far that goes, and its documentation is part of the test.
 
 ## The workspace
 
