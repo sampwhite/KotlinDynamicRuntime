@@ -94,7 +94,7 @@ class ComputeValueFn(
 
 /**
  * Builds a [ComputeValueFn] from a usage (issue #1501), holding it to the type it runs on: the target must be a
- * property the type declares `g-derived` (so no caller supplies it) and does not gate with `g-visibleWhen` (whose
+ * property the type declares `g-derived` (so no caller supplies it), not in its key, and does not gate with `g-visibleWhen` (whose
  * question is who may change it, while this changes it for everyone); the script must parse, pull no fragment copy,
  * and read only properties the type declares. Registered in `CommonComponent` through
  * `SchemaCollector.addSchemaFunction`.
@@ -128,6 +128,9 @@ object ComputeValueCreation : SchFunctionCreation {
         val prop = dataType.properties[target] ?: refuse("the type declares no property '$target' to store the value in.")
         if (!prop.valueType.derived) {
             refuse("'$target' is not '${SCH.derived}', so a caller could supply it and this would overwrite what they sent.")
+        }
+        if (target in dataType.primaryKey) {
+            refuse("'$target' is in the type's '${SCH.primaryKey}', so a computed value could move the entry to another key.")
         }
         if (prop.visibleWhen != null) {
             refuse("'$target' is gated by '${SCH.visibleWhen}', which decides who may change it; this changes it for everyone.")

@@ -17,7 +17,7 @@ class SchFunctionsTest : StringSpec({
     val cxt = KdrCxt.mkSimpleCxt("schFunctionsTest")
     val creations = mapOf(CVF.fn to ComputeValueCreation)
 
-    /** A data type with two inputs, derived targets of three kinds, and [usages] as its `g-onWrite`. */
+    /** A data type with two inputs, derived targets of several kinds (one its key), and [usages] as its `g-onWrite`. */
     fun dataType(vararg usages: Map<String, Any?>): SchType = parseSchemaTypes(
         schemaDefs(cxt, "t") {
             type("Data") {
@@ -37,6 +37,8 @@ class SchFunctionsTest : StringSpec({
                     derived = true
                 }
                 property("label", "Computed text.") { derived = true }
+                property("code", "Computed, but the key.") { derived = true }
+                data[SCH.primaryKey] = listOf("code")
                 property("gated", "Computed, but gated.") {
                     type = SCT.number
                     derived = true
@@ -94,6 +96,7 @@ class SchFunctionsTest : StringSpec({
         refusal(computeValue("missing", "a")) shouldContain "declares no property 'missing'"
         refusal(computeValue("a", "b")) shouldContain "is not 'g-derived'"
         refusal(computeValue("gated", "a")) shouldContain "gated by 'g-visibleWhen'"
+        refusal(computeValue("code", "a")) shouldContain "in the type's 'g-primaryKey'"
         refusal(computeValue("count", "a *")) shouldContain "does not parse"
         refusal(computeValue("count", """@t("x.y")""")) shouldContain "pulls copy"
         refusal(computeValue("count", "c * 2")) shouldContain "reads 'c', which the type does not declare"
