@@ -67,7 +67,9 @@ fun resolveDeliveredLayouts(cxt: KdrCxt, layouts: Map<String, Any?>): Map<String
         buildMap {
             putAll(body)
             heading?.let { put(SL.label, it) }
-            put(SL.schemaFields, fields)
+            // A heading-only layout has no field list to write (issue #1070); written empty, it would not parse back
+            // on the page, which refuses an empty list as it does at boot.
+            if (fields.isNotEmpty()) put(SL.schemaFields, fields)
             if (strings.isNotEmpty()) put(SL.strings, strings)
         }
     }

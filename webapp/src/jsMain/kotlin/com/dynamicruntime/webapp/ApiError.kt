@@ -53,8 +53,9 @@ class DisplayError(val text: String, val kind: Kind) {
  * The one thing still withheld is an **internal (5xx) message under an obfuscating deployment** ([obfuscate]):
  * those are not yet redacted server-side (recorded in `docs/development/deferred-work.md`, "5xx wire redaction"), so a
  * raw 500 could carry a stack detail. A 4xx -- bad input, not found, not authorized -- is the caller's own fault and
- * safe to show, obfuscating or not. A throwable that is not an [ApiError] (a network failure, a client-side bug) has no
- * status, so it is treated as internal and withheld under obfuscation too.
+ * safe to show, obfuscating or not. A throwable that is not an [ApiError] has no status: an [ApiFailure] (no usable
+ * answer) reads as a server that could not be reached, and anything else is a fault in the page itself, withheld
+ * under obfuscation like an internal message.
  *
  * Either way the raw detail is logged to the browser console with the trace id, so a developer can diagnose it
  * even when the user is shown only the generic stand-in. A [CancellationException] is rethrown, never shown.
@@ -70,10 +71,21 @@ fun userFacingError(e: Throwable, obfuscate: Boolean = appConfig().obfuscateSens
     }
     logToConsole(e, api)
     val ref = api?.traceId?.let { " (ref: $it)" } ?: ""
-    // A throwable that never reached the backend -- a network failure, a client-side bug -- has no ApiError and
-    // no useful message to show (typically "Failed to fetch"); say so plainly. The raw cause is on the console.
+    // No usable answer at all -- a dropped connection, a body that is not JSON -- is an [ApiFailure], which every
+    // call's one `fetch` makes (`fetchCompleted`); its raw message ("Failed to fetch") says nothing to show, so say
+    // so plainly. The raw cause is on the console.
+    if (e is ApiFailure) {
+        return DisplayError("The server could not be reached. Please try again.", DisplayError.Kind.message)
+    }
+    // Anything else was thrown here, in the page, after the server answered: a fault in reading what it sent, which
+    // "could not be reached" would misreport -- the server answered, and trying again gets the same answer. Its
+    // message is the page's own, safe to show where the deployment does not obfuscate, set apart as a fault.
     if (api == null) {
-        return DisplayError("The server could not be reached. Please try again.$ref", DisplayError.Kind.message)
+        return if (obfuscate) {
+            DisplayError("Something went wrong on this page. Please try again.", DisplayError.Kind.message)
+        } else {
+            DisplayError("This page could not use what the server sent: ${e.message ?: e.toString()}", DisplayError.Kind.fault)
+        }
     }
     // A 4xx is the caller's own fault -- bad input, not found, not authorized -- and safe to show, obfuscating or
     // not: the backend has already replaced any `sensitive` message with a generic one (issue #519).

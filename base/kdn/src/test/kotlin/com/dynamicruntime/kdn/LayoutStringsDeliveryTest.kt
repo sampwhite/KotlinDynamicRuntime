@@ -2,6 +2,7 @@ package com.dynamicruntime.kdn
 
 import com.dynamicruntime.common.schema.LAYSTR
 import com.dynamicruntime.common.schema.SL
+import com.dynamicruntime.common.schema.parseDeliveredLayouts
 import com.dynamicruntime.common.schema.resolveDeliveredLayouts
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import io.kotest.core.spec.style.StringSpec
@@ -9,7 +10,8 @@ import io.kotest.matchers.shouldBe
 
 /**
  * A layout's form-level strings (issue #641) are copy like its heading and field text, so a backend `%{@t(...)}` in
- * one is resolved at delivery rather than shipped as written and rendered as literal text (issue #814).
+ * one is resolved at delivery rather than shipped as written and rendered as literal text (issue #814). And what is
+ * delivered parses back on the page, a heading-only layout included.
  */
 class LayoutStringsDeliveryTest : StringSpec({
 
@@ -36,6 +38,14 @@ class LayoutStringsDeliveryTest : StringSpec({
         strings[LAYSTR.formErrorHint] shouldBe
             "This message was sent automatically. If you were not expecting it, you can ignore it."
         strings[LAYSTR.formErrorSummary] shouldBe $$"Plain, with a frontend ${field} left for the page."
+    }
+
+    "a heading-only layout is delivered with no field list, so the page's parse takes it" {
+        // A client's alteration giving a type only a heading (issue #1070): written with an empty field list, the
+        // page's strict parse refused it and the forms page could not load.
+        val delivered = resolveDeliveredLayouts(cxt, mapOf("t.Form" to mapOf(SL.label to "Site Visit Data")))
+        delivered["t.Form"].toJsonMapOrEmpty().containsKey(SL.schemaFields) shouldBe false
+        parseDeliveredLayouts(delivered).getValue("t.Form").label shouldBe "Site Visit Data"
     }
 
     // Only what no boot check can see (a computed key) reaches here unresolved; it degrades to the copy as written.
