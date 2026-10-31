@@ -548,6 +548,10 @@ The two exist because they answer different questions:
 - **New persistent chrome goes inside the backstop.** The app bar and the update banner are *inside* it — put
   anything similar there too, not as a sibling above it. This is the one placement decision the boundaries
   cannot make for you.
+- **And give it a key, as every child of the backstop has.** React matches unkeyed children by their place, so a
+  banner that comes and goes (the update banner, the public test deployment's band) would shift the bar and the
+  page and remount them, losing the page's state. The invitation page lost its token that way on a public test
+  deployment: its first mount had taken the token from the address, and the remount found none.
 - **Boundaries catch render and lifecycle errors only.** A throw from an event handler, an effect, or a
   rejected promise never reaches one. `installGlobalErrorHandlers` reports those to the console but draws
   nothing, so a component doing async work should surface its own failures in its own UI — `EndpointCatalog`'s
