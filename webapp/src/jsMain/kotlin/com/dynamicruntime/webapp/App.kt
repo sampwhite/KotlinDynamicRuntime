@@ -181,8 +181,12 @@ val App = FC<Props> {
                     fallback = ShellErrorFallback
                     onError = ::reportRenderFailure
 
+                    // Every child here is keyed: the banners come and go, and React matches unkeyed children by their
+                    // place, so a banner appearing would shift the bar and the page and remount them -- the page losing
+                    // its state, an unsaved draft, or an invitation's token it had already taken from the address.
                     if (updateAvailable) {
                         div {
+                            key = "updateBanner".unsafeCast<Key>()
                             className = ClassName("update-banner")
                             span { +"A new version of the app is available." }
                             button {
@@ -194,8 +198,9 @@ val App = FC<Props> {
                     }
                     // Persistent chrome, so inside the backstop with the bar (issue #1150): fixed along the bottom
                     // edge, so it shows however far a page scrolls without competing with the sticky bar at the top.
-                    if (publicTestDeployment) TestDeploymentBand {}
+                    if (publicTestDeployment) TestDeploymentBand { key = "testDeploymentBand".unsafeCast<Key>() }
                     AppBar {
+                        key = "appBar".unsafeCast<Key>()
                         this.currentPage = menuPageOf(page)
                         this.onRevisit = { setRevisit { it + 1 } }
                         // Kept as it was when nothing changed, so a refresh that tells the same thing redraws nothing.
@@ -206,6 +211,7 @@ val App = FC<Props> {
                         this.debugTags = debugTags
                     }
                     div {
+                        key = "appContent".unsafeCast<Key>()
                         className = ClassName("app-content")
                         // The boundary wraps the page, NOT the root, so a render failure costs the page and not the
                         // navigation above it -- someone (or a test) can click away from a broken screen instead of
