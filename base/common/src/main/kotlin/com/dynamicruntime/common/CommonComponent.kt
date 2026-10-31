@@ -142,6 +142,12 @@ private const val fileRefsImage = "kdr:fileRefs"
 private const val sandboxImage = "kdr:sandbox"
 
 /**
+ * The README's banner (issue #1510): what an application built on the runtime does, step by step. Kept in `docs/images/`
+ * so GitHub draws it from the file, and served from the same file in the app.
+ */
+private const val overviewImage = "kdr:overview"
+
+/**
  * The `common` module's component. It owns the foundational schema and services: the [SchemaService]
  * that compiles all contributed schemas at startup, the [NodeService] (which also contributes the
  * `/health` endpoint), and the [RequestService] dispatcher. Dn's separate `core` component is folded
@@ -325,12 +331,14 @@ class CommonComponent : ComponentDefinition {
 
     /**
      * The images core ships (issues #1339, #1382), named from copy as `img:<name>`: one address reaching several users,
-     * floated beside the profile's "What is this?" (`profile.md`, `users.whatIsThis`).
+     * floated beside the profile's "What is this?" (`profile.md`, `users.whatIsThis`), and the README's banner (issue
+     * #1510), named from the document by its path.
      */
     override fun images(cxt: KdrCxt): List<ComponentImageDef> = listOf(
         componentImage(emailToUsersImage, "email-to-users.png"),
         componentImage(fileRefsImage, "file-refs.svg"),
         componentImage(sandboxImage, "sandbox.svg"),
+        componentImage(overviewImage, "overview.svg", sourcePath = "docs/images/overview.svg"),
     )
 
     /**

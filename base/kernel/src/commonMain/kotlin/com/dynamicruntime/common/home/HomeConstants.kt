@@ -558,6 +558,8 @@ object PFRAG {
  */
 @Suppress("ConstPropertyName")
 object HDOC {
+    /** The documentation's front door (issue #1510): what to read, by audience. Listed first. */
+    const val startHere = "start-here"
     const val readme = "readme"
     const val extending = "extending"
     const val codeGuide = "code-guide"
