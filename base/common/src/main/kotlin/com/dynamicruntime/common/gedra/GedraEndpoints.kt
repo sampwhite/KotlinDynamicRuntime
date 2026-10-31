@@ -108,27 +108,11 @@ import com.dynamicruntime.common.util.toOptStr
  * inlines the same thing over a page; this is the single-read counterpart, so a form opened directly presents
  * the same columns a listing does.
  */
-/**
- * [row] with each entry's g-derived data values computed on read (issue #712), so the wire document, the
- * display columns, the search filter and the sort all read the same values -- a derived field (an expense
- * report's total) must not show in a column that its own filter and sort cannot see. Keyed on the row's own
- * client, so an `allClients` caller reading across clients gets each form's derivers, not their own client's.
- * The row is a throwaway extraction (a fresh object per read, never the cached map), so replacing its entries
- * enriches the response without touching what is stored; deriving is idempotent, so calling it in a filter and
- * again for display is harmless.
- */
-private fun withDerivedEntries(cxt: KdrCxt, row: GedraDataRow): GedraDataRow {
-    row.entries = deriveEntryData(cxt, row.kind, row.entries, row.client)
-    return row
-}
-
-private fun withDisplayValues(cxt: KdrCxt, row: GedraDataRow): Map<String, Any?> {
-    val derived = withDerivedEntries(cxt, row)
-    return derived.toJsonMap() +
+private fun withDisplayValues(cxt: KdrCxt, row: GedraDataRow): Map<String, Any?> =
+    row.toJsonMap() +
         (GDF.displayValues to computeDisplayValues(
-            cxt, derived, SchemaService.get(cxt).listingColumnsFor(cxt.client), cxt.client,
+            cxt, row, SchemaService.get(cxt).listingColumnsFor(cxt.client), cxt.client,
         ))
-}
 
 /**
  * How many of the caller's most-recent documents a field-value suggestion list scans (issue #581). A suggestion
@@ -461,13 +445,8 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
         val owners = if (includeUsers && AdminRules.seesOthersRows(c)) ownersOf(c, page.rows, callerScope) else emptyMap()
         ListPage(
             page.rows.map { row ->
-                // Compute each entry's g-derived data values on read (issue #712) before the wire map and the
-                // display columns, exactly as the single read does -- the raw read-only form view is built from a
-                // listing row, so a derived value (an expense report's total) must ride here too, not only on the
-                // single GET.
-                val derived = withDerivedEntries(c, row)
-                val display = computeDisplayValues(c, derived, columns, c.client)
-                derived.toJsonMap() + (GDF.displayValues to display) + ownerFields(owners[row.userId]) +
+                val display = computeDisplayValues(c, row, columns, c.client)
+                row.toJsonMap() + (GDF.displayValues to display) + ownerFields(owners[row.userId]) +
                     if (withStates) mapOf(GDF.states to statesByGedra[row.gedraId.fullId].orEmpty()) else emptyMap()
             },
             page.numAvailable,
@@ -541,9 +520,7 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
         val rows = GedraDataService.get(c).listGedras(c, formDoc, scope, fieldValueScanCap).rows
         val distinct = LinkedHashMap<String, String>()
         for (row in rows) {
-            // Over the derived entries (issue #712 review), so a value suggestion for a derived-field column
-            // offers the values the column shows rather than none.
-            val value = computeDisplayValues(c, withDerivedEntries(c, row), listOf(textColumn), c.client)
+            val value = computeDisplayValues(c, row, listOf(textColumn), c.client)
                 .first()[UF.value].toOptStr()?.trim().orEmpty()
             if (value.isEmpty()) continue
             if (term != null && !value.contains(term, ignoreCase = true)) continue
@@ -1415,9 +1392,7 @@ private fun searchFilter(
     }
     val textColumns = textSearchColumns(columns)
     return { row ->
-        // Over the derived entries (issue #712 review), so a search on a derived-field column matches the value
-        // the column shows rather than the blank the stored data would yield.
-        val byColumn = computeDisplayValues(c, withDerivedEntries(c, row), columns, c.client).associate { display ->
+        val byColumn = computeDisplayValues(c, row, columns, c.client).associate { display ->
             (display[UF.columnId].toOptStr() ?: "") to (display[UF.value].toOptStr() ?: "")
         }
         matchesSearch(byColumn, active, c.clientTimeZone) && (term == null || matchesAnyText(byColumn, textColumns, term))
@@ -1490,9 +1465,7 @@ private fun gedraSortFor(
             val key = GSORT.displayColumnKey(column) ?: return null
             val sortColumn = columns.firstOrNull { it.columnKey == key } ?: return null
             GedraDataService.GedraSort(sortColumn.kind, descending, choices = sortColumn.choices) { row ->
-                // Over the derived entries (issue #712 review), so a sort by a derived-field column orders on the
-                // value the column shows, not the blank the stored data holds.
-                computeDisplayValues(cxt, withDerivedEntries(cxt, row), listOf(sortColumn), cxt.client)
+                computeDisplayValues(cxt, row, listOf(sortColumn), cxt.client)
                     .firstOrNull()?.get(UF.value).toOptStr() ?: ""
             }
         }

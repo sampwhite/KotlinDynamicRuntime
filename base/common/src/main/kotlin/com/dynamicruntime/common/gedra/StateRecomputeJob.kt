@@ -140,9 +140,10 @@ private fun recomputeOne(run: JobRunCxt, key: String): JobTaskResult {
     val kind = id.dataType ?: return JobTaskResult.nothingToDo
     // Gone since the listing: nothing to derive for.
     val row = service.queryGedra(run.cxt, key, kind, ReadScope.unrestricted) ?: return JobTaskResult.nothingToDo
-    if (service.derivedStateCurrent(run.cxt, row)) return JobTaskResult.nothingToDo
+    // Its computed values too (issue #1501): a changed `g-onWrite` function leaves them stale with the data unchanged.
+    if (service.derivedStateCurrent(run.cxt, row) && service.computedDataCurrent(run.cxt, row)) return JobTaskResult.nothingToDo
     if (run.dryRun) {
-        run.trace("Its derived state is out of date; a real run would recompute it.", key)
+        run.trace("Its derived state or computed values are out of date; a real run would recompute them.", key)
         return JobTaskResult.done
     }
     val result = service.recomputeDerivedState(run.cxt, row, skipIfUnchanged = true)

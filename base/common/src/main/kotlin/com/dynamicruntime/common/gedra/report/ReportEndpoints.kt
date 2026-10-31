@@ -22,7 +22,6 @@ import com.dynamicruntime.common.gedra.GedraConfigOrigin
 import com.dynamicruntime.common.gedra.GedraDataRow
 import com.dynamicruntime.common.gedra.GedraDataService
 import com.dynamicruntime.common.gedra.GedraDataType
-import com.dynamicruntime.common.gedra.deriveEntryData
 import com.dynamicruntime.common.gedra.overseenClient
 import com.dynamicruntime.common.gedra.overseenClientField
 import com.dynamicruntime.common.gedra.toWireMap
@@ -386,7 +385,7 @@ private fun describeReport(declared: ReportDeclared): Map<String, Any?> {
  *
  * - **What is read.** The client's live forms, by id ascending -- the order a detail run returns, and an id never
  *   changes, which is what lets a cursor promise each form exactly once. Each join is paid only when a column needs
- *   it: the entries (with derived fields computed on read) for a form path, the form's states for a workflow path or
+ *   it: the entries (computed values as stored) for a form path, the form's states for a workflow path or
  *   the form's status and cfacts, the owners' accounts for a user path.
  * - **Detail, nothing excluded**: only the page's forms are read.
  * - **Detail with `excludeEmpty`**: every form is read for the excluding columns, those without a value dropped,
@@ -610,7 +609,7 @@ private fun readGroupKey(values: List<Any?>, groupBy: List<BoundColumn>): List<A
 
 /**
  * Reads forms as report subjects for one run (issue #981): their rows, and -- only when a column needs them -- their
- * entries with derived fields computed, their states and their owners. Each workflow's phase is taken once, at one
+ * entries (computed values as stored), their states and their owners. Each workflow's phase is taken once, at one
  * moment, for the whole run, so a run straddling a window's edge does not read its early forms under one phase and its
  * later ones under another.
  */
@@ -639,7 +638,7 @@ private class SubjectReader(val c: KdrCxt, val client: String, val scope: ReadSc
             val row = rows[id] ?: return@mapNotNull null
             ReportSubject(
                 meta = metaOf(row),
-                entries = if (needEntries) deriveEntryData(c, row.kind, row.entries, row.client) else emptyList(),
+                entries = if (needEntries) row.entries else emptyList(),
                 states = states[id].orEmpty(),
                 owner = owners[row.userId]?.let(::ownerOf),
                 phaseOf = ::phaseOf,

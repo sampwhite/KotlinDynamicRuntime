@@ -107,7 +107,7 @@ class FormOpts(
     val openTraitEntry: Boolean = false,
     /**
      * Show a **derived** field read-only when it holds a value (issue #712), instead of hiding it as [friendly]
-     * mode otherwise does. A derived *data* value (an expense report's total) is computed on read by the backend
+     * mode otherwise does. A derived *data* value (an expense report's total) is computed and stored by the backend
      * and is real content the person should see -- but never a control they fill, so it is only ever shown on a
      * **read-only** form and never drawn as an input. A derived field with no value stays hidden rather than
      * drawing a blank, and this changes nothing on an editable form (there is no control to offer).
@@ -797,7 +797,7 @@ fun fieldHiddenReason(
     // opposite and shows it read-only, because that surface documents the wire.
     //
     // The exception (issue #712): a read-only friendly form that opts in shows a derived *content* value that holds
-    // one -- an expense report's total, computed on read -- read-only, while a derived *envelope* field (an id, an
+    // one -- an expense report's total, computed by the backend -- read-only, while a derived *envelope* field (an id, an
     // entry's audit stamps) stays hidden. `revealsDerivedAt` draws that content/envelope line structurally, from the
     // field's path. The render path already draws a shown derived field read-only and never marks it required.
     opts.friendly && prop.valueType.derived && !opts.revealsDerivedAt(childPath(path, name), editable, values[name]) ->

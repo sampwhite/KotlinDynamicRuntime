@@ -6,6 +6,7 @@ import com.dynamicruntime.common.schema.SchType
 import com.dynamicruntime.common.schema.parseSchemaTypes
 import com.dynamicruntime.common.schema.schemaDefs
 import com.dynamicruntime.common.util.toOptStr
+import com.dynamicruntime.common.context.KdrCxtBase
 
 /**
  * The `prefillFromOwner` function's name, its initialization-data fields, and the owner attributes it may read
@@ -89,22 +90,24 @@ object PrefillFromOwnerCreation : WfFunctionCreation {
     // Parsed once and kept: the schema is a constant of the runtime, matching how WfDefSchema keeps its own.
     private var parsed: SchType? = null
 
+    override val initDataTypeName: String = "${PFO.namespace}.${PFO.initDataType}"
+
+    override fun initDataDefs(cxt: KdrCxtBase): Map<String, Any?> = schemaDefs(cxt, PFO.namespace) {
+        type(PFO.initDataType) {
+            type = SCT.kObject
+            description = "Default a trait field from an attribute of the form's owner."
+            property(WFD.fn, "The function discriminator; always '${PFO.fn}' here.", required = true) { const = PFO.fn }
+            property(WFD.priority, "Run order within the task's prefillData list.") { type = SCT.integer }
+            property(PFO.userAttribute, "Which owner attribute to read.", required = true) {
+                for (attr in PFO.ownerAttributes) option(attr)
+            }
+            property(PFO.targetTrait, "The trait whose field the value defaults.", required = true)
+            property(PFO.targetValuePath, "A dotted path into the target trait's data the value defaults.", required = true)
+        }
+    }
+
     private fun initDataType(cxt: KdrCxt): SchType =
-        parsed ?: parseSchemaTypes(
-            schemaDefs(cxt, PFO.namespace) {
-                type(PFO.initDataType) {
-                    type = SCT.kObject
-                    description = "Default a trait field from an attribute of the form's owner."
-                    property(WFD.fn, "The function discriminator; always '${PFO.fn}' here.", required = true)
-                    property(WFD.priority, "Run order within the task's prefillData list.") { type = SCT.integer }
-                    property(PFO.userAttribute, "Which owner attribute to read.", required = true) {
-                        for (attr in PFO.ownerAttributes) option(attr)
-                    }
-                    property(PFO.targetTrait, "The trait whose field the value defaults.", required = true)
-                    property(PFO.targetValuePath, "A dotted path into the target trait's data the value defaults.", required = true)
-                }
-            },
-        ).getValue("${PFO.namespace}.${PFO.initDataType}").also { parsed = it }
+        parsed ?: parseSchemaTypes(initDataDefs(cxt)).getValue(initDataTypeName).also { parsed = it }
 }
 
 /**

@@ -1158,7 +1158,7 @@ private fun ChildrenBuilder.renderForm(
             values = row
             editable = false
             friendly = true
-            // Show a trait's derived data values (issue #712) -- an expense report's total, computed on read --
+            // Show a trait's derived data values (issue #712) -- an expense report's total, computed by the backend --
             // read-only, while the document and entry system stamps (the id, `entryId`/`source`/audit) stay
             // hidden. This form renders the whole FormDoc, so trait content is only what sits under a
             // `data` payload; `traitDataField` draws that line so the envelope is not surfaced.

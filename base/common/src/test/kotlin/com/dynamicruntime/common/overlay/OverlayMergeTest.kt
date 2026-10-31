@@ -30,9 +30,44 @@ class OverlayMergeTest : StringSpec({
         out["a"] shouldBeSameInstanceAs shared
     }
 
-    "null in an overlay removes, under any rule" {
+    "null in an overlay removes, under any rule but append" {
         val out = mergeOverlay(spec("m" to MergeRule.Merge), mapOf("m" to mapOf("x" to 1), "r" to 1), mapOf("m" to null, "r" to null))
         out.value shouldBe mapOf("m" to null, "r" to null)
+    }
+
+    "append adds the overlay's elements after the base's, and can take none away (issue #1501)" {
+        val base = mapOf("f" to listOf(mapOf("fn" to "a")))
+        mergeOverlay(spec("f" to MergeRule.Append), base, mapOf("f" to listOf(mapOf("fn" to "b")))).value["f"] shouldBe
+            listOf(mapOf("fn" to "a"), mapOf("fn" to "b"))
+        // Where the base has none, the overlay's list stands as written.
+        mergeOverlay(spec("f" to MergeRule.Append), emptyMap(), mapOf("f" to listOf(mapOf("fn" to "b")))).value["f"] shouldBe
+            listOf(mapOf("fn" to "b"))
+        // A null removes nothing, and says so.
+        val removal = mergeOverlay(spec("f" to MergeRule.Append), base, mapOf("f" to null))
+        removal.value["f"] shouldBe base["f"]
+        removal.problems.map { it.code } shouldBe listOf(OverlayMergeError.appendOnly)
+    }
+
+    "a diff of an appended list states only what was added, and refuses any other change" {
+        val base = mapOf("f" to listOf("a"))
+        val added = diffOverlay(spec("f" to MergeRule.Append), base, mapOf("f" to listOf("a", "b")))
+        added.overlay shouldBe mapOf("f" to listOf("b"))
+        added.problems.shouldBeEmpty()
+        diffOverlay(spec("f" to MergeRule.Append), base, mapOf("f" to listOf("b"))).problems.map { it.code } shouldBe
+            listOf(OverlayMergeError.cannotStateChange)
+        // Removing the list, by a null or by leaving the key out, is refused where the edit is judged; nothing is stated.
+        for (edited in listOf(mapOf("f" to null), emptyMap())) {
+            val removed = diffOverlay(spec("f" to MergeRule.Append), base, edited)
+            removed.overlay shouldBe emptyMap()
+            removed.problems.map { it.code } shouldBe listOf(OverlayMergeError.cannotStateChange)
+        }
+    }
+
+    "a type's g-onWrite merges by appending: an alteration's functions follow the type's own" {
+        val base = mapOf(SCH.onWrite to listOf(mapOf("fn" to "computeValue", "target" to "total")))
+        val overlay = mapOf(SCH.onWrite to listOf(mapOf("fn" to "computeValue", "target" to "other")))
+        overlayTypeOutcome("t", base, overlay).value[SCH.onWrite] shouldBe
+            listOf(mapOf("fn" to "computeValue", "target" to "total"), mapOf("fn" to "computeValue", "target" to "other"))
     }
 
     "merge folds a map's entries one by one" {

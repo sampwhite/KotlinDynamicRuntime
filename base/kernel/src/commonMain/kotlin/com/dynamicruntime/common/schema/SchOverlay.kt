@@ -117,7 +117,7 @@ internal fun withoutStrandedLayoutEntries(merged: Map<String, Any?>, overlay: Ma
 
 /**
  * How a schema type's body merges with an alteration of it (issues #356, #985) -- the whole authoring model of an
- * alteration, in three lines:
+ * alteration, in four lines:
  *
  *  - **Every key replaces** unless named below: once an overlay defines something, that definition wins.
  *  - **[SCH.properties] is the set the alteration mentions** ([MergeRule.Restate]). Two rules, and they are the
@@ -132,6 +132,8 @@ internal fun withoutStrandedLayoutEntries(merged: Map<String, Any?>, overlay: Ma
  *  - **[SCH.layout] is a resource of its own** ([MergeRule.Resource]), merged by [layoutMergeSpec]: an alteration
  *    states only the layout entries it changes, or restates the list by setting a mode. `g-layout: null` drops the
  *    inherited layout.
+ *  - **[SCH.onWrite] is only added to** ([MergeRule.Append], issue #1501): an alteration's functions run after the
+ *    type's own, which it can neither change nor remove -- they produce values every client of the type reads.
  *
  * **An alteration may merge `properties` instead** (issue #985), by saying so in [SCH.merge]:
  * `"g-merge": { "properties": "merge" }`. Then it names only the properties it changes -- each named body replacing
@@ -143,6 +145,7 @@ val schemaTypeMergeSpec: MergeSpec = MergeSpec(
     rules = mapOf(
         SCH.properties to MergeRule.Restate,
         SCH.layout to MergeRule.Resource { base, overlay -> layoutMergeSpec(base, overlay) },
+        SCH.onWrite to MergeRule.Append,
     ),
     directiveKey = SCH.merge,
     choices = mapOf(SCH.properties to mapOf(MCH.restate to MergeRule.Restate, MCH.merge to MergeRule.Merge)),

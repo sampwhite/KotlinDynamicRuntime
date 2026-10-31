@@ -7,8 +7,8 @@ import com.dynamicruntime.common.startup.SchemaService
  * A component-registered function bound to a **trait**, run at the entry to a create or update **before the
  * write transaction is started** (issue #728): given one trait entry's supplied data, it returns the data to
  * store -- transformed, for a *calculation* -- or throws a `KdrException.mkInput` to reject the write, for a
- * *validation*. The write-time, trait-scoped sibling of [GedraDataDeriver] (which computes on read) and
- * [GedraStateDeriver] / [GedraWriteHook] (which run inside the write transaction).
+ * *validation*. The pre-transaction, trait-scoped sibling of [GedraStateDeriver] / [GedraWriteHook] (which run inside
+ * the write transaction) and of a type's `g-onWrite` functions (issue #1501, which run there too, on the merged data).
  *
  * Why registered here rather than as a lambda on the trait declaration: a trait *declaration* is data (loadable
  * from a database), while a *computation* is Kotlin, so the two are kept apart -- the same split every other
@@ -25,7 +25,7 @@ import com.dynamicruntime.common.startup.SchemaService
  *  - On an **addOrMerge** edit it is only the fragment the caller sent, **not** the merged result (which does
  *    not exist until under the write lock). So a function must be safe on a fragment: validate a field only when
  *    that field is present (a single-field rule is naturally so), and leave a calculation that needs the *merged*
- *    data to the read-time [GedraDataDeriver] or the post-write [GedraWriteHook], which do see it. Running before
+ *    data to the type's `g-onWrite` functions or the post-write [GedraWriteHook], which do see it. Running before
  *    the transaction is the point -- a validation fails fast, with no lock taken and nothing minted -- and this
  *    is the price of it.
  *
@@ -50,7 +50,7 @@ interface GedraPrepForSaveFn {
     val traitId: String
 
     /**
-     * When non-null, an opt-in gate identical to [GedraDataDeriver.featureName]: this function runs only for a
+     * When non-null, an opt-in gate identical to [GedraStateDeriver.featureName]: this function runs only for a
      * gedra whose client lists this feature name in [ClientDef.testFeatures]. Null means it always runs, the
      * ordinary case for a real calculation or validation.
      */
@@ -78,7 +78,7 @@ interface GedraPrepForSaveFn {
  * client, so an `allClients` caller writing to another client gets that client's functions) are run. Returns
  * [data] unchanged when none is bound, so an ordinary trait pays only a registry lookup.
  *
- * Unlike the read-time [deriveEntryData], a throw here is **not** swallowed: a save-time validation must reach
+ * Unlike a `g-onWrite` function's fault, a throw here is **not** swallowed: a save-time validation must reach
  * the caller as a 400, and a calculation's own programming error should surface rather than store bad data.
  */
 fun prepForSaveData(

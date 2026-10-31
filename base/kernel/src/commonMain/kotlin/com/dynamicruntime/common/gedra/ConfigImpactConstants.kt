@@ -120,4 +120,11 @@ enum class ImpactKind {
      * is kept and whoever still sees the workflow carries on.
      */
     workflowUnseen,
+
+    /**
+     * An entry whose computed values (issue #1501) -- what its trait's `g-onWrite` functions store -- would come out
+     * different under the candidate: the stored values change at the form's next write, or when its client's forms are
+     * recalculated, whichever comes first.
+     */
+    valuesRecomputed,
 }

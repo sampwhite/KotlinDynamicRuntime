@@ -33,6 +33,9 @@ import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
+import com.dynamicruntime.common.schema.schemaDefs
+import com.dynamicruntime.common.schema.SCT
+import com.dynamicruntime.common.context.KdrCxtBase
 
 /**
  * The workflow-function **second pass** end to end (issue #677): a component registers a function's creation
@@ -96,9 +99,22 @@ private class TestFn(override val fn: String, override val priority: Int) : WfFu
 }
 
 /** Builds a [TestFn] for any usage. */
+private const val testKindNamespace = "test.wffn"
+
+/** A test kind's settings schema (issue #1501): an open object naming its `fn`, published as a union branch as a real kind's is. */
+private fun testKindDefs(cxt: KdrCxtBase, fn: String): Map<String, Any?> = schemaDefs(cxt, testKindNamespace) {
+    type(fn) {
+        type = SCT.kObject
+        additionalProperties = true
+        property(WFD.fn, "The function's kind.", required = true) { const = fn }
+    }
+}
+
 private object TestPingCreation : WfFunctionCreation {
     override val fn = "testPing"
     override val event = WfEventType.cfactCalc
+    override val initDataTypeName = "${testKindNamespace}.$fn"
+    override fun initDataDefs(cxt: KdrCxtBase): Map<String, Any?> = testKindDefs(cxt, fn)
     override fun create(cxt: KdrCxt, usage: WfFunctionUsage): WfFunction = TestFn(fn, usage.priority)
 }
 
@@ -106,6 +122,8 @@ private object TestPingCreation : WfFunctionCreation {
 private object TestNeedsFieldCreation : WfFunctionCreation {
     override val fn = "needsField"
     override val event = WfEventType.cfactCalc
+    override val initDataTypeName = "${testKindNamespace}.$fn"
+    override fun initDataDefs(cxt: KdrCxtBase): Map<String, Any?> = testKindDefs(cxt, fn)
     override fun create(cxt: KdrCxt, usage: WfFunctionUsage): WfFunction {
         if (usage.initData["required"] == null) {
             throw KdrException.mkConv("'$fn' needs a 'required' field in its initialization data.")
@@ -118,6 +136,8 @@ private object TestNeedsFieldCreation : WfFunctionCreation {
 private object TestBadCfactCreation : WfFunctionCreation {
     override val fn = "emitBadCfact"
     override val event = WfEventType.cfactCalc
+    override val initDataTypeName = "${testKindNamespace}.$fn"
+    override fun initDataDefs(cxt: KdrCxtBase): Map<String, Any?> = testKindDefs(cxt, fn)
     override fun emittedCfacts(usage: WfFunctionUsage): Set<String> = setOf("undeclaredCfact")
     override fun create(cxt: KdrCxt, usage: WfFunctionUsage): WfFunction = TestFn(fn, usage.priority)
 }

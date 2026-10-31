@@ -430,6 +430,8 @@ fun parseNode(
         uniqueItems = parseUniqueItems(where, map[SCH.uniqueItems]),
         // Ordered, so a composite key keeps the order it was declared in (issue #487).
         primaryKey = (map[SCH.primaryKey] as? List<*>)?.mapNotNull { it.toOptStr() } ?: emptyList(),
+        // Usages only (issue #1501): the registered kinds they name are resolved, and judged, in `base:common`.
+        onWrite = parseFunctionUsages(map[SCH.onWrite]),
         // A display hint only (issue #540): carried through unread by validation, for a read-only renderer.
         presentation = map[SCH.presentation].toOptStr(),
         additionalValueType = additionalValueType,

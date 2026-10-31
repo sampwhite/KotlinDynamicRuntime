@@ -131,7 +131,9 @@ code guide's "When not to throw".
   `ClientService.scriptEnvOf(cxt, client)`, the webapp's `DisplayZone.scriptEnv()`; none reads the deployment's zone.
   Numbers (issue #1322): `formatNumber(x, decimals?)` groups and fixes decimals (`1,234.50`; rounded half away from
   zero on the decimal value), and `currency(x, "USD")` writes `$1,234.50` from the kernel's `currencyStyles`, a code
-  not there written after the amount (`1,234.50 CHF`). A number is a number: a numeric string is a type mismatch. `+` concatenates when either side
+  not there written after the amount (`1,234.50 CHF`). `round(x, decimals?)` (issue #1501) is the number itself rounded
+  the same way -- a whole one, a `Long`, by default -- for a value computed to be stored rather than shown.
+  A number is a number: a numeric string is a type mismatch. `+` concatenates when either side
   is a string and adds when neither is; `- * / %` read a numeric string; a bare missing/null value still
   throws (`?:` and a ternary condition are the only places absence is tolerated). Errors carry a `ScriptError`
   code plus the block's offset/line/column.

@@ -31,6 +31,7 @@ object SchGKeywords {
         SCH.visibleOnly to boolean,
         SCH.outerWhitespace to text,
         SCH.derived to SchKeywordShape("true, false or an object", SchShapeForm.Either(SchShapeForm.Flag, SchShapeForm.Obj)),
+        SCH.onWrite to SchKeywordShape("a list of function objects", SchShapeForm.ListOf(SchShapeForm.Obj)),
         SCH.schemaDocument to boolean,
         SCH.options to list,
         SCH.openOptions to boolean,
@@ -62,6 +63,8 @@ object SchGKeywords {
         SCH.outerWhitespace to "What to do with leading and trailing whitespace on a string: 'trim' it, 'reject' a " +
             "value that has any, or 'keep' it.",
         SCH.derived to "Marks a property the caller does not supply, because something else produces it.",
+        SCH.onWrite to "The functions run on the object's data each time it is written, such as one computing a " +
+            "derived property from the others. Each names its kind in 'fn'. Always a list, even of one.",
         SCH.schemaDocument to "Marks a property whose value is itself a schema, checked by parsing it.",
         SCH.options to "The choices a property offers, each a label and a value.",
         SCH.openOptions to "Whether the options are suggestions rather than a bound, so another value is allowed.",
@@ -93,6 +96,7 @@ object SchGKeywords {
         SCH.visibleOnly to SchKeywordPlace.schema,
         SCH.outerWhitespace to SchKeywordPlace.schema,
         SCH.derived to SchKeywordPlace.schema,
+        SCH.onWrite to SchKeywordPlace.namedType,
         SCH.schemaDocument to SchKeywordPlace.schema,
         SCH.options to SchKeywordPlace.schema,
         SCH.openOptions to SchKeywordPlace.schema,

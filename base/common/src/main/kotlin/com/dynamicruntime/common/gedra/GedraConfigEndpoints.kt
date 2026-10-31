@@ -23,6 +23,7 @@ import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
 import com.dynamicruntime.common.util.truncateToMs
 import com.dynamicruntime.common.util.toOptInstantOrNull
+import com.dynamicruntime.common.startup.SchemaService
 
 /**
  * The read/write surface over stored client configuration (issue #627): the endpoints a client administrator
@@ -508,7 +509,8 @@ private fun cfgEditorBody(c: KdrCxt): Map<String, Any?> {
             published[name]?.takeIf { it.version != latest.version }?.let { put(CFEP.revisionPublished, bundleOf(c, it)) }
         }
     }
-    val shapes = ConfigSlotShapes.served(c)
+    val schema = SchemaService.get(c)
+    val shapes = ConfigSlotShapes.served(c, schema.workflowFunctionKinds(), schema.schemaFunctions().values.toList())
     return mapOf(
         CFEP.client to c.client,
         CFEP.configs to configs,

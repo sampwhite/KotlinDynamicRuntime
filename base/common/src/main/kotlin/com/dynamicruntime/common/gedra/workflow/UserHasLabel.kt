@@ -6,6 +6,7 @@ import com.dynamicruntime.common.schema.SchType
 import com.dynamicruntime.common.schema.parseSchemaTypes
 import com.dynamicruntime.common.schema.schemaDefs
 import com.dynamicruntime.common.util.toOptStr
+import com.dynamicruntime.common.context.KdrCxtBase
 
 /** The `userHasLabel` function's name and initialization-data fields (issue #786). */
 @Suppress("ConstPropertyName")
@@ -76,19 +77,21 @@ object UserHasLabelCreation : WfFunctionCreation {
     // Parsed once and kept: the schema is a constant of the runtime, matching the other function kinds.
     private var parsed: SchType? = null
 
+    override val initDataTypeName: String = "${ULH.namespace}.${ULH.initDataType}"
+
+    override fun initDataDefs(cxt: KdrCxtBase): Map<String, Any?> = schemaDefs(cxt, ULH.namespace) {
+        type(ULH.initDataType) {
+            type = SCT.kObject
+            description = "Emit a cfact about the viewer when they carry a user label."
+            property(WFD.fn, "The function discriminator; always '${ULH.fn}' here.", required = true) { const = ULH.fn }
+            property(WFD.priority, "Run order within the task's viewerCfacts list.") { type = SCT.integer }
+            property(ULH.label, "The user label to test for.", required = true)
+            property(ULH.cfact, "The cfact emitted when the viewer carries the label.", required = true)
+        }
+    }
+
     private fun initDataType(cxt: KdrCxt): SchType =
-        parsed ?: parseSchemaTypes(
-            schemaDefs(cxt, ULH.namespace) {
-                type(ULH.initDataType) {
-                    type = SCT.kObject
-                    description = "Emit a cfact about the viewer when they carry a user label."
-                    property(WFD.fn, "The function discriminator; always '${ULH.fn}' here.", required = true)
-                    property(WFD.priority, "Run order within the task's viewerCfacts list.") { type = SCT.integer }
-                    property(ULH.label, "The user label to test for.", required = true)
-                    property(ULH.cfact, "The cfact emitted when the viewer carries the label.", required = true)
-                }
-            },
-        ).getValue("${ULH.namespace}.${ULH.initDataType}").also { parsed = it }
+        parsed ?: parseSchemaTypes(initDataDefs(cxt)).getValue(initDataTypeName).also { parsed = it }
 }
 
 /**

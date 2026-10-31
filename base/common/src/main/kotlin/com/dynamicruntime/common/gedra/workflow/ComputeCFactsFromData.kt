@@ -10,6 +10,7 @@ import com.dynamicruntime.common.util.pluckDataPath
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
+import com.dynamicruntime.common.context.KdrCxtBase
 
 /** The `computeCFactsFromData` function's name, its initialization-data fields, and its schema names (issue #678). */
 @Suppress("ConstPropertyName")
@@ -118,31 +119,33 @@ object ComputeCFactsFromDataCreation : WfFunctionCreation {
     // Parsed once and kept: the schema is a constant of the runtime, matching how WfDefSchema keeps its own.
     private var parsed: SchType? = null
 
+    override val initDataTypeName: String = "${CFD.namespace}.${CFD.initDataType}"
+
+    override fun initDataDefs(cxt: KdrCxtBase): Map<String, Any?> = schemaDefs(cxt, CFD.namespace) {
+        type(CFD.mappingType) {
+            type = SCT.kObject
+            description = "One value-to-cfact mapping: emit the cfact when the value is in the plucked list."
+            property(CFD.value, "The data value to test for.", required = true)
+            property(CFD.cfact, "The cfact to emit when the value matches.", required = true)
+        }
+        type(CFD.initDataType) {
+            type = SCT.kObject
+            description = "Emit cfacts from a trait entry's data by mapping listed values to cfacts."
+            property(WFD.fn, "The function discriminator; always '${CFD.fn}' here.", required = true) { const = CFD.fn }
+            property(WFD.priority, "Run order within the workflow's cfactCalc list.") { type = SCT.integer }
+            property(CFD.trait, "The trait whose entry data is read.", required = true)
+            property(CFD.op, "What is tested against the plucked value.") { option(CFD.isInList) }
+            property(CFD.valuePath, "A dotted path into the trait entry's data, resolved with array-spread.", required = true)
+            property(CFD.valueMapping, "The value-to-cfact mappings.", required = true) {
+                type = SCT.array
+                allowCoerce = true
+                items { ref(CFD.mappingType) }
+            }
+        }
+    }
+
     private fun initDataType(cxt: KdrCxt): SchType =
-        parsed ?: parseSchemaTypes(
-            schemaDefs(cxt, CFD.namespace) {
-                type(CFD.mappingType) {
-                    type = SCT.kObject
-                    description = "One value-to-cfact mapping: emit the cfact when the value is in the plucked list."
-                    property(CFD.value, "The data value to test for.", required = true)
-                    property(CFD.cfact, "The cfact to emit when the value matches.", required = true)
-                }
-                type(CFD.initDataType) {
-                    type = SCT.kObject
-                    description = "Emit cfacts from a trait entry's data by mapping listed values to cfacts."
-                    property(WFD.fn, "The function discriminator; always '${CFD.fn}' here.", required = true)
-                    property(WFD.priority, "Run order within the workflow's cfactCalc list.") { type = SCT.integer }
-                    property(CFD.trait, "The trait whose entry data is read.", required = true)
-                    property(CFD.op, "What is tested against the plucked value.") { option(CFD.isInList) }
-                    property(CFD.valuePath, "A dotted path into the trait entry's data, resolved with array-spread.", required = true)
-                    property(CFD.valueMapping, "The value-to-cfact mappings.", required = true) {
-                        type = SCT.array
-                        allowCoerce = true
-                        items { ref(CFD.mappingType) }
-                    }
-                }
-            },
-        ).getValue("${CFD.namespace}.${CFD.initDataType}").also { parsed = it }
+        parsed ?: parseSchemaTypes(initDataDefs(cxt)).getValue(initDataTypeName).also { parsed = it }
 }
 
 /**

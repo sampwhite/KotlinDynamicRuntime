@@ -33,6 +33,8 @@ import com.dynamicruntime.common.schema.parseSchemaTypes
 import com.dynamicruntime.common.schema.resolveExtensions
 import com.dynamicruntime.common.util.toJsonMap
 import com.dynamicruntime.common.util.toOptStr
+import com.dynamicruntime.common.schema.writeFunctionProblems
+import com.dynamicruntime.common.schema.skippedWriteFunction
 
 /**
  * Builds the per-client schema variants at startup (issue #356).
@@ -156,6 +158,12 @@ fun buildClientVariants(
             authored = layoutFree
             defs = compose(authored)
             types = parseSchemaTypes(defs)
+        }
+        // A `g-onWrite` function that cannot run on the client's type as it stands (issue #1501) -- one of its own, or
+        // the type's own on a type the client altered -- is reported, and skipped where the type is written.
+        val creations = collected.schemaFunctions.associateBy { it.fn }
+        for ((name, message) in writeFunctionProblems(cxt, creations, types, authored.keys)) {
+            reportConfigProblem(cxt, alterationIssue(collected, client, name, message, skippedWriteFunction), issues)
         }
         if (defs === global.defs) {
             continue

@@ -174,6 +174,14 @@ sealed interface MergeRule {
     data class RestateKeyed(val key: String) : MergeRule
 
     /**
+     * A list an overlay may only **add to** (issue #1501): the overlay's elements follow the base's, which it can
+     * neither change nor remove -- a type's `g-onWrite` functions, which a client's alteration adds its own beside but
+     * may not take away, since the base's produce values the type's every user reads. An overlay of `null` removes
+     * nothing and is reported. Where the base has none, the overlay's list stands as written.
+     */
+    data object Append : MergeRule
+
+    /**
      * A part that is a resource of its own, merged by its own spec -- which may depend on what is being merged (a
      * layout's [MergeRule.Keyed] list refuses new elements only when its mode makes order mean something). When the
      * base has none, the overlay's stands as written; an overlay of `null` removes it.
@@ -216,13 +224,21 @@ enum class OverlayMergeError : ProblemCode {
 
     /** A change [diffOverlay] found that no rule of the resource can state: an element removed, inserted, or moved. */
     cannotStateChange,
+
+    /** An overlay that would remove what an append-only list ([MergeRule.Append]) holds. */
+    appendOnly,
 }
 
 private fun mergeValue(rule: MergeRule, base: Any?, over: Any?, path: String, problems: MutableList<Problem>): Any? {
-    // Null in an overlay always means "none": a removal, under every rule.
-    if (over == null) return null
+    // Null in an overlay always means "none": a removal, under every rule but the one that cannot remove.
+    if (over == null) {
+        if (rule != MergeRule.Append || base == null) return null
+        problems.add(Problem(OverlayMergeError.appendOnly, appendOnlyMessage, ProblemLocation(path)))
+        return base
+    }
     return when (rule) {
         MergeRule.Replace -> over
+        MergeRule.Append -> if (base is List<*> && over is List<*>) base + over else over
         MergeRule.Merge -> if (base is Map<*, *> && over is Map<*, *>) mergeEntries(base.toJsonMapOrEmpty(), over.toJsonMapOrEmpty()) else over
         MergeRule.Restate -> if (base is Map<*, *> && over is Map<*, *>) restate(base.toJsonMapOrEmpty(), over.toJsonMapOrEmpty()) else over
         is MergeRule.Keyed -> if (base is List<*> && over is List<*>) mergeKeyed(rule, base, over, path, problems) else over
@@ -366,7 +382,13 @@ fun diffOverlay(spec: MergeSpec, base: Map<String, Any?>, edited: Map<String, An
         }
     }
     for (key in base.keys) {
-        if (key !in edited && key != spec.directiveKey) out[key] = null
+        if (key in edited || key == spec.directiveKey) continue
+        // A removal, which an append-only list cannot take: reported here, where the edit is judged, not on a later merge.
+        if (spec.ruleFor(key) == MergeRule.Append && base[key] != null) {
+            problems.add(Problem(OverlayMergeError.cannotStateChange, appendOnlyMessage, ProblemLocation(childPath(path, key))))
+        } else {
+            out[key] = null
+        }
     }
     return DiffOutcome(out, problems)
 }
@@ -376,9 +398,20 @@ private class Stated(val value: Any?)
 
 /** The overlay value making [base] into the different [edited] under [rule], or null when it cannot be stated. */
 private fun diffValue(rule: MergeRule, base: Any?, edited: Any?, path: String, problems: MutableList<Problem>): Stated? {
+    if (edited == null && base != null && rule == MergeRule.Append) {
+        problems.add(Problem(OverlayMergeError.cannotStateChange, appendOnlyMessage, ProblemLocation(path)))
+        return null
+    }
     if (edited == null || base == null) return Stated(edited)
     return when (rule) {
         MergeRule.Replace -> Stated(edited)
+        // The base's elements, unchanged and first, then what was added; anything else would change what it holds.
+        MergeRule.Append -> if (base is List<*> && edited is List<*> && edited.size > base.size && edited.subList(0, base.size) == base) {
+            Stated(edited.subList(base.size, edited.size))
+        } else {
+            problems.add(Problem(OverlayMergeError.cannotStateChange, appendOnlyMessage, ProblemLocation(path)))
+            null
+        }
         MergeRule.Merge -> if (base is Map<*, *> && edited is Map<*, *>) {
             Stated(diffEntries(base.toJsonMapOrEmpty(), edited.toJsonMapOrEmpty()) { _, _, e -> Stated(e) })
         } else {
@@ -481,3 +514,6 @@ private fun diffKeyed(rule: MergeRule.Keyed, base: List<*>, edited: List<*>, pat
     }
     return Stated(out)
 }
+
+private const val appendOnlyMessage =
+    "This list can only be added to: what the type already holds here stays, in its order, and an alteration's own entries follow it."

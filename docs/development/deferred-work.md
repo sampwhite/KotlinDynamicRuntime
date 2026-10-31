@@ -340,6 +340,22 @@ The trigger is a client asking to split a bundle, or to publish one workflow of 
   transaction, or let resolution follow a moved workflow by id within the client when the named bundle no longer
   holds it -- the forgiving choice, which keeps history readable. Decide this before building the operation.
 
+## When a client wants a value that changes with time rather than with the data
+
+`g-onWrite` (issue #1501) computes a value when the data is written, and stores it. A value that changes from day to
+day while the data does not -- a price shown with today's discount -- cannot be stored that way, and nothing computes
+one. When a client wants one, add **`g-onRead`**: one more `SchEventType` member and its executor, run where a read
+surface presents entries, never stored. It would bring back an on-read computation as data, where #712's
+`GedraDataDeriver` was Kotlin bound to one trait id.
+
+## When an API or form caller needs to send one item where a list is expected
+
+A list-valued keyword or field takes a list, even of one (`g-onWrite` was settled that way, issue #1501): config is
+written by developers and by code, and one explainable shape is worth more than two brackets. If casual callers need
+the shorthand, make it an **input-only coercion** -- `allowCoerce` on an array wrapping a lone item into a one-element
+list -- never a `oneOf` over unlike shapes: the value stays a list, a form always draws the list and never asks which
+shape is meant, and an export needs no `oneOf`.
+
 ## When a client wants a field whose choices depend on another field
 
 A schema's `if`/`then`/`else` is deliberately one shape (`SchCondition`, issue #253): a property is **required or

@@ -14,12 +14,12 @@ import com.dynamicruntime.common.naming.componentNamespaceProblem
 import com.dynamicruntime.common.naming.declaredTypeProblem
 import com.dynamicruntime.common.naming.OwnedNameKind
 import com.dynamicruntime.common.naming.componentNameProblem
-import com.dynamicruntime.common.gedra.GedraDataDeriver
 import com.dynamicruntime.common.gedra.GedraPrepForSaveFn
 import com.dynamicruntime.common.gedra.GedraStateDeriver
 import com.dynamicruntime.common.gedra.GedraWriteGuard
 import com.dynamicruntime.common.gedra.GedraWriteHook
 import com.dynamicruntime.common.gedra.workflow.WfFunctionCreation
+import com.dynamicruntime.common.schema.SchFunctionCreation
 import com.dynamicruntime.common.gedra.GID
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.filestore.FileBucketDef
@@ -133,21 +133,9 @@ class SchemaCollector(
     }
 
     /**
-     * The data derivations components registered (issue #712) -- functions that compute a gedra entry's derived
-     * data value **on read**, so a `g-derived` data field (an expense report's total, say) is presented without
-     * being stored. Kotlin, so component-contributed, like a [GedraStateDeriver]; the twin that runs on write.
-     */
-    val dataDerivers: MutableList<GedraDataDeriver> = mutableListOf()
-
-    /** Registers a data derivation (issue #712); order is preserved but does not matter, as each owns its own trait. */
-    fun addDataDeriver(deriver: GedraDataDeriver) {
-        dataDerivers.add(deriver)
-    }
-
-    /**
      * The trait save-time functions components registered (issue #728) -- run at the entry to a create or update
      * before the write transaction, to calculate or validate a trait's data. Kotlin, so component-contributed,
-     * like a [GedraDataDeriver]; the first of a growing set of trait event functions.
+     * like a [GedraStateDeriver]; the first of a growing set of trait event functions.
      */
     val prepForSaveFns: MutableList<GedraPrepForSaveFn> = mutableListOf()
 
@@ -216,6 +204,20 @@ class SchemaCollector(
     /** Registers a workflow function kind (issue #677), the same seam a deriver or a cfact source registers through. */
     fun addWorkflowFunction(creation: WfFunctionCreation) {
         workflowFunctions.add(creation)
+    }
+
+    /**
+     * The schema function kinds components registered (issue #1501) -- the Kotlin half of a function a type lists
+     * under a life-cycle event keyword (`g-onWrite`), keyed by `fn`. The *usages* naming them are data on the types.
+     */
+    val schemaFunctions: MutableList<SchFunctionCreation> = mutableListOf()
+
+    /** Registers a schema function kind (issue #1501); a kind registered twice fails the boot. */
+    fun addSchemaFunction(creation: SchFunctionCreation) {
+        if (schemaFunctions.any { it.fn == creation.fn }) {
+            throw KdrException("The schema function kind '${creation.fn}' is registered twice.")
+        }
+        schemaFunctions.add(creation)
     }
 
     /**
@@ -448,6 +450,7 @@ class SchemaCollector(
         c.cfacts.putAll(cfacts)
         c.cfactSources.putAll(cfactSources)
         c.workflowFunctions.addAll(workflowFunctions)
+        c.schemaFunctions.addAll(schemaFunctions)
         for ((client, list) in clientCFacts) c.workingCFacts[client] = list.toMutableList()
         for ((client, overlay) in clientOverlays) c.workingOverlays[client] = LinkedHashMap(overlay)
         c.publishClientMaps()

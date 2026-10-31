@@ -35,6 +35,7 @@ import com.dynamicruntime.common.util.toOptInstant
 import com.dynamicruntime.common.util.toOptLong
 import com.dynamicruntime.common.util.toOptStr
 import kotlin.time.Instant
+import com.dynamicruntime.common.schema.runWriteFunctions
 
 /** The `_debug` tag the gedra listing answers to, and the `_meta` keys it writes under. */
 @Suppress("ConstPropertyName")
@@ -519,10 +520,12 @@ class GedraDataService : ServiceInitializer {
         // new entry has no stored value to keep, so any value in a field whose gate they fail is refused, before
         // anything is minted.
         val gate = gatedWrite(cxt, kind)
+        // Then the trait's `g-onWrite` functions (issue #1501), on the data as it will be stored, as on every write.
+        val onWrite = writeFunctionsOf(cxt, kind)
         val prepared = entries.map { entry ->
             val traitId = entry[GE.traitId].toOptStr() ?: return@map entry
             val data = prepForSaveData(cxt, kind, traitId, entryDataOf(entry, traitId), cxt.client)
-            entry + (GE.data to gate.write(traitId, null, data))
+            entry + (GE.data to onWrite(traitId, gate.write(traitId, null, data)))
         }
         // Interned as it is minted, so every later reader of this gedra shares one instance. The cache does
         // not yet hold every extant id, so this buys identity and cheap keys and not existence -- see
@@ -756,10 +759,114 @@ class GedraDataService : ServiceInitializer {
         SqlTopicTranProvider.executeTopicTran(sqlCxt, tranRecompute, null, mapOf(GD.gedraId to row.gedraId.fullId)) {
             val current = readDataRowUnderLock(txCxt, sqlCxt, gedraDataTable(txCxt), row.gedraId)
             if (current != null) {
-                result = recomputeDerivedStateUnderLock(txCxt, sqlCxt, current, skipIfUnchanged)
+                // In the gedra's scope from the start, as the state recompute binds it: the refresh writes the gedra's data.
+                txCxt.bindTransactionOwner(current.userId, current.client, current.org)
+                // The computed values first (issue #1501). Stored, they are a data write like any other, so the
+                // post-write hooks follow it -- the built-in one deriving the state from the data as now stored.
+                result = if (refreshComputedData(txCxt, sqlCxt, current)) {
+                    fireWriteHooks(txCxt, sqlCxt, current)
+                    StateRecompute(StateRecomputeOutcome.written)
+                } else {
+                    recomputeDerivedStateUnderLock(txCxt, sqlCxt, current, skipIfUnchanged)
+                }
             }
         }
         return result
+    }
+
+    /**
+     * Whether [row]'s stored data already holds what its traits' `g-onWrite` functions would compute from it now
+     * (issue #1501), judged outside any lock: the batch job's cheap first look, beside [derivedStateCurrent]. A value
+     * goes stale when the function changes rather than the data -- a published script -- which no write catches.
+     *
+     * Recomputed values the entries would not validate with count as current: they are left as stored (and logged
+     * when a write or a recompute reaches the form), so the job does not take such a form up again on every run.
+     */
+    fun computedDataCurrent(cxt: KdrCxt, row: GedraDataRow): Boolean {
+        val kind = row.gedraId.dataType ?: return true
+        val gedraCxt = cxt.mkSubContext("computedData", row.client).also { it.userId = row.userId }
+        val recomputed = recomputedEntries(gedraCxt, row) ?: return true
+        return try {
+            checkStoredEntries(gedraCxt, kind, recomputed)
+            false
+        } catch (_: KdrException) {
+            true
+        }
+    }
+
+    /**
+     * [row]'s entries with each trait's `g-onWrite` functions run again over its stored data (issue #1501), or null
+     * when every entry comes out as stored; an unchanged entry is handed back as it was. [cxt] is in the gedra's own
+     * client, whose types the functions belong to.
+     */
+    private fun recomputedEntries(cxt: KdrCxt, row: GedraDataRow): List<Map<String, Any?>>? {
+        val kind = row.gedraId.dataType ?: return null
+        val onWrite = writeFunctionsOf(cxt, kind)
+        var changed = false
+        val out = row.entries.map { entry ->
+            val traitId = entry[GE.traitId].toOptStr() ?: return@map entry
+            val next = onWrite(traitId, entry[GE.data].toJsonMapOrEmpty())
+            if (entryDataUnchanged(entry, next)) {
+                entry
+            } else {
+                changed = true
+                entry + (GE.data to next)
+            }
+        }
+        return if (changed) out else null
+    }
+
+    /**
+     * Stores [row]'s data again with its traits' `g-onWrite` functions re-run over it (issue #1501), **under the open
+     * write transaction** ([sqlCxt]) with [cxt] bound to the gedra, and says whether anything was stored; [row]'s
+     * entries then hold what is stored. A changed entry is stamped as an edit's is, by [cxt]'s acting user -- the
+     * job, or whoever recalculated the client's forms.
+     *
+     * The registered write guards judge it as they judge an edit, with no override: a trait a running workflow has
+     * locked keeps its stored values until the lock is released, and the next recompute after that stores them.
+     * Recomputed values that would not validate are logged and left unstored, as derived state is.
+     */
+    private fun refreshComputedData(cxt: KdrCxt, sqlCxt: SqlCxt, row: GedraDataRow): Boolean {
+        val recomputed = recomputedEntries(cxt, row) ?: return false
+        val kind = row.gedraId.dataType ?: return false
+        val changedTraits = recomputed.filterIndexed { i, entry -> entry !== row.entries[i] }
+            .mapNotNull { it[GE.traitId].toOptStr() }.toSet()
+        val guarded = GedraGuardedWrite(row, changedTraits, overrideReason = null) {
+            readStateRowUnderLock(cxt, sqlCxt, gedraStatesTable(cxt), row.gedraId)
+                ?.get(GD.data).toJsonMapOrEmpty()[GD.entries].toJsonListOfMaps()
+        }
+        try {
+            SchemaService.get(cxt).writeGuards().forEach { it.check(cxt, guarded) }
+        } catch (e: KdrException) {
+            LogGedra.info(cxt) { "Left the computed values of '${row.gedraId.fullId}' as stored for now: ${e.message}" }
+            return false
+        }
+        val table = gedraDataTable(cxt)
+        val bind = mutableMapOf<String, Any?>()
+        val stmt = mkScopedGedraUpdate(sqlCxt, table, ReadScope.unrestricted, "uGedraDataRecompute", "c:${GD.data} = :${GD.data}", bind)
+        val now = checkNotNull(SqlTopicUtil.prepForStdUpdate(cxt, table, bind, row.updatedAt)) {
+            "${GDT.gedraData} must declare ${PF.updatedAt} for a recompute to stamp it."
+        }
+        val entries = recomputed.mapIndexed { i, entry ->
+            val prior = row.entries[i]
+            if (entry === prior) {
+                entry
+            } else {
+                mkStoredEntry(cxt, entry[GE.traitId].toOptStr().orEmpty(), entry[GE.data].toJsonMapOrEmpty(), prior, now)
+            }
+        }
+        try {
+            checkStoredEntries(cxt, kind, entries)
+        } catch (e: KdrException) {
+            LogGedra.warn(cxt) { "Skipped recomputed values for '${row.gedraId.fullId}' that do not validate: ${e.message}" }
+            return false
+        }
+        bind[GD.gedraId] = row.gedraId.fullId
+        bind[GD.data] = row.storedData(entries)
+        // Zero rows: the gedra went between the read under the lock and this write, so nothing was stored.
+        if (sqlCxt.sqlDb.executeStatement(cxt, stmt, bind) == 0) return false
+        row.entries = entries
+        return true
     }
 
     /**
@@ -820,8 +927,7 @@ class GedraDataService : ServiceInitializer {
      * carries none there and the membership test is simply false -- no explicit `isTestInstance` check needed.
      */
     // The state recompute binds [cxt] to the gedra's owner before this runs, so `cxt.client` is the gedra's
-    // client -- exactly what the shared gate keys off (issue #712 review); the data read path passes the row's
-    // client instead, for the same reason.
+    // client -- exactly what the shared gate keys off (issue #712 review).
     private fun featureEnabled(cxt: KdrCxt, featureName: String?): Boolean =
         gedraFeatureEnabled(cxt, cxt.client, featureName)
 
@@ -882,6 +988,7 @@ class GedraDataService : ServiceInitializer {
         val union = clientUnion(cxt, kind)
         val variants = union?.variants
         val gate = gatedWrite(cxt, kind)
+        val onWrite = writeFunctionsOf(cxt, kind)
         val now = cxt.instanceNow()
         val actor = cxt.userProfile.userId
         // Aggregated across every document, since the result reports one count per (category, trait).
@@ -951,6 +1058,8 @@ class GedraDataService : ServiceInitializer {
                 // new forms, so a gated value from someone the gate refuses refuses the whole import -- outside the
                 // forgiving `try` above, since it is a permission rather than a malformed entry.
                 slim[GE.data] = gate.write(traitId, null, slim[GE.data].toJsonMapOrEmpty())
+                // The trait's `g-onWrite` functions (issue #1501), so an import stores what a create would.
+                slim[GE.data] = onWrite(traitId, slim[GE.data].toJsonMapOrEmpty())
                 val entryId = if (opts.preserveEntryIds) {
                     (entry[GE.entryId] as? String)?.ifBlank { null } ?: cxt.mkUniqueId()
                 } else {
@@ -1387,8 +1496,9 @@ class GedraDataService : ServiceInitializer {
             }
             // The caller's `g-visibleWhen` gates (issue #830), judged per edit against the entry as stored under this lock.
             val gate = gatedWrite(txCxt, kind)
+            val onWrite = writeFunctionsOf(txCxt, kind)
             for (edit in target.edits) {
-                outcomes.add(GedraEditOutcome(edit.traitId, applyEdit(txCxt, edit, byKey, pkFieldsOf(edit.traitId), now, gate)))
+                outcomes.add(GedraEditOutcome(edit.traitId, applyEdit(txCxt, edit, byKey, pkFieldsOf(edit.traitId), now, gate, onWrite)))
             }
             // The registered guards (issue #857) -- a trait lock, say -- on the same lock, once the edits are folded in
             // memory and before anything is written. They judge the traits the edits actually **change** (an edit
@@ -1463,6 +1573,8 @@ class GedraDataService : ServiceInitializer {
         now: Instant,
         /** The caller's `g-visibleWhen` gates over the entry's data (issue #830); see [gatedWrite]. */
         gate: GatedWrite,
+        /** The trait's `g-onWrite` functions over the merged data (issue #1501); see [writeFunctionsOf]. */
+        onWrite: (traitId: String, data: Map<String, Any?>) -> Map<String, Any?>,
     ): Boolean {
         // The entry an edit names: its trait, plus its primary-key values when the trait declares a key (issue
         // #487). The key rides in the edit's own data -- a delete of a keyed trait carries a minimal `{key:
@@ -1510,7 +1622,9 @@ class GedraDataService : ServiceInitializer {
         // A field the caller's gate hides keeps its stored value (issue #830): left out by a replace from a form that
         // hid it, or sent back unchanged, it stays as it was; a change to it refuses the patch. Before the diff, so an
         // edit that differs only there reads as no change.
-        val data = gate.write(edit.traitId, existingData, assembled)
+        // Then the trait's `g-onWrite` functions (issue #1501), on the merged result -- which only exists here, under the
+        // lock -- and before the diff, so an edit whose computed values come out as stored still changes nothing.
+        val data = onWrite(edit.traitId, gate.write(edit.traitId, existingData, assembled))
         // Diff before stamp (issue #626): an update whose data equals what is stored changes nothing, so the
         // entry -- and its `updated` stamps -- is left as it is, and the edit reports not-applied. Covers a
         // `replace` with identical data and a `merge` that resolves to it. `GedraEditOutcome.applied` then means
@@ -1624,6 +1738,21 @@ class GedraDataService : ServiceInitializer {
                     )
                 }
             }
+        }
+    }
+
+    /**
+     * Trait data of [kind] as its `g-onWrite` functions leave it (issue #1501), given the trait and the data a write
+     * would store: the functions of the trait's data type in [cxt]'s client -- the data's, as [clientUnion] reads it --
+     * run in order. The data unchanged for a trait whose type declares none, or that this client does not carry.
+     */
+    private fun writeFunctionsOf(cxt: KdrCxt, kind: GedraDataType): (String, Map<String, Any?>) -> Map<String, Any?> {
+        val union = clientUnion(cxt, kind)
+        val schema = SchemaService.get(cxt)
+        return { traitId, data ->
+            val dataType = union?.variants?.select(traitId)?.properties?.get(GE.data)?.valueType
+            val functions = dataType?.let { schema.writeFunctionsFor(cxt, it) }.orEmpty()
+            if (functions.isEmpty()) data else runWriteFunctions(cxt, functions, data)
         }
     }
 

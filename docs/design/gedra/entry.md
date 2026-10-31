@@ -137,9 +137,9 @@ entries.
 ## Traits
 
 A trait binds a `traitId` to a schema, together with functional and permission directives. The functional ones
-built so far are registered by components and bound to a trait by its id: save-time functions
-(`GedraPrepForSaveFn`, #728) and on-read data derivers (`GedraDataDeriver`, #712). Only the schema binding is
-designed here; permission directives are [deferred](#deferred).
+built so far are save-time functions (`GedraPrepForSaveFn`, #728), registered by components and bound to a trait by
+its id, and the functions a trait's data type lists under `g-onWrite` (#1501), declared in the schema as data. Only the
+schema binding is designed here; permission directives are [deferred](#deferred).
 
 ### The binding is explicit
 
@@ -504,12 +504,13 @@ not a migration:
 }
 ```
 
-**Code-computed values are built** (#712), and are computed **on read**, never stored. A component registers a
-`GedraDataDeriver` bound to a trait id, and the boot requires that trait to be global, since a client's bare id
-may be another client's too. The deriver fills its fields onto the entries a read surface presents; nothing is
-stored, so there is no column, no migration, and no stored copy to go stale. A derived value is for display only:
-it never takes part in validation or in whether a form is complete. The schema declares the field's status and the
-code supplies the value, and neither needs to know about the other.
+**Computed values are built** (#1501), and are computed **on write** and stored. The data type lists the function
+under `g-onWrite` -- `computeValue`, say, which stores a script's value over the entry's own data in a `g-derived`
+field -- so a stored or client-designed trait can carry one, not only a trait in source code. It runs on every write,
+after an edit is merged, and a value that cannot be computed clears the field rather than failing the write. A
+changed function reaches stored forms through the derived-state recompute, and the publish impact report counts the
+forms it would change. A derived value never takes part in whether a form is complete. This replaces the on-read
+`GedraDataDeriver` of #712, which only source code could bind, and to one trait id.
 
 The object form, for derivations a user authors, is still intent. So are *interactive* derivations, computed in the
 form as the user types; both wait on a script language. See [Deferred](#deferred).
