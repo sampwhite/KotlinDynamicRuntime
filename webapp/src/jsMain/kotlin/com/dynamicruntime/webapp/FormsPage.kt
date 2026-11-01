@@ -1025,7 +1025,7 @@ val FormsPage = FC<FormsPageProps> { props ->
                     }
                 }
                 FormsTable {
-                    forms = rows.map { (it[GDF.gedraId] as? String ?: "") to summarizeForm(it, union) }
+                    forms = rows.map { (it[GDF.gedraId] as? String ?: "") to summarizeForm(it, union, cat.fieldLayouts) }
                     onView = { id -> viewingId = id }
                     canDelete = deleteEndpoint != null
                     this.limitedDelete = limitedDelete
@@ -1116,7 +1116,7 @@ private fun ChildrenBuilder.renderForm(
     fieldLayouts: Map<String, SchLayout>,
     columns: List<ListingColumn>,
 ) {
-    val summary = summarizeForm(row, union)
+    val summary = summarizeForm(row, union, fieldLayouts)
     // Read as its listing cell reads (issue #1323), against the moment the page is drawn.
     formHeading(summary, columns, DisplayZone.scriptEnv())?.let { h2 { +it } }
     if (summary.traitLabels.isNotEmpty()) {

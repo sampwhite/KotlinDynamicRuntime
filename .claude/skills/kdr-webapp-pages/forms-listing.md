@@ -25,6 +25,15 @@ from a form.
 - **Two ids to a client's menu overlay.** A rename or a hide of `forms` keeps meaning what the client's ordinary
   users see; `clientForms` is its administrators' entry, listed beside it in the Clients page's menu editor.
 
+## A trait is named by one rule (issue #1520)
+
+The Contains column and the form view's "Contains:" line name each trait as every page does: the first line of its
+data type's layout heading, then its data type's `title`, then its id humanized (`summarizeForm`, through the kernel's
+`traitDisplayName` and the catalog's `fieldLayouts`). So the listing says what the form's heading says, follows a
+rename in the trait designer, and follows a client's alteration of a global trait's heading. The trait choice and the
+entry headers in a friendly form use the same rule (`friendlyBranchLabel`); the sort by Contains still orders by the
+trait ids.
+
 ## The forms listing across clients (issues #668, #714)
 
 An `allClients` admin's forms listing starts as the **cross-client view**: every client's rows, a Client column,

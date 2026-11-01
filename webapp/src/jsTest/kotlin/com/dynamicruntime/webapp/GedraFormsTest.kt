@@ -29,6 +29,8 @@ import com.dynamicruntime.common.gedra.workflow.WSC
 import com.dynamicruntime.common.gedra.workflow.WFD
 import com.dynamicruntime.common.gedra.workflow.SWF
 import com.dynamicruntime.common.gedra.workflow.SVYS
+import com.dynamicruntime.common.schema.SL
+import com.dynamicruntime.common.schema.parseSchLayout
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.SchType
@@ -403,15 +405,21 @@ class GedraFormsTest {
     }
 
     /** A one-branch-per-trait union: a `name` branch and an `expenseReport` branch, the latter with a title. */
+    // `expenseReport`'s data type has a title unlike its humanized id; `name` has neither title nor layout. An entry
+    // type's own title is not a trait's name (issue #1520), so the one on `t.NameEntry` is ignored.
     private fun unionDefs(): Map<String, Any?> = mapOf(
         "t.NameEntry" to mapOf(
             SCH.type to SCT.kObject,
+            SCH.title to "Not the trait's name",
             SCH.properties to mapOf(GE.traitId to mapOf(SCH.type to SCT.string, SCH.const to "name")),
         ),
+        "t.ExpenseData" to mapOf(SCH.type to SCT.kObject, SCH.title to "Expense claim"),
         "t.ExpenseEntry" to mapOf(
             SCH.type to SCT.kObject,
-            SCH.title to "Expense report",
-            SCH.properties to mapOf(GE.traitId to mapOf(SCH.type to SCT.string, SCH.const to "expenseReport")),
+            SCH.properties to mapOf(
+                GE.traitId to mapOf(SCH.type to SCT.string, SCH.const to "expenseReport"),
+                GE.data to mapOf(SCH.dRef to "t.ExpenseData"),
+            ),
         ),
         "t.Union" to mapOf(
             SCH.oneOf to listOf(mapOf(SCH.dRef to "t.NameEntry"), mapOf(SCH.dRef to "t.ExpenseEntry")),
@@ -517,8 +525,8 @@ class GedraFormsTest {
         assertEquals("Q3 expenses", heading(info))
         assertEquals(listOf("Name"), info.displayValues.map { it.label })
         assertEquals("Q3 expenses", info.displayValues.single().value)
-        // "name" has no branch title so it humanizes; "expenseReport"'s branch declares one.
-        assertEquals(listOf("Name", "Expense report"), info.traitLabels)
+        // "name" has no heading or data-type title, so it humanizes; "expenseReport"'s data type has a title.
+        assertEquals(listOf("Name", "Expense claim"), info.traitLabels)
         assertEquals("2026-08-21T19:49:51.568Z", info.createdAt)
     }
 
@@ -563,7 +571,28 @@ class GedraFormsTest {
         val info = summarizeForm(item, entriesUnion())
         assertNull(heading(info))
         assertNull(info.createdAt)
-        assertEquals(listOf("Expense report"), info.traitLabels)
+        assertEquals(listOf("Expense claim"), info.traitLabels)
+    }
+
+    /**
+     * A trait is named by its data type's layout heading first (issue #1520) -- the name line of it -- so the listing
+     * says what the form's heading says, and a client's alteration of the heading renames the trait here too.
+     */
+    @Test
+    fun aTraitIsNamedByItsLayoutHeadingBeforeItsTitle() {
+        val item = mapOf(
+            GDF.gedraId to "gd.fd.acme.u10",
+            GDF.entries to listOf(
+                mapOf(GE.traitId to "expenseReport", GE.data to emptyMap<String, Any?>()),
+                mapOf(GE.traitId to "name", GE.data to emptyMap<String, Any?>()),
+            ),
+        )
+        val layouts = mapOf("t.ExpenseData" to parseSchLayout("t.ExpenseData", mapOf(SL.label to "## Expenses\nWhat you spent.")))
+        assertEquals(listOf("Expenses", "Name"), summarizeForm(item, entriesUnion(), layouts).traitLabels)
+        // The form's trait choice names a branch the same way; a union on another discriminator keeps its titles.
+        val variants = entriesUnion().variants!!
+        assertEquals("Expenses", friendlyBranchLabel(variants, "expenseReport", layouts))
+        assertEquals("Expense claim", friendlyBranchLabel(variants, "expenseReport", emptyMap()))
     }
 
     /** The owner and the last write (issue #562): carried when the row has them, null when it does not. */

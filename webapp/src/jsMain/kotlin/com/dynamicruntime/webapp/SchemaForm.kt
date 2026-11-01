@@ -1,5 +1,6 @@
 package com.dynamicruntime.webapp
 
+import com.dynamicruntime.common.gedra.traitDisplayName
 import com.dynamicruntime.common.cfact.CFactParser
 import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.schema.PRES
@@ -301,10 +302,16 @@ private fun directPrimaryKeyLabel(type: SchType, value: Any?): String? {
  * carried. The key is added beside it, not in place of it, so several entries of one trait are still told apart
  * at a glance. Pure, and covered under `jsNodeTest`.
  */
-fun elementRowHeader(elementType: SchType, element: Map<String, Any?>, index: Int, friendly: Boolean): String {
+fun elementRowHeader(
+    elementType: SchType,
+    element: Map<String, Any?>,
+    index: Int,
+    friendly: Boolean,
+    layouts: Map<String, SchLayout> = emptyMap(),
+): String {
     val key = keyedElementLabel(elementType, element)
     val title = elementType.variants?.let { v ->
-        (element[v.discriminator] as? String)?.let { if (friendly) v.byValue[it]?.title ?: humanizeFieldName(it) else it }
+        (element[v.discriminator] as? String)?.let { if (friendly) friendlyBranchLabel(v, it, layouts) else it }
     }
     val label = when {
         key != null && title != null -> "$title — $key"
@@ -313,6 +320,18 @@ fun elementRowHeader(elementType: SchType, element: Map<String, Any?>, index: In
     }
     return if (label != null) "[$index] $label" else "[$index]"
 }
+
+/**
+ * How a friendly form names a union's branch [value]: the branch of an entries union -- discriminated on `traitId` --
+ * by its trait's name (`traitDisplayName`, issue #1520), which [layouts] supplies the heading for; any other branch by
+ * its title, else its value humanized. Pure, and covered under `jsNodeTest`.
+ */
+fun friendlyBranchLabel(variants: SchVariants, value: String, layouts: Map<String, SchLayout>): String =
+    if (variants.discriminator == GE.traitId) {
+        traitDisplayName(value, variants, layouts)
+    } else {
+        variants.byValue[value]?.title ?: humanizeFieldName(value)
+    }
 
 external interface SchemaFormProps : Props {
     /** The object type whose properties to render. */
@@ -888,10 +907,10 @@ private fun ChildrenBuilder.renderVariant(
     // Captured under its own name: inside the Select builder `onChange` is the widget's own prop, and `values`
     // and `options` are likewise taken.
     val emitAll = onChange
-    // In friendly mode each choice reads by its branch's title (or a humanized value); the value sent stays the
-    // wire discriminator, so only the label changes. The catalog shows the value itself, documenting the wire.
+    // In friendly mode each choice reads by its name ([friendlyBranchLabel]); the value sent stays the wire
+    // discriminator, so only the label changes. The catalog shows the value itself, documenting the wire.
     val schChoices = variants.values.map { value ->
-        val label = if (opts.friendly) variants.byValue[value]?.title ?: humanizeFieldName(value) else value
+        val label = if (opts.friendly) friendlyBranchLabel(variants, value, opts.fieldLayouts) else value
         SchOption(value, label)
     }
     val choices = optionsToJs(schChoices)
@@ -945,7 +964,7 @@ private fun ChildrenBuilder.renderVariant(
             chosen?.let {
                 span {
                     className = ClassName("field-value")
-                    +if (opts.friendly) variants.byValue[it]?.title ?: humanizeFieldName(it) else it
+                    +if (opts.friendly) friendlyBranchLabel(variants, it, opts.fieldLayouts) else it
                 }
             }
             span {
@@ -1373,7 +1392,7 @@ private fun ChildrenBuilder.renderObjectList(
         // A keyed element (issue #487) reads by its primary-key value -- "[i] Yearly — 2024" -- so several
         // entries of one trait are told apart at a glance; an unkeyed list keeps its bare index. Computed once
         // so the row's header and its remove button's label name the same thing.
-        val header = elementRowHeader(elementType, element.toJsonMapOrEmpty(), i, opts.friendly)
+        val header = elementRowHeader(elementType, element.toJsonMapOrEmpty(), i, opts.friendly, opts.fieldLayouts)
         div {
             className = ClassName("nested")
             div {

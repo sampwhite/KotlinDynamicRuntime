@@ -1,5 +1,6 @@
 package com.dynamicruntime.webapp
 
+import com.dynamicruntime.common.gedra.traitNameOf
 import com.dynamicruntime.common.gedra.CCT
 import com.dynamicruntime.common.gedra.COV
 import com.dynamicruntime.common.gedra.DSV
@@ -790,12 +791,17 @@ fun labelFallback(slot: LabelSlot, isEdit: Boolean): CopyFallback {
 }
 
 /**
- * What a trait's section shows as its heading when no layout gives one (issue #1070): its data type's title, else a
- * heading made from the trait's id -- `WorkflowForm`'s own fallback (`traitHeading`); change the two together. Pure.
+ * What a trait's section shows as its heading when no layout gives one (issue #1070): the trait's name with no heading
+ * to read (`traitNameOf`, issue #1520) -- its data type's title, else a heading made from the trait's id. Pure.
  */
-fun headingFallback(trait: WfTraitView): CopyFallback =
-    trait.type.title?.takeIf { it.isNotBlank() }?.let { CopyFallback(it, "Blank: the section shows its type's own title.") }
-        ?: CopyFallback(humanizeFieldName(trait.traitId), "Blank: the section shows a heading made from the trait's id.")
+fun headingFallback(trait: WfTraitView): CopyFallback {
+    val name = traitNameOf(trait.traitId, null, trait.type.title)
+    return if (trait.type.title?.isNotBlank() == true) {
+        CopyFallback(name, "Blank: the section shows its type's own title.")
+    } else {
+        CopyFallback(name, "Blank: the section shows a heading made from the trait's id.")
+    }
+}
 
 /** The body of a label edit (issue #1070): which label, its new text (absent to clear the page title), the stamp. Pure. */
 fun labelEditBody(workflowId: String, slot: LabelSlot, label: String?, basedOn: String, client: String?): Map<String, Any?> = buildMap {
