@@ -14,6 +14,7 @@ import com.dynamicruntime.common.gedra.CCT
 import com.dynamicruntime.common.gedra.CFEP
 import com.dynamicruntime.common.gedra.CLD
 import com.dynamicruntime.common.gedra.COV
+import com.dynamicruntime.common.gedra.CIT
 import com.dynamicruntime.common.gedra.CPY
 import com.dynamicruntime.common.gedra.EDM
 import com.dynamicruntime.common.gedra.FSR
@@ -1365,6 +1366,26 @@ object ClientsApi {
      */
     suspend fun saveWorkflowParams(request: Map<String, Any?>): WorkflowParamsView =
         parseWindowsSaveResult(Http.sendApi("POST", UADEP.clientWorkflowParams, request)[EP.results].toJsonMapOrEmpty())
+
+    /** A client's listing columns and the traits a column may read (issue #1491): the client's own, or one named. */
+    suspend fun usageCatalog(clientId: String): UsageCatalogView =
+        parseUsageCatalog(Http.getApi(UADEP.clientUsages + queryString(mapOf(CLD.client to clientId)))[EP.item].toJsonMapOrEmpty())
+
+    /**
+     * Adds a listing column, or changes one where it is stored (issue #1491) -- [request] from [usageSaveRequest]; live,
+     * or a draft for a client with a sandbox.
+     */
+    suspend fun saveUsage(request: Map<String, Any?>): UsageSaveResult =
+        parseUsageSaveResult(Http.sendApi("POST", UADEP.clientUsageSave, request)[EP.results].toJsonMapOrEmpty())
+
+    /**
+     * Removes a listing column where it is stored (issue #1491) -- [request] from [usageRemoveRequest]. Answers the
+     * configuration it was in, and how it took effect.
+     */
+    suspend fun removeUsage(request: Map<String, Any?>): Pair<String, String> =
+        Http.sendApi("POST", UADEP.clientUsageRemove, request)[EP.results].toJsonMapOrEmpty().let {
+            it[CIT.configName].toOptStr().orEmpty() to it[CPY.mode].toOptStr().orEmpty()
+        }
 
     /** Every key an administrator may override for a client, with the client's value (issue #918). */
     suspend fun copyKeys(clientId: String): List<CopyKeyView> =

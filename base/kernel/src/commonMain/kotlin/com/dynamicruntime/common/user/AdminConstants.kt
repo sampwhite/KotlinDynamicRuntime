@@ -231,6 +231,21 @@ object UADEP {
     const val clientWorkflowParams = "/${SECT.clientAdmin}/client/workflows/params"
 
     /**
+     * A client's listing columns (issue #1491): each with where it is stored, or why it cannot be changed here, and the
+     * traits a column may read, with their fields. Scoped as [clientDefinition] is.
+     */
+    const val clientUsages = "/${SECT.clientAdmin}/client/usages"
+
+    /**
+     * Adds one of a client's listing columns, or changes one where it is stored (issue #1491). Scoped as
+     * [clientDefinition] is.
+     */
+    const val clientUsageSave = "/${SECT.clientAdmin}/client/usages/save"
+
+    /** Removes one of a client's listing columns, where it is stored (issue #1491). Scoped as [clientDefinition] is. */
+    const val clientUsageRemove = "/${SECT.clientAdmin}/client/usages/remove"
+
+    /**
      * Narrows a global trait for a client (issue #1119): hides fields in its layout, requires fields, and restricts
      * choices, written as the client's alteration of the trait's data type. Scoped as [clientDefinition] is.
      */

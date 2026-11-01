@@ -449,6 +449,19 @@ private fun ChildrenBuilder.clientDetail(
                         this.onChanged = onChanged
                     }
                 }
+                // Its listing columns (issue #1491), after the traits each reads, offered where they are for the same reason.
+                if (configEditable && stored != null) {
+                    WhatIsThis {
+                        heading = "Listing columns"
+                        headingLevel = 3
+                        text = pageCopy.explanation(PFRAG.listingColumnsNs)
+                    }
+                    ClientUsagesSection {
+                        this.clientId = clientId
+                        this.savesDraft = savesDraft
+                        this.onChanged = onChanged
+                    }
+                }
                 // Its workflows made from templates (issue #1120), offered where the traits are, for the same reason.
                 h3 { +"Workflows" }
                 ClientWorkflowsSection {

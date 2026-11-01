@@ -1,5 +1,7 @@
 package com.dynamicruntime.common.gedra
 
+import com.dynamicruntime.common.util.toOptStr
+
 /**
  * How a client says a trait should **present** in surfaces other than its own form (issue #537) -- the first
  * thing a client's definition changes about a page it does not own: the forms *list*.
@@ -63,6 +65,39 @@ class ClientTraitUsage(
      */
     val columnKey: String get() = columnId ?: traitId
 }
+
+/**
+ * A trait-usage rule as a wire map (issue #702): the listing column it drives and how its value searches -- its stored
+ * entry's form. [includeDisplay] carries the `display` expression -- the serializer keeps it (it is the rule's
+ * substance), the definition endpoint drops it (an internal expression an admin view has no use for, and its schema
+ * omits it).
+ */
+fun ClientTraitUsage.toRuleMap(includeDisplay: Boolean = true): Map<String, Any?> = buildMap {
+    put(CCT.traitId, traitId)
+    put(CCT.label, label)
+    if (includeDisplay) {
+        put(CCT.display, display)
+    }
+    kind?.let { put(CCT.kind, it.name) }
+    put(CCT.substring, substring)
+    presentation?.let { put(CCT.presentation, it) }
+    columnId?.let { put(CCT.columnId, it) }
+}
+
+/**
+ * The rule [map] holds, the reverse of [toRuleMap] (issue #1491): what a stored entry is read back as,
+ * and what the client page's listing-columns editor reads and builds. Lenient as a load is -- a kind it does not know
+ * is no kind, a blank presentation or column id none -- since a stored entry was held to its schema when written.
+ */
+fun usageFromRuleMap(map: Map<String, Any?>): ClientTraitUsage = ClientTraitUsage(
+    traitId = map[CCT.traitId].toOptStr().orEmpty(),
+    label = map[CCT.label].toOptStr().orEmpty(),
+    display = map[CCT.display].toOptStr().orEmpty(),
+    kind = UsageKind.entries.firstOrNull { it.name == map[CCT.kind].toOptStr() },
+    substring = map[CCT.substring] as? Boolean ?: false,
+    presentation = map[CCT.presentation].toOptStr()?.ifBlank { null },
+    columnId = map[CCT.columnId].toOptStr()?.ifBlank { null },
+)
 
 /**
  * What a [ClientTraitUsage.columnId] must look like (issue #1490): letters, digits, and underscores, starting with a

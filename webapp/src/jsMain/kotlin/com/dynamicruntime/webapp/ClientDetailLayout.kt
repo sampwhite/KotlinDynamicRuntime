@@ -34,8 +34,9 @@ const val runsGroupHeading = "Where it runs"
  * ([whoSetsNote], issue #1116). A list that is empty reads as a dash.
  *
  * What the page shows elsewhere is not repeated here: the load is a chip in the header, the forms and users counts are
- * its links ([clientHeaderLinks]), and the workflows are a section of their own. The traits are too, where that
- * section is drawn ([traitsShownBelow]); where it is not -- a client declared in source code -- they are listed here.
+ * its links ([clientHeaderLinks]), and the workflows are a section of their own. The traits and the listing columns are
+ * too, where their sections are drawn ([traitsShownBelow]); where they are not -- a client declared in source code --
+ * they are listed here.
  * Pure, and covered under `jsNodeTest`.
  */
 fun clientSummaryGroups(
@@ -65,8 +66,11 @@ fun clientSummaryGroups(
         add(humanizeFieldName(CLD.sessionHours) to inForceText(CLD.sessionHours, info, def.platformDefaults))
         val refresh = inForceText(CLD.refreshIntervalSeconds, info, def.platformDefaults)
         add(humanizeFieldName(CLD.refreshIntervalSeconds) to if (info[CLD.refreshIntervalSeconds] != null) marked(CLD.refreshIntervalSeconds, refresh) else refresh)
-        add("Listing columns" to list(def.usageLabels))
-        if (!traitsShownBelow) add("Traits" to list(def.traitIds))
+        // Each listed only where its section is not drawn below (issue #1491).
+        if (!traitsShownBelow) {
+            add("Listing columns" to list(def.usageLabels))
+            add("Traits" to list(def.traitIds))
+        }
     }
     val platform = buildList {
         if (def == null) return@buildList
