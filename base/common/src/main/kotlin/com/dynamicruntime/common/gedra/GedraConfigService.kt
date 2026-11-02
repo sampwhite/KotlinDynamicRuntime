@@ -113,7 +113,7 @@ class GedraConfigService : ServiceInitializer {
         // The config-trait vocabulary is the source of truth for how each slot's entries are keyed -- each slot's data
         // type's `g-primaryKey` (issue #1521) -- read once here rather than per write. A single-instance slot (the
         // client) has an empty key.
-        slotPrimaryKeys = coreConfigTraits(cxt).configTraits.keys.associateWith { ConfigSlotShapes.primaryKey(cxt, it) }
+        slotPrimaryKeys = ConfigSlotShapes.primaryKeys(cxt)
     }
 
     /**

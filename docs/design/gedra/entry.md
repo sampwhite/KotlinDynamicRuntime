@@ -466,9 +466,9 @@ On the type rather than the property, for three reasons: it follows the layer's 
 convention; a composite key is ordered, which a per-property boolean cannot express; and it is how SQL says the
 same thing. It goes on the *data* type, since that is the half a trait owns. The builder writes it with
 `primaryKey("year")` in the type's block, and a stored `traitDef` carries it inside its `dataSchema`, so the DSL and a
-stored declaration say it the same way. A trait declaration has no key of its own: the trait-level `primaryKey`
-carried over from dn went in #1521, since beside this keyword it was a second declaration that only one of the two
-keyed anything by.
+stored declaration say it the same way. A trait declaration has no key of its own. #487 gave it one, a `primaryKey`
+argument copied onto the data type as this keyword, at a time when keys were a gedra matter and not yet a schema one;
+#1521 removed it, since it made two declarations of one key, of which only the trait's keyed anything.
 
 **Absence is meaningful**: no key means at most one entry with that `traitId` on a gedra. One keyword covers
 both the singleton and the keyed-collection cases.

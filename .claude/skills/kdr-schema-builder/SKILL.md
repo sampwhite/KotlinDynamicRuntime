@@ -370,7 +370,9 @@ type("ExpenseData") {
   computed, but never its own target or a later function's, so one pass settles every value. A usage that fails is
   reported and skipped; the type's others run. Stored configuration is held to this when written (the trial reload).
 - **A client's alteration only adds to them** (`MergeRule.Append`): its functions follow the type's own, which it can
-  neither change nor remove.
+  neither change nor remove. An alteration that leaves `g-onWrite` out keeps the type's functions; one that mentions it
+  and drops or changes any (`null`, or a list not starting with them) is refused as a whole, like a widening -- any merge
+  problem outside `g-layout` fails the alteration (`isLayoutProblem`), and one inside drops only the client's layout.
 - **Stored values follow a changed script** through the derived-state recompute (nightly, or Recalculate form states),
   and the publish impact report counts the forms a change would recompute (`ImpactKind.valuesRecomputed`).
 - **Published typed**: each kind's settings type and the `kdr.fn.WriteFunction` union over them are in the catalog, and

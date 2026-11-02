@@ -13,14 +13,17 @@ import com.dynamicruntime.common.gedra.GedraConfigReload
 import com.dynamicruntime.common.gedra.GedraConfigService
 import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.gedraConfig
+import com.dynamicruntime.common.gedra.traitKeyOf
 import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.schema.SCT
+import com.dynamicruntime.common.startup.SchemaService
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
+import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.string.shouldContain
 
 /**
@@ -88,5 +91,28 @@ class TraitKeyTest : StringSpec({
         }
         GedraConfigService.get(cxt).writeConfig(cxt.mkSubContext("setup", bad), badConfig)
         shouldThrow<KdrException> { GedraConfigReload.reloadClient(cxt, bad) }.message.orEmpty() shouldContain "not required"
+    }
+
+    // A client may restate a global type's key but not change it (issue #1521): the alteration is refused -- in a unit
+    // test, where stored configuration is strict, as a refused reload -- rather than its key silently kept as the base's.
+    "a client's alteration that changes a global type's key is refused" {
+        val schema = SchemaService.get(cxt)
+        val globalTypes = schema.storeFor(null).types
+        // A keyed global data type: a workflow state trait's, keyed by the workflow.
+        val keyedEntry = schema.gedraStateTraits().map { globalTypes.getValue(it.typeName) }.first { traitKeyOf(it).isNotEmpty() }
+        val dataTypeName = keyedEntry.properties.getValue(GE.data).valueType.name.shouldNotBeNull()
+        val rekey = "traitkeyrekey1521"
+        val rekeyConfig = gedraConfig(cxt, "${rekey}cfg", clientNamespace(rekey), rekey) {
+            defineClient(
+                ClientDef(
+                    clientId = rekey, name = rekey, usageType = ClientUsageType.dev,
+                    audience = ClientAudience.internal, enabledEnvironments = setOf(ENV.unit, ENV.local),
+                ),
+            )
+            type(dataTypeName) { primaryKey("nope") }
+        }
+        GedraConfigService.get(cxt).writeConfig(cxt.mkSubContext("setup", rekey), rekeyConfig)
+        shouldThrow<KdrException> { GedraConfigReload.reloadClient(cxt, rekey) }.message.orEmpty() shouldContain
+            "tells stored values apart"
     }
 })

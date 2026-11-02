@@ -49,24 +49,40 @@ fun narrowingProblems(typeName: String, base: Map<String, Any?>, overlay: Map<St
     // body replaces rather than merges, so the fragment says what changed only in the simplest cases; the
     // result says what this client actually accepts, which is the question.
     val outcome = overlayTypeOutcome(typeName, base, overlay)
-    // A merge directive the type does not offer (issue #985) leaves the alteration meaning something its author did
-    // not say -- the properties restated where they asked for a merge -- so it fails the alteration like a widening.
-    // (A layout entry the merge refused is the layout's own fault, reported and dropped with the layout.)
-    problems.addAll(outcome.problems.filter { it.code == OverlayMergeError.unknownChoice })
-    // A key the alteration changed, added, or removed (issue #1521) -- the type's one part it may only restate -- would
-    // change how the stored values it keys are told apart, so it fails the alteration too. The merge kept the base's.
-    for (p in outcome.problems.filter { it.code == OverlayMergeError.fixedValue }) {
+    // Whatever else the merge refused fails the alteration too, since the result is then not what its author wrote:
+    // a merge directive the type does not offer (issue #985), a key changed, added, or removed (issue #1521), or the
+    // type's `g-onWrite` functions removed. Each only where the alteration mentions the part -- one that leaves a key
+    // out keeps the base's. A layout entry the merge refused is the layout's own fault, reported and dropped with the
+    // layout ([isLayoutProblem]).
+    for (p in outcome.problems.filterNot { isLayoutProblem(typeName, it) }) {
         problems.add(
-            Problem(
-                p.code,
-                "Type '$typeName': its '${SCH.primaryKey}' tells stored values apart, so an alteration may restate it but not " +
-                    "change, add, or remove it.",
-                p.location,
-            ),
+            when (p.code) {
+                OverlayMergeError.unknownChoice -> p
+                OverlayMergeError.fixedValue -> Problem(
+                    p.code,
+                    "Type '$typeName': its '${SCH.primaryKey}' tells stored values apart, so an alteration may restate it " +
+                        "but not change, add, or remove it.",
+                    p.location,
+                )
+                else -> Problem(p.code, "Type '$typeName', at '${p.location?.path ?: typeName}': ${p.message}", p.location)
+            },
         )
     }
-    compare(typeName, typeName, base, outcome.value, problems)
+    compare(typeName, typeName, base, outcome.value, problems, typeLevel = true)
     return problems
+}
+
+/**
+ * Whether [problem], from merging an alteration of [typeName], lies in the type's field layout (`g-layout`): the
+ * layout's own fault, which drops the client's layout rather than the alteration. Every other merge problem fails the
+ * alteration ([narrowingProblems]) -- a merge directive the type does not offer among them, even one inside the layout,
+ * since the alteration then means something its author did not say.
+ */
+fun isLayoutProblem(typeName: String, problem: Problem): Boolean {
+    if (problem.code == OverlayMergeError.unknownChoice) return false
+    val layoutPath = childPath(typeName, SCH.layout)
+    val at = problem.location?.path ?: return false
+    return at == layoutPath || at.startsWith("$layoutPath.") || at.startsWith("$layoutPath[")
 }
 
 /**
@@ -135,13 +151,25 @@ private val presentationKeys = setOf(
 /** The keys that may differ by narrowing; every other validating key must match the base exactly. */
 private val narrowingKeys = setOf(SCH.properties, SCH.options, SCH.required, SCH.openOptions)
 
-/** [path] names the place in a message (`'acme.Q.topic'`); [at] is the same place as a schema location path. */
+/**
+ * Keys whose merge rule already says what an alteration may do with them, and refuses the rest as a merge problem
+ * ([narrowingProblems] reports it): `g-onWrite`, which an alteration may only add to (issue #1501), and `g-primaryKey`,
+ * which it may only restate (issue #1521). Compared here they would be refused outright -- added functions included.
+ * Only on the type's own body: inside a property's, which an alteration replaces whole, they are compared as any key.
+ */
+private val mergeRuledKeys = setOf(SCH.onWrite, SCH.primaryKey)
+
+/**
+ * [path] names the place in a message (`'acme.Q.topic'`); [at] is the same place as a schema location path. [typeLevel]
+ * is the type's own body, the one level a merge rule reaches ([mergeRuledKeys]); a property's body is replaced whole.
+ */
 private fun compare(
     path: String,
     at: String,
     base: Map<String, Any?>,
     variant: Map<String, Any?>,
     out: MutableList<Problem>,
+    typeLevel: Boolean = false,
 ) {
     checkProperties(path, at, base, variant, out)
     // An **open** list bounds nothing (issue #418), so no list of choices the variant declares can widen what
@@ -160,7 +188,8 @@ private fun compare(
     val itemsCompared = baseItems != null && variantItems != null
     if (itemsCompared) compare("$path[]", "$at.${SCH.items}", baseItems, variantItems, out)
     for (key in base.keys + variant.keys) {
-        if (key in presentationKeys || key in narrowingKeys || (key == SCH.items && itemsCompared)) {
+        val judgedElsewhere = key in presentationKeys || key in narrowingKeys || (typeLevel && key in mergeRuledKeys)
+        if (judgedElsewhere || (key == SCH.items && itemsCompared)) {
             continue
         }
         if (base[key] != variant[key]) {

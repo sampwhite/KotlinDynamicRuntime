@@ -50,9 +50,8 @@ class FormKeyPromotionTest {
                 "data" to mapOf(SCH.type to SCT.array, SCH.items to mapOf(SCH.dRef to "t.Keyed")),
             ),
         ),
-        // A *union* under `data`: not promotable. isStructuredObject counts a union, so the rule excludes it
-        // by `variants == null` -- else, were a union ever keyed, its key would draw once promoted and again
-        // inside the chosen branch. A union cannot be keyed since issue #1521 (it declares no fields for a key to
+        // A *union* under `data`: not promotable, or a key would draw once promoted and again inside the chosen branch
+        // (the issue #642 review). A union cannot be keyed since issue #1521 (it declares no fields for a key to
         // name), so this union is unkeyed and the test below checks the parse refuses a keyed one. Its branches carry
         // a const discriminator, as a real discriminated union must.
         "t.UA" to mapOf(

@@ -66,6 +66,9 @@ object ConfigSlotShapes {
     /** The fields an entry of [slot] is keyed by; empty for a single-instance slot, and for one nothing declares. */
     fun primaryKey(cxt: KdrCxtBase, slot: String): List<String> = compiled(cxt).primaryKeys[slot].orEmpty()
 
+    /** Every declared slot, each with the fields its entries are keyed by -- empty for a single-instance slot. */
+    fun primaryKeys(cxt: KdrCxtBase): Map<String, List<String>> = compiled(cxt).primaryKeys
+
     /**
      * Each slot's declared shape as a page reads it (issue #1436): the qualified name of its entry type -- whose
      * `data` property is the shape of one entry's data -- and the fields its entries are keyed by, with the `$defs`

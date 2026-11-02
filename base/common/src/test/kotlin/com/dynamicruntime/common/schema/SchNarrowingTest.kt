@@ -1,5 +1,9 @@
 package com.dynamicruntime.common.schema
 
+import com.dynamicruntime.common.overlay.OverlayMergeError
+import com.dynamicruntime.common.util.Problem
+import com.dynamicruntime.common.util.ProblemCode
+import com.dynamicruntime.common.util.ProblemLocation
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.shouldBe
@@ -190,5 +194,27 @@ class SchNarrowingTest : StringSpec({
         keyProblems(mapOf(SCH.primaryKey to listOf("name", "colour"))).single() shouldContain "may restate it but not change"
         keyProblems(mapOf(SCH.primaryKey to null)).single() shouldContain "'g-primaryKey'"
         problems(mapOf(SCH.primaryKey to listOf("name"))).single() shouldContain "may restate it but not change"
+    }
+
+    // Only an alteration that mentions `g-onWrite` can be refused for it: leaving it out keeps the type's functions.
+    "an alteration may add to a type's functions, and one removing them is refused" {
+        val withFunctions = base + (SCH.onWrite to listOf(mapOf("fn" to "computeValue", "target" to "note", "script" to "name")))
+        fun fnProblems(over: Map<String, Any?>) = narrowingProblems("core.Thing", withFunctions, over)
+        fnProblems(emptyMap()).shouldBeEmpty()
+        // Added functions follow the type's own, which the merge rule allows; this used to be refused as a widening.
+        fnProblems(mapOf(SCH.onWrite to listOf(mapOf("fn" to "computeValue", "target" to "colour", "script" to "name")))).shouldBeEmpty()
+        val removed = fnProblems(mapOf(SCH.onWrite to null)).single()
+        removed.code shouldBe OverlayMergeError.appendOnly
+        removed.message shouldContain "Type 'core.Thing', at 'core.Thing.g-onWrite'"
+    }
+
+    "a merge problem in the layout is the layout's own; any other fails the alteration" {
+        fun at(path: String, code: ProblemCode = OverlayMergeError.unmatchedElement) = Problem(code, "x", ProblemLocation(path))
+        isLayoutProblem("core.Thing", at("core.Thing.g-layout.schemaFields[<notes>]")) shouldBe true
+        isLayoutProblem("core.Thing", at("core.Thing.g-layout")) shouldBe true
+        isLayoutProblem("core.Thing", at("core.Thing.g-onWrite", OverlayMergeError.appendOnly)) shouldBe false
+        isLayoutProblem("core.Thing", at("core.Thing.g-layoutish")) shouldBe false
+        // A directive the type does not offer means something its author did not say, wherever it is.
+        isLayoutProblem("core.Thing", at("core.Thing.g-layout.g-merge", OverlayMergeError.unknownChoice)) shouldBe false
     }
 })

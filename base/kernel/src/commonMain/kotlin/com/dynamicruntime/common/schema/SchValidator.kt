@@ -921,8 +921,8 @@ fun validateArray(
         }
         out?.add(coerced)
         // An item missing a key field has failed as incomplete already; it has no key to repeat.
-        val keyValues = (coerced as? Map<*, *>)?.let { m -> key.map { m[it] } }?.takeIf { v -> v.isNotEmpty() && v.none { it == null } }
-        if (seenKeys != null && keyValues != null) {
+        val keyValues = if (seenKeys == null) null else (coerced as? Map<*, *>)?.let { m -> key.map { m[it] } }
+        if (seenKeys != null && keyValues != null && keyValues.none { it == null }) {
             val first = seenKeys.getOrPut(uniquenessKey(keyValues)) { i }
             if (first != i) {
                 val named = key.zip(keyValues).joinToString(", ") { (f, v) -> "$f $v" }
