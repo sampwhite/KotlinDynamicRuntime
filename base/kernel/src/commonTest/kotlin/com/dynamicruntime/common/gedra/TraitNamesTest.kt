@@ -34,6 +34,25 @@ class TraitNamesTest {
     }
 
     @Test
+    fun aNameIsPlainWords() {
+        // Inline Markdown reads as its words: links and images by their text, the marks of code, strong, emphasis, and
+        // strike dropped -- but an underscore inside a word is no mark.
+        assertEquals("Site visit, see guide", headingName("## **Site** _visit_, see [guide](doc:visits)"))
+        assertEquals("Use form_id here", headingName("`Use` ~~form_id~~ *here*"))
+        assertEquals("Logo Expenses", headingName("# ![Logo](img:logo) __Expenses__"))
+    }
+
+    @Test
+    fun aTemplatedHeadingNamesNothingSoTheTitleDoes() {
+        // A frontend block only the form fills in, or a backend pull delivered unresolved, is no name in plain text.
+        assertEquals("", headingName($$"## ${form.name} visit"))
+        assertEquals("Site visit", traitNameOf("siteVisit", $$"## ${form.name} visit", "Site visit"))
+        assertEquals("Visit", traitNameOf("visit", """%{@t("missing.key")}""", null))
+        // The line as shown keeps the block: Design View says what the section shows.
+        assertEquals($$"${form.name} visit", headingLine($$"## ${form.name} visit"))
+    }
+
+    @Test
     fun aDataTypeIsJoinedToItsLayoutByItsQualifiedName() {
         val types = parseSchemaTypes(
             mapOf(

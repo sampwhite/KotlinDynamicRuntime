@@ -13,7 +13,7 @@ import com.dynamicruntime.common.schema.offeredChoices
 import com.dynamicruntime.common.schema.orderedFieldNames
 import com.dynamicruntime.common.util.fmtD
 import com.dynamicruntime.common.util.humanizeFieldName
-import com.dynamicruntime.common.gedra.headingName
+import com.dynamicruntime.common.gedra.headingLine
 import com.dynamicruntime.common.gedra.traitNameOf
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toJsonStr
@@ -1495,7 +1495,7 @@ private val HeadingSection = FC<HeadingSectionProps> { props ->
             headingLevel = 3
             text = pageCopy.explanation(PFRAG.ownCopyNs)
         }
-        fact("Shown", trait.fieldLayout?.label?.let(::headingName) ?: fallback.text.orEmpty())
+        fact("Shown", trait.fieldLayout?.label?.let(::headingLine) ?: fallback.text.orEmpty())
         if (edit != null) {
             p {
                 className = ClassName("dv-note")

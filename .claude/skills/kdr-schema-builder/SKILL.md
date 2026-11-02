@@ -437,7 +437,9 @@ is equivalent):
   listing's Contains column, a form's trait choice and entry headers, a lock's refusal, Design View. With no heading
   the data type's `title` names it, then its id humanized (`traitNameOf`, `traitDisplayName` in `base:kernel`). Write a
   heading that opens with a name ("## Site visit"), and put instructions on the lines under it, which only the
-  section's heading shows. An entry type's own title is never read for a name.
+  section's heading shows. The name is plain words: inline Markdown on the line reads as its text (`headingName`), and
+  a line still holding a template block -- a frontend `${…}`, or a backend pull that did not resolve -- names nothing,
+  so the title does. An entry type's own title is never read for a name.
 - **Field order and membership** (`mode`, issue #777): who owns *which* fields render and *in what order* — the
   `SLM` values, set via `layout(mode = SchLayoutMode.…) { … }`. `overlay` (default) — the schema owns order and
   the full set, the layout only annotates (historic behavior). `reorder` — the layout's listed fields draw

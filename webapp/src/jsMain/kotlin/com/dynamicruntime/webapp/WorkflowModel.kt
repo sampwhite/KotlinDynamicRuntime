@@ -693,7 +693,7 @@ class TraitLock(
     val workflowId: String,
     val label: String,
     val canOverride: Boolean,
-    /** The trait's name as the server's refusals give it -- its title, else its id humanized. */
+    /** The trait's name as the server's refusals give it, by the rule every page names a trait with (issue #1520). */
     val name: String = humanizeFieldName(traitId),
 ) {
     /** How a lock message names this lock -- the wording the backend's refusals share ([TraitLockCopy]). */

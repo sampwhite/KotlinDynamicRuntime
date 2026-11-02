@@ -39,9 +39,26 @@ fun traitDisplayName(traitId: String, variants: SchVariants?, layouts: Map<Strin
     traitDisplayName(traitId, variants?.byValue?.get(traitId)?.properties?.get(GE.data)?.valueType, layouts)
 
 /**
- * The name a layout heading gives: its first non-blank line with any Markdown heading marks taken off -- `Site visit`
- * from `## Site visit` and the copy under it. A heading's first line is its type's name, by convention; the rest is
- * copy for the form, which only the section heading shows.
+ * The name a layout heading gives: [headingLine], unless that line still holds a template block -- a frontend `${…}`,
+ * which only the form can fill in, or a backend `%{…}` delivered as written because it did not resolve. Such a line is
+ * no name in plain text, so it gives none (blank), and the trait is named by its title instead.
  */
 fun headingName(heading: String): String =
-    heading.lineSequence().map { it.trim() }.firstOrNull { it.isNotEmpty() }?.trimStart('#')?.trim().orEmpty()
+    headingLine(heading).takeUnless { $$"${" in it || "%{" in it }.orEmpty()
+
+/**
+ * A layout heading as one line of plain words: its first non-blank line, with its Markdown heading marks and its inline
+ * Markdown taken off -- `Site visit` from `## **Site** visit` and the copy under it. A heading's first line is its
+ * type's name, by convention; the rest is copy for the form, which only the section heading shows.
+ */
+fun headingLine(heading: String): String =
+    plainInline(heading.lineSequence().map { it.trim() }.firstOrNull { it.isNotEmpty() }?.trimStart('#')?.trim().orEmpty())
+
+// An image or a link reads as its text; code, strong, emphasis, and strike lose their marks. A `*` or `_` counts as a
+// mark only where it opens and closes a run at word edges, so `snake_case` keeps its underscore.
+private val inlineLink = Regex("""!?\[([^\]]*)\]\([^)]*\)""")
+private val inlineMarks = Regex("""`+|\*\*|__|~~""")
+private val inlineEmphasis = Regex("""(?<![\w*])[*_](\S(?:.*?\S)?)[*_](?![\w*])""")
+
+private fun plainInline(line: String): String =
+    line.replace(inlineLink, "$1").replace(inlineMarks, "").replace(inlineEmphasis, "$1").trim()
