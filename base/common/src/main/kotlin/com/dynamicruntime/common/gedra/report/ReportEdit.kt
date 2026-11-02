@@ -57,6 +57,7 @@ import com.dynamicruntime.common.util.toOptStr
  * to the sandbox's to make one ([offer]). The write's trial binds the report as the load will, so a mistake is refused
  * in the server's words.
  */
+@Suppress("ConstPropertyName")
 object ReportEdit {
     /** What a create or a removal did: the configuration the report is or was in, its id, and how it took effect. */
     class Result(val configName: String, val reportId: String, val issues: List<GedraConfigIssue>, val mode: String)
