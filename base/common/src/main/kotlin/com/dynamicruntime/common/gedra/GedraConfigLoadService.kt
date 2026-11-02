@@ -491,8 +491,9 @@ class GedraConfigLoadService : ServiceInitializer {
 
     /**
      * The issues for the reports (issue #979) and the workflows made from templates (issue #1120) a stored [config] holds
-     * that could not be read, one each: each is left out and the rest of the config loads. Reported where
-     * [unknownSlotsIssue] is -- the boot load, a reload, a trial -- and judged, like it, as stored config.
+     * that could not be read, one each, and for each type it declares that one of its traits' generated types replaces
+     * (issue #1542): each is left out and the rest of the config loads. Reported where [unknownSlotsIssue] is -- the
+     * boot load, a reload, a trial -- and judged, like it, as stored config.
      */
     fun unreadEntryIssues(config: GedraConfig): List<GedraConfigIssue> = config.unreadReports.values.map { unread ->
         config.issue(
@@ -505,6 +506,12 @@ class GedraConfigLoadService : ServiceInitializer {
             "Stored config '${config.gedraId}' holds the workflow '${unread.workflowId}', which cannot be read: ${unread.why}",
             "Leaving the workflow out, kept as stored; the rest of the config loads.",
             GCEL.workflow, unread.workflowId,
+        )
+    } + config.shadowedTypes.values.map { shadowed ->
+        config.issue(
+            "Stored config '${config.gedraId}' ${shadowed.problem()}",
+            "Leaving the declared type out, kept as stored; the trait's type stands and the rest of the config loads.",
+            GCEL.type, shadowed.typeName,
         )
     }
 

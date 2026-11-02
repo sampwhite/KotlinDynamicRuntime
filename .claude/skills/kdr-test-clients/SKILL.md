@@ -171,7 +171,12 @@ later schema rejects" test.
   - **`cfact(name, group, description, toFrontend)`** — the cfacts the client may name in expressions.
   - **Not `stateTrait(...)`.** State is global, declared by components (issue #873): a client's config declaring
     one is refused at write, and a client-owned source config declaring one refuses the boot outside production.
-  - A `schemaDef` slot exists for plain schema types too; most schema rides in via a trait's data shape.
+  - A `schemaDef` slot exists for plain schema types too; most schema rides in via a trait's data shape. **Not one
+    named as a type the client's own trait generates** (issue #1542) -- its `<Name>Entry`, or the `<Name>Data` of a
+    trait whose data is written inline: the trait's type replaces it, so the load reports it (a refused
+    `reloadClient` in a unit test), the trial refuses a write adding one, and a source config declaring one refuses
+    the build. A type the trait refers to by name (`trait(..., dataType, ...)`) is the trait's data, and fine.
+    `TraitTypeClashTest` (kdn) is the reference.
 - **`GedraConfigService.get(cxt).writeConfig(clientCxt, config)`** persists the bundle. What must be named is
   the **client** -- the config names its own, and the write binds the context to it whatever it was bound to, so
   ownership stamps from the right owner. A `userId` is optional (attribution; unset, it is the system user);

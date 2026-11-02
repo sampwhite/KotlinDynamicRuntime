@@ -32,6 +32,7 @@ import com.dynamicruntime.common.uiblock.UiBlockSource
 import com.dynamicruntime.common.uiblock.uiBlockOverlay
 import com.dynamicruntime.common.util.Parsed
 import com.dynamicruntime.common.util.toOptStr
+import com.dynamicruntime.common.util.toJsonMapOrEmpty
 
 /**
  * One trait: a `traitId`, the entry type it generates, and the gedra kinds that may carry it (issue #298).
@@ -294,6 +295,13 @@ class GedraConfig(
      * empty for a source config.
      */
     val unreadWorkflows: Map<String, UnreadWorkflow> = emptyMap(),
+    /**
+     * The types a **stored** config declares that one of its own traits' generated types replaces, by qualified name
+     * (issue #1542): a `schemaDef` named as a trait's entry type, or as an inline trait's data type. The trait's type
+     * stands, the loader reports the declared one, and it is written back as stored ([ShadowedType]), so an edit of
+     * anything else never deletes it. Always empty for a source config, whose mistakes refuse the build.
+     */
+    val shadowedTypes: Map<String, ShadowedType> = emptyMap(),
     /**
      * The default parameters this config declares for its client's workflows, by workflow id (issue #1386): what a
      * workflow runs with -- its time windows, for now -- until the client, or a sandbox of it, sets its own on the
@@ -727,6 +735,39 @@ class GedraConfigBuilder(
     }
 
     /**
+     * The types a trait's generated type replaced (issue #1542); see `GedraConfig.shadowedTypes`. Recorded by
+     * [generatingTypes] rather than refused, so a stored config costs only the declared type.
+     */
+    @Suppress("MemberVisibilityCanBePrivate")
+    val shadowedTypes: MutableMap<String, ShadowedType> = LinkedHashMap()
+
+    /** Each type a trait generated, as generated -- for [replacedGeneratedTypes] to tell one a later `type` replaced. */
+    private val generatedTypes: MutableMap<String, Any?> = LinkedHashMap()
+
+    /**
+     * Runs [generate], a trait declaration for [traitId], noting the types it puts in `defs` (issue #1542): its entry
+     * type and, written inline, its data type. A type of that name already declared is replaced, as it always was, and
+     * kept in [shadowedTypes] for the loader to report rather than lost without a word.
+     */
+    private fun <T> generatingTypes(traitId: String, generate: () -> T): T {
+        val prior = LinkedHashMap(defs)
+        val result = generate()
+        for ((name, body) in defs) {
+            if (prior[name] === body) continue
+            prior[name]?.let { shadowedTypes[name] = ShadowedType(name, it.toJsonMapOrEmpty(), traitId) }
+            generatedTypes[name] = body
+        }
+        return result
+    }
+
+    /**
+     * The generated types a `type` declared after their trait replaced (issue #1542), by name: what is in `defs` under
+     * the name is no longer what the trait generated. Only source code declares in that order -- a stored config's
+     * types are declared before its traits -- so the build refuses it.
+     */
+    fun replacedGeneratedTypes(): Set<String> = generatedTypes.filter { (name, body) -> defs[name] !== body }.keys
+
+    /**
      * Declares a trait whose data shape is written here — the everyday form.
      *
      * [typeName] is given rather than derived from [traitId] on purpose. The two serve different readers: a
@@ -745,7 +786,7 @@ class GedraConfigBuilder(
         // afterward, because the trait cannot be described until its data schema exists.
         val qualified = qualifyTypeName(typeName, namespace)
         checkTraitIsNew(qualified, traitId)
-        val built = traitEntry(typeName, traitId, appliesTo, description, dataSchema)
+        val built = generatingTypes(traitId) { traitEntry(typeName, traitId, appliesTo, description, dataSchema) }
         traits[traitId] = GedraTrait(traitId, qualified, appliesTo, built)
     }
 
@@ -782,7 +823,7 @@ class GedraConfigBuilder(
     ) {
         val qualified = qualifyTypeName(typeName, namespace)
         checkTraitIsNew(qualified, traitId)
-        val built = traitEntry(typeName, traitId, appliesTo, description, dataSchema)
+        val built = generatingTypes(traitId) { traitEntry(typeName, traitId, appliesTo, description, dataSchema) }
         stateTraits[traitId] = GedraTrait(traitId, qualified, appliesTo, built, stateClass = stateClass)
     }
 
@@ -813,7 +854,7 @@ class GedraConfigBuilder(
     ) {
         val qualified = qualifyTypeName(typeName, namespace)
         checkTraitIsNew(qualified, traitId)
-        val built = configTraitEntry(typeName, traitId, appliesTo, description, dataSchema)
+        val built = generatingTypes(traitId) { configTraitEntry(typeName, traitId, appliesTo, description, dataSchema) }
         configTraits[traitId] = GedraConfigTrait(traitId, qualified, appliesTo, built)
     }
 
@@ -943,6 +984,17 @@ fun gedraConfig(
     // that knows where it came from can be built complete, and nothing downstream has to rewrite it.
     val configClient = client.takeIf { it != GID.globalClient }
     val builder = GedraConfigBuilder(cxt, namespace, name, configClient, origin).apply(build)
+    // A trait's generated type and a type declared under its name (issue #1542). A stored config's are kept and
+    // reported by the loader (`GedraConfig.shadowedTypes`); in source code, either order is a mistake to fix.
+    builder.replacedGeneratedTypes().takeIf { it.isNotEmpty() }?.let { names ->
+        throw KdrException.mkConv(
+            "Config '$name' declares the type(s) ${names.sorted()} after a trait that generates them, which replaces " +
+                "the trait's own. Write a trait's data in the trait, or give it a type by name (`dataType`).",
+        )
+    }
+    builder.shadowedTypes.values.firstOrNull()?.takeIf { origin == GedraConfigOrigin.source }?.let {
+        throw KdrException.mkConv("Config '$name' ${it.problem()}")
+    }
     return GedraConfig(
         // `of` validates the name as it builds the id, so a config called something a base id cannot spell is
         // refused here rather than at whatever later point first tried to address it.
@@ -961,10 +1013,24 @@ fun gedraConfig(
         usages = builder.usages.toList(),
         reports = builder.reports.toMap(),
         unreadReports = builder.unreadReports.toMap(),
+        shadowedTypes = builder.shadowedTypes.toMap(),
         unreadWorkflows = builder.unreadWorkflows.toMap(),
         workflowParams = builder.workflowParams.toMap(),
         fileRefs = builder.fileRefs.toList(),
         origin = origin,
         contributesTo = contributesTo,
     )
+}
+
+/**
+ * A type a **stored** config declares under the name of a type one of its traits generates (issue #1542): [typeName],
+ * its [schema] as stored, and the trait ([traitId]) whose generated type replaces it. A trait's generated types --
+ * its entry type, and its data type when the data is written inline -- are made from the trait alone, so a
+ * declaration of either does nothing. Kept, like an unread report, so the next write of the config writes it back.
+ */
+class ShadowedType(val typeName: String, val schema: Map<String, Any?>, val traitId: String) {
+    /** What is wrong, as the rest of a sentence about the config holding it. */
+    fun problem(): String =
+        "declares the type '$typeName', which the trait '$traitId' generates, so the trait's own type replaces it. A " +
+            "trait's types are written in the trait: its data schema, or a type it refers to by name."
 }
