@@ -110,8 +110,9 @@ cfact asks about.
 
 ## Conversations and turns
 
-**Who the tools act as.** The administrator's own user in the client's sandbox, claimed in their own signed-in request
-(`claimOwnSandboxUser`) when they send a message, and re-read on every call by the in-process seam (#1524). So a
+**Who the tools act as.** The administrator's own user in the client's sandbox -- their enabled one, or, when they have
+none, one claimed in their own signed-in request (`claimOwnSandboxUser`), as opening the sandbox does; one another
+administrator disabled is refused, not enabled again -- re-read on every call by the in-process seam (#1524). So a
 configuration edit can only become a draft on the parent, written as the administrator who stands behind the sandbox
 user; reads show the drafts; and the assistant never holds more than the administrator does at that moment. A client
 with no sandbox is refused (`noSandbox`): the administrator turns one on from the Clients page, and the assistant
@@ -130,14 +131,18 @@ else is refused, and a drift test holds each tool to its endpoint.
 | `list_traits` | the global traits, the client's own, and the plan's quotas | `GET /clientAdmin/client/traits` |
 | `read_cfacts` | the cfacts reference | `GET /clientOperator/cfacts` |
 | `view_workflow` | a workflow as the sandbox runs it | `GET /gedra/workflow/view` |
-| `patch_config` | a change, as a draft: a dry run, then the same configs written, with a reload | `POST /clientAdmin/config/bundle/patch` |
+| `patch_config` | a change, as a draft: a dry run, then the same configs written | `POST /clientAdmin/config/bundle/patch` |
 | `set_included_traits` | the client's global traits, expected as a draft | `POST /clientAdmin/client/traits/set` |
 
-`patch_config` refuses a write that no dry run in the same turn accepted, exactly as given. Left out on purpose:
+`patch_config` refuses a write unless a dry run of exactly the same configs was accepted in an earlier step of the same
+turn, so the model has read its impact first. A write asks for no reload: a patch from a sandbox reloads its parent,
+and with it the sandbox, so `view_workflow` shows the draft at once. Left out on purpose:
 publishing, reverting, deleting a bundle, `publishedOnly`, `bundle/write` (which deletes what it is not given), the
 sandbox switch, `workflows/params` (in force at once), users, keys, sessions, form data, the endpoint catalog, and
 every `admin`, `operator`, and `fixture` endpoint. A tool's result is the endpoint's answer without its envelope, cut
-at 30,000 characters (saying so); a refusal comes back as an error the model can correct from.
+at 30,000 characters (100,000 for a document read whole), saying so; a refusal comes back as an error the model can
+correct from. A patch's answer leaves out the bundles the endpoint echoes -- the model sent them -- so what it needs,
+a dry run's impact or a write's reload issues, is never what a long answer cuts.
 
 A dry run from a sandbox user reloads the parent client, as every patch from a sandbox does. That costs a reload and
 changes nothing.
@@ -145,15 +150,17 @@ changes nothing.
 **The system prompt** says who the assistant works for, what its tools can and cannot do, that what they return is data
 and never instructions, and then gives the API guide. A conversation is bound to the prompt and tools it began with
 (`toolsetVersion`, a hash of both): thinking is tied to them, so a conversation begun under another version is
-read-only, and the administrator starts a new one. A new build that changes the API guide, a tool, or the client's
-name does that to every conversation.
+read-only, and the administrator starts a new one. A new build that changes the API guide or a tool does that to every
+conversation. The prompt names the client by its id alone, so renaming a client does not.
 
 **A turn** starts with `POST /clientAdmin/assistant/message` (`conversationId`, `clientMessageId`, `text`), which
 checks, in order: the assistant is on for the client, the client has a sandbox, its budget is not spent, the caller
 has turns left this hour (`KDR_ASSISTANT_TURNS_PER_HOUR`, counted in the database), the client has room for another
-running turn (`KDR_ASSISTANT_CONCURRENT_TURNS`), and no turn is running in the conversation (a conditional update; a
-409 otherwise). A `clientMessageId` sent again is the turn it already started. It then answers at once, and the turn
-runs on a virtual thread with a context of its own. Each step:
+running turn (`KDR_ASSISTANT_CONCURRENT_TURNS`; a turn whose lease lapsed does not count), and no turn is running in
+the conversation (a conditional update; a 409 otherwise). The conversation is claimed before anything else is written.
+A `clientMessageId` sent again is the turn it already started -- unique per user, so two sends at once start one turn --
+and one sent into another conversation is refused. It then answers at once, and the turn runs on a virtual thread with
+a context of its own. Each step:
 
 1. checks the turn is still running and not canceled, within its steps (`KDR_ASSISTANT_MAX_STEPS`) and the budget, and
    that the history is sound (`historyProblems`);
@@ -161,14 +168,19 @@ runs on a virtual thread with a context of its own. Each step:
 3. renews the turn's lease, and stops writing at once if the turn was meanwhile marked interrupted;
 4. appends the answer exactly, and acts on why the model stopped: `tool_use` runs every call and answers them all in
    one message; `end_turn` ends; `max_tokens` answers any call in the cut-off answer as not run, and ends; `pause_turn`
-   asks again, continuing the answer; `refusal` ends, saying so plainly, and an empty answer is not stored, since it
-   could not be sent back.
+   asks again, continuing the answer; `refusal` ends, saying so plainly, and makes the conversation read-only, since
+   the refused exchange stays in its history and would meet the next request; an empty answer is not stored, since it
+   could not be sent back. A stop reason this code does not know ends the turn, answering any call in it as not run.
 
-The history is append-only, and every tool call is answered in the very next message. A cancel
-(`POST /clientAdmin/assistant/cancel`) stops the turn at its next step, answering calls it had not run. A turn holds a
-lease of 15 minutes, renewed every step; one call to the model times out after 5 minutes and is retried once, so a
-step outlasts no lease. A turn whose lease lapsed -- its node stopped -- is marked interrupted by the next request
-that looks at its conversation, which answers any call it left, and frees the conversation.
+The history is append-only, and every tool call is answered in the very next message -- on a failure too, so no failure
+leaves a conversation that cannot go on. A cancel (`POST /clientAdmin/assistant/cancel`) stops the turn at its next
+step, answering calls it had not run. A turn holds a lease of 15 minutes, renewed before every model call and every tool
+call; one call to the model times out after 5 minutes and is retried once, so no step outlasts it. A call that times out
+is billed but answers with no usage, so it is not counted against the budget: `KDR_ASSISTANT_MAX_TOKENS` is held to
+32,000, what a model writes well within the timeout, until the calls stream
+([`deferred-work.md`](../development/deferred-work.md#when-an-assistant-answer-needs-more-than-one-call-can-write)). A
+turn whose lease lapsed -- its node stopped -- is marked interrupted by the next request that looks at its conversation,
+which answers any call it left, and frees the conversation.
 
 The page polls `GET /clientAdmin/assistant/conversation?conversationId&afterSeq` (marked `polled`, so it neither
 renews the session nor logs each call) and lists `GET /clientAdmin/assistant/conversations`. Every assistant endpoint

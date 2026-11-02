@@ -85,6 +85,7 @@ fun assistantTables(cxt: KdrCxt): List<KdrTable> = tableModule(cxt, namespace = 
         column(ACNV.title, "The start of its first message, for a listing.", required = true)
         column(ATBL.toolsetVersion, "The tools and system prompt it was begun with; another makes it read-only.", required = true)
         column(ATBL.runningTurnId, "The turn running in it; absent when none is.")
+        column(ACNV.readOnly, "Whether it can go on no more: the model declined to, and would again.") { type = SCT.boolean }
         primaryKey(ACNV.conversationId)
         index(PF.userId, ASST.client)
     }
@@ -124,7 +125,8 @@ fun assistantTables(cxt: KdrCxt): List<KdrTable> = tableModule(cxt, namespace = 
         column(ACNV.endedAt, "When it ended.") { dateTime() }
         primaryKey(ACNV.turnId)
         index(ACNV.conversationId)
-        index(PF.userId, ACNV.clientMessageId)
+        // Unique: two sends of one message at the same moment start one turn.
+        index(PF.userId, ACNV.clientMessageId, unique = true, name = "AssistantTurnsByMessage")
         index(ASST.client, ACNV.status)
         index(PF.userId, PF.createdAt)
     }

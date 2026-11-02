@@ -3,6 +3,13 @@ package com.dynamicruntime.assistant
 import com.dynamicruntime.common.annotation.KdrPrivate
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.gedra.CCT
+import com.dynamicruntime.common.gedra.CWF
+import com.dynamicruntime.common.gedra.workflow.WFD
+import com.dynamicruntime.common.util.jsonMap
+import com.dynamicruntime.common.util.toJsonListOfMaps
+import com.dynamicruntime.common.util.toJsonMapOrEmpty
+import com.dynamicruntime.common.util.toOptStr
 import java.util.concurrent.atomic.AtomicLong
 
 /**
@@ -18,6 +25,9 @@ class ScriptedModel(steps: List<(ModelRequest) -> ModelResponse>, override val l
 
     /** The requests made so far, in order. */
     val requests: MutableList<ModelRequest> = mutableListOf()
+
+    /** Drops any steps left: a case that failed part way leaves none for the next. */
+    fun clear() = synchronized(this) { remaining.clear() }
 
     /** Queues [steps] after those left: a test sharing one model across cases scripts each case as it starts. */
     fun add(vararg steps: (ModelRequest) -> ModelResponse) = synchronized(this) { remaining.addAll(steps) }
@@ -89,15 +99,33 @@ class ScriptedModel(steps: List<(ModelRequest) -> ModelResponse>, override val l
 
         /**
          * The built-in demo for `KDR_ASSISTANT_PROVIDER=fake`, for trying the assistant locally with no key and no
-         * spending: it answers every request with the same short text. Test instances only.
+         * spending. Test instances only. It goes through one real tool round, so a person trying the page sees a tool
+         * call and its result in the transcript: a message from the person is answered by calling `list_workflows`, and
+         * that call's result by naming the workflows it found.
          */
         fun demo(): AssistantModel = object : AssistantModel {
             override val label: String = "demo (${AENV.fakeProvider})"
 
-            override fun respond(cxt: KdrCxt, request: ModelRequest): ModelResponse = textResponse(
-                "This is the demo assistant: it is not connected to a model, so it cannot look at or change anything. " +
-                    "A deployment with a model key answers here instead.",
-            )
+            override fun respond(cxt: KdrCxt, request: ModelRequest): ModelResponse {
+                val last = request.messages.lastOrNull()?.let { AssistantHistory.blocksOf(it) }.orEmpty()
+                val result = last.firstOrNull { it[MSG.type] == TOOL.toolResult }
+                    ?: return toolResponse(TOOL.listWorkflows to emptyMap())
+                return textResponse(demoSummary(result))
+            }
+        }
+
+        /** What the demo says of a `list_workflows` [result]: the workflows it names, or why it has none to name. */
+        fun demoSummary(result: Map<String, Any?>): String {
+            val text = result[TOOL.content].toString()
+            if (result[TOOL.isError] == true) return "The demo assistant asked for the client's workflows and was refused: $text"
+            val workflows = text.jsonMap()?.get(CWF.workflows).toJsonListOfMaps().map { it[CWF.definition].toJsonMapOrEmpty() }
+            val named = workflows.map { def ->
+                val id = def[CCT.workflowId].toString()
+                def[WFD.label].toOptStr()?.let { "$it ($id)" } ?: id
+            }
+            val found = if (named.isEmpty()) "no workflows yet" else "${named.size}: ${named.joinToString(", ")}"
+            return "This is the demo assistant: it looked up the client's workflows as its sandbox runs them, and found " +
+                "$found. It is not connected to a model, so it cannot do more; a deployment with a model key answers here instead."
         }
     }
 }

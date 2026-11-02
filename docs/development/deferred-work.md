@@ -940,3 +940,13 @@ matter.
 - **Call the API without the SDK** *(from #1525).* Replace `AnthropicModel`'s SDK calls with `OutboundHttpService` and
   our own `JsonUtil`: one file, since `AssistantModel` already speaks the Messages API's wire shape as our own maps.
   The request needs the `anthropic-version` and beta headers, retries, and timeouts the SDK supplies today.
+
+## When an assistant answer needs more than one call can write
+
+The workflow assistant calls the model without streaming, each call timing out after five minutes, so
+`KDR_ASSISTANT_MAX_TOKENS` is held to 32,000 ([`workflow-assistant.md`](../design/workflow-assistant.md)). A call that
+times out is billed but returns no usage, so it is not counted against the client's budget.
+
+- **Stream the model's answers** *(from #1526).* With streaming, a long answer cannot time out part way, its usage
+  arrives as it is spent, and the token cap can rise to the model's own. The page could show the answer as it is
+  written, too.

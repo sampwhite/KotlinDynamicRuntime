@@ -14,9 +14,10 @@ import com.dynamicruntime.common.gedra.CFEP
 import com.dynamicruntime.common.gedra.CLD
 import com.dynamicruntime.common.gedra.CPY
 import com.dynamicruntime.common.gedra.EDM
+import com.dynamicruntime.common.gedra.GE
+import com.dynamicruntime.common.gedra.GED
 import com.dynamicruntime.common.gedra.GDF
 import com.dynamicruntime.common.gedra.GEP
-import com.dynamicruntime.common.gedra.IMP
 import com.dynamicruntime.common.gedra.PORT
 import com.dynamicruntime.common.home.HDOC
 import com.dynamicruntime.common.http.request.InProcessCaller
@@ -25,6 +26,7 @@ import com.dynamicruntime.common.user.InProcessScope
 import com.dynamicruntime.common.user.UADEP
 import com.dynamicruntime.common.util.toJsonStr
 import com.dynamicruntime.common.util.toOptStr
+import com.dynamicruntime.kdn.confdemo.ConfDemo
 
 /** The wire names of a tool's definition and its use. Each matches its value. */
 @Suppress("ConstPropertyName")
@@ -58,6 +60,15 @@ object TOOL {
     /** The most characters of a tool's result the model is shown. */
     const val maxResultChars = 30_000
 
+    /** The most characters of a document `read_doc` shows: a reference is read whole, and has no pages. */
+    const val maxDocChars = 100_000
+
+    /** What a request's client identity says when the assistant made it. */
+    const val appId = "assistant"
+
+    /** The documents `read_doc` may read ([AssistantTools.readableDoc]), beyond the demo client's pages. */
+    val docs = listOf(HDOC.clientConfiguration, HDOC.schemaDialect)
+
     /** How deep a tool's input may nest before it is refused rather than walked. */
     const val maxDepth = 30
 }
@@ -67,15 +78,32 @@ class ToolResult(val text: String, val isError: Boolean)
 
 /**
  * One tool's use within a turn: the [cxt] of the worker running it, the [principal] its calls act as -- the person's
- * own user in the sandbox, re-read on every call -- and what the turn has learned so far ([dryRuns]: the patches a dry
- * run has accepted, which a write must match).
+ * own user in the sandbox, re-read on every call -- and what the turn has learned so far: [dryRuns], the patches a dry
+ * run accepted in an earlier step, which a write must match. A dry run counts only once the model has seen its answer,
+ * so one made in the same step as its write ([stepDryRuns]) does not yet.
  */
 class ToolRun(val cxt: KdrCxt, val principal: InProcessPrincipal, val traceId: String) {
     val dryRuns: MutableSet<String> = mutableSetOf()
+    val stepDryRuns: MutableSet<String> = mutableSetOf()
 
-    /** Calls one endpoint in process, as [principal], and puts its answer in the model's form. */
-    fun call(method: HttpMethod, path: String, args: Map<String, Any?>? = null, body: Map<String, Any?>? = null): ToolResult {
-        val result = InProcessCaller.call(cxt.instanceConfig, principal, method, path, args, body, traceId, appId = ASSISTANT.appId)
+    /** The step's tools are answered: its dry runs now count. */
+    fun endStep() {
+        dryRuns.addAll(stepDryRuns)
+        stepDryRuns.clear()
+    }
+
+    /**
+     * Calls one endpoint in process, as [principal], and puts its answer in the model's form: the payload without its
+     * envelope, reshaped by [shape] when given, as JSON.
+     */
+    fun call(
+        method: HttpMethod,
+        path: String,
+        args: Map<String, Any?>? = null,
+        body: Map<String, Any?>? = null,
+        shape: ((Any?) -> Any?)? = null,
+    ): ToolResult {
+        val result = InProcessCaller.call(cxt.instanceConfig, principal, method, path, args, body, traceId, appId = TOOL.appId)
         return when {
             result.isSuccess -> {
                 val envelope = result.envelope
@@ -85,7 +113,7 @@ class ToolRun(val cxt: KdrCxt, val principal: InProcessPrincipal, val traceId: S
                         envelope[EP.summary]?.let { put(EP.summary, it) }
                     }
                 } ?: envelope
-                ToolResult(capped(payload.toJsonStr(compact = true)), isError = false)
+                ToolResult(capped((shape?.invoke(payload) ?: payload).toJsonStr(compact = true)), isError = false)
             }
             // A refusal the model can correct from: the endpoint's own words, and whatever detail it attached.
             result.status in 400..499 -> {
@@ -97,12 +125,12 @@ class ToolRun(val cxt: KdrCxt, val principal: InProcessPrincipal, val traceId: S
     }
 
     companion object {
-        /** [text] cut to [TOOL.maxResultChars], saying that it was. */
-        fun capped(text: String): String = if (text.length <= TOOL.maxResultChars) {
-            text
-        } else {
-            text.take(TOOL.maxResultChars) + "\n[Cut: ${TOOL.maxResultChars} of ${text.length} characters shown. Ask for less, " +
-                "such as one config or its entries.]"
+        /** [text] cut to [max] characters -- never inside a character written as two -- saying that it was. */
+        fun capped(text: String, max: Int = TOOL.maxResultChars): String {
+            if (text.length <= max) return text
+            val end = if (text[max - 1].isHighSurrogate()) max - 1 else max
+            return text.take(end) + "\n[Cut: $end of ${text.length} characters shown. Read one config, or its entries, " +
+                "rather than all at once.]"
         }
     }
 }
@@ -123,19 +151,6 @@ class AssistantTool(
 ) {
     /** The definition the model is sent. */
     fun toWire(): Map<String, Any?> = linkedMapOf(TOOL.name to name, TOOL.description to description, TOOL.inputSchema to inputSchema)
-}
-
-/** Names the assistant's in-process calls go by. Each matches its value. */
-@Suppress("ConstPropertyName")
-object ASSISTANT {
-    /** What a request's client identity says when the assistant made it. */
-    const val appId = "assistant"
-
-    /** The documents `read_doc` may read ([AssistantTools.readableDoc]), beyond the demo client's pages. */
-    val docs = listOf(HDOC.clientConfiguration, HDOC.schemaDialect)
-
-    /** The demo client's pages, by their id's prefix. */
-    const val demoDocPrefix = "demo-client-"
 }
 
 /**
@@ -172,7 +187,7 @@ object AssistantTools {
 
     /** A document `read_doc` may read: the configuration reference, the schema dialect, or a page of the demo client's. */
     fun readableDoc(cxt: KdrCxt, docId: String): String? {
-        if (docId !in ASSISTANT.docs && !docId.startsWith(ASSISTANT.demoDocPrefix)) return null
+        if (docId !in TOOL.docs && !docId.startsWith(ConfDemo.docIdPrefix)) return null
         val declared = MarkdownDocService.declaredDoc(cxt, docId) ?: return null
         return declared.generatedText ?: ContentResources.readText(MarkdownDocService.resourceDir, docId)
     }
@@ -180,7 +195,7 @@ object AssistantTools {
     /** The ids [readableDoc] reads on this node. */
     @Suppress("UNCHECKED_CAST")
     fun readableDocIds(cxt: KdrCxt): List<String> = (cxt.instanceConfig.get(MDOC.registryKey) as? List<MarkdownDocDef>).orEmpty()
-        .map { it.docId }.filter { it in ASSISTANT.docs || it.startsWith(ASSISTANT.demoDocPrefix) }
+        .map { it.docId }.filter { it in TOOL.docs || it.startsWith(ConfDemo.docIdPrefix) }
 
     @KdrPrivate
     fun build(): List<AssistantTool> = listOf(
@@ -188,12 +203,12 @@ object AssistantTools {
             TOOL.readDoc,
             "Reads a reference document as Markdown: '${HDOC.clientConfiguration}' (every config slot and its fields), " +
                 "'${HDOC.schemaDialect}' (how a trait's data type is written), or a page of the demo client's " +
-                "('${ASSISTANT.demoDocPrefix}README' lists them), which shows a whole client's configuration worked through.",
+                "('${ConfDemo.docIdPrefix}README' lists them), which shows a whole client's configuration worked through.",
             objectSchema(TOOL.doc to stringSchema("The document's id."), required = listOf(TOOL.doc)),
             method = null, path = null,
         ) { run, input ->
             val docId = input[TOOL.doc].toOptStr().orEmpty()
-            readableDoc(run.cxt, docId)?.let { ToolResult(ToolRun.capped(it), isError = false) }
+            readableDoc(run.cxt, docId)?.let { ToolResult(ToolRun.capped(it, TOOL.maxDocChars), isError = false) }
                 ?: ToolResult("No document '$docId'. Readable here: ${readableDocIds(run.cxt).joinToString(", ")}.", isError = true)
         },
         AssistantTool(
@@ -249,7 +264,8 @@ object AssistantTools {
                 "names a bundle (a new name makes one) and its edits; each edit names a slot, an action ('addOrMerge', " +
                 "'addOrReplace', or 'deleteOrNoOp'), and the entry's data, in portable form. **Dry run first**: with " +
                 "dryRun true nothing is written, and the answer shows the bundles as they would be and what the change " +
-                "would affect. A write (dryRun false) is refused unless the same configs passed a dry run in this turn.",
+                "would affect. A write (dryRun false) is refused unless the same configs passed a dry run in an earlier " +
+                "step of this turn: dry run, read the answer, then write.",
             objectSchema(
                 CFEP.configs to arraySchema(
                     "The bundles to change.",
@@ -259,11 +275,11 @@ object AssistantTools {
                             "Its edits, in order.",
                             objectSchema(
                                 CFEP.slot to stringSchema("The slot, such as 'kdr:workflowDef' or 'kdr:traitDef'."),
-                                "action" to stringSchema("'addOrMerge', 'addOrReplace', or 'deleteOrNoOp'."),
-                                "data" to mapOf("type" to "object", "description" to "The entry, in the slot's form."),
+                                GED.action to stringSchema("'addOrMerge', 'addOrReplace', or 'deleteOrNoOp'."),
+                                GE.data to mapOf("type" to "object", "description" to "The entry, in the slot's form."),
                                 CFEP.expectUpdatedAt to stringSchema("The entry's 'updatedAt' as read, to refuse a stale write."),
                                 CFEP.expectNew to mapOf("type" to "boolean", "description" to "True when the entry must not exist yet."),
-                                required = listOf(CFEP.slot, "action"),
+                                required = listOf(CFEP.slot, GED.action),
                             ),
                         ),
                         required = listOf(CFEP.name, CFEP.edits),
@@ -272,51 +288,50 @@ object AssistantTools {
                 CFEP.dryRun to mapOf("type" to "boolean", "description" to "True to check the change without writing it."),
                 required = listOf(CFEP.configs, CFEP.dryRun),
             ),
-            HttpMethod.POST, CFEP.bundlePatch, setOf(CFEP.configs, CFEP.dryRun, CFEP.reloadField),
+            HttpMethod.POST, CFEP.bundlePatch, setOf(CFEP.configs, CFEP.dryRun),
         ) { run, input -> patch(run, input) },
         AssistantTool(
             TOOL.setIncludedTraits,
-            "Sets which global traits the client includes -- the whole list, replacing the one it has -- as a draft. " +
-                "Removing a trait that stored forms hold is refused unless acknowledgeImpact is true.",
+            "Sets which global traits the client includes -- the whole list, replacing the one it has -- as a draft, " +
+                "which a person publishes. What the change does to stored forms is judged when they do.",
             objectSchema(
-                CLD.includedTraits to arraySchema("The global trait ids to include, or 'allGlobal'.", stringSchema("A trait id.")),
-                IMP.acknowledgeImpact to mapOf("type" to "boolean", "description" to "True to remove traits that stored forms hold."),
+                CLD.includedTraits to arraySchema("The global trait ids to include, or '${CLD.allGlobal}'.", stringSchema("A trait id.")),
                 required = listOf(CLD.includedTraits),
             ),
-            HttpMethod.POST, UADEP.clientTraitsSet, setOf(CLD.includedTraits, IMP.acknowledgeImpact, CPY.mode),
+            HttpMethod.POST, UADEP.clientTraitsSet, setOf(CLD.includedTraits, CPY.mode),
         ) { run, input ->
-            val body = buildMap {
-                put(CLD.includedTraits, input[CLD.includedTraits])
-                input[IMP.acknowledgeImpact]?.let { put(IMP.acknowledgeImpact, it) }
-                // Expected as a draft: were it to take effect at once, the endpoint refuses rather than saving it.
-                put(CPY.mode, EDM.draft)
-            }
+            // Expected as a draft: were it to take effect at once, the endpoint refuses rather than saving it.
+            val body = mapOf(CLD.includedTraits to input[CLD.includedTraits], CPY.mode to EDM.draft)
             run.call(HttpMethod.POST, UADEP.clientTraitsSet, body = body)
         },
     )
 
     /**
-     * `patch_config`: a dry run is recorded by what it was given; a write must match one, and always reloads, so the
-     * sandbox runs the draft at once and `view_workflow` can show it.
+     * `patch_config`: a dry run is recorded by what it was given, and a write must match one the model has seen the
+     * answer to. No reload is asked for: a patch made from a sandbox reloads its parent, and with it the sandbox, so
+     * `view_workflow` shows the draft at once. The answer leaves out the bundles the endpoint echoes -- the model sent
+     * them -- so what it needs (a dry run's impact, a write's reload issues) is never what a long answer cuts.
      */
     @KdrPrivate
     fun patch(run: ToolRun, input: Map<String, Any?>): ToolResult {
         val configs = input[CFEP.configs]
         val key = canonical(configs, 0).toJsonStr(compact = true)
+        val withoutBundles: (Any?) -> Any? = { payload -> (payload as? Map<*, *>)?.filterKeys { it != CFEP.configs } ?: payload }
         if (input[CFEP.dryRun] == true) {
-            val result = run.call(HttpMethod.POST, CFEP.bundlePatch, body = mapOf(CFEP.configs to configs, CFEP.dryRun to true))
-            if (!result.isError) run.dryRuns.add(key)
+            val body = mapOf(CFEP.configs to configs, CFEP.dryRun to true)
+            val result = run.call(HttpMethod.POST, CFEP.bundlePatch, body = body, shape = withoutBundles)
+            if (!result.isError) run.stepDryRuns.add(key)
             return result
         }
         if (key !in run.dryRuns) {
             return ToolResult(
-                "Not written: dry run these configs first (dryRun true), exactly as they will be written, and write them " +
-                    "only once the dry run is accepted.",
+                "Not written: dry run these configs first (dryRun true), exactly as they will be written, read the answer, " +
+                    "and write them in a later step.",
                 isError = true,
             )
         }
-        val write = mapOf(CFEP.configs to configs, CFEP.dryRun to false, CFEP.reloadField to true)
-        return run.call(HttpMethod.POST, CFEP.bundlePatch, body = write)
+        val write = mapOf(CFEP.configs to configs, CFEP.dryRun to false)
+        return run.call(HttpMethod.POST, CFEP.bundlePatch, body = write, shape = withoutBundles)
     }
 
     /** [value] with every map's keys in order, so two inputs differing only in key order compare equal. */

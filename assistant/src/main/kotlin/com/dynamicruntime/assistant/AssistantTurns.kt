@@ -6,12 +6,14 @@ import com.dynamicruntime.common.assistant.ASST
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
-import com.dynamicruntime.common.gedra.ClientService
+import com.dynamicruntime.common.gedra.CFEP
 import com.dynamicruntime.common.gedra.isSandboxClient
+import com.dynamicruntime.common.gedra.sandboxOf
 import com.dynamicruntime.common.http.request.InProcessPrincipal
 import com.dynamicruntime.common.logging.KdrLogger
 import com.dynamicruntime.common.sql.PF
 import com.dynamicruntime.common.user.AdminRules
+import com.dynamicruntime.common.user.AuthUserRow
 import com.dynamicruntime.common.user.SandboxAccess
 import com.dynamicruntime.common.user.UserService
 import com.dynamicruntime.common.util.mkUniqueId
@@ -77,7 +79,7 @@ object AssistantTurns {
             )
         }
         // A message the page sends again -- a retry after a lost answer -- is the turn it already started.
-        AssistantStore.turnForMessage(cxt, userId, clientMessageId)?.let { return started(it) }
+        AssistantStore.turnForMessage(cxt, userId, clientMessageId)?.let { return sameMessage(it, conversationId) }
         val budget = service.budgetOf(service.clientRow(cxt, client))
         if (service.usedThisMonth(cxt, client) >= budget) {
             throw refused("'$client' has used this month's allowance for the assistant.", EXC.tooManyRequests, ACNV.budgetSpentCode)
@@ -89,58 +91,104 @@ object AssistantTurns {
                 EXC.tooManyRequests, ACNV.turnLimitCode,
             )
         }
-        if (AssistantStore.runningTurns(cxt, client) >= service.settings.concurrentTurns) {
+        if (AssistantStore.runningTurns(cxt, client, now) >= service.settings.concurrentTurns) {
             throw refused(
                 "The assistant is already working on ${service.settings.concurrentTurns} messages for '$client'; try again shortly.",
                 EXC.tooManyRequests, ACNV.turnLimitCode,
             )
         }
-        val clientName = ClientService.getOrNull(cxt)?.known(client)?.name ?: client
-        val version = AssistantPrompt.versionOf(cxt, client, clientName)
+        val version = AssistantPrompt.versionOf(client)
+        val turnId = cxt.mkUniqueId()
+        // Claimed before anything is written for the turn: a message refused as busy writes nothing.
+        val newConversation = conversationId == null
         val conversation = if (conversationId != null) {
             val found = ownConversation(cxt, conversationId)
-            if (found[ATBL.toolsetVersion] != version) {
-                throw refused(
-                    "This conversation was begun with an earlier version of the assistant; start a new one to go on.",
-                    EXC.conflict, ACNV.readOnlyCode,
-                )
+            if (found[ACNV.readOnly] == true || found[ATBL.toolsetVersion] != version) {
+                throw refused(readOnlyReason(found), EXC.conflict, ACNV.readOnlyCode)
             }
             recoverLapsed(cxt, found)
+            if (!AssistantStore.claimConversation(cxt, conversationId, turnId)) {
+                throw refused("The assistant is still answering in this conversation.", EXC.conflict, ACNV.busyCode)
+            }
             conversationId
         } else {
-            cxt.mkUniqueId().also { id ->
+            cxt.mkUniqueId()
+        }
+        try {
+            // The administrator's own user in the sandbox, which the tools act as.
+            val sandboxUser = sandboxUserOf(cxt, client)
+            if (newConversation) {
                 AssistantStore.insertConversation(
                     cxt,
                     mapOf(
-                        ACNV.conversationId to id, ASST.client to client, PF.userId to userId,
-                        ACNV.title to message.take(TURN.titleChars), ATBL.toolsetVersion to version,
+                        ACNV.conversationId to conversation, ASST.client to client, PF.userId to userId,
+                        ACNV.title to message.take(TURN.titleChars), ATBL.toolsetVersion to version, ATBL.runningTurnId to turnId,
                     ),
                 )
             }
-        }
-        // The administrator's own user in the sandbox, which the tools act as -- claimed here, in their own request.
-        val sandboxUser = UserService.get(cxt).authFormHandler.claimOwnSandboxUser(cxt, null)
-        val turnId = cxt.mkUniqueId()
-        if (!AssistantStore.claimConversation(cxt, conversation, turnId)) {
-            throw refused("The assistant is still answering in this conversation.", EXC.conflict, ACNV.busyCode)
-        }
-        val row = mapOf(
-            ACNV.turnId to turnId, ACNV.conversationId to conversation, ASST.client to client, PF.userId to userId,
-            ACNV.clientMessageId to clientMessageId, ACNV.text to message,
-            ATBL.sandboxUserId to sandboxUser.userId, ATBL.sandboxIdentityId to sandboxUser.identityId,
-            ATBL.sandboxClient to sandboxUser.client, ACNV.status to ACNV.statusRunning, ACNV.steps to 0L,
-            ASST.inputTokens to 0L, ASST.cacheWriteTokens to 0L, ASST.cacheReadTokens to 0L, ASST.outputTokens to 0L,
-            ACNV.weighted to 0L, ATBL.cancelRequested to false, ATBL.leaseUntil to now + TURN.leaseMinutes.minutes,
-        )
-        try {
+            val row = mapOf(
+                ACNV.turnId to turnId, ACNV.conversationId to conversation, ASST.client to client, PF.userId to userId,
+                ACNV.clientMessageId to clientMessageId, ACNV.text to message,
+                ATBL.sandboxUserId to sandboxUser.userId, ATBL.sandboxIdentityId to sandboxUser.identityId,
+                ATBL.sandboxClient to sandboxUser.client, ACNV.status to ACNV.statusRunning, ACNV.steps to 0L,
+                ASST.inputTokens to 0L, ASST.cacheWriteTokens to 0L, ASST.cacheReadTokens to 0L, ASST.outputTokens to 0L,
+                ACNV.weighted to 0L, ATBL.cancelRequested to false, ATBL.leaseUntil to now + TURN.leaseMinutes.minutes,
+            )
             AssistantStore.insertTurn(cxt, row)
+            LogAssistant.info(cxt, "Turn $turnId started in conversation $conversation for user $userId of '$client'.")
+            service.launch(cxt, turnId)
+            return started(row)
         } catch (e: KdrException) {
-            AssistantStore.releaseConversation(cxt, conversation, turnId)
+            if (newConversation) {
+                AssistantStore.deleteNewConversation(cxt, conversation)
+            } else {
+                AssistantStore.releaseConversation(cxt, conversation, turnId)
+            }
+            // The same message sent twice at once: the other send recorded the turn first, and this one is that turn.
+            AssistantStore.turnForMessage(cxt, userId, clientMessageId)?.let { return sameMessage(it, conversationId) }
             throw e
         }
-        LogAssistant.info(cxt, "Turn $turnId started in conversation $conversation for user $userId of '$client'.")
-        service.launch(cxt, turnId)
-        return started(row)
+    }
+
+    /**
+     * The turn a resent message already started: the same conversation's, or a refusal when the page sent one message
+     * id into two conversations.
+     */
+    @KdrPrivate
+    fun sameMessage(turn: Map<String, Any?>, conversationId: String?): Map<String, Any?> {
+        if (conversationId != null && turn[ACNV.conversationId] != conversationId) {
+            throw KdrException("Message id '${turn[ACNV.clientMessageId]}' was already sent in another conversation.", code = EXC.conflict)
+        }
+        return started(turn)
+    }
+
+    /** Why a conversation cannot go on, in the administrator's terms. */
+    fun readOnlyReason(conversation: Map<String, Any?>): String = if (conversation[ACNV.readOnly] == true) {
+        "The model declined to go on with this conversation, and would again. Start a new one."
+    } else {
+        "This conversation was begun with an earlier version of the assistant; start a new one to go on."
+    }
+
+    /**
+     * The administrator's own user in the client's sandbox, which the tools act as. Their enabled one when they have it;
+     * claimed -- made, on first use -- only when they have none, in their own signed-in request, as opening the sandbox
+     * does. One another administrator disabled is refused rather than enabled again.
+     */
+    @KdrPrivate
+    fun sandboxUserOf(cxt: KdrCxt, client: String): AuthUserRow {
+        val users = UserService.get(cxt)
+        val own = users.queryByUserId(cxt, cxt.userProfile.userId)
+            ?: throw KdrException("Your user could not be found.", code = EXC.notFound)
+        val existing = users.usersOfIdentity(cxt, own.identityId).firstOrNull {
+            it.client == sandboxOf(client) && it.persona == own.persona && it.personaSuffix == own.personaSuffix && !it.isDeleted
+        }
+        return when {
+            existing == null -> users.authFormHandler.claimOwnSandboxUser(cxt, null)
+            existing.enabled -> existing
+            else -> throw KdrException(
+                "Your user in the sandbox has been disabled, so the assistant cannot act there.", code = EXC.notAuthorized,
+            )
+        }
     }
 
     /** What [start] answers: the conversation and the turn. */
@@ -187,6 +235,8 @@ object AssistantTurns {
 
     /** Asks the running turn of the caller's conversation [conversationId] to stop at its next step. */
     fun cancel(cxt: KdrCxt, conversationId: String): Map<String, Any?> {
+        // A turn whose node stopped is recovered rather than asked to stop: nothing would hear it.
+        recoverLapsed(cxt, ownConversation(cxt, conversationId))
         val conversation = ownConversation(cxt, conversationId)
         val turnId = conversation[ATBL.runningTurnId].toOptStr()
         val asked = turnId != null && AssistantStore.requestCancel(cxt, turnId)
@@ -208,13 +258,24 @@ object AssistantTurns {
  * Every write is conditional on the turn still running, so a worker whose lease lapsed -- and whose turn another node
  * marked interrupted -- stops at its next step having written nothing more.
  */
-class TurnRunner(private val service: AssistantService, private val cxt: KdrCxt, private val turnId: String) {
-    private val turn = AssistantStore.turn(cxt, turnId) ?: throw KdrException("No turn '$turnId'.")
-    private val conversationId = turn[ACNV.conversationId].toString()
-    private val client = turn[ASST.client].toString()
-    private val progress = TurnProgress.of(turn)
-    private val history = mutableListOf<Map<String, Any?>>()
-    private var nextSeq = 1L
+class TurnRunner(@KdrPrivate val service: AssistantService, @KdrPrivate val cxt: KdrCxt, @KdrPrivate val turnId: String) {
+    @KdrPrivate
+    val turn = AssistantStore.turn(cxt, turnId) ?: throw KdrException("No turn '$turnId'.")
+
+    @KdrPrivate
+    val conversationId = turn[ACNV.conversationId].toString()
+
+    @KdrPrivate
+    val client = turn[ASST.client].toString()
+
+    @KdrPrivate
+    val progress = TurnProgress.of(turn)
+
+    @KdrPrivate
+    val history = mutableListOf<Map<String, Any?>>()
+
+    @KdrPrivate
+    var nextSeq = 1L
 
     fun run() {
         try {
@@ -226,14 +287,24 @@ class TurnRunner(private val service: AssistantService, private val cxt: KdrCxt,
             loop()
         } catch (e: Exception) {
             LogAssistant.error(cxt, "Turn $turnId in conversation $conversationId failed.", e)
+            // A call left unanswered would leave a history the model can never be sent again.
+            runCatching { answerPending("Not run: the assistant ran into a problem.") }
+                .onFailure { LogAssistant.error(cxt, "Turn $turnId: its pending tool calls could not be answered.", it) }
             end(ACNV.statusFailed, "The assistant ran into a problem and stopped. Try your message again.")
         }
     }
 
+    /** Answers, as not run, the tool calls of the model's last message when nothing has answered them yet. */
+    @KdrPrivate
+    fun answerPending(text: String) {
+        val last = history.lastOrNull() ?: return
+        val calls = AssistantHistory.toolUses(last)
+        if (last[MSG.role] == MSG.assistant && calls.isNotEmpty()) append(answerAll(calls, text))
+    }
+
     @KdrPrivate
     fun loop() {
-        val clientName = ClientService.getOrNull(cxt)?.known(client)?.name ?: client
-        val system = AssistantPrompt.system(cxt, client, clientName)
+        val system = AssistantPrompt.system(client)
         val tools = AssistantTools.definitions()
         val principal = InProcessPrincipal(
             turn[ATBL.sandboxUserId].toOptLong()!!, turn[ATBL.sandboxIdentityId].toString(), turn[ATBL.sandboxClient].toString(),
@@ -279,7 +350,9 @@ class TurnRunner(private val service: AssistantService, private val cxt: KdrCxt,
                         append(response.message)
                         if (calls.isNotEmpty()) append(TurnRunner.answerAll(calls, "Not run: the model declined to go on."))
                     }
-                    return end(ACNV.statusStopped, "The model declined to go on with this request.")
+                    // A refusal stays in the history, and the next request would meet it again: this conversation ends.
+                    AssistantStore.markReadOnly(cxt, conversationId)
+                    return end(ACNV.statusStopped, "The model declined to go on with this request. Start a new conversation.")
                 }
                 MSG.toolUse -> {
                     append(response.message)
@@ -287,7 +360,8 @@ class TurnRunner(private val service: AssistantService, private val cxt: KdrCxt,
                         append(TurnRunner.answerAll(calls, "Not run: the administrator stopped the assistant."))
                         return end(ACNV.statusCanceled, "Stopped, as you asked.")
                     }
-                    append(runTools(toolRun, calls))
+                    // Null when the turn's lease was given up part way: another node has answered for it.
+                    append(runTools(toolRun, calls) ?: return)
                 }
                 MSG.maxTokens -> {
                     if (response.content.isNotEmpty()) append(response.message)
@@ -299,17 +373,25 @@ class TurnRunner(private val service: AssistantService, private val cxt: KdrCxt,
                     continuing = true
                 }
                 else -> {
+                    // `end_turn`, or a reason this code does not know: a call in such an answer is not run, but answered.
                     if (response.content.isNotEmpty()) append(response.message)
+                    if (calls.isNotEmpty()) append(TurnRunner.answerAll(calls, "Not run: the answer stopped (${response.stopReason})."))
                     return end(ACNV.statusDone, null)
                 }
             }
         }
     }
 
-    /** Runs every call in [calls] and answers them all in one message, in order. */
+    /**
+     * Runs every call in [calls] and answers them all in one message, in order; null when the turn's lease was lost
+     * part way, and the turn is no longer this worker's to write.
+     */
     @KdrPrivate
-    fun runTools(toolRun: ToolRun, calls: List<Map<String, Any?>>): Map<String, Any?> {
-        val results = calls.map { call ->
+    fun runTools(toolRun: ToolRun, calls: List<Map<String, Any?>>): Map<String, Any?>? {
+        val results = mutableListOf<Map<String, Any?>>()
+        for (call in calls) {
+            // Renewed before each call: a step of many slow calls must not outlast its lease while it works.
+            if (!AssistantStore.recordProgress(cxt, turnId, progress, cxt.now() + TURN.leaseMinutes.minutes)) return null
             val name = call[TOOL.name].toString()
             val input = (call[TOOL.input] as? Map<*, *>)?.entries?.associate { it.key.toString() to it.value }.orEmpty()
             val result = AssistantTools.run(toolRun, name, input)
@@ -319,13 +401,14 @@ class TurnRunner(private val service: AssistantService, private val cxt: KdrCxt,
             } else if (result.isError) {
                 LogAssistant.info(cxt, "Turn $turnId: $name refused.")
             }
-            TurnRunner.resultBlock(call[TOOL.id].toString(), result)
+            results.add(TurnRunner.resultBlock(call[TOOL.id].toString(), result))
         }
+        toolRun.endStep()
         return mapOf(MSG.role to MSG.user, MSG.content to results)
     }
 
     @KdrPrivate
-    fun dryRunNote(input: Map<String, Any?>): String = if (input["dryRun"] == true) " (dry run)" else ""
+    fun dryRunNote(input: Map<String, Any?>): String = if (input[CFEP.dryRun] == true) " (dry run)" else ""
 
     /** Appends [message] to the history and the stored transcript. */
     @KdrPrivate

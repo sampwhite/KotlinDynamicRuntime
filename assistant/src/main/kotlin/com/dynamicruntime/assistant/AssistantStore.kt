@@ -46,6 +46,24 @@ object AssistantStore {
         mapOf(ACNV.conversationId to conversationId, ATBL.runningTurnId to turnId),
     ) > 0
 
+    /** Marks the conversation read-only: it cannot go on. */
+    fun markReadOnly(cxt: KdrCxt, conversationId: String) {
+        update(
+            cxt, ATBL.conversations, "uAssistantConversationReadOnly", "c:${ACNV.readOnly} = :${ACNV.readOnly}",
+            "c:${ACNV.conversationId} = :${ACNV.conversationId}", mapOf(ACNV.conversationId to conversationId, ACNV.readOnly to true),
+        )
+    }
+
+    /** Removes a conversation this request just made, whose first turn could not be recorded: it holds nothing. */
+    fun deleteNewConversation(cxt: KdrCxt, conversationId: String) {
+        val sqlCxt = sql(cxt)
+        val stmt = SqlStmtUtil.prepareSql(
+            sqlCxt, "dAssistantConversationNew", ATBL.table(cxt, ATBL.conversations).columns,
+            "delete from t:${ATBL.conversations} where c:${ACNV.conversationId} = :${ACNV.conversationId}",
+        )
+        sqlCxt.sqlDb.withSession(cxt) { sqlCxt.sqlDb.executeStatement(cxt, stmt, mapOf(ACNV.conversationId to conversationId)) }
+    }
+
     /** Clears [turnId] as the conversation's running turn, if it still is. */
     fun releaseConversation(cxt: KdrCxt, conversationId: String, turnId: String) {
         update(
@@ -99,11 +117,15 @@ object AssistantStore {
         mapOf(PF.userId to userId, PF.createdAt to since),
     ).size
 
-    /** How many turns are running in [client]. */
-    fun runningTurns(cxt: KdrCxt, client: String): Int = query(
+    /**
+     * How many turns are running in [client] at [now]: a turn whose lease lapsed -- its node stopped -- is not, though
+     * it is marked interrupted only when its conversation is next looked at.
+     */
+    fun runningTurns(cxt: KdrCxt, client: String, now: Instant): Int = query(
         cxt, ATBL.turns, "qAssistantTurnsRunning",
-        "select * from t:${ATBL.turns} where c:${ASST.client} = :${ASST.client} and c:${ACNV.status} = :${ACNV.status}",
-        mapOf(ASST.client to client, ACNV.status to ACNV.statusRunning),
+        "select * from t:${ATBL.turns} where c:${ASST.client} = :${ASST.client} and c:${ACNV.status} = :${ACNV.status} " +
+            "and c:${ATBL.leaseUntil} >= :${ATBL.leaseUntil}",
+        mapOf(ASST.client to client, ACNV.status to ACNV.statusRunning, ATBL.leaseUntil to now),
     ).size
 
     fun insertTurn(cxt: KdrCxt, row: Map<String, Any?>) = insert(cxt, ATBL.turns, row)

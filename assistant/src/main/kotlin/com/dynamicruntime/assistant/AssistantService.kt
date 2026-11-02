@@ -28,6 +28,7 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.Future
+import java.util.concurrent.FutureTask
 import java.util.concurrent.TimeUnit
 import kotlin.time.Instant
 
@@ -318,13 +319,16 @@ class AssistantService : ServiceInitializer {
      */
     fun launch(cxt: KdrCxt, turnId: String) {
         val turnCxt = KdrCxt.mkSimpleCxt("assistantTurn", cxt.instanceConfig).also { it.traceId = cxt.traceId }
-        workers[turnId] = background.submit {
+        // Recorded before it runs, so a turn that ends at once is not left in the map after its own removal.
+        val task = FutureTask {
             try {
                 TurnRunner(this, turnCxt, turnId).run()
             } finally {
                 workers.remove(turnId)
             }
         }
+        workers[turnId] = task
+        background.execute(task)
     }
 
     /** Waits up to [timeoutMs] for this node's worker on [turnId] to finish: for a test, which runs turns to the end. */

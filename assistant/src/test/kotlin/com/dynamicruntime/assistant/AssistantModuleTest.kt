@@ -11,7 +11,10 @@ import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.ClientAudience
 import com.dynamicruntime.common.gedra.ClientDef
+import com.dynamicruntime.common.gedra.CCT
+import com.dynamicruntime.common.gedra.CWF
 import com.dynamicruntime.common.gedra.ClientUsageType
+import com.dynamicruntime.common.gedra.workflow.WFD
 import com.dynamicruntime.common.gedra.GedraConfigReload
 import com.dynamicruntime.common.gedra.GedraConfigService
 import com.dynamicruntime.common.gedra.gedraConfig
@@ -23,6 +26,7 @@ import com.dynamicruntime.common.sql.PF
 import com.dynamicruntime.common.sql.SqlTopicService
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
+import com.dynamicruntime.common.util.toJsonStr
 import com.dynamicruntime.common.util.toOptStr
 import com.dynamicruntime.kdn.Startup
 import io.kotest.assertions.throwables.shouldThrow
@@ -115,9 +119,22 @@ class AssistantModuleTest : StringSpec({
         val demo = Startup.mkTestBootCxt(
             "assistantDemo", "assistantDemoTest", mapOf(AENV.provider.name to AENV.fakeProvider), additionalComponents = components,
         )
-        val answer = AssistantService.get(demo).model.shouldNotBeNull().respond(demo, emptyRequest)
+        // A message from the person: the demo calls list_workflows.
+        val model = AssistantService.get(demo).model.shouldNotBeNull()
+        val hello = listOf(mapOf(MSG.role to MSG.user, MSG.content to "Hello"))
+        val call = model.respond(demo, ModelRequest(AENV.defaultModel, 100, emptyList(), emptyList(), hello, null))
+        call.stopReason shouldBe MSG.toolUse
+        val use = call.content.single()
+        use[TOOL.name] shouldBe TOOL.listWorkflows
+        // Its result: the demo names what it found.
+        val catalog = mapOf(CWF.workflows to listOf(mapOf(CWF.definition to mapOf(CCT.workflowId to "rsvp", WFD.label to "RSVP"))))
+        val answered = hello + call.message + mapOf(
+            MSG.role to MSG.user,
+            MSG.content to listOf(TurnRunner.resultBlock(use[TOOL.id].toString(), ToolResult(catalog.toJsonStr(compact = true), false))),
+        )
+        val answer = model.respond(demo, ModelRequest(AENV.defaultModel, 100, emptyList(), emptyList(), answered, null))
         answer.stopReason shouldBe MSG.endTurn
-        answer.content.single()[MSG.text].toOptStr().shouldNotBeNull() shouldContain "demo assistant"
+        answer.content.single()[MSG.text].toOptStr().shouldNotBeNull() shouldContain "found 1: RSVP (rsvp)"
 
         // A development node, as a real deployment boots one.
         refusedBoot("assistantDemoDev", mapOf(AENV.provider.name to AENV.fakeProvider), test = false) shouldContain

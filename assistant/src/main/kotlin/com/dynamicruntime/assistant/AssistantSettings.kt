@@ -21,8 +21,12 @@ object AENV {
     const val defaultMonthlyBudget = 10_000_000L
     const val defaultKeySecret = "anthropicApiKey"
 
-    /** The most tokens a call may write, on every model in [models]. */
-    const val maxOutputTokens = 128_000
+    /**
+     * The most tokens a call may be asked to write: what a model writes within one call's timeout
+     * (`TURN.callTimeoutMinutes`) without streaming. A call that times out is billed, but no usage comes back to count
+     * against the budget, so a larger allowance would be spent unseen.
+     */
+    const val maxOutputTokens = 32_000
 
     /** The efforts a request may ask for. */
     val efforts = listOf("low", "medium", "high", "xhigh", "max")

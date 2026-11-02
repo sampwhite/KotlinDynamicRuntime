@@ -9,6 +9,9 @@ import com.dynamicruntime.common.endpoint.resolveEndpointInputType
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.gedra.CCT
 import com.dynamicruntime.common.gedra.CFEP
+import com.dynamicruntime.common.gedra.CLD
+import com.dynamicruntime.common.gedra.CPY
+import com.dynamicruntime.common.gedra.EDM
 import com.dynamicruntime.common.gedra.CUST
 import com.dynamicruntime.common.gedra.ClientAudience
 import com.dynamicruntime.common.gedra.ClientDef
@@ -55,6 +58,9 @@ import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
+import io.kotest.matchers.string.shouldStartWith
+import io.kotest.matchers.shouldNotBe
+import io.kotest.matchers.collections.shouldNotContain
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import kotlin.time.Duration.Companion.minutes
@@ -74,6 +80,8 @@ class AssistantTurnsTest : StringSpec({
     )
     val cxt = boot("assistantTurns1526", model)
     val service = AssistantService.get(cxt)
+    // A case that failed part way leaves its unused steps behind; the next case starts with none.
+    beforeEach { model.clear() }
 
     fun GedraConfigBuilder.flows(count: Int = 1) {
         for (w in 1..count) {
@@ -184,6 +192,8 @@ class AssistantTurnsTest : StringSpec({
         answered shouldHaveSize 2
         answered.forEach { it[TOOL.isError].shouldBeNull() }
         answered[1][TOOL.content].toString() shouldContain "review"
+        // The endpoint's envelope is gone: a listing is its items.
+        answered[0][TOOL.content].toString() shouldStartWith "{\"${EP.items}\""
         historyHolds(messages)
 
         val turn = lastTurn(admin, conversationId)
@@ -197,6 +207,12 @@ class AssistantTurnsTest : StringSpec({
         val again = admin.postData(ACNV.messagePath, message("m$messageIds", "What workflows do I have?"))
         again[ACNV.conversationId] shouldBe conversationId
         again[ACNV.turnId] shouldBe turn[ACNV.turnId]
+        // The same message id sent into another conversation is the page's mistake, not that turn.
+        model.add({ ScriptedModel.textResponse("Hello.") })
+        val other = send(admin, "Another conversation.")
+        admin.expectError(EXC.conflict, ACNV.messagePath, message("m$messageIds", "Again?", conversationId)).toString() shouldContain
+            "another conversation"
+        other shouldNotBe conversationId
     }
 
     "a scripted patch lands as a draft the sandbox runs, and leaves the published revision as it was" {
@@ -223,6 +239,8 @@ class AssistantTurnsTest : StringSpec({
         toolResults[0][TOOL.isError] shouldBe true
         toolResults[0][TOOL.content].toString() shouldContain "dry run"
         toolResults[1][TOOL.isError].shouldBeNull()
+        // The dry run's answer is its impact, not the bundles the model sent.
+        toolResults[1][TOOL.content].toString().jsonMap().shouldNotBeNull().keys shouldNotContain CFEP.configs
         toolResults[2][TOOL.isError].shouldBeNull()
         // The sandbox runs the draft at once.
         toolResults[3][TOOL.isError].shouldBeNull()
@@ -239,6 +257,38 @@ class AssistantTurnsTest : StringSpec({
         // Four steps, the step limit: the turn stopped there, its last tool call answered.
         lastTurn(admin, conversationId)[ACNV.status] shouldBe ACNV.statusStopped
         historyHolds(messagesOf(admin, conversationId))
+    }
+
+    "a write is refused in the same message as its dry run: the model must read the dry run's answer first" {
+        val admin = clientWithAssistant(cxt, "asstsamestep")
+        val review = admin.getItem(CFEP.bundle, mapOf(CFEP.name to "flows"))[CFEP.slots].toJsonMapOrEmpty()[CCT.workflowDef]
+            .toJsonListOfMaps().single()
+        val configs = listOf(mapOf(CFEP.name to "flows", CFEP.edits to listOf(workflowEdit(renamed(review, "review", "early")))))
+        model.add(
+            {
+                ScriptedModel.toolResponse(
+                    TOOL.patchConfig to mapOf(CFEP.configs to configs, CFEP.dryRun to true),
+                    TOOL.patchConfig to mapOf(CFEP.configs to configs, CFEP.dryRun to false),
+                )
+            },
+            { ScriptedModel.textResponse("I will write it next.") },
+        )
+        val conversationId = send(admin, "Add it in one go.")
+        val (dryRun, write) = results(messagesOf(admin, conversationId)[2])
+        dryRun[TOOL.isError].shouldBeNull()
+        write[TOOL.isError] shouldBe true
+        write[TOOL.content].toString() shouldContain "later step"
+    }
+
+    "the included global traits are set as a draft" {
+        val admin = clientWithAssistant(cxt, "assttraits")
+        model.add(
+            { ScriptedModel.toolResponse(TOOL.setIncludedTraits to mapOf(CLD.includedTraits to listOf(CLD.allGlobal))) },
+            { ScriptedModel.textResponse("Included.") },
+        )
+        val set = results(messagesOf(admin, send(admin, "Include every global trait."))[2]).single()
+        set[TOOL.isError].shouldBeNull()
+        set[TOOL.content].toString().jsonMap().shouldNotBeNull()[CPY.mode] shouldBe EDM.draft
     }
 
     "the client's plan refuses the assistant's change as it would a person's" {
@@ -276,13 +326,27 @@ class AssistantTurnsTest : StringSpec({
         val declined = send(admin, "Something else.")
         messagesOf(admin, declined).map { it[MSG.role] } shouldBe listOf(MSG.user)
         lastTurn(admin, declined)[ACNV.note].toString() shouldContain "declined"
+        // The refusal stays in its history, so the conversation cannot go on.
+        conversation(admin, declined)[ACNV.conversation].toJsonMapOrEmpty()[ACNV.readOnly] shouldBe true
+        admin.expectError(EXC.conflict, ACNV.messagePath, message("declined2", "Try again.", declined))[EP.errorCode] shouldBe
+            ACNV.readOnlyCode
+
+        // A stop this code does not know, with a call in it: the call is answered, and the conversation goes on.
+        model.add(
+            { ScriptedModel.toolResponse(TOOL.listConfigs to emptyMap(), stopReason = "model_context_window_exceeded") },
+            { ScriptedModel.textResponse("Still here.") },
+        )
+        val unknown = send(admin, "Odd stop.")
+        results(messagesOf(admin, unknown).last()).single()[TOOL.content].toString() shouldContain "Not run"
+        send(admin, "And now?", conversationId = unknown)
+        lastTurn(admin, unknown)[ACNV.status] shouldBe ACNV.statusDone
 
         // A pause is asked again.
         model.add(
             { ScriptedModel.response(listOf(mapOf(MSG.type to MSG.text, MSG.text to "Working.")), MSG.pauseTurn) },
             { ScriptedModel.textResponse("Done.") },
         )
-        val paused = send(admin, "Take your time.", conversationId = declined)
+        val paused = send(admin, "Take your time.")
         lastTurn(admin, paused)[ACNV.status] shouldBe ACNV.statusDone
         lastTurn(admin, paused)[ACNV.steps] shouldBe 2
         historyHolds(messagesOf(admin, paused))
@@ -382,10 +446,19 @@ class AssistantTurnsTest : StringSpec({
             HttpMethod.POST to UADEP.clientWorkflowParams, HttpMethod.POST to ACNV.messagePath, HttpMethod.POST to UADEP.userCreate,
             HttpMethod.POST to ADEP.userCreate, HttpMethod.GET to OENV.envReferencePath, HttpMethod.POST to TEP.becomeUser,
         )
-        for ((method, path) in excluded) {
+        val more = listOf(
+            HttpMethod.POST to CFEP.reload, HttpMethod.GET to CFEP.editor, HttpMethod.GET to CFEP.bundleImpact,
+            // A permitted path by another method.
+            HttpMethod.POST to CFEP.bundles, HttpMethod.GET to CFEP.bundlePatch,
+        )
+        for ((method, path) in excluded + more) {
             val refused = call(method, path)
             refused.status shouldBe EXC.notAuthorized
             refused.errorMessage.shouldNotBeNull() shouldContain "not open to the workflow assistant"
+        }
+        // A client's own copy of a permitted endpoint is not that endpoint: the scope names paths exactly.
+        for (path in listOf("/clientOperator/$client/cfacts", "/gedra/$client/workflow/view")) {
+            call(HttpMethod.GET, path).isSuccess shouldBe false
         }
         for (tool in AssistantTools.all.filter { it.method == HttpMethod.GET }) {
             val answer = call(tool.method!!, tool.path!!, if (CFEP.name in tool.sends) mapOf(CFEP.name to "flows") else null)
@@ -410,6 +483,30 @@ class AssistantTurnsTest : StringSpec({
         AssistantTools.readableDoc(cxt, "api-guide").shouldBeNull()
     }
 
+    "the demo provider goes through a real tool round: it lists the workflows, and names them" {
+        val demo = Startup.mkTestBootCxt(
+            "assistantDemoTurn1526", "assistantDemoTurn1526", mapOf(AENV.provider.name to AENV.fakeProvider),
+            additionalComponents = listOf(AssistantComponent()),
+        )
+        val admin = clientWithAssistant(demo, "asstdemo")
+        val conversationId = send(admin, "What do I have?", on = demo)
+        val messages = messagesOf(admin, conversationId)
+        messages.map { it[MSG.role] } shouldBe listOf(MSG.user, MSG.assistant, MSG.user, MSG.assistant)
+        results(messages[2]).single()[TOOL.isError].shouldBeNull()
+        messages[3][MSG.content].toJsonListOfMaps().single()[MSG.text].toString() shouldContain "found 1: review"
+        lastTurn(admin, conversationId)[ACNV.status] shouldBe ACNV.statusDone
+    }
+
+    "a long result is cut, saying so, and never through a character written as two" {
+        val emoji = "\uD83D\uDE00"
+        val text = "a".repeat(TOOL.maxResultChars - 1) + emoji + "tail"
+        val cut = ToolRun.capped(text)
+        cut shouldStartWith "a".repeat(TOOL.maxResultChars - 1)
+        cut.substringBefore("\n[Cut") shouldBe "a".repeat(TOOL.maxResultChars - 1)
+        cut shouldContain "[Cut: ${TOOL.maxResultChars - 1} of ${text.length} characters shown."
+        ToolRun.capped("short") shouldBe "short"
+    }
+
     "a turn whose node stopped is marked interrupted when its lease lapses, and its worker writes nothing more" {
         val lonely = ScriptedModel(emptyList())
         val own = boot("assistantLease1526", lonely)
@@ -425,6 +522,8 @@ class AssistantTurnsTest : StringSpec({
         val conversationId = started[ACNV.conversationId].toString()
         entered.await(20, TimeUnit.SECONDS) shouldBe true
         own.instanceConfig.clock.advanceBy((TURN.leaseMinutes + 1).minutes)
+        // A lapsed turn holds no place in the client's limit, even before anyone looks at its conversation.
+        AssistantStore.runningTurns(own, "asstlease", own.now()) shouldBe 0
         val seen = admin.getData(ACNV.conversationPath, mapOf(ACNV.conversationId to conversationId))
         seen[ACNV.turns].toJsonListOfMaps().single()[ACNV.status] shouldBe ACNV.statusInterrupted
         seen[ACNV.conversation].toJsonMapOrEmpty()[ACNV.running] shouldBe false

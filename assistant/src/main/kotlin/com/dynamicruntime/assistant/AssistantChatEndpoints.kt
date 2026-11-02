@@ -8,7 +8,6 @@ import com.dynamicruntime.common.endpoint.ListPage
 import com.dynamicruntime.common.endpoint.SchModule
 import com.dynamicruntime.common.endpoint.schemaModule
 import com.dynamicruntime.common.exception.KdrException
-import com.dynamicruntime.common.gedra.ClientService
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.sql.PF
 import com.dynamicruntime.common.util.toOptLong
@@ -61,7 +60,7 @@ fun assistantChatSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "${ASST.root
         property(ACNV.conversationId, "The conversation.", required = true)
         property(ACNV.title, "The start of its first message.", required = true)
         property(ACNV.running, "Whether a turn is running in it.", required = true) { type = SCT.boolean }
-        property(ACNV.readOnly, "Whether it was begun with an earlier version of the assistant, and so cannot go on.", required = true) {
+        property(ACNV.readOnly, "Whether it cannot go on: the model declined to, or it began with an earlier assistant.", required = true) {
             type = SCT.boolean
         }
         property(PF.createdAt, "When it began.", required = true) { dateTime() }
@@ -164,12 +163,11 @@ fun assistantChatSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "${ASST.root
 /** [row], a stored conversation, as a listing shows it. */
 fun summaryOf(cxt: KdrCxt, row: Map<String, Any?>): Map<String, Any?> {
     val client = row[ASST.client].toString()
-    val clientName = ClientService.getOrNull(cxt)?.known(client)?.name ?: client
     return mapOf(
         ACNV.conversationId to row[ACNV.conversationId],
         ACNV.title to row[ACNV.title],
         ACNV.running to (row[ATBL.runningTurnId] != null),
-        ACNV.readOnly to (row[ATBL.toolsetVersion] != AssistantPrompt.versionOf(cxt, client, clientName)),
+        ACNV.readOnly to (row[ACNV.readOnly] == true || row[ATBL.toolsetVersion] != AssistantPrompt.versionOf(client)),
         PF.createdAt to row[PF.createdAt],
         PF.updatedAt to row[PF.updatedAt],
     )
