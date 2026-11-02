@@ -143,6 +143,22 @@ A layout entry can also restate a field's `choices`, which narrows the list the 
 labels of its own. A form never offers a choice the schema does not. And an entry can mark a field `required` for
 this form, which the schema may leave optional.
 
+A layout can also name the trait and introduce it. Its `label` is the trait's name, the heading of its section on a
+form, and its `description` is a line under that heading. A client can give a trait a layout for every form it shows,
+with an entry for the trait's data type in the `kdr:schemaDef` slot of its `base` bundle, even for a trait the platform
+defines. [Creating a talk](create-talk.md#the-traits-name) does this for `kdr:name`.
+
+## Images
+
+A label or description is Markdown, and it can show an image. `![A presentation screen](img:kdr:talkIcon)` shows the
+image named `kdr:talkIcon`, one the deployment ships, which every client can use. A client's own image, one its
+administrator uploads on the Clients page, is named with `ref:` instead: `![Our logo](ref:logo)`. The text in the
+brackets is what a reader sees where the image cannot be drawn.
+
+What follows in braces places the image. `{.float-left .icon width=20}` puts a small one at the start of its line, at
+the height of the text, which is how the demo opens the talk's introduction. Without `.icon`, `.float-left` floats a
+larger picture beside the text that follows it.
+
 ## Copy from a file
 
 A label or description can pull its words from a fragment file instead of holding them: `%{@t("logistics.heading")}`

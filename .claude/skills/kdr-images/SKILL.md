@@ -38,8 +38,9 @@ as kdn's `embedImages` does beside its `embedDocs`. Keep the file once, in `docs
 `src/main/resources`.
 
 The core images are in `base/common` (`email-to-users.png`, `file-refs.svg`, `sandbox.svg`, declared in
-`CommonComponent.images`), the sample's in `sample` (`site-visit-flow.svg`), and the document images in `docs/images/`:
-the README's banner (`overview.svg`, common's `embedImages`) and the walk-through's (kdn's).
+`CommonComponent.images`), the sample's in `sample` (`site-visit-flow.svg` and its trait icons), the conference demo's
+in `base/kdn` (`talk-icon.svg`, `ConfDemo.images`), and the document images in `docs/images/`: the README's banner
+(`overview.svg`, common's `embedImages`) and the walk-through's (kdn's).
 
 ### What the boot refuses
 

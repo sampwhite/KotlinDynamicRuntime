@@ -36,13 +36,13 @@ top of every page shows which user you are acting as, and the client it is in.
 
 ### Submit a talk
 
-Open **My forms** from the menu, and choose **Create a form**. The form that opens is **Submit a talk**, and it asks
-for one thing:
+Open **My forms** from the menu, and choose **Create a form**. The form that opens is **Start a talk submission**,
+and it asks for one thing:
 
 <!-- kdr-walk: workflow=createTalk -->
 | Field | What to type |
 | --- | --- |
-| Name | Coroutines for *your first name* |
+| Title | Coroutines for *your first name* |
 
 Choose **Create the talk**. The talk appears in your forms list, with the status **Needs Info**: the conference needs
 to know more before the committee looks at it.

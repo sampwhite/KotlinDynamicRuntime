@@ -126,7 +126,7 @@ class PublicWalkThroughTest : StringSpec({
     // What the reader's `*your first name*` becomes here: unusual enough to find this test's talk on a shared demo.
     val firstName = "Walker1429"
 
-    /** The traits each form shows, by the workflow it belongs to -- where its table's labels are looked up. */
+    /** The traits each form shows, by the workflow it belongs to: the forms the page has the reader fill in. */
     val traitsByForm = mapOf(
         ConfDemo.createTalkWorkflow to listOf(GT.name),
         ConfDemo.talkSurveyWorkflow to listOf(ConfDemo.session, ConfDemo.questionnaire),
@@ -146,12 +146,39 @@ class PublicWalkThroughTest : StringSpec({
     val traitSchemas = globalSchemas + base[CCT.traitDef].toJsonListOfMaps()
         .associate { it[CCT.traitId].toOptStr()!! to it[CCT.dataSchema].toJsonMapOrEmpty() }
 
-    /** One table's rows as the entries a save sends: per trait, each field the reader fills in, with its value. */
-    fun entriesOf(workflow: String): List<Map<String, Any?>> {
+    /** What the form of [workflow] shows, on the form [gid] if any: each field by its label, as the page's tables name it. */
+    fun shownFields(by: TestUser, workflow: String, gid: String?): Map<String, ShownField> {
+        val view = by.getData(GEP.workflowView, buildMap { put(WFD.workflowId, workflow); gid?.let { put(GDF.gedraId, it) } })
+        val defs = view[SCH.dDefs].toJsonMapOrEmpty()
+        val layouts = view[WVF.fieldLayouts].toJsonMapOrEmpty()
+        val out = linkedMapOf<String, ShownField>()
+        for (trait in view[WFD.tasks].toJsonListOfMaps().flatMap { it[WFD.traits].toJsonListOfMaps() }) {
+            val type = trait[WVF.schemaRef].toOptStr().shouldNotBeNull().removePrefix(defsRefPrefix)
+            val entries = layouts[type].toJsonMapOrEmpty()[SL.schemaFields].toJsonListOfMaps().associateBy { it[SL.field].toOptStr() }
+            for ((key, raw) in defs[type].toJsonMapOrEmpty()[SCH.properties].toJsonMapOrEmpty()) {
+                val schema = raw.toJsonMapOrEmpty()
+                val entry = entries[key].orEmpty()
+                val label = entry[SL.label].toOptStr() ?: schema[SCH.title].toOptStr() ?: key.replaceFirstChar { it.uppercase() }
+                // The choices this form offers: its own list where it narrows the trait's, else the trait's.
+                val choices = (entry[SL.choices] ?: schema[SCH.options]).toJsonListOfMaps()
+                    .associate { it[SL.label].toOptStr()!! to it[SL.value].toOptStr()!! }
+                out[label] = ShownField(trait[WFD.traitId].toOptStr()!!, key, choices)
+            }
+        }
+        return out
+    }
+
+    /**
+     * One table's rows as the entries a save sends: per trait, each field the reader fills in, with its value. Each label
+     * is looked up as [by] is shown the form of [workflow], on the form [gid] if any, so a client's layout that relabels
+     * a field (the demo's Title, issue #1545) is read as the reader reads it.
+     */
+    fun entriesOf(by: TestUser, workflow: String, gid: String?): List<Map<String, Any?>> {
         val rows = tables.getValue(walkWorkflowKey(workflow))
+        val fields = shownFields(by, workflow, gid)
         val byTrait = linkedMapOf<String, MutableMap<String, Any?>>()
         for ((label, shown) in rows) {
-            val (traitId, field, schema) = fieldFor(label, traitsByForm.getValue(workflow), traitSchemas)
+            val (traitId, field, schema) = fieldFor(label, fields, traitSchemas)
             byTrait.getOrPut(traitId) { linkedMapOf() }[field] = valueFor(schema, shown.replace(placeholder, firstName))
         }
         return byTrait.map { (traitId, data) -> mapOf(GE.traitId to traitId, GE.data to data) }
@@ -168,7 +195,7 @@ class PublicWalkThroughTest : StringSpec({
                 put(GDF.taskId, task)
                 put(GDF.saveId, saveId)
                 if (gid != null) put(GDF.gedraId, gid)
-                put(GDF.entries, entriesOf(workflow))
+                put(GDF.entries, entriesOf(by, workflow, gid))
             },
         )
         return gid ?: saved[WSF.item].toJsonMapOrEmpty()[GDF.gedraId].toOptStr().shouldNotBeNull()
@@ -232,7 +259,7 @@ class PublicWalkThroughTest : StringSpec({
         visitor.postData(AEP.profileSetName, mapOf(AFLD.name to name))[UPF.name] shouldBe name
 
         // The committee member finds the talk by its name among everyone's, and reviews and accepts it.
-        val title = entriesOf(ConfDemo.createTalkWorkflow).single()[GE.data].toJsonMapOrEmpty()[GT.nameField]
+        val title = entriesOf(visitor, ConfDemo.createTalkWorkflow, null).single()[GE.data].toJsonMapOrEmpty()[GT.nameField]
         val found = visitor.getItems(GEP.formDocs, mapOf(EP.limit to 500))
             .single { row -> row[GDF.displayValues].toJsonListOfMaps().any { it[UF.value] == title } }
         found[GDF.gedraId] shouldBe gid
@@ -257,27 +284,6 @@ class PublicWalkThroughTest : StringSpec({
     /** The one value [key]'s table gives for [label]. */
     fun cell(key: String, label: String): String = tables.getValue(key).single { it[0] == label }[1]
 
-    /** What the form of [workflow] shows, on the form [gid] if any: each field by its label, as the page's tables name it. */
-    fun shownFields(by: TestUser, workflow: String, gid: String?): Map<String, ShownField> {
-        val view = by.getData(GEP.workflowView, buildMap { put(WFD.workflowId, workflow); gid?.let { put(GDF.gedraId, it) } })
-        val defs = view[SCH.dDefs].toJsonMapOrEmpty()
-        val layouts = view[WVF.fieldLayouts].toJsonMapOrEmpty()
-        val out = linkedMapOf<String, ShownField>()
-        for (trait in view[WFD.tasks].toJsonListOfMaps().flatMap { it[WFD.traits].toJsonListOfMaps() }) {
-            val type = trait[WVF.schemaRef].toOptStr().shouldNotBeNull().removePrefix(defsRefPrefix)
-            val entries = layouts[type].toJsonMapOrEmpty()[SL.schemaFields].toJsonListOfMaps().associateBy { it[SL.field].toOptStr() }
-            for ((key, raw) in defs[type].toJsonMapOrEmpty()[SCH.properties].toJsonMapOrEmpty()) {
-                val schema = raw.toJsonMapOrEmpty()
-                val entry = entries[key].orEmpty()
-                val label = entry[SL.label].toOptStr() ?: schema[SCH.title].toOptStr() ?: key.replaceFirstChar { it.uppercase() }
-                // The choices this form offers: its own list where it narrows the trait's, else the trait's.
-                val choices = (entry[SL.choices] ?: schema[SCH.options]).toJsonListOfMaps()
-                    .associate { it[SL.label].toOptStr()!! to it[SL.value].toOptStr()!! }
-                out[label] = ShownField(trait[WFD.traitId].toOptStr()!!, key, choices)
-            }
-        }
-        return out
-    }
 
     /** [key]'s table as the entries a save of [workflow]'s form sends, its labels and choices read off the form itself. */
     fun shownEntries(by: TestUser, key: String, workflow: String, gid: String?): List<Map<String, Any?>> {
@@ -646,20 +652,13 @@ private fun walkJsonEntries(page: String): Map<String, Map<String, Any?>> {
 }
 
 /**
- * The field [label] names among [traits] -- its trait, its key, and its schema -- as the form labels it: by its
- * `title`, or by its key with a capital where it has none. Fails unless exactly one field has the label.
+ * The field [label] names on a form whose [fields] are by their labels as the form shows them -- its trait, its key,
+ * and its schema among [schemas], which types the value the reader enters. Fails when the form has no such field.
  */
-private fun fieldFor(label: String, traits: List<String>, schemas: Map<String, Map<String, Any?>>): Triple<String, String, Map<String, Any?>> {
-    val matches = traits.flatMap { traitId ->
-        val properties = schemas[traitId].shouldNotBeNull()[SCH.properties].toJsonMapOrEmpty()
-        properties.mapNotNull { (key, raw) ->
-            val schema = raw.toJsonMapOrEmpty()
-            val shown = schema[SCH.title].toOptStr() ?: key.replaceFirstChar { it.uppercase() }
-            if (shown == label) Triple(traitId, key, schema) else null
-        }
-    }
-    check(matches.size == 1) { "The walk-through's '$label' is ${matches.size} fields of $traits, not one." }
-    return matches.single()
+private fun fieldFor(label: String, fields: Map<String, ShownField>, schemas: Map<String, Map<String, Any?>>): Triple<String, String, Map<String, Any?>> {
+    val field = fields[label] ?: error("The walk-through's '$label' is not a field of the form, whose fields are ${fields.keys}.")
+    val schema = schemas[field.traitId].shouldNotBeNull()[SCH.properties].toJsonMapOrEmpty()[field.key].toJsonMapOrEmpty()
+    return Triple(field.traitId, field.key, schema)
 }
 
 /** What the form sends for [shown], typed as [schema] asks: choices by their labels, yes or no, a number, or text. */
