@@ -41,10 +41,12 @@ import kotlin.time.Instant
  * dispatcher/endpoints see a transport-neutral view. Dual-mode, ported from dn's
  * `DnRequestHandler`:
  *  - **Jetty mode** — backed by a live Jetty 12 [Request]/[Response]/[Callback].
- *  - **Test mode** — backed by in-memory `rpt*` capture fields, driven by [TestHttpClient].
+ *  - **No-HTTP mode** — backed by in-memory `rpt*` capture fields, driven by [TestHttpClient] in tests and by
+ *    [InProcessCaller] in production (issue #1524). Its input arrives through the `test*` fields, named for where
+ *    the mode began.
  *
  * Every method routes on whether a Jetty response is present, so the same request logic
- * serves both real HTTP and in-process endpoint tests.
+ * serves both real HTTP and in-process calls.
  */
 class RequestHandler : WebRequest {
     /**
@@ -78,7 +80,12 @@ class RequestHandler : WebRequest {
     val section: String get() = sectionOf(appPath)
     val method: String
     val uri: String
-    var queryStr: String?
+    /** The raw query string. Set after construction by the no-HTTP callers, so setting it re-derives [logRequestUri]. */
+    var queryStr: String? = null
+        set(value) {
+            field = value
+            computeLogRequestUri()
+        }
     val contentType: String
 
     override var userAgent: String? = null
@@ -161,6 +168,12 @@ class RequestHandler : WebRequest {
      *  bytes, so a binary body is never also offered as one. */
     var rptResponseBytes: ByteArray? = null
 
+    /**
+     * Who a call made in this process acts as (issue #1524), set by [InProcessCaller]; null for every request from the
+     * wire. A field, never read from a header or a cookie, so only code in this process can set it.
+     */
+    var inProcessPrincipal: InProcessPrincipal? = null
+
     /** The context created to process this request; captured for tests. */
     var createdCxt: KdrCxt? = null
 
@@ -187,7 +200,10 @@ class RequestHandler : WebRequest {
         computeLogRequestUri()
     }
 
-    /** Test-mode constructor (no HTTP). */
+    /**
+     * The no-HTTP constructor: for tests ([TestHttpClient]), and for calls made in this process for a user
+     * ([InProcessCaller], issue #1524). The response is captured in the `rpt*` fields rather than written.
+     */
     constructor(
         instanceConfig: KdrInstanceConfig,
         method: String,
@@ -258,7 +274,7 @@ class RequestHandler : WebRequest {
     private fun parseQueryParams() {
         val qs = queryStr
         if (qs != null && qs.length > 2048) {
-            throw KdrException("Query string length ${qs.length} exceeds the maximum of 2048.")
+            throw KdrException.mkInput("Query string length ${qs.length} exceeds the maximum of 2048.")
         }
         queryParams = HttpUtil.parseQuery(qs).toMutableMap()
     }

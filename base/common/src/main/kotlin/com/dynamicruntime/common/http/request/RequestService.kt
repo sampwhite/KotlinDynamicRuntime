@@ -399,7 +399,7 @@ class RequestService : ServiceInitializer {
         authFloorMs = AuthTiming.floorMs(cxt.instanceConfig)
         authJitterMs = AuthTiming.jitterMs(cxt.instanceConfig)
         authPermits = Semaphore(AuthTiming.concurrency(cxt.instanceConfig))
-        apiContextRoot = (cxt.instanceConfig.get(ACFG.apiContextRoot) as? String) ?: ContextRoot.kda
+        apiContextRoot = ContextRoot.apiOf(cxt.instanceConfig)
         contentContextRoot = (cxt.instanceConfig.get(ACFG.contentContextRoot) as? String) ?: ContextRoot.cp
         appContextRoot = (cxt.instanceConfig.get(ACFG.appContextRoot) as? String) ?: ContextRoot.wa
         staticContextRoot = (cxt.instanceConfig.get(ACFG.staticContextRoot) as? String) ?: ContextRoot.st
@@ -617,10 +617,12 @@ class RequestService : ServiceInitializer {
         EnvAuthRules.fromAdminLogin(cxt)
         // A read-only API key (issue #1402) makes GET requests and nothing else, whatever the section and whatever its
         // owner may do: refused here, before the gate, so no section -- and no content page -- can forget to. The one
-        // endpoint that exchanges the key (issue #1403) says so itself, and only under the API root.
+        // endpoint that exchanges the key (issue #1403) says so itself, and only under the API root. A call made in this
+        // process for a user (issue #1524) reaches only what its scope admits, and no content page.
         cxt.apiKey?.let { access ->
             val exchangesKey = focus == ContextFocus.api && cxt.getGlobalSchema().endpoints["$appPath:$method"]?.keyExchange == true
-            access.refusal(method, sessionOnly = false, path = appPath, exchangesKey = exchangesKey)?.let {
+            val contentPage = focus != ContextFocus.api
+            access.refusal(method, sessionOnly = false, path = appPath, exchangesKey = exchangesKey, contentPage = contentPage)?.let {
                 throw KdrException(it, code = EXC.notAuthorized)
             }
         }
@@ -1020,8 +1022,19 @@ class RequestService : ServiceInitializer {
      */
     var authExtractor: (KdrCxt, RequestHandler) -> Unit = ::extractSessionAuth
 
-    /** Applies the node's [authExtractor]. Called by the dispatcher before the section gate. */
-    fun extractAuth(cxt: KdrCxt, handler: RequestHandler) = authExtractor(cxt, handler)
+    /**
+     * Applies the node's [authExtractor]. Called by the dispatcher before the section gate. A call made in this process
+     * for a user (issue #1524) names its user on the handler itself ([RequestHandler.inProcessPrincipal]), which nothing
+     * on the wire can set, and is bound by [InProcessCaller.bind] instead: there is no session or key to read.
+     */
+    fun extractAuth(cxt: KdrCxt, handler: RequestHandler) {
+        val principal = handler.inProcessPrincipal
+        if (principal != null) {
+            InProcessCaller.bind(cxt, principal)
+            return
+        }
+        authExtractor(cxt, handler)
+    }
 
     /**
      * Restores the acting [KdrCxt.userProfile] from the session auth cookie: decrypt it (via the instance key),

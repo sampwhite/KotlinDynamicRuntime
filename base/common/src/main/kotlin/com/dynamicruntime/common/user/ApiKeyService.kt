@@ -28,8 +28,28 @@ import com.dynamicruntime.common.util.toOptStr
 import java.util.concurrent.ConcurrentHashMap
 
 /**
+ * What a call made in this process for a user may reach (issue #1524), beyond what any API key may: exactly the
+ * endpoints it lists, each a method and an application path (`GET` `/clientAdmin/config/bundles`), and nothing else.
+ * Named by [label] in a refusal. A list, never a pattern: a caller acting for a person -- an assistant -- is given
+ * exactly the calls its work needs, and a pattern would admit what it did not name, such as a client's own copy of an
+ * endpoint (`/gedra/<client>/...`).
+ */
+class InProcessScope private constructor(val label: String, private val allowed: Set<Pair<String, String>>) {
+    /** Whether the scope lists [method] [path]. */
+    fun admits(method: String, path: String): Boolean = (method to path) in allowed
+
+    companion object {
+        /** A scope admitting exactly [allowed], each `method` to `path`. */
+        fun of(label: String, allowed: Set<Pair<String, String>>): InProcessScope = InProcessScope(label, allowed)
+    }
+}
+
+/**
  * Which API key a request authenticated with (issue #1402), on [KdrCxt.apiKey], and when its use was last recorded. A
  * keyed request sets no cookie, and what it may not reach is [refusal]'s to say.
+ *
+ * A call made in this process for a user (issue #1524, `InProcessCaller`) carries one too: a key with no row, named
+ * for the call, whose [inProcess] scope narrows it further. It is everything a key is held to and less.
  */
 class ApiKeyAccess(
     val keyId: String,
@@ -39,6 +59,8 @@ class ApiKeyAccess(
     val expiresAt: kotlin.time.Instant? = null,
     /** Whether the request sent an access token exchanged for the key (issue #1403), rather than the key itself. */
     val viaToken: Boolean = false,
+    /** For a call made in this process (issue #1524): what it may reach. Null for a key a program presented. */
+    val inProcess: InProcessScope? = null,
 ) {
     val isReadOnly: Boolean get() = access == AKEY.read
 
@@ -52,12 +74,27 @@ class ApiKeyAccess(
      * An endpoint that [exchangesKey] -- the token exchange, issue #1403 -- is the one exception, and in both directions: a
      * read-only key may post to it, since asking for a token changes nothing, and a token may not, since it is the key
      * that is exchanged -- one token buying the next would make a token live forever.
+     *
+     * A call made in this process (issue #1524) reaches only the endpoints its [inProcess] scope admits -- never a page
+     * no endpoint answers ([contentPage]), and never the token exchange, since it has no key to exchange.
      */
-    fun refusal(method: String, sessionOnly: Boolean, path: String, exchangesKey: Boolean = false): String? = when {
-        exchangesKey -> if (viaToken) "An access token is not exchanged for another; send the API key itself." else null
-        isReadOnly && method != HttpMethod.GET.name -> "This API key is read-only: it may only make GET requests."
-        sessionOnly -> "'$path' is not open to API keys; it needs a signed-in session."
-        else -> null
+    fun refusal(
+        method: String,
+        sessionOnly: Boolean,
+        path: String,
+        exchangesKey: Boolean = false,
+        contentPage: Boolean = false,
+    ): String? {
+        val scope = inProcess
+        if (scope != null && (contentPage || exchangesKey || !scope.admits(method, path))) {
+            return "'$path' is not open to ${scope.label}."
+        }
+        return when {
+            exchangesKey -> if (viaToken) "An access token is not exchanged for another; send the API key itself." else null
+            isReadOnly && method != HttpMethod.GET.name -> "This API key is read-only: it may only make GET requests."
+            sessionOnly -> "'$path' is not open to API keys; it needs a signed-in session."
+            else -> null
+        }
     }
 }
 
@@ -428,6 +465,8 @@ class ApiKeyService : ServiceInitializer {
      * the cache has nothing to reload for it. A failure is logged and nothing else happens.
      */
     fun noteUse(cxt: KdrCxt, access: ApiKeyAccess) {
+        // A call made in this process (issue #1524) has no key row to stamp.
+        if (access.inProcess != null) return
         val nowMs = cxt.now().toEpochMilliseconds()
         val stamped = maxOf(access.lastUsedAt?.toEpochMilliseconds() ?: 0L, lastUseWritten[access.keyId] ?: 0L)
         if (nowMs - stamped < lastUseIntervalMs) return
