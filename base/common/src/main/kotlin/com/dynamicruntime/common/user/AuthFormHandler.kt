@@ -897,7 +897,16 @@ class AuthFormHandler(
      * created with are a record, and a capability is not written at all. Refused for a client without the
      * `sandbox` flag, and from inside a sandbox, which has none of its own.
      */
-    fun openSandbox(cxt: KdrCxt, named: String?): Map<String, Any?> {
+    fun openSandbox(cxt: KdrCxt, named: String?): Map<String, Any?> =
+        completeLogin(cxt, claimOwnSandboxUser(cxt, named), byCode = false, sessionChange = true)
+
+    /**
+     * The caller's own user in [named]'s sandbox -- the caller's own client when null -- found or on first use created,
+     * with every check [openSandbox] makes, and no session (issue #1524): what a call made in this process for the
+     * caller acts as ([com.dynamicruntime.common.http.request.InProcessCaller]), so its configuration edits can only be
+     * the parent's drafts. [openSandbox] is this, then a session as the user.
+     */
+    fun claimOwnSandboxUser(cxt: KdrCxt, named: String?): AuthUserRow {
         val profile = cxt.userProfile
         val parent = named ?: profile.client
         if (isSandboxClient(parent)) {
@@ -915,11 +924,10 @@ class AuthFormHandler(
             ?: throw KdrException("The session's identity could not be found.", code = EXC.notFound)
         val own = userService.queryByUserId(cxt, profile.userId)
             ?: throw KdrException("The current user could not be found.", code = EXC.notFound)
-        val clone = userService.claimUser(
+        return userService.claimUser(
             cxt, identity, sandboxOf(parent), own.persona, own.personaSuffix,
             profile.roles.filter { RoleLadder.rankOf(it) != null }.sorted(), openedFrom = own,
         )
-        return completeLogin(cxt, clone, byCode = false, sessionChange = true)
     }
 
     /** Chooses which of the person's users an address logs in as ([UserService.defaultUserOf]'s first rule); returns the list. */

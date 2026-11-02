@@ -135,6 +135,24 @@ and what it writes to configuration is a draft of the parent's, as a session's w
   roles the user acts with, not the roles on its row. A user opened from an administrator acts as one, so its keys are
   that person's to make.
 
+## Calls made in this process for a user (#1524)
+
+Work a person asks for can run on after their request ends: the workflow assistant, which builds a workflow by calling
+this application's own endpoints. Such a call goes through the whole request pipeline (`InProcessCaller`), as a key's
+request does, and is held to everything a key is held to and less.
+
+- **Who it acts as.** The handler names a user (`RequestHandler.inProcessPrincipal`, a field nothing on the wire can
+  set), and the dispatcher binds that user as it binds a key's owner (`InProcessCaller.bind`): read afresh, refused
+  once deleted, disabled, or in a client the node does not carry, and acting with what a session on the user would --
+  in a sandbox, what the sandbox's rules give it at that moment. Nothing carries from one call to the next.
+- **What it may reach.** It is recorded as a key with no row (`ApiKeyAccess`, with an `InProcessScope`): no
+  `sessionOnly` endpoint, as for any key, and beyond that only the endpoints its scope lists. The dispatcher refuses
+  the rest and the catalog leaves it out, through the same `refusal`. It reaches no content page and never the token
+  exchange, having no key to exchange. No use is recorded, there being no row, and no cookie is set.
+- **As the person's sandbox user.** The assistant acts as the person's own user in the client's sandbox
+  (`AuthFormHandler.claimOwnSandboxUser`, the claim `openSandbox` makes, without a session), so what it writes to
+  configuration can only be a draft of the parent's, for the person to try and publish.
+
 ## How long a key lasts
 
 - **A new key** lasts `KDR_API_KEY_DAYS` days (365 by default), or fewer if its maker asks.

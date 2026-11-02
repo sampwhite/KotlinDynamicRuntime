@@ -161,6 +161,12 @@ class RequestHandler : WebRequest {
      *  bytes, so a binary body is never also offered as one. */
     var rptResponseBytes: ByteArray? = null
 
+    /**
+     * Who a call made in this process acts as (issue #1524), set by [InProcessCaller]; null for every request from the
+     * wire. A field, never read from a header or a cookie, so only code in this process can set it.
+     */
+    var inProcessPrincipal: InProcessPrincipal? = null
+
     /** The context created to process this request; captured for tests. */
     var createdCxt: KdrCxt? = null
 
@@ -187,7 +193,10 @@ class RequestHandler : WebRequest {
         computeLogRequestUri()
     }
 
-    /** Test-mode constructor (no HTTP). */
+    /**
+     * The no-HTTP constructor: for tests ([TestHttpClient]), and for calls made in this process for a user
+     * ([InProcessCaller], issue #1524). The response is captured in the `rpt*` fields rather than written.
+     */
     constructor(
         instanceConfig: KdrInstanceConfig,
         method: String,
