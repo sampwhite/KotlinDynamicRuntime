@@ -10,6 +10,9 @@ import com.dynamicruntime.common.endpoint.schemaModule
 import com.dynamicruntime.common.gedra.ClientAudience
 import com.dynamicruntime.common.gedra.ClientDef
 import com.dynamicruntime.common.gedra.ClientUsageType
+import com.dynamicruntime.common.content.ComponentImageDef
+import com.dynamicruntime.common.content.componentImage
+import com.dynamicruntime.common.gedra.GCFG
 import com.dynamicruntime.common.gedra.GT
 import com.dynamicruntime.common.gedra.report.RMETA
 import com.dynamicruntime.common.gedra.report.RUSR
@@ -38,6 +41,7 @@ import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.SchLayoutBuilder
 import com.dynamicruntime.common.schema.SchLayoutChoice
 import com.dynamicruntime.common.schema.SchLayoutMode
+import com.dynamicruntime.common.schema.layout
 import com.dynamicruntime.common.simulation.SimulationReport
 import com.dynamicruntime.common.simulation.Simulations
 import com.dynamicruntime.common.simulation.simulationEndpoint
@@ -143,6 +147,13 @@ object ConfDemo {
     const val needs = "needs"
 
     const val speakerType = "Speaker"
+
+    /** The icon the talk's introduction opens with (issue #1545): a component image the kdn component ships. */
+    const val talkIcon = "kdr:talkIcon"
+    const val talkIconFile = "talk-icon.svg"
+
+    /** The images the demo's copy names. */
+    val images: List<ComponentImageDef> = listOf(componentImage(talkIcon, talkIconFile))
     const val abstract = "abstract"
     const val abstractEntry = "AbstractEntry"
     const val summary = "summary"
@@ -257,6 +268,19 @@ fun confDemoBase(cxt: KdrCxtBase = LiteCxt(), client: String = ConfDemo.client):
             property("email", "Where to reach them.") { title = "Email" }
         }
 
+        // The platform's name trait, as the demo's forms show it (issue #1545): renamed and introduced, and its field
+        // relabeled, by its layout alone, which is what the Clients page's Adapt writes. Its data is every client's.
+        type("${GCFG.globalNamespace}.${traitDataTypeName(GT.nameEntry)}") {
+            layout(
+                label = "Talk title",
+                comment = "The platform's name trait, as the demo's forms show it.",
+                description = "![A presentation screen](img:${ConfDemo.talkIcon}){.float-left .icon width=20}The title the " +
+                    "conference program prints, and the name the committee knows your talk by.",
+            ) {
+                field(GT.nameField, label = "Title")
+            }
+        }
+
         // The client's own traits (issue #1138). Each workflow page shows the traits that workflow introduces, so a
         // trait is appended here, never inserted: the pages address each by its place in the bundle.
         trait(ConfDemo.sessionEntry, ConfDemo.session, setOf(GedraDataType.formDoc), "Where a talk fits in the program.") {
@@ -369,7 +393,7 @@ fun confDemoCreateTalk(cxt: KdrCxtBase = LiteCxt(), client: String = ConfDemo.cl
     gedraConfig(cxt, ConfDemo.createTalkConfig, clientNamespace(client), client) {
         workflow(ConfDemo.createTalkWorkflow, WfEntry.creation) {
             comment = "Runs once, when a speaker starts a submission. It asks only for the title; the rest comes later."
-            label = "Submit a talk"
+            label = "Start a talk submission"
             task(ConfDemo.nameTalkTask, "Name your talk") {
                 comment = "A creation workflow has exactly one task, with exactly one save."
                 trait(GT.name)

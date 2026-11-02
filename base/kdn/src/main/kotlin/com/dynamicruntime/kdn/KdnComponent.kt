@@ -59,7 +59,7 @@ class KdnComponent : ComponentDefinition {
     override fun docs(cxt: KdrCxt): List<MarkdownDocDef> = confDemoDocs() + WalkThrough.doc
 
     /** The walk-through's banners, one opening each part (issues #1429, #1463). */
-    override fun images(cxt: KdrCxt): List<ComponentImageDef> = WalkThrough.images
+    override fun images(cxt: KdrCxt): List<ComponentImageDef> = WalkThrough.images + ConfDemo.images
 
     /**
      * The conference demo's copy (issue #1139): a fragment file its logistics layout pulls a heading and a description

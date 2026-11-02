@@ -255,6 +255,17 @@ The client, its traits, its columns in the forms list, its shared type, its fact
         },
         "required": ["name"]
       }
+    },
+    {
+      "typeName": "kdr.core.NameData",
+      "schema": {
+        "g-layout": {
+          "$comment": "The platform's name trait, as the demo's forms show it.",
+          "label": "Talk title",
+          "description": "![A presentation screen](img:kdr:talkIcon){.float-left .icon width=20}The title the conference program prints, and the name the committee knows your talk by.",
+          "schemaFields": [{"field": "name", "label": "Title"}]
+        }
+      }
     }
   ],
   "kdr:uiBlockDef": [
@@ -295,7 +306,7 @@ The creation workflow. Explained on [Creating a talk](create-talk.md).
       "definition": {
         "$comment": "Runs once, when a speaker starts a submission. It asks only for the title; the rest comes later.",
         "entry": "creation",
-        "label": "Submit a talk",
+        "label": "Start a talk submission",
         "workflowId": "createTalk",
         "tasks": [
           {
