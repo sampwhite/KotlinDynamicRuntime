@@ -9,4 +9,4 @@
 # +heading Questionnaire
 
 # +intro
-![Questionnaire](img:sample:questionnaireIcon){.float-left width=20} Choose a topic and report if you had a problem
+![Questionnaire](img:sample:questionnaireIcon){.float-left .icon width=20}Choose a topic and report if you had a problem

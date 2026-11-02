@@ -178,7 +178,9 @@ fun sampleTraits(cxt: KdrCxt): GedraConfig = gedraConfig(cxt, ST.sampleTraits, S
         // field's own minimum/maximum on the frontend, replacing the derived "range: 2000 to 2100". The boot
         // check confirms the placeholders name bounds the field actually declares.
         // Its introduction (issue #1534): a one-line icon floated at its left, the copy beside it.
-        layout(description = "![Expense report](img:${SF.expenseIcon}){.float-left width=20} What you spent in one year, item by item.") {
+        layout(
+            description = "![Expense report](img:${SF.expenseIcon}){.float-left .icon width=20}What you spent in one year, item by item.",
+        ) {
             field(ST.year, label = "Reporting year", hint = $$"Any year from ${min} to ${max}.")
         }
     }

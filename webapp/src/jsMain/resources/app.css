@@ -638,6 +638,11 @@ a:not([class]):hover { color: var(--accent-brighter); text-decoration: underline
 @media (max-width: 480px) {
     .md-float-left, .md-float-right { float: none; display: block; margin: 0 0 8px; }
 }
+/* An icon (issue #1534): a small image floated beside one line of copy, `{.float-left .icon width=20}`, the space of a
+   character from its words rather than a picture's 16px, and nudged to sit on the line. Two classes, so it outranks
+   the narrow-screen rule above: an icon stays beside its line at any width. */
+.md-float-left.md-icon { float: left; display: inline; margin: 3px 6px 0 0; }
+.md-float-right.md-icon { float: right; display: inline; margin: 3px 0 0 6px; }
 /* Readable measure at any width (issue #554): prose is capped at ~80 characters, on the paragraph rather than
    the container, so a table (#547) or a code block still gets the full column while a line of text does not
    run the width of a wide window. */

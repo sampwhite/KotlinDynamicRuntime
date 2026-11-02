@@ -84,7 +84,7 @@ object SF {
 
     /**
      * The questionnaire's and the expense report's icons (issue #1534): one text line high, floated at the left of each
-     * trait's introduction on a workflow form, as `![...](img:sample:questionnaireIcon){.float-left width=20}`.
+     * trait's introduction on a workflow form, as `![...](img:sample:questionnaireIcon){.float-left .icon width=20}`.
      */
     const val questionnaireIcon = "sample:questionnaireIcon"
     const val questionnaireIconFile = "questionnaire-icon.svg"

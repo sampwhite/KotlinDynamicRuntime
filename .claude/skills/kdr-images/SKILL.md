@@ -102,7 +102,9 @@ the image is shown at, and keep words few.
   boot refuses it as "not an image this serves" -- a message that does not say why (issue #1534).
 
 **Placement in copy.** `![alt](img:<name>){.float-left width=140}` floats an image beside the copy that follows, and
-`[]{.clear}` ends the float (issues #795, #1382). That suffix is ours: GitHub shows it as literal text, so an image in
+`[]{.clear}` ends the float (issues #795, #1382). An **icon** one line high adds the `icon` role,
+`{.float-left .icon width=20}`, with no space before the words: a character's gap from them rather than a picture's
+16px, and it stays beside its line on a phone, where other floats drop below (issue #1534). That suffix is ours: GitHub shows it as literal text, so an image in
 a **document** is a plain one, full width.
 
 ## Banners: `banner.py`
