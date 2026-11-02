@@ -611,16 +611,15 @@ private fun ChildrenBuilder.renderObject(
 /**
  * The direct object properties of [type] whose value type declares a primary key (issue #642), each mapped to
  * its key fields -- the fields to hoist to [type]'s own level and hide inside the object. Only a single keyed
- * **object** promotes: a keyed array or union is left alone (`isStructuredObject` counts a union, so a union is
- * excluded explicitly), since "alongside the choice" has no meaning for a list or a branch set. This is the
+ * **object** promotes: a keyed array is left alone, since "alongside the choice" has no meaning for a list, and a union
+ * cannot be keyed (the parse refuses a key on a type declaring no fields for it, issue #1521). This is the
  * shape a trait's `data` takes on an edit branch, but the rule names no trait -- it knows only that an object
  * property is keyed, the way the keyed-element labelling does. Pure, so a jsNodeTest can pin which fields lift.
  */
 fun promotableKeys(type: SchType): Map<String, List<String>> =
     type.properties
         .filterValues {
-            it.valueType.variants == null && it.valueType.jsonType == SCT.kObject &&
-                it.valueType.primaryKey.isNotEmpty()
+            it.valueType.jsonType == SCT.kObject && it.valueType.primaryKey.isNotEmpty()
         }
         .mapValues { it.value.valueType.primaryKey }
 

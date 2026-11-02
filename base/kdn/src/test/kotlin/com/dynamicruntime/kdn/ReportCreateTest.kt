@@ -33,6 +33,7 @@ import com.dynamicruntime.common.gedra.workflow.userHasLabel
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.schema.SCT
+import com.dynamicruntime.common.schema.layout
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.user.UADEP
 import com.dynamicruntime.common.util.toJsonListOfMaps
@@ -63,6 +64,8 @@ class ReportCreateTest : StringSpec({
                 )
                 cfact("talkApproved", "Talk", "The talk was approved.")
                 trait("TalkEntry", "talk", setOf(GedraDataType.formDoc), "A talk.") {
+                    // A heading, which names the trait on the Reports page as on every other (issue #1520).
+                    layout(label = "## Talk details\nWho it is for, and when.") {}
                     property("level", "Who it is for.") {
                         option("beginner", "Beginners")
                         option("advanced", "Experts")
@@ -74,7 +77,8 @@ class ReportCreateTest : StringSpec({
                         property("building", "The building.")
                     }
                 }
-                trait("YearlyEntry", "yearly", setOf(GedraDataType.formDoc), "A note a year.", primaryKey = listOf("year")) {
+                trait("YearlyEntry", "yearly", setOf(GedraDataType.formDoc), "A note a year.") {
+                    primaryKey("year")
                     property("year", "The year.", required = true) { type = SCT.integer }
                     property("note", "What happened.")
                 }
@@ -109,6 +113,8 @@ class ReportCreateTest : StringSpec({
             ReportPathGroupKind.trait.name to "yearly",
             ReportPathGroupKind.workflow.name to "review",
         )
+        // Each trait named as every page names it (issue #1520): by its heading's first line, else its id in words.
+        groups.map { it[RRUN.label] } shouldBe listOf("The form", "Talk details", "Yearly", "Review")
         fun paths(i: Int) = groups[i][RCR.paths].toJsonListOfMaps().associateBy { it[RRUN.path] }
         paths(0).keys shouldBe setOf("meta.createdAt", "meta.updatedAt", "meta.formStatus", "user.email", "user.name")
         // A nested object's fields are offered by their own paths, labeled under it.

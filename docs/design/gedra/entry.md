@@ -451,7 +451,8 @@ consequence for the form engine, which must re-render when the watched field cha
 
 ### `g-primaryKey`
 
-**Built** (#487). Declared **on the data type**, as an ordered array of property names, alongside `required`:
+**Built** (#487), and since #1521 the **only** way a key is declared. Declared **on the data type**, as an ordered
+array of property names, alongside `required`:
 
 ```json
 {
@@ -463,20 +464,39 @@ consequence for the form engine, which must re-render when the watched field cha
 
 On the type rather than the property, for three reasons: it follows the layer's existing required-is-on-the-side
 convention; a composite key is ordered, which a per-property boolean cannot express; and it is how SQL says the
-same thing. It goes on the *data* type, since that is the half a trait owns. It travels as the `primaryKey`
-parameter of a trait declaration, and as the `primaryKey` field of a stored `traitDef`.
+same thing. It goes on the *data* type, since that is the half a trait owns. The builder writes it with
+`primaryKey("year")` in the type's block, and a stored `traitDef` carries it inside its `dataSchema`, so the DSL and a
+stored declaration say it the same way. A trait declaration has no key of its own. #487 gave it one, a `primaryKey`
+argument copied onto the data type as this keyword, at a time when keys were a gedra matter and not yet a schema one;
+#1521 removed it, since it made two declarations of one key, of which only the trait's keyed anything.
 
 **Absence is meaningful**: no key means at most one entry with that `traitId` on a gedra. One keyword covers
 both the singleton and the keyed-collection cases.
 
-**Checked when the trait is declared** (`traitEntryOf` in `GedraEntry.kt`), where the author is:
+**Checked where types compile** (`primaryKeyProblem` in `SchParser.kt`), on every type that declares one -- at boot,
+and on a configuration write through the trial reload, as stored configuration is (strict at write):
 
-- every named property exists and is `required` (an optional key means two entries omitting it collide);
+- every named property is declared and `required` (an optional key means two entries omitting it collide);
 - every key property is scalar;
 - no key property is `g-derived`, since identity that depends on a computation re-partitions stored data whenever
   the computation changes;
-- a keyed trait declares its data **inline**, not as a `$ref`: the key and the fields it names have to be one type,
-  and a `$ref` is resolved only when types compile.
+- no property is named twice.
+
+A trait's data may therefore be a `$ref`: the key sits on whichever type holds the fields, and is judged once the
+reference is bound.
+
+**Keying reads the compiled type.** A trait's entries are keyed by its data type's key as the client's schema compiles
+it (`traitKeyOf`, `traitKeyIn` in `GedraEntry.kt`): the patch's entry keying, the duplicate check, report binding,
+state traits, and config slots all read it there, so a reload's types take effect with it.
+
+**A client may not re-key.** An alteration of a type may restate its `g-primaryKey` but not change, add, or remove one
+(`MergeRule.Fixed` in `schemaTypeMergeSpec`), since any of those would change how stored entries are told apart; one
+that tries is refused as a widening is. An extension (`g-extends`) is a type of its own, with values of its own, so it
+may keep the base's key, change it, or drop it.
+
+**An array of a keyed type refuses repeated keys.** Wherever an array's item type declares `g-primaryKey`, the
+validator refuses two items with one key, compared as validated, on every write path and in the browser too. Targeting
+one item of such an array in an edit -- a merge that matches items by key -- is not built (see `deferred-work.md`).
 
 Uniqueness is scoped to `(gedra, traitId)` and checked on every write (`checkEntryKeys`). It is compared on
 **coerced** values: `"2024"` and `2024` are one key, so the check runs after coercion or duplicates slip through

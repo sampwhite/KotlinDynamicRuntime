@@ -86,7 +86,10 @@ enum class SchFailCode {
      */
     patternMismatch,
 
-    /** An array declared `uniqueItems` holds two equal elements (issue #823). */
+    /**
+     * An array declared `uniqueItems` holds two equal elements (issue #823), or two elements of an item type declaring
+     * a `g-primaryKey` share one key (issue #1521).
+     */
     duplicateItem,
 }
 
@@ -872,10 +875,7 @@ fun checkCondition(
  */
 @KdrPrivate
 fun isAbsentValue(type: SchType, value: Any?): Boolean {
-    if (!type.emptyIsAbsent) {
-        return false
-    }
-    return when (value) {
+    return type.emptyIsAbsent && when (value) {
         null -> true
         is CharSequence -> value.isBlank()
         is List<*> -> value.isEmpty()
@@ -905,7 +905,11 @@ fun validateArray(
     // equal only once coerced would be duplicates in one mode and not the other (issue #815). Coercing changes the
     // output, never the failures, so the elements report the same either way.
     val seen: MutableMap<String, Int>? = if (type.uniqueItems) HashMap(list.size) else null
-    val elementCoerce = coerce || type.uniqueItems
+    // Items whose type declares a `g-primaryKey` are told apart by it (issue #1521): two with one key are refused,
+    // compared as validated for the reason `uniqueItems` is.
+    val key = itemType?.primaryKey.orEmpty()
+    val seenKeys: MutableMap<String, Int>? = if (key.isNotEmpty()) HashMap(list.size) else null
+    val elementCoerce = coerce || type.uniqueItems || seenKeys != null
     list.forEachIndexed { i, elem ->
         val coerced = if (itemType != null) {
             validateValue(itemType, elem, indexPath(path, i), elementCoerce, failures, elementOpts)
@@ -913,6 +917,20 @@ fun validateArray(
             elem
         }
         out?.add(coerced)
+        // An item missing a key field has failed as incomplete already; it has no key to repeat.
+        val keyValues = if (seenKeys == null) null else (coerced as? Map<*, *>)?.let { m -> key.map { m[it] } }
+        if (seenKeys != null && keyValues != null && keyValues.none { it == null }) {
+            val first = seenKeys.getOrPut(uniquenessKey(keyValues)) { i }
+            if (first != i) {
+                val named = key.zip(keyValues).joinToString(", ") { (f, v) -> "$f $v" }
+                failures.add(
+                    type.failure(
+                        path, SchFailCode.duplicateItem,
+                        "Item ${i + 1} has the key of item ${first + 1} ($named); each item's key must be different.", value = list,
+                    ),
+                )
+            }
+        }
         if (seen != null) {
             val first = seen.getOrPut(uniquenessKey(coerced)) { i }
             if (first != i) {

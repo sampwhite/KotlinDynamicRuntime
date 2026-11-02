@@ -82,8 +82,8 @@ fun workflowStateConfig(cxt: KdrCxt): GedraConfig = gedraConfig(cxt, WFS.stateBu
         StateTraitClass.derived,
         "What a normal workflow currently computes about one form -- a derived projection, one entry per " +
             "workflow, rebuilt whole on every recompute.",
-        primaryKey = listOf(WFD.workflowId),
     ) {
+        primaryKey(WFD.workflowId)
         property(WFD.workflowId, "The workflow this entry is about; the entry's primary key.", required = true)
         property(WFS.computedAgainstRef, "The workflow revision this was computed against, as WfRef text.")
         property(WFS.cfacts, "The workflow's own cfacts, as its cfactCalc functions concluded them from the form's data.") {
@@ -113,8 +113,8 @@ fun workflowStateConfig(cxt: KdrCxt): GedraConfig = gedraConfig(cxt, WFS.stateBu
         StateTraitClass.asserted,
         "That a person put this form into a workflow, and the trail of what has happened to it since -- an " +
             "asserted fact a recompute or a batch job must never compute away.",
-        primaryKey = listOf(WFD.workflowId),
     ) {
+        primaryKey(WFD.workflowId)
         property(WFD.workflowId, "The workflow this form is engaged with; the entry's primary key.", required = true)
         property(WFS.engaged, "Whether the form is engaged with the workflow right now.", required = true) {
             type = SCT.boolean
@@ -137,8 +137,8 @@ fun workflowStateConfig(cxt: KdrCxt): GedraConfig = gedraConfig(cxt, WFS.stateBu
         StateTraitClass.asserted,
         "That a reviewer approved an approval task of a workflow for this form, and when -- an asserted fact a " +
             "recompute or a batch job must never compute away.",
-        primaryKey = listOf(WFD.workflowId, WFS.taskId),
     ) {
+        primaryKey(WFD.workflowId, WFS.taskId)
         property(WFD.workflowId, "The workflow the approval belongs to; with the task, the entry's primary key.", required = true)
         property(WFS.taskId, "The approval task approved.", required = true)
         property(WFS.approvedAt, "When it was approved.", required = true) { dateTime() }

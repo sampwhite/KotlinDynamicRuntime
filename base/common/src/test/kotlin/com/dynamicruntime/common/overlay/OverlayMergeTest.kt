@@ -63,6 +63,28 @@ class OverlayMergeTest : StringSpec({
         }
     }
 
+    "a fixed part may be restated, and any change, addition, or removal of it is refused (issue #1521)" {
+        val base = mapOf("k" to listOf("year"))
+        val restated = mergeOverlay(spec("k" to MergeRule.Fixed), base, mapOf("k" to listOf("year")))
+        restated.value shouldBe base
+        restated.problems.shouldBeEmpty()
+        for (over in listOf(mapOf("k" to listOf("month")), mapOf("k" to null))) {
+            val refused = mergeOverlay(spec("k" to MergeRule.Fixed), base, over)
+            refused.value shouldBe base
+            refused.problems.map { it.code } shouldBe listOf(OverlayMergeError.fixedValue)
+        }
+        val added = mergeOverlay(spec("k" to MergeRule.Fixed), emptyMap(), mapOf("k" to listOf("year")))
+        added.value shouldBe emptyMap()
+        added.problems.map { it.code } shouldBe listOf(OverlayMergeError.fixedValue)
+        // And a diff states none of them.
+        for (edited in listOf(mapOf("k" to listOf("month")), mapOf("k" to null), emptyMap())) {
+            diffOverlay(spec("k" to MergeRule.Fixed), base, edited).problems.map { it.code } shouldBe
+                listOf(OverlayMergeError.cannotStateChange)
+        }
+        diffOverlay(spec("k" to MergeRule.Fixed), emptyMap(), base).problems.map { it.code } shouldBe
+            listOf(OverlayMergeError.cannotStateChange)
+    }
+
     "a type's g-onWrite merges by appending: an alteration's functions follow the type's own" {
         val base = mapOf(SCH.onWrite to listOf(mapOf("fn" to "computeValue", "target" to "total")))
         val overlay = mapOf(SCH.onWrite to listOf(mapOf("fn" to "computeValue", "target" to "other")))

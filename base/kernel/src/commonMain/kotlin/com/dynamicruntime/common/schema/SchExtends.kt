@@ -24,7 +24,9 @@ import com.dynamicruntime.common.util.toOptStr
  * opposite default for [SCH.properties] -- an extension usually adds, so it **merges** by default: a named property
  * is added or replaces the base's whole, `{}` keeps it, `null` removes it, and an unnamed one is the base's, including
  * any the base gains later. `"g-merge": { "properties": "restate" }` makes the extension state its whole set instead.
- * The layout merges by field, as an alteration's does; every other key replaces.
+ * The layout merges by field, as an alteration's does; every other key replaces -- [SCH.primaryKey] included, which an
+ * alteration may only restate (issue #1521): an extension is a type of its own, whose values are not the base's, so it
+ * may keep the base's key, change it, or drop it. Its key is judged as any type's is, once it is resolved.
  */
 val extensionMergeSpec: MergeSpec = MergeSpec(
     rules = mapOf(

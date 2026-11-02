@@ -22,6 +22,8 @@ class TraitNamesTest {
         // Blank is absent, at every step.
         assertEquals("Visit", traitNameOf("siteVisit", "  ", " Visit "))
         assertEquals("Site visit", traitNameOf("siteVisit", "\n", ""))
+        // A global trait's id is named without its root.
+        assertEquals("Site visit", traitNameOf("kdr:siteVisit", null, null))
     }
 
     @Test

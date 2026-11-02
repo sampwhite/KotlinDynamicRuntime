@@ -169,6 +169,30 @@ without a `discriminator`. A **denylist**: any other keyword this layer does not
 may carry its own. A client's alteration of a type may not change any of these (they take part in validation);
 it extends instead.
 
+## Keys: `g-primaryKey` (issues #487, #1521)
+
+```kotlin
+type("BudgetData") {
+    type = SCT.kObject
+    primaryKey("year")                                   // ordered; a composite key lists several
+    property("year", "The year.", required = true) { type = SCT.integer }
+    property("amount", "The amount.") { type = SCT.number }
+}
+trait("BudgetEntry", "budget", setOf(GedraDataType.formDoc), "BudgetData", "A budget a year.")
+```
+
+- **The only way to declare a key.** On a trait's data type it keys the trait's entries -- one entry per key value,
+  a repeated one refused (`checkEntryKeys`) -- whether the data is written inline or is a `$ref` to the type holding
+  it. A trait declaration has no `primaryKey` argument of its own, and a stored `traitDef` carries the key inside its
+  `dataSchema`. Keying reads it off the compiled type (`traitKeyOf`, `traitKeyIn`).
+- **Checked at parse** (`primaryKeyProblem`): every field it names is declared, `required`, a scalar, and not
+  `g-derived`, and none is named twice -- so a stored `dataSchema` or a client's type is held to it as the DSL is.
+- **On an array's item type**, the array refuses two items with one key, as `duplicateItem` ("Item 3 has the key of
+  item 1 (year 2024)…"), compared as validated. An edit still replaces the whole list; matching items by key is
+  deferred.
+- **A client's alteration may only restate it** (`MergeRule.Fixed`): changing, adding, or removing a key is refused
+  as a widening is, since it would change how stored values are told apart. An extension, a type of its own, may.
+
 ## Maps: free keys, typed values (issue #1055)
 
 An object is one of three things, and the third is declared with `mapOfValues`:
@@ -346,7 +370,9 @@ type("ExpenseData") {
   computed, but never its own target or a later function's, so one pass settles every value. A usage that fails is
   reported and skipped; the type's others run. Stored configuration is held to this when written (the trial reload).
 - **A client's alteration only adds to them** (`MergeRule.Append`): its functions follow the type's own, which it can
-  neither change nor remove.
+  neither change nor remove. An alteration that leaves `g-onWrite` out keeps the type's functions; one that mentions it
+  and drops or changes any (`null`, or a list not starting with them) is refused as a whole, like a widening -- any merge
+  problem outside `g-layout` fails the alteration (`isLayoutProblem`), and one inside drops only the client's layout.
 - **Stored values follow a changed script** through the derived-state recompute (nightly, or Recalculate form states),
   and the publish impact report counts the forms a change would recompute (`ImpactKind.valuesRecomputed`).
 - **Published typed**: each kind's settings type and the `kdr.fn.WriteFunction` union over them are in the catalog, and

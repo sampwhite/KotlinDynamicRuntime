@@ -235,9 +235,9 @@ internal fun inlineDataTypeName(config: GedraConfig, trait: GedraTrait): String?
  * the trait wrote it inline (so reassembly re-manufactures the type) or the `$ref` when it named a shared type.
  */
 internal fun traitToEntry(config: GedraConfig, trait: GedraTrait): Map<String, Any?> = buildMap {
-    // The shared metadata projection (issue #702), then this path's config-only extras. `omitEmptyPrimaryKey`
-    // keeps the stored form as lean as it was -- an empty key is left out rather than written as `[]`.
-    putAll(trait.toMetadataMap(omitEmptyPrimaryKey = true))
+    // The shared metadata projection (issue #702), then this path's config-only extras. A key rides in the data
+    // type's body, as its `g-primaryKey` (issue #1521).
+    putAll(trait.toMetadataMap())
     // The description lives on the generated entry type, not on `GedraTrait` (`traitEntry` puts it there via
     // `variantBranch`), so read it back from there -- otherwise a store/load cycle strips a trait's docs.
     config.defs[trait.typeName].toJsonMapOrEmpty()[SCH.description].toOptStr()?.let { put(CCT.description, it) }
@@ -261,10 +261,9 @@ private fun GedraConfigBuilder.reassembleTrait(entry: Map<String, Any?>) {
     val traitId = entry[CCT.traitId].toOptStr().orEmpty()
     val appliesTo = entry[CCT.appliesTo].toJsonListOfStrings()
         .mapNotNull { name -> GedraDataType.entries.firstOrNull { it.name == name } }.toSet()
-    val primaryKey = entry[CCT.primaryKey].toJsonListOfStrings()
     val description = entry[CCT.description].toOptStr()
     val dataSchema = entry[CCT.dataSchema].toJsonMapOrEmpty()
-    trait(typeName, traitId, appliesTo, description, primaryKey) { data.putAll(dataSchema) }
+    trait(typeName, traitId, appliesTo, description) { data.putAll(dataSchema) }
 }
 
 /** A stored fragment `content` (`namespace -> key -> value`) coerced back to the shape a `FragmentSource` holds. */

@@ -77,15 +77,12 @@ fun clientCatalogSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CLD.catalogN
     // which `ClientService` has already neutralized on a non-test node (issue #696), so the field is simply
     // absent off a test instance whatever the stored row held. No per-endpoint strip is needed.
 
-    // One of a client's traits, as metadata: its id, the generated entry type, the gedra kinds it applies to, and
-    // its primary key. Not the resolved field schema -- see the note above. Field keys are `CCT`'s (co-located
-    // with `GedraTrait`), so a rename is one edit.
     // One of a client's traits, as metadata. The map and this schema are the shared trait projection
     // (`GedraTrait.toMetadataMap` / `traitMetadataFields`, issue #702) -- the same shape the config serializer
     // writes, minus the config-only extras. Not the resolved field schema; see the note above.
     type(CLD.traitInfoTypeName) {
         type = SCT.kObject
-        description = "One of a client's traits: its id, generated entry type, applicable gedra kinds and primary key."
+        description = "One of a client's traits: its id, generated entry type, and applicable gedra kinds."
         traitMetadataFields()
     }
 

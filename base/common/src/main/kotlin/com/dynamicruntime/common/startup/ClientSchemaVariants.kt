@@ -26,6 +26,7 @@ import com.dynamicruntime.common.schema.SchType
 import com.dynamicruntime.common.schema.authoritativeLayoutProblems
 import com.dynamicruntime.common.schema.collectLayouts
 import com.dynamicruntime.common.schema.analyzeSchemaTypes
+import com.dynamicruntime.common.schema.isLayoutProblem
 import com.dynamicruntime.common.schema.narrowingProblems
 import com.dynamicruntime.common.schema.overlayDefs
 import com.dynamicruntime.common.schema.overlayTypeOutcome
@@ -294,8 +295,9 @@ private fun keepWhatNarrows(
             cxt,
             alterationIssue(
                 collected, client, name,
-                // A merge directive the type does not offer (issue #985) is refused here too, but is no widening.
-                (if (problems.all { it.code == OverlayMergeError.unknownChoice }) {
+                // A merge the type does not take -- a directive it does not offer (issue #985), a key changed (issue
+                // #1521), functions removed -- is refused here too, but is no widening.
+                (if (problems.all { it.code is OverlayMergeError }) {
                     "Client '$client' alters '$name' with a merge it cannot apply. "
                 } else {
                     "Client '$client' alters '$name' in a way that does not narrow it. "
@@ -507,8 +509,9 @@ private fun dropFaultyLayouts(
         // Said with where it is, since the merger's own words are about the list, not the type.
         val refused = (globalDefs[name] as? Map<*, *>)
             ?.let { overlayTypeOutcome(name, it.toJsonMap(), body.toJsonMap()).problems }.orEmpty()
-            // A refused merge directive is the narrowing check's to report; it has already dropped the alteration.
-            .filter { it.code != OverlayMergeError.unknownChoice }
+            // Only the layout's own: any other merge problem is the narrowing check's to report, and it has already
+            // dropped the alteration.
+            .filter { isLayoutProblem(name, it) }
             .map { "$where, at ${it.location?.path ?: name}: ${it.message}" }
         val problems = refused +
             (defs[name] as? Map<*, *>)?.let { layoutProblems(name, where, it, types[name]) }.orEmpty().map { it.message }

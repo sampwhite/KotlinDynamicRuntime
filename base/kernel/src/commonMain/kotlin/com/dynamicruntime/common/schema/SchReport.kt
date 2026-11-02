@@ -56,6 +56,12 @@ enum class SchemaError : ProblemCode {
     /** An `if`/`then`/`else` outside the one shape this layer reads (issue #253). */
     badCondition,
 
+    /**
+     * A `g-primaryKey` naming a field that cannot key (issue #1521): one the type does not declare, or one that is
+     * optional, not a scalar, or derived.
+     */
+    badPrimaryKey,
+
     /** Nesting past the depth cap -- in practice, a raw map that refers to itself. */
     tooDeep,
 }
@@ -114,6 +120,7 @@ class SchParseState {
     val pendingItemRefs = mutableListOf<PendingItemRef>()
     val pendingMapValueRefs = mutableListOf<PendingMapValueRef>()
     val pendingBranchRefs = mutableListOf<PendingBranchRef>()
+    val pendingKeyedTypes = mutableListOf<PendingKeyedType>()
     private val segments = ArrayDeque<String>()
 
     fun enter(segment: String) = segments.addLast(segment)

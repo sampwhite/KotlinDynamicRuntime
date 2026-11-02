@@ -275,8 +275,8 @@ fun sampleTraits(cxt: KdrCxt): GedraConfig = gedraConfig(cxt, ST.sampleTraits, S
         ST.yearly,
         setOf(GedraDataType.formDoc),
         "One record per year, keyed by the year.",
-        primaryKey = listOf(ST.year),
     ) {
+        primaryKey(ST.year)
         property(ST.year, "The year this record is for; the entry's primary key.", required = true) {
             type = SCT.integer
             minimum = 2000
@@ -295,8 +295,8 @@ fun sampleTraits(cxt: KdrCxt): GedraConfig = gedraConfig(cxt, ST.sampleTraits, S
         setOf(GedraDataType.formDoc),
         StateTraitClass.derived,
         "Per year, which of the form's traits have data -- a derived projection of the form's own data.",
-        primaryKey = listOf(ST.year),
     ) {
+        primaryKey(ST.year)
         property(ST.year, "The year this record is for; the entry's primary key.", required = true) {
             type = SCT.integer
             minimum = 2000
@@ -319,8 +319,8 @@ fun sampleTraits(cxt: KdrCxt): GedraConfig = gedraConfig(cxt, ST.sampleTraits, S
         setOf(GedraDataType.formDoc, GedraDataType.wfData),
         StateTraitClass.asserted,
         "The id a third-party store returned for this gedra, keyed by the source.",
-        primaryKey = listOf(ST.externalSource),
     ) {
+        primaryKey(ST.externalSource)
         property(ST.externalSource, "Which third-party store; the entry's primary key.", required = true) {
             maxLength = 64
         }

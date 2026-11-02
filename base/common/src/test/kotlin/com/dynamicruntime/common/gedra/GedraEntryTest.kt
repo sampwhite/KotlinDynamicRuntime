@@ -173,14 +173,15 @@ class GedraEntryTest : StringSpec({
         ).failures.map { it.path } shouldContainExactlyInAnyOrder listOf(GE.traitId)
     }
 
-    // --- primary key (issue #487) --------------------------------------------
+    // --- primary key (issues #487, #1521) ----------------------------------------
 
     fun yearlyDefs(
         primaryKey: List<String> = listOf("year"),
         yearRequired: Boolean = true,
         yearDerived: Boolean = false,
     ) = schemaDefs(cxt, "globalconfig") {
-        traitEntry("YearlyEntry", "yearly", setOf(GedraDataType.formDoc), primaryKey = primaryKey) {
+        traitEntry("YearlyEntry", "yearly", setOf(GedraDataType.formDoc)) {
+            primaryKey(*primaryKey.toTypedArray())
             property("year", "The year.", required = yearRequired) { type = SCT.integer; derived = yearDerived }
             property("note", "A note.")
         }
@@ -195,42 +196,49 @@ class GedraEntryTest : StringSpec({
         nameDefs().getValue("globalconfig.NameData").toJsonMapOrEmpty().keys shouldNotContain SCH.primaryKey
     }
 
-    "and it is surfaced on the parsed SchType, for the form engine to read" {
-        parseSchemaTypes(yearlyDefs()).getValue("globalconfig.YearlyData").primaryKey shouldBe listOf("year")
-        parseSchemaTypes(nameDefs()).getValue("globalconfig.NameData").primaryKey.shouldBeEmpty()
+    "and it is surfaced on the parsed SchType, which is what keys the trait's entries" {
+        val types = parseSchemaTypes(yearlyDefs())
+        types.getValue("globalconfig.YearlyData").primaryKey shouldBe listOf("year")
+        traitKeyOf(types.getValue("globalconfig.YearlyEntry")) shouldBe listOf("year")
+        traitKeyOf(parseSchemaTypes(nameDefs()).getValue("globalconfig.NameEntry")).shouldBeEmpty()
     }
 
+    // Judged where types compile (issue #1521), so a stored `dataSchema` and a client's type are held to it as the DSL is.
     "every key field must exist, be required, be scalar, and not be derived" {
-        shouldThrow<KdrException> { yearlyDefs(primaryKey = listOf("nope")) }
+        shouldThrow<KdrException> { parseSchemaTypes(yearlyDefs(primaryKey = listOf("nope"))) }
             .message.shouldNotBeNull() shouldContain "no such field"
-        shouldThrow<KdrException> { yearlyDefs(yearRequired = false) }
+        shouldThrow<KdrException> { parseSchemaTypes(yearlyDefs(yearRequired = false)) }
             .message.shouldNotBeNull() shouldContain "required"
-        shouldThrow<KdrException> { yearlyDefs(yearDerived = true) }
+        shouldThrow<KdrException> { parseSchemaTypes(yearlyDefs(yearDerived = true)) }
             .message.shouldNotBeNull() shouldContain "derived"
+        shouldThrow<KdrException> { parseSchemaTypes(yearlyDefs(primaryKey = listOf("year", "year"))) }
+            .message.shouldNotBeNull() shouldContain "twice"
         // A key field that is a container, not a value: a key is compared by value, so this is refused.
         shouldThrow<KdrException> {
-            schemaDefs(cxt, "globalconfig") {
-                traitEntry("BoxedEntry", "boxed", setOf(GedraDataType.formDoc), primaryKey = listOf("box")) {
-                    property("box", "An object, not a scalar.", required = true) { type = SCT.kObject }
-                }
-            }
+            parseSchemaTypes(
+                schemaDefs(cxt, "globalconfig") {
+                    traitEntry("BoxedEntry", "boxed", setOf(GedraDataType.formDoc)) {
+                        primaryKey("box")
+                        property("box", "An object, not a scalar.", required = true) { type = SCT.kObject }
+                    }
+                },
+            )
         }.message.shouldNotBeNull() shouldContain "scalar"
     }
 
-    "a keyed trait may not carry its data as a \$ref" {
-        // The key and the fields it names have to be one type, which a bare `$ref` -- resolved only when types
-        // compile -- cannot give. Put the key on the referenced type instead.
-        shouldThrow<KdrException> {
+    "a keyed trait may carry its data as a \$ref, the key on the referenced type" {
+        // The key sits on whichever type holds the fields (issue #1521), so a shared data type keys every trait using it.
+        val types = parseSchemaTypes(
             schemaDefs(cxt, "globalconfig") {
                 type("YearData") {
                     type = SCT.kObject
+                    primaryKey("year")
                     property("year", "The year.", required = true) { type = SCT.integer }
                 }
-                traitEntry("RefEntry", "refKeyed", setOf(GedraDataType.formDoc), primaryKey = listOf("year")) {
-                    ref("YearData")
-                }
-            }
-        }.message.shouldNotBeNull() shouldContain "inline"
+                traitEntry("RefEntry", "refKeyed", setOf(GedraDataType.formDoc)) { ref("YearData") }
+            },
+        )
+        traitKeyOf(types.getValue("globalconfig.RefEntry")) shouldBe listOf("year")
     }
 
     fun keyedEntry(traitId: String, year: Any?): Map<String, Any?> =

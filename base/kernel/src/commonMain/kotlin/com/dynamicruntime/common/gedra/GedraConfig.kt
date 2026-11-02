@@ -67,17 +67,11 @@ class GedraTrait(
      */
     val dataSchema: Map<String, Any?>,
     /**
-     * The ordered fields, within the trait's data, that tell several entries of it apart (issue #487) -- empty
-     * when the trait is single-instance. Held here so a write path can key entries without re-reading the
-     * generated schema, the same reason [appliesTo] is a typed field rather than a keyword to be parsed back.
-     */
-    val primaryKey: List<String> = emptyList(),
-    /**
      * When set, this is a **state** trait rather than a data trait (issue #597), and this is its classification:
      * [StateTraitClass.derived] (a projection a batch may recompute) or [StateTraitClass.asserted] (a human or
      * external act a batch must not touch). Null for an ordinary data trait -- the flavor that partitions the
      * two, since both share this class and one id space. Carried on the trait, the same reason
-     * [appliesTo] and [primaryKey] are, so the state write path and the later batch / authorization phases read
+     * [appliesTo] is, so the state write path and the later batch / authorization phases read
      * it off the trait rather than parsing it back out of the generated schema.
      */
     val stateClass: StateTraitClass? = null,
@@ -111,8 +105,6 @@ class GedraConfigTrait(
     val appliesTo: Set<GedraConfigType>,
     /** The schema of the trait's own `data`, as [GedraTrait.dataSchema] is. */
     val dataSchema: Map<String, Any?>,
-    /** The ordered key fields within the data telling several entries apart; empty when single-instance. */
-    val primaryKey: List<String> = emptyList(),
 ) {
     override fun toString(): String = "$traitId -> $typeName"
 }
@@ -747,15 +739,14 @@ class GedraConfigBuilder(
         traitId: String,
         appliesTo: Set<GedraDataType>,
         description: String? = null,
-        primaryKey: List<String> = emptyList(),
         dataSchema: SchTypeBuilder.() -> Unit,
     ) {
         // Checked before anything is built, so a duplicate is refused rather than half-declared, and recorded
         // afterward, because the trait cannot be described until its data schema exists.
         val qualified = qualifyTypeName(typeName, namespace)
         checkTraitIsNew(qualified, traitId)
-        val built = traitEntry(typeName, traitId, appliesTo, description, primaryKey, dataSchema)
-        traits[traitId] = GedraTrait(traitId, qualified, appliesTo, built, primaryKey)
+        val built = traitEntry(typeName, traitId, appliesTo, description, dataSchema)
+        traits[traitId] = GedraTrait(traitId, qualified, appliesTo, built)
     }
 
     /**
@@ -769,14 +760,13 @@ class GedraConfigBuilder(
         appliesTo: Set<GedraDataType>,
         dataType: String,
         description: String? = null,
-        primaryKey: List<String> = emptyList(),
     ) {
-        trait(typeName, traitId, appliesTo, description, primaryKey) { ref(dataType) }
+        trait(typeName, traitId, appliesTo, description) { ref(dataType) }
     }
 
     /**
      * Declares a **state** trait (issue #597) -- the same machinery as [trait] (one entry type, keyed on
-     * [GE.traitId], with [primaryKey] and the stored envelope), so a keyed state trait (`[<workflowId>]`,
+     * [GE.traitId], with its data type's `g-primaryKey` and the stored envelope), so a keyed state trait (`[<workflowId>]`,
      * `[<year>]`) and an unkeyed form-singleton fall out of the existing keying exactly as a data trait's do. It
      * differs in two ways only: it carries a [StateTraitClass] ([stateClass], required), and it is filed under
      * [stateTraits] so it manufactures a *state* union rather than being mixed into a gedra kind's data union.
@@ -788,13 +778,12 @@ class GedraConfigBuilder(
         appliesTo: Set<GedraDataType>,
         stateClass: StateTraitClass,
         description: String? = null,
-        primaryKey: List<String> = emptyList(),
         dataSchema: SchTypeBuilder.() -> Unit,
     ) {
         val qualified = qualifyTypeName(typeName, namespace)
         checkTraitIsNew(qualified, traitId)
-        val built = traitEntry(typeName, traitId, appliesTo, description, primaryKey, dataSchema)
-        stateTraits[traitId] = GedraTrait(traitId, qualified, appliesTo, built, primaryKey, stateClass)
+        val built = traitEntry(typeName, traitId, appliesTo, description, dataSchema)
+        stateTraits[traitId] = GedraTrait(traitId, qualified, appliesTo, built, stateClass = stateClass)
     }
 
     /** A state trait whose data shape is a type declared elsewhere -- see [stateTrait] and the [trait] ref form. */
@@ -805,14 +794,13 @@ class GedraConfigBuilder(
         stateClass: StateTraitClass,
         dataType: String,
         description: String? = null,
-        primaryKey: List<String> = emptyList(),
     ) {
-        stateTrait(typeName, traitId, appliesTo, stateClass, description, primaryKey) { ref(dataType) }
+        stateTrait(typeName, traitId, appliesTo, stateClass, description) { ref(dataType) }
     }
 
     /**
      * Declares a **config** trait (issue #316) -- the same machinery as [trait] (one entry type keyed on
-     * [GE.traitId], with [primaryKey] and the stored envelope), bound to config kinds and filed under
+     * [GE.traitId], with its data type's `g-primaryKey` and the stored envelope), bound to config kinds and filed under
      * [configTraits] so the data unions never see it. See [GedraConfigTrait] for why it is a sibling of
      * [trait] rather than a widening of it.
      */
@@ -821,13 +809,12 @@ class GedraConfigBuilder(
         traitId: String,
         appliesTo: Set<GedraConfigType>,
         description: String? = null,
-        primaryKey: List<String> = emptyList(),
         dataSchema: SchTypeBuilder.() -> Unit,
     ) {
         val qualified = qualifyTypeName(typeName, namespace)
         checkTraitIsNew(qualified, traitId)
-        val built = configTraitEntry(typeName, traitId, appliesTo, description, primaryKey, dataSchema)
-        configTraits[traitId] = GedraConfigTrait(traitId, qualified, appliesTo, built, primaryKey)
+        val built = configTraitEntry(typeName, traitId, appliesTo, description, dataSchema)
+        configTraits[traitId] = GedraConfigTrait(traitId, qualified, appliesTo, built)
     }
 
     /** A config trait whose data shape is a type declared elsewhere -- see [configTrait] and the [trait] ref form. */
@@ -837,9 +824,8 @@ class GedraConfigBuilder(
         appliesTo: Set<GedraConfigType>,
         dataType: String,
         description: String? = null,
-        primaryKey: List<String> = emptyList(),
     ) {
-        configTrait(typeName, traitId, appliesTo, description, primaryKey) { ref(dataType) }
+        configTrait(typeName, traitId, appliesTo, description) { ref(dataType) }
     }
 
     /**

@@ -99,7 +99,43 @@ fun parseSchemaTypesInto(
         }
         indexVariants(union.owner, union.variants)
     }
+    for (keyed in state.pendingKeyedTypes) {
+        state.at(keyed.path)
+        primaryKeyProblem(keyed.type, keyed.where)?.let { throw schemaFault(SchemaError.badPrimaryKey, it) }
+    }
     return parsed
+}
+
+/**
+ * What is wrong with [type]'s `g-primaryKey` (issue #1521), or null: each field it names must be one [type] declares,
+ * required -- a key that can be omitted tells nothing apart -- a scalar, since keys are compared by value, and not
+ * derived, since identity that depends on a computation would re-partition stored data whenever the computation
+ * changed. [where] names the type, as the parse's other messages do.
+ */
+@KdrPrivate
+fun primaryKeyProblem(type: SchType, where: String): String? {
+    val key = SCH.primaryKey
+    if (type.primaryKey.toSet().size != type.primaryKey.size) {
+        return "$where lists a field twice in its '$key'."
+    }
+    for (field in type.primaryKey) {
+        val prop = type.properties[field]
+            ?: return "$where names '$field' in its '$key', but declares no such field. A key has to be one of the type's own fields."
+        if (field !in type.required) {
+            return "$where names '$field' in its '$key', but that field is not required. A key that can be omitted cannot " +
+                "tell two values apart, so it has to be required."
+        }
+        val fieldType = prop.valueType
+        if (!isScalarType(fieldType.jsonType)) {
+            return "$where names '$field' in its '$key', but that field is not a scalar. A key is compared by value, so it " +
+                "has to be a string, number, integer, or boolean."
+        }
+        if (fieldType.derived) {
+            return "$where names the derived field '$field' in its '$key'. Identity that depends on a computation " +
+                "re-partitions stored data whenever the computation changes."
+        }
+    }
+    return null
 }
 
 /** A property whose value is a `$ref`, awaiting binding in the resolution pass; [path] is where it was read. */
@@ -113,6 +149,10 @@ class PendingItemRef(val array: SchType, val refName: String, val path: String)
 /** A map [SchType] whose `additionalProperties` is a `$ref` ([refName]), awaiting binding in the resolution pass. */
 @KdrPrivate
 class PendingMapValueRef(val map: SchType, val refName: String, val path: String)
+
+/** A [type] declaring a `g-primaryKey`, whose fields are judged once the resolution pass binds them; [where] names it. */
+@KdrPrivate
+class PendingKeyedType(val type: SchType, val path: String, val where: String)
 
 /** One declared branch: parsed in place ([inline]) or named for the resolution pass ([refName]). */
 @KdrPrivate
@@ -444,6 +484,10 @@ fun parseNode(
     if (itemRefName != null) {
         state.pendingItemRefs.add(PendingItemRef(schType, itemRefName, childPath(state.path().orEmpty(), SCH.items)))
     }
+    // Its key's fields are judged once their `$ref`s are bound (issue #1521): a field's type may be a reference.
+    if (schType.primaryKey.isNotEmpty()) {
+        state.pendingKeyedTypes.add(PendingKeyedType(schType, state.path().orEmpty(), where))
+    }
     // The union was parsed before the type that owns it existed; give the boot check the name to complain
     // about now that it does.
     if (variants != null) {
@@ -534,11 +578,10 @@ fun parsePattern(where: String, raw: Any?, jsonType: String?, format: String?): 
 /** Reads JSON Schema `uniqueItems` (issue #823): absent is false, and anything but true or false is refused. */
 @KdrPrivate
 fun parseUniqueItems(where: String, raw: Any?): Boolean {
-    if (raw == null) return false
-    return raw as? Boolean
-        ?: throw schemaFault(
-            SchemaError.badValue, "$where sets '${SCH.uniqueItems}' to $raw; it must be true or false.",
-        )
+    return (raw != null && raw as? Boolean
+            ?: throw schemaFault(
+        SchemaError.badValue, "$where sets '${SCH.uniqueItems}' to $raw; it must be true or false.",
+    ))
 }
 
 /**

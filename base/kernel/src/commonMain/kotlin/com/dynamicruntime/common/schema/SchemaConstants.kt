@@ -275,9 +275,10 @@ object SCH {
     /**
      * The ordered field names that identify one element of an array of this type (issue #487) -- a primary key.
      * A type-level keyword like [required] and beside it, because a composite key is ordered and it is how SQL
-     * states the same thing. Absent means single-instance. Surfaced on `SchType.primaryKey`; what enforces
-     * uniqueness across the stored elements is the layer that holds them (a gedra's `checkEntryKeys`), never a
-     * single type against one value.
+     * states the same thing. Absent means single-instance. Surfaced on `SchType.primaryKey`, and the only way a key
+     * is declared (issue #1521): on a trait's data type it keys the trait's entries, held unique where they are stored
+     * (a gedra's `checkEntryKeys`), and on an array's item type the array refuses two items with one key. Each field
+     * it names must be declared, required, a scalar, and not derived; the parse refuses one that is not.
      */
     const val primaryKey = "g-primaryKey"
 

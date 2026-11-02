@@ -3,6 +3,9 @@ package com.dynamicruntime.common.schema
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.endpoint.EI
 import com.dynamicruntime.common.gedra.CLD
+import com.dynamicruntime.common.gedra.GedraDataType
+import com.dynamicruntime.common.gedra.gedraConfig
+import com.dynamicruntime.common.gedra.traitKeyOf
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldContain
@@ -210,6 +213,22 @@ class SchemaSkillExamplesTest : StringSpec({
         mismatch.message shouldBe "This must match the pattern '^[0-9]{5}$'."
         mismatch.userMessage shouldBe "A postal code is five digits."
         failures.single { it.code == SchFailCode.belowMinimum }.message shouldBe "This must be more than 0."
+    }
+
+    // Transcribed from the skill's "Keys: `g-primaryKey`" section (issue #1521).
+    "the keys example keys a trait whose data is a ref to the type holding the key" {
+        val config = gedraConfig(cxt, "keys", "abc.budget") {
+            type("BudgetData") {
+                type = SCT.kObject
+                primaryKey("year")
+                property("year", "The year.", required = true) { type = SCT.integer }
+                property("amount", "The amount.") { type = SCT.number }
+            }
+            trait("BudgetEntry", "budget", setOf(GedraDataType.formDoc), "BudgetData", "A budget a year.")
+        }
+        val types = parseSchemaTypes(config.defs)
+        types.getValue("abc.budget.BudgetData").primaryKey shouldBe listOf("year")
+        traitKeyOf(types.getValue("abc.budget.BudgetEntry")) shouldBe listOf("year")
     }
 
     // Transcribed from the skill's "Maps: free keys, typed values" section (issue #1055).

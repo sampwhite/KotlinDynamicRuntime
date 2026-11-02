@@ -142,6 +142,38 @@ class SchStandardKeywordsTest {
         assertTrue("'${SCH.exclusiveMinimum}'" in message && "must be a number" in message, message)
     }
 
+    // --- a keyed array (issue #1521) ---
+
+    /** An array of objects keyed by `year`, each with a `note`. */
+    private val keyedList = mapOf(
+        SCH.type to SCT.array,
+        SCH.items to mapOf(
+            SCH.type to SCT.kObject,
+            SCH.primaryKey to listOf("year"),
+            SCH.properties to mapOf("year" to mapOf(SCH.type to SCT.integer), "note" to mapOf(SCH.type to SCT.string)),
+            SCH.required to listOf("year"),
+        ),
+    )
+
+    @Test
+    fun aKeyedArrayRefusesTwoItemsWithOneKey() {
+        val failure = validate(
+            fieldType(keyedList),
+            mapOf("v" to listOf(mapOf("year" to 2024L), mapOf("year" to 2025L), mapOf("year" to 2024L, "note" to "again"))),
+        ).single()
+        assertEquals(SchFailCode.duplicateItem, failure.code)
+        assertEquals("Item 3 has the key of item 1 (year 2024); each item's key must be different.", failure.message)
+        // Distinct keys pass, whatever else the items share; and keys are compared as validated, "2024" being 2024.
+        assertEquals(emptyList(), codes(keyedList, listOf(mapOf("year" to 2024L, "note" to "a"), mapOf("year" to 2025L, "note" to "a"))))
+        assertEquals(listOf(SchFailCode.duplicateItem), codes(keyedList, listOf(mapOf("year" to "2024"), mapOf("year" to 2024L))))
+    }
+
+    @Test
+    fun anItemMissingItsKeyIsIncompleteNotADuplicate() {
+        // Two items with no year have failed as incomplete; they are not also reported as repeating one key.
+        assertEquals(listOf(SchFailCode.missingRequired, SchFailCode.missingRequired), codes(keyedList, listOf(mapOf("note" to "a"), mapOf("note" to "b"))))
+    }
+
     // --- uniqueItems ---
 
     private fun uniqueList(items: Map<String, Any?>? = null) =

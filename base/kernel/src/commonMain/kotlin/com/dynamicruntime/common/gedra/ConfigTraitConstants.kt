@@ -49,7 +49,6 @@ object CCT {
     const val traitId = "traitId"
     const val typeName = "typeName"
     const val appliesTo = "appliesTo"
-    const val primaryKey = "primaryKey"
     const val dataSchema = "dataSchema"
     const val description = "description"
 

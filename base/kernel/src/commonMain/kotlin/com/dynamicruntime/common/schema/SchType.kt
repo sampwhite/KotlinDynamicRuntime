@@ -183,8 +183,9 @@ class SchType(
      * (a per-property boolean could not say so) and it is how SQL states the same thing. It is what lets a
      * gedra carry several entries of one trait, told apart by this key drawn from their own data; and it is
      * surface-invariant -- a form renders a keyed type as a collection with an add-row for everyone -- so it
-     * stays here rather than in a layout vocabulary. Uniqueness across siblings is enforced where they are
-     * stored (`checkEntryKeys`), not by this type against one value.
+     * stays here rather than in a layout vocabulary. It is the only declaration of a key (issue #1521): on a
+     * trait's data type it keys the trait's entries, and uniqueness across them is enforced where they are stored
+     * (`checkEntryKeys`); on an array's item type, the array refuses two items with one key when it is validated.
      */
     val primaryKey: List<String> = emptyList(),
     /**
