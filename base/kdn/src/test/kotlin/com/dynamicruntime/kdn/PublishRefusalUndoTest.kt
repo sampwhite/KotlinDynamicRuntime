@@ -18,6 +18,7 @@ import com.dynamicruntime.common.gedra.CLD
 import com.dynamicruntime.common.gedra.COV
 import com.dynamicruntime.common.gedra.CPY
 import com.dynamicruntime.common.gedra.ClientAudience
+import com.dynamicruntime.common.gedra.ClientCreate
 import com.dynamicruntime.common.gedra.ClientDef
 import com.dynamicruntime.common.gedra.ClientService
 import com.dynamicruntime.common.gedra.ClientStoredEdit
@@ -28,6 +29,8 @@ import com.dynamicruntime.common.gedra.GedraConfigType
 import com.dynamicruntime.common.gedra.GedraId
 import com.dynamicruntime.common.gedra.MNU
 import com.dynamicruntime.common.gedra.gedraConfig
+import com.dynamicruntime.common.gedra.report.RDEF
+import com.dynamicruntime.common.gedra.report.RRUN
 import com.dynamicruntime.common.gedra.sandboxOf
 import com.dynamicruntime.common.home.HFRAG
 import com.dynamicruntime.common.home.HMENU
@@ -208,6 +211,34 @@ class PublishRefusalUndoTest : StringSpec({
         main.isPublished shouldBe true
         GedraConfigReload.reloadClient(cxt, client)
         ClientService.get(cxt).known(client)?.name shouldBe "Client $client"
+    }
+
+    "reports: a refused create takes the report out, a reports configuration it made goes too, and a refused removal puts it back" {
+        val client = "undoreport"
+        val admin = defineClient(client)
+        fun report(label: String) =
+            mapOf(RDEF.label to label, RDEF.columns to listOf(mapOf(RDEF.label to "Created", RDEF.path to "meta.createdAt")))
+        fun reports() = svc.readLatest(writerOf(client), GedraId.of(GedraConfigType.configDoc, client, ClientCreate.starterReportsConfig))
+
+        // The first makes the configuration; refused, it is deleted rather than left an empty draft the next is refused for.
+        refusing += client
+        refused(admin, UADEP.reportCreate, report("Never")) shouldBe refusal
+        reports().shouldBeNull()
+
+        refusing -= client
+        ok(admin, UADEP.reportCreate, report("First"))
+        refusing += client
+        refused(admin, UADEP.reportCreate, report("Second")) shouldBe refusal
+        val held = reports().shouldNotBeNull()
+        held.entriesBySlot()[CCT.reportDef].orEmpty().map { it[CCT.reportId] } shouldBe listOf("first")
+        held.isPublished shouldBe true
+        // A removal refused puts the report back, published.
+        refused(admin, UADEP.reportRemove, mapOf(RRUN.reportId to "first")) shouldBe refusal
+        reports().shouldNotBeNull().let {
+            it.entriesBySlot()[CCT.reportDef].orEmpty().map { e -> e[CCT.reportId] } shouldBe listOf("first")
+            it.isPublished shouldBe true
+        }
+        refusing -= client
     }
 
     // The undo of an upload over a ref somebody else named: an operator's local ref, which the client's own

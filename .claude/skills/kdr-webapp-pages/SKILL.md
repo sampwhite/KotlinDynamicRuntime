@@ -24,7 +24,7 @@ rather than all of them:
 | [`clients-page.md`](clients-page.md) | The Clients page: the listing, a client's detail and panels, the definition editor, web assets and file refs, the menu and audiences, traits, sandbox and publishing, the bundle editor and editing bundles as JSON, the time-zone picker |
 | [`admin-console.md`](admin-console.md) | The admin console (Users): editing someone's identity and authority -- levels, the `allClients` capability, the editor role, labels, user search |
 | [`forms-listing.md`](forms-listing.md) | The forms listing: named for whose forms it shows, and the listing across clients (its address and its ways home) |
-| [`reports-page.md`](reports-page.md) | The Reports page: running a report, its parameters, the growing table, snapshots and charts |
+| [`reports-page.md`](reports-page.md) | The Reports page: running a report, its parameters, the growing table, snapshots and charts, making a report |
 | [`design-view.md`](design-view.md) | Design View: marking a form with the definitions behind it, page-level copy, the `design-demo` simulation |
 | [`client-web-assets.md`](client-web-assets.md) | A client's own web assets, and a client's file refs (the calls behind the Clients page's Files section) |
 | [`api-keys.md`](api-keys.md) | API keys |

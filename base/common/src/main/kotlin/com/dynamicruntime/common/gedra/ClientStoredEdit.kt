@@ -80,6 +80,16 @@ object ClientStoredEdit {
         return target
     }
 
+    /**
+     * The client whose running configuration shows [client]'s edits: for a client with a sandbox, the sandbox -- which
+     * runs its latest configuration, drafts included, so what an editor lists is what its next edit finds -- and for a
+     * sandbox, itself (issue #1358), asked before a sandbox's sandbox's id is formed, which is no id. What the editors'
+     * catalogs read (workflows, listing columns, and the report paths, issue #1492).
+     */
+    fun editedView(cxt: KdrCxt, client: String): String =
+        if (sandboxParentOf(client) != null) client
+        else sandboxOf(client).takeIf { ClientService.get(cxt).present(it) != null } ?: client
+
     /** [target]'s refusal of a save that would not take effect as its caller said: a 409 carrying [EDM.notAsExpected]. */
     private fun notAsExpected(message: String): KdrException =
         KdrException(message, code = EXC.conflict).also { it.extraData[KdrException.errorCodeKey] = EDM.notAsExpected }

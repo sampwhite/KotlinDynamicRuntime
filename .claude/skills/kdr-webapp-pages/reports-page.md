@@ -39,6 +39,35 @@ is. The pure half -- parsers, the run's query, the table's columns, a cell's tex
   page, which then signs you in as an acme administrator in one click, or `kdr-probe --url <your server> report-demo`.
   `report-history-demo` does the same and adds five dated days of snapshots, landing on the History view.
 
+**New report** (issue #1492; `view=new`, no report open): a draft panel that makes a report from simple choices, one
+way -- afterwards it is changed in the bundle editor, and removed there or under the open report. The pure half is
+`ReportCreateModel.kt` (covered by `ReportCreateTest`); `ReportCreatePanel.kt` draws it. `docs/design/reporting.md`
+(*Making a report*) says what it makes.
+
+- **Where it is offered is the listing's to say** (`ReportListing.offer`, from the summary's `canCreate`, `createsDraft`,
+  `createFrom`): the button under the reports where the client's configuration is edited here, a draft's
+  `saveEffectText` in a sandbox, and for a client with a sandbox a line pointing there instead -- a link to the
+  sandbox's reports for an administrator who sees every client, the app bar's Open sandbox for the client's own -- as the
+  bundle editor leads such a client to its sandbox. The address names `view=new` only; the page draws the panel only
+  when the offer says it may, so a stale link shows the listing.
+- **The page never builds a path.** The panel reads `GET /clientAdmin/report/paths` (grouped by source: the form, each
+  trait, each workflow) and a column keeps the path it picked. A path that may hold several values offers **Which
+  value** -- all of them, how many, the first (`ValuePick`, each a combine) -- and for a keyed trait **One, by its
+  key**, which sends the key's values (`RCR.key`) for the server to write into the path.
+- **A totals report** groups by one column: the first that has one value per form until chosen, and none once that
+  column shows all of several values (`withColumn`, `withColumnChanged`). Each other column's **Combined** offers only
+  the rollups its value allows (`rollupChoices`, the kernel's `ReportCombine.allows`), a number starting as a total and a
+  date as the latest; "Not shown when grouped" sends none. Only a totals report sends a grouping, rollups, and history.
+- **The Add-a-column choice searches by label** (`showSearch` with `optionFilterProp: 'label'`): antd filters on an
+  option's value by default, which here is the path. Its list is virtual, so to drive it from script, open it and type
+  the label's text before picking the option by its title.
+- **A create lands on the new report** (`navigate` to it, which re-reads the listing); Cancel goes back to the listing.
+- **Remove this report** is the open report's last panel (`PanelKind.danger`, behind `DangerConfirm`, page-structure
+  rule 6), offered only for a report the client stores where its configuration is edited here (`reportRemovable`: the
+  offer allows it, the report is `stored`, and not a template's copy). The question names where it acts
+  (`reportRemoveQuestion`, `deleteTargetText` over the listing's `client`, so a sandbox reads as the sandbox), and says
+  the snapshots are kept. Done, the page goes back to the listing.
+
 **The History view** (issue #1037; `view=history`, the third button beside Per form and Grouped): a report's stored
 snapshots (`GET /clientAdmin/report/history`, #1034) as a bar chart over days, with **Snapshot now**
 (`POST /clientAdmin/report/snapshot`). No run is fetched behind it, and it has neither Group by nor Must have: a

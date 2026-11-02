@@ -2,6 +2,7 @@ package com.dynamicruntime.webapp
 
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.gedra.ClientStatus
+import com.dynamicruntime.common.gedra.EDM
 import com.dynamicruntime.common.gedra.clientLabel
 import com.dynamicruntime.common.gedra.report.ReportMode
 import com.dynamicruntime.common.home.HMENU
@@ -87,6 +88,9 @@ val ReportsPage = FC<Props> {
     val latestList = useRef(0)
     val latestRun = useRef(0)
     var download by useState<ReportDownload?>(null)
+    var removing by useState(false)
+    // A removal's failure, with the report it was of, so another report opened does not show it.
+    var removeError by useState<Pair<String, DisplayError>?>(null)
     val latestDownload = useRef(0)
     val listedClient = useRef<String>(null)
 
@@ -163,6 +167,8 @@ val ReportsPage = FC<Props> {
     // at the first batch. Within a run the rows on screen stay until the larger answer arrives.
     // Not while the History view is up: it shows the stored snapshots, and a run behind it would be read for nothing.
     val historyView = reportViewIsHistory(route[HP.reportView])
+    // Making a report (issue #1492), which rides the address so Back leaves it.
+    val creating = reportViewIsNew(route[HP.reportView], reportId) && listing?.offer?.canCreate == true
     val runnable = report != null && !historyView
     useEffect(runnable, pagingKey, shownCount, generation) {
         val token = (latestRun.current ?: 0) + 1
@@ -243,6 +249,22 @@ val ReportsPage = FC<Props> {
         }
     }
 
+    fun removeReport(report: ReportInfo, draft: Boolean) {
+        val key = reportKey
+        removing = true
+        removeError = null
+        reportsScope.launch {
+            try {
+                ReportsApi.remove(reportRemoveRequest(client, report.reportId, if (draft) EDM.draft else EDM.live))
+                removing = false
+                navigate(reportsRouteParams(client, null, null))
+            } catch (e: Throwable) {
+                removing = false
+                removeError = key to userFacingError(e)
+            }
+        }
+    }
+
     fun changeSetup(next: ReportRunSetup) {
         // The mode goes to the address, which is where the page reads it from; the lists are the session's. Writing
         // the address fires no event, so setting the lists -- a new object even when they are unchanged -- is also
@@ -285,10 +307,18 @@ val ReportsPage = FC<Props> {
                 div {
                     className = ClassName("reports-list")
                     reportList(listing, listingError, client, reportId)
+                    listing?.offer?.let { newReportOffer(it, client, across, creating) }
                 }
                 div {
                     className = ClassName("reports-run")
                     when {
+                        creating -> ReportCreatePanel {
+                            this.client = client
+                            createsDraft = listing?.offer?.createsDraft == true
+                            explanation = pageCopy.explanation(PFRAG.newReportNs)
+                            onCreated = { id -> navigate(reportsRouteParams(client, id, null)) }
+                            onCancel = { navigate(reportsRouteParams(client, null, null)) }
+                        }
                         reportId == null -> p {
                             className = ClassName("subtitle")
                             +(if (listing?.reports?.isEmpty() == true) "" else "Choose a report to run it.")
@@ -317,6 +347,22 @@ val ReportsPage = FC<Props> {
                                 } else {
                                     reportTable(shown, client)
                                     reportGrowBar(shown, shownCount, running) { growth = ReportGrowth(pagingKey, it) }
+                                }
+                            }
+                            // Last, as deleting the thing a page is about is (issue #1477, rule 6), and only where it can succeed.
+                            val shownListing = listing
+                            if (shownListing != null && reportRemovable(report, shownListing.offer)) {
+                                panel("report-remove", "Remove this report", kind = PanelKind.danger) {
+                                    DangerConfirm {
+                                        recordKey = reportKey
+                                        actionText = "Remove report…"
+                                        question = reportRemoveQuestion(report, shownListing.client)
+                                        confirmText = "Remove report"
+                                        keepText = "Keep report"
+                                        inProgress = removing
+                                        onConfirm = { removeReport(report, shownListing.offer.createsDraft) }
+                                    }
+                                    panelNote(removeError?.takeIf { it.first == reportKey }?.second, null, "Couldn't remove the report.")
                                 }
                             }
                         }
@@ -406,6 +452,37 @@ private fun ChildrenBuilder.reportList(listing: ReportListing?, error: DisplayEr
                     key = i.toString().unsafeCast<Key>()
                     +text
                 }
+            }
+        }
+    }
+}
+
+/**
+ * Under the reports, what the page offers for making one (issue #1492): **New report** where the client's configuration
+ * is edited here, or -- for a client with a sandbox, whose reports are made and published there -- where to go
+ * instead: a link for an administrator who sees every client, the app bar's Open sandbox for the client's own.
+ */
+private fun ChildrenBuilder.newReportOffer(offer: ReportCreateOffer, client: String?, across: Boolean, creating: Boolean) {
+    val sandbox = offer.createFrom
+    when {
+        offer.canCreate -> p {
+            Button {
+                disabled = creating
+                onClick = { navigate(reportsRouteParams(client, null, HMENU.reportViewNew)) }
+                +"New report"
+            }
+        }
+        sandbox != null -> p {
+            className = ClassName("type-hint")
+            +"This client's reports are made in its sandbox, and published from there. "
+            if (across) {
+                a {
+                    className = ClassName("wf-cell-link")
+                    href = reportsHref(sandbox)
+                    +"Its sandbox's reports"
+                }
+            } else {
+                +"Open the sandbox to make one."
             }
         }
     }

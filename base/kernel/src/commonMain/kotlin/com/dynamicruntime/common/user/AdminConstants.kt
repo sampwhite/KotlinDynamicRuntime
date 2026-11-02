@@ -353,6 +353,15 @@ object UADEP {
 
     /** Takes a snapshot of a report's grouped run now (issue #1034). Scoped as [reportRun] is, and client-wide. */
     const val reportSnapshot = "$reportBase/snapshot"
+
+    /** The report paths that bind for a client, for making a report from simple choices (issue #1492). */
+    const val reportPaths = "$reportBase/paths"
+
+    /** Makes a report from simple choices, in the client's `reports` configuration (issue #1492). */
+    const val reportCreate = "$reportBase/create"
+
+    /** Removes a report the client stores, wherever it is stored (issue #1492). */
+    const val reportRemove = "$reportBase/remove"
 }
 
 /** Admin request/response field (JSON key) names. */

@@ -14,3 +14,19 @@ A report reads the client's forms in one of three views.
   that keeps a history, and **Snapshot now** takes one at any time.
 
 **Must have** leaves out the forms with no value in the columns chosen there.
+
+# @newReport
+# +whatIsThis
+**New report** makes a report from a few choices, of one of two kinds.
+
+- **A row per form** lists each form, with a column for each value chosen.
+- **Totals by a column** puts together the forms that share the value of one column, and combines each other column
+  over them: a number's total, a date's latest. The page's **Per form** view still lists the forms one by one.
+
+The columns are picked from what the client's forms hold: facts about the form itself, the fields of each of its
+traits, and where a form stands in each workflow. A trait that keeps one entry per key -- a note a year, say -- holds
+several values on one form, so its column says which to show: all of them, how many, the first, or one by its key.
+
+The report's id is made from its name and never changes. Once made, a report is not changed here: open the client's
+bundle editor, where it is in the **reports** bundle, to change it. **Remove this report**, under an open report the
+client stores, removes it; its stored snapshots are kept.

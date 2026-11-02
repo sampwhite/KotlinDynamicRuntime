@@ -235,11 +235,12 @@ fun traitDesignFromInfo(raw: Map<String, Any?>): TraitDesign = TraitDesign(
 /**
  * A key made from [label]: its letters and digits as one camel-case word (`Do you smoke?` -> `doYouSmoke`), at most
  * [maxKeyLength] long, [fallback] when the label has none or would start with a digit -- and, when [taken] holds it,
- * the first of `<key>2`, `<key>3`, ... that it does not. A trait id, a field key, and a choice value are all made
- * this way, once.
+ * the first of `<key>2`, `<key>3`, ... that it does not. An apostrophe joins rather than parts (`Owner's email` ->
+ * `ownersEmail`). A trait id, a field key, a choice value, and a report's and its columns' ids are all made this way,
+ * once.
  */
 fun keyFromLabel(label: String, taken: Set<String>, fallback: String): String {
-    val words = label.split(Regex("[^A-Za-z0-9]+")).filter { it.isNotEmpty() }
+    val words = label.replace(Regex("['\u2019]"), "").split(Regex("[^A-Za-z0-9]+")).filter { it.isNotEmpty() }
     var base = words.mapIndexed { i, w ->
         val lower = w.lowercase()
         if (i == 0) lower else lower.replaceFirstChar { it.uppercase() }

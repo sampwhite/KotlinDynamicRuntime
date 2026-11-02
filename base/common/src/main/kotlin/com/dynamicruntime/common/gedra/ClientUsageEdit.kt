@@ -7,7 +7,6 @@ import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.startup.SchemaCollector
 import com.dynamicruntime.common.startup.SchemaService
-import com.dynamicruntime.common.util.humanizeFieldName
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
 
@@ -62,15 +61,6 @@ object ClientUsageEdit {
     private fun storedColumns(bound: KdrCxt): List<StoredColumn> = GedraConfigService.get(bound).listConfigs(bound)
         .flatMap { row -> row.entriesBySlot()[CCT.usageDef].orEmpty().map { StoredColumn(row, it) } }
 
-    /**
-     * The client whose columns [client]'s page shows: what its editors change, which for a client with a sandbox is
-     * what the sandbox runs -- its latest configuration, drafts included -- and for a sandbox the sandbox itself, as
-     * the workflows catalog reads (`ClientWorkflowEdit`).
-     */
-    private fun runsAs(cxt: KdrCxt, client: String): String =
-        if (sandboxParentOf(client) != null) client
-        else sandboxOf(client).takeIf { ClientService.get(cxt).present(it) != null } ?: client
-
     /** [client]'s own columns as it runs them, each with the configuration declaring it; empty when it shows the defaults. */
     private fun ownRunning(cxt: KdrCxt, client: String): List<Pair<ClientTraitUsage, GedraConfig>> =
         SchemaCollector.get(cxt)?.gedraConfigs?.configs.orEmpty()
@@ -94,7 +84,7 @@ object ClientUsageEdit {
     fun catalog(cxt: KdrCxt, client: String): Map<String, Any?> {
         // Named for a sandbox (issue #1358), the parent's stored configuration is what its editors change.
         val owner = sandboxParentOf(client) ?: client
-        val view = runsAs(cxt, client)
+        val view = ClientStoredEdit.editedView(cxt, client)
         val schema = SchemaService.get(cxt)
         val store = schema.storeFor(view)
         val bound = cxt.mkSubContext("usageCatalog", owner)
@@ -153,10 +143,9 @@ object ClientUsageEdit {
         val layout = (data.refName ?: type.name)?.let { store.layouts[it] }
         return type.properties.mapNotNull { (key, prop) ->
             val shape = fieldSearchShape(prop.valueType) ?: return@mapNotNull null
-            val laidOut = layout?.fields?.firstOrNull { it.field == key }?.label?.takeIf { "%{" !in it && $$"${" !in it }
             buildMap {
                 put(CUS.field, key)
-                put(CUS.label, laidOut ?: prop.title ?: prop.valueType.title ?: humanizeFieldName(key))
+                put(CUS.label, fieldLabelOf(layout, key, prop))
                 put(CUS.readsAs, shape.kind.name)
                 if (shape.choices.isNotEmpty()) put(CUS.hasChoices, true)
             }

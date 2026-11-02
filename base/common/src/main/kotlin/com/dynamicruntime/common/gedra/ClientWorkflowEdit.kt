@@ -70,10 +70,7 @@ object ClientWorkflowEdit {
         val workflows = WorkflowService.get(cxt)
         // What the editors change: for a client with a sandbox, its latest configuration, drafts included -- which is
         // what the sandbox runs -- so a workflow a draft removed or made is listed as the next edit will find it.
-        // Named for a sandbox, that is the sandbox itself (issue #1358) -- asked before forming a sandbox's sandbox's id,
-        // which is no id.
-        val view = if (sandboxParentOf(client) != null) client
-        else sandboxOf(client).takeIf { ClientService.get(cxt).present(it) != null } ?: client
+        val view = ClientStoredEdit.editedView(cxt, client)
         val own = workflows.forClient(view).workflows.values.toList()
         val templates = workflows.forClient(null).workflows
         val limits = PlanRoom.of(cxt, owner)

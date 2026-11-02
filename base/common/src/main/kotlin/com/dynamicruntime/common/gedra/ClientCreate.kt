@@ -298,8 +298,9 @@ object ClientCreate {
 
     /**
      * The configuration holding a new client's starter report (issue #1429), so its Reports page has a report to run
-     * from the start: every form with its name, its owner, its status, and when it was made, grouped by status. There is
-     * no editor for reports yet, so this is the report a client made from data has. The name column is there only when
+     * from the start: every form with its name, its owner, its status, and when it was made, grouped by status. The
+     * Reports page makes more in this configuration (issue #1492), but none is there unless asked for, so this is the
+     * report a client made from data starts with. The name column is there only when
      * [definition] includes the trait it reads, as it does whenever the client starts with the starter workflows: a
      * report naming a trait the client does not support would be refused at the write.
      */

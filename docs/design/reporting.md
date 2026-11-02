@@ -225,6 +225,44 @@ nothing reads only its page's forms.
 Above **`KDR_REPORT_SCAN_LIMIT`** forms (default 50,000, the ceiling #538 states for in-memory search) the run is
 refused with a message naming the variable. A report covering part of a client's forms would be worse than none.
 
+## Making a report
+
+A report can be written as JSON, in a client's bundle editor or in source. For the two kinds the samples show, the
+Reports page also makes one from a few choices (issue #1492). This is **one-way**: a report made there is not edited
+there afterwards, but changed in the bundle editor, as any stored report is. The page removes one, though: any report
+the client stores, made there or written in the bundle editor.
+
+- **The kind**: a row per form, as `formRoster`; or totals by a column, as `expensesByYear`, which sets the report's
+  `groupBy` to that column and combines each other column with a `rollup`. Only rollups that suit the column's value
+  are offered, and a number starts as a sum and a date as the latest.
+- **A name and a description.** The report's id is made from the name and never changes. A name whose id the client
+  already has is refused, not numbered.
+- **The columns**, each picked from a list grouped by where the value comes from: the form itself (when it was made and
+  changed, its status, its owner's email and name), each form trait's fields, and each normal workflow's standing and
+  approvals. A column's id is made from its heading.
+- **Which value**, for a path that may hold several: all of them, how many, or the first (the column's `combine`) --
+  or, for a keyed trait, one entry by its key, which makes a positional selector (`form.sample:yearly[2024].note`).
+- **Must have a value**, per column (the report's `excludeEmpty`), and for a totals report **Keep a daily snapshot**
+  (`history`).
+
+**The page does not build paths.** `GET /clientAdmin/report/paths` lists every path a column may read for the
+client, each bound as the configuration load binds a report (`ReportService.scopeFor`, `bindReportPath`), with its
+kind, whether a form may hold several values there, and a keyed trait's key fields. The page sends back the paths it
+was given, and for a column naming one entry the key's values, which the server writes into the path.
+
+**`POST /clientAdmin/report/create`** writes the report into the client's `reports` configuration, the one a client
+created from data keeps its starter report in, and makes that configuration when the client has none. The report is
+bound before it is written, so a mistake is refused naming its column, and then trialed as every configuration write
+is. Then it takes effect as every editor's save does: published and reloaded, or a draft for a client with a sandbox.
+The listing's summary says which (`canCreate`, `createsDraft`), and for a client with a sandbox points to the sandbox
+instead (`createFrom`), whose page makes the report as a draft of the parent's configuration and publishes it from
+there, as the bundle editor does.
+
+**`POST /clientAdmin/report/remove`** takes a report out of whichever stored configuration holds it, and takes effect
+the same way; a refused publish puts it back. A report declared in source code, or copied from the client this one is
+built on, is refused, saying so. Its snapshots are kept, listable under its id, as they are for any report removed
+from the configuration.
+
 ## History
 
 A run answers "now". **Report history** (issue #1033) keeps what a report's groups were: a **snapshot** is the
@@ -286,7 +324,8 @@ The sample component declares four reports:
 The conference demo declares two more, `submissionsByTrack` and `questionnaireSummary`, shown bundle by bundle in
 [`demo-client/reports.md`](../demo-client/reports.md).
 
-A client created from data starts with one of its own (issue #1429), since there is no editor for reports yet:
+A client created from data starts with one of its own (issue #1429), so its Reports page has a report to run before
+anyone makes one (*Making a report*, above):
 **`forms`**, in a configuration named `reports` (`ClientCreate.starterReportConfig`), a row per form with its name,
 its owner's email, its status, and when it was made, grouped by status. The name column is left out when the client
 does not include the trait it reads.

@@ -137,6 +137,11 @@ fun reportSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, REP.namespace) {
             type = SCT.array
             items { ref(CLD.configIssueTypeQualified) }
         }
+        property(RCR.canCreate, "Whether the caller may make a report for the client here (issue #1492).", required = true) {
+            type = SCT.boolean
+        }
+        property(RCR.createsDraft, "Whether a report made here is a draft, as a sandbox's edits are.") { type = SCT.boolean }
+        property(RCR.createFrom, "The sandbox a report is made from instead, for a client with one: it is published from there.")
     }
     type(REP.rowType) {
         type = SCT.kObject
@@ -196,7 +201,8 @@ fun reportSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, REP.namespace) {
         val issues = ClientConfigIssues.get(c).let { reg ->
             reg.issuesFor(client) + if (client == GID.globalClient) emptyList() else reg.issuesFor(GID.globalClient)
         }.filter { it.elementKind == GCEL.report }
-        ListPage(items, items.size, hasMore = false, summary = mapOf(RRUN.client to client, RRUN.issues to issues.map { it.toWireMap() }))
+        val summary = mapOf(RRUN.client to client, RRUN.issues to issues.map { it.toWireMap() }) + ReportEdit.offer(c, client)
+        ListPage(items, items.size, hasMore = false, summary = summary)
     }
 
     type(REP.snapshotType) {
@@ -325,6 +331,9 @@ fun reportSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, REP.namespace) {
         },
         needsClientConfig = true,
     ) { c, request -> runReport(c, request) }
+
+    // --- making one from simple choices (issue #1492) ---
+    reportEditEndpoints()
 }
 
 /**
