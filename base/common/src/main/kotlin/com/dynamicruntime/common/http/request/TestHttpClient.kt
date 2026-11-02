@@ -37,8 +37,7 @@ class TestHttpClient(val instanceConfig: KdrInstanceConfig) {
     var captureLogs: Boolean = true
 
     /** The context root prepended to endpoint paths: the configured API root, or [ContextRoot.kda]. */
-    val contextRoot: String =
-        (instanceConfig.get(ACFG.apiContextRoot) as? String) ?: ContextRoot.kda
+    val contextRoot: String = ContextRoot.apiOf(instanceConfig)
 
     /** Prefixes an endpoint path with the context root, e.g. `/health` -> `/kda/health`. */
     private fun routed(endpoint: String): String = "/$contextRoot$endpoint"

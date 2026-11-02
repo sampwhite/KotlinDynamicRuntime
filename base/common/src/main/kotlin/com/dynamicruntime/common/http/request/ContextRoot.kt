@@ -1,5 +1,8 @@
 package com.dynamicruntime.common.http.request
 
+import com.dynamicruntime.common.context.ACFG
+import com.dynamicruntime.common.context.KdrInstanceConfig
+
 /**
  * Well-known context roots: the leading path segment that binds a class of traffic to a slice of
  * functionality. Each kind is configured under its own key ([com.dynamicruntime.common.context.ACFG.apiContextRoot],
@@ -8,6 +11,9 @@ package com.dynamicruntime.common.http.request
  */
 @Suppress("ConstPropertyName")
 object ContextRoot {
+    /** The API root [instanceConfig] serves endpoints under: [ACFG.apiContextRoot], else [kda]. */
+    fun apiOf(instanceConfig: KdrInstanceConfig): String = (instanceConfig.get(ACFG.apiContextRoot) as? String) ?: kda
+
     /** The default API context root -- "Kotlin DynamicRuntime API". */
     const val kda = "kda"
 

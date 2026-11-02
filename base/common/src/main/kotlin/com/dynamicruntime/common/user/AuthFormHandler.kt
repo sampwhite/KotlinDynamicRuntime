@@ -902,11 +902,19 @@ class AuthFormHandler(
 
     /**
      * The caller's own user in [named]'s sandbox -- the caller's own client when null -- found or on first use created,
-     * with every check [openSandbox] makes, and no session (issue #1524): what a call made in this process for the
-     * caller acts as ([com.dynamicruntime.common.http.request.InProcessCaller]), so its configuration edits can only be
-     * the parent's drafts. [openSandbox] is this, then a session as the user.
+     * with every check [openSandbox] makes, without starting a session as it (issue #1524): what a call made in this
+     * process for the caller acts as ([com.dynamicruntime.common.http.request.InProcessCaller]), so its configuration
+     * edits can only be the parent's drafts. [openSandbox] is this, then a session as the user.
+     *
+     * It reads the person from [cxt]'s profile -- identity, user, and roles -- so it is called from the person's own
+     * signed-in request, in a gated section whose gate has just re-read their roles; a request made with an API key, or
+     * in process, is refused, since it is no person asking. Like an opening, it re-enables a sandbox user that was
+     * disabled and records the caller as who opened it.
      */
     fun claimOwnSandboxUser(cxt: KdrCxt, named: String?): AuthUserRow {
+        if (cxt.apiKey != null) {
+            throw KdrException("Only a signed-in session claims a user in a sandbox.", code = EXC.notAuthorized)
+        }
         val profile = cxt.userProfile
         val parent = named ?: profile.client
         if (isSandboxClient(parent)) {

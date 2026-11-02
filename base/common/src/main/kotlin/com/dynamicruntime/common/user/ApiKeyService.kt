@@ -28,16 +28,19 @@ import com.dynamicruntime.common.util.toOptStr
 import java.util.concurrent.ConcurrentHashMap
 
 /**
- * What a call made in this process for a user may reach (issue #1524), beyond what any API key may: the endpoints
- * [admits] says yes to, by method and application path (`/clientAdmin/config/bundles`), and nothing else. Named by
- * [label] in a refusal. A list, not a rule about sections: a caller acting for a person -- an assistant -- is given
- * exactly the calls its work needs.
+ * What a call made in this process for a user may reach (issue #1524), beyond what any API key may: exactly the
+ * endpoints it lists, each a method and an application path (`GET` `/clientAdmin/config/bundles`), and nothing else.
+ * Named by [label] in a refusal. A list, never a pattern: a caller acting for a person -- an assistant -- is given
+ * exactly the calls its work needs, and a pattern would admit what it did not name, such as a client's own copy of an
+ * endpoint (`/gedra/<client>/...`).
  */
-class InProcessScope(val label: String, val admits: (method: String, path: String) -> Boolean) {
+class InProcessScope private constructor(val label: String, private val allowed: Set<Pair<String, String>>) {
+    /** Whether the scope lists [method] [path]. */
+    fun admits(method: String, path: String): Boolean = (method to path) in allowed
+
     companion object {
         /** A scope admitting exactly [allowed], each `method` to `path`. */
-        fun of(label: String, allowed: Set<Pair<String, String>>): InProcessScope =
-            InProcessScope(label) { method, path -> (method to path) in allowed }
+        fun of(label: String, allowed: Set<Pair<String, String>>): InProcessScope = InProcessScope(label, allowed)
     }
 }
 

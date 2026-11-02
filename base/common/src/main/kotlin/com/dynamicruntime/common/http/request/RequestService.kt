@@ -399,7 +399,7 @@ class RequestService : ServiceInitializer {
         authFloorMs = AuthTiming.floorMs(cxt.instanceConfig)
         authJitterMs = AuthTiming.jitterMs(cxt.instanceConfig)
         authPermits = Semaphore(AuthTiming.concurrency(cxt.instanceConfig))
-        apiContextRoot = (cxt.instanceConfig.get(ACFG.apiContextRoot) as? String) ?: ContextRoot.kda
+        apiContextRoot = ContextRoot.apiOf(cxt.instanceConfig)
         contentContextRoot = (cxt.instanceConfig.get(ACFG.contentContextRoot) as? String) ?: ContextRoot.cp
         appContextRoot = (cxt.instanceConfig.get(ACFG.appContextRoot) as? String) ?: ContextRoot.wa
         staticContextRoot = (cxt.instanceConfig.get(ACFG.staticContextRoot) as? String) ?: ContextRoot.st
