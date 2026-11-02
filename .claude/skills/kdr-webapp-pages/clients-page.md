@@ -101,9 +101,10 @@ sandbox session leaves it as the app bar's **Back to** does (`ShellFacts.sandbox
 lands on the client's page, and for an `allClients` administrator looking from outside is a plain link. It is in this
 section rather than beside the publishing bar because the bar is not drawn for a sandbox whose client stores no
 configuration (one defined in source code, as the sample's acme is). In the listing each sandbox follows its parent
-(`withSandboxesBesideParents`) with a "sandbox of <id>" note (`sandboxRowNote`); the overview rows carry
-`sandboxOf` and `hasSandbox`. A scoped administrator has no listing (issue #1082), so only an `allClients` one
-sees sandbox rows.
+(`withSandboxesBesideParents`) with a "sandbox of <name>" note (`sandboxRowNote`); the overview rows carry `sandboxOf`
+and `hasSandbox`. A sandbox's row also carries its parent's name, `sandboxOfName`, which every sentence on the page
+names the parent by (`sandboxParentName`; the id stays in addresses), issue #1438. A scoped administrator has no listing
+(issue #1082), so only an `allClients` one sees sandbox rows.
 
 **Retirement** (issue #1182, `RetirementSection` in `ClientsPage.kt`): under Sandbox, for an administrator who sees
 every client -- the platform's switch, `POST /admin/client/retirement/set {client, retired}` (#1111,
@@ -501,7 +502,8 @@ which no client runs as they are. A template is greyed with the backend's reason
 it now (a client has one creation and one survey, and a plan limits workflows and their tasks); a workflow not made
 from a template says why its slots cannot be changed here. **Use…** and **Edit…** open `WorkflowSlotEditor` on the
 **slots** -- the kernel's `WfTemplateSlots`: the workflow's name, and per data-entry task its label and the traits it
-collects, each required or not -- and say in words what the template fixes (`workflowFixedParts`), from the workflow
+collects, each required or not, named as a form names it (the catalog's trait `name`, `catalogTraitName`, issue
+#1438) -- and say in words what the template fixes (`workflowFixedParts`), from the workflow
 the slots make (`workflowPreview`, the kernel's `withTemplateSlots`). Save posts `/clientAdmin/client/workflows/save`
 (`workflowSaveRequest`, with `mode`): a new workflow lands in a configuration of its own, `workflow_<id>`; a change is
 patched where it is. What is stored is the workflow's overlay of the template, read over the template at load, so a

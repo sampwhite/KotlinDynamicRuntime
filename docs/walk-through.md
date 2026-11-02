@@ -216,10 +216,10 @@ template**, and choose **Use…** on **Collect information**:
 | --- | --- |
 | Name | Suggest a book |
 | Step | The book |
-| Collects | bookSuggestion |
+| Collects | Book suggestion |
 
-**Collects** lists traits by their ids. Remove **kdr:name**, the form's name, which the template collects to start
-with, and choose **bookSuggestion**. Leave **Seen by** as it is, and choose **Make the workflow**.
+**Collects** lists each trait by its name and what it is for. Remove **Name**: it is the form's name, which the
+template collects to start with. Then choose **Book suggestion**. Leave **Seen by** as it is, and choose **Make the workflow**.
 
 ### Try it in the sandbox
 
@@ -230,8 +230,8 @@ Open **Forms** from the menu, and choose **Create a form**. The form that opens 
 | --- | --- |
 | Name | A first suggestion |
 
-Choose **Create form**. In your form's **Workflows** column, choose **Suggest a book**, then **Engage**, and then
-**Edit**:
+Choose **Create form**. In your form's **Workflows** column, choose **Suggest a book**, then **Engage**, which opens
+it for editing:
 
 <!-- kdr-walk: sandboxSuggestion -->
 | Field | What to enter |

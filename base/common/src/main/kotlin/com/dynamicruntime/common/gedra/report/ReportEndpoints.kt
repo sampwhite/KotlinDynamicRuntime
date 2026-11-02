@@ -369,6 +369,18 @@ private fun SchTypesBuilder.columnInfoType() {
         property(RRUN.multiValued, "Whether the path may read several values from one form.", required = true) {
             type = SCT.boolean
         }
+        property(
+            RRUN.choices,
+            "For a text column whose field offers choices (issue #1438): each stored value and its label, which the page " +
+                "shows in its place. A run's values and a download hold the stored ones. Absent when there are none.",
+        ) {
+            type = SCT.array
+            items {
+                type = SCT.kObject
+                property(RRUN.value, "The stored value.", required = true)
+                property(RRUN.label, "What the page shows for it.", required = true)
+            }
+        }
     }
 }
 

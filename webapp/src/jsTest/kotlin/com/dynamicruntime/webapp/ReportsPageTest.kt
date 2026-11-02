@@ -6,6 +6,7 @@ import com.dynamicruntime.common.gedra.report.RRUN
 import com.dynamicruntime.common.gedra.report.ReportCombine
 import com.dynamicruntime.common.gedra.report.ReportKind
 import com.dynamicruntime.common.gedra.report.ReportMode
+import com.dynamicruntime.common.schema.SchOption
 import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.promise
@@ -230,6 +231,45 @@ class ReportsPageTest {
         assertEquals(reportBlank, reportCellText(null, ReportKind.string.name))
         assertEquals(reportBlank, reportCellText(emptyList<Any>(), ReportKind.string.name))
         assertEquals(reportNoGroupValue, reportCellText(null, ReportKind.string.name, ReportCellSource.group))
+    }
+
+    @Test
+    fun aChoiceReadsAsItsLabelWithItsStoredValueBehindIt() {
+        // Issue #1438: a column carries its field's choices, and a cell, a group, or a list shows each value's label;
+        // the tooltip says the stored values, which the file holds. Text no choice names is shown, and tipped, as it is.
+        val track = parseReportColumns(
+            listOf(column("track", ReportKind.string) + (RRUN.choices to listOf(mapOf(RRUN.value to "kotlin", RRUN.label to "Kotlin")))),
+        ).single()
+        assertEquals(listOf(SchOption("kotlin", "Kotlin")), track.choices)
+        assertEquals("Kotlin", reportCellText("kotlin", track.kind, choices = track.choices))
+        assertEquals("Kotlin", reportCellText("kotlin", track.kind, ReportCellSource.group, track.choices))
+        assertEquals("Kotlin, web", reportCellText(listOf("kotlin", "web"), track.kind, choices = track.choices))
+        assertEquals("web", reportCellText("web", track.kind, choices = track.choices))
+        assertEquals("kotlin", reportCellTip("kotlin", track.choices))
+        assertEquals("kotlin, web", reportCellTip(listOf("kotlin", "web"), track.choices))
+        assertNull(reportCellTip("web", track.choices))
+        assertNull(reportCellTip("kotlin", emptyList()))
+        assertEquals("kotlin", reportCsvCell("kotlin"))
+    }
+
+    @Test
+    fun theVocabularysClosedSetsReadAsTheFormsPagesSayThem() {
+        // A form's status as the listing's chip says it, a workflow's category as the Workflows page heads it.
+        assertEquals("Valid", reportCellText("valid", ReportKind.string.name, choices = vocabularyChoices("meta.formStatus", null)))
+        assertEquals("Needs Info", reportCellText("needsInfo", ReportKind.string.name, choices = vocabularyChoices("meta.surveyStatus", null)))
+        assertEquals("Engaged", reportCellText("engaged", ReportKind.string.name, choices = vocabularyChoices("workflow.review.category", null)))
+        assertEquals("Not eligible", reportCellText("ineligible", ReportKind.string.name, choices = vocabularyChoices("workflow.review.category", null)))
+        // Any other path, and a column read as something other than text, has none.
+        assertTrue(vocabularyChoices("meta.createdAt", null).isEmpty())
+        assertTrue(vocabularyChoices("workflow.review.approval[signoff].approved", null).isEmpty())
+        assertTrue(vocabularyChoices("meta.formStatus", ReportKind.number.name).isEmpty())
+        // Read as the backend parses it: a path that does not parse has none, and a trait field named like an attribute
+        // is not one.
+        assertTrue(vocabularyChoices("meta.", null).isEmpty())
+        assertTrue(vocabularyChoices("form.review.category", null).isEmpty())
+        // The run's summary gives a status column its labels with no choices on the wire.
+        val status = parseReportColumns(listOf(column("status", ReportKind.string) + (RRUN.path to "meta.formStatus"))).single()
+        assertEquals("Valid", reportCellText("valid", status.kind, choices = status.choices))
     }
 
     @Test

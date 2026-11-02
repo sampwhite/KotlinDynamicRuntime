@@ -7,6 +7,7 @@ import com.dynamicruntime.common.gedra.report.ReportCombine
 import com.dynamicruntime.common.gedra.report.ReportKind
 import com.dynamicruntime.common.gedra.report.ReportSnapshotTrigger
 import com.dynamicruntime.common.home.HMENU
+import com.dynamicruntime.common.schema.SchOption
 import kotlin.math.abs
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -33,6 +34,23 @@ class ReportHistoryTest {
         ReportSnapshot(id, takenAt, trigger, null, listOf("year"), columns, rows.toList(), 0, 0, truncated = false, sameDefinition = same)
 
     private val count = HistoryMetric(RRUN.count, "Forms", additive = true)
+
+    @Test
+    fun aGroupIsNamedByTheNewestSnapshotWhoseColumnCarriesItsChoices() {
+        // Issue #1438: a snapshot taken before columns carried choices names nothing by its label, and must not name the
+        // group by its stored value for the life of the series.
+        val track = ReportColumnInfo("track", "Track", "form.x.track", ReportKind.string.name, ReportCombine.first.name, null, false)
+        val labeled = ReportColumnInfo(
+            "track", "Track", "form.x.track", ReportKind.string.name, ReportCombine.first.name, null, false,
+            choices = listOf(SchOption("kotlin", "Kotlin")),
+        )
+        fun taken(id: Long, at: String, column: ReportColumnInfo) = ReportSnapshot(
+            id, at, "scheduled", null, listOf("track"), listOf(column), listOf(ReportRunRow(null, mapOf("track" to "kotlin"), 3, emptyMap())),
+            3, 0, truncated = false, sameDefinition = true,
+        )
+        val series = historySeries(listOf(taken(2, "2026-10-02T12:30:00Z", labeled), taken(1, "2026-10-01T12:30:00Z", track)), count)
+        assertEquals(listOf("Kotlin"), series.groups.map { it.label })
+    }
 
     @Test
     fun aSnapshotParsesWithItsRowsAndAPageWithItsCursor() {

@@ -139,7 +139,8 @@ class ClientWorkflowView(
 }
 
 /** A trait the client's workflows may collect. */
-class WorkflowTraitView(val traitId: String, val description: String?)
+/** A trait a workflow may collect: its id, its [name] as a form names it (issue #1438), and its description. */
+class WorkflowTraitView(val traitId: String, val name: String, val description: String?)
 
 /** The workflows catalog: the templates, the client's workflows, and the traits they may collect. */
 class WorkflowCatalogView(
@@ -169,7 +170,10 @@ fun parseWorkflowCatalog(raw: Map<String, Any?>): WorkflowCatalogView = Workflow
             it[CWF.labels].toJsonMapOrEmpty(),
         )
     },
-    traits = raw[CWF.traits].toJsonListOfMaps().map { WorkflowTraitView(it[CCT.traitId].toOptStr().orEmpty(), it[CWF.description].toOptStr()) },
+    traits = raw[CWF.traits].toJsonListOfMaps().map { t ->
+        val id = t[CCT.traitId].toOptStr().orEmpty()
+        WorkflowTraitView(id, t[CWF.name].toOptStr() ?: id, t[CWF.description].toOptStr())
+    },
     timeZone = raw[CWF.timeZone].toOptStr(),
     userLabels = raw[CWF.userLabels].toJsonListOfStrings(),
 )
@@ -264,9 +268,17 @@ fun workflowPreview(base: WfDef, slots: WfTemplateSlots): WfDef? =
 /** The traits a task's choice offers: those the client's workflows may collect, and any the task collects already. */
 fun traitChoices(catalog: WorkflowCatalogView, task: WfTaskSlot): List<Pair<String, String>> =
     (catalog.traits.map { it.traitId } + task.traits.map { it.traitId }).distinct().map { id ->
-        val description = catalog.traits.firstOrNull { it.traitId == id }?.description
-        (description?.let { "$id — $it" } ?: id) to id
+        val trait = catalog.traits.firstOrNull { it.traitId == id }
+        val name = trait?.name ?: id
+        (trait?.description?.let { "$name — $it" } ?: name) to id
     }
+
+/**
+ * A trait as the workflow editor names it (issue #1438): by its name, as a form names it, from the catalog -- or by its
+ * id, for one the catalog does not list (a trait the client no longer supports, still named by a stored workflow).
+ */
+fun catalogTraitName(catalog: WorkflowCatalogView, traitId: String): String =
+    catalog.traits.firstOrNull { it.traitId == traitId }?.name ?: traitId
 
 /**
  * The save's request: the slots, how the page expects it to take effect, and whether an impact is acknowledged -- and

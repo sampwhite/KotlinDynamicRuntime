@@ -52,7 +52,8 @@ object SandboxConfigs {
     fun deriveDef(parent: ClientDef): ClientDef = parent.copy(
         clientId = sandboxOf(parent.clientId),
         name = "${parent.name.ifEmpty { parent.clientId }} (sandbox)",
-        description = "The sandbox of '${parent.clientId}': its latest configuration, with users and data of its own.",
+        // The parent by its name, as its own name line does (issue #1438).
+        description = "The sandbox of ${parent.name.ifEmpty { parent.clientId }}: its latest configuration, with users and data of its own.",
         usageType = ClientUsageType.dev,
         audience = ClientAudience.internal,
         domainPrefix = null,

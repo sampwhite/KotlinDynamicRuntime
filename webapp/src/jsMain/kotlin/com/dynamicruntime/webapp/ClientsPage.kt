@@ -554,7 +554,7 @@ private fun ChildrenBuilder.clientDetail(
                 }
             }
             WhatIsThis {
-                heading = row?.sandboxOf?.let { "Configuration it runs ($it's)" } ?: "Stored configuration"
+                heading = row?.sandboxParentName?.let { "Configuration it runs ($it's)" } ?: "Stored configuration"
                 headingLevel = 3
                 headingId = storedConfigurationId
                 text = pageCopy.explanation(PFRAG.storedConfigNs)
@@ -1224,14 +1224,16 @@ private val SandboxSection = FC<SandboxSectionProps> { props ->
     // In a sandbox session it switches back as the app bar's "Back to <client>" does, to the same user; an
     // administrator who sees every client, looking at a sandbox's page from outside, needs only the link.
     sandboxWayBackTarget(props.row, props.acrossClients, shellFacts.inSandbox, shellFacts.sandboxWayBackUserId)?.let { parent ->
+        // The client by its name in the words, by its id in the address (issue #1438).
+        val parentName = props.row.sandboxParentName ?: parent
         p {
             className = ClassName("subtitle")
-            +"What is published here reaches $parent's people. "
+            +"What is published here reaches $parentName's people. "
             a {
                 className = ClassName("wf-cell-link")
                 href = clientDetailHref(parent)
                 shellFacts.sandboxWayBackUserId?.takeIf { shellFacts.inSandbox }?.let { userId ->
-                    title = "Leave the sandbox, and show $parent's own page."
+                    title = "Leave the sandbox, and show $parentName's own page."
                     onClick = { e ->
                         e.preventDefault()
                         error = null
@@ -1245,7 +1247,7 @@ private val SandboxSection = FC<SandboxSectionProps> { props ->
                         }
                     }
                 }
-                +"Back to $parent"
+                +"Back to $parentName"
             }
             +" to see it as they do."
         }

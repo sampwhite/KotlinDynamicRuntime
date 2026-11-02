@@ -1028,7 +1028,9 @@ val Users = FC<Props> {
                     +clientHint
                 }
             } else {
-                readOnlyField("Client", draftClient.ifEmpty { "—" })
+                // The client's id, labeled as one (issue #1438), whoever is looking and whether or not the client list has
+                // arrived: a label that changed with either would name one field two ways.
+                readOnlyField("Client ID", draftClient.ifEmpty { "—" })
             }
 
             // The persona (issue #750): frozen at creation, like the client, so a selector on create and plain

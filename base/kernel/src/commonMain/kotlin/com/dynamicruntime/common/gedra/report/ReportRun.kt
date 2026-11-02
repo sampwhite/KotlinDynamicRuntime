@@ -35,6 +35,9 @@ object RRUN {
     const val combine = "combine"
     const val rollup = "rollup"
     const val multiValued = "multiValued"
+    /** A text column's choices (issue #1438): its field's options, each a [value] and a [label], which the page names a value by. */
+    const val choices = "choices"
+    const val value = "value"
 
     // --- a report, as the listing describes it ---
     const val description = "description"
@@ -175,4 +178,8 @@ fun BoundColumn.describe(): Map<String, Any?> = buildMap {
     put(RRUN.combine, combine.name)
     column.rollup?.let { put(RRUN.rollup, it.name) }
     put(RRUN.multiValued, path.multiValued)
+    // Only while the column's value is still the field's text: a count or a sum is not a choice.
+    if (kind == ReportKind.string && path.choices.isNotEmpty()) {
+        put(RRUN.choices, path.choices.map { mapOf(RRUN.value to it.value, RRUN.label to it.label) })
+    }
 }

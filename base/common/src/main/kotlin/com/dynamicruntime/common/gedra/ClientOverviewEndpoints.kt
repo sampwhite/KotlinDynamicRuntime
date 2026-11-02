@@ -60,6 +60,7 @@ fun clientOverviewSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CLD.overvie
             required = true,
         ) { type = SCT.integer }
         property(CLD.sandboxOf, "When the client is a sandbox (issue #932): the client whose sandbox it is; absent otherwise.")
+        property(CLD.sandboxOfName, "Beside sandboxOf, that client's display name; its id when it has none (issue #1438).")
         property(CLD.hasSandbox, "Whether the client has a live sandbox (issue #932).", required = true) { type = SCT.boolean }
         property(
             CLD.rootOf,
@@ -620,7 +621,10 @@ fun overviewRow(
         CLD.issues to ClientConfigIssues.get(cxt).issuesFor(clientId).map { it.toWireMap() },
     ) + buildMap {
         // A sandbox's row names its parent, so the listing shows it beside the parent (issue #932).
-        sandboxParentOf(clientId)?.let { put(CLD.sandboxOf, it) }
+        sandboxParentOf(clientId)?.let { parent ->
+            put(CLD.sandboxOf, parent)
+            put(CLD.sandboxOfName, ClientService.get(cxt).known(parent)?.name.orEmpty().ifEmpty { parent })
+        }
         put(CLD.hasSandbox, !isSandboxClient(clientId) && ClientService.get(cxt).isPresent(sandboxOf(clientId)))
         // A customer's root may not be retired (issue #1182): said, so the page offers no action that could only fail.
         ClientService.get(cxt).customers.values.firstOrNull { it.def.rootClientId == clientId }?.let { put(CLD.rootOf, it.def.customerId) }

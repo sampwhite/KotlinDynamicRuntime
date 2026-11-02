@@ -90,16 +90,27 @@ fun formTraitData(types: Map<String, SchType>, traitId: String): SchProperty? =
  * [cxt] as delivery to a page resolves them, so a server message or a report names the trait as the page does. Only
  * the heading is resolved, not the layout's field copy.
  */
-fun formTraitName(cxt: KdrCxt, store: KdrSchemaStore, traitId: String): String {
+fun formTraitName(cxt: KdrCxt, store: KdrSchemaStore, traitId: String): String =
+    formTraitNames(cxt, store, listOf(traitId)).getValue(traitId)
+
+/**
+ * [formTraitName] for each of [traitIds] (issue #1438): the union looked up once and the headings resolved together,
+ * for a page that lists many traits.
+ */
+fun formTraitNames(cxt: KdrCxt, store: KdrSchemaStore, traitIds: List<String>): Map<String, String> {
     val union = store.types["${GCFG.globalNamespace}.${GU.unionName(GedraDataType.formDoc)}"]
-    val dataType = union?.variants?.byValue?.get(traitId)?.properties?.get(GE.data)?.valueType
-    val typeName = dataType?.name
-    val layout = typeName?.let { store.layouts[it] }
-    val heading = layout?.label?.let { label ->
-        val headingOnly = listOfNotNull(SL.label to label, layout.fragmentFileId?.let { SL.fragmentFileId to it }).toMap()
-        resolveDeliveredLayouts(cxt, mapOf(typeName to headingOnly))[typeName].toJsonMapOrEmpty()[SL.label].toOptStr()
+    val dataTypes = traitIds.associateWith { union?.variants?.byValue?.get(it)?.properties?.get(GE.data)?.valueType }
+    val headings = dataTypes.values.mapNotNull { it?.name }.distinct().mapNotNull { typeName ->
+        val layout = store.layouts[typeName]
+        layout?.label?.let { label ->
+            typeName to listOfNotNull(SL.label to label, layout.fragmentFileId?.let { SL.fragmentFileId to it }).toMap()
+        }
+    }.toMap()
+    val delivered = resolveDeliveredLayouts(cxt, headings)
+    return dataTypes.mapValues { (traitId, dataType) ->
+        val heading = dataType?.name?.let { delivered[it] }.toJsonMapOrEmpty()[SL.label].toOptStr()
+        traitNameOf(traitId, heading, dataType?.title)
     }
-    return traitNameOf(traitId, heading, dataType?.title)
 }
 
 /**

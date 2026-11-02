@@ -201,23 +201,26 @@ object ClientWorkflowEdit {
     }
 
     /**
-     * The traits a workflow running in [client] may collect: those it supports that a form may carry, with their
-     * descriptions. Asked of the client the catalog's workflows are read from -- a client's sandbox, when it has one.
+     * The traits a workflow running in [client] may collect: those it supports that a form may carry, with their names
+     * (issue #1438) and descriptions. Asked of the client the catalog's workflows are read from -- a client's sandbox,
+     * when it has one.
      */
     private fun usableTraits(cxt: KdrCxt, client: String): List<Map<String, Any?>> {
         val def = ClientService.get(cxt).known(client) ?: return emptyList()
         val collector = SchemaCollector.get(cxt) ?: return emptyList()
         val schema = SchemaService.get(cxt)
         val served = schema.schemaStore.servedDefs
-        return supportedTraits(collector.gedraConfigs, client, def, schema.overlaidTypesFor(client), schema.droppedTypesFor(client))
+        val usable = supportedTraits(collector.gedraConfigs, client, def, schema.overlaidTypesFor(client), schema.droppedTypesFor(client))
             .filter { GedraDataType.formDoc in it.appliesTo }
-            .map { trait ->
-                buildMap {
-                    put(CCT.traitId, trait.traitId)
-                    (served[trait.typeName] ?: schema.storeFor(client).defs[trait.typeName]).toJsonMapOrEmpty()[SCH.description]
-                        .toOptStr()?.let { put(CWF.description, it) }
-                }
+        val names = formTraitNames(cxt, schema.storeFor(client), usable.map { it.traitId })
+        return usable.map { trait ->
+            buildMap {
+                put(CCT.traitId, trait.traitId)
+                put(CWF.name, names.getValue(trait.traitId))
+                (served[trait.typeName] ?: schema.storeFor(client).defs[trait.typeName]).toJsonMapOrEmpty()[SCH.description]
+                    .toOptStr()?.let { put(CWF.description, it) }
             }
+        }
     }
 
     /**

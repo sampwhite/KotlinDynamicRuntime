@@ -35,6 +35,9 @@ fun coreTraits(cxt: KdrCxt): GedraConfig = gedraConfig(cxt, GT.coreTraits, GCFG.
         setOf(GedraDataType.formDoc, GedraDataType.wfData),
         "What somebody chose to call this document or workflow.",
     ) {
+        // Its name wherever a trait is named to people (`traitNameOf`, issue #1438): with no title, it was its id
+        // humanized, "Kdr:name".
+        title = "Name"
         property(GT.nameField, "What to call it.", required = true) { maxLength = GT.nameMaxLength }
     }
 

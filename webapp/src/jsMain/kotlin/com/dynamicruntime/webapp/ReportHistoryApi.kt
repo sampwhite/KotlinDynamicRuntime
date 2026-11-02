@@ -176,7 +176,10 @@ fun historyGroupKey(group: Map<String, Any?>, groupBy: List<String>): String =
 fun historyGroupLabel(group: Map<String, Any?>, groupBy: List<String>, columns: List<ReportColumnInfo>): String {
     if (groupBy.isEmpty()) return historyAllFormsLabel
     val byId = columns.associateBy { it.columnId }
-    return groupBy.joinToString(" / ") { id -> reportCellText(group[id], byId[id]?.kind ?: ReportKind.string.name, ReportCellSource.group) }
+    return groupBy.joinToString(" / ") { id ->
+        val column = byId[id]
+        reportCellText(group[id], column?.kind ?: ReportKind.string.name, ReportCellSource.group, column?.choices.orEmpty())
+    }
 }
 
 /**
@@ -228,12 +231,16 @@ class HistorySeries(
 fun historySeries(snapshots: List<ReportSnapshot>, metric: HistoryMetric, maxGroups: Int = historyMaxGroups): HistorySeries {
     val current = snapshots.filter { it.sameDefinition }
     val days = latestPerDay(current)
+    // A group is named by the newest snapshot whose column carries its choices (issue #1438): one taken before columns
+    // carried them would otherwise name a group by its stored value for the life of the series.
+    val labelColumns = days.flatMap { it.columns }.groupBy { it.columnId }.values
+        .map { cs -> cs.lastOrNull { it.choices.isNotEmpty() } ?: cs.last() }
     // First seen, oldest day first; a day's rows are in the run's key order.
     val seen = LinkedHashMap<String, HistoryGroup>()
     for (day in days) {
         for (row in day.rows) {
             val key = historyGroupKey(row.group, day.groupBy)
-            if (key !in seen) seen[key] = HistoryGroup(key, historyGroupLabel(row.group, day.groupBy, day.columns))
+            if (key !in seen) seen[key] = HistoryGroup(key, historyGroupLabel(row.group, day.groupBy, labelColumns))
         }
     }
     val rowsByDay = days.map { day -> day.rows.associateBy { historyGroupKey(it.group, day.groupBy) } }
