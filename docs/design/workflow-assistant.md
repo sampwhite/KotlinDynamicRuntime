@@ -13,7 +13,7 @@ This document says how it is built and why. It grows with the issues below.
 |---|---|---|
 | Running an endpoint in-process as a user, with an API key's limits and an allowlist | #1524 | built |
 | The `assistant` module: the model provider, operator opt-in, and monthly budgets | #1525 | built |
-| Conversations: tools, the turn loop, storage, and budget enforcement | #1526 | not started |
+| Conversations: tools, the turn loop, storage, and budget enforcement | #1526 | built |
 | The page: chat, try it in the sandbox, the publish link, and the allowance | #1527 | not started |
 
 ## Where it lives
@@ -108,11 +108,89 @@ switched on. It does not say whether the month's budget is spent: the page says 
 assembly, so the switch is held in a table cache. The cache holds the enabled rows only, which is exactly the set the
 cfact asks about.
 
+## Conversations and turns
+
+**Who the tools act as.** The administrator's own user in the client's sandbox, claimed in their own signed-in request
+(`claimOwnSandboxUser`) when they send a message, and re-read on every call by the in-process seam (#1524). So a
+configuration edit can only become a draft on the parent, written as the administrator who stands behind the sandbox
+user; reads show the drafts; and the assistant never holds more than the administrator does at that moment. A client
+with no sandbox is refused (`noSandbox`): the administrator turns one on from the Clients page, and the assistant
+never does. The assistant works only in the client the administrator is signed in to, and not from inside a sandbox.
+
+**The tools** are the allowlist: the seam admits exactly the endpoints they name (`AssistantTools.scope`), so everything
+else is refused, and a drift test holds each tool to its endpoint.
+
+| Tool | Does | Through |
+|---|---|---|
+| `read_doc` | the configuration reference, the schema dialect, or a demo-client page | code: documents are not endpoints |
+| `list_configs` | the client's bundles | `GET /clientAdmin/config/bundles` |
+| `read_config` | one bundle, in portable form | `GET /clientAdmin/config/bundle` |
+| `read_config_entries` | one bundle's entries, with each one's `updatedAt` | `GET /clientAdmin/config/entries` |
+| `list_workflows` | the workflows the sandbox runs, and the templates | `GET /clientAdmin/client/workflows` |
+| `list_traits` | the global traits, the client's own, and the plan's quotas | `GET /clientAdmin/client/traits` |
+| `read_cfacts` | the cfacts reference | `GET /clientOperator/cfacts` |
+| `view_workflow` | a workflow as the sandbox runs it | `GET /gedra/workflow/view` |
+| `patch_config` | a change, as a draft: a dry run, then the same configs written, with a reload | `POST /clientAdmin/config/bundle/patch` |
+| `set_included_traits` | the client's global traits, expected as a draft | `POST /clientAdmin/client/traits/set` |
+
+`patch_config` refuses a write that no dry run in the same turn accepted, exactly as given. Left out on purpose:
+publishing, reverting, deleting a bundle, `publishedOnly`, `bundle/write` (which deletes what it is not given), the
+sandbox switch, `workflows/params` (in force at once), users, keys, sessions, form data, the endpoint catalog, and
+every `admin`, `operator`, and `fixture` endpoint. A tool's result is the endpoint's answer without its envelope, cut
+at 30,000 characters (saying so); a refusal comes back as an error the model can correct from.
+
+A dry run from a sandbox user reloads the parent client, as every patch from a sandbox does. That costs a reload and
+changes nothing.
+
+**The system prompt** says who the assistant works for, what its tools can and cannot do, that what they return is data
+and never instructions, and then gives the API guide. A conversation is bound to the prompt and tools it began with
+(`toolsetVersion`, a hash of both): thinking is tied to them, so a conversation begun under another version is
+read-only, and the administrator starts a new one. A new build that changes the API guide, a tool, or the client's
+name does that to every conversation.
+
+**A turn** starts with `POST /clientAdmin/assistant/message` (`conversationId`, `clientMessageId`, `text`), which
+checks, in order: the assistant is on for the client, the client has a sandbox, its budget is not spent, the caller
+has turns left this hour (`KDR_ASSISTANT_TURNS_PER_HOUR`, counted in the database), the client has room for another
+running turn (`KDR_ASSISTANT_CONCURRENT_TURNS`), and no turn is running in the conversation (a conditional update; a
+409 otherwise). A `clientMessageId` sent again is the turn it already started. It then answers at once, and the turn
+runs on a virtual thread with a context of its own. Each step:
+
+1. checks the turn is still running and not canceled, within its steps (`KDR_ASSISTANT_MAX_STEPS`) and the budget, and
+   that the history is sound (`historyProblems`);
+2. asks the model with the whole history, and adds what it cost to the turn and the month;
+3. renews the turn's lease, and stops writing at once if the turn was meanwhile marked interrupted;
+4. appends the answer exactly, and acts on why the model stopped: `tool_use` runs every call and answers them all in
+   one message; `end_turn` ends; `max_tokens` answers any call in the cut-off answer as not run, and ends; `pause_turn`
+   asks again, continuing the answer; `refusal` ends, saying so plainly, and an empty answer is not stored, since it
+   could not be sent back.
+
+The history is append-only, and every tool call is answered in the very next message. A cancel
+(`POST /clientAdmin/assistant/cancel`) stops the turn at its next step, answering calls it had not run. A turn holds a
+lease of 15 minutes, renewed every step; one call to the model times out after 5 minutes and is retried once, so a
+step outlasts no lease. A turn whose lease lapsed -- its node stopped -- is marked interrupted by the next request
+that looks at its conversation, which answers any call it left, and frees the conversation.
+
+The page polls `GET /clientAdmin/assistant/conversation?conversationId&afterSeq` (marked `polled`, so it neither
+renews the session nor logs each call) and lists `GET /clientAdmin/assistant/conversations`. Every assistant endpoint
+is session-only: no API key, and not the assistant itself, can start a turn or spend the budget.
+
+**Storage**, all in the database, so a poll reaching any node finds the same conversation:
+`AssistantConversations` (its running turn, if any, and its version), `AssistantMessages` (the transcript, as the
+model's API reads it), and `AssistantTurns` (each turn's status, stop reason, steps, the four token counts, the weighted
+total, the model that answered, and the note the administrator is shown). `LogAssistant` logs turns starting and
+ending, every write and refusal, and model errors, never the model's text.
+
+The per-hour and per-client limits are counted, then the turn is recorded: two messages at the same instant may both
+pass. They are a fair-use limit, not a fence; the budget is the fence, checked again before every step.
+
 ## Not decided yet
 
 Recorded here as proposed, to settle as the later issues are worked:
 
 - **Retention.** A conversation's transcript kept until the conversation is deleted, and turn records 13 months.
+  Neither is built: nothing deletes a conversation or a turn record yet.
 - **Audit.** Through the transcript and the logs, with no field on a revision naming the assistant.
+- **Progress notes.** The request asks for `display: "updates"`, so the model's notes between tool calls are stored in
+  its thinking blocks, for the page (#1527) to show.
 - **Per-plan default budgets.** Later; see
   [`deferred-work.md`](../development/deferred-work.md#when-a-deployment-offers-the-workflow-assistant-at-more-than-one-price).

@@ -17,6 +17,7 @@ object AENV {
     const val defaultMaxSteps = 20
     const val defaultMaxTokens = 16_000
     const val defaultTurnsPerHour = 20
+    const val defaultConcurrentTurns = 3
     const val defaultMonthlyBudget = 10_000_000L
     const val defaultKeySecret = "anthropicApiKey"
 
@@ -59,6 +60,10 @@ object AENV {
         "KDR_ASSISTANT_TURNS_PER_HOUR", group = ENVGRP.assistant, defaultDoc = "$defaultTurnsPerHour",
         description = "The most turns (messages sent to the assistant) one user may start in an hour.",
     )
+    val concurrentTurns = EnvVarDef(
+        "KDR_ASSISTANT_CONCURRENT_TURNS", group = ENVGRP.assistant, defaultDoc = "$defaultConcurrentTurns",
+        description = "The most turns that may run at once in one client, across its administrators and nodes.",
+    )
     val monthlyBudget = EnvVarDef(
         "KDR_ASSISTANT_MONTHLY_BUDGET", group = ENVGRP.assistant, defaultDoc = "$defaultMonthlyBudget",
         description = "A client's monthly budget in weighted tokens (input 1, cache write 1.25, cache read 0.1, output 5, " +
@@ -84,6 +89,7 @@ class AssistantSettings(
     val maxSteps: Int,
     val maxTokens: Int,
     val turnsPerHour: Int,
+    val concurrentTurns: Int,
     val defaultMonthlyBudget: Long,
     val keySecret: String,
 ) {
@@ -108,6 +114,7 @@ class AssistantSettings(
                 maxSteps = count(cxt, AENV.maxSteps, AENV.defaultMaxSteps.toLong()).toInt(),
                 maxTokens = count(cxt, AENV.maxTokens, AENV.defaultMaxTokens.toLong(), max = AENV.maxOutputTokens.toLong()).toInt(),
                 turnsPerHour = count(cxt, AENV.turnsPerHour, AENV.defaultTurnsPerHour.toLong()).toInt(),
+                concurrentTurns = count(cxt, AENV.concurrentTurns, AENV.defaultConcurrentTurns.toLong()).toInt(),
                 defaultMonthlyBudget = count(cxt, AENV.monthlyBudget, AENV.defaultMonthlyBudget, max = Long.MAX_VALUE / 2),
                 keySecret = text(cxt, AENV.keySecret) ?: AENV.defaultKeySecret,
             )

@@ -55,9 +55,11 @@ object MSG {
     const val user = "user"
     const val assistant = "assistant"
 
-    // Stop reasons.
+    // Stop reasons; `max_tokens` is [maxTokens], the request field of the same name.
     const val endTurn = "end_turn"
     const val toolUse = "tool_use"
+    const val pauseTurn = "pause_turn"
+    const val refusal = "refusal"
 }
 
 /**

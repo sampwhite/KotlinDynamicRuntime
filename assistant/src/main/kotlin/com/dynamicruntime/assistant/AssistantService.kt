@@ -24,6 +24,11 @@ import com.dynamicruntime.common.startup.ServiceInitializer
 import com.dynamicruntime.common.util.toOptLong
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
+import java.util.concurrent.Future
+import java.util.concurrent.TimeUnit
 import kotlin.time.Instant
 
 /**
@@ -287,6 +292,44 @@ class AssistantService : ServiceInitializer {
             }
         }
         return weighted
+    }
+
+    /** The weighted tokens [client] -- its parent, for a sandbox -- has used this month. */
+    fun usedThisMonth(cxt: KdrCxt, client: String): Long {
+        val sqlCxt = SqlTopicService.mkSqlCxt(cxt, ATBL.topic)
+        val stmt = SqlTopicUtil.mkTableSelectStmt(sqlCxt, ATBL.table(cxt, ATBL.usage))
+        var row: Map<String, Any?>? = null
+        sqlCxt.sqlDb.withSession(cxt) {
+            row = sqlCxt.sqlDb.queryOneStatement(cxt, stmt, mapOf(ASST.client to payerOf(client), ATBL.yearMonth to monthOf(cxt.now())))
+        }
+        return row?.get(ASST.used).toOptLong() ?: 0
+    }
+
+    /** The turns this node is running, by id, until each ends. */
+    @KdrPrivate
+    val workers: MutableMap<String, Future<*>> = ConcurrentHashMap()
+
+    @KdrPrivate
+    val background: ExecutorService = Executors.newVirtualThreadPerTaskExecutor()
+
+    /**
+     * Runs turn [turnId] on a thread of its own, with a context of its own: the request that started it answers at
+     * once, and the turn goes on after it. Its log lines carry the starting request's trace id.
+     */
+    fun launch(cxt: KdrCxt, turnId: String) {
+        val turnCxt = KdrCxt.mkSimpleCxt("assistantTurn", cxt.instanceConfig).also { it.traceId = cxt.traceId }
+        workers[turnId] = background.submit {
+            try {
+                TurnRunner(this, turnCxt, turnId).run()
+            } finally {
+                workers.remove(turnId)
+            }
+        }
+    }
+
+    /** Waits up to [timeoutMs] for this node's worker on [turnId] to finish: for a test, which runs turns to the end. */
+    fun awaitTurn(turnId: String, timeoutMs: Long = 30_000) {
+        workers[turnId]?.get(timeoutMs, TimeUnit.MILLISECONDS)
     }
 
     /** Every client's use in [month], keyed by client. */

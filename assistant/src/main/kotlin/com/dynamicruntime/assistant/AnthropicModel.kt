@@ -14,6 +14,7 @@ import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.exception.SRC
 import com.dynamicruntime.common.util.jsonMap
 import com.dynamicruntime.common.util.toJsonStr
+import java.time.Duration
 
 /**
  * The real model: Claude, through the official Anthropic Java SDK (issue #1525). **The only file that imports the
@@ -43,7 +44,10 @@ class AnthropicModel(private val apiKey: String, private val betas: List<String>
 
     private fun client(): AnthropicClient = client ?: synchronized(this) {
         if (closed) throw KdrException("The Anthropic model is closed: this node is shutting down.", code = EXC.notResponding)
-        client ?: AnthropicOkHttpClient.builder().apiKey(apiKey).build().also { client = it }
+        // One retry, and a five-minute timeout per attempt: a turn's lease (TURN.leaseMinutes) must outlast a step's
+        // worst case, which the SDK's defaults (two retries, ten minutes) would not.
+        client ?: AnthropicOkHttpClient.builder().apiKey(apiKey).timeout(Duration.ofMinutes(TURN.callTimeoutMinutes))
+            .maxRetries(TURN.callRetries).build().also { client = it }
     }
 
     override fun respond(cxt: KdrCxt, request: ModelRequest): ModelResponse {
