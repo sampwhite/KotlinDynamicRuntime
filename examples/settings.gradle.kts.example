@@ -73,6 +73,7 @@ include("webapp")
 include("appui")
 include("edge")
 include("multiNodeTest")
+include("assistant")
 
 project(":base").projectDir = file("KotlinDynamicRuntime/base")
 project(":launch").projectDir = file("KotlinDynamicRuntime/launch")
@@ -85,6 +86,7 @@ project(":webapp").projectDir = file("KotlinDynamicRuntime/webapp")
 project(":appui").projectDir = file("KotlinDynamicRuntime/appui")
 project(":edge").projectDir = file("KotlinDynamicRuntime/edge")
 project(":multiNodeTest").projectDir = file("KotlinDynamicRuntime/multiNodeTest")
+project(":assistant").projectDir = file("KotlinDynamicRuntime/assistant")
 
 // Deployment-specific configuration code, discovered at startup via the JVM ServiceLoader (issue #171).
 // `injectComponent` both includes the `:customConfig` project and records it so `launch` wires it onto its

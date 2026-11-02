@@ -911,3 +911,11 @@ The endpoints that accept a large request body are collected at boot and read fr
   endpoints it accepts large bodies on, with the large-body maximum, so the Edge server and the other nodes can read
   them without asking every node. The Edge server needs it once it enforces body limits of its own, which it does not
   today.
+
+## When a deployment offers the workflow assistant at more than one price
+
+A client's assistant budget is the deployment's default (`KDR_ASSISTANT_MONTHLY_BUDGET`) unless an operator sets the
+client's own ([`workflow-assistant.md`](../design/workflow-assistant.md)). Nothing ties it to what the client pays for.
+
+- **Default budgets per plan** *(from #1525).* A budget the client's plan names, so an operator sets a plan once rather
+  than each client's number. Waits for plans to exist as something the deployment records.

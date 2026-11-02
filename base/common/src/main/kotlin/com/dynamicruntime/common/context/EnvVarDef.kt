@@ -15,6 +15,7 @@ object ENVGRP {
     const val edge = "Edge"
     const val jobs = "Batch jobs"
     const val fileStore = "File store"
+    const val assistant = "Workflow assistant"
 }
 
 /**

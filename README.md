@@ -89,6 +89,7 @@ webapp           # Kotlin/JS + React (antd) front end (the browser bundle)
 appui            # JVM host that serves the webapp bundle under the /wa context root
 edge             # the KdrEdge component: the front door a node booted in the edge role serves (StartEdge)
 multiNodeTest    # the multi-node test harness and the in-backend fixtures it drives (development only)
+assistant        # the workflow assistant: Claude drafts workflows in a client's sandbox (the Anthropic SDK lives here)
 bin              # convenience command-line scripts (see Command-line scripts below)
 build-logic      # included build providing the kdr.kotlin-*-conventions convention plugins
 examples         # templates and guides a deployment copies into the workspace directory
@@ -99,11 +100,11 @@ gradle           # the canonical Gradle wrapper, which kdr-install copies into t
 ```
 
 Module dependencies: `base/common` → `base/kernel` (JVM variant); `base/kdn` → `base/common`;
-`config` → `base/common` + `base/kdn`; `sample`, `appui`, `edge`, and `multiNodeTest` → `config`;
-`launch` → `config` + `appui`, with `sample`, `edge`, and `multiNodeTest` on its runtime classpath only;
-`webapp` → `base/kernel` (JS variant). Nothing may compile-depend on `edge`. `launch` picks up `edge` and
-`multiNodeTest` only when the workspace's `settings.gradle.kts` includes them, and leaves `multiNodeTest` out of the
-distribution it builds.
+`config` → `base/common` + `base/kdn`; `sample`, `appui`, `edge`, `multiNodeTest`, and `assistant` → `config`;
+`launch` → `config` + `appui`, with `sample`, `edge`, `multiNodeTest`, and `assistant` on its runtime classpath only;
+`webapp` → `base/kernel` (JS variant). Nothing may compile-depend on `edge` or `assistant`. `launch` picks up `edge`,
+`multiNodeTest`, and `assistant` only when the workspace's `settings.gradle.kts` includes them, and leaves
+`multiNodeTest` out of the distribution it builds.
 
 **`base/kernel` is the one worth knowing about.** Its `commonMain` holds pure, transpile-safe Kotlin — no
 `java.*`, no reflection — including the universal exception, the JSON/date/string utilities, the template
