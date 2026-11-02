@@ -180,12 +180,13 @@ object DesignSharedEdit {
     }
 
     /**
-     * Sets [typeName]'s **heading** -- its own `g-layout` label -- to [label] in the definition the client declares, or
-     * removes it when [label] is null or blank, for every workflow on the client (issue #1070). Refused as
-     * [setSharedField] is; a heading changes no data, so no stored form is checked. Returns the new stamp.
+     * Sets [typeName]'s **heading** -- its own `g-layout` label -- to [label], and its introduction -- the layout's
+     * description -- to [description], in the definition the client declares, each removed when null or blank, for
+     * every workflow on the client (issues #1070, #1539). Refused as [setSharedField] is; neither changes data, so no
+     * stored form is checked. Returns the new stamp.
      */
-    fun setSharedHeading(cxt: KdrCxt, typeName: String, label: String?, basedOn: String): String =
-        saveShared(cxt, sharedTarget(cxt, typeName), basedOn, ImpactGate.unchecked) { withSharedHeading(it, label) }
+    fun setSharedHeading(cxt: KdrCxt, typeName: String, label: String?, description: String?, basedOn: String): String =
+        saveShared(cxt, sharedTarget(cxt, typeName), basedOn, ImpactGate.unchecked) { withSharedHeading(it, label, description) }
 
     /** Where a shared edit of a type lands: the [config] declaring it, and its entry there by [slot] and [key]. */
     private class SharedTarget(val config: GedraConfig, val slot: String, val key: String) {
@@ -243,15 +244,17 @@ object DesignSharedEdit {
 }
 
 /**
- * [body] -- a type's authored body -- with its layout heading set to [label], or removed when [label] is null or blank
- * (issue #1070). A layout left saying nothing ([layoutSaysSomething]) is removed -- one holding only a heading and its
- * `fragmentFileId`, say, which would no longer parse -- while one left with only its heading is a layout still, since a
- * type with no field copy may have a heading. Pure.
+ * [body] -- a type's authored body -- with its layout heading set to [label] and its introduction to [description],
+ * each removed when null or blank (issues #1070, #1539). A layout left saying nothing ([layoutSaysSomething]) is
+ * removed -- one holding only a heading and its `fragmentFileId`, say, which would no longer parse -- while one left
+ * with only its heading or introduction is a layout still, since a type with no field copy may have them. Pure.
  */
-fun withSharedHeading(body: Map<String, Any?>, label: String?): Map<String, Any?> {
+fun withSharedHeading(body: Map<String, Any?>, label: String?, description: String?): Map<String, Any?> {
     val text = label?.trim()?.takeIf { it.isNotEmpty() }
+    val intro = description?.trim()?.takeIf { it.isNotEmpty() }
     val layout = LinkedHashMap(body[SCH.layout].toJsonMapOrEmpty())
     if (text == null) layout.remove(SL.label) else layout[SL.label] = text
+    if (intro == null) layout.remove(SL.description) else layout[SL.description] = intro
     val out = LinkedHashMap(body)
     if (!layoutSaysSomething(layout)) out.remove(SCH.layout) else out[SCH.layout] = layout
     return out

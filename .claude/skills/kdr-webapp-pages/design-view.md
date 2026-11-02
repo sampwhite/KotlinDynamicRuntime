@@ -61,11 +61,16 @@ button -- are selected by the frames on the title, the task rail or panel label 
 save shows only while the form is filled in. They are edited in the workflow's definition **in place**
 (`/clientAdmin/design/label`, `labelEditBody`): the workflow owns them, so there is no shared level and no reset; the
 page title may be cleared to the generic one, a task's or save's may not. A **trait's heading** -- its data type's
-layout `label`, one line, which is also the trait's name on every page (issues #1520, #1534) -- has the two levels a field's
-copy has: the workflow's own, as its alteration of the type, with
-**Reset to shared** and the note when the shared heading has changed since (`/clientAdmin/design/heading`, the block's
-`DSV.headingEdits`), and the shared one behind **Edit the shared heading** (`/clientAdmin/design/sharedHeading`). A
-label or heading that pulls a fragment key is shared wording (`DSV.pulledLabels`, `DSV.pulledHeadings`), edited at the
+layout `label`, one line, which is also the trait's name on every page (issues #1520, #1534) -- and its
+**introduction**, the layout `description` drawn under it (issue #1539), have the two levels a field's copy has, each
+edited beside the other and saved with it: the workflow's own, as its alteration of the type, with **Reset to shared**
+and the note when the shared heading or introduction has changed since (`/clientAdmin/design/heading`, the block's
+`DSV.headingEdits`, whose basis records both), and the shared ones behind **Edit the shared heading and introduction**
+(`/clientAdmin/design/sharedHeading`). Either left blank follows the level below it: the shared one, else the type's
+title or no introduction. The Introduction box keeps what is typed and trims only what is saved. A label, heading, or
+introduction that pulls a fragment key is shared wording (`DSV.pulledLabels`, `DSV.pulledHeadings`,
+`DSV.pulledIntros`); the shared editor shows such a heading or introduction as shared wording and sends it back as
+written, so saving the other never replaces it. It is edited at the
 key in the same `SharedWordingSection` a field's copy uses -- whatever the workflow's origin, so a source-declared
 workflow's pulled labels (the sample's acme `createForm`) are editable there -- and never overwritten with literal text
 by the label or heading editor. What the inspector says the page shows is read from the view, never from the selection,

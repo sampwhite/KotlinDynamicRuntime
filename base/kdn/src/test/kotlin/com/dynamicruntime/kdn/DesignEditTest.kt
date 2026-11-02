@@ -254,6 +254,56 @@ class DesignEditTest : StringSpec({
         heading(reviewView()) shouldBe shared
     }
 
+    fun intro(view: Map<String, Any?>): String? =
+        view["fieldLayouts"].toJsonMapOrEmpty()[dataType].toJsonMapOrEmpty()[SL.description].toOptStr()
+
+    "an introduction is edited beside the heading, at both levels, and the override says when the shared one changed" {
+        fun sharedLayout() = admin.getItem(DSV.definition, mapOf(DSV.slot to CCT.traitDef, DSV.key to DesignDemo.eventRequest))
+        val shared = heading(reviewView())
+        fun sharedEdit(intro: String?) = admin.postData(
+            DSV.sharedHeadingEdit,
+            listOfNotNull(
+                DSV.typeName to dataType, DSV.label to shared, intro?.let { DSV.description to it },
+                DSV.sharedBasedOn to sharedLayout()[DSV.sharedBasedOn],
+            ).toMap(),
+        )
+        fun ownEdit(intro: String?) = admin.postData(
+            DSV.headingEdit,
+            listOfNotNull(
+                DSV.workflowId to DesignDemo.requestWorkflow, DSV.typeName to dataType, intro?.let { DSV.description to it },
+                DSV.basedOn to basedOn(),
+            ).toMap(),
+        )
+        // Shared, for every workflow: the heading kept, an introduction added beside it.
+        sharedEdit("What it is.")
+        intro(reviewView()) shouldBe "What it is."
+        intro(requestView()) shouldBe "What it is."
+
+        // The workflow's own introduction, with the shared heading kept: its pages only.
+        ownEdit("Tell us about it.")
+        intro(requestView()) shouldBe "Tell us about it."
+        heading(requestView()) shouldBe shared
+        intro(reviewView()) shouldBe "What it is."
+        val facts = block(requestView())[DSV.headingEdits].toJsonMapOrEmpty()[dataType].toJsonMapOrEmpty()
+        facts.containsKey(DSV.label) shouldBe false
+        facts[DSV.description] shouldBe "Tell us about it."
+        facts[DSV.inheritedDescription] shouldBe "What it is."
+        facts[DSV.inheritedChanged] shouldBe false
+
+        // The shared introduction changes: the override is behind.
+        sharedEdit("What it is, and why.")
+        val behind = block(requestView())[DSV.headingEdits].toJsonMapOrEmpty()[dataType].toJsonMapOrEmpty()
+        behind[DSV.inheritedChanged] shouldBe true
+
+        // Reset, and the shared introduction removed: as the demo had it.
+        ownEdit(null)
+        intro(requestView()) shouldBe "What it is, and why."
+        block(requestView()).containsKey(DSV.headingEdits) shouldBe false
+        sharedEdit(null)
+        intro(reviewView()) shouldBe null
+        heading(reviewView()) shouldBe shared
+    }
+
     "a workflow may alter only a type its pages draw -- refused at the reload, outside production" {
         val other = "alterBad984"
         val config = gedraConfig(cxt, "${other}cfg", clientNamespace(other), other) {

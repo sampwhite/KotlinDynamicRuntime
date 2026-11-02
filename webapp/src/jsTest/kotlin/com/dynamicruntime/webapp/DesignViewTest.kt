@@ -606,11 +606,34 @@ class DesignViewTest {
         assertEquals(true, pulledHeadingOf(read, "client.demo.Request")?.mixed)
         assertNull(pulledHeadingOf(read, "client.demo.Contact"))
         // The workflow's own heading is stamped against the workflow; the shared one against the definition's entry.
-        val own = headingEditBody("request", "client.demo.Request", "Trip", "wfStamp", null)
+        val own = headingEditBody("request", "client.demo.Request", "Trip", " Where you went. ", "wfStamp", null)
         assertEquals("wfStamp", own[DSV.basedOn])
-        val shared = headingEditBody(null, "client.demo.Request", "", "entryStamp", null)
+        assertEquals("Where you went.", own[DSV.description])
+        val shared = headingEditBody(null, "client.demo.Request", "", " ", "entryStamp", null)
         assertEquals("entryStamp", shared[DSV.sharedBasedOn])
-        assertTrue(DSV.workflowId !in shared && DSV.label !in shared)
+        assertTrue(DSV.workflowId !in shared && DSV.label !in shared && DSV.description !in shared)
+    }
+
+    @Test
+    fun anIntroductionIsReadBesideTheHeading() {
+        assertEquals("Where you went.", introIn(mapOf(SCH.layout to mapOf(SL.label to "Trip", SL.description to "Where you went."))))
+        assertNull(introIn(mapOf(SCH.layout to mapOf(SL.label to "Trip"))))
+        val read = mapOf(DSV.pulledIntros to mapOf("client.demo.Request" to mapOf(DSV.mixed to false, DSV.pulls to emptyList<Any?>())))
+        assertEquals(false, pulledIntroOf(read, "client.demo.Request")?.mixed)
+        assertNull(pulledIntroOf(read, "client.demo.Contact"))
+        // An override of the introduction alone: no heading of the workflow's own.
+        val design = parseWfDesign(
+            mapOf(
+                DSV.headingEdits to mapOf(
+                    "client.demo.Request" to mapOf(
+                        DSV.description to "Ours.", DSV.inheritedDescription to "Shared.", DSV.inheritedChanged to false,
+                    ),
+                ),
+            ),
+        )!!
+        val edit = design.headingEdits.getValue("client.demo.Request")
+        assertNull(edit.label)
+        assertEquals("Ours." to "Shared.", edit.description to edit.inheritedDescription)
     }
 
     @Test

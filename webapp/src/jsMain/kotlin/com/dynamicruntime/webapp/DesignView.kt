@@ -117,10 +117,17 @@ class WfDesign(
 }
 
 /**
- * A heading a workflow sets for a type (issue #1070): the workflow's [label], the [inherited] heading it replaces (null
- * when the shared layout has none), and whether that has [inheritedChanged] since.
+ * A heading and introduction a workflow sets for a type (issues #1070, #1539): the workflow's [label] and [description]
+ * -- either may be null, but not both -- the [inherited] heading and [inheritedDescription] they replace (null when the
+ * shared layout has none), and whether either has [inheritedChanged] since.
  */
-class HeadingEdit(val label: String, val inherited: String?, val inheritedChanged: Boolean)
+class HeadingEdit(
+    val label: String?,
+    val inherited: String?,
+    val inheritedChanged: Boolean,
+    val description: String? = null,
+    val inheritedDescription: String? = null,
+)
 
 /**
  * One layout entry a workflow alters (issue #984): the workflow's [entry], the [inherited] one it replaces (null when
@@ -163,7 +170,12 @@ fun parseWfDesign(raw: Any?): WfDesign? {
         },
         headingEdits = block[DSV.headingEdits].toJsonMapOrEmpty().mapNotNull { (typeName, raw) ->
             val h = raw.toJsonMapOrEmpty()
-            h[DSV.label].toOptStr()?.let { typeName to HeadingEdit(it, h[DSV.inherited].toOptStr(), h[DSV.inheritedChanged] == true) }
+            val label = h[DSV.label].toOptStr()
+            val description = h[DSV.description].toOptStr()
+            if (label == null && description == null) return@mapNotNull null
+            typeName to HeadingEdit(
+                label, h[DSV.inherited].toOptStr(), h[DSV.inheritedChanged] == true, description, h[DSV.inheritedDescription].toOptStr(),
+            )
         }.toMap(),
         shownFields = block[DSV.shownFields].toJsonMapOrEmpty().mapValues { it.value.toJsonListOfStrings() },
     )
@@ -779,6 +791,13 @@ fun pulledHeadingOf(read: Map<String, Any?>?, typeName: String): PulledSlot? =
 /** The heading a type body's own `g-layout` gives it, or null. Pure. */
 fun headingIn(typeBody: Any?): String? = typeBody.toJsonMapOrEmpty()[SCH.layout].toJsonMapOrEmpty()[SL.label].toOptStr()
 
+/** The introduction a type body's own `g-layout` gives it (its `description`, issue #1539), or null. Pure. */
+fun introIn(typeBody: Any?): String? = typeBody.toJsonMapOrEmpty()[SCH.layout].toJsonMapOrEmpty()[SL.description].toOptStr()
+
+/** The fragment keys [typeName]'s introduction pulls (issue #1539), from a trait's or type's definition [read], or null. Pure. */
+fun pulledIntroOf(read: Map<String, Any?>?, typeName: String): PulledSlot? =
+    (read?.get(DSV.pulledIntros).toJsonMapOrEmpty()[typeName] as? Map<*, *>)?.let(::parsePulledSlot)
+
 /**
  * What the page shows for [slot] when its label is left blank (issue #1070) -- only the workflow's own label may be:
  * a task's and a save's are required. The page title falls back to `WorkflowForm`'s generic one, "Edit form" on a page
@@ -818,10 +837,18 @@ fun labelEditBody(workflowId: String, slot: LabelSlot, label: String?, basedOn: 
  * [basedOn]; else the shared one, against the definition's [basedOn] (`sharedBasedOn`). A blank [label] is sent as
  * absent -- back to the shared heading, or no heading. Pure.
  */
-fun headingEditBody(workflowId: String?, typeName: String, label: String?, basedOn: String, client: String?): Map<String, Any?> = buildMap {
+fun headingEditBody(
+    workflowId: String?,
+    typeName: String,
+    label: String?,
+    description: String?,
+    basedOn: String,
+    client: String?,
+): Map<String, Any?> = buildMap {
     workflowId?.let { put(DSV.workflowId, it) }
     put(DSV.typeName, typeName)
     label?.trim()?.takeIf { it.isNotEmpty() }?.let { put(DSV.label, it) }
+    description?.trim()?.takeIf { it.isNotEmpty() }?.let { put(DSV.description, it) }
     put(if (workflowId != null) DSV.basedOn else DSV.sharedBasedOn, basedOn)
     client?.let { put(DSV.client, it) }
 }

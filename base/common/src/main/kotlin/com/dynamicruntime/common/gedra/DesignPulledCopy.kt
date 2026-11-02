@@ -68,6 +68,19 @@ object DesignPulledCopy {
     }
 
     /**
+     * `{ typeName -> slot }` for each of [typeNames] whose layout **introduction** (its `description`), as the client of
+     * [cxt] has it, pulls a fragment key (issue #1539) -- each slot as [facts] gives one. Empty when none does.
+     */
+    fun introFacts(cxt: KdrCxt, typeNames: Set<String>): Map<String, Any?> {
+        val layouts = SchemaService.get(cxt).storeFor(cxt.client).layouts
+        val pulls = Pulls(cxt)
+        return typeNames.mapNotNull { typeName ->
+            val layout = layouts[typeName] ?: return@mapNotNull null
+            layout.description?.let { pulls.slot(it, layout.fragmentFileId) }?.let { typeName to it }
+        }.toMap(LinkedHashMap())
+    }
+
+    /**
      * The labels of [def] that pull a fragment key (issue #1070), each slot as [facts] gives one:
      * `{ workflow: slot, tasks: { taskId: slot }, saves: { taskId: { saveId: slot } } }`, with a label that pulls nothing
      * left out, and an empty part omitted. A workflow's labels have no default file, so a pull names its file
