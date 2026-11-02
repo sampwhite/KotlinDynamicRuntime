@@ -1,6 +1,7 @@
 package com.dynamicruntime.common.gedra
 
 import com.dynamicruntime.common.context.KdrCxt
+import com.dynamicruntime.common.schema.SchProperty
 import com.dynamicruntime.common.schema.SchType
 import com.dynamicruntime.common.startup.SchemaService
 import com.dynamicruntime.common.util.ScriptEnv
@@ -67,8 +68,13 @@ private fun displayValue(
  */
 fun resolveColumns(usages: List<ClientTraitUsage>, types: Map<String, SchType>): List<UsageColumn> {
     if (usages.isEmpty()) return emptyList()
-    val union = types["${GCFG.globalNamespace}.${GU.unionName(GedraDataType.formDoc)}"]
-    return usages.map { usage ->
-        resolveUsageColumn(usage, union?.variants?.select(usage.traitId)?.properties?.get(GE.data)?.valueType)
-    }
+    return usages.map { usage -> resolveUsageColumn(usage, formTraitData(types, usage.traitId)?.valueType) }
 }
+
+/**
+ * The `data` property of form trait [traitId]'s entry as [types] declare it (issues #1508, #1491): what a listing
+ * column's `${field}` reads from, read off the form-document entry union. Its `refName` names the data type, which a
+ * layout labeling its fields is keyed by. Null when [types] hold no form trait [traitId].
+ */
+fun formTraitData(types: Map<String, SchType>, traitId: String): SchProperty? =
+    types["${GCFG.globalNamespace}.${GU.unionName(GedraDataType.formDoc)}"]?.variants?.select(traitId)?.properties?.get(GE.data)

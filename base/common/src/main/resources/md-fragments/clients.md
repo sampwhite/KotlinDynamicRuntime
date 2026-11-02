@@ -74,6 +74,24 @@ What the client's forms hold, and the steps people take to fill them in.
   they see it. Its **time windows** say when it is available at all, and when new forms may join it.
 
 
+# @listingColumns
+# +whatIsThis
+The columns of the client's **forms listing**, beside each form's name and dates. Each column shows one trait's
+value, and the listing's search offers a filter for it.
+
+- **The field** a column shows decides how it is searched and sorted. A number or a date gives a range. A field
+  with choices offers them and shows their labels. A yes-or-no field gives a Yes or No filter. Any other field is
+  text, and **Search by part of the text** adds a filter that matches part of it.
+- **More options** take a value written by hand, such as two fields joined, which is searched as text. A
+  **presentation** changes only how a cell reads, adding a unit or a currency, for example, while the column still
+  searches and sorts by its value.
+- **Until it has its own**, a client shows the deployment's default columns. Adding or changing a column makes
+  those defaults the client's own, so they stay. Removing its last column brings the defaults back.
+
+A column changes nothing a form holds. It is stored with the client's definition, and takes effect as the
+definition's changes do.
+
+
 # @formStates
 # +whatIsThis
 Each form stores its **state**: which workflows it can take part in, and where it stands in each. The state is

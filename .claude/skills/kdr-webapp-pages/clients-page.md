@@ -78,14 +78,14 @@ The page has a header, and then panels: each a keyed `section` (the shared `pane
   - links to the panels, which scroll rather than set a hash.
 - **The panels**, in order:
   1. **Definition**: the editor first, then the read-only rows. The rows are grouped as the editor's sections are (`clientSummaryGroups`: About, How it behaves, Platform), plus *Where it runs*. The groups sit side by side where there is room.
-  2. **Forms and data**: Traits, then Workflows, then Form states.
+  2. **Forms and data**: Traits, then Listing columns, then Workflows, then Form states.
   3. **Copy**.
   4. **Images**: Web assets, then Files.
   5. **Sandbox and publishing**: Sandbox, then Stored configuration. Drafts made in the panels above are published here.
      Under the table, **Open every bundle** leads to the bundle editor (below).
   6. **Menu**: closed (`Disclosure`), its editor read only once opened. By default it lists only the items a client's people may be offered (`menuItemsForPeople`). It hides those shipped for the deployment's own people, which the items listing marks `deploymentOnly` from `MenuAudience.deployment`.
   7. **Retirement**: last, as a danger zone.
-- **What is not repeated.** The definition does not repeat what the page shows elsewhere: the counts are links in the header, the load is a chip, and the workflows have a panel. The traits are listed in the definition only where the Traits section is not drawn.
+- **What is not repeated.** The definition does not repeat what the page shows elsewhere: the counts are links in the header, the load is a chip, and the workflows have a panel. The traits and the listing columns are listed in the definition only where their sections are not drawn.
 - **Explanations.** Each panel and each definition group has a "What is this?" from the `clients` file (`PFRAG.clientsExplained`).
 - **Every child of the card is keyed.** A section keeps its state by what it is, so issues appearing or clearing do not remake the editors below.
 
@@ -374,6 +374,32 @@ client does not. A **new trait** may **Start from** a global trait (`extending`)
 which are listed and kept, and the preview resolves the extension onto the base (`previewDefs` with a
 `TraitBaseView`); what a trait extends is fixed once saved. Every one of these saves, as a sandbox's draft, says what
 publishing it would do to the live client's forms (`draftImpact`, `draftImpactText`) -- for information.
+
+**Listing columns** (issue #1491, `ClientUsagesSection.kt`, its pure half in `ClientUsages.kt`, covered by
+`ClientUsagesTest`): after Traits, since every column reads one, and offered where they are. It reads
+`GET /clientAdmin/client/usages` (`ClientsApi.usageCatalog`): the client's columns as they run -- for a client with a
+sandbox, as the sandbox runs them, drafts in -- each with how it reads (`CUS.readsAs`) and the stored configuration
+holding it, or why it cannot be changed here (declared in source code, or in the client it is built on); a stored
+column the load dropped is listed and said to be not running. Beside them, whether these are the deployment's
+**defaults** (`CUS.defaults`), the configuration a new column goes into (the definition's), and the form traits the
+client supports, each with the fields a column may show (those reading as text, a number, a date, or yes or no), labeled
+from their layouts. A table, one row per column -- heading (and its `columnId` when it has one), trait, what it shows
+(`usageShowsText`: the field's label, or the value as written), and how it reads -- with **Edit…** and **Remove**
+(behind a confirmation saying where it acts and what follows, `usageRemoveQuestion`/`usageRemoveConsequence`), and
+**Add column** under it. The editor (`UsageColumnEditor`) opens in a row beneath the column it changes, and under the
+table for a new one. Simple first: **Trait** (fixed once saved), **Heading**, **Field** -- picking one writes
+`${field}` as the value, keeps no kind of its own (the field decides, #1508), and fills an empty heading
+(`UsageDraft.withField`) -- with a sentence on how the column reads (`usageReadsAsText`) and, for a text column,
+**Search by part of the text**. **More options** (`MoreOptions`, its summary naming what is set, `usageOptionsInForce`)
+hold a hand-written **Value**, how such a value **Reads as**, and a **Presentation**, each with a "Use this when"
+hint. What is wrong is listed as typed (`usageDraftProblems`: a heading its trait already has, a value or presentation
+that does not parse) and Save waits. **The server decides where it lands** (`ClientUsageEdit`): a new column in the
+definition's configuration, a change where the column is stored -- a heading renamed replaces the entry in place, since
+the heading is part of the key (#1490) -- and makes a `columnId` from the heading when the trait already has a column;
+the page sends none (`usageSaveRequest`). **A client showing the defaults** has them made its own by its first save or
+removal, so adding a column keeps the Name column it had; removing its last column of its own brings them back, and the
+last default cannot be removed (`usageRemoveBlocked`). Saves take effect as the definition's do, live or a draft. The
+section's "What is this?" is the `clients` file's `listingColumns` namespace (`PFRAG.listingColumnsNs`).
 
 **Form states** (issue #1412, `FormStatesSection.kt`, its pure half in `FormStates.kt`, covered by `FormStatesTest`):
 under Workflows, **Recalculate form states** brings the stored state of the client's forms up to date with its

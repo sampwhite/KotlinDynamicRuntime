@@ -411,6 +411,14 @@ deployment's zone (`serverTimeZone`, a fixed UTC-8), as every client was before.
   typed, and stays open to anything typed or pasted: a search finding nothing is a harmless answer, so a closed list
   would protect nothing. A `date` column's range is a pair of day pickers whatever its `display`, and a day as its
   upper bound includes the whole of that day.
+- **The Clients page edits them** (#1491), in a Listing columns section after Traits, through
+  `/clientAdmin/client/usages` and its `save` and `remove`. The server decides where a column is stored: a new one
+  with the client's definition, a change where the column is. A column the client does not store, declared in source
+  code or in the client it is built on, is shown with why it is not edited there. A column's trait and its
+  `columnId` are fixed once saved; the server makes a `columnId` from the heading when the trait already has a
+  column, and a heading renamed replaces the entry where it stands. A client with no columns of its own shows the
+  deployment's, so its first change makes those its own, the change made, and removing its last column of its own
+  brings them back.
 
 **The definition has a schema, and a written one is held to it** (issue #1051). The attributes above are declared
 once (`ClientDef.defineInfoType`) and make two types. `ClientInfo` is what the client endpoints answer with.

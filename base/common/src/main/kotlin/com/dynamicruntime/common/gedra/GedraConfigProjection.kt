@@ -56,23 +56,9 @@ fun SchTypeBuilder.traitMetadataFields() {
 }
 
 /**
- * A trait-usage rule as a wire map (issue #702): the listing column it drives and how its value searches.
- * [includeDisplay] carries the `display` expression -- the serializer keeps it (it is the rule's substance), the
- * endpoint drops it (an internal expression an admin view has no use for, and its schema omits it).
+ * The schema of [toRuleMap] -- called inside a `type(...) { }` block; [includeDisplay] mirrors the map's. The map
+ * itself is in `base/kernel`, beside [ClientTraitUsage], since the client page builds and reads it too (issue #1491).
  */
-fun ClientTraitUsage.toRuleMap(includeDisplay: Boolean = true): Map<String, Any?> = buildMap {
-    put(CCT.traitId, traitId)
-    put(CCT.label, label)
-    if (includeDisplay) {
-        put(CCT.display, display)
-    }
-    kind?.let { put(CCT.kind, it.name) }
-    put(CCT.substring, substring)
-    presentation?.let { put(CCT.presentation, it) }
-    columnId?.let { put(CCT.columnId, it) }
-}
-
-/** The schema of [toRuleMap] -- called inside a `type(...) { }` block; [includeDisplay] mirrors the map's. */
 fun SchTypeBuilder.usageRuleFields(includeDisplay: Boolean = true) {
     property(CCT.traitId, "The trait whose value the column shows.", required = true)
     property(CCT.label, "The column header.", required = true)

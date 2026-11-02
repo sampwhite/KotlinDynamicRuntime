@@ -183,15 +183,8 @@ fun reassembleGedraConfig(
     }
     entriesBySlot[CCT.traitDef]?.forEach { reassembleTrait(it) }
     entriesBySlot[CCT.usageDef]?.forEach { e ->
-        traitUsage(
-            e[CCT.traitId].toOptStr().orEmpty(),
-            e[CCT.label].toOptStr().orEmpty(),
-            e[CCT.display].toOptStr().orEmpty(),
-            UsageKind.entries.firstOrNull { it.name == e[CCT.kind].toOptStr() },
-            e[CCT.substring] as? Boolean ?: false,
-            e[CCT.presentation].toOptStr()?.ifBlank { null },
-            e[CCT.columnId].toOptStr()?.ifBlank { null },
-        )
+        val usage = usageFromRuleMap(e)
+        traitUsage(usage.traitId, usage.label, usage.display, usage.kind, usage.substring, usage.presentation, usage.columnId)
     }
     entriesBySlot[CCT.workflowDef]?.forEach { workflowFromMap(withoutStoredWindows(it[CCT.definition].toJsonMapOrEmpty(), keepUnreadWorkflow)) }
     // Forgiving, unlike the other slots: a report that no longer reads costs only itself (`GedraConfig.unreadReports`).

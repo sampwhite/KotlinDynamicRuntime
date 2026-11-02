@@ -525,13 +525,16 @@ object PFRAG {
     /** The Clients page's namespace for recalculating a client's form states (issue #1412), within Forms and data. */
     const val formStatesNs = "formStates"
 
+    /** The Clients page's namespace for a client's listing columns (issue #1491), within Forms and data. */
+    const val listingColumnsNs = "listingColumns"
+
     /** The bundle editor page's namespaces (issue #1436): its Publishing section, and its list of bundles. */
     const val bundlePublishingNs = "bundlePublishing"
     const val bundleListNs = "bundleList"
 
     /** Every namespace of the Clients page whose `whatIsThis` explains a panel or a group of the page. */
     val clientsExplained: List<String> = listOf(
-        aboutNs, behaviorNs, platformNs, runsNs, formsDataNs, formStatesNs, copyNs, imagesNs, filesNs, sandboxNs,
+        aboutNs, behaviorNs, platformNs, runsNs, formsDataNs, listingColumnsNs, formStatesNs, copyNs, imagesNs, filesNs, sandboxNs,
         storedConfigNs, menuNs, bundlePublishingNs, bundleListNs,
     )
 
