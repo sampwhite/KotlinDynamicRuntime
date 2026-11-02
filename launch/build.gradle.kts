@@ -10,6 +10,8 @@ import com.dynamicruntime.buildlogic.wireInjectedComponents
 val edgeProject = findProject(":edge")
 // The multi-node test harness's fixtures (issue #872), guarded for the same reason as the edge.
 val multiNodeTestProject = findProject(":multiNodeTest")
+// The workflow assistant (issue #1525), guarded for the same reason as the edge.
+val assistantProject = findProject(":assistant")
 
 plugins {
     id("kdr.kotlin-conventions")
@@ -57,6 +59,9 @@ dependencies {
     // configurations and the pathing jar load them for development -- inert unless switched on -- but filtered
     // out of the distribution below, so a deployment never ships them.
     multiNodeTestProject?.let { runtimeOnly(project(it.path)) }
+    // The workflow assistant (issue #1525): discovered via ServiceLoader like the edge, and guarded like it. It ships
+    // in the distribution; it does nothing until a deployment holds a model key and an operator switches a client on.
+    assistantProject?.let { runtimeOnly(project(it.path)) }
 }
 
 // The webapp bundle (issue #1076): `:appui` publishes it as a jar of its own on `webappBundleElements`, and this

@@ -16,7 +16,7 @@ import com.dynamicruntime.common.context.KdrInstanceConfig
  */
 private val groupOrder = listOf(
     ENVGRP.application, ENVGRP.database, ENVGRP.logging, ENVGRP.node,
-    ENVGRP.caching, ENVGRP.content, ENVGRP.gedra, ENVGRP.edge, ENVGRP.jobs, ENVGRP.fileStore,
+    ENVGRP.caching, ENVGRP.content, ENVGRP.gedra, ENVGRP.edge, ENVGRP.jobs, ENVGRP.fileStore, ENVGRP.assistant,
 )
 
 /**
