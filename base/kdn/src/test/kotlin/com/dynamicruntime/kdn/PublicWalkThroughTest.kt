@@ -334,7 +334,7 @@ class PublicWalkThroughTest : StringSpec({
             founder.postData(CPY.setPath, edit)[CPY.mode] shouldBe EDM.draft
         }
 
-        // A trait of its own, and a workflow collecting it, which the editor offers by the trait's id.
+        // A trait of its own, and a workflow collecting it, which the editor offers by the trait's name (issue #1438).
         val fields = tables.getValue("fields").map { (label, kind, choices) ->
             val choiceList = choices.split(", ").filter { it.isNotEmpty() }.map { TraitChoiceDesign(null, it) }
             TraitFieldDesign(null, label, traitKinds[kind] ?: error("'$kind' is not a kind the page knows."), choices = choiceList)
@@ -343,7 +343,10 @@ class PublicWalkThroughTest : StringSpec({
         val made = founder.postData(UADEP.clientTraitDesign, mapOf(CIT.design to design.toInfo()))
         made[CPY.mode] shouldBe EDM.draft
         val traitId = made[CIT.design].toJsonMapOrEmpty()[CIT.traitId].toOptStr().shouldNotBeNull()
-        cell("newWorkflow", "Collects") shouldBe traitId
+        cell("newWorkflow", "Collects") shouldBe cell("trait", "Name")
+        val offered = founder.getItem(UADEP.clientWorkflows)[CWF.traits].toJsonListOfMaps().associate { it[CCT.traitId] to it[CWF.name] }
+        offered[traitId] shouldBe cell("trait", "Name")
+        offered[GT.name] shouldBe "Name"
         val slots = WfTemplateSlots(
             null, WFT.collect, cell("newWorkflow", "Name"),
             listOf(WfTaskSlot(collectTask, cell("newWorkflow", "Step"), listOf(WfTraitRef(traitId)))),

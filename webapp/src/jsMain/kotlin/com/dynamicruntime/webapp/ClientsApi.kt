@@ -66,6 +66,8 @@ class ClientOverview(
     val blockOverrides: Int,
     /** When the client is a sandbox (issue #932): the client whose sandbox it is. */
     val sandboxOf: String? = null,
+    /** Beside [sandboxOf], that client's display name (issue #1438); see [sandboxParentName]. */
+    val sandboxOfName: String? = null,
     /** Whether the client has a live sandbox (issue #932). */
     val hasSandbox: Boolean = false,
     /** Whether the client runs only its published configuration (issue #1001): every client with a sandbox does. */
@@ -104,6 +106,7 @@ fun parseClientOverview(items: List<Map<String, Any?>>): List<ClientOverview> = 
         copyOverrides = int(CLD.copyOverrides),
         blockOverrides = int(CLD.blockOverrides),
         sandboxOf = row[CLD.sandboxOf].toOptStr(),
+        sandboxOfName = row[CLD.sandboxOfName].toOptStr(),
         hasSandbox = row[CLD.hasSandbox] == true,
         publishedOnly = row[CLD.publishedOnly] == true,
         staticHere = row[CLD.staticHere] == true,
@@ -135,8 +138,15 @@ fun withSandboxesBesideParents(rows: List<ClientOverview>): List<ClientOverview>
     return rows.filter { it.sandboxOf == null || it.sandboxOf !in listed }.flatMap { listOf(it) + byParent[it.clientId].orEmpty() }
 }
 
-/** What the listing's client cell adds for a sandbox: "sandbox of acme"; null for any other client. */
-fun sandboxRowNote(row: ClientOverview): String? = row.sandboxOf?.let { "sandbox of $it" }
+/**
+ * A sandbox's client as the page names it in words (issue #1438): by its name, as its people know it -- `Acme`, not
+ * `acme` -- or by its id when the row carries no name. Null for a client that is not a sandbox.
+ */
+val ClientOverview.sandboxParentName: String?
+    get() = sandboxOf?.let { parent -> sandboxOfName?.takeIf { it.isNotBlank() } ?: parent }
+
+/** What the listing's client cell adds for a sandbox: "sandbox of Acme"; null for any other client. */
+fun sandboxRowNote(row: ClientOverview): String? = row.sandboxParentName?.let { "sandbox of $it" }
 
 /**
  * What the client detail's Sandbox section says, and the one action it offers (issue #932): [add] true to add a
@@ -161,7 +171,7 @@ fun sandboxWayBackTarget(row: ClientOverview?, acrossClients: Boolean, inSandbox
  * and covered under `jsNodeTest`.
  */
 fun sandboxControl(row: ClientOverview): SandboxControl {
-    row.sandboxOf?.let {
+    row.sandboxParentName?.let {
         return SandboxControl("This is the sandbox of $it: it runs $it's latest configuration, published or not, with users and data of its own.", null)
     }
     if (row.origin == GedraConfigOrigin.source.name) {
@@ -202,7 +212,7 @@ class RetirementControl(val text: String, val retire: Boolean?)
  * changes ([configs] say so) would publish them. Pure, and covered under `jsNodeTest`.
  */
 fun retirementControl(row: ClientOverview, storedConfig: String?, configs: List<ConfigSummaryView>?): RetirementControl {
-    row.sandboxOf?.let { return RetirementControl("A sandbox is retired with its parent, $it.", null) }
+    row.sandboxParentName?.let { return RetirementControl("A sandbox is retired with its parent, $it.", null) }
     if (row.origin == GedraConfigOrigin.source.name) {
         return RetirementControl("Defined in source code, so it is retired there.", null)
     }
@@ -1651,7 +1661,7 @@ fun bundleAction(row: ClientOverview?, bundle: ConfigSummaryView): BundleAction 
     row.hasSandbox -> BundleAction(
         false, "Publish from its sandbox, after previewing it there.", sandboxClient = sandboxOf(row.clientId), checkImpact = true,
     )
-    row.sandboxOf != null -> BundleAction(true, "Publishing makes it live in ${row.sandboxOf}.", checkImpact = true)
+    row.sandboxOf != null -> BundleAction(true, "Publishing makes it live in ${row.sandboxParentName}.", checkImpact = true)
     // On its latest revision, publishing changes nothing it runs, so there is no impact to check.
     !row.publishedOnly -> BundleAction(true, "It runs its latest revision either way; publishing marks this one, and the next edit starts another.")
     else -> BundleAction(true, null, checkImpact = true)

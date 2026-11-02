@@ -215,10 +215,11 @@ val FormsTable = FC<FormsTableProps> { props ->
             }
             add(sortableColumn("Contains", GSORT.contains, null, props.sortColumn, props.sortDescending))
             if (props.showOwner) add(ownerColumn(props.sortColumn, props.sortDescending))
-            // The Client column (issue #668), for a cross-client (`allClients`) caller, reading each row's own
+            // The Client ID column (issue #668), for a cross-client (`allClients`) caller, reading each row's own
             // `client`. Sortable by the row's client protocol field (`allClients`-only on the backend, as the
-            // column is), keyed on `GSORT.client` -- both the row-data key and the endpoint's sort key.
-            if (props.showClient) add(sortableColumn("Client", GSORT.client, 140, props.sortColumn, props.sortDescending))
+            // column is), keyed on `GSORT.client` -- both the row-data key and the endpoint's sort key. Headed as an id,
+            // since an id is what it shows and sorts by (issue #1438).
+            if (props.showClient) add(sortableColumn("Client ID", GSORT.client, 140, props.sortColumn, props.sortDescending))
             // The global survey-status column (issue #694): a fixed, non-sortable column (its sort/filter is
             // deferred to #695), rendering a status chip and a CTA on the unfinished rows.
             if (anySurveyStatus) add(statusColumn(props))

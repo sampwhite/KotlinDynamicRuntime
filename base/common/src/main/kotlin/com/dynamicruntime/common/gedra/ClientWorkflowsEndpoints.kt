@@ -93,6 +93,7 @@ internal fun SchModuleBuilder.clientWorkflowsEndpoints() {
         type = SCT.kObject
         description = "A trait a client's workflow may collect (issue #1120)."
         property(CCT.traitId, "The trait's id.", required = true)
+        property(CWF.name, "The trait's name, as a form names it: its layout heading, else its title, else its id.", required = true)
         property(CWF.description, "What the trait is for.")
     }
 

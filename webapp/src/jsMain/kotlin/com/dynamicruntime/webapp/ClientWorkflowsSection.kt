@@ -580,7 +580,7 @@ val WorkflowSlotEditor = FC<WorkflowSlotEditorProps> { props ->
                                     checked = trait.required
                                     disabled = busy
                                     onChange = { e -> draft = draft.withTraitRequired(task.taskId, trait.traitId, e.target.checked == true) }
-                                    +trait.traitId
+                                    +catalogTraitName(props.workflowCatalog, trait.traitId)
                                 }
                             }
                         }

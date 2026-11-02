@@ -13,6 +13,7 @@ class SandboxClientsTest {
     private fun row(
         id: String,
         sandboxOf: String? = null,
+        sandboxOfName: String? = null,
         hasSandbox: Boolean = false,
         origin: GedraConfigOrigin = GedraConfigOrigin.stored,
         status: ClientStatus = ClientStatus.present,
@@ -22,6 +23,7 @@ class SandboxClientsTest {
                 put(CLD.clientId, id); put(CLD.name, id); put(CLD.status, status.name); put(CLD.origin, origin.name)
                 put(CLD.hasSandbox, hasSandbox)
                 sandboxOf?.let { put(CLD.sandboxOf, it) }
+                sandboxOfName?.let { put(CLD.sandboxOfName, it) }
             },
         ),
     ).single()
@@ -39,6 +41,9 @@ class SandboxClientsTest {
         assertEquals(listOf("globex", "acme", "acme:sandbox", "lost:sandbox"), withSandboxesBesideParents(rows).map { it.clientId })
         assertEquals("sandbox of acme", sandboxRowNote(row("acme:sandbox", "acme")))
         assertNull(sandboxRowNote(row("acme")))
+        // By its name when the row carries one (issue #1438): the words name the client as its people know it.
+        assertEquals("sandbox of Acme", sandboxRowNote(row("acme:sandbox", "acme", sandboxOfName = "Acme")))
+        assertTrue(sandboxControl(row("acme:sandbox", "acme", sandboxOfName = "Acme")).text.startsWith("This is the sandbox of Acme:"))
     }
 
     @Test

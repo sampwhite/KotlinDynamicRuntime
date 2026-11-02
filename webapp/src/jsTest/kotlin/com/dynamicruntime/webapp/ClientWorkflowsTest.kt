@@ -52,7 +52,7 @@ class ClientWorkflowsTest {
                     CWF.params to mapOf(WFP.current to mapOf(WFP.params to mapOf(WFP.visibility to mapOf(WFP.mode to "restricted", WFP.labels to listOf("pilot"))))),
                 ),
             ),
-            CWF.traits to listOf(mapOf(CCT.traitId to "kdr:name", CWF.description to "A name."), mapOf(CCT.traitId to "siteVisit")),
+            CWF.traits to listOf(mapOf(CCT.traitId to "kdr:name", CWF.name to "Name", CWF.description to "A name."), mapOf(CCT.traitId to "siteVisit")),
             CWF.userLabels to listOf("pilot", "east"),
         ),
     )
@@ -67,7 +67,10 @@ class ClientWorkflowsTest {
         assertEquals("Site review", workflowName(own.def))
         assertEquals("Site review", own.name)
         assertEquals(listOf("Record it", "Approve it"), own.taskLabels)
-        assertEquals(listOf("kdr:name — A name." to "kdr:name", "siteVisit" to "siteVisit"), traitChoices(catalog, workflowSlots(own.def).tasks.single()))
+        // Each by its name (issue #1438), or its id when the catalog gives none or does not list it.
+        assertEquals(listOf("Name — A name." to "kdr:name", "siteVisit" to "siteVisit"), traitChoices(catalog, workflowSlots(own.def).tasks.single()))
+        assertEquals("Name", catalogTraitName(catalog, "kdr:name"))
+        assertEquals("gone", catalogTraitName(catalog, "gone"))
         // Who sees it (issue #1384), and the labels the client suggests for it.
         assertEquals(WfVisibility(WfVisibilityMode.restricted, listOf("pilot")), own.visibility)
         assertEquals(listOf("pilot", "east"), catalog.userLabels)

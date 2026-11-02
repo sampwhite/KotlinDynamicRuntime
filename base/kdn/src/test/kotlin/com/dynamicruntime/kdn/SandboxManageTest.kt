@@ -81,6 +81,8 @@ class SandboxManageTest : StringSpec({
         rows.getValue(client).containsKey(CLD.sandboxOf) shouldBe false
         val sandboxRow = rows.getValue(sandboxOf(client))
         sandboxRow[CLD.sandboxOf] shouldBe client
+        // And by its name, which the page says it in (issue #1438).
+        sandboxRow[CLD.sandboxOfName] shouldBe "Client $client"
         sandboxRow[CLD.hasSandbox] shouldBe false
         // A sandbox holds no stored configuration of its own; the parent's source configs it carries are not counted.
         sandboxRow[CLD.storedConfigs] shouldBe 1

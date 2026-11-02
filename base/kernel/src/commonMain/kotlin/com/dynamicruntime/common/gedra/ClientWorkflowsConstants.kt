@@ -71,6 +71,9 @@ object CWF {
     /** On a trait: its description. */
     const val description = "description"
 
+    /** On a trait: its name, as the pages name a trait (issue #1438): "Book suggestion", not `bookSuggestion`. */
+    const val name = "name"
+
     /**
      * The prefix of the stored configuration the editor makes for a new workflow: one per workflow, named for it
      * (`workflow_<workflowId>`), so each is published, judged, and, later, carried on its own.

@@ -534,6 +534,9 @@ object CLD {
     /** On a client overview row that is a sandbox (issue #932): the client whose sandbox it is. */
     const val sandboxOf = "sandboxOf"
 
+    /** Beside [sandboxOf], that client's display name (issue #1438), so the page names it as its people know it. */
+    const val sandboxOfName = "sandboxOfName"
+
     /** On a client overview row: whether the client has a live sandbox (issue #932). */
     const val hasSandbox = "hasSandbox"
 

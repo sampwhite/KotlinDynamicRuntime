@@ -101,7 +101,8 @@ val WorkflowsPage = FC<Props> {
                 thead {
                     tr {
                         th { +"Workflow" }
-                        if (acrossClients) th { +"Client" }
+                        // The client's id, headed as one (issue #1438).
+                        if (acrossClients) th { +"Client ID" }
                         WAGG.drillStates.forEach { state ->
                             th { className = ClassName("wf-count"); +workflowStateTitle(state) }
                         }

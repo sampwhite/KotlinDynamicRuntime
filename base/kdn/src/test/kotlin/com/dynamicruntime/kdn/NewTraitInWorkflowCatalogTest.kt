@@ -51,8 +51,10 @@ class NewTraitInWorkflowCatalogTest : StringSpec({
         made[CPY.mode] shouldBe EDM.draft
         val traitId = made[CIT.design].toJsonMapOrEmpty()[CIT.traitId].toOptStr()!!
 
-        person.getItem(UADEP.clientWorkflows, mapOf(CLD.client to client))[CWF.traits].toJsonListOfMaps()
-            .map { it[CCT.traitId] } shouldContain traitId
+        val offered = person.getItem(UADEP.clientWorkflows, mapOf(CLD.client to client))[CWF.traits].toJsonListOfMaps()
+        offered.map { it[CCT.traitId] } shouldContain traitId
+        // Named as the form names it, not by its id (issue #1438).
+        offered.single { it[CCT.traitId] == traitId }[CWF.name] shouldBe "Site safety"
 
         val slots = WfTemplateSlots(null, WFT.collect, "Safety check", listOf(WfTaskSlot("collect", "Safety", listOf(WfTraitRef(traitId)))))
         person.postData(UADEP.clientWorkflowSave, mapOf(CWF.slots to slots.toInfo()))[CPY.mode] shouldBe EDM.draft

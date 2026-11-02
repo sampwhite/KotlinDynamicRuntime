@@ -1028,7 +1028,9 @@ val Users = FC<Props> {
                     +clientHint
                 }
             } else {
-                readOnlyField("Client", draftClient.ifEmpty { "—" })
+                // By its name with its id where the client list names it, else by its id, labeled as one (issue #1438).
+                val known = clientChoices.firstOrNull { it.clientId == draftClient }
+                if (known != null) readOnlyField("Client", clientChoiceLabel(known)) else readOnlyField("Client ID", draftClient.ifEmpty { "—" })
             }
 
             // The persona (issue #750): frozen at creation, like the client, so a selector on create and plain
