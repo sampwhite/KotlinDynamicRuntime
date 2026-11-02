@@ -6,6 +6,7 @@ import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.gedra.GDF
 import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.gedra.GSRC
+import com.dynamicruntime.common.gedra.headingLine
 import com.dynamicruntime.common.gedra.workflow.SVY
 import com.dynamicruntime.common.gedra.workflow.WDSP
 import com.dynamicruntime.common.gedra.workflow.WFC
@@ -60,6 +61,15 @@ class WfTraitView(
      */
     val fieldLayout: SchLayout?,
 )
+
+/**
+ * The layout `label` a trait's section shows as its heading on a workflow form (issues #1520, #1534), inline Markdown
+ * and all, its heading marks taken off -- or null when it says nothing (none, blank, or marks alone, issue #1541), and
+ * the trait's name by the rule (`traitNameOf`) stands in, as on every other page. Judged by `headingLine`, not
+ * `headingName`: a label holding a `${…}` template is kept, since the form is the one place that fills it in. Pure.
+ */
+fun traitSectionLabel(trait: WfTraitView): String? =
+    trait.fieldLayout?.label?.takeIf { headingLine(it).isNotBlank() }?.trimStart('#')?.trim()
 
 /** One save option a task offers: what a button says and what it does (`WfSaveKind.name`, e.g. create/edit). */
 class WfSaveView(val id: String, val label: String, val kind: String)

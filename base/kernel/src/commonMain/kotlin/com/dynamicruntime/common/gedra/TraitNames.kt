@@ -35,9 +35,10 @@ fun traitDisplayName(traitId: String, dataType: SchType?, layouts: Map<String, S
 
 /**
  * [traitDisplayName] for the trait a branch of an entries union stands for: [variants] is the union, [traitId] the
- * branch's discriminator value, and the trait's data type is the branch's `data` property.
+ * branch's discriminator value, and the trait's data type is the branch's `data` property. Named apart from
+ * [traitDisplayName] (issue #1541), so a call passing a bare null says which it means.
  */
-fun traitDisplayName(traitId: String, variants: SchVariants?, layouts: Map<String, SchLayout>): String =
+fun branchDisplayName(traitId: String, variants: SchVariants?, layouts: Map<String, SchLayout>): String =
     traitDisplayName(traitId, variants?.byValue?.get(traitId)?.properties?.get(GE.data)?.valueType, layouts)
 
 /**

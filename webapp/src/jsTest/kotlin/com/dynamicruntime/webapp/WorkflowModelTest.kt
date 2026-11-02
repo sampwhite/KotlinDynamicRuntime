@@ -18,6 +18,7 @@ import com.dynamicruntime.common.schema.SLM
 import com.dynamicruntime.common.schema.SchFailCode
 import com.dynamicruntime.common.schema.SchFailure
 import com.dynamicruntime.common.schema.parseSchLayout
+import com.dynamicruntime.common.schema.parseSchemaTypes
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -529,5 +530,25 @@ class WorkflowModelTest {
         // A survey, whose task has an edit save, is.
         val survey = WorkflowView(workflowId = "review", entry = "survey", showTaskList = false, tasks = listOf(task(edit)), cfacts = emptyMap())
         assertTrue(survey.offersEdit(null))
+    }
+
+    /**
+     * A trait section's heading on a workflow form (issue #1541): the layout `label` when it says something, its heading
+     * marks taken off and a `${…}` template kept for the form to fill in; none when it is blank or marks alone, so the
+     * trait's name stands in, as on every other page. Each block carries an introduction, since a block holding only a
+     * blank label is refused at parse: it says nothing.
+     */
+    @Test
+    fun aBlankLabelGivesNoSectionHeading() {
+        val type = parseSchemaTypes(mapOf("t.Note" to mapOf(SCH.type to SCT.kObject))).getValue("t.Note")
+        fun sectionLabel(label: String?) = traitSectionLabel(
+            WfTraitView("note", false, type, "t.Note", label?.let { parseSchLayout("t.Note", mapOf(SL.label to it, SL.description to "Copy.")) }),
+        )
+        assertEquals("**Site** visit", sectionLabel("## **Site** visit"))
+        assertEquals($$"Notes for ${owner.name}", sectionLabel($$"## Notes for ${owner.name}"))
+        assertNull(sectionLabel(""))
+        assertNull(sectionLabel("##"))
+        assertNull(sectionLabel("## **"))
+        assertNull(sectionLabel(null))
     }
 }

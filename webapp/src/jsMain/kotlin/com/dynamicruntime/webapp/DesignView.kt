@@ -814,12 +814,8 @@ fun labelFallback(slot: LabelSlot, isEdit: Boolean): CopyFallback {
  * to read (`traitNameOf`, issue #1520) -- its data type's title, else a heading made from the trait's id. Pure.
  */
 fun headingFallback(trait: WfTraitView): CopyFallback {
-    val name = traitNameOf(trait.traitId, null, trait.type.title)
-    return if (trait.type.title?.isNotBlank() == true) {
-        CopyFallback(name, "Blank: the section shows its type's own title.")
-    } else {
-        CopyFallback(name, "Blank: the section shows a heading made from the trait's id.")
-    }
+    val shown = if (trait.type.title?.isNotBlank() == true) "its type's own title" else "a heading made from the trait's id"
+    return CopyFallback(traitNameOf(trait.traitId, null, trait.type.title), "Blank: the section shows $shown.")
 }
 
 /** The body of a label edit (issue #1070): which label, its new text (absent to clear the page title), the stamp. Pure. */

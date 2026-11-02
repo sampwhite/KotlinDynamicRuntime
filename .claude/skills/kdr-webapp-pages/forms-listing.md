@@ -29,7 +29,7 @@ from a form.
 
 The Contains column and the form view's "Contains:" line name each trait as every page does: its data type's layout
 `label` (one line since issue #1534), then its data type's `title`, then its id humanized (`summarizeForm`, through the kernel's
-`traitDisplayName` and the catalog's `fieldLayouts`). So the listing says what the form's heading says, follows a
+`branchDisplayName` and the catalog's `fieldLayouts`). So the listing says what the form's heading says, follows a
 rename in the trait designer, and follows a client's alteration of a global trait's heading. The trait choice and the
 entry headers in a friendly form use the same rule (`friendlyBranchLabel`); the sort by Contains still orders by the
 trait ids.
