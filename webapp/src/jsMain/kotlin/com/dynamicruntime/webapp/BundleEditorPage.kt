@@ -80,7 +80,7 @@ val BundleEditorPage = FC<Props> {
         bundleEditorScope.launch {
             try {
                 val shell = HomeApi.fetchConfig()
-                val own = shell.user?.client.orEmpty()
+                val own = shell.user.client.orEmpty()
                 val clientId = clientsOpenId(routeClient, shell.canManageUsers, shell.canSeeAllClients, own)
                 if (clientId == null) {
                     if (latest.current == token) note = "Open this page from a client's page."
@@ -452,7 +452,8 @@ private fun ChildrenBuilder.entryView(bundle: EditorBundle, slot: String, entry:
             } else if (before != null) {
                 jsonColumn(publishedHeading, slot, before, ed, withSwitch = true)
             }
-            if (ed.editable && id != null && data != null) {
+            // An entry has an id only when the latest revision holds it, so `data` is there too.
+            if (ed.editable && id != null) {
                 div {
                     className = ClassName("bundle-editor-actions")
                     when {

@@ -129,7 +129,7 @@ val ReportHistoryPanel = FC<ReportHistoryPanelProps> { props ->
             } catch (e: Throwable) {
                 if (latest.current != token) return@launch
                 failure = if ((e as? ApiError)?.status == EXC.notAuthorized) {
-                    HistoryFailure(key, null, e.message ?: "Report history is not open to you.")
+                    HistoryFailure(key, null, e.message)
                 } else {
                     HistoryFailure(key, userFacingError(e), null)
                 }

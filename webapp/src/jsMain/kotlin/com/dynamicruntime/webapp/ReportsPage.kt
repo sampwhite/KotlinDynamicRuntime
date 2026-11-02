@@ -518,7 +518,7 @@ private fun ChildrenBuilder.reportDownload(download: ReportDownload?, start: () 
             loading = walking
             disabled = walking
             onClick = start
-            +(if (walking) reportDownloadProgressText(download!!.fetched, download.total) else "Download CSV")
+            +(if (walking) reportDownloadProgressText(download.fetched, download.total) else "Download CSV")
         }
         download?.error?.let { errorText("Nothing was saved.", it) }
     }

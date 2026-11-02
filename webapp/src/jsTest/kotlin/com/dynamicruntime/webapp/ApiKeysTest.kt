@@ -100,8 +100,9 @@ class ApiKeysTest {
             ),
         )
         assertEquals(listOf("abcdefghijkl"), page.keys.map { it.keyId })
-        assertEquals(1, page.limits!!.liveCount)
-        assertEquals(730, page.limits!!.maxDays)
+        val limits = assertNotNull(page.limits)
+        assertEquals(1, limits.liveCount)
+        assertEquals(730, limits.maxDays)
         val made = assertNotNull(parseApiKeyMade(mapOf(AKEY.key to info, AKEY.secret to "kdr_abcdefghijkl_s3cret")))
         assertEquals("kdr_abcdefghijkl_s3cret", made.secret)
         assertNull(parseApiKeyMade(mapOf(AKEY.key to info)))
