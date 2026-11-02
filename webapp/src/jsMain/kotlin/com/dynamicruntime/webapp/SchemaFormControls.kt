@@ -169,10 +169,10 @@ internal fun ChildrenBuilder.widget(
             onChange = { e -> emit(e.target.checked as Boolean); commit() }
             markInvalid(asDynamic(), describedBy)
         }
-        // The three-state boolean's labels are the wire values rather than Yes / No, for the same reason the
-        // form labels a field with its key: this surface documents the payload.
+        // The three-state boolean reads Yes / No on a form people fill in, and the wire values where the form documents
+        // the payload, as the catalog labels a field with its key (issue #1438). Its values are the wire's either way.
         ControlKind.TristateBoolean -> Select {
-            options = optionsToJs(booleanOptions)
+            options = optionsToJs(if (opts.friendly) friendlyBooleanOptions else booleanOptions)
             this.value = value?.toString()
             placeholder = "(choose)"
             allowClear = true
@@ -270,6 +270,8 @@ val TextArea: ComponentType<InputProps> = Input.asDynamic().TextArea.unsafeCast<
 
 /** The two choices a three-state boolean offers. The wire values, verbatim — see the widget's note on labels. */
 private val booleanOptions = listOf(SchOption("true", "true"), SchOption("false", "false"))
+/** As a listing's cells and a report's say them (the kernel's `yesNoText`). */
+private val friendlyBooleanOptions = listOf(SchOption("true", "Yes"), SchOption("false", "No"))
 
 /**
  * Whether a boolean field has only **two** reachable states, so a checkbox can express it (issue #261).

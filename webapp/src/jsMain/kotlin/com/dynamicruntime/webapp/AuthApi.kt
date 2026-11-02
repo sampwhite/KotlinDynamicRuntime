@@ -59,12 +59,15 @@ fun authConfigFrom(config: UiConfig): AuthConfig = AuthConfig(
 )
 
 /** What an invitation is for (issue #751), as the preview reports it. */
-class InvitationInfo(val email: String, val client: String, val persona: String, val personaSuffix: String, val name: String?)
+class InvitationInfo(
+    val email: String, val client: String, val clientName: String, val persona: String, val personaSuffix: String, val name: String?,
+)
 
 /** The pure map -> [InvitationInfo] mapping; the persona and personaSuffix read as the badge labels them. Covered by `jsNodeTest`. */
 fun invitationInfoFrom(info: Map<String, Any?>): InvitationInfo = InvitationInfo(
     email = info[AFLD.email] as? String ?: "",
     client = info[AFLD.client] as? String ?: "",
+    clientName = info[AFLD.clientName] as? String ?: info[AFLD.client] as? String ?: "",
     persona = info[AFLD.persona] as? String ?: PERSONA.member,
     personaSuffix = info[AFLD.personaSuffix] as? String ?: "",
     name = info[AFLD.name] as? String,

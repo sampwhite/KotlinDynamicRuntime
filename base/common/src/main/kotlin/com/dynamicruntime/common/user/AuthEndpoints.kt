@@ -164,6 +164,7 @@ fun authSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.user") {
         type = SCT.kObject
         property(AFLD.email, "The invited address.", required = true)
         property(AFLD.client, "The client the invited user is in.", required = true)
+        property(AFLD.clientName, "That client's display name; its id when it has none.", required = true)
         property(AFLD.persona, "The invited user's persona.", required = true)
         property(AFLD.personaSuffix, "The invited user's personaSuffix; empty for the ordinary user.", required = true) { emptyIsAbsent = false }
         property(AFLD.name, "The invited user's name, when the inviter gave one.")

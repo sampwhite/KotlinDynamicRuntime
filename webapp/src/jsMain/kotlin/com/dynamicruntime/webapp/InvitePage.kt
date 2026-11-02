@@ -17,12 +17,13 @@ import web.cssom.ClassName
 private val inviteScope = MainScope()
 
 /**
- * What the invitation page says the account is: the client and the persona (with the personaSuffix, for a batch
- * user) -- `hub as Admin`, `acme as Member B`. Pure, covered under `jsNodeTest`.
+ * What the invitation page says the account is: the client, by its name as the mail names it (issue #1438), and the
+ * persona (with the personaSuffix, for a batch user) -- `Hub as Admin`, `Acme as Member B`. Pure, covered under
+ * `jsNodeTest`.
  */
 fun invitationWhat(info: InvitationInfo): String {
     val persona = PERSONA.label(info.persona) + (if (info.personaSuffix.isEmpty()) "" else " ${info.personaSuffix}")
-    return "${info.client} as $persona"
+    return "${info.clientName} as $persona"
 }
 
 /**
@@ -101,11 +102,11 @@ val InvitePage = FC<Props> {
                     MarkdownInline {
                         source = t(
                             "summary",
-                            $$"An account has been created for **${invite.email}** in **${invite.client}** as **${invite.persona}**.",
+                            $$"An account has been created for **${invite.email}** at **${invite.clientName}**, as **${invite.persona}**.",
                         ).evalTemplate(
                             mapOf(
                                 "invite" to mapOf(
-                                    "email" to invite.email, "client" to invite.client,
+                                    "email" to invite.email, "client" to invite.client, "clientName" to invite.clientName,
                                     "persona" to PERSONA.label(invite.persona) + (if (invite.personaSuffix.isEmpty()) "" else " ${invite.personaSuffix}"),
                                 ),
                             ),

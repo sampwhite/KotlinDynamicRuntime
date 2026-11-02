@@ -719,8 +719,8 @@ class AuthFormHandler(
     }
 
     /**
-     * What an invitation [token] is for, before it is accepted: the address, client, persona, personaSuffix, and
-     * name of the invited user. So the page can say what accepting means, and so that merely *opening* the
+     * What an invitation [token] is for, before it is accepted: the address, client (with its name, as the mail names
+     * it), persona, personaSuffix, and name of the invited user. So the page can say what accepting means, and so that merely *opening* the
      * link -- which a mail scanner does -- accepts nothing.
      */
     fun previewInvitation(cxt: KdrCxt, token: String): Map<String, Any?> {
@@ -728,6 +728,7 @@ class AuthFormHandler(
         return buildMap {
             put(AFLD.email, user.primaryId)
             put(AFLD.client, user.client)
+            put(AFLD.clientName, ClientService.get(cxt).known(user.client)?.name.orEmpty().ifEmpty { user.client })
             put(AFLD.persona, user.persona)
             put(AFLD.personaSuffix, user.personaSuffix)
             user.name?.let { put(AFLD.name, it) }

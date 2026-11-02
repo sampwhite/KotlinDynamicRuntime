@@ -231,7 +231,7 @@ val AuthFlow = FC<AuthFlowProps> { props ->
         if (claim) {
             p {
                 className = ClassName("subtitle")
-                +t("claim", "intro", "Somebody created an account for you and told you the client and the persona. Enter them with your email address, and a code will be sent to that address.")
+                +t("claim", "intro", "Somebody created an account for you and told you the client ID and the persona. Enter them with your email address, and a code will be sent to that address.")
             }
         }
         // The email (login id) is always shown; it locks once a code has been sent.
@@ -243,11 +243,11 @@ val AuthFlow = FC<AuthFlowProps> { props ->
         // clients exist or what personas they have. Locked with the address once the code is on its way, since
         // the code was computed over all of them.
         if (claim) {
-            textField(t("claim", "clientLabel", "Client"), claimClient, disabled = busy || codeSent) { claimClient = it }
+            textField(t("claim", "clientLabel", "Client ID"), claimClient, disabled = busy || codeSent) { claimClient = it }
             textField(t("claim", "personaLabel", "Persona"), claimPersona, disabled = busy || codeSent) { claimPersona = it }
             p {
                 className = ClassName("type-hint")
-                +t("claim", "personaHelp", "As the invitation gave it: `admin`, or `member B` when it named a persona suffix. Leave blank for `member`.")
+                +t("claim", "personaHelp", "As the invitation gave it: Admin, or Member B when it named a persona suffix. Leave blank for Member.")
             }
         }
 
@@ -280,7 +280,7 @@ val AuthFlow = FC<AuthFlowProps> { props ->
                 if (clientChoices.isNotEmpty()) {
                     div {
                         className = ClassName("row")
-                        span { className = ClassName("field-label"); +t("register", "clientLabel", "Client") }
+                        span { className = ClassName("field-label"); +t("register", "clientLabel", "Client ID") }
                         Select {
                             value = placeClient.ifEmpty { null }
                             options = clientOptions(clientChoices)
@@ -378,7 +378,7 @@ val AuthFlow = FC<AuthFlowProps> { props ->
                         ns, "codeSent",
                         when {
                             register -> $$"A code was sent to `${user.email}`."
-                            claim -> $$"If `${user.email}` has that account, a code is on its way. Check the address, the client and the persona."
+                            claim -> $$"If `${user.email}` has that account, a code is on its way. Check the address, the client ID, and the persona."
                             else -> $$"If `${user.email}` has an account, a code is on its way. Check that the address is correct."
                         },
                     ).evalTemplate(mapOf("user" to mapOf("email" to email.trim())))

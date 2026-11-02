@@ -135,11 +135,16 @@ class UserSwitcherTest {
 class InvitationPageTest {
     @Test
     fun parsesThePreviewAndSaysWhatTheAccountIs() {
-        val info = invitationInfoFrom(mapOf("email" to "ada@acme.com", "client" to "hub", "persona" to "admin", "personaSuffix" to ""))
+        val info = invitationInfoFrom(
+            mapOf("email" to "ada@acme.com", "client" to "hub", "clientName" to "Hub", "persona" to "admin", "personaSuffix" to ""),
+        )
         assertEquals("ada@acme.com", info.email)
-        assertEquals("hub as Admin", invitationWhat(info))
-        assertEquals("acme as Member B", invitationWhat(invitationInfoFrom(mapOf("email" to "b@acme.com", "client" to "acme", "persona" to "member", "personaSuffix" to "B"))))
-        // Absent persona reads as the default; absent personaSuffix as the ordinary user.
+        assertEquals("hub", info.client)
+        // The client by its name, as the mail names it (issue #1438).
+        assertEquals("Hub as Admin", invitationWhat(info))
+        val batch = mapOf("email" to "b@acme.com", "client" to "acme", "clientName" to "Acme", "persona" to "member", "personaSuffix" to "B")
+        assertEquals("Acme as Member B", invitationWhat(invitationInfoFrom(batch)))
+        // Absent persona reads as the default; absent personaSuffix as the ordinary user; an absent name as the id.
         assertEquals("public as Member", invitationWhat(invitationInfoFrom(mapOf("email" to "c@acme.com", "client" to "public"))))
     }
 }
@@ -152,6 +157,11 @@ class PersonaTypedTest {
         assertEquals("member" to "B", PERSONA.splitTyped("member B"))
         assertEquals("member" to "B", PERSONA.splitTyped("  Member   B "))
         assertEquals("member" to "", PERSONA.splitTyped("   "))
+        // The mails give a persona by its label (issue #1438), so each label, typed back, names its persona.
+        for (def in PERSONA.defs) {
+            assertEquals(def.name to "", PERSONA.splitTyped(def.label))
+            assertEquals(def.name to "B", PERSONA.splitTyped(PERSONA.typed(def.label, "B")))
+        }
         assertEquals("member B", PERSONA.typed("member", "B"))
         assertEquals("admin", PERSONA.typed("admin", ""))
     }
