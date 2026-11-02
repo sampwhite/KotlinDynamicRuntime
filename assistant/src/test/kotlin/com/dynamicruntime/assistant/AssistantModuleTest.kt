@@ -10,16 +10,16 @@ import com.dynamicruntime.common.endpoint.EI
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
-import com.dynamicruntime.common.gedra.ClientAudience
-import com.dynamicruntime.common.gedra.ClientDef
 import com.dynamicruntime.common.gedra.CCT
 import com.dynamicruntime.common.gedra.CWF
+import com.dynamicruntime.common.gedra.ClientAudience
+import com.dynamicruntime.common.gedra.ClientDef
 import com.dynamicruntime.common.gedra.ClientUsageType
-import com.dynamicruntime.common.gedra.workflow.WFD
 import com.dynamicruntime.common.gedra.GedraConfigReload
 import com.dynamicruntime.common.gedra.GedraConfigService
 import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.gedra.sandboxOf
+import com.dynamicruntime.common.gedra.workflow.WFD
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.operator.OENV
@@ -37,6 +37,7 @@ import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
+import io.kotest.matchers.string.shouldNotContain
 
 /**
  * The assistant module's provider and operator controls (issue #1525): which model a node has -- none without a key,
@@ -54,7 +55,7 @@ class AssistantModuleTest : StringSpec({
     val emptyRequest = ModelRequest(AENV.defaultModel, 100, emptyList(), emptyList(), emptyList(), null)
 
     /** A client of the test's own on [on]'s instance, so no other case's switch or use is in its way. */
-    fun newClient(on: KdrCxt, client: String): String {
+    fun newClient(on: KdrCxt, client: String, sandbox: Boolean = false): String {
         val setup = on.mkSubContext("setup", client).also { it.userId = 15250L }
         GedraConfigService.get(on).writeConfig(
             setup,
@@ -62,7 +63,7 @@ class AssistantModuleTest : StringSpec({
                 defineClient(
                     ClientDef(
                         clientId = client, name = "Client $client", usageType = ClientUsageType.dev,
-                        audience = ClientAudience.internal, enabledEnvironments = setOf(ENV.unit, ENV.local),
+                        audience = ClientAudience.internal, enabledEnvironments = setOf(ENV.unit, ENV.local), sandbox = sandbox,
                     ),
                 )
             },
@@ -137,6 +138,14 @@ class AssistantModuleTest : StringSpec({
         val answer = model.respond(demo, ModelRequest(AENV.defaultModel, 100, emptyList(), emptyList(), answered, null))
         answer.stopReason shouldBe MSG.endTurn
         answer.content.single()[MSG.text].toOptStr().shouldNotBeNull() shouldContain "found 1: RSVP (rsvp)"
+        // A new message after an earlier turn's answered calls is joined to them: the demo calls again rather than
+        // reading the old result.
+        val again = answered + mapOf(MSG.role to MSG.user, MSG.content to "And now?")
+        val joined = AssistantHistory.forRequest(again)
+        model.respond(demo, ModelRequest(AENV.defaultModel, 100, emptyList(), emptyList(), joined, null)).stopReason shouldBe MSG.toolUse
+        // A result cut too short to read is said to be.
+        ScriptedModel.demoSummary(TurnRunner.resultBlock("x", ToolResult("{\"workflows\":[ ... [Cut", false))) shouldContain
+            "too long to read"
 
         // A development node, as a real deployment boots one.
         refusedBoot("assistantDemoDev", mapOf(AENV.provider.name to AENV.fakeProvider), test = false) shouldContain
@@ -161,7 +170,7 @@ class AssistantModuleTest : StringSpec({
     }
 
     "an operator switches a client on, sets its budget, and reads its use back, a sandbox's counted as its parent's" {
-        val client = newClient(cxt, "asst1525on")
+        val client = newClient(cxt, "asst1525on", sandbox = true)
         val operator = TestUser.createOperator(cxt, "asst-op@example.com")
         val admin = TestUser.create(cxt, "asst-admin@$client.test", level = ROLE.admin, userClient = client)
         service.available shouldBe true
@@ -178,6 +187,8 @@ class AssistantModuleTest : StringSpec({
             operator.getData("/schema/endpoint", mapOf(EI.method to "POST", EI.path to ASST.clientSetPath))
         }
         served.toJsonStr() shouldContain "\"$client\""
+        // Its sandbox is not offered: a sandbox goes by its parent, and setting one is refused.
+        served.toJsonStr() shouldNotContain "\"${sandboxOf(client)}\""
 
         // Switching it on needs the data notice acknowledged.
         operator.expectError(EXC.badInput, ASST.clientSetPath, mapOf(ASST.client to client, ASST.enabled to true))[EP.errorMessage]
@@ -226,6 +237,15 @@ class AssistantModuleTest : StringSpec({
             EXC.badInput, ASST.clientSetPath, mapOf(ASST.client to client, ASST.monthlyBudgetDollars to 10, ASST.monthlyBudget to 5),
         )
         operator.expectError(EXC.badInput, ASST.clientSetPath, mapOf(ASST.client to client, ASST.monthlyBudgetDollars to 0))
+        // Not an amount, or more than any budget could mean: refused, naming the field sent.
+        for (bad in listOf("NaN", "Infinity", 2_000_000)) {
+            operator.expectError(EXC.badInput, ASST.clientSetPath, mapOf(ASST.client to client, ASST.monthlyBudgetDollars to bad))[
+                EP.errorMessage,
+            ].toString() shouldContain ASST.monthlyBudgetDollars
+        }
+        operator.expectError(
+            EXC.badInput, ASST.clientSetPath, mapOf(ASST.client to client, ASST.monthlyBudgetDollars to 5, ASST.budgetIsDefault to true),
+        )[EP.errorMessage].toString() shouldContain ASST.monthlyBudgetDollars
 
         // Back to the default budget, then off: the cache sees it at once on this node.
         val reset = operator.postItem(ASST.clientSetPath, mapOf(ASST.client to client, ASST.budgetIsDefault to true))

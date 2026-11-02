@@ -2,7 +2,6 @@ package com.dynamicruntime.assistant
 
 import com.dynamicruntime.common.content.ContentResources
 import com.dynamicruntime.common.content.MarkdownDocService
-import com.dynamicruntime.common.annotation.KdrPrivate
 import com.dynamicruntime.common.home.HDOC
 import com.dynamicruntime.common.util.sha256Hex
 import com.dynamicruntime.common.util.toJsonStr
@@ -59,6 +58,6 @@ object AssistantPrompt {
         (system(client) + AssistantTools.definitions()).toJsonStr(compact = true).toByteArray().sha256Hex().take(32)
     }
 
-    @KdrPrivate
-    val versions: MutableMap<String, String> = ConcurrentHashMap()
+    // Private for real: a wrong entry would make every conversation in its client read-only.
+    private val versions: MutableMap<String, String> = ConcurrentHashMap()
 }

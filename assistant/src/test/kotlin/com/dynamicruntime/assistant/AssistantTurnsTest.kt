@@ -3,6 +3,7 @@ package com.dynamicruntime.assistant
 import com.dynamicruntime.common.assistant.ACNV
 import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.KdrCxt
+import com.dynamicruntime.common.context.UPF
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.endpoint.HttpMethod
 import com.dynamicruntime.common.endpoint.resolveEndpointInputType
@@ -11,11 +12,11 @@ import com.dynamicruntime.common.gedra.CCT
 import com.dynamicruntime.common.gedra.CFEP
 import com.dynamicruntime.common.gedra.CLD
 import com.dynamicruntime.common.gedra.CPY
-import com.dynamicruntime.common.gedra.EDM
 import com.dynamicruntime.common.gedra.CUST
 import com.dynamicruntime.common.gedra.ClientAudience
 import com.dynamicruntime.common.gedra.ClientDef
 import com.dynamicruntime.common.gedra.ClientUsageType
+import com.dynamicruntime.common.gedra.EDM
 import com.dynamicruntime.common.gedra.GDF
 import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.gedra.GED
@@ -33,15 +34,14 @@ import com.dynamicruntime.common.http.request.InProcessCaller
 import com.dynamicruntime.common.http.request.InProcessPrincipal
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.naming.clientNamespace
-import com.dynamicruntime.common.sql.PF
 import com.dynamicruntime.common.operator.OENV
+import com.dynamicruntime.common.sql.PF
 import com.dynamicruntime.common.test.TEP
 import com.dynamicruntime.common.user.ADEP
 import com.dynamicruntime.common.user.AEP
 import com.dynamicruntime.common.user.AFLD
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.user.UADEP
-import com.dynamicruntime.common.context.UPF
 import com.dynamicruntime.common.user.UserService
 import com.dynamicruntime.common.util.jsonMap
 import com.dynamicruntime.common.util.toJsonListOfMaps
@@ -53,14 +53,14 @@ import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.collections.shouldHaveSize
+import io.kotest.matchers.collections.shouldNotContain
 import io.kotest.matchers.longs.shouldBeGreaterThan
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.shouldNotBe
 import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.string.shouldStartWith
-import io.kotest.matchers.shouldNotBe
-import io.kotest.matchers.collections.shouldNotContain
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import kotlin.time.Duration.Companion.minutes
@@ -248,6 +248,8 @@ class AssistantTurnsTest : StringSpec({
         // The dry run's answer is its impact, not the bundles the model sent.
         toolResults[1][TOOL.content].toString().jsonMap().shouldNotBeNull().keys shouldNotContain CFEP.configs
         toolResults[2][TOOL.isError].shouldBeNull()
+        // The write's answer keeps the bundles as written: what the model needs for its next edit.
+        toolResults[2][TOOL.content].toString().jsonMap().shouldNotBeNull().keys shouldContain CFEP.configs
         // The sandbox runs the draft at once.
         toolResults[3][TOOL.isError].shouldBeNull()
         toolResults[3][TOOL.content].toString().jsonMap().shouldNotBeNull()["found"] shouldBe true
@@ -327,12 +329,16 @@ class AssistantTurnsTest : StringSpec({
         results(messagesOf(admin, cut).last()).single()[TOOL.content].toString() shouldContain "cut off"
         lastTurn(admin, cut)[ACNV.status] shouldBe ACNV.statusStopped
 
-        // A refusal with nothing in it is not stored: it could not be sent back.
+        // A refusal with nothing in it is not stored -- it could not be sent back -- so the conversation goes on.
         model.add({ ScriptedModel.response(emptyList(), MSG.refusal) })
-        val declined = send(admin, "Something else.")
-        messagesOf(admin, declined).map { it[MSG.role] } shouldBe listOf(MSG.user)
-        lastTurn(admin, declined)[ACNV.note].toString() shouldContain "declined"
-        // The refusal stays in its history, so the conversation cannot go on.
+        val declinedEmpty = send(admin, "Something else.")
+        messagesOf(admin, declinedEmpty).map { it[MSG.role] } shouldBe listOf(MSG.user)
+        lastTurn(admin, declinedEmpty)[ACNV.note].toString() shouldContain "declined"
+        conversation(admin, declinedEmpty)[ACNV.conversation].toJsonMapOrEmpty()[ACNV.readOnly] shouldBe false
+
+        // A refusal with content stays in the history, and would meet the next request: the conversation ends there.
+        model.add({ ScriptedModel.response(listOf(mapOf(MSG.type to MSG.text, MSG.text to "I can't help with that.")), MSG.refusal) })
+        val declined = send(admin, "Something else again.", conversationId = declinedEmpty)
         conversation(admin, declined)[ACNV.conversation].toJsonMapOrEmpty()[ACNV.readOnly] shouldBe true
         admin.expectError(EXC.conflict, ACNV.messagePath, message("declined2", "Try again.", declined))[EP.errorCode] shouldBe
             ACNV.readOnlyCode
@@ -538,5 +544,20 @@ class AssistantTurnsTest : StringSpec({
         // The worker's answer came after the turn was given up: nothing of it is stored.
         admin.getData(ACNV.conversationPath, mapOf(ACNV.conversationId to conversationId))[ACNV.messages].toJsonListOfMaps()
             .map { it[ACNV.role] } shouldBe listOf(MSG.user)
+
+        // A conversation claimed by a message still being started -- its turn not yet recorded -- is left alone, until
+        // the claim is as old as a lease: then its start failed, and the claim is freed.
+        AssistantStore.insertConversation(
+            own,
+            mapOf(
+                ACNV.conversationId to "starting1526", "client" to "asstlease", PF.userId to admin.userId, ACNV.title to "Starting",
+                ATBL.toolsetVersion to AssistantPrompt.versionOf("asstlease"), ATBL.runningTurnId to "notYetRecorded",
+            ),
+        )
+        fun starting() = admin.getData(ACNV.conversationPath, mapOf(ACNV.conversationId to "starting1526"))[ACNV.conversation]
+            .toJsonMapOrEmpty()[ACNV.running]
+        starting() shouldBe true
+        own.instanceConfig.clock.advanceBy((TURN.leaseMinutes + 1).minutes)
+        starting() shouldBe false
     }
 })

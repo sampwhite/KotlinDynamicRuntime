@@ -1,6 +1,7 @@
 package com.dynamicruntime.assistant
 
 import com.dynamicruntime.common.annotation.KdrPrivate
+import com.dynamicruntime.common.assistant.ACNV
 import com.dynamicruntime.common.assistant.ASST
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.KdrInstanceConfig
@@ -39,7 +40,7 @@ import kotlin.time.Instant
  * **Which model**, decided once at boot:
  * - one a test handed in under [modelConfigKey] (a [ScriptedModel]);
  * - with `KDR_ASSISTANT_PROVIDER=fake`, the built-in demo -- on a test instance only, and refused at boot elsewhere,
- *   as simulated mail is: its canned answers would pass for a broken assistant on a real deployment;
+ *   as simulated mail is: its scripted answers would pass for a broken assistant on a real deployment;
  * - otherwise Claude ([AnthropicModel]), when the secret [AssistantSettings.keySecret] names holds a key. With none,
  *   the assistant is unavailable, nothing else changes, and the operator's view names the secret it looked for.
  *
@@ -93,7 +94,7 @@ class AssistantService : ServiceInitializer {
                 if (!cxt.instanceConfig.isTestInstance) {
                     throw KdrException(
                         "Refusing to start: ${AENV.provider.name} is '${AENV.fakeProvider}' but this is not a test " +
-                            "instance. The demo assistant answers every message with canned text, which on a real " +
+                            "instance. The demo assistant answers every message with the same script, which on a real " +
                             "deployment would pass for a broken one -- unset ${AENV.provider.name}, or make this a test " +
                             "instance (${KdrInstanceConfig.testInstanceEnvVar.name}, in-memory only, or the unit environment).",
                     )
@@ -323,12 +324,25 @@ class AssistantService : ServiceInitializer {
         val task = FutureTask {
             try {
                 TurnRunner(this, turnCxt, turnId).run()
+            } catch (e: Throwable) {
+                // What the runner's own handling did not catch: logged, and the turn ended, rather than left to its lease.
+                LogAssistant.error(turnCxt, "Turn $turnId could not run.", e)
+                runCatching { endWithoutRunner(turnCxt, turnId) }
+                if (e is Error) throw e
             } finally {
                 workers.remove(turnId)
             }
         }
         workers[turnId] = task
         background.execute(task)
+    }
+
+    /** Ends turn [turnId] as failed and frees its conversation, for a worker that could not run it. */
+    @KdrPrivate
+    fun endWithoutRunner(cxt: KdrCxt, turnId: String) {
+        val turn = AssistantStore.turn(cxt, turnId) ?: return
+        AssistantStore.endTurn(cxt, turnId, ACNV.statusFailed, "The assistant could not start. Try your message again.", cxt.now())
+        AssistantStore.releaseConversation(cxt, turn[ACNV.conversationId].toString(), turnId)
     }
 
     /** Waits up to [timeoutMs] for this node's worker on [turnId] to finish: for a test, which runs turns to the end. */

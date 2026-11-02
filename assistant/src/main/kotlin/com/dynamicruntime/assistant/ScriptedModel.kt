@@ -6,7 +6,7 @@ import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.CCT
 import com.dynamicruntime.common.gedra.CWF
 import com.dynamicruntime.common.gedra.workflow.WFD
-import com.dynamicruntime.common.util.jsonMap
+import com.dynamicruntime.common.util.jsonMapOrNull
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
@@ -107,10 +107,11 @@ class ScriptedModel(steps: List<(ModelRequest) -> ModelResponse>, override val l
             override val label: String = "demo (${AENV.fakeProvider})"
 
             override fun respond(cxt: KdrCxt, request: ModelRequest): ModelResponse {
-                val last = request.messages.lastOrNull()?.let { AssistantHistory.blocksOf(it) }.orEmpty()
-                val result = last.firstOrNull { it[MSG.type] == TOOL.toolResult }
-                    ?: return toolResponse(TOOL.listWorkflows to emptyMap())
-                return textResponse(demoSummary(result))
+                // What the request ends with: the person's new message -- after an earlier turn's answered calls, it is
+                // joined to them, so it is the last block that says -- or the result of the demo's own call.
+                val last = request.messages.lastOrNull()?.let { AssistantHistory.blocksOf(it) }.orEmpty().lastOrNull()
+                if (last?.get(MSG.type) != TOOL.toolResult) return toolResponse(TOOL.listWorkflows to emptyMap())
+                return textResponse(demoSummary(last))
             }
         }
 
@@ -118,7 +119,10 @@ class ScriptedModel(steps: List<(ModelRequest) -> ModelResponse>, override val l
         fun demoSummary(result: Map<String, Any?>): String {
             val text = result[TOOL.content].toString()
             if (result[TOOL.isError] == true) return "The demo assistant asked for the client's workflows and was refused: $text"
-            val workflows = text.jsonMap()?.get(CWF.workflows).toJsonListOfMaps().map { it[CWF.definition].toJsonMapOrEmpty() }
+            // A long catalog is cut, and is then no longer JSON.
+            val catalog = text.jsonMapOrNull() ?: return "The demo assistant asked for the client's workflows, and the answer " +
+                "was too long to read here."
+            val workflows = catalog[CWF.workflows].toJsonListOfMaps().map { it[CWF.definition].toJsonMapOrEmpty() }
             val named = workflows.map { def ->
                 val id = def[CCT.workflowId].toString()
                 def[WFD.label].toOptStr()?.let { "$it ($id)" } ?: id

@@ -14,9 +14,9 @@ import com.dynamicruntime.common.gedra.CFEP
 import com.dynamicruntime.common.gedra.CLD
 import com.dynamicruntime.common.gedra.CPY
 import com.dynamicruntime.common.gedra.EDM
+import com.dynamicruntime.common.gedra.GDF
 import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.gedra.GED
-import com.dynamicruntime.common.gedra.GDF
 import com.dynamicruntime.common.gedra.GEP
 import com.dynamicruntime.common.gedra.PORT
 import com.dynamicruntime.common.home.HDOC
@@ -28,7 +28,7 @@ import com.dynamicruntime.common.util.toJsonStr
 import com.dynamicruntime.common.util.toOptStr
 import com.dynamicruntime.kdn.confdemo.ConfDemo
 
-/** The wire names of a tool's definition and its use. Each matches its value. */
+/** The wire names of a tool's definition and its use (each name matches its value), the tool names, and their limits. */
 @Suppress("ConstPropertyName")
 object TOOL {
     const val name = "name"
@@ -125,12 +125,18 @@ class ToolRun(val cxt: KdrCxt, val principal: InProcessPrincipal, val traceId: S
     }
 
     companion object {
-        /** [text] cut to [max] characters -- never inside a character written as two -- saying that it was. */
-        fun capped(text: String, max: Int = TOOL.maxResultChars): String {
+        /**
+         * [text] cut to [max] characters -- never inside a character written as two -- saying that it was, and what
+         * to do instead ([advice]).
+         */
+        fun capped(
+            text: String,
+            max: Int = TOOL.maxResultChars,
+            advice: String = "Read one config, or its entries, rather than all at once.",
+        ): String {
             if (text.length <= max) return text
             val end = if (text[max - 1].isHighSurrogate()) max - 1 else max
-            return text.take(end) + "\n[Cut: $end of ${text.length} characters shown. Read one config, or its entries, " +
-                "rather than all at once.]"
+            return text.take(end) + "\n[Cut: $end of ${text.length} characters shown. $advice]"
         }
     }
 }
@@ -182,6 +188,10 @@ object AssistantTools {
             tool.run(run, input)
         } catch (e: KdrException) {
             ToolResult(e.message.orEmpty(), isError = true)
+        } catch (e: Exception) {
+            // A tool's own failure is its answer, so the turn's other calls are still answered for what they did.
+            LogAssistant.error(run.cxt, "The '$name' tool failed.", e)
+            ToolResult("The tool failed: ${e.message ?: e::class.simpleName}", isError = true)
         }
     }
 
@@ -208,7 +218,9 @@ object AssistantTools {
             method = null, path = null,
         ) { run, input ->
             val docId = input[TOOL.doc].toOptStr().orEmpty()
-            readableDoc(run.cxt, docId)?.let { ToolResult(ToolRun.capped(it, TOOL.maxDocChars), isError = false) }
+            readableDoc(run.cxt, docId)?.let {
+                ToolResult(ToolRun.capped(it, TOOL.maxDocChars, "The rest of this document cannot be read here."), isError = false)
+            }
                 ?: ToolResult("No document '$docId'. Readable here: ${readableDocIds(run.cxt).joinToString(", ")}.", isError = true)
         },
         AssistantTool(
@@ -263,9 +275,10 @@ object AssistantTools {
             "Changes the client's configuration, as a draft: nothing is live until a person publishes it. Each config " +
                 "names a bundle (a new name makes one) and its edits; each edit names a slot, an action ('addOrMerge', " +
                 "'addOrReplace', or 'deleteOrNoOp'), and the entry's data, in portable form. **Dry run first**: with " +
-                "dryRun true nothing is written, and the answer shows the bundles as they would be and what the change " +
-                "would affect. A write (dryRun false) is refused unless the same configs passed a dry run in an earlier " +
-                "step of this turn: dry run, read the answer, then write.",
+                "dryRun true nothing is written, and the answer is what the change would affect. A write answers with " +
+                "the bundles as written, each entry's new 'updatedAt' among them. A write (dryRun false) is refused " +
+                "unless the same configs passed a dry run in an earlier step of this turn: dry run, read the answer, " +
+                "then write.",
             objectSchema(
                 CFEP.configs to arraySchema(
                     "The bundles to change.",
@@ -309,8 +322,9 @@ object AssistantTools {
     /**
      * `patch_config`: a dry run is recorded by what it was given, and a write must match one the model has seen the
      * answer to. No reload is asked for: a patch made from a sandbox reloads its parent, and with it the sandbox, so
-     * `view_workflow` shows the draft at once. The answer leaves out the bundles the endpoint echoes -- the model sent
-     * them -- so what it needs (a dry run's impact, a write's reload issues) is never what a long answer cuts.
+     * `view_workflow` shows the draft at once. A dry run's answer leaves out the bundles as they would be -- the model
+     * sent them -- so its impact, which is what it is for, is never what a long answer cuts. A write's answer keeps
+     * them: they say what was written, and each entry's new `updatedAt`, for the next edit's `expectUpdatedAt`.
      */
     @KdrPrivate
     fun patch(run: ToolRun, input: Map<String, Any?>): ToolResult {
@@ -330,8 +344,7 @@ object AssistantTools {
                 isError = true,
             )
         }
-        val write = mapOf(CFEP.configs to configs, CFEP.dryRun to false)
-        return run.call(HttpMethod.POST, CFEP.bundlePatch, body = write, shape = withoutBundles)
+        return run.call(HttpMethod.POST, CFEP.bundlePatch, body = mapOf(CFEP.configs to configs, CFEP.dryRun to false))
     }
 
     /** [value] with every map's keys in order, so two inputs differing only in key order compare equal. */

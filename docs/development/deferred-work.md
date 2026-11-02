@@ -943,8 +943,8 @@ matter.
 
 ## When an assistant answer needs more than one call can write
 
-The workflow assistant calls the model without streaming, each call timing out after five minutes, so
-`KDR_ASSISTANT_MAX_TOKENS` is held to 32,000 ([`workflow-assistant.md`](../design/workflow-assistant.md)). A call that
+The workflow assistant calls the model without streaming, each call timing out after ten minutes, so
+`KDR_ASSISTANT_MAX_TOKENS` is held to 16,000 ([`workflow-assistant.md`](../design/workflow-assistant.md)). A call that
 times out is billed but returns no usage, so it is not counted against the client's budget.
 
 - **Stream the model's answers** *(from #1526).* With streaming, a long answer cannot time out part way, its usage

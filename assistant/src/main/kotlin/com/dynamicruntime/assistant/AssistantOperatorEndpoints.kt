@@ -9,9 +9,10 @@ import com.dynamicruntime.common.endpoint.SchModule
 import com.dynamicruntime.common.endpoint.schemaModule
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.ClientService
-import com.dynamicruntime.common.gedra.clientAttribute
+import com.dynamicruntime.common.gedra.clientLabel
 import com.dynamicruntime.common.gedra.isSandboxClient
 import com.dynamicruntime.common.schema.SCT
+import com.dynamicruntime.common.schema.SchOption
 import com.dynamicruntime.common.sql.PF
 import com.dynamicruntime.common.util.getOptBool
 import com.dynamicruntime.common.util.getOptLong
@@ -25,6 +26,11 @@ import com.dynamicruntime.common.util.toOptStr
  * level and `allClients`): what a deployment lets its clients spend is the deployment's to decide.
  */
 fun assistantOperatorSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, ASST.root) {
+    // The clients an operator may switch on: those this node carries, without their sandboxes.
+    optionsProvider(ASST.clientOptions) { c, _ ->
+        ClientService.getOrNull(c)?.presentClients.orEmpty().filterNot { isSandboxClient(it.clientId) }
+            .sortedBy { it.clientId }.map { SchOption(it.clientId, clientLabel(it.clientId, it.name)) }
+    }
     type(ASST.statusType) {
         type = SCT.kObject
         description = "Whether this node can reach the model, and what a client is switched on to."
@@ -96,8 +102,10 @@ fun assistantOperatorSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, ASST.roo
         HttpMethod.POST,
         outputRef = ASST.clientType,
         inputFields = {
-            // Drawn as a choice of the clients the caller sees, kept current as clients come and go.
-            field(ASST.client, "The client. Not a sandbox: a sandbox goes by its parent.", required = true) { clientAttribute() }
+            // Drawn as a choice of the clients, kept current as clients come and go, and with no sandbox among them.
+            field(ASST.client, "The client. Not a sandbox: a sandbox goes by its parent.", required = true) {
+                optionsSource(ASST.clientOptions)
+            }
             field(ASST.enabled, "On or off; absent to leave it as it is.") { type = SCT.boolean }
             field(
                 ASST.monthlyBudgetDollars,
@@ -117,7 +125,7 @@ fun assistantOperatorSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, ASST.roo
         val row = service.setClient(
             c, client,
             enabled = request.getOptBool(ASST.enabled),
-            monthlyBudget = budgetAsked(request),
+            monthlyBudget = budgetAsked(request, useDefault = request.getOptBool(ASST.budgetIsDefault) == true),
             useDefaultBudget = request.getOptBool(ASST.budgetIsDefault) == true,
             acknowledgedNotice = request.getOptBool(ASST.acknowledgeDataNotice) == true,
         )
@@ -129,16 +137,31 @@ fun assistantOperatorSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, ASST.roo
 
 /**
  * The budget a set asks for, in weighted tokens: given in dollars ([ASST.monthlyBudgetDollars], the operator's own
- * terms) or in tokens ([ASST.monthlyBudget]), not both; null when neither.
+ * terms) or in tokens ([ASST.monthlyBudget]), not both, nor with [useDefault]; null when neither. A dollar amount must
+ * be an amount: from a cent to [BUDGET.maxDollars].
  */
-fun budgetAsked(request: Map<String, Any?>): Long? {
+fun budgetAsked(request: Map<String, Any?>, useDefault: Boolean): Long? {
     val tokens = request.getOptLong(ASST.monthlyBudget)
     val dollars = request[ASST.monthlyBudgetDollars].toOptDouble() ?: return tokens
     if (tokens != null) {
         throw KdrException.mkInput("Give the budget in ${ASST.monthlyBudgetDollars} or in ${ASST.monthlyBudget}, not both.")
     }
-    if (dollars < 0.01) throw KdrException.mkInput("A monthly budget must be at least a cent, not $dollars dollars.")
+    if (useDefault) {
+        throw KdrException.mkInput("Give a ${ASST.monthlyBudgetDollars} or ask for the default budget, not both.")
+    }
+    if (!dollars.isFinite() || dollars < 0.01 || dollars > BUDGET.maxDollars) {
+        throw KdrException.mkInput(
+            "A ${ASST.monthlyBudgetDollars} must be from 0.01 to ${BUDGET.maxDollars.toLong()}, not $dollars.",
+        )
+    }
     return PRICE.weightedOf(dollars)
+}
+
+/** The bounds of a budget an operator may give. */
+@Suppress("ConstPropertyName")
+object BUDGET {
+    /** The most a monthly budget may be in dollars: past it, an amount is a mistyped one, not a budget. */
+    const val maxDollars = 1_000_000.0
 }
 
 /** One client's line of the listing, from its row and its [usage] in [month], either of which may be absent. */

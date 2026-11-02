@@ -39,6 +39,9 @@ object ASST {
     /** Switches a client on or off and sets its monthly budget. */
     const val clientSetPath = "/${SECT.operator}/assistant/client/set"
 
+    /** The choice of clients an operator may switch on: every client, its sandbox left out (it goes by its parent). */
+    const val clientOptions = "assistantClients"
+
     // --- Type names ---
     const val clientType = "AssistantClient"
     const val statusType = "AssistantStatus"

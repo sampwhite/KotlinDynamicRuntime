@@ -17,6 +17,7 @@ import com.dynamicruntime.common.user.AuthUserRow
 import com.dynamicruntime.common.user.SandboxAccess
 import com.dynamicruntime.common.user.UserService
 import com.dynamicruntime.common.util.mkUniqueId
+import com.dynamicruntime.common.util.toOptInstantOrNull
 import com.dynamicruntime.common.util.toOptLong
 import com.dynamicruntime.common.util.toOptStr
 import kotlin.time.Duration.Companion.hours
@@ -28,11 +29,14 @@ object LogAssistant : KdrLogger("assistant")
 /** The limits of a turn that are not settings. */
 @Suppress("ConstPropertyName")
 object TURN {
-    /** How long a turn's node vouches for it between steps; it must outlast a step's model call, retries included. */
-    const val leaseMinutes = 15L
+    /**
+     * How long a turn's node vouches for it between renewals; it must outlast a step's model call, its retry included
+     * ([callTimeoutMinutes] times two, with room to spare).
+     */
+    const val leaseMinutes = 25L
 
-    /** One model call's timeout, per attempt. */
-    const val callTimeoutMinutes = 5L
+    /** One model call's timeout, per attempt: what a non-streaming answer of up to `AENV.maxOutputTokens` needs. */
+    const val callTimeoutMinutes = 10L
 
     /** How often a failed model call is tried again. */
     const val callRetries = 1
@@ -126,18 +130,17 @@ object AssistantTurns {
                     ),
                 )
             }
-            val row = mapOf(
-                ACNV.turnId to turnId, ACNV.conversationId to conversation, ASST.client to client, PF.userId to userId,
-                ACNV.clientMessageId to clientMessageId, ACNV.text to message,
-                ATBL.sandboxUserId to sandboxUser.userId, ATBL.sandboxIdentityId to sandboxUser.identityId,
-                ATBL.sandboxClient to sandboxUser.client, ACNV.status to ACNV.statusRunning, ACNV.steps to 0L,
-                ASST.inputTokens to 0L, ASST.cacheWriteTokens to 0L, ASST.cacheReadTokens to 0L, ASST.outputTokens to 0L,
-                ACNV.weighted to 0L, ATBL.cancelRequested to false, ATBL.leaseUntil to now + TURN.leaseMinutes.minutes,
+            AssistantStore.insertTurn(
+                cxt,
+                mapOf(
+                    ACNV.turnId to turnId, ACNV.conversationId to conversation, ASST.client to client, PF.userId to userId,
+                    ACNV.clientMessageId to clientMessageId, ACNV.text to message,
+                    ATBL.sandboxUserId to sandboxUser.userId, ATBL.sandboxIdentityId to sandboxUser.identityId,
+                    ATBL.sandboxClient to sandboxUser.client, ACNV.status to ACNV.statusRunning, ACNV.steps to 0L,
+                    ASST.inputTokens to 0L, ASST.cacheWriteTokens to 0L, ASST.cacheReadTokens to 0L, ASST.outputTokens to 0L,
+                    ACNV.weighted to 0L, ATBL.cancelRequested to false, ATBL.leaseUntil to now + TURN.leaseMinutes.minutes,
+                ),
             )
-            AssistantStore.insertTurn(cxt, row)
-            LogAssistant.info(cxt, "Turn $turnId started in conversation $conversation for user $userId of '$client'.")
-            service.launch(cxt, turnId)
-            return started(row)
         } catch (e: KdrException) {
             if (newConversation) {
                 AssistantStore.deleteNewConversation(cxt, conversation)
@@ -148,6 +151,10 @@ object AssistantTurns {
             AssistantStore.turnForMessage(cxt, userId, clientMessageId)?.let { return sameMessage(it, conversationId, message) }
             throw e
         }
+        // Launched only once everything is recorded, so a failure above never strands a turn that runs.
+        LogAssistant.info(cxt, "Turn $turnId started in conversation $conversation for user $userId of '$client'.")
+        service.launch(cxt, turnId)
+        return mapOf(ACNV.conversationId to conversation, ACNV.turnId to turnId)
     }
 
     /**
@@ -177,9 +184,10 @@ object AssistantTurns {
     }
 
     /**
-     * The administrator's own user in the client's sandbox, which the tools act as. Their enabled one when they have it;
-     * claimed -- made, on first use -- only when they have none, in their own signed-in request, as opening the sandbox
-     * does. One another administrator disabled is refused rather than enabled again.
+     * The administrator's own user in the client's sandbox, which the tools act as. Their enabled one when it was opened
+     * from the user they are now, as it stands; otherwise claimed -- made on first use, or its opener brought up to
+     * date, since what a sandbox user may do is what its opener may -- in their own signed-in request, as opening the
+     * sandbox does. One another administrator disabled is refused rather than enabled again.
      */
     @KdrPrivate
     fun sandboxUserOf(cxt: KdrCxt, client: String): AuthUserRow {
@@ -190,11 +198,11 @@ object AssistantTurns {
             it.client == sandboxOf(client) && it.persona == own.persona && it.personaSuffix == own.personaSuffix && !it.isDeleted
         }
         return when {
-            existing == null -> users.authFormHandler.claimOwnSandboxUser(cxt, null)
-            existing.enabled -> existing
-            else -> throw KdrException(
+            existing != null && !existing.enabled -> throw KdrException(
                 "Your user in the sandbox has been disabled, so the assistant cannot act there.", code = EXC.notAuthorized,
             )
+            existing != null && existing.openedBy == own.userId -> existing
+            else -> users.authFormHandler.claimOwnSandboxUser(cxt, null)
         }
     }
 
@@ -219,12 +227,16 @@ object AssistantTurns {
     /**
      * Marks the conversation's running turn interrupted when its lease lapsed -- its node stopped mid-turn -- answers
      * any tool call it left unanswered, so the history stays one the model can be sent, and frees the conversation.
-     * Only one caller ever recovers a turn: the update that marks it is conditional on the lease having lapsed.
+     * Only one caller ever recovers a turn: the update that marks it is conditional on the lease having lapsed. A claim
+     * whose turn is not recorded yet is left alone while a message could still be starting.
      */
     fun recoverLapsed(cxt: KdrCxt, conversation: Map<String, Any?>) {
         val conversationId = conversation[ACNV.conversationId].toString()
         val turnId = conversation[ATBL.runningTurnId].toOptStr() ?: return
         val turn = AssistantStore.turn(cxt, turnId)
+        // A claim with no turn yet is a message being started, until it is as old as a lease: then its start failed.
+        val claimedAt = conversation[PF.updatedAt].toOptInstantOrNull()
+        if (turn == null && claimedAt != null && claimedAt > cxt.now() - TURN.leaseMinutes.minutes) return
         if (turn != null && turn[ACNV.status] == ACNV.statusRunning) {
             val note = "The assistant stopped part way: the server running it went away. Send your message again to go on."
             if (!AssistantStore.interruptLapsed(cxt, turnId, note, cxt.now())) return
@@ -357,9 +369,10 @@ class TurnRunner(@KdrPrivate val service: AssistantService, @KdrPrivate val cxt:
                         append(response.message)
                         if (calls.isNotEmpty()) append(TurnRunner.answerAll(calls, "Not run: the model declined to go on."))
                     }
-                    // A refusal stays in the history, and the next request would meet it again: this conversation ends.
-                    AssistantStore.markReadOnly(cxt, conversationId)
-                    return end(ACNV.statusStopped, "The model declined to go on with this request. Start a new conversation.")
+                    // A refusal stored in the history would meet the next request again: then this conversation ends.
+                    if (response.content.isNotEmpty()) AssistantStore.markReadOnly(cxt, conversationId)
+                    val next = if (response.content.isNotEmpty()) "Start a new conversation." else "Try asking another way."
+                    return end(ACNV.statusStopped, "The model declined to go on with this request. $next")
                 }
                 MSG.toolUse -> {
                     append(response.message)
@@ -391,14 +404,28 @@ class TurnRunner(@KdrPrivate val service: AssistantService, @KdrPrivate val cxt:
 
     /**
      * Runs every call in [calls] and answers them all in one message, in order; null when the turn's lease was lost
-     * part way, and the turn is no longer this worker's to write.
+     * part way, and the turn is no longer this worker's to write. A failure between calls answers the calls already run
+     * with their results and the rest as not run, records that, and then ends the turn.
      */
     @KdrPrivate
     fun runTools(toolRun: ToolRun, calls: List<Map<String, Any?>>): Map<String, Any?>? {
         val results = mutableListOf<Map<String, Any?>>()
+        var failure: Exception? = null
         for (call in calls) {
-            // Renewed before each call: a step of many slow calls must not outlast its lease while it works.
-            if (!AssistantStore.recordProgress(cxt, turnId, progress, cxt.now() + TURN.leaseMinutes.minutes)) return null
+            val id = call[TOOL.id].toString()
+            if (failure != null) {
+                // Each call is answered with what happened to it: those not reached are not run, and say so.
+                results.add(TurnRunner.resultBlock(id, ToolResult("Not run: the assistant ran into a problem.", isError = true)))
+                continue
+            }
+            try {
+                // Renewed before each call: a step of many slow calls must not outlast its lease while it works.
+                if (!AssistantStore.recordProgress(cxt, turnId, progress, cxt.now() + TURN.leaseMinutes.minutes)) return null
+            } catch (e: Exception) {
+                failure = e
+                results.add(TurnRunner.resultBlock(id, ToolResult("Not run: the assistant ran into a problem.", isError = true)))
+                continue
+            }
             val name = call[TOOL.name].toString()
             val input = (call[TOOL.input] as? Map<*, *>)?.entries?.associate { it.key.toString() to it.value }.orEmpty()
             val result = AssistantTools.run(toolRun, name, input)
@@ -408,10 +435,16 @@ class TurnRunner(@KdrPrivate val service: AssistantService, @KdrPrivate val cxt:
             } else if (result.isError) {
                 LogAssistant.info(cxt, "Turn $turnId: $name refused.")
             }
-            results.add(TurnRunner.resultBlock(call[TOOL.id].toString(), result))
+            results.add(TurnRunner.resultBlock(id, result))
         }
         toolRun.endStep()
-        return mapOf(MSG.role to MSG.user, MSG.content to results)
+        val answered = mapOf(MSG.role to MSG.user, MSG.content to results)
+        if (failure != null) {
+            // What ran is recorded as it ran before the turn ends, so the model is never told a write did not happen.
+            append(answered)
+            throw failure
+        }
+        return answered
     }
 
     @KdrPrivate

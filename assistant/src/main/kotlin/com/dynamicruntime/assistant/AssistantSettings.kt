@@ -22,11 +22,12 @@ object AENV {
     const val defaultKeySecret = "anthropicApiKey"
 
     /**
-     * The most tokens a call may be asked to write: what a model writes within one call's timeout
-     * (`TURN.callTimeoutMinutes`) without streaming. A call that times out is billed, but no usage comes back to count
-     * against the budget, so a larger allowance would be spent unseen.
+     * The most tokens a call may be asked to write: about what a model writes within one call's timeout
+     * (`TURN.callTimeoutMinutes`) without streaming, as the SDK's own guidance sizes a non-streaming request. A call
+     * that times out is billed, but no usage comes back to count against the budget, so a larger allowance would be
+     * spent unseen.
      */
-    const val maxOutputTokens = 32_000
+    const val maxOutputTokens = 16_000
 
     /** The efforts a request may ask for. */
     val efforts = listOf("low", "medium", "high", "xhigh", "max")
@@ -40,8 +41,9 @@ object AENV {
     val provider = EnvVarDef(
         "KDR_ASSISTANT_PROVIDER", group = ENVGRP.assistant, defaultDoc = anthropicProvider,
         description = "What answers the workflow assistant: `$anthropicProvider` (Claude, through the Anthropic API, when " +
-            "the deployment holds a key) or `$fakeProvider` (a built-in demo that answers with canned text, for trying the " +
-            "page locally with no key and no spending). `$fakeProvider` is refused at boot on a node that is not a test instance.",
+            "the deployment holds a key) or `$fakeProvider` (a built-in demo that lists the client's workflows with a real " +
+            "tool call and names them, for trying the page locally with no key and no spending). `$fakeProvider` is " +
+            "refused at boot on a node that is not a test instance.",
     )
     val model = EnvVarDef(
         "KDR_ASSISTANT_MODEL", group = ENVGRP.assistant, defaultDoc = defaultModel,

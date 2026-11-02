@@ -44,8 +44,8 @@ class AnthropicModel(private val apiKey: String, private val betas: List<String>
 
     private fun client(): AnthropicClient = client ?: synchronized(this) {
         if (closed) throw KdrException("The Anthropic model is closed: this node is shutting down.", code = EXC.notResponding)
-        // One retry, and a five-minute timeout per attempt: a turn's lease (TURN.leaseMinutes) must outlast a step's
-        // worst case, which the SDK's defaults (two retries, ten minutes) would not.
+        // One retry, and a ten-minute timeout per attempt: a turn's lease (TURN.leaseMinutes) must outlast a step's
+        // worst case, which the SDK's defaults (two retries, ten minutes each) would not.
         client ?: AnthropicOkHttpClient.builder().apiKey(apiKey).timeout(Duration.ofMinutes(TURN.callTimeoutMinutes))
             .maxRetries(TURN.callRetries).build().also { client = it }
     }

@@ -43,8 +43,9 @@ API's wire shape. The turn loop, the stored conversation, and the tests never se
   dropped. It refuses under `ENV.unit` itself, since the SDK makes its own HTTP calls past `OutboundHttpService`.
 - **`ScriptedModel`** answers from a script. A test hands one in under the instance-config key
   `AssistantService.modelConfigKey`, as a test hands the file store a `FakeS3Api`.
-- **`KDR_ASSISTANT_PROVIDER=fake`** runs a built-in demo that answers with canned text, to try the page locally with
-  no key and no spending. A test instance only: elsewhere it refuses the boot, as simulated mail does.
+- **`KDR_ASSISTANT_PROVIDER=fake`** runs a built-in demo, to try the page locally with no key and no spending: it
+  answers a message by calling `list_workflows`, a real tool call through the seam, and then names the workflows it
+  found. A test instance only: elsewhere it refuses the boot, as simulated mail does.
 
 **Which model a node has** is decided once, at boot. With no key -- the secret named by `KDR_ASSISTANT_KEY_SECRET`
 (default `anthropicApiKey`) missing from `private/secrets.properties` -- the assistant is unavailable and nothing else
@@ -106,7 +107,9 @@ operator can see how often the cache hits. A sandbox's use is its parent's.
 
 Both show every budget and the month's use in dollars as well (`monthlyBudgetDollars`, `usedDollars`), at Sonnet's
 prices: 500,000 weighted tokens to the dollar. Weighted tokens stay the unit kept and counted; dollars are the
-operator's terms, and exact for the default model.
+operator's terms. They are exact for every model the price table lists, since each is counted at its own price; only a
+model it does not list, counted at the dearest price, comes out high. A budget in dollars is from a cent to $1,000,000.
+The client to set is chosen from the clients this node carries, its sandbox left out.
 
 **The `assistant:on` cfact** is true when this node has a model and the caller's client (a sandbox's parent) is
 switched on. It does not say whether the month's budget is spent: the page says that. It is read on every cfact
@@ -115,8 +118,9 @@ cfact asks about.
 
 ## Conversations and turns
 
-**Who the tools act as.** The administrator's own user in the client's sandbox -- their enabled one, or, when they have
-none, one claimed in their own signed-in request (`claimOwnSandboxUser`), as opening the sandbox does; one another
+**Who the tools act as.** The administrator's own user in the client's sandbox -- their enabled one when it was opened
+from the user they are now; otherwise one claimed in their own signed-in request (`claimOwnSandboxUser`), as opening
+the sandbox does, made on first use or brought up to date, since a sandbox user may do what its opener may; one another
 administrator disabled is refused, not enabled again -- re-read on every call by the in-process seam (#1524). So a
 configuration edit can only become a draft on the parent, written as the administrator who stands behind the sandbox
 user; reads show the drafts; and the assistant never holds more than the administrator does at that moment. A client
@@ -146,8 +150,9 @@ publishing, reverting, deleting a bundle, `publishedOnly`, `bundle/write` (which
 sandbox switch, `workflows/params` (in force at once), users, keys, sessions, form data, the endpoint catalog, and
 every `admin`, `operator`, and `fixture` endpoint. A tool's result is the endpoint's answer without its envelope, cut
 at 30,000 characters (100,000 for a document read whole), saying so; a refusal comes back as an error the model can
-correct from. A patch's answer leaves out the bundles the endpoint echoes -- the model sent them -- so what it needs,
-a dry run's impact or a write's reload issues, is never what a long answer cuts.
+correct from. A dry run's answer leaves out the bundles as they would be -- the model sent them -- so its impact, which
+is what it is for, is never what a long answer cuts; a write's answer keeps them, since they say what was written and
+give each entry's new `updatedAt` for the next edit.
 
 A dry run from a sandbox user reloads the parent client, as every patch from a sandbox does. That costs a reload and
 changes nothing.
@@ -173,19 +178,23 @@ a context of its own. Each step:
 3. renews the turn's lease, and stops writing at once if the turn was meanwhile marked interrupted;
 4. appends the answer exactly, and acts on why the model stopped: `tool_use` runs every call and answers them all in
    one message; `end_turn` ends; `max_tokens` answers any call in the cut-off answer as not run, and ends; `pause_turn`
-   asks again, continuing the answer; `refusal` ends, saying so plainly, and makes the conversation read-only, since
-   the refused exchange stays in its history and would meet the next request; an empty answer is not stored, since it
-   could not be sent back. A stop reason this code does not know ends the turn, answering any call in it as not run.
+   asks again, continuing the answer; `refusal` ends, saying so plainly -- and, when the refusal had content, makes the
+   conversation read-only, since the refused exchange stays in its history and would meet the next request; an empty
+   refusal is not stored, since it could not be sent back, and the conversation goes on. A stop reason this code does
+   not know ends the turn, answering any call in it as not run.
 
-The history is append-only, and every tool call is answered in the very next message -- on a failure too, so no failure
-leaves a conversation that cannot go on. A cancel (`POST /clientAdmin/assistant/cancel`) stops the turn at its next
-step, answering calls it had not run. A turn holds a lease of 15 minutes, renewed before every model call and every tool
-call; one call to the model times out after 5 minutes and is retried once, so no step outlasts it. A call that times out
-is billed but answers with no usage, so it is not counted against the budget: `KDR_ASSISTANT_MAX_TOKENS` is held to
-32,000, what a model writes well within the timeout, until the calls stream
+The history is append-only, and every tool call is answered in the very next message -- on a failure too, with what
+happened to each call: one that ran, with its result, and one not reached, as not run. So no failure leaves a
+conversation that cannot go on, and the model is never told a write it made did not happen. A cancel
+(`POST /clientAdmin/assistant/cancel`) stops the turn at its next step, answering calls it had not run. A turn holds a
+lease of 25 minutes, renewed after every model answer and before every tool call; one call to the model times out after
+10 minutes and is retried once, so no step outlasts it. A call that times out is billed but answers with no usage, so it
+is not counted against the budget: `KDR_ASSISTANT_MAX_TOKENS` is held to 16,000, about what a model writes within the
+timeout, as the SDK's guidance sizes a non-streaming request, until the calls stream
 ([`deferred-work.md`](../development/deferred-work.md#when-an-assistant-answer-needs-more-than-one-call-can-write)). A
 turn whose lease lapsed -- its node stopped -- is marked interrupted by the next request that looks at its conversation,
-which answers any call it left, and frees the conversation.
+which answers any call it left, and frees the conversation. A conversation claimed by a message still being started,
+whose turn is not yet recorded, is left alone until it is as old as a lease.
 
 The page polls `GET /clientAdmin/assistant/conversation?conversationId&afterSeq` (marked `polled`, so it neither
 renews the session nor logs each call) and lists `GET /clientAdmin/assistant/conversations`. Every assistant endpoint
