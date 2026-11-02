@@ -15,6 +15,7 @@ import com.dynamicruntime.common.gedra.workflow.formStatusOf
 import com.dynamicruntime.common.gedra.workflow.formWorkflowsOf
 import com.dynamicruntime.common.gedra.workflow.surveyStatusOf
 import com.dynamicruntime.common.gedra.workflow.workflowStateDataOf
+import com.dynamicruntime.common.schema.SchOption
 import com.dynamicruntime.common.schema.parseExactBool
 import com.dynamicruntime.common.util.formatDay
 import com.dynamicruntime.common.util.fmt
@@ -109,6 +110,10 @@ class ReportSubject(
  * day there, in every place the path can end; false for a timestamp, and for anything the schema does not settle --
  * an attribute, a text field read as a date, branches of a union that disagree. It is what the schema **declares**,
  * not what each stored value is: [coerceReportValue] reads a day written as a day whatever the field says.
+ *
+ * [choices] are the options of the text field the path ends at (issue #1438), in every place it can end, so a page can
+ * show a stored value by its label; empty for anything else. The value a run reads, and a file holds, stays the stored
+ * one.
  */
 class BoundPath(
     val path: ReportPath,
@@ -116,6 +121,7 @@ class BoundPath(
     val kind: ReportKind,
     val multiValued: Boolean,
     val dayOnly: Boolean = false,
+    val choices: List<SchOption> = emptyList(),
 )
 
 /**

@@ -669,7 +669,9 @@ private fun ChildrenBuilder.reportTable(run: ReportRunPage, client: String?) {
                             td {
                                 key = "${c.source.name}:${c.key}".unsafeCast<Key>()
                                 if (c.numeric) className = ClassName("op-num")
-                                +reportCellText(reportCellValue(row, c), c.kind, c.source)
+                                val value = reportCellValue(row, c)
+                                reportCellTip(value, c.choices)?.let { title = it }
+                                +reportCellText(value, c.kind, c.source, c.choices)
                             }
                         }
                     }

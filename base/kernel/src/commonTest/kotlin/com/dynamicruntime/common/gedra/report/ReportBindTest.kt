@@ -11,6 +11,7 @@ import com.dynamicruntime.common.schema.SFMT
 import com.dynamicruntime.common.schema.parseSchemaTypes
 import com.dynamicruntime.common.util.Parsed
 import com.dynamicruntime.common.util.ProblemCode
+import com.dynamicruntime.common.util.toJsonListOfMaps
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -28,6 +29,7 @@ class ReportBindTest {
     private val config = gedraConfig(cxt, "reports", ns) {
         trait("AuditEntry", "audit", setOf(GedraDataType.formDoc), "A site audit.") {
             property("auditor", "Who audited.")
+            property("grade", "How it did.") { option("pass", "Passed"); option("fail", "Failed") }
             property("visitedOn", "The visit.") { dayOnlyDate() }
             property("loggedAt", "When it was logged.") { dateTime() }
             property("revisits", "Later visits.") { type = SCT.array; items { dayOnlyDate() } }
@@ -170,6 +172,18 @@ class ReportBindTest {
         assertEquals(ReportKind.string, bound("form.audit.payment.settled").kind)
         // An envelope field has the vocabulary's kind.
         assertEquals(ReportKind.date, bound("form.audit.@updatedAt").kind)
+    }
+
+    // The labels a page shows a choice by (issue #1438): a text field's options, carried to the column's description.
+    @Test
+    fun aTextFieldThatOffersChoicesBindsThemAndTheColumnDescribesThem() {
+        assertEquals(listOf("pass" to "Passed", "fail" to "Failed"), bound("form.audit.grade").choices.map { it.value to it.label })
+        assertTrue(bound("form.audit.auditor").choices.isEmpty())
+        val columns = assertIs<Parsed.Ok<BoundReport>>(bindReport(report(col("grade", "form.audit.grade"), col("auditor", "form.audit.auditor")), scope))
+            .value.columns
+        val described = columns.first().describe()[RRUN.choices].toJsonListOfMaps()
+        assertEquals(listOf(mapOf(RRUN.value to "pass", RRUN.label to "Passed"), mapOf(RRUN.value to "fail", RRUN.label to "Failed")), described)
+        assertFalse(columns.last().describe().containsKey(RRUN.choices))
     }
 
     // Which form a date takes where a path reads it (issue #1086): what a typed run brings each value to.

@@ -4,11 +4,18 @@ import com.dynamicruntime.common.endpoint.EI
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.gedra.GCI
 import com.dynamicruntime.common.gedra.GedraConfigOrigin
+import com.dynamicruntime.common.gedra.choiceLabel
+import com.dynamicruntime.common.gedra.report.RMETA
+import com.dynamicruntime.common.gedra.report.RPT
 import com.dynamicruntime.common.gedra.report.RRUN
+import com.dynamicruntime.common.gedra.report.RWF
 import com.dynamicruntime.common.gedra.report.ReportCombine
 import com.dynamicruntime.common.gedra.report.ReportKind
 import com.dynamicruntime.common.gedra.report.ReportMode
+import com.dynamicruntime.common.gedra.report.ReportSource
+import com.dynamicruntime.common.gedra.workflow.WfColumnCategory
 import com.dynamicruntime.common.home.HMENU
+import com.dynamicruntime.common.schema.SchOption
 import com.dynamicruntime.common.user.UADEP
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonListOfStrings
@@ -35,6 +42,8 @@ class ReportColumnInfo(
     /** A [ReportCombine] name when the column is rolled up across a group's forms; null when it is not. */
     val rollup: String?,
     val multiValued: Boolean,
+    /** A text column's choices (issue #1438): the label the page shows for each stored value. Empty for none. */
+    val choices: List<SchOption> = emptyList(),
 ) {
     /** Whether the column's value is a list, which cannot be grouped by. */
     val yieldsList: Boolean get() = combine == ReportCombine.list.name || combine == ReportCombine.distinct.name
@@ -84,7 +93,28 @@ fun parseReportColumns(raw: Any?): List<ReportColumnInfo> = raw.toJsonListOfMaps
         combine = c[RRUN.combine].toOptStr() ?: ReportCombine.first.name,
         rollup = c[RRUN.rollup].toOptStr(),
         multiValued = c[RRUN.multiValued] == true,
+        choices = c[RRUN.choices].toJsonListOfMaps().mapNotNull { o ->
+            o[RRUN.value].toOptStr()?.let { value -> SchOption(value, o[RRUN.label].toOptStr() ?: value) }
+        }.ifEmpty { vocabularyChoices(c[RRUN.path].toOptStr().orEmpty(), c[RRUN.kind].toOptStr()) },
     )
+}
+
+/**
+ * The labels of a report path that ends in one of the vocabulary's closed sets of values (issue #1438), as the forms
+ * pages say them: a form's status ("Valid", the listing's chip) and a workflow's category ("Engaged", the Workflows
+ * page's heading). The backend names a trait field's choices; these are the app's words, so the page supplies them.
+ * Empty for any other path, and for one a column reads as something other than text.
+ */
+fun vocabularyChoices(path: String, kind: String?): List<SchOption> {
+    if (kind != null && kind != ReportKind.string.name) return emptyList()
+    val segments = path.split(RPT.sep)
+    return when {
+        segments.size == 2 && segments[0] == ReportSource.meta.name && segments[1] in setOf(RMETA.formStatus, RMETA.surveyStatus) ->
+            SurveyStatus.entries.map { SchOption(it.wire, it.label) }
+        segments.size == 3 && segments[0] == ReportSource.workflow.name && segments[2] == RWF.category ->
+            WfColumnCategory.entries.map { SchOption(it.name, workflowStateTitle(it)) }
+        else -> emptyList()
+    }
 }
 
 /** The reports listing's envelope ([UADEP.reports]) as a [ReportListing]; a row with no id is dropped. */
@@ -216,7 +246,14 @@ enum class ReportCellSource {
 }
 
 /** One column of the table a run is shown as. */
-class ReportTableColumn(val key: String, val label: String, val kind: String, val source: ReportCellSource) {
+class ReportTableColumn(
+    val key: String,
+    val label: String,
+    val kind: String,
+    val source: ReportCellSource,
+    /** The labels its cells show for stored values (issue #1438); see [ReportColumnInfo.choices]. */
+    val choices: List<SchOption> = emptyList(),
+) {
     val numeric: Boolean get() = kind == ReportKind.number.name
 }
 
@@ -231,15 +268,18 @@ const val reportCountLabel = "Forms"
  */
 fun reportTableColumns(summary: ReportRunSummary): List<ReportTableColumn> {
     if (summary.mode == ReportMode.detail) {
-        return summary.columns.map { ReportTableColumn(it.columnId, it.label, it.kind, ReportCellSource.value) }
+        return summary.columns.map { ReportTableColumn(it.columnId, it.label, it.kind, ReportCellSource.value, it.choices) }
     }
     val byId = summary.columns.associateBy { it.columnId }
-    val grouped = summary.groupBy.mapNotNull { byId[it] }.map { ReportTableColumn(it.columnId, it.label, it.kind, ReportCellSource.group) }
+    val grouped = summary.groupBy.mapNotNull { byId[it] }.map { ReportTableColumn(it.columnId, it.label, it.kind, ReportCellSource.group, it.choices) }
     val count = ReportTableColumn(RRUN.count, reportCountLabel, ReportKind.number.name, ReportCellSource.count)
     // Not a column the run is grouped by: every form of a group has the group's value, so its rollup would repeat it.
     val rolled = summary.columns.filter { it.rollup != null && it.columnId !in summary.groupBy }.map {
         val kind = if (it.rollup == ReportCombine.count.name) ReportKind.number.name else it.kind
-        ReportTableColumn(it.columnId, "${it.label} (${it.rollup})", kind, ReportCellSource.value)
+        ReportTableColumn(
+            it.columnId, "${it.label} (${it.rollup})", kind, ReportCellSource.value,
+            if (kind == ReportKind.string.name) it.choices else emptyList(),
+        )
     }
     return grouped + count + rolled
 }
@@ -258,15 +298,32 @@ const val reportNoGroupValue = "(none)"
 /**
  * A cell's text. Nothing is a dash -- or, for what a group is grouped by, "(none)", since that row *is* the forms
  * with no value. A list is its elements joined; a boolean is Yes or No; a number is whole or to two places; a date
- * that carries a time is shown as the app shows timestamps, and a day as it is written.
+ * that carries a time is shown as the app shows timestamps, and a day as it is written; and a choice by its label
+ * among [choices] (issue #1438), as the form shows it, with any other text as it is.
  */
-fun reportCellText(value: Any?, kind: String, source: ReportCellSource = ReportCellSource.value): String = when (value) {
+fun reportCellText(
+    value: Any?, kind: String, source: ReportCellSource = ReportCellSource.value, choices: List<SchOption> = emptyList(),
+): String = when (value) {
     null -> if (source == ReportCellSource.group) reportNoGroupValue else reportBlank
-    is List<*> -> if (value.isEmpty()) reportBlank else value.joinToString(", ") { reportCellText(it, kind) }
+    is List<*> -> if (value.isEmpty()) reportBlank else value.joinToString(", ") { reportCellText(it, kind, choices = choices) }
     is Boolean -> if (value) "Yes" else "No"
     is Number -> reportNumberText(value.toDouble())
-    is String -> if (kind == ReportKind.date.name) formatTimestamp(value) else value
+    is String -> if (kind == ReportKind.date.name) formatTimestamp(value) else choiceLabel(value, choices) ?: value
     else -> value.toString()
+}
+
+/**
+ * A cell's tooltip (issue #1438): the stored values behind the labels [reportCellText] showed in their place, which a
+ * download holds; null when it showed none.
+ */
+fun reportCellTip(value: Any?, choices: List<SchOption>): String? {
+    if (choices.isEmpty()) return null
+    val stored = when (value) {
+        is String -> listOf(value)
+        is List<*> -> value.filterIsInstance<String>()
+        else -> emptyList()
+    }
+    return stored.takeIf { s -> s.any { choiceLabel(it, choices) != null } }?.joinToString(", ")
 }
 
 /** Past this a number is not held exactly, and is shown as it prints rather than as digits it does not have. */

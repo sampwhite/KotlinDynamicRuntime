@@ -24,6 +24,12 @@ is. The pure half -- parsers, the run's query, the table's columns, a cell's tex
   page drops any `from` that is not a forms listing.
 - **A grouped run's table** is what it grouped by, a **Forms** count, then each rolled-up column headed with its
   rollup, "Total (sum)" (`reportTableColumns`). A group with no value reads "(none)"; any other empty cell a dash.
+- **A choice reads as its label** (issue #1438): a text column whose field offers choices carries them (`choices`,
+  from the binding's walk to the field), and a cell, a group, and a history row show a stored value by its label
+  (`reportCellText`), with the stored value as the cell's tooltip (`reportCellTip`). The run's values and the CSV keep
+  the stored ones, since a spreadsheet wants the value. A path ending in one of the vocabulary's closed sets -- a
+  form's status, a workflow's category -- takes its labels from the page (`vocabularyChoices`): the listing chip's
+  words and the Workflows page's, which are the app's, not a schema's.
 - **Download CSV** (issue #1008) is the browser walking the cursor: `ReportsApi.runAll` → `walkReportRun` fetches
   the run as set up from its first page at `reportDownloadPageSize` (500), following `next` to the end, and
   `reportCsv` writes it -- there is no export endpoint. The walk asks `stillWanted` around every page, so changing

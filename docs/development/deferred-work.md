@@ -400,6 +400,16 @@ filter suggests only the values the forms hold.
 - **A fallback over one field** *(#1508, deferred here 2026-10-30).* `${level ?: "unknown"}` is computed, though both
   sides could be judged the same field and given its shape.
 
+## When a client wants a report's stored values on screen
+
+A report's table shows a choice by its label, with the stored value as the cell's tooltip, and the downloaded file
+holds the stored values (issue #1438). An administrator writing report paths or checking configuration may want the
+values in the table itself.
+
+- **A per-client setting** *(#1438, deferred here 2026-11-02).* A choice on the client, or on one report, to show the
+  stored values on screen. Left out because the tooltip and the file already give the values, and no client has
+  asked for them in the table.
+
 ## When a client wants a gated trait from the traits editor
 
 A **gated trait** opens with a yes/no question -- "Do you do X?" -- that the data requires, and its other fields are

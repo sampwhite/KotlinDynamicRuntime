@@ -422,7 +422,8 @@ private fun ChildrenBuilder.taskSummary(target: DesignTarget.Task, session: Desi
     val task = target.task
     h2 { +task.label.ifBlank { task.id } }
     fact("Task", task.id, mono = true)
-    fact("Collects", task.traits.joinToString(", ") { it.traitId }.ifEmpty { "nothing" }, mono = true)
+    // Each by its name, as the trait's own summary heads it (issue #1438); the id is the trait's to show.
+    fact("Collects", task.traits.joinToString(", ") { traitNameOf(it.traitId, it.fieldLayout?.label, it.type.title) }.ifEmpty { "nothing" })
     // Its saves, which the page draws only while the form is being filled in: each opens its button's label.
     if (task.saves.isNotEmpty()) pickList("Saves", task.saves.map { sv -> sv.label.ifBlank { sv.id } to { session.select(DesignTarget.Save(task, sv)) } })
 }

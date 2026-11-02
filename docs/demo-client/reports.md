@@ -139,8 +139,8 @@ Grouped, **Submissions by track** is a table of **Track**, **Forms**, and **Minu
 many talks it has, and their durations added up. A rolled-up column's heading says its rollup. Under the table a
 line says how many groups there are and how many forms were read. Run per form, the table has a row per talk,
 starting with an **Open** link to it, then **Track**, **Talk**, **Speaker**, **Status**, **Review**, and **Minutes**.
-A talk with no abstract yet shows a dash for its minutes. A track shows as its stored value, `kotlin` rather than
-*Kotlin*, because a report shows what is stored, not the label a form gave it.
+A talk with no abstract yet shows a dash for its minutes. A track shows as the form labels it, *Kotlin*, with its
+stored value, `kotlin`, when you hover over the cell. The downloaded file holds the stored values.
 
 Grouped, **Questionnaire summary** is **Audience**, **May be recorded**, **Forms**, **Takeaway (list)**, and
 **Needs for the day (count)**. A yes or no answer shows as *Yes* or *No*. The line under the table also says how many

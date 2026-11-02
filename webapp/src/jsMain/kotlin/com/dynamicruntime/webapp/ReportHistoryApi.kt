@@ -176,7 +176,10 @@ fun historyGroupKey(group: Map<String, Any?>, groupBy: List<String>): String =
 fun historyGroupLabel(group: Map<String, Any?>, groupBy: List<String>, columns: List<ReportColumnInfo>): String {
     if (groupBy.isEmpty()) return historyAllFormsLabel
     val byId = columns.associateBy { it.columnId }
-    return groupBy.joinToString(" / ") { id -> reportCellText(group[id], byId[id]?.kind ?: ReportKind.string.name, ReportCellSource.group) }
+    return groupBy.joinToString(" / ") { id ->
+        val column = byId[id]
+        reportCellText(group[id], column?.kind ?: ReportKind.string.name, ReportCellSource.group, column?.choices.orEmpty())
+    }
 }
 
 /**
