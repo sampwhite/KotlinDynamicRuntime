@@ -1,3 +1,5 @@
+@file:Suppress("RegExpRedundantEscape")
+
 package com.dynamicruntime.common.gedra
 
 import com.dynamicruntime.common.schema.SchLayout
