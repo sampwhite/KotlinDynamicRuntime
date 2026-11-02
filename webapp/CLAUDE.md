@@ -233,12 +233,13 @@ Current UI-config endpoints:
   an unclaimed user). A claimed user is refused one, since the link signs its holder in: `POST
   /clientAdmin/user/remind {userId}` instead mails the ordinary sign-in page (issue #1504), and only where
   `KDR_PUBLIC_URL` is set or on a test instance, so the link a person is told to use their password at is never built
-  from a request's headers. Either send is limited per address. The **register form** shows Client / Persona / Persona suffix to an `allClients` caller only; set, they ride
+  from a request's headers. Either send is limited per address. The **register form** shows Client ID / Persona / Persona suffix to an `allClients` caller only; set, they ride
   `createInitial` and the backend refuses them from anyone else.
 - **Claiming from the login page** (issue #751), since a mailed link cannot be required: the auth flow's third
   mode, `/wa/claim` ("Claim an account created for you", linked from the login page). The person types the
-  address, the client and the persona as the invitation spelled them (`admin`, `member B`; `PERSONA.splitTyped`),
-  with no choice lists so an anonymous caller learns nothing about a client. `POST /auth/claim/sendVerify`
+  address, the client ID and the persona as the invitation spelled them (`Admin`, `Member B`: the mail gives a
+  persona by its label, and `PERSONA.splitTyped` lowercases it back, issue #1438), with no choice lists so an
+  anonymous caller learns nothing about a client. `POST /auth/claim/sendVerify`
   **always answers as a success** and the mail says the rest: the code, or that nothing matched (acknowledging
   the client when the address has a user there); the code is computed over the whole key, defaults applied, so
   it cannot be replayed against another user. `POST /auth/claim/register` is a code login aimed at that user:

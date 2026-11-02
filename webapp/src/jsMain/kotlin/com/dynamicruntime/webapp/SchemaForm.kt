@@ -1578,7 +1578,8 @@ private fun ChildrenBuilder.prefillControls(
 
 /**
  * Read-only presentation of a field: its value as text (nothing when absent) followed by the field's type
- * named in words. No form control — this is a value being shown, not an input.
+ * named in words. No form control — this is a value being shown, not an input. On a form people fill in
+ * ([FormOpts.friendly]) the value reads as [friendlyValueText] says, with no type (issue #1438).
  */
 internal fun ChildrenBuilder.readOnlyValue(
     vt: SchType, value: Any?, presentation: String? = vt.presentation, opts: FormOpts = FormOpts(),
@@ -1630,15 +1631,18 @@ internal fun ChildrenBuilder.readOnlyValue(
             return
         }
     }
-    if (text.isNotEmpty()) {
+    val shown = if (opts.friendly) friendlyValueText(vt, value) else text
+    if (shown.isNotEmpty()) {
         span {
             className = ClassName("field-value")
-            +text
+            +shown
         }
     }
-    span {
-        className = ClassName("field-type")
-        +"(${typeWord(vt)})"
+    if (!opts.friendly) {
+        span {
+            className = ClassName("field-type")
+            +"(${typeWord(vt)})"
+        }
     }
 }
 
@@ -1803,6 +1807,17 @@ internal fun typeHint(vt: SchType): String = when (vt.jsonType) {
     SCT.string if isBinaryFormat(vt.format) -> "file"
     SCT.string if isDateFormat(vt.format) -> vt.format ?: SCT.string
     else -> vt.jsonType ?: "value"
+}
+
+/**
+ * A value as a form people fill in shows it (issue #1438): a yes/no answer as Yes or No, as a listing's cells and a
+ * report's say it, and a choice by its label, each of a list of them too. Anything else, and a choice the schema does
+ * not list, reads as [displayValue] has it.
+ */
+internal fun friendlyValueText(vt: SchType, value: Any?): String = when (value) {
+    is Boolean -> if (value) "Yes" else "No"
+    is List<*> -> value.joinToString(", ") { element -> vt.itemType?.let { friendlyValueText(it, element) } ?: displayValue(element) }
+    else -> vt.options?.firstOrNull { it.value == value?.toString() }?.label ?: displayValue(value)
 }
 
 /** Renders a value for display; null becomes empty. A list is shown comma-joined. */

@@ -83,6 +83,7 @@ class InvitationTest : StringSpec({
         val preview = results(browser.sendJsonPostRequest(AEP.invitationPreview, mapOf(AFLD.invitationToken to token)))
         preview[AFLD.email] shouldBe address
         preview[AFLD.client] shouldBe CL.hub
+        preview[AFLD.clientName] shouldBe "Hub"
         preview[AFLD.persona] shouldBe PERSONA.admin
         users.queryByUserId(cxt, userId).shouldNotBeNull().isRegistered shouldBe false
 
@@ -336,8 +337,9 @@ class ClaimAccountTest : StringSpec({
         val admin = TestUser.createFullAdmin(cxt, "claim-admin@other.test")
         val address = "claim-me@other.test"
         val userId = admin.postData(ADEP.userCreate, mapOf(ADF.primaryId to address, ADF.client to CL.hub, ADF.persona to PERSONA.admin))[ADF.userId] as Long
-        // The invitation mail spells out the recipe for this page.
-        MailService.get(cxt).lastEmailTo(address).shouldNotBeNull().text shouldContain "- Client: ${CL.hub}\n- Persona: ${PERSONA.admin}"
+        // The invitation mail spells out the recipe for this page: the client by its id, the persona by its label, which
+        // the page reads back to the persona (issue #1438).
+        MailService.get(cxt).lastEmailTo(address).shouldNotBeNull().text shouldContain "- Client ID: ${CL.hub}\n- Persona: Admin"
 
         val browser = TestHttpClient(cxt.instanceConfig)
         val token = tokenOf(browser)

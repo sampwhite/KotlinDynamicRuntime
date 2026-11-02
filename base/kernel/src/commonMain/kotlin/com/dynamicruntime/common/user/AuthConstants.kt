@@ -129,6 +129,9 @@ object AFLD {
     const val persona = "persona"
     const val personaSuffix = "personaSuffix"
 
+    /** The invited user's client's display name (issue #1438), beside its id: what the invitation page says. */
+    const val clientName = "clientName"
+
     /** The invitation token (issue #751): the encrypted (identityId, userId, expiry) the mailed link carries. */
     const val invitationToken = "invitationToken"
 

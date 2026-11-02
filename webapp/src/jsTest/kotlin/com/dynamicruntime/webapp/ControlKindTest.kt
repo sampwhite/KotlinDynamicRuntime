@@ -43,6 +43,20 @@ class ControlKindTest {
     }
 
     @Test
+    fun aReadOnlyValueOnAFormPeopleFillInReadsAsWords() {
+        // Issue #1438: a yes/no answer as Yes or No, a choice by its label, each of a list too; a value the schema does
+        // not list, and anything else, as it is.
+        val choice = fieldType(string(mapOf(SCH.options to opts)))
+        assertEquals("Yes", friendlyValueText(fieldType(mapOf(SCH.type to SCT.boolean)), true))
+        assertEquals("No", friendlyValueText(fieldType(mapOf(SCH.type to SCT.boolean)), false))
+        assertEquals("A", friendlyValueText(choice, "a"))
+        assertEquals("c", friendlyValueText(choice, "c"))
+        assertEquals("A, B", friendlyValueText(fieldType(array(string(mapOf(SCH.options to opts)))), listOf("a", "b")))
+        assertEquals("12", friendlyValueText(fieldType(mapOf(SCH.type to SCT.integer)), 12))
+        assertEquals("", friendlyValueText(choice, null))
+    }
+
+    @Test
     fun multiSelectFromAnArrayOfChoices() {
         assertEquals(ControlKind.MultiSelect, kindOf(array(string(mapOf(SCH.options to opts)))))
         // An open element type accepts a value not offered -> tags mode.

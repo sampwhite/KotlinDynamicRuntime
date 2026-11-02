@@ -168,9 +168,9 @@ class MailCopyTest : StringSpec({
         val wrapped = "$bold$address</a>"
         sent.html!! shouldContain wrapped
         sent.html!!.split(address).size - 1 shouldBe sent.html!!.split(wrapped).size - 1
-        sent.html!! shouldContain "<li>Client: $bold${CL.hub}</a></li>"
+        sent.html!! shouldContain "<li>Client ID: $bold${CL.hub}</a></li>"
         sent.text shouldContain "at Hub, as Admin"
-        sent.text shouldContain "- Client: ${CL.hub}"
+        sent.text shouldContain "- Client ID: ${CL.hub}\n- Persona: Admin"
         sent.text shouldNotContain "<a"
         sent.text shouldNotContain "**"
     }

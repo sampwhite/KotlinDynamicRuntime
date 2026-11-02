@@ -48,8 +48,9 @@ Enter it to set or change your password. It expires in fifteen minutes.
 
 
 /- The link is the proof; the list is the recipe for the login page's "claim" path, since a link is a courtesy
-   some mail clients and scanners spoil: the values as the page wants them typed (`persona` is the typed form,
-   "admin" or "member B"; `personaLabel` the displayed one, "Admin" or "Member B"). -/
+   some mail clients and scanners spoil: what the page asks for. The client is its id, labeled as one (issue #1438),
+   since two clients may share a name. The persona is its label, "Admin" or "Member B": the page takes it as typed
+   in any case, so the mail need not show `persona`, the stored form ("admin", "member B"). -/
 # @invitation
 # +subject You have been invited
 # +body
@@ -60,8 +61,8 @@ Accept it and sign in here: ${url}
 If the link does not work for you, go to the login page, choose "Claim an account created for you", and enter:
 
 - Email: [${address}]{.value}
-- Client: [${client}]{.value}
-- Persona: [${persona}]{.value}
+- Client ID: [${client}]{.value}
+- Persona: [${personaLabel}]{.value}
 
 A code will then be sent to [${address}]{.value}.
 
@@ -98,7 +99,7 @@ Enter it on the page where you asked for it. It expires in fifteen minutes.
 # +body
 We could not find an account for [${address}]{.value} matching what was entered on the claim page.
 
-If you were invited, enter the client and persona exactly as the invitation gave them; otherwise nothing has been created.
+If you were invited, enter the client ID and persona exactly as the invitation gave them; otherwise nothing has been created.
 
 
 # @claimNoMatchInClient
@@ -107,8 +108,8 @@ If you were invited, enter the client and persona exactly as the invitation gave
 We could not find an account matching what was entered on the claim page:
 
 - Email: [${address}]{.value}
-- Client: [${client}]{.value}
-- Persona: [${persona}]{.value}
+- Client ID: [${client}]{.value}
+- Persona: [${personaLabel}]{.value}
 
 This address does have an account in that client; check the persona (and persona suffix) against what the invitation gave you.
 
@@ -119,7 +120,7 @@ This address does have an account in that client; check the persona (and persona
 We could not find an account matching what was entered on the claim page:
 
 - Email: [${address}]{.value}
-- Client: [${client}]{.value}
-- Persona: [${persona}]{.value}
+- Client ID: [${client}]{.value}
+- Persona: [${personaLabel}]{.value}
 
 If you were invited, check these against the invitation; otherwise nothing has been created.

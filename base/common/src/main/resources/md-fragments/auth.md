@@ -33,7 +33,7 @@
 # +title Create your account
 # +emailLabel Email address
 /- For an allClients administrator only (issue #751): the client, persona and personaSuffix the new user takes. -/
-# +clientLabel Client
+# +clientLabel Client ID
 # +personaLabel Persona
 # +personaSuffixLabel Persona suffix
 # +provisionHelp As an administrator across clients, you may place the new account: which client, which persona (it names which of the person's users this is and starts its access), and a short id for a further user of the same persona. Leave them alone for an ordinary registration.
@@ -50,13 +50,13 @@
    configuration -- and the page reports the code as sent whatever the backend found: the mail says the rest. -/
 # @claim
 # +title Claim an account created for you
-# +intro Somebody created an account for you and told you the client and the persona. Enter them with your email address, and a code will be sent to that address.
+# +intro Somebody created an account for you and told you the client ID and the persona. Enter them with your email address, and a code will be sent to that address.
 # +emailLabel Email address
-# +clientLabel Client
+# +clientLabel Client ID
 # +personaLabel Persona
-# +personaHelp As the invitation gave it: `admin`, or `member B` when it named a persona suffix. Leave blank for `member`.
+# +personaHelp As the invitation gave it: Admin, or Member B when it named a persona suffix. Leave blank for Member.
 # +sendCode Send verification code
-# +codeSent If `${user.email}` has that account, a code is on its way. Check the address, the client and the persona.
+# +codeSent If `${user.email}` has that account, a code is on its way. Check the address, the client ID, and the persona.
 # +codeLabel Verification code
 # +finish Claim and sign in
 # +loginLink Claim an account created for you
@@ -68,7 +68,7 @@
    so a mail scanner that opens the link accepts nothing on their behalf. -/
 # @invite
 # +title You have been invited
-# +summary An account has been created for **${invite.email}** in **${invite.client}** as **${invite.persona}**.
+# +summary An account has been created for **${invite.email}** at **${invite.clientName}**, as **${invite.persona}**.
 # +explain Accepting proves you can read mail at that address, makes the account yours, and signs you in.
 # +accept Accept and sign in
 # +accepted You are signed in. The account is now yours; it appears in the account menu when you have others.

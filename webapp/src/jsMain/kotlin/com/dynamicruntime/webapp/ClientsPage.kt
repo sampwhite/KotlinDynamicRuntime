@@ -451,7 +451,7 @@ private fun ChildrenBuilder.clientDetail(
                     }
                 }
                 // Its listing columns (issue #1491), after the traits each reads, offered where they are for the same reason.
-                if (configEditable && stored != null) {
+                if (configEditable) {
                     WhatIsThis {
                         heading = "Listing columns"
                         headingLevel = 3
