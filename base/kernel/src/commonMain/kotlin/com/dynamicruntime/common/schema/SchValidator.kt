@@ -875,10 +875,7 @@ fun checkCondition(
  */
 @KdrPrivate
 fun isAbsentValue(type: SchType, value: Any?): Boolean {
-    if (!type.emptyIsAbsent) {
-        return false
-    }
-    return when (value) {
+    return type.emptyIsAbsent && when (value) {
         null -> true
         is CharSequence -> value.isBlank()
         is List<*> -> value.isEmpty()

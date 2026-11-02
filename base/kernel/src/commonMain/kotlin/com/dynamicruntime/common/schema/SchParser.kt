@@ -578,11 +578,10 @@ fun parsePattern(where: String, raw: Any?, jsonType: String?, format: String?): 
 /** Reads JSON Schema `uniqueItems` (issue #823): absent is false, and anything but true or false is refused. */
 @KdrPrivate
 fun parseUniqueItems(where: String, raw: Any?): Boolean {
-    if (raw == null) return false
-    return raw as? Boolean
-        ?: throw schemaFault(
-            SchemaError.badValue, "$where sets '${SCH.uniqueItems}' to $raw; it must be true or false.",
-        )
+    return (raw != null && raw as? Boolean
+            ?: throw schemaFault(
+        SchemaError.badValue, "$where sets '${SCH.uniqueItems}' to $raw; it must be true or false.",
+    ))
 }
 
 /**
