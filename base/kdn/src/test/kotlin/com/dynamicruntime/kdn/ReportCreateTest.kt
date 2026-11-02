@@ -64,8 +64,9 @@ class ReportCreateTest : StringSpec({
                 )
                 cfact("talkApproved", "Talk", "The talk was approved.")
                 trait("TalkEntry", "talk", setOf(GedraDataType.formDoc), "A talk.") {
-                    // A heading, which names the trait on the Reports page as on every other (issue #1520).
-                    layout(label = "## Talk details\nWho it is for, and when.") {}
+                    // A name, which names the trait on the Reports page as on every other (issues #1520, #1534), and the
+                    // introduction under it, which does not.
+                    layout(label = "## Talk details", description = "Who it is for, and when.") {}
                     property("level", "Who it is for.") {
                         option("beginner", "Beginners")
                         option("advanced", "Experts")
