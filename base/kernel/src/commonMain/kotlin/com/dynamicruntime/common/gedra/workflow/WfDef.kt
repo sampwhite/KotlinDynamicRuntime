@@ -318,15 +318,19 @@ object WVF {
     /**
      * On an **approval task**'s view (issue #787): its approval, resolved for the page -- the [WFD.cfact], the
      * backend-passed [WFD.prompt] and [WFD.button] copy, whether it is [approved], and when so `approvedAt` and the
-     * approver's [approvedByName] -- their public name, what "approved by ..." shows. Not their user id or private
-     * name: the view reaches the form's owner, who could not read the reviewer's user row.
+     * approver's [approvedByName] -- the name another person sees them called (issue #1430): their profile's name, else
+     * their public name, which is their email while they have chosen no username. Not their user id: the view reaches
+     * the form's owner, who could not read the reviewer's user row.
      */
     const val approval = "approval"
 
     /** Under [approval]: whether the task has been approved. */
     const val approved = "approved"
 
-    /** Under [approval]: the approver's display name, for "approved by ...". */
+    /**
+     * Under [approval]: the approver's name, for "approved by ..." -- their profile's name, else their email. A task's
+     * display text decides whether to show an email (`contains(approvedByName, "@")`).
+     */
     const val approvedByName = "approvedByName"
 }
 

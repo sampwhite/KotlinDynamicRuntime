@@ -1410,7 +1410,7 @@ private fun ownersOf(c: KdrCxt, rows: List<GedraDataRow>, scope: ReadScope): Map
     UserService.get(c).queryUsersByIds(c, rows.map { it.userId }, scope)
 
 /** The name the User column shows for [owner] (issue #666): the account's own name, else its public name. */
-private fun ownerSortName(owner: AuthUserRow): String = owner.name?.trim()?.ifEmpty { null } ?: owner.publicName()
+private fun ownerSortName(owner: AuthUserRow): String = owner.shownName()
 
 /**
  * The sort a listing request asks for (issue #666), or null for the default order. `updated` / `created` order

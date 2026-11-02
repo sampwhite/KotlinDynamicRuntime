@@ -186,7 +186,7 @@ object ClientWorkflowEdit {
 
         fun named(s: WfParamsSetting): WfParamsSetting {
             val user = s.setBy?.let { id -> if (id in users) users[id] else UserService.get(cxt).queryAdministrableUser(cxt, id, scope).also { users[id] = it } }
-            return WfParamsSetting(s.params, s.setAt, user?.userId, user?.let { it.name ?: it.publicName() })
+            return WfParamsSetting(s.params, s.setAt, user?.userId, user?.shownName())
         }
     }
 

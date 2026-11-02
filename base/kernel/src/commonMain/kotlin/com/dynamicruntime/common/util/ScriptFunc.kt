@@ -10,6 +10,7 @@ object SFN {
     const val upper = "upper"
     const val lower = "lower"
     const val trim = "trim"
+    const val contains = "contains"
     const val count = "count"
     const val abs = "abs"
     const val formatDate = "formatDate"
@@ -80,6 +81,12 @@ val scriptFunctions: Map<String, ScriptFunction> = listOf(
     ScriptFunction(SFN.upper, 1, 1) { state, args -> textArg(state, SFN.upper, args[0]).uppercase() },
     ScriptFunction(SFN.lower, 1, 1) { state, args -> textArg(state, SFN.lower, args[0]).lowercase() },
     ScriptFunction(SFN.trim, 1, 1) { state, args -> textArg(state, SFN.trim, args[0]).trim() },
+    // Whether the first text holds the second, as written (issue #1430): `contains(approvedByName, "@")` is how a
+    // template tells an email from a name, so its author decides what a reader is shown. Text only; a list can be
+    // added when somebody wants one.
+    ScriptFunction(SFN.contains, 2, 2) { state, args ->
+        textArg(state, SFN.contains, args[0]).contains(textArg(state, SFN.contains, args[1]))
+    },
     // Counts what has a size: the characters of a string, the entries of a list or an object. Returns a Long
     // so it lands in the same numeric world as a literal and can be compared and pluralized against.
     ScriptFunction(SFN.count, 1, 1) { state, args ->

@@ -126,9 +126,11 @@ fun resolveWorkflowView(
     }
 
     // An approval task's approval, resolved for the page (issue #787): its copy through the backend pass like any
-    // label, and -- once approved -- when, and by whom as the name the reviewer shows others (`publicName`). Not
-    // their private full name nor their internal user id: this view reaches the form's owner, who could not read
-    // the reviewer's user row, and "approved by ..." needs neither.
+    // label, and -- once approved -- when, and by whom as another person sees the reviewer called (`shownName`, issue
+    // #1430): the name on their profile, else their public name, which is their email while they have chosen no
+    // username. Not their internal user id: this view reaches the form's owner, who could not read the reviewer's user
+    // row. The workflow's own text decides what to show (`contains(approvedByName, "@")` finds an email), and the
+    // page's default line leaves out a name that is one.
     fun approvalView(approval: WfApproval, record: Map<String, Any?>?): Map<String, Any?> {
         val out = linkedMapOf<String, Any?>(
             WFD.cfact to approval.cfact,
@@ -140,7 +142,7 @@ fun resolveWorkflowView(
             out[WFS.approvedAt] = record[WFS.approvedAt]
             record[WFS.approvedBy].toOptLong()
                 ?.let { UserService.getOrNull(cxt)?.queryByUserId(cxt, it) }
-                ?.let { out[WVF.approvedByName] = it.publicName() }
+                ?.let { out[WVF.approvedByName] = it.shownName() }
         }
         return out
     }
