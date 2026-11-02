@@ -69,6 +69,20 @@ fun identityLabel(loaded: Boolean, isLoggedIn: Boolean, displayName: String?): S
  */
 fun sessionEnded(previous: Boolean?, nowLoggedIn: Boolean): Boolean = previous == true && !nowLoggedIn
 
+/** Who one read of the shell config was for (issue #1547): whether signed in, and as which user. */
+data class SessionSeen(val loggedIn: Boolean, val userId: Long)
+
+/**
+ * Whether the page on screen was drawn for a caller who is no longer the one signed in, so the shell goes home: the
+ * session ended ([sessionEnded]), or it now acts as another signed-in user and this tab did not make that change
+ * ([changedHere] false) -- an invitation accepted, or a switch made, in another tab of the browser (issue #1547). A change
+ * this tab made lands where its caller sent it ([afterSessionChange]): Profile's switch stays on Profile. The first read
+ * ([previous] null) and a sign-in from nobody are no change. Pure, and covered under `jsNodeTest`.
+ */
+fun callerLeft(previous: SessionSeen?, now: SessionSeen, changedHere: Boolean): Boolean =
+    sessionEnded(previous?.loggedIn, now.loggedIn) ||
+        (previous?.loggedIn == true && now.loggedIn && now.userId != previous.userId && !changedHere)
+
 /** Shown in place of a name for a signed-in caller who has none -- still says *signed in*, which is the point. */
 const val signedInFallback = "Signed in"
 
@@ -238,9 +252,9 @@ val AppBar = FC<AppBarProps> { props ->
     // clobbering a newer one. Neither is read for rendering, so neither needs to trigger one.
     val everLoaded = useRef(false)
     val genRef = useRef(0)
-    // Whether the last loaded shell config was for a signed-in caller; null until one has loaded. A ref, not state:
-    // it only feeds [sessionEnded], never a render.
-    val loggedInRef = useRef<Boolean>(null)
+    // Who the last loaded shell config was for; null until one has loaded. A ref, not state: it only feeds [callerLeft],
+    // never a render.
+    val seenRef = useRef<SessionSeen>(null)
     val generation = useRefreshGeneration()
     val polls = useIdlePolls()
     val bump = useRefreshBump()
@@ -261,14 +275,16 @@ val AppBar = FC<AppBarProps> { props ->
                 return@launch
             }
             config = cfg
-            // The session ended since the last read (a timeout, a restarted instance, a sign-out in another tab): go
+            // The caller left since the last read -- the session ended (a timeout, a restarted instance, a sign-out in
+            // another tab), or another tab signed in as someone else (an invitation accepted there, issue #1547): go
             // home, as Log out does, rather than leave a page drawn for a caller who is gone. Noticed on the idle
             // poll too, which is the point -- a tab left open moves home without being touched (a hidden tab polls
             // nothing, so it moves the moment it is looked at again). A page holding unsaved work is still asked
-            // first, through the leave guard. Nothing here renews a session: it acts only once there is none.
-            val wasLoggedIn = loggedInRef.current
-            loggedInRef.current = cfg.user.isLoggedIn
-            if (sessionEnded(wasLoggedIn, cfg.user.isLoggedIn)) {
+            // first, through the leave guard. Nothing here renews a session: it acts only once the caller is gone.
+            val seen = SessionSeen(cfg.user.isLoggedIn, cfg.user.userId)
+            val previous = seenRef.current
+            seenRef.current = seen
+            if (callerLeft(previous, seen, changedHere = takeSessionChangedHere())) {
                 navigate(emptyList())
                 // Navigating to the address on screen (already home) tells nobody, so bump as logoutAction does.
                 bump()

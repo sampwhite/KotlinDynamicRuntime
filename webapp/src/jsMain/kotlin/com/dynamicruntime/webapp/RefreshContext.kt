@@ -78,6 +78,17 @@ fun useRefreshBump(): () -> Unit = use(RefreshContext).bump
  * nobody. A reload stays for picking up a newly deployed web app, which the next navigation does on its own.
  */
 fun afterSessionChange(bump: () -> Unit, to: List<Pair<String, String>> = emptyList()) {
+    sessionChangedHere = true
     navigate(to)
     bump()
 }
+
+/**
+ * Whether this tab changed its own session since the app bar last read the shell config (issue #1547): set by
+ * [afterSessionChange], read and cleared by [takeSessionChangedHere]. What tells a user change made here -- which lands
+ * where its caller sends it -- from one made in another tab, which sends this tab home ([callerLeft]).
+ */
+private var sessionChangedHere = false
+
+/** Whether this tab changed its own session since the last call; clears it. */
+fun takeSessionChangedHere(): Boolean = sessionChangedHere.also { sessionChangedHere = false }

@@ -55,6 +55,24 @@ class IdentityLabelTest {
         assertEquals(false, sessionEnded(previous = true, nowLoggedIn = true))
     }
 
+    @Test
+    fun theCallerLeftWhenTheSessionEndedOrAnotherTabSignedInAsSomeoneElse() {
+        val alice = SessionSeen(loggedIn = true, userId = 11)
+        val bob = SessionSeen(loggedIn = true, userId = 12)
+        val nobody = SessionSeen(loggedIn = false, userId = 0)
+        // Another tab accepted an invitation as someone else (issue #1547).
+        assertEquals(true, callerLeft(alice, bob, changedHere = false))
+        // This tab switched itself: it lands where its caller sent it.
+        assertEquals(false, callerLeft(alice, bob, changedHere = true))
+        // A session that ended goes home however it ended.
+        assertEquals(true, callerLeft(alice, nobody, changedHere = false))
+        assertEquals(true, callerLeft(alice, nobody, changedHere = true))
+        // No change, a first read, and a sign-in from nobody are not the caller leaving.
+        assertEquals(false, callerLeft(alice, alice, changedHere = false))
+        assertEquals(false, callerLeft(null, bob, changedHere = false))
+        assertEquals(false, callerLeft(nobody, bob, changedHere = false))
+    }
+
     /** The signed-in fallback must not read as its opposite — they are one word apart. */
     @Test
     fun theTwoStatesAreNotConfusable() {
