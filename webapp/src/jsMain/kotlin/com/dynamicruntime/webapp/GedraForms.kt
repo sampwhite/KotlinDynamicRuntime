@@ -1,7 +1,7 @@
 package com.dynamicruntime.webapp
 
 import com.dynamicruntime.common.schema.SchLayout
-import com.dynamicruntime.common.gedra.traitDisplayName
+import com.dynamicruntime.common.gedra.branchDisplayName
 import com.dynamicruntime.common.gedra.workflow.engagedWorkflowIds
 import com.dynamicruntime.common.gedra.workflow.WAGG
 import com.dynamicruntime.common.gedra.workflow.WCOL
@@ -870,7 +870,7 @@ class FormSummary(
  * attached to each row as `displayValues`. The heading is the first non-blank of those; a client that declared
  * no usage rule has none, and the document is shown unnamed -- a legitimate state, not filled with a guess.
  *
- * Each trait is named by the rule every page names one with (`traitDisplayName`, issue #1520), from [entriesUnion]
+ * Each trait is named by the rule every page names one with (`branchDisplayName`, issue #1520), from [entriesUnion]
  * (see [entriesUnionOf]) and the delivered [layouts], whose headings come first -- as the form's trait choice names it.
  * Pure, and covered under `jsNodeTest`.
  */
@@ -878,7 +878,7 @@ fun summarizeForm(item: Map<String, Any?>, entriesUnion: SchType?, layouts: Map<
     val entries = item[GDF.entries].toJsonListOfMaps()
     val owner = item[GDF.owner].toJsonMapOrEmpty()
     val traitLabels = entries.mapNotNull { entry ->
-        (entry[GE.traitId] as? String)?.let { traitId -> traitDisplayName(traitId, entriesUnion?.variants, layouts) }
+        (entry[GE.traitId] as? String)?.let { traitId -> branchDisplayName(traitId, entriesUnion?.variants, layouts) }
     }
     // The columns a client's usage rules declared, computed on the backend and attached per row (issue
     // #537). The heading is the first non-blank one -- the form's presentation "name", now client-declared

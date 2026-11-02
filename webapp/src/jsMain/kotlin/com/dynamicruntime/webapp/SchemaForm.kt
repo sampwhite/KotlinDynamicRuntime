@@ -1,6 +1,6 @@
 package com.dynamicruntime.webapp
 
-import com.dynamicruntime.common.gedra.traitDisplayName
+import com.dynamicruntime.common.gedra.branchDisplayName
 import com.dynamicruntime.common.cfact.CFactParser
 import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.schema.PRES
@@ -323,12 +323,12 @@ fun elementRowHeader(
 
 /**
  * How a friendly form names a union's branch [value]: the branch of an entries union -- discriminated on `traitId` --
- * by its trait's name (`traitDisplayName`, issue #1520), which [layouts] supplies the heading for; any other branch by
+ * by its trait's name (`branchDisplayName`, issue #1520), which [layouts] supplies the heading for; any other branch by
  * its title, else its value humanized. Pure, and covered under `jsNodeTest`.
  */
 fun friendlyBranchLabel(variants: SchVariants, value: String, layouts: Map<String, SchLayout>): String =
     if (variants.discriminator == GE.traitId) {
-        traitDisplayName(value, variants, layouts)
+        branchDisplayName(value, variants, layouts)
     } else {
         variants.byValue[value]?.title ?: humanizeFieldName(value)
     }

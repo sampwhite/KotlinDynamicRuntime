@@ -591,10 +591,38 @@ class GedraFormsTest {
             "t.ExpenseData" to parseSchLayout("t.ExpenseData", mapOf(SL.label to "## Expenses", SL.description to "What you spent.")),
         )
         assertEquals(listOf("Expenses", "Name"), summarizeForm(item, entriesUnion(), layouts).traitLabels)
-        // The form's trait choice names a branch the same way; a union on another discriminator keeps its titles.
+        // The form's trait choice names a branch the same way.
         val variants = entriesUnion().variants!!
         assertEquals("Expenses", friendlyBranchLabel(variants, "expenseReport", layouts))
         assertEquals("Expense claim", friendlyBranchLabel(variants, "expenseReport", emptyMap()))
+    }
+
+    /**
+     * A union on another discriminator is no entries union (issue #1541): a friendly form reads its branches by their own
+     * titles, else their values humanized -- never by a trait's name, even where a branch's `data` type has a heading.
+     */
+    @Test
+    fun aUnionOnAnotherDiscriminatorKeepsItsBranchTitles() {
+        fun kind(value: String) = "kind" to mapOf(SCH.type to SCT.string, SCH.const to value)
+        val vehicle = parseSchemaTypes(
+            mapOf(
+                "t.CarData" to mapOf(SCH.type to SCT.kObject),
+                "t.Car" to mapOf(
+                    SCH.type to SCT.kObject,
+                    SCH.title to "A car",
+                    SCH.properties to mapOf(kind("car"), GE.data to mapOf(SCH.dRef to "t.CarData")),
+                ),
+                "t.Bike" to mapOf(SCH.type to SCT.kObject, SCH.properties to mapOf(kind("bike"))),
+                "t.Vehicle" to mapOf(
+                    SCH.oneOf to listOf(mapOf(SCH.dRef to "t.Car"), mapOf(SCH.dRef to "t.Bike")),
+                    SCH.discriminator to mapOf(SCH.propertyName to "kind"),
+                ),
+            ),
+        ).getValue("t.Vehicle")
+        val layouts = mapOf("t.CarData" to parseSchLayout("t.CarData", mapOf(SL.label to "Not a trait's name")))
+        val variants = vehicle.variants!!
+        assertEquals("A car", friendlyBranchLabel(variants, "car", layouts))
+        assertEquals("Bike", friendlyBranchLabel(variants, "bike", layouts))
     }
 
     /** The owner and the last write (issue #562): carried when the row has them, null when it does not. */

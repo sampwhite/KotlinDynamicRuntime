@@ -3,7 +3,6 @@ package com.dynamicruntime.common.gedra
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.SL
-import com.dynamicruntime.common.schema.SchType
 import com.dynamicruntime.common.schema.parseSchLayout
 import com.dynamicruntime.common.schema.parseSchemaTypes
 import kotlin.test.Test
@@ -68,7 +67,7 @@ class TraitNamesTest {
         assertEquals("Site Visit Data", traitDisplayName("siteVisit", types.getValue("t.VisitData"), layouts))
         assertEquals("Visit (title)", traitDisplayName("siteVisit", types.getValue("t.VisitData"), emptyMap()))
         assertEquals("Plain trait", traitDisplayName("plainTrait", types.getValue("t.PlainData"), layouts))
-        assertEquals("Unknown here", traitDisplayName("unknownHere", null as SchType?, layouts))
+        assertEquals("Unknown here", traitDisplayName("unknownHere", null, layouts))
     }
 
     @Test

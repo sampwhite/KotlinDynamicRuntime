@@ -561,14 +561,15 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
                 div {
                     className = ClassName("wf-trait")
                     // Its name as the section's heading, and its introduction under it as a muted caption (issue #1534):
-                    // the layout's `label` -- inline Markdown, one line -- else the trait's name by the rule, then its
-                    // `description`. One block, so the caption sits directly under the heading (issue #1327's look).
-                    val label = trait.fieldLayout?.label
+                    // the layout's `label` -- inline Markdown, one line -- else the trait's name by the rule
+                    // ([traitSectionLabel]), then its `description`. One block, so the caption sits directly under the
+                    // heading (issue #1327's look).
+                    val label = traitSectionLabel(trait)
                     val intro = trait.fieldLayout?.description?.takeIf { it.isNotBlank() }
                     if (label == null && intro == null) {
                         h2 { +traitName(trait) }
                     } else {
-                        val heading = label?.trimStart('#')?.trim() ?: traitName(trait).escapeMarkdown()
+                        val heading = label ?: traitName(trait).escapeMarkdown()
                         Markdown {
                             source = "## $heading" + (intro?.let { "\n\n$it" } ?: "")
                             inlineUi = true
@@ -898,7 +899,8 @@ fun workflowNote(wf: WorkflowView): String? = when {
 
 /**
  * A trait's name (issue #1520), by the rule every page names a trait with: its layout `label`, its title, else its id
- * humanized. A section with a layout `label` shows it as the heading instead, Markdown and all; this is its fallback.
+ * humanized. A section with a layout `label` that says something shows it as the heading instead, Markdown and all
+ * ([traitSectionLabel]); this is its fallback.
  */
 private fun traitName(trait: WfTraitView): String = traitNameOf(trait.traitId, trait.fieldLayout?.label, trait.type.title)
 

@@ -464,9 +464,11 @@ is equivalent):
   trait's data type the `label` -- inline Markdown taken off, backend pulls resolved -- is the trait's name wherever
   one is shown to a person: the forms listing's Contains column, a form's trait choice and entry headers, a lock's
   refusal, Design View. With none the data type's `title` names it, then its id humanized -- a rooted id's local part
-  (`traitNameOf`, `traitDisplayName` in `base:kernel`). A `label` still holding a template block -- a frontend `${…}`,
-  or a backend pull that did not resolve -- names nothing, so the title does. An entry type's own title is never read
-  for a name. Declare both with `layout(label = "Site visit", description = "Tell us what you saw.") { … }`.
+  (`traitNameOf`, `traitDisplayName`, `branchDisplayName` in `base:kernel`). A `label` still holding a template block --
+  a frontend `${…}`, or a backend pull that did not resolve -- names nothing, so the title does. An entry type's own
+  title is never read for a name. A blank `label`, or heading marks alone, is no heading either: a workflow form's
+  section then shows the trait's name (issue #1541). Declare both with
+  `layout(label = "Site visit", description = "Tell us what you saw.") { … }`.
 - **Field order and membership** (`mode`, issue #777): who owns *which* fields render and *in what order* — the
   `SLM` values, set via `layout(mode = SchLayoutMode.…) { … }`. `overlay` (default) — the schema owns order and
   the full set, the layout only annotates (historic behavior). `reorder` — the layout's listed fields draw
