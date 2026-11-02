@@ -153,7 +153,7 @@ object ClientUsageEdit {
         val layout = (data.refName ?: type.name)?.let { store.layouts[it] }
         return type.properties.mapNotNull { (key, prop) ->
             val shape = fieldSearchShape(prop.valueType) ?: return@mapNotNull null
-            val laidOut = layout?.fields?.firstOrNull { it.field == key }?.label?.takeIf { "%{" !in it && "\${" !in it }
+            val laidOut = layout?.fields?.firstOrNull { it.field == key }?.label?.takeIf { "%{" !in it && $$"${" !in it }
             buildMap {
                 put(CUS.field, key)
                 put(CUS.label, laidOut ?: prop.title ?: prop.valueType.title ?: humanizeFieldName(key))
