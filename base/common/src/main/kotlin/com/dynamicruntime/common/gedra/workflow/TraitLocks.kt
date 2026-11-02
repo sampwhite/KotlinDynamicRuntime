@@ -1,5 +1,8 @@
 package com.dynamicruntime.common.gedra.workflow
 
+import com.dynamicruntime.common.schema.resolveDeliveredLayouts
+import com.dynamicruntime.common.schema.SL
+import com.dynamicruntime.common.gedra.traitNameOf
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
@@ -14,7 +17,6 @@ import com.dynamicruntime.common.util.toOptStr
 import com.dynamicruntime.common.gedra.GCFG
 import com.dynamicruntime.common.gedra.GU
 import com.dynamicruntime.common.gedra.GedraDataType
-import com.dynamicruntime.common.util.humanizeFieldName
 
 /**
  * Which of a form's traits are **locked for this caller** (issue #857), from the form's stored state and the caller --
@@ -103,14 +105,19 @@ object TraitLocks {
     }
 
     /**
-     * A trait's name as the pages head it, for a message: its data type's title in [client]'s schema, else its id
-     * humanized -- "Acme site audit", not `acmeSiteAudit`.
+     * A trait's name for a message, by the rule the pages name it with (`traitNameOf`, issue #1520): in [client]'s
+     * schema, its data type's layout heading -- as delivered, its backend pulls resolved for [cxt] -- then its title,
+     * then its id humanized. "Acme site audit", not `acmeSiteAudit`.
      */
     fun traitName(cxt: KdrCxt, client: String, traitId: String): String {
-        val union = SchemaService.get(cxt).storeFor(client)
-            .types["${GCFG.globalNamespace}.${GU.unionName(GedraDataType.formDoc)}"]
-        val title = union?.variants?.byValue?.get(traitId)?.properties?.get(GE.data)?.valueType?.title
-        return title?.takeIf { it.isNotBlank() } ?: humanizeFieldName(traitId)
+        val store = SchemaService.get(cxt).storeFor(client)
+        val union = store.types["${GCFG.globalNamespace}.${GU.unionName(GedraDataType.formDoc)}"]
+        val dataType = union?.variants?.byValue?.get(traitId)?.properties?.get(GE.data)?.valueType
+        val typeName = dataType?.name
+        val heading = typeName?.let { store.layouts[it] }?.let { layout ->
+            resolveDeliveredLayouts(cxt, mapOf(typeName to layout.toJsonMap()))[typeName].toJsonMapOrEmpty()[SL.label].toOptStr()
+        }
+        return traitNameOf(traitId, heading, dataType?.title)
     }
 
     /** A workflow's name, in [client]'s wording, for saying which workflow holds a lock. */

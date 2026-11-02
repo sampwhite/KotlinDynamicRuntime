@@ -13,6 +13,8 @@ import com.dynamicruntime.common.schema.offeredChoices
 import com.dynamicruntime.common.schema.orderedFieldNames
 import com.dynamicruntime.common.util.fmtD
 import com.dynamicruntime.common.util.humanizeFieldName
+import com.dynamicruntime.common.gedra.headingLine
+import com.dynamicruntime.common.gedra.traitNameOf
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toJsonStr
 import com.dynamicruntime.common.util.toOptStr
@@ -455,9 +457,6 @@ private fun ChildrenBuilder.pickList(name: String, items: List<Pair<String, () -
     }
 }
 
-/** A heading -- Markdown, perhaps several lines -- as one line of plain words: its first, without the `#` marks. */
-private fun headingLine(markdown: String): String = markdown.lineSequence().firstOrNull()?.trimStart('#', ' ').orEmpty()
-
 /** [task] as [view] now has it, or [task] itself when the view no longer carries it. */
 private fun currentTask(view: WorkflowView, task: WfTaskView): WfTaskView = view.tasks.firstOrNull { it.id == task.id } ?: task
 
@@ -469,7 +468,8 @@ private fun shownLabel(view: WorkflowView, slot: LabelSlot): String {
 
 private fun ChildrenBuilder.traitSummary(target: DesignTarget.Trait) {
     val trait = target.trait
-    h2 { +(trait.fieldLayout?.label?.let(::headingLine) ?: trait.type.title ?: humanizeFieldName(trait.traitId)) }
+    // The trait's name, by the rule every page names a trait with (issue #1520).
+    h2 { +traitNameOf(trait.traitId, trait.fieldLayout?.label, trait.type.title) }
     fact("Trait", trait.traitId, mono = true)
     fact("Data type", trait.typeName, mono = true)
     fact("In this task", if (trait.required) "required" else "optional")

@@ -1,5 +1,6 @@
 package com.dynamicruntime.webapp
 
+import com.dynamicruntime.common.gedra.traitNameOf
 import com.dynamicruntime.common.gedra.workflow.TraitLockCopy
 import com.dynamicruntime.common.gedra.workflow.WfPhase
 import com.dynamicruntime.common.gedra.GDF
@@ -559,7 +560,7 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
                 div {
                     className = ClassName("wf-trait")
                     trait.fieldLayout?.label?.let { Markdown { source = it; inlineUi = true; linkResolver = copyLinks } }
-                        ?: h2 { +traitHeading(trait) }
+                        ?: h2 { +traitName(trait) }
                     // Locked for this caller (issue #857): shown as stored, and said why -- but only on a task they
                     // could otherwise save. On the locking workflow's own task the lock exempts exactly that task's
                     // savers, so the step is already read-only for them and said to be someone else's above.
@@ -661,9 +662,9 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
         val unsaved = taskUnsaved(task, valuesByTrait, stored)
         val status = statusFor(task, unsaved)
         val mark = railMark(status)
-        // Name a missing trait the way the panel heads it (its schema title), so tooltip and heading agree.
+        // Name a missing trait by its name (issue #1520), so the tooltip and the panel's heading agree.
         val explanation = railExplanation(status, unsaved) { id ->
-            task.traits.firstOrNull { it.traitId == id }?.let(::traitHeading) ?: humanizeFieldName(id)
+            task.traits.firstOrNull { it.traitId == id }?.let(::traitName) ?: humanizeFieldName(id)
         }
         button {
             className = ClassName(
@@ -881,9 +882,11 @@ fun workflowNote(wf: WorkflowView): String? = when {
     else -> "This form is not in this workflow, and it is not taking new forms."
 }
 
-/** The heading for a trait section: its schema title if it has one, else a humanized trait id. */
-private fun traitHeading(trait: WfTraitView): String =
-    trait.type.title?.takeIf { it.isNotBlank() } ?: humanizeFieldName(trait.traitId)
+/**
+ * A trait's name (issue #1520), by the rule every page names a trait with: its layout heading's first line, its title,
+ * else its id humanized. A section with a layout heading shows the whole heading instead; this is its fallback.
+ */
+private fun traitName(trait: WfTraitView): String = traitNameOf(trait.traitId, trait.fieldLayout?.label, trait.type.title)
 
 external interface LoadStateCardProps : Props {
     /** The page heading, shown while it loads or fails ("New form", "Edit form"). */
