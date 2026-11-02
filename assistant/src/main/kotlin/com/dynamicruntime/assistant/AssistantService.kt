@@ -356,6 +356,7 @@ class AssistantService : ServiceInitializer {
         reason?.let { put(ASST.reason, it) }
         missingSecret?.let { put(ASST.missingSecret, it) }
         put(ASST.defaultMonthlyBudget, settings.defaultMonthlyBudget)
+        put(ASST.defaultMonthlyBudgetDollars, PRICE.dollarsOf(settings.defaultMonthlyBudget))
         put(ASST.dataNotice, DATA.notice)
     }
 

@@ -206,6 +206,15 @@ object PRICE {
     /** Sonnet's input price: what one weighted token costs. */
     const val unit = 200L
 
+    /** Weighted tokens to the dollar: 500,000, at [unit]. */
+    const val tokensPerDollar = 100L * 1_000_000 / unit
+
+    /** [weighted] tokens in dollars, to the cent. */
+    fun dollarsOf(weighted: Long): Double = Math.round(weighted * 100.0 / tokensPerDollar) / 100.0
+
+    /** [dollars] in weighted tokens, to the token. */
+    fun weightedOf(dollars: Double): Long = Math.round(dollars * tokensPerDollar)
+
     val sonnet = ModelPrice(input = 200, cacheWrite = 250, cacheRead = 20, output = 1_000)
     val opus55 = ModelPrice(input = 400, cacheWrite = 500, cacheRead = 20, output = 2_000)
     val opus = ModelPrice(input = 500, cacheWrite = 625, cacheRead = 50, output = 2_500)

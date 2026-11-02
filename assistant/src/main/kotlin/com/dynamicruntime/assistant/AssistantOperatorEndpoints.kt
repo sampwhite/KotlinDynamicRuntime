@@ -14,6 +14,7 @@ import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.sql.PF
 import com.dynamicruntime.common.util.getOptBool
 import com.dynamicruntime.common.util.getOptLong
+import com.dynamicruntime.common.util.toOptDouble
 import com.dynamicruntime.common.util.toOptLong
 import com.dynamicruntime.common.util.toOptStr
 
@@ -34,6 +35,11 @@ fun assistantOperatorSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, ASST.roo
         property(ASST.defaultMonthlyBudget, "A client's monthly budget in weighted tokens when it has none of its own.", required = true) {
             type = SCT.integer
         }
+        property(
+            ASST.defaultMonthlyBudgetDollars,
+            "The default budget in dollars, at Sonnet's prices (${PRICE.tokensPerDollar} weighted tokens to the dollar).",
+            required = true,
+        ) { type = SCT.number }
         property(ASST.dataNotice, "What is sent to Anthropic, which switching a client on acknowledges.", required = true)
     }
     type(ASST.clientType) {
@@ -43,11 +49,13 @@ fun assistantOperatorSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, ASST.roo
         property(ASST.name, "The client's name; absent for a client this node no longer carries.")
         property(ASST.enabled, "Whether an operator has switched the assistant on for it.", required = true) { type = SCT.boolean }
         property(ASST.monthlyBudget, "Its monthly budget in weighted tokens.", required = true) { type = SCT.integer }
+        property(ASST.monthlyBudgetDollars, "Its monthly budget in dollars, at Sonnet's prices.", required = true) { type = SCT.number }
         property(ASST.budgetIsDefault, "Whether the budget is the deployment's default rather than its own.", required = true) {
             type = SCT.boolean
         }
         property(ASST.month, "The month the use is for, as YYYY-MM in UTC.", required = true)
         property(ASST.used, "Weighted tokens used this month, its sandbox's included.", required = true) { type = SCT.integer }
+        property(ASST.usedDollars, "What was used this month, in dollars at Sonnet's prices.", required = true) { type = SCT.number }
         property(ASST.inputTokens, "Input tokens neither read from the cache nor written to it.", required = true) { type = SCT.integer }
         property(ASST.cacheWriteTokens, "Input tokens written to the prompt cache.", required = true) { type = SCT.integer }
         property(ASST.cacheReadTokens, "Input tokens read from the prompt cache.", required = true) { type = SCT.integer }
@@ -89,7 +97,11 @@ fun assistantOperatorSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, ASST.roo
         inputFields = {
             field(ASST.client, "The client. Not a sandbox: a sandbox goes by its parent.", required = true)
             field(ASST.enabled, "On or off; absent to leave it as it is.") { type = SCT.boolean }
-            field(ASST.monthlyBudget, "Its own monthly budget in weighted tokens.") { type = SCT.integer }
+            field(
+                ASST.monthlyBudgetDollars,
+                "Its own monthly budget in dollars, at Sonnet's prices (${PRICE.tokensPerDollar} weighted tokens to the dollar).",
+            ) { type = SCT.number }
+            field(ASST.monthlyBudget, "Its own monthly budget in weighted tokens, instead of in dollars.") { type = SCT.integer }
             field(ASST.budgetIsDefault, "True to drop its own budget for the deployment's default.") { type = SCT.boolean }
             field(ASST.acknowledgeDataNotice, "True to acknowledge what is sent to Anthropic; needed to switch it on.") {
                 type = SCT.boolean
@@ -103,7 +115,7 @@ fun assistantOperatorSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, ASST.roo
         val row = service.setClient(
             c, client,
             enabled = request.getOptBool(ASST.enabled),
-            monthlyBudget = request.getOptLong(ASST.monthlyBudget),
+            monthlyBudget = budgetAsked(request),
             useDefaultBudget = request.getOptBool(ASST.budgetIsDefault) == true,
             acknowledgedNotice = request.getOptBool(ASST.acknowledgeDataNotice) == true,
         )
@@ -111,6 +123,20 @@ fun assistantOperatorSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, ASST.roo
         val name = ClientService.getOrNull(c)?.known(client)?.name
         clientInfo(service, client, name, row, service.usageIn(c, month)[client], month)
     }
+}
+
+/**
+ * The budget a set asks for, in weighted tokens: given in dollars ([ASST.monthlyBudgetDollars], the operator's own
+ * terms) or in tokens ([ASST.monthlyBudget]), not both; null when neither.
+ */
+fun budgetAsked(request: Map<String, Any?>): Long? {
+    val tokens = request.getOptLong(ASST.monthlyBudget)
+    val dollars = request[ASST.monthlyBudgetDollars].toOptDouble() ?: return tokens
+    if (tokens != null) {
+        throw KdrException.mkInput("Give the budget in ${ASST.monthlyBudgetDollars} or in ${ASST.monthlyBudget}, not both.")
+    }
+    if (dollars < 0.01) throw KdrException.mkInput("A monthly budget must be at least a cent, not $dollars dollars.")
+    return PRICE.weightedOf(dollars)
 }
 
 /** One client's line of the listing, from its row and its [usage] in [month], either of which may be absent. */
@@ -127,11 +153,13 @@ fun clientInfo(
     name?.let { put(ASST.name, it) }
     put(ASST.enabled, row?.get(PF.enabled) == true)
     put(ASST.monthlyBudget, service.budgetOf(row))
+    put(ASST.monthlyBudgetDollars, PRICE.dollarsOf(service.budgetOf(row)))
     put(ASST.budgetIsDefault, row?.get(ASST.monthlyBudget) == null)
     put(ASST.month, month)
     for (key in listOf(ASST.used, ASST.inputTokens, ASST.cacheWriteTokens, ASST.cacheReadTokens, ASST.outputTokens, ASST.calls)) {
         put(key, count(key))
     }
+    put(ASST.usedDollars, PRICE.dollarsOf(count(ASST.used)))
     usage?.get(ASST.lastUsedAt)?.let { put(ASST.lastUsedAt, it) }
     val allInput = count(ASST.inputTokens) + count(ASST.cacheWriteTokens) + count(ASST.cacheReadTokens)
     if (allInput > 0) put(ASST.cacheHitRatio, count(ASST.cacheReadTokens).toDouble() / allInput)

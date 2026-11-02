@@ -101,7 +101,12 @@ operator can see how often the cache hits. A sandbox's use is its parent's.
 
 - `GET /operator/assistant/clients`: every client with its switch, budget, this month's use, when the model last
   answered for it, and its cache-hit ratio. The summary says whether this node can reach the model, and why not.
-- `POST /operator/assistant/client/set`: switch a client on or off, and set its budget or go back to the default.
+- `POST /operator/assistant/client/set`: switch a client on or off, and set its budget -- in dollars
+  (`monthlyBudgetDollars`) or in weighted tokens (`monthlyBudget`) -- or go back to the default.
+
+Both show every budget and the month's use in dollars as well (`monthlyBudgetDollars`, `usedDollars`), at Sonnet's
+prices: 500,000 weighted tokens to the dollar. Weighted tokens stay the unit kept and counted; dollars are the
+operator's terms, and exact for the default model.
 
 **The `assistant:on` cfact** is true when this node has a model and the caller's client (a sandbox's parent) is
 switched on. It does not say whether the month's budget is spent: the page says that. It is read on every cfact

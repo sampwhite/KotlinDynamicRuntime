@@ -103,6 +103,7 @@ class AssistantModuleTest : StringSpec({
         val summary = operator.client.sendJsonGetRequest(ASST.clientsPath)[EP.summary].toJsonMapOrEmpty()
         summary[ASST.available] shouldBe false
         summary[ASST.missingSecret] shouldBe ASST.noKeyInUnitTests
+        summary[ASST.defaultMonthlyBudgetDollars] shouldBe 20.0
         summary[ASST.reason].toOptStr().shouldNotBeNull() shouldContain ASST.noKeyInUnitTests
         // Its variables are in the operator's reference, under their own group.
         val reference = operator.getData(OENV.envReferencePath)[OENV.markdown].toString()
@@ -167,6 +168,7 @@ class AssistantModuleTest : StringSpec({
         before[ASST.enabled] shouldBe false
         before[ASST.budgetIsDefault] shouldBe true
         before[ASST.monthlyBudget] shouldBe service.settings.defaultMonthlyBudget
+        before[ASST.monthlyBudgetDollars] shouldBe 20.0
         before[ASST.used] shouldBe 0
         onFor(admin) shouldBe "absent"
 
@@ -199,6 +201,8 @@ class AssistantModuleTest : StringSpec({
         service.recordUsage(cxt, client, AENV.defaultModel, usage) shouldBe 2050
         val used = lineOf(operator, client)
         used[ASST.used] shouldBe 4100
+        // 4,100 weighted tokens at 500,000 to the dollar: under a cent, shown to the cent.
+        used[ASST.usedDollars] shouldBe 0.01
         used[ASST.calls] shouldBe 2
         used[ASST.cacheReadTokens] shouldBe 6000
         // Written as JSON to seven digits.
@@ -206,6 +210,15 @@ class AssistantModuleTest : StringSpec({
         used[ASST.lastUsedAt].shouldNotBeNull()
         used[ASST.month] shouldBe AssistantService.monthOf(cxt.now())
         operator.getItems(ASST.clientsPath).none { it[ASST.client] == sandboxOf(client) } shouldBe true
+
+        // A budget in dollars, the operator's own terms: $10 is 5,000,000 weighted tokens.
+        val inDollars = operator.postItem(ASST.clientSetPath, mapOf(ASST.client to client, ASST.monthlyBudgetDollars to 10))
+        inDollars[ASST.monthlyBudget] shouldBe 5_000_000
+        inDollars[ASST.monthlyBudgetDollars] shouldBe 10.0
+        operator.expectError(
+            EXC.badInput, ASST.clientSetPath, mapOf(ASST.client to client, ASST.monthlyBudgetDollars to 10, ASST.monthlyBudget to 5),
+        )
+        operator.expectError(EXC.badInput, ASST.clientSetPath, mapOf(ASST.client to client, ASST.monthlyBudgetDollars to 0))
 
         // Back to the default budget, then off: the cache sees it at once on this node.
         val reset = operator.postItem(ASST.clientSetPath, mapOf(ASST.client to client, ASST.budgetIsDefault to true))
