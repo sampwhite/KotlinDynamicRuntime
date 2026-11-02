@@ -97,10 +97,14 @@ the image is shown at, and keep words few.
 - **Alt text** in the Markdown that lists what it shows, briefly. It is what a reader sees wherever the image cannot
   be drawn: a mail, a deployment that left it out, a path no image declares.
 - A **comment** after the `<title>`: the issue, what the image is for and where it is shown, and, for a generated
-  one, that it is generated and from what.
+  one, that it is generated and from what. **Never `--` inside it**: XML forbids a double hyphen in a comment, so
+  name a color token there without its dashes ("the accent-bright token"). The file is then not well-formed, and the
+  boot refuses it as "not an image this serves" -- a message that does not say why (issue #1534).
 
 **Placement in copy.** `![alt](img:<name>){.float-left width=140}` floats an image beside the copy that follows, and
-`[]{.clear}` ends the float (issues #795, #1382). That suffix is ours: GitHub shows it as literal text, so an image in
+`[]{.clear}` ends the float (issues #795, #1382). An **icon** one line high adds the `icon` role,
+`{.float-left .icon width=20}`, with no space before the words: a character's gap from them rather than a picture's
+16px, and it stays beside its line on a phone, where other floats drop below (issue #1534). That suffix is ours: GitHub shows it as literal text, so an image in
 a **document** is a plain one, full width.
 
 ## Banners: `banner.py`

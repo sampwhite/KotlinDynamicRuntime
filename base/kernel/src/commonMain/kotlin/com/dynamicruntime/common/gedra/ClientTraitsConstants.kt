@@ -99,6 +99,16 @@ object CIT {
     /** On a global trait in the catalog: why the editor cannot edit the client's alteration of it; absent when it can. */
     const val narrowingNotEditable = "narrowingNotEditable"
 
+    /**
+     * On a global trait in the catalog: whether the platform's name for it (its layout `label`) is a fragment pull
+     * (`%{@t(...)}`, issue #1534), which a client's own name replaces with plain words -- losing the shared or
+     * translated wording.
+     */
+    const val namePulled = "namePulled"
+
+    /** On a global trait in the catalog: whether the platform's introduction (its layout `description`) is a fragment pull. */
+    const val introPulled = "introPulled"
+
     /** On the catalog: the global layouts of the types in its `$defs`, by type name, so a preview is labeled. */
     const val layouts = "layouts"
 

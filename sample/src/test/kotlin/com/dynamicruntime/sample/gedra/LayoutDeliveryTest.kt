@@ -73,12 +73,12 @@ class LayoutDeliveryTest : StringSpec({
         val topicDesc = descriptionOf(c[EI.fieldLayouts], questionnaire, ST.topic).toString()
         topicDesc shouldContain "pulled from a shared fragment file"
         topicDesc shouldNotContain "@t("
-        // The block-level heading (issue #605) is a backend fragment pull too, delivered as resolved Markdown
-        // (a `## Questionnaire` header and a line under it), never the raw pull token.
-        val heading = headingOf(c[EI.fieldLayouts], questionnaire).toString()
-        heading shouldContain "## Questionnaire"
-        heading shouldContain "Choose a topic"
-        heading shouldNotContain "@t("
+        // The block's name and introduction (issues #605, #1534) are backend fragment pulls too, delivered resolved,
+        // never as the raw pull token.
+        headingOf(c[EI.fieldLayouts], questionnaire) shouldBe "Questionnaire"
+        val intro = c[EI.fieldLayouts].toJsonMapOrEmpty()[questionnaire].toJsonMapOrEmpty()[SL.description].toString()
+        intro shouldContain "Choose a topic"
+        intro shouldNotContain "@t("
         // "Absent, not empty": another type in the closure -- one with no layout -- gets no entry.
         val noLayoutType = defs.keys.first { it != questionnaire && it != expenseReport }
         c[EI.fieldLayouts].toJsonMapOrEmpty().containsKey(noLayoutType) shouldBe false

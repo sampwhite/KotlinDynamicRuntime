@@ -43,6 +43,12 @@ class TraitChoiceView(
     val narrowingConfig: String? = null,
     /** Why the editor cannot edit the client's alteration of it; null when it can. */
     val narrowingNotEditable: String? = null,
+    /** Its name as the client's forms show it (issues #1520, #1534); null when the catalog said none. */
+    val name: String? = null,
+    /** Whether the platform's name for it is a fragment pull, which a name given replaces with plain words. */
+    val namePulled: Boolean = false,
+    /** Whether the platform's introduction for it is a fragment pull, which one given replaces. */
+    val introPulled: Boolean = false,
 )
 
 /**
@@ -79,6 +85,9 @@ fun parseTraitCatalog(raw: Map<String, Any?>): TraitCatalogView = TraitCatalogVi
             narrowing = it[CIT.narrowing]?.toJsonMapOrEmpty()?.let(::traitNarrowingFromInfo),
             narrowingConfig = it[CIT.narrowingConfig].toOptStr(),
             narrowingNotEditable = it[CIT.narrowingNotEditable].toOptStr(),
+            name = it[CIT.label].toOptStr(),
+            namePulled = it[CIT.namePulled] == true,
+            introPulled = it[CIT.introPulled] == true,
         )
     },
     defs = raw[SCH.dDefs].toJsonMapOrEmpty(),

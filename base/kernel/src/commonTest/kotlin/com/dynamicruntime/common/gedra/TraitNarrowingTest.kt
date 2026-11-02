@@ -71,6 +71,34 @@ class TraitNarrowingTest {
     }
 
     @Test
+    fun aNameAndAnIntroductionAreTheLayoutsLabelAndDescriptionAndTravelWithTheRest() {
+        val named = assertNotNull(TraitNarrowing("kdr:survey", name = "Questionnaire", introduction = "Tell us.").toAlteration(base))
+        assertEquals(mapOf(SL.label to "Questionnaire", SL.description to "Tell us."), named[SCH.layout])
+        assertEquals(emptyList(), narrowingProblems(typeName, base, named))
+        // An empty introduction is one of the client's own: it shows none, over the platform's.
+        assertEquals(mapOf(SL.description to ""), TraitNarrowing("kdr:survey", introduction = "").toAlteration(base)!![SCH.layout])
+        // Read back, and kept by a narrowing saved beside them; each cleared on its own.
+        val stored = mapOf(SCH.layout to mapOf(SL.label to "Questionnaire", SL.description to "Ours."))
+        val read = assertNotNull(traitNarrowingOf("kdr:survey", base, stored).narrowing)
+        assertEquals("Questionnaire" to "Ours.", read.name to read.introduction)
+        val hidingNotes = TraitNarrowing(read.traitId, setOf("notes"), read.required, read.choices, read.name, read.introduction)
+        val hiding = assertNotNull(hidingNotes.toAlteration(base, stored))
+        assertEquals("Questionnaire" to "Ours.", hiding[SCH.layout].toJsonMapOrEmpty().let { it[SL.label] to it[SL.description] })
+        val unnamed = assertNotNull(TraitNarrowing("kdr:survey", introduction = "Ours.").toAlteration(base, stored))
+        assertEquals(mapOf(SL.description to "Ours."), unnamed[SCH.layout])
+        assertNull(TraitNarrowing("kdr:survey").toAlteration(base, stored))
+        // A name that is a template, or an introduction that is a fragment pull, was written by hand.
+        assertNull(traitNarrowingOf("kdr:survey", base, mapOf(SCH.layout to mapOf(SL.label to """%{@t("x.y")}"""))).narrowing)
+        assertNull(traitNarrowingOf("kdr:survey", base, mapOf(SCH.layout to mapOf(SL.description to """%{@t("x.y")}"""))).narrowing)
+        // A name is one line of plain words; an introduction is copy written here.
+        assertTrue(traitNarrowingProblems(TraitNarrowing("t", name = "A\nB"), base).single().contains("one line"))
+        assertTrue(traitNarrowingProblems(TraitNarrowing("t", name = $$"A ${b}"), base).single().contains("template"))
+        assertTrue(traitNarrowingProblems(TraitNarrowing("t", introduction = """%{@t("x.y")}"""), base).single().contains("pull"))
+        val info = traitNarrowingFromInfo(TraitNarrowing("t", name = "Questionnaire", introduction = "Tell us.").toInfo())
+        assertEquals("Questionnaire" to "Tell us.", info.name to info.introduction)
+    }
+
+    @Test
     fun anEmptyNarrowingIsNoAlteration() {
         assertNull(TraitNarrowing("kdr:survey").toAlteration(base))
         // What a stored alteration says beyond the narrowing -- a field's copy -- survives the narrowing being emptied.

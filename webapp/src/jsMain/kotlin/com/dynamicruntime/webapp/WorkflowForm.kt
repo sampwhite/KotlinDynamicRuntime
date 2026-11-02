@@ -29,6 +29,7 @@ import react.dom.html.ReactHTML.li
 import react.useEffect
 import react.useState
 import web.cssom.ClassName
+import com.dynamicruntime.common.util.escapeMarkdown
 import com.dynamicruntime.common.util.humanizeFieldName
 
 private val wfFormScope = MainScope()
@@ -559,8 +560,21 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
                 designFramed(designSession, DesignTarget.Trait(trait), trait.traitId) {
                 div {
                     className = ClassName("wf-trait")
-                    trait.fieldLayout?.label?.let { Markdown { source = it; inlineUi = true; linkResolver = copyLinks } }
-                        ?: h2 { +traitName(trait) }
+                    // Its name as the section's heading, and its introduction under it as a muted caption (issue #1534):
+                    // the layout's `label` -- inline Markdown, one line -- else the trait's name by the rule, then its
+                    // `description`. One block, so the caption sits directly under the heading (issue #1327's look).
+                    val label = trait.fieldLayout?.label
+                    val intro = trait.fieldLayout?.description?.takeIf { it.isNotBlank() }
+                    if (label == null && intro == null) {
+                        h2 { +traitName(trait) }
+                    } else {
+                        val heading = label?.trimStart('#')?.trim() ?: traitName(trait).escapeMarkdown()
+                        Markdown {
+                            source = "## $heading" + (intro?.let { "\n\n$it" } ?: "")
+                            inlineUi = true
+                            linkResolver = copyLinks
+                        }
+                    }
                     // Locked for this caller (issue #857): shown as stored, and said why -- but only on a task they
                     // could otherwise save. On the locking workflow's own task the lock exempts exactly that task's
                     // savers, so the step is already read-only for them and said to be someone else's above.
@@ -883,8 +897,8 @@ fun workflowNote(wf: WorkflowView): String? = when {
 }
 
 /**
- * A trait's name (issue #1520), by the rule every page names a trait with: its layout heading's first line, its title,
- * else its id humanized. A section with a layout heading shows the whole heading instead; this is its fallback.
+ * A trait's name (issue #1520), by the rule every page names a trait with: its layout `label`, its title, else its id
+ * humanized. A section with a layout `label` shows it as the heading instead, Markdown and all; this is its fallback.
  */
 private fun traitName(trait: WfTraitView): String = traitNameOf(trait.traitId, trait.fieldLayout?.label, trait.type.title)
 

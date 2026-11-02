@@ -362,8 +362,16 @@ field made required, a choice removed) is refused with the impact report, in the
 the picker's.
 
 **Narrowing and extending a global trait** (issue #1119; `TraitNarrowEditor.kt`, its pure half in `TraitNarrower.kt`,
-covered by `TraitNarrowerTest`). Each global trait's row offers **Narrow…** (**Narrowed…** once the client has one), or
-says it was altered by hand. The narrowing editor lists the trait's fields (`narrowFieldRows`, labeled from the
+covered by `TraitNarrowerTest`). Each global trait's row shows its name as the client's forms show it (the catalog's
+`CIT.label`, by #1520's rule in the client's schema), its id under it, and offers **Adapt…** (**Adapted…** once the client
+has one), or says it was altered by hand. The editor (**Adapt**, issue #1534) starts with **Name** and **Introduction**:
+its data type's layout `label` (one line) and `description` (Markdown, shown above its fields on workflow forms),
+written into the same alteration as the narrowing (`TraitNarrowing.name`, `.introduction`). Typing the platform's, or
+nothing for a name, keeps following the platform's (`withName`, `withIntroduction`); an empty introduction over the
+platform's shows none. Where the platform's is a fragment pull (`CIT.namePulled`, `CIT.introPulled`) the editor says
+one given replaces it, and a stored name that is a template or introduction that is a pull is not the editor's
+(`traitNarrowingOf` refuses it). The preview's heading says the name, and the introduction is under it, since the form
+draws only the fields. Then the editor lists the trait's fields (`narrowFieldRows`, labeled from the
 catalog's resolved `layouts`) with **Shown**, **Required**, and **Choices kept**, offering only moves that narrow: hiding
 is the layout's -- an authoritative field list, the default for every workflow, the data unchanged -- and a field the
 data requires cannot be hidden (`hideLockedReason`); requiring and keeping fewer choices change the data

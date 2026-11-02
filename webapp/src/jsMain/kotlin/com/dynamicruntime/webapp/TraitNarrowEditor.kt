@@ -49,9 +49,11 @@ external interface TraitNarrowEditorProps : Props {
 }
 
 /**
- * Narrowing a global trait for a client (issue #1119): a row per field of the trait, with **Shown** -- hiding a field
- * from the client's forms, in the layout, while its data still accepts it -- **Required**, in the data, and for a field
- * with choices the ones the client keeps. Only moves that narrow are offered: a field the data requires cannot be
+ * Adapting a global trait for a client (issues #1119, #1534): its **Name** -- the layout `label`, which every page names
+ * the trait by -- and **Introduction** -- the layout `description`, shown above its fields on workflow forms -- then a
+ * row per field, with **Shown** -- hiding a field from the client's forms, in the
+ * layout, while its data still accepts it -- **Required**, in the data, and for a field with choices the ones the
+ * client keeps. Only moves that narrow are offered: a field the data requires cannot be
  * hidden, nor one the trait requires made optional ([hideLockedReason], [requireLockedReason]). A **live preview** draws
  * the trait as the client would take it ([narrowPreviewDefs]), the kernel's alteration over the platform's type.
  *
@@ -70,6 +72,12 @@ val TraitNarrowEditor = FC<TraitNarrowEditorProps> { props ->
     // What a save refused over its impact was sending, so Save anyway resends that and not the draft.
     var pending by useState<TraitNarrowing?>(null)
     val rows = narrowFieldRows(props.base)
+    val platformName = platformTraitName(props.trait.traitId, props.base)
+    val platformIntro = platformTraitIntro(props.base)
+    // What the two text boxes hold, as typed: the draft keeps them trimmed, which shown back would drop a space typed at
+    // the end before the next word arrived.
+    var nameText by useState(baseline.name ?: platformName)
+    var introText by useState(baseline.introduction ?: platformIntro)
     val problems = narrowProblems(draft, props.base)
     val changed = narrowingChanged(draft, baseline)
     val preview = useMemo(draft.toInfo().toString()) {
@@ -103,13 +111,65 @@ val TraitNarrowEditor = FC<TraitNarrowEditorProps> { props ->
     div {
         className = ClassName("trait-designer")
         h4 {
-            +"Narrow "
+            +"Adapt "
             code { +props.trait.traitId }
         }
         p {
             className = ClassName("subtitle")
-            +("How this client takes the trait. Hiding a field changes only its forms, which leave it out; requiring a " +
-                "field or keeping fewer choices changes what its data accepts.")
+            +("How this client takes the trait. Its name, its introduction, and hiding a field change only its forms; " +
+                "requiring a field or keeping fewer choices changes what its data accepts.")
+        }
+        choiceRow("Name") {
+            Input {
+                value = nameText
+                placeholder = platformName
+                disabled = busy
+                style = js("({ maxWidth: 320 })")
+                onChange = { e ->
+                    // The state read back in this handler is still this render's, so the typed text is passed on directly.
+                    val typed = e.target.value as String
+                    nameText = typed
+                    draft = draft.withName(typed, platformName)
+                }
+            }
+        }
+        p {
+            className = ClassName("type-hint")
+            +(if (draft.name == null) "As the platform names it. " else "The platform calls it “$platformName”. ")
+            +"Use this when this client's people know the trait by another name: forms, listings, and messages show it."
+        }
+        if (props.trait.namePulled && draft.name != null) {
+            p {
+                className = ClassName("type-hint")
+                +("The platform's name comes from shared copy, which may be translated or changed for every client; a name " +
+                    "given here replaces it with these words.")
+            }
+        }
+        choiceRow("Introduction") {
+            TextArea {
+                value = introText
+                placeholder = "No introduction"
+                disabled = busy
+                asDynamic()["autoSize"] = js("({ minRows: 2, maxRows: 8 })")
+                style = js("({ maxWidth: 560 })")
+                onChange = { e ->
+                    val typed = e.target.value as String
+                    introText = typed
+                    draft = draft.withIntroduction(typed, platformIntro)
+                }
+            }
+        }
+        p {
+            className = ClassName("type-hint")
+            +(if (draft.introduction == null) "As the platform introduces it. " else "This client's own. ")
+            +("Use this when its people need a word before they fill the trait in: shown above its fields on workflow " +
+                "forms, in Markdown. Empty shows none.")
+        }
+        if (props.trait.introPulled && draft.introduction != null) {
+            p {
+                className = ClassName("type-hint")
+                +"The platform's introduction comes from shared copy; one given here replaces it."
+            }
         }
         if (!props.included) {
             p {
@@ -196,7 +256,11 @@ val TraitNarrowEditor = FC<TraitNarrowEditorProps> { props ->
                 }
             }
         }
-        h4 { +"Preview" }
+        // The form draws the trait's fields, not its name, so the heading says what the trait will be called.
+        h4 { +"Preview: ${draft.name ?: platformName}" }
+        (draft.introduction ?: platformIntro).takeIf { it.isNotBlank() }?.let { intro ->
+            Markdown { source = intro; inlineUi = true }
+        }
         preview?.let { (type, layouts) ->
             div {
                 className = ClassName("trait-preview")
@@ -225,7 +289,8 @@ val TraitNarrowEditor = FC<TraitNarrowEditorProps> { props ->
             if (props.trait.narrowingConfig != null) {
                 Button {
                     disabled = busy
-                    asDynamic()["title"] = "Take the trait as the platform declares it, with nothing hidden, required, or restricted here."
+                    asDynamic()["title"] =
+                        "Take the trait as the platform declares it: its name, with nothing hidden, required, or restricted here."
                     onClick = { save(TraitNarrowing(props.trait.traitId), acknowledge = false) }
                     +"As the trait is declared"
                 }

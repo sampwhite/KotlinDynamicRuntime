@@ -83,6 +83,15 @@ object SF {
     const val siteVisitFlowFile = "site-visit-flow.svg"
 
     /**
+     * The questionnaire's and the expense report's icons (issue #1534): one text line high, floated at the left of each
+     * trait's introduction on a workflow form, as `![...](img:sample:questionnaireIcon){.float-left .icon width=20}`.
+     */
+    const val questionnaireIcon = "sample:questionnaireIcon"
+    const val questionnaireIconFile = "questionnaire-icon.svg"
+    const val expenseIcon = "sample:expenseIcon"
+    const val expenseIconFile = "expense-icon.svg"
+
+    /**
      * Acme's web resources package (issue #1301): its favicon and brand mark, made for it in October 2026 -- a bold
      * geometric "A" that is also a peak. Read from `web-resources/acme/` on the classpath, and named by acme's
      * definition, so a fresh deployment shows them with nothing uploaded.

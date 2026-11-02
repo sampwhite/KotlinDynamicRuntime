@@ -1,5 +1,6 @@
 package com.dynamicruntime.common.gedra
 
+
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.endpoint.HttpMethod
 import com.dynamicruntime.common.endpoint.SchModuleBuilder
@@ -56,7 +57,11 @@ object ClientTraitsEdit {
         val overlaid = schema.overlaidTypesFor(client)
         val seeds = LinkedHashSet<String>()
         val narrowings = ClientTraitNarrowEdit.narrowings(cxt, owner)
-        val traits = schema.gedraTraitsFor(client).filter { schema.isGlobalTrait(it.traitId) }.map { trait ->
+        // Each trait's name as the client's people see it (issue #1534): for a client with a sandbox, as the sandbox runs
+        // it, drafts included.
+        val globalTraits = schema.gedraTraitsFor(client).filter { schema.isGlobalTrait(it.traitId) }
+        val names = formTraitNames(cxt, schema.storeFor(ClientStoredEdit.editedView(cxt, client)), globalTraits.map { it.traitId })
+        val traits = globalTraits.map { trait ->
             // The data's `$ref`, as the workflow view reads it: always one, the author's own or the generated one.
             val dataRef = trait.dataSchema[SCH.dRef].toOptStr()
             dataRef?.let(::refName)?.let { seeds.add(it) }
@@ -69,6 +74,15 @@ object ClientTraitsEdit {
                 put(CIT.customized, trait.typeName in overlaid)
                 // The client's narrowing of it (issue #1119), or why it cannot be edited here.
                 narrowings[trait.traitId]?.let { putAll(it) }
+                // Its name as the client's forms show it, and whether the platform's name or introduction is a fragment
+                // pull, which the client's own would replace (#1534).
+                dataRef?.let(::refName)?.let { typeName ->
+                    names[trait.traitId]?.let { put(CIT.label, it) }
+                    schema.schemaStore.layouts[typeName]?.let { layout ->
+                        if (layout.label?.contains("%{") == true) put(CIT.namePulled, true)
+                        if (layout.description?.contains("%{") == true) put(CIT.introPulled, true)
+                    }
+                }
             }
         }
         val defs = collectDefClosure(seeds, served)
@@ -168,6 +182,13 @@ internal fun SchModuleBuilder.clientTraitsEndpoints() {
         }
         property(CIT.narrowingConfig, "The stored configuration holding the client's narrowing of it, when one does.")
         property(CIT.narrowingNotEditable, "Why the editor cannot edit the client's alteration of it; absent when it can.")
+        property(CIT.label, "The trait's name as the client's forms show it (issue #1520), its rename included (issue #1534).")
+        property(CIT.namePulled, "Whether the platform's name for the trait is a fragment pull, which a name given replaces.") {
+            type = SCT.boolean
+        }
+        property(CIT.introPulled, "Whether the platform's introduction is a fragment pull, which one given replaces.") {
+            type = SCT.boolean
+        }
     }
 
     type(CIT.designTypeName) {
@@ -357,8 +378,14 @@ internal fun SchModuleBuilder.clientTraitsEndpoints() {
     type(CIT.narrowingTypeName) {
         type = SCT.kObject
         description = "A client's narrowing of a global trait (issue #1119): the fields its forms leave out, the fields " +
-            "its data requires beyond the trait's, and per field the global choices it keeps."
+            "its data requires beyond the trait's, per field the global choices it keeps, and the name and introduction it gives the trait."
         property(CIT.traitId, "The global trait.", required = true)
+        property(CIT.label, "The trait's name for the client (issue #1534), its layout label; absent keeps the platform's.")
+        property(
+            CIT.description,
+            "The trait's introduction for the client (issue #1534), its layout description: Markdown a workflow form shows " +
+                "above the trait's fields. Absent keeps the platform's; empty shows none.",
+        )
         property(CIT.hidden, "The fields the client's forms leave out; the data still accepts them.") {
             type = SCT.array
             items { type = SCT.string }

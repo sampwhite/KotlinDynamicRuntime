@@ -479,9 +479,13 @@ which is the layout's -- the trait's default field list for every workflow, with
 data requires cannot be hidden -- and requiring a field or keeping fewer of its choices, which are the data's. It is
 written as the client's alteration of the trait's data type, which the narrowing rules judge as they judge any; those
 rules judge an array's `items` the same way, so a field of several choices narrows as one of a single choice does. A
-narrowing does not include the trait. An extension is a trait of the client's own: a global trait plus the fields it
-adds (`g-extends`), the base's own fields kept as the base has them. Changes that affect stored data go through the
-impact report, and a sandbox's draft reports what publishing it would do to the live client.
+narrowing does not include the trait. The same editor renames a global trait for the client, and gives it an
+introduction (issue #1534): its data type's layout `label` -- one line, which every page names a trait by (issue #1520)
+-- and its `description`, shown above its fields on workflow forms, written into the same alteration: presentation the
+narrowing rules let a client change, as hiding a field is. Each left alone follows the platform's. An extension is a
+trait of the client's own: a global trait plus the fields it adds (`g-extends`), the base's own fields kept as the base
+has them. Changes that affect stored data go through the impact report, and a sandbox's draft reports what publishing
+it would do to the live client.
 
 The client can choose also to alter an existing trait by changing UI options and can
 only narrow, or can create a new trait by extension, or can define a completely new trait. However,

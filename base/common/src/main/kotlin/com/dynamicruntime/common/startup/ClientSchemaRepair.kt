@@ -306,6 +306,7 @@ fun layoutBackendBlockProblems(where: String, layout: SchLayout): List<Problem> 
         }
     }
     checkBackendBlocks("heading", SL.label, layout.label)
+    checkBackendBlocks("introduction", SL.description, layout.description)
     // The form-level strings (issue #641) are delivered through the same backend pass (issue #814).
     for ((key, text) in layout.strings) {
         checkBackendBlocks("string '$key'", "${SL.strings}.$key", text)

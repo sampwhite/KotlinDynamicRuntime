@@ -638,6 +638,11 @@ a:not([class]):hover { color: var(--accent-brighter); text-decoration: underline
 @media (max-width: 480px) {
     .md-float-left, .md-float-right { float: none; display: block; margin: 0 0 8px; }
 }
+/* An icon (issue #1534): a small image floated beside one line of copy, `{.float-left .icon width=20}`, the space of a
+   character from its words rather than a picture's 16px, and nudged to sit on the line. Two classes, so it outranks
+   the narrow-screen rule above: an icon stays beside its line at any width. */
+.md-float-left.md-icon { float: left; display: inline; margin: 3px 6px 0 0; }
+.md-float-right.md-icon { float: right; display: inline; margin: 3px 0 0 6px; }
 /* Readable measure at any width (issue #554): prose is capped at ~80 characters, on the paragraph rather than
    the container, so a table (#547) or a code block still gets the full column while a line of text does not
    run the width of a wide window. */
@@ -650,9 +655,10 @@ a:not([class]):hover { color: var(--accent-brighter); text-decoration: underline
 .markdown-inline-ui h1, .markdown-inline-ui h2, .markdown-inline-ui h3 { margin: 0 0 1px; font-size: var(--h3-size); }
 .markdown-inline-ui p { margin: 0; color: var(--text-muted); }
 /* A workflow form's labels head what they sit over (issue #1327), on the heading scale: the form's title is its
-   h1, a task is a section (the h2 step), and a trait is a section of its task (the h3 step). A label's first
-   line is that heading, whether the client wrote it as a Markdown heading or as a plain line; any line after it
-   stays a muted caption. A trait with no label is headed by an h2 (`traitHeading`), drawn at the same step as a
+   h1, a task is a section (the h2 step), and a trait is a section of its task (the h3 step). A label is that
+   heading, whether the client wrote it as a Markdown heading or as a plain line; a trait's layout description
+   (issue #1534) is drawn in the same block, a muted caption directly under it, as a field's description sits under
+   its label. A trait with no label or description is headed by an h2 (`traitHeading`), drawn at the same step as a
    label would be, so the traits of one form read alike. Descendant selectors, not child ones, so Design View's
    frame around a label changes nothing. The trait rule follows the task rule so that it wins, a trait's label
    being inside its task. */
@@ -909,6 +915,11 @@ input:where(:not([type=checkbox]):not([type=radio])) {
    Save takes the rhythm the raw editor's Save, a direct card child, already has (14). */
 .wf-task + .wf-task { margin-top: 28px; }
 .wf-trait > .markdown { margin: 28px 0 12px; }
+/* A hairline between a task's trait sections (issue #1534): the headings say what each section is, the line where one
+   ends. Not a panel -- a panel has its own save (issue #1477), and a task's one Save covers all its traits. The 28px
+   section gap is split around the line; nothing above the first trait, which the form's header heads. */
+.wf-trait + .wf-trait { border-top: 1px solid var(--border); margin-top: 20px; padding-top: 4px; }
+.wf-trait + .wf-trait > .markdown, .wf-trait + .wf-trait > h2 { margin-top: 16px; }
 .wf-task > .row { margin-top: 14px; }
 
 /* The workflow form's one header line (issue #719): the back link, the title beside it in slightly smaller

@@ -45,7 +45,11 @@ fun resolveDeliveredLayouts(cxt: KdrCxt, layouts: Map<String, Any?>): Map<String
                 }
             }
         }
-        val heading = (body[SL.label] as? String)?.let { if (MarkdownFragmentService.backendPassPrefix in it) pass("heading", it) else it }
+        // The block's name and introduction (issue #1534) are copy like the rest.
+        fun blockCopy(key: String, what: String) =
+            (body[key] as? String)?.let { if (MarkdownFragmentService.backendPassPrefix in it) pass(what, it) else it }
+        val heading = blockCopy(SL.label, "heading")
+        val introduction = blockCopy(SL.description, "introduction")
         val fields = body[SL.schemaFields].toJsonListOfMaps().map { field ->
             val resolved = LinkedHashMap<String, Any?>(field)
             for (copyKey in listOf(SL.label, SL.description, SL.hint)) {
@@ -67,6 +71,7 @@ fun resolveDeliveredLayouts(cxt: KdrCxt, layouts: Map<String, Any?>): Map<String
         buildMap {
             putAll(body)
             heading?.let { put(SL.label, it) }
+            introduction?.let { put(SL.description, it) }
             // A heading-only layout has no field list to write (issue #1070); written empty, it would not parse back
             // on the page, which refuses an empty list as it does at boot.
             if (fields.isNotEmpty()) put(SL.schemaFields, fields)
@@ -147,6 +152,7 @@ fun layoutPullProblems(
         }
     }
     check("heading", SL.label, layout.label)
+    check("introduction", SL.description, layout.description)
     for ((i, field) in layout.fields.withIndex()) {
         val at = "${SL.schemaFields}[$i]"
         check("${field.field}'s label", "$at.${SL.label}", field.label)

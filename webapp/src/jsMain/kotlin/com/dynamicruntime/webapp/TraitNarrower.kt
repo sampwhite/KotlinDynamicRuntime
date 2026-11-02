@@ -7,6 +7,7 @@ import com.dynamicruntime.common.gedra.IMP
 import com.dynamicruntime.common.gedra.TraitNarrowing
 import com.dynamicruntime.common.gedra.baseChoicesOf
 import com.dynamicruntime.common.gedra.traitNarrowingFromInfo
+import com.dynamicruntime.common.gedra.traitNameOf
 import com.dynamicruntime.common.gedra.traitNarrowingProblems
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SchLayout
@@ -19,7 +20,8 @@ import com.dynamicruntime.common.util.toOptStr
 
 /**
  * Narrowing a global trait on a client's page (issue #1119, `TraitNarrowEditor`): what the editor shows of the trait's
- * fields, which moves each allows and why not, the preview's schema, and the save. The narrowing and the alteration it
+ * fields, which moves each allows and why not, the name it gives the trait (issue #1534), the preview's schema, and the
+ * save. The narrowing and the alteration it
  * writes are the kernel's ([TraitNarrowing]), so the preview is exactly what the backend will write.
  *
  * Everything here is pure, and covered under `jsNodeTest`.
@@ -33,6 +35,13 @@ class TraitBaseView(val typeName: String, val body: Map<String, Any?>, val layou
     /** The fields the type requires. */
     val required: Set<String> get() = body[SCH.required].toJsonListOfStrings().toSet()
 }
+
+/**
+ * What the platform calls the trait [traitId] whose data type is [base] (issue #1534), by the rule every page names a
+ * trait by ([traitNameOf]): its layout `label`, its title, its id in words.
+ */
+fun platformTraitName(traitId: String, base: TraitBaseView): String =
+    traitNameOf(traitId, base.layout?.label, base.body[SCH.title].toOptStr())
 
 /** [trait]'s data type from [catalog], or null when it has none the catalog serves. */
 fun traitBaseOf(catalog: TraitCatalogView, trait: TraitChoiceView): TraitBaseView? {
@@ -64,13 +73,21 @@ fun narrowFieldRows(base: TraitBaseView): List<NarrowFieldRow> =
         )
     }
 
+/** This narrowing with what is given changed, and the rest kept: every move goes through it, so none drops another's. */
+private fun TraitNarrowing.changed(
+    hidden: Set<String> = this.hidden,
+    required: Set<String> = this.required,
+    choices: Map<String, List<String>> = this.choices,
+    name: String? = this.name,
+    introduction: String? = this.introduction,
+) = TraitNarrowing(traitId, hidden, required, choices, name, introduction)
+
 /** This narrowing with [field] hidden from forms, or shown. */
-fun TraitNarrowing.withHidden(field: String, hide: Boolean) =
-    TraitNarrowing(traitId, if (hide) hidden + field else hidden - field, required, choices)
+fun TraitNarrowing.withHidden(field: String, hide: Boolean) = changed(hidden = if (hide) hidden + field else hidden - field)
 
 /** This narrowing with [field] required in the data, or not. */
 fun TraitNarrowing.withRequired(field: String, require: Boolean) =
-    TraitNarrowing(traitId, hidden, if (require) required + field else required - field, choices)
+    changed(required = if (require) required + field else required - field)
 
 /**
  * This narrowing keeping [kept] of [field]'s choices, of its [offered] ones: all of them, in any order, is no
@@ -79,8 +96,27 @@ fun TraitNarrowing.withRequired(field: String, require: Boolean) =
 fun TraitNarrowing.withChoices(field: String, kept: List<String>, offered: List<String>): TraitNarrowing {
     val inOrder = offered.filter { it in kept }
     val restricted = if (inOrder.size == offered.size) choices - field else choices + (field to inOrder)
-    return TraitNarrowing(traitId, hidden, required, restricted)
+    return changed(choices = restricted)
 }
+
+/**
+ * This narrowing naming the trait [typed] (issue #1534): trimmed, and no name of its own when it is blank or the
+ * [platformName] -- a client that names a trait as the platform does keeps following the platform's name.
+ */
+fun TraitNarrowing.withName(typed: String, platformName: String): TraitNarrowing {
+    return changed(name = typed.trim().takeIf { it.isNotEmpty() && it != platformName })
+}
+
+/** The introduction the platform gives the trait whose data type is [base] (issue #1534): its layout's description. */
+fun platformTraitIntro(base: TraitBaseView): String = base.layout?.description.orEmpty()
+
+/**
+ * This narrowing introducing the trait with [typed] (issue #1534): none of its own when it is the [platformIntro] --
+ * so a client that keeps the platform's keeps following it -- and an empty one, showing nothing, when the platform
+ * has one and [typed] is blank.
+ */
+fun TraitNarrowing.withIntroduction(typed: String, platformIntro: String): TraitNarrowing =
+    changed(introduction = typed.trim().takeUnless { it == platformIntro.trim() })
 
 /** Why [row]'s field cannot be hidden, or null when it can: a form must show a field the data requires. */
 fun hideLockedReason(row: NarrowFieldRow, narrowing: TraitNarrowing): String? = when {

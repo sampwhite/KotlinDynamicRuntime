@@ -11,9 +11,9 @@ import com.dynamicruntime.common.util.humanizeFieldName
  * A trait's name, wherever one is shown to a person (issue #1520): the forms listing's Contains column, a form's trait
  * choice and entry headers, a lock's refusal, a section's fallback heading, Design View. The first of:
  *
- *  1. the name line of its data type's layout heading ([headingName] of `g-layout` `label`) -- the copy written for
- *     people, and the one that gets changed: by the trait designer, by Design View, and by a client's alteration of a
- *     global trait's layout;
+ *  1. its data type's layout name ([headingName] of `g-layout` `label`, one line since issue #1534; the copy under
+ *     the heading is the layout's `description`) -- the copy written for people, and the one that gets changed: by
+ *     the trait designer, by Design View, and by a client's alteration of a global trait's layout;
  *  2. its data type's `title`, the schema's own name, for a type with no heading;
  *  3. its id, humanized -- without a global trait's root, so `kdr:name` is "Name".
  *
@@ -49,9 +49,10 @@ fun headingName(heading: String): String =
     headingLine(heading).takeUnless { $$"${" in it || "%{" in it }.orEmpty()
 
 /**
- * A layout heading as one line of plain words: its first non-blank line, with its Markdown heading marks and its inline
- * Markdown taken off -- `Site visit` from `## **Site** visit` and the copy under it. A heading's first line is its
- * type's name, by convention; the rest is copy for the form, which only the section heading shows.
+ * A layout name ([SchLayout.label]) as one line of plain words, its Markdown heading marks and inline Markdown taken
+ * off -- `Site visit` from `## **Site** visit`. A name is one line (issue #1534), the copy under it being the layout's
+ * description; the first non-blank line is taken all the same, since a fragment pull may resolve to more, and the
+ * boot cannot see what a pull resolves to.
  */
 fun headingLine(heading: String): String =
     plainInline(heading.lineSequence().map { it.trim() }.firstOrNull { it.isNotEmpty() }?.trimStart('#')?.trim().orEmpty())

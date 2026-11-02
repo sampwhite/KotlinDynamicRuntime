@@ -62,10 +62,18 @@ class TraitNamesTest {
                 "t.PlainData" to mapOf(SCH.type to SCT.kObject),
             ),
         )
-        val layouts = mapOf("t.VisitData" to parseSchLayout("Type 't.VisitData'", mapOf(SL.label to "## Site Visit Data\nCopy.")))
+        val layouts = mapOf(
+            "t.VisitData" to parseSchLayout("Type 't.VisitData'", mapOf(SL.label to "## Site Visit Data", SL.description to "Copy.")),
+        )
         assertEquals("Site Visit Data", traitDisplayName("siteVisit", types.getValue("t.VisitData"), layouts))
         assertEquals("Visit (title)", traitDisplayName("siteVisit", types.getValue("t.VisitData"), emptyMap()))
         assertEquals("Plain trait", traitDisplayName("plainTrait", types.getValue("t.PlainData"), layouts))
         assertEquals("Unknown here", traitDisplayName("unknownHere", null as SchType?, layouts))
+    }
+
+    @Test
+    fun aRootedIdIsNamedByItsLocalPart() {
+        assertEquals("Name", traitNameOf("kdr:name", null, null))
+        assertEquals("Site visit", traitNameOf("sample:siteVisit", " ", ""))
     }
 }

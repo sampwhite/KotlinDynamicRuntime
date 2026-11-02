@@ -178,7 +178,10 @@ fun sampleTraits(cxt: KdrCxt): GedraConfig = gedraConfig(cxt, ST.sampleTraits, S
         // A layout `hint` (issue #587) over the field's bounds context: `${'$'}{min}` / `${'$'}{max}` resolve to this
         // field's own minimum/maximum on the frontend, replacing the derived "range: 2000 to 2100". The boot
         // check confirms the placeholders name bounds the field actually declares.
-        layout {
+        // Its introduction (issue #1534): a one-line icon floated at its left, the copy beside it.
+        layout(
+            description = "![Expense report](img:${SF.expenseIcon}){.float-left .icon width=20}What you spent in one year, item by item.",
+        ) {
             field(ST.year, label = "Reporting year", hint = $$"Any year from ${min} to ${max}.")
         }
     }
@@ -207,10 +210,14 @@ fun sampleTraits(cxt: KdrCxt): GedraConfig = gedraConfig(cxt, ST.sampleTraits, S
         // The type's `g-layout` (issue #585): friendly copy for the form, kept out of the served schema and
         // delivered beside it. Names every field, `notes` included, so acme -- whose overlay drops `notes` --
         // inherits this layout **pruned** to the three properties it kept. The friendly form renders it.
-        layout(fragmentFileId = SF.formHelp, label = "%{@t(\"questionnaire.heading\")}") {
-            // The block `label` is the type's **heading** override (issue #605), a backend fragment pull that
-            // resolves to Markdown at delivery ("## Questionnaire" + a line under it); the workflow form renders
-            // it as Markdown in place of the schema title, leaving the served schema's title untouched.
+        layout(
+            fragmentFileId = SF.formHelp,
+            label = "%{@t(\"questionnaire.heading\")}",
+            description = "%{@t(\"questionnaire.intro\")}",
+        ) {
+            // The block `label` is the type's **name** (issues #605, #1534), and its `description` the introduction
+            // under it: backend fragment pulls, resolved at delivery. The workflow form shows the name as the section's
+            // heading, in place of the schema title (the served schema's title untouched), and the introduction under it.
             // `topic`'s description is a backend fragment pull too: `%{@t("questionnaire.topicHelp")}` resolves
             // against SF.formHelp server-side at delivery, so only the finished copy reaches the page.
             // The error override (issue #588): the form's own wording for an invalid topic, resolved on the
