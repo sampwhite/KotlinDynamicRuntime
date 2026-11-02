@@ -8,7 +8,6 @@ import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.DSV
 import com.dynamicruntime.common.gedra.DesignView
 import com.dynamicruntime.common.gedra.GE
-import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.GedraTrait
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.collectDefClosure
