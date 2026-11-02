@@ -84,33 +84,27 @@ object ReportEdit {
         val scope = ReportService.get(cxt).scopeFor(cxt, view)
         val store = SchemaService.get(cxt).storeFor(view)
         val groups = buildList {
-            add(group(ReportPathGroupKind.form, null, "The form", null, formPaths(scope)))
+            add(group(ReportPathGroupKind.form, null, "The form", formPaths(scope)))
             for (trait in scope.formTraits.values) {
                 val paths = traitPaths(scope, store, trait)
-                if (paths.isNotEmpty()) add(group(ReportPathGroupKind.trait, trait.traitId, traitLabel(scope, trait), null, paths))
+                if (paths.isNotEmpty()) add(group(ReportPathGroupKind.trait, trait.traitId, traitLabel(scope, trait), paths))
             }
             for (wf in scope.workflows.values.filter { it.entry == WfEntry.normal }) {
                 val paths = workflowPaths(scope, wf)
                 val label = plainLabel(wf.label, wf.workflowId)
-                if (paths.isNotEmpty()) add(group(ReportPathGroupKind.workflow, wf.workflowId, label, null, paths))
+                if (paths.isNotEmpty()) add(group(ReportPathGroupKind.workflow, wf.workflowId, label, paths))
             }
         }
         return mapOf(RRUN.client to client, RCR.groups to groups)
     }
 
-    private fun group(
-        source: ReportPathGroupKind,
-        sourceId: String?,
-        label: String,
-        description: String?,
-        paths: List<Map<String, Any?>>,
-    ): Map<String, Any?> = buildMap {
-        put(RCR.source, source.name)
-        sourceId?.let { put(RCR.sourceId, it) }
-        put(RRUN.label, label)
-        description?.let { put(RRUN.description, it) }
-        put(RCR.paths, paths)
-    }
+    private fun group(source: ReportPathGroupKind, sourceId: String?, label: String, paths: List<Map<String, Any?>>): Map<String, Any?> =
+        buildMap {
+            put(RCR.source, source.name)
+            sourceId?.let { put(RCR.sourceId, it) }
+            put(RRUN.label, label)
+            put(RCR.paths, paths)
+        }
 
     /** [text] as a path the page may offer, labeled [label] -- or nothing, when it does not bind in [scope]. */
     private fun offered(

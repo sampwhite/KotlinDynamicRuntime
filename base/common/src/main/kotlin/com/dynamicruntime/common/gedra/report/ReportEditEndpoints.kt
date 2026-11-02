@@ -54,7 +54,6 @@ internal fun SchModuleBuilder.reportEditEndpoints() {
         property(RCR.source, "Where the values come from.", required = true) { options(ReportPathGroupKind.entries) }
         property(RCR.sourceId, "The trait or workflow; absent for the form's own facts.")
         property(RRUN.label, "What a person calls the source.", required = true)
-        property(RRUN.description, "What the source is.")
         property(RCR.paths, "Its paths, in the order offered.", required = true) {
             type = SCT.array
             items { ref(RCR.pathTypeName) }
