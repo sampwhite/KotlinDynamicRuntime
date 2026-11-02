@@ -263,6 +263,10 @@ class ReportsPageTest {
         assertTrue(vocabularyChoices("meta.createdAt", null).isEmpty())
         assertTrue(vocabularyChoices("workflow.review.approval[signoff].approved", null).isEmpty())
         assertTrue(vocabularyChoices("meta.formStatus", ReportKind.number.name).isEmpty())
+        // Read as the backend parses it: a path that does not parse has none, and a trait field named like an attribute
+        // is not one.
+        assertTrue(vocabularyChoices("meta.", null).isEmpty())
+        assertTrue(vocabularyChoices("form.review.category", null).isEmpty())
         // The run's summary gives a status column its labels with no choices on the wire.
         val status = parseReportColumns(listOf(column("status", ReportKind.string) + (RRUN.path to "meta.formStatus"))).single()
         assertEquals("Valid", reportCellText("valid", status.kind, choices = status.choices))

@@ -269,7 +269,7 @@ fun workflowPreview(base: WfDef, slots: WfTemplateSlots): WfDef? =
 fun traitChoices(catalog: WorkflowCatalogView, task: WfTaskSlot): List<Pair<String, String>> =
     (catalog.traits.map { it.traitId } + task.traits.map { it.traitId }).distinct().map { id ->
         val trait = catalog.traits.firstOrNull { it.traitId == id }
-        val name = catalogTraitName(catalog, id)
+        val name = trait?.name ?: id
         (trait?.description?.let { "$name — $it" } ?: name) to id
     }
 

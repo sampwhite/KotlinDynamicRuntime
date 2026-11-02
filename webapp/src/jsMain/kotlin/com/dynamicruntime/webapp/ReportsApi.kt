@@ -6,13 +6,15 @@ import com.dynamicruntime.common.gedra.GCI
 import com.dynamicruntime.common.gedra.GedraConfigOrigin
 import com.dynamicruntime.common.gedra.choiceLabel
 import com.dynamicruntime.common.gedra.report.RMETA
-import com.dynamicruntime.common.gedra.report.RPT
 import com.dynamicruntime.common.gedra.report.RRUN
 import com.dynamicruntime.common.gedra.report.RWF
 import com.dynamicruntime.common.gedra.report.ReportCombine
 import com.dynamicruntime.common.gedra.report.ReportKind
 import com.dynamicruntime.common.gedra.report.ReportMode
-import com.dynamicruntime.common.gedra.report.ReportSource
+import com.dynamicruntime.common.gedra.report.MetaPath
+import com.dynamicruntime.common.gedra.report.WorkflowPath
+import com.dynamicruntime.common.gedra.report.parseReportPath
+import com.dynamicruntime.common.util.Parsed
 import com.dynamicruntime.common.gedra.workflow.WfColumnCategory
 import com.dynamicruntime.common.home.HMENU
 import com.dynamicruntime.common.schema.SchOption
@@ -103,15 +105,16 @@ fun parseReportColumns(raw: Any?): List<ReportColumnInfo> = raw.toJsonListOfMaps
  * The labels of a report path that ends in one of the vocabulary's closed sets of values (issue #1438), as the forms
  * pages say them: a form's status ("Valid", the listing's chip) and a workflow's category ("Engaged", the Workflows
  * page's heading). The backend names a trait field's choices; these are the app's words, so the page supplies them.
- * Empty for any other path, and for one a column reads as something other than text.
+ * Empty for any other path, and for one a column reads as something other than text. The path is parsed as the
+ * backend binds it, so every spelling of one path is the same path.
  */
 fun vocabularyChoices(path: String, kind: String?): List<SchOption> {
     if (kind != null && kind != ReportKind.string.name) return emptyList()
-    val segments = path.split(RPT.sep)
+    val parsed = (parseReportPath(path) as? Parsed.Ok)?.value ?: return emptyList()
     return when {
-        segments.size == 2 && segments[0] == ReportSource.meta.name && segments[1] in setOf(RMETA.formStatus, RMETA.surveyStatus) ->
+        parsed is MetaPath && parsed.attrName in setOf(RMETA.formStatus, RMETA.surveyStatus) ->
             SurveyStatus.entries.map { SchOption(it.wire, it.label) }
-        segments.size == 3 && segments[0] == ReportSource.workflow.name && segments[2] == RWF.category ->
+        parsed is WorkflowPath && parsed.taskId == null && parsed.attrName == RWF.category ->
             WfColumnCategory.entries.map { SchOption(it.name, workflowStateTitle(it)) }
         else -> emptyList()
     }

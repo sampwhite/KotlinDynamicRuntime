@@ -218,8 +218,8 @@ template**, and choose **Use…** on **Collect information**:
 | Step | The book |
 | Collects | Book suggestion |
 
-Remove **Name** from **Collects**: it is the form's name, which the template collects to start with. Then choose
-**Book suggestion**. Leave **Seen by** as it is, and choose **Make the workflow**.
+**Collects** lists each trait by its name and what it is for. Remove **Name**: it is the form's name, which the
+template collects to start with. Then choose **Book suggestion**. Leave **Seen by** as it is, and choose **Make the workflow**.
 
 ### Try it in the sandbox
 

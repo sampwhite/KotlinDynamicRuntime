@@ -38,11 +38,10 @@ trait ids.
 
 An `allClients` admin's forms listing starts as the **cross-client view**: every client's rows, a Client ID column
 (headed as an id, since that is what it shows and sorts by, issue #1438), and the admin's *own* client's columns and
-filters. Choosing a client in the `Client:` selector changes the
-**whole surface**, not just the rows: `loadForClient` re-fetches the catalog with `client=X`, so the list,
-get, patch, delete and values endpoints become X's `/gedra/X/…` copies, the columns and filter fields come from
-X's `formDocs`, and `client=X` still rides as the row filter (a client path alone does not narrow an
-unrestricted scope). The rules that follow from that:
+filters. Choosing a client in the `Client:` selector changes the **whole surface**, not just the rows: `loadForClient`
+re-fetches the catalog with `client=X`, so the list, get, patch, delete and values endpoints become X's `/gedra/X/…`
+copies, the columns and filter fields come from X's `formDocs`, and `client=X` still rides as the row filter (a client
+path alone does not narrow an unrestricted scope). The rules that follow from that:
 
 - **A form's client comes from its gedra id, never from the selector.** The raw editor and the survey page read
   it with `formClientOf(id)` and ask the backend for the endpoint on *that* client's surface
