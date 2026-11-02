@@ -79,7 +79,7 @@ object AssistantTurns {
             )
         }
         // A message the page sends again -- a retry after a lost answer -- is the turn it already started.
-        AssistantStore.turnForMessage(cxt, userId, clientMessageId)?.let { return sameMessage(it, conversationId) }
+        AssistantStore.turnForMessage(cxt, userId, clientMessageId)?.let { return sameMessage(it, conversationId, message) }
         val budget = service.budgetOf(service.clientRow(cxt, client))
         if (service.usedThisMonth(cxt, client) >= budget) {
             throw refused("'$client' has used this month's allowance for the assistant.", EXC.tooManyRequests, ACNV.budgetSpentCode)
@@ -145,19 +145,26 @@ object AssistantTurns {
                 AssistantStore.releaseConversation(cxt, conversation, turnId)
             }
             // The same message sent twice at once: the other send recorded the turn first, and this one is that turn.
-            AssistantStore.turnForMessage(cxt, userId, clientMessageId)?.let { return sameMessage(it, conversationId) }
+            AssistantStore.turnForMessage(cxt, userId, clientMessageId)?.let { return sameMessage(it, conversationId, message) }
             throw e
         }
     }
 
     /**
-     * The turn a resent message already started: the same conversation's, or a refusal when the page sent one message
-     * id into two conversations.
+     * The turn a resent message already started -- the same text, into the same conversation -- or a refusal when the
+     * message id was used for another message: different text, or another conversation. Answering that one's turn would
+     * look like a reply to this message, and nothing would tell the sender it never went.
      */
     @KdrPrivate
-    fun sameMessage(turn: Map<String, Any?>, conversationId: String?): Map<String, Any?> {
+    fun sameMessage(turn: Map<String, Any?>, conversationId: String?, text: String): Map<String, Any?> {
+        val id = turn[ACNV.clientMessageId]
         if (conversationId != null && turn[ACNV.conversationId] != conversationId) {
-            throw KdrException("Message id '${turn[ACNV.clientMessageId]}' was already sent in another conversation.", code = EXC.conflict)
+            throw refused("Message id '$id' was already sent in another conversation; give this message an id of its own.",
+                EXC.conflict, ACNV.messageIdUsedCode)
+        }
+        if (turn[ACNV.text] != text) {
+            throw refused("Message id '$id' was already used for another message; give this message an id of its own.",
+                EXC.conflict, ACNV.messageIdUsedCode)
         }
         return started(turn)
     }

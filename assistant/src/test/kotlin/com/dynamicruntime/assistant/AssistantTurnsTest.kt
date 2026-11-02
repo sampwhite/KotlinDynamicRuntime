@@ -186,6 +186,7 @@ class AssistantTurnsTest : StringSpec({
             { ScriptedModel.textResponse("You have one workflow, review.") },
         )
         val conversationId = send(admin, "What workflows do I have?")
+        val firstId = "m$messageIds"
         val messages = messagesOf(admin, conversationId)
         messages.map { it[MSG.role] } shouldBe listOf(MSG.user, MSG.assistant, MSG.user, MSG.assistant)
         val answered = results(messages[2])
@@ -212,6 +213,11 @@ class AssistantTurnsTest : StringSpec({
         val other = send(admin, "Another conversation.")
         admin.expectError(EXC.conflict, ACNV.messagePath, message("m$messageIds", "Again?", conversationId)).toString() shouldContain
             "another conversation"
+        // The first message's id sent again with other text: a new message given an old id, refused rather than answered
+        // with the old message's turn.
+        val reused = admin.expectError(EXC.conflict, ACNV.messagePath, message(firstId, "Something new.", conversationId))
+        reused[EP.errorCode] shouldBe ACNV.messageIdUsedCode
+        reused[EP.errorMessage].toString() shouldContain "another message"
         other shouldNotBe conversationId
     }
 

@@ -950,3 +950,14 @@ times out is billed but returns no usage, so it is not counted against the clien
 - **Stream the model's answers** *(from #1526).* With streaming, a long answer cannot time out part way, its usage
   arrives as it is spent, and the token cap can rise to the model's own. The page could show the answer as it is
   written, too.
+
+## When the assistant's spending across clients needs a ceiling of its own
+
+Each client's use of the workflow assistant stops at its own monthly budget, and nothing limits the total: an operator
+may give any client any budget ([`workflow-assistant.md`](../design/workflow-assistant.md)). Today the bill's hard
+limit is the spend limit on the deployment's Anthropic organization, outside the application.
+
+- **A deployment-wide monthly ceiling** *(from #1526).* A `KDR_ASSISTANT_MONTHLY_CEILING`, in dollars or weighted
+  tokens, on all clients' use together: checked where a client's budget is, at a turn's start and before every model
+  call, and shown in the operator's listing beside the month's total. Worth it once several clients are on, or one
+  operator's mistyped budget could cost more than the deployment means to spend.

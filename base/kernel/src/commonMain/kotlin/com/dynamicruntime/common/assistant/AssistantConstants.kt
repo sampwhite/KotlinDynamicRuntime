@@ -139,4 +139,5 @@ object ACNV {
     const val turnLimitCode = "turnLimit"
     const val busyCode = "turnRunning"
     const val readOnlyCode = "conversationReadOnly"
+    const val messageIdUsedCode = "messageIdUsed"
 }
