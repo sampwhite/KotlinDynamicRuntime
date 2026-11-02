@@ -4,6 +4,7 @@ import com.dynamicruntime.common.content.MarkdownFragmentService
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.gedra.workflow.WfDef
 import com.dynamicruntime.common.schema.SL
+import com.dynamicruntime.common.schema.SchLayout
 import com.dynamicruntime.common.startup.SchemaService
 import com.dynamicruntime.common.util.analyzeTemplate
 
@@ -58,25 +59,21 @@ object DesignPulledCopy {
      * `{ typeName -> slot }` for each of [typeNames] whose layout **heading**, as the client of [cxt] has it, pulls a
      * fragment key (issue #1070) -- each slot as [facts] gives one. Empty when none does.
      */
-    fun headingFacts(cxt: KdrCxt, typeNames: Set<String>): Map<String, Any?> {
-        val layouts = SchemaService.get(cxt).storeFor(cxt.client).layouts
-        val pulls = Pulls(cxt)
-        return typeNames.mapNotNull { typeName ->
-            val layout = layouts[typeName] ?: return@mapNotNull null
-            layout.label?.let { pulls.slot(it, layout.fragmentFileId) }?.let { typeName to it }
-        }.toMap(LinkedHashMap())
-    }
+    fun headingFacts(cxt: KdrCxt, typeNames: Set<String>): Map<String, Any?> = blockFacts(cxt, typeNames) { it.label }
 
     /**
      * `{ typeName -> slot }` for each of [typeNames] whose layout **introduction** (its `description`), as the client of
      * [cxt] has it, pulls a fragment key (issue #1539) -- each slot as [facts] gives one. Empty when none does.
      */
-    fun introFacts(cxt: KdrCxt, typeNames: Set<String>): Map<String, Any?> {
+    fun introFacts(cxt: KdrCxt, typeNames: Set<String>): Map<String, Any?> = blockFacts(cxt, typeNames) { it.description }
+
+    /** [headingFacts] and [introFacts] for the block copy [copyOf] reads from a layout. */
+    private fun blockFacts(cxt: KdrCxt, typeNames: Set<String>, copyOf: (SchLayout) -> String?): Map<String, Any?> {
         val layouts = SchemaService.get(cxt).storeFor(cxt.client).layouts
         val pulls = Pulls(cxt)
         return typeNames.mapNotNull { typeName ->
             val layout = layouts[typeName] ?: return@mapNotNull null
-            layout.description?.let { pulls.slot(it, layout.fragmentFileId) }?.let { typeName to it }
+            copyOf(layout)?.let { pulls.slot(it, layout.fragmentFileId) }?.let { typeName to it }
         }.toMap(LinkedHashMap())
     }
 
