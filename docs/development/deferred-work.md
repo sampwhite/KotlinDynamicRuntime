@@ -919,3 +919,16 @@ client's own ([`workflow-assistant.md`](../design/workflow-assistant.md)). Nothi
 
 - **Default budgets per plan** *(from #1525).* A budget the client's plan names, so an operator sets a plan once rather
   than each client's number. Waits for plans to exist as something the deployment records.
+
+## When the Anthropic SDK's dependencies cost something
+
+The workflow assistant calls Claude through the official Anthropic Java SDK
+([`workflow-assistant.md`](../design/workflow-assistant.md)), which is the first thing to bring Jackson, OkHttp, and Okio
+onto the classpath, along with the victools schema generator, `swagger-annotations`, `opentelemetry-api`, and others
+(the dependency report in #1535). All of it ships in the distribution. The trigger is any of: a version conflict with a
+library we take on, a security advisory against one of its transitive jars, or the distribution's size starting to
+matter.
+
+- **Call the API without the SDK** *(from #1525).* Replace `AnthropicModel`'s SDK calls with `OutboundHttpService` and
+  our own `JsonUtil`: one file, since `AssistantModel` already speaks the Messages API's wire shape as our own maps.
+  The request needs the `anthropic-version` and beta headers, retries, and timeouts the SDK supplies today.
