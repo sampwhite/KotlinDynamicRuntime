@@ -137,6 +137,7 @@ fun sampleTraits(cxt: KdrCxt): GedraConfig = gedraConfig(cxt, ST.sampleTraits, S
         setOf(GedraDataType.formDoc),
         "An expense report for one reporting year.",
     ) {
+        title = "Expense report"
         property(ST.year, "Reporting year this report covers.", required = true) {
             type = SCT.integer
             minimum = 2000
@@ -231,6 +232,7 @@ fun sampleTraits(cxt: KdrCxt): GedraConfig = gedraConfig(cxt, ST.sampleTraits, S
         setOf(GedraDataType.formDoc),
         "A manager's decision on what was submitted.",
     ) {
+        title = "Manager approval"
         property(ST.approved, "Whether it was approved.", required = true) { type = SCT.boolean }
         property(ST.decidedBy, "Who decided.")
         property(ST.rejectionReason, "Why it was rejected.")
@@ -257,6 +259,7 @@ fun sampleTraits(cxt: KdrCxt): GedraConfig = gedraConfig(cxt, ST.sampleTraits, S
         setOf(GedraDataType.formDoc),
         "A visit to a site, whose address is a type in its own right.",
     ) {
+        title = "Site visit"
         property(ST.visitedOn, "When the visit happened.") { dayOnlyDate() }
         property(ST.purpose, "Why the visit happened; the suggestions are not the whole list.") {
             for (p in ST.purposes) option(p)
@@ -276,6 +279,7 @@ fun sampleTraits(cxt: KdrCxt): GedraConfig = gedraConfig(cxt, ST.sampleTraits, S
         setOf(GedraDataType.formDoc),
         "One record per year, keyed by the year.",
     ) {
+        title = "Yearly record"
         primaryKey(ST.year)
         property(ST.year, "The year this record is for; the entry's primary key.", required = true) {
             type = SCT.integer

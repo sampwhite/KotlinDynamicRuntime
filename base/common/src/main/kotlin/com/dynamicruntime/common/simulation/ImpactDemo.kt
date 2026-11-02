@@ -56,11 +56,15 @@ fun impactDemoMain(cxt: KdrCxtBase, client: String = ImpactDemo.client): GedraCo
 fun impactDemoTraits(cxt: KdrCxtBase, client: String = ImpactDemo.client, harmful: Boolean = false): GedraConfig =
     gedraConfig(cxt, ImpactDemo.traits, clientNamespace(client), client) {
         trait("NoteEntry", ImpactDemo.note, setOf(GedraDataType.formDoc), "A note.") {
+            title = "Note"
             property("text", "What it says.")
             if (harmful) property("owner", "Who owns the note.", required = true)
         }
         if (!harmful) {
-            trait("VisitEntry", ImpactDemo.visit, setOf(GedraDataType.formDoc), "A site visit.") { property("site", "Where.") }
+            trait("VisitEntry", ImpactDemo.visit, setOf(GedraDataType.formDoc), "A site visit.") {
+                title = "Site visit"
+                property("site", "Where.")
+            }
         }
     }
 

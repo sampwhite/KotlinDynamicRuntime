@@ -632,6 +632,7 @@ private fun acmeClient(cxt: KdrCxt): GedraConfig =
             setOf(GedraDataType.formDoc),
             "The form owner's contact details, offered as defaults.",
         ) {
+            title = "Contact details"
             property(SC.userName, "The owner's name.")
             property(SC.userEmail, "The owner's email address.")
             layout {
