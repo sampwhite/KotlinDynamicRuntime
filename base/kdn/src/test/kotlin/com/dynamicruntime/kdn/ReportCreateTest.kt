@@ -197,8 +197,8 @@ class ReportCreateTest : StringSpec({
             chief.expectError(EXC.badInput, UADEP.reportCreate, mapOf(RDEF.label to label, RDEF.columns to columns))
         refused("", listOf(column("Length", "form.talk.minutes")))
         refused("Empty", emptyList())
-        refused("Summed text", listOf(column("Level", "form.talk.level", mapOf(RDEF.rollup to ReportCombine.sum.name))))
-            .get(EP.errorMessage).toString() shouldContain "rolls up by sum"
+        refused("Summed text", listOf(column("Level", "form.talk.level",
+            mapOf(RDEF.rollup to ReportCombine.sum.name))))[EP.errorMessage].toString() shouldContain "rolls up by sum"
         refused("Keyed plain", listOf(column("Level", "form.talk.level", mapOf(RCR.key to listOf("x")))))
         refused("Grouped list", listOf(column("Notes", "form.yearly[*].note", mapOf(RCR.groupedBy to true))))
         ReportService.get(cxt).forClient(client).reports.keys.filter { !it.contains(':') } shouldBe emptyList()

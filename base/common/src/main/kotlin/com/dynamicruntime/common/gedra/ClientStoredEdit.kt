@@ -251,7 +251,7 @@ object ClientStoredEdit {
 
     /**
      * A refusal a test puts where [publishAndReload] publishes (issue #1179), handed what is about to be published.
-     * For a client that runs its latest configuration a publish is not trialled, so a change that passed the write's
+     * For a client that runs its latest configuration a publish is not trialed, so a change that passed the write's
      * trial is otherwise never refused there -- and an editor's undo, which only a refused publish runs, is never
      * run. A [KdrException] it throws is the publish's refusal: the undo runs and the caller is told it. Anything else
      * escapes as the publish's own faults do, undoing nothing. Nothing but a test sets one, in the instance config

@@ -64,7 +64,7 @@ import java.util.concurrent.ConcurrentHashMap
  *
  * A client that runs its latest configuration does not trial a publish, so a change the write's trial passed is never
  * refused there on its own. **An instance of its own** carries a [ClientStoredEdit.PublishCheck] that refuses the
- * publish of the clients in [refusing] -- and local files are instance-wide.
+ * publish of the clients in `refusing` -- and local files are instance-wide.
  */
 class PublishRefusalUndoTest : StringSpec({
     val png = byteArrayOf(0x89.toByte(), 'P'.code.toByte(), 'N'.code.toByte(), 'G'.code.toByte(), 0x0D, 0x0A, 0x1A, 0x0A, 1, 2, 3)
