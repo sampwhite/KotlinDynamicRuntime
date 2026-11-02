@@ -15,7 +15,7 @@ import com.dynamicruntime.common.util.humanizeFieldName
  *     people, and the one that gets changed: by the trait designer, by Design View, and by a client's alteration of a
  *     global trait's layout;
  *  2. its data type's `title`, the schema's own name, for a type with no heading;
- *  3. its id, humanized.
+ *  3. its id, humanized -- without a global trait's root, so `kdr:name` is "Name".
  *
  * [heading] is the heading as delivered, its backend `%{@t(...)}` pulls already resolved. The entry type's own title
  * is not read: a client can set it only on a global trait, since a client's own trait regenerates its entry type.
@@ -23,7 +23,7 @@ import com.dynamicruntime.common.util.humanizeFieldName
 fun traitNameOf(traitId: String, heading: String?, title: String?): String =
     heading?.let(::headingName)?.takeIf { it.isNotBlank() }
         ?: title?.trim()?.takeIf { it.isNotBlank() }
-        ?: humanizeFieldName(traitId)
+        ?: humanizeFieldName(traitId.substringAfter(':'))
 
 /**
  * [traitNameOf] for the trait whose data type is [dataType], its heading looked up in [layouts] by the data type's

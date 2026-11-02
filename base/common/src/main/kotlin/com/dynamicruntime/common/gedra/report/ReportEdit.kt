@@ -4,6 +4,7 @@ import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.KdrSchemaStore
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.gedra.formTraitName
 import com.dynamicruntime.common.gedra.CCT
 import com.dynamicruntime.common.gedra.ClientCreate
 import com.dynamicruntime.common.gedra.ClientService
@@ -87,7 +88,8 @@ object ReportEdit {
             add(group(ReportPathGroupKind.form, null, "The form", formPaths(scope)))
             for (trait in scope.formTraits.values) {
                 val paths = traitPaths(scope, store, trait)
-                if (paths.isNotEmpty()) add(group(ReportPathGroupKind.trait, trait.traitId, traitLabel(scope, trait), paths))
+                // Named as every page names a trait (issue #1520): its heading, its title, its id.
+                if (paths.isNotEmpty()) add(group(ReportPathGroupKind.trait, trait.traitId, formTraitName(cxt, store, trait.traitId), paths))
             }
             for (wf in scope.workflows.values.filter { it.entry == WfEntry.normal }) {
                 val paths = workflowPaths(scope, wf)
@@ -131,10 +133,6 @@ object ReportEdit {
         offered(scope, UserPath(RUSR.email).canonicalText, "Owner's email"),
         offered(scope, UserPath(RUSR.name).canonicalText, "Owner's name"),
     )
-
-    /** What a person calls [trait]: the title of its entry, else its id in words. */
-    private fun traitLabel(scope: ReportScope, trait: GedraTrait): String =
-        scope.types[trait.typeName]?.title ?: humanizeFieldName(trait.traitId.substringAfter(':'))
 
     /** A label from configuration, unless it is a template or blank; else [id] in words. */
     private fun plainLabel(label: String?, id: String): String =

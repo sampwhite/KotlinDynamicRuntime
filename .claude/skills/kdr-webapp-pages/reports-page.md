@@ -51,7 +51,8 @@ way -- afterwards it is changed in the bundle editor, and removed there or under
   bundle editor leads such a client to its sandbox. The address names `view=new` only; the page draws the panel only
   when the offer says it may, so a stale link shows the listing.
 - **The page never builds a path.** The panel reads `GET /clientAdmin/report/paths` (grouped by source: the form, each
-  trait, each workflow) and a column keeps the path it picked. A path that may hold several values offers **Which
+  trait, each workflow) and a column keeps the path it picked. A trait's group is named as every page names the trait
+  (`formTraitName`, issue #1520): its heading's first line, its data type's title, or its id in words. A path that may hold several values offers **Which
   value** -- all of them, how many, the first (`ValuePick`, each a combine) -- and for a keyed trait **One, by its
   key**, which sends the key's values (`RCR.key`) for the server to write into the path.
 - **A totals report** groups by one column: the first that has one value per form until chosen, and none once that

@@ -1,9 +1,12 @@
 package com.dynamicruntime.common.gedra
 
 import com.dynamicruntime.common.context.KdrCxt
+import com.dynamicruntime.common.context.KdrSchemaStore
+import com.dynamicruntime.common.schema.SL
 import com.dynamicruntime.common.schema.SchLayout
 import com.dynamicruntime.common.schema.SchProperty
 import com.dynamicruntime.common.schema.SchType
+import com.dynamicruntime.common.schema.resolveDeliveredLayouts
 import com.dynamicruntime.common.startup.SchemaService
 import com.dynamicruntime.common.util.ScriptEnv
 import com.dynamicruntime.common.util.analyzeTemplate
@@ -80,6 +83,24 @@ fun resolveColumns(usages: List<ClientTraitUsage>, types: Map<String, SchType>):
  */
 fun formTraitData(types: Map<String, SchType>, traitId: String): SchProperty? =
     types["${GCFG.globalNamespace}.${GU.unionName(GedraDataType.formDoc)}"]?.variants?.select(traitId)?.properties?.get(GE.data)
+
+/**
+ * Form trait [traitId]'s name in [store], by the rule every page names a trait with (`traitNameOf`, issue #1520): its
+ * data type's layout heading, then its title, then its id. The heading's backend `%{@t(...)}` pulls are resolved for
+ * [cxt] as delivery to a page resolves them, so a server message or a report names the trait as the page does. Only
+ * the heading is resolved, not the layout's field copy.
+ */
+fun formTraitName(cxt: KdrCxt, store: KdrSchemaStore, traitId: String): String {
+    val union = store.types["${GCFG.globalNamespace}.${GU.unionName(GedraDataType.formDoc)}"]
+    val dataType = union?.variants?.byValue?.get(traitId)?.properties?.get(GE.data)?.valueType
+    val typeName = dataType?.name
+    val layout = typeName?.let { store.layouts[it] }
+    val heading = layout?.label?.let { label ->
+        val headingOnly = listOfNotNull(SL.label to label, layout.fragmentFileId?.let { SL.fragmentFileId to it }).toMap()
+        resolveDeliveredLayouts(cxt, mapOf(typeName to headingOnly))[typeName].toJsonMapOrEmpty()[SL.label].toOptStr()
+    }
+    return traitNameOf(traitId, heading, dataType?.title)
+}
 
 /**
  * What a person calls field [key] of a trait's data, [prop] (issues #1491, #1492): its [layout]'s label, unless that is a
