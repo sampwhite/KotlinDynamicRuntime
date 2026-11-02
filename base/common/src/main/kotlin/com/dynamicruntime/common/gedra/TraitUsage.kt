@@ -1,11 +1,13 @@
 package com.dynamicruntime.common.gedra
 
 import com.dynamicruntime.common.context.KdrCxt
+import com.dynamicruntime.common.schema.SchLayout
 import com.dynamicruntime.common.schema.SchProperty
 import com.dynamicruntime.common.schema.SchType
 import com.dynamicruntime.common.startup.SchemaService
 import com.dynamicruntime.common.util.ScriptEnv
 import com.dynamicruntime.common.util.analyzeTemplate
+import com.dynamicruntime.common.util.humanizeFieldName
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
 
@@ -78,3 +80,12 @@ fun resolveColumns(usages: List<ClientTraitUsage>, types: Map<String, SchType>):
  */
 fun formTraitData(types: Map<String, SchType>, traitId: String): SchProperty? =
     types["${GCFG.globalNamespace}.${GU.unionName(GedraDataType.formDoc)}"]?.variants?.select(traitId)?.properties?.get(GE.data)
+
+/**
+ * What a person calls field [key] of a trait's data, [prop] (issues #1491, #1492): its [layout]'s label, unless that is a
+ * template, else its title, else its type's, else its key in words. How a listing column and a report column name a
+ * field they offer.
+ */
+fun fieldLabelOf(layout: SchLayout?, key: String, prop: SchProperty): String =
+    layout?.fields?.firstOrNull { it.field == key }?.label?.takeIf { "%{" !in it && $$"${" !in it }
+        ?: prop.title ?: prop.valueType.title ?: humanizeFieldName(key)

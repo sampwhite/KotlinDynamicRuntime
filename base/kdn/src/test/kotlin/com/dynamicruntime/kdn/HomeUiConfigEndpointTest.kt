@@ -72,7 +72,7 @@ class HomeUiConfigEndpointTest : StringSpec({
         val explained = mapOf(
             HFRAG.home to listOf(HFRAG.formsNs, HFRAG.workflowFormsNs, HFRAG.sandboxNs),
             PFRAG.clients to PFRAG.clientsExplained,
-            PFRAG.reports to listOf(PFRAG.viewsNs),
+            PFRAG.reports to listOf(PFRAG.viewsNs, PFRAG.newReportNs),
             PFRAG.design to listOf(PFRAG.ownCopyNs),
         )
         val fragments = MarkdownFragmentService.get(cxt)

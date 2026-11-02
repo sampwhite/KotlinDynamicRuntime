@@ -80,6 +80,16 @@ object ClientStoredEdit {
         return target
     }
 
+    /**
+     * The client whose running configuration shows [client]'s edits: for a client with a sandbox, the sandbox -- which
+     * runs its latest configuration, drafts included, so what an editor lists is what its next edit finds -- and for a
+     * sandbox, itself (issue #1358), asked before a sandbox's sandbox's id is formed, which is no id. What the editors'
+     * catalogs read (workflows, listing columns, and the report paths, issue #1492).
+     */
+    fun editedView(cxt: KdrCxt, client: String): String =
+        if (sandboxParentOf(client) != null) client
+        else sandboxOf(client).takeIf { ClientService.get(cxt).present(it) != null } ?: client
+
     /** [target]'s refusal of a save that would not take effect as its caller said: a 409 carrying [EDM.notAsExpected]. */
     private fun notAsExpected(message: String): KdrException =
         KdrException(message, code = EXC.conflict).also { it.extraData[KdrException.errorCodeKey] = EDM.notAsExpected }
@@ -241,7 +251,7 @@ object ClientStoredEdit {
 
     /**
      * A refusal a test puts where [publishAndReload] publishes (issue #1179), handed what is about to be published.
-     * For a client that runs its latest configuration a publish is not trialled, so a change that passed the write's
+     * For a client that runs its latest configuration a publish is not trialed, so a change that passed the write's
      * trial is otherwise never refused there -- and an editor's undo, which only a refused publish runs, is never
      * run. A [KdrException] it throws is the publish's refusal: the undo runs and the caller is told it. Anything else
      * escapes as the publish's own faults do, undoing nothing. Nothing but a test sets one, in the instance config

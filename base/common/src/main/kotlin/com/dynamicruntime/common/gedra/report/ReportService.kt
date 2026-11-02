@@ -168,6 +168,15 @@ class ReportService : ServiceInitializer {
     fun forClient(client: String?): ReportRegistry = registries.forClient(client)
 
     /**
+     * What the running node binds [client]'s reports against: what a report made for it is offered from (issue #1492),
+     * so it offers only what its load will accept.
+     */
+    fun scopeFor(cxt: KdrCxt, client: String): ReportScope {
+        val collector = SchemaCollector.get(cxt) ?: throw KdrException("$serviceName.scopeFor ran with no schema collector.")
+        return liveScope(cxt, collector, ClientService.get(cxt).presentClients.associateBy { it.clientId }, client)
+    }
+
+    /**
      * What the running node binds [scope]'s reports against: for a client, the traits it supports, its variant's
      * types and its workflow registry; for the global scope (null), the global traits, types and workflows.
      */

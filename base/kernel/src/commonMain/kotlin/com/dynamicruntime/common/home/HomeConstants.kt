@@ -360,6 +360,9 @@ object HMENU {
     const val reportParam = "rpt"
     const val reportViewParam = "view"
     const val reportViewHistory = "history"
+
+    /** The Reports page's `view` for making a report from simple choices (issue #1492), with no report open. */
+    const val reportViewNew = "new"
     const val pageSimulations = "simulations"
     /** Become any user through the `becomeUser` fixture's form (issue #1183), for a caller with test access. */
     const val pageBecomeUser = "becomeUser"
@@ -548,6 +551,9 @@ object PFRAG {
 
     /** The Reports page's namespace for its views: Per form, Grouped, and History. */
     const val viewsNs = "views"
+
+    /** The Reports page's namespace for making a report from simple choices (issue #1492). */
+    const val newReportNs = "newReport"
 
     /** Design View's namespace for a workflow's own copy against the shared definition's. */
     const val ownCopyNs = "ownCopy"

@@ -3,6 +3,7 @@ package com.dynamicruntime.webapp
 import com.dynamicruntime.common.endpoint.EI
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.gedra.GCI
+import com.dynamicruntime.common.gedra.GedraConfigOrigin
 import com.dynamicruntime.common.gedra.report.RRUN
 import com.dynamicruntime.common.gedra.report.ReportCombine
 import com.dynamicruntime.common.gedra.report.ReportKind
@@ -54,13 +55,24 @@ class ReportInfo(
     val template: String?,
     /** Whether the nightly job stores snapshots of the report (issue #1033). */
     val history: Boolean = false,
+    /** Whether the configuration declaring it is stored, rather than in source code (issue #1492). */
+    val stored: Boolean = false,
 ) {
     /** How the report opens: grouped when it declares what to group by, otherwise one row per form. */
     val defaultMode: ReportMode get() = if (groupBy.isEmpty()) ReportMode.detail else ReportMode.aggregate
 }
 
-/** A client's reports, and the report problems that cost it one -- so a report that is missing is explained. */
-class ReportListing(val reports: List<ReportInfo>, val issues: List<String>)
+/**
+ * A client's reports, and the report problems that cost it one -- so a report that is missing is explained -- and
+ * whether a report may be made here (issue #1492).
+ */
+class ReportListing(
+    val reports: List<ReportInfo>,
+    val issues: List<String>,
+    val offer: ReportCreateOffer = ReportCreateOffer(canCreate = false, createsDraft = false, createFrom = null),
+    /** The client the reports are of, as the listing answered: the caller's own when the page named none. */
+    val client: String = "",
+)
 
 fun parseReportColumns(raw: Any?): List<ReportColumnInfo> = raw.toJsonListOfMaps().mapNotNull { c ->
     val id = c[RRUN.columnId].toOptStr() ?: return@mapNotNull null
@@ -89,11 +101,14 @@ fun parseReportListing(envelope: Map<String, Any?>): ReportListing = ReportListi
             configName = r[RRUN.configName].toOptStr().orEmpty(),
             template = r[RRUN.template].toOptStr(),
             history = r[RRUN.history] == true,
+            stored = r[RRUN.origin] == GedraConfigOrigin.stored.name,
         )
     },
     issues = envelope[EP.summary].toJsonMapOrEmpty()[RRUN.issues].toJsonListOfMaps().mapNotNull { issue ->
         issue[GCI.message].toOptStr()?.let { "$it ${issue[GCI.degradedTo].toOptStr().orEmpty()}".trim() }
     },
+    offer = parseReportCreateOffer(envelope[EP.summary].toJsonMapOrEmpty()),
+    client = envelope[EP.summary].toJsonMapOrEmpty()[RRUN.client].toOptStr().orEmpty(),
 )
 
 /** What a run was: its mode, what it grouped by and required, its columns, and how many forms it read and left out. */
@@ -300,6 +315,9 @@ fun reportModeParam(mode: ReportMode): String = if (mode == ReportMode.aggregate
  */
 fun reportViewIsHistory(routeValue: String?): Boolean = routeValue == HMENU.reportViewHistory
 
+/** Whether an address asks for making a report (issue #1492): the `new` view, with no report open. */
+fun reportViewIsNew(routeValue: String?, reportId: String?): Boolean = routeValue == HMENU.reportViewNew && reportId == null
+
 /**
  * The link to the Reports page: [client]'s reports (the caller's own when null), open at [reportId] when given, in
  * [mode] when given -- absent, the report opens the way it declares -- or, with [history], on its History view.
@@ -446,6 +464,17 @@ object ReportsApi {
     suspend fun list(client: String?): ReportListing = parseReportListing(
         Http.getApi(UADEP.reports + queryString(client?.let { mapOf(RRUN.client to it) } ?: emptyMap())),
     )
+
+    /** The paths a column of [client]'s report may read (issue #1492), as the server bound them. */
+    suspend fun paths(client: String?): ReportPathCatalogView = parseReportPathCatalog(
+        Http.getApi(UADEP.reportPaths + queryString(client?.let { mapOf(RRUN.client to it) } ?: emptyMap()))[EP.item].toJsonMapOrEmpty(),
+    )
+
+    /** Makes a report (issue #1492) -- [request] from [reportCreateRequest] -- answering its id and how it took effect. */
+    suspend fun create(request: Map<String, Any?>): ReportCreated = parseReportCreated(Http.sendApi("POST", UADEP.reportCreate, request))
+
+    /** Removes a report the client stores (issue #1492) -- [request] from [reportRemoveRequest]. */
+    suspend fun remove(request: Map<String, Any?>): ReportCreated = parseReportCreated(Http.sendApi("POST", UADEP.reportRemove, request))
 
     /** One page of a run, starting after the cursor [after] -- the previous page's `next` -- or at the start. */
     suspend fun run(reportId: String, client: String?, setup: ReportRunSetup, after: String?, limit: Int = listingBatch): ReportRunPage =

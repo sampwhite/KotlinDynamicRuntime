@@ -84,7 +84,7 @@ class ClientStarterWorkflowsTest : StringSpec({
         stored(client, "${CWF.configPrefix}newForm").shouldBeNull()
     }
 
-    // The report a client created from data has, there being no editor for reports yet (issue #1429).
+    // The report a client created from data starts with, before any is made on its Reports page (issues #1429, #1492).
     "a new client starts with the Forms report, published, and without the starters it leaves out the name it cannot read" {
         fun columns(client: String) = ReportService.get(cxt).forClient(client).report(ClientCreate.starterReport).shouldNotBeNull()
             .bound.report.columns.map { it.columnId }

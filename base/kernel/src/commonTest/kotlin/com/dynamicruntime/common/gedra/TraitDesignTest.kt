@@ -38,6 +38,8 @@ class TraitDesignTest {
     @Test
     fun aKeyIsMadeOnceFromItsLabel() {
         assertEquals("doYouSmoke", keyFromLabel("Do you smoke?", emptySet(), "field"))
+        assertEquals("ownersEmail", keyFromLabel("Owner’s email", emptySet(), "field"))
+        assertEquals("ownersEmail", keyFromLabel("Owner's email", emptySet(), "field"))
         assertEquals("notes2", keyFromLabel("Notes", setOf("notes"), "field"))
         assertEquals("notes3", keyFromLabel("notes", setOf("notes", "notes2"), "field"))
         // Nothing usable, or a leading digit: the fallback carries it.
