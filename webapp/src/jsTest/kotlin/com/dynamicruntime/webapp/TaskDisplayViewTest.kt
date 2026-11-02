@@ -47,6 +47,21 @@ class TaskDisplayViewTest {
         assertEquals("Approved by Rex Reviewer on 2026-09-24.", approvedLine(task.approval!!))
     }
 
+    /**
+     * An approver with no name on their profile arrives as their email (issue #1430). The default line leaves it out;
+     * a workflow's text decides for itself, `contains` telling an email from a name.
+     */
+    @Test
+    fun anEmailIsLeftOutOfTheDefaultLineAndTheTextDecides() {
+        val byEmail = approvedBlock + (WVF.approvedByName to "rex@acme.test")
+        val text = $$"""Approved by ${contains(approvedByName, "@") ? "a reviewer" : approvedByName}."""
+        val task = view(approvalTask(byEmail, mapOf(WDSP.mode to WDSP.textMode, WDSP.text to text))).tasks.single()
+        assertEquals("Approved on 2026-09-24.", approvedLine(task.approval!!))
+        assertEquals("Approved by a reviewer.", displayTextOf(task))
+        val named = view(approvalTask(approvedBlock, mapOf(WDSP.mode to WDSP.textMode, WDSP.text to text))).tasks.single()
+        assertEquals("Approved by Rex Reviewer.", displayTextOf(named))
+    }
+
     @Test
     fun aPlaceholderIsNeverShownAsTemplateSyntax() {
         // The approver's name is missing (their account since removed): it reads as "a reviewer".

@@ -122,6 +122,12 @@ An **approval task** has no traits to fill in. It has an `approval` with the fac
 `button`, and it is complete once a reviewer has pressed the button. Its `display` chooses what the step shows, by
 trying its branches in order against the facts of whoever is looking.
 
+Once the button is pressed, a text branch can name who pressed it as `${approvedByName}`. That is the name on the
+approver's profile, or their email when their profile has none. Since the person reading the step may be the form's
+owner, who may not know the approver, a branch can keep an email off the page by testing for its `@`:
+`Accepted by ${contains(approvedByName, "@") ? "the committee" : approvedByName}.` A step with no text branch reads
+"Approved by" and the name, and leaves an email out.
+
 ## Field layouts
 
 A trait's fields have a default presentation: each field's `title` is its label, its `description` is the line beneath

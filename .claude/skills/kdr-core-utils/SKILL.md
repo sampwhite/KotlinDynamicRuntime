@@ -123,7 +123,7 @@ code guide's "When not to throw".
 - `ScriptUtil` / `ScriptExpr` / `ScriptEval` / `ScriptFunc` — `String.evalTemplate(data)`, resolving `${...}`
   against a nested map. The interior is a small expression language: dotted paths, string/number literals,
   `+ - * / %`, `~` (text join), `== != < > <= >=`, `&& || !`, `cond ? a : b`, `a ?: b` for a default, and calls
-  to the built-ins `upper lower trim count abs formatDate formatDay formatNumber currency` (a fixed table; unknown names and wrong
+  to the built-ins `upper lower trim contains count abs formatDate formatDay formatNumber currency` (a fixed table; unknown names and wrong
   arity are refused while parsing, so the fragment check catches them without data). The date functions read a
   `ScriptEnv` -- a zone and now -- passed as `evalTemplate(data, env = …)` (issue #1321): `formatDay(x)` is the day
   in its zone, and `formatDate(x, style)` takes `"relative"` (`12m ago`), `"moment"` (`Oct 17, 2026, 5:00 PM CT`)
@@ -133,6 +133,8 @@ code guide's "When not to throw".
   zero on the decimal value), and `currency(x, "USD")` writes `$1,234.50` from the kernel's `currencyStyles`, a code
   not there written after the amount (`1,234.50 CHF`). `round(x, decimals?)` (issue #1501) is the number itself rounded
   the same way -- a whole one, a `Long`, by default -- for a value computed to be stored rather than shown.
+  `contains(text, part)` (issue #1430) says whether the first text holds the second, as written: `contains(approvedByName,
+  "@") ? "a reviewer" : approvedByName` keeps an email off a page.
   A number is a number: a numeric string is a type mismatch. `+` concatenates when either side
   is a string and adds when neither is; `- * / %` read a numeric string; a bare missing/null value still
   throws (`?:` and a ternary condition are the only places absence is tolerated). Errors carry a `ScriptError`

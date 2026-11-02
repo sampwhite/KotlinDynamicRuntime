@@ -17,6 +17,8 @@ import com.dynamicruntime.common.gedra.workflow.WSC
 import com.dynamicruntime.common.gedra.workflow.WVF
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.user.ADF
+import com.dynamicruntime.common.user.AEP
+import com.dynamicruntime.common.user.AFLD
 import com.dynamicruntime.common.user.PERSONA
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.uiblock.UIB
@@ -119,14 +121,19 @@ class WorkflowApprovalTest : StringSpec({
         lastEvent[WFS.kind] shouldBe WFS.approvedEvent
         lastEvent[WFS.note] shouldBe SW.approveAudit
 
-        // After: the view says approved, and by whom -- the reviewer's public name, what "approved by ..." shows,
-        // and not their user id: the owner could not read the reviewer's row. The task's facts say complete now.
+        // After: the view says approved, and by whom -- the name the owner may see the reviewer called (issue #1430),
+        // their email while their profile has no name, and not their user id: the owner could not read the reviewer's
+        // row. The task's facts say complete now.
         val afterTask = approvalTaskView(owner, gid)
         val after = afterTask[WVF.approval].toJsonMapOrEmpty()
         after[WVF.approved] shouldBe true
         after[WVF.approvedByName] shouldBe "approve-reviewer@acme.test"
         after.containsKey(WFS.approvedBy) shouldBe false
         afterTask[WVF.facts].toJsonListOrEmpty().map { it.toOptStr() } shouldContain WFC.taskComplete
+        // Once the reviewer names their profile, the owner sees that name, and no longer their email.
+        reviewer.postData(AEP.profileSetName, mapOf(AFLD.name to "Rex Reviewer"))
+        approvalTaskView(owner, gid)[WVF.approval].toJsonMapOrEmpty()[WVF.approvedByName] shouldBe "Rex Reviewer"
+        reviewer.postData(AEP.profileSetName, mapOf(AFLD.name to ""))
 
         // A standalone recompute -- a batch job's, say -- leaves the approval standing: it is asserted.
         auditState(owner.postData(recompute, mapOf(GDF.gedraId to gid))[GDF.states].toJsonListOfMaps())[WFS.tasksDone] shouldBe true

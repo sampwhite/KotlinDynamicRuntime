@@ -129,7 +129,7 @@ class WfTaskDisplay(val mode: String, val text: String?, val disabled: Boolean)
 
 /**
  * An approval task's approval (issue #787): the backend-passed [prompt] and [button] copy, whether it is [approved],
- * and once it is, [approvedByName] (the approver's public name) and [approvedAt]. [data] is the whole block as it
+ * and once it is, [approvedByName] (the approver's profile name, else their email, issue #1430) and [approvedAt]. [data] is the whole block as it
  * arrived -- what a display's `${'$'}{…}` placeholders are filled from.
  */
 class WfApprovalView(
@@ -365,11 +365,14 @@ private val unfilledPlaceholder = Regex("""\$\{[^}]*\}""")
 
 /**
  * The line an approved approval task shows in its own rendering (issue #787): who approved it and on what day, as far
- * as the view says. Pure, and covered under `jsNodeTest`.
+ * as the view says. A name that is an email -- an approver with no name on their profile -- is left out (issue #1430):
+ * no author chose this wording, and the reader may not be one who should see it. A workflow's own display text can
+ * show it, deciding with `contains(approvedByName, "@")`. Pure, and covered under `jsNodeTest`.
  */
 fun approvedLine(approval: WfApprovalView): String {
     val day = approval.approvedAt?.let { it.parseDateOrNull()?.formatDayPart() }
-    return "Approved" + (approval.approvedByName?.let { " by $it" } ?: "") + (day?.let { " on $it" } ?: "") + "."
+    val name = approval.approvedByName?.takeUnless { "@" in it }
+    return "Approved" + (name?.let { " by $it" } ?: "") + (day?.let { " on $it" } ?: "") + "."
 }
 
 /**

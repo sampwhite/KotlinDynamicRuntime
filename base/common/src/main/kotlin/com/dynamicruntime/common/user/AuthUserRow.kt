@@ -167,6 +167,13 @@ class AuthUserRow(
     fun publicName(): String = if (needsRealUsername) primaryId else username
 
     /**
+     * What another person sees this user called (issue #1430): the [name] on their profile when they have set one --
+     * which is per user, so per persona -- else [publicName], which is the email for anyone who signed up with one and
+     * chose no username. A page that must not show an email checks for one (a template's `contains(name, "@")`).
+     */
+    fun shownName(): String = name ?: publicName()
+
+    /**
      * Whether this row matches an admin-console [lowerTerm] (already lower-cased by the caller): a
      * case-insensitive substring of the email, the public name (a chosen username, else the email), or the
      * account's [name] (a person's full name or a business's). Lives here so the searchable fields stay listed
