@@ -348,6 +348,14 @@ one. When a client wants one, add **`g-onRead`**: one more `SchEventType` member
 surface presents entries, never stored. It would bring back an on-read computation as data, where #712's
 `GedraDataDeriver` was Kotlin bound to one trait id.
 
+## When a client wants to edit one item of a keyed array without restating the list
+
+An array whose item type declares `g-primaryKey` refuses two items with one key (issue #1521), but an edit still
+replaces the whole list. A merge that matches items by key -- change the 2024 item, leave the rest -- would have to
+decide what a removal looks like (a `null` item? an item naming only its key and an action?), which no caller has asked
+for. When one does, build it on the keyed-list merge rules (`MergeRule.Keyed` in `OverlayMerge.kt`), keyed by the item
+type's key.
+
 ## When an API or form caller needs to send one item where a list is expected
 
 A list-valued keyword or field takes a list, even of one (`g-onWrite` was settled that way, issue #1501): config is

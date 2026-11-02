@@ -24,10 +24,11 @@ import com.dynamicruntime.common.schema.SchTypeBuilder
  * - **[CCT.customerDef]** -- a customer (issue #1107), by customer id, its fields declared inline from
  *   [CustomerDef.declareFields]. Only `hub`'s stored configuration may hold one.
  * - **[CCT.traitDef]** -- a data trait's **declaration**, by trait id. The DSL inputs are stored (`traitId`,
- *   `typeName`, `appliesTo`, `primaryKey`, description, and the data shape as a `schemaDocument()`), **not** the
- *   `<Name>Entry`/`<Name>Data` types the declaration generates: a trait is a declaration re-run on load, not a
- *   schema (the trait-vs-schema line #316's review drew). There is no state-trait slot (issue #873): state is
- *   global, declared by components, and a stored config is always a client's.
+ *   `typeName`, `appliesTo`, description, and the data shape as a `schemaDocument()`, whose `g-primaryKey` keys
+ *   the trait's entries), **not** the `<Name>Entry`/`<Name>Data` types the declaration generates: a trait is a
+ *   declaration re-run on load, not a schema (the trait-vs-schema line #316's review drew). There is no
+ *   state-trait slot (issue #873): state is global, declared by components, and a stored config is always a
+ *   client's.
  * - **[CCT.usageDef]** -- a trait-usage rule ([ClientTraitUsage]), by trait id and label (issue #1490).
  * - **[CCT.workflowDef]** -- a workflow, by workflow id, by **reference** to the definition schema under
  *   [WFD.namespace]. Its tasks travel inside it: a task has no standalone type, so there is no task slot.
@@ -77,23 +78,23 @@ fun coreConfigTraits(cxt: KdrCxtBase): GedraConfig = gedraConfig(cxt, CCT.config
     configTrait(
         "CustomerDefEntry", CCT.customerDef, setOf(GedraConfigType.configDoc),
         "One customer the platform declares, keyed by its customer id.",
-        primaryKey = listOf(CUST.customerId),
     ) {
+        primaryKey(CUST.customerId)
         CustomerDef.declareFields(this)
     }
     configTrait(
         "TraitDefEntry", CCT.traitDef, setOf(GedraConfigType.configDoc),
         "One data-trait declaration this configuration contributes, keyed by trait id.",
-        primaryKey = listOf(CCT.traitId),
     ) {
+        primaryKey(CCT.traitId)
         traitDeclarationFields()
     }
     configTrait(
         "UsageDefEntry", CCT.usageDef, setOf(GedraConfigType.configDoc),
         "One column of this client's forms listing, reading a trait, keyed by the trait and the column's label.",
         // Trait and label (issue #1490): a trait may have several columns, told apart by their headings.
-        primaryKey = listOf(CCT.traitId, CCT.label),
     ) {
+        primaryKey(CCT.traitId, CCT.label)
         property(CCT.traitId, "The trait this usage rule is for.", required = true)
         property(CCT.label, "The column label the listing shows.", required = true)
         // A string-script template, stored as text. A malformed one fails *silently* -- it is evaluated per row with
@@ -122,8 +123,8 @@ fun coreConfigTraits(cxt: KdrCxtBase): GedraConfig = gedraConfig(cxt, CCT.config
     configTrait(
         "WorkflowDefEntry", CCT.workflowDef, setOf(GedraConfigType.configDoc),
         "One workflow definition of this configuration, keyed by its workflow id.",
-        primaryKey = listOf(CCT.workflowId),
     ) {
+        primaryKey(CCT.workflowId)
         property(CCT.workflowId, "The workflow's id within this configuration.", required = true)
         property(CCT.definition, "The workflow definition, as the definition schema describes it.", required = true) {
             ref("${WFD.namespace}.${WFD.defType}")
@@ -132,8 +133,8 @@ fun coreConfigTraits(cxt: KdrCxtBase): GedraConfig = gedraConfig(cxt, CCT.config
     configTrait(
         "ReportDefEntry", CCT.reportDef, setOf(GedraConfigType.configDoc),
         "One named report of this configuration, keyed by its report id.",
-        primaryKey = listOf(CCT.reportId),
     ) {
+        primaryKey(CCT.reportId)
         property(CCT.reportId, "The report's id within this configuration.", required = true)
         property(CCT.definition, "The report definition, as the definition schema describes it.", required = true) {
             ref("${RDEF.namespace}.${RDEF.defType}")
@@ -142,16 +143,16 @@ fun coreConfigTraits(cxt: KdrCxtBase): GedraConfig = gedraConfig(cxt, CCT.config
     configTrait(
         "SchemaDefEntry", CCT.schemaDef, setOf(GedraConfigType.configDoc),
         "One schema type this configuration declares directly, keyed by the type's name.",
-        primaryKey = listOf(CCT.typeName),
     ) {
+        primaryKey(CCT.typeName)
         property(CCT.typeName, "The qualified name of the type being defined.", required = true)
         property(CCT.schema, "The type's schema body, validated by parsing it.", required = true) { schemaDocument() }
     }
     configTrait(
         "FragmentDefEntry", CCT.fragmentDef, setOf(GedraConfigType.configDoc),
         "One Markdown-fragment overlay this client contributes, keyed by the fragment file id.",
-        primaryKey = listOf(CCT.fileId),
     ) {
+        primaryKey(CCT.fileId)
         property(CCT.fileId, "The fragment file this overlays.", required = true)
         // Namespace to key to text: a map of maps (issue #1055), so a write's gate holds both tiers to it -- a
         // namespace that is not an object, or a key whose value is not text, is refused by its path.
@@ -162,16 +163,16 @@ fun coreConfigTraits(cxt: KdrCxtBase): GedraConfig = gedraConfig(cxt, CCT.config
     configTrait(
         "UiBlockDefEntry", CCT.uiBlockDef, setOf(GedraConfigType.configDoc),
         "One UiBlock overlay this client contributes, keyed by the block id.",
-        primaryKey = listOf(CCT.blockId),
     ) {
+        primaryKey(CCT.blockId)
         property(CCT.blockId, "The UiBlock this overlays.", required = true)
         property(CCT.content, "The overlay content.", required = true) { type = SCT.kObject }
     }
     configTrait(
         "CFactDefEntry", CCT.cfactDef, setOf(GedraConfigType.configDoc),
         "One cfact name this configuration declares exists (declaration only), keyed by name.",
-        primaryKey = listOf(CCT.name),
     ) {
+        primaryKey(CCT.name)
         property(CCT.name, "The cfact name this configuration declares.", required = true)
         property(CCT.group, "The cfact's group.", required = true)
         property(CCT.description, "What the cfact means.", required = true)
@@ -188,8 +189,8 @@ fun coreConfigTraits(cxt: KdrCxtBase): GedraConfig = gedraConfig(cxt, CCT.config
         "FileRefDefEntry", CCT.fileRefDef, setOf(GedraConfigType.configDoc),
         "One file ref of this client -- a named file, by where its bytes are -- keyed by its ref id. The file " +
             "store's are named by their `hash`; a local file's by a `root` and a `path` under it, and by no hash.",
-        primaryKey = listOf(CCT.refId),
     ) {
+        primaryKey(CCT.refId)
         property(CCT.refId, "The ref's id within its client: a variable name, at most ${FREF.maxRefIdLength} characters.", required = true) {
             maxLength = FREF.maxRefIdLength
             pattern = FREF.refIdPattern
@@ -231,10 +232,6 @@ private fun SchTypeBuilder.traitDeclarationFields() {
     property(CCT.appliesTo, "The gedra kinds an entry of this trait may be carried on.", required = true) {
         type = SCT.array
         items { options(GedraDataType.entries) }
-    }
-    property(CCT.primaryKey, "The ordered key fields within the trait's data; empty when it is single-instance.") {
-        type = SCT.array
-        items { type = SCT.string }
     }
     property(CCT.description, "What the trait is for.")
     property(CCT.dataSchema, "The schema of the trait's own data, validated by parsing it.", required = true) {

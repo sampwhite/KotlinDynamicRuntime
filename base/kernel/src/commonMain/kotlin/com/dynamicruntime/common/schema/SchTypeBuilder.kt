@@ -63,8 +63,9 @@ class SchErrors(private val data: MutableMap<String, Any?>) {
     fun patternMismatch(message: String) = set(SchFailCode.patternMismatch, message)
 
     /**
-     * Shown when an array declared `uniqueItems` holds the same item twice. Unused so far, and that is fine: there is
-     * one function per failure code, whether or not a schema needs it yet.
+     * Shown when an array declared `uniqueItems` holds the same item twice, or two items of a keyed type share a key
+     * (issue #1521). Unused so far, and that is fine: there is one function per failure code, whether or not a schema
+     * needs it yet.
      */
     fun duplicateItem(message: String) = set(SchFailCode.duplicateItem, message)
 
@@ -258,6 +259,16 @@ open class SchTypeBuilder(
      */
     fun onWrite(vararg usages: Map<String, Any?>) {
         data[SCH.onWrite] = usages.toList()
+    }
+
+    /**
+     * Declares the fields, in order, that tell one value of this type from another of it (issues #487, #1521), as
+     * `g-primaryKey`: on a trait's data type, they key its entries -- one entry per key value -- and on the items of
+     * an array, they tell its elements apart, so two elements with one key are refused. Each field must be declared
+     * here, required, a scalar, and not derived; the parse refuses a key that is not. Replaces any declared before.
+     */
+    fun primaryKey(vararg fields: String) {
+        data[SCH.primaryKey] = fields.toList()
     }
 
     /**

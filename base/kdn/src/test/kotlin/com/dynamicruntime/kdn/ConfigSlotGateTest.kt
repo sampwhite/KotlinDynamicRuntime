@@ -193,7 +193,8 @@ class ConfigSlotGateTest : StringSpec({
         // A kind that is no kind used to be dropped from the trait, silently.
         codes(CCT.traitDef, trait(CCT.appliesTo to listOf(GedraDataType.formDoc.name, "formDocs"))) shouldBe
             mapOf("${CCT.traitDef}[note].${CCT.appliesTo}[1]" to SchFailCode.invalidOption)
-        codes(CCT.traitDef, trait(CCT.primaryKey to "year")).keys shouldBe setOf("${CCT.traitDef}[note].${CCT.primaryKey}")
+        // A trait declares no key of its own (issue #1521): its data type's `g-primaryKey` is the only key.
+        codes(CCT.traitDef, trait("primaryKey" to listOf("year"))).keys shouldBe setOf("${CCT.traitDef}[note].primaryKey")
         codes(CCT.traitDef, trait(CCT.dataSchema to "an object")).keys shouldBe setOf("${CCT.traitDef}[note].${CCT.dataSchema}")
         // A body naming a type of the same client, or one that would not compile, is the trial's to judge: it
         // compiles the client's whole document, which the gate does not have.

@@ -129,7 +129,8 @@ class GedraEditUnionTest : StringSpec({
     // A keyed trait (issue #487) that requires a field besides its key. Built apart from `traitsFor` so the
     // branch-count assertions above stay untouched.
     fun budgetDefs(): GedraConfig = gedraConfig(cxt, "keyedTraits", GCFG.globalNamespace) {
-        trait("BudgetEntry", "budget", setOf(GedraDataType.formDoc), primaryKey = listOf("year")) {
+        trait("BudgetEntry", "budget", setOf(GedraDataType.formDoc)) {
+            primaryKey("year")
             property("year", "The year this budget is for; its primary key.", required = true) { type = SCT.integer }
             property("amount", "The budgeted amount -- required, and not the key.", required = true) { type = SCT.number }
         }

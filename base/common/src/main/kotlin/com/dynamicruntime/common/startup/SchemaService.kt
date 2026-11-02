@@ -920,9 +920,9 @@ class SchemaService : ServiceInitializer, ClientSchemaSource {
         cfactsFor(client).let { it.deliveredCfacts(it.assemble(cxt)) }
 
     /**
-     * The gedra traits [client] can see -- its own and global's (issue #487). Each carries its `primaryKey`, so
-     * a write path can key entries by `(traitId, data[<keyField>])` without re-reading the generated schema.
-     * The collector is what the unions were built from, so this is the same set they select on.
+     * The gedra traits [client] can see -- its own and global's (issue #487). The collector is what the unions were
+     * built from, so this is the same set they select on. A trait's key is its data type's `g-primaryKey`, read off
+     * the compiled types (issue #1521).
      */
     fun gedraTraitsFor(client: String): List<GedraTrait> = collector?.gedraConfigs?.traitsFor(client) ?: emptyList()
 
@@ -978,9 +978,8 @@ class SchemaService : ServiceInitializer, ClientSchemaSource {
 
     /**
      * The gedra **state** traits in force (issue #597) -- every one, since state is global and a client does not
-     * vary the set (decision 3), which is why this takes no client. Each carries its `primaryKey` and its
-     * `stateClass`. The same set the `StateEntry` unions were built from, so a state write keys and validates on
-     * exactly what those unions declare.
+     * vary the set (decision 3), which is why this takes no client. Each carries its `stateClass`. The same set the
+     * `StateEntry` unions were built from, so a state write keys and validates on exactly what those unions declare.
      */
     fun gedraStateTraits(): List<GedraTrait> = collector?.gedraConfigs?.stateTraits() ?: emptyList()
 

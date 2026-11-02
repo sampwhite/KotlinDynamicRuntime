@@ -56,18 +56,18 @@ and the imported form's state is derived anew by the create path (`GedraDataServ
 ## Declaring a state trait
 
 A state trait is declared in a component's `gedraConfig { ... }` block with `stateTrait`, the counterpart of `trait`. It
-uses the same machinery: one generated entry type, keyed on `traitId`, with an optional `primaryKey` and the stored
-envelope. It differs in two ways. It carries a `StateTraitClass`, which is required, and it is filed under
-`GedraConfig.stateTraits`, never under `traits`, so the data unions and the patch keying never see it. State and data
-traits share one id space, and `checkTraitIsNew` refuses an id used by either.
+uses the same machinery: one generated entry type, keyed on `traitId`, with an optional key (its data type's
+`g-primaryKey`) and the stored envelope. It differs in two ways. It carries a `StateTraitClass`, which is required, and
+it is filed under `GedraConfig.stateTraits`, never under `traits`, so the data unions and the patch keying never see it.
+State and data traits share one id space, and `checkTraitIsNew` refuses an id used by either.
 
 ```kotlin
 stateTrait(
     WFS.workflowEngagementEntry, WFS.workflowEngagement, setOf(GedraDataType.formDoc),
     StateTraitClass.asserted,
     "That a person put this form into a workflow, and the trail of what has happened to it since.",
-    primaryKey = listOf(WFD.workflowId),
 ) {
+    primaryKey(WFD.workflowId)
     property(WFD.workflowId, "The workflow this form is engaged with.", required = true)
     // ...
 }

@@ -126,11 +126,10 @@ object ComputeValueCreation : SchFunctionCreation {
         val script = m[CVF.script].toOptStr().orEmpty()
         fun refuse(problem: String): Nothing = throw KdrException.mkConv("'${CVF.fn}' of '$target': $problem")
         val prop = dataType.properties[target] ?: refuse("the type declares no property '$target' to store the value in.")
+        // Derived, which also keeps it out of the type's key: a key field may not be derived (issue #1521), so a computed
+        // value can never move an entry to another key.
         if (!prop.valueType.derived) {
             refuse("'$target' is not '${SCH.derived}', so a caller could supply it and this would overwrite what they sent.")
-        }
-        if (target in dataType.primaryKey) {
-            refuse("'$target' is in the type's '${SCH.primaryKey}', so a computed value could move the entry to another key.")
         }
         if (prop.visibleWhen != null) {
             refuse("'$target' is gated by '${SCH.visibleWhen}', which decides who may change it; this changes it for everyone.")

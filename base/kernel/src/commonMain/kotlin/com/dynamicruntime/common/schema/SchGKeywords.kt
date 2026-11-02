@@ -68,7 +68,8 @@ object SchGKeywords {
         SCH.schemaDocument to "Marks a property whose value is itself a schema, checked by parsing it.",
         SCH.options to "The choices a property offers, each a label and a value.",
         SCH.openOptions to "Whether the options are suggestions rather than a bound, so another value is allowed.",
-        SCH.primaryKey to "The fields, in order, that identify one element of an array of this type.",
+        SCH.primaryKey to "The fields, in order, that tell one value of this type from another: a trait's entries, or the " +
+            "items of an array. Each must be declared, required, and a scalar.",
         SCH.optionalContents to "Marks an object property whose value may be a fragment: each field is checked, " +
             "but not that the required ones are present.",
         SCH.optionsSource to "Names a registered source that supplies the property's options when the schema is served.",

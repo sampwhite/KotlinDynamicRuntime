@@ -64,7 +64,13 @@ fun mergeOverlay(spec: MergeSpec, base: Map<String, Any?>, overlay: Map<String, 
         out[key] = if (key !in overlay) value else mergeValue(rule, value, overlay[key], childPath(path, key), problems)
     }
     for ((key, value) in overlay) {
-        if (key !in base && key != directive) out[key] = value
+        if (key in base || key == directive) continue
+        // A part the base has none of, which a fixed rule refuses to add (null adds nothing, so it is no change).
+        if ((chosen[key] ?: spec.ruleFor(key)) == MergeRule.Fixed && value != null) {
+            problems.add(Problem(OverlayMergeError.fixedValue, fixedMessage, ProblemLocation(childPath(path, key))))
+        } else {
+            out[key] = value
+        }
     }
     return MergeOutcome(out, problems)
 }
@@ -182,6 +188,13 @@ sealed interface MergeRule {
     data object Append : MergeRule
 
     /**
+     * A part an overlay may only **restate** (issue #1521): written equal to the base's, it changes nothing, and any
+     * other value -- a change, an addition where the base has none, or a removal -- is refused and reported, leaving
+     * the base's. A type's `g-primaryKey`, since a client changing it would change how stored entries are told apart.
+     */
+    data object Fixed : MergeRule
+
+    /**
      * A part that is a resource of its own, merged by its own spec -- which may depend on what is being merged (a
      * layout's [MergeRule.Keyed] list refuses new elements only when its mode makes order mean something). When the
      * base has none, the overlay's stands as written; an overlay of `null` removes it.
@@ -227,9 +240,16 @@ enum class OverlayMergeError : ProblemCode {
 
     /** An overlay that would remove what an append-only list ([MergeRule.Append]) holds. */
     appendOnly,
+
+    /** An overlay that would change, add, or remove a part it may only restate ([MergeRule.Fixed]). */
+    fixedValue,
 }
 
 private fun mergeValue(rule: MergeRule, base: Any?, over: Any?, path: String, problems: MutableList<Problem>): Any? {
+    if (rule == MergeRule.Fixed) {
+        if (over != base) problems.add(Problem(OverlayMergeError.fixedValue, fixedMessage, ProblemLocation(path)))
+        return base
+    }
     // Null in an overlay always means "none": a removal, under every rule but the one that cannot remove.
     if (over == null) {
         if (rule != MergeRule.Append || base == null) return null
@@ -238,6 +258,7 @@ private fun mergeValue(rule: MergeRule, base: Any?, over: Any?, path: String, pr
     }
     return when (rule) {
         MergeRule.Replace -> over
+        MergeRule.Fixed -> base
         MergeRule.Append -> if (base is List<*> && over is List<*>) base + over else over
         MergeRule.Merge -> if (base is Map<*, *> && over is Map<*, *>) mergeEntries(base.toJsonMapOrEmpty(), over.toJsonMapOrEmpty()) else over
         MergeRule.Restate -> if (base is Map<*, *> && over is Map<*, *>) restate(base.toJsonMapOrEmpty(), over.toJsonMapOrEmpty()) else over
@@ -376,7 +397,11 @@ fun diffOverlay(spec: MergeSpec, base: Map<String, Any?>, edited: Map<String, An
     for ((key, value) in edited) {
         if (key == spec.directiveKey) continue
         if (key !in base) {
-            out[key] = value
+            if (spec.ruleFor(key) == MergeRule.Fixed && value != null) {
+                problems.add(Problem(OverlayMergeError.cannotStateChange, fixedMessage, ProblemLocation(childPath(path, key))))
+            } else {
+                out[key] = value
+            }
         } else if (base[key] != value) {
             diffValue(spec.ruleFor(key), base[key], value, childPath(path, key), problems)?.let { out[key] = it.value }
         }
@@ -386,6 +411,8 @@ fun diffOverlay(spec: MergeSpec, base: Map<String, Any?>, edited: Map<String, An
         // A removal, which an append-only list cannot take: reported here, where the edit is judged, not on a later merge.
         if (spec.ruleFor(key) == MergeRule.Append && base[key] != null) {
             problems.add(Problem(OverlayMergeError.cannotStateChange, appendOnlyMessage, ProblemLocation(childPath(path, key))))
+        } else if (spec.ruleFor(key) == MergeRule.Fixed && base[key] != null) {
+            problems.add(Problem(OverlayMergeError.cannotStateChange, fixedMessage, ProblemLocation(childPath(path, key))))
         } else {
             out[key] = null
         }
@@ -398,6 +425,11 @@ private class Stated(val value: Any?)
 
 /** The overlay value making [base] into the different [edited] under [rule], or null when it cannot be stated. */
 private fun diffValue(rule: MergeRule, base: Any?, edited: Any?, path: String, problems: MutableList<Problem>): Stated? {
+    // Reached only for a value that differs from the base's, which is the one thing a fixed part refuses.
+    if (rule == MergeRule.Fixed) {
+        problems.add(Problem(OverlayMergeError.cannotStateChange, fixedMessage, ProblemLocation(path)))
+        return null
+    }
     if (edited == null && base != null && rule == MergeRule.Append) {
         problems.add(Problem(OverlayMergeError.cannotStateChange, appendOnlyMessage, ProblemLocation(path)))
         return null
@@ -405,6 +437,7 @@ private fun diffValue(rule: MergeRule, base: Any?, edited: Any?, path: String, p
     if (edited == null || base == null) return Stated(edited)
     return when (rule) {
         MergeRule.Replace -> Stated(edited)
+        MergeRule.Fixed -> null
         // The base's elements, unchanged and first, then what was added; anything else would change what it holds.
         MergeRule.Append -> if (base is List<*> && edited is List<*> && edited.size > base.size && edited.subList(0, base.size) == base) {
             Stated(edited.subList(base.size, edited.size))
@@ -514,6 +547,9 @@ private fun diffKeyed(rule: MergeRule.Keyed, base: List<*>, edited: List<*>, pat
     }
     return Stated(out)
 }
+
+private const val fixedMessage =
+    "This can only be restated as it is: an alteration may repeat it, but not change, add, or remove it."
 
 private const val appendOnlyMessage =
     "This list can only be added to: what the type already holds here stays, in its order, and an alteration's own entries follow it."

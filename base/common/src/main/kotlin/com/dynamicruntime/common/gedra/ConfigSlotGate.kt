@@ -43,7 +43,10 @@ import com.dynamicruntime.common.gedra.workflow.WfFunctionCreation
  * report's -- as those are compiled on their own, so the gate needs no booted schema store.
  */
 object ConfigSlotShapes {
-    private class Compiled(val dataTypes: Map<String, SchType>, val primaryKeys: Map<String, List<String>>)
+    private class Compiled(val dataTypes: Map<String, SchType>) {
+        // Read off each slot's compiled data type, the one place a key is declared (issue #1521).
+        val primaryKeys: Map<String, List<String>> = dataTypes.mapValues { it.value.primaryKey }
+    }
 
     // Parsed once and kept, as the definition schemas are: it is a constant of the runtime.
     private var compiled: Compiled? = null
@@ -54,7 +57,6 @@ object ConfigSlotShapes {
         val types = parseSchemaTypes(traits.defs, existingTypes = referenced)
         Compiled(
             traits.configTraits.mapValues { (_, trait) -> types.getValue(trait.typeName).properties.getValue(GE.data).valueType },
-            traits.configTraits.mapValues { it.value.primaryKey },
         ).also { compiled = it }
     }
 
@@ -85,7 +87,7 @@ object ConfigSlotShapes {
         }
         val all = typed + traits.defs
         val types = traits.configTraits.mapValues { it.value.typeName }
-        return ServedSlotShapes(types, traits.configTraits.mapValues { it.value.primaryKey }, collectDefClosure(types.values, all))
+        return ServedSlotShapes(types, compiled(cxt).primaryKeys, collectDefClosure(types.values, all))
     }
 }
 

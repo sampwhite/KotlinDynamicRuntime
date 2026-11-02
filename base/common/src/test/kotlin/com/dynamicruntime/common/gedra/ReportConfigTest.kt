@@ -150,7 +150,7 @@ class ReportConfigTest : StringSpec({
     "the stored slot references the definition schema" {
         val core = coreConfigTraits(cxt)
         val slot = core.configTraits.getValue(CCT.reportDef)
-        slot.primaryKey shouldContainExactly listOf(CCT.reportId)
+        ConfigSlotShapes.primaryKey(cxt, CCT.reportDef) shouldContainExactly listOf(CCT.reportId)
         // The slot's data type holds the definition by reference, as the workflow slot does.
         val dataType = slot.dataSchema.values.single().toString().substringAfterLast('/')
         core.defs.getValue(dataType).toString() shouldContain "${RDEF.namespace}.${RDEF.defType}"

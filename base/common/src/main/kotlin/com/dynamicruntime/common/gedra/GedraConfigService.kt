@@ -110,9 +110,10 @@ class GedraConfigService : ServiceInitializer {
         // cache's first load included. A no-op once every row has one; the boot load has already run it if it read.
         ConfigCurrentRevisions.backfill(cxt, SqlTopicService.mkSqlCxt(cxt, gedraConfigTopic), configTable(cxt))
         configCache = GedraConfigCache.register(cxt)
-        // The config-trait vocabulary is the source of truth for how each slot's entries are keyed, read once
-        // here rather than rebuilt per write. A single-instance slot (the client) has an empty key.
-        slotPrimaryKeys = coreConfigTraits(cxt).configTraits.mapValues { it.value.primaryKey }
+        // The config-trait vocabulary is the source of truth for how each slot's entries are keyed -- each slot's data
+        // type's `g-primaryKey` (issue #1521) -- read once here rather than per write. A single-instance slot (the
+        // client) has an empty key.
+        slotPrimaryKeys = coreConfigTraits(cxt).configTraits.keys.associateWith { ConfigSlotShapes.primaryKey(cxt, it) }
     }
 
     /**

@@ -3,9 +3,9 @@ package com.dynamicruntime.common.gedra
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SCT
+import com.dynamicruntime.common.schema.SchType
 import com.dynamicruntime.common.schema.SchTypeBuilder
 import com.dynamicruntime.common.schema.SchTypesBuilder
-import com.dynamicruntime.common.schema.isScalarType
 import com.dynamicruntime.common.schema.typeRefPath
 import com.dynamicruntime.common.util.jsonMap
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
@@ -139,9 +139,8 @@ fun SchTypesBuilder.traitEntry(
     traitId: String,
     appliesTo: Set<GedraDataType>,
     description: String? = null,
-    primaryKey: List<String> = emptyList(),
     dataSchema: SchTypeBuilder.() -> Unit,
-): Map<String, Any?> = traitEntryOf(name, traitId, appliesTo.map { it.name }, description, primaryKey, dataSchema)
+): Map<String, Any?> = traitEntryOf(name, traitId, appliesTo.map { it.name }, description, dataSchema)
 
 /**
  * The entry type for a **config** trait (issue #316): exactly what [traitEntry] builds -- the same envelope,
@@ -157,9 +156,8 @@ fun SchTypesBuilder.configTraitEntry(
     traitId: String,
     appliesTo: Set<GedraConfigType>,
     description: String? = null,
-    primaryKey: List<String> = emptyList(),
     dataSchema: SchTypeBuilder.() -> Unit,
-): Map<String, Any?> = traitEntryOf(name, traitId, appliesTo.map { it.name }, description, primaryKey, dataSchema)
+): Map<String, Any?> = traitEntryOf(name, traitId, appliesTo.map { it.name }, description, dataSchema)
 
 /**
  * The shared body of [traitEntry] and [configTraitEntry]: the binding arrives as the kinds' **names**, which
@@ -171,7 +169,6 @@ private fun SchTypesBuilder.traitEntryOf(
     traitId: String,
     appliesToNames: List<String>,
     description: String?,
-    primaryKey: List<String>,
     dataSchema: SchTypeBuilder.() -> Unit,
 ): Map<String, Any?> {
     if (appliesToNames.isEmpty()) {
@@ -196,46 +193,6 @@ private fun SchTypesBuilder.traitEntryOf(
         dataSchema()
         holdDataToAnObject(traitId)
     }.data
-    // The primary key goes on the data type, alongside its `required` (issue #487), and every field it names is
-    // checked here where the author is. A keyed trait declares its data **inline**: the key and the fields it
-    // names have to live on one type, which a bare `$ref` -- resolved only when types compile -- cannot give.
-    if (primaryKey.isNotEmpty()) {
-        if (SCH.dRef in declared) {
-            throw KdrException.mkConv(
-                $$"Trait '$$traitId' declares a primary key, but its data is a $ref. A keyed trait has to declare " +
-                    "its data inline, so the key and the fields it names are one type; put the key on the " +
-                    "referenced type instead.",
-            )
-        }
-        val props = declared[SCH.properties] as? Map<*, *> ?: emptyMap<Any?, Any?>()
-        val required = (declared[SCH.required] as? List<*>)?.map { it.toString() }?.toSet().orEmpty()
-        for (field in primaryKey) {
-            val prop = props[field] as? Map<*, *>
-                ?: throw KdrException.mkConv(
-                    "Trait '$traitId' names '$field' in its primary key, but its data has no such field. A key " +
-                        "has to be one of the trait's own fields.",
-                )
-            if (field !in required) {
-                throw KdrException.mkConv(
-                    "Trait '$traitId' names '$field' in its primary key, but that field is not required. A key " +
-                        "that can be omitted cannot tell two entries apart, so it has to be required.",
-                )
-            }
-            if (!isScalarType(prop[SCH.type] as? String)) {
-                throw KdrException.mkConv(
-                    "Trait '$traitId' names '$field' in its primary key, but that field is not a scalar. A key " +
-                        "is compared by value, so it has to be a string, number, integer or boolean.",
-                )
-            }
-            if (prop[SCH.derived] == true) {
-                throw KdrException.mkConv(
-                    "Trait '$traitId' names the derived field '$field' in its primary key. Identity that " +
-                        "depends on a computation re-partitions stored data whenever the computation changes.",
-                )
-            }
-        }
-        declared[SCH.primaryKey] = primaryKey
-    }
     // A trait whose data is **already** a named type keeps that name. Manufacturing a second one for the same
     // shape would at best duplicate it and at worst collide: `NameEntry` derives `NameData`, which is exactly
     // what an author naming their own data type would have called it -- and the generated wrapper would have
@@ -417,9 +374,19 @@ fun isBareKeyText(text: String): Boolean = text.isNotEmpty() && text.all { isBar
 fun isBareKeyChar(c: Char): Boolean = c in 'a'..'z' || c in 'A'..'Z' || c in '0'..'9' || c == '_' || c == '.' || c == ':' || c == '-'
 
 /**
+ * The primary key of a trait's entries, read off its compiled [entryType] (issue #1521): the `g-primaryKey` of the
+ * entry's `data` type, which is the only place a key is declared -- so a client's schema, as it compiles, keys the
+ * entries the way the schema that validates them declares. Empty for a single-instance trait, or a null type.
+ */
+fun traitKeyOf(entryType: SchType?): List<String> = entryType?.properties?.get(GE.data)?.valueType?.primaryKey.orEmpty()
+
+/** [traitKeyOf] the branch for [traitId] of an entries [union] (a kind's entry or state union); empty when it has none. */
+fun traitKeyIn(union: SchType?, traitId: String): List<String> = traitKeyOf(union?.variants?.byValue?.get(traitId))
+
+/**
  * Refuses a set of entries that carries two with the same address (issue #337, #487).
  *
- * A gedra holds at most one entry per trait -- unless the trait declares a `g-primaryKey`, and then one per
+ * A gedra holds at most one entry per trait -- unless its data type declares a `g-primaryKey`, and then one per
  * distinct value of that key. That is the rule the whole addressing story rests on: it lets a patch name an
  * entry by its trait (and key), and makes "an edit with no entryId" mean update the one that is there, or
  * create the first. Two entries sharing an address would make both questions ambiguous.

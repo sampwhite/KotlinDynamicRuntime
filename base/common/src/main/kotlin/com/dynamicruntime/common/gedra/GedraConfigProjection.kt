@@ -23,19 +23,14 @@ import com.dynamicruntime.common.schema.SchTypeBuilder
  */
 
 /**
- * A trait's metadata as a wire map (issue #702): its id, the generated entry type, the gedra kinds it applies
- * to, and its primary key. [omitEmptyPrimaryKey] drops an empty `primaryKey` rather than writing `[]` -- the
- * serializer sets it, to keep stored config as lean as it was; the endpoint leaves it, because its schema
- * declares `primaryKey` required and present-but-empty is the honest answer there. The serializer layers its
- * `description`/`dataSchema`/`stateClass` on top of this; the endpoint uses it as-is.
+ * A trait's metadata as a wire map (issue #702): its id, the generated entry type, and the gedra kinds it applies
+ * to. Its key is no part of it (issue #1521): that is its data type's `g-primaryKey`, read where the type is. The
+ * serializer layers its `description`/`dataSchema`/`stateClass` on top of this; the endpoint uses it as-is.
  */
-fun GedraTrait.toMetadataMap(omitEmptyPrimaryKey: Boolean = false): Map<String, Any?> = buildMap {
+fun GedraTrait.toMetadataMap(): Map<String, Any?> = buildMap {
     put(CCT.traitId, traitId)
     put(CCT.typeName, typeName)
     put(CCT.appliesTo, appliesTo.map { it.name })
-    if (!omitEmptyPrimaryKey || primaryKey.isNotEmpty()) {
-        put(CCT.primaryKey, primaryKey)
-    }
 }
 
 /** The schema of [toMetadataMap] -- called inside a `type(...) { }` block by both surfaces that emit a trait. */
@@ -48,10 +43,6 @@ fun SchTypeBuilder.traitMetadataFields() {
     property(CCT.appliesTo, "The gedra kinds an entry of this trait may be carried on.", required = true) {
         type = SCT.array
         items { options(GedraDataType.entries) }
-    }
-    property(CCT.primaryKey, "The data fields that tell several entries apart; empty when single-instance.", required = true) {
-        type = SCT.array
-        items { type = SCT.string }
     }
 }
 

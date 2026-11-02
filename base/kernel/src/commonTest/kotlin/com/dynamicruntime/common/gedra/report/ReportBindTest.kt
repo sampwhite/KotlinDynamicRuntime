@@ -49,11 +49,13 @@ class ReportBindTest {
             type = SCT.kObject
             property("email", "An email.")
         }
-        trait("YearlyEntry", "yearly", setOf(GedraDataType.formDoc), "One year.", primaryKey = listOf("year")) {
+        trait("YearlyEntry", "yearly", setOf(GedraDataType.formDoc), "One year.") {
+            primaryKey("year")
             property("year", "The year.", required = true) { type = SCT.integer }
             property("note", "A note.")
         }
-        trait("QuarterlyEntry", "quarterly", setOf(GedraDataType.formDoc), "One quarter.", primaryKey = listOf("year", "quarter")) {
+        trait("QuarterlyEntry", "quarterly", setOf(GedraDataType.formDoc), "One quarter.") {
+            primaryKey("year", "quarter")
             property("year", "The year.", required = true) { type = SCT.integer }
             property("quarter", "The quarter.", required = true)
             property("amount", "An amount.") { type = SCT.number }

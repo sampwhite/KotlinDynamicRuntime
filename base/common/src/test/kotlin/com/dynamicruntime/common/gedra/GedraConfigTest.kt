@@ -225,18 +225,19 @@ class GedraConfigTest : StringSpec({
         config.traits.isEmpty() shouldBe true
         // Keyed as #611/#625 say: workflows by id, schema by type name, the trait/usage slots by trait id,
         // fragments/uiBlocks by their overlay id, cfacts by name, customers by id; the client is single-instance.
-        config.configTraits.getValue(CCT.clientDef).primaryKey shouldBe emptyList()
-        config.configTraits.getValue(CCT.customerDef).primaryKey shouldBe listOf(CUST.customerId)
-        config.configTraits.getValue(CCT.workflowDef).primaryKey shouldBe listOf(CCT.workflowId)
-        config.configTraits.getValue(CCT.reportDef).primaryKey shouldBe listOf(CCT.reportId)
-        config.configTraits.getValue(CCT.schemaDef).primaryKey shouldBe listOf(CCT.typeName)
-        config.configTraits.getValue(CCT.traitDef).primaryKey shouldBe listOf(CCT.traitId)
-        config.configTraits.getValue(CCT.usageDef).primaryKey shouldBe listOf(CCT.traitId, CCT.label)
-        config.configTraits.getValue(CCT.fragmentDef).primaryKey shouldBe listOf(CCT.fileId)
-        config.configTraits.getValue(CCT.uiBlockDef).primaryKey shouldBe listOf(CCT.blockId)
-        config.configTraits.getValue(CCT.cfactDef).primaryKey shouldBe listOf(CCT.name)
+        // Each is its slot's data type's `g-primaryKey`, as compiled (issue #1521).
+        ConfigSlotShapes.primaryKey(cxt, CCT.clientDef) shouldBe emptyList()
+        ConfigSlotShapes.primaryKey(cxt, CCT.customerDef) shouldBe listOf(CUST.customerId)
+        ConfigSlotShapes.primaryKey(cxt, CCT.workflowDef) shouldBe listOf(CCT.workflowId)
+        ConfigSlotShapes.primaryKey(cxt, CCT.reportDef) shouldBe listOf(CCT.reportId)
+        ConfigSlotShapes.primaryKey(cxt, CCT.schemaDef) shouldBe listOf(CCT.typeName)
+        ConfigSlotShapes.primaryKey(cxt, CCT.traitDef) shouldBe listOf(CCT.traitId)
+        ConfigSlotShapes.primaryKey(cxt, CCT.usageDef) shouldBe listOf(CCT.traitId, CCT.label)
+        ConfigSlotShapes.primaryKey(cxt, CCT.fragmentDef) shouldBe listOf(CCT.fileId)
+        ConfigSlotShapes.primaryKey(cxt, CCT.uiBlockDef) shouldBe listOf(CCT.blockId)
+        ConfigSlotShapes.primaryKey(cxt, CCT.cfactDef) shouldBe listOf(CCT.name)
         // A file ref by its ref id (issue #1153).
-        config.configTraits.getValue(CCT.fileRefDef).primaryKey shouldBe listOf(CCT.refId)
+        ConfigSlotShapes.primaryKey(cxt, CCT.fileRefDef) shouldBe listOf(CCT.refId)
     }
 
     "the referenced slots point at the canonical shapes, and the schema-doc slots parse their body" {
@@ -268,7 +269,7 @@ class GedraConfigTest : StringSpec({
         val traitData = parseSchemaTypes(config.defs, existingTypes = canonical)
             .getValue("kdr.core.TraitDefEntry").properties.getValue(GE.data).valueType
         traitData.properties.keys.toList() shouldContainExactly
-            listOf(CCT.traitId, CCT.typeName, CCT.appliesTo, CCT.primaryKey, CCT.description, CCT.dataSchema)
+            listOf(CCT.traitId, CCT.typeName, CCT.appliesTo, CCT.description, CCT.dataSchema)
         // `appliesTo` is an array bounded to the data-kind names -- a stored trait cannot apply to a kind that
         // is not one.
         traitData.properties.getValue(CCT.appliesTo).valueType.itemType.shouldNotBeNull()

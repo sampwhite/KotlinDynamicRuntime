@@ -69,7 +69,7 @@ interface GedraStateDeriver {
 
     /**
      * The state entries this deriver computes from [state]'s row and the state around it -- each a
-     * `{traitId, data}` map for a derived state trait it owns, keyed by that trait's `primaryKey`. Returns empty
+     * `{traitId, data}` map for a derived state trait it owns, keyed by its data type's `g-primaryKey`. Returns empty
      * when it has nothing to record for this gedra. The entries are stamped, validated, keyed, and written by the
      * caller (`writeState`), so this returns the same shape a caller of `writeState` would pass.
      */

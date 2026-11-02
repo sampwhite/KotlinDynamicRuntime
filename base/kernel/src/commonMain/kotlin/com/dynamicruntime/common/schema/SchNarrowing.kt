@@ -53,6 +53,18 @@ fun narrowingProblems(typeName: String, base: Map<String, Any?>, overlay: Map<St
     // not say -- the properties restated where they asked for a merge -- so it fails the alteration like a widening.
     // (A layout entry the merge refused is the layout's own fault, reported and dropped with the layout.)
     problems.addAll(outcome.problems.filter { it.code == OverlayMergeError.unknownChoice })
+    // A key the alteration changed, added, or removed (issue #1521) -- the type's one part it may only restate -- would
+    // change how the stored values it keys are told apart, so it fails the alteration too. The merge kept the base's.
+    for (p in outcome.problems.filter { it.code == OverlayMergeError.fixedValue }) {
+        problems.add(
+            Problem(
+                p.code,
+                "Type '$typeName': its '${SCH.primaryKey}' tells stored values apart, so an alteration may restate it but not " +
+                    "change, add, or remove it.",
+                p.location,
+            ),
+        )
+    }
     compare(typeName, typeName, base, outcome.value, problems)
     return problems
 }

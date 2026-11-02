@@ -181,4 +181,14 @@ class SchNarrowingTest : StringSpec({
             ),
         ).size shouldBe 3
     }
+
+    // A key tells the stored values of a type apart (issue #1521), so an alteration may repeat it but nothing else.
+    "an alteration may restate a type's key, but not change, add, or remove it" {
+        val keyed = base + (SCH.primaryKey to listOf("name"))
+        fun keyProblems(over: Map<String, Any?>) = narrowingProblems("core.Thing", keyed, over).map { it.message }
+        keyProblems(mapOf(SCH.primaryKey to listOf("name"))).shouldBeEmpty()
+        keyProblems(mapOf(SCH.primaryKey to listOf("name", "colour"))).single() shouldContain "may restate it but not change"
+        keyProblems(mapOf(SCH.primaryKey to null)).single() shouldContain "'g-primaryKey'"
+        problems(mapOf(SCH.primaryKey to listOf("name"))).single() shouldContain "may restate it but not change"
+    }
 })

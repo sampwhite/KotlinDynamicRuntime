@@ -1,10 +1,12 @@
 package com.dynamicruntime.webapp
 
+import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.parseSchemaTypes
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
 /**
@@ -22,6 +24,7 @@ class FormKeyPromotionTest {
                 "year" to mapOf(SCH.type to SCT.integer),
                 "note" to mapOf(SCH.type to SCT.string),
             ),
+            SCH.required to listOf("year"),
             SCH.primaryKey to listOf("year"),
         ),
         "t.Unkeyed" to mapOf(
@@ -49,7 +52,9 @@ class FormKeyPromotionTest {
         ),
         // A *union* under `data`: not promotable. isStructuredObject counts a union, so the rule excludes it
         // by `variants == null` -- else, were a union ever keyed, its key would draw once promoted and again
-        // inside the chosen branch. Its branches carry a const discriminator, as a real discriminated union must.
+        // inside the chosen branch. A union cannot be keyed since issue #1521 (it declares no fields for a key to
+        // name), so this union is unkeyed and the test below checks the parse refuses a keyed one. Its branches carry
+        // a const discriminator, as a real discriminated union must.
         "t.UA" to mapOf(
             SCH.type to SCT.kObject,
             SCH.properties to mapOf(
@@ -64,9 +69,6 @@ class FormKeyPromotionTest {
         "t.Union" to mapOf(
             SCH.oneOf to listOf(mapOf(SCH.dRef to "t.UA"), mapOf(SCH.dRef to "t.UB")),
             SCH.discriminator to mapOf(SCH.propertyName to "kind"),
-            // A key on the union itself: parseSchemaTypes stores it (SchParser), so without the `variants == null`
-            // guard the old rule would have promoted this -- the double-render the review caught.
-            SCH.primaryKey to listOf("year"),
         ),
         "t.UnionBranch" to mapOf(
             SCH.type to SCT.kObject,
@@ -95,6 +97,10 @@ class FormKeyPromotionTest {
     fun aKeyedUnionPropertyDoesNotPromote() {
         // isStructuredObject admits a union; promotion must not, or the key renders twice (issue #642 review).
         assertTrue(promotableKeys(type("t.UnionBranch")).isEmpty())
+        // And a union cannot be keyed at all (issue #1521): it declares no field for its key to name.
+        val keyedUnion = defs() + ("t.Union" to (defs().getValue("t.Union") as Map<*, *>) + (SCH.primaryKey to listOf("year")))
+        val refusal = assertFailsWith<KdrException> { parseSchemaTypes(keyedUnion) }
+        assertTrue("declares no such field" in refusal.message.orEmpty(), refusal.message)
     }
 
     @Test

@@ -234,7 +234,7 @@ private fun bindFormPath(path: FormPath, scope: ReportScope): Parsed<BoundPath> 
             ReportBindProblem.unknownTrait,
             "The trait '${path.traitId}' has no compiled entry type '${trait.typeName}' here.",
         )
-    val pk = trait.primaryKey
+    val pk = data.primaryKey
     val selector = path.selector
     // Which entries the path reads, and whether that can be more than one.
     val severalEntries = when {

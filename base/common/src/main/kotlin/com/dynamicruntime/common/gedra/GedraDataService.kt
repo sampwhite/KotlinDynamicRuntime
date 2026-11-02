@@ -108,7 +108,7 @@ object GDBG {
  *
  * ### Keyed traits (issue #487)
  *
- * A gedra holds at most one entry per trait, **unless** the trait declares a `g-primaryKey` -- then one per
+ * A gedra holds at most one entry per trait, **unless** its data type declares a `g-primaryKey` -- then one per
  * distinct value of that key ([checkEntryKeys]). A keyed entry is addressed by `(traitId, data[<keyField>])`,
  * which an edit carries in its own data, so the same rule names an entry to add, merge, replace, or delete.
  */
@@ -225,10 +225,11 @@ class GedraDataService : ServiceInitializer {
     fun writeState(cxt: KdrCxt, gedraId: GedraId, entries: List<Map<String, Any?>>): List<Map<String, Any?>> {
         val kind = gedraId.dataType
             ?: throw KdrException.mkInput("'$gedraId' is not a data gedra, so it carries no state.")
-        // The declared state traits, read once (state is global, so this is client-independent). Their keys drive
-        // both the applicability guard and how the entries are addressed.
+        // The declared state traits, read once (state is global, so this is client-independent). Their keys -- each
+        // entry type's data `g-primaryKey`, as global compiles it -- drive how the entries are addressed.
         val stateTraits = SchemaService.get(cxt).gedraStateTraits().associateBy { it.traitId }
-        val pkOf: (String) -> List<String> = { traitId -> stateTraits[traitId]?.primaryKey.orEmpty() }
+        val stateTypes = SchemaService.get(cxt).storeFor(null).types
+        val pkOf: (String) -> List<String> = { traitId -> traitKeyOf(stateTraits[traitId]?.let { stateTypes[it.typeName] }) }
         // Fail fast, before the lock: every entry names a known state trait that applies to this kind, and no two
         // share an address. Shape validation waits until the entries are stamped, under the lock.
         checkStateTraits(kind, entries, stateTraits)
@@ -1671,14 +1672,13 @@ class GedraDataService : ServiceInitializer {
 
     /**
      * Per trait id, the ordered fields of its primary key (issue #487), for [cxt]'s client and [kind] -- empty
-     * when the trait is single-instance or is not one this client carries for this kind. Read off the same
-     * [GedraTrait]s the unions were built from, so an entry keys the way the schema that validated it declares.
+     * when the trait is single-instance or is not one this client carries for this kind. Read off the client's
+     * compiled entry union, from each trait's data type's `g-primaryKey` (issue #1521), so an entry keys the way
+     * the schema that validated it declares, and a reload's types take effect with it.
      */
     private fun pkFieldsOf(cxt: KdrCxt, kind: GedraDataType): (String) -> List<String> {
-        val keyed = SchemaService.get(cxt).gedraTraitsFor(cxt.client)
-            .filter { kind in it.appliesTo && it.primaryKey.isNotEmpty() }
-            .associate { it.traitId to it.primaryKey }
-        return { traitId -> keyed[traitId].orEmpty() }
+        val union = SchemaService.get(cxt).storeFor(cxt.client).types["${GCFG.globalNamespace}.${GU.unionName(kind)}"]
+        return { traitId -> traitKeyIn(union, traitId) }
     }
 
     /** Folds [entries] into a map addressed by [entryKey] -- trait id, plus primary-key values for a keyed trait. */
