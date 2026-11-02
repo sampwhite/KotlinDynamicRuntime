@@ -90,14 +90,21 @@ object DesignApi {
         Http.sendApiResult("POST", DSV.labelEdit, labelEditBody(workflowId, slot, label, basedOn, client))
 
     /**
-     * Sets [typeName]'s heading to [label] -- the workflow's own when [workflowId] is given, else the shared one in the
-     * definition the client declares -- or clears it when [label] is blank (issue #1070), as an edit of the definition
-     * stamped [basedOn].
+     * Sets [typeName]'s heading to [label] and its introduction to [description] -- the workflow's own when [workflowId]
+     * is given, else the shared ones in the definition the client declares -- each cleared when blank (issues #1070,
+     * #1539), as an edit of the definition stamped [basedOn].
      */
-    suspend fun setHeading(workflowId: String?, typeName: String, label: String?, basedOn: String, client: String?): ApiResult<Map<String, Any?>> =
+    suspend fun setHeading(
+        workflowId: String?,
+        typeName: String,
+        label: String?,
+        description: String?,
+        basedOn: String,
+        client: String?,
+    ): ApiResult<Map<String, Any?>> =
         Http.sendApiResult(
             "POST", if (workflowId != null) DSV.headingEdit else DSV.sharedHeadingEdit,
-            headingEditBody(workflowId, typeName, label, basedOn, client),
+            headingEditBody(workflowId, typeName, label, description, basedOn, client),
         )
 
     /**
@@ -1427,10 +1434,11 @@ external interface HeadingSectionProps : Props {
 }
 
 /**
- * A trait section's **heading** (issue #1070): the `label` of its data type's layout, at the two levels a field's copy
- * has -- the workflow's own, written as its alteration of the type, with **Reset to shared**; and, behind its own
- * button, the shared heading in the definition the client declares, for every workflow. A heading that pulls a fragment
- * key is shared wording, edited at the key.
+ * A trait section's **heading** and **introduction** (issues #1070, #1539): the `label` and `description` of its data
+ * type's layout, at the two levels a field's copy has -- the workflow's own, written as its alteration of the type, with
+ * **Reset to shared**; and, behind its own button, the shared ones in the definition the client declares, for every
+ * workflow. Each is edited beside the other, and saved with it. One that pulls a fragment key is shared wording, edited
+ * at the key: the shared editor shows it as such, and sends it back as written.
  */
 private val HeadingSection = FC<HeadingSectionProps> { props ->
     val pageCopy = usePageCopy(PFRAG.design)
@@ -1440,22 +1448,26 @@ private val HeadingSection = FC<HeadingSectionProps> { props ->
     val typeName = trait.typeName
     val edit = design.headingEdits[typeName]
     val sharedWritten = headingIn(props.typeBody)
+    val sharedIntroWritten = introIn(props.typeBody)
     val pulled = pulledHeadingOf(props.read, typeName)
+    val pulledIntro = pulledIntroOf(props.read, typeName)
     val facts = parseSharedFacts(props.read)
     val fallback = headingFallback(trait)
     // The shared heading as words: a pull reads as its key's words, naming the key.
     val sharedText = (edit?.inherited ?: sharedWritten)?.let { inheritedCopyText(it, pulled) }
+    val sharedIntroText = (edit?.inheritedDescription ?: sharedIntroWritten)?.let { inheritedCopyText(it, pulledIntro) }
     var editingOwn by useState(false)
     var editingShared by useState(false)
     var value by useState("")
+    var introValue by useState("")
     var saving by useState(false)
     var failure by useState<DisplayError?>(null)
 
-    fun save(workflowId: String?, label: String?, basedOn: String) {
+    fun save(workflowId: String?, label: String?, description: String?, basedOn: String) {
         saving = true
         failure = null
         designScope.launch {
-            val result = DesignApi.setHeading(workflowId, typeName, label, basedOn, session.client)
+            val result = DesignApi.setHeading(workflowId, typeName, label, description, basedOn, session.client)
             saving = false
             val refused = result.failureOrNull()
             if (refused != null) {
@@ -1490,6 +1502,40 @@ private val HeadingSection = FC<HeadingSectionProps> { props ->
         }
     }
 
+    fun ChildrenBuilder.introInput(placeholderText: String?, note: String?) {
+        div {
+            className = ClassName("dv-edit-row")
+            span {
+                className = ClassName("dv-fact-name")
+                +"Introduction"
+            }
+            TextArea {
+                this.value = introValue
+                placeholder = placeholderText
+                asDynamic()["autoSize"] = js("({ minRows: 2, maxRows: 6 })")
+                onChange = { e -> introValue = e.target.value as String }
+            }
+            note?.let {
+                p {
+                    className = ClassName(if (introValue.isBlank()) "dv-fallback" else "dv-shared")
+                    +it
+                }
+            }
+            p {
+                className = ClassName("type-hint")
+                +"Shown under the heading, above the trait's fields, on workflow forms. Markdown."
+            }
+        }
+    }
+
+    /** A note in place of an input for a shared heading or introduction that pulls shared wording. */
+    fun ChildrenBuilder.pulledNote(what: String) {
+        p {
+            className = ClassName("dv-fallback")
+            +"The shared $what is shared wording: change it under Shared wording."
+        }
+    }
+
     div {
         className = ClassName("dv-edit")
         WhatIsThis {
@@ -1498,15 +1544,16 @@ private val HeadingSection = FC<HeadingSectionProps> { props ->
             text = pageCopy.explanation(PFRAG.ownCopyNs)
         }
         fact("Shown", trait.fieldLayout?.label?.let(::headingLine) ?: fallback.text.orEmpty())
+        fact("Introduction", trait.fieldLayout?.description?.takeIf { it.isNotBlank() } ?: "None")
         if (edit != null) {
             p {
                 className = ClassName("dv-note")
-                +"This workflow uses its own heading here; every other workflow shows the shared one."
+                +"This workflow uses its own heading or introduction here; every other workflow shows the shared one."
             }
             if (edit.inheritedChanged) {
                 p {
                     className = ClassName("dv-callout")
-                    +"The shared heading has changed since this workflow overrode it."
+                    +"The shared heading or introduction has changed since this workflow overrode it."
                 }
             }
         }
@@ -1524,6 +1571,7 @@ private val HeadingSection = FC<HeadingSectionProps> { props ->
                     disabled = editingShared
                     onClick = {
                         value = edit?.label.orEmpty()
+                        introValue = edit?.description.orEmpty()
                         editingOwn = true
                     }
                     +(if (edit == null) "Override for this workflow" else "Edit")
@@ -1533,7 +1581,7 @@ private val HeadingSection = FC<HeadingSectionProps> { props ->
                         size = "small"
                         type = "link"
                         loading = saving
-                        onClick = { save(session.workflowId, null, design.basedOn) }
+                        onClick = { save(session.workflowId, null, null, design.basedOn) }
                         +"Reset to shared"
                     }
                 }
@@ -1545,13 +1593,19 @@ private val HeadingSection = FC<HeadingSectionProps> { props ->
                     if (value.isBlank()) sharedText?.let { "Blank: the shared heading, \"$it\"." } ?: fallback.note
                     else sharedText?.let { "Shared: $it" },
                 )
+                // Blank goes back to the shared introduction -- or, with none, no introduction.
+                introInput(
+                    sharedIntroText ?: "No introduction",
+                    if (introValue.isBlank()) sharedIntroText?.let { "Blank: the shared introduction." } ?: "Blank: no introduction."
+                    else sharedIntroText?.let { "Shared: $it" },
+                )
                 div {
                     className = ClassName("dv-actions")
                     Button {
                         type = "primary"
                         size = "small"
                         loading = saving
-                        onClick = { save(session.workflowId, value, design.basedOn) }
+                        onClick = { save(session.workflowId, value, introValue, design.basedOn) }
                         +"Save"
                     }
                     Button {
@@ -1565,7 +1619,7 @@ private val HeadingSection = FC<HeadingSectionProps> { props ->
         }
         // The shared heading (issue #1029's editor, for the type as a whole): opened deliberately.
         if (facts != null) {
-            h3 { +"Shared heading" }
+            h3 { +"Shared heading and introduction" }
             p {
                 className = ClassName("dv-note")
                 +usedByText(facts.usedBy)
@@ -1577,10 +1631,7 @@ private val HeadingSection = FC<HeadingSectionProps> { props ->
                         +it
                     }
                 }
-                pulled != null -> p {
-                    className = ClassName("dv-fallback")
-                    +"The shared heading is shared wording: change it under Shared wording."
-                }
+                pulled != null && pulledIntro != null -> pulledNote("heading and introduction")
                 !editingShared -> div {
                     className = ClassName("dv-actions")
                     Button {
@@ -1588,20 +1639,29 @@ private val HeadingSection = FC<HeadingSectionProps> { props ->
                         disabled = editingOwn
                         onClick = {
                             value = sharedWritten.orEmpty()
+                            introValue = sharedIntroWritten.orEmpty()
                             editingShared = true
                         }
-                        +"Edit the shared heading"
+                        +"Edit the shared heading and introduction"
                     }
                 }
                 else -> {
-                    headingInput(fallback.text, if (value.isBlank()) fallback.note else null)
+                    // One that pulls shared wording is not offered here, and goes back as written.
+                    if (pulled != null) pulledNote("heading") else headingInput(fallback.text, if (value.isBlank()) fallback.note else null)
+                    if (pulledIntro != null) pulledNote("introduction")
+                    else introInput("No introduction", if (introValue.isBlank()) "Blank: no introduction." else null)
                     div {
                         className = ClassName("dv-actions")
                         Button {
                             type = "primary"
                             size = "small"
                             loading = saving
-                            onClick = { save(null, value, facts.basedOn) }
+                            onClick = {
+                                save(
+                                    null, if (pulled != null) sharedWritten else value,
+                                    if (pulledIntro != null) sharedIntroWritten else introValue, facts.basedOn,
+                                )
+                            }
                             +"Save for every workflow"
                         }
                         Button {
@@ -1616,11 +1676,15 @@ private val HeadingSection = FC<HeadingSectionProps> { props ->
         }
         failure?.let { errorText("Couldn't save the heading.", it) }
     }
-    pulled?.let {
+    val wording = listOfNotNull(
+        pulled?.let { WordingSlot("Heading", it, trait.fieldLayout?.label) },
+        pulledIntro?.let { WordingSlot("Introduction", it, trait.fieldLayout?.description) },
+    )
+    if (wording.isNotEmpty()) {
         SharedWordingSection {
             this.session = session
-            this.subject = "This heading"
-            this.slots = listOf(WordingSlot("Heading", it, trait.fieldLayout?.label))
+            this.subject = if (wording.size == 2) "This heading and introduction" else "This ${wording.single().name.lowercase()}"
+            this.slots = wording
             this.refusal = sharedWordingRefusalOf(props.read)
             onSaved = props.onSaved
         }

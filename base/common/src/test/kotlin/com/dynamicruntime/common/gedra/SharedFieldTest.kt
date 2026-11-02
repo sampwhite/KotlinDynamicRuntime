@@ -75,14 +75,22 @@ class SharedFieldTest : StringSpec({
     }
 
     "a shared heading is set and removed, and a layout left saying nothing goes with it (issue #1070)" {
-        val withHeading = withSharedHeading(body(null), "Trip")
+        val withHeading = withSharedHeading(body(null), "Trip", null)
         (withHeading[SCH.layout] as Map<*, *>)[SL.label] shouldBe "Trip"
         // Removed from a layout with fields, the fields stay.
-        fields(withSharedHeading(withHeading, null)) shouldBe listOf("title")
+        fields(withSharedHeading(withHeading, null, null)) shouldBe listOf("title")
         // A heading with only its fragment file beside it: removing the heading leaves nothing a form would show.
         val headingOnly = mapOf<String, Any?>(SCH.layout to mapOf(SL.fragmentFileId to "help", SL.label to "%{@t(\"trip.heading\")}"))
-        withSharedHeading(headingOnly, " ").containsKey(SCH.layout) shouldBe false
+        withSharedHeading(headingOnly, " ", null).containsKey(SCH.layout) shouldBe false
         // And one given to a type with no layout is a heading-only layout.
-        withSharedHeading(emptyMap(), "Trip")[SCH.layout] shouldBe mapOf(SL.label to "Trip")
+        withSharedHeading(emptyMap(), "Trip", null)[SCH.layout] shouldBe mapOf(SL.label to "Trip")
+    }
+
+    "a shared introduction is set beside the heading, and removed on its own (issue #1539)" {
+        val both = withSharedHeading(emptyMap(), "Trip", " Where you went. ")
+        both[SCH.layout] shouldBe mapOf(SL.label to "Trip", SL.description to "Where you went.")
+        withSharedHeading(both, "Trip", null)[SCH.layout] shouldBe mapOf(SL.label to "Trip")
+        // An introduction alone is a layout still.
+        withSharedHeading(emptyMap(), null, "Hello.")[SCH.layout] shouldBe mapOf(SL.description to "Hello.")
     }
 })

@@ -162,21 +162,29 @@ object DesignView {
     }
 
     /**
-     * The headings [declared] sets, by type name (issue #1070): each the workflow's [DSV.label], the client's heading it
-     * replaces ([DSV.inherited], absent when there is none), and whether that has changed since the override was made.
-     * Only for types [store] still carries.
+     * The headings and introductions [declared] sets, by type name (issues #1070, #1539): each the workflow's
+     * [DSV.label] and [DSV.description] (whichever it sets), the client's heading and introduction they replace
+     * ([DSV.inherited], [DSV.inheritedDescription], each absent when there is none), and whether either has changed since
+     * the override was made. Only for types [store] still carries.
      */
     private fun headingEdits(declared: WfDeclared, clientStore: KdrSchemaStore, store: KdrSchemaStore): Map<String, Any?> {
         val out = linkedMapOf<String, Any?>()
         for ((typeName, alteration) in declared.def.typeAlterations) {
             if (typeName !in store.defs) continue
-            val label = (alteration[SCH.layout] as? Map<*, *>)?.get(SL.label).toOptStr() ?: continue
+            val own = alteration[SCH.layout] as? Map<*, *>
+            val label = own?.get(SL.label).toOptStr()
+            val description = own?.get(SL.description).toOptStr()
+            if (label == null && description == null) continue
             val inherited = layoutHeadingOf(clientStore.defs, typeName)
-            // A basis records the heading an override replaced, `{}` when there was none.
+            // A basis records the heading and introduction an override replaced, `{}` when there were none.
             val made = declared.def.typeBasis[typeName]?.get(headingBasisKey) as? Map<*, *>
-            out[typeName] = linkedMapOf<String, Any?>(DSV.label to label).also { h ->
-                inherited?.let { h[DSV.inherited] = it }
-                h[DSV.inheritedChanged] = made != null && made[SL.label].toOptStr() != inherited
+            out[typeName] = linkedMapOf<String, Any?>().also { h ->
+                label?.let { h[DSV.label] = it }
+                description?.let { h[DSV.description] = it }
+                inherited.label?.let { h[DSV.inherited] = it }
+                inherited.description?.let { h[DSV.inheritedDescription] = it }
+                h[DSV.inheritedChanged] = made != null &&
+                    (made[SL.label].toOptStr() != inherited.label || made[SL.description].toOptStr() != inherited.description)
             }
         }
         return out
@@ -323,13 +331,14 @@ object DesignView {
         editWorkflowDef(cxt, workflowId, basedOn) { withWorkflowLabel(it, taskId, saveId, label) }
 
     /**
-     * Sets workflow [workflowId]'s own heading for [typeName] to [label], or removes it when [label] is null -- back to
-     * the shared heading (issue #1070) -- as a layout alteration of the type ([withLayoutHeading]), recording the
-     * client's heading it replaces. Refused when the definition has changed since [basedOn]. Returns the new stamp.
+     * Sets workflow [workflowId]'s own heading for [typeName] to [label] and its introduction to [description], each
+     * removed when null -- back to the shared one (issues #1070, #1539) -- as a layout alteration of the type
+     * ([withLayoutHeading]), recording the client's heading and introduction they replace. Refused when the definition
+     * has changed since [basedOn]. Returns the new stamp.
      */
-    fun setHeading(cxt: KdrCxt, workflowId: String, typeName: String, label: String?, basedOn: String): String {
+    fun setHeading(cxt: KdrCxt, workflowId: String, typeName: String, label: String?, description: String?, basedOn: String): String {
         val inherited = layoutHeadingOf(cxt.getClientSchema().defs, typeName)
-        return editWorkflowDef(cxt, workflowId, basedOn) { withLayoutHeading(it, typeName, label, inherited) }
+        return editWorkflowDef(cxt, workflowId, basedOn) { withLayoutHeading(it, typeName, label, description, inherited) }
     }
 
     /**
@@ -454,6 +463,7 @@ object DesignView {
         if (read.typeNames.isNotEmpty()) {
             DesignPulledCopy.facts(cxt, read.typeNames).takeIf { it.isNotEmpty() }?.let { pulled[DSV.pulledCopy] = it }
             DesignPulledCopy.headingFacts(cxt, read.typeNames).takeIf { it.isNotEmpty() }?.let { pulled[DSV.pulledHeadings] = it }
+            DesignPulledCopy.introFacts(cxt, read.typeNames).takeIf { it.isNotEmpty() }?.let { pulled[DSV.pulledIntros] = it }
         }
         read.workflow?.let { def ->
             DesignPulledCopy.labelFacts(cxt, def).takeIf { it.isNotEmpty() }?.let { pulled[DSV.pulledLabels] = it }
@@ -555,6 +565,10 @@ fun designViewSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, DSV.namespace) 
         property(
             DSV.pulledHeadings,
             "By type, the heading of the client's layout when it pulls a fragment key, with its wording (issue #1070).",
+        ) { type = SCT.kObject }
+        property(
+            DSV.pulledIntros,
+            "By type, the introduction of the client's layout when it pulls a fragment key, with its wording (issue #1539).",
         ) { type = SCT.kObject }
         property(
             DSV.pulledLabels,
@@ -671,13 +685,14 @@ fun designViewSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, DSV.namespace) 
 
     generalEndpoint(
         DSV.headingEdit,
-        "Sets or clears a workflow's own heading for a type its pages draw, and reloads the client.",
+        "Sets or clears a workflow's own heading for a type its pages draw, and the introduction under it, and reloads the client.",
         HttpMethod.POST,
         outputRef = DSV.labelEditType,
         inputFields = {
             field(DSV.workflowId, "The workflow whose heading changes.", required = true)
             field(DSV.typeName, "The type whose heading it is -- a trait's data type, as the page draws it.", required = true)
             field(DSV.label, "The heading; absent or blank to go back to the shared one.")
+            field(DSV.description, "The introduction under it (issue #1539), Markdown; absent or blank to go back to the shared one.")
             field(DSV.basedOn, "The stamp of the definition the edit was made against, from the page's Design View block.", required = true)
             designClientField()
         },
@@ -685,7 +700,7 @@ fun designViewSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, DSV.namespace) 
         AdminRules.requireClientAdministrator(c)
         val stamp = DesignView.setHeading(
             designCxt(c, request), request.getReqNonBlankStr(DSV.workflowId), request.getReqNonBlankStr(DSV.typeName),
-            request[DSV.label].toOptStr(), request.getReqNonBlankStr(DSV.basedOn),
+            request[DSV.label].toOptStr(), request[DSV.description].toOptStr(), request.getReqNonBlankStr(DSV.basedOn),
         )
         linkedMapOf(DSV.basedOn to stamp)
     }
@@ -716,12 +731,14 @@ fun designViewSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, DSV.namespace) 
 
     generalEndpoint(
         DSV.sharedHeadingEdit,
-        "Sets or removes a type's heading in the definition the client declares, for every workflow on the client.",
+        "Sets or removes a type's heading, and the introduction under it, in the definition the client declares, for " +
+            "every workflow on the client.",
         HttpMethod.POST,
         outputRef = DSV.sharedFieldEditType,
         inputFields = {
             field(DSV.typeName, "The type whose heading it is.", required = true)
             field(DSV.label, "The heading; absent or blank to remove it, so forms show the type's own title.")
+            field(DSV.description, "The introduction under it (issue #1539), Markdown; absent or blank to remove it.")
             field(DSV.sharedBasedOn, "The stamp of the entry the edit was made against, from the definition read.", required = true)
             designClientField()
         },
@@ -729,7 +746,7 @@ fun designViewSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, DSV.namespace) 
         AdminRules.requireClientAdministrator(c)
         val stamp = DesignSharedEdit.setSharedHeading(
             designCxt(c, request), request.getReqNonBlankStr(DSV.typeName), request[DSV.label].toOptStr(),
-            request.getReqNonBlankStr(DSV.sharedBasedOn),
+            request[DSV.description].toOptStr(), request.getReqNonBlankStr(DSV.sharedBasedOn),
         )
         linkedMapOf(DSV.sharedBasedOn to stamp)
     }

@@ -53,27 +53,42 @@ fun withWorkflowLabel(definition: Map<String, Any?>, taskId: String?, saveId: St
 const val headingBasisKey: String = SCH.layout
 
 /**
- * [definition] with the workflow's own heading for [typeName] set to [label], or removed when [label] is null or blank
- * (issue #1070): the `label` of its layout alteration of the type, which merges over the client's layout as a block
- * key -- replacing the shared heading -- while its field entries merge by field. [inherited] -- the client's heading
- * for the type, or null -- is recorded as the override's basis, and removed with it. An emptied alteration leaves no
- * trace ([withLayoutAlteration], which [withLayoutEntry] shares).
+ * A type's heading and the introduction under it, as a layout gives them (issues #1070, #1539): its block `label` and
+ * `description`, each null when the layout has none.
+ */
+class LayoutHeading(val label: String?, val description: String?)
+
+/**
+ * [definition] with the workflow's own heading for [typeName] set to [label] and its introduction to [description],
+ * each removed when null or blank (issues #1070, #1539): the `label` and `description` of its layout alteration of the
+ * type, which merge over the client's layout as block keys -- each replacing the shared one -- while its field entries
+ * merge by field. [inherited] -- the client's heading and introduction for the type -- is recorded as the override's
+ * basis, and removed with it once neither is the workflow's own. An emptied alteration leaves no trace
+ * ([withLayoutAlteration], which [withLayoutEntry] shares).
  */
 fun withLayoutHeading(
     definition: Map<String, Any?>,
     typeName: String,
     label: String?,
-    inherited: String?,
+    description: String?,
+    inherited: LayoutHeading,
 ): Map<String, Any?> = withLayoutAlteration(definition, typeName) { layout, typeBasis ->
     val text = label?.trim()?.takeIf { it.isNotEmpty() }
+    val intro = description?.trim()?.takeIf { it.isNotEmpty() }
     if (text == null) layout.remove(SL.label) else layout[SL.label] = text
-    if (text != null) {
-        typeBasis[headingBasisKey] = linkedMapOf<String, Any?>().also { b -> inherited?.let { b[SL.label] = it } }
+    if (intro == null) layout.remove(SL.description) else layout[SL.description] = intro
+    if (text != null || intro != null) {
+        typeBasis[headingBasisKey] = linkedMapOf<String, Any?>().also { b ->
+            inherited.label?.let { b[SL.label] = it }
+            inherited.description?.let { b[SL.description] = it }
+        }
     } else {
         typeBasis.remove(headingBasisKey)
     }
 }
 
-/** The heading of [typeName]'s `g-layout` as [defs] have it, or null when it has none (issue #1070). */
-fun layoutHeadingOf(defs: Map<String, Any?>, typeName: String): String? =
-    ((defs[typeName] as? Map<*, *>)?.get(SCH.layout) as? Map<*, *>)?.get(SL.label) as? String
+/** The heading and introduction of [typeName]'s `g-layout` as [defs] have them (issues #1070, #1539). */
+fun layoutHeadingOf(defs: Map<String, Any?>, typeName: String): LayoutHeading {
+    val layout = (defs[typeName] as? Map<*, *>)?.get(SCH.layout) as? Map<*, *>
+    return LayoutHeading(layout?.get(SL.label) as? String, layout?.get(SL.description) as? String)
+}

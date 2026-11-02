@@ -203,6 +203,14 @@ object DSV {
     const val headingEdits = "headingEdits"
 
     /**
+     * A heading edit's introduction (issue #1539): the layout `description` under the heading -- in the block's
+     * [headingEdits], the workflow's own, beside the [inheritedDescription] it replaces; in a heading edit, the one to
+     * write, absent or blank to follow the level below.
+     */
+    const val description = "description"
+    const val inheritedDescription = "inheritedDescription"
+
+    /**
      * In the definition read of a workflow: its labels that pull a fragment key, each as a [pulledCopy] slot is --
      * `{ workflow: slot, tasks: { taskId: slot }, saves: { taskId: { saveId: slot } } }`, a label pulling nothing
      * left out. What the inspector's shared wording edits for a label.
@@ -216,6 +224,12 @@ object DSV {
      * fragment key, as a [pulledCopy] slot is.
      */
     const val pulledHeadings = "pulledHeadings"
+
+    /**
+     * In the definition read of a trait or type: by type name, the introduction (the layout `description`, issue #1539) of
+     * the client's layout when it pulls a fragment key, as a [pulledCopy] slot is.
+     */
+    const val pulledIntros = "pulledIntros"
 
     // --- which fields a form shows (issue #1071) ---
 
