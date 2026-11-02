@@ -26,7 +26,11 @@ class ScriptedModel(steps: List<(ModelRequest) -> ModelResponse>, override val l
 
     companion object {
         /** A response of one text block that ends the turn, billed [usage]. */
-        fun textResponse(text: String, usage: ModelUsage = ModelUsage(inputTokens = 100, outputTokens = 20), model: String = AENV.defaultModel): ModelResponse =
+        fun textResponse(
+            text: String,
+            usage: ModelUsage = ModelUsage(inputTokens = 100, outputTokens = 20),
+            model: String = AENV.defaultModel,
+        ): ModelResponse =
             ModelResponse.fromWire(
                 mapOf(
                     MSG.role to MSG.assistant,

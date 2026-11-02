@@ -49,7 +49,8 @@ API's wire shape. The turn loop, the stored conversation, and the tests never se
 **Which model a node has** is decided once, at boot. With no key -- the secret named by `KDR_ASSISTANT_KEY_SECRET`
 (default `anthropicApiKey`) missing from `private/secrets.properties` -- the assistant is unavailable and nothing else
 changes. The operator's view names the secret it looked for, and the `assistant:on` cfact is false everywhere, so no
-menu offers it. A unit test that names no secret reads none, so a developer's real key never reaches one.
+menu offers it. A test's node reads a secret no secrets file holds (`Startup.mkTestBootCxt` and `realNodeOverlay` name
+it, as they do Mailgun's), so a developer's real key never reaches a test, whatever their shell exports.
 
 **The request** (proposed defaults, for tuning against the real model later, which spends money and needs approval):
 
@@ -59,12 +60,14 @@ menu offers it. A unit test that names no secret reads none, so a developer's re
 | Effort | `medium` (`KDR_ASSISTANT_EFFORT`) | Below the model's default of `high`: most turns are short look-ups and one draft |
 | Thinking | adaptive, `display: "updates"` | The model's progress notes between tool calls are shown, so a long turn does not go quiet |
 | Tool choice | left to the model | Forced tool use is refused by this model |
-| Fallbacks | `"default"`, server-side | A refusal is retried on the model Anthropic recommends, and its use counted at that model's price |
+| Fallbacks | `"default"`, server-side | A refusal is retried on the model Anthropic recommends |
 | Caching | automatic, on the conversation's prefix | Each step resends the whole conversation |
 | `max_tokens` | 16,000 (`KDR_ASSISTANT_MAX_TOKENS`) | Thinking counts toward it |
 
 Each request asks for two beta features by header: `server-side-fallback-2026-07-01` and
-`thinking-display-updates-2026-08-18`.
+`thinking-display-updates-2026-08-18`. Only some models accept both, so `KDR_ASSISTANT_MODEL` must be one of them --
+Sonnet 5.5, Opus 5.5, Fable 5.1, Fable 5, or Mythos 5.1 -- and another refuses the boot, as does a `max_tokens` above
+the models' 128,000.
 
 ## Who may use it, and how much
 
@@ -84,8 +87,11 @@ cache hits:
 | cache read | 0.1 |
 | output | 5 |
 
-A response another model answered (a fallback) is scaled by that model's price beside Sonnet's; a model the table does
-not know is counted at the dearest rate known, so a budget errs toward stopping early.
+Other models are counted at their own prices in the same unit (`PRICE`). That matters with fallbacks: a response may
+be several billed attempts -- the model that declined, then the one that answered -- and its top-level `usage` covers
+only the last, so the attempts are read from `usage.iterations`, each at its own model's price. An attempt that names no
+model is counted at the dearer of the model asked and the model that answered, and a model the table does not know at
+the dearest price known, kind by kind, so a budget errs toward stopping early.
 
 **Use** is kept in `AssistantUsage`, one row per client and calendar month (UTC), added to in one statement per model
 call, so two calls finishing together both count. It keeps each kind of token as well as the weighted total, so the
@@ -108,4 +114,5 @@ Recorded here as proposed, to settle as the later issues are worked:
 
 - **Retention.** A conversation's transcript kept until the conversation is deleted, and turn records 13 months.
 - **Audit.** Through the transcript and the logs, with no field on a revision naming the assistant.
-- **Per-plan default budgets.** Later; see [`deferred-work.md`](../development/deferred-work.md#when-a-deployment-offers-the-workflow-assistant-at-more-than-one-price).
+- **Per-plan default budgets.** Later; see
+  [`deferred-work.md`](../development/deferred-work.md#when-a-deployment-offers-the-workflow-assistant-at-more-than-one-price).

@@ -1,6 +1,7 @@
 package com.dynamicruntime.assistant
 
-import com.dynamicruntime.common.context.ENV
+import com.dynamicruntime.common.annotation.KdrPrivate
+import com.dynamicruntime.common.assistant.ASST
 import com.dynamicruntime.common.context.ENVGRP
 import com.dynamicruntime.common.context.EnvVarDef
 import com.dynamicruntime.common.context.KdrCxt
@@ -19,11 +20,17 @@ object AENV {
     const val defaultMonthlyBudget = 10_000_000L
     const val defaultKeySecret = "anthropicApiKey"
 
-    /** The secret name a unit test reads when it names none, which no secrets file holds. */
-    const val noKeyInUnitTests = "noAnthropicKeyInUnitTests"
+    /** The most tokens a call may write, on every model in [models]. */
+    const val maxOutputTokens = 128_000
 
     /** The efforts a request may ask for. */
     val efforts = listOf("low", "medium", "high", "xhigh", "max")
+
+    /**
+     * The models the assistant may ask: those that accept everything its request asks for -- adaptive thinking with
+     * progress updates shown (`display: "updates"`) and server-side fallbacks. Another would answer every call with a 400.
+     */
+    val models = listOf("claude-sonnet-5-5", "claude-opus-5-5", "claude-fable-5-1", "claude-fable-5", "claude-mythos-5-1")
 
     val provider = EnvVarDef(
         "KDR_ASSISTANT_PROVIDER", group = ENVGRP.assistant, defaultDoc = anthropicProvider,
@@ -33,8 +40,8 @@ object AENV {
     )
     val model = EnvVarDef(
         "KDR_ASSISTANT_MODEL", group = ENVGRP.assistant, defaultDoc = defaultModel,
-        description = "The Claude model the assistant asks. The request asks for adaptive thinking with progress updates " +
-            "and for server-side fallbacks, so the model must support both.",
+        description = "The Claude model the assistant asks: one of ${models.joinToString(", ")}, the models that accept " +
+            "what its request asks for (adaptive thinking with progress updates, and server-side fallbacks). Another refuses the boot.",
     )
     val effort = EnvVarDef(
         "KDR_ASSISTANT_EFFORT", group = ENVGRP.assistant, defaultDoc = defaultEffort,
@@ -46,7 +53,7 @@ object AENV {
     )
     val maxTokens = EnvVarDef(
         "KDR_ASSISTANT_MAX_TOKENS", group = ENVGRP.assistant, defaultDoc = "$defaultMaxTokens",
-        description = "The most tokens one model call may write, thinking included.",
+        description = "The most tokens one model call may write, thinking included; at most $maxOutputTokens.",
     )
     val turnsPerHour = EnvVarDef(
         "KDR_ASSISTANT_TURNS_PER_HOUR", group = ENVGRP.assistant, defaultDoc = "$defaultTurnsPerHour",
@@ -58,10 +65,10 @@ object AENV {
             "at Sonnet's prices), when an operator has set none of its own. A sandbox counts against its parent's.",
     )
     val keySecret = EnvVarDef(
-        "KDR_ASSISTANT_KEY_SECRET", group = ENVGRP.assistant, defaultDoc = defaultKeySecret,
+        ASST.keySecretEnvVar, group = ENVGRP.assistant, defaultDoc = defaultKeySecret,
         description = "The name of the secret in `private/secrets.properties` holding the Anthropic API key. With no such " +
-            "secret the assistant is unavailable, and the operator's view names the one it looked for. A unit test " +
-            "reads none unless it names one.",
+            "secret the assistant is unavailable, and the operator's view names the one it looked for. A test's node " +
+            "reads `${ASST.noKeyInUnitTests}`, which no secrets file holds, unless the test names another.",
     )
 }
 
@@ -90,28 +97,33 @@ class AssistantSettings(
             if (effort !in AENV.efforts) {
                 throw configError("${AENV.effort.name} is '$effort'; it must be one of ${AENV.efforts.joinToString(", ")}.")
             }
-            val unit = cxt.instanceConfig.env == ENV.unit
+            val model = text(cxt, AENV.model) ?: AENV.defaultModel
+            if (model !in AENV.models) {
+                throw configError("${AENV.model.name} is '$model'; it must be one of ${AENV.models.joinToString(", ")}.")
+            }
             return AssistantSettings(
                 provider = provider,
-                model = text(cxt, AENV.model) ?: AENV.defaultModel,
+                model = model,
                 effort = effort,
                 maxSteps = count(cxt, AENV.maxSteps, AENV.defaultMaxSteps.toLong()).toInt(),
-                maxTokens = count(cxt, AENV.maxTokens, AENV.defaultMaxTokens.toLong()).toInt(),
+                maxTokens = count(cxt, AENV.maxTokens, AENV.defaultMaxTokens.toLong(), max = AENV.maxOutputTokens.toLong()).toInt(),
                 turnsPerHour = count(cxt, AENV.turnsPerHour, AENV.defaultTurnsPerHour.toLong()).toInt(),
                 defaultMonthlyBudget = count(cxt, AENV.monthlyBudget, AENV.defaultMonthlyBudget, max = Long.MAX_VALUE / 2),
-                // A unit test names its secret or reads none: a developer's real key never reaches one.
-                keySecret = text(cxt, AENV.keySecret) ?: if (unit) AENV.noKeyInUnitTests else AENV.defaultKeySecret,
+                keySecret = text(cxt, AENV.keySecret) ?: AENV.defaultKeySecret,
             )
         }
 
-        private fun text(cxt: KdrCxt, def: EnvVarDef): String? = cxt.getEnvVar(def)?.trim()?.ifEmpty { null }
+        @KdrPrivate
+        fun text(cxt: KdrCxt, def: EnvVarDef): String? = cxt.getEnvVar(def)?.trim()?.ifEmpty { null }
 
-        private fun count(cxt: KdrCxt, def: EnvVarDef, default: Long, max: Long = Int.MAX_VALUE.toLong()): Long {
+        @KdrPrivate
+        fun count(cxt: KdrCxt, def: EnvVarDef, default: Long, max: Long = Int.MAX_VALUE.toLong()): Long {
             val value = text(cxt, def) ?: return default
             return value.toLongOrNull()?.takeIf { it in 1..max }
-                ?: throw configError("${def.name} is '$value'; it must be a positive whole number.")
+                ?: throw configError("${def.name} is '$value'; it must be a whole number from 1 to $max.")
         }
 
-        private fun configError(message: String) = KdrException("Refusing to start: $message")
+        @KdrPrivate
+        fun configError(message: String) = KdrException("Refusing to start: $message")
     }
 }

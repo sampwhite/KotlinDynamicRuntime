@@ -13,7 +13,10 @@ dependencies {
     implementation(project(":config"))
 
     // The official Anthropic Java SDK, and the only module that gets it: one file (`AnthropicModel.kt`) imports it,
-    // as `S3Api.kt` is the one that imports AWS's. It brings OkHttp, Jackson, and an older kotlin-stdlib-jdk8, which
-    // the build's own Kotlin standard library supersedes.
+    // as `S3Api.kt` is the one that imports AWS's. All of what it brings ships in the distribution: OkHttp and Okio,
+    // Jackson with its Kotlin, JDK 8, and java.time modules, kotlin-reflect (resolved to the build's Kotlin), the
+    // victools JSON-schema generator with its Jackson and Swagger modules, swagger-annotations, opentelemetry-api,
+    // standardwebhooks, error_prone_annotations, and kotlin-stdlib-jdk8 1.9.10, a jar of its own beside the build's
+    // standard library, which takes precedence over the SDK's.
     implementation("com.anthropic:anthropic-java:2.73.0")
 }

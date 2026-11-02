@@ -28,7 +28,8 @@ import com.dynamicruntime.common.util.toJsonStr
  * **Refuses under `ENV.unit` itself**: the SDK makes its own HTTP calls, past the guard `OutboundHttpService` keeps,
  * so a unit test can never spend money or reach the network through it, whatever its configuration says.
  *
- * The client is made on first use (holding the key, not a connection, until then), and closed at shutdown.
+ * The client is made on first use (holding the key, not a connection, until then), and closed at shutdown; a call after
+ * that is refused rather than making a client nothing would close.
  */
 class AnthropicModel(private val apiKey: String, private val betas: List<String> = defaultBetas) : AssistantModel, AutoCloseable {
     override val label: String = "Anthropic API"
@@ -36,7 +37,12 @@ class AnthropicModel(private val apiKey: String, private val betas: List<String>
     @Volatile
     private var client: AnthropicClient? = null
 
+    /** Set at shutdown: a call still running then must not make a client nothing will close. */
+    @Volatile
+    private var closed = false
+
     private fun client(): AnthropicClient = client ?: synchronized(this) {
+        if (closed) throw KdrException("The Anthropic model is closed: this node is shutting down.", code = EXC.notResponding)
         client ?: AnthropicOkHttpClient.builder().apiKey(apiKey).build().also { client = it }
     }
 
@@ -69,6 +75,7 @@ class AnthropicModel(private val apiKey: String, private val betas: List<String>
 
     override fun close() {
         synchronized(this) {
+            closed = true
             client?.close()
             client = null
         }

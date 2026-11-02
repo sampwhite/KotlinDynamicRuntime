@@ -1,5 +1,6 @@
 package com.dynamicruntime.assistant
 
+import com.dynamicruntime.common.annotation.KdrPrivate
 import com.dynamicruntime.common.assistant.ASST
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.KdrInstanceConfig
@@ -11,6 +12,7 @@ import com.dynamicruntime.common.gedra.sandboxParentOf
 import com.dynamicruntime.common.logging.LogStartup
 import com.dynamicruntime.common.sql.PF
 import com.dynamicruntime.common.sql.SecretsUtil
+import com.dynamicruntime.common.sql.SqlSession
 import com.dynamicruntime.common.sql.SqlStmtUtil
 import com.dynamicruntime.common.sql.SqlTopicService
 import com.dynamicruntime.common.sql.SqlTopicUtil
@@ -42,32 +44,35 @@ class AssistantService : ServiceInitializer {
     override val serviceName: String = AssistantService.serviceName
 
     lateinit var settings: AssistantSettings
-        private set
+        @KdrPrivate set
 
     /** What answers on this node, or null when nothing can ([reason] says why). */
     @Volatile
     var model: AssistantModel? = null
-        private set
+        @KdrPrivate set
 
     /** Why [model] is null; null when it is not. */
     @Volatile
     var reason: String? = null
-        private set
+        @KdrPrivate set
 
     /** The secret the assistant looked for and did not find, when that is why it is unavailable. */
     @Volatile
     var missingSecret: String? = null
-        private set
+        @KdrPrivate set
 
     /** The enabled `AssistantClients` rows, or null when this node runs no table cache (then each read is SQL). */
     @Volatile
-    private var clientCache: SqlTableCache<Map<String, Any?>>? = null
+    @KdrPrivate
+    var clientCache: SqlTableCache<Map<String, Any?>>? = null
 
     @Volatile
-    private var created = false
+    @KdrPrivate
+    var created = false
 
     @Volatile
-    private var initialized = false
+    @KdrPrivate
+    var initialized = false
 
     val available: Boolean get() = model != null
 
@@ -158,6 +163,11 @@ class AssistantService : ServiceInitializer {
      * [useDefaultBudget], drops its own for the deployment's default -- as the caller on [cxt]. Switching it on from off
      * needs [acknowledgedNotice]: the operator has read what is sent to the model ([DATA.notice]), and when and by whom
      * is recorded. Returns the row as written.
+     *
+     * The row is read and written under its lock, in one transaction, so two operators setting one client at once
+     * apply one after the other: neither's change is lost, and the row's `updatedAt` only moves forward, which is what
+     * every node's cache of it goes by. Two *first* sets of a client race to insert it; the one that loses tries again,
+     * and finds the row to update.
      */
     fun setClient(
         cxt: KdrCxt,
@@ -179,39 +189,75 @@ class AssistantService : ServiceInitializer {
         if (monthlyBudget != null && monthlyBudget < 1) {
             throw KdrException.mkInput("A ${ASST.monthlyBudget} must be at least 1, not $monthlyBudget.")
         }
-        val prior = clientRow(cxt, client)
-        val wasOn = prior?.get(PF.enabled) == true
-        val on = enabled ?: wasOn
-        if (on && !wasOn && !acknowledgedNotice) {
-            throw KdrException.mkInput(
-                "Switching the assistant on for '$client' sends its administrators' messages, and what the assistant " +
-                    "reads for them, to Anthropic. Acknowledge that with ${ASST.acknowledgeDataNotice}.",
-            )
+        val existed = clientRow(cxt, client) != null
+        return try {
+            writeClient(cxt, client, enabled, monthlyBudget, useDefaultBudget, acknowledgedNotice)
+        } catch (e: KdrException) {
+            if (existed || e.code == EXC.badInput || clientRow(cxt, client) == null) throw e
+            writeClient(cxt, client, enabled, monthlyBudget, useDefaultBudget, acknowledgedNotice)
         }
-        // A read-modify-write, so the row's prior `updatedAt` goes through and the cache sees the change.
-        val row = LinkedHashMap(prior ?: mapOf(ASST.client to client))
-        if (monthlyBudget != null) row[ASST.monthlyBudget] = monthlyBudget
-        if (useDefaultBudget) row[ASST.monthlyBudget] = null
-        if (on && !wasOn) {
-            row[ASST.noticeAcknowledgedAt] = cxt.now()
-            row[ASST.noticeAcknowledgedBy] = cxt.userProfile.userId
-        }
+    }
+
+    /** One locked read-modify-write of [client]'s row, for [setClient]. */
+    @KdrPrivate
+    fun writeClient(
+        cxt: KdrCxt,
+        client: String,
+        enabled: Boolean?,
+        monthlyBudget: Long?,
+        useDefaultBudget: Boolean,
+        acknowledgedNotice: Boolean,
+    ): Map<String, Any?> {
         val table = ATBL.table(cxt, ATBL.clients)
         val sqlCxt = SqlTopicService.mkSqlCxt(cxt, ATBL.topic)
-        SqlTopicUtil.prepForStdExecute(cxt, table, row)
-        row[PF.enabled] = on
-        val stmt = if (prior == null) SqlTopicUtil.mkTableInsertStmt(sqlCxt, table) else SqlTopicUtil.mkTableUpdateStmt(sqlCxt, table)
-        sqlCxt.sqlDb.withSession(cxt) { sqlCxt.sqlDb.executeStatement(cxt, stmt, row) }
-        return row
+        val db = sqlCxt.sqlDb
+        // A write that changes nothing, to take the row's lock before reading it.
+        val lock = SqlStmtUtil.prepareSql(
+            sqlCxt, "uAssistantClientsLock", table.columns,
+            "update t:${ATBL.clients} set c:${ASST.client} = :${ASST.client} where c:${ASST.client} = :${ASST.client}",
+        )
+        val key = mapOf(ASST.client to client)
+        var written: Map<String, Any?> = emptyMap()
+        db.withTran(cxt) {
+            db.executeStatement(cxt, lock, key)
+            val prior = db.queryOneStatement(cxt, SqlTopicUtil.mkTableSelectStmt(sqlCxt, table), key)
+            val wasOn = prior?.get(PF.enabled) == true
+            val on = enabled ?: wasOn
+            if (on && !wasOn && !acknowledgedNotice) {
+                throw KdrException.mkInput(
+                    "Switching the assistant on for '$client' sends its administrators' messages, and what the assistant " +
+                        "reads for them, to Anthropic. Acknowledge that with ${ASST.acknowledgeDataNotice}.",
+                )
+            }
+            // The prior row, `updatedAt` included, goes through, so the new stamp is later than the one it replaces.
+            val row = LinkedHashMap(prior ?: key)
+            if (monthlyBudget != null) row[ASST.monthlyBudget] = monthlyBudget
+            if (useDefaultBudget) row[ASST.monthlyBudget] = null
+            if (on && !wasOn) {
+                row[ASST.noticeAcknowledgedAt] = cxt.now()
+                row[ASST.noticeAcknowledgedBy] = cxt.userProfile.userId
+            }
+            SqlTopicUtil.prepForStdExecute(cxt, table, row)
+            row[PF.enabled] = on
+            val stmt = if (prior == null) SqlTopicUtil.mkTableInsertStmt(sqlCxt, table) else SqlTopicUtil.mkTableUpdateStmt(sqlCxt, table)
+            db.executeStatement(cxt, stmt, row)
+            written = row
+        }
+        return written
     }
 
     /**
-     * Adds what [model] was billed for one response ([usage]) to [client]'s use this month -- its parent's, for a
-     * sandbox -- in one statement, so two calls finishing together both count. Returns the weighted tokens added.
-     * Called outside any transaction, as a model call is: the month's first call may try an insert that loses a race.
+     * Adds what one response was billed for ([usage]; [model] is the model that answered) to [client]'s use this month --
+     * its parent's, for a sandbox -- in one statement, so two calls finishing together both count. Returns the weighted
+     * tokens added. Refused inside a transaction: the month's first call may try an insert that loses a race, which on
+     * Postgres would abort the caller's transaction.
      */
     fun recordUsage(cxt: KdrCxt, client: String, model: String, usage: ModelUsage): Long {
-        val weighted = usage.weighted(model)
+        if (SqlSession.get(cxt)?.inTran == true) {
+            // On Postgres a lost insert race would abort the caller's whole transaction, not only this statement.
+            throw KdrException("The assistant's use is recorded outside any transaction; this call is inside one.")
+        }
+        val weighted = usage.weighted(listOf(model, settings.model))
         val table = ATBL.table(cxt, ATBL.usage)
         val sqlCxt = SqlTopicService.mkSqlCxt(cxt, ATBL.topic)
         val now = cxt.now()

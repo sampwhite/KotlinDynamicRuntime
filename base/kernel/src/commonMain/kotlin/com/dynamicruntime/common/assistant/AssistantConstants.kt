@@ -5,7 +5,7 @@ import com.dynamicruntime.common.http.request.SECT
 /**
  * The workflow assistant's wire vocabulary (issue #1525): the names the `assistant` module's endpoints use and the
  * webapp's pages read, in the kernel both sides compile. The module itself is optional -- nothing compile-depends on
- * it -- so these are the only part of it core and the webapp can name. Each field name matches its value.
+ * it -- so these are the only part of it core and the webapp can name. Each field-name constant matches its value.
  */
 @Suppress("ConstPropertyName")
 object ASST {
@@ -20,6 +20,16 @@ object ASST {
 
     /** The webapp page the assistant's menu entry opens (issue #1527). */
     const val page = "assistant"
+
+    /**
+     * The environment variable naming the secret that holds the model's API key. Here, not only in the module, so the
+     * boot helpers a test uses can point it at [noKeyInUnitTests], as they do Mailgun's: a configured value wins over
+     * the process environment, so a developer's real key reaches no test, whatever their shell exports.
+     */
+    const val keySecretEnvVar = "KDR_ASSISTANT_KEY_SECRET"
+
+    /** The secret a test node's model key is looked up under: one no secrets file holds. */
+    const val noKeyInUnitTests = "noAnthropicKeyInUnitTests"
 
     // --- Operator endpoints ---
 
