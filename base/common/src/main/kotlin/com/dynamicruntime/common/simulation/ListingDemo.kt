@@ -83,18 +83,21 @@ fun listingDemoMain(cxt: KdrCxtBase, client: String = ListingDemo.client): Gedra
             ),
         )
         trait("CategoryEntry", ListingDemo.category, setOf(GedraDataType.formDoc), "What area the request is for.") {
+            title = "Category"
             property(ListingDemo.category, "The area.") {
                 title = "Category"
                 for (c in ListingDemo.categories) option(c)
             }
         }
         trait("AmountEntry", ListingDemo.amount, setOf(GedraDataType.formDoc), "What the request is estimated to cost.") {
+            title = "Amount"
             property(ListingDemo.amount, "The estimate, in dollars.") {
                 title = "Amount"
                 type = SCT.number
             }
         }
         trait("DueEntry", ListingDemo.due, setOf(GedraDataType.formDoc), "When the request is due.") {
+            title = "Due date"
             property(ListingDemo.due, "The due date.") {
                 title = "Due"
                 dateTime()
