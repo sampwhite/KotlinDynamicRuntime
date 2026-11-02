@@ -518,7 +518,7 @@ private fun ChildrenBuilder.entryEditor(id: String, draft: EntryDraft, check: En
         value = draft.text
         asDynamic()["spellCheck"] = false
         asDynamic()["className"] = "bundle-editor-text"
-        asDynamic()["autoSize"] = js("({ minRows: 4, maxRows: 30 })")
+        asDynamic()["rows"] = fittedRows(draft.text, 4, 30)
         onChange = { e -> ed.change(ed.edits.with(id, draft.withText(e.target.value as String))) }
     }
     // JSON pasted from another client names its namespace: offered as this client's, written client.@self (issue #1461).

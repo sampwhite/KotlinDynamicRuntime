@@ -143,6 +143,10 @@ A layout entry can also restate a field's `choices`, which narrows the list the 
 labels of its own. A form never offers a choice the schema does not. And an entry can mark a field `required` for
 this form, which the schema may leave optional.
 
+A layout entry can also say how many `lines` a long text field's box starts with, which is three when no layout says.
+Whether a field is long text is the schema's to say, with `g-longText`, since it is a fact about the data rather than
+about one form. The [abstract's summary](abstract.md) is one.
+
 A layout can also name the trait and introduce it. Its `label` is the trait's name, the heading of its section on a
 form, and its `description` is a line under that heading. A client can give a trait a layout for every form it shows,
 with an entry for the trait's data type in the `kdr:schemaDef` slot of its `base` bundle, even for a trait the platform

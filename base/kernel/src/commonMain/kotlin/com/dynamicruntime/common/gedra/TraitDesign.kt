@@ -40,7 +40,7 @@ enum class TraitFieldKind {
     /** One line of text. */
     text,
 
-    /** Text over several lines: a plain string the layout marks `multiline`. */
+    /** Text over several lines: a plain string the schema marks `g-longText` (issue #1550). */
     longText,
 
     /** Any number. */
@@ -136,7 +136,11 @@ class TraitDesign(
             val prop = LinkedHashMap(storedProps[key].toJsonMapOrEmpty())
             prop.keys.removeAll(designOwnedKeys)
             when (f.kind) {
-                TraitFieldKind.text, TraitFieldKind.longText -> prop[SCH.type] = SCT.string
+                TraitFieldKind.text -> prop[SCH.type] = SCT.string
+                TraitFieldKind.longText -> {
+                    prop[SCH.type] = SCT.string
+                    prop[SCH.longText] = true
+                }
                 TraitFieldKind.number -> prop[SCH.type] = SCT.number
                 TraitFieldKind.integer -> prop[SCH.type] = SCT.integer
                 TraitFieldKind.yesNo -> prop[SCH.type] = SCT.boolean
@@ -174,14 +178,15 @@ class TraitDesign(
     fun toExtension(baseTypeName: String, baseRequired: List<String>, stored: Map<String, Any?>? = null): Map<String, Any?> =
         LinkedHashMap(toDataSchema(stored, baseRequired)).also { it[SCH.extends] = baseTypeName }
 
-    /** The `g-layout` block: [stored] with the heading, and each field's label and long-text mark, written over. */
+    /** The `g-layout` block: [stored] with the heading, and each field's label, written over. */
     private fun layoutOver(stored: Map<String, Any?>): Map<String, Any?> {
         val storedEntries = stored[SL.schemaFields].toJsonListOfMaps().associateBy { it[SL.field].toOptStr() }
         val entries = fields.map { f ->
             val entry = LinkedHashMap(storedEntries[f.key].orEmpty())
             entry[SL.field] = f.key
             entry[SL.label] = f.label
-            if (f.kind == TraitFieldKind.longText) entry[SL.multiline] = true else entry.remove(SL.multiline)
+            // The box's size is long text's alone: a field made something else keeps no lines to size nothing with.
+            if (f.kind != TraitFieldKind.longText) entry.remove(SL.lines)
             // A form's restated choices may name only choices there are.
             if (f.kind.hasChoices) {
                 val values = f.choices.mapNotNull { it.value }.toSet()
@@ -205,7 +210,7 @@ class TraitDesign(
     private companion object {
         /** The property keywords a design writes, so a kind's leftovers do not survive a change of kind. */
         val designOwnedKeys = setOf(
-            SCH.type, SCH.format, SCH.options, SCH.items, SCH.uniqueItems, SCH.description, SCH.title,
+            SCH.type, SCH.format, SCH.options, SCH.items, SCH.uniqueItems, SCH.description, SCH.title, SCH.longText,
         )
     }
 }
@@ -349,7 +354,7 @@ fun traitDesignOf(traitId: String, description: String?, dataSchema: Map<String,
     for ((key, raw) in dataSchema[SCH.properties].toJsonMapOrEmpty()) {
         val prop = raw.toJsonMapOrEmpty()
         val entry = entries[key].orEmpty()
-        val kind = fieldKindOf(prop, multiline = entry[SL.multiline] == true)
+        val kind = fieldKindOf(prop)
             ?: return no("Its field '$key' is not one of the kinds this editor offers.")
         val choices = when (kind) {
             TraitFieldKind.choice -> prop[SCH.options]
@@ -393,14 +398,14 @@ fun traitExtensionDesignOf(
 }
 
 /** The kind of the stored field [prop], or null when it is none of the editor's. */
-private fun fieldKindOf(prop: Map<String, Any?>, multiline: Boolean): TraitFieldKind? {
+private fun fieldKindOf(prop: Map<String, Any?>): TraitFieldKind? {
     if (prop.containsKey(SCH.dRef) || prop[SCH.openOptions] == true) return null
     return when (prop[SCH.type]) {
         SCT.string -> when {
             prop.containsKey(SCH.options) -> TraitFieldKind.choice
             prop[SCH.format] == SFMT.date -> TraitFieldKind.date
             prop.containsKey(SCH.format) -> null
-            multiline -> TraitFieldKind.longText
+            prop[SCH.longText] == true -> TraitFieldKind.longText
             else -> TraitFieldKind.text
         }
         SCT.number -> TraitFieldKind.number

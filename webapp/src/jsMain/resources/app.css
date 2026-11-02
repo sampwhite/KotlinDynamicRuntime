@@ -1172,6 +1172,12 @@ button.wf-cell-more { font-size: .8rem; margin-top: 2px; }
 /* The box is shared with `.markdown pre` above; only its text differs. */
 .code { font-size: .85rem; color: var(--text-dim); }
 
+/* Every text area may be dragged taller (issue #1550), whether antd's or the page's own -- not wider, since each fills its
+   column and a wider one would push the page sideways on a phone. One narrower than its column (`resize-both`) may be
+   dragged wider too, as far as the column. */
+textarea { resize: vertical; }
+textarea.resize-both { resize: both; max-width: 100%; }
+
 /* The editable request JSON: the same inset well as `.code`, but a textarea -- so it carries a caret, a focus
    ring and a resize grip, and reads as something you can type in rather than a rendering you cannot. Full
    text colour (not `.code`'s dim) for the same reason: this is input, not output. */

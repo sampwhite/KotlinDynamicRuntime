@@ -100,12 +100,22 @@ class ControlKindTest {
     }
 
     @Test
-    fun longTextIsTheLayoutsWordOnPlainTextOnly() {
-        // Issue #1118: a layout's `multiline` makes plain text a text area, and nothing else.
-        assertEquals(ControlKind.LongText, controlKind(fieldType(string()), required = false, editable = true, multiline = true))
-        assertEquals(ControlKind.Text, controlKind(fieldType(mapOf(SCH.type to SCT.integer)), false, true, multiline = true))
-        assertEquals(ControlKind.Choice, controlKind(fieldType(string(mapOf(SCH.options to opts))), true, true, multiline = true))
-        assertEquals(ControlKind.ReadOnly, controlKind(fieldType(string()), false, editable = false, multiline = true))
+    fun longTextIsTheSchemasWordOnPlainText() {
+        // Issue #1550: a string the schema marks `g-longText` is a text area on every form, the endpoint catalog's too,
+        // since it reads the schema and not a layout. Unmarked text is one line, and a read-only field is its value.
+        val long = string(mapOf(SCH.longText to true))
+        assertEquals(ControlKind.LongText, kindOf(long))
+        assertEquals(ControlKind.Text, kindOf(string()))
+        assertEquals(ControlKind.ReadOnly, kindOf(long, editable = false))
+    }
+
+    @Test
+    fun aTextAreaFitsItsTextBetweenItsBounds() {
+        assertEquals(3, fittedRows("", 3, 12))
+        assertEquals(5, fittedRows("a\nb\nc\nd\ne", 3, 12))
+        assertEquals(12, fittedRows("x\n".repeat(40), 3, 12))
+        // A layout's lines above the fit's cap still start that tall.
+        assertEquals(20, fittedRows("", 20, maxOf(20, 12)))
     }
 
     @Test

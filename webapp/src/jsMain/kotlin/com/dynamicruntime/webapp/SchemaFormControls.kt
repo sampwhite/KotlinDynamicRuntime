@@ -5,6 +5,7 @@ import com.dynamicruntime.common.schema.SFMT
 import com.dynamicruntime.common.schema.SchLayoutField
 import com.dynamicruntime.common.schema.SchOption
 import com.dynamicruntime.common.schema.SchType
+import com.dynamicruntime.common.schema.defaultLongTextLines
 import com.dynamicruntime.common.schema.hideGatedFields
 import com.dynamicruntime.common.schema.isBinaryFormat
 import com.dynamicruntime.common.schema.isDateFormat
@@ -67,7 +68,7 @@ enum class ControlKind {
     /** string / integer / number / unknown — a text `Input`, coerced by the kernel validator on submit. */
     Text,
 
-    /** Plain text a form's layout marks long (issue #1118, `multiline`) — antd's `TextArea`, growing with its text. */
+    /** Plain text the schema marks long (issue #1550, `g-longText`) — antd's `TextArea`, as many lines as the layout says. */
     LongText,
 }
 
@@ -77,7 +78,7 @@ enum class ControlKind {
  * `when`: options win over the base type, an open list is its own kind, a two-state boolean is a checkbox and a
  * three-state one a select, then the string formats, a property-less object is a JSON map, everything else text.
  */
-fun controlKind(vt: SchType, required: Boolean, editable: Boolean, multiline: Boolean = false): ControlKind = when {
+fun controlKind(vt: SchType, required: Boolean, editable: Boolean): ControlKind = when {
     !editable -> ControlKind.ReadOnly
     // Multi-select: an array of choices. An open element type accepts a value that is not offered, so it takes
     // `tags` mode rather than a separate component (a multi-select is already a list, so one more is a mode).
@@ -92,7 +93,7 @@ fun controlKind(vt: SchType, required: Boolean, editable: Boolean, multiline: Bo
     vt.jsonType == SCT.string && isBinaryFormat(vt.format) -> ControlKind.File
     vt.jsonType == SCT.kObject -> ControlKind.JsonMap
     // Long text is the layout's word on plain text (issue #1118); on anything else the boot check refuses it.
-    multiline && isPlainText(vt) -> ControlKind.LongText
+    vt.longText && isPlainText(vt) -> ControlKind.LongText
     // string / integer / number / unknown. Lists do not arrive here in edit mode -- a list of choices is the
     // multi-select above, and any other list is a growing column of these widgets (renderScalarList).
     else -> ControlKind.Text
@@ -127,12 +128,12 @@ internal fun ChildrenBuilder.widget(
     choices: List<SchOption>? = null,
     /** The id a date-time field's zone note takes, so the picker is described by it (issue #1235). */
     zoneNoteId: String? = null,
-    /** Whether the form's layout marks the field long text (issue #1118, [SchLayoutField.multiline]). */
-    multiline: Boolean = false,
+    /** How many lines a long text field's box starts with on this form (issue #1550, [SchLayoutField.lines]). */
+    lines: Int? = null,
     commit: () -> Unit = {},
     emit: (Any?) -> Unit,
 ) {
-    val kind = controlKind(vt, required, editable, multiline)
+    val kind = controlKind(vt, required, editable)
     when (kind) {
         ControlKind.ReadOnly -> readOnlyValue(vt, value, presentation, opts)
         ControlKind.MultiSelect, ControlKind.MultiSelectOpen -> Select {
@@ -255,15 +256,28 @@ internal fun ChildrenBuilder.widget(
             onBlur = { commit() }
             markInvalid(asDynamic(), describedBy)
         }
+        // At least the layout's lines, fitted to the text, and dragged taller (issue #1550).
         ControlKind.LongText -> TextArea {
             this.value = displayValue(value)
-            asDynamic()["autoSize"] = js("({ minRows: 3, maxRows: 12 })")
+            val start = lines ?: defaultLongTextLines
+            asDynamic()["rows"] = fittedRows(displayValue(value), start, maxOf(start, longTextFitLines))
             onChange = { e -> emit(e.target.value as String) }
             onBlur = { commit() }
             markInvalid(asDynamic(), describedBy)
         }
     }
 }
+
+/**
+ * How many rows a text area shows for [text] (issue #1550): its lines, held between [min] and [max]. In place of antd's
+ * `autoSize`, which sets the height inline on every keystroke and forbids a drag (`resize: none`): rows change the
+ * height only until a person drags the box, after which the browser keeps the height they chose. Every antd text area
+ * in the app is sized this way, and every text area resizes vertically (`app.css`).
+ */
+fun fittedRows(text: String, min: Int, max: Int): Int = (text.count { it == '\n' } + 1).coerceIn(min, maxOf(min, max))
+
+/** The most rows a long text field grows to as text is typed, before the reader drags it taller (issue #1550). */
+const val longTextFitLines = 12
 
 /** antd's multi-line text input, `Input.TextArea`: not a named export of its own, so reached through [Input]. */
 val TextArea: ComponentType<InputProps> = Input.asDynamic().TextArea.unsafeCast<ComponentType<InputProps>>()

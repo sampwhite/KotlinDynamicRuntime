@@ -50,6 +50,11 @@ class SchType(
      */
     val outerWhitespace: SchOuterWhitespace? = null,
     /**
+     * Custom `g-longText` keyword (resolved): whether a plain string is long text (issue #1550), which a form draws as a
+     * text area. See [SCH.longText]. Off unless declared, and only ever true on a plain string with no choices.
+     */
+    val longText: Boolean = false,
+    /**
      * JSON Schema `pattern`, compiled to mean the same on the JVM and in the browser (issue #823) -- see
      * [SchPattern]. Null unless declared, and only ever set on a plain string type; the parser refuses it
      * elsewhere. Checked after edge whitespace is handled, like the other string checks.

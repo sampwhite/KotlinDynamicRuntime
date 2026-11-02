@@ -441,6 +441,7 @@ fun parseNode(
         emptyIsAbsent = (map[SCH.emptyIsAbsent] as? Boolean) ?: isScalarType(jsonType),
         visibleOnly = parseVisibleOnly(map[SCH.visibleOnly], name, jsonType, format),
         outerWhitespace = parseOuterWhitespace(map[SCH.outerWhitespace], name, jsonType, format),
+        longText = parseLongText(map[SCH.longText], name, jsonType, format, hasOptions = map[SCH.options] != null),
         pattern = parsePattern(where, map[SCH.pattern], jsonType, format),
         format = format,
         title = map[SCH.title].toOptStr(),
@@ -640,6 +641,31 @@ fun parseVisibleOnly(raw: Any?, typeName: String?, jsonType: String?, format: St
             SchemaError.notApplicable,
             "'${SCH.visibleOnly}'$where applies to a plain string, and this type is $actual. It would " +
                 "constrain nothing there."
+        )
+    }
+    return on
+}
+
+/**
+ * Reads the custom `g-longText` keyword (issue #1550): absent is off, `true`/`false` say so, and anything else fails
+ * the parse. Refused, as `g-visibleOnly` is, where there is no free text to be long: on another type, a date or binary
+ * format, or a field with choices, which a form draws as a choice whatever this says.
+ */
+@KdrPrivate
+fun parseLongText(raw: Any?, typeName: String?, jsonType: String?, format: String?, hasOptions: Boolean): Boolean {
+    if (raw == null) return false
+    val where = typeName?.let { " on '$it'" } ?: ""
+    val on = raw as? Boolean
+        ?: throw schemaFault(SchemaError.badValue, "'${SCH.longText}'$where must be true or false, not '$raw'.")
+    if (on && (jsonType != SCT.string || isDateFormat(format) || isBinaryFormat(format) || hasOptions)) {
+        val actual = when {
+            jsonType != SCT.string -> "'${jsonType ?: "untyped"}'"
+            hasOptions -> "a string with choices"
+            else -> "a '$format' string"
+        }
+        throw schemaFault(
+            SchemaError.notApplicable,
+            "'${SCH.longText}'$where applies to a plain string, and this type is $actual. There is no free text there.",
         )
     }
     return on

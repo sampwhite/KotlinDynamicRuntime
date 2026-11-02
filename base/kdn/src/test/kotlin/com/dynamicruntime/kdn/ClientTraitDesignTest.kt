@@ -118,7 +118,9 @@ class ClientTraitDesignTest : StringSpec({
         val layout = SchemaService.get(cxt).storeFor(client).layouts.values.single { l -> l.fieldNames.contains("doYouInspectWeekly") }
         layout.label shouldBe "Site safety"
         layout.fields.map { it.label } shouldBe listOf("Do you inspect weekly?", "Notes", "Hazards")
-        layout.fields.map { it.multiline } shouldBe listOf(false, true, false)
+        // Long text is the schema's mark (issue #1550), not the layout's.
+        val notes = SchemaService.get(cxt).storeFor(client).types.values.single { it.properties.containsKey("doYouInspectWeekly") }
+        notes.properties.mapValues { it.value.valueType.longText } shouldBe mapOf("doYouInspectWeekly" to false, "notes" to true, "hazards" to false)
         // The catalog lists it with its design, beside the hand-written trait the editor can edit too.
         val own = chief.getItem(UADEP.clientTraits)[CIT.ownTraits].toJsonListOfMaps().associateBy { it[CIT.traitId] }
         own["siteSafety"]?.get(CIT.configName) shouldBe "trait_siteSafety"

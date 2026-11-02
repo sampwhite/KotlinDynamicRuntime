@@ -66,6 +66,7 @@ and a list of objects.
         "description": "The abstract the program will print.",
         "minLength": 50,
         "maxLength": 600,
+        "g-longText": true,
         "g-outerWhitespace": "trim",
         "g-errors": {
           "missingRequired": "Every talk needs a summary.",
@@ -119,6 +120,11 @@ words the form shows when it is not, in place of the platform's. See
 [Bounds and their messages](reference.md#bounds-and-their-messages). Its `g-outerWhitespace` trims spaces from the
 ends of whatever is saved, so a summary pasted in with a stray space is stored without it. See
 [Trimming and coercion](reference.md#trimming-and-coercion).
+
+**The summary is long text.** Its `g-longText` says the field holds free text that may run over several lines, so
+every form shows it as a box of several lines rather than a single line, and you can drag the box taller. It changes
+nothing about what may be saved. A layout can say how many lines the box starts with; see
+[Field layouts](reference.md#field-layouts).
 
 **The duration is a number.** A form shows the range as a hint, and a value typed as text, such as `45`, is saved as
 the number 45.

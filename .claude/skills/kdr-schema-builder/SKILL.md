@@ -244,6 +244,19 @@ caller (`hideGatedFields`, in the kernel; a write keeps a gated field that is le
 inside an entry shows under the field, led by the entry's key (`FieldErrors.messagesWithin`), and the read-only
 outline names a map for its values ("map of integer") and expands a structured value type beneath it.
 
+## Long text: `longText`
+
+`longText = true` on a plain string (the custom `g-longText` keyword, issue #1550) says it is free text that may run
+over several lines: an abstract, a note. It is a fact about the data, as Cedar's `largestring` was, so it is in the
+schema rather than a layout, and every surface can read it off `SchType.longText`: every form draws the field as a text
+area, the endpoint catalog included (it reads the compiled schema, never layouts), and later a listing or report cell,
+a search, or storage may. It takes no part in validation and exports as nothing. The parser refuses it on any other
+type, a date or binary format, or a field with choices. A layout says only how tall the box starts (`lines`, above).
+
+```kotlin
+property("summary", "The abstract the program will print.") { longText = true }
+```
+
 ## Secrets: `sensitive`
 
 `sensitive = true` on a field (the custom `g-sensitive` keyword, issue #1168) says its value is a secret -- a password,
@@ -451,9 +464,10 @@ is equivalent):
 ```
 
 - The block's vocabulary is the `SL` object (`schemaFields`, `field`, `label`, `description`, `hint`, `errors`,
-  `defaultMode`, `required`, `choices`, `multiline`, `fragmentFileId`, `strings`, `mode`). `multiline: true` (issue
-  #1118) marks a plain text field **long text**, which a form draws as a text area; the data is a string either way,
-  so it is presentation and lives here, and the boot refuses it on anything but plain text (`multilineProblems`). The parser is **strict**: an unknown key on the block or
+  `defaultMode`, `required`, `choices`, `lines`, `fragmentFileId`, `strings`, `mode`). `lines` (issue #1550) is how
+  many lines a **long text** field's box starts with on the form, 1 to `maxLongTextLines`, `defaultLongTextLines` (3)
+  when unset; whether a field is long text is the schema's (`g-longText`, below), so the boot refuses `lines` on any
+  other field (`linesProblems`). The parser is **strict**: an unknown key on the block or
   on an entry, a present block that says nothing, or a non-object value all fail the boot — a layout must never
   parse clean and render nothing. A block says something with at least one field entry, or -- with no field list
   and no `mode` -- a name (`label`), an introduction (`description`), or form `strings` (issues #1070, #1534), so a

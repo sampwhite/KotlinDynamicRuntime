@@ -325,7 +325,7 @@ val CreateOwnClientCard = FC<CreateOwnClientCardProps> { props ->
                                 disabled = busy
                                 placeholder = if (field == CLD.homeIntro) "What your client is for. Markdown." else "Optional, beneath the introduction. Markdown."
                                 maxLength = CLD.homeTextMaxLength
-                                asDynamic()["autoSize"] = js("({ minRows: 2, maxRows: 8 })")
+                                asDynamic()["rows"] = fittedRows(homeText(field), 2, 8)
                                 onChange = { e -> setHome(field, e.target.value as String) }
                             }
                         }

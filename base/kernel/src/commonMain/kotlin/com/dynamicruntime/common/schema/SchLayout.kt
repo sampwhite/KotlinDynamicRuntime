@@ -14,6 +14,7 @@ import com.dynamicruntime.common.util.TemplateIssue
 import com.dynamicruntime.common.util.analyzeTemplate
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
+import com.dynamicruntime.common.util.toOptLongOrNull
 import com.dynamicruntime.common.util.toOptStr
 
 /**
@@ -161,11 +162,11 @@ class SchLayoutField(
      */
     val choices: List<SchLayoutChoice>? = null,
     /**
-     * Whether the field is **long text** (issue #1118): a text area rather than one line. Presentation only -- the
-     * data is a plain string either way -- so it lives in the layout, never in the schema. Only a plain text field
-     * takes it ([layoutFieldProblems]).
+     * How many lines a **long text** field's box starts with on this form (issue #1550); null for the form's default,
+     * [defaultLongTextLines]. Whether the field is long text is the schema's to say (`g-longText`), since it is a fact
+     * about the data; this is only how the form sizes it, so only a long text field takes it ([layoutFieldProblems]).
      */
-    val multiline: Boolean = false,
+    val lines: Int? = null,
 ) : JsonMappable {
     /** The entry as written in a `schemaFields` list; see [SchLayout.toJsonMap]. */
     override fun toJsonMap(): Map<String, Any?> {
@@ -178,7 +179,7 @@ class SchLayoutField(
         defaultMode?.let { out[SL.defaultMode] = it }
         if (required) out[SL.required] = true
         choices?.let { list -> out[SL.choices] = list.map { it.toJsonMap() } }
-        if (multiline) out[SL.multiline] = true
+        lines?.let { out[SL.lines] = it }
         return out
     }
 }
@@ -238,7 +239,7 @@ class SchLayoutBuilder(
         required: Boolean = false,
         choices: List<SchLayoutChoice>? = null,
         comment: String? = null,
-        multiline: Boolean = false,
+        lines: Int? = null,
         errors: (SchErrors.() -> Unit)? = null,
     ) {
         comment?.let { fieldComments[name] = it }
@@ -247,7 +248,7 @@ class SchLayoutBuilder(
             SchErrors(data).block()
             data.mapValues { it.value.toOptStr().orEmpty() }
         } ?: emptyMap()
-        fields.add(SchLayoutField(name, label, description, hint, errMap, defaultMode, required, choices, multiline))
+        fields.add(SchLayoutField(name, label, description, hint, errMap, defaultMode, required, choices, lines))
     }
 
     /** The finished block, as the JSON `g-layout` value, with each comment beside what it is about. */
@@ -349,8 +350,8 @@ object SL {
     /** On a [schemaFields] entry: the choices this form offers, restated (issue #1022); each a [choiceKeys] object. */
     const val choices = "choices"
 
-    /** On a [schemaFields] entry: `true` when the field is long text, drawn as a text area (issue #1118). */
-    const val multiline = "multiline"
+    /** On a [schemaFields] entry: how many lines a long text field's box starts with on this form (issue #1550). */
+    const val lines = "lines"
 
     /** On a [choices] entry: the schema's value it offers. Its [label] and [description] are the form's copy for it. */
     const val value = "value"
@@ -379,7 +380,7 @@ object SL {
 
     /** Every key a [schemaFields] entry may carry. */
     val fieldKeys: Set<String> =
-        setOf(field, label, description, hint, errors, defaultMode, required, choices, multiline, SCH.dComment)
+        setOf(field, label, description, hint, errors, defaultMode, required, choices, lines, SCH.dComment)
 
     /** Every key a [choices] entry may carry. */
     val choiceKeys: Set<String> = setOf(value, label, description)
@@ -579,23 +580,23 @@ fun parseSchLayoutResult(where: String, raw: Map<String, Any?>): Parsed<SchLayou
             }
         }
         val choices = readLayoutChoices(where, field, m[SL.choices], "$at.${SL.choices}", problems)
-        // Long text is on or absent, as a requirement is: `false` says nothing a missing key does not.
-        val multiline = when (val r = m[SL.multiline]) {
-            null, true -> r == true
-            else -> {
+        // A whole number of lines, from one to [maxLongTextLines]: a box with no lines, or a page of them, is a mistake.
+        val lines = when (val r = m[SL.lines]) {
+            null -> null
+            else -> (r as? Number)?.toOptLongOrNull()?.takeIf { it.toDouble() == r.toDouble() && it in 1..maxLongTextLines.toLong() }?.toInt() ?: run {
                 problems.add(
                     layoutProblem(
                         LayoutError.badValue,
-                        "$where: field '$field' has '${SL.multiline}' $r; it is true or absent.",
-                        "$at.${SL.multiline}",
+                        "$where: field '$field' has '${SL.lines}' $r; it is a whole number from 1 to $maxLongTextLines.",
+                        "$at.${SL.lines}",
                     ),
                 )
-                false
+                null
             }
         }
         SchLayoutField(
             field, m[SL.label].toOptStr(), m[SL.description].toOptStr(), m[SL.hint].toOptStr(), errors, defaultMode,
-            required, choices, multiline,
+            required, choices, lines,
         )
     }
     val strings = readLayoutStrings(where, raw[SL.strings], problems)
@@ -850,22 +851,29 @@ fun layoutFieldProblems(where: String, layout: SchLayout, type: SchType?): List<
     }
     if (undeclared.isNotEmpty()) return undeclared
 
-    return formRequirementProblems(where, layout, type) + multilineProblems(where, layout, type) +
+    return formRequirementProblems(where, layout, type) + linesProblems(where, layout, type) +
         authoritativeLayoutProblems(where, layout, type)
 }
 
+/** How many lines a long text field's box starts with when its form's layout does not say (issue #1550). */
+const val defaultLongTextLines = 3
+
+/** The most lines a layout may start a long text field's box with (issue #1550). */
+const val maxLongTextLines = 40
+
 /**
- * The fields [layout] marks long text (issue #1118) that are not plain text in [type]: a number, a choice, a date,
- * or a file has no use for a text area, and drawing one would invite text the field refuses.
+ * The fields [layout] gives `lines` (issue #1550) that are not long text in [type]: only a field the schema marks
+ * `g-longText` is drawn as a text area, so a number of lines anywhere else would size nothing.
  */
-fun multilineProblems(where: String, layout: SchLayout, type: SchType): List<Problem> =
+fun linesProblems(where: String, layout: SchLayout, type: SchType): List<Problem> =
     layout.fields.withIndex().mapNotNull { (i, field) ->
-        val prop = type.properties[field.field]?.takeIf { field.multiline } ?: return@mapNotNull null
-        if (isPlainText(prop.valueType)) return@mapNotNull null
+        val prop = type.properties[field.field]?.takeIf { field.lines != null } ?: return@mapNotNull null
+        if (prop.valueType.longText) return@mapNotNull null
         layoutProblem(
-            LayoutError.multilineNotText,
-            "$where: '${SCH.layout}' marks field '${field.field}' long text, but it is not a plain text field.",
-            "${SL.schemaFields}[$i].${SL.multiline}",
+            LayoutError.linesNotLongText,
+            "$where: '${SCH.layout}' gives field '${field.field}' ${SL.lines}, but the schema does not mark it " +
+                "'${SCH.longText}'.",
+            "${SL.schemaFields}[$i].${SL.lines}",
         )
     }
 
@@ -1286,8 +1294,8 @@ enum class LayoutError : ProblemCode {
     /** A field entry's `required` on a field nobody at the form could always fill in (issue #1022). */
     requiredUnfillable,
 
-    /** A field entry's `multiline` on a field that is not plain text (issue #1118). */
-    multilineNotText,
+    /** A field entry's `lines` on a field the schema does not mark long text (issue #1550). */
+    linesNotLongText,
 
     /** Copy whose `${'$'}{…}` or `%{…}` template does not parse. */
     malformedTemplate,
