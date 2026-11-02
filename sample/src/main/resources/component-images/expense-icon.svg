@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" role="img">
+  <title>An expense report: a receipt with three lines of items</title>
+  <!-- A sample component image (issue #1534): the expense report's icon, one text line high, floated at the left of
+       its introduction on a workflow form. Only shown in the app, so transparent and drawn for its dark surface. The
+       kdr-images skill's 'receipt' icon (banner.py), stroked in the accent-bright token (#818CF8). -->
+  <g fill="none" stroke="#818CF8" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M6 3 H18 V21 L16 19.5 L14 21 L12 19.5 L10 21 L8 19.5 L6 21 Z M9 8 H15 M9 11.5 H15 M9 15 H12.5"/>
+  </g>
+</svg>

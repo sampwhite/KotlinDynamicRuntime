@@ -50,10 +50,11 @@ class SchLayout(
     /** The fragment file the block's `${'$'}{…}` substitutions resolve against, declared once for the block. */
     val fragmentFileId: String?,
     /**
-     * The type's **heading** override (issue #605): the copy a surface shows *for the type as a whole*, shadowing
-     * the data type's `title`-as-heading default (`thoughts-workflow-layouts.md` §5). Rendered as Markdown, and
-     * resolved like any layout copy -- a `%{@t(...)}` backend fragment pull, a `${'$'}{…}` field value. Null leaves
-     * the schema `title` as the heading. Distinct from a field entry's `label` only by living on the block.
+     * The type's **name** (issues #605, #1534): one line, shown as the heading over the type as a whole, and -- for a
+     * trait's data type -- the trait's name wherever it is named (`traitNameOf`, issue #1520). It shadows the data
+     * type's `title`-as-heading default (`thoughts-workflow-layouts.md` §5). Inline Markdown, resolved like any layout
+     * copy -- a `%{@t(...)}` backend fragment pull, a `${'$'}{…}` field value. Null leaves the schema `title`. The copy
+     * under the heading is [description]; a field entry's `label` and `description` are the same pair for one field.
      */
     val label: String?,
     /** The per-field overrides, in declaration order. */
@@ -73,6 +74,11 @@ class SchLayout(
      * render seam [orderedFieldNames] reads it, and the boot check enforces what each mode demands.
      */
     val mode: SchLayoutMode = SchLayoutMode.overlay,
+    /**
+     * The type's **introduction** (issue #1534): Markdown shown under its heading ([label]), on a workflow form above
+     * the type's fields. Resolved like the label. Null for none.
+     */
+    val description: String? = null,
 ) : JsonMappable {
     /** The schema properties this layout addresses -- what the boot check holds against the type. */
     val fieldNames: List<String> = fields.map { it.field }
@@ -92,6 +98,7 @@ class SchLayout(
         val out = LinkedHashMap<String, Any?>()
         fragmentFileId?.let { out[SL.fragmentFileId] = it }
         label?.let { out[SL.label] = it }
+        description?.let { out[SL.description] = it }
         // Written only when it departs from the default, so an overlay layout's wire form is byte-identical to
         // before issue #777 -- the same reason a null field override is omitted rather than written as null.
         if (mode != SchLayoutMode.overlay) out[SL.mode] = mode.name
@@ -112,7 +119,7 @@ class SchLayout(
      */
     fun prunedTo(props: Set<String>): SchLayout {
         val kept = fields.filter { it.field in props }
-        return if (kept.size == fields.size) this else SchLayout(fragmentFileId, label, kept, strings, mode)
+        return if (kept.size == fields.size) this else SchLayout(fragmentFileId, label, kept, strings, mode, description)
     }
 }
 
@@ -207,6 +214,7 @@ class SchLayoutBuilder(
     private val label: String? = null,
     private val mode: SchLayoutMode = SchLayoutMode.overlay,
     private val comment: String? = null,
+    private val description: String? = null,
 ) {
     private val fields = mutableListOf<SchLayoutField>()
     private val fieldComments = HashMap<String, String>()
@@ -244,7 +252,7 @@ class SchLayoutBuilder(
 
     /** The finished block, as the JSON `g-layout` value, with each comment beside what it is about. */
     fun build(): Map<String, Any?> {
-        val built = SchLayout(fragmentFileId, label, fields.toList(), strings.toMap(), mode).toJsonMap()
+        val built = SchLayout(fragmentFileId, label, fields.toList(), strings.toMap(), mode, description).toJsonMap()
         if (comment == null && fieldComments.isEmpty()) return built
         val out = LinkedHashMap<String, Any?>()
         comment?.let { out[SCH.dComment] = it }
@@ -260,18 +268,20 @@ class SchLayoutBuilder(
 }
 
 /**
- * Attaches a `g-layout` to the type being built; see [SchLayoutBuilder]. Replaces one declared earlier. [mode]
- * (issue #777) hands the layout authority over the field order ([SchLayoutMode.reorder]) or the order and
- * membership ([SchLayoutMode.authoritative]); the default [SchLayoutMode.overlay] only annotates.
+ * Attaches a `g-layout` to the type being built; see [SchLayoutBuilder]. Replaces one declared earlier. [label] is the
+ * type's name, one line, and [description] the introduction under it (issue #1534). [mode] (issue #777) hands the
+ * layout authority over the field order ([SchLayoutMode.reorder]) or the order and membership
+ * ([SchLayoutMode.authoritative]); the default [SchLayoutMode.overlay] only annotates.
  */
 fun SchTypeBuilder.layout(
     fragmentFileId: String? = null,
     label: String? = null,
     mode: SchLayoutMode = SchLayoutMode.overlay,
     comment: String? = null,
+    description: String? = null,
     block: SchLayoutBuilder.() -> Unit,
 ) {
-    data[SCH.layout] = SchLayoutBuilder(fragmentFileId, label, mode, comment).apply(block).build()
+    data[SCH.layout] = SchLayoutBuilder(fragmentFileId, label, mode, comment, description).apply(block).build()
 }
 
 /**
@@ -356,16 +366,16 @@ object SL {
      *  of [SLM]. Absent means [SLM.overlay] -- the layout only annotates, and the schema owns order and set. */
     const val mode = "mode"
 
-    // Note: [label] doubles as a block key (the type's heading override, issue #605) and a field key (a
-    // property's label); the two are told apart by nesting, not by name -- "label" is the override word at
-    // either level (`thoughts-workflow-layouts.md` §5).
+    // Note: [label] and [description] are both block keys (the type's name and the introduction under it, issues #605,
+    // #1534) and field keys (a property's label and description); the two levels are told apart by nesting, not by
+    // name -- the same pair of words at either level (`thoughts-workflow-layouts.md` §5).
 
     // A block and a field entry also take a `$comment` (issue #1135): an author's note on why the layout narrows a
     // list or takes over a type, kept in the authored block and never read into the model, so it is stored with the
     // schema it sits in and never delivered to a page. A choice entry and the strings map are copy, and take none.
 
     /** Every key a `g-layout` block may carry. */
-    val blockKeys: Set<String> = setOf(schemaFields, fragmentFileId, label, strings, mode, SCH.dComment)
+    val blockKeys: Set<String> = setOf(schemaFields, fragmentFileId, label, description, strings, mode, SCH.dComment)
 
     /** Every key a [schemaFields] entry may carry. */
     val fieldKeys: Set<String> =
@@ -495,9 +505,9 @@ fun parseSchLayout(where: String, raw: Map<String, Any?>): SchLayout =
  * block or on a field entry is refused (the same stance `g-errors` takes), because the failure it guards against
  * is a block that parses clean and does nothing -- the draft's `formFields`, a `schemaFields` written as an
  * object, a typo. A present block must say something for the same reason: at least one field, or -- with no field
- * list -- the type's heading ([SL.label]) or form [SL.strings] (issue #1070), which a type with no field copy may
- * still be given ([layoutSaysSomething]). A list that is present must not be empty, and a [SL.mode] that orders or
- * chooses fields needs one.
+ * list -- the type's name ([SL.label]), its introduction ([SL.description]), or form [SL.strings] (issue #1070), which a
+ * type with no field copy may still be given ([layoutSaysSomething]). A list that is present must not be empty, and a
+ * [SL.mode] that orders or chooses fields needs one. The name is one line: copy under it is the introduction (#1534).
  * [where] names the type for the message.
  */
 fun parseSchLayoutResult(where: String, raw: Map<String, Any?>): Parsed<SchLayout> {
@@ -509,7 +519,8 @@ fun parseSchLayoutResult(where: String, raw: Map<String, Any?>): Parsed<SchLayou
             layoutProblem(
                 LayoutError.noFields,
                 "$where: a '${SCH.layout}' block must list at least one '${SL.schemaFields}' entry, or -- with no " +
-                    "'${SL.mode}' -- give the type a heading ('${SL.label}') or form '${SL.strings}'.",
+                    "'${SL.mode}' -- give the type a name ('${SL.label}'), an introduction ('${SL.description}'), or form " +
+                    "'${SL.strings}'.",
                 SL.schemaFields,
             ),
         )
@@ -604,21 +615,35 @@ fun parseSchLayoutResult(where: String, raw: Map<String, Any?>): Parsed<SchLayou
             SchLayoutMode.overlay
         }
     }
+    val label = raw[SL.label].toOptStr()
+    if (label != null && ('\n' in label || '\r' in label)) {
+        problems.add(
+            layoutProblem(
+                LayoutError.badValue,
+                "$where: a '${SCH.layout}' '${SL.label}' is the type's name, one line; put the copy under it in " +
+                    "'${SL.description}'.",
+                SL.label,
+            ),
+        )
+    }
     if (problems.isNotEmpty()) return Parsed.Failed(problems)
-    return Parsed.Ok(SchLayout(raw[SL.fragmentFileId].toOptStr(), raw[SL.label].toOptStr(), fields, strings, mode))
+    return Parsed.Ok(SchLayout(raw[SL.fragmentFileId].toOptStr(), label, fields, strings, mode, raw[SL.description].toOptStr()))
 }
 
 /**
  * Whether the `g-layout` block [raw] says anything a form would show (issue #1070): a field entry, or -- under the
  * default [SLM.overlay] mode, written or not, since a mode that orders or chooses fields needs a list -- a non-blank
- * heading ([SL.label]) or form [SL.strings]. A block that says nothing is refused by the parser, so an edit that empties
- * one removes the block instead. Pure.
+ * name ([SL.label]) or introduction ([SL.description]), or form [SL.strings]. A block that says nothing is refused by
+ * the parser, so an edit that empties one removes the block instead. Pure.
  */
 fun layoutSaysSomething(raw: Map<String, Any?>): Boolean {
     if ((raw[SL.schemaFields] as? List<*>)?.isNotEmpty() == true) return true
     val mode = raw[SL.mode]
     return (mode == null || mode == SLM.overlay) &&
-        (!raw[SL.label].toOptStr().isNullOrBlank() || (raw[SL.strings] as? Map<*, *>)?.isNotEmpty() == true)
+        (
+            !raw[SL.label].toOptStr().isNullOrBlank() || !raw[SL.description].toOptStr().isNullOrBlank() ||
+                (raw[SL.strings] as? Map<*, *>)?.isNotEmpty() == true
+            )
 }
 
 /**
@@ -1111,17 +1136,18 @@ fun layoutTemplateProblems(where: String, layout: SchLayout, type: SchType?): Li
     fun malformed(at: String, message: String, issue: TemplateIssue) =
         problems.add(layoutProblem(LayoutError.malformedTemplate, message, at, issue))
     fun add(code: LayoutError, at: String, message: String) = problems.add(layoutProblem(code, message, at))
-    // The block-level heading override (issue #605): a copy string like any other, but not a field, so it takes
-    // the malformed and refuse-frontend-pull checks and not the bounds check.
-    layout.label?.let { text ->
-        val analysis = text.analyzeTemplate()
+    // The block-level name and introduction (issues #605, #1534): copy strings like any other, but not a field's, so
+    // they take the malformed and refuse-frontend-pull checks and not the bounds check.
+    val blockCopy = listOf(Triple(SL.label, "name", layout.label), Triple(SL.description, "introduction", layout.description))
+    for ((key, what, text) in blockCopy) {
+        val analysis = (text ?: continue).analyzeTemplate()
         for (issue in analysis.issues) {
-            malformed(SL.label, "$where: the '${SCH.layout}' heading is a malformed template: ${issue.message}", issue)
+            malformed(key, "$where: the '${SCH.layout}' $what is a malformed template: ${issue.message}", issue)
         }
         if (analysis.refs.isNotEmpty()) {
             add(
-                LayoutError.frontendPull, SL.label,
-                $$"$$where: the '$${SCH.layout}' heading uses a frontend fragment pull ('${@t}'); a layout fragment " +
+                LayoutError.frontendPull, key,
+                $$"$$where: the '$${SCH.layout}' $$what uses a frontend fragment pull ('${@t}'); a layout fragment " +
                     "pull uses the backend prefix '%{@t}', resolved at delivery (see #605).",
             )
         }

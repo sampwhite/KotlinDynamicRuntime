@@ -32,6 +32,7 @@ ICONS = {  # stroke icons on a 24x24 grid
  'terminal': '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 10 L10 12 L7 14 M12 15 H17"/>',
  'spark': '<path d="M12 3 L13.8 9.2 L20 11 L13.8 12.8 L12 19 L10.2 12.8 L4 11 L10.2 9.2 Z M19 3.5 V7 M17.25 5.25 H20.75"/>',
  'revoke': '<circle cx="12" cy="12" r="9"/><path d="M5.6 5.6 L18.4 18.4"/>',
+ 'receipt': '<path d="M6 3 H18 V21 L16 19.5 L14 21 L12 19.5 L10 21 L8 19.5 L6 21 Z M9 8 H15 M9 11.5 H15 M9 15 H12.5"/>',
 }
 # The colors, by the app.css token each one is (webapp/src/jsMain/resources/app.css). Two are not tokens, and say so.
 PALETTE = {

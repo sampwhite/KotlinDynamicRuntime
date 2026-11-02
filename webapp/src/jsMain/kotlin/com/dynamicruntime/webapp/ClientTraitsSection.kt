@@ -330,7 +330,14 @@ private fun ChildrenBuilder.traitRows(
             }
         }
         td {
-            code { +trait.traitId }
+            // Its name as the client's forms show it (issue #1534), so a rename is seen where it is made.
+            trait.name?.let {
+                +it
+                div {
+                    className = ClassName("type-hint")
+                    code { +trait.traitId }
+                }
+            } ?: code { +trait.traitId }
             if (trait.customized) {
                 div {
                     className = ClassName("type-hint")
@@ -351,14 +358,14 @@ private fun ChildrenBuilder.traitRows(
                         +(if (open) "Hide fields" else "Fields")
                     }
                 }
-                // Narrowing it for this client (issue #1119), or why the editor cannot.
+                // Adapting it for this client -- its name, and narrowing it (issues #1119, #1534) -- or why the editor cannot.
                 if (trait.narrowing != null) {
                     Button {
                         type = "link"
                         size = "small"
                         disabled = busy || !narrowOffered
                         onClick = { onNarrow() }
-                        +(if (trait.narrowingConfig != null) "Narrowed…" else "Narrow…")
+                        +(if (trait.narrowingConfig != null) "Adapted…" else "Adapt…")
                     }
                 } else {
                     trait.narrowingNotEditable?.let {

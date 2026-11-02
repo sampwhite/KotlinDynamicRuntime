@@ -129,7 +129,11 @@ class SampleComponent : ComponentDefinition {
      * file arrives through its Gedra config, so the file ends up with four contributors and one reader.
      */
     /** The images the sample ships (issue #1339): one, shown on acme's home page. */
-    override fun images(cxt: KdrCxt): List<ComponentImageDef> = listOf(componentImage(SF.siteVisitFlow, SF.siteVisitFlowFile))
+    override fun images(cxt: KdrCxt): List<ComponentImageDef> = listOf(
+        componentImage(SF.siteVisitFlow, SF.siteVisitFlowFile),
+        componentImage(SF.questionnaireIcon, SF.questionnaireIconFile),
+        componentImage(SF.expenseIcon, SF.expenseIconFile),
+    )
 
     /** The web resources packages the sample ships (issue #1301): acme's favicon and brand mark. */
     override fun webResources(cxt: KdrCxt): List<WebResourcesDef> =

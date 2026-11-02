@@ -61,7 +61,7 @@ button -- are selected by the frames on the title, the task rail or panel label 
 save shows only while the form is filled in. They are edited in the workflow's definition **in place**
 (`/clientAdmin/design/label`, `labelEditBody`): the workflow owns them, so there is no shared level and no reset; the
 page title may be cleared to the generic one, a task's or save's may not. A **trait's heading** -- its data type's
-layout `label`, whose first line is also the trait's name on every page (issue #1520) -- has the two levels a field's
+layout `label`, one line, which is also the trait's name on every page (issues #1520, #1534) -- has the two levels a field's
 copy has: the workflow's own, as its alteration of the type, with
 **Reset to shared** and the note when the shared heading has changed since (`/clientAdmin/design/heading`, the block's
 `DSV.headingEdits`), and the shared one behind **Edit the shared heading** (`/clientAdmin/design/sharedHeading`). A

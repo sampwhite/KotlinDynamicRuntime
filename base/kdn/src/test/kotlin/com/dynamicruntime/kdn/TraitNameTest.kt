@@ -32,7 +32,7 @@ class TraitNameTest : StringSpec({
         trait("SiteVisitEntry", "siteVisit", setOf(GedraDataType.formDoc), "A visit.") {
             title = "Visit (title)"
             property("where", "Where it was.")
-            layout(label = "## Site Visit Data\nWhere you went, and why.") {}
+            layout(label = "## Site Visit Data", description = "Where you went, and why.") {}
         }
         trait("ClaimEntry", "claim", setOf(GedraDataType.formDoc), "A claim.") {
             title = "Expense claim"
@@ -49,7 +49,7 @@ class TraitNameTest : StringSpec({
     GedraConfigReload.reloadClient(cxt, client)
     val asClient = cxt.mkSubContext("names", client)
 
-    "the heading's first line, then the title, then the id humanized" {
+    "the layout label, then the title, then the id humanized" {
         TraitLocks.traitName(asClient, client, "siteVisit") shouldBe "Site Visit Data"
         TraitLocks.traitName(asClient, client, "claim") shouldBe "Expense claim"
         TraitLocks.traitName(asClient, client, "plainThing") shouldBe "Plain thing"

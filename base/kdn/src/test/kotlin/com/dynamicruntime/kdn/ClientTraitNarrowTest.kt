@@ -28,12 +28,16 @@ import com.dynamicruntime.common.gedra.TraitFieldKind
 import com.dynamicruntime.common.gedra.TraitNarrowing
 import com.dynamicruntime.common.gedra.formDocsQueryDefName
 import com.dynamicruntime.common.gedra.gedraConfig
+import com.dynamicruntime.common.gedra.reassembleForWrite
 import com.dynamicruntime.common.gedra.sandboxOf
 import com.dynamicruntime.common.gedra.traitDesignFromInfo
 import com.dynamicruntime.common.gedra.traitNarrowingFromInfo
+import com.dynamicruntime.common.gedra.workflow.TraitLocks
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.naming.clientNamespace
+import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SCT
+import com.dynamicruntime.common.schema.SL
 import com.dynamicruntime.common.schema.SLM
 import com.dynamicruntime.common.startup.ComponentDefinition
 import com.dynamicruntime.common.startup.SchemaService
@@ -152,6 +156,56 @@ class ClientTraitNarrowTest : StringSpec({
         refusalOf(user, mapOf("name" to "x")).toString() shouldContain "topic"
         chief.getItem(UADEP.clientTraits)[CIT.traits].toJsonListOfMaps().single { it[CCT.traitId] == survey }[CIT.narrowingConfig] shouldBe
             "narrow_fixture_survey"
+    }
+
+    "a rename is the layout label: named so wherever the client's forms name the trait, and kept by a narrowing" {
+        val client = "nrwname1534"
+        defineClient(client)
+        val chief = admin(client)
+        val platformName = TraitLocks.traitName(cxt, client, survey)
+        fun catalogEntry() = chief.getItem(UADEP.clientTraits)[CIT.traits].toJsonListOfMaps().single { it[CCT.traitId] == survey }
+        catalogEntry()[CIT.label] shouldBe platformName
+        narrow(chief, TraitNarrowing(survey, name = "Questionnaire"))[CIT.configName] shouldBe "narrow_fixture_survey"
+        // The name every page and message reads (issue #1520), and the catalog, with the rename read back.
+        TraitLocks.traitName(cxt, client, survey) shouldBe "Questionnaire"
+        catalogEntry()[CIT.label] shouldBe "Questionnaire"
+        traitNarrowingFromInfo(catalogEntry()[CIT.narrowing].toJsonMapOrEmpty()).name shouldBe "Questionnaire"
+        // A narrowing saved beside it keeps it, and the rename kept the data as it was.
+        narrow(chief, TraitNarrowing(survey, hidden = setOf("notes"), name = "Questionnaire"))
+        TraitLocks.traitName(cxt, client, survey) shouldBe "Questionnaire"
+        SchemaService.get(cxt).storeFor(client).layouts.getValue(TraitBaseComponent.dataType).fieldNames shouldNotContain "notes"
+        // Cleared, the platform's name is back.
+        narrow(chief, TraitNarrowing(survey, hidden = setOf("notes")))
+        TraitLocks.traitName(cxt, client, survey) shouldBe platformName
+    }
+
+    "a name and an introduction written by hand are read back, and each changed here leaves the other" {
+        val client = "nrwheading1534"
+        defineClient(client)
+        val setup = cxt.mkSubContext("setup", client).also { it.userId = 15340L }
+        val svc = GedraConfigService.get(cxt)
+        val alteration = mapOf(SCH.layout to mapOf(SL.label to "Poll", SL.description to "Tell us what you think."))
+        svc.writeConfig(
+            setup,
+            reassembleForWrite(
+                setup, "byHand", clientNamespace(client), client,
+                mapOf(CCT.schemaDef to listOf(mapOf(CCT.typeName to TraitBaseComponent.dataType, CCT.schema to alteration))),
+            ),
+        )
+        svc.publish(setup, listOf(GedraId.of(GedraConfigType.configDoc, client, "byHand")))
+        GedraConfigReload.reloadClient(cxt, client)
+        val chief = admin(client)
+        val entry = chief.getItem(UADEP.clientTraits)[CIT.traits].toJsonListOfMaps().single { it[CCT.traitId] == survey }
+        val read = traitNarrowingFromInfo(entry[CIT.narrowing].toJsonMapOrEmpty())
+        (read.name to read.introduction) shouldBe ("Poll" to "Tell us what you think.")
+        narrow(chief, TraitNarrowing(survey, name = "Survey of views", introduction = read.introduction))[CIT.configName] shouldBe "byHand"
+        val layout = SchemaService.get(cxt).storeFor(client).layouts.getValue(TraitBaseComponent.dataType)
+        (layout.label to layout.description) shouldBe ("Survey of views" to "Tell us what you think.")
+        // The introduction changed on its own; then cleared, so the platform's -- none here -- is shown.
+        narrow(chief, TraitNarrowing(survey, name = "Survey of views", introduction = "Say what you think."))
+        SchemaService.get(cxt).storeFor(client).layouts.getValue(TraitBaseComponent.dataType).description shouldBe "Say what you think."
+        narrow(chief, TraitNarrowing(survey, name = "Survey of views"))
+        SchemaService.get(cxt).storeFor(client).layouts.getValue(TraitBaseComponent.dataType).description shouldBe null
     }
 
     "a narrowing that strands stored data is refused with the impact report until acknowledged" {

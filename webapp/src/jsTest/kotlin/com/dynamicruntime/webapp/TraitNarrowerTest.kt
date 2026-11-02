@@ -55,6 +55,28 @@ class TraitNarrowerTest {
     }
 
     @Test
+    fun aNameIsOnlyAnyNameOtherThanThePlatformsAndTravelsWithTheMoves() {
+        // The platform names it by its heading (issue #1520).
+        assertEquals("Survey", platformTraitName("fixture:survey", base))
+        assertNull(empty.withName("  Survey ", "Survey").name)
+        assertNull(empty.withName("", "Survey").name)
+        val named = empty.withName(" Questionnaire ", "Survey")
+        assertEquals("Questionnaire", named.name)
+        // Every move keeps it.
+        val moved = named.withHidden("notes", true).withRequired("topic", true).withChoices("topic", listOf("b"), listOf("a", "b"))
+        assertEquals("Questionnaire", moved.name)
+        // The preview heads the trait so.
+        assertEquals("Questionnaire", collectLayouts(narrowPreviewDefs(base, named)).getValue(typeName).label)
+        // An introduction: the platform's kept as none of the client's own; blank over one the platform gives shows none.
+        assertEquals("", platformTraitIntro(base))
+        assertNull(named.withIntroduction("  ", "").introduction)
+        assertEquals("Hello.", named.withIntroduction(" Hello. ", "").introduction)
+        assertNull(named.withIntroduction("Platform's.", "Platform's.").introduction)
+        assertEquals("", named.withIntroduction("", "Platform's.").introduction)
+        assertEquals("Hello.", named.withIntroduction("Hello.", "").withHidden("notes", true).introduction)
+    }
+
+    @Test
     fun onlyMovesThatNarrowAreOffered() {
         val rows = narrowFieldRows(base).associateBy { it.field }
         // The trait requires "name": it is shown and required whatever the client does.

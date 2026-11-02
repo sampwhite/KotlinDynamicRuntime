@@ -276,6 +276,19 @@ class SchLayoutTest : StringSpec({
         parseSchLayout("Type 'X'", mapOf(SL.label to "Trip", SL.mode to SLM.overlay)).label shouldBe "Trip"
     }
 
+    "a block's label is the type's name, one line, and its description the introduction under it (issue #1534)" {
+        val layout = parseSchLayout("Type 'X'", mapOf(SL.label to "Your trip", SL.description to "Where you went.\n\nAnd why."))
+        layout.label shouldBe "Your trip"
+        layout.description shouldBe "Where you went.\n\nAnd why."
+        parseSchLayout("Type 'X'", layout.toJsonMap()).description shouldBe "Where you went.\n\nAnd why."
+        // An introduction alone says something; so is it carried by pruning, and written by the builder.
+        parseSchLayout("Type 'X'", mapOf(SL.description to "Hello.")).description shouldBe "Hello."
+        layout.prunedTo(emptySet()).description shouldBe "Where you went.\n\nAnd why."
+        // A name of more than one line is refused, pointing at the description.
+        shouldThrow<KdrException> { parseSchLayout("Type 'X'", mapOf(SL.label to "## Trip\nWhere you went.")) }.message shouldContain
+            SL.description
+    }
+
     "collectLayouts keys only the types that declare a g-layout, and leaves the defs untouched" {
         val defs = mapOfDefs("acme.Q" to typeBody(withLayout = true), "acme.Plain" to typeBody(withLayout = false))
         val layouts = collectLayouts(defs)
@@ -343,7 +356,10 @@ class SchLayoutTest : StringSpec({
         ))
         val problems = layoutTemplateProblems("Type 'acme.Q'", frontend, type).map { it.message }
         problems.size shouldBe 1
-        problems.single() shouldContain "heading"
+        problems.single() shouldContain "'g-layout' name"
+        // An introduction is held to the same (issue #1534).
+        val intro = parseSchLayout("Type 'acme.Q'", mapOf(SL.description to $$"""${@t("help.intro")}"""))
+        layoutTemplateProblems("Type 'acme.Q'", intro, type).single().message shouldContain "'g-layout' introduction"
     }
 
     "layoutFieldProblems refuses a layout on a non-object type by naming the real mistake" {

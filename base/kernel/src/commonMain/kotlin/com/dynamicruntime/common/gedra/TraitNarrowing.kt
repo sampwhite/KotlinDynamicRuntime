@@ -12,13 +12,17 @@ import com.dynamicruntime.common.util.toOptStr
 
 /**
  * A client's narrowing of a global trait as the traits editor sees it (issue #1119): three moves, and only legal ones,
- * so the editor cannot produce a widening.
+ * so the editor cannot produce a widening -- and the name and introduction the client gives the trait (issue #1534).
  *
  *  - **Hide a field** -- in the layout only. The client's version of the trait's data type lists the fields its forms
  *    show (an authoritative `g-layout`), the default every workflow starts from; what the data accepts is unchanged. A
  *    field the data requires cannot be hidden: a form could then never be saved.
  *  - **Require a field** -- in the data: added to the type's `required`, which narrowing rule 3 admits.
  *  - **Restrict its choices** -- in the data: a subset of the global choices, which closes an open list (rule 2).
+ *  - **Rename it, and introduce it** -- in the layout: the data type's `g-layout` `label`, which is the trait's name
+ *    wherever it is shown ([traitNameOf], issue #1520), and its `description`, the introduction a workflow form shows
+ *    above its fields. Not narrowing, but presentation the narrowing rules let a client change, in the same alteration
+ *    -- as hiding a field is.
  *
  * In the kernel because both sides run it: the editor previews the narrowed type with [TraitNarrowing.toAlteration],
  * and the backend writes exactly that, as the client's alteration of the trait's data type -- a `schemaDef` entry under
@@ -28,8 +32,9 @@ import com.dynamicruntime.common.util.toOptStr
  *
  * The alteration merges its properties (`g-merge`), so it names only the fields whose choices it restricts, each the
  * global definition with fewer choices, and the rest stay the global trait's -- including any it gains later. It owns
- * `required`, those properties, and the layout's mode and field list; anything else a stored alteration says (copy, a
- * field's other layout entries) is carried. An empty narrowing is no alteration at all ([TraitNarrowing.isEmpty]).
+ * `required`, those properties, and the layout's mode, field list, name, and introduction; anything else a stored
+ * alteration says (copy, a field's other layout entries) is carried. An empty narrowing is no alteration at all
+ * ([TraitNarrowing.isEmpty]).
  *
  * A stored alteration that does more than these moves -- drops a field from the data, restates the properties, changes
  * a field some other way -- is not editable here ([traitNarrowingOf] says why); it was written by hand.
@@ -42,9 +47,16 @@ class TraitNarrowing(
     val required: Set<String> = emptySet(),
     /** Per field, the global choices the client keeps, in the global order; a field not named keeps them all. */
     val choices: Map<String, List<String>> = emptyMap(),
+    /** The trait's name for the client (issue #1534), its layout `label`; null keeps the platform's. */
+    val name: String? = null,
+    /**
+     * The trait's introduction for the client (issue #1534), its layout `description`: Markdown a workflow form shows
+     * above the trait's fields. Null keeps the platform's; empty shows none.
+     */
+    val introduction: String? = null,
 ) {
     /** Whether this narrows nothing: the client takes the trait as the platform declares it. */
-    val isEmpty: Boolean get() = hidden.isEmpty() && required.isEmpty() && choices.isEmpty()
+    val isEmpty: Boolean get() = hidden.isEmpty() && required.isEmpty() && choices.isEmpty() && name == null && introduction == null
 
     /** The narrowing on the wire, as [traitNarrowingFromInfo] reads it. */
     fun toInfo(): Map<String, Any?> = buildMap {
@@ -52,6 +64,8 @@ class TraitNarrowing(
         put(CIT.hidden, hidden.toList())
         put(CIT.required, required.toList())
         put(CIT.choices, choices)
+        name?.let { put(CIT.label, it) }
+        introduction?.let { put(CIT.description, it) }
     }
 
     /**
@@ -83,12 +97,15 @@ class TraitNarrowing(
     /**
      * The layout the alteration carries: with fields hidden, an authoritative list of the rest -- in the stored list's
      * order, then the type's -- each keeping its stored entry; with none, the stored layout's copy entries alone, in
-     * the mode the global layout has. Null when there is nothing to say.
+     * the mode the global layout has; and the [name] and [introduction], each left to the global layout when null.
+     * Null when there is nothing to say.
      */
     private fun layoutOver(base: Map<String, Any?>, stored: Map<String, Any?>): Map<String, Any?>? {
         val storedEntries = stored[SL.schemaFields].toJsonListOfMaps()
         val byField = storedEntries.associateBy { it[SL.field].toOptStr() }
         val out = LinkedHashMap(stored)
+        if (name == null) out.remove(SL.label) else out[SL.label] = name
+        if (introduction == null) out.remove(SL.description) else out[SL.description] = introduction
         if (hidden.isNotEmpty()) {
             val order = (storedEntries.mapNotNull { it[SL.field].toOptStr() } + baseOrder(base)).distinct()
             out[SL.mode] = SLM.authoritative
@@ -109,6 +126,8 @@ fun traitNarrowingFromInfo(raw: Map<String, Any?>): TraitNarrowing = TraitNarrow
     hidden = raw[CIT.hidden].toJsonListOfStrings().toSet(),
     required = raw[CIT.required].toJsonListOfStrings().toSet(),
     choices = raw[CIT.choices].toJsonMapOrEmpty().mapValues { it.value.toJsonListOfStrings() },
+    name = raw[CIT.label].toOptStr()?.trim()?.ifEmpty { null },
+    introduction = raw[CIT.description].toOptStr()?.trim(),
 )
 
 /** The global type's fields, in its order. */
@@ -160,6 +179,14 @@ fun traitNarrowingProblems(narrowing: TraitNarrowing, base: Map<String, Any?>): 
         if (kept.isEmpty()) out.add("Field '$field' must keep at least one choice.")
         kept.filterNot { it in offered }.forEach { out.add("Field '$field' does not offer '$it'.") }
     }
+    narrowing.name?.let { name ->
+        if (name.isBlank()) out.add("A trait's name cannot be blank; leave it out to keep the platform's.")
+        if ('\n' in name || '\r' in name) out.add("A trait's name is one line; put more under it as its introduction.")
+        if ($$"${" in name || "%{" in name) out.add("A trait's name is plain words, not a template.")
+    }
+    narrowing.introduction?.let {
+        if ("%{" in it) out.add("A trait's introduction is copy written here, not a fragment pull.")
+    }
     return out.distinct()
 }
 
@@ -201,5 +228,11 @@ fun traitNarrowingOf(traitId: String, base: Map<String, Any?>, alteration: Map<S
         null, SLM.overlay -> emptySet()
         else -> return no("Its layout reorders the trait's fields, which this editor does not do.")
     }
-    return TraitNarrowingRead(TraitNarrowing(traitId, hidden, required, choices), null)
+    // The name and introduction (issue #1534). Either written as a template or a fragment pull was written by hand, and
+    // the editor would show it as raw text.
+    val name = layout[SL.label].toOptStr()
+    if (name != null && ($$"${" in name || "%{" in name)) return no("Its name is a template, so it is edited by hand.")
+    val introduction = layout[SL.description].toOptStr()
+    if (introduction != null && "%{" in introduction) return no("Its introduction is a fragment pull, so it is edited by hand.")
+    return TraitNarrowingRead(TraitNarrowing(traitId, hidden, required, choices, name, introduction), null)
 }

@@ -575,7 +575,7 @@ class GedraFormsTest {
     }
 
     /**
-     * A trait is named by its data type's layout heading first (issue #1520) -- the name line of it -- so the listing
+     * A trait is named by its data type's layout `label` first (issues #1520, #1534) -- not its introduction -- so the listing
      * says what the form's heading says, and a client's alteration of the heading renames the trait here too.
      */
     @Test
@@ -587,7 +587,9 @@ class GedraFormsTest {
                 mapOf(GE.traitId to "name", GE.data to emptyMap<String, Any?>()),
             ),
         )
-        val layouts = mapOf("t.ExpenseData" to parseSchLayout("t.ExpenseData", mapOf(SL.label to "## Expenses\nWhat you spent.")))
+        val layouts = mapOf(
+            "t.ExpenseData" to parseSchLayout("t.ExpenseData", mapOf(SL.label to "## Expenses", SL.description to "What you spent.")),
+        )
         assertEquals(listOf("Expenses", "Name"), summarizeForm(item, entriesUnion(), layouts).traitLabels)
         // The form's trait choice names a branch the same way; a union on another discriminator keeps its titles.
         val variants = entriesUnion().variants!!
