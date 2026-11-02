@@ -9,6 +9,7 @@ import com.dynamicruntime.common.endpoint.SchModule
 import com.dynamicruntime.common.endpoint.schemaModule
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.ClientService
+import com.dynamicruntime.common.gedra.clientAttribute
 import com.dynamicruntime.common.gedra.isSandboxClient
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.sql.PF
@@ -95,7 +96,8 @@ fun assistantOperatorSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, ASST.roo
         HttpMethod.POST,
         outputRef = ASST.clientType,
         inputFields = {
-            field(ASST.client, "The client. Not a sandbox: a sandbox goes by its parent.", required = true)
+            // Drawn as a choice of the clients the caller sees, kept current as clients come and go.
+            field(ASST.client, "The client. Not a sandbox: a sandbox goes by its parent.", required = true) { clientAttribute() }
             field(ASST.enabled, "On or off; absent to leave it as it is.") { type = SCT.boolean }
             field(
                 ASST.monthlyBudgetDollars,

@@ -6,6 +6,7 @@ import com.dynamicruntime.common.context.CL
 import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.ENVGRP
 import com.dynamicruntime.common.context.KdrCxt
+import com.dynamicruntime.common.endpoint.EI
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
@@ -171,6 +172,12 @@ class AssistantModuleTest : StringSpec({
         before[ASST.monthlyBudgetDollars] shouldBe 20.0
         before[ASST.used] shouldBe 0
         onFor(admin) shouldBe "absent"
+        // The set's client field is served as a choice of the clients the operator may name: this one among them. Read
+        // with env auth, as a developer's catalog page is: without it, the catalog lists published endpoints only.
+        val served = operator.withTestAccess {
+            operator.getData("/schema/endpoint", mapOf(EI.method to "POST", EI.path to ASST.clientSetPath))
+        }
+        served.toJsonStr() shouldContain "\"$client\""
 
         // Switching it on needs the data notice acknowledged.
         operator.expectError(EXC.badInput, ASST.clientSetPath, mapOf(ASST.client to client, ASST.enabled to true))[EP.errorMessage]
