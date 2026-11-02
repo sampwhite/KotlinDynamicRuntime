@@ -438,8 +438,9 @@ private fun ChildrenBuilder.clientDetail(
                 // The global traits it includes (issue #1117), a field of its stored definition chosen apart from the
                 // definition editor, and offered where that editor is: a save lands in the same configuration under the
                 // same rules.
+                // An editable configuration is a stored one, so `stored` is there whenever this shows.
                 val stored = def?.stored
-                if (configEditable && stored != null) {
+                if (configEditable) {
                     h3 { +"Traits" }
                     ClientTraitsSection {
                         this.clientId = clientId
@@ -514,7 +515,7 @@ private fun ChildrenBuilder.clientDetail(
         // Its own tab icon and brand mark (issue #1130), and its named images (issue #1176) -- for a client this node
         // carries, whose people there are to see them. A sandbox shows its parent's web assets, and says so; its own
         // page lists the files its parent has drafted.
-        if (present && row != null) {
+        if (present) {
             panel(panelImages, "Images", pageCopy.explanation(PFRAG.imagesNs)) {
                 h3 { +"Web assets" }
                 WebAssetsSection {

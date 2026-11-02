@@ -360,7 +360,9 @@ private fun actionsColumn(
             this.onSurveyView = props.onSurveyView
             this.canDelete = props.canDelete && mayDeleteForm(
                 record.ownerId as? Long, props.selfUserId, props.limitedDelete,
-                (record.states as Any?).toJsonListOfMaps(),
+                // Typed before the call, which the compiler calls needless: an extension called on a `dynamic` is a JS method
+                // call, and there is no such method.
+                record.states.unsafeCast<Any?>().toJsonListOfMaps(),
             )
             this.otherOwner = otherOwnerLabel(
                 record.ownerId as? Long, props.selfUserId, record.ownerName as? String, record.ownerEmail as? String,

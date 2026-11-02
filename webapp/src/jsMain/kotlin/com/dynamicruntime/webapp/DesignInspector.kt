@@ -302,7 +302,8 @@ val DesignInspector = FC<DesignInspectorProps> { props ->
                     this.session = session
                     this.trait = trait
                 }
-                if (definition?.response != null && address != null) {
+                // A definition is read only for an address, so `address` is there whenever it is.
+                if (definition?.response != null) {
                     HeadingSection {
                         key = "${selected.id}|${design.basedOn}".unsafeCast<Key>()
                         this.session = session
@@ -327,7 +328,7 @@ val DesignInspector = FC<DesignInspectorProps> { props ->
                         key = "${selected.id}|${design.basedOn}".unsafeCast<Key>()
                         this.session = session
                         this.target = selected
-                        authored = (address?.let { authoredLayoutEntry(it, definition, selected) })
+                        authored = authoredLayoutEntry(address, definition, selected)
                         pulled = pulledCopyOf(definition.response, owner.typeName, selected.name)
                     }
                 } else if (design.editRefusal != null) {
