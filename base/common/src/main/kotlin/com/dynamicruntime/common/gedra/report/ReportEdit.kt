@@ -147,8 +147,10 @@ object ReportEdit {
     private fun traitPaths(scope: ReportScope, store: KdrSchemaStore, trait: GedraTrait): List<Map<String, Any?>> {
         val data = formTraitData(store.types, trait.traitId) ?: return emptyList()
         val layout = layoutOf(store, data)
-        val keyed = trait.primaryKey.isNotEmpty()
-        val keyFields = trait.primaryKey.map { field ->
+        // The trait's key is its data type's `g-primaryKey`, as this client's schema compiles it (issue #1521).
+        val key = data.valueType.primaryKey
+        val keyed = key.isNotEmpty()
+        val keyFields = key.map { field ->
             buildMap {
                 put(RCR.field, field)
                 put(RRUN.label, propertiesOf(data.valueType)[field]?.let { fieldLabelOf(layout, field, it) } ?: humanizeFieldName(field))

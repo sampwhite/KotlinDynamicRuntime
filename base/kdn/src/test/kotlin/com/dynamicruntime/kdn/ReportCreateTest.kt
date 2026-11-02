@@ -74,7 +74,8 @@ class ReportCreateTest : StringSpec({
                         property("building", "The building.")
                     }
                 }
-                trait("YearlyEntry", "yearly", setOf(GedraDataType.formDoc), "A note a year.", primaryKey = listOf("year")) {
+                trait("YearlyEntry", "yearly", setOf(GedraDataType.formDoc), "A note a year.") {
+                    primaryKey("year")
                     property("year", "The year.", required = true) { type = SCT.integer }
                     property("note", "What happened.")
                 }
