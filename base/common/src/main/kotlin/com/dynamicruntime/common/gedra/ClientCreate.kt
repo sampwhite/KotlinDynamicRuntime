@@ -92,7 +92,8 @@ object ClientCreate {
          * Whether the client starts with workflows made from the starter templates (issue #1346): each in a
          * configuration of its own, written and published with the definition, and the trait they collect -- the
          * form's name -- added to what the definition includes. Read from the request ([CLD.starterWorkflows]) unless
-         * a caller says.
+         * a caller says. A client built on a base starts with only the starters of a kind the base declares none of
+         * ([startersBeside]).
          */
         starterWorkflows: Boolean = request[CLD.starterWorkflows] != false,
     ): Result {
@@ -110,8 +111,7 @@ object ClientCreate {
         caseVariant(cxt, client)?.let { throw takenByCase(cxt, client, it) }
         val newCustomer = newCustomerOf(cxt, client, request)
         val customer = newCustomer?.let { CustomerStore.put(cxt, it) }
-        // A client built on another makes forms with its base's creation workflow, which a starter would replace.
-        val starters = if (starterWorkflows && request[CLD.extendsFromClientId] == null) starterTemplates(cxt) else emptyList()
+        val starters = if (starterWorkflows) startersBeside(cxt, request[CLD.extendsFromClientId].toOptStr()) else emptyList()
         val definition = withStarterTraits(definitionOf(request), starters) +
             (newCustomer?.let { mapOf(CLD.customerId to client) } ?: emptyMap())
         val name = CLD.definitionConfigName
@@ -267,6 +267,20 @@ object ClientCreate {
     /** The starter templates ([WFT.starters]) this deployment declares, as its checks admitted them (issue #1346). */
     private fun starterTemplates(cxt: KdrCxt): List<WfDef> =
         WFT.starters.mapNotNull { WorkflowService.get(cxt).forClient(null).workflow(it)?.def }
+
+    /**
+     * The starters a client starts with (issue #1346): every one, or -- for a client built on [base] (issue #1567) --
+     * those of a kind the base declares none of. A client has one creation workflow and one survey, and its own
+     * replaces its base's, so a starter of a kind the base has would take the base's place; a base with no New form,
+     * a plain code client, still gets one.
+     */
+    private fun startersBeside(cxt: KdrCxt, base: String?): List<WfDef> {
+        val all = starterTemplates(cxt)
+        if (base == null) return all
+        val registry = WorkflowService.get(cxt).forClient(base)
+        val declared = setOfNotNull(registry.creation?.def?.entry, registry.survey?.def?.entry)
+        return all.filter { it.entry !in declared }
+    }
 
     /**
      * [definition] including every trait the [starters] collect (issue #1346) -- the form's name -- unless it takes them

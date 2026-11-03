@@ -66,8 +66,9 @@ For the client configuration itself, the client has the following attributes.
   * `dev` - The client exists for development work, some real users may try out functionaly, but there is
     no active usage by external users in support of their business. However, the dev environment, when 
     deployed in prod, will attempt to keep to prod style behaviors.
-  * `template` - The client exists to help generate client definitions. Such clients can have their resources
-    referenced by any client in their own definition.
+  * `template` - The client exists to help generate client definitions. It is a label for readers of the client
+    list: which client may be built on which is decided by the create (see `extendsFromClientId`), and anyone may
+    build on a code-defined client marked `publicTemplate` (issue #1567).
   * `demo` - The client exists to demo functionality, usually for sales. It will usually allow
     access to variant behaviors, such as relaxed security, and convenience endpoints for bulk-load delete
     of recently added content.
@@ -77,7 +78,8 @@ For the client configuration itself, the client has the following attributes.
   below, which is the only thing that reads it today. (It was also to decide what a caller is proactively shown,
   which is not built; see "Usage types, and what a caller is shown" below.) Because it gates a capability, **only
   the platform sets it** -- source code, or an `allClients` administrator -- and never a client's own
-  administrator (issue #1108). The same reasoning limits a database-defined client to extending template clients.
+  administrator (issue #1108). The same reasoning keeps who may build a client on which base to the platform: only
+  a client marked `publicTemplate` may be built on by anyone else (issue #1567).
 * `webResourcesId` - The **web resources package** the client presents itself with (issue #1301): the id of a
   package a component ships, whose **favicon** and **brand mark** the client's people see in place of the
   deployment's. Two clients may share a package, and a client built on a template presents the template's when it
@@ -313,10 +315,11 @@ read from it.
 | `domainPrefix`, `customDomain` | cleared (a domain routes to one client) | the platform, in the definition editor |
 | `preload` | cleared | the platform, in the definition editor |
 | `customerId` | copied from the maker | the platform, by a configuration write |
-| `extendsFromClientId` | the creator | the platform, by a configuration write |
+| `extendsFromClientId` | the creator (the platform: any code client; anyone else: a `publicTemplate` one) | the platform, by a configuration write |
 | `sandbox` | the creator | its own surface (the sandbox's management) |
 | `includedTraits` | cleared | its own surface (the traits editor, #1117) |
 | `retired` | cleared | the platform, in its own surface (#1182) |
+| `publicTemplate` | cleared | source code (it marks a code-defined client anyone may build on, #1567) |
 | `staticConfig`, `testFeatures` | cleared | the platform (`staticConfig` only in source) |
 
 **The definition editor offers each caller what its policy lets them edit** (issue #1116). A client's own

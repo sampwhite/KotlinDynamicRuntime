@@ -44,7 +44,8 @@ import io.kotest.matchers.string.shouldContain
 /**
  * Creating a client over one typed endpoint (issue #1054): its definition written as its first stored
  * configuration, published, and the client loaded -- where it used to take a hand-built bundle write and a reload.
- * A create is held to what any written definition is, and refused for the same reasons in the same words.
+ * A create is held to what any written definition is, and refused for the same reasons in the same words -- and,
+ * before anything is written, to the base its creator may name (issue #1567), which only a create asks.
  *
  * Env-authed, since the input schema is read from the endpoint catalog; the fixture component gives the node a
  * source-defined template to extend.

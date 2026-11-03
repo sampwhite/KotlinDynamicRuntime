@@ -14,7 +14,7 @@ import com.dynamicruntime.common.gedra.workflow.WfSaveKind
 /** The sample's template client and the names it declares. */
 @Suppress("ConstPropertyName")
 object STPL {
-    /** A code-defined client of the template kind, which a self-serve client may start from. */
+    /** A code-defined template marked for public use, which a self-serve client may start from. */
     const val client = "starterkit"
     const val namespace = "client.starterkit"
     const val expenseReview = "expenseReview"

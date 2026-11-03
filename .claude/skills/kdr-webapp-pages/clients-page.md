@@ -522,8 +522,10 @@ workflow's entry leaves its configuration, the template can make it again, and a
 part in is refused with the impact report until acknowledged. **A new client starts with two**: every create makes a
 creation workflow and a survey from `WFT.starters` (`newForm`, `formDetails`), each in its own `workflow_<id>`
 configuration published with the definition, and includes the trait they collect (`kdr:name`) -- unless the create's
-`starterWorkflows` is false. The self-serve card asks with a ticked checkbox; the platform's and a customer's creates
-draw it from their input schema. They count toward a plan's workflows, which is what Remove is for.
+`starterWorkflows` is false. A client built on another (`extendsFromClientId`) gets only the starter of a kind its base
+declares none of, since its own would replace the base's; one a person starts from a template gets none. The
+self-serve card asks with a ticked checkbox; the platform's and a customer's creates draw it from their input schema.
+They count toward a plan's workflows, which is what Remove is for.
 
 **Time windows** (issues #1121, #1356, `WorkflowWindowsEditor.kt`, its pure half in `WorkflowWindows.kt`, covered by
 `WorkflowWindowsTest`): a normal workflow's row in Workflows says where it stands now (`windowPhaseText`) and offers

@@ -103,7 +103,8 @@ object ClientSelfServeCreate {
         val created = try {
             ClientCreate.create(
                 cxt, definition(cxt, client, name, description, timeZone, extendsFromClientId), copy = homeCopy(home),
-                starterWorkflows = starterWorkflows,
+                // A template is a whole starting point, so it is taken as it is.
+                starterWorkflows = starterWorkflows && extendsFromClientId == null,
             )
         } catch (e: Exception) {
             // Nothing of the client was stored, so the one is not used.

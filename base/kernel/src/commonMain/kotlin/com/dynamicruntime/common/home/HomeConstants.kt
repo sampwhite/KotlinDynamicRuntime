@@ -180,8 +180,8 @@ object HFLD {
     const val selfServeClientAbsent = "selfServeClientAbsent"
 
     /**
-     * `state.selfServeTemplates`: for a caller signed in to `public` who has made no client, the code-defined template
-     * clients a new one may start from (each its [id] and [label]), so the create card offers them;
+     * `state.selfServeTemplates`: for a caller signed in to `public` who has made no client, the code-defined clients
+     * marked for public use (`publicTemplate`) that a new one may start from (each its [id] and [label]), so the create card offers them;
      * absent when there are none.
      */
     const val selfServeTemplates = "selfServeTemplates"

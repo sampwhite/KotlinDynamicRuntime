@@ -48,10 +48,10 @@ shell config lists them to a person who has made no client (`state.selfServeTemp
 the definition's description, an internal note), and the card offers **Start from**: a blank client, or a template.
 Nothing else is ever offered or accepted: the mark is the deployment's statement that anyone may build on it (issue
 #1567). A platform operator may build a client on any code-defined client; a customer's administrator only on a
-marked one. A choice a re-read of the config no longer lists falls back to a blank client (`effectiveStartFrom`). A template's client extends it (`extendsFromClientId`):
-it inherits the template's traits, workflows, and copy, and starts with no starter workflows, which would replace the
-template's (the starters' checkbox is hidden). Its New form is the template's until it writes its own creation
-workflow, which replaces the inherited one whole. The backend holds the choice to the same list and refuses anything
+marked one. A choice a re-read of the config no longer lists falls back to a blank client (`effectiveStartFrom`). A
+template's client extends it (`extendsFromClientId`): it inherits the template's traits, workflows, and copy, and
+starts with no starter workflows, since a template is a whole starting point (the starters' checkbox is hidden). Its
+New form is the template's until it writes its own creation workflow, which replaces the inherited one whole. The backend holds the choice to the same list and refuses anything
 else before the person's one client is claimed. The sample component ships one, `starterkit`, enabled in `unit` and
 `local` only, so a deployment running as `dev` does not show it to the public.
 

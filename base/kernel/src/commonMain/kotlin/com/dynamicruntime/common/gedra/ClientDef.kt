@@ -44,7 +44,11 @@ enum class ClientUsageType {
     /** Development work. Real people may try things; no external business depends on it. */
     dev,
 
-    /** Exists to generate other client definitions. Its resources may be referenced by any client. */
+    /**
+     * Exists to generate other client definitions. A label for people reading the list of clients: which client may be
+     * built on which is decided by its create, and anyone may build on one marked [ClientDef.publicTemplate] (issue
+     * #1567).
+     */
     template,
 
     /** Exists to demonstrate the product, usually for sales; relaxed security and bulk-cleanup conveniences. */
@@ -1158,7 +1162,8 @@ data class ClientDef(
             property(
                 CLD.starterWorkflows,
                 "Start the client with a creation workflow and a survey, made from the deployment's templates around the " +
-                    "form's name (which the client then includes). On unless set false.",
+                    "form's name (which the client then includes). On unless set false. A client built on another gets " +
+                    "only the one of a kind its base has none of, since its own would replace the base's.",
             ) {
                 type = SCT.boolean
                 default = true

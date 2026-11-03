@@ -541,14 +541,15 @@ class GedraConfigLoadService : ServiceInitializer {
      */
     fun extendsProblem(config: GedraConfig, sourceClients: Map<String, ClientDef>): GedraConfigIssue? {
         val parentId = config.client?.extendsFromClientId ?: return null
-        val parent = sourceClients[parentId]
-            ?: return config.issue(
+        if (parentId !in sourceClients) {
+            return config.issue(
                 "Stored config '${config.gedraId}' extends '$parentId', which is not defined in source. A " +
                     "configuration authored from data may extend only a source-code client, so that only the " +
                     "source definition is ever pulled in.",
                 "Dropping the stored config '${config.gedraId}'.",
                 GCEL.config, config.gedraId.fullId,
             )
+        }
         return null
     }
 
