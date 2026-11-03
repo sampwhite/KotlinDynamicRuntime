@@ -29,13 +29,13 @@ class SchMessageReferenceTest : StringSpec({
         val page = validationMessagesMarkdown()
         val row = { code: SchFailCode -> page.lines().single { it.startsWith("| `${code.name}` |") } }
         // A bound is offered only where the field declares it, so the page shows it in parentheses.
-        row(SchFailCode.belowMinimum) shouldContain "(`\${${LayoutCtx.min}}`)"
-        row(SchFailCode.invalidOption) shouldContain "`\${${LayoutErrCtx.options}}`"
+        row(SchFailCode.belowMinimum) shouldContain $$"(`${$${LayoutCtx.min}}`)"
+        row(SchFailCode.invalidOption) shouldContain $$"`${$${LayoutErrCtx.options}}`"
         // A missing field has no value to show.
-        (row(SchFailCode.missingRequired).contains("\${${LayoutErrCtx.value}}")) shouldBe false
+        (row(SchFailCode.missingRequired).contains($$"${$${LayoutErrCtx.value}}")) shouldBe false
         // Every parameter any code offers is explained.
         val offered = (SchFailCode.entries.map { it } + listOf(null))
             .flatMap { errorContextNames(it, hasMin = true, hasMax = true) }.toSet()
-        for (name in offered) withClue(name) { page shouldContain "| `\${$name}` |" }
+        for (name in offered) withClue(name) { page shouldContain $$"| `${$$name}` |" }
     }
 })

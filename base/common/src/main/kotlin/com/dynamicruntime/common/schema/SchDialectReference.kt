@@ -1,3 +1,5 @@
+@file:Suppress("MarkdownUnresolvedFileReference")
+
 package com.dynamicruntime.common.schema
 
 import com.dynamicruntime.common.util.toJsonListOrEmpty

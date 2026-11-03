@@ -106,7 +106,7 @@ private fun codesTable(): String = table(
 
 /** Each parameter a message may name, and what it is. */
 private fun parametersTable(): String =
-    table("| Parameter | What it is |", parameterMeanings.map { (name, what) -> "| `\${$name}` | $what |" })
+    table("| Parameter | What it is |", parameterMeanings.map { (name, what) -> $$"| `${$$name}` | $$what |" })
 
 /** A Markdown table: its [header] row, the rule under it, then its [rows]. */
 private fun table(header: String, rows: List<String>): String {
@@ -118,7 +118,7 @@ private fun table(header: String, rows: List<String>): String {
 private fun parametersOf(code: SchFailCode?): String {
     val always = errorContextNames(code, hasMin = false, hasMax = false)
     val bounds = errorContextNames(code, hasMin = true, hasMax = true) - always
-    return (always.map { "`\${$it}`" } + bounds.map { "(`\${$it}`)" }).joinToString(", ")
+    return (always.map { $$"`${$$it}`" } + bounds.map { $$"(`${$$it}`)" }).joinToString(", ")
 }
 
 /** Each parameter a message may name, and what it is, in the order the codes offer them. */
