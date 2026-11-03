@@ -43,6 +43,9 @@ dependencies {
 /** The Gradle property, and the test JVM's system property, that turns on concurrent specs (issue #1078). */
 val concurrentSpecsProperty = "kdr.concurrentSpecs"
 
+/** The test JVM's system property naming where it records the specs it runs, in order (issue #1581). */
+val specOrderDirProperty = "kdr.specOrderDir"
+
 // Kotest runs on the JUnit Platform.
 tasks.withType<Test>().configureEach {
     useJUnitPlatform()
@@ -64,6 +67,13 @@ tasks.withType<Test>().configureEach {
         }
         systemProperty(concurrentSpecsProperty, value)
     }
+    // The specs each test JVM ran, in order (issue #1581): a module whose specs are shared among JVMs (`maxParallelForks`)
+    // changes which ran before a given spec on a shared instance, so a failure that depends on order needs the list to be
+    // reproduced. The Kotest `ProjectConfig` writes one file per JVM here, `jvm-<worker>.txt`; cleared as a run starts, so
+    // the files are always the last run's. A module with no `ProjectConfig` writes nothing.
+    val specOrderDir = layout.buildDirectory.dir("spec-order/$name")
+    systemProperty(specOrderDirProperty, specOrderDir.get().asFile.path)
+    doFirst { specOrderDir.get().asFile.deleteRecursively() }
 }
 
 

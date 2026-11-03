@@ -92,6 +92,28 @@ cycle by forcing a re-resolve first:
 The lock lives at the workspace root (`kotlin-js-store/yarn.lock`), outside the versioned repo, so each
 workspace drifts on its own and every checkout hits this independently.
 
+### Specs in several JVMs, and the order each ran (issue #1581)
+
+`:base:kdn:test` shares its specs among **three JVMs** (`maxParallelForks`, in `base/kdn/build.gradle.kts`); every other
+module runs one. Each JVM runs whole specs one at a time, in order of their qualified names, and boots its own shared
+instances. A spec can depend on what ran before it on a shared instance -- #1575 was `OwnerOnlyTest`'s forms, left on
+the default instance, breaking `RefusalEnumerationTest`'s listing -- and which specs share a JVM changes as specs are
+added. So each JVM records the specs it ran, in order, one line each:
+
+```
+base/kdn/build/spec-order/test/jvm-<worker>.txt     # also base/common and sample: one file each
+```
+
+To reproduce a failure that depends on order, name the specs up to and including the failing one from its JVM's file
+and run them in **one** JVM:
+
+```bash
+./gradlew :base:kdn:test -Pkdr.testForks=1 --tests com.dynamicruntime.kdn.OwnerOnlyTest --tests com.dynamicruntime.kdn.RefusalEnumerationTest
+```
+
+The files are cleared as a run starts, so they always describe the last run. `-Pkdr.testForks=N` sets `kdn`'s JVM count
+for any run. The recording is in each module's Kotest `ProjectConfig` (`SpecOrder`); the three copies stay identical.
+
 ### Concurrent specs: a bug-finding run (issue #1078)
 
 ```bash

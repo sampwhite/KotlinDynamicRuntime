@@ -46,3 +46,17 @@ sourceSets {
 tasks.named("processResources") {
     dependsOn(embedDocs, embedImages)
 }
+
+// The module's specs shared among three JVMs (issue #1581): its test task is the last step of the gate's critical path,
+// and one JVM took about 25 seconds, three about 12 (two 15, four 11). Each JVM still runs its specs one at a time, in
+// the order of their qualified names, and boots its own shared instances. Which specs ran before a given one in its JVM
+// is recorded in `build/spec-order/test` (see `kdr.kotlin-conventions`), for a failure that depends on it, and
+// `-Pkdr.testForks=1` puts the specs named with `--tests` back in one JVM, in that order, to reproduce it.
+tasks.named<Test>("test") {
+    val forks = providers.gradleProperty("kdr.testForks").orNull
+    maxParallelForks = forks?.let {
+        requireNotNull(it.toIntOrNull()?.takeIf { n -> n >= 1 }) {
+            "-Pkdr.testForks is '$it'; it has to be a whole number of JVMs, 1 or more."
+        }
+    } ?: 3
+}
