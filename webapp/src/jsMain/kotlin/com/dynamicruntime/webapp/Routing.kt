@@ -606,6 +606,11 @@ private fun tellMove(oldUrl: String) {
  * runs after React's handlers, since React's listener went in first (call this after `createRoot`). The document's
  * listener is for a link React drew outside the root (a portal: a dropdown, a dialog); for a link inside it, the
  * root's has already called `preventDefault`, which the document's then sees.
+ *
+ * **Neither sees a link in a portal under a `stopPropagation`.** React listens on a portal's own container (the
+ * body, for antd's popups), so a stop by a React ancestor ends the browser's event there, short of the document;
+ * measured, a workflow link in the forms table's "N available …" popover was followed as a full page load. Such a
+ * link follows itself: its own `onClick` calls [followAppLink] with the native event.
  */
 fun installRouting(container: dynamic) {
     rewriteToPath()
@@ -622,8 +627,11 @@ fun installRouting(container: dynamic) {
  * outside the app's pages (an API download, an unknown path, which then loads as not found), a bare `#anchor`
  * (in-page; a `#page=` one is rewritten when followed), and a link to this very page with a fragment (an anchor on
  * it). A handler that already called `preventDefault` -- a code block's copy button -- is left its click.
+ *
+ * Also called from a link's own `onClick`, with `nativeEvent`, where the router's listeners cannot see the click
+ * ([installRouting]); the listeners then find it already handled.
  */
-private fun followAppLink(e: dynamic) {
+fun followAppLink(e: dynamic) {
     if (e.defaultPrevented == true || e.button != 0) return
     if (e.metaKey == true || e.ctrlKey == true || e.shiftKey == true || e.altKey == true) return
     val target = e.target
