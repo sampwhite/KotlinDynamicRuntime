@@ -30,6 +30,7 @@ object SchGKeywords {
         SCH.emptyIsAbsent to boolean,
         SCH.visibleOnly to boolean,
         SCH.outerWhitespace to text,
+        SCH.longText to boolean,
         SCH.derived to SchKeywordShape("true, false or an object", SchShapeForm.Either(SchShapeForm.Flag, SchShapeForm.Obj)),
         SCH.onWrite to SchKeywordShape("a list of function objects", SchShapeForm.ListOf(SchShapeForm.Obj)),
         SCH.schemaDocument to boolean,
@@ -60,6 +61,8 @@ object SchGKeywords {
             "the text '5' to a number.",
         SCH.emptyIsAbsent to "Whether an empty or null value means the property was not supplied at all.",
         SCH.visibleOnly to "Whether a string may hold only characters with a visible rendering, and the ordinary space.",
+        SCH.longText to "Marks a string as long text, free text that may run over several lines, which a form " +
+            "draws as a text area.",
         SCH.outerWhitespace to "What to do with leading and trailing whitespace on a string: 'trim' it, 'reject' a " +
             "value that has any, or 'keep' it.",
         SCH.derived to "Marks a property the caller does not supply, because something else produces it.",
@@ -96,6 +99,7 @@ object SchGKeywords {
         SCH.emptyIsAbsent to SchKeywordPlace.schema,
         SCH.visibleOnly to SchKeywordPlace.schema,
         SCH.outerWhitespace to SchKeywordPlace.schema,
+        SCH.longText to SchKeywordPlace.schema,
         SCH.derived to SchKeywordPlace.schema,
         SCH.onWrite to SchKeywordPlace.namedType,
         SCH.schemaDocument to SchKeywordPlace.schema,

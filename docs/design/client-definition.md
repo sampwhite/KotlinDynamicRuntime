@@ -467,7 +467,8 @@ impact report until acknowledged. An entry the save adds must name a global trai
 as it is, so a stale entry the load drops does not block a save of something else.
 
 It also designs the client's own traits (issue #1118), from a fixed set of field kinds: text, long text, number, whole
-number, yes/no, date, and single or multiple choice. A trait's id, a field's key and a choice's value are made from
+number, yes/no, date, and single or multiple choice. Long text is a string the schema marks `g-longText` (issue #1550),
+so every form, the endpoint catalog's included, draws it as a text area. A trait's id, a field's key and a choice's value are made from
 their first labels and never change; labels change freely, and the labels are written into the trait's layout so
 Design View starts from them. A field may be required in the data, off by default; a form's own requirements stay in
 its layout. A new trait is stored in a configuration of its own; an edit is written where the trait is stored and

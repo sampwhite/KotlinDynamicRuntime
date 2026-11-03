@@ -1147,7 +1147,7 @@ private fun ChildrenBuilder.renderField(
             // The form's own choices (issue #1022), when its layout restates them.
             choices = copy?.entry?.choices?.let { formChoiceList(vt, copy.entry, value) },
             zoneNoteId = fieldZoneNoteId(path),
-            multiline = copy?.entry?.multiline == true,
+            lines = copy?.entry?.lines,
             commit = { errors.noteCommit(path) },
         ) { newValue ->
             errors.noteEdit(path)
@@ -1633,7 +1633,8 @@ internal fun ChildrenBuilder.readOnlyValue(
     val shown = if (opts.friendly) friendlyValueText(vt, value) else text
     if (shown.isNotEmpty()) {
         span {
-            className = ClassName("field-value")
+            // Long text keeps its line breaks when read (issue #1550), as the box it was written in did.
+            className = ClassName(if (vt.longText) "field-value long-text" else "field-value")
             +shown
         }
     }

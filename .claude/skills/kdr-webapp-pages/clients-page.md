@@ -350,7 +350,7 @@ text, long text, number, whole number, yes/no, date, choice, several choices): a
 a label, a kind, **Required** (in the data -- every entry, whoever writes it; a form's own requirement is Design
 View's) and a choice field's choices. The model is the kernel's `TraitDesign`, so the **live preview** is `SchemaForm`
 drawn from exactly what the backend will write (`previewDefs`: `toDataSchema` with its labels in the `g-layout`, long
-text as `multiline`). Keys are made by the backend from first labels (`withKeys`) and never change: a saved field shows
+text as the schema's `g-longText`). Keys are made by the backend from first labels (`withKeys`) and never change: a saved field shows
 its key and may change kind only between text and long text (`kindsFor`). What is wrong with the draft is listed in
 the kernel's words (`traitDesignProblems`), and Save waits for it. The catalog's `quotas` -- the plan's schemas and
 attributes per schema (#1109) -- are said beside the fields (`draftQuotaText`), **Add field** stops at the attribute
@@ -572,9 +572,11 @@ or past its lifetime is to everybody -- its part in their forms hidden and kept,
 (`TraitLocks`) -- and a restricted creation workflow sends them to the trait picker, a survey to the raw editor. The `clients` file's `workflows.newWorkflowNote` and the home file's `publicHome.createClientNote` ship empty
 and say how to open a workflow up where the `reference` flavor fills them in.
 
-**Long text** is a layout mark, not a schema keyword: a `g-layout` field entry's `multiline: true` (`SL.multiline`,
-refused on anything but plain text) makes `SchemaForm` draw antd's `TextArea` (`ControlKind.LongText`) for any form
-whose layout says so.
+**Long text** is the schema's mark (issue #1550): a plain string's `g-longText: true` (`SchType.longText`, refused on
+anything but plain text) makes `SchemaForm` draw antd's `TextArea` (`ControlKind.LongText`) on every form, the
+endpoint catalog included. A layout field entry's `lines` says how tall it starts (`defaultLongTextLines`, 3, when
+none does); it grows with its text to `longTextFitLines` and is dragged taller, as every text area is (`fittedRows`,
+in place of antd's `autoSize`, which forbids a drag).
 
 **The time-zone picker** (issue #1257, `TimeZonePicker.kt`). The time zone is `ClientPresentationFields.Kind.timeZone`,
 drawn as `TimeZonePicker`: an antd `Select` that builds its own options rather than letting antd filter, since before

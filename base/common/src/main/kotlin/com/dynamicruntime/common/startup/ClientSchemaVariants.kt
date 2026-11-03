@@ -29,10 +29,12 @@ import com.dynamicruntime.common.schema.analyzeSchemaTypes
 import com.dynamicruntime.common.schema.isLayoutProblem
 import com.dynamicruntime.common.schema.narrowingProblems
 import com.dynamicruntime.common.schema.overlayDefs
+import com.dynamicruntime.common.schema.withoutUnknownLayoutKeys
 import com.dynamicruntime.common.schema.overlayTypeOutcome
 import com.dynamicruntime.common.schema.parseSchemaTypes
 import com.dynamicruntime.common.schema.resolveExtensions
 import com.dynamicruntime.common.util.toJsonMap
+import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
 import com.dynamicruntime.common.schema.writeFunctionProblems
 import com.dynamicruntime.common.schema.skippedWriteFunction
@@ -503,18 +505,34 @@ private fun dropFaultyLayouts(
         }
         if (rawLayout(defs, name) === rawLayout(globalDefs, name)) continue
         val where = "Type '$name' (client '$client')"
+        // A key the layout vocabulary does not know costs that key, not the layout (issue #1550): what a later
+        // vocabulary retired, as `multiline` was, leaves the rest of the client's copy standing.
+        var checked = defs[name] as? Map<*, *>
+        val (cleaned, unknownKeys) = withoutUnknownLayoutKeys(body[SCH.layout].toJsonMapOrEmpty())
+        if (unknownKeys.isNotEmpty()) {
+            reportConfigProblem(
+                cxt,
+                alterationIssue(
+                    collected, client, name,
+                    "$where: its '${SCH.layout}' has key(s) the layout does not know: ${unknownKeys.joinToString(", ")}.",
+                    "Dropping those keys; the rest of the client's '${SCH.layout}' on '$name' stands.",
+                ),
+                issues,
+            )
+            (out ?: LinkedHashMap(authored).also { out = it })[name] = body.toJsonMap() + (SCH.layout to cleaned)
+            checked = checked?.toJsonMap()?.let { it + (SCH.layout to withoutUnknownLayoutKeys(it[SCH.layout].toJsonMapOrEmpty()).first) }
+        }
         // The client's layout merges with global's by field (issue #985), so what it wrote can be refused before
         // the result is ever checked: an entry for a field global's layout does not list, where the layout's order
         // matters. The merge leaves such an entry out; reporting it here keeps that from passing silently.
         // Said with where it is, since the merger's own words are about the list, not the type.
         val refused = (globalDefs[name] as? Map<*, *>)
-            ?.let { overlayTypeOutcome(name, it.toJsonMap(), body.toJsonMap()).problems }.orEmpty()
+            ?.let { overlayTypeOutcome(name, it.toJsonMap(), body.toJsonMap() + (SCH.layout to cleaned)).problems }.orEmpty()
             // Only the layout's own: any other merge problem is the narrowing check's to report, and it has already
             // dropped the alteration.
             .filter { isLayoutProblem(name, it) }
             .map { "$where, at ${it.location?.path ?: name}: ${it.message}" }
-        val problems = refused +
-            (defs[name] as? Map<*, *>)?.let { layoutProblems(name, where, it, types[name]) }.orEmpty().map { it.message }
+        val problems = refused + checked?.let { layoutProblems(name, where, it, types[name]) }.orEmpty().map { it.message }
         if (problems.isEmpty()) continue
         reportConfigProblem(
             cxt,

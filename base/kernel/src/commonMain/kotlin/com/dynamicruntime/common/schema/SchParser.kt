@@ -441,6 +441,7 @@ fun parseNode(
         emptyIsAbsent = (map[SCH.emptyIsAbsent] as? Boolean) ?: isScalarType(jsonType),
         visibleOnly = parseVisibleOnly(map[SCH.visibleOnly], name, jsonType, format),
         outerWhitespace = parseOuterWhitespace(map[SCH.outerWhitespace], name, jsonType, format),
+        longText = parseLongText(map[SCH.longText], name, jsonType, format, hasOptions = map[SCH.options] != null),
         pattern = parsePattern(where, map[SCH.pattern], jsonType, format),
         format = format,
         title = map[SCH.title].toOptStr(),
@@ -629,18 +630,36 @@ fun refusedKeywordProblem(where: String, keyword: String): Problem? {
  * value is parsed as a date, or is not text at all, so there are no characters for the rule to see.
  */
 @KdrPrivate
-fun parseVisibleOnly(raw: Any?, typeName: String?, jsonType: String?, format: String?): Boolean {
+fun parseVisibleOnly(raw: Any?, typeName: String?, jsonType: String?, format: String?): Boolean =
+    parsePlainStringFlag(SCH.visibleOnly, raw, typeName, jsonType, format, hasOptions = false, "It would constrain nothing there.")
+
+/**
+ * Reads the custom `g-longText` keyword (issue #1550): absent is off, `true`/`false` say so, and anything else fails
+ * the parse. Refused, as `g-visibleOnly` is, where there is no free text to be long: on another type, a date or binary
+ * format, or a field with choices, which a form draws as a choice whatever this says.
+ */
+@KdrPrivate
+fun parseLongText(raw: Any?, typeName: String?, jsonType: String?, format: String?, hasOptions: Boolean): Boolean =
+    parsePlainStringFlag(SCH.longText, raw, typeName, jsonType, format, hasOptions, "There is no free text there.")
+
+/**
+ * A flag [keyword] that only a plain string may set (`g-visibleOnly`, `g-longText`): absent is off, `true`/`false` say
+ * so, anything else fails the parse, and `true` is refused on another type, a date or binary format, or -- where
+ * [hasOptions] says the field offers choices -- a choice, each naming the type and saying [why] in its own words.
+ */
+private fun parsePlainStringFlag(
+    keyword: String, raw: Any?, typeName: String?, jsonType: String?, format: String?, hasOptions: Boolean, why: String,
+): Boolean {
     if (raw == null) return false
     val where = typeName?.let { " on '$it'" } ?: ""
-    val on = raw as? Boolean
-        ?: throw schemaFault(SchemaError.badValue, "'${SCH.visibleOnly}'$where must be true or false, not '$raw'.")
-    if (on && (jsonType != SCT.string || isDateFormat(format) || isBinaryFormat(format))) {
-        val actual = if (jsonType == SCT.string) "a '$format' string" else "'${jsonType ?: "untyped"}'"
-        throw schemaFault(
-            SchemaError.notApplicable,
-            "'${SCH.visibleOnly}'$where applies to a plain string, and this type is $actual. It would " +
-                "constrain nothing there."
-        )
+    val on = raw as? Boolean ?: throw schemaFault(SchemaError.badValue, "'$keyword'$where must be true or false, not '$raw'.")
+    if (on && (jsonType != SCT.string || isDateFormat(format) || isBinaryFormat(format) || hasOptions)) {
+        val actual = when {
+            jsonType != SCT.string -> "'${jsonType ?: "untyped"}'"
+            hasOptions -> "a string with choices"
+            else -> "a '$format' string"
+        }
+        throw schemaFault(SchemaError.notApplicable, "'$keyword'$where applies to a plain string, and this type is $actual. $why")
     }
     return on
 }

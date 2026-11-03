@@ -315,6 +315,7 @@ fun confDemoBase(cxt: KdrCxtBase = LiteCxt(), client: String = ConfDemo.client):
         trait(ConfDemo.abstractEntry, ConfDemo.abstract, setOf(GedraDataType.formDoc), "What the talk is about.") {
             property(ConfDemo.summary, "The abstract the program will print.", required = true) {
                 title = "Summary"
+                longText = true
                 minLength = 50
                 maxLength = 600
                 trimmed()

@@ -215,6 +215,16 @@ object SCH {
     const val outerWhitespace = "g-outerWhitespace"
 
     /**
+     * Marks a plain string as **long text** (issue #1550): free text that may run over several lines, such as an
+     * abstract or a note. A fact about the data, as Cedar's `largestring` was, so every surface can know it: a form
+     * draws the field as a text area -- the endpoint catalog too, which reads the compiled schema and not layouts --
+     * and later a listing or report cell, a search, or storage may read it. It takes no part in validation. Only a
+     * plain string with no choices may declare it; the parser refuses it elsewhere. How tall a form's box starts is the
+     * layout's to say (`lines` on a field entry). Exports as nothing: JSON Schema has no word for it.
+     */
+    const val longText = "g-longText"
+
+    /**
      * Marks a property the client does not supply -- something else produces it (issue #254).
      *
      * Two forms, both accepted from the start so that widening later is not a migration of stored documents:

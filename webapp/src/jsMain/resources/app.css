@@ -897,6 +897,8 @@ input:where(:not([type=checkbox]):not([type=radio])) {
 .field-label { font-weight: 600; min-width: 140px; color: var(--text-dim); }
 .field-required { color: var(--danger); }
 .field-value { color: var(--text); }
+/* Long text read back (issue #1550): its lines as written, wrapped to the column. */
+.field-value.long-text { white-space: pre-wrap; }
 .field-type { color: var(--text-faint); font-style: italic; font-size: .85rem; }
 /* A supplied default not yet accepted (issue #710): a quiet chip on the field container marking that the value
    came from the caller's account, not from them. Muted rather than shouting -- it is a nudge to confirm, not an
@@ -1171,6 +1173,12 @@ button.wf-cell-more { font-size: .8rem; margin-top: 2px; }
 }
 /* The box is shared with `.markdown pre` above; only its text differs. */
 .code { font-size: .85rem; color: var(--text-dim); }
+
+/* Every text area may be dragged taller (issue #1550), whether antd's or the page's own -- not wider, since each fills its
+   column and a wider one would push the page sideways on a phone. One narrower than its column (`resize-both`) may be
+   dragged wider too, as far as the column. */
+textarea { resize: vertical; }
+textarea.resize-both { resize: both; max-width: 100%; }
 
 /* The editable request JSON: the same inset well as `.code`, but a textarea -- so it carries a caret, a focus
    ring and a resize grip, and reads as something you can type in rather than a rendering you cannot. Full

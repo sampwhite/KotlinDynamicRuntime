@@ -93,7 +93,8 @@ class TraitDesignerTest {
         assertEquals(setOf("yourNotes"), type.properties.keys)
         val layout = collectLayouts(defs).getValue(previewTypeName)
         assertEquals("Your notes", layout.fields.single().label)
-        assertTrue(layout.fields.single().multiline)
+        // Long text is marked in the schema (issue #1550), so every form draws it so.
+        assertTrue(type.properties.getValue("yourNotes").valueType.longText)
     }
 
     @Test

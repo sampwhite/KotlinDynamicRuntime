@@ -150,8 +150,10 @@ val TraitNarrowEditor = FC<TraitNarrowEditorProps> { props ->
                 value = introText
                 placeholder = "No introduction"
                 disabled = busy
-                asDynamic()["autoSize"] = js("({ minRows: 2, maxRows: 8 })")
-                style = js("({ maxWidth: 560 })")
+                asDynamic()["rows"] = fittedRows(introText, 2, 8)
+                // Narrower than its column, so it may be dragged wider as well as taller (issue #1550).
+                asDynamic()["className"] = "resize-both"
+                style = js("({ width: 'min(560px, 100%)' })")
                 onChange = { e ->
                     val typed = e.target.value as String
                     introText = typed

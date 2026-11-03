@@ -1512,7 +1512,7 @@ private val HeadingSection = FC<HeadingSectionProps> { props ->
             TextArea {
                 this.value = introValue
                 placeholder = placeholderText
-                asDynamic()["autoSize"] = js("({ minRows: 2, maxRows: 6 })")
+                asDynamic()["rows"] = fittedRows(introValue, 2, 6)
                 onChange = { e -> introValue = e.target.value as String }
             }
             note?.let {

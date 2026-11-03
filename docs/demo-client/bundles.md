@@ -119,6 +119,7 @@ The client, its traits, its columns in the forms list, its shared type, its fact
             "title": "Summary",
             "minLength": 50,
             "maxLength": 600,
+            "g-longText": true,
             "g-outerWhitespace": "trim",
             "g-errors": {
               "missingRequired": "Every talk needs a summary.",

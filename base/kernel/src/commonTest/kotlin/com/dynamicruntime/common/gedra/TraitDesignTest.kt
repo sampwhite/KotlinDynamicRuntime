@@ -7,7 +7,9 @@ import com.dynamicruntime.common.schema.SL
 import com.dynamicruntime.common.schema.collectLayouts
 import com.dynamicruntime.common.schema.layoutFieldProblems
 import com.dynamicruntime.common.schema.parseSchLayout
+import com.dynamicruntime.common.schema.parseSchLayoutResult
 import com.dynamicruntime.common.schema.parseSchemaTypes
+import com.dynamicruntime.common.util.Parsed
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import kotlin.test.Test
@@ -73,7 +75,9 @@ class TraitDesignTest {
         val layout = parseSchLayout("Type 'x.SiteSafetyData'", schema[SCH.layout].toJsonMapOrEmpty())
         assertEquals("Site safety", layout.label)
         assertEquals(listOf("Do you inspect weekly?", "Notes", "Hazards", "Inspected on"), layout.fields.map { it.label })
-        assertEquals(listOf(false, true, false, false), layout.fields.map { it.multiline })
+        // Long text is the schema's mark (issue #1550), on the property, not the layout's.
+        assertEquals(listOf(null, true, null, null), props.values.map { it.toJsonMapOrEmpty()[SCH.longText] })
+        assertEquals(TraitFieldKind.longText, traitDesignOf("siteSafety", null, schema).design!!.fields[1].kind)
         // And it parses, and its layout is sound against it.
         val type = parseSchemaTypes(mapOf("x.SiteSafetyData" to schema)).getValue("x.SiteSafetyData")
         assertTrue(layoutFieldProblems("Type 'x.SiteSafetyData'", layout, type).isEmpty())
@@ -155,15 +159,25 @@ class TraitDesignTest {
     }
 
     @Test
-    fun longTextIsForPlainTextOnly() {
+    fun aLayoutSizesOnlyLongText() {
+        // Issue #1550: `lines` says how tall a long text field's box starts; on any other field it sizes nothing.
         val type = parseSchemaTypes(
-            mapOf("t.A" to mapOf(SCH.type to SCT.kObject, SCH.properties to mapOf("n" to mapOf(SCH.type to SCT.integer)))),
+            mapOf(
+                "t.A" to mapOf(
+                    SCH.type to SCT.kObject,
+                    SCH.properties to mapOf("n" to mapOf(SCH.type to SCT.string), "s" to mapOf(SCH.type to SCT.string, SCH.longText to true)),
+                ),
+            ),
         ).getValue("t.A")
-        val layout = parseSchLayout("Type 't.A'", mapOf(SL.schemaFields to listOf(mapOf(SL.field to "n", SL.multiline to true))))
-        assertTrue(layoutFieldProblems("Type 't.A'", layout, type).single().message.contains("not a plain text field"))
-        // And the mark round-trips, absent when off.
-        assertEquals(true, layout.fields.single().toJsonMap()[SL.multiline])
-        val off = parseSchLayout("Type 't.A'", mapOf(SL.schemaFields to listOf(mapOf(SL.field to "n"))))
-        assertNull(off.fields.single().toJsonMap()[SL.multiline])
+        val layout = parseSchLayout("Type 't.A'", mapOf(SL.schemaFields to listOf(mapOf(SL.field to "n", SL.lines to 5), mapOf(SL.field to "s", SL.lines to 6))))
+        assertTrue(layoutFieldProblems("Type 't.A'", layout, type).single().message.contains("does not mark it"))
+        // And the number round-trips, absent when unset.
+        assertEquals(6, layout.fields[1].toJsonMap()[SL.lines])
+        val off = parseSchLayout("Type 't.A'", mapOf(SL.schemaFields to listOf(mapOf(SL.field to "s"))))
+        assertNull(off.fields.single().toJsonMap()[SL.lines])
+        // A box with no lines, or a fraction of one, is refused.
+        for (bad in listOf(0, 2.5, "3")) {
+            assertTrue(parseSchLayoutResult("Type 't.A'", mapOf(SL.schemaFields to listOf(mapOf(SL.field to "s", SL.lines to bad)))) is Parsed.Failed)
+        }
     }
 }

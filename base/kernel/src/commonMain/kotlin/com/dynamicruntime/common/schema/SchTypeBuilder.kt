@@ -154,6 +154,13 @@ open class SchTypeBuilder(
     var outerWhitespace: String? by SchAttr(data, SCH.outerWhitespace)
 
     /**
+     * Custom `g-longText` keyword (issue #1550): this plain string is long text, free text that may run over several
+     * lines, which every form draws as a text area. A fact about the data, not one form's choice; a layout says only how
+     * many lines the box starts with. Only a plain string with no choices may set it.
+     */
+    var longText: Boolean? by SchAttr(data, SCH.longText)
+
+    /**
      * Custom `g-visibleWhen` keyword (issue #545): a cfact expression deciding whether this property is shown to
      * a given caller. Evaluated on the frontend (issue #564) against the caller's delivered cfacts -- the served
      * schema keeps it, and the field is hidden from a caller whose cfacts do not satisfy the expression. Trait
