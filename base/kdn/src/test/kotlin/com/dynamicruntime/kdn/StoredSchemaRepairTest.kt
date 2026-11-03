@@ -22,9 +22,11 @@ import com.dynamicruntime.common.gedra.workflow.WfEntry
 import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SCT
+import com.dynamicruntime.common.schema.SL
 import com.dynamicruntime.common.schema.layout
 import com.dynamicruntime.common.startup.BootCheckMode
 import com.dynamicruntime.common.startup.SchemaService
+import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
@@ -157,6 +159,25 @@ class StoredSchemaRepairTest : StringSpec({
         val def = defOf(cxt, client, "${clientNamespace(client)}.Laid")
         def.containsKey(SCH.layout) shouldBe false
         propertyOf(def, "topic").containsKey(SCH.type) shouldBe true
+    }
+
+    "a key the layout does not know costs that key, and the rest of the layout stands" {
+        // Issue #1550: a layout stored with a key the vocabulary has since retired, as `multiline` was, keeps its copy.
+        val client = "rep1550lay"
+        val result = storeAndReload(cxt, client) {
+            type("Lined") {
+                type = SCT.kObject
+                property("topic", "A topic.")
+                data[SCH.layout] = mapOf(
+                    SL.label to "Lined up",
+                    SL.schemaFields to listOf(mapOf(SL.field to "topic", SL.label to "Topic", "multiline" to true)),
+                )
+            }
+        }
+        result.issues.single().message shouldContain "schemaFields[0].multiline"
+        val layout = defOf(cxt, client, "${clientNamespace(client)}.Lined")[SCH.layout].toJsonMapOrEmpty()
+        layout[SL.label] shouldBe "Lined up"
+        layout[SL.schemaFields].toJsonListOfMaps().single() shouldBe mapOf(SL.field to "topic", SL.label to "Topic")
     }
 
     "a type that will not compile is dropped, and the client's other types stand" {

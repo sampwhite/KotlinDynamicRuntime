@@ -897,6 +897,8 @@ input:where(:not([type=checkbox]):not([type=radio])) {
 .field-label { font-weight: 600; min-width: 140px; color: var(--text-dim); }
 .field-required { color: var(--danger); }
 .field-value { color: var(--text); }
+/* Long text read back (issue #1550): its lines as written, wrapped to the column. */
+.field-value.long-text { white-space: pre-wrap; }
 .field-type { color: var(--text-faint); font-style: italic; font-size: .85rem; }
 /* A supplied default not yet accepted (issue #710): a quiet chip on the field container marking that the value
    came from the caller's account, not from them. Muted rather than shouting -- it is a nudge to confirm, not an

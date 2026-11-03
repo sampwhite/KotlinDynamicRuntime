@@ -114,6 +114,8 @@ class ControlKindTest {
         assertEquals(3, fittedRows("", 3, 12))
         assertEquals(5, fittedRows("a\nb\nc\nd\ne", 3, 12))
         assertEquals(12, fittedRows("x\n".repeat(40), 3, 12))
+        // A paragraph typed without a break counts the lines it wraps to: 200 characters at 80 a line is three.
+        assertEquals(4, fittedRows("a".repeat(200) + "\nb", 3, 12))
         // A layout's lines above the fit's cap still start that tall.
         assertEquals(20, fittedRows("", 20, maxOf(20, 12)))
     }

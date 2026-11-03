@@ -1633,7 +1633,8 @@ internal fun ChildrenBuilder.readOnlyValue(
     val shown = if (opts.friendly) friendlyValueText(vt, value) else text
     if (shown.isNotEmpty()) {
         span {
-            className = ClassName("field-value")
+            // Long text keeps its line breaks when read (issue #1550), as the box it was written in did.
+            className = ClassName(if (vt.longText) "field-value long-text" else "field-value")
             +shown
         }
     }

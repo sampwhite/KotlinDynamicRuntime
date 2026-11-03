@@ -107,6 +107,11 @@ class SchNarrowingTest : StringSpec({
         ).shouldBeEmpty()
     }
 
+    // Long text is how a form draws a plain string, not what it accepts (issue #1550).
+    "marking a plain string long text is presentation, not widening" {
+        problems(props("note" to mapOf(SCH.type to SCT.string, SCH.longText to true))).shouldBeEmpty()
+    }
+
     // --- what is refused --------------------------------------------------------
 
     "adding a property is refused, with the alternative named" {

@@ -9,7 +9,6 @@ import com.dynamicruntime.common.schema.defaultLongTextLines
 import com.dynamicruntime.common.schema.hideGatedFields
 import com.dynamicruntime.common.schema.isBinaryFormat
 import com.dynamicruntime.common.schema.isDateFormat
-import com.dynamicruntime.common.schema.isPlainText
 import com.dynamicruntime.common.util.toJsonStr
 import com.dynamicruntime.common.util.toOptBool
 import react.ChildrenBuilder
@@ -93,7 +92,7 @@ fun controlKind(vt: SchType, required: Boolean, editable: Boolean): ControlKind 
     vt.jsonType == SCT.string && isBinaryFormat(vt.format) -> ControlKind.File
     vt.jsonType == SCT.kObject -> ControlKind.JsonMap
     // Long text is the layout's word on plain text (issue #1118); on anything else the boot check refuses it.
-    vt.longText && isPlainText(vt) -> ControlKind.LongText
+    vt.longText -> ControlKind.LongText
     // string / integer / number / unknown. Lists do not arrive here in edit mode -- a list of choices is the
     // multi-select above, and any other list is a growing column of these widgets (renderScalarList).
     else -> ControlKind.Text
@@ -269,12 +268,15 @@ internal fun ChildrenBuilder.widget(
 }
 
 /**
- * How many rows a text area shows for [text] (issue #1550): its lines, held between [min] and [max]. In place of antd's
+ * How many rows a text area shows for [text] (issue #1550): its lines, held between [min] and [max]. A line longer than
+ * [charsPerLine] counts as the lines it wraps to, as an estimate, since the box's width is not known here: so a long
+ * paragraph typed without a break still grows the box. In place of antd's
  * `autoSize`, which sets the height inline on every keystroke and forbids a drag (`resize: none`): rows change the
  * height only until a person drags the box, after which the browser keeps the height they chose. Every antd text area
  * in the app is sized this way, and every text area resizes vertically (`app.css`).
  */
-fun fittedRows(text: String, min: Int, max: Int): Int = (text.count { it == '\n' } + 1).coerceIn(min, maxOf(min, max))
+fun fittedRows(text: String, min: Int, max: Int, charsPerLine: Int = 80): Int =
+    text.split('\n').sumOf { line -> maxOf(1, (line.length + charsPerLine - 1) / charsPerLine) }.coerceIn(min, maxOf(min, max))
 
 /** The most rows a long text field grows to as text is typed, before the reader drags it taller (issue #1550). */
 const val longTextFitLines = 12

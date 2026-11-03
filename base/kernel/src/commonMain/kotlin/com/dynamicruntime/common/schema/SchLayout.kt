@@ -710,6 +710,37 @@ private fun readLayoutChoices(where: String, field: String, raw: Any?, at: Strin
     }
 }
 
+/**
+ * [raw], a `g-layout` block as a client stored it, without the keys the layout vocabulary does not know, on the block
+ * and on each field and choice entry; and where each left-out key was (`schemaFields[1].multiline`). For the repair of a
+ * client's stored layout (issue #1550): stored configuration costs only the finest grain at load, so a key the
+ * vocabulary no longer has -- `multiline`, which long text replaced -- costs that key rather than the whole layout. The write
+ * path stays strict and refuses the key. Anything that is not a map, or a list that is not one of maps, is left as it is.
+ */
+fun withoutUnknownLayoutKeys(raw: Map<String, Any?>): Pair<Map<String, Any?>, List<String>> {
+    val dropped = mutableListOf<String>()
+    fun keep(map: Map<String, Any?>, allowed: Set<String>, at: String): Map<String, Any?> {
+        val unknown = map.keys.filterNot { it in allowed }
+        if (unknown.isEmpty()) return map
+        unknown.forEach { dropped.add(if (at.isEmpty()) it else "$at.$it") }
+        return map.filterKeys { it in allowed }
+    }
+    val block = LinkedHashMap(keep(raw, SL.blockKeys, ""))
+    val entries = block[SL.schemaFields] as? List<*>
+    if (entries != null && entries.all { it is Map<*, *> }) {
+        block[SL.schemaFields] = entries.withIndex().map { (i, e) ->
+            val at = "${SL.schemaFields}[$i]"
+            val entry = LinkedHashMap(keep(e.toJsonMapOrEmpty(), SL.fieldKeys, at))
+            val choices = entry[SL.choices] as? List<*>
+            if (choices != null && choices.all { it is Map<*, *> }) {
+                entry[SL.choices] = choices.withIndex().map { (j, c) -> keep(c.toJsonMapOrEmpty(), SL.choiceKeys, "$at.${SL.choices}[$j]") }
+            }
+            entry
+        }
+    }
+    return block to dropped
+}
+
 private fun unknownKeysProblem(
     where: String,
     what: String,
