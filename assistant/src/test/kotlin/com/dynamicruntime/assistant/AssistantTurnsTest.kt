@@ -571,6 +571,8 @@ class AssistantTurnsTest : StringSpec({
             schema.endpoints["$path:GET"].shouldNotBeNull().sessionOnly shouldBe true
         }
         AssistantTools.readableDoc(cxt, "client-configuration").shouldNotBeNull()
+        // The codes a refused value is reported with (issue #1559), generated, are readable too.
+        AssistantTools.readableDoc(cxt, "validation-messages").shouldNotBeNull()
         AssistantTools.readableDoc(cxt, "api-guide").shouldBeNull()
     }
 

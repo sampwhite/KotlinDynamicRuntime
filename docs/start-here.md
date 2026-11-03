@@ -72,6 +72,8 @@ For a program, or an AI assistant, given a site's address and an API key.
    and build a workflow from its JSON, in the bundle editor or by having an AI assistant build it through the API.
 4. **[The client configuration reference](reference/client-configuration.md),** for every part of a client's
    configuration.
+5. **[Validation messages](reference/validation-messages.md),** for every code a refused value is reported with, what
+   each means, and how to give one a message of your own.
 
 Most of this documentation was written by an AI and reviewed by people;
 [the README says why](../README.md#how-this-was-made).

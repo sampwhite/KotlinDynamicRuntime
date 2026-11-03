@@ -66,6 +66,7 @@ refused when the form is saved.
 
 The message a refusal shows is the platform's unless the schema gives its own, under `g-errors`, keyed by what went
 wrong: `missingRequired`, `belowMinimum`, `aboveMaximum`, `invalidOption`, and so on, or `default` for any of them.
+[Validation messages](../reference/validation-messages.md) lists every code and what a message for it may say.
 
 <!-- kdr-doc: illustration -->
 ```json

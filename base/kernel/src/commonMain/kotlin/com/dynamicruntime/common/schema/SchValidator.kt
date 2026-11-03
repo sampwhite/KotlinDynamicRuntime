@@ -33,22 +33,30 @@ import kotlin.time.Instant
  * contract and renaming one is a breaking change. They were internal when this enum was written, and the
  * lower camelCase spelling is a leftover of that — kept because changing it now would be the very break the
  * previous sentence warns about.
+ *
+ * Each code says what it means to whoever writes a message for it, and which keywords raise it (issue #1559): the
+ * validation messages reference is made from these, so a code cannot be added without saying both. [meaning] is for
+ * a schema's author, not a developer; this KDoc is for the developer.
  */
 @Suppress("EnumEntryName")
-enum class SchFailCode {
-    missingRequired,
+enum class SchFailCode(val meaning: String, val raisedBy: List<String>) {
+    missingRequired("A field the data requires, or this form asks for, was not supplied.", listOf(SCH.required)),
 
     /** A plain type check rejected the value before its content was ever inspected. */
-    wrongType,
+    wrongType("The value is not of the field's type, such as text where a number belongs.", listOf(SCH.type)),
 
     /** The value's content was inspected (parsed/coerced) and found invalid -- e.g., a string that is
      *  not a recognizable date, boolean, number, or JSON structure. */
-    badValue,
+    badValue(
+        "The value was read and found wrong: text that is not a date, a number, or a yes or no where one is " +
+            "expected, a character that does not show, or spaces at the ends of text that refuses them.",
+        listOf(SCH.type, SCH.format, SCH.visibleOnly, SCH.outerWhitespace, SCH.schemaDocument),
+    ),
 
-    invalidOption,
+    invalidOption("The value is not one of the field's choices.", listOf(SCH.options)),
 
     /** An undeclared property was present on an object whose schema does not allow additional properties. */
-    additionalProperty,
+    additionalProperty("The data holds a field its type does not declare.", listOf(SCH.additionalProperties)),
 
     /**
      * A **declared** property was present that this payload may not carry — the `else` side of a conditional
@@ -59,7 +67,7 @@ enum class SchFailCode {
      * right now". A client branching on the code should be able to tell a typo from a rule, and only one of
      * the two is fixed by reading the schema harder.
      */
-    notAllowed,
+    notAllowed("The field is declared, but a rule about another field says it may not be supplied now.", listOf(SCH.kIf)),
 
     /**
      * The value fell short of its declared lower bound — whichever bound its type measures: `minimum` for a
@@ -74,23 +82,31 @@ enum class SchFailCode {
      * The cost, deliberately accepted: a client branching on the code alone cannot tell "too short" from "too
      * small" without also consulting the field's type. It has the schema, so it can.
      */
-    belowMinimum,
+    belowMinimum(
+        "The value is under the field's lower bound: a number too small, text too short, or a list or object with " +
+            "too few entries.",
+        listOf(SCH.minimum, SCH.exclusiveMinimum, SCH.minLength, SCH.minItems, SCH.minProperties),
+    ),
 
     /** The value exceeded its declared upper bound; see [belowMinimum] for why the four pairs share two codes. */
-    aboveMaximum,
+    aboveMaximum(
+        "The value is over the field's upper bound: a number too large, text too long, or a list or object with too " +
+            "many entries.",
+        listOf(SCH.maximum, SCH.exclusiveMaximum, SCH.maxLength, SCH.maxItems, SCH.maxProperties),
+    ),
 
     /**
      * A string did not match its field's `pattern` (issue #823). Its own code rather than [badValue], so a field's
      * `g-errors` can say what the pattern is *for* -- "a postal code is five digits" -- without that wording also
      * landing on an unrelated failure.
      */
-    patternMismatch,
+    patternMismatch("Text does not match the field's pattern.", listOf(SCH.pattern)),
 
     /**
      * An array declared `uniqueItems` holds two equal elements (issue #823), or two elements of an item type declaring
      * a `g-primaryKey` share one key (issue #1521).
      */
-    duplicateItem,
+    duplicateItem("A list holds the same item twice, or two items with the same key.", listOf(SCH.uniqueItems, SCH.primaryKey)),
 }
 
 /**

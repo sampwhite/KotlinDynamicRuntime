@@ -378,5 +378,6 @@ For a client with a sandbox, the upload is a draft, like any other change. The c
 | --- | --- | --- |
 | The client configuration reference: every slot, what its entries hold, and what an edit must send | [reference/client-configuration.md](reference/client-configuration.md) | `/st/api/doc/client-configuration` |
 | The schema dialect: the JSON Schema a trait's `dataSchema` is written in | [reference/schema-dialect.md](reference/schema-dialect.md) | `/st/api/doc/schema-dialect` |
+| Validation messages: every code a refused value is reported with, and how to give one a message of your own | [reference/validation-messages.md](reference/validation-messages.md) | `/st/api/doc/validation-messages` |
 | API keys and access tokens | [api-keys-and-tokens.md](api-keys-and-tokens.md) | `/st/api/doc/api-keys-and-tokens` |
 | The conference demo: a whole client, bundle by bundle | [demo-client/README.md](demo-client/README.md) | `/st/api/doc/demo-client-README` |
