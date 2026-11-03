@@ -21,6 +21,16 @@ object ASST {
     /** The webapp page the assistant's menu entry opens (issue #1527). */
     const val page = "assistant"
 
+    /** The operator's page of the clients the assistant is on for, their budgets, and their use (issue #1527). */
+    const val operatorPage = "operatorAssistant"
+
+    /**
+     * The menu entries the module adds (issue #1527): the page, offered to a client's administrator while [onCFact]
+     * holds, and the operator's page, under the Operator group.
+     */
+    const val menuItem = "assistant"
+    const val operatorMenuItem = "operatorAssistant"
+
     /**
      * The environment variable naming the secret that holds the model's API key. Here, not only in the module, so the
      * boot helpers a test uses can point it at [noKeyInUnitTests], as they do Mailgun's: a configured value wins over
@@ -95,7 +105,14 @@ object ACNV {
     /** Asks a running turn to stop at its next step. */
     const val cancelPath = "/${SECT.clientAdmin}/assistant/cancel"
 
+    /**
+     * What the page shows before anything is sent (issue #1527): whether the assistant is on for the client, whether it
+     * has a sandbox, how much of the month's allowance is used, and what is sent to Anthropic.
+     */
+    const val statusPath = "/${SECT.clientAdmin}/assistant/status"
+
     // --- Type names ---
+    const val statusType = "AssistantClientStatus"
     const val startedType = "AssistantTurnStarted"
     const val conversationType = "AssistantConversation"
     const val summaryType = "AssistantConversationSummary"
@@ -127,6 +144,16 @@ object ACNV {
     const val endedAt = "endedAt"
     const val canceled = "canceled"
 
+    // A row's protocol date, as a summary carries it: the backend's `PF.updatedAt`, which the kernel cannot name.
+    const val updatedAt = "updatedAt"
+    const val on = "on"
+    const val hasSandbox = "hasSandbox"
+    const val sandboxInSource = "sandboxInSource"
+    const val inSandbox = "inSandbox"
+    const val usedShare = "usedShare"
+    const val spent = "spent"
+    const val resetsAt = "resetsAt"
+
     // --- A turn's status ---
     const val statusRunning = "running"
     const val statusDone = "done"
@@ -143,4 +170,49 @@ object ACNV {
     const val busyCode = "turnRunning"
     const val readOnlyCode = "conversationReadOnly"
     const val messageIdUsedCode = "messageIdUsed"
+}
+
+/**
+ * A stored message's content blocks, by the Messages API's own names (issue #1527): what the page reads to draw a
+ * transcript, and what the module writes. Each matches its value.
+ */
+@Suppress("ConstPropertyName")
+object ABLK {
+    // --- A message's roles ---
+    const val user = "user"
+    const val assistant = "assistant"
+
+    // --- Block types ---
+    const val text = "text"
+    const val thinking = "thinking"
+    const val redactedThinking = "redacted_thinking"
+    const val toolUse = "tool_use"
+    const val toolResult = "tool_result"
+
+    // --- Block fields ---
+    const val type = "type"
+    const val id = "id"
+    const val name = "name"
+    const val input = "input"
+    const val toolUseId = "tool_use_id"
+    const val content = "content"
+    const val isError = "is_error"
+}
+
+/** The assistant's tools by name (issues #1526, #1527): what the model calls, and what the page labels its calls by. */
+@Suppress("ConstPropertyName")
+object ATOOL {
+    const val readDoc = "read_doc"
+    const val listConfigs = "list_configs"
+    const val readConfig = "read_config"
+    const val readConfigEntries = "read_config_entries"
+    const val listWorkflows = "list_workflows"
+    const val listTraits = "list_traits"
+    const val readCfacts = "read_cfacts"
+    const val viewWorkflow = "view_workflow"
+    const val patchConfig = "patch_config"
+    const val setIncludedTraits = "set_included_traits"
+
+    // A tool input that is not an endpoint's own field: the document `read_doc` reads.
+    const val doc = "doc"
 }

@@ -1,0 +1,493 @@
+package com.dynamicruntime.webapp
+
+import com.dynamicruntime.common.assistant.ACNV
+import com.dynamicruntime.common.assistant.ASST
+import com.dynamicruntime.common.gedra.sandboxOf
+import com.dynamicruntime.common.gedra.workflow.WAGG
+import com.dynamicruntime.common.home.HMENU
+import com.dynamicruntime.common.util.toJsonStr
+import kotlinx.coroutines.MainScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import react.ChildrenBuilder
+import react.FC
+import react.Key
+import react.Props
+import react.dom.html.ReactHTML.a
+import react.dom.html.ReactHTML.code
+import react.dom.html.ReactHTML.details
+import react.dom.html.ReactHTML.div
+import react.dom.html.ReactHTML.h1
+import react.dom.html.ReactHTML.li
+import react.dom.html.ReactHTML.p
+import react.dom.html.ReactHTML.pre
+import react.dom.html.ReactHTML.span
+import react.dom.html.ReactHTML.summary
+import react.dom.html.ReactHTML.textarea
+import react.dom.html.ReactHTML.ul
+import react.useEffect
+import react.useRef
+import react.useState
+import web.cssom.ClassName
+import kotlin.time.Duration.Companion.milliseconds
+
+private val assistantScope = MainScope()
+
+/** The page's panels' element ids, which the links at its top lead to. */
+private const val panelSandbox = "assistant-sandbox"
+private const val panelConversation = "assistant-conversation"
+private const val panelDrafts = "assistant-drafts"
+private const val panelAllowance = "assistant-allowance"
+
+/**
+ * The workflow assistant (issue #1527): a client administrator says what they want, and the assistant drafts it in the
+ * client's sandbox, for them to try there and publish from the Clients page. Panels: the sandbox, when the client has
+ * none (the assistant drafts in it); the conversation; the drafts this conversation made, each to try or publish; and the
+ * month's allowance. Nothing here publishes.
+ *
+ * It works from the client and from inside its sandbox, where "Try it in the sandbox" leaves the person: the backend
+ * answers for the person either way (`AssistantTurns.personOf`). The open conversation rides the address
+ * ([HP.conversation]); while a turn runs the page polls it every [assistantPollMs], reading only the messages after
+ * the last it has, and stops when it is idle.
+ */
+val AssistantPage = FC<Props> {
+    val generation = useRefreshGeneration()
+    val bump = useRefreshBump()
+    var status by useState<AssistantStatus?>(null)
+    var statusError by useState<DisplayError?>(null)
+    // Bumped when something the status shows may have changed: a turn ended, or a send was refused for it.
+    var statusReads by useState(0)
+    var conversations by useState<List<ConversationSummary>?>(null)
+    var conversationId by useState(routeParams()[HP.conversation])
+    var summary by useState<ConversationSummary?>(null)
+    var messages by useState<List<StoredMessage>>(emptyList())
+    var turns by useState<List<TurnView>>(emptyList())
+    var readError by useState<DisplayError?>(null)
+    // The turn just sent, until the conversation says it has ended: polled for even before it reads as running.
+    var pendingTurnId by useState<String?>(null)
+    var pollTick by useState(0)
+    var text by useState("")
+    // The id and the text of a message sent and not answered, so sending it again starts no second turn.
+    var unanswered by useState<Pair<String, String>?>(null)
+    var sending by useState(false)
+    var stopping by useState(false)
+    var sendError by useState<DisplayError?>(null)
+    var sandboxBusy by useState(false)
+    var sandboxError by useState<DisplayError?>(null)
+    var tryError by useState<DisplayError?>(null)
+    // Drops an answer for a conversation the page has moved on from.
+    val readToken = useRef(0)
+
+    useEffect(generation, statusReads) {
+        assistantScope.launch {
+            try {
+                status = AssistantApi.status()
+                statusError = null
+            } catch (e: Throwable) {
+                statusError = userFacingError(e)
+            }
+        }
+        assistantScope.launch {
+            apiResult { AssistantApi.conversations() }.valueOrNull()?.let { conversations = it }
+        }
+    }
+
+    /** Reads the open conversation: whole when [whole], else only the messages after those the page has. */
+    fun read(id: String, whole: Boolean) {
+        val token = readToken.current ?: 0
+        val after = if (whole) 0L else messages.lastOrNull()?.seq ?: 0L
+        assistantScope.launch {
+            try {
+                val loaded = AssistantApi.conversation(id, after)
+                if (readToken.current != token) return@launch
+                summary = loaded.summary
+                messages = if (whole) loaded.messages else messages + loaded.messages.filter { m -> messages.none { it.seq == m.seq } }
+                val wasPolling = pollsConversation(summary?.running == true, pendingTurnId, turns)
+                turns = loaded.turns
+                readError = null
+                val pending = pendingTurnId
+                if (pending != null && loaded.turns.any { it.turnId == pending && it.status != ACNV.statusRunning }) {
+                    pendingTurnId = null
+                }
+                if (pollsConversation(loaded.summary.running, pendingTurnId, loaded.turns)) {
+                    pollTick += 1
+                } else if (wasPolling || !whole) {
+                    // A turn ended: what it spent, and the conversation's place in the list, are read again.
+                    statusReads += 1
+                }
+            } catch (e: Throwable) {
+                if (readToken.current == token) readError = userFacingError(e)
+            }
+        }
+    }
+
+    // A conversation opened -- from the address, the list, or a first message -- is read whole.
+    useEffect(conversationId) {
+        readToken.current = (readToken.current ?: 0) + 1
+        messages = emptyList()
+        turns = emptyList()
+        summary = null
+        readError = null
+        conversationId?.let { read(it, whole = true) }
+    }
+
+    // While a turn runs, the conversation is read again every assistantPollMs. The effect is a coroutine React cancels
+    // when it re-runs or the page goes, so a wait never outlives the page or doubles up.
+    useEffect(pollTick) {
+        val id = conversationId
+        if (pollTick == 0 || id == null) return@useEffect
+        delay(assistantPollMs.milliseconds)
+        read(id, whole = false)
+    }
+
+    fun open(id: String?) {
+        pendingTurnId = null
+        sendError = null
+        replaceRoute(listOfNotNull(HP.page to ASST.page, id?.let { HP.conversation to it }))
+        conversationId = id
+    }
+
+    fun send() {
+        val message = text.trim()
+        if (message.isEmpty()) return
+        val id = messageIdFor(unanswered, message, ::newMessageId)
+        unanswered = id to message
+        sending = true
+        sendError = null
+        assistantScope.launch {
+            try {
+                val (conversation, turn) = AssistantApi.send(conversationId, id, message)
+                unanswered = null
+                text = ""
+                pendingTurnId = turn
+                if (conversation != conversationId) {
+                    replaceRoute(listOf(HP.page to ASST.page, HP.conversation to conversation))
+                    conversationId = conversation
+                } else {
+                    pollTick += 1
+                }
+            } catch (e: ApiError) {
+                // Answered, if refused: a new message, or this one sent again, gets an id of its own.
+                unanswered = null
+                sendError = userFacingError(e)
+                if (e.errorCode in setOf(ACNV.budgetSpentCode, ACNV.noSandboxCode, ACNV.notOnCode, ACNV.readOnlyCode)) statusReads += 1
+            } catch (e: Throwable) {
+                sendError = userFacingError(e)
+            } finally {
+                sending = false
+            }
+        }
+    }
+
+    fun stop() {
+        val id = conversationId ?: return
+        stopping = true
+        assistantScope.launch {
+            try {
+                AssistantApi.cancel(id)
+                pollTick += 1
+            } catch (e: Throwable) {
+                sendError = userFacingError(e)
+            } finally {
+                stopping = false
+            }
+        }
+    }
+
+    fun turnOnSandbox(client: String) {
+        sandboxBusy = true
+        sandboxError = null
+        assistantScope.launch {
+            try {
+                ClientsApi.setSandbox(client, true)
+                // The shell too: the app bar now offers to open the sandbox.
+                bump()
+            } catch (e: Throwable) {
+                sandboxError = userFacingError(e)
+            } finally {
+                sandboxBusy = false
+            }
+        }
+    }
+
+    // Into the sandbox (unless already there), at the draft's workflow's forms -- or the forms, for traits.
+    fun tryIt(draft: AssistantDraft, inSandbox: Boolean) {
+        val to = draft.workflowIds.firstOrNull()?.let { listOf(HP.page to pageWorkflowForms, WAGG.workflowId to it) }
+            ?: listOf(HP.page to HMENU.pageForms)
+        if (inSandbox) {
+            navigate(to)
+            return
+        }
+        tryError = null
+        assistantScope.launch {
+            try {
+                AuthApi.openSandbox()
+                afterSessionChange(bump, to)
+            } catch (e: Throwable) {
+                tryError = userFacingError(e)
+            }
+        }
+    }
+
+    div {
+        className = ClassName("card wide")
+        h1 { +"Workflow assistant" }
+        p {
+            className = ClassName("subtitle")
+            +(
+                "Say what workflow you want, and the assistant drafts it in your sandbox: try it there, then publish it from " +
+                    "the Clients page. It never publishes anything itself."
+            )
+        }
+        val current = status
+        when {
+            statusError != null -> errorText("Couldn't load the assistant.", statusError!!)
+            current == null -> p { className = ClassName("subtitle"); +"Loading…" }
+            !current.on -> p {
+                className = ClassName("subtitle")
+                +"The workflow assistant is not on for ${current.client}. A deployment operator switches it on for a client."
+            }
+            else -> {
+                val running = summary?.running == true || pendingTurnId != null
+                val drafts = draftsOf(messages)
+                panelLinks(
+                    listOfNotNull(
+                        (panelSandbox to "Sandbox").takeIf { !current.hasSandbox },
+                        panelConversation to "Conversation",
+                        panelDrafts to "Drafts",
+                        panelAllowance to "Allowance",
+                    ),
+                )
+                if (!current.hasSandbox) {
+                    // Live while it can be turned on here; a client defined in source code has it turned on there.
+                    panel(panelSandbox, "Sandbox", kind = if (current.sandboxInSource) PanelKind.view else PanelKind.live) {
+                        p {
+                            +(
+                                "The assistant drafts in ${current.client}'s sandbox, which ${current.client} has not got yet. " +
+                                    "With a sandbox, ${current.client} itself runs only what is published, and the sandbox runs " +
+                                    "everything drafted, with users and data of its own, so a draft can be tried before anyone " +
+                                    "else sees it."
+                            )
+                        }
+                        if (current.sandboxInSource) {
+                            p {
+                                className = ClassName("type-hint")
+                                +"${current.client} is defined in source code, so its sandbox is turned on there, in its definition."
+                            }
+                        } else {
+                            Popconfirm {
+                                title = "Turn on ${current.client}'s sandbox?"
+                                description = "From now on ${current.client} runs only published configuration."
+                                okText = "Turn on sandbox"
+                                cancelText = "Cancel"
+                                onConfirm = { turnOnSandbox(current.client) }
+                                Button {
+                                    type = "primary"
+                                    loading = sandboxBusy
+                                    +"Turn on sandbox"
+                                }
+                            }
+                        }
+                        panelNote(sandboxError, null, "Couldn't turn on the sandbox.")
+                    }
+                }
+                panel(panelConversation, "Conversation", kind = PanelKind.live) {
+                    conversationPicker(conversations, conversationId, running) { open(it) }
+                    readError?.let { errorText("Couldn't read the conversation.", it) }
+                    transcript(transcriptItems(messages), running)
+                    turnEndText(turns.lastOrNull()?.takeIf { !running })?.let { p { className = ClassName("type-hint"); +it } }
+                    val readOnly = summary?.readOnly == true
+                    val blocked = when {
+                        readOnly -> "This conversation cannot go on. Start a new one."
+                        current.allowance.spent -> "This month's allowance is used up."
+                        !current.hasSandbox -> "Turn on the sandbox first: the assistant drafts there."
+                        else -> null
+                    }
+                    textarea {
+                        className = ClassName("assistant-input")
+                        value = text
+                        disabled = sending || blocked != null
+                        placeholder = if (conversationId == null) {
+                            "Describe the workflow you want: who fills in what, who reviews it, and when."
+                        } else {
+                            "Ask for a change, or say what to do next."
+                        }
+                        onChange = { e -> text = e.target.value }
+                        onKeyDown = { e ->
+                            if (e.key == "Enter" && (e.metaKey || e.ctrlKey)) {
+                                e.preventDefault()
+                                if (!running) send()
+                            }
+                        }
+                    }
+                    div {
+                        className = ClassName("row")
+                        Button {
+                            type = "primary"
+                            loading = sending
+                            disabled = running || blocked != null || text.isBlank()
+                            onClick = { send() }
+                            +"Send"
+                        }
+                        if (running) {
+                            Button {
+                                loading = stopping
+                                onClick = { stop() }
+                                +"Stop"
+                            }
+                            span { className = ClassName("type-hint"); +"The assistant is working…" }
+                        }
+                    }
+                    blocked?.let { p { className = ClassName("type-hint"); +it } }
+                    if (conversationId == null) {
+                        Disclosure {
+                            summaryText = "What is sent to Anthropic"
+                            p { +current.dataNotice }
+                        }
+                    }
+                    panelNote(sendError, null, "Couldn't send the message.")
+                }
+                panel(panelDrafts, "Drafts from this conversation") {
+                    if (drafts.isEmpty()) {
+                        p { className = ClassName("type-hint"); +"Nothing drafted yet." }
+                    } else {
+                        draftList(drafts, current, onTry = { tryIt(it, current.inSandbox) })
+                        p {
+                            className = ClassName("type-hint")
+                            +"In the sandbox, Design View in the app bar shows which definitions are behind what you see."
+                        }
+                        tryError?.let { errorText("Couldn't open the sandbox.", it) }
+                    }
+                }
+                panel(panelAllowance, "Allowance") {
+                    div {
+                        className = ClassName("allowance-bar")
+                        div {
+                            className = ClassName(if (current.allowance.spent) "allowance-used spent" else "allowance-used")
+                            val width: dynamic = js("({})")
+                            width.width = "${allowancePercent(current.allowance)}%"
+                            style = width
+                        }
+                    }
+                    p { +allowanceText(current.allowance) }
+                }
+            }
+        }
+    }
+}
+
+/** The person's conversations, to reopen one or start another. */
+private fun ChildrenBuilder.conversationPicker(
+    conversations: List<ConversationSummary>?,
+    openId: String?,
+    running: Boolean,
+    onOpen: (String?) -> Unit,
+) {
+    div {
+        className = ClassName("row")
+        Select {
+            value = openId ?: ""
+            disabled = running
+            options = (listOf("" to "New conversation") + conversations.orEmpty().map { it.conversationId to it.title }).map { (v, l) ->
+                val o: dynamic = js("({})")
+                o.label = l
+                o.value = v
+                o
+            }.toTypedArray()
+            style = js("({ minWidth: 320, maxWidth: '100%' })")
+            onChange = { v -> onOpen((v as String).ifEmpty { null }) }
+        }
+        if (openId != null) {
+            Button {
+                type = "link"
+                disabled = running
+                onClick = { onOpen(null) }
+                +"Start a new conversation"
+            }
+        }
+    }
+}
+
+/** The transcript: each thing said, each note, and each line of tool calls, which opens to the calls and their results. */
+private fun ChildrenBuilder.transcript(items: List<TranscriptItem>, running: Boolean) {
+    if (items.isEmpty() && !running) return
+    div {
+        className = ClassName("assistant-transcript")
+        for (item in items) {
+            when (item) {
+                is TranscriptItem.Said -> div {
+                    key = item.key.unsafeCast<Key>()
+                    className = ClassName(if (item.fromPerson) "assistant-said from-person" else "assistant-said")
+                    if (item.fromPerson) p { +item.text } else Markdown { source = item.text }
+                }
+                is TranscriptItem.Note -> p {
+                    key = item.key.unsafeCast<Key>()
+                    className = ClassName("assistant-note")
+                    +item.text
+                }
+                is TranscriptItem.Tools -> details {
+                    key = item.key.unsafeCast<Key>()
+                    className = ClassName("assistant-tools")
+                    summary { codeText(item.label) }
+                    for (call in item.calls) {
+                        div {
+                            key = call.id.unsafeCast<Key>()
+                            className = ClassName("assistant-call")
+                            p {
+                                code { +call.name }
+                                +" "
+                                span { className = ClassName("type-hint"); +call.input.toJsonStr(compact = true) }
+                            }
+                            pre {
+                                className = ClassName(if (call.isError) "code assistant-result error" else "code assistant-result")
+                                +(call.result ?: "Running…")
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** [text] with its backticked names drawn as code. */
+private fun ChildrenBuilder.codeText(text: String) {
+    codeSpans(text).forEachIndexed { i, (part, isCode) ->
+        if (isCode) code { key = i.toString().unsafeCast<Key>(); +part } else span { key = i.toString().unsafeCast<Key>(); +part }
+    }
+}
+
+/** Each draft, with the way to try it and the way to publish it. */
+private fun ChildrenBuilder.draftList(drafts: List<AssistantDraft>, status: AssistantStatus, onTry: (AssistantDraft) -> Unit) {
+    // Publishing is done on the Clients page, in the client's publishing panel -- the sandbox's, from inside it.
+    val publishHref = routeHref(
+        listOf(
+            HP.page to HMENU.pageClients,
+            HP.client to if (status.inSandbox) sandboxOf(status.client) else status.client,
+            HP.section to panelPublishing,
+        ),
+    )
+    ul {
+        className = ClassName("assistant-drafts")
+        for (draft in drafts) {
+            li {
+                key = draft.title.unsafeCast<Key>()
+                span { codeText(draft.title) }
+                if (draft.workflowIds.isNotEmpty()) {
+                    span { className = ClassName("type-hint"); +" — workflows: ${draft.workflowIds.joinToString(", ")}" }
+                }
+                div {
+                    className = ClassName("row")
+                    Button {
+                        onClick = { onTry(draft) }
+                        +"Try it in the sandbox"
+                    }
+                    a {
+                        href = publishHref
+                        +"Check impact and publish"
+                    }
+                }
+            }
+        }
+    }
+}

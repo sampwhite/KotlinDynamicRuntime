@@ -1,5 +1,6 @@
 package com.dynamicruntime.webapp
 
+import com.dynamicruntime.common.assistant.ASST
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.home.HMENU
 import com.dynamicruntime.common.operator.OPS
@@ -333,6 +334,13 @@ val OperatorIndex = FC<Props> {
             li {
                 a { href = childHref(HMENU.pageFileStore, HMENU.pageOperator); +"File store" }
                 +" \u2014 the file store's buckets, each drilled folder by folder, every file downloadable."
+            }
+            li {
+                a { href = childHref(ASST.operatorPage, HMENU.pageOperator); +"Workflow assistant" }
+                +(
+                    " \u2014 the clients the assistant is on for, what each may spend in a month, and what each has spent, " +
+                        "where the deployment carries the assistant."
+                )
             }
         }
     }

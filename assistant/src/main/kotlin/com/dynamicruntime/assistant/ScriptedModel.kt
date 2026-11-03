@@ -1,11 +1,17 @@
 package com.dynamicruntime.assistant
 
 import com.dynamicruntime.common.annotation.KdrPrivate
+import com.dynamicruntime.common.assistant.ATOOL
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.CCT
+import com.dynamicruntime.common.gedra.CFEP
 import com.dynamicruntime.common.gedra.CWF
+import com.dynamicruntime.common.gedra.GE
+import com.dynamicruntime.common.gedra.GED
+import com.dynamicruntime.common.gedra.GedraEditAction
 import com.dynamicruntime.common.gedra.workflow.WFD
+import com.dynamicruntime.common.gedra.workflow.WfEntry
 import com.dynamicruntime.common.util.jsonMapOrNull
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
@@ -99,9 +105,11 @@ class ScriptedModel(steps: List<(ModelRequest) -> ModelResponse>, override val l
 
         /**
          * The built-in demo for `KDR_ASSISTANT_PROVIDER=fake`, for trying the assistant locally with no key and no
-         * spending. Test instances only. It goes through one real tool round, so a person trying the page sees a tool
-         * call and its result in the transcript: a message from the person is answered by calling `list_workflows`, and
-         * that call's result by naming the workflows it found.
+         * spending. Test instances only. It goes through real tool rounds, so a person trying the page sees tool calls
+         * and their results in the transcript: a message from the person is answered by calling `list_workflows`, and
+         * that call's result by naming the workflows it found. Asked to draft (a message saying "draft"), it drafts a
+         * copy of a workflow ([demoDraft]), as the model would -- a dry run, then the write -- into a bundle of its own
+         * ([DEMO.bundle]), so the page's drafts can be tried in the sandbox and published.
          */
         fun demo(): AssistantModel = object : AssistantModel {
             override val label: String = "demo (${AENV.fakeProvider})"
@@ -110,9 +118,55 @@ class ScriptedModel(steps: List<(ModelRequest) -> ModelResponse>, override val l
                 // What the request ends with: the person's new message -- after an earlier turn's answered calls, it is
                 // joined to them, so it is the last block that says -- or the result of the demo's own call.
                 val last = request.messages.lastOrNull()?.let { AssistantHistory.blocksOf(it) }.orEmpty().lastOrNull()
-                if (last?.get(MSG.type) != TOOL.toolResult) return toolResponse(TOOL.listWorkflows to emptyMap())
-                return textResponse(demoSummary(last))
+                if (last?.get(MSG.type) != TOOL.toolResult) return toolResponse(ATOOL.listWorkflows to emptyMap())
+                val call = callAnswered(request.messages, last[TOOL.toolUseId].toOptStr())
+                val input = call?.get(TOOL.input).toJsonMapOrEmpty()
+                return when {
+                    last[TOOL.isError] == true -> textResponse("The demo assistant was refused: ${last[TOOL.content]}")
+                    call?.get(TOOL.name) == ATOOL.patchConfig && input[CFEP.dryRun] == true ->
+                        toolResponse(ATOOL.patchConfig to (input + (CFEP.dryRun to false)))
+                    call?.get(TOOL.name) == ATOOL.patchConfig -> textResponse(
+                        "Drafted the workflow '${DEMO.workflowId}' in the bundle '${DEMO.bundle}', a copy of another. Try it " +
+                            "in the sandbox, then publish it from the Clients page.",
+                    )
+                    asksToDraft(request.messages) -> demoDraft(last)?.let { toolResponse(ATOOL.patchConfig to it) }
+                        ?: textResponse("The demo assistant found no workflow or template to copy, so it drafted nothing.")
+                    else -> textResponse(demoSummary(last))
+                }
             }
+        }
+
+        /** The `tool_use` block in [messages] whose id is [id]: the call a result answers. */
+        @KdrPrivate
+        fun callAnswered(messages: List<Map<String, Any?>>, id: String?): Map<String, Any?>? =
+            messages.asReversed().asSequence().flatMap { AssistantHistory.toolUses(it) }.firstOrNull { it[TOOL.id] == id }
+
+        /** Whether the person's latest words -- their last text, not a tool's result -- ask the demo to draft. */
+        @KdrPrivate
+        fun asksToDraft(messages: List<Map<String, Any?>>): Boolean = messages.asReversed().asSequence()
+            .filter { it[MSG.role] == MSG.user }.flatMap { AssistantHistory.blocksOf(it).asReversed() }
+            .firstOrNull { it[MSG.type] == MSG.text }?.get(MSG.text).toString().contains(DEMO.keyword, ignoreCase = true)
+
+        /**
+         * The patch the demo dry runs from a `list_workflows` [result]: a copy of the client's first normal workflow --
+         * which, being the client's own, collects only what the client supports -- else of the first normal template not
+         * refused, as a new workflow [DEMO.workflowId] in [DEMO.bundle]. Null when there is neither, or the answer cannot
+         * be read.
+         */
+        @KdrPrivate
+        fun demoDraft(result: Map<String, Any?>): Map<String, Any?>? {
+            val catalog = result[TOOL.content].toString().jsonMapOrNull() ?: return null
+            val normal = { def: Map<String, Any?> -> def[WFD.entry] == WfEntry.normal.name && def[CCT.workflowId] != DEMO.workflowId }
+            val source = catalog[CWF.workflows].toJsonListOfMaps().map { it[CWF.definition].toJsonMapOrEmpty() }.firstOrNull(normal)
+                ?: catalog[CWF.templates].toJsonListOfMaps().filter { it[CWF.refusal] == null }
+                    .map { it[CWF.definition].toJsonMapOrEmpty() }.firstOrNull(normal)
+                ?: return null
+            val definition = source + mapOf(CCT.workflowId to DEMO.workflowId, WFD.label to "Demo: ${source[WFD.label] ?: "workflow"}")
+            val edit = mapOf(
+                CFEP.slot to CCT.workflowDef, GED.action to GedraEditAction.addOrReplace.name,
+                GE.data to mapOf(CCT.workflowId to DEMO.workflowId, CCT.definition to definition),
+            )
+            return mapOf(CFEP.configs to listOf(mapOf(CFEP.name to DEMO.bundle, CFEP.edits to listOf(edit))), CFEP.dryRun to true)
         }
 
         /** What the demo says of a `list_workflows` [result]: the workflows it names, or why it has none to name. */
@@ -129,7 +183,19 @@ class ScriptedModel(steps: List<(ModelRequest) -> ModelResponse>, override val l
             }
             val found = if (named.isEmpty()) "no workflows yet" else "${named.size}: ${named.joinToString(", ")}"
             return "This is the demo assistant: it looked up the client's workflows as its sandbox runs them, and found " +
-                "$found. It is not connected to a model, so it cannot do more; a deployment with a model key answers here instead."
+                "$found. It is not connected to a model; ask it to ${DEMO.keyword} a workflow and it drafts a copy of one, " +
+                "to try. A deployment with a model key answers here instead."
         }
     }
+}
+
+/** What the demo drafts when asked. */
+@Suppress("ConstPropertyName")
+object DEMO {
+    /** The word in the person's message that asks the demo to draft. */
+    const val keyword = "draft"
+
+    /** The bundle the demo drafts into, and the workflow it drafts. */
+    const val bundle = "assistantDemo"
+    const val workflowId = "assistantDemo"
 }

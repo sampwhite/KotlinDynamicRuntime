@@ -1,5 +1,6 @@
 package com.dynamicruntime.webapp
 
+import com.dynamicruntime.common.assistant.ASST
 import com.dynamicruntime.common.gedra.workflow.WAGG
 import com.dynamicruntime.common.home.HMENU
 
@@ -120,7 +121,8 @@ object HP {
     /**
      * Documents page: the heading of the open document to scroll to (issue #1136) -- the `#section` a link into the
      * document named. It is the address's anchor (`/wa/docs/readme#configuration`), as an in-page link's is: the
-     * documents route says so in the route table.
+     * documents route says so in the route table. Clients page (issue #1527): the panel of the client's page to scroll to
+     * (`/wa/clients/acme#client-publishing`), as the assistant page's "Check impact and publish" links to it.
      */
     const val section = "section"
 
@@ -150,6 +152,9 @@ object HP {
      */
     const val shown = "shown"
     const val reportView = HMENU.reportViewParam
+
+    /** Workflow assistant page (issue #1527): the conversation open, so a reload or Back reopens it; absent for a new one. */
+    const val conversation = "cv"
 
     /**
      * The listing page a child was opened from (issue #554), so its back link can return there; absent when
@@ -217,11 +222,12 @@ private val routes: List<RouteDef> = listOf(
     RouteDef(HMENU.pageUsers, "users"),
     RouteDef(HMENU.pageUsers, "users/:${HP.user}"),
     RouteDef(HMENU.pageClients, "clients"),
-    RouteDef(HMENU.pageClients, "clients/:${HP.client}"),
+    RouteDef(HMENU.pageClients, "clients/:${HP.client}", anchor = HP.section),
     RouteDef(HMENU.pageCustomers, "customers"),
     RouteDef(HMENU.pageCustomers, "customers/:${HP.customer}"),
     RouteDef(HMENU.pageReports, "reports"),
     RouteDef(HMENU.pageApiKeys, "api-keys"),
+    RouteDef(ASST.page, "assistant"),
     RouteDef(HMENU.pageReports, "reports/:${HP.report}"),
     RouteDef(HMENU.pageForms, "forms"),
     RouteDef(HMENU.pageNewForm, "forms/new"),
@@ -242,6 +248,7 @@ private val routes: List<RouteDef> = listOf(
     RouteDef(HMENU.pageFileStore, "operator/files"),
     RouteDef(HMENU.pageFragmentsCheck, "operator/fragments"),
     RouteDef(HMENU.pageCfacts, "operator/cfacts"),
+    RouteDef(ASST.operatorPage, "operator/assistant"),
     RouteDef(HMENU.pageBecomeUser, "test/become-user"),
     RouteDef(HMENU.pageSimulations, "test/simulations"),
     RouteDef(HMENU.pageDebug, "debug"),

@@ -1,5 +1,6 @@
 package com.dynamicruntime.assistant
 
+import com.dynamicruntime.common.assistant.ABLK
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
@@ -21,7 +22,7 @@ interface AssistantModel {
     fun respond(cxt: KdrCxt, request: ModelRequest): ModelResponse
 }
 
-/** Wire names of a Messages API request and response. Each matches its value. */
+/** Wire names of a Messages API request and response. Each matches its value; a content block's are the kernel's `ABLK`. */
 @Suppress("ConstPropertyName")
 object MSG {
     const val model = "model"
@@ -29,16 +30,16 @@ object MSG {
     const val system = "system"
     const val tools = "tools"
     const val messages = "messages"
-    const val thinking = "thinking"
+    const val thinking = ABLK.thinking
     const val outputConfig = "output_config"
     const val effort = "effort"
     const val fallbacks = "fallbacks"
     const val cacheControl = "cache_control"
-    const val type = "type"
+    const val type = ABLK.type
     const val display = "display"
     const val role = "role"
-    const val content = "content"
-    const val text = "text"
+    const val content = ABLK.content
+    const val text = ABLK.text
     const val stopReason = "stop_reason"
     const val usage = "usage"
     const val inputTokens = "input_tokens"
@@ -52,12 +53,12 @@ object MSG {
     const val updates = "updates"
     const val ephemeral = "ephemeral"
     const val default = "default"
-    const val user = "user"
-    const val assistant = "assistant"
+    const val user = ABLK.user
+    const val assistant = ABLK.assistant
 
     // Stop reasons; `max_tokens` is [maxTokens], the request field of the same name.
     const val endTurn = "end_turn"
-    const val toolUse = "tool_use"
+    const val toolUse = ABLK.toolUse
     const val pauseTurn = "pause_turn"
     const val refusal = "refusal"
 }

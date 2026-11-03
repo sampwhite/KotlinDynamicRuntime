@@ -1,15 +1,28 @@
 package com.dynamicruntime.assistant
 
+import com.dynamicruntime.common.annotation.KdrPrivate
 import com.dynamicruntime.common.assistant.ASST
+import com.dynamicruntime.common.cfact.CFACTS
 import com.dynamicruntime.common.cfact.CFGRP
 import com.dynamicruntime.common.cfact.CFactDef
 import com.dynamicruntime.common.context.BOOT
 import com.dynamicruntime.common.context.KdrCxt
+import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.home.HFLD
+import com.dynamicruntime.common.home.HMENU
+import com.dynamicruntime.common.home.homeMenuBlock
+import com.dynamicruntime.common.home.menuItem
 import com.dynamicruntime.common.startup.ComponentDefinition
 import com.dynamicruntime.common.startup.Presence
 import com.dynamicruntime.common.startup.SchemaCollector
 import com.dynamicruntime.common.startup.ServiceEntry
 import com.dynamicruntime.common.startup.service
+import com.dynamicruntime.common.uiblock.UIB
+import com.dynamicruntime.common.uiblock.UiBlockSource
+import com.dynamicruntime.common.uiblock.UiRoute
+import com.dynamicruntime.common.uiblock.uiBlockOverlay
+import com.dynamicruntime.common.util.toJsonListOfMaps
+import com.dynamicruntime.common.util.toOptLong
 
 /**
  * The workflow assistant (issues #1524-#1527): a client administrator describes a workflow in words, and Claude, with
@@ -18,8 +31,8 @@ import com.dynamicruntime.common.startup.service
  * it, and how much (`docs/design/workflow-assistant.md`).
  *
  * Found through ServiceLoader, like the edge, and on application nodes only. It always loads -- its tables, its
- * operator endpoints, and its cfact -- so an operator can see why it is unavailable and switch clients on ahead of a
- * key; **with no key nothing else changes**: [ASST.onCFact] stays false, so no menu offers it.
+ * endpoints, its cfact, and its menu entries -- so an operator can see why it is unavailable and switch clients on ahead
+ * of a key; **with no key nothing else changes**: [ASST.onCFact] stays false, so no menu offers the page.
  */
 class AssistantComponent : ComponentDefinition {
     override val providerName: String = "assistant"
@@ -44,4 +57,41 @@ class AssistantComponent : ComponentDefinition {
     }
 
     override fun services(cxt: KdrCxt): List<ServiceEntry> = listOf(service(::AssistantService))
+
+    /**
+     * The module's menu entries (issue #1527), added by an overlay so core never names a cfact that exists only while
+     * this module is loaded: the page beside Reports, for a client's administrator while [ASST.onCFact] holds -- in
+     * the client, and in its sandbox, where the page goes on working -- and the operator's page last in the Operator
+     * group.
+     */
+    override fun uiBlocks(cxt: KdrCxt): List<UiBlockSource> = listOf(
+        uiBlockOverlay(HMENU.block, origin = providerName) {
+            items(HFLD.menu) {
+                menuItem(
+                    ASST.menuItem, "Workflow assistant", UiRoute(ASST.page),
+                    cfactExpression = "${CFACTS.administersClient},${ASST.onCFact},${CFACTS.app}",
+                    displayOrder = orderAfter(HMENU.reports),
+                )
+                menuItem(
+                    ASST.operatorMenuItem, "Workflow assistant", UiRoute(ASST.operatorPage),
+                    cfactExpression = "${CFACTS.isDeploymentOperator},${CFACTS.app}",
+                    displayOrder = orderAfter(HMENU.fileStore), parentId = HMENU.operator,
+                )
+            }
+        },
+    )
+
+    /**
+     * A place in the menu right after the base's item [itemId]: halfway to the item after it. Read from the base, so the
+     * entry stays beside its neighbor however the base's items are numbered.
+     */
+    @KdrPrivate
+    fun orderAfter(itemId: String): Int {
+        val orders = homeMenuBlock().content[HFLD.menu].toJsonListOfMaps()
+            .map { it[HFLD.id].toString() to (it[UIB.displayOrder].toOptLong()?.toInt() ?: 0) }
+        val at = orders.firstOrNull { it.first == itemId }?.second
+            ?: throw KdrException("The menu has no item '$itemId' to place the assistant's entry after.")
+        val next = orders.map { it.second }.filter { it > at }.minOrNull() ?: (at + UIB.orderStep)
+        return at + (next - at) / 2
+    }
 }

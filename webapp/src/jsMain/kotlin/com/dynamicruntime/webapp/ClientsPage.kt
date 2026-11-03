@@ -12,10 +12,13 @@ import com.dynamicruntime.common.home.PFRAG
 import com.dynamicruntime.common.util.humanizeFieldName
 import com.dynamicruntime.common.util.toJsonListOfStrings
 import com.dynamicruntime.common.util.toOptStr
+import kotlinx.browser.document
+import kotlinx.browser.window
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import react.ChildrenBuilder
 import react.FC
@@ -45,6 +48,7 @@ import react.useState
 import web.cssom.ClassName
 import web.window.WindowTarget
 import web.window._blank
+import kotlin.time.Duration.Companion.milliseconds
 
 private val clientsScope = MainScope()
 
@@ -199,6 +203,30 @@ val ClientsPage = FC<Props> {
                 val status = (e as? ApiError)?.status
                 if (status == EXC.notAuthorized || status == EXC.notFound) overridesRefused = true else overridesError = userFacingError(e)
             }
+        }
+    }
+
+    // A panel the address names (issue #1527): the assistant page's "Check impact and publish" leads to the publishing
+    // panel. The sections above it fill in as their reads answer, moving it down, so it is followed until it has stayed
+    // put for two checks -- or for at most five seconds, so a reader who scrolls away is not pulled back for long.
+    val section = routeParams()[HP.section]
+    useEffect(section) {
+        if (section == null) return@useEffect
+        var lastTop: Double? = null
+        var steady = 0
+        repeat(sectionFollowChecks) {
+            val panel = document.getElementById(section)
+            if (panel != null) {
+                val top = panel.getBoundingClientRect().top + window.scrollY
+                if (top == lastTop) {
+                    if (++steady >= 2) return@useEffect
+                } else {
+                    steady = 0
+                    lastTop = top
+                    panel.asDynamic().scrollIntoView(js("({ block: 'start' })"))
+                }
+            }
+            delay(sectionFollowMs.milliseconds)
         }
     }
 
@@ -644,7 +672,12 @@ private const val panelDefinition = "client-definition"
 private const val panelFormsData = "client-forms-data"
 private const val panelCopy = "client-copy"
 private const val panelImages = "client-images"
-private const val panelPublishing = "client-publishing"
+/** How often, and how many times, a panel the address names is checked while the page above it fills in. */
+private const val sectionFollowMs = 200
+private const val sectionFollowChecks = 25
+
+/** Public, unlike its neighbors: the assistant page's "Check impact and publish" leads to it (issue #1527). */
+const val panelPublishing = "client-publishing"
 private const val panelMenu = "client-menu"
 private const val panelRetirement = "client-retirement"
 

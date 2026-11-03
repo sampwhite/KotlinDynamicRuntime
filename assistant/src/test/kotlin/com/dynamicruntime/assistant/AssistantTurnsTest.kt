@@ -1,6 +1,9 @@
 package com.dynamicruntime.assistant
 
 import com.dynamicruntime.common.assistant.ACNV
+import com.dynamicruntime.common.assistant.ASST
+import com.dynamicruntime.common.assistant.ATOOL
+import com.dynamicruntime.common.content.UIC
 import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.UPF
@@ -30,6 +33,9 @@ import com.dynamicruntime.common.gedra.GedraId
 import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.gedra.workflow.WfEntry
 import com.dynamicruntime.common.gedra.workflow.WfSaveKind
+import com.dynamicruntime.common.home.HEP
+import com.dynamicruntime.common.home.HFLD
+import com.dynamicruntime.common.home.HMENU
 import com.dynamicruntime.common.http.request.InProcessCaller
 import com.dynamicruntime.common.http.request.InProcessPrincipal
 import com.dynamicruntime.common.http.request.ROLE
@@ -46,6 +52,7 @@ import com.dynamicruntime.common.user.UserService
 import com.dynamicruntime.common.util.jsonMap
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
+import com.dynamicruntime.common.util.toOptInstantOrNull
 import com.dynamicruntime.common.util.toOptLong
 import com.dynamicruntime.common.util.toOptStr
 import com.dynamicruntime.kdn.Startup
@@ -54,6 +61,7 @@ import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.collections.shouldNotContain
+import io.kotest.matchers.comparables.shouldBeGreaterThan
 import io.kotest.matchers.longs.shouldBeGreaterThan
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
@@ -182,7 +190,7 @@ class AssistantTurnsTest : StringSpec({
         val admin = clientWithAssistant(cxt, "asstrun")
         val usedBefore = service.usedThisMonth(cxt, "asstrun")
         model.add(
-            { ScriptedModel.toolResponse(TOOL.listConfigs to emptyMap(), TOOL.listWorkflows to emptyMap()) },
+            { ScriptedModel.toolResponse(ATOOL.listConfigs to emptyMap(), ATOOL.listWorkflows to emptyMap()) },
             { ScriptedModel.textResponse("You have one workflow, review.") },
         )
         val conversationId = send(admin, "What workflows do I have?")
@@ -235,10 +243,10 @@ class AssistantTurnsTest : StringSpec({
         )
         model.add(
             // A write before its dry run is refused by the tool itself.
-            { ScriptedModel.toolResponse(TOOL.patchConfig to mapOf(CFEP.configs to configs, CFEP.dryRun to false)) },
-            { ScriptedModel.toolResponse(TOOL.patchConfig to mapOf(CFEP.configs to configs, CFEP.dryRun to true)) },
-            { ScriptedModel.toolResponse(TOOL.patchConfig to mapOf(CFEP.configs to configs, CFEP.dryRun to false)) },
-            { ScriptedModel.toolResponse(TOOL.viewWorkflow to mapOf(GDF.workflowId to "rsvp")) },
+            { ScriptedModel.toolResponse(ATOOL.patchConfig to mapOf(CFEP.configs to configs, CFEP.dryRun to false)) },
+            { ScriptedModel.toolResponse(ATOOL.patchConfig to mapOf(CFEP.configs to configs, CFEP.dryRun to true)) },
+            { ScriptedModel.toolResponse(ATOOL.patchConfig to mapOf(CFEP.configs to configs, CFEP.dryRun to false)) },
+            { ScriptedModel.toolResponse(ATOOL.viewWorkflow to mapOf(GDF.workflowId to "rsvp")) },
         )
         val conversationId = send(admin, "Add an RSVP workflow.")
         val toolResults = messagesOf(admin, conversationId).filter { it[MSG.role] == MSG.user }.drop(1).map { results(it).single() }
@@ -275,8 +283,8 @@ class AssistantTurnsTest : StringSpec({
         model.add(
             {
                 ScriptedModel.toolResponse(
-                    TOOL.patchConfig to mapOf(CFEP.configs to configs, CFEP.dryRun to true),
-                    TOOL.patchConfig to mapOf(CFEP.configs to configs, CFEP.dryRun to false),
+                    ATOOL.patchConfig to mapOf(CFEP.configs to configs, CFEP.dryRun to true),
+                    ATOOL.patchConfig to mapOf(CFEP.configs to configs, CFEP.dryRun to false),
                 )
             },
             { ScriptedModel.textResponse("I will write it next.") },
@@ -291,7 +299,7 @@ class AssistantTurnsTest : StringSpec({
     "the included global traits are set as a draft" {
         val admin = clientWithAssistant(cxt, "assttraits")
         model.add(
-            { ScriptedModel.toolResponse(TOOL.setIncludedTraits to mapOf(CLD.includedTraits to listOf(CLD.allGlobal))) },
+            { ScriptedModel.toolResponse(ATOOL.setIncludedTraits to mapOf(CLD.includedTraits to listOf(CLD.allGlobal))) },
             { ScriptedModel.textResponse("Included.") },
         )
         val set = results(messagesOf(admin, send(admin, "Include every global trait."))[2]).single()
@@ -312,7 +320,7 @@ class AssistantTurnsTest : StringSpec({
             ),
         )
         model.add(
-            { ScriptedModel.toolResponse(TOOL.patchConfig to mapOf(CFEP.configs to configs, CFEP.dryRun to true)) },
+            { ScriptedModel.toolResponse(ATOOL.patchConfig to mapOf(CFEP.configs to configs, CFEP.dryRun to true)) },
             { ScriptedModel.textResponse("Your plan allows four workflows.") },
         )
         val conversationId = send(admin, "Add a fifth workflow.")
@@ -324,7 +332,7 @@ class AssistantTurnsTest : StringSpec({
     "a reply cut off, a refusal, and a pause each end or go on as they should" {
         val admin = clientWithAssistant(cxt, "asststops")
         // Cut off with a tool call in it: the call is answered as not run, and the turn stops.
-        model.add({ ScriptedModel.toolResponse(TOOL.listConfigs to emptyMap(), stopReason = MSG.maxTokens) })
+        model.add({ ScriptedModel.toolResponse(ATOOL.listConfigs to emptyMap(), stopReason = MSG.maxTokens) })
         val cut = send(admin, "Tell me everything.")
         results(messagesOf(admin, cut).last()).single()[TOOL.content].toString() shouldContain "cut off"
         lastTurn(admin, cut)[ACNV.status] shouldBe ACNV.statusStopped
@@ -345,7 +353,7 @@ class AssistantTurnsTest : StringSpec({
 
         // A stop this code does not know, with a call in it: the call is answered, and the conversation goes on.
         model.add(
-            { ScriptedModel.toolResponse(TOOL.listConfigs to emptyMap(), stopReason = "model_context_window_exceeded") },
+            { ScriptedModel.toolResponse(ATOOL.listConfigs to emptyMap(), stopReason = "model_context_window_exceeded") },
             { ScriptedModel.textResponse("Still here.") },
         )
         val unknown = send(admin, "Odd stop.")
@@ -371,7 +379,7 @@ class AssistantTurnsTest : StringSpec({
         model.add({
             entered.countDown()
             release.await(20, TimeUnit.SECONDS)
-            ScriptedModel.toolResponse(TOOL.listConfigs to emptyMap(), TOOL.listTraits to emptyMap())
+            ScriptedModel.toolResponse(ATOOL.listConfigs to emptyMap(), ATOOL.listTraits to emptyMap())
         })
         val started = admin.postData(ACNV.messagePath, mapOf(ACNV.clientMessageId to "cancel1", ACNV.text to "Look around."))
         val conversationId = started[ACNV.conversationId].toString()
@@ -394,7 +402,7 @@ class AssistantTurnsTest : StringSpec({
         val admin = clientWithAssistant(cxt, client)
         service.setClient(cxt, client, enabled = null, monthlyBudget = 1_000, useDefaultBudget = false, acknowledgedNotice = false)
         // A step costing more than the whole budget: the turn runs it, then stops before the next.
-        model.add({ ScriptedModel.toolResponse(TOOL.listConfigs to emptyMap(), usage = ModelUsage(inputTokens = 2_000)) })
+        model.add({ ScriptedModel.toolResponse(ATOOL.listConfigs to emptyMap(), usage = ModelUsage(inputTokens = 2_000)) })
         val conversationId = send(admin, "Look.")
         lastTurn(admin, conversationId).let {
             it[ACNV.status] shouldBe ACNV.statusStopped
@@ -440,6 +448,57 @@ class AssistantTurnsTest : StringSpec({
         // Another administrator's conversation is not this one's to read.
         val other = TestUser.create(cxt, "deputy@$client.test", level = ROLE.admin, userClient = client)
         other.expectError(EXC.notFound, ACNV.conversationPath, args = mapOf(ACNV.conversationId to "old1526"))
+    }
+
+    "the page's status says whether the assistant can be used, and from the sandbox the person's conversations go on" {
+        val client = "asstpage"
+        val admin = clientWithAssistant(cxt, client)
+        fun menuIds(user: TestUser): List<Any?> =
+            user.getData(HEP.homeUiConfig)[UIC.state].toJsonMapOrEmpty()[HFLD.menu].toJsonListOfMaps().map { it[HFLD.id] }
+        admin.getData(ACNV.statusPath).let {
+            it[ASST.client] shouldBe client
+            it[ACNV.on] shouldBe true
+            it[ACNV.hasSandbox] shouldBe true
+            it[ACNV.inSandbox] shouldBe false
+            it[ACNV.spent] shouldBe false
+            it[ACNV.usedShare].toString().toDouble() shouldBe 0.0
+            it[ACNV.resetsAt].toOptInstantOrNull().shouldNotBeNull() shouldBeGreaterThan cxt.now()
+            it[ASST.dataNotice].toString() shouldContain "Anthropic"
+        }
+        // The menu offers the page beside Reports, to an administrator of a client it is on for.
+        val menu = menuIds(admin)
+        menu shouldContain ASST.menuItem
+        menu.indexOf(ASST.menuItem) shouldBe menu.indexOf(HMENU.reports) + 1
+        menuIds(TestUser.create(cxt, "member@$client.test", level = ROLE.user, userClient = client)) shouldNotContain ASST.menuItem
+
+        model.add({ ScriptedModel.textResponse("Hello.") })
+        val conversationId = send(admin, "Hello.")
+        // Signed in to the sandbox -- as "Try it in the sandbox" leaves them -- the person's conversation is still theirs.
+        val sandboxUserId = admin.postData(AEP.openSandbox, emptyMap())[UPF.userId].toOptLong().shouldNotBeNull()
+        admin.getData(ACNV.statusPath).let {
+            it[ASST.client] shouldBe client
+            it[ACNV.inSandbox] shouldBe true
+        }
+        menuIds(admin) shouldContain ASST.menuItem
+        admin.getItems(ACNV.conversationsPath).map { it[ACNV.conversationId] } shouldContain conversationId
+        model.add({ ScriptedModel.toolResponse(ATOOL.listWorkflows to emptyMap()) }, { ScriptedModel.textResponse("Still here.") })
+        send(admin, "And now?", conversationId)
+        val turn = lastTurn(admin, conversationId)
+        turn[ACNV.status] shouldBe ACNV.statusDone
+        // Its tools act as the user the session has in the sandbox.
+        AssistantStore.turn(cxt, turn[ACNV.turnId].toString()).shouldNotBeNull()[ATBL.sandboxUserId].toOptLong() shouldBe sandboxUserId
+
+        // A client with no sandbox, or one it is off for, says so; a spent month says when it starts again.
+        clientWithAssistant(cxt, "asstpagenosbx", sandbox = false).getData(ACNV.statusPath)[ACNV.hasSandbox] shouldBe false
+        val spent = clientWithAssistant(cxt, "asstpagespent")
+        service.setClient(cxt, "asstpagespent", enabled = false, monthlyBudget = 1, useDefaultBudget = false, acknowledgedNotice = false)
+        service.recordUsage(cxt, "asstpagespent", service.settings.model, ModelUsage(inputTokens = 10))
+        spent.getData(ACNV.statusPath).let {
+            it[ACNV.on] shouldBe false
+            it[ACNV.spent] shouldBe true
+            it[ACNV.usedShare].toString().toDouble() shouldBe 10.0
+        }
+        menuIds(spent) shouldNotContain ASST.menuItem
     }
 
     "the tools reach exactly their endpoints: everything left out is refused through the seam" {
@@ -507,6 +566,15 @@ class AssistantTurnsTest : StringSpec({
         results(messages[2]).single()[TOOL.isError].shouldBeNull()
         messages[3][MSG.content].toJsonListOfMaps().single()[MSG.text].toString() shouldContain "found 1: review"
         lastTurn(admin, conversationId)[ACNV.status] shouldBe ACNV.statusDone
+
+        // Asked to draft, it drafts a copy of a template -- a dry run, then the write -- which the sandbox runs.
+        send(admin, "Please draft a workflow.", conversationId, on = demo)
+        val drafted = messagesOf(admin, conversationId).drop(4)
+        drafted.map { it[MSG.role] } shouldBe List(4) { listOf(MSG.user, MSG.assistant) }.flatten()
+        drafted.filter { it[MSG.role] == MSG.user }.drop(1).map { results(it).single() }.forEach { it[TOOL.isError].shouldBeNull() }
+        drafted.last()[MSG.content].toJsonListOfMaps().single()[MSG.text].toString() shouldContain "Drafted the workflow"
+        admin.getItem(CFEP.bundle, mapOf(CFEP.name to DEMO.bundle))[CFEP.slots].toJsonMapOrEmpty()[CCT.workflowDef]
+            .toJsonListOfMaps().map { it[CCT.workflowId] } shouldBe listOf(DEMO.workflowId)
     }
 
     "a long result is cut, saying so, and never through a character written as two" {
@@ -528,7 +596,7 @@ class AssistantTurnsTest : StringSpec({
         lonely.add({
             entered.countDown()
             release.await(20, TimeUnit.SECONDS)
-            ScriptedModel.toolResponse(TOOL.listConfigs to emptyMap())
+            ScriptedModel.toolResponse(ATOOL.listConfigs to emptyMap())
         })
         val started = admin.postData(ACNV.messagePath, mapOf(ACNV.clientMessageId to "lease1", ACNV.text to "Look."))
         val conversationId = started[ACNV.conversationId].toString()

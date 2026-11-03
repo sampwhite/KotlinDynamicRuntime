@@ -23,7 +23,11 @@ import com.dynamicruntime.common.sql.cache.SqlTableCacheService
 import com.dynamicruntime.common.startup.InstanceRegistry
 import com.dynamicruntime.common.startup.ServiceInitializer
 import com.dynamicruntime.common.util.toOptLong
+import kotlinx.datetime.DateTimeUnit
+import kotlinx.datetime.LocalDate
 import kotlinx.datetime.TimeZone
+import kotlinx.datetime.atStartOfDayIn
+import kotlinx.datetime.plus
 import kotlinx.datetime.toLocalDateTime
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ExecutorService
@@ -388,6 +392,12 @@ class AssistantService : ServiceInitializer {
 
         /** The calendar month [at] falls in, as `YYYY-MM` in UTC: what a client's use is kept by. */
         fun monthOf(at: Instant): String = at.toLocalDateTime(TimeZone.UTC).date.toString().take(7)
+
+        /** When the month after the one [at] falls in begins, in UTC: when a client's use starts again from nothing. */
+        fun nextMonthStart(at: Instant): Instant {
+            val date = at.toLocalDateTime(TimeZone.UTC).date
+            return LocalDate(date.year, date.month, 1).plus(1, DateTimeUnit.MONTH).atStartOfDayIn(TimeZone.UTC)
+        }
     }
 }
 
