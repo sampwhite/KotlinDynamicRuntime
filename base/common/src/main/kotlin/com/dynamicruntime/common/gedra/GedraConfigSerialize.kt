@@ -82,6 +82,9 @@ fun gedraConfigToEntries(config: GedraConfig): Map<String, List<Map<String, Any?
     }
     out[CCT.schemaDef] = config.defs.filterKeys { it !in generated }.map { (name, body) ->
         linkedMapOf(CCT.typeName to name, CCT.schema to body)
+    } + config.shadowedTypes.values.map {
+        // Written back as stored, so an edit of anything else in the config does not delete it (issue #1542).
+        linkedMapOf(CCT.typeName to it.typeName, CCT.schema to it.schema)
     }
     out[CCT.fragmentDef] = config.fragments.map {
         linkedMapOf(CCT.fileId to it.fileId, CCT.content to (it.load() ?: emptyMap<String, Any?>()))
