@@ -53,6 +53,17 @@ class ScriptFunction(
     val minArgs: Int,
     val maxArgs: Int,
     /**
+     * What the function does, for whoever writes an expression (issue #1560): the expressions reference is made from
+     * this, [args], and the example, so a function cannot be added without saying them. Written for a configurer, not
+     * a developer; the KDoc and comments here are for the developer.
+     */
+    val description: String,
+    /** Its arguments' names, as the reference writes a call: those past [minArgs] are optional. */
+    val args: List<String>,
+    /** A call the reference shows, with literal arguments, and [exampleResult] what it renders to. A test runs it. */
+    val example: String,
+    val exampleResult: String,
+    /**
      * Checks the call's arguments as parsed, before any data (issue #1321) -- for an argument whose literal value can
      * be wrong in itself, such as `formatDate`'s style. Throws, as the arity check does; null checks nothing.
      */
@@ -78,18 +89,30 @@ class ScriptFunction(
  */
 @KdrPrivate
 val scriptFunctions: Map<String, ScriptFunction> = listOf(
-    ScriptFunction(SFN.upper, 1, 1) { state, args -> textArg(state, SFN.upper, args[0]).uppercase() },
-    ScriptFunction(SFN.lower, 1, 1) { state, args -> textArg(state, SFN.lower, args[0]).lowercase() },
-    ScriptFunction(SFN.trim, 1, 1) { state, args -> textArg(state, SFN.trim, args[0]).trim() },
+    ScriptFunction(
+        SFN.upper, 1, 1, "The text in capital letters.", listOf("text"), "upper(\"ada\")", "ADA",
+    ) { state, args -> textArg(state, SFN.upper, args[0]).uppercase() },
+    ScriptFunction(
+        SFN.lower, 1, 1, "The text in small letters.", listOf("text"), "lower(\"ADA\")", "ada",
+    ) { state, args -> textArg(state, SFN.lower, args[0]).lowercase() },
+    ScriptFunction(
+        SFN.trim, 1, 1, "The text without the spaces at its ends.", listOf("text"), "trim(\"  ada \")", "ada",
+    ) { state, args -> textArg(state, SFN.trim, args[0]).trim() },
     // Whether the first text holds the second, as written (issue #1430): `contains(approvedByName, "@")` is how a
     // template tells an email from a name, so its author decides what a reader is shown. Text only; a list can be
     // added when somebody wants one.
-    ScriptFunction(SFN.contains, 2, 2) { state, args ->
+    ScriptFunction(
+        SFN.contains, 2, 2, "Whether the text holds the part, exactly as written.", listOf("text", "part"),
+        "contains(\"ada@acme.test\", \"@\")", "true",
+    ) { state, args ->
         textArg(state, SFN.contains, args[0]).contains(textArg(state, SFN.contains, args[1]))
     },
     // Counts what has a size: the characters of a string, the entries of a list or an object. Returns a Long
     // so it lands in the same numeric world as a literal and can be compared and pluralized against.
-    ScriptFunction(SFN.count, 1, 1) { state, args ->
+    ScriptFunction(
+        SFN.count, 1, 1, "How many characters text has, or how many entries a list or an object has.", listOf("value"),
+        "count(\"talk\")", "4",
+    ) { state, args ->
         when (val v = args[0]) {
             is String -> v.length.toLong()
             is Collection<*> -> v.size.toLong()
@@ -97,7 +120,7 @@ val scriptFunctions: Map<String, ScriptFunction> = listOf(
             else -> throw mkFuncTypeError(state, SFN.count, v, "text, a list or an object")
         }
     },
-    ScriptFunction(SFN.abs, 1, 1) { state, args ->
+    ScriptFunction(SFN.abs, 1, 1, "The number without its sign.", listOf("number"), "abs(-3)", "3") { state, args ->
         when (val n = numOf(args[0])) {
             is Long -> abs(n)
             is Double -> abs(n)
@@ -106,7 +129,14 @@ val scriptFunctions: Map<String, ScriptFunction> = listOf(
     },
     // Dates arrive as an Instant from Kotlin or as an ISO string from JSON, and both are legitimate -- so both
     // are accepted, and anything else is named as the mismatch it is.
-    ScriptFunction(SFN.formatDate, 1, 2, checkArgs = ::checkDateStyleLiteral) { state, args ->
+    ScriptFunction(
+        SFN.formatDate, 1, 2,
+        "A date and time as text. With no style, the system's own form, in UTC. With a style: \"relative\" for how long " +
+            "ago or ahead it is (12m ago, in 3h, or the day from 48 hours on), \"moment\" for the date and time in the " +
+            "page's time zone, labeled, or \"day\" for the day there.",
+        listOf("date", "style"), "formatDate(\"2026-10-17T21:48:00Z\")", "2026-10-17T21:48:00.000Z",
+        checkArgs = ::checkDateStyleLiteral,
+    ) { state, args ->
         val at = instantArg(state, SFN.formatDate, args[0])
         if (args.size < 2) return@ScriptFunction at.formatDate()
         val env = state.envOrDefault
@@ -118,24 +148,40 @@ val scriptFunctions: Map<String, ScriptFunction> = listOf(
             else -> throw mkStyleError(state, style)
         }
     },
-    ScriptFunction(SFN.formatDay, 1, 1) { state, args ->
+    ScriptFunction(
+        SFN.formatDay, 1, 1, "The day a date and time falls on in the page's time zone, written yyyy-MM-dd.", listOf("date"),
+        "formatDay(\"2026-10-17T21:48:00Z\")", "2026-10-17",
+    ) { state, args ->
         zonedDayText(instantArg(state, SFN.formatDay, args[0]), state.envOrDefault.zone)
     },
     // Numbers as a person reads them (issue #1322): grouped, and to a fixed number of decimals when asked. A unit is
     // ordinary text after the call.
-    ScriptFunction(SFN.formatNumber, 1, 2, checkArgs = decimalsLiteralCheck(SFN.formatNumber)) { state, args ->
+    ScriptFunction(
+        SFN.formatNumber, 1, 2,
+        "A number as a person reads it: grouped by thousands, and to that many decimals when a count is given.",
+        listOf("number", "decimals"), "formatNumber(1234.5, 2)", "1,234.50",
+        checkArgs = decimalsLiteralCheck(SFN.formatNumber),
+    ) { state, args ->
         val n = numberArg(state, SFN.formatNumber, args[0])
         val decimals = args.getOrNull(1)?.let { decimalsOrNull(it) ?: throw mkDecimalsError(state, SFN.formatNumber, it) }
         numberText(n, decimals)
     },
     // A number rounded, as a number (issue #1501): to a whole one by default, which a computed value stored in an
     // integer property needs -- the script's arithmetic keeps a fraction as a fraction. Rounded as `formatNumber` writes.
-    ScriptFunction(SFN.round, 1, 2, checkArgs = decimalsLiteralCheck(SFN.round)) { state, args ->
+    ScriptFunction(
+        SFN.round, 1, 2, "A number rounded, as a number: to a whole number, or to that many decimals when a count is given.",
+        listOf("number", "decimals"), "round(2.567, 2)", "2.57",
+        checkArgs = decimalsLiteralCheck(SFN.round),
+    ) { state, args ->
         val n = numberArg(state, SFN.round, args[0])
         val decimals = args.getOrNull(1)?.let { decimalsOrNull(it) ?: throw mkDecimalsError(state, SFN.round, it) } ?: 0
         roundedNumber(n, decimals)
     },
-    ScriptFunction(SFN.currency, 2, 2, checkArgs = ::checkCurrencyLiteral) { state, args ->
+    ScriptFunction(
+        SFN.currency, 2, 2, "An amount of money, written for its three-letter ISO 4217 currency code.", listOf("number", "code"),
+        "currency(1234.5, \"USD\")", "\$1,234.50",
+        checkArgs = ::checkCurrencyLiteral,
+    ) { state, args ->
         val n = numberArg(state, SFN.currency, args[0])
         val code = args[1] as? String
         if (code == null || !isCurrencyCode(code)) throw mkCurrencyError(state, args[1])

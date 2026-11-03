@@ -1,3 +1,5 @@
+@file:Suppress("MarkdownUnresolvedFileReference")
+
 package com.dynamicruntime.common.schema
 
 import com.dynamicruntime.common.endpoint.EP
@@ -41,10 +43,10 @@ $${codesTable()}
 
 ## The parameters
 
-A message names a parameter as `${name}`, and it is replaced by the failure's own value when the message is shown. A
-message that names a parameter its code does not offer is caught when the schema is loaded, so a mistyped name never
-reaches a reader: the platform's own schemas refuse to load, and a client's message is left out, with an issue on the
-client saying why.
+A message names a parameter as `${name}`, an [expression](expressions.md), and it is replaced by the failure's own value
+when the message is shown. A message that names a parameter its code does not offer is caught when the schema is loaded,
+so a mistyped name never reaches a reader: the platform's own schemas refuse to load, and a client's message is left
+out, with an issue on the client saying why.
 
 $${parametersTable()}
 

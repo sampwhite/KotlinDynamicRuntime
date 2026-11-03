@@ -57,7 +57,7 @@ object TOOL {
     const val appId = "assistant"
 
     /** The documents `read_doc` may read ([AssistantTools.readableDoc]), beyond the demo client's pages. */
-    val docs = listOf(HDOC.clientConfiguration, HDOC.schemaDialect, HDOC.validationMessages)
+    val docs = listOf(HDOC.clientConfiguration, HDOC.schemaDialect, HDOC.validationMessages, HDOC.expressions)
 
     /** How deep a tool's input may nest before it is refused rather than walked. */
     const val maxDepth = 30
@@ -203,7 +203,8 @@ object AssistantTools {
             ATOOL.readDoc,
             "Reads a reference document as Markdown: '${HDOC.clientConfiguration}' (every config slot and its fields), " +
                 "'${HDOC.schemaDialect}' (how a trait's data type is written), '${HDOC.validationMessages}' (the codes " +
-                "a refused value is reported with, and how a schema gives one a message), or a page of the demo client's " +
+                "a refused value is reported with, and how a schema gives one a message), '${HDOC.expressions}' (the " +
+                "${'$'}{…} language of copy, columns, layouts, and computed values), or a page of the demo client's " +
                 "('${ConfDemo.docIdPrefix}README' lists them), which shows a whole client's configuration worked through.",
             objectSchema(ATOOL.doc to stringSchema("The document's id."), required = listOf(ATOOL.doc)),
             method = null, path = null,
