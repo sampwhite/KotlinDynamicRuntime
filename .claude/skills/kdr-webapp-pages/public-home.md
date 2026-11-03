@@ -42,11 +42,13 @@ read off the identity, for `public` callers only) rather than trying the create:
 (`AuthApi.switchClient`), and a client this node no longer carries is said to be gone
 (`state.selfServeClientAbsent`). It is the last section of the public home page, below.
 
-**Starting from a template.** Where the deployment declares code-defined template clients meant for customers and
-enabled in its environment (`ClientService.selfServeTemplates`: usage type `template`, audience `customer`, not
-retired), the shell config lists them to a person who has made no client (`state.selfServeTemplates`, each its id and
-name -- never the definition's description, an internal note), and the card offers **Start from**: a blank client, or
-a template. A choice a re-read of the config no longer lists falls back to a blank client (`effectiveStartFrom`). A template's client extends it (`extendsFromClientId`):
+**Starting from a template.** Where the deployment declares code-defined clients marked for public use
+(`publicTemplate`) and enabled in its environment (`ClientService.publicTemplates`: not retired, extending none), the
+shell config lists them to a person who has made no client (`state.selfServeTemplates`, each its id and name -- never
+the definition's description, an internal note), and the card offers **Start from**: a blank client, or a template.
+Nothing else is ever offered or accepted: the mark is the deployment's statement that anyone may build on it (issue
+#1567). A platform operator may build a client on any code-defined client; a customer's administrator only on a
+marked one. A choice a re-read of the config no longer lists falls back to a blank client (`effectiveStartFrom`). A template's client extends it (`extendsFromClientId`):
 it inherits the template's traits, workflows, and copy, and starts with no starter workflows, which would replace the
 template's (the starters' checkbox is hidden). Its New form is the template's until it writes its own creation
 workflow, which replaces the inherited one whole. The backend holds the choice to the same list and refuses anything

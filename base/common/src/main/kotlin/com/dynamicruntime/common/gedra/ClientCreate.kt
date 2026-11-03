@@ -110,7 +110,8 @@ object ClientCreate {
         caseVariant(cxt, client)?.let { throw takenByCase(cxt, client, it) }
         val newCustomer = newCustomerOf(cxt, client, request)
         val customer = newCustomer?.let { CustomerStore.put(cxt, it) }
-        val starters = if (starterWorkflows) starterTemplates(cxt) else emptyList()
+        // A client built on another makes forms with its base's creation workflow, which a starter would replace.
+        val starters = if (starterWorkflows && request[CLD.extendsFromClientId] == null) starterTemplates(cxt) else emptyList()
         val definition = withStarterTraits(definitionOf(request), starters) +
             (newCustomer?.let { mapOf(CLD.customerId to client) } ?: emptyMap())
         val name = CLD.definitionConfigName

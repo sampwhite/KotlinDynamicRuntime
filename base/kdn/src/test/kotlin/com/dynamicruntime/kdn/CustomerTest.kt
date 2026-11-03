@@ -100,9 +100,9 @@ class CustomerTest : StringSpec({
         admin.expectError(EXC.badInput, ADEP.clientCreate, withNew("free_n1107"))
             .toString() shouldContain "'free_n1107' cannot be a customer's: it holds '_'"
         admin.expectError(EXC.conflict, ADEP.clientCreate, withNew("CUST1107b") - CLD.clientId + (CLD.clientId to "Cust1107"))
-        // The client's definition is refused by its write -- it extends a client that is not there -- so the
-        // customer made for it is taken back.
-        admin.expectError(EXC.badInput, ADEP.clientCreate, withNew("undo1107", CLD.extendsFromClientId to "nothere1107"))
+        // The client's definition is refused by its write -- it is enabled in no environment a developer runs -- so
+        // the customer made for it is taken back.
+        admin.expectError(EXC.badInput, ADEP.clientCreate, withNew("undo1107", CLD.enabledEnvironments to listOf(ENV.dev)))
         ClientService.get(cxt).customer("undo1107") shouldBe null
     }
 

@@ -287,14 +287,15 @@ class ExtensionTemplateComponent : ComponentDefinition {
             report("notes", "Template notes") { column("note", "Note", "form.tplNote.note") }
             report("overview", "Template overview") { column("score", "Score", "form.tplScore.score") }
         },
-        // A template for customers, which a person may start a self-serve client from; and one retired, which nobody
-        // may. The template above is internal, so it is not offered to the public.
+        // A template marked for public use, which a person may start a self-serve client from; one retired, which
+        // nobody may; and a code client that is no template, which only the platform may build on. The template above
+        // is not marked, so it is not offered to the public either.
         gedraConfig(cxt, "pub", "client.tplpub", publicTemplate) {
             defineClient(
                 ClientDef(
                     clientId = publicTemplate, name = "Public template", usageType = ClientUsageType.template,
                     audience = ClientAudience.customer, enabledEnvironments = setOf(ENV.unit, ENV.local),
-                    includedTraits = listOf(GT.name, "pubNote"),
+                    includedTraits = listOf(GT.name, "pubNote"), publicTemplate = true,
                 ),
             )
             trait("PubNoteEntry", "pubNote", setOf(GedraDataType.formDoc), "A note.") { property("note", "A note.") }
@@ -306,6 +307,15 @@ class ExtensionTemplateComponent : ComponentDefinition {
                 ClientDef(
                     clientId = retiredTemplate, name = "Retired template", usageType = ClientUsageType.template,
                     audience = ClientAudience.customer, enabledEnvironments = setOf(ENV.unit, ENV.local), retired = true,
+                    publicTemplate = true,
+                ),
+            )
+        },
+        gedraConfig(cxt, "plain", "client.tplplain", plainClient) {
+            defineClient(
+                ClientDef(
+                    clientId = plainClient, name = "Plain", usageType = ClientUsageType.dev,
+                    audience = ClientAudience.internal, enabledEnvironments = setOf(ENV.unit, ENV.local),
                 ),
             )
         },
@@ -330,6 +340,7 @@ class ExtensionTemplateComponent : ComponentDefinition {
         const val template = "tplbase"
         const val publicTemplate = "tplpub"
         const val retiredTemplate = "tplgone"
+        const val plainClient = "tplplain"
         const val creationWorkflow = "pubCreate"
         const val packageId = "tplfix:tplres"
         const val child = "tplkid"

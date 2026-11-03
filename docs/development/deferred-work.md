@@ -578,8 +578,8 @@ only client this would serve.
 ## When a deployment wants self-serve clients to start from a template it ships
 
 A person creating a self-serve client may start from a code-defined **template** client, which the new client extends
-(`extendsFromClientId`). A template is offered when it is meant for customers and enabled in the deployment's
-environment. Only the sample component declares one today (`starterkit`), enabled in `unit` and `local` only, so a
+(`extendsFromClientId`). A template is offered when it is marked for public use (`publicTemplate`) and enabled in the
+deployment's environment. Only the sample component declares one today (`starterkit`), enabled in `unit` and `local` only, so a
 deployment offers none until it declares its own in a component of its own.
 
 - **A template in core.** When most deployments want the same starting point -- a New form and a first workflow

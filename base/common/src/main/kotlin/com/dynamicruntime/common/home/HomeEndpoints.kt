@@ -323,7 +323,7 @@ fun homeSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.home") {
                             if (ClientService.getOrNull(c)?.isPresent(it) != true) put(HFLD.selfServeClientAbsent, true)
                         }
                         // What a new one may start from, while the person may still make one.
-                        val templates = if (made != null) emptyList() else ClientService.getOrNull(c)?.selfServeTemplates().orEmpty()
+                        val templates = if (made != null) emptyList() else ClientService.getOrNull(c)?.publicTemplates().orEmpty()
                         if (templates.isNotEmpty()) {
                             put(HFLD.selfServeTemplates, templates.map { mapOf(HFLD.id to it.clientId, HFLD.label to it.name) })
                         }

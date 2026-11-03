@@ -29,8 +29,8 @@ import io.kotest.matchers.string.shouldContain
 
 /**
  * A self-serve client started from a code-defined template: offered on the home page, extending the template, its
- * New form the template's until it writes its own. Over the template fixture's shared instance, whose customer
- * template is offered, and whose internal and retired ones are not.
+ * New form the template's until it writes its own. Over the template fixture's shared instance, whose template marked
+ * for public use is offered, and whose unmarked, retired, and plain code clients are not.
  */
 class SelfServeFromTemplateTest : StringSpec({
     val tpl = ExtensionTemplateComponent.publicTemplate
@@ -38,10 +38,10 @@ class SelfServeFromTemplateTest : StringSpec({
 
     fun state(user: TestUser) = user.getData(HEP.homeUiConfig)[UIC.state].toJsonMapOrEmpty()
 
-    "the home page offers a customer template to a person who has made no client, and not once they have" {
+    "the home page offers a public template to a person who has made no client, and not once they have" {
         val person = TestUser.create(cxt, "offered@selftpl.test")
         val offered = state(person)[HFLD.selfServeTemplates].toJsonListOfMaps()
-        // Neither the internal template nor the retired one.
+        // Not the unmarked template, the retired one, or the plain code client.
         offered.map { it[HFLD.id] } shouldBe listOf(tpl)
         offered.single()[HFLD.label] shouldBe "Public template"
         val client = person.postData(AEP.createOwnClient, mapOf(CLD.name to "Offered"))[CLD.client].toOptStr().shouldNotBeNull()
@@ -87,26 +87,21 @@ class SelfServeFromTemplateTest : StringSpec({
             ExtensionTemplateComponent.creationWorkflow
     }
 
-    "only a customer template in use may be started from, and a refused start leaves the person's client to make" {
+    "only a public template in use may be started from, and a refused start leaves the person's client to make" {
         val person = TestUser.create(cxt, "refused@selftpl.test")
         val configured = TestUser.create(cxt, "maker@selftpl.test").postData(AEP.createOwnClient, mapOf(CLD.name to "Maker"))[CLD.client]
             .toOptStr().shouldNotBeNull()
-        // A code-defined client that is not a template, an internal template, a retired one, and a configured client.
+        // A code client built on another, an unmarked template, a retired one, a plain code client, and a configured one.
         val refused = listOf(
-            ExtensionTemplateComponent.child, ExtensionTemplateComponent.template, ExtensionTemplateComponent.retiredTemplate, configured,
+            ExtensionTemplateComponent.child, ExtensionTemplateComponent.template, ExtensionTemplateComponent.retiredTemplate,
+            ExtensionTemplateComponent.plainClient, configured,
         )
         for (id in refused) {
             person.expectError(400, AEP.createOwnClient, mapOf(CLD.name to "Copy", CLD.extendsFromClientId to id))
-                .toString() shouldContain "not a template a client can start from"
+                .toString() shouldContain "is not a client yours can be built on"
         }
         // Refused before the person's one client was claimed.
         person.postData(AEP.createOwnClient, mapOf(CLD.name to "Mine"))[CLD.client].toOptStr().shouldNotBeNull()
     }
 
-    "the platform create's choices take the internal template too, but never the retired one" {
-        val ids = ClientService.get(cxt).templateClients().map { it.clientId }
-        ids shouldContain ExtensionTemplateComponent.template
-        ids shouldContain tpl
-        ids.contains(ExtensionTemplateComponent.retiredTemplate) shouldBe false
-    }
 })

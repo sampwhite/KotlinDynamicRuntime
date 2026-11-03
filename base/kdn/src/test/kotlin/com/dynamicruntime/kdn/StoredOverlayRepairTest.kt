@@ -1,7 +1,6 @@
 package com.dynamicruntime.kdn
 
 import com.dynamicruntime.common.content.MarkdownFragmentService
-import com.dynamicruntime.common.context.CL
 import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.KdrException
@@ -99,13 +98,13 @@ class StoredOverlayRepairTest : StringSpec({
     "a stored config breaking the extends rule is skipped, not the reload" {
         val client = "ovl841ext"
         val config = gedraConfig(cxt, "${client}cfg", clientNamespace(client), client) {
-            // `hub` is a source client, but not a template.
-            defineClient(clientDef(client, extendsFrom = CL.hub))
+            // No source client of that name: a data config may extend only a code-defined one.
+            defineClient(clientDef(client, extendsFrom = "nosuchbase"))
         }
         GedraConfigService.get(cxt).writeConfig(writer(cxt, client), config)
         val result = GedraConfigReload.reloadClient(cxt, client)
         result.loaded shouldBe 0
-        result.issues.single().message shouldContain "template"
+        result.issues.single().message shouldContain "which is not defined in source"
         ClientService.get(cxt).known(client) shouldBe null
     }
 

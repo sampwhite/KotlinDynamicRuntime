@@ -24,7 +24,8 @@ object STPL {
 
 /**
  * A **template client** (`ClientUsageType.template`): never used directly, but a configured client may extend it
- * (`extendsFromClientId`), and a person creating a self-serve client is offered it to start from. It is modeled on
+ * (`extendsFromClientId`). It is marked for public use (`publicTemplate`), so a person creating a self-serve client is
+ * offered it to start from, where it is enabled. It is modeled on
  * acme from the sample's global traits: a New form asking for the form's name and a questionnaire, and a workflow
  * that collects an expense report once a form exists. A client extending it inherits both and may replace either
  * whole with its own -- the creation workflow included, which is what lets a client change what its New form asks.
@@ -38,10 +39,12 @@ fun templateClient(cxt: KdrCxt): GedraConfig =
                 description = "A template: a New form with a name and a questionnaire, and an expense review.",
                 usageType = ClientUsageType.template,
                 audience = ClientAudience.customer,
-                // Not `dev`: a template is offered to the public where it is enabled, and a deployment running as `dev`
-                // (the public test deployment) loads the sample too.
+                // Not `dev`: a public template is offered where it is enabled, and a deployment running as `dev` (the
+                // public test deployment) loads the sample too.
                 enabledEnvironments = setOf(ENV.unit, ENV.local),
                 includedTraits = listOf(GT.name, ST.questionnaire, ST.expenseReport),
+                // Marked for public use: a person creating their own client may start from it.
+                publicTemplate = true,
             ),
         )
 

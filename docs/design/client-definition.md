@@ -133,8 +133,11 @@ For the client configuration itself, the client has the following attributes.
   which is where its configuration is edited before the changes are brought into its source component by PR
   and shipped. Only a source definition may set it.
 * `extendsFromClientId` - A reference to another client. When done in source code, it can be any reference.
- When done as data in the database, it can only reference template clients. When this value is present
- when the client is loaded, it first clones in all the definitions from the other client and then applies
+ When done as data in the database, it can only reference a client defined in source code, and which one is the
+ create's to judge (issue #1567): a platform operator may name any code-defined client that extends none itself and
+ is not retired; a customer's administrator and a person making their own client may name only one marked
+ `publicTemplate`, and only where it is enabled. Only a create sets it, and only the platform changes it after.
+ When this value is present when the client is loaded, it first clones in all the definitions from the other client and then applies
  any configuration in the current GedraConfig as extensions or overlay. This reference is usually done
  for three reasons. One, to build on a template to deduplicate the definitions of the clients. The other is
  to create a slightly variant client that previews new feature behavior that will eventually be put into
@@ -241,9 +244,10 @@ the missing link, so a demonstration or test client is never held to them.
   (`selfServeClient`) by a guarded write before the client is made, so two creates at once cannot both pass; a
   refused create gives it back, and once made it stays used, whatever becomes of the client. Moving the client to a
   customer later is the platform's to do: it keeps its id, and the link makes it the customer's. It may start from a
-  code-defined **template** client meant for customers and enabled where the deployment runs (`extendsFromClientId`): it
-  then inherits the template's definitions and starts with no starter workflows, so its New form is the template's
-  until it writes a creation workflow of its own, which replaces the inherited one.
+  code-defined client marked for public use (`publicTemplate`) and enabled where the deployment runs
+  (`extendsFromClientId`): it then inherits that client's definitions and starts with no starter workflows -- a client
+  built on another never does -- so its New form is the base's until it writes a creation workflow of its own, which
+  replaces the inherited one.
 - **A customer's first client can make the customer.** The operator's create takes `newCustomer` (a name, and
   optionally a description) instead of naming a customer: the customer's id is the client's, and the client is its
   root. It is three writes, each judged as any is -- the customer into `hub`'s `customers` configuration
