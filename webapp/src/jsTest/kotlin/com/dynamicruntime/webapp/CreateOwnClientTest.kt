@@ -1,6 +1,7 @@
 package com.dynamicruntime.webapp
 
 import com.dynamicruntime.common.gedra.CLD
+import com.dynamicruntime.common.home.HFLD
 import com.dynamicruntime.common.webasset.WAS
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -20,6 +21,46 @@ class CreateOwnClientTest {
         assertEquals(mapOf(CLD.name to "Shop"), createOwnClientRequest("Shop", " ", ""))
         // The starter workflows (issue #1346) are the server's default; only asking for none is sent.
         assertEquals(mapOf(CLD.name to "Shop", CLD.starterWorkflows to false), createOwnClientRequest("Shop", "", "", starterWorkflows = false))
+    }
+
+    @Test
+    fun aClientStartedFromATemplateNamesItAndSaysNothingOfStarters() {
+        assertEquals(
+            mapOf(CLD.name to "Shop", CLD.extendsFromClientId to "starterkit"),
+            createOwnClientRequest("Shop", "", "", extendsFrom = " starterkit "),
+        )
+        // The template's workflows are inherited, so the starters' switch is not sent even when it was unticked.
+        assertEquals(
+            mapOf(CLD.name to "Shop", CLD.extendsFromClientId to "starterkit"),
+            createOwnClientRequest("Shop", "", "", starterWorkflows = false, extendsFrom = "starterkit"),
+        )
+    }
+
+    @Test
+    fun theTemplatesOfferedAreReadFromTheShellConfig() {
+        val templates = selfServeTemplatesFrom(
+            listOf(mapOf(HFLD.id to "starterkit", HFLD.label to "Starter kit"), mapOf(HFLD.id to "bare"), mapOf(HFLD.label to "No id")),
+        )
+        assertEquals(listOf("starterkit" to "Starter kit", "bare" to "bare"), templates.map { it.clientId to it.name })
+        assertEquals(emptyList(), selfServeTemplatesFrom(null))
+    }
+
+    @Test
+    fun theChosenTemplateHoldsOnlyWhileItIsOffered() {
+        val offered = listOf(SelfServeTemplate("starterkit", "Starter kit"))
+        assertEquals("starterkit", effectiveStartFrom("starterkit", offered))
+        // Dropped by a re-read of the shell config: a blank client, not a stale id the create would refuse.
+        assertEquals("", effectiveStartFrom("starterkit", emptyList()))
+        assertEquals("", effectiveStartFrom("gone", offered))
+        assertEquals("", effectiveStartFrom("", offered))
+    }
+
+    @Test
+    fun theHintSaysWhatTheClientStartsWith() {
+        assertTrue(startFromHint("starterkit", starters = true).contains("New form is the template's"))
+        // A blank client takes the two starters unless the person unticks them.
+        assertTrue(startFromHint("", starters = true).contains("two workflows"))
+        assertTrue(startFromHint("", starters = false).contains("starts empty"))
     }
 
     @Test

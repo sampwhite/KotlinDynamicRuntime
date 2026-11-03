@@ -391,6 +391,17 @@ class GedraConfigService : ServiceInitializer {
                     "and its own images are uploaded on the Clients page.",
             )
         }
+        // Who may build a client on which base (issue #1567), held here too, where every stored write passes, so a write
+        // path added later cannot skip it: a signed-in caller who is not the platform may change a client's base only to
+        // one marked for public use. The creates ask first (`ClientService.requireBase`); this is the backstop. Code
+        // writing for itself, with nobody signed in, is the server's own and is not held to it.
+        config.client?.let { def ->
+            if (cxt.userProfile.isLoggedIn && !AdminRules.canSeeAllClients(cxt)) {
+                val base = def.extendsFromClientId
+                val current = ClientService.getOrNull(cxt)?.known(def.clientId)?.extendsFromClientId
+                if (base != null && base != current) ClientService.get(cxt).requireBase(base, anyBase = false)
+            }
+        }
         // A client authors only into its own namespace (issue #949), which no other owner can hold -- so the rule
         // replaces asking who already claimed the namespace.
         clientNamespaceProblem(config.namespace, config.gedraId.client)?.let {

@@ -1512,13 +1512,13 @@ fun adminGedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, ACEP.name
     // create takes, so a form can be drawn from it and nothing is declared twice.
     ClientDef.defineCreateType(this)
 
-    // The templates a client made from data may extend: defined in source code, and of the template kind -- what
-    // the load's own rule admits (`extendsProblem`). A choice list for a form; the rule is still the load's.
+    // The clients a platform operator may build one on: every code-defined base (issue #1567). And the ones a
+    // customer's administrator may: those marked for public use. Choice lists for a form; each create judges the base.
     optionsProvider(CLD.templateOptions) { c, _ ->
-        val clients = ClientService.get(c)
-        clients.declaredClients()
-            .filter { it.usageType == ClientUsageType.template && clients.originOf(it.clientId) == GedraConfigOrigin.source }
-            .map { SchOption(it.clientId, clientLabel(it.clientId, it.name)) }
+        ClientService.get(c).baseClients().map { SchOption(it.clientId, clientLabel(it.clientId, it.name)) }
+    }
+    optionsProvider(CLD.publicTemplateOptions) { c, _ ->
+        ClientService.get(c).publicTemplates().map { SchOption(it.clientId, clientLabel(it.clientId, it.name)) }
     }
 
     // The customers a client may be filed under (issue #1107), for a form; whether the id falls in the chosen one's
@@ -1559,6 +1559,8 @@ fun adminGedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, ACEP.name
         outputRef = CLD.createResultTypeName,
         inputRef = CLD.createTypeName,
     ) { c, request ->
+        // The platform's: any code-defined base (issue #1567).
+        ClientService.get(c).requireBase(request[CLD.extendsFromClientId].toOptStr(), anyBase = true)
         val result = ClientCreate.create(c, request)
         dropNulls(result.wireFields() + mapOf(CLD.customer to result.customer, CLD.customerFailure to result.customerFailure))
     }

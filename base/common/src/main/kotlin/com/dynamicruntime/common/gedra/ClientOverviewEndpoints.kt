@@ -387,6 +387,11 @@ fun clientOverviewSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CLD.overvie
                 type = SCT.boolean
                 default = true
             }
+            field(
+                CLD.extendsFromClientId,
+                "A code-defined template client to start from (the home config's selfServeTemplates): the client inherits " +
+                    "its traits, workflows, and copy, and starts with no starter workflows. Absent for a blank client.",
+            )
         },
         sessionOnly = true,
     ) { c, request ->
@@ -394,6 +399,7 @@ fun clientOverviewSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CLD.overvie
         val result = ClientSelfServeCreate.create(
             c, request.getValue(CLD.name).toOptStr().orEmpty(), request[CLD.description].toOptStr(), request[CLD.timeZone].toOptStr(),
             home, starterWorkflows = request[CLD.starterWorkflows] != false,
+            extendsFromClientId = request[CLD.extendsFromClientId].toOptStr(),
         )
         val switched = result.userId != null && result.created.present
         if (switched) authHandler(c).switchClient(c, result.created.client)

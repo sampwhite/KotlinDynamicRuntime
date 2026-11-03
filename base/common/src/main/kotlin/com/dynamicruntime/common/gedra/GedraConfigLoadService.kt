@@ -60,9 +60,8 @@ import kotlin.time.Instant
  * - **Only the slots this node reads** ([unknownSlotsIssue], issue #873): any other slot is ignored and reported,
  *   and the rest of the config loads.
  * - **`extendsFromClientId` from data** ([extendsProblem]): a data config may extend only a client that is
- *   **defined in source** and is a **template** -- which enforces both halves of the rule `ClientDef`
- *   documents ("only a template may be named" and "only the source-code definition is pulled in"), since a
- *   source template is the only thing that both exists in the source set and is a template.
+ *   **defined in source**, the rule `ClientDef` documents ("only the source-code definition is pulled in"). Which
+ *   code-defined client a create may name is the create's to judge (issue #1567).
  * - **A bad row must not take down a node**: a row that fails to reassemble is turned into a config problem
  *   and handled by the same mode split, so one corrupt row degrades in production and refuses the boot in
  *   `unit`/`local`, exactly as a bad source config does.
@@ -535,24 +534,18 @@ class GedraConfigLoadService : ServiceInitializer {
 
     /**
      * The problem with a stored config's `extendsFromClientId`, or null (issue #614). A config authored from
-     * data may extend only a **source template**: the named client must be in [sourceClients] (so a stored
-     * config cannot become the base another extends -- "only the source-code definition is pulled in") and must
-     * be a [ClientUsageType.template] ("only a template may be named"). A config that extends nothing is fine.
+     * data may extend only a **code-defined** client: the named client must be in [sourceClients], so a stored
+     * config cannot become the base another extends -- "only the source-code definition is pulled in". Which one a
+     * client may name is its create's to judge (issue #1567: `ClientService.requireBase`), since only a create sets
+     * it and only the platform changes it after. A config that extends nothing is fine.
      */
     fun extendsProblem(config: GedraConfig, sourceClients: Map<String, ClientDef>): GedraConfigIssue? {
         val parentId = config.client?.extendsFromClientId ?: return null
-        val parent = sourceClients[parentId]
-            ?: return config.issue(
+        if (parentId !in sourceClients) {
+            return config.issue(
                 "Stored config '${config.gedraId}' extends '$parentId', which is not defined in source. A " +
                     "configuration authored from data may extend only a source-code client, so that only the " +
                     "source definition is ever pulled in.",
-                "Dropping the stored config '${config.gedraId}'.",
-                GCEL.config, config.gedraId.fullId,
-            )
-        if (parent.usageType != ClientUsageType.template) {
-            return config.issue(
-                "Stored config '${config.gedraId}' extends '$parentId', which is not a template " +
-                    "(${parent.usageType}). A configuration authored from data may extend only a template.",
                 "Dropping the stored config '${config.gedraId}'.",
                 GCEL.config, config.gedraId.fullId,
             )

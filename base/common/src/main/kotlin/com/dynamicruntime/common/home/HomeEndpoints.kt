@@ -64,6 +64,14 @@ import com.dynamicruntime.common.util.toOptStr
  * Registered by the `common` component.
  */
 fun homeSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.home") {
+    // A template a self-serve client may start from: its name alone, since a definition's description is an internal
+    // note, not for the public.
+    type(HTYPE.selfServeTemplate) {
+        type = SCT.kObject
+        property(HFLD.id, "The template client's id, which the create names as the client to extend.", required = true)
+        property(HFLD.label, "The template's display name.", required = true)
+    }
+
     // One navigable document: a display label plus the versioned id the frontend fetches it by.
     type(HTYPE.homeLink) {
         type = SCT.kObject
@@ -203,6 +211,14 @@ fun homeSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.home") {
                     "otherwise.",
             ) { type = SCT.boolean }
             property(
+                HFLD.selfServeTemplates,
+                "For a caller signed in to public who has made no self-serve client, the code-defined templates a new one " +
+                    "may start from; absent when there are none.",
+            ) {
+                type = SCT.array
+                items { ref(HTYPE.selfServeTemplate) }
+            }
+            property(
                 HFLD.joinOffered,
                 "True for a caller signed in to public on a deployment that offers joining a demo client (issue #1248); " +
                     "absent otherwise.",
@@ -302,10 +318,16 @@ fun homeSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.home") {
                     val identityId = c.userProfile.identityId
                     val users = UserService.getOrNull(c)
                     if (identityId != null && users != null) {
-                        users.queryIdentityById(c, identityId)?.identityData?.get(IDD.selfServeClient).toOptStr()?.let {
+                        val made = users.queryIdentityById(c, identityId)?.identityData?.get(IDD.selfServeClient).toOptStr()
+                        made?.let {
                             put(HFLD.selfServeClient, it)
                             // A person creates one, so a client retired or run elsewhere is said, not offered to open.
                             if (ClientService.getOrNull(c)?.isPresent(it) != true) put(HFLD.selfServeClientAbsent, true)
+                        }
+                        // What a new one may start from, while the person may still make one.
+                        val templates = if (made != null) emptyList() else ClientService.getOrNull(c)?.publicTemplates().orEmpty()
+                        if (templates.isNotEmpty()) {
+                            put(HFLD.selfServeTemplates, templates.map { mapOf(HFLD.id to it.clientId, HFLD.label to it.name) })
                         }
                     }
                 }

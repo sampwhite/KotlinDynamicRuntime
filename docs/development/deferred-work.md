@@ -575,6 +575,21 @@ only client this would serve.
   - addressing tasks, saves, eligibility and labels stays deferred, in a shape that does not foreclose a keyed
     merge on task ids.
 
+## When a deployment wants self-serve clients to start from a template it ships
+
+A person creating a self-serve client may start from a code-defined **template** client, which the new client extends
+(`extendsFromClientId`). A template is offered when it is marked for public use (`publicTemplate`) and enabled in the
+deployment's environment. Only the sample component declares one today (`starterkit`), enabled in `unit` and `local` only, so a
+deployment offers none until it declares its own in a component of its own.
+
+- **A template in core.** When most deployments want the same starting point -- a New form and a first workflow
+  around a common need -- core could ship one, off by default and switched on by a flavor.
+  Deferred until a second deployment asks for the same one: what a starting point should hold is a deployment's
+  product decision.
+- **A template's own description for the public.** The card offers a template by its name alone, since a client
+  definition's description is an internal note. A public-facing line (copy keyed by the template's id) is the
+  first thing to add when the names stop being enough to choose by.
+
 ## When a client's branding has to reach somebody who has not signed in
 
 A client's own favicon and brand mark (issue #1130) are served to the client of whoever is asking, and somebody

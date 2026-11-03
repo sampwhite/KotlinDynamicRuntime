@@ -77,6 +77,8 @@ object ClientDelegatedCreate {
         // the prefix, a taken id is one of the customer's own, which they may see.
         val clientId = request[CLD.clientId].toOptStr().orEmpty()
         newClientPrefixFault(clients, clientId, customer.customerId)?.let { throw KdrException.mkInput(it) }
+        // Not the platform's, so only a base marked for public use (issue #1567).
+        clients.requireBase(request[CLD.extendsFromClientId].toOptStr(), anyBase = false)
         val created = ClientCreate.create(
             cxt, ClientFieldPolicies.delegatedDefinition(parent.toInfo(), request),
             starterWorkflows = request[CLD.starterWorkflows] != false,

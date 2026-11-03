@@ -177,6 +177,46 @@ class ClientService : ServiceInitializer {
     fun originOf(clientId: String): GedraConfigOrigin? =
         collector?.gedraConfigs?.configs?.firstOrNull { it.client?.clientId == clientId }?.origin
 
+    /**
+     * The clients another may be built on (`extendsFromClientId`): code-defined, extending none themselves, not a
+     * sandbox, and not retired -- among the definitions the checks kept, so none a check dropped is offered only to be
+     * refused. What a platform operator may build on (issue #1567), and the platform create's choices.
+     */
+    fun baseClients(): List<ClientDef> = clients.values.filter {
+        !it.retired && it.extendsFromClientId == null && !isSandboxClient(it.clientId) &&
+            originOf(it.clientId) == GedraConfigOrigin.source
+    }
+
+    /**
+     * The bases anyone may build on (issue #1567): [baseClients] marked [ClientDef.publicTemplate] and enabled in this
+     * environment. A person creating their own client, and a customer's administrator creating one of theirs, may
+     * build on these and no other -- so a deployment running as `dev` offers no base that is enabled only where its
+     * developers run.
+     */
+    fun publicTemplates(): List<ClientDef> = baseClients().filter { it.publicTemplate && it.isEnabledIn(env) }
+
+    /**
+     * Refuses [baseId] as the base of a client being created, unless it is one of [publicTemplates] -- or, for a
+     * platform operator's create ([anyBase]), one of [baseClients]. Asked before anything is written, so a refusal
+     * costs nothing. Null names no base.
+     */
+    fun requireBase(baseId: String?, anyBase: Boolean) {
+        if (baseId == null) return
+        if (anyBase) {
+            if (baseClients().none { it.clientId == baseId }) {
+                throw KdrException.mkInput(
+                    "'$baseId' is not a client another can be built on: a base is a code-defined client that extends " +
+                        "none itself, and is not retired.",
+                )
+            }
+        } else if (publicTemplates().none { it.clientId == baseId }) {
+            throw KdrException.mkInput(
+                "'$baseId' is not a client yours can be built on: only a code-defined client marked for public use " +
+                    "(${CLD.publicTemplate}) may be named.",
+            )
+        }
+    }
+
     override fun onCreate(cxt: KdrCxt) {
         collector = SchemaCollector.get(cxt)
             ?: throw KdrException("Schema collector was not created for $serviceName.")

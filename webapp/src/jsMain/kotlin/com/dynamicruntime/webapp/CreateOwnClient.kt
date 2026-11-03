@@ -3,7 +3,9 @@ package com.dynamicruntime.webapp
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.gedra.CLD
 import com.dynamicruntime.common.user.AEP
+import com.dynamicruntime.common.home.HFLD
 import com.dynamicruntime.common.util.isPlaceZoneName
+import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
 import kotlinx.coroutines.MainScope
@@ -28,6 +30,15 @@ import react.dom.html.ReactHTML.span
 
 private val createOwnScope = MainScope()
 
+/** A code-defined template client a self-serve client may start from: its id, and the name it is offered by. */
+class SelfServeTemplate(val clientId: String, val name: String)
+
+/** The shell config's `state.selfServeTemplates`; empty when absent. Pure, and covered under `jsNodeTest`. */
+fun selfServeTemplatesFrom(raw: Any?): List<SelfServeTemplate> = raw.toJsonListOfMaps().mapNotNull { m ->
+    val id = m[HFLD.id].toOptStr() ?: return@mapNotNull null
+    SelfServeTemplate(id, m[HFLD.label].toOptStr() ?: id)
+}
+
 /**
  * The body of `POST /user/self/createClient` (issue #1228): the client's [name], trimmed; its note and time zone only
  * when given -- the zone the creator's browser is in, as the card starts it (issue #1115). Pure, and covered under
@@ -39,11 +50,17 @@ fun createOwnClientRequest(
     timeZone: String,
     /** The new client's home copy (issue #1336), by the create's field names ([CLD.homeCopyFields]' keys). */
     home: Map<String, String> = emptyMap(),
-    /** Whether the client starts with a creation workflow and a survey (issue #1346); sent only when it does not. */
+    /**
+     * Whether the client starts with a creation workflow and a survey (issue #1346); sent only when it does not, and
+     * not at all for a client started from a template, which inherits the template's.
+     */
     starterWorkflows: Boolean = true,
+    /** The template the client starts from ([SelfServeTemplate.clientId]); blank for a blank client. */
+    extendsFrom: String = "",
 ): Map<String, Any?> = buildMap {
     put(CLD.name, name.trim())
-    if (!starterWorkflows) put(CLD.starterWorkflows, false)
+    val template = extendsFrom.trim().ifEmpty { null }
+    if (template != null) put(CLD.extendsFromClientId, template) else if (!starterWorkflows) put(CLD.starterWorkflows, false)
     description.trim().ifEmpty { null }?.let { put(CLD.description, it) }
     timeZone.trim().ifEmpty { null }?.let { put(CLD.timeZone, it) }
     for (field in CLD.homeCopyFields.keys) home[field]?.trim()?.ifEmpty { null }?.let { put(field, it) }
@@ -172,6 +189,30 @@ class CreateOwnClientNext(val moves: Boolean, val note: String?) {
 fun createOwnClientNext(result: CreateOwnClientResult): CreateOwnClientNext =
     createOwnClientFailureText(result)?.let { CreateOwnClientNext(moves = false, note = it) } ?: CreateOwnClientNext(moves = true, note = null)
 
+/** The card's choice for a client that starts from no template. */
+const val blankClientLabel = "A blank client"
+
+/**
+ * The template the card starts from: [chosen] while it is still one of [templates], else blank -- so a re-read of the
+ * shell config that drops it leaves a blank client, with its controls, rather than a stale id the create refuses.
+ * Pure, and covered under `jsNodeTest`.
+ */
+fun effectiveStartFrom(chosen: String, templates: List<SelfServeTemplate>): String =
+    chosen.takeIf { id -> templates.any { it.clientId == id } }.orEmpty()
+
+/**
+ * What the card says under its Start from choice, for the template's id [startFrom] (blank for none) and whether a
+ * blank client takes the [starters]. Pure, and covered under `jsNodeTest`.
+ */
+fun startFromHint(startFrom: String, starters: Boolean): String = when {
+    startFrom.isNotEmpty() ->
+        "Your client starts with this template's workflows and the traits they collect. You can add your own, or " +
+            "replace one of the template's with your own version. Its New form is the template's until you give your " +
+            "client its own."
+    starters -> "Your client starts with the two workflows below, and you build the rest."
+    else -> "Your client starts empty, and you build its forms and workflows."
+}
+
 /** The zone the card starts on: the browser's, when it is a place's zone a client may name -- never an `Etc/` offset. */
 fun ownClientStartZone(browserZone: String?): String = browserZone?.takeIf { isPlaceZoneName(it) }.orEmpty()
 
@@ -182,9 +223,11 @@ object CreateOwnClientApi {
         timeZone: String,
         home: Map<String, String> = emptyMap(),
         starterWorkflows: Boolean = true,
+        extendsFrom: String = "",
     ): CreateOwnClientResult = parseCreateOwnClientResult(
-        Http.sendApi("POST", AEP.createOwnClient, createOwnClientRequest(name, description, timeZone, home, starterWorkflows))[EP.results]
-            .toJsonMapOrEmpty(),
+        Http.sendApi(
+            "POST", AEP.createOwnClient, createOwnClientRequest(name, description, timeZone, home, starterWorkflows, extendsFrom),
+        )[EP.results].toJsonMapOrEmpty(),
     )
 }
 
@@ -201,6 +244,8 @@ external interface CreateOwnClientCardProps : Props {
      * flavor says it.
      */
     var workflowsNote: String?
+    /** The code-defined templates a new client may start from ([HomeConfig.selfServeTemplates]); empty for none. */
+    var templates: List<SelfServeTemplate>?
 }
 
 /**
@@ -216,6 +261,11 @@ val CreateOwnClientCard = FC<CreateOwnClientCardProps> { props ->
     var timeZone by useState(ownClientStartZone(browserTimeZone()))
     // Whether it starts with a creation workflow and a survey (issue #1346): on unless the person says otherwise.
     var starters by useState(true)
+    // The template it starts from, by client id; blank for a blank client.
+    var startFrom by useState("")
+    val templates = props.templates.orEmpty()
+    // The choice while it is still offered: a re-read of the shell config may drop it.
+    val start = effectiveStartFrom(startFrom, templates)
     var busy by useState(false)
     var error by useState<DisplayError?>(null)
     var note by useState<String?>(null)
@@ -289,7 +339,28 @@ val CreateOwnClientCard = FC<CreateOwnClientCardProps> { props ->
                             onChange = { v -> timeZone = v }
                         }
                     }
-                    div {
+                    if (templates.isNotEmpty()) {
+                        choiceRow("Start from") {
+                            Select {
+                                value = start
+                                disabled = busy
+                                asDynamic()["aria-label"] = "Start from"
+                                options = (listOf("" to blankClientLabel) + templates.map { it.clientId to it.name }).map { (v, l) ->
+                                    val o: dynamic = js("({})")
+                                    o.label = l
+                                    o.value = v
+                                    o
+                                }.toTypedArray()
+                                style = choiceStyle()
+                                onChange = { v -> startFrom = v as? String ?: "" }
+                            }
+                            div {
+                                className = ClassName("type-hint")
+                                +startFromHint(start, starters)
+                            }
+                        }
+                    }
+                    if (start.isEmpty()) div {
                         Checkbox {
                             checked = starters
                             disabled = busy
@@ -362,7 +433,7 @@ val CreateOwnClientCard = FC<CreateOwnClientCardProps> { props ->
                         disabled = name.isBlank() || imageProblems.isNotEmpty()
                         onClick = {
                             act {
-                                val result = CreateOwnClientApi.create(name, description, timeZone, home, starters)
+                                val result = CreateOwnClientApi.create(name, description, timeZone, home, starters, start)
                                 val next = createOwnClientNext(result)
                                 fun labelOf(slot: String) = WebAssetKinds.slotDef(slot)?.label ?: slot
                                 note = next.note

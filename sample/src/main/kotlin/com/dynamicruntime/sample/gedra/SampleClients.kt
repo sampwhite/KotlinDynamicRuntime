@@ -279,8 +279,10 @@ object SC {
  *
  * Both are `dev` and `customer`, which is what lets them take a functional group at all: `#allGlobal` is
  * refused only to a `customer` client in `production`.
+ *
+ * Beside them, a template a client may start from ([templateClient]), used by no one directly.
  */
-fun sampleClients(cxt: KdrCxt): List<GedraConfig> = listOf(acmeClient(cxt), globexClient(cxt))
+fun sampleClients(cxt: KdrCxt): List<GedraConfig> = listOf(acmeClient(cxt), globexClient(cxt), templateClient(cxt))
 
 /**
  * A client that narrows what it took.

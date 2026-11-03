@@ -1,7 +1,6 @@
 package com.dynamicruntime.kdn
 
 import com.dynamicruntime.common.content.MarkdownFragmentService
-import com.dynamicruntime.common.context.CL
 import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.KdrException
@@ -78,21 +77,21 @@ class GedraConfigBootLoadTest : StringSpec({
         SchemaService.get(cxt2).gedraTraitsFor(client).map { it.traitId } shouldContain "bootNote"
     }
 
-    "a stored config that extends a non-template source client is refused at boot" {
+    "a stored config that extends a client not defined in source is refused at boot" {
         val db = mapOf("KDR_DB_NAME" to "cfgBootLoad_extends", "KDR_LOAD_STORED_CONFIG" to "true")
         val client = "extclient"
 
         // Its own instance (issue #1075): the first of two boots over its own database (`KDR_DB_NAME`); the restart's
         // boot-time load is under test.
         val cxt1 = Startup.mkTestBootCxt("cfgLoad1b", "cfgBootLoad1b", db)
-        // `hub` is a source client, but a production one, not a template -- so a data config may not extend it.
+        // No source client of that name: a data config may extend only a code-defined one.
         val config = gedraConfig(cxt1, "extcfg", clientNamespace(client), client) {
             defineClient(
                 ClientDef(
                     clientId = client, name = "Extending Client",
                     usageType = ClientUsageType.dev, audience = ClientAudience.internal,
                     enabledEnvironments = setOf(ENV.unit, ENV.local),
-                    extendsFromClientId = CL.hub,
+                    extendsFromClientId = "nosuchbase",
                 ),
             )
         }
@@ -101,7 +100,7 @@ class GedraConfigBootLoadTest : StringSpec({
         // The restart refuses the boot: in the unit environment a config problem is strict (it refuses rather
         // than degrading), and an unloadable stored config is that same kind of problem.
         val ex = shouldThrow<KdrException> { Startup.mkTestBootCxt("cfgLoad2b", "cfgBootLoad2b", db) }
-        (ex.message ?: "").contains("template") shouldBe true
+        ex.message.shouldNotBeNull() shouldContain "which is not defined in source"
         // Judged as stored config (issue #839): the refusal names the stored config and the variable that forgives it.
         ex.message.shouldNotBeNull() shouldContain GCFG.storedCheckEnvVar.name
         ex.message.shouldNotBeNull() shouldContain "extcfg"
@@ -123,7 +122,7 @@ class GedraConfigBootLoadTest : StringSpec({
                     clientId = client, name = "Forgiven Client",
                     usageType = ClientUsageType.dev, audience = ClientAudience.internal,
                     enabledEnvironments = setOf(ENV.unit, ENV.local),
-                    extendsFromClientId = CL.hub,
+                    extendsFromClientId = "nosuchbase",
                 ),
             )
         }
@@ -136,7 +135,7 @@ class GedraConfigBootLoadTest : StringSpec({
         )
         ClientService.get(cxt2).known(client) shouldBe null
         val issue = GedraConfigLoadService.get(cxt2).issues.single()
-        issue.message shouldContain "template"
+        issue.message shouldContain "which is not defined in source"
         issue.origin shouldBe GedraConfigOrigin.stored
         issue.storedConfigId.shouldNotBeNull() shouldContain "forgivecfg"
         issue.client shouldBe client

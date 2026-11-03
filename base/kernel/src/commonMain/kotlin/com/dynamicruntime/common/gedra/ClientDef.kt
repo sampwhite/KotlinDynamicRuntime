@@ -44,7 +44,11 @@ enum class ClientUsageType {
     /** Development work. Real people may try things; no external business depends on it. */
     dev,
 
-    /** Exists to generate other client definitions. Its resources may be referenced by any client. */
+    /**
+     * Exists to generate other client definitions. A label for people reading the list of clients: which client may be
+     * built on which is decided by its create, and anyone may build on one marked [ClientDef.publicTemplate] (issue
+     * #1567).
+     */
     template,
 
     /** Exists to demonstrate the product, usually for sales; relaxed security and bulk-cleanup conveniences. */
@@ -178,6 +182,8 @@ object ClientFieldPolicies {
         // Only a definition in source code may set it; a stored one claiming it is refused outright.
         CLD.staticConfig to p(ClientFieldAtCreate.cleared, ClientFieldEdit.platform),
         CLD.retired to p(ClientFieldAtCreate.cleared, ClientFieldEdit.platform),
+        // Who may build a client on this one: the platform's to say, and meaningful only for a code-defined client.
+        CLD.publicTemplate to p(ClientFieldAtCreate.cleared, ClientFieldEdit.platform),
         CLD.testFeatures to p(ClientFieldAtCreate.cleared, ClientFieldEdit.platform),
         // Who may join the client from `public`, and as what (issue #1248): authority over who becomes its
         // administrator, so the platform's, and never handed on to a client another makes.
@@ -262,7 +268,7 @@ object ClientFieldPolicies {
     /** [value] of [field] in a form two definitions compare by: a set for a list, a flag for a boolean, else text. */
     private fun comparable(field: String, value: Any?): Any? = when (field) {
         CLD.enabledEnvironments, CLD.testFeatures, CLD.includedTraits, CLD.userLabels -> value.toJsonListOfStrings().toSet()
-        CLD.preload, CLD.staticConfig, CLD.sandbox, CLD.retired -> value == true
+        CLD.preload, CLD.staticConfig, CLD.sandbox, CLD.retired, CLD.publicTemplate -> value == true
         else -> value.toOptStr()
     }
 }
@@ -454,6 +460,9 @@ object CLD {
     /** Whether the platform retired the client (issue #1111); see [ClientDef.retired]. */
     const val retired = "retired"
 
+    /** Whether anyone may build a client on this one (issue #1567); see [ClientDef.publicTemplate]. */
+    const val publicTemplate = "publicTemplate"
+
     /** The roles a visitor may join the client as (issue #1248); see [ClientDef.joinRoles]. */
     const val joinRoles = "joinRoles"
 
@@ -604,10 +613,17 @@ object CLD {
     const val loadFailure = "loadFailure"
 
     /**
-     * The id of the options source behind the create input's `extendsFromClientId` (issue #1054): the template
-     * clients a client made from data may extend. Here for the reason [clientOptions] is.
+     * The id of the options source behind the platform create input's `extendsFromClientId` (issue #1054): the
+     * code-defined clients a platform operator may build a client on (issue #1567). Here for the reason
+     * [clientOptions] is.
      */
     const val templateOptions = "clientTemplateOptions"
+
+    /**
+     * The id of the options source behind a customer's create input's `extendsFromClientId` (issue #1567): the
+     * code-defined clients marked [ClientDef.publicTemplate], the only ones a customer's administrator may build on.
+     */
+    const val publicTemplateOptions = "clientPublicTemplateOptions"
 
     /**
      * The name of the stored configuration a created client's definition is written to (issue #1054): the client's
@@ -846,9 +862,11 @@ data class ClientDef(
      * sets none, and the template's `includedTraits` and `userLabels` ahead of its own. See `ClientExtension`.
      *
      * **One level, no chains**: the named client may not itself extend one. Usually a template (to deduplicate
-     * clients), a preview variant of a client, or a test variant of a production one. From data, it may name
-     * only a template; in either case only the *source-code* definition is pulled in, and any database overlay
-     * on the extended client is ignored. A sandbox is never a base.
+     * clients), a preview variant of a client, or a test variant of a production one. It must be code-defined:
+     * only the *source-code* definition is pulled in, and any database overlay on the extended client is ignored. A
+     * sandbox is never a base. Which base a create may name is the create's to judge (issue #1567): a platform
+     * operator's, any code-defined client; a customer's administrator's and a person's own, only one marked
+     * [publicTemplate].
      */
     val extendsFromClientId: String? = null,
     /**
@@ -924,6 +942,13 @@ data class ClientDef(
      * [enabledEnvironments].
      */
     val retired: Boolean = false,
+    /**
+     * Whether this client is **marked for public use as a base** (issue #1567): a person creating a self-serve client,
+     * and a customer's administrator creating one of theirs, may build theirs on it (`extendsFromClientId`) -- and on
+     * no other. A platform operator may build on any code-defined client. Meaningful only for a code-defined client,
+     * since only one is ever built on; offered only where it is enabled.
+     */
+    val publicTemplate: Boolean = false,
     /**
      * The roles a visitor signed in to `public` may **join** this client as (issue #1248): each gives the visitor a
      * user of their own identity here, of the role's persona -- so its default roles, never `allClients` or
@@ -1003,6 +1028,7 @@ data class ClientDef(
         if (sandbox) put(CLD.sandbox, true)
         if (customerId != null) put(CLD.customerId, customerId)
         if (retired) put(CLD.retired, true)
+        if (publicTemplate) put(CLD.publicTemplate, true)
         if (joinRoles.isNotEmpty()) put(CLD.joinRoles, joinRoles.map { it.toJsonMap() })
         if (sessionHours != null) put(CLD.sessionHours, sessionHours)
         if (refreshIntervalSeconds != null) put(CLD.refreshIntervalSeconds, refreshIntervalSeconds)
@@ -1053,6 +1079,7 @@ data class ClientDef(
             sandbox = m[CLD.sandbox] as? Boolean ?: false,
             customerId = m[CLD.customerId].toOptStr(),
             retired = m[CLD.retired] as? Boolean ?: false,
+            publicTemplate = m[CLD.publicTemplate] as? Boolean ?: false,
             joinRoles = ClientJoinRole.listFrom(m[CLD.joinRoles]),
             sessionHours = m[CLD.sessionHours].toOptLongOrNull()?.toInt(),
             refreshIntervalSeconds = m[CLD.refreshIntervalSeconds].toOptLongOrNull()?.toInt(),
@@ -1088,8 +1115,8 @@ data class ClientDef(
         /**
          * The input of the create-client endpoint (issue #1054): the written form's properties, as they are
          * declared for it, for [ClientCreateFields] only -- so what a create is held to is what any write of a
-         * definition is held to, for the fields a create takes. `extendsFromClientId` offers the templates there
-         * are ([CLD.templateOptions]); what a client may extend is still judged where it always was.
+         * definition is held to, for the fields a create takes. `extendsFromClientId` offers the code-defined clients
+         * there are ([CLD.templateOptions]); the create judges the one named.
          */
         fun defineCreateType(builder: SchTypesBuilder) {
             builder.type(CLD.createTypeName) {
@@ -1119,7 +1146,10 @@ data class ClientDef(
             builder.type(CLD.delegatedCreateTypeName) {
                 type = SCT.kObject
                 description = "A client to create under the caller's customer: what its creator chooses."
-                infoProperties(written = true, only = ClientFieldPolicies.creatorFields.toSet(), offerChoices = true)
+                infoProperties(
+                    written = true, only = ClientFieldPolicies.creatorFields.toSet(), offerChoices = true,
+                    baseChoices = CLD.publicTemplateOptions,
+                )
                 starterWorkflowsProperty()
             }
         }
@@ -1132,7 +1162,8 @@ data class ClientDef(
             property(
                 CLD.starterWorkflows,
                 "Start the client with a creation workflow and a survey, made from the deployment's templates around the " +
-                    "form's name (which the client then includes). On unless set false.",
+                    "form's name (which the client then includes). On unless set false. A client built on another gets " +
+                    "only the one of a kind its base has none of, since its own would replace the base's.",
             ) {
                 type = SCT.boolean
                 default = true
@@ -1144,7 +1175,13 @@ data class ClientDef(
          * ones named. [written] closes the list of environments; [offerChoices] sources the choices of
          * `extendsFromClientId` and `customerId`, for a form.
          */
-        private fun SchTypeBuilder.infoProperties(written: Boolean, only: Set<String>? = null, offerChoices: Boolean = false) {
+        private fun SchTypeBuilder.infoProperties(
+            written: Boolean,
+            only: Set<String>? = null,
+            offerChoices: Boolean = false,
+            /** Where `extendsFromClientId`'s choices come from, when [offerChoices]: who is creating decides (issue #1567). */
+            baseChoices: String = CLD.templateOptions,
+        ) {
             fun prop(name: String, description: String, required: Boolean = false, build: SchTypeBuilder.() -> Unit = {}) {
                 // Every field has a policy (issue #1108): a field added here without one fails as the schema is built.
                 ClientFieldPolicies.of(name)
@@ -1189,7 +1226,7 @@ data class ClientDef(
                 allowCoerce = false
             }
             prop(CLD.extendsFromClientId, "The client whose definitions this one is built on top of.") {
-                if (offerChoices) optionsSource(CLD.templateOptions)
+                if (offerChoices) optionsSource(baseChoices)
             }
             prop(CLD.domainPrefix, "A prefix on a core domain that routes to this client.")
             prop(CLD.customDomain, "A whole hostname the client configured for itself.")
@@ -1213,6 +1250,13 @@ data class ClientDef(
                 allowCoerce = false
             }
             prop(CLD.retired, "Whether the platform retired the client: its data kept, and the client absent everywhere.") {
+                type = SCT.boolean
+                allowCoerce = false
+            }
+            prop(
+                CLD.publicTemplate,
+                "Whether anyone creating a client -- a person's own, or a customer's -- may build it on this code-defined client.",
+            ) {
                 type = SCT.boolean
                 allowCoerce = false
             }

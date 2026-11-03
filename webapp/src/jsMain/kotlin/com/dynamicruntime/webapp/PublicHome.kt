@@ -187,6 +187,7 @@ val PublicHome = FC<PublicHomeProps> { props ->
             madeAbsent = config.selfServeClientAbsent
             madeName = config.users.firstOrNull { it.client == config.selfServeClient }?.clientName
             workflowsNote = copy.opt("publicHome", "createClientNote")
+            templates = config.selfServeTemplates
         }
     }
 }

@@ -44,7 +44,8 @@ import io.kotest.matchers.string.shouldContain
 /**
  * Creating a client over one typed endpoint (issue #1054): its definition written as its first stored
  * configuration, published, and the client loaded -- where it used to take a hand-built bundle write and a reload.
- * A create is held to what any written definition is, and refused for the same reasons in the same words.
+ * A create is held to what any written definition is, and refused for the same reasons in the same words -- and,
+ * before anything is written, to the base its creator may name (issue #1567), which only a create asks.
  *
  * Env-authed, since the input schema is read from the endpoint catalog; the fixture component gives the node a
  * source-defined template to extend.
@@ -166,10 +167,11 @@ class ClientCreateEndpointTest : StringSpec({
         refusal(EXC.badInput, body("bad-1054")) shouldContain "may hold only letters, digits and underscores"
         refusal(EXC.badInput, body("bad1054", CLD.enabledEnvironments to listOf(ENV.dev))) shouldContain
             "is enabled in dev but not in unit or local"
-        // The client it extends must be a template defined in source code.
-        refusal(EXC.badInput, body("bad1054", CLD.extendsFromClientId to "nosuch1054")) shouldContain
-            "extends 'nosuch1054', which is not defined in source"
-        refusal(EXC.badInput, body("bad1054", CLD.extendsFromClientId to CL.hub)) shouldContain "which is not a template"
+        // The client it extends must be a base: code-defined, extending none itself, and not retired (issue #1567).
+        for (base in listOf("nosuch1054", ExtensionTemplateComponent.child, ExtensionTemplateComponent.retiredTemplate)) {
+            refusal(EXC.badInput, body("bad1054", CLD.extendsFromClientId to base)) shouldContain
+                "'$base' is not a client another can be built on"
+        }
         // By the write's own guard: a domain another client holds.
         admin.postData(ADEP.clientCreate, body("holder1054", CLD.customDomain to "forms.holder1054.example"))[CLD.present] shouldBe true
         refusal(EXC.badInput, body("bad1054", CLD.customDomain to "forms.holder1054.example")) shouldContain
@@ -250,9 +252,14 @@ class ClientCreateEndpointTest : StringSpec({
         choices(environments) shouldBe ENV.names
         // Closed, as a written definition's are: a form offers the environments there are and no box to type another.
         environments.containsKey(SCH.openOptions) shouldBe false
-        // The templates there are, offered by name -- and offered only: the rule is the load's.
+        // The bases there are, offered by name (issue #1567): every code-defined client extending none, template or not,
+        // marked for public use or not -- but not one retired, nor one built on another.
         val templates = properties[CLD.extendsFromClientId].toJsonMapOrEmpty()
-        choices(templates) shouldBe listOf(ExtensionTemplateComponent.template)
+        val bases = choices(templates)
+        for (base in listOf(ExtensionTemplateComponent.template, ExtensionTemplateComponent.publicTemplate)) bases shouldContain base
+        bases shouldContain ExtensionTemplateComponent.plainClient
+        bases.contains(ExtensionTemplateComponent.retiredTemplate) shouldBe false
+        bases.contains(ExtensionTemplateComponent.child) shouldBe false
         templates.containsKey(SCH.optionsSource) shouldBe false
         admin.getData("/schema/endpoints", mapOf(SS.pathRegex to ADEP.clientCreate))[EI.endpoints]
             .toJsonListOfMaps().single()[EI.inputSchema].toJsonMapOrEmpty()[SCH.required].toJsonListOfStrings().toSet() shouldBe

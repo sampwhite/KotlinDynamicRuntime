@@ -92,7 +92,8 @@ object ClientCreate {
          * Whether the client starts with workflows made from the starter templates (issue #1346): each in a
          * configuration of its own, written and published with the definition, and the trait they collect -- the
          * form's name -- added to what the definition includes. Read from the request ([CLD.starterWorkflows]) unless
-         * a caller says.
+         * a caller says. A client built on a base starts with only the starters of a kind the base declares none of
+         * ([startersBeside]).
          */
         starterWorkflows: Boolean = request[CLD.starterWorkflows] != false,
     ): Result {
@@ -110,7 +111,7 @@ object ClientCreate {
         caseVariant(cxt, client)?.let { throw takenByCase(cxt, client, it) }
         val newCustomer = newCustomerOf(cxt, client, request)
         val customer = newCustomer?.let { CustomerStore.put(cxt, it) }
-        val starters = if (starterWorkflows) starterTemplates(cxt) else emptyList()
+        val starters = if (starterWorkflows) startersBeside(cxt, request[CLD.extendsFromClientId].toOptStr()) else emptyList()
         val definition = withStarterTraits(definitionOf(request), starters) +
             (newCustomer?.let { mapOf(CLD.customerId to client) } ?: emptyMap())
         val name = CLD.definitionConfigName
@@ -268,6 +269,20 @@ object ClientCreate {
         WFT.starters.mapNotNull { WorkflowService.get(cxt).forClient(null).workflow(it)?.def }
 
     /**
+     * The starters a client starts with (issue #1346): every one, or -- for a client built on [base] (issue #1567) --
+     * those of a kind the base declares none of. A client has one creation workflow and one survey, and its own
+     * replaces its base's, so a starter of a kind the base has would take the base's place; a base with no New form,
+     * a plain code client, still gets one.
+     */
+    private fun startersBeside(cxt: KdrCxt, base: String?): List<WfDef> {
+        val all = starterTemplates(cxt)
+        if (base == null) return all
+        val registry = WorkflowService.get(cxt).forClient(base)
+        val declared = setOfNotNull(registry.creation?.def?.entry, registry.survey?.def?.entry)
+        return all.filter { it.entry !in declared }
+    }
+
+    /**
      * [definition] including every trait the [starters] collect (issue #1346) -- the form's name -- unless it takes them
      * already, by name or as every global trait, so the workflows it starts with are ones it may run.
      */
@@ -301,11 +316,12 @@ object ClientCreate {
      * from the start: every form with its name, its owner, its status, and when it was made, grouped by status. The
      * Reports page makes more in this configuration (issue #1492), but none is there unless asked for, so this is the
      * report a client made from data starts with. The name column is there only when
-     * [definition] includes the trait it reads, as it does whenever the client starts with the starter workflows: a
-     * report naming a trait the client does not support would be refused at the write.
+     * [definition] includes the trait it reads, as it does whenever the client starts with the starter workflows, or
+     * the template it extends does: a report naming a trait the client does not support would be refused at the write.
      */
     private fun starterReportConfig(bound: KdrCxt, client: String, definition: Map<String, Any?>): GedraConfig {
-        val included = definition[CLD.includedTraits].toJsonListOfStrings()
+        val template = definition[CLD.extendsFromClientId].toOptStr()?.let { ClientService.get(bound).declared(it) }
+        val included = definition[CLD.includedTraits].toJsonListOfStrings() + template?.includedTraits.orEmpty()
         val withName = GT.name in included || CLD.allGlobal in included
         return gedraConfig(bound, starterReportsConfig, clientNamespace(client), client) {
             report(starterReport, "Forms") {

@@ -16,6 +16,7 @@ import com.dynamicruntime.common.gedra.GedraConfigBuilder
 import com.dynamicruntime.common.gedra.GedraConfigLoadService
 import com.dynamicruntime.common.gedra.GedraConfigReload
 import com.dynamicruntime.common.gedra.GedraConfigService
+import com.dynamicruntime.common.gedra.GT
 import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.copyOverrides
 import com.dynamicruntime.common.gedra.gedraConfig
@@ -286,6 +287,38 @@ class ExtensionTemplateComponent : ComponentDefinition {
             report("notes", "Template notes") { column("note", "Note", "form.tplNote.note") }
             report("overview", "Template overview") { column("score", "Score", "form.tplScore.score") }
         },
+        // A template marked for public use, which a person may start a self-serve client from; one retired, which
+        // nobody may; and a code client that is no template, which only the platform may build on. The template above
+        // is not marked, so it is not offered to the public either.
+        gedraConfig(cxt, "pub", "client.tplpub", publicTemplate) {
+            defineClient(
+                ClientDef(
+                    clientId = publicTemplate, name = "Public template", usageType = ClientUsageType.template,
+                    audience = ClientAudience.customer, enabledEnvironments = setOf(ENV.unit, ENV.local),
+                    includedTraits = listOf(GT.name, "pubNote"), publicTemplate = true,
+                ),
+            )
+            trait("PubNoteEntry", "pubNote", setOf(GedraDataType.formDoc), "A note.") { property("note", "A note.") }
+            // What a client started from the template makes forms with, until it writes its own.
+            workflow(creationWorkflow, WfEntry.creation) { task("n", "Name") { trait(GT.name); save("c", "Create") } }
+        },
+        gedraConfig(cxt, "gone", "client.tplgone", retiredTemplate) {
+            defineClient(
+                ClientDef(
+                    clientId = retiredTemplate, name = "Retired template", usageType = ClientUsageType.template,
+                    audience = ClientAudience.customer, enabledEnvironments = setOf(ENV.unit, ENV.local), retired = true,
+                    publicTemplate = true,
+                ),
+            )
+        },
+        gedraConfig(cxt, "plain", "client.tplplain", plainClient) {
+            defineClient(
+                ClientDef(
+                    clientId = plainClient, name = "Plain", usageType = ClientUsageType.dev,
+                    audience = ClientAudience.internal, enabledEnvironments = setOf(ENV.unit, ENV.local),
+                ),
+            )
+        },
         gedraConfig(cxt, "kid", "client.tplkid", child) {
             defineClient(
                 ClientDef(
@@ -305,6 +338,10 @@ class ExtensionTemplateComponent : ComponentDefinition {
     @Suppress("ConstPropertyName")
     companion object {
         const val template = "tplbase"
+        const val publicTemplate = "tplpub"
+        const val retiredTemplate = "tplgone"
+        const val plainClient = "tplplain"
+        const val creationWorkflow = "pubCreate"
         const val packageId = "tplfix:tplres"
         const val child = "tplkid"
     }
