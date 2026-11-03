@@ -55,9 +55,11 @@ object MSG {
     const val user = "user"
     const val assistant = "assistant"
 
-    // Stop reasons.
+    // Stop reasons; `max_tokens` is [maxTokens], the request field of the same name.
     const val endTurn = "end_turn"
     const val toolUse = "tool_use"
+    const val pauseTurn = "pause_turn"
+    const val refusal = "refusal"
 }
 
 /**
@@ -203,6 +205,15 @@ class ModelPrice(val input: Long, val cacheWrite: Long, val cacheRead: Long, val
 object PRICE {
     /** Sonnet's input price: what one weighted token costs. */
     const val unit = 200L
+
+    /** Weighted tokens to the dollar: 500,000, at [unit]. */
+    const val tokensPerDollar = 100L * 1_000_000 / unit
+
+    /** [weighted] tokens in dollars, to the cent. */
+    fun dollarsOf(weighted: Long): Double = Math.round(weighted * 100.0 / tokensPerDollar) / 100.0
+
+    /** [dollars] in weighted tokens, to the token. */
+    fun weightedOf(dollars: Double): Long = Math.round(dollars * tokensPerDollar)
 
     val sonnet = ModelPrice(input = 200, cacheWrite = 250, cacheRead = 20, output = 1_000)
     val opus55 = ModelPrice(input = 400, cacheWrite = 500, cacheRead = 20, output = 2_000)

@@ -39,6 +39,9 @@ object ASST {
     /** Switches a client on or off and sets its monthly budget. */
     const val clientSetPath = "/${SECT.operator}/assistant/client/set"
 
+    /** The choice of clients an operator may switch on: every client, its sandbox left out (it goes by its parent). */
+    const val clientOptions = "assistantClients"
+
     // --- Type names ---
     const val clientType = "AssistantClient"
     const val statusType = "AssistantStatus"
@@ -48,6 +51,9 @@ object ASST {
     const val name = "name"
     const val enabled = "enabled"
     const val monthlyBudget = "monthlyBudget"
+    const val monthlyBudgetDollars = "monthlyBudgetDollars"
+    const val usedDollars = "usedDollars"
+    const val defaultMonthlyBudgetDollars = "defaultMonthlyBudgetDollars"
     const val budgetIsDefault = "budgetIsDefault"
     const val month = "month"
     const val used = "used"
@@ -68,4 +74,73 @@ object ASST {
     const val missingSecret = "missingSecret"
     const val defaultMonthlyBudget = "defaultMonthlyBudget"
     const val dataNotice = "dataNotice"
+}
+
+/**
+ * The assistant's conversations on the wire (issue #1526): what a client's administrator sends and polls, which the
+ * webapp's page (#1527) reads by these names. In the `clientAdmin` section, and every one is session-only: no key -- and
+ * not the assistant itself, whose calls go by a key's rules -- may start a turn or spend the budget.
+ */
+@Suppress("ConstPropertyName")
+object ACNV {
+    /** Sends a message, starting a turn; answers at once, before the model does. */
+    const val messagePath = "/${SECT.clientAdmin}/assistant/message"
+
+    /** One conversation's messages after a point, and its turns: what the page polls. */
+    const val conversationPath = "/${SECT.clientAdmin}/assistant/conversation"
+
+    /** The caller's conversations, most recent first. */
+    const val conversationsPath = "/${SECT.clientAdmin}/assistant/conversations"
+
+    /** Asks a running turn to stop at its next step. */
+    const val cancelPath = "/${SECT.clientAdmin}/assistant/cancel"
+
+    // --- Type names ---
+    const val startedType = "AssistantTurnStarted"
+    const val conversationType = "AssistantConversation"
+    const val summaryType = "AssistantConversationSummary"
+    const val messageType = "AssistantMessage"
+    const val turnType = "AssistantTurn"
+    const val cancelType = "AssistantCancel"
+
+    // --- Field names (each matches its value) ---
+    const val conversation = "conversation"
+    const val conversationId = "conversationId"
+    const val clientMessageId = "clientMessageId"
+    const val text = "text"
+    const val turnId = "turnId"
+    const val seq = "seq"
+    const val afterSeq = "afterSeq"
+    const val role = "role"
+    const val content = "content"
+    const val title = "title"
+    const val readOnly = "readOnly"
+    const val running = "running"
+    const val messages = "messages"
+    const val turns = "turns"
+    const val status = "status"
+    const val stopReason = "stopReason"
+    const val steps = "steps"
+    const val weighted = "weighted"
+    const val note = "note"
+    const val startedAt = "startedAt"
+    const val endedAt = "endedAt"
+    const val canceled = "canceled"
+
+    // --- A turn's status ---
+    const val statusRunning = "running"
+    const val statusDone = "done"
+    const val statusStopped = "stopped"
+    const val statusCanceled = "canceled"
+    const val statusInterrupted = "interrupted"
+    const val statusFailed = "failed"
+
+    // --- Error codes a refused message carries (`errorCode`), for the page to act on ---
+    const val notOnCode = "assistantNotOn"
+    const val noSandboxCode = "noSandbox"
+    const val budgetSpentCode = "budgetSpent"
+    const val turnLimitCode = "turnLimit"
+    const val busyCode = "turnRunning"
+    const val readOnlyCode = "conversationReadOnly"
+    const val messageIdUsedCode = "messageIdUsed"
 }

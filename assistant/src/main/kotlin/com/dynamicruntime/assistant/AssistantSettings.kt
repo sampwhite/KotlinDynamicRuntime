@@ -17,11 +17,17 @@ object AENV {
     const val defaultMaxSteps = 20
     const val defaultMaxTokens = 16_000
     const val defaultTurnsPerHour = 20
+    const val defaultConcurrentTurns = 3
     const val defaultMonthlyBudget = 10_000_000L
     const val defaultKeySecret = "anthropicApiKey"
 
-    /** The most tokens a call may write, on every model in [models]. */
-    const val maxOutputTokens = 128_000
+    /**
+     * The most tokens a call may be asked to write: about what a model writes within one call's timeout
+     * (`TURN.callTimeoutMinutes`) without streaming, as the SDK's own guidance sizes a non-streaming request. A call
+     * that times out is billed, but no usage comes back to count against the budget, so a larger allowance would be
+     * spent unseen.
+     */
+    const val maxOutputTokens = 16_000
 
     /** The efforts a request may ask for. */
     val efforts = listOf("low", "medium", "high", "xhigh", "max")
@@ -35,8 +41,9 @@ object AENV {
     val provider = EnvVarDef(
         "KDR_ASSISTANT_PROVIDER", group = ENVGRP.assistant, defaultDoc = anthropicProvider,
         description = "What answers the workflow assistant: `$anthropicProvider` (Claude, through the Anthropic API, when " +
-            "the deployment holds a key) or `$fakeProvider` (a built-in demo that answers with canned text, for trying the " +
-            "page locally with no key and no spending). `$fakeProvider` is refused at boot on a node that is not a test instance.",
+            "the deployment holds a key) or `$fakeProvider` (a built-in demo that lists the client's workflows with a real " +
+            "tool call and names them, for trying the page locally with no key and no spending). `$fakeProvider` is " +
+            "refused at boot on a node that is not a test instance.",
     )
     val model = EnvVarDef(
         "KDR_ASSISTANT_MODEL", group = ENVGRP.assistant, defaultDoc = defaultModel,
@@ -59,10 +66,15 @@ object AENV {
         "KDR_ASSISTANT_TURNS_PER_HOUR", group = ENVGRP.assistant, defaultDoc = "$defaultTurnsPerHour",
         description = "The most turns (messages sent to the assistant) one user may start in an hour.",
     )
+    val concurrentTurns = EnvVarDef(
+        "KDR_ASSISTANT_CONCURRENT_TURNS", group = ENVGRP.assistant, defaultDoc = "$defaultConcurrentTurns",
+        description = "The most turns that may run at once in one client, across its administrators and nodes.",
+    )
     val monthlyBudget = EnvVarDef(
         "KDR_ASSISTANT_MONTHLY_BUDGET", group = ENVGRP.assistant, defaultDoc = "$defaultMonthlyBudget",
         description = "A client's monthly budget in weighted tokens (input 1, cache write 1.25, cache read 0.1, output 5, " +
-            "at Sonnet's prices), when an operator has set none of its own. A sandbox counts against its parent's.",
+            "at Sonnet's prices: 500,000 to the dollar, so the default is about \$20), when an operator has set none of " +
+            "its own. A sandbox counts against its parent's.",
     )
     val keySecret = EnvVarDef(
         ASST.keySecretEnvVar, group = ENVGRP.assistant, defaultDoc = defaultKeySecret,
@@ -84,6 +96,7 @@ class AssistantSettings(
     val maxSteps: Int,
     val maxTokens: Int,
     val turnsPerHour: Int,
+    val concurrentTurns: Int,
     val defaultMonthlyBudget: Long,
     val keySecret: String,
 ) {
@@ -108,6 +121,7 @@ class AssistantSettings(
                 maxSteps = count(cxt, AENV.maxSteps, AENV.defaultMaxSteps.toLong()).toInt(),
                 maxTokens = count(cxt, AENV.maxTokens, AENV.defaultMaxTokens.toLong(), max = AENV.maxOutputTokens.toLong()).toInt(),
                 turnsPerHour = count(cxt, AENV.turnsPerHour, AENV.defaultTurnsPerHour.toLong()).toInt(),
+                concurrentTurns = count(cxt, AENV.concurrentTurns, AENV.defaultConcurrentTurns.toLong()).toInt(),
                 defaultMonthlyBudget = count(cxt, AENV.monthlyBudget, AENV.defaultMonthlyBudget, max = Long.MAX_VALUE / 2),
                 keySecret = text(cxt, AENV.keySecret) ?: AENV.defaultKeySecret,
             )

@@ -32,6 +32,7 @@ class AssistantComponent : ComponentDefinition {
     override fun addSchema(cxt: KdrCxt, collector: SchemaCollector) {
         collector.addTables(assistantTables(cxt))
         collector.addModule(assistantOperatorSchema(cxt))
+        collector.addModule(assistantChatSchema(cxt))
         collector.addCFact(
             CFactDef(
                 ASST.onCFact, CFGRP.caller,
