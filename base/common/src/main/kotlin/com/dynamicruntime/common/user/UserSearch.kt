@@ -233,7 +233,6 @@ fun searchUserRows(rows: List<AuthUserRow>, criteria: UserSearchCriteria): UserS
     criteria.anyText?.trim()?.lowercase()?.takeIf { it.isNotEmpty() }?.let { term ->
         matched = matched.filter { row ->
             userSearchFields.any { field ->
-                val textsOf = field.textsOf
                 field.anyTextsOf?.invoke(row)?.any { it.lowercase().contains(term) } == true
             }
         }
@@ -257,7 +256,8 @@ fun searchUserRows(rows: List<AuthUserRow>, criteria: UserSearchCriteria): UserS
  * The ordering for one field and direction: nulls last in **both** directions, the value compared with the
  * direction applied, and `userId` breaking a tie so the order is total. Nulls are held last rather than
  * flipped with the direction because a row missing the sort value belongs at the end of the list either way,
- * not floated to the top of a descending one.
+ * not floated to the top of a descending one. The tie follows the direction too (issue #1555): newest first puts
+ * the newer of two users created together first, rather than reversing the list's order inside the tie.
  */
 private fun comparatorFor(field: UserSearchField, descending: Boolean): Comparator<AuthUserRow> {
     val dir = if (descending) -1 else 1
@@ -272,6 +272,6 @@ private fun comparatorFor(field: UserSearchField, descending: Boolean): Comparat
             bv == null -> -1
             else -> dir * av.compareTo(bv)
         }
-        if (primary != 0) primary else a.userId.compareTo(b.userId)
+        if (primary != 0) primary else dir * a.userId.compareTo(b.userId)
     }
 }

@@ -6,7 +6,6 @@ import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.user.USF
 import com.dynamicruntime.common.util.toOptInstant
 import io.kotest.core.spec.style.StringSpec
-import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.comparables.shouldBeGreaterThan
@@ -42,19 +41,19 @@ class UserDatesTest : StringSpec({
 
     val subject = TestUser.create(cxt, "dates-subject@example.com")
 
-    "creation sets registeredAt and activatedAt together, and nothing else" {
+    "creation sets registeredAt, activatedAt, and lastEditedAt together" {
         val d = dates(subject.userId)
-        // Creation is the first activation, so both are stamped from one moment.
+        // Creation is the first activation and the first edit (issue #1555), so all three are stamped from one moment.
         d.getValue(USF.registered.root).shouldNotBeNull() shouldBe d.getValue(USF.activated.root)
-        // ...and an account that has just been made has not been edited.
-        d.getValue(USF.lastEdited.root).shouldBeNull()
+        d.getValue(USF.lastEdited.root) shouldBe d.getValue(USF.activated.root)
     }
 
-    "becoming a user is a login, so lastLoggedInAt is set and lastEditedAt still is not" {
+    "becoming a user is a login, so lastLoggedInAt is set and lastEditedAt stays the creation's" {
         // `TestUser.create` logs in as well as creating, so the subject already has a login recorded. The
         // pair is what makes this worth asserting: signing in is not an edit of the account.
-        dates(subject.userId).getValue(USF.lastLoggedIn.root).shouldNotBeNull()
-        dates(subject.userId).getValue(USF.lastEdited.root).shouldBeNull()
+        val d = dates(subject.userId)
+        d.getValue(USF.lastLoggedIn.root).shouldNotBeNull()
+        d.getValue(USF.lastEdited.root) shouldBe d.getValue(USF.activated.root)
     }
 
     "logging in again moves only lastLoggedInAt" {
@@ -68,7 +67,7 @@ class UserDatesTest : StringSpec({
         // afterward fails on precision rather than on behavior.
         after.getValue(USF.lastLoggedIn.root)!! shouldBeGreaterThan before.getValue(USF.lastLoggedIn.root)!!
         // The two that must not have moved: signing in neither edits the account nor re-activates it.
-        after.getValue(USF.lastEdited.root).shouldBeNull()
+        after.getValue(USF.lastEdited.root) shouldBe before.getValue(USF.lastEdited.root)
         after.getValue(USF.activated.root) shouldBe before.getValue(USF.activated.root)
     }
 
@@ -78,7 +77,7 @@ class UserDatesTest : StringSpec({
         admin.postData(ADEP.userSetName, mapOf(ADF.userId to subject.userId, ADF.name to "Renamed"))
 
         val after = dates(subject.userId)
-        after.getValue(USF.lastEdited.root).shouldNotBeNull()
+        after.getValue(USF.lastEdited.root)!! shouldBeGreaterThan before.getValue(USF.lastEdited.root)!!
         // The pair: the login is untouched by an edit, to the exact instant.
         after.getValue(USF.lastLoggedIn.root) shouldBe before.getValue(USF.lastLoggedIn.root)
     }
@@ -108,5 +107,21 @@ class UserDatesTest : StringSpec({
         val d = dates(subject.userId)
         d.getValue(USF.registered.root).shouldNotBeNull()
         d.getValue(USF.activated.root)!! shouldBeGreaterThan d.getValue(USF.registered.root)!!
+    }
+
+    "creating a user over a disabled one is a creation, so it stamps lastEditedAt (issue #1555)" {
+        // Not the re-enable above, which is not an edit: whoever asked for the user created one, and a creation is the
+        // first edit. Stamped from the creation's own moment, as activatedAt is.
+        val email = "dates-recreated@example.com"
+        val userId = (admin.postData(ADEP.userCreate, mapOf(ADF.primaryId to email))[ADF.userId] as Number).toLong()
+        cxt.instanceConfig.clock.advanceBy(1.minutes)
+        admin.postData(ADEP.userSetEnabled, mapOf(ADF.userId to userId, ADF.enabled to false))
+        val disabled = dates(userId)
+
+        cxt.instanceConfig.clock.advanceBy(1.minutes)
+        (admin.postData(ADEP.userCreate, mapOf(ADF.primaryId to email))[ADF.userId] as Number).toLong() shouldBe userId
+        val again = dates(userId)
+        again.getValue(USF.lastEdited.root)!! shouldBeGreaterThan disabled.getValue(USF.lastEdited.root)!!
+        again.getValue(USF.lastEdited.root) shouldBe again.getValue(USF.activated.root)
     }
 })

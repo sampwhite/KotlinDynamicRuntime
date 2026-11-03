@@ -116,7 +116,8 @@ class AuthUserRow(
     var previousLoggedInAt: Instant? = null
 
     /**
-     * When the account was last edited: anything that is not a login and not an activation.
+     * When the account was created or last edited: anything that is not a login and not an activation. Creation counts
+     * as the first edit (issue #1555), so every user created since has one, and the console's default sort orders them all.
      *
      * Against [updatedAt], which is the storage-level "this row was written" and therefore moves on a login
      * too. This is the one an administrator is asking about, and is what the console shows.
@@ -429,7 +430,7 @@ class AuthUserRow(
                 property(USF.registered.at, "When the account was first created; never overwritten.") { dateTime() }
                 property(USF.activated.at, "When the account most recently became active -- at creation, and on each re-enable.") { dateTime() }
                 property(USF.lastLoggedIn.at, "When a login sequence last completed; a refreshed cookie does not count, nor does a switch between users.") { dateTime() }
-                property(USF.lastEdited.at, "When the account was last edited -- not a login, not an activation.") { dateTime() }
+                property(USF.lastEdited.at, "When the account was created or last edited -- not a login, not an activation.") { dateTime() }
                 // In a sandbox (issue #1198): what the user acts with, which its row need not say.
                 property(ADF.actingRoles, "In a sandbox, the roles the user acts with; absent outside one.") {
                     type = SCT.array
@@ -507,9 +508,9 @@ class AuthUserRow(
             persona: String = PERSONA.member,
             personaSuffix: String = "",
             /**
-             * When the account came into being (issue #462), stamped as [AD.activatedAt] -- and as
-             * [AD.registeredAt] when [registered]. Passed in rather than read here because this builds a map
-             * and has no context to ask for the time; null leaves both unset.
+             * When the account came into being (issue #462), stamped as [AD.activatedAt] and [AD.lastEditedAt]
+             * (issue #1555) -- and as [AD.registeredAt] when [registered]. Passed in rather than read here because this
+             * builds a map and has no context to ask for the time; null leaves them unset.
              */
             createdAt: Instant? = null,
             /** Whether the person has claimed this user at creation (issue #749): a code proved it, the fixture
@@ -523,10 +524,12 @@ class AuthUserRow(
             PF.client to client,
             AU.authUserData to mutableMapOf<String, Any?>(AD.roles to roles).also {
                 if (org != null) it[AD.org] = org
-                // Creation is the first activation. Registration is stamped from the same moment when the
-                // person is behind the creation; otherwise it waits for them to prove the user (issue #749).
+                // Creation is the first activation, and the first edit (issue #1555). Registration is stamped from the
+                // same moment when the person is behind the creation; otherwise it waits for them to prove the user
+                // (issue #749).
                 if (createdAt != null) {
                     it[AD.activatedAt] = createdAt
+                    it[AD.lastEditedAt] = createdAt
                     if (registered) it[AD.registeredAt] = createdAt
                 }
             },
