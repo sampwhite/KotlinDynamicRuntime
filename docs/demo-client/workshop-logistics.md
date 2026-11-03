@@ -43,7 +43,7 @@ The client declares two facts of its own in the `kdr:cfactDef` slot of its `base
 | `name` | The fact's name, as a test or a workflow refers to it. |
 | `group` | A heading the facts are listed under, for people. |
 | `description` | What the fact means. |
-| `toFrontend` | Whether the fact is sent to the browser, where a form could show or hide a field by it. Neither of these is. |
+| `toFrontend` | Whether the fact is sent to the browser. Neither of these is. |
 
 A declaration says only that the fact exists. Something has to set it. For `isWorkshop` that is the [core details
 workflow](talk-core-details.md), not this workflow: a talk's eligibility is judged before it enters a workflow, so the

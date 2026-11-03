@@ -380,5 +380,6 @@ For a client with a sandbox, the upload is a draft, like any other change. The c
 | The schema dialect: the JSON Schema a trait's `dataSchema` is written in | [reference/schema-dialect.md](reference/schema-dialect.md) | `/st/api/doc/schema-dialect` |
 | Validation messages: every code a refused value is reported with, and how to give one a message of your own | [reference/validation-messages.md](reference/validation-messages.md) | `/st/api/doc/validation-messages` |
 | Expressions: the `${…}` language of copy, columns, layouts, and computed values, and its functions | [reference/expressions.md](reference/expressions.md) | `/st/api/doc/expressions` |
+| Facts: the yes-or-no facts a menu entry, a field's visibility, a save rule, or an eligibility test is written over | [reference/facts.md](reference/facts.md) | `/st/api/doc/facts` |
 | API keys and access tokens | [api-keys-and-tokens.md](api-keys-and-tokens.md) | `/st/api/doc/api-keys-and-tokens` |
 | The conference demo: a whole client, bundle by bundle | [demo-client/README.md](demo-client/README.md) | `/st/api/doc/demo-client-README` |

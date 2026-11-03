@@ -3,15 +3,19 @@ package com.dynamicruntime.kdn
 import com.dynamicruntime.common.cfact.CFACTS
 import com.dynamicruntime.common.cfact.CFD
 import com.dynamicruntime.common.cfact.CFGRP
+import com.dynamicruntime.common.cfact.addCommonCFacts
 import com.dynamicruntime.common.context.UserProfile
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.http.request.ROLE
+import com.dynamicruntime.common.naming.OWNR
+import com.dynamicruntime.common.startup.SchemaCollector
 import com.dynamicruntime.common.startup.SchemaService
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.util.toOptStr
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.collections.shouldNotContain
+import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 
 /**
@@ -45,6 +49,15 @@ class CFactRegistryEndpointTest : StringSpec({
         // Grouped, so a reader sees sections rather than one wall -- the group headings are in the document.
         doc shouldContain CFGRP.caller
         doc shouldContain CFGRP.node
+    }
+
+    "the facts reference lists every platform fact the node declares" {
+        // The generated page (issue #1561) is made from `addCommonCFacts` alone, so a `kdr:` fact declared anywhere else
+        // would be missing from it. A fact under another root is an optional component's, named in the page's prose.
+        val listed = SchemaCollector().also { addCommonCFacts(it) }.cfacts.keys
+        val declared = SchemaService.get(cxt).cfactsFor(null).names
+        declared.filter { it.startsWith("${OWNR.kdrRoot}${OWNR.rootSep}") && it !in listed } shouldBe emptyList()
+        listed.filterNot { it in declared } shouldBe emptyList()
     }
 
     "the reference says whether each cfact is present for the caller" {
