@@ -1144,7 +1144,7 @@ class LocalFileRefsTest : StringSpec({
         static(memberOf(client), "own").rptStatusCode shouldBe EXC.notFound
 
         // Nor is one too large to read: it is there, and the client's.
-        approve(client, "own.png", png + ByteArray(FREF.maxSize.toInt()))
+        approve(client, "own.png", png + ByteArray(FREF.maxSize))
         listed(adminOf(client)).getValue("own").let {
             it[FREF.missing] shouldBe true
             it.containsKey(FREF.fromTemplate) shouldBe false

@@ -129,7 +129,7 @@ class ReportRegistryReloadTest : StringSpec({
             GedraConfigReload.reloadClient(cxt, client)
         }
         fun siteType() = SchemaService.get(cxt).storeFor(client).types.getValue(RGEN.rowType(client, "visits"))
-            .properties.getValue(RRUN.values).valueType!!.properties.getValue("site").valueType!!.jsonType
+            .properties.getValue(RRUN.values).valueType.properties.getValue("site").valueType.jsonType
 
         // No report, no endpoints; with it, both, and its types in the client's store.
         reload {}
