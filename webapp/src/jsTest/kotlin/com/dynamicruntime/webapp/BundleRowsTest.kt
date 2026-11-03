@@ -28,7 +28,7 @@ class BundleRowsTest {
         staticHere: Boolean = false,
     ) = ClientOverview(
         clientId = id, name = id, status = ClientStatus.present.name, origin = GedraConfigOrigin.stored.name,
-        storedConfigs = 1, forms = 0, users = 0, unclaimedUsers = 0, workflowCount = 0, hasSurvey = false,
+        storedConfigs = 1, forms = 0, users = 0, unclaimedUsers = 0, workflowCount = 0, hasCoreDetails = false,
         issues = emptyList(), copyOverrides = 0, blockOverrides = 0, sandboxOf = sandboxOf, hasSandbox = hasSandbox,
         publishedOnly = publishedOnly, staticHere = staticHere,
     )

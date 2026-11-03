@@ -11,30 +11,30 @@ import kotlin.test.assertTrue
  * render that then draws a revealed field is browser-driven; this pins the decision it rests on.
  */
 class DerivedRevealTest {
-    // The survey View Info: the whole form root is one trait's data type, so every derived-with-value field is
-    // content.
-    private val surveyOpts = FormOpts(showDerivedValues = true, derivedRootIsTraitData = true)
+    // The core details workflow View Info: the whole form root is one trait's data type, so every derived-with-value
+    // field is content.
+    private val coreDetailsOpts = FormOpts(showDerivedValues = true, derivedRootIsTraitData = true)
 
     // The raw read-only view over a whole document: trait content lives under a `data` payload; everything
     // outside it (the document id, an entry's stamps) is envelope.
     private val rawOpts = FormOpts(showDerivedValues = true, traitDataField = "data")
 
     @Test
-    fun surveyRootRevealsADerivedContentValue() {
+    fun coreDetailsRootRevealsADerivedContentValue() {
         // Root of a trait data form, a non-blank derived value, read-only.
-        assertTrue(surveyOpts.revealsDerivedAt("totalAmount", editable = false, value = 50))
+        assertTrue(coreDetailsOpts.revealsDerivedAt("totalAmount", editable = false, value = 50))
     }
 
     @Test
     fun aBlankDerivedValueStaysHidden() {
-        assertFalse(surveyOpts.revealsDerivedAt("totalAmount", editable = false, value = null))
-        assertFalse(surveyOpts.revealsDerivedAt("totalAmount", editable = false, value = ""))
+        assertFalse(coreDetailsOpts.revealsDerivedAt("totalAmount", editable = false, value = null))
+        assertFalse(coreDetailsOpts.revealsDerivedAt("totalAmount", editable = false, value = ""))
     }
 
     @Test
     fun anEditableFormNeverReveals() {
         // No control to draw for a derived field, so editing hides it regardless of value.
-        assertFalse(surveyOpts.revealsDerivedAt("totalAmount", editable = true, value = 50))
+        assertFalse(coreDetailsOpts.revealsDerivedAt("totalAmount", editable = true, value = 50))
     }
 
     @Test

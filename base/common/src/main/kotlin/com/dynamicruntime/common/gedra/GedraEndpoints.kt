@@ -12,8 +12,7 @@ import com.dynamicruntime.common.endpoint.defaultListLimit
 import com.dynamicruntime.common.endpoint.schemaModule
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
-import com.dynamicruntime.common.gedra.workflow.SVY
-import com.dynamicruntime.common.gedra.workflow.SVYS
+import com.dynamicruntime.common.gedra.workflow.FSV
 import com.dynamicruntime.common.gedra.workflow.WSF
 import com.dynamicruntime.common.gedra.workflow.WVF
 import com.dynamicruntime.common.gedra.workflow.formStatusOf
@@ -274,18 +273,18 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
         // chip means, nothing pending or finished. Not a trait search field -- it reads the form's state, not a
         // display value -- so it is applied over the states cache before paging, and `numAvailable` counts what
         // matched. A form with no computed state matches none. Not admin-gated: a caller filters the forms they
-        // can already see. The wire name stays `surveyStatus`, which the first three statuses still are.
+        // can already see.
         property(
-            SVY.surveyStatus,
-            "Only forms whose status chip is this: ${SVYS.valid} / ${SVYS.needsInfo} / ${SVYS.invalid} / " +
-                "${SVYS.needsReview} / ${SVYS.finished}. Absent means any.",
+            GDF.formStatus,
+            "Only forms whose status chip is this: ${FSV.valid} / ${FSV.needsInfo} / ${FSV.invalid} / " +
+                "${FSV.needsReview} / ${FSV.finished}. Absent means any.",
         ) {
             emptyIsAbsent = true
-            option(SVYS.valid, "Valid")
-            option(SVYS.needsInfo, "Needs Info")
-            option(SVYS.invalid, "Invalid")
-            option(SVYS.needsReview, "Needs Review")
-            option(SVYS.finished, "Finished")
+            option(FSV.valid, "Valid")
+            option(FSV.needsInfo, "Needs Info")
+            option(FSV.invalid, "Invalid")
+            option(FSV.needsReview, "Needs Review")
+            option(FSV.finished, "Finished")
         }
         // The workflow pages' drill-down (issue #792): only forms whose workflow cell has this workflow -- of the
         // listing's client (the chosen one, else the caller's) -- in the given state. The same kernel rule the
@@ -400,8 +399,18 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
         val callerScope = ReadScopeRules.forCaller(c)
         // A client filter narrows an `allClients` caller's (unrestricted) scope to one client (issue #668); it is
         // ignored for anyone else, whose scope cannot widen to a client they are not in. Naming a client that is
-        // not present just yields no rows, the same as a search matching nothing.
+        // not present just yields no rows, the same as a search matching nothing. On a client's own copy the path
+        // has already chosen the client (issue #1575), so a filter naming another contradicts it, and is refused as
+        // a gedra id naming another client is there.
         val clientFilter = (request[EI.client] as? String)?.trim()?.ifEmpty { null }?.takeIf { AdminRules.canSeeAllClients(c) }
+        c.clientFromPath?.let { confined ->
+            if (clientFilter != null && clientFilter != confined) {
+                throw KdrException.mkInput(
+                    "This endpoint is the one for the client '$confined', so it cannot list '$clientFilter'. " +
+                        "Use that client's own endpoint, or the shared one.",
+                )
+            }
+        }
         val baseScope = if (clientFilter != null) ReadScope.ofClient(clientFilter) else callerScope
         // A named user narrows further to that user -- but only within what the caller may already see (see
         // [resolveTargetUser], resolved within the client-narrowed scope); no name is the client/caller scope.
@@ -415,11 +424,11 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
         val columns = SchemaService.get(c).listingColumnsFor(c.client)
         val filter = searchFilter(c, request, columns)
         val sort = gedraSortFor(c, request, columns, scope)
-        // The survey-status filter (issue #695): a predicate over a row's state entries, through the same rule
+        // The status filter (issue #695): a predicate over a row's state entries, through the same rule
         // the status column reads them by, applied by `listGedras` over the states cache before paging. The
         // schema has already settled the value: a blank is absent (`emptyIsAbsent`), anything but the three
         // options was refused, so what arrives is one of them or nothing.
-        val statusWanted = request[SVY.surveyStatus] as? String
+        val statusWanted = request[GDF.formStatus] as? String
         val statusFilter: GedraStateFilter? = statusWanted?.let { wanted -> { _, states -> formStatusOf(states) == wanted } }
         val workflowFilter = workflowDrillFilter(c, request)
         val stateFilter: GedraStateFilter? = when {
@@ -764,8 +773,10 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
         HttpMethod.GET,
         outputRef = GEP.workflowViewType,
         inputFields = {
-            field(GDF.workflowId, "The workflow to resolve; omit for the caller's creation workflow, or with a gedraId its survey.")
-            field(GDF.gedraId, "An existing form to resolve against, seeding each field with its data; with no workflowId this resolves the client's survey.")
+            field(GDF.workflowId, "The workflow to resolve; omit for the caller's creation workflow, or with a gedraId its core " +
+                "details workflow.")
+            field(GDF.gedraId, "An existing form to resolve against, seeding each field with its data; with no workflowId this " +
+                "resolves the client's core details workflow.")
         },
         publicApi = true,
         needsClientConfig = true,
@@ -773,15 +784,15 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
         val registry = WorkflowService.get(c).forClient(c.client)
         val requested = request[GDF.workflowId].toOptStr()
         val gedraId = request[GDF.gedraId].toOptStr()
-        // A workflowId names one directly; otherwise the singleton kind is deduced from whether a form was
-        // named -- a form means "edit its survey", none means "create". Both singletons resolve by kind, so a
-        // caller never needs to know the id up front (issue #658).
-        // A workflow the caller does not see (issue #1384) is as good as not configured for them: one named is refused as
-        // an unknown one is, and a creation or survey falls back as for a client with none -- the trait picker, the raw editor.
+        // A workflowId names one directly; otherwise the singleton kind is deduced from whether a form was named -- a
+        // form means "edit its core details workflow", none means "create". Both singletons resolve by kind, so a
+        // caller never needs to know the id up front (issue #658). A workflow the caller does not see (issue #1384) is
+        // as good as not configured for them: one named is refused as an unknown one is, and a creation or core details
+        // workflow falls back as for a client with none -- the trait picker, the raw editor.
         val declared = when {
             requested != null -> WorkflowPhases.liveFor(c, registry, requested)
                 ?: throw KdrException("No workflow '$requested' for this caller.", code = EXC.notFound)
-            gedraId != null -> WorkflowPhases.seenOrNull(c, registry, registry.survey)
+            gedraId != null -> WorkflowPhases.seenOrNull(c, registry, registry.coreDetails)
             else -> WorkflowPhases.seenOrNull(c, registry, registry.creation)
         }
         // A creation workflow makes new forms (issue #817): asked against an existing one it would draw that form under a
@@ -795,7 +806,7 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
             noWorkflowView()
         } else {
             // A named form seeds each task from its current entries -- which also makes completeness real.
-            val row = if (gedraId == null) null else surveyFormRow(c, gedraId)
+            val row = if (gedraId == null) null else coreDetailsFormRow(c, gedraId)
             // A normal workflow is shown only while it exists, and -- outside its engagement window -- only to a form
             // already engaged with it (issue #790). Refused as an unknown one is, since that is what it is meant to be.
             // The form's state, read once: where it stands with a normal workflow, and its locked traits (issue #857).
@@ -814,8 +825,8 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
                 throw KdrException("No workflow '$requested' for this caller.", code = EXC.notFound)
             }
             val entriesByTask = row?.let { entriesByTaskOf(declared, it) } ?: emptyMap()
-            // The owner a prefillData function defaults from: the form's user for a survey, the caller for a
-            // creation view. Read only when the workflow actually declares a prefill (issue #679).
+            // The owner a prefillData function defaults from: the form's user for a core details workflow, the caller
+            // for a creation view. Read only when the workflow actually declares a prefill (issue #679).
             val ownerAttributes = prefillOwnerAttributes(c, declared, row?.userId ?: c.userId)
             // A form's approvals (issue #787) -- only read when the workflow has an approval task.
             val approvals = WorkflowApprovals.forView(c, declared.def, row?.gedraId?.fullId)
@@ -1270,19 +1281,19 @@ private fun createForUserCxt(c: KdrCxt, request: Map<String, Any?>): KdrCxt {
 }
 
 /**
- * The survey's form, read in the caller's own scope so a form out of reach answers 404 (issue #658), and
- * confined to the client whose survey was resolved (`cxt.client`): `registry.survey` is that client's, and an
- * `allClients` caller could otherwise name a form in another client that scope alone would admit -- seeding one
- * client's survey with another's data. The edit save is already guarded this way (checkPathClient). The resolver
- * itself reads no gedra, so the one read a survey view needs lives here in the handler layer.
+ * The core details workflow's form, read in the caller's own scope so a form out of reach answers 404 (issue #658), and
+ * confined to the client whose core details are resolved (`cxt.client`): `registry.coreDetails` is that client's, and
+ * an `allClients` caller could otherwise name a form in another client that scope alone would admit -- seeding one
+ * client's core details workflow with another's data. The edit save is already guarded this way (checkPathClient). The
+ * resolver itself reads no gedra, so the one read a core details view needs lives here in the handler layer.
  */
-private fun surveyFormRow(cxt: KdrCxt, fullId: String): GedraDataRow {
+private fun coreDetailsFormRow(cxt: KdrCxt, fullId: String): GedraDataRow {
     val row = GedraDataService.get(cxt).queryGedra(cxt, fullId, GedraDataType.formDoc, ReadScopeRules.forCaller(cxt))
         ?: throw KdrException("No form '$fullId' for this caller.", code = EXC.notFound)
     if (row.client != cxt.client) {
         throw KdrException.mkInput(
-            "Form '$fullId' belongs to client '${row.client}', and this survey view is for '${cxt.client}'. " +
-                "Use that client's own survey view.",
+            "Form '$fullId' belongs to client '${row.client}', and this core details view is for '${cxt.client}'. " +
+                "Use that client's own core details view.",
         )
     }
     return row
@@ -1290,7 +1301,7 @@ private fun surveyFormRow(cxt: KdrCxt, fullId: String): GedraDataRow {
 
 /**
  * The form a per-workflow state endpoint acts on (issue #794): read in the caller's own scope, so one out of
- * reach answers 404, and confined to the client the path named -- the same two guards [surveyFormRow] applies,
+ * reach answers 404, and confined to the client the path named -- the same two guards [coreDetailsFormRow] applies,
  * for the same reasons.
  */
 private fun stateTargetRow(cxt: KdrCxt, request: Map<String, Any?>): GedraDataRow {
@@ -1343,7 +1354,7 @@ private fun entriesByTaskOf(declared: WfDeclared, entries: List<Map<String, Any?
 /**
  * The form owner's attributes a `prefillData` function may default a field from (issue #679) -- empty when the
  * workflow declares no prefill (so an ordinary view pays no user read) or the owner cannot be read here. The
- * owner is the form's user for a survey, the caller for a creation view; the attribute keys are [PFO]'s, the
+ * owner is the form's user for a core details workflow, the caller for a creation view; the attribute keys are [PFO]'s, the
  * same ones `prefillFromOwner` names.
  */
 private fun prefillOwnerAttributes(cxt: KdrCxt, declared: WfDeclared, ownerUserId: Long): Map<String, Any?> {

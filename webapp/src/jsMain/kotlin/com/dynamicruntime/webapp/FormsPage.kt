@@ -157,9 +157,10 @@ val FormsPage = FC<FormsPageProps> { props ->
     // Whether the caller administers across clients (issue #668), from the same UI-config. Gates the Client
     // column and the filter-by-client control; false until known and when it cannot be learned.
     var canSeeAllClients by useState(false)
-    // Whether the caller's client declares a survey (issue #695), from the same UI-config: gates the survey-status
-    // filter. A fact about the client, not the rows, so the control stays while a filter matches nothing.
-    var hasSurvey by useState(false)
+    // Whether the caller's client declares a core details workflow (issue #695), from the same UI-config: gates the
+    // status filter. A fact about the client, not the rows, so the control stays while a filter matches
+    // nothing.
+    var hasCoreDetails by useState(false)
     // The clients to offer in the filter-by-client control (issue #668), fetched only for a cross-client caller.
     var clientChoices by useState<List<ClientChoice>>(emptyList())
     // The row to flash on arrival (issue #592): the form just saved on the edit page, read from the address once
@@ -216,7 +217,7 @@ val FormsPage = FC<FormsPageProps> { props ->
     /**
      * Invokes [ep] for one page and returns its rows and total -- the shared body of [loadPage] and
      * [loadForClient], so the standard query args (paging, the filled search, sort, the owner-attach flag, and
-     * the survey states) and the items/`numAvailable` parse live in one place and the initial load cannot drift
+     * the core details workflow states) and the items/`numAvailable` parse live in one place and the initial load cannot drift
      * from a paged one. Returned rather than published, so a caller that rebinds the surface can publish the
      * rows *with* it (#714 review). [includeUsers] is passed rather than read from state so a mount-time call is
      * not at the mercy of a not-yet-landed setter (the #668 trap); its caller decides where a failure is shown.
@@ -408,7 +409,7 @@ val FormsPage = FC<FormsPageProps> { props ->
 
     useEffectOnce {
         // Only an address that still names THIS page drives the open form. A move that leaves for another page
-        // (the survey editor, the raw editor) also carries `g=`; reading it here set `viewingId`, and the address-sync
+        // (the core details editor, the raw editor) also carries `g=`; reading it here set `viewingId`, and the address-sync
         // effect below then rewrote the address back to `page=forms&g=…` -- hijacking the departure into the in-page
         // view. Found by #694's status-chip link; it also caught the Actions "Edit" link.
         onRouteChange {
@@ -448,7 +449,7 @@ val FormsPage = FC<FormsPageProps> { props ->
             // clients fetch and the chosen-client restore must branch on the value in hand (issue #668).
             val seeAllClients = homeConfig?.canSeeAllClients == true
             canSeeAllClients = seeAllClients
-            hasSurvey = homeConfig?.hasSurvey == true
+            hasCoreDetails = homeConfig?.hasCoreDetails == true
             // The workflow column's empty-cell copy (issue #791) and the explanations (issue #1337), from the home
             // fragment file a client overlays. Copy only decorates the page, so a failure to fetch it leaves the dash
             // and no explanation rather than failing the list.
@@ -458,7 +459,7 @@ val FormsPage = FC<FormsPageProps> { props ->
                 }.valueOrNull()
             }?.let { homeCopy = it }
             // The clients to offer in the filter, for a cross-client caller (issue #668) -- with each one's
-            // `hasSurvey` (issue #695), so the survey-status filter can follow the chosen client.
+            // `hasCoreDetails` (issue #695), so the status filter can follow the chosen client.
             if (seeAllClients) {
                 clientChoices = apiResult { AdminApi.listClientSummaries() }.valueOr(emptyList())
             }
@@ -661,7 +662,7 @@ val FormsPage = FC<FormsPageProps> { props ->
                 val payloadType = cat.payloadType(ep)
                 // The shared editor header (issue #726): the back link, the title, and the actions on one line
                 // at the top -- so Edit and Delete are reachable on a long form without scrolling past it, and
-                // the raw view reads like the survey view and the raw editor. The back link is the same
+                // the raw view reads like the core details view and the raw editor. The back link is the same
                 // navigating "← My forms" the editors use: it drops `g`, and the route listener closes the
                 // view in place, rows kept. Drawn for every sub-state so a loading or missing form still has a
                 // way back; the actions appear once the form is up.
@@ -957,18 +958,19 @@ val FormsPage = FC<FormsPageProps> { props ->
                 // the filters but leaves whose forms are shown to the scope bar -- as *applied*, so a user typed
                 // into the scope box and never applied is not applied by Clear either (#562 review).
                 val groups = searchGroups(ep.inputSchema)
-                // Whether the survey-status filter is on offer (issue #695): a fact about the client whose rows are
+                // Whether the status filter is on offer (issue #695): a fact about the client whose rows are
                 // on screen -- the chosen client's (#714), read off its summary, else the caller's own from the
                 // shell. A client not (yet) in the choices reads as offering none.
-                val surveyFilterOffered = chosenClient?.let { id -> clientChoices.firstOrNull { it.clientId == id }?.hasSurvey == true } ?: hasSurvey
-                // The panel is also worth drawing with no trait fields at all when the survey-status filter is
+                val coreDetailsFilterOffered =
+                    chosenClient?.let { id -> clientChoices.firstOrNull { it.clientId == id }?.hasCoreDetails == true } ?: hasCoreDetails
+                // The panel is also worth drawing with no trait fields at all when the status filter is
                 // on offer: that one is every form's, not a trait's.
-                if (groups.isNotEmpty() || surveyFilterOffered) {
+                if (groups.isNotEmpty() || coreDetailsFilterOffered) {
                     FormsSearch {
                         this.groups = groups
                         values = searchDraft
                         applied = appliedSearch
-                        showSurveyStatus = surveyFilterOffered
+                        showCoreDetailsStatus = coreDetailsFilterOffered
                         // What each column's field offers (issue #1500), for its box to suggest.
                         choices = listingColumns.filter { it.choices.isNotEmpty() }.associate { it.columnId to it.choices }
                         panelOpen = filtersOpen
@@ -1047,18 +1049,19 @@ val FormsPage = FC<FormsPageProps> { props ->
                     // its back link returns to the same list.
                     val listingContext =
                         formsSearchRouteParams(appliedSearch) + sortRouteParams(sortColumn, sortDescending) + shownRouteParams(shown)
-                    // "View Info" (issue #694): the survey's read-only view, with its Edit toggle.
-                    onSurveyView = { id ->
-                        navigate(listOf(HP.page to pageSurveyEdit, HP.from to listingPage, HP.gedra to id) + listingContext)
+                    // "View Info" (issue #694): the core details workflow's read-only view, with its Edit toggle.
+                    onCoreDetailsView = { id ->
+                        navigate(listOf(HP.page to pageCoreDetailsEdit, HP.from to listingPage, HP.gedra to id) + listingContext)
                     }
-                    // The status chip's direct-to-edit link (issue #694): straight into the survey's edit mode,
+                    // The status chip's direct-to-edit link (issue #694): straight into the core details workflow's edit mode,
                     // bypassing the read-only stop -- a real href, so it is keyboard-reachable and can open in a
                     // new tab.
-                    surveyEditHref = { id ->
-                        routeHref(listOf(HP.page to pageSurveyEdit, HP.from to listingPage, HP.gedra to id, HP.edit to "1") + listingContext)
+                    coreDetailsEditHref = { id ->
+                        routeHref(listOf(HP.page to pageCoreDetailsEdit, HP.from to listingPage, HP.gedra to id,
+                            HP.edit to "1") + listingContext)
                     }
                     // The workflow column (issue #791): its summary, the client's copy for an empty cell, and where
-                    // a workflow link goes -- the survey page opened on that workflow, carrying the listing's context
+                    // a workflow link goes -- the core details page opened on that workflow, carrying the listing's context
                     // home like every other hop.
                     workflowSummary = listingWorkflows
                     columns = listingColumns

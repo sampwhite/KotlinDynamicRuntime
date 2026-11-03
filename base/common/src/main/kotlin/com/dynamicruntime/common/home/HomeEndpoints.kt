@@ -155,7 +155,8 @@ fun homeSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.home") {
             ) {
                 type = SCT.boolean
             }
-            property(HFEAT.hasSurvey, "Whether the caller's client declares a survey workflow (issue #695) -- the forms list then offers its survey-status filter.", required = true) {
+            property(HFEAT.hasCoreDetails, "Whether the caller's client declares a core details workflow (issue #695) -- the forms " +
+                "list then offers its status filter.", required = true) {
                 type = SCT.boolean
             }
             property(HFEAT.canOpenSandbox, "Whether the caller may open their own client's sandbox (issue #931).", required = true) {
@@ -286,7 +287,7 @@ fun homeSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.home") {
                 HFEAT.seesClientForms to (AdminRules.isClientAdministrator(c) || AdminRules.editsClient(c)),
                 // The caller's own client's registry (issue #695): a cross-client admin working in another
                 // client's surface reads that client's rows, but the filter keys on where the caller belongs.
-                HFEAT.hasSurvey to (WorkflowService.get(c).forClient(c.client).survey != null),
+                HFEAT.hasCoreDetails to (WorkflowService.get(c).forClient(c.client).coreDetails != null),
                 // The rule the open endpoint enforces (issue #931), so the shell offers only what it would admit.
                 // An edge has no clients to have sandboxes.
                 HFEAT.canOpenSandbox to (ClientService.getOrNull(c) != null && c.userProfile.isLoggedIn &&

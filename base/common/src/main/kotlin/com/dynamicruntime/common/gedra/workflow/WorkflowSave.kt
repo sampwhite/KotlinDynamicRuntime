@@ -27,12 +27,12 @@ import com.dynamicruntime.common.gedra.entryDataOf
  *    a gedra: the patch") -- the gate stops the save without failing the call, and it says exactly what to go fill in.
  *
  * A `create` save makes the gedra ([GedraDataService.createGedra]), stamping the workflow reference under
- * `creationWorkflowId`, and answers with the stored row the way `formDoc/create` does -- under [WSF.item]. An
- * `edit` save (a survey, issue #658) updates an existing form named by [gedraId] and answers with only that id: like
- * a patch, it says the form's state may have moved rather than carrying it (issue #827), and a page re-reads the
- * workflow view to show what the save changed. Only `create` and `edit` exist as save kinds; the `when` on [WfSaveKind] covers both, so
- * a later kind (submit/approve/export) is a **compile error** until it is handled here -- which is what keeps a
- * new kind from silently behaving as an unintended write, without a runtime "unknown kind" branch.
+ * `creationWorkflowId`, and answers with the stored row the way `formDoc/create` does -- under [WSF.item]. An `edit`
+ * save (a core details workflow, issue #658) updates an existing form named by [gedraId] and answers with only that id:
+ * like a patch, it says the form's state may have moved rather than carrying it (issue #827), and a page re-reads the
+ * workflow view to show what the save changed. Only `create` and `edit` exist as save kinds; the `when` on [WfSaveKind]
+ * covers both, so a later kind (submit/approve/export) is a **compile error** until it is handled here -- which is what
+ * keeps a new kind from silently behaving as an unintended write, without a runtime "unknown kind" branch.
  */
 fun saveWorkflow(
     cxt: KdrCxt,
@@ -83,17 +83,17 @@ fun saveWorkflow(
 }
 
 /**
- * A survey's `edit` save (issue #658): fold the collected entries into the existing form.
+ * A core details workflow's `edit` save (issue #658): fold the collected entries into the existing form.
  *
- * There is **no completeness gate** here, unlike a create: a survey may be saved part-finished, and its
+ * There is **no completeness gate** here, unlike a create: a core details workflow may be saved part-finished, and its
  * incompleteness is recorded as state (for the CTA), not refused -- so this always saves. Each collected trait
  * is replaced wholesale ([GedraEditAction.addOrReplace]) with what the task supplied, through the ordinary
  * patch fold, so client-scope and validation are the patch endpoint's, unchanged -- except a trait whose form shows
  * only the fields its layout lists (`authoritative`, issue #1071): that form's answers are **merged** over the stored
  * entry, the fields it shows written and every other one left as stored, so workflows filling different parts of one
- * form leave each other's answers alone; a field it does not show is refused. The merged entry is validated whole. The form's derived survey
- * state is recomputed by the patch's own post-write hook (issue #675), inside the same transaction, so this
- * does not recompute it explicitly. It answers with the form's id and nothing of its data (issue #827): the view
+ * form leave each other's answers alone; a field it does not show is refused. The merged entry is validated whole.
+ * The form's derived core details state is recomputed by the patch's own post-write hook (issue #675), inside the
+ * same transaction, so this does not recompute it explicitly. It answers with the form's id and nothing of its data (issue #827): the view
  * is the one place a page reads a form's workflow state from, so a save that returned it too would be a second.
  */
 private fun editForm(
@@ -112,9 +112,9 @@ private fun editForm(
     val shown = WorkflowFormRules.shownFields(cxt, cxt.client, declared, entries.mapNotNull { it[GE.traitId].toOptStr() }.toSet())
     val edits = entries.map { entry ->
         val traitId = entry[GE.traitId].toOptStr()
-            ?: throw KdrException.mkInput("A survey edit entry has no ${GE.traitId}.")
-        // Absent data is not `{}` (issue #818): replacing an entry with nothing would store an empty one. The endpoint's
-        // schema check already refuses it over HTTP; this holds for a caller reaching here from code.
+            ?: throw KdrException.mkInput("A core details edit entry has no ${GE.traitId}.")
+        // Absent data is not `{}` (issue #818): replacing an entry with nothing would store an empty one. The
+        // endpoint's schema check already refuses it over HTTP; this holds for a caller reaching here from code.
         val data = entryDataOf(
             entry, traitId,
             missingHint = " An edit save replaces each entry with the data it carries; to remove an entry, delete it " +

@@ -304,10 +304,10 @@ instance at `dynamicruntime.org` runs this way.
 ## A worked example
 
 [`docs/demo-client/`](docs/demo-client/README.md) walks through the **conference demo**, a client built from
-configuration alone: a conference's call for talks, with a creation workflow, a survey, three normal workflows, and
-two reports. Each page shows one bundle's stored JSON and explains it piece by piece, and the pages are served in
-the application as well as here. Start with [the opening page](docs/demo-client/README.md). The demo is provisioned
-by the `conf-demo` simulation on any test instance.
+configuration alone: a conference's call for talks, with a creation workflow, a core details workflow, three normal
+workflows, and two reports. Each page shows one bundle's stored JSON and explains it piece by piece, and the pages are
+served in the application as well as here. Start with [the opening page](docs/demo-client/README.md). The demo is
+provisioned by the `conf-demo` simulation on any test instance.
 
 ## Design documents
 

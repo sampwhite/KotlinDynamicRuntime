@@ -20,7 +20,7 @@ import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.GedraEditAction
 import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.gedra.gedraConfigToEntries
-import com.dynamicruntime.common.gedra.workflow.SVY
+import com.dynamicruntime.common.gedra.workflow.CDF
 import com.dynamicruntime.common.gedra.workflow.WfEntry
 import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.schema.SCT
@@ -187,12 +187,12 @@ class GedraConfigWriteTrialTest : StringSpec({
                     mapOf(
                         CFEP.slot to CCT.cfactDef, GED.action to GedraEditAction.addOrMerge.name,
                         GE.data to mapOf(
-                            CCT.name to SVY.surveyComplete, CCT.group to "trial843", CCT.description to "Redeclared.",
+                            CCT.name to CDF.coreDetailsComplete, CCT.group to "trial843", CCT.description to "Redeclared.",
                         ),
                     ),
                 )))),
         )
-        refused[EP.errorMessage].toString() shouldContain SVY.surveyComplete
+        refused[EP.errorMessage].toString() shouldContain CDF.coreDetailsComplete
         val bundle = admin.getItem(ACEP.bundle, mapOf(CFEP.client to client, CFEP.name to "main"))
         (bundle[CFEP.slots] as Map<*, *>).containsKey(CCT.cfactDef) shouldBe false
     }

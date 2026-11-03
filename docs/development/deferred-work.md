@@ -224,7 +224,7 @@ looked fragile.
 
 `onRouteChange` (in `Routing.kt`) adds a page's handler to the list the one app-wide `hashchange` listener calls
 (#700), and nothing ever removes it. Five pages now do this — `EndpointCatalog`, `Users` (since #324),
-`FormsPage`, `EditFormPage` and `SurveyEditPage` — and every one of them mounts and
+`FormsPage`, `EditFormPage` and `CoreDetailsEditPage` — and every one of them mounts and
 unmounts on each navigation to and from it, so what accumulates over a session is one live closure per visit,
 each still running on every later hash change.
 
@@ -409,6 +409,16 @@ values in the table itself.
 - **A per-client setting** *(#1438, deferred here 2026-11-02).* A choice on the client, or on one report, to show the
   stored values on screen. Left out because the tooltip and the file already give the values, and no client has
   asked for them in the table.
+
+## When someone wants to see a form's whole data in one place
+
+A form's info page is drawn from its client's core details workflow, so it shows only the core details, and a line
+under its title says they are not all of the form's data (issue #1571). The traits the form holds from its workflows
+are reached through **View raw**.
+
+- **List a form's workflow traits on its info page** *(#1571, deferred here 2026-11-03).* Read-only, each under the
+  workflow that collects it. Left out because **View raw** already shows them, and nobody has asked to see them
+  beside the core details.
 
 ## When a client wants a gated trait from the traits editor
 

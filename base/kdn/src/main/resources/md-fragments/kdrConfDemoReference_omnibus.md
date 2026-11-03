@@ -6,7 +6,7 @@
 # !workflowHelp
 # @confdemo
 # +createTalk How this form is built from configuration: [Creating a talk](/docs/demo-client/create-talk.md).
-# +talkSurvey How this form is built from configuration: [The talk survey](/docs/demo-client/talk-survey.md).
+# +talkCoreDetails How this form is built from configuration: [The talk's core details](/docs/demo-client/talk-core-details.md).
 # +abstract How this form is built from configuration: [The abstract](/docs/demo-client/abstract.md).
 # +review How this form is built from configuration: [Committee review](/docs/demo-client/committee-review.md).
 # +logistics How this form is built from configuration: [Workshop logistics](/docs/demo-client/workshop-logistics.md).

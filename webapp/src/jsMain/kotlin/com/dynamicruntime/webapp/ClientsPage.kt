@@ -1923,7 +1923,7 @@ private fun ChildrenBuilder.clientsListing(rows: List<ClientOverview>?, loadErro
                                     className = ClassName("op-num")
                                     countCell(userCountText(c.users, c.unclaimedUsers), clientUsersHref(c.clientId, acrossClients = true).takeIf { present })
                                 }
-                                td { className = ClassName("op-num"); +workflowsText(c.workflowCount, c.hasSurvey) }
+                                td { className = ClassName("op-num"); +workflowsText(c.workflowCount, c.hasCoreDetails) }
                                 // How much the client's own configuration changes (issue #917), leading to the detail's
                                 // Copy & menu section; a dash, unlinked, when it changes nothing.
                                 td {

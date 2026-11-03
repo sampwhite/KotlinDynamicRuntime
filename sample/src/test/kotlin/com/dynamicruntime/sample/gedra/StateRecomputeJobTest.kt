@@ -36,7 +36,7 @@ import io.kotest.matchers.types.shouldBeInstanceOf
 
 /**
  * The derived-state recompute job (issue #793), run against the sample's acme client, whose derivers compute a
- * year-presence projection and survey state for every form.
+ * year-presence projection and core details state for every form.
  *
  * A form's state is made stale the way time and configuration make it stale in life -- its derived entries no
  * longer what a recompute would give -- by writing its state directly. Runs are driven from the calling thread

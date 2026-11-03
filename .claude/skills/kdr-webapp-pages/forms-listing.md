@@ -41,6 +41,14 @@ catalog for a trait it has none for. This is for the cross-client view below, wh
 the catalog is the admin's own client's: from the catalog alone, another client's own trait would be named by its id,
 and a global trait that client renamed would get the admin's client's name for it.
 
+## A form's info page shows its core details (issue #1571)
+
+A row's **View Info** opens the form through its client's core details workflow (`CoreDetailsEditPage`), so the page
+shows the form's **core details** -- what every form carries -- and not the traits its workflows collect. A line under
+the title says so (`coreDetailsNote`), unless the workflow has help of its own (`workflowHelp` copy), which says it in
+the client's words instead; **View raw** shows everything. Listing the workflow traits on the page is in
+`deferred-work.md`, under someone wanting a form's whole data in one place.
+
 ## The forms listing across clients (issues #668, #714)
 
 An `allClients` admin's forms listing starts as the **cross-client view**: every client's rows, a Client ID column
@@ -50,27 +58,26 @@ re-fetches the catalog with `client=X`, so the list, get, patch, delete and valu
 copies, the columns and filter fields come from X's `formDocs`, and `client=X` still rides as the row filter (a client
 path alone does not narrow an unrestricted scope). The rules that follow from that:
 
-- **A form's client comes from its gedra id, never from the selector.** The raw editor and the survey page read
+- **A form's client comes from its gedra id, never from the selector.** The raw editor and the core details page read
   it with `formClientOf(id)` and ask the backend for the endpoint on *that* client's surface
   (`fetchFormEndpoint` → `/schema/endpoint?resolveClient=true&client=X`). The backend resolves the copy **and
   falls back** to the shared endpoint for a client that varies nothing — a page must never form a
   `/gedra/<client>/…` path itself, because only the catalog knows whether the copy exists (an exact lookup
   found nothing for `public`, and the edit page said the account had "no way to edit forms").
 - **The workflow view and its save follow the resolved path.** `clientOfResolvedPath` says whether the view
-  came from X's copy; the save posts to the same copy, so a survey is edited under X's rules.
-- **Every way home from a save goes through `formsListingReturn`.** The editors' Done (#726) and all three
-  create surfaces -- the trait picker, the creation workflow, create-for-user -- go home the same way: the
-  listing's search, sort and chosen client carried back, and the row flagged to flash. (A survey *save* stays
-  on the form; Done is what returns.) A create goes through `formsCreateReturn`, which adds two rules: it is
-  marked (`hlc=1`) so a row the listing cannot show is announced rather than silently absent, and it returns
-  **only while the user is still on the page the create was launched from** -- capture `routeParams()` before
-  the `launch`, because a slow response must not pull someone out of wherever they went next. Keep the save
-  button busy across that navigation (no `running = false`, no `finally` reset): the page unmounts a tick
-  later, and a live button in between makes a second form. Create-for-user returns to the listing it was
-  launched from, as it was (#762 review; see the next bullet). `formsArrivalNote` is the reading half, and
-  names the reason (filter, sort, or neither). A new save surface calls the helpers; it does not build its own
-  address. #758 was the workflow create keeping an in-place "Form created" page after the picker had moved to
-  this return (#663).
+  came from X's copy; the save posts to the same copy, so a core details workflow is edited under X's rules.
+- **Every way home from a save goes through `formsListingReturn`.** The editors' Done (#726) and all three create
+  surfaces -- the trait picker, the creation workflow, create-for-user -- go home the same way: the listing's search,
+  sort and chosen client carried back, and the row flagged to flash. (A core details workflow *save* stays on the form;
+  Done is what returns.) A create goes through `formsCreateReturn`, which adds two rules: it is marked (`hlc=1`) so a
+  row the listing cannot show is announced rather than silently absent, and it returns **only while the user is still on
+  the page the create was launched from** -- capture `routeParams()` before the `launch`, because a slow response must
+  not pull someone out of wherever they went next. Keep the save button busy across that navigation (no `running =
+  false`, no `finally` reset): the page unmounts a tick later, and a live button in between makes a second form.
+  Create-for-user returns to the listing it was launched from, as it was (#762 review; see the next bullet).
+  `formsArrivalNote` is the reading half, and names the reason (filter, sort, or neither). A new save surface calls the
+  helpers; it does not build its own address. #758 was the workflow create keeping an in-place "Form created" page after
+  the picker had moved to this return (#663).
 - **"New form" creates in the caller's own client**, so it is not offered under a chosen client and the note
   under the selector says so. Creating for someone else is its own surface, **Create a form for a user**
   (`CreateForUserPage`, #727): pick the user, then fill in the form drawn from *that user's client's* create

@@ -16,7 +16,7 @@ break anything for long.
 
 ## Part 1: The conference demo
 
-![Part 1: join, submit a talk, survey, abstract, committee, review, and result](images/walk-part1.svg)
+![Part 1: join, submit a talk, core details, abstract, committee, review, and result](images/walk-part1.svg)
 
 The conference demo is a small conference's call for talks. Speakers submit the talks they want to give, and a
 committee reviews each one and accepts it for the program. You play both parts: first a speaker, then a member of the
@@ -47,18 +47,18 @@ and it asks for one thing:
 Choose **Create the talk**. The talk appears in your forms list, with the status **Needs Info**: the conference needs
 to know more before the committee looks at it.
 
-### Answer the survey
+### Fill in the core details
 
 Choose **Needs Info** on your talk's row. The form that opens is **About your talk**:
 
-<!-- kdr-walk: workflow=talkSurvey -->
+<!-- kdr-walk: workflow=talkCoreDetails -->
 | Field | What to choose |
 | --- | --- |
 | Track | Kotlin |
 | Is this your first conference talk? | Yes |
 
 Choose **Save**. Back in the forms list, the talk's status is **Valid**, and the **Workflows** column now offers
-**Committee review**, which waits for a complete survey.
+**Committee review**, which waits for complete core details.
 
 ### Write the abstract
 
@@ -120,9 +120,9 @@ change them. Only a committee member may save the review, which is why the speak
 
 ### What you have seen
 
-- **One form, several workflows.** The talk was created by one workflow, completed by a survey, and then worked on by
-  two more, each with its own form showing only the fields it needs.
-- **A workflow that waits.** The committee review was not available until the survey was complete.
+- **One form, several workflows.** The talk was created by one workflow, completed by its core details workflow, and
+  then worked on by two more, each with its own form showing only the fields it needs.
+- **A workflow that waits.** The committee review was not available until the talk's core details were complete.
 - **Who may do what.** The review could be saved only by a user with the committee's label, and the speaker saw it
   read-only.
 - **Several users, one person.** You acted as a speaker and as a committee member, with the same email, switching

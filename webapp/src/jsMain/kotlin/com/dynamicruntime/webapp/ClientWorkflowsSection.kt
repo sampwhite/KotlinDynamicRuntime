@@ -69,10 +69,10 @@ private fun visibilityKey(workflowId: String) = visibilityPrefix + workflowId
 private fun openKey(templateId: String?, workflowId: String?) = workflowId?.let { "edit:$it" } ?: "new:$templateId"
 
 /**
- * A client's workflows, on its page (issue #1120): the client's own -- each made from a template with **Edit…**, or
- * why its slots cannot be changed here -- and the deployment's templates, each with **Use…**, or greyed with why a
- * workflow cannot be made from it now (a client has one creation and one survey; a plan limits workflows and their
- * tasks). Read from `/clientAdmin/client/workflows` on mount and on every refresh generation.
+ * A client's workflows, on its page (issue #1120): the client's own -- each made from a template with **Edit…**, or why
+ * its slots cannot be changed here -- and the deployment's templates, each with **Use…**, or greyed with why a workflow
+ * cannot be made from it now (a client has one creation and one core details workflow; a plan limits workflows and
+ * their tasks). Read from `/clientAdmin/client/workflows` on mount and on every refresh generation.
  *
  * The slot editor ([WorkflowSlotEditor]) chooses only what a template leaves to the client -- the workflow's name, and
  * per data-entry task its label and traits -- and explains the rest in words ([workflowFixedParts]). A save takes

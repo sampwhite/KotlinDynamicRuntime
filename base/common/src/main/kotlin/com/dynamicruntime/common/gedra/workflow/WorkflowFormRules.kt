@@ -20,7 +20,7 @@ import com.dynamicruntime.common.util.toOptStr
  *
  * A workflow does not alter schema, so these never change what data is valid. They decide what *this form*
  * accepts: its save refuses entries that miss them ([requireMet]), and its task status counts them
- * ([surveyContentFailures]), so data saved elsewhere that this form would not accept leaves its task unfinished.
+ * ([coreDetailsContentFailures]), so data saved elsewhere that this form would not accept leaves its task unfinished.
  */
 object WorkflowFormRules {
     /**

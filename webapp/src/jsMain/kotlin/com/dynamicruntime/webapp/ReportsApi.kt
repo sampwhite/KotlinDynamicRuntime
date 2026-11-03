@@ -112,8 +112,8 @@ fun vocabularyChoices(path: String, kind: String?): List<SchOption> {
     if (kind != null && kind != ReportKind.string.name) return emptyList()
     val parsed = (parseReportPath(path) as? Parsed.Ok)?.value ?: return emptyList()
     return when {
-        parsed is MetaPath && parsed.attrName in setOf(RMETA.formStatus, RMETA.surveyStatus) ->
-            SurveyStatus.entries.map { SchOption(it.wire, it.label) }
+        parsed is MetaPath && parsed.attrName in setOf(RMETA.formStatus, RMETA.coreDetailsStatus) ->
+            FormStatus.entries.map { SchOption(it.wire, it.label) }
         parsed is WorkflowPath && parsed.taskId == null && parsed.attrName == RWF.category ->
             WfColumnCategory.entries.map { SchOption(it.name, workflowStateTitle(it)) }
         else -> emptyList()

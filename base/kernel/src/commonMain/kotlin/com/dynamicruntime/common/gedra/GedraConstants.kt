@@ -302,6 +302,14 @@ object GDF {
     const val withWorkflowSummary = "withWorkflowSummary"
 
     /**
+     * List param (issues #695, #789): only forms whose **status** -- what the forms list's Status chip shows, by
+     * `formStatusOf` -- is this one of the `FSV` values. The core details workflow's own three, or a workflow's
+     * Needs Review or Finished where the core details would read Valid. Named `coreDetailsStatus` until issue #1571
+     * found it was the form's status all along.
+     */
+    const val formStatus = "formStatus"
+
+    /**
      * In a listing's `summary` (issue #1095): **the user the listing is confined to**, when the request named one
      * (`user`) -- who the server resolved that to. The request may name the user by id or by address, and an address
      * names a *person*, whom the server resolves to their default user; without this a caller is shown one of that

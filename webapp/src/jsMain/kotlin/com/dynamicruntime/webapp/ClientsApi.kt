@@ -59,7 +59,7 @@ class ClientOverview(
     val users: Int,
     val unclaimedUsers: Int,
     val workflowCount: Int,
-    val hasSurvey: Boolean,
+    val hasCoreDetails: Boolean,
     val issues: List<String>,
     /** How much of its copy and interface the client's own configuration changes (issue #917). */
     val copyOverrides: Int,
@@ -101,7 +101,7 @@ fun parseClientOverview(items: List<Map<String, Any?>>): List<ClientOverview> = 
         users = int(CLD.users),
         unclaimedUsers = int(CLD.unclaimedUsers),
         workflowCount = int(CLD.workflowCount),
-        hasSurvey = row[CLD.hasSurvey] == true,
+        hasCoreDetails = row[CLD.hasCoreDetails] == true,
         issues = row[CLD.issues].toJsonListOfMaps().mapNotNull { it[GCI.message].toOptStr() },
         copyOverrides = int(CLD.copyOverrides),
         blockOverrides = int(CLD.blockOverrides),
@@ -269,8 +269,8 @@ fun clientOriginText(origin: String, storedConfigs: Int): String = when (origin)
 /** A client's active users with the unclaimed ones told apart: "12", or "12 (3 unclaimed)". Pure, and covered under `jsNodeTest`. */
 fun userCountText(users: Int, unclaimed: Int): String = if (unclaimed == 0) "$users" else "$users ($unclaimed unclaimed)"
 
-/** A client's workflows, noting a survey: "4", "4, survey". Pure, and covered under `jsNodeTest`. */
-fun workflowsText(count: Int, hasSurvey: Boolean): String = if (hasSurvey) "$count, survey" else "$count"
+/** A client's workflows, noting a core details workflow: "4", "4, core details". Pure, and covered under `jsNodeTest`. */
+fun workflowsText(count: Int, hasCoreDetails: Boolean): String = if (hasCoreDetails) "$count, core details" else "$count"
 
 /**
  * Where a client's Forms count leads (issue #905): My forms with that client chosen, for an administrator who sees

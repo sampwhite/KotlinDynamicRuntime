@@ -42,14 +42,15 @@ import io.kotest.matchers.collections.shouldNotContain
 import io.kotest.matchers.shouldBe
 
 /**
- * The `cfactCalc` event and `computeCFactsFromData` end to end (issue #678): a survey workflow declares a
+ * The `cfactCalc` event and `computeCFactsFromData` end to end (issue #678): a core details workflow declares a
  * `computeCFactsFromData` function, and creating/editing a form emits the mapped cfacts into the form's derived,
- * form-singleton state -- read back through the survey completion entry, the shared `cfacts` state, and
- * `assembleFormCfacts`. The function runs *inside* the survey's derived-state recompute (decision 5), which
+ * form-singleton state -- read back through the core details completion entry, the shared `cfacts` state, and
+ * `assembleFormCfacts`. The function runs *inside* the core details workflow's derived-state recompute (decision 5),
+ * which
  * #675's post-write hook drives on every write, so the cfacts follow the data on a create and a raw patch alike.
  *
  * A **per-test dynamic client** (the `kdr-test-clients` technique), because the machinery is production
- * `base/common` code and a purpose-built survey proves the whole path without leaning on acme's shapes. The
+ * `base/common` code and a purpose-built core details workflow proves the whole path without leaning on acme's shapes. The
  * runtime unknown-cfact guard (decision 8) is exercised separately by calling [runCfactCalc] directly, since a
  * literal undeclared cfact is already refused at boot and so never reaches the runtime drop.
  */
@@ -63,7 +64,7 @@ class CfactCalcTest : StringSpec({
     fun asClient(c: String): KdrCxt = cxt.mkSubContext("setup", c).also { it.userId = 9000L }
 
     // The demo the design gives: a `projects` trait whose `projectChoices` list maps to per-project cfacts. The
-    // survey collects `projects`, and its workflow-global cfactCalc function turns the choices into cfacts.
+    // core details workflow collects `projects`, and its workflow-global cfactCalc function turns the choices into cfacts.
     val config = gedraConfig(cxt, "${client}cfg", clientNamespace(client), client) {
         defineClient(
             ClientDef(
@@ -79,7 +80,7 @@ class CfactCalcTest : StringSpec({
                 items { type = SCT.string }
             }
         }
-        workflow("reviewForm", WfEntry.survey) {
+        workflow("reviewForm", WfEntry.coreDetails) {
             function(
                 computeCFactsFromData {
                     trait = "projects"
@@ -143,7 +144,7 @@ class CfactCalcTest : StringSpec({
     "a choice in the mapping emits its cfact, through both the stored state and assembleFormCfacts" {
         val gid = create("projectAForClient")
 
-        // Emitted into the form-singleton cfacts state, beside the survey's own facts.
+        // Emitted into the form-singleton cfacts state, beside the core details workflow's own facts.
         storedCfacts(gid) shouldContain "projectA"
         storedCfacts(gid) shouldNotContain "projectB"
 
@@ -165,7 +166,7 @@ class CfactCalcTest : StringSpec({
         val gid = create("projectAForClient")
         storedCfacts(gid) shouldContain "projectA"
 
-        // A raw patch (not the survey save) swaps the choice; the post-write hook recomputes, so projectA gives
+        // A raw patch (not the core details save) swaps the choice; the post-write hook recomputes, so projectA gives
         // way to projectB -- the derived cfacts follow the data on every write path.
         setChoices(gid, "projectBForClient")
         storedCfacts(gid) shouldContain "projectB"
@@ -178,7 +179,7 @@ class CfactCalcTest : StringSpec({
         // boot and never runs.
         val def = parseWfDef(
             cxt,
-            WfDefBuilder("ghostWf", WfEntry.survey).apply {
+            WfDefBuilder("ghostWf", WfEntry.coreDetails).apply {
                 task("only", "Review") { trait("projects", required = false); save("save", "Save", WfSaveKind.edit) }
             }.build(),
         )

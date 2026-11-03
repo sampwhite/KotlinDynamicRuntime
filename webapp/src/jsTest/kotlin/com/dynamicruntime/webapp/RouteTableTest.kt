@@ -43,8 +43,8 @@ class RouteTableTest {
         assertRoute("/forms", HP.page to HMENU.pageForms)
         assertRoute("/forms/new", HP.page to HMENU.pageNewForm)
         assertRoute("/forms/new-for-user", HP.page to pageCreateForUser)
-        assertRoute("/forms/gd.fd.acme.a", HP.page to pageSurveyEdit, HP.gedra to "gd.fd.acme.a")
-        assertRoute("/forms/gd.fd.acme.a/edit", HP.page to pageSurveyEdit, HP.gedra to "gd.fd.acme.a", HP.edit to "1")
+        assertRoute("/forms/gd.fd.acme.a", HP.page to pageCoreDetailsEdit, HP.gedra to "gd.fd.acme.a")
+        assertRoute("/forms/gd.fd.acme.a/edit", HP.page to pageCoreDetailsEdit, HP.gedra to "gd.fd.acme.a", HP.edit to "1")
         assertRoute("/forms/gd.fd.acme.a/raw", HP.page to pageEditForm, HP.gedra to "gd.fd.acme.a")
         assertRoute("/workflows", HP.page to HMENU.pageWorkflows)
         assertRoute("/workflows/review/forms", HP.page to pageWorkflowForms, WAGG.workflowId to "review")
@@ -73,10 +73,10 @@ class RouteTableTest {
     fun refinementsRideTheQueryAndTheTokenTheFragment() {
         assertRoute(
             "/forms/gd.fd.acme.a/edit?task=review&from=forms",
-            HP.page to pageSurveyEdit, HP.gedra to "gd.fd.acme.a", HP.edit to "1", HP.task to "review", HP.from to "forms",
+            HP.page to pageCoreDetailsEdit, HP.gedra to "gd.fd.acme.a", HP.edit to "1", HP.task to "review", HP.from to "forms",
         )
         // A value that is not the path's own (`edit=0`) is a refinement of the view, not the edit mode.
-        assertRoute("/forms/gd.fd.acme.a?edit=0", HP.page to pageSurveyEdit, HP.gedra to "gd.fd.acme.a", HP.edit to "0")
+        assertRoute("/forms/gd.fd.acme.a?edit=0", HP.page to pageCoreDetailsEdit, HP.gedra to "gd.fd.acme.a", HP.edit to "0")
         assertRoute("/invite#token=abc", HP.page to HMENU.pageInvite, HMENU.inviteTokenParam to "abc")
         // Any other key in the fragment is not a param.
         assertEquals(mapOf(HP.page to HMENU.pageDocs, HP.doc to "a"), readBack("/docs/a#u=1"))

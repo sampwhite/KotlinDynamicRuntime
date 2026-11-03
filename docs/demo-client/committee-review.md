@@ -3,7 +3,7 @@
 # Committee review
 
 The committee review is a normal workflow that not every talk may enter, and not every person may work on. A talk
-may enter it once its survey is complete. A committee member records a review, then accepts the talk; the speaker
+may enter it once its core details are complete. A committee member records a review, then accepts the talk; the speaker
 can read the review but cannot change it.
 
 Two pieces of configuration go into it, and this page shows both:
@@ -63,14 +63,14 @@ Here is the whole `review` bundle:
       "definition": {
         "workflowId": "review",
         "entry": "normal",
-        "$comment": "The committee reviews a talk once its survey is complete, then accepts it.",
+        "$comment": "The committee reviews a talk once its core details are complete, then accepts it.",
         "label": "Committee review",
         "eligibility": [
           {
-            "id": "surveyDone",
+            "id": "coreDetailsDone",
             "$comment": "Reviewers need the track.",
-            "test": "kdr:surveyComplete",
-            "explanation": "The talk's survey has to be complete before the committee reviews it."
+            "test": "kdr:coreDetailsComplete",
+            "explanation": "The talk's core details have to be complete before the committee reviews it."
           }
         ],
         "tasks": [
@@ -123,9 +123,9 @@ Four things are new. The reference explains each in general under
 [Facts and eligibility](reference.md#facts-and-eligibility) and
 [Who may work on a task](reference.md#who-may-work-on-a-task); here is what they do for the review.
 
-**An eligibility test.** The `eligibility` list has one test: the form must have the fact `kdr:surveyComplete`,
-which the survey gives it once every trait the survey requires has an entry. A talk whose survey is not done cannot
-enter the review, and the forms list shows the `explanation` instead of offering it.
+**An eligibility test.** The `eligibility` list has one test: the form must have the fact `kdr:coreDetailsComplete`,
+which the core details workflow gives it once every trait the workflow requires has an entry. A talk whose core details
+are not done cannot enter the review, and the forms list shows the `explanation` instead of offering it.
 
 **A task only a committee member may save.** The `recordReview` task runs a `userHasLabel` function, which asserts
 the fact `kdr:reviewer` for a person whose user has the `committee` label. Its `saveWhen` then allows the save for
@@ -152,8 +152,8 @@ may map its own onto: `kdr:needsReview` and `kdr:finished`, which the forms list
 
 ## What the speaker sees
 
-In the forms list, a talk whose survey is done shows **Committee review available**; one whose survey is not done
-shows the explanation instead. The speaker can open the workflow and read it, and the page says *Someone else
+In the forms list, a talk whose core details are done shows **Committee review available**; one whose core details are
+not done shows the explanation instead. The speaker can open the workflow and read it, and the page says *Someone else
 completes this step; you can see it here.* Once the review is recorded, the speaker sees the score and the notes.
 
 ## What a committee member sees
@@ -164,8 +164,8 @@ is **Forms**, with every speaker's talks. An editor is not at an administrator's
 abstract to edit it, the form leaves off the note for the organizers, as the speaker's does (see
 [Abstract](abstract.md)).
 
-On a talk whose survey is done, the member opens **Committee review** and presses **Engage**, as the speaker did for
-the abstract. The **Record the review** step is then editable: a **Score** and **Notes for the speaker**, and a
+On a talk whose core details are done, the member opens **Committee review** and presses **Engage**, as the speaker did
+for the abstract. The **Record the review** step is then editable: a **Score** and **Notes for the speaker**, and a
 **Save the review** button. Once saved, the **Accept the talk** step offers its button. After it is pressed, the step
 reads *Accepted by* and who accepted it, and the talk's status in the forms list is **Finished**.
 

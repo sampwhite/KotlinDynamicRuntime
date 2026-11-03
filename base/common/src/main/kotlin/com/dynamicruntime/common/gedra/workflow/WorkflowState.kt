@@ -23,9 +23,9 @@ import com.dynamicruntime.common.util.toOptStr
  * [WFS.workflowState] projection, and beside it the asserted [WFS.workflowEngagement] and [WFS.workflowApproval]
  * (issue #787), all keyed by [WFD.workflowId] -- an approval by its task as well.
  *
- * All are **keyed**, where the survey's [SVY.surveyCompletion] is form-singleton, and for the reason that file
- * gives: creation and survey are the one-per-form front end of a form's data, while a normal workflow is
- * many-per-form, so its state is about *a* workflow rather than about the form.
+ * All are **keyed**, where the core details workflow's [CDF.coreDetailsCompletion] is form-singleton, and for the
+ * reason that file gives: creation and core details workflow are the one-per-form front end of a form's data, while a
+ * normal workflow is many-per-form, so its state is about *a* workflow rather than about the form.
  *
  * Splitting each act out as its own asserted trait is what keeps the recompute rule simple. Every recompute
  * preserves asserted entries verbatim and replaces derived ones wholesale, so an engagement or approval survives with no
@@ -64,13 +64,13 @@ fun workflowStateConfig(cxt: KdrCxt): GedraConfig = gedraConfig(cxt, WFS.stateBu
     type(WFS.workflowCtaStatus) {
         type = SCT.kObject
         description = "The general status of a workflow's CTA task: complete, valid, and the traits behind each."
-        property(SVY.complete, "Every trait the task requires has an entry present.", required = true) { type = SCT.boolean }
-        property(SVY.valid, "The present entries of the task's traits pass their schema.", required = true) { type = SCT.boolean }
-        property(SVY.missingTraits, "Required traits of the task with no entry present.") {
+        property(CDF.complete, "Every trait the task requires has an entry present.", required = true) { type = SCT.boolean }
+        property(CDF.valid, "The present entries of the task's traits pass their schema.", required = true) { type = SCT.boolean }
+        property(CDF.missingTraits, "Required traits of the task with no entry present.") {
             type = SCT.array
             items { type = SCT.string }
         }
-        property(SVY.invalidTraits, "Traits of the task whose present entries fail their schema.") {
+        property(CDF.invalidTraits, "Traits of the task whose present entries fail their schema.") {
             type = SCT.array
             items { type = SCT.string }
         }
@@ -181,9 +181,9 @@ fun addWorkflowSingletonCFacts(collector: SchemaCollector) {
 }
 
 /**
- * Computes a form's per-workflow [WFS.workflowState] entries (issue #794) -- one per normal workflow the form
- * is being evaluated against. Registered as a production [GedraStateDeriver] (no `featureName`), so it runs
- * inside the same create/patch/import transaction the survey's deriver does, and on the standalone recompute.
+ * Computes a form's per-workflow [WFS.workflowState] entries (issue #794) -- one per normal workflow the form is being
+ * evaluated against. Registered as a production [GedraStateDeriver] (no `featureName`), so it runs inside the same
+ * create/patch/import transaction the core details workflow's deriver does, and on the standalone recompute.
  *
  * ### What it emits, and what that makes the implicit delete
  *
@@ -206,7 +206,7 @@ fun addWorkflowSingletonCFacts(collector: SchemaCollector) {
  *  2. **The singleton cfacts it contributes** ([WFS.singletonCfacts]): each of its [WfDef.singletons] rules
  *     whose condition matches its *current* cfacts -- the form's (from the derivers before this one) plus its
  *     own. Only an **engaged** workflow contributes; the union is emitted as a [GT.cfacts] contribution, which
- *     the recompute merges into the form's one set beside the survey's.
+ *     the recompute merges into the form's one set beside the core details workflow's.
  *  3. **Its eligibility** (issue #783): [WFS.eligible] and the ids of the tests the form fails, against the
  *     form's cfacts **plus the singletons of every *other* engaged workflow** -- so one workflow can gate on
  *     another (a form already `finished` somewhere else, say). Never its own: a workflow's own `finished` must
@@ -302,7 +302,7 @@ object WorkflowStateDeriver : GedraStateDeriver {
             }
             mapOf(GE.traitId to WFS.workflowState, GE.data to data)
         }
-        // The contribution to the form's one cfacts set; the recompute merges it with the survey's.
+        // The contribution to the form's one cfacts set; the recompute merges it with the core details workflow's.
         return if (contributed.isEmpty()) out else out + mapOf(GE.traitId to GT.cfacts, GE.data to mapOf(GT.facts to contributed.toList()))
     }
 }

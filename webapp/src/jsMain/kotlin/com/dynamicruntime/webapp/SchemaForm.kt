@@ -120,10 +120,10 @@ class FormOpts(
      */
     val showDerivedValues: Boolean = false,
     /**
-     * The whole form root is a trait's **data** payload (issue #712) -- the survey View Info, which renders one
-     * trait's data type directly -- so every derived-with-value field at any depth is content, not envelope, and
-     * [showDerivedValues] reveals it. The trait data carries no system envelope, so there is nothing to keep
-     * hidden. Off by default.
+     * The whole form root is a trait's **data** payload (issue #712) -- the core details workflow View Info, which
+     * renders one trait's data type directly -- so every derived-with-value field at any depth is content, not
+     * envelope, and [showDerivedValues] reveals it. The trait data carries no system envelope, so there is nothing to
+     * keep hidden. Off by default.
      */
     val derivedRootIsTraitData: Boolean = false,
     /**

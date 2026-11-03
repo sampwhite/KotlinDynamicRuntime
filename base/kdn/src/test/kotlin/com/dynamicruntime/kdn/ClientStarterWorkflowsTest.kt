@@ -40,9 +40,9 @@ import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 
 /**
- * A new client's starter workflows (issue #1346): a creation workflow and a survey made from core's templates, each in a
- * configuration of its own, written and published with the definition, which includes the trait they collect -- on the
- * platform's create, a self-serve create, and on request not at all -- and removing one again.
+ * A new client's starter workflows (issue #1346): a creation workflow and a core details workflow made from core's
+ * templates, each in a configuration of its own, written and published with the definition, which includes the trait
+ * they collect -- on the platform's create, a self-serve create, and on request not at all -- and removing one again.
  */
 class ClientStarterWorkflowsTest : StringSpec({
     val cxt = TestInstances.default("starterWorkflows1346")
@@ -59,14 +59,14 @@ class ClientStarterWorkflowsTest : StringSpec({
     fun stored(client: String, name: String) =
         GedraConfigService.get(cxt).readLatest(cxt.mkSubContext("read", client), GedraId.of(GedraConfigType.configDoc, client, name))
 
-    "a new client starts with a creation workflow and a survey, made from the templates and published" {
+    "a new client starts with a creation workflow and a core details workflow, made from the templates and published" {
         val client = "starter1346"
         create(client)
         val workflows = WorkflowService.get(cxt).forClient(client).workflows.mapValues { it.value.def }
         workflows.keys shouldContainExactly setOf("newForm", "formDetails")
         workflows.getValue("newForm").entry shouldBe WfEntry.creation
         workflows.getValue("newForm").fromTemplate shouldBe WFT.createForm
-        workflows.getValue("formDetails").fromTemplate shouldBe WFT.survey
+        workflows.getValue("formDetails").fromTemplate shouldBe WFT.coreDetails
         // The definition includes the trait they collect, so they are workflows the client may run.
         ClientService.get(cxt).known(client).shouldNotBeNull().includedTraits shouldContain GT.name
         // Each in a configuration of its own, published, holding only the reference.
@@ -119,7 +119,7 @@ class ClientStarterWorkflowsTest : StringSpec({
         WorkflowService.get(cxt).forClient(client).workflows.keys shouldContainExactly setOf("newForm")
         stored(client, "${CWF.configPrefix}formDetails").shouldNotBeNull().entriesBySlot().shouldBeEmpty()
         chief.expectError(EXC.notFound, UADEP.clientWorkflowRemove, mapOf(WFD.workflowId to "formDetails"))
-        // Its name is free again: the survey template makes it anew, beside the configuration it was in.
-        chief.getItem(UADEP.clientWorkflows)[CWF.templates].toString() shouldContain WFT.survey
+        // Its name is free again: the core details template makes it anew, beside the configuration it was in.
+        chief.getItem(UADEP.clientWorkflows)[CWF.templates].toString() shouldContain WFT.coreDetails
     }
 })

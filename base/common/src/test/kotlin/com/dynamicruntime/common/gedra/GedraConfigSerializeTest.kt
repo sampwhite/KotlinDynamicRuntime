@@ -51,7 +51,7 @@ class GedraConfigSerializeTest : StringSpec({
         }
         trait("AcmeTaggedEntry", "acmeTagged", setOf(GedraDataType.formDoc), dataType = "AcmeShared")
         traitUsage("acmeNote", "Note", "text", UsageKind.string)
-        workflow("acmeWf", WfEntry.survey) { task("t1", "First") { trait("acmeNote"); save("s", "Save", WfSaveKind.edit) } }
+        workflow("acmeWf", WfEntry.coreDetails) { task("t1", "First") { trait("acmeNote"); save("s", "Save", WfSaveKind.edit) } }
         fragmentOverlay("help") { namespace("copy") { key("title", "Help") } }
         uiBlockOverlay("menu") { set("title", "Menu") }
         cfact("acmeReady", "acme", "When acme is set up", toFrontend = true)
@@ -139,7 +139,8 @@ class GedraConfigSerializeTest : StringSpec({
             }
             workflow("review", WfEntry.normal) {
                 comment = "Committee review."
-                eligibility("surveyDone", "surveyComplete", "Finish the survey first.", comment = "Reviewers need the track.")
+                eligibility("coreDetailsDone", "coreDetailsComplete", "Finish the core details workflow first.",
+                    comment = "Reviewers need the track.")
                 task("score", "Score it") {
                     comment = "The committee's score."
                     trait("confTalk")

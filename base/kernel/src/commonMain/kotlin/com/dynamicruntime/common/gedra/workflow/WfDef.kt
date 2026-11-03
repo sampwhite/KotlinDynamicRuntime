@@ -207,7 +207,8 @@ object WVF {
 
     /**
      * A normal workflow's [WfPhase] at the moment of the view (issue #790), by name -- so a page can draw a frozen
-     * workflow (`lifetimeOnly`) read-only and offer engaging only when `engageable`. Absent for creation and survey.
+     * workflow (`lifetimeOnly`) read-only and offer engaging only when `engageable`. Absent for creation and core
+     * details workflow.
      */
     const val phase = "phase"
 
@@ -267,7 +268,7 @@ object WVF {
 
     /**
      * On a task: the form's **current entries** for that task's traits, present only when the view resolved
-     * against an existing gedra (a survey edit, issue #658) -- what seeds each field with its stored value. A
+     * against an existing gedra (a core details edit, issue #658) -- what seeds each field with its stored value. A
      * creation view carries none, since there is no form yet. Each is a stored `{traitId, data, ...}` entry.
      */
     const val entries = "entries"
@@ -293,9 +294,9 @@ object WVF {
 
     /**
      * On a task: its **status** for the task rail (issue #700) -- `complete` / `valid` / `missingTraits` /
-     * `invalidTraits` under the survey's own words (`SVY`), plus [problems]. Computed by the resolver from the
-     * task's entries and the client's entry union with the same presence and content rules the survey's
-     * stored state uses, so the rail and the forms list's status column cannot disagree.
+     * `invalidTraits` under the core details workflow's own words (`CDF`), plus [problems]. Computed by the resolver
+     * from the task's entries and the client's entry union with the same presence and content rules the core details
+     * workflow's stored state uses, so the rail and the forms list's status column cannot disagree.
      */
     const val status = "status"
 
@@ -394,42 +395,45 @@ object WFC {
 }
 
 /**
- * How a workflow is entered. A closed set, so an enum. [creation] (issue #533), [survey] (issue #656) and
+ * How a workflow is entered. A closed set, so an enum. [creation] (issue #533), [coreDetails] (issue #656) and
  * [normal] (issue #794) are all built.
  */
 @Suppress("EnumEntryName")
-enum class WfEntry {
+enum class WfEntry(
+    /** The kind in words, for a message: "core details", where the name is `coreDetails` (issue #1571). */
+    val words: String,
+) {
     /** Runs when a form document is created: one task, one save, and the save creates the document. */
-    creation,
+    creation("creation"),
 
     /**
-     * An owner revisits a form's global data outside any one workflow -- the second face of the create/edit
-     * paradigm (issue #656). One to three tasks (`WfDef.surveyMaxTasks`), saves of kind [WfSaveKind.edit], and
-     * at most one per scope.
+     * An owner revisits a form's **core details** -- what every form carries, not all of its data -- outside any one
+     * workflow: the second face of the create/edit paradigm (issue #656, named in issue #1571). One to three tasks
+     * (`WfDef.coreDetailsMaxTasks`), saves of kind [WfSaveKind.edit], and at most one per scope.
      */
-    survey,
+    coreDetails("core details"),
 
     /**
      * Chosen by the user from the workflows a form is eligible for (issue #794). Many per form, unlike the
-     * one-per-form [creation] and [survey]: a form carries per-workflow state for each one it is evaluated
+     * one-per-form [creation] and [coreDetails]: a form carries per-workflow state for each one it is evaluated
      * against. Multi-stage, so no task ceiling, and its saves are [WfSaveKind.edit] since the form already
      * exists. A task may offer no save at all -- an approval task advances through its own endpoint.
      */
-    normal,
+    normal("normal"),
     ;
 
     companion object {
         /**
-         * The kinds a scope has exactly one of: how a form is created, and how it is surveyed, each have one answer
+         * The kinds a scope has exactly one of: how a form is created, and how its core details are kept, each have one answer
          * per client. Shared by the workflow registry, which shadows by kind, and a template's clone (issue #945),
          * which leaves out the template's workflow of a kind the client declares.
          */
-        val singletons: Set<WfEntry> = setOf(creation, survey)
+        val singletons: Set<WfEntry> = setOf(creation, coreDetails)
     }
 }
 
 /**
- * What a save does. [create] makes a new form (a creation workflow); [edit] updates an existing one (a survey
+ * What a save does. [create] makes a new form (a creation workflow); [edit] updates an existing one (a core details workflow
  * workflow, issue #656). The seam later saves -- submit, approve, export -- land on.
  */
 @Suppress("EnumEntryName")
@@ -437,7 +441,7 @@ enum class WfSaveKind {
     /** Creates the form document from the entries the task collected. */
     create,
 
-    /** Updates an existing form document with the entries the task collected -- how a survey edits a form. */
+    /** Updates an existing form document with the entries the task collected -- how a core details workflow edits a form. */
     edit,
 }
 
@@ -461,7 +465,7 @@ class WfSave(val id: String, val label: String, val kind: WfSaveKind)
  * expression matches the form's cfacts, and each one that does not contributes its [explanation] to the list of
  * reasons shown for why the form is not eligible.
  *
- * The test is a **requirement**, written the way the form should be (`surveyComplete`), so a failing test is
+ * The test is a **requirement**, written the way the form should be (`coreDetailsComplete`), so a failing test is
  * the reason. Several small tests rather than one blanket expression, because one expression can only say
  * "not eligible"; an array can say *why* -- Cedar's ran past eight entries.
  *
@@ -671,7 +675,7 @@ class WfDef(
 
     /**
      * The eligibility tests, in declaration order (issue #783) -- the order the reasons are listed in. Only a
-     * [WfEntry.normal] workflow has any: creation and survey are not chosen, so there is nothing to be eligible for.
+     * [WfEntry.normal] workflow has any: creation and core details workflow are not chosen, so there is nothing to be eligible for.
      */
     val eligibility: List<WfEligibility> = eligibility.toList()
 
@@ -731,34 +735,34 @@ class WfDef(
                 )
             }
         }
-        if (entry == WfEntry.survey) {
-            // A survey may have several tasks (a creation workflow may not), but a small, fixed few: it is a
-            // questionnaire an owner finishes in one sitting, not a multi-stage process. More than the ceiling
-            // is refused rather than silently working, since the design does not group a survey's tasks.
-            if (tasks.size > surveyMaxTasks) {
+        if (entry == WfEntry.coreDetails) {
+            // A core details workflow may have several tasks (a creation workflow may not), but a small, fixed few: it
+            // is a questionnaire an owner finishes in one sitting, not a multi-stage process. More than the ceiling is
+            // refused rather than silently working, since the design does not group a core details workflow's tasks.
+            if (tasks.size > coreDetailsMaxTasks) {
                 throw KdrException.mkConv(
-                    "Survey workflow '$workflowId' has ${tasks.size} tasks; a survey has at most " +
-                        "$surveyMaxTasks, since it is a short questionnaire an owner completes in one sitting.",
+                    "Core details workflow '$workflowId' has ${tasks.size} tasks; a core details workflow has at most " +
+                        "$coreDetailsMaxTasks, since it is a short questionnaire an owner completes in one sitting.",
                 )
             }
             tasks.firstOrNull { it.saves.isEmpty() }?.let {
                 throw KdrException.mkConv(
-                    "Survey workflow '$workflowId' task '${it.id}' has no save; every survey task needs a save, " +
-                        "since a task with no way to persist its edits cannot advance the survey.",
+                    "Core details workflow '$workflowId' task '${it.id}' has no save; every core details task needs a save, " +
+                        "since a task with no way to persist its edits cannot advance the core details workflow.",
                 )
             }
-            // A survey edits an existing form; a `create` save would make a second one. So every survey save is
+            // A core details workflow edits an existing form; a `create` save would make a second one. So every core details save is
             // an `edit`, the mirror of the creation-only `create` gate above.
             tasks.flatMap { it.saves }.firstOrNull { it.kind != WfSaveKind.edit }?.let {
                 throw KdrException.mkConv(
-                    "Survey workflow '$workflowId' has a save '${it.id}' of kind '${it.kind}'; a survey edits an " +
-                        "existing form, so its saves are '${WfSaveKind.edit}'.",
+                    "Core details workflow '$workflowId' has a save '${it.id}' of kind '${it.kind}'; a core details workflow " +
+                        "edits an existing form, so its saves are '${WfSaveKind.edit}'.",
                 )
             }
         }
         if (entry == WfEntry.normal) {
             // A normal workflow runs against a form that already exists -- it is chosen from the workflows that
-            // form is eligible for -- so a `create` save would make a second form. Same reasoning as the survey
+            // form is eligible for -- so a `create` save would make a second form. Same reasoning as the core details workflow
             // rule above.
             tasks.flatMap { it.saves }.firstOrNull { it.kind != WfSaveKind.edit }?.let {
                 throw KdrException.mkConv(
@@ -766,7 +770,7 @@ class WfDef(
                         "runs against an existing form, so its saves are '${WfSaveKind.edit}'.",
                 )
             }
-            // Deliberately no task ceiling (unlike a survey) and no save-per-task rule (unlike a survey): a
+            // Deliberately no task ceiling (unlike a core details workflow) and no save-per-task rule (unlike a core details workflow): a
             // normal workflow is a multi-stage process, and a task can legitimately offer no save -- an approval
             // task advances through its own endpoint rather than by persisting collected entries (issue #787).
         }
@@ -810,7 +814,7 @@ class WfDef(
         }
         for (task in tasks) {
             val rule = task.saveWhen ?: continue
-            // Survey and creation saves keep their own ownership rules (issue #856); a rule there would be ignored,
+            // Core details workflow and creation saves keep their own ownership rules (issue #856); a rule there would be ignored,
             // so it is refused rather than left looking as though it protects something.
             if (entry != WfEntry.normal) {
                 throw KdrException.mkConv(
@@ -913,11 +917,11 @@ class WfDef(
     @Suppress("ConstPropertyName")
     companion object {
         /**
-         * The most tasks a [WfEntry.survey] workflow may have. The design expects a survey to be a short
+         * The most tasks a [WfEntry.coreDetails] workflow may have. The design expects a core details workflow to be a short
          * questionnaire an owner finishes in one sitting -- "I do not expect there to ever be more than three"
-         * -- so a survey with more is refused rather than silently split into task groups it does not have.
+         * -- so a core details workflow with more is refused rather than silently split into task groups it does not have.
          */
-        const val surveyMaxTasks = 3
+        const val coreDetailsMaxTasks = 3
     }
 }
 
@@ -1451,7 +1455,7 @@ class WfDisplayBranchBuilder(private val cfacts: String?) {
 /**
  * Task status, **derived** (issue #533) -- the one idea kept from the #381 engine: computed from the form's entries,
  * never authored. The parts that do not depend on who is looking are stored as derived values in the form's gedra
- * states (the CTA's status, `WFS.ctaStatus`; the survey completion entry) so a search can filter on them without
+ * states (the CTA's status, `WFS.ctaStatus`; the core details completion entry) so a search can filter on them without
  * recomputing; anything that depends on the acting user is computed per request.
  *
  * Completeness is **presence of an entry, not a judgment of its content**: a required trait is satisfied when

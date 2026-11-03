@@ -1,10 +1,10 @@
 # Gedra states
 
-A gedra's **state** is what is known about it beyond what people entered: what the system derived from its data, such
-as whether a form's survey is complete, and what a person or an outside system asserted about it, such as that the form
-was put into a workflow or that a reviewer approved it. State is held as entries, like data, but in a table of its own,
-and written by different code under different rules. This document says why state is kept apart from data, how a state
-trait is declared, how each class of state is written and kept current, who reads it, and what is not built.
+A gedra's **state** is what is known about it beyond what people entered: what the system derived from its data, such as
+whether a form's core details are complete, and what a person or an outside system asserted about it, such as that the
+form was put into a workflow or that a reviewer approved it. State is held as entries, like data, but in a table of its
+own, and written by different code under different rules. This document says why state is kept apart from data, how a
+state trait is declared, how each class of state is written and kept current, who reads it, and what is not built.
 
 It complements [`entry.md`](entry.md), which describes the data side: entries, traits, and the unions they form.
 
@@ -18,7 +18,7 @@ It complements [`entry.md`](entry.md), which describes the data side: entries, t
 | The state-to-cfact bridge, and initial state on create and import | #599 |
 | Reading state: `withStates` on the forms listing, and the admin state endpoints | #600 |
 
-Later work built on it: the survey's derived state (#657); a recompute after every data write (#675) on a
+Later work built on it: the core details workflow's derived state (#657); a recompute after every data write (#675) on a
 transaction-scoped context (#687); the per-workflow state of a normal workflow (#794), with eligibility (#783), merged
 cfacts (#784), the call-to-action task (#785), approvals (#787), and time windows (#790); the nightly recompute job
 (#793); a recompute that reads the data again under the lock (#862); trait locks, which read state and record their
@@ -77,7 +77,7 @@ The class, `GedraTrait.stateClass`, says how the state behaves under recomputati
 
 | `stateClass` | What it is | Examples | Under a recompute |
 |---|---|---|---|
-| `derived` | a projection of the gedra's data and the current definitions | survey completeness, eligibility, the form's cfacts | replaced whole |
+| `derived` | a projection of the gedra's data and the current definitions | core details completeness, eligibility, the form's cfacts | replaced whole |
 | `asserted` | an act by a person or an outside system | an engagement, an approval, a third-party id | kept as stored |
 
 **State is global.** The `StateEntry` union (`GU.stateUnionName`) is built once, at the global scope, by
@@ -93,7 +93,7 @@ The runtime and the sample declare these:
 | Trait id | Class | Key | Applies to | Declared in | Written by |
 |---|---|---|---|---|---|
 | `kdr:cfacts` | derived | none | `formDoc`, `wfData` | `CoreTraits.kt` | every deriver that contributes cfacts, merged into one entry |
-| `kdr:surveyCompletion` | derived | none | `formDoc` | `SurveyState.kt` | `SurveyStateDeriver` |
+| `kdr:coreDetailsCompletion` | derived | none | `formDoc` | `CoreDetailsState.kt` | `CoreDetailsStateDeriver` |
 | `kdr:workflowState` | derived | `workflowId` | `formDoc` | `WorkflowState.kt` | `WorkflowStateDeriver` |
 | `kdr:workflowEngagement` | asserted | `workflowId` | `formDoc` | `WorkflowState.kt` | engaging and disengaging, and the trail events of later acts |
 | `kdr:workflowApproval` | asserted | `workflowId`, `taskId` | `formDoc` | `WorkflowState.kt` | the approve endpoint |
@@ -147,11 +147,11 @@ stamps, keys, validates, and writes them.
 | `currentState` | every state entry as it stood before this recompute, asserted and derived alike |
 | `derivedThisPass` | what the derivers registered before this one produced in the same recompute (#783) |
 
-**Registration order matters.** The runtime registers `SurveyStateDeriver` before `WorkflowStateDeriver`
-(`CommonComponent`), because a workflow's eligibility is judged against the cfacts the survey's deriver emits in the
-same pass. Reading `currentState` instead would see the cfacts as they stood before the write. Several derivers may
-each emit a `kdr:cfacts` entry, and `mergeCfactContributions` folds them into the one entry the unkeyed trait allows
-(#784).
+**Registration order matters.** The runtime registers `CoreDetailsStateDeriver` before `WorkflowStateDeriver`
+(`CommonComponent`), because a workflow's eligibility is judged against the cfacts the core details workflow's deriver
+emits in the same pass. Reading `currentState` instead would see the cfacts as they stood before the write. Several
+derivers may each emit a `kdr:cfacts` entry, and `mergeCfactContributions` folds them into the one entry the unkeyed
+trait allows (#784).
 
 A deriver does not carry its own last answer forward: derived state is recomputed from the data. `currentState` lets a
 derivation follow an asserted fact beside it, as an engaged workflow keeps its `kdr:workflowState` entry. The one
@@ -218,8 +218,8 @@ read than a data read. Inside a write's transaction, state is read from SQL unde
 
 | Read | What it returns |
 |---|---|
-| `GET /gedra/formDocs?withStates=true` (#600) | each listed form's `states`, absent rather than empty when not asked for. The webapp's forms page always asks, for its survey status column (#694) and workflow cell (#791). |
-| `GET /gedra/formDocs` filters | the survey-status filter (#695) and the workflow drill-down (#792) test each row's state before paging |
+| `GET /gedra/formDocs?withStates=true` (#600) | each listed form's `states`, absent rather than empty when not asked for. The webapp's forms page always asks, for its status column (#694) and workflow cell (#791). |
+| `GET /gedra/formDocs` filters | the status filter (#695) and the workflow drill-down (#792) test each row's state before paging |
 | `withWorkflowSummary` (#791) | the workflow column's summary, computed over the state of every form the caller can see |
 | `POST /gedra/workflow/engage`, `POST /gedra/workflow/approve`, `POST /gedra/formDoc/recomputeState` | the form's state as it stands after the act (`WorkflowStates`) |
 | `GET /gedra/formDoc/states` (#1366) | one form's state as stored, with no recompute (`WorkflowStates`); with `includeRetired`, the entries of workflows that are not live too, named in `retiredWorkflows` |
@@ -268,7 +268,7 @@ state can outlive a cfact. Those names join the request's facts when an expressi
 
 **Reports.** A report reads state through its `workflow.<workflowId>.<attr>` paths (`category`, `engaged`, `eligible`,
 `finished`, `tasksDone`, `ctaTask`, `lastEngagedAt`, and an approval task's `approved`, `approvedAt`, `approvedBy`) and
-through `meta.formStatus`, `meta.surveyStatus`, and `meta.cfacts`. Paths never expose raw state entries, and a run
+through `meta.formStatus`, `meta.coreDetailsStatus`, and `meta.cfacts`. Paths never expose raw state entries, and a run
 reads states only when a column needs them. See [`reporting.md`](../reporting.md#paths).
 
 **The publish impact report** (#935) judges each of a published-only client's forms by its stored state against the

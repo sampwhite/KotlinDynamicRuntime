@@ -104,7 +104,7 @@ the right person's to answer.
 ## Facts and eligibility
 
 A **fact** (in the JSON, a `cfact`) is a yes-or-no statement about a form, a user, or the request. Some are the
-platform's, such as `kdr:surveyComplete` and `kdr:hasAdminLevel`. A client declares its own in the `kdr:cfactDef`
+platform's, such as `kdr:coreDetailsComplete` and `kdr:hasAdminLevel`. A client declares its own in the `kdr:cfactDef`
 slot of a bundle, and a workflow sets them: a `computeCFactsFromData` function reads a field and asserts a fact when
 the value is one it maps, and an approval task asserts its fact when a reviewer approves.
 
@@ -138,7 +138,7 @@ presentation without changing the data. A layout can relabel a field, reorder th
 
 A workflow can give one of its forms a layout of its own. It does this in its `types`, keyed by the name of the
 trait's data type, which is the trait's entry type with `Data` in place of `Entry`. So `QuestionnaireEntry` becomes
-`QuestionnaireData`. The [talk survey](talk-survey.md#survey) does this.
+`QuestionnaireData`. The [talk's core details workflow](talk-core-details.md#core-details-workflow) does this.
 
 A layout entry can also restate a field's `choices`, which narrows the list the form offers to those it names, with
 labels of its own. A form never offers a choice the schema does not. And an entry can mark a field `required` for
@@ -182,7 +182,7 @@ depends on it.
 | `form` | A trait's id, then a field of its data. A trait the platform ships keeps its full id. | `form.session.track`, `form.kdr:name.name` |
 | `workflow` | A workflow's id, then one of `category`, `engaged`, `eligible`, `finished`, `tasksDone`, `ctaTask`, or `lastEngagedAt`. | `workflow.review.category` |
 | `user` | One of `userId`, `name`, `publicName`, `email`, `persona`, `org`, `labels`, `isEntity`, or `enabled`, about the person who owns the form. | `user.name` |
-| `meta` | One of `gedraId`, `client`, `org`, `ownerId`, `createdAt`, `updatedAt`, `formStatus`, `surveyStatus`, or `cfacts`, about the form itself. | `meta.formStatus` |
+| `meta` | One of `gedraId`, `client`, `org`, `ownerId`, `createdAt`, `updatedAt`, `formStatus`, `coreDetailsStatus`, or `cfacts`, about the form itself. | `meta.formStatus` |
 
 A `form` path can go deeper than one field, `form.abstract.coSpeakers.name` for instance, and reaches into a list
 as well as an object. A path into a list has several values, and the column's `combine` says how they are made one

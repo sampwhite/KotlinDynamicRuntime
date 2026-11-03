@@ -29,8 +29,7 @@ import com.dynamicruntime.common.gedra.UsageKind
 import com.dynamicruntime.common.gedra.presentColumnValue
 import com.dynamicruntime.common.util.ScriptEnv
 import com.dynamicruntime.common.util.parseDateOrNull
-import com.dynamicruntime.common.gedra.workflow.SVY
-import com.dynamicruntime.common.gedra.workflow.SVYS
+import com.dynamicruntime.common.gedra.workflow.FSV
 import com.dynamicruntime.common.gedra.workflow.SWF
 import com.dynamicruntime.common.gedra.workflow.WFD
 import com.dynamicruntime.common.gedra.workflow.WSC
@@ -87,7 +86,7 @@ fun formClientOf(gedraId: String?): String? =
  * own. The backend does the resolving *and* the fallback: a client that varies nothing has no `/gedra/<client>/…`
  * copy, and asking for one by exact path found nothing (the #714 review's regression), whereas resolving on
  * that client's surface answers with the shared endpoint, in that client's `$defs`. Shared by the raw editor
- * and the survey page so the rule lives once.
+ * and the core details page so the rule lives once.
  */
 suspend fun fetchFormEndpoint(method: String, barePath: String, formClient: String?): Catalog =
     SchemaCatalogApi.fetchEndpoint(method, barePath, resolveClient = true, client = formClient)
@@ -163,10 +162,10 @@ class FormsListPage(
 )
 
 /**
- * The forms address's navigation keys -- the page, the open form, the listing a child was opened from, the
- * arrival highlight, and the survey child page's edit-mode flag (issue #694) and open task (issue #700). Every
- * other key on a forms address is a search parameter (a trait filter, the scope-bar `user`, the free-text `q`),
- * because the forms search shares the endpoint's own arg names, the same arrangement the Users page uses.
+ * The forms address's navigation keys -- the page, the open form, the listing a child was opened from, the arrival
+ * highlight, and the core details workflow child page's edit-mode flag (issue #694) and open task (issue #700). Every
+ * other key on a forms address is a search parameter (a trait filter, the scope-bar `user`, the free-text `q`), because
+ * the forms search shares the endpoint's own arg names, the same arrangement the Users page uses.
  */
 private val formsNavKeys = setOf(HP.page, HP.gedra, HP.from, HP.highlight, HP.created, HP.edit, HP.task, HP.workflow)
 
@@ -283,7 +282,7 @@ fun formsSearchRouteParams(search: Map<String, String>): List<Pair<String, Strin
  *
  * [hp] is normally the page's own address, whose navigation keys are left behind here; a caller that returns to a
  * *different* listing than it was launched from (create-for-user, into the user's client) passes that context
- * instead. Shared by the survey and raw editors' Done and by every create surface, so the ways home cannot
+ * instead. Shared by the core details workflow and raw editors' Done and by every create surface, so the ways home cannot
  * drift: #758 was exactly that, a return the picker had (#663) and the workflow create did not. The bare back
  * link is the same target without the flash. The listing is the one the page was opened from ([formsListingOf]),
  * so a form worked on from a workflow's listing goes home to that listing. Pure, and covered under `jsNodeTest`.
@@ -312,24 +311,24 @@ fun formsCreateReturn(
     if (now[HP.page] != launched[HP.page]) null else formsListingReturn(context, newId, created = true)
 
 /**
- * The raw **read-only** view of one form (issue #726): the listing page with the form open in place -- the same
- * view a row click opens where the client has no survey -- reached from the survey's "View raw" beside "Raw
- * edit", so every trait can be looked at without entering the editor. Carries the listing's search and sort out
- * of the survey's own address [hp], as its other ways home do, and none of the survey's own keys. The listing is
- * the one the survey was opened from ([formsListingOf]), so a form reached through a workflow's listing is viewed
- * there. Pure, and covered under `jsNodeTest`.
+ * The raw **read-only** view of one form (issue #726): the listing page with the form open in place -- the same view a
+ * row click opens where the client has no core details workflow -- reached from the core details workflow's "View raw"
+ * beside "Raw edit", so every trait can be looked at without entering the editor. Carries the listing's search and sort
+ * out of the core details workflow's own address [hp], as its other ways home do, and none of the core details
+ * workflow's own keys. The listing is the one the core details workflow was opened from ([formsListingOf]), so a form
+ * reached through a workflow's listing is viewed there. Pure, and covered under `jsNodeTest`.
  */
 fun formsRawViewRoute(hp: Map<String, String>, gedraId: String): List<Pair<String, String>> =
     listOf(HP.page to formsListingOf(hp), HP.gedra to gedraId) + formsSearchRouteParams(formsSearchFromRoute(hp))
 
 /**
- * The survey's read-only "View Info" of one form (issue #726): reached from the raw editor's "View info" beside
- * Done, for a form whose client has a survey. Carries the listing's search and sort out of the editor's address
- * [hp], and `from=forms` so the survey page's own back link still leads home; none of the editor's keys. Pure,
+ * The core details workflow's read-only "View Info" of one form (issue #726): reached from the raw editor's "View info" beside
+ * Done, for a form whose client has a core details workflow. Carries the listing's search and sort out of the editor's address
+ * [hp], and `from=forms` so the core details page's own back link still leads home; none of the editor's keys. Pure,
  * and covered under `jsNodeTest`.
  */
-fun formsSurveyViewRoute(hp: Map<String, String>, gedraId: String): List<Pair<String, String>> =
-    listOf(HP.page to pageSurveyEdit, HP.from to formsListingOf(hp), HP.gedra to gedraId) +
+fun formsCoreDetailsViewRoute(hp: Map<String, String>, gedraId: String): List<Pair<String, String>> =
+    listOf(HP.page to pageCoreDetailsEdit, HP.from to formsListingOf(hp), HP.gedra to gedraId) +
         formsSearchRouteParams(formsSearchFromRoute(hp))
 
 /** The listings a form belongs to: My forms, and a workflow's listing of forms (issue #792). */
@@ -368,10 +367,10 @@ fun ChildrenBuilder.formsBackLink(listing: String = HMENU.pageForms) {
 }
 
 /**
- * The one header line both form editors share (issue #726, after the survey's #719 line): the back link, the
+ * The one header line both form editors share (issue #726, after the core details workflow's #719 line): the back link, the
  * [title] beside it, and the [actions] right-aligned -- Edit / Done, Raw edit, the saved note, whichever apply.
- * One composable rather than two lookalike blocks, so the survey editor and the raw editor cannot drift apart
- * in where "back" lives or how the actions sit. [title] is a builder so a survey can render its Markdown label
+ * One composable rather than two lookalike blocks, so the core details editor and the raw editor cannot drift apart
+ * in where "back" lives or how the actions sit. [title] is a builder so a core details workflow can render its Markdown label
  * where the raw editor renders plain text.
  */
 fun ChildrenBuilder.formsEditorHeader(
@@ -746,23 +745,23 @@ fun presentedCellTip(display: DisplayValue, shown: String): String? = when {
 }
 
 /**
- * A form's status for the forms-list column (issues #694, #789) and its filter (issue #695): the kernel's [SVYS]
+ * A form's status for the forms-list column (issues #694, #789) and its filter (issue #695): the kernel's [FSV]
  * value on the [wire], the label the chip and the filter's choice show, and the [PSTAT] colour class the chip
  * renders in. The derivation itself is the kernel's `formStatusOf`, shared with the backend filter, so the column
  * and the filter cannot disagree -- **invalid trumps incomplete**, and a workflow's Needs Review or Finished takes
  * the place of Valid only.
  */
-enum class SurveyStatus(val wire: String, val label: String, val pstat: String) {
-    valid(SVYS.valid, "Valid", PSTAT.ok),
-    needsInfo(SVYS.needsInfo, "Needs Info", PSTAT.warning),
-    invalid(SVYS.invalid, "Invalid", PSTAT.error),
-    needsReview(SVYS.needsReview, "Needs Review", PSTAT.info),
-    finished(SVYS.finished, "Finished", PSTAT.ok),
+enum class FormStatus(val wire: String, val label: String, val pstat: String) {
+    valid(FSV.valid, "Valid", PSTAT.ok),
+    needsInfo(FSV.needsInfo, "Needs Info", PSTAT.warning),
+    invalid(FSV.invalid, "Invalid", PSTAT.error),
+    needsReview(FSV.needsReview, "Needs Review", PSTAT.info),
+    finished(FSV.finished, "Finished", PSTAT.ok),
     ;
 
     /**
      * The framework singleton cfact behind this chip (issue #789) -- what its click asks the backend about -- or
-     * null for a survey status, whose chip links into the survey instead.
+     * null for a core details status, whose chip links into the core details workflow instead.
      */
     val singletonCfact: String?
         get() = when (this) {
@@ -772,17 +771,17 @@ enum class SurveyStatus(val wire: String, val label: String, val pstat: String) 
         }
 
     companion object {
-        /** The status a [SVYS] wire value names, or null for anything else. */
-        fun fromWire(value: String?): SurveyStatus? = entries.firstOrNull { it.wire == value }
+        /** The status a [FSV] wire value names, or null for anything else. */
+        fun fromWire(value: String?): FormStatus? = entries.firstOrNull { it.wire == value }
     }
 }
 
 /**
- * The [SurveyStatus] from a row's state entries (issues #694, #789), or null when the form has no survey state —
- * a client with no survey, or a row not yet computed — in which case the column shows nothing for it. The
+ * The [FormStatus] from a row's state entries (issues #694, #789), or null when the form has no core details state —
+ * a client with no core details workflow, or a row not yet computed — in which case the column shows nothing for it. The
  * kernel's `formStatusOf`, mapped onto the enum; covered under `jsNodeTest`.
  */
-fun surveyStatusFrom(states: List<Map<String, Any?>>): SurveyStatus? = SurveyStatus.fromWire(formStatusOf(states))
+fun formStatusFrom(states: List<Map<String, Any?>>): FormStatus? = FormStatus.fromWire(formStatusOf(states))
 
 /**
  * One workflow behind a Needs Review / Finished chip (issue #789), as `formDocSingletonWorkflows` answers: its
@@ -865,8 +864,8 @@ class FormSummary(
     /** The owning client, from the row's `client` (issue #668): what the Client column shows for a caller who
      *  administers across clients. Every row carries it; empty only when the row somehow arrived without one. */
     val client: String = "",
-    /** The form's global survey status (issue #694), or null when it has no survey state — see [surveyStatusFrom]. */
-    val surveyStatus: SurveyStatus? = null,
+    /** The form's global core details status (issue #694), or null when it has no core details state — see [formStatusFrom]. */
+    val formStatus: FormStatus? = null,
     /** The form's state entries as the row carried them (`withStates`) -- what its workflow cell is drawn from (issue #791). */
     val states: List<Map<String, Any?>> = emptyList(),
 )
@@ -927,9 +926,9 @@ fun summarizeForm(item: Map<String, Any?>, entriesUnion: SchType?, layouts: Map<
         // The owning client (issue #668), attached to every listed row; the Client column shows it for a caller
         // who administers across clients.
         client = item[GDF.client] as? String ?: "",
-        // The global survey status (issue #694): present only when the row carried state (`withStates`), null
-        // for a client with no survey, in which case the list draws no status for the row.
-        surveyStatus = surveyStatusFrom(item[GDF.states].toJsonListOfMaps()),
+        // The global core details status (issue #694): present only when the row carried state (`withStates`), null
+        // for a client with no core details workflow, in which case the list draws no status for the row.
+        formStatus = formStatusFrom(item[GDF.states].toJsonListOfMaps()),
         states = item[GDF.states].toJsonListOfMaps(),
     )
 }
@@ -989,7 +988,7 @@ fun workflowCellOf(states: List<Map<String, Any?>>, client: String, summary: Lis
 }
 
 /**
- * Where a workflow-column link goes (issue #791): the survey page opened on normal workflow [workflowId] against
+ * Where a workflow-column link goes (issue #791): the core details page opened on normal workflow [workflowId] against
  * form [gedraId], on [task] when given, and in edit mode when [edit] -- the current task of an engaged workflow is
  * work to do; a finished workflow's last task is there to be looked at. [from] is the listing the link is on, so
  * the page's way back leads to it. Pure, and covered under `jsNodeTest`.
@@ -1002,7 +1001,7 @@ fun workflowPageRoute(
     from: String = HMENU.pageForms,
 ): List<Pair<String, String>> =
     buildList {
-        add(HP.page to pageSurveyEdit)
+        add(HP.page to pageCoreDetailsEdit)
         add(HP.from to from)
         add(HP.gedra to gedraId)
         add(HP.workflow to workflowId)

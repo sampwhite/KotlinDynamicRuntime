@@ -104,7 +104,8 @@ fun clientOverviewSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CLD.overvie
         property(CLD.workflowCount, "How many workflows the client sees; 0 for a client this node does not carry.", required = true) {
             type = SCT.integer
         }
-        property(CLD.hasSurvey, "Whether the client declares a survey workflow; false for one this node does not carry.", required = true) {
+        property(CLD.hasCoreDetails, "Whether the client declares a core details workflow; false for one this node does not carry.",
+            required = true) {
             type = SCT.boolean
         }
         property(
@@ -320,7 +321,7 @@ fun clientOverviewSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CLD.overvie
         "Creates a client under the caller's customer (issue #1112), for an administrator of the customer's root " +
             "client. Its id is '<customer>_<name>'; it holds the creator's choices and what the root passes on -- its " +
             "customer, the environments it runs in, its usage type, audience, and web resources -- and starts with " +
-            "no other configuration than its starter workflows, a creation workflow and a survey, unless '" +
+            "no other configuration than its starter workflows, a creation workflow and a core details workflow, unless '" +
             CLD.starterWorkflows + "' is false (issue #1346). The creator gets their own admin user there, returned " +
             "rather than switched to. " +
             "Refused for a customer on the free plan, which makes no clients, and otherwise for what the platform's " +
@@ -381,7 +382,7 @@ fun clientOverviewSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CLD.overvie
             field(CLD.homeNote, "A note beneath the home page's introduction, in Markdown.") { maxLength = CLD.homeTextMaxLength }
             field(
                 CLD.starterWorkflows,
-                "Start the client with a creation workflow and a survey, made from the deployment's templates around the " +
+                "Start the client with a creation workflow and a core details workflow, made from the deployment's templates around the " +
                     "form's name (which the client then includes). On unless set false.",
             ) {
                 type = SCT.boolean
@@ -589,8 +590,8 @@ internal fun overseenClient(cxt: KdrCxt, named: String?): String {
 
 /**
  * One overview row. A client no kept config declares -- which a present client never is -- is known from stored
- * configuration alone, so that is its origin. Workflows and the survey are read only for a present client: an
- * absent one has no registry to ask.
+ * configuration alone, so that is its origin. Workflows and the core details workflow are read only for a present
+ * client: an absent one has no registry to ask.
   *
  * Not private, so a test of a node no caller can sign in to (a production boot) can read a row as the listing does.
  */
@@ -619,7 +620,7 @@ fun overviewRow(
         CLD.users to users.total,
         CLD.unclaimedUsers to users.unclaimed,
         CLD.workflowCount to if (isPresent) workflowIdsFor(cxt, clientId).size else 0,
-        CLD.hasSurvey to (isPresent && WorkflowService.get(cxt).forClient(clientId).survey != null),
+        CLD.hasCoreDetails to (isPresent && WorkflowService.get(cxt).forClient(clientId).coreDetails != null),
         // From the client's own layers alone -- no merge -- so the listing stays cheap. An absent client's are not
         // registered, so it counts none.
         CLD.copyOverrides to countCopyOverrides(MarkdownFragmentService.registeredFragmentSources(cxt), clientId),

@@ -118,8 +118,8 @@ class GedraConfigTrait(
 @Suppress("EnumEntryName")
 enum class StateTraitClass {
     /**
-     * A projection of (data + current definitions) -- survey-completeness, eligibility, computed cfacts. A batch
-     * job may recompute and overwrite it, because nothing it holds is an authority a recompute could destroy.
+     * A projection of (data + current definitions) -- core details completeness, eligibility, computed cfacts.
+     * A batch job may recompute and overwrite it, because nothing it holds is an authority a recompute could destroy.
      */
     derived,
 

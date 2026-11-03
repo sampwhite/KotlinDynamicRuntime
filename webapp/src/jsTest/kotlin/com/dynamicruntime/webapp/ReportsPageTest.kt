@@ -256,7 +256,8 @@ class ReportsPageTest {
     fun theVocabularysClosedSetsReadAsTheFormsPagesSayThem() {
         // A form's status as the listing's chip says it, a workflow's category as the Workflows page heads it.
         assertEquals("Valid", reportCellText("valid", ReportKind.string.name, choices = vocabularyChoices("meta.formStatus", null)))
-        assertEquals("Needs Info", reportCellText("needsInfo", ReportKind.string.name, choices = vocabularyChoices("meta.surveyStatus", null)))
+        assertEquals("Needs Info", reportCellText("needsInfo", ReportKind.string.name,
+            choices = vocabularyChoices("meta.coreDetailsStatus", null)))
         assertEquals("Engaged", reportCellText("engaged", ReportKind.string.name, choices = vocabularyChoices("workflow.review.category", null)))
         assertEquals("Not eligible", reportCellText("ineligible", ReportKind.string.name, choices = vocabularyChoices("workflow.review.category", null)))
         // Any other path, and a column read as something other than text, has none.

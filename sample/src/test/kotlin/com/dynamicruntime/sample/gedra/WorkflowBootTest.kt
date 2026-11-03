@@ -65,24 +65,24 @@ class WorkflowBootTest : StringSpec({
         globex.def.label shouldBe ""
     }
 
-    "acme also sees a survey workflow -- two edit-save tasks, beside its creation workflow" {
-        val survey = service.forClient(SC.acme).survey.shouldNotBeNull()
-        survey.def.entry shouldBe WfEntry.survey
-        survey.ref.workflowId shouldBe SW.reviewForm
-        survey.def.showTaskList shouldBe true
-        survey.def.tasks.map { it.id } shouldBe listOf(SW.details, SW.profile)
-        survey.def.tasks.flatMap { it.saves }.map { it.kind }.toSet() shouldBe setOf(WfSaveKind.edit)
-        // The profile task carries the two supplied-default functions (issue #711): name and email prefilled
-        // from the owner. Both resolve at boot, so the survey's prefill wiring is checked here, not only live.
-        val profile = survey.def.tasks.single { it.id == SW.profile }
+    "acme also sees a core details workflow -- two edit-save tasks, beside its creation workflow" {
+        val coreDetails = service.forClient(SC.acme).coreDetails.shouldNotBeNull()
+        coreDetails.def.entry shouldBe WfEntry.coreDetails
+        coreDetails.ref.workflowId shouldBe SW.reviewForm
+        coreDetails.def.showTaskList shouldBe true
+        coreDetails.def.tasks.map { it.id } shouldBe listOf(SW.details, SW.profile)
+        coreDetails.def.tasks.flatMap { it.saves }.map { it.kind }.toSet() shouldBe setOf(WfSaveKind.edit)
+        // The profile task carries the two supplied-default functions (issue #711): name and email prefilled from the
+        // owner. Both resolve at boot, so the core details workflow's prefill wiring is checked here, not only live.
+        val profile = coreDetails.def.tasks.single { it.id == SW.profile }
         profile.resolvedFunctions.filter { it.event == WfEventType.prefillData } shouldHaveSize 2
         // Its labels ride the same backend fragment file, so the pull resolved at boot like creation's.
-        survey.def.tasks.first().label shouldContain "@t("
-        survey.def.label shouldContain "@t("
+        coreDetails.def.tasks.first().label shouldContain "@t("
+        coreDetails.def.label shouldContain "@t("
         // Two single-instance kinds coexist in one scope: the creation workflow is still resolvable.
         service.forClient(SC.acme).creation.shouldNotBeNull().ref.workflowId shouldBe SW.createForm
-        // globex declares no survey, and none is global, so it inherits none.
-        service.forClient(SC.globex).survey.shouldBeNull()
+        // globex declares no core details workflow, and none is global, so it inherits none.
+        service.forClient(SC.globex).coreDetails.shouldBeNull()
     }
 
     "the definition schema and the two workflow cfacts are published" {

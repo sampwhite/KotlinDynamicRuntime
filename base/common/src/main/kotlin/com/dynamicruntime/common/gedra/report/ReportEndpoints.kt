@@ -690,6 +690,6 @@ private class SubjectReader(val c: KdrCxt, val client: String, val scope: ReadSc
 
     companion object {
         /** The `meta` attributes read from the form's states rather than its row. */
-        val stateMetaAttrs = setOf(RMETA.formStatus, RMETA.surveyStatus, RMETA.cfacts)
+        val stateMetaAttrs = setOf(RMETA.formStatus, RMETA.coreDetailsStatus, RMETA.cfacts)
     }
 }

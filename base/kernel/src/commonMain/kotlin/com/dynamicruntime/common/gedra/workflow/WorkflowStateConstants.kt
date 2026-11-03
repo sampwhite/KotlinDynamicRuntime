@@ -4,14 +4,14 @@ package com.dynamicruntime.common.gedra.workflow
  * The wire names of a form's **per-workflow** state (issue #794): the computed [workflowState], and beside it the
  * asserted [workflowEngagement] and -- since #787 -- [workflowApproval], all keyed by [WFD.workflowId].
  *
- * In `base:kernel` for the reason [SVY] is: the forms listing's workflow column (issue #791) and the workflow
+ * In `base:kernel` for the reason [CDF] is: the forms listing's workflow column (issue #791) and the workflow
  * page draw these, so the frontend reads them by name and a rename here breaks its compile rather than its runtime.
  *
  * ### Separate traits, because they are different kinds of fact
  *
- * A form's survey state is **form-singleton** -- one "is the survey done?" per form. A normal workflow is
- * **many-per-form**, so its state is keyed by the workflow it is about. That much is just the key. The reason
- * there are *several* traits is the state class:
+ * A form's core details state is **form-singleton** -- one "is the core details workflow done?" per form. A normal
+ * workflow is **many-per-form**, so its state is keyed by the workflow it is about. That much is just the key. The
+ * reason there are *several* traits is the state class:
  *
  *  - [workflowState] is `StateTraitClass.derived` -- a projection of the form's data against a workflow
  *    definition, which every recompute rebuilds from scratch and a batch job may overwrite freely.
@@ -40,7 +40,7 @@ object WFS {
 
     /**
      * The workflow revision this entry was computed against, as `WfRef` text -- the same bookkeeping
-     * [SVY.computedAgainstSurveyRef] keeps, so a stale entry can be told from a current one.
+     * [CDF.computedAgainstCoreDetailsRef] keeps, so a stale entry can be told from a current one.
      */
     const val computedAgainstRef = "computedAgainstRef"
 

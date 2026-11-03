@@ -14,7 +14,7 @@ import sys
 ICONS = {  # stroke icons on a 24x24 grid
  'badge': '<rect x="6" y="3" width="12" height="18" rx="2"/><circle cx="12" cy="10" r="2.5"/><path d="M9 16 H15"/>',
  'slide': '<rect x="3" y="4" width="18" height="12" rx="1"/><path d="M12 16 V20 M8 20 H16"/>',
- 'survey': '<rect x="5" y="3" width="14" height="18" rx="2"/><path d="M8 8.5 L9.5 10 L12.5 7 M8 14 H16 M8 17 H14"/>',
+ 'checklist': '<rect x="5" y="3" width="14" height="18" rx="2"/><path d="M8 8.5 L9.5 10 L12.5 7 M8 14 H16 M8 17 H14"/>',
  'pencil': '<path d="M4 20 V16 L15 5 L19 9 L8 20 Z M13 7 L17 11"/>',
  'people': '<circle cx="9" cy="8" r="3"/><circle cx="17" cy="9" r="2.5"/><path d="M3 20 C3 16 6 14 9 14 S15 16 15 20 M15.5 14.2 C18.5 14.2 21 16 21 19.5"/>',
  'star': '<path d="M12 3 L14.6 8.9 L21 9.5 L16.2 13.8 L17.6 20.1 L12 16.8 L6.4 20.1 L7.8 13.8 L3 9.5 L9.4 8.9 Z"/>',
@@ -63,14 +63,14 @@ OVERVIEW_ABOUT = [
 # Each banner: its file, kicker, title, accent (a PALETTE key), comment lines, <title> text, and steps as (icon, label).
 PARTS = [
  ('walk-part1.svg', 'Part 1', 'The conference demo', 'accent-bright', WALK_ABOUT,
-  'Part 1 of the walk-through: join the conference demo as a speaker, submit a talk, answer the survey, write the abstract, join the committee, review the talk, and see the result.',
-  [('badge','Join'),('slide','Submit a talk'),('survey','Survey'),('pencil','Abstract'),('people','Committee'),('star','Review'),('check','Result')]),
+  'Part 1 of the walk-through: join the conference demo as a speaker, submit a talk, fill in the core details, write the abstract, join the committee, review the talk, and see the result.',
+  [('badge','Join'),('slide','Submit a talk'),('checklist','Core details'),('pencil','Abstract'),('people','Committee'),('star','Review'),('check','Result')]),
  ('walk-part2.svg', 'Part 2', 'A client of your own', 'design', WALK_ABOUT,
   'Part 2 of the walk-through: create a client, open its sandbox, change its words, design a trait, make a workflow, publish, invite somebody, and read the report.',
   [('building','Client'),('sandbox','Sandbox'),('words','Words'),('fields','Trait'),('flow','Workflow'),('publish','Publish'),('mail','Invite'),('bars','Report')]),
  ('overview.svg', 'KotlinDynamicRuntime', 'Forms, workflows, and reports, from configuration', 'accent-bright', OVERVIEW_ABOUT,
   'An application built on KotlinDynamicRuntime: configure its forms and workflows, try them in a sandbox, publish, and people fill in forms, review them, approve them, and read the report.',
-  [('braces','Configure'),('sandbox','Try it'),('publish','Publish'),('survey','Fill in'),('people','Review'),('check','Approve'),('bars','Report')]),
+  [('braces','Configure'),('sandbox','Try it'),('publish','Publish'),('checklist','Fill in'),('people','Review'),('check','Approve'),('bars','Report')]),
  ('walk-part3.svg', 'Part 3', 'For developers', 'amber', WALK_ABOUT,
   'Part 3 of the walk-through: make an API key, find an endpoint in the catalog, call it, build a workflow from its JSON in the bundle editor or with an AI assistant, and revoke the key.',
   [('key','API key'),('braces','Catalog'),('terminal','Call it'),('spark','Editor or AI'),('flow','Workflow'),('revoke','Revoke')]),

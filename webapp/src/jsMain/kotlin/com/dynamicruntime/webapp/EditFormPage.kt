@@ -81,12 +81,13 @@ val EditFormPage = FC<Props> {
     // offered only to an `allClients` admin on the shared/global surface. Defaults off, so an ordinary caller
     // (and any failure to read the home config) leaves the trait picker a closed choice.
     var canSeeAllClients by useState(false)
-    // Whether the form's client has a survey (issue #726), so a "View info" link beside Done can lead back to the
-    // survey's read-only view. Decided the way the survey page decides it -- by resolving and probing the
-    // workflow view on the form's own client -- since a control that could only dead-end is not shown.
-    var hasSurvey by useState(false)
+    // Whether the form's client has a core details workflow (issue #726), so a "View info" link beside Done can lead
+    // back to the core details workflow's read-only view. Decided the way the core details page decides it -- by
+    // resolving and probing the workflow view on the form's own client -- since a control that could only dead-end is
+    // not shown.
+    var hasCoreDetails by useState(false)
     // The last seeded snapshot of the edits -- the load, or the re-read after a save -- so "unsaved" is the working
-    // values differing from it (issue #726 review), the same measure the survey editor arms its leave guard on.
+    // values differing from it (issue #726 review), the same measure the core details editor arms its leave guard on.
     var seeded by useState<Map<String, Any?>>(emptyMap())
     // The form's traits locked for this caller (issue #857): drawn as a notice, and a changed section of one is sent
     // only as an explicit override -- by someone the lock allows -- with a reason.
@@ -122,7 +123,7 @@ val EditFormPage = FC<Props> {
         notFound = false
         saved = false
         seeded = emptyMap()
-        hasSurvey = false
+        hasCoreDetails = false
         locks = emptyList()
         keptToOwner = false
         overriding = false
@@ -151,9 +152,9 @@ val EditFormPage = FC<Props> {
                 // The home config carries `canSeeAllClients` (issue #667). Read defensively: a failure here must
                 // not block editing, only leave free-form trait entry off.
                 val homeFetch = async { apiResult { HomeApi.fetchConfig().canSeeAllClients }.valueOr(false) }
-                // Does the form's client have a survey (issue #726)? The same resolution the survey page makes:
+                // Does the form's client have a core details workflow (issue #726)? The same resolution the core details page makes:
                 // the workflow view's copy on the form's client, or the shared endpoint for a client that varies
-                // nothing, then the view itself -- `null` is "no survey". Its own coroutine, never awaited here
+                // nothing, then the view itself -- `null` is "no core details workflow". Its own coroutine, never awaited here
                 // (issue #726 review): it only decides whether a link is drawn, so neither its failure nor a
                 // stall may hold the editor on "Loading…". The link simply appears when the answer lands.
                 if (id != null) {
@@ -165,9 +166,9 @@ val EditFormPage = FC<Props> {
                         keptToOwner = answer.keptToOwner
                     }
                     editScope.launch {
-                        hasSurvey = apiResult {
+                        hasCoreDetails = apiResult {
                             val viewPath = fetchFormEndpoint(HttpMethod.GET.name, GEP.workflowView, formClient).endpoints.firstOrNull()?.path
-                            WorkflowApi.fetchSurveyView(id, clientOfResolvedPath(viewPath, GEP.workflowView, formClient)) != null
+                            WorkflowApi.fetchCoreDetailsView(id, clientOfResolvedPath(viewPath, GEP.workflowView, formClient)) != null
                         }.valueOr(false)
                     }
                 }
@@ -207,7 +208,7 @@ val EditFormPage = FC<Props> {
     useFocusOnFailure(focusRequest, failures)
 
     // The leave guard (issue #726 review): Done and View info are navigations, so unsaved edits are asked about
-    // exactly as the survey editor's are -- one save model, one answer to a dirty Done -- and a reload or closed
+    // exactly as the core details editor's are -- one save model, one answer to a dirty Done -- and a reload or closed
     // tab gets the browser's own prompt. Dirty is the working values differing from the last seeded snapshot;
     // it clears the moment a save re-seeds, so a clean page never nags. "Still here" is this page AND this form:
     // another form's editor is a keyed reload that would drop the edits, so it counts as a leave.
@@ -231,7 +232,7 @@ val EditFormPage = FC<Props> {
         val id = gedraId
         val targetType = if (cat != null && patchEp != null) formDocPatchTargetType(cat.inputType(patchEp)) else null
         // The shared editor header (issue #726): back link, title, and -- once the form is up -- Done and the
-        // saved note, the same line the survey editor draws. Done is the one way home: the listing, with this
+        // saved note, the same line the core details editor draws. Done is the one way home: the listing, with this
         // form flashed, carrying the listing's search and sort. The back link is the same target without the
         // flash. Every arm gets the back link from here, so none draws its own.
         val formUp = !loadingSchema && loadError == null && id != null && !notFound && targetType != null
@@ -241,12 +242,12 @@ val EditFormPage = FC<Props> {
                     onClick = { navigate(formsListingReturn(routeParams(), id)) }
                     +"Done"
                 }
-                // Back to the survey's read-only view (issue #726): an alternate view of the same form, so a
-                // link beside the Done button; offered only where the survey exists.
-                if (hasSurvey) {
+                // Back to the core details workflow's read-only view (issue #726): an alternate view of the same form,
+                // so a link beside the Done button; offered only where the core details workflow exists.
+                if (hasCoreDetails) {
                     Button {
                         type = "link"
-                        onClick = { navigate(formsSurveyViewRoute(routeParams(), id)) }
+                        onClick = { navigate(formsCoreDetailsViewRoute(routeParams(), id)) }
                         +"View info"
                     }
                 }
@@ -403,7 +404,7 @@ val EditFormPage = FC<Props> {
                                             overriding = false
                                             overrideReason = ""
                                         }
-                                        // Save stays on the page (issue #726), as the survey editor's does, so
+                                        // Save stays on the page (issue #726), as the core details editor's does, so
                                         // several saves in a row work without re-entering: re-read the form and
                                         // re-seed the edits from what is now stored -- the patch answers with
                                         // per-edit outcomes, not the document -- and note the save beside Done.

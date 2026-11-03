@@ -63,7 +63,7 @@ selector := [*] | [v1,v2,...] | [name=v,...]
 - **`user`** reads the form owner's account: `userId`, `name`, `publicName`, `email`, `persona`, `org`, `labels`
   (several), `isEntity`, `enabled`.
 - **`meta`** reads the form itself: `gedraId`, `client`, `org`, `ownerId`, `createdAt`, `updatedAt`, `formStatus`,
-  `surveyStatus`, `cfacts` (several).
+  `coreDetailsStatus`, `cfacts` (several).
 
 Trait, workflow and task ids are owned names, bare or `root:local` — which is why a path can hold a colon, and why
 the separator between a trait and its key is a bracket.
@@ -111,8 +111,8 @@ configuration write runs — each report is **bound** to what it reads (`ReportS
   when positional, only key fields when named, and each value reading as its field's kind;
 - the field exists in the trait's data schema — through `$ref`s, into arrays, in any branch of a union (a field the
   branches declare with different kinds reads as text) — and ends at a value or an array of values;
-- a workflow path's workflow is a normal workflow of the client's — a creation or survey workflow has no place on a
-  form to report — and an approval's task is one of its approval tasks;
+- a workflow path's workflow is a normal workflow of the client's — a creation or core details workflow has no place on
+  a form to report — and an approval's task is one of its approval tasks;
 - the declared kind, the combine and the rollup suit the value, and a grouped-by column has one value.
 
 A global report is bound once, against the global traits, types and workflows; run for a client that lacks a trait it

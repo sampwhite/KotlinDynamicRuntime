@@ -19,12 +19,12 @@ import com.dynamicruntime.common.util.toOptStr
 /*
  * Workflows made from templates (issue #1120).
  *
- * A **template** is a global workflow: declared in source by a component, with a rooted id (`kdr:survey`). No client
- * runs one as it is. A client takes a workflow from it by naming it ([WFD.fromTemplate]) in a workflow of its own, and
- * what the client stores is an **overlay** of the template -- only what it changed -- which [expandWorkflowTemplate]
- * merges over the template's current definition whenever the workflow is read. A fix to a template therefore reaches
- * every workflow made from it, and a template change the overlay no longer fits is a problem in that client's
- * workflow, found where any other is.
+ * A **template** is a global workflow: declared in source by a component, with a rooted id (`kdr:coreDetails`). No
+ * client runs one as it is. A client takes a workflow from it by naming it ([WFD.fromTemplate]) in a workflow of its
+ * own, and what the client stores is an **overlay** of the template -- only what it changed -- which
+ * [expandWorkflowTemplate] merges over the template's current definition whenever the workflow is read. A fix to a
+ * template therefore reaches every workflow made from it, and a template change the overlay no longer fits is a problem
+ * in that client's workflow, found where any other is.
  *
  * The overlay is merged by declared rules ([workflowTemplateMergeSpec]): a task is targeted by its id, never by
  * restating the list, and its traits restated (or, if the overlay asks, merged by trait id); a type's layout is merged
@@ -44,17 +44,18 @@ object WFT {
     /** A creation workflow: one task naming the form, whose save creates it. */
     const val createForm = "kdr:createForm"
 
-    /** A survey: one task an owner fills in and saves. */
-    const val survey = "kdr:survey"
+    /** A core details workflow: one task an owner fills in and saves. */
+    const val coreDetails = "kdr:coreDetails"
 
     /** A normal workflow with one data-entry task. */
     const val collect = "kdr:collect"
 
     /**
      * The templates a new client starts with a workflow from (issue #1346), unless its create asks otherwise: a
-     * creation workflow and a survey, built around the form's name, so a new client can make a form at once.
+     * creation workflow and a core details workflow, built around the form's name, so a new client can make a form at
+     * once.
      */
-    val starters: List<String> = listOf(createForm, survey)
+    val starters: List<String> = listOf(createForm, coreDetails)
 }
 
 /** The deployment's workflow templates, by rooted id (issue #1120): what a workflow made from one is read over. */

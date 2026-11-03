@@ -57,7 +57,7 @@ class ClientsOverviewEndpointTest : StringSpec({
             count(row, CLD.workflowCount) shouldBeGreaterThan 0
             row[CLD.issues].toJsonListOrEmpty().shouldBeEmpty()
         }
-        listed.getValue(SC.acme)[CLD.hasSurvey] shouldBe true
+        listed.getValue(SC.acme)[CLD.hasCoreDetails] shouldBe true
     }
 
     "the counts follow the client's forms and active users, unclaimed ones told apart" {

@@ -24,7 +24,7 @@ import com.dynamicruntime.common.gedra.traitDataTypeName
 import com.dynamicruntime.common.gedra.GedraConfig
 import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.cfact.CFACTS
-import com.dynamicruntime.common.gedra.workflow.SVY
+import com.dynamicruntime.common.gedra.workflow.CDF
 import com.dynamicruntime.common.gedra.workflow.WFC
 import com.dynamicruntime.common.gedra.workflow.WSC
 import com.dynamicruntime.common.gedra.workflow.WfEntry
@@ -78,8 +78,8 @@ object ConfDemo {
     /** The bundle holding the creation workflow -- one bundle per workflow, so each is read and written on its own. */
     const val createTalkConfig = "createTalk"
 
-    /** The bundle holding the survey (issue #1138). */
-    const val talkSurveyConfig = "talkSurvey"
+    /** The bundle holding the core details workflow (issue #1138). */
+    const val talkCoreDetailsConfig = "talkCoreDetails"
 
     /** The three normal workflows' bundles (issue #1139). */
     const val abstractConfig = "abstract"
@@ -94,7 +94,7 @@ object ConfDemo {
     const val nameTalkTask = "nameTalk"
     const val createSave = "create"
 
-    const val talkSurveyWorkflow = "talkSurvey"
+    const val talkCoreDetailsWorkflow = "talkCoreDetails"
     const val describeTask = "describe"
     const val saveAbout = "saveAbout"
 
@@ -184,7 +184,7 @@ object ConfDemo {
     const val provisionAtBootKey = "confDemoProvisionAtBoot"
 
     /** The demo's workflows, the ones a workflow page shows help for (issue #1221). */
-    val workflows = listOf(createTalkWorkflow, talkSurveyWorkflow, abstractWorkflow, reviewWorkflow, logisticsWorkflow)
+    val workflows = listOf(createTalkWorkflow, talkCoreDetailsWorkflow, abstractWorkflow, reviewWorkflow, logisticsWorkflow)
 }
 
 /**
@@ -196,9 +196,11 @@ fun confDemoDocs(): List<MarkdownDocDef> = listOf(
     confDemoDoc("README", "Conference demo", "A worked example of a client built from configuration: its JSON, piece by piece.", listed = true),
     confDemoDoc("client", "Conference demo: client", "The demo's client definition."),
     confDemoDoc("create-talk", "Conference demo: creating a talk", "The demo's creation workflow."),
-    confDemoDoc("talk-survey", "Conference demo: talk survey", "The demo's survey, its first traits, and the columns of its forms list."),
+    confDemoDoc("talk-core-details", "Conference demo: talk core details", "The demo's core details workflow, its first traits, and " +
+        "the columns of its forms list."),
     confDemoDoc("abstract", "Conference demo: the abstract", "The demo's first normal workflow: a trait with a list, a multi-select, trimming, and custom errors."),
-    confDemoDoc("committee-review", "Conference demo: committee review", "A workflow gated on the survey, with a field only administrators see and a review task."),
+    confDemoDoc("committee-review", "Conference demo: committee review", "A workflow gated on the talk's core details, with a field " +
+        "only administrators see and a review task."),
     confDemoDoc("workshop-logistics", "Conference demo: workshop logistics", "A workflow gated on a computed fact, with a layout that narrows and relabels, and copy from a file."),
     confDemoDoc("reports", "Conference demo: reports", "The demo's two reports: a roster of the talks by track, and a summary of the questionnaire."),
     confDemoDoc("bundles", "Conference demo: every bundle", "The full JSON of every bundle the demo writes, in one place."),
@@ -246,12 +248,13 @@ fun confDemoBase(cxt: KdrCxtBase = LiteCxt(), client: String = ConfDemo.client):
                         // An editor (issue #1455): it sees and edits every talk, and administers nothing.
                         persona = PERSONA.editor,
                         userLabels = listOf(ConfDemo.committeeLabel),
-                        summary = "Review the talks whose survey is complete, and accept them.",
+                        summary = "Review the talks whose core details are complete, and accept them.",
                     ),
                 ),
             ),
         )
-        cfact(ConfDemo.isWorkshop, ConfDemo.cfactGroup, "The talk's track is the workshop track; computed by the survey from the session.")
+        cfact(ConfDemo.isWorkshop, ConfDemo.cfactGroup, "The talk's track is the workshop track; computed by the core details " +
+            "workflow from the session.")
         cfact(ConfDemo.talkAccepted, ConfDemo.cfactGroup, "True once the committee has accepted the talk.")
 
         // The workflow pages are off in the shipped menu; a client with normal workflows turns them on (issue #792).
@@ -404,13 +407,13 @@ fun confDemoCreateTalk(cxt: KdrCxtBase = LiteCxt(), client: String = ConfDemo.cl
     }
 
 /**
- * The `talkSurvey` bundle (issue #1138): the survey, which collects what every talk needs before it is reviewed. It asks
- * one of the questionnaire's questions; the abstract workflow asks the rest.
+ * The `talkCoreDetails` bundle (issue #1138): the core details workflow, which collects what every talk needs before it
+ * is reviewed. It asks one of the questionnaire's questions; the abstract workflow asks the rest.
  */
-fun confDemoTalkSurvey(cxt: KdrCxtBase = LiteCxt(), client: String = ConfDemo.client): GedraConfig =
-    gedraConfig(cxt, ConfDemo.talkSurveyConfig, clientNamespace(client), client) {
-        workflow(ConfDemo.talkSurveyWorkflow, WfEntry.survey) {
-            comment = "The form's survey: what every talk needs before it is reviewed."
+fun confDemoTalkCoreDetails(cxt: KdrCxtBase = LiteCxt(), client: String = ConfDemo.client): GedraConfig =
+    gedraConfig(cxt, ConfDemo.talkCoreDetailsConfig, clientNamespace(client), client) {
+        workflow(ConfDemo.talkCoreDetailsWorkflow, WfEntry.coreDetails) {
+            comment = "The form's core details workflow: what every talk needs before it is reviewed."
             label = "About your talk"
             alterType(
                 "${clientNamespace(client)}.${traitDataTypeName(ConfDemo.questionnaireEntry)}",
@@ -418,7 +421,7 @@ fun confDemoTalkSurvey(cxt: KdrCxtBase = LiteCxt(), client: String = ConfDemo.cl
                     SCH.layout to SchLayoutBuilder(
                         null,
                         mode = SchLayoutMode.authoritative,
-                        comment = "The survey asks one of the five questions. The abstract workflow asks the rest.",
+                        comment = "The core details workflow asks one of the five questions. The abstract workflow asks the rest.",
                     ).apply { field(ConfDemo.firstTalk) }.build(),
                 ),
             )
@@ -449,7 +452,7 @@ fun confDemoAbstract(cxt: KdrCxtBase = LiteCxt(), client: String = ConfDemo.clie
                     SCH.layout to SchLayoutBuilder(
                         null,
                         mode = SchLayoutMode.authoritative,
-                        comment = "The four questions the survey left out.",
+                        comment = "The four questions the core details workflow left out.",
                     ).apply {
                         field(ConfDemo.audienceLevel)
                         field(ConfDemo.takeaway)
@@ -466,13 +469,14 @@ fun confDemoAbstract(cxt: KdrCxtBase = LiteCxt(), client: String = ConfDemo.clie
         }
     }
 
-/** The `review` bundle (issue #1139): the committee's review, open once the survey is complete. */
+/** The `review` bundle (issue #1139): the committee's review, open once a talk's core details are complete. */
 fun confDemoReview(cxt: KdrCxtBase = LiteCxt(), client: String = ConfDemo.client): GedraConfig =
     gedraConfig(cxt, ConfDemo.reviewConfig, clientNamespace(client), client) {
         workflow(ConfDemo.reviewWorkflow, WfEntry.normal) {
-            comment = "The committee reviews a talk once its survey is complete, then accepts it."
+            comment = "The committee reviews a talk once its core details are complete, then accepts it."
             label = "Committee review"
-            eligibility("surveyDone", SVY.surveyComplete, "The talk's survey has to be complete before the committee reviews it.", comment = "Reviewers need the track.")
+            eligibility("coreDetailsDone", CDF.coreDetailsComplete, "The talk's core details have to be complete before the " +
+                "committee reviews it.", comment = "Reviewers need the track.")
             task(ConfDemo.recordReviewTask, "Record the review") {
                 comment = "Only a committee member may save this task; the speaker sees it read-only."
                 trait(ConfDemo.review)
@@ -504,7 +508,7 @@ fun confDemoReview(cxt: KdrCxtBase = LiteCxt(), client: String = ConfDemo.client
 fun confDemoLogistics(cxt: KdrCxtBase = LiteCxt(), client: String = ConfDemo.client): GedraConfig =
     gedraConfig(cxt, ConfDemo.logisticsConfig, clientNamespace(client), client) {
         workflow(ConfDemo.logisticsWorkflow, WfEntry.normal) {
-            comment = "For workshops only: the eligibility test asks for the fact the survey computes from the track."
+            comment = "For workshops only: the eligibility test asks for the fact the core details workflow computes from the track."
             label = "Workshop logistics"
             eligibility("workshopOnly", ConfDemo.isWorkshop, "Only a talk on the workshop track has logistics to plan.")
             alterType(
@@ -568,7 +572,7 @@ fun confDemoReports(cxt: KdrCxtBase = LiteCxt(), client: String = ConfDemo.clien
 
 fun confDemoConfigs(cxt: KdrCxtBase = LiteCxt(), client: String = ConfDemo.client): List<GedraConfig> =
     listOf(
-        confDemoBase(cxt, client), confDemoCreateTalk(cxt, client), confDemoTalkSurvey(cxt, client),
+        confDemoBase(cxt, client), confDemoCreateTalk(cxt, client), confDemoTalkCoreDetails(cxt, client),
         confDemoAbstract(cxt, client), confDemoReview(cxt, client), confDemoLogistics(cxt, client),
         confDemoReports(cxt, client),
     )

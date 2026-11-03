@@ -13,7 +13,7 @@ import com.dynamicruntime.common.gedra.workflow.currentApprovals
 import com.dynamicruntime.common.gedra.workflow.engagementDataOf
 import com.dynamicruntime.common.gedra.workflow.formStatusOf
 import com.dynamicruntime.common.gedra.workflow.formWorkflowsOf
-import com.dynamicruntime.common.gedra.workflow.surveyStatusOf
+import com.dynamicruntime.common.gedra.workflow.coreDetailsStatusOf
 import com.dynamicruntime.common.gedra.workflow.workflowStateDataOf
 import com.dynamicruntime.common.schema.SchOption
 import com.dynamicruntime.common.schema.parseExactBool
@@ -89,7 +89,7 @@ class ReportSubject(
     val meta: Map<String, Any?>,
     /** The form's data entries, with derived fields already applied. */
     val entries: List<Map<String, Any?>>,
-    /** The form's state entries: workflow state, engagement, approvals, survey completion, cfacts. */
+    /** The form's state entries: workflow state, engagement, approvals, core details completion, cfacts. */
     val states: List<Map<String, Any?>>,
     /** The owner's account, keyed by `RUSR`; null when the owner is unknown or outside what the caller may see. */
     val owner: Map<String, Any?>?,
@@ -251,7 +251,7 @@ private fun unreadAttribute(path: ReportPath): KdrException =
 
 private fun metaValue(attr: String, subject: ReportSubject): Any? = when (attr) {
     RMETA.formStatus -> formStatusOf(subject.states)
-    RMETA.surveyStatus -> surveyStatusOf(subject.states)
+    RMETA.coreDetailsStatus -> coreDetailsStatusOf(subject.states)
     RMETA.cfacts -> subject.states.filter { it[GE.traitId].toOptStr() == GT.cfacts }
         .flatMap { it[GE.data].toJsonMapOrEmpty()[GT.facts].toJsonListOrEmpty() }
     else -> subject.meta[attr]

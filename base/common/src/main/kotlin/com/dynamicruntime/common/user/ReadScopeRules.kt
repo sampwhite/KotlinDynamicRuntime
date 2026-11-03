@@ -48,8 +48,11 @@ object ReadScopeRules {
         // the ordinary case rather than a missing value.
         AdminScope.ownClient -> ownClientWidth(cxt)
         // The capability outranks a primary organization. Someone who may reach every client is not confined
-        // by which organization they happen to belong to -- different axes, and this is the wider.
-        AdminScope.allClients -> ReadScope.unrestricted
+        // by which organization they happen to belong to -- different axes, and this is the wider. Except on a
+        // client's own copy of an endpoint (issue #1575): its path chose the client, so a listing there is that
+        // client's, as a read by id there already is (`clientFromPath`). Unrestricted, it listed every client's
+        // rows through one client's endpoint and checked them against that client's schema.
+        AdminScope.allClients -> cxt.clientFromPath?.let { ReadScope.ofClient(it) } ?: ReadScope.unrestricted
         // An administrator in `public` (issue #805): the admin level never widens what is readable there, so
         // their data reach is their own rows, as an ordinary user's is. Their reach over *users* -- the rest of
         // their own identity -- is [forUserAdmin]'s, which only user administration asks.
