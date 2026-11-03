@@ -2,7 +2,8 @@ package com.dynamicruntime.common.util
 
 /**
  * The Markdown extensions' vocabulary (issue #795): the roles shipped copy marks a span with, the attribute names
- * an image may carry, and the class prefix the default rendering gives a role. Each name matches its value.
+ * an image may carry, and the class prefix the default rendering gives a role. Each name matches its value, except a
+ * hyphenated role's, which is camel-cased ([floatLeft]). Every role is declared, with what it does, in [markdownRoles].
  */
 @Suppress("ConstPropertyName")
 object MDR {
@@ -31,6 +32,15 @@ object MDR {
      */
     const val clear = "clear"
 
+    /** An image floated left of the text that follows (issue #1382). */
+    const val floatLeft = "float-left"
+
+    /** An image floated right of the text that follows (issue #1382). */
+    const val floatRight = "float-right"
+
+    /** A floated image the size of a character, kept beside its line at any width (issue #1534). */
+    const val icon = "icon"
+
     /** The attributes an image may carry, numeric only; anything else in an attribute block is dropped. */
     const val width = "width"
     const val height = "height"
@@ -51,3 +61,54 @@ object MDR {
      */
     const val imageScheme = "img"
 }
+
+/** What a role is written on (issue #1562): a bracketed span `[text]{.role}`, or an image `![alt](src){.role}`. */
+@Suppress("EnumEntryName")
+enum class MdRolePlace { span, image }
+
+/**
+ * One role copy may write (issue #1562): its [name], what it is written on ([place]), what it does on a page
+ * ([description]), and how a mail shows it ([inMail]), where no stylesheet reaches. Data, so the copy reference lists
+ * the roles from it and a check reports copy naming a role that is not here, or one written where it does not apply.
+ */
+class MarkdownRole(val name: String, val place: MdRolePlace, val description: String, val inMail: String)
+
+/**
+ * Every role the renderer's surfaces realize (issue #1562), in the order the copy reference lists them. Each renders as
+ * the class [MDR.classPrefix] + its name, which `app.css` styles, and a mail realizes the span roles itself
+ * (`MailCopy.decorateValue`). A role added here needs its rule there, which a test holds it to.
+ */
+val markdownRoles: List<MarkdownRole> = listOf(
+    MarkdownRole(
+        MDR.value, MdRolePlace.span,
+        "Sets a substituted value apart from the prose, such as an address or a client, so a reader can see what to copy.",
+        "In bold.",
+    ),
+    MarkdownRole(
+        MDR.code, MdRolePlace.span,
+        "A code a reader reads off and types elsewhere: monospaced, bold, and spaced out.",
+        "Large, monospaced, and bold.",
+    ),
+    MarkdownRole(
+        MDR.clear, MdRolePlace.span,
+        "Written as an empty span, `[]{.clear}`. Ends a floated image here, so what follows goes below the image rather " +
+            "than beside it.",
+        "Nothing, since a mail floats no image.",
+    ),
+    MarkdownRole(
+        MDR.floatLeft, MdRolePlace.image,
+        "Floats the image left of the text that follows. On a screen narrower than 480 pixels, it sits above the text instead.",
+        "Nothing: a mail shows an image as its alt text.",
+    ),
+    MarkdownRole(
+        MDR.floatRight, MdRolePlace.image,
+        "Floats the image right of the text that follows. On a screen narrower than 480 pixels, it sits above the text instead.",
+        "Nothing: a mail shows an image as its alt text.",
+    ),
+    MarkdownRole(
+        MDR.icon, MdRolePlace.image,
+        "With a float, keeps a small image beside its line at any width, a character's space from it: " +
+            "`{.float-left .icon width=20}`.",
+        "Nothing: a mail shows an image as its alt text.",
+    ),
+)

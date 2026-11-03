@@ -609,6 +609,8 @@ object HDOC {
     const val expressions = "expressions"
     /** The facts (cfacts) a configuration tests, where they come from, and how a test is written (issue #1561). Generated. */
     const val facts = "facts"
+    /** Copy: the Markdown the runtime renders, its roles, and the fragment files copy is kept in (issue #1562). Generated. */
+    const val copy = "copy"
     const val clientConfiguration = "client-configuration"
     const val apiKeysAndTokens = "api-keys-and-tokens"
     /** The guide for a program or an AI assistant using a site's API (issue #1493), which the endpoint catalog names. */

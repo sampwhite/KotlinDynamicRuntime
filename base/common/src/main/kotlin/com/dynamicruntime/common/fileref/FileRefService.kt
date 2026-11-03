@@ -1,6 +1,7 @@
 package com.dynamicruntime.common.fileref
 
 import com.dynamicruntime.common.content.CMK
+import com.dynamicruntime.common.content.FragmentSource
 import com.dynamicruntime.common.content.HashedFileServing
 import com.dynamicruntime.common.content.IMGS
 import com.dynamicruntime.common.context.KdrCxt
@@ -31,6 +32,7 @@ import com.dynamicruntime.common.startup.ServiceInitializer
 import com.dynamicruntime.common.util.MDR
 import com.dynamicruntime.common.util.componentImageNames
 import com.dynamicruntime.common.util.imageRefIds
+import com.dynamicruntime.common.util.roleProblems
 import com.dynamicruntime.common.webasset.ClientWebAssetService
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
@@ -337,7 +339,7 @@ class FileRefService : ServiceInitializer, ContentServer {
                 issues,
             )
         }
-        reportCopyNamingNoRef(cxt, configs, client, owner, kept, issues)
+        reportCopyProblems(cxt, configs, client, owner, kept, issues)
         return FileRefRegistry(kept, held = kept.size + beyond, heldStored = kept.values.count { it.def.stored } + beyondStored)
     }
 
@@ -353,9 +355,11 @@ class FileRefService : ServiceInitializer, ContentServer {
      * its parent say it alike.
      *
      * An image the copy names that no component ships ([MDR.imageScheme], `![alt](img:sample:diagram)`, issue #1339) is
-     * the same problem, said the same way: what copy every client shares names is the fragment check's to judge.
+     * the same problem, said the same way: what copy every client shares names is the fragment check's to judge. So is a
+     * role no surface realizes, or one written where it does not apply (issue #1562): a misspelled `{.vaule}` would
+     * otherwise render as nothing, with no word said.
      */
-    private fun reportCopyNamingNoRef(
+    private fun reportCopyProblems(
         cxt: KdrCxt,
         configs: List<GedraConfig>,
         client: String,
@@ -372,6 +376,7 @@ class FileRefService : ServiceInitializer, ContentServer {
                 val content = layer.load() ?: continue
                 for ((namespace, keys) in content) {
                     for ((key, value) in keys) {
+                        reportRoleProblems(cxt, config, layer, namespace, key, value, owner, issues)
                         // An image no component ships (issue #1339), judged with the refs: the same copy, the same build.
                         if (value.contains(imagePrefix)) {
                             for (name in value.componentImageNames()) {
@@ -410,6 +415,30 @@ class FileRefService : ServiceInitializer, ContentServer {
                     }
                 }
             }
+        }
+    }
+
+    /** Reports each role problem of [value], the copy at [namespace].[key] of [layer] in [config] ([reportCopyProblems]). */
+    private fun reportRoleProblems(
+        cxt: KdrCxt,
+        config: GedraConfig,
+        layer: FragmentSource,
+        namespace: String,
+        key: String,
+        value: String,
+        owner: String,
+        issues: MutableList<GedraConfigIssue>,
+    ) {
+        for (problem in value.roleProblems()) {
+            reportConfigProblem(
+                cxt,
+                config.issue(
+                    "$namespace.$key (file '${layer.fileId}' of client '$owner', config '${config.name}'): ${problem.message}",
+                    "Keeping the copy; the role does nothing.",
+                    GCEL.fragment, layer.fileId,
+                ),
+                issues,
+            )
         }
     }
 

@@ -1,6 +1,7 @@
 package com.dynamicruntime.common.content
 
 import com.dynamicruntime.common.util.crc32Hex
+import com.dynamicruntime.common.util.roleProblems
 
 /**
  * A fragment file's content after every layer that applies has been folded in (issue #456), together with the
@@ -195,4 +196,23 @@ fun fragmentContentBuildId(content: Map<String, Map<String, String>>): String {
         }
     }
     return canonical.crc32Hex()
+}
+
+/**
+ * What copy every client shares writes of roles no surface realizes, or of roles written where they do not apply
+ * (issue #1562): one finding per key and problem. For the fragment check at boot, as [sharedCopyNamingNoImage] is for
+ * images; a client's own copy is judged with its configuration (`FileRefService`).
+ */
+fun sharedCopyRoleProblems(sources: List<FragmentSource>): List<String> {
+    val findings = mutableListOf<String>()
+    for (layer in sources) {
+        if (layer.client != null) continue
+        val content = layer.load() ?: continue
+        for ((namespace, keys) in content) {
+            for ((key, value) in keys) {
+                value.roleProblems().forEach { findings.add("'${layer.fileId}' $namespace.$key: ${it.message}") }
+            }
+        }
+    }
+    return findings.distinct()
 }
