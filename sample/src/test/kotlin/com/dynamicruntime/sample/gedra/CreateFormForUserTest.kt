@@ -81,18 +81,18 @@ class CreateFormForUserTest : StringSpec({
     }
 
     "an allClients admin cannot create cross-client through the ordinary create surface" {
-        // An allClients admin's scope is unrestricted, so it *can* resolve a user in another client -- but these
-        // ordinary create endpoints build the form in the caller's own client, so a cross-client target is
-        // refused here (that is what /admin/formDocForUser is for), rather than making a globex form stamped with
-        // acme's workflow lineage.
+        // These ordinary create endpoints build the form in the caller's own client, so a cross-client target is
+        // refused (that is what /admin/formDocForUser is for), rather than making a globex form stamped with acme's
+        // workflow lineage. On acme's own endpoint the path confines even an allClients admin's scope to acme (issue
+        // #1575), so a globex user is not found there, as for an acme administrator; on the shared endpoint the
+        // scope is unrestricted, resolves the user, and the create refuses the other client.
         val admin = TestUser.create(
             cxt, "cffu-all@acme.test", level = ROLE.admin, capabilities = listOf(ROLE.allClients), userClient = SC.acme,
         )
         TestUser.create(cxt, "cffu-all-globex@globex.test", userClient = SC.globex)
-        admin.expectError(
-            EXC.badInput, acmeCreate,
-            data = mapOf(EI.user to "cffu-all-globex@globex.test", GDF.entries to siteAuditEntries()),
-        )
+        val forGlobex = mapOf(EI.user to "cffu-all-globex@globex.test", GDF.entries to siteAuditEntries())
+        admin.expectError(EXC.notFound, acmeCreate, data = forGlobex)
+        admin.expectError(EXC.badInput, GEP.formDocCreate, data = forGlobex)
     }
 
     "an ordinary user cannot create a form for another user" {

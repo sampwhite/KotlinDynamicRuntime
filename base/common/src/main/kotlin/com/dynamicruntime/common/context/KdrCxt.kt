@@ -246,11 +246,13 @@ class KdrCxt(
      *
      * Distinct from [client], which says who owns the row being worked on and is rebound freely as a request
      * proceeds. This says the request arrived somewhere that had already decided which client it was for, and
-     * so is a **confinement**: a gedra outside it is refused, whatever the caller's reach.
+     * so is a **confinement**: a gedra outside it is refused, whatever the caller's reach, and a listing reads only
+     * its rows -- the read scope an `allClients` caller is given there is this client's (issue #1575).
      *
      * That is what makes a client endpoint's promise legible rather than incidental. Without it, an
      * `allClients` holder calling `/gedra/acme/...` with a `globex` id would be stopped only by scope --
-     * which is true today and stops being true the moment their scope is wide enough.
+     * which is true today and stops being true the moment their scope is wide enough. Their scope was that wide for
+     * a listing, which until #1575 listed every client's forms through `acme`'s endpoint.
      */
     var clientFromPath: String? = null
 
