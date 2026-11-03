@@ -1,6 +1,8 @@
 package com.dynamicruntime.assistant
 
 import com.dynamicruntime.common.annotation.KdrPrivate
+import com.dynamicruntime.common.assistant.ABLK
+import com.dynamicruntime.common.assistant.ATOOL
 import com.dynamicruntime.common.cfact.CFD
 import com.dynamicruntime.common.content.ContentResources
 import com.dynamicruntime.common.content.MDOC
@@ -28,34 +30,22 @@ import com.dynamicruntime.common.util.toJsonStr
 import com.dynamicruntime.common.util.toOptStr
 import com.dynamicruntime.kdn.confdemo.ConfDemo
 
-/** The wire names of a tool's definition and its use (each name matches its value), the tool names, and their limits. */
+/**
+ * The wire names of a tool's definition and its use (each name matches its value; a block's are the kernel's `ABLK`), and
+ * the tools' limits. The tool names are the kernel's `ATOOL`, which the page labels calls by.
+ */
 @Suppress("ConstPropertyName")
 object TOOL {
-    const val name = "name"
+    const val name = ABLK.name
     const val description = "description"
     const val inputSchema = "input_schema"
-    const val toolUse = "tool_use"
-    const val toolResult = "tool_result"
-    const val id = "id"
-    const val input = "input"
-    const val toolUseId = "tool_use_id"
-    const val content = "content"
-    const val isError = "is_error"
-
-    // The tool names.
-    const val readDoc = "read_doc"
-    const val listConfigs = "list_configs"
-    const val readConfig = "read_config"
-    const val readConfigEntries = "read_config_entries"
-    const val listWorkflows = "list_workflows"
-    const val listTraits = "list_traits"
-    const val readCfacts = "read_cfacts"
-    const val viewWorkflow = "view_workflow"
-    const val patchConfig = "patch_config"
-    const val setIncludedTraits = "set_included_traits"
-
-    // Tool inputs that are not an endpoint's own field.
-    const val doc = "doc"
+    const val toolUse = ABLK.toolUse
+    const val toolResult = ABLK.toolResult
+    const val id = ABLK.id
+    const val input = ABLK.input
+    const val toolUseId = ABLK.toolUseId
+    const val content = ABLK.content
+    const val isError = ABLK.isError
 
     /** The most characters of a tool's result the model is shown. */
     const val maxResultChars = 30_000
@@ -210,59 +200,59 @@ object AssistantTools {
     @KdrPrivate
     fun build(): List<AssistantTool> = listOf(
         AssistantTool(
-            TOOL.readDoc,
+            ATOOL.readDoc,
             "Reads a reference document as Markdown: '${HDOC.clientConfiguration}' (every config slot and its fields), " +
                 "'${HDOC.schemaDialect}' (how a trait's data type is written), or a page of the demo client's " +
                 "('${ConfDemo.docIdPrefix}README' lists them), which shows a whole client's configuration worked through.",
-            objectSchema(TOOL.doc to stringSchema("The document's id."), required = listOf(TOOL.doc)),
+            objectSchema(ATOOL.doc to stringSchema("The document's id."), required = listOf(ATOOL.doc)),
             method = null, path = null,
         ) { run, input ->
-            val docId = input[TOOL.doc].toOptStr().orEmpty()
+            val docId = input[ATOOL.doc].toOptStr().orEmpty()
             readableDoc(run.cxt, docId)?.let {
                 ToolResult(ToolRun.capped(it, TOOL.maxDocChars, "The rest of this document cannot be read here."), isError = false)
             }
                 ?: ToolResult("No document '$docId'. Readable here: ${readableDocIds(run.cxt).joinToString(", ")}.", isError = true)
         },
         AssistantTool(
-            TOOL.listConfigs,
+            ATOOL.listConfigs,
             "Lists the client's configuration bundles: each one's name, version, whether its latest revision is published, " +
                 "and its slot and entry counts.",
             objectSchema(), HttpMethod.GET, CFEP.bundles,
         ) { run, _ -> run.call(HttpMethod.GET, CFEP.bundles) },
         AssistantTool(
-            TOOL.readConfig,
+            ATOOL.readConfig,
             "Reads one configuration bundle whole, as the sandbox runs it (drafts included), in portable form: the client's " +
                 "own namespace is written 'client.@self'. Data in that form may be patched back as it is.",
             objectSchema(CFEP.name to stringSchema("The bundle's name."), required = listOf(CFEP.name)),
             HttpMethod.GET, CFEP.bundle, setOf(CFEP.name, PORT.portableField),
         ) { run, input -> run.call(HttpMethod.GET, CFEP.bundle, mapOf(CFEP.name to input[CFEP.name], PORT.portableField to true)) },
         AssistantTool(
-            TOOL.readConfigEntries,
+            ATOOL.readConfigEntries,
             "Reads one bundle's entries, each with its slot, data (portable form), and 'updatedAt'. Pass an entry's " +
                 "'updatedAt' as 'expectUpdatedAt' when patching it, so a change someone else made since is not overwritten.",
             objectSchema(CFEP.name to stringSchema("The bundle's name."), required = listOf(CFEP.name)),
             HttpMethod.GET, CFEP.slotEntries, setOf(CFEP.name, PORT.portableField),
         ) { run, input -> run.call(HttpMethod.GET, CFEP.slotEntries, mapOf(CFEP.name to input[CFEP.name], PORT.portableField to true)) },
         AssistantTool(
-            TOOL.listWorkflows,
+            ATOOL.listWorkflows,
             "Lists the client's workflows as its sandbox runs them, drafts included, with the templates a new one may start " +
                 "from and why any is refused (a plan's limit, say).",
             objectSchema(), HttpMethod.GET, UADEP.clientWorkflows,
         ) { run, _ -> run.call(HttpMethod.GET, UADEP.clientWorkflows) },
         AssistantTool(
-            TOOL.listTraits,
+            ATOOL.listTraits,
             "Lists the global traits a client may include, with their data types, the client's own traits, and its plan's " +
                 "quotas for schemas and attributes.",
             objectSchema(), HttpMethod.GET, UADEP.clientTraits,
         ) { run, _ -> run.call(HttpMethod.GET, UADEP.clientTraits) },
         AssistantTool(
-            TOOL.readCfacts,
+            ATOOL.readCfacts,
             "Reads the cfacts reference as Markdown: every cfact a workflow's conditions may name, what makes it true, and " +
                 "whether it is true for the caller now.",
             objectSchema(), HttpMethod.GET, CFD.cfactsPath,
         ) { run, _ -> run.call(HttpMethod.GET, CFD.cfactsPath) },
         AssistantTool(
-            TOOL.viewWorkflow,
+            ATOOL.viewWorkflow,
             "Shows a workflow as the sandbox runs it -- its tasks, the traits each shows, and who may act -- so a draft can " +
                 "be checked to have loaded. With no workflowId, the client's creation workflow.",
             objectSchema(GDF.workflowId to stringSchema("The workflow's id.")),
@@ -271,7 +261,7 @@ object AssistantTools {
             run.call(HttpMethod.GET, GEP.workflowView, input[GDF.workflowId].toOptStr()?.let { mapOf(GDF.workflowId to it) })
         },
         AssistantTool(
-            TOOL.patchConfig,
+            ATOOL.patchConfig,
             "Changes the client's configuration, as a draft: nothing is live until a person publishes it. Each config " +
                 "names a bundle (a new name makes one) and its edits; each edit names a slot, an action ('addOrMerge', " +
                 "'addOrReplace', or 'deleteOrNoOp'), and the entry's data, in portable form. **Dry run first**: with " +
@@ -304,7 +294,7 @@ object AssistantTools {
             HttpMethod.POST, CFEP.bundlePatch, setOf(CFEP.configs, CFEP.dryRun),
         ) { run, input -> patch(run, input) },
         AssistantTool(
-            TOOL.setIncludedTraits,
+            ATOOL.setIncludedTraits,
             "Sets which global traits the client includes -- the whole list, replacing the one it has -- as a draft, " +
                 "which a person publishes. What the change does to stored forms is judged when they do.",
             objectSchema(

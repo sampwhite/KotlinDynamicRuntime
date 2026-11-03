@@ -1,5 +1,6 @@
 package com.dynamicruntime.webapp
 
+import com.dynamicruntime.common.assistant.ASST
 import com.dynamicruntime.common.gedra.workflow.WAGG
 import com.dynamicruntime.common.home.HMENU
 
@@ -120,7 +121,8 @@ object HP {
     /**
      * Documents page: the heading of the open document to scroll to (issue #1136) -- the `#section` a link into the
      * document named. It is the address's anchor (`/wa/docs/readme#configuration`), as an in-page link's is: the
-     * documents route says so in the route table.
+     * documents route says so in the route table. Clients page (issue #1527): the panel of the client's page to scroll to
+     * (`/wa/clients/acme#client-publishing`), as the assistant page's "Check impact and publish" links to it.
      */
     const val section = "section"
 
@@ -150,6 +152,9 @@ object HP {
      */
     const val shown = "shown"
     const val reportView = HMENU.reportViewParam
+
+    /** Workflow assistant page (issue #1527): the conversation open, so a reload or Back reopens it; absent for a new one. */
+    const val conversation = "cv"
 
     /**
      * The listing page a child was opened from (issue #554), so its back link can return there; absent when
@@ -217,11 +222,12 @@ private val routes: List<RouteDef> = listOf(
     RouteDef(HMENU.pageUsers, "users"),
     RouteDef(HMENU.pageUsers, "users/:${HP.user}"),
     RouteDef(HMENU.pageClients, "clients"),
-    RouteDef(HMENU.pageClients, "clients/:${HP.client}"),
+    RouteDef(HMENU.pageClients, "clients/:${HP.client}", anchor = HP.section),
     RouteDef(HMENU.pageCustomers, "customers"),
     RouteDef(HMENU.pageCustomers, "customers/:${HP.customer}"),
     RouteDef(HMENU.pageReports, "reports"),
     RouteDef(HMENU.pageApiKeys, "api-keys"),
+    RouteDef(ASST.page, "assistant"),
     RouteDef(HMENU.pageReports, "reports/:${HP.report}"),
     RouteDef(HMENU.pageForms, "forms"),
     RouteDef(HMENU.pageNewForm, "forms/new"),
@@ -242,6 +248,7 @@ private val routes: List<RouteDef> = listOf(
     RouteDef(HMENU.pageFileStore, "operator/files"),
     RouteDef(HMENU.pageFragmentsCheck, "operator/fragments"),
     RouteDef(HMENU.pageCfacts, "operator/cfacts"),
+    RouteDef(ASST.operatorPage, "operator/assistant"),
     RouteDef(HMENU.pageBecomeUser, "test/become-user"),
     RouteDef(HMENU.pageSimulations, "test/simulations"),
     RouteDef(HMENU.pageDebug, "debug"),
@@ -599,6 +606,11 @@ private fun tellMove(oldUrl: String) {
  * runs after React's handlers, since React's listener went in first (call this after `createRoot`). The document's
  * listener is for a link React drew outside the root (a portal: a dropdown, a dialog); for a link inside it, the
  * root's has already called `preventDefault`, which the document's then sees.
+ *
+ * **Neither sees a link in a portal under a `stopPropagation`.** React listens on a portal's own container (the
+ * body, for antd's popups), so a stop by a React ancestor ends the browser's event there, short of the document;
+ * measured, a workflow link in the forms table's "N available …" popover was followed as a full page load. Such a
+ * link follows itself: its own `onClick` calls [followAppLink] with the native event.
  */
 fun installRouting(container: dynamic) {
     rewriteToPath()
@@ -615,8 +627,11 @@ fun installRouting(container: dynamic) {
  * outside the app's pages (an API download, an unknown path, which then loads as not found), a bare `#anchor`
  * (in-page; a `#page=` one is rewritten when followed), and a link to this very page with a fragment (an anchor on
  * it). A handler that already called `preventDefault` -- a code block's copy button -- is left its click.
+ *
+ * Also called from a link's own `onClick`, with `nativeEvent`, where the router's listeners cannot see the click
+ * ([installRouting]); the listeners then find it already handled.
  */
-private fun followAppLink(e: dynamic) {
+fun followAppLink(e: dynamic) {
     if (e.defaultPrevented == true || e.button != 0) return
     if (e.metaKey == true || e.ctrlKey == true || e.shiftKey == true || e.altKey == true) return
     val target = e.target

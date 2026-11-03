@@ -7,14 +7,14 @@ real form there, and a person publishes it with the Publish button that already 
 
 This document says how it is built and why. It grows with the issues below.
 
-**Status: in progress.**
+**Status: built.**
 
 | Phase | Issue | Status |
 |---|---|---|
 | Running an endpoint in-process as a user, with an API key's limits and an allowlist | #1524 | built |
 | The `assistant` module: the model provider, operator opt-in, and monthly budgets | #1525 | built |
 | Conversations: tools, the turn loop, storage, and budget enforcement | #1526 | built |
-| The page: chat, try it in the sandbox, the publish link, and the allowance | #1527 | not started |
+| The page: chat, try it in the sandbox, the publish link, and the allowance | #1527 | built |
 
 ## Where it lives
 
@@ -27,8 +27,9 @@ include("assistant")
 project(":assistant").projectDir = file("KotlinDynamicRuntime/assistant")
 ```
 
-What core and the webapp must name of it -- the endpoint paths, the field names, the menu page, and the cfact -- is in
-the kernel's `ASST`, so a rename breaks a compile rather than a page.
+What core and the webapp must name of it -- the endpoint paths, the field names, the menu pages, and the cfact -- is in
+the kernel's `ASST` and `ACNV`, with a stored message's block names in `ABLK` and the tool names in `ATOOL`, so a rename
+breaks a compile rather than a page.
 
 The official Anthropic Java SDK (`com.anthropic:anthropic-java`) is a dependency of this module alone, and only
 `AnthropicModel.kt` imports it.
@@ -45,7 +46,9 @@ API's wire shape. The turn loop, the stored conversation, and the tests never se
   `AssistantService.modelConfigKey`, as a test hands the file store a `FakeS3Api`.
 - **`KDR_ASSISTANT_PROVIDER=fake`** runs a built-in demo, to try the page locally with no key and no spending: it
   answers a message by calling `list_workflows`, a real tool call through the seam, and then names the workflows it
-  found. A test instance only: elsewhere it refuses the boot, as simulated mail does.
+  found. Asked to draft (a message saying "draft"), it copies the client's first normal workflow as `assistantDemo`
+  into a bundle of its own, a dry run and then the write, so the page's drafts can be tried and published. A test
+  instance only: elsewhere it refuses the boot, as simulated mail does.
 
 **Which model a node has** is decided once, at boot. With no key -- the secret named by `KDR_ASSISTANT_KEY_SECRET`
 (default `anthropicApiKey`) missing from `private/secrets.properties` -- the assistant is unavailable and nothing else
@@ -114,7 +117,9 @@ The client to set is chosen from the clients this node carries, its sandbox left
 **The `assistant:on` cfact** is true when this node has a model and the caller's client (a sandbox's parent) is
 switched on. It does not say whether the month's budget is spent: the page says that. It is read on every cfact
 assembly, so the switch is held in a table cache. The cache holds the enabled rows only, which is exactly the set the
-cfact asks about.
+cfact asks about. **`assistant:usable`** (#1527) adds the rule the page's endpoints answer by: in a sandbox, the caller
+must be there as a user opened from one of the client's own (`AssistantTurns.personOrNull`). Read only once the switch
+says yes, so a node with the assistant off asks nothing more of a sandbox caller.
 
 ## Conversations and turns
 
@@ -125,7 +130,10 @@ administrator disabled is refused, not enabled again -- re-read on every call by
 configuration edit can only become a draft on the parent, written as the administrator who stands behind the sandbox
 user; reads show the drafts; and the assistant never holds more than the administrator does at that moment. A client
 with no sandbox is refused (`noSandbox`): the administrator turns one on from the Clients page, and the assistant
-never does. The assistant works only in the client the administrator is signed in to, and not from inside a sandbox.
+never does. The assistant works only for the client the administrator is signed in to. Signed in to its sandbox --
+where "Try it in the sandbox" leaves them -- they are still the person outside it: the user the sandbox user was opened
+from (`AssistantTurns.personOf`), whose conversations these are, and the tools act as the session's own sandbox user. A
+sandbox user nobody opened, or one opened from another client, has nobody outside to speak for, and is refused.
 
 **The tools** are the allowlist: the seam admits exactly the endpoints they name (`AssistantTools.scope`), so everything
 else is refused, and a drift test holds each tool to its endpoint.
@@ -209,6 +217,30 @@ ending, every write and refusal, and model errors, never the model's text.
 The per-hour and per-client limits are counted, then the turn is recorded: two messages at the same instant may both
 pass. They are a fair-use limit, not a fence; the budget is the fence, checked again before every step.
 
+## The page
+
+`/wa/assistant` (`AssistantPage.kt`; what it decides is in the `kdr-webapp-pages` skill's `workflow-assistant.md`). Its
+menu entry is the module's own: an overlay on the menu (`AssistantComponent.uiBlocks`), offered to a client's
+administrator while `assistant:usable` holds -- so never to a caller every assistant endpoint would refuse -- placed
+after Reports. Core never names the cfact, which exists only while the module is loaded, and a client's menu editor can
+put the entry back to it, "As shipped". The operator's page, `/wa/operator/assistant`, is offered the same way under Operator.
+
+Before anything is sent the page reads `GET /clientAdmin/assistant/status`: whether the assistant is on, whether the
+client has a sandbox, whether the caller is in it, the month's use **as a share** of the budget -- never the amount,
+which is the operator's -- when it resets (the first of next month in UTC, shown in the client's zone), and the data
+notice. Its panels:
+
+- **Sandbox**, only while there is none: turning one on, confirmed, through the Clients page's own call.
+- **Conversation**: the person's conversations to reopen, the transcript, Send and Stop, and "What is sent to Anthropic"
+  beside a conversation's first message. The tool results the API stores as the person's are joined to their calls, and
+  an answer's calls collapse into one line ("Looked at: workflows, bundle `flows`", "Drafted `flows` (v3)") that opens
+  to each call and its result. The model's notes show muted. It polls every 1.5 seconds while a turn runs, reading only
+  the messages after the last it has, backing off after a failed read rather than stopping, and nothing when idle.
+- **Drafts from this conversation**: each bundle a write made, and the included traits, with **Try it in the sandbox**
+  (opening it at the workflow's forms) and **Check impact and publish**, a link to the Clients page's publishing panel.
+  The page has no Publish button.
+- **Allowance**: the share used, and once it is used up, when it starts again and that an operator can raise it.
+
 ## Not decided yet
 
 Recorded here as proposed, to settle as the later issues are worked:
@@ -217,6 +249,7 @@ Recorded here as proposed, to settle as the later issues are worked:
   Neither is built: nothing deletes a conversation or a turn record yet.
 - **Audit.** Through the transcript and the logs, with no field on a revision naming the assistant.
 - **Progress notes.** The request asks for `display: "updates"`, so the model's notes between tool calls are stored in
-  its thinking blocks, for the page (#1527) to show.
+  its thinking blocks, which the page shows muted. Whether the notes the real model writes are worth showing waits for
+  tuning against it.
 - **Per-plan default budgets.** Later; see
   [`deferred-work.md`](../development/deferred-work.md#when-a-deployment-offers-the-workflow-assistant-at-more-than-one-price).

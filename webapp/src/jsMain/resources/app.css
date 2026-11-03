@@ -1936,3 +1936,29 @@ body.dv-open .app-content { padding-right: calc(var(--dv-panel-width) + 16px); }
 .bundle-editor-new { margin-bottom: 12px; padding-left: 8px; border-left: 3px solid var(--accent-bright); }
 .bundle-editor-notice { margin: 8px 0; padding: 8px 12px; border: 1px solid var(--border); border-radius: 6px; }
 .bundle-editor-notice .ant-btn { margin-right: 8px; }
+
+/* The workflow assistant's page (issue #1527): the transcript, what the person said set apart from the model's answers,
+   notes muted, each line of tool calls a disclosure opening to the calls and their results; and the allowance's bar. */
+.assistant-transcript { display: flex; flex-direction: column; gap: 10px; max-height: 60vh; overflow-y: auto; padding-right: 4px; }
+.assistant-said { padding: 8px 12px; border-radius: 10px; background: var(--surface-raised); }
+.assistant-said.from-person {
+    align-self: flex-end; max-width: 85%; background: color-mix(in oklab, var(--accent) 22%, var(--surface-raised));
+}
+.assistant-said.from-person > p { margin: 0; white-space: pre-wrap; }
+.assistant-note { margin: 0; font-size: .9rem; color: var(--text-faint); font-style: italic; white-space: pre-wrap; }
+.assistant-tools > summary { cursor: pointer; color: var(--text-muted); font-size: .9rem; }
+.assistant-tools > summary code { color: var(--text-dim); }
+.assistant-call { margin: 8px 0 0 16px; }
+.assistant-call > p { margin: 0 0 4px; overflow-wrap: anywhere; }
+.assistant-result { max-height: 240px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
+.assistant-result.error { color: var(--danger); }
+.assistant-input {
+    width: 100%; min-height: 96px; padding: 8px 10px; resize: vertical; font: inherit; color: var(--text);
+    background: var(--surface-page); border: 1px solid var(--border); border-radius: 8px;
+}
+.assistant-drafts { padding-left: 18px; }
+.assistant-drafts > li + li { margin-top: 12px; }
+.assistant-drafts .row { margin-top: 6px; }
+.allowance-bar { height: 10px; border-radius: 999px; background: var(--surface-page); border: 1px solid var(--border); overflow: hidden; }
+.allowance-used { height: 100%; background: var(--accent-bright); }
+.allowance-used.spent { background: var(--danger); }

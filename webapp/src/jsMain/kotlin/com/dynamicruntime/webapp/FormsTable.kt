@@ -780,6 +780,9 @@ private val WorkflowCell = FC<WorkflowCellProps> { props ->
                 a {
                     className = ClassName("wf-cell-link")
                     href = props.workflowHref(props.gedraId, it.entry.workflowId, it.linkTask, it.linkEdits)
+                    // Followed in the app by the link itself: in the "N available …" popover, a portal, the cell's
+                    // stopPropagation keeps the click from the router's listeners (see `installRouting`).
+                    onClick = { e -> followAppLink(e.nativeEvent) }
                     +it.entry.label
                 }
             }

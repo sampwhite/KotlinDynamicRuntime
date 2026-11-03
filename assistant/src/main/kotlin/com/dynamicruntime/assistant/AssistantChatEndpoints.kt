@@ -8,8 +8,11 @@ import com.dynamicruntime.common.endpoint.ListPage
 import com.dynamicruntime.common.endpoint.SchModule
 import com.dynamicruntime.common.endpoint.schemaModule
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.gedra.ClientService
+import com.dynamicruntime.common.gedra.GedraConfigOrigin
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.sql.PF
+import com.dynamicruntime.common.user.SandboxAccess
 import com.dynamicruntime.common.util.toOptLong
 import com.dynamicruntime.common.util.toOptStr
 
@@ -80,6 +83,43 @@ fun assistantChatSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "${ASST.root
         }
     }
 
+    type(ACNV.statusType) {
+        type = SCT.kObject
+        description = "What the assistant page shows before anything is sent: whether it can be used, and how much is left."
+        property(ASST.client, "The client the assistant works for: the caller's, or the one whose sandbox they are in.", required = true)
+        property(ACNV.on, "Whether the assistant is on for the client.", required = true) { type = SCT.boolean }
+        property(ACNV.hasSandbox, "Whether the client has a sandbox, which the assistant drafts in.", required = true) {
+            type = SCT.boolean
+        }
+        property(
+            ACNV.sandboxInSource,
+            "Whether the client is defined in source code, where its sandbox is turned on, rather than from the Clients page.",
+            required = true,
+        ) { type = SCT.boolean }
+        property(ACNV.inSandbox, "Whether the caller is signed in to the sandbox rather than the client.", required = true) {
+            type = SCT.boolean
+        }
+        property(
+            ACNV.usedShare, "This month's use as a share of the client's monthly budget: 1 or more when it is spent.", required = true,
+        ) { type = SCT.number }
+        property(ACNV.spent, "Whether this month's budget is used up, so no message can be sent until it resets.", required = true) {
+            type = SCT.boolean
+        }
+        property(ACNV.resetsAt, "When the month's use starts again from nothing: the start of next month, in UTC.", required = true) {
+            dateTime()
+        }
+        property(ASST.dataNotice, "What is sent to Anthropic when the assistant is used.", required = true)
+    }
+
+    generalEndpoint(
+        ACNV.statusPath,
+        "Whether the workflow assistant can be used for the caller's client -- it is on, and the client has a sandbox -- " +
+            "how much of the month's allowance is used, and what using it sends to Anthropic.",
+        HttpMethod.GET,
+        outputRef = ACNV.statusType,
+        sessionOnly = true,
+    ) { c, _ -> clientStatus(c, AssistantService.get(c), AssistantTurns.personOf(c)) }
+
     generalEndpoint(
         ACNV.messagePath,
         "Sends the workflow assistant a message, starting a turn, and answers at once: poll the conversation for what " +
@@ -117,8 +157,9 @@ fun assistantChatSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "${ASST.root
         sessionOnly = true,
     ) { c, request ->
         val conversationId = request[ACNV.conversationId].toOptStr().orEmpty()
-        AssistantTurns.recoverLapsed(c, AssistantTurns.ownConversation(c, conversationId))
-        val conversation = AssistantTurns.ownConversation(c, conversationId)
+        val person = AssistantTurns.personOf(c)
+        AssistantTurns.recoverLapsed(c, AssistantTurns.ownConversation(c, person, conversationId))
+        val conversation = AssistantTurns.ownConversation(c, person, conversationId)
         mapOf(
             ACNV.conversation to summaryOf(c, conversation),
             ACNV.messages to AssistantStore.messages(c, conversationId, request[ACNV.afterSeq].toOptLong() ?: 0).map { row ->
@@ -134,12 +175,14 @@ fun assistantChatSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "${ASST.root
 
     listEndpoint(
         ACNV.conversationsPath,
-        "The caller's conversations with the workflow assistant in the client they are signed in to, most recent first.",
+        "The caller's conversations with the workflow assistant in the client they are signed in to -- or, signed in to its " +
+            "sandbox, in the client itself -- most recent first.",
         outputRef = ACNV.summaryType,
         noLimit = true,
         sessionOnly = true,
     ) { c, _ ->
-        val items = AssistantStore.conversationsOf(c, c.userProfile.userId, c.userProfile.client).map { summaryOf(c, it) }
+        val person = AssistantTurns.personOf(c)
+        val items = AssistantStore.conversationsOf(c, person.userId, person.client).map { summaryOf(c, it) }
         ListPage(items, items.size, false)
     }
 
@@ -185,4 +228,25 @@ fun turnInfo(row: Map<String, Any?>): Map<String, Any?> = buildMap {
     row[ASST.model]?.let { put(ASST.model, it) }
     put(ACNV.startedAt, row[PF.createdAt])
     row[ACNV.endedAt]?.let { put(ACNV.endedAt, it) }
+}
+
+/**
+ * What the page shows [person] before anything is sent (issue #1527). The allowance as a share, never its amount: what
+ * the budget is in money is the operator's, and a share says what the page needs -- how close the client is to its end.
+ */
+fun clientStatus(cxt: KdrCxt, service: AssistantService, person: AssistantPerson): Map<String, Any?> {
+    val client = person.client
+    val budget = service.budgetOf(service.clientRow(cxt, client))
+    val used = service.usedThisMonth(cxt, client)
+    return mapOf(
+        ASST.client to client,
+        ACNV.on to service.isOn(cxt, client),
+        ACNV.hasSandbox to SandboxAccess.hasSandbox(cxt, client),
+        ACNV.sandboxInSource to (ClientService.get(cxt).originOf(client) == GedraConfigOrigin.source),
+        ACNV.inSandbox to (person.sandboxUser != null),
+        ACNV.usedShare to if (budget > 0) used.toDouble() / budget else 1.0,
+        ACNV.spent to (used >= budget),
+        ACNV.resetsAt to AssistantService.nextMonthStart(cxt.now()),
+        ASST.dataNotice to DATA.notice,
+    )
 }

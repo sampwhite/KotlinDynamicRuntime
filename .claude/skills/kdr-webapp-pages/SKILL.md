@@ -4,9 +4,9 @@ description: >-
   What each page of the KotlinDynamicRuntime front end (webapp) decides and why, one reference file per page -- the
   Clients page (definition editor, panels, web assets and file refs, bundles, sandbox and publishing), the admin
   console (Users, roles, labels, the editor role), the forms listing, API keys, Customers, Reports, Design View,
-  Simulations, the file store page, a client's web assets and file refs, and the public home page (demo clients,
-  self-serve clients, the public test deployment). Read the page's file before changing, reviewing, or verifying that
-  page or its API calls.
+  Simulations, the file store page, a client's web assets and file refs, the workflow assistant, and the public home
+  page (demo clients, self-serve clients, the public test deployment). Read the page's file before changing, reviewing,
+  or verifying that page or its API calls.
 ---
 
 # The webapp's pages
@@ -31,6 +31,7 @@ rather than all of them:
 | [`customers-page.md`](customers-page.md) | The Customers page |
 | [`simulations-page.md`](simulations-page.md) | The Simulations page |
 | [`file-store-page.md`](file-store-page.md) | The operator's file store page |
+| [`workflow-assistant.md`](workflow-assistant.md) | The workflow assistant page: its menu entry from the module, the sandbox, the conversation and its transcript, drafts to try and publish, the allowance, polling; and the operator's page of it |
 | [`public-home.md`](public-home.md) | A public test deployment, joining a demo client, creating your own client from the home page, and the public home page |
 
 A page file names the issues and source files behind it, and its tests where it has them; a file that names no test

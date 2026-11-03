@@ -7,8 +7,8 @@ import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.CFEP
-import com.dynamicruntime.common.gedra.isSandboxClient
 import com.dynamicruntime.common.gedra.sandboxOf
+import com.dynamicruntime.common.gedra.sandboxParentOf
 import com.dynamicruntime.common.http.request.InProcessPrincipal
 import com.dynamicruntime.common.logging.KdrLogger
 import com.dynamicruntime.common.sql.PF
@@ -53,7 +53,8 @@ object TURN {
  * own, and the recovery, cancel, and reads around it.
  *
  * **Starting** ([start]) runs in the administrator's own signed-in request -- every assistant endpoint is session-only
- * -- because only such a request may claim their user in the sandbox, which the turn's tools then act as. It checks, in
+ * -- because only such a request may claim their user in the sandbox, which the turn's tools then act as; signed in to
+ * the sandbox already, they act as the user the session has there ([personOf]). It checks, in
  * order: the assistant is on for the client, the client has a sandbox, its budget is not spent, the administrator has
  * turns left this hour, the client has room for another running turn, and no turn is running in the conversation. Then
  * it records the turn, hands it to a worker, and answers at once.
@@ -62,14 +63,11 @@ object TURN {
  * stopped -- is marked interrupted by whoever next looks at the conversation ([recoverLapsed]).
  */
 object AssistantTurns {
-    /** Starts a turn for [text], in [conversationId] or a new conversation, as the administrator on [cxt]. */
+    /** Starts a turn for [text], in [conversationId] or a new conversation, for the person on [cxt] ([personOf]). */
     fun start(cxt: KdrCxt, service: AssistantService, conversationId: String?, clientMessageId: String, text: String): Map<String, Any?> {
-        AdminRules.requireClientAdministrator(cxt)
-        val client = cxt.userProfile.client
-        val userId = cxt.userProfile.userId
-        if (isSandboxClient(client)) {
-            throw KdrException.mkInput("Use the assistant from '${service.payerOf(client)}' itself: it works in the sandbox for you.")
-        }
+        val person = personOf(cxt)
+        val client = person.client
+        val userId = person.userId
         val message = text.trim()
         if (message.isEmpty()) throw KdrException.mkInput("A message needs some text.")
         if (message.length > TURN.maxTextChars) throw KdrException.mkInput("A message may be at most ${TURN.maxTextChars} characters.")
@@ -106,7 +104,7 @@ object AssistantTurns {
         // Claimed before anything is written for the turn: a message refused as busy writes nothing.
         val newConversation = conversationId == null
         val conversation = if (conversationId != null) {
-            val found = ownConversation(cxt, conversationId)
+            val found = ownConversation(cxt, person, conversationId)
             if (found[ACNV.readOnly] == true || found[ATBL.toolsetVersion] != version) {
                 throw refused(readOnlyReason(found), EXC.conflict, ACNV.readOnlyCode)
             }
@@ -120,7 +118,7 @@ object AssistantTurns {
         }
         try {
             // The administrator's own user in the sandbox, which the tools act as.
-            val sandboxUser = sandboxUserOf(cxt, client)
+            val sandboxUser = person.sandboxUser ?: sandboxUserOf(cxt, client)
             if (newConversation) {
                 AssistantStore.insertConversation(
                     cxt,
@@ -215,10 +213,35 @@ object AssistantTurns {
     fun refused(message: String, code: Int, errorCode: String): KdrException =
         KdrException(message, code = code, extraData = mutableMapOf(KdrException.errorCodeKey to errorCode))
 
-    /** The caller's own conversation [conversationId] in the client they are signed in to; 404 for any other. */
-    fun ownConversation(cxt: KdrCxt, conversationId: String): Map<String, Any?> {
+    /**
+     * Who is talking to the assistant (issue #1527): a client administrator, outside the client's sandbox -- the caller,
+     * or, when they are signed in to the sandbox, the user outside it their sandbox user was opened from, whose
+     * conversations these are. So the page goes on working after "Try it in the sandbox" moved the session there. A
+     * sandbox user nobody opened, or one opened from another client, has no one outside to speak for.
+     */
+    fun personOf(cxt: KdrCxt): AssistantPerson {
+        AdminRules.requireClientAdministrator(cxt)
+        return personOrNull(cxt) ?: throw KdrException.mkInput(
+            "Use the assistant from '${sandboxParentOf(cxt.userProfile.client)}' itself, as one of its administrators.",
+        )
+    }
+
+    /**
+     * [personOf] without the administrator check, or null when a sandbox caller has nobody outside to speak for: what the
+     * `assistant:usable` cfact asks. Outside a sandbox it reads nothing.
+     */
+    fun personOrNull(cxt: KdrCxt): AssistantPerson? {
+        val client = cxt.userProfile.client
+        val parent = sandboxParentOf(client) ?: return AssistantPerson(cxt.userProfile.userId, client, sandboxUser = null)
+        val own = UserService.get(cxt).queryByUserId(cxt, cxt.userProfile.userId) ?: return null
+        val opener = SandboxAccess.standingOf(cxt, own).actsAs?.takeIf { it.client == parent } ?: return null
+        return AssistantPerson(opener.userId, parent, sandboxUser = own)
+    }
+
+    /** The person's own conversation [conversationId]; 404 for any other. */
+    fun ownConversation(cxt: KdrCxt, person: AssistantPerson, conversationId: String): Map<String, Any?> {
         val row = AssistantStore.conversation(cxt, conversationId)
-        if (row == null || row[PF.userId].toOptLong() != cxt.userProfile.userId || row[ASST.client] != cxt.userProfile.client) {
+        if (row == null || row[PF.userId].toOptLong() != person.userId || row[ASST.client] != person.client) {
             throw KdrException("No conversation '$conversationId' of yours.", code = EXC.notFound)
         }
         return row
@@ -252,17 +275,25 @@ object AssistantTurns {
         AssistantStore.releaseConversation(cxt, conversationId, turnId)
     }
 
-    /** Asks the running turn of the caller's conversation [conversationId] to stop at its next step. */
+    /** Asks the running turn of the person's conversation [conversationId] to stop at its next step. */
     fun cancel(cxt: KdrCxt, conversationId: String): Map<String, Any?> {
+        val person = personOf(cxt)
         // A turn whose node stopped is recovered rather than asked to stop: nothing would hear it.
-        recoverLapsed(cxt, ownConversation(cxt, conversationId))
-        val conversation = ownConversation(cxt, conversationId)
+        recoverLapsed(cxt, ownConversation(cxt, person, conversationId))
+        val conversation = ownConversation(cxt, person, conversationId)
         val turnId = conversation[ATBL.runningTurnId].toOptStr()
         val asked = turnId != null && AssistantStore.requestCancel(cxt, turnId)
         if (asked) LogAssistant.info(cxt, "Turn $turnId in conversation $conversationId was asked to stop.")
         return mapOf(ACNV.conversationId to conversationId, ACNV.canceled to asked)
     }
 }
+
+/**
+ * The administrator a conversation belongs to ([AssistantTurns.personOf]): their [userId] in [client], outside any
+ * sandbox, and -- when they are signed in to the sandbox -- [sandboxUser], the caller's own row there, which the tools
+ * then act as.
+ */
+class AssistantPerson(val userId: Long, val client: String, val sandboxUser: AuthUserRow?)
 
 /**
  * Runs one turn (issue #1526), on a worker's thread with a context of its own. Each step: check the turn is still

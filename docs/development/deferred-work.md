@@ -935,7 +935,7 @@ The endpoints that accept a large request body are collected at boot and read fr
 A client's assistant budget is the deployment's default (`KDR_ASSISTANT_MONTHLY_BUDGET`) unless an operator sets the
 client's own ([`workflow-assistant.md`](../design/workflow-assistant.md)). Nothing ties it to what the client pays for.
 
-- **Default budgets per plan** *(from #1525).* A budget the client's plan names, so an operator sets a plan once rather
+- **Default budgets per plan** *(from #1525, #1527).* A budget the client's plan names, so an operator sets a plan once rather
   than each client's number. Waits for plans to exist as something the deployment records.
 
 ## When the Anthropic SDK's dependencies cost something
@@ -957,9 +957,38 @@ The workflow assistant calls the model without streaming, each call timing out a
 `KDR_ASSISTANT_MAX_TOKENS` is held to 16,000 ([`workflow-assistant.md`](../design/workflow-assistant.md)). A call that
 times out is billed but returns no usage, so it is not counted against the client's budget.
 
-- **Stream the model's answers** *(from #1526).* With streaming, a long answer cannot time out part way, its usage
-  arrives as it is spent, and the token cap can rise to the model's own. The page could show the answer as it is
-  written, too.
+- **Stream the model's answers** *(from #1526, #1527).* With streaming, a long answer cannot time out part way, its
+  usage arrives as it is spent, and the token cap can rise to the model's own. The page, which polls the conversation
+  every 1.5 seconds and shows each message once it is whole, could show the answer as it is written.
+
+## When an assistant conversation outgrows what the model reads
+
+A conversation with the workflow assistant is sent whole on every call, and its history is never changed
+([`workflow-assistant.md`](../design/workflow-assistant.md)). A long one -- many turns, each reading whole bundles --
+costs more each call, and at the model's context limit it would be refused.
+
+- **Compaction** *(from #1527).* Replace the older part of a long conversation with a summary the model writes, once it
+  passes a size, keeping the newest turns as they were. Today the page's answer is "Start a new conversation", which
+  keeps nothing.
+
+## When clients ask the assistant for more than workflows
+
+The assistant's tools reach a client's configuration, workflows, traits, and cfacts, and write only bundles and the
+included traits ([`workflow-assistant.md`](../design/workflow-assistant.md)).
+
+- **Tools for form data, copy, and the menu** *(from #1527).* Reading a client's forms (to answer "how many RSVPs
+  are open?") reaches people's data, so it needs its own decision about what is sent to Anthropic. Copy and the menu
+  are configuration like the rest, through their own endpoints (`/clientAdmin/copy/...`, the menu editor's), each a
+  draft from the sandbox as a bundle is.
+
+## When the assistant is tried on what clients actually ask it
+
+The system prompt, the tools' descriptions, and the effort (`KDR_ASSISTANT_EFFORT`, `medium`) were written and tested
+against a scripted model, not tuned against the real one.
+
+- **Tune the prompt and effort against the real model** *(from #1527).* Collect a handful of real requests, run them
+  at each effort, and compare the drafts and what each cost. Every run sends real requests to the Anthropic API, which
+  cost money, so it waits for an operator's approval of the spending.
 
 ## When the assistant's spending across clients needs a ceiling of its own
 

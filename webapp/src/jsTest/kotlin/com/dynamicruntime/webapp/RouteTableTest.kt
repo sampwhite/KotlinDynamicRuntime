@@ -1,5 +1,6 @@
 package com.dynamicruntime.webapp
 
+import com.dynamicruntime.common.assistant.ASST
 import com.dynamicruntime.common.gedra.workflow.WAGG
 import com.dynamicruntime.common.home.HMENU
 import kotlin.test.Test
@@ -57,6 +58,11 @@ class RouteTableTest {
         assertRoute("/operator/files", HP.page to HMENU.pageFileStore)
         assertRoute("/operator/fragments", HP.page to HMENU.pageFragmentsCheck)
         assertRoute("/operator/cfacts", HP.page to HMENU.pageCfacts)
+        assertRoute("/operator/assistant", HP.page to ASST.operatorPage)
+        assertRoute("/assistant", HP.page to ASST.page)
+        assertRoute("/assistant?cv=c1", HP.page to ASST.page, HP.conversation to "c1")
+        // A client's page names a panel to scroll to as its anchor (issue #1527).
+        assertRoute("/clients/acme#client-publishing", HP.page to HMENU.pageClients, HP.client to "acme", HP.section to panelPublishing)
         assertRoute("/test/become-user", HP.page to HMENU.pageBecomeUser)
         assertRoute("/test/simulations", HP.page to HMENU.pageSimulations)
         assertRoute("/debug", HP.page to HMENU.pageDebug)

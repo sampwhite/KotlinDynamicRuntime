@@ -82,6 +82,13 @@ the runtime's components. A component may extend another owner's names one contr
 (`contributesTo`). What the boot refuses is the accident: a name under no root, or under the reserved `client` root.
 See *Visibility* and *What is checked today* in [`design/gedra/config-and-data.md`](design/gedra/config-and-data.md).
 
+**An optional module offers its own pages.** A module nothing compile-depends on adds its page's menu entry itself,
+with an overlay on the menu from `uiBlocks`, gated on a cfact it declares. The core menu never names a cfact that exists
+only while the module is loaded, since an expression naming an undeclared cfact is refused. The workflow assistant
+(`assistant/`) is the example: its page is offered to a client's administrator while its `assistant:usable` cfact holds
+([`design/workflow-assistant.md`](design/workflow-assistant.md)). A client's menu editor can still change such an
+entry, and put it back "As shipped".
+
 **Behavior attached to definitions.** A definition is data and a computation is Kotlin, so the two are kept apart: a
 trait or workflow names a function, and a component registers the function with the schema collector during
 `addSchema`.

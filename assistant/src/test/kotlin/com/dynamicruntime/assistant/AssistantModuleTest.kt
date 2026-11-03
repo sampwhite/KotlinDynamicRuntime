@@ -1,6 +1,7 @@
 package com.dynamicruntime.assistant
 
 import com.dynamicruntime.common.assistant.ASST
+import com.dynamicruntime.common.assistant.ATOOL
 import com.dynamicruntime.common.cfact.CFD
 import com.dynamicruntime.common.context.CL
 import com.dynamicruntime.common.context.ENV
@@ -128,7 +129,7 @@ class AssistantModuleTest : StringSpec({
         val call = model.respond(demo, ModelRequest(AENV.defaultModel, 100, emptyList(), emptyList(), hello, null))
         call.stopReason shouldBe MSG.toolUse
         val use = call.content.single()
-        use[TOOL.name] shouldBe TOOL.listWorkflows
+        use[TOOL.name] shouldBe ATOOL.listWorkflows
         // Its result: the demo names what it found.
         val catalog = mapOf(CWF.workflows to listOf(mapOf(CWF.definition to mapOf(CCT.workflowId to "rsvp", WFD.label to "RSVP"))))
         val answered = hello + call.message + mapOf(

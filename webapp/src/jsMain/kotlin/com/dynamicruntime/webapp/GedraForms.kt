@@ -190,7 +190,11 @@ fun formsSearchFromRoute(hp: Map<String, String>): Map<String, String> =
  * the two kinds of save part: an edited row's absence is left unremarked (it was on the list the user came
  * from), but a **created** one is still announced, because the flash was going to be the only sign the create
  * happened -- and a create with no confirmation at all reads as a create that failed. For the same reason a
- * create whose response carried no id is announced plainly. Pure, covered under `jsNodeTest`.
+ * create whose response carried no id is announced plainly.
+ *
+ * A workflow's listing (issue #792) is not filtered by what makes it that listing ([formsDrillKeys]), which Clear
+ * keeps: there the note says which forms the list shows, since a save -- engaging a form from the eligible ones, say
+ * -- moves a form out of a state's list. Pure, covered under `jsNodeTest`.
  */
 fun savedNotShownNote(
     savedId: String?,
@@ -202,8 +206,13 @@ fun savedNotShownNote(
     if (savedId == null) return if (created) "The form was created." else null
     if (savedId in rowIds) return null
     val what = if (created) "The form was created, but" else "The form you just saved"
-    val filtered = appliedSearch.isNotEmpty()
+    val filtered = (appliedSearch - formsDrillKeys).isNotEmpty()
+    val drillState = workflowDrillOf(appliedSearch)?.second
     return when {
+        drillState != null && filtered ->
+            "$what isn't shown here — this list shows only the forms ${workflowDrillForms(drillState)}, and the " +
+                "current filter may hide it too."
+        drillState != null -> "$what isn't shown here — this list shows only the forms ${workflowDrillForms(drillState)}."
         filtered && customSort ->
             "$what isn't shown here — it doesn't match the current filter, or the current sort puts it on another page."
         filtered -> "$what isn't shown here — it doesn't match the current filter. Clear the filter to see it."
@@ -1043,12 +1052,15 @@ fun workflowDrillLabel(applied: Map<String, Any?>, summary: List<WorkflowSummary
  * The line under the workflow's listing's heading (issue #792): which forms these are, `The forms engaged with
  * this workflow.` -- or every form it knows when the search names no state. Pure, and covered under `jsNodeTest`.
  */
-fun workflowDrillNote(state: WfColumnCategory?): String = when (state) {
-    WfColumnCategory.eligible -> "The forms eligible for this workflow, not yet in it."
-    WfColumnCategory.engaged -> "The forms engaged with this workflow, with work under way."
-    WfColumnCategory.finished -> "The forms finished with this workflow."
-    WfColumnCategory.ineligible -> "The forms not eligible for this workflow."
-    null -> "Every form this workflow applies to."
+fun workflowDrillNote(state: WfColumnCategory?): String =
+    state?.let { "The forms ${workflowDrillForms(it)}." } ?: "Every form this workflow applies to."
+
+/** Which forms a workflow's listing in [state] shows, after "the forms": its heading's line and the saved note's. */
+fun workflowDrillForms(state: WfColumnCategory): String = when (state) {
+    WfColumnCategory.eligible -> "eligible for this workflow, not yet in it"
+    WfColumnCategory.engaged -> "engaged with this workflow, with work under way"
+    WfColumnCategory.finished -> "finished with this workflow"
+    WfColumnCategory.ineligible -> "not eligible for this workflow"
 }
 
 /**

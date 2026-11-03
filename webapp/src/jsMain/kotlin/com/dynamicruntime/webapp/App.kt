@@ -2,6 +2,7 @@ package com.dynamicruntime.webapp
 
 // The antd `theme` export, aliased: inside the ConfigProvider builder block, `theme` is its prop.
 import com.dynamicruntime.common.app.APP
+import com.dynamicruntime.common.assistant.ASST
 import com.dynamicruntime.common.gedra.workflow.WAGG
 import com.dynamicruntime.common.home.HMENU
 import com.dynamicruntime.common.operator.OPS
@@ -289,6 +290,8 @@ val App = FC<Props> {
                                 pageCustomers -> CustomersPage {}
                                 pageReports -> ReportsPage {}
                                 pageApiKeys -> ApiKeysPage {}
+                                pageAssistant -> AssistantPage {}
+                                pageOperatorAssistant -> OperatorAssistantPage {}
                                 pageEditForm -> EditFormPage {}
                                 pageSurveyEdit -> SurveyEditPage {}
                                 pageCreateForUser -> CreateForUserPage {}
@@ -386,6 +389,11 @@ private const val pageCustomers = HMENU.pageCustomers
 private const val pageReports = HMENU.pageReports
 private const val pageApiKeys = HMENU.pageApiKeys
 
+// The workflow assistant (issue #1527) and the operator's page of it: offered by the assistant module's own menu entries
+// where it is loaded; the routes exist unconditionally, and each page says so when the assistant is not there.
+private const val pageAssistant = ASST.page
+private const val pageOperatorAssistant = ASST.operatorPage
+
 // The workflow pages (issue #792): the menu, built server-side, decides whether they are offered (a client turns
 // the item on); the route exists unconditionally, like the others. A workflow's own listing of forms
 // (`pageWorkflowForms`, defined with the forms page that draws it) is a child of it, reached from its counts.
@@ -442,6 +450,8 @@ private fun currentPage(): String {
         params[HP.page] == pageCustomers -> pageCustomers
         params[HP.page] == pageReports -> pageReports
         params[HP.page] == pageApiKeys -> pageApiKeys
+        params[HP.page] == pageAssistant -> pageAssistant
+        params[HP.page] == pageOperatorAssistant -> pageOperatorAssistant
         params[HP.page] == pageEditForm -> pageEditForm
         params[HP.page] == pageSurveyEdit -> pageSurveyEdit
         params[HP.page] == pageCreateForUser -> pageCreateForUser
