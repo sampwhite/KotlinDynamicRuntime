@@ -384,6 +384,15 @@ which are listed and kept, and the preview resolves the extension onto the base 
 `TraitBaseView`); what a trait extends is fixed once saved. Every one of these saves, as a sandbox's draft, says what
 publishing it would do to the live client's forms (`draftImpact`, `draftImpactText`) -- for information.
 
+**Where the trait editors open, and their previews** (issue #1564). **Adapt…** and **Edit** open their editor in a row of
+its own beneath the trait's (`traitRows`' `editor`, `ownTraits`' `editor`), with the table's height cap lifted
+(`detail-open`), so the picker's Save and the own traits' table never come between a row and its editor; **New trait**
+opens below the own traits' table. Both previews parse the trait's type with the catalog's other types
+(`TraitBaseView.defs`), since a field may refer to one -- Site visit's address does -- and parsed alone such a field fails
+the whole preview; one that still cannot be parsed says why (`traitPreviewOf`, `TraitPreview.problem`) rather than
+drawing a form with no fields. The Preview heading offers **What is this?** (`PFRAG.traitPreviewNs`): the form is to try,
+and nothing typed there is saved.
+
 **Listing columns** (issue #1491, `ClientUsagesSection.kt`, its pure half in `ClientUsages.kt`, covered by
 `ClientUsagesTest`): after Traits, since every column reads one, and offered where they are. It reads
 `GET /clientAdmin/client/usages` (`ClientsApi.usageCatalog`): the client's columns as they run -- for a client with a

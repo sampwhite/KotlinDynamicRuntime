@@ -475,6 +475,7 @@ private fun ChildrenBuilder.clientDetail(
                         this.savesDraft = savesDraft
                         formsOpenable = impactFormsOpenable(acrossClients, onSandboxPage = row?.sandboxOf != null)
                         this.onChanged = onChanged
+                        previewExplanation = pageCopy.explanation(PFRAG.traitPreviewNs)
                     }
                 }
                 // Its listing columns (issue #1491), after the traits each reads, offered where they are for the same reason.

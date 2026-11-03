@@ -40,6 +40,8 @@ external interface ClientTraitsSectionProps : Props {
     var formsOpenable: Boolean
     /** What a save calls once it has taken effect: the page re-reads. */
     var onChanged: () -> Unit
+    /** The page's "What is this?" for an editor's preview (issue #1564), from its copy. */
+    var previewExplanation: String
 }
 
 /**
@@ -60,6 +62,9 @@ external interface ClientTraitsSectionProps : Props {
  *
  * Under the picker, the client's **own** traits (issue #1118): each with **Edit**, or why it cannot be edited here,
  * then **New trait**, which open the [TraitDesignEditor].
+ *
+ * An editor opens where it was asked for (issue #1564): **Adapt…** and **Edit** in a row of their own beneath the
+ * trait's, so the picker's Save and the own traits' table never come between them, and **New trait** below the table.
  */
 val ClientTraitsSection = FC<ClientTraitsSectionProps> { props ->
     val generation = useRefreshGeneration()
@@ -180,7 +185,8 @@ val ClientTraitsSection = FC<ClientTraitsSectionProps> { props ->
         }
     } else {
         div {
-            className = ClassName("op-table-scroll")
+            // No height cap while an editor is open in a row, so the editor is not clipped inside the table's box.
+            className = ClassName(if (narrowingOpen != null) "op-table-scroll detail-open" else "op-table-scroll")
             table {
                 className = ClassName("op-table")
                 thead {
@@ -199,6 +205,28 @@ val ClientTraitsSection = FC<ClientTraitsSectionProps> { props ->
                             onToggleFields = { opened = if (trait.traitId in opened) opened - trait.traitId else opened + trait.traitId },
                             narrowOffered = narrowingOpen == null && designing == null && traitBaseOf(shown, trait) != null,
                             onNarrow = { narrowingOpen = trait.traitId; designNote = null },
+                            editor = traitBaseOf(shown, trait)?.takeIf { narrowingOpen == trait.traitId }?.let { base ->
+                                {
+                                    TraitNarrowEditor {
+                                        // Keyed by the trait, so a draft for one never carries into another.
+                                        key = "narrow-${trait.traitId}".unsafeCast<Key>()
+                                        this.clientId = props.clientId
+                                        this.trait = trait
+                                        this.base = base
+                                        included = traitShownIncluded(trait, traitsDraftOf(baseline))
+                                        this.savesDraft = props.savesDraft
+                                        formsOpenable = props.formsOpenable
+                                        previewExplanation = props.previewExplanation
+                                        onSaved = { said ->
+                                            narrowingOpen = null
+                                            designNote = said
+                                            props.onChanged()
+                                        }
+                                        onCancel = { narrowingOpen = null }
+                                        onChanged = props.onChanged
+                                    }
+                                }
+                            },
                         )
                     }
                 }
@@ -234,47 +262,26 @@ val ClientTraitsSection = FC<ClientTraitsSectionProps> { props ->
             +it
         }
     }
-    narrowingOpen?.let { open ->
-        val trait = shown.traits.firstOrNull { it.traitId == open }
-        val base = trait?.let { traitBaseOf(shown, it) }
-        if (trait != null && base != null) {
-            TraitNarrowEditor {
-                // Keyed by the trait, so a draft for one never carries into another.
-                key = "narrow-$open".unsafeCast<Key>()
+    ownTraits(shown, designing, editorOpen = designing != null || narrowingOpen != null, busy, onOpen = { designing = it; designNote = null }) {
+        designing?.let { open ->
+            TraitDesignEditor {
+                // Keyed by what it opened on, so a draft for one trait never carries into another.
+                key = "design-$open".unsafeCast<Key>()
                 this.clientId = props.clientId
-                this.trait = trait
-                this.base = base
-                included = traitShownIncluded(trait, traitsDraftOf(baseline))
+                this.baseline = shown.own.firstOrNull { it.traitId == open }?.design
+                this.catalog = shown
+                quotas = shown.quotas
                 this.savesDraft = props.savesDraft
                 formsOpenable = props.formsOpenable
+                previewExplanation = props.previewExplanation
                 onSaved = { said ->
-                    narrowingOpen = null
+                    designing = null
                     designNote = said
                     props.onChanged()
                 }
-                onCancel = { narrowingOpen = null }
+                onCancel = { designing = null }
                 onChanged = props.onChanged
             }
-        }
-    }
-    ownTraits(shown, designing ?: narrowingOpen, busy, onOpen = { designing = it; designNote = null })
-    designing?.let { open ->
-        TraitDesignEditor {
-            // Keyed by what it opened on, so a draft for one trait never carries into another.
-            key = "design-$open".unsafeCast<Key>()
-            this.clientId = props.clientId
-            this.baseline = shown.own.firstOrNull { it.traitId == open }?.design
-            this.catalog = shown
-            quotas = shown.quotas
-            this.savesDraft = props.savesDraft
-            formsOpenable = props.formsOpenable
-            onSaved = { said ->
-                designing = null
-                designNote = said
-                props.onChanged()
-            }
-            onCancel = { designing = null }
-            onChanged = props.onChanged
         }
     }
     designNote?.let {
@@ -304,7 +311,10 @@ val ClientTraitsSection = FC<ClientTraitsSectionProps> { props ->
     }
 }
 
-/** One trait's row -- its box, id, description and kinds, and the way to its fields -- and its fields when opened. */
+/**
+ * One trait's row -- its box, id, description and kinds, and the way to its fields -- then its [editor] when one is open
+ * on it, and its fields when opened.
+ */
 private fun ChildrenBuilder.traitRows(
     trait: TraitChoiceView,
     draft: TraitsDraft,
@@ -315,6 +325,7 @@ private fun ChildrenBuilder.traitRows(
     onToggleFields: () -> Unit,
     narrowOffered: Boolean,
     onNarrow: () -> Unit,
+    editor: (ChildrenBuilder.() -> Unit)?,
 ) {
     val locked = traitLockedReason(trait, draft)
     tr {
@@ -379,6 +390,16 @@ private fun ChildrenBuilder.traitRows(
             }
         }
     }
+    // The Adapt editor, directly beneath the row it was opened from (issue #1564).
+    editor?.let { draw ->
+        tr {
+            key = "${trait.traitId}-narrow".unsafeCast<Key>()
+            td {
+                asDynamic()["colSpan"] = 5
+                draw()
+            }
+        }
+    }
     if (open) {
         val fields = fieldsTypeOf(trait, types) ?: return
         tr {
@@ -397,9 +418,18 @@ private fun fieldsTypeOf(trait: TraitChoiceView, types: Map<String, SchType>): S
 
 /**
  * The client's own traits (issue #1118): each with its name, how many fields it has and where it is stored, and
- * **Edit** -- or why the editor cannot edit it -- then **New trait**, unless the plan allows no more schemas.
+ * **Edit** -- or why the editor cannot edit it -- then **New trait**, unless the plan allows no more schemas. The
+ * [editor] open on one of them is drawn in a row beneath it, and a new trait's in place of **New trait** (issue #1564);
+ * while [editorOpen], here or above, neither is offered.
  */
-private fun ChildrenBuilder.ownTraits(catalog: TraitCatalogView, designing: String?, busy: Boolean, onOpen: (String) -> Unit) {
+private fun ChildrenBuilder.ownTraits(
+    catalog: TraitCatalogView,
+    designing: String?,
+    editorOpen: Boolean,
+    busy: Boolean,
+    onOpen: (String) -> Unit,
+    editor: ChildrenBuilder.() -> Unit,
+) {
     h4 { +"Its own traits" }
     p {
         className = ClassName("subtitle")
@@ -408,7 +438,7 @@ private fun ChildrenBuilder.ownTraits(catalog: TraitCatalogView, designing: Stri
     }
     if (catalog.own.isNotEmpty()) {
         div {
-            className = ClassName("op-table-scroll")
+            className = ClassName(if (designing.isNullOrEmpty()) "op-table-scroll" else "op-table-scroll detail-open")
             table {
                 className = ClassName("op-table")
                 thead {
@@ -433,7 +463,7 @@ private fun ChildrenBuilder.ownTraits(catalog: TraitCatalogView, designing: Stri
                                     Button {
                                         type = "link"
                                         size = "small"
-                                        disabled = busy || designing != null
+                                        disabled = busy || editorOpen
                                         onClick = { onOpen(own.traitId) }
                                         +"Edit"
                                     }
@@ -445,13 +475,23 @@ private fun ChildrenBuilder.ownTraits(catalog: TraitCatalogView, designing: Stri
                                 }
                             }
                         }
+                        if (designing == own.traitId) {
+                            tr {
+                                key = "${own.traitId}-design".unsafeCast<Key>()
+                                td {
+                                    asDynamic()["colSpan"] = 5
+                                    editor()
+                                }
+                            }
+                        }
                     }
                 }
             }
         }
     }
+    if (designing == "") editor()
     val refusal = newTraitRefusal(catalog.quotas)
-    if (designing == null) {
+    if (!editorOpen) {
         p {
             Button {
                 size = "small"

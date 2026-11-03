@@ -150,4 +150,26 @@ class TraitNarrowerTest {
         assertNull(draft.extending(null).extendsTrait)
         assertEquals(1, draft.extending(null).fields.size)
     }
+
+    @Test
+    fun aPreviewReadsTheTypesItsFieldsReferTo() {
+        // Site visit's shape (issue #1564): a field whose type is another of the catalog's. Parsed alone, it fails the
+        // whole preview, which used to be swallowed into a form with no fields.
+        val addressName = "fixture.traits.Address"
+        val address = mapOf(SCH.type to SCT.kObject, SCH.properties to mapOf("street" to mapOf(SCH.type to SCT.string)))
+        val body = mapOf(
+            SCH.type to SCT.kObject,
+            SCH.properties to mapOf("site" to mapOf(SCH.dRef to "#/${SCH.dDefs}/$addressName"), "notes" to mapOf(SCH.type to SCT.string)),
+        )
+        val visit = TraitBaseView(typeName, body, null, mapOf(addressName to address, typeName to body))
+        val narrowed = traitPreviewOf(narrowPreviewDefs(visit, empty), typeName)
+        assertNull(narrowed.problem)
+        assertEquals(listOf("site", "notes"), assertNotNull(narrowed.type).properties.keys.toList())
+        val extension = TraitDesign(null, "Visit plus", null, listOf(TraitFieldDesign(null, "Rating", TraitFieldKind.integer)), "fixture:visit")
+        assertNull(traitPreviewOf(previewDefs(extension, base = visit), previewTypeName).problem)
+        // Without the type it refers to, the preview says why it cannot be drawn rather than drawing nothing.
+        val alone = traitPreviewOf(narrowPreviewDefs(TraitBaseView(typeName, body, null), empty), typeName)
+        assertNull(alone.type)
+        assertNotNull(alone.problem)
+    }
 }

@@ -1,8 +1,6 @@
 package com.dynamicruntime.webapp
 
 import com.dynamicruntime.common.gedra.TraitNarrowing
-import com.dynamicruntime.common.schema.collectLayouts
-import com.dynamicruntime.common.schema.parseSchemaTypes
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.launch
 import react.FC
@@ -46,6 +44,8 @@ external interface TraitNarrowEditorProps : Props {
     var onCancel: () -> Unit
     /** What a refusal for no longer taking effect as said calls ([saveConflict]): the page re-reads. */
     var onChanged: () -> Unit
+    /** The page's "What is this?" for the preview (issue #1564): that it is a form to try, and saves nothing. */
+    var previewExplanation: String
 }
 
 /**
@@ -80,14 +80,7 @@ val TraitNarrowEditor = FC<TraitNarrowEditorProps> { props ->
     var introText by useState(baseline.introduction ?: platformIntro)
     val problems = narrowProblems(draft, props.base)
     val changed = narrowingChanged(draft, baseline)
-    val preview = useMemo(draft.toInfo().toString()) {
-        val defs = narrowPreviewDefs(props.base, draft)
-        try {
-            parseSchemaTypes(defs)[props.base.typeName]?.let { it to collectLayouts(defs) }
-        } catch (e: Exception) {
-            null
-        }
-    }
+    val preview = useMemo(draft.toInfo().toString()) { traitPreviewOf(narrowPreviewDefs(props.base, draft), props.base.typeName) }
 
     fun save(narrowing: TraitNarrowing, acknowledge: Boolean) {
         pending = narrowing
@@ -259,11 +252,21 @@ val TraitNarrowEditor = FC<TraitNarrowEditorProps> { props ->
             }
         }
         // The form draws the trait's fields, not its name, so the heading says what the trait will be called.
-        h4 { +"Preview: ${draft.name ?: platformName}" }
+        WhatIsThis {
+            heading = "Preview: ${draft.name ?: platformName}"
+            headingLevel = 4
+            text = props.previewExplanation
+        }
         (draft.introduction ?: platformIntro).takeIf { it.isNotBlank() }?.let { intro ->
             Markdown { source = intro; inlineUi = true }
         }
-        preview?.let { (type, layouts) ->
+        preview.problem?.let {
+            p {
+                className = ClassName("type-hint")
+                +"The preview cannot be drawn: $it"
+            }
+        }
+        preview.type?.let { type ->
             div {
                 className = ClassName("trait-preview")
                 SchemaForm {
@@ -271,7 +274,7 @@ val TraitNarrowEditor = FC<TraitNarrowEditorProps> { props ->
                     values = previewValues
                     editable = true
                     friendly = true
-                    fieldLayouts = layouts
+                    fieldLayouts = preview.layouts
                     onChange = { v -> previewValues = v }
                 }
             }

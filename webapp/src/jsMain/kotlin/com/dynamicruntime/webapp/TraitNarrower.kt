@@ -11,7 +11,10 @@ import com.dynamicruntime.common.gedra.traitNameOf
 import com.dynamicruntime.common.gedra.traitNarrowingProblems
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SchLayout
+import com.dynamicruntime.common.schema.SchType
+import com.dynamicruntime.common.schema.collectLayouts
 import com.dynamicruntime.common.schema.overlayType
+import com.dynamicruntime.common.schema.parseSchemaTypes
 import com.dynamicruntime.common.schema.refName
 import com.dynamicruntime.common.util.humanizeFieldName
 import com.dynamicruntime.common.util.toJsonListOfStrings
@@ -27,8 +30,16 @@ import com.dynamicruntime.common.util.toOptStr
  * Everything here is pure, and covered under `jsNodeTest`.
  */
 
-/** A global trait's data type, as the catalog serves it: its qualified name, its body, and its layout. */
-class TraitBaseView(val typeName: String, val body: Map<String, Any?>, val layout: SchLayout?) {
+/**
+ * A global trait's data type, as the catalog serves it: its qualified name, its body, and its layout -- and the
+ * catalog's other types, [defs], which a field of the body may refer to (issue #1564: Site visit's address).
+ */
+class TraitBaseView(
+    val typeName: String,
+    val body: Map<String, Any?>,
+    val layout: SchLayout?,
+    val defs: Map<String, Any?> = emptyMap(),
+) {
     /** The body with its layout, as the platform declares the type -- what an alteration merges over. */
     val bodyWithLayout: Map<String, Any?> get() = layout?.let { body + (SCH.layout to it.toJsonMap()) } ?: body
 
@@ -47,7 +58,7 @@ fun platformTraitName(traitId: String, base: TraitBaseView): String =
 fun traitBaseOf(catalog: TraitCatalogView, trait: TraitChoiceView): TraitBaseView? {
     val typeName = trait.dataRef?.let(::refName) ?: return null
     val body = catalog.defs[typeName].toJsonMapOrEmpty().ifEmpty { return null }
-    return TraitBaseView(typeName, body, catalog.layouts[typeName])
+    return TraitBaseView(typeName, body, catalog.layouts[typeName], catalog.defs)
 }
 
 /** One of a global trait's fields as the narrowing editor lists it. */
@@ -141,7 +152,21 @@ fun narrowingChanged(narrowing: TraitNarrowing, baseline: TraitNarrowing): Boole
 /** The preview's schema, by the type's own name: the trait as this client would take it. */
 fun narrowPreviewDefs(base: TraitBaseView, narrowing: TraitNarrowing): Map<String, Any?> {
     val alteration = narrowing.toAlteration(base.body)
-    return mapOf(base.typeName to (alteration?.let { overlayType(base.bodyWithLayout, it) } ?: base.bodyWithLayout))
+    // With the catalog's other types, which a field may refer to: parsed alone, such a field fails the whole preview.
+    return base.defs + (base.typeName to (alteration?.let { overlayType(base.bodyWithLayout, it) } ?: base.bodyWithLayout))
+}
+
+/** A trait editor's preview (issue #1564): the type its form draws and the layouts it reads, or why it cannot draw one. */
+class TraitPreview(val type: SchType?, val layouts: Map<String, SchLayout>, val problem: String?)
+
+/**
+ * The preview of [typeName] in [defs], as both trait editors draw it. A schema the kernel refuses is a [TraitPreview.problem]
+ * the editor shows, not an empty preview: a preview missing its fields reads as a trait that has none.
+ */
+fun traitPreviewOf(defs: Map<String, Any?>, typeName: String): TraitPreview = try {
+    TraitPreview(parseSchemaTypes(defs)[typeName], collectLayouts(defs), null)
+} catch (e: Exception) {
+    TraitPreview(null, emptyMap(), e.message ?: "The schema could not be read.")
 }
 
 /** The save's request: the narrowing, how the page expects it to take effect, and whether an impact is acknowledged. */

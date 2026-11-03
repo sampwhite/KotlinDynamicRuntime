@@ -7,6 +7,7 @@ import react.dom.html.ReactHTML.div
 import react.dom.html.ReactHTML.h1
 import react.dom.html.ReactHTML.h2
 import react.dom.html.ReactHTML.h3
+import react.dom.html.ReactHTML.h4
 import react.dom.html.ReactHTML.p
 import react.dom.html.ReactHTML.span
 import react.ChildrenBuilder
@@ -21,7 +22,7 @@ external interface WhatIsThisProps : Props {
 
     /**
      * The heading's level (issue #1337): 1 for the page's own heading, 2 (`h2`, the default) for a page's section, 3
-     * for a section within one.
+     * for a section within one, and 4 for a part of an editor, as a trait editor's Preview is (issue #1564).
      */
     var headingLevel: Int?
 
@@ -82,6 +83,7 @@ val WhatIsThis = FC<WhatIsThisProps> { props ->
         val tag = when (props.headingLevel) {
             1 -> h1
             3 -> h3
+            4 -> h4
             else -> h2
         }
         tag {
