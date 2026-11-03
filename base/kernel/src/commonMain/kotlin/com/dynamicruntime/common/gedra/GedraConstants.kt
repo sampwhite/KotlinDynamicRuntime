@@ -248,6 +248,14 @@ object GDF {
     const val displayValues = "displayValues"
 
     /**
+     * A listed row's **trait names** (issue #1543): a map from each of its entries' trait ids to the trait's name, by the
+     * rule every page names a trait with (`traitNameOf`), worked out for the **row's** client. A listing spans clients for
+     * a caller who sees them all, and the page's catalog is one client's, which knows neither another client's own traits
+     * nor its name for a global one. Derived: attached to a listed row and to a single read, never sent nor stored.
+     */
+    const val traitNames = "traitNames"
+
+    /**
      * In a forms listing's `summary` (issue #1323): **the listing's columns**, one `{traitId, label, kind,
      * presentation?}` per trait-usage rule, in column order. Said once for the listing rather than on every row, since
      * the presentation is the column's, not the row's; each row's [displayValues] carry only its value.

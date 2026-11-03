@@ -192,6 +192,12 @@ class GedraDataRow(
                     items { type = SCT.kObject }
                     derived = true
                 }
+                // The row's traits named as its own client names them (issue #1543), attached to a listed or read row. Declared
+                // on both sides, as display values are, so a caller echoing a read form back sends nothing undeclared.
+                property(GDF.traitNames, "Each entry's trait name, by trait id, as the row's client names it (issue #1543).") {
+                    mapOfValues { type = SCT.string }
+                    derived = true
+                }
                 // The owner as a block of user-type information (issue #580, was two flat keys in #562): the
                 // email, and a display name when it adds one. Attached to a *listed* row for a caller who may
                 // see other users' documents; absent for an ordinary caller and on a single read. Open, since

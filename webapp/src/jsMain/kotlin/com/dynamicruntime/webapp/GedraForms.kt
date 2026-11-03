@@ -870,15 +870,20 @@ class FormSummary(
  * attached to each row as `displayValues`. The heading is the first non-blank of those; a client that declared
  * no usage rule has none, and the document is shown unnamed -- a legitimate state, not filled with a guess.
  *
- * Each trait is named by the rule every page names one with (`branchDisplayName`, issue #1520), from [entriesUnion]
- * (see [entriesUnionOf]) and the delivered [layouts], whose headings come first -- as the form's trait choice names it.
- * Pure, and covered under `jsNodeTest`.
+ * Each trait is named by the rule every page names one with (issue #1520): as the row's own client names it, when a
+ * listed row carries the names worked out for its client (`traitNames`, issue #1543), else by `branchDisplayName` from
+ * [entriesUnion] (see [entriesUnionOf]) and the delivered [layouts], whose headings come first -- as the form's trait
+ * choice names it. Pure, and covered under `jsNodeTest`.
  */
 fun summarizeForm(item: Map<String, Any?>, entriesUnion: SchType?, layouts: Map<String, SchLayout> = emptyMap()): FormSummary {
     val entries = item[GDF.entries].toJsonListOfMaps()
     val owner = item[GDF.owner].toJsonMapOrEmpty()
+    // The row's own names first: a listing across clients holds rows the page's one-client catalog cannot name.
+    val rowNames = item[GDF.traitNames].toJsonMapOrEmpty()
     val traitLabels = entries.mapNotNull { entry ->
-        (entry[GE.traitId] as? String)?.let { traitId -> branchDisplayName(traitId, entriesUnion?.variants, layouts) }
+        (entry[GE.traitId] as? String)?.let { traitId ->
+            rowNames[traitId] as? String ?: branchDisplayName(traitId, entriesUnion?.variants, layouts)
+        }
     }
     // The columns a client's usage rules declared, computed on the backend and attached per row (issue
     // #537). The heading is the first non-blank one -- the form's presentation "name", now client-declared

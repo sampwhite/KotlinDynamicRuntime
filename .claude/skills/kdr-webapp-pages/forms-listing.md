@@ -34,6 +34,13 @@ rename in the trait designer, and follows a client's alteration of a global trai
 entry headers in a friendly form use the same rule (`friendlyBranchLabel`); the sort by Contains still orders by the
 trait ids.
 
+**The names come from the row first** (issue #1543). Each listed row, and a single read, carries `traitNames`: its
+entries' trait names worked out on the server by the same rule (`formTraitNames`) for the **row's** client, once per
+client on the page, with that client's copy for a pulled heading. `summarizeForm` uses a row's name and falls back to the
+catalog for a trait it has none for. This is for the cross-client view below, whose rows come from every client while
+the catalog is the admin's own client's: from the catalog alone, another client's own trait would be named by its id,
+and a global trait that client renamed would get the admin's client's name for it.
+
 ## The forms listing across clients (issues #668, #714)
 
 An `allClients` admin's forms listing starts as the **cross-client view**: every client's rows, a Client ID column
