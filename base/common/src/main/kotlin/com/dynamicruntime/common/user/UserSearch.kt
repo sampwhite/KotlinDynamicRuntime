@@ -233,7 +233,6 @@ fun searchUserRows(rows: List<AuthUserRow>, criteria: UserSearchCriteria): UserS
     criteria.anyText?.trim()?.lowercase()?.takeIf { it.isNotEmpty() }?.let { term ->
         matched = matched.filter { row ->
             userSearchFields.any { field ->
-                val textsOf = field.textsOf
                 field.anyTextsOf?.invoke(row)?.any { it.lowercase().contains(term) } == true
             }
         }
