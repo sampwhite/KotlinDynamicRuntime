@@ -531,14 +531,17 @@ object PFRAG {
     /** The Clients page's namespace for a client's listing columns (issue #1491), within Forms and data. */
     const val listingColumnsNs = "listingColumns"
 
+    /** The Clients page's namespace for a trait editor's preview (issue #1564), within Forms and data. */
+    const val traitPreviewNs = "traitPreview"
+
     /** The bundle editor page's namespaces (issue #1436): its Publishing section, and its list of bundles. */
     const val bundlePublishingNs = "bundlePublishing"
     const val bundleListNs = "bundleList"
 
-    /** Every namespace of the Clients page whose `whatIsThis` explains a panel or a group of the page. */
+    /** Every namespace of the Clients page whose `whatIsThis` explains a panel, a group, or a part of the page. */
     val clientsExplained: List<String> = listOf(
-        aboutNs, behaviorNs, platformNs, runsNs, formsDataNs, listingColumnsNs, formStatesNs, copyNs, imagesNs, filesNs, sandboxNs,
-        storedConfigNs, menuNs, bundlePublishingNs, bundleListNs,
+        aboutNs, behaviorNs, platformNs, runsNs, formsDataNs, traitPreviewNs, listingColumnsNs, formStatesNs, copyNs, imagesNs,
+        filesNs, sandboxNs, storedConfigNs, menuNs, bundlePublishingNs, bundleListNs,
     )
 
     /**

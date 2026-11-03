@@ -3,8 +3,6 @@ package com.dynamicruntime.webapp
 import com.dynamicruntime.common.gedra.TraitChoiceDesign
 import com.dynamicruntime.common.gedra.TraitDesign
 import com.dynamicruntime.common.gedra.TraitFieldKind
-import com.dynamicruntime.common.schema.collectLayouts
-import com.dynamicruntime.common.schema.parseSchemaTypes
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.launch
 import react.FC
@@ -41,6 +39,8 @@ external interface TraitDesignEditorProps : Props {
     var onCancel: () -> Unit
     /** What a refusal for no longer taking effect as said calls ([saveConflict]): the page re-reads. */
     var onChanged: () -> Unit
+    /** The page's "What is this?" for the preview (issue #1564): that it is a form to try, and saves nothing. */
+    var previewExplanation: String
 }
 
 /**
@@ -76,14 +76,7 @@ val TraitDesignEditor = FC<TraitDesignEditorProps> { props ->
     val count = draftAttributeCount(draft)
     val changed = draftChanged(draft, baseline)
     val preview = useMemo(draft.toInfo().toString()) {
-        if (problems.any { it.contains("needs at least one field") }) null else {
-            val defs = previewDefs(draft, base = base)
-            try {
-                parseSchemaTypes(defs)[previewTypeName]?.let { it to collectLayouts(defs) }
-            } catch (e: Exception) {
-                null
-            }
-        }
+        if (problems.any { it.contains("needs at least one field") }) null else traitPreviewOf(previewDefs(draft, base = base), previewTypeName)
     }
 
     fun save(acknowledge: Boolean) {
@@ -272,7 +265,11 @@ val TraitDesignEditor = FC<TraitDesignEditorProps> { props ->
                 }
             }
         }
-        h4 { +"Preview" }
+        WhatIsThis {
+            heading = "Preview"
+            headingLevel = 4
+            text = props.previewExplanation
+        }
         val shown = preview
         if (shown == null) {
             p {
@@ -280,15 +277,23 @@ val TraitDesignEditor = FC<TraitDesignEditorProps> { props ->
                 +"The preview appears once the trait has a field."
             }
         } else {
-            div {
-                className = ClassName("trait-preview")
-                SchemaForm {
-                    type = shown.first
-                    values = previewValues
-                    editable = true
-                    friendly = true
-                    fieldLayouts = shown.second
-                    onChange = { v -> previewValues = v }
+            shown.problem?.let {
+                p {
+                    className = ClassName("type-hint")
+                    +"The preview cannot be drawn: $it"
+                }
+            }
+            shown.type?.let { previewed ->
+                div {
+                    className = ClassName("trait-preview")
+                    SchemaForm {
+                        type = previewed
+                        values = previewValues
+                        editable = true
+                        friendly = true
+                        fieldLayouts = shown.layouts
+                        onChange = { v -> previewValues = v }
+                    }
                 }
             }
         }

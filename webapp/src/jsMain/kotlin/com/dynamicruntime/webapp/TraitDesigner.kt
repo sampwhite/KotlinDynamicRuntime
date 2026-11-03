@@ -131,7 +131,8 @@ const val previewTypeName = "preview.TraitDraftData"
 fun previewDefs(draft: TraitDesign, stored: Map<String, Any?>? = null, base: TraitBaseView? = null): Map<String, Any?> {
     val keyed = keyedDraft(draft, emptySet(), base)
     if (base == null) return mapOf(previewTypeName to keyed.toDataSchema(stored))
-    val defs = mapOf(base.typeName to base.bodyWithLayout, previewTypeName to keyed.toExtension(base.typeName, base.required.toList(), stored))
+    // With the catalog's other types, which a field of the base may refer to (issue #1564).
+    val defs = base.defs + mapOf(base.typeName to base.bodyWithLayout, previewTypeName to keyed.toExtension(base.typeName, base.required.toList(), stored))
     return resolveExtensions(defs).defs
 }
 

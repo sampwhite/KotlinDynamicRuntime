@@ -74,6 +74,15 @@ What the client's forms hold, and the steps people take to fill them in.
   they see it. Its **time windows** say when it is available at all, and when new forms may join it.
 
 
+# @traitPreview
+# +whatIsThis
+The form as people will see this trait in it, drawn from the trait as you have it here, changes and all. Try it:
+type a value, pick a choice, and see what each field asks for.
+
+Nothing you enter in the preview is saved or sent anywhere, and no form changes. Only **Save** below keeps your
+changes to the trait.
+
+
 # @listingColumns
 # +whatIsThis
 The columns of the client's **forms listing**, beside each form's name and dates. Each column shows one trait's
