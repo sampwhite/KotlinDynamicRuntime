@@ -26,11 +26,11 @@ import kotlinx.datetime.FixedOffsetTimeZone
 import kotlinx.datetime.UtcOffset
 import kotlin.time.Instant
 import com.dynamicruntime.common.gedra.GedraEditAction
-import com.dynamicruntime.common.gedra.workflow.SVY
+import com.dynamicruntime.common.gedra.workflow.CDF
 import com.dynamicruntime.common.gedra.workflow.WSC
 import com.dynamicruntime.common.gedra.workflow.WFD
 import com.dynamicruntime.common.gedra.workflow.SWF
-import com.dynamicruntime.common.gedra.workflow.SVYS
+import com.dynamicruntime.common.gedra.workflow.CDS
 import com.dynamicruntime.common.schema.SL
 import com.dynamicruntime.common.schema.parseSchLayout
 import com.dynamicruntime.common.schema.SCH
@@ -336,18 +336,19 @@ class GedraFormsTest {
     }
 
     /**
-     * The survey's "View raw" (issue #726): the listing page with the form open in place, carrying the listing's
-     * search and sort out of the survey's address and none of the survey's own keys (edit flag, task, `from`).
+     * The core details workflow's "View raw" (issue #726): the listing page with the form open in place, carrying the
+     * listing's search and sort out of the core details workflow's address and none of the core details workflow's own
+     * keys (edit flag, task, `from`).
      */
     @Test
     fun theRawViewRouteOpensTheFormOnTheListingWithSearchAndSort() {
         // A DIFFERENT id in the source address than the one passed (review): the argument must win, so a version
         // that carried the address's own `g` through would be caught rather than pass on coinciding values.
-        val surveyRoute = mapOf(
-            HP.page to "surveyEdit", HP.gedra to "gd.fd.acme.OTHER", HP.from to "forms", HP.edit to "1", HP.task to "t2",
+        val coreDetailsRoute = mapOf(
+            HP.page to "coreDetailsEdit", HP.gedra to "gd.fd.acme.OTHER", HP.from to "forms", HP.edit to "1", HP.task to "t2",
             EI.q to "roof", GSORT.sort to "updated", GSORT.sortDir to "desc",
         )
-        val view = formsRawViewRoute(surveyRoute, "gd.fd.acme.u1").toMap()
+        val view = formsRawViewRoute(coreDetailsRoute, "gd.fd.acme.u1").toMap()
         assertEquals("forms", view[HP.page])
         assertEquals("gd.fd.acme.u1", view[HP.gedra])
         assertEquals("roof", view[EI.q])
@@ -357,19 +358,19 @@ class GedraFormsTest {
     }
 
     /**
-     * The raw editor's "View info" (issue #726): the survey's read-only view of the form, carrying the listing's
-     * search and sort and `from=forms` (so the survey's back link still leads home), and none of the editor's
-     * own keys.
+     * The raw editor's "View info" (issue #726): the core details workflow's read-only view of the form, carrying the
+     * listing's search and sort and `from=forms` (so the core details workflow's back link still leads home), and none
+     * of the editor's own keys.
      */
     @Test
-    fun theSurveyViewRouteOpensViewInfoWithSearchAndSort() {
+    fun theCoreDetailsViewRouteOpensViewInfoWithSearchAndSort() {
         // A different id in the source address than the one passed (review), so the argument is seen to win.
         val editorRoute = mapOf(
             HP.page to "editForm", HP.gedra to "gd.fd.acme.OTHER", HP.highlight to "x", HP.edit to "1",
             EI.q to "roof", GSORT.sort to "updated", GSORT.sortDir to "desc",
         )
-        val view = formsSurveyViewRoute(editorRoute, "gd.fd.acme.u1").toMap()
-        assertEquals(pageSurveyEdit, view[HP.page])
+        val view = formsCoreDetailsViewRoute(editorRoute, "gd.fd.acme.u1").toMap()
+        assertEquals(pageCoreDetailsEdit, view[HP.page])
         assertEquals("forms", view[HP.from])
         assertEquals("gd.fd.acme.u1", view[HP.gedra])
         assertEquals("roof", view[EI.q])
@@ -806,7 +807,7 @@ class GedraFormsTest {
         val applied = mapOf("acmeSiteAuditContains" to "dana", EI.user to "7", EI.q to "plan")
         val params = formsSearchRouteParams(applied)
         // An address as it would stand on the list, with navigation keys mixed in.
-        // `edit=1` (issue #694) and `task=` (issue #700) are the survey child page's own keys: the chip's link and
+        // `edit=1` (issue #694) and `task=` (issue #700) are the core details workflow child page's own keys: the chip's link and
         // the rail put them in the address the back link is built from, and neither may ride back into the listing
         // as a "search".
         val route = params.toMap() +
@@ -1010,38 +1011,38 @@ class GedraFormsTest {
         assertEquals("acme", formsCreateReturn(forUser, forUser, "g.fd.acme.new", mapOf(EI.client to "acme"))!!.toMap()[EI.client])
     }
 
-    // --- survey status column (issue #694) --------------------------------------------------------------
+    // --- core details status column (issue #694) --------------------------------------------------------------
 
-    /** A row's state entries carrying a `surveyCompletion` entry with the given booleans. */
-    private fun surveyStates(complete: Boolean?, valid: Boolean?): List<Map<String, Any?>> {
+    /** A row's state entries carrying a `coreDetailsCompletion` entry with the given booleans. */
+    private fun coreDetailsStates(complete: Boolean?, valid: Boolean?): List<Map<String, Any?>> {
         val data = buildMap<String, Any?> {
-            if (complete != null) put(SVY.complete, complete)
-            if (valid != null) put(SVY.valid, valid)
+            if (complete != null) put(CDF.complete, complete)
+            if (valid != null) put(CDF.valid, valid)
         }
         // A second, unrelated state entry too, so the finder must select by trait id rather than take the first.
         return listOf(
             mapOf(GE.traitId to "otherState", GE.data to mapOf("x" to 1)),
-            mapOf(GE.traitId to SVY.surveyCompletion, GE.data to data),
+            mapOf(GE.traitId to CDF.coreDetailsCompletion, GE.data to data),
         )
     }
 
     /**
      * A workflow's Needs Review / Finished (issue #789) takes the place of Valid, and only Valid; the chip carries
-     * the singleton cfact its click asks about, and a survey status carries none (its chip links to the survey).
+     * the singleton cfact its click asks about, and a core details status carries none (its chip links to the core details workflow).
      */
     @Test
     fun aWorkflowSingletonTakesThePlaceOfValid() {
-        fun withFacts(complete: Boolean, valid: Boolean, vararg facts: String) = surveyStates(complete, valid) +
+        fun withFacts(complete: Boolean, valid: Boolean, vararg facts: String) = coreDetailsStates(complete, valid) +
             mapOf(GE.traitId to GT.cfacts, GE.data to mapOf(GT.facts to facts.toList()))
-        assertEquals(SurveyStatus.needsReview, surveyStatusFrom(withFacts(true, true, WSC.needsReview)))
-        assertEquals(SurveyStatus.finished, surveyStatusFrom(withFacts(true, true, WSC.finished)))
-        assertEquals(SurveyStatus.needsReview, surveyStatusFrom(withFacts(true, true, WSC.finished, WSC.needsReview)))
-        assertEquals(SurveyStatus.needsInfo, surveyStatusFrom(withFacts(false, true, WSC.needsReview)))
-        assertEquals(WSC.needsReview, SurveyStatus.needsReview.singletonCfact)
-        assertEquals(WSC.finished, SurveyStatus.finished.singletonCfact)
-        assertNull(SurveyStatus.needsInfo.singletonCfact)
+        assertEquals(CoreDetailsStatus.needsReview, coreDetailsStatusFrom(withFacts(true, true, WSC.needsReview)))
+        assertEquals(CoreDetailsStatus.finished, coreDetailsStatusFrom(withFacts(true, true, WSC.finished)))
+        assertEquals(CoreDetailsStatus.needsReview, coreDetailsStatusFrom(withFacts(true, true, WSC.finished, WSC.needsReview)))
+        assertEquals(CoreDetailsStatus.needsInfo, coreDetailsStatusFrom(withFacts(false, true, WSC.needsReview)))
+        assertEquals(WSC.needsReview, CoreDetailsStatus.needsReview.singletonCfact)
+        assertEquals(WSC.finished, CoreDetailsStatus.finished.singletonCfact)
+        assertNull(CoreDetailsStatus.needsInfo.singletonCfact)
         // The filter offers every status the chip can show, from the same enum.
-        assertEquals(SurveyStatus.needsReview, SurveyStatus.fromWire(SVYS.needsReview))
+        assertEquals(CoreDetailsStatus.needsReview, CoreDetailsStatus.fromWire(CDS.needsReview))
     }
 
     /** What the chip's popover lists (issue #789): each workflow's name, its action for this caller, if any. */
@@ -1067,50 +1068,50 @@ class GedraFormsTest {
      * needs info, and a complete-and-valid one is valid. The chip label and colour ride the enum.
      */
     @Test
-    fun derivesSurveyStatusInvalidTrumpsIncomplete() {
+    fun derivesCoreDetailsStatusInvalidTrumpsIncomplete() {
         // Invalid whenever the present data fails schema, complete or not.
-        assertEquals(SurveyStatus.invalid, surveyStatusFrom(surveyStates(complete = false, valid = false)))
-        assertEquals(SurveyStatus.invalid, surveyStatusFrom(surveyStates(complete = true, valid = false)))
+        assertEquals(CoreDetailsStatus.invalid, coreDetailsStatusFrom(coreDetailsStates(complete = false, valid = false)))
+        assertEquals(CoreDetailsStatus.invalid, coreDetailsStatusFrom(coreDetailsStates(complete = true, valid = false)))
         // Valid data but a required trait missing: needs info.
-        assertEquals(SurveyStatus.needsInfo, surveyStatusFrom(surveyStates(complete = false, valid = true)))
+        assertEquals(CoreDetailsStatus.needsInfo, coreDetailsStatusFrom(coreDetailsStates(complete = false, valid = true)))
         // Complete and valid: valid.
-        assertEquals(SurveyStatus.valid, surveyStatusFrom(surveyStates(complete = true, valid = true)))
+        assertEquals(CoreDetailsStatus.valid, coreDetailsStatusFrom(coreDetailsStates(complete = true, valid = true)))
         // The wire vocabulary is the kernel's (issue #695): the filter sends what the column reads.
-        assertEquals(SurveyStatus.invalid, SurveyStatus.fromWire(SVYS.invalid))
-        assertEquals(SurveyStatus.needsInfo, SurveyStatus.fromWire(SVYS.needsInfo))
-        assertEquals(SurveyStatus.valid, SurveyStatus.fromWire(SVYS.valid))
-        assertNull(SurveyStatus.fromWire("bogus"))
-        assertNull(SurveyStatus.fromWire(null))
+        assertEquals(CoreDetailsStatus.invalid, CoreDetailsStatus.fromWire(CDS.invalid))
+        assertEquals(CoreDetailsStatus.needsInfo, CoreDetailsStatus.fromWire(CDS.needsInfo))
+        assertEquals(CoreDetailsStatus.valid, CoreDetailsStatus.fromWire(CDS.valid))
+        assertNull(CoreDetailsStatus.fromWire("bogus"))
+        assertNull(CoreDetailsStatus.fromWire(null))
         // The chip contract each status renders under.
-        assertEquals("Needs Info" to "warning", SurveyStatus.needsInfo.label to SurveyStatus.needsInfo.pstat)
-        assertEquals("Invalid" to "error", SurveyStatus.invalid.label to SurveyStatus.invalid.pstat)
-        assertEquals("Valid" to "ok", SurveyStatus.valid.label to SurveyStatus.valid.pstat)
+        assertEquals("Needs Info" to "warning", CoreDetailsStatus.needsInfo.label to CoreDetailsStatus.needsInfo.pstat)
+        assertEquals("Invalid" to "error", CoreDetailsStatus.invalid.label to CoreDetailsStatus.invalid.pstat)
+        assertEquals("Valid" to "ok", CoreDetailsStatus.valid.label to CoreDetailsStatus.valid.pstat)
     }
 
-    /** No survey state -> no status (a client with no survey, or a row not yet computed): the column shows
+    /** No core details state -> no status (a client with no core details workflow, or a row not yet computed): the column shows
      *  nothing for the row rather than guessing. Missing booleans are treated the same, defensively. */
     @Test
-    fun surveyStatusIsNullWithoutSurveyState() {
-        assertNull(surveyStatusFrom(emptyList()))
-        assertNull(surveyStatusFrom(listOf(mapOf(GE.traitId to "otherState", GE.data to mapOf("x" to 1)))))
-        assertNull(surveyStatusFrom(surveyStates(complete = null, valid = null)))
-        assertNull(surveyStatusFrom(surveyStates(complete = true, valid = null)))
+    fun coreDetailsStatusIsNullWithoutCoreDetailsState() {
+        assertNull(coreDetailsStatusFrom(emptyList()))
+        assertNull(coreDetailsStatusFrom(listOf(mapOf(GE.traitId to "otherState", GE.data to mapOf("x" to 1)))))
+        assertNull(coreDetailsStatusFrom(coreDetailsStates(complete = null, valid = null)))
+        assertNull(coreDetailsStatusFrom(coreDetailsStates(complete = true, valid = null)))
     }
 
-    /** [summarizeForm] carries the survey status read from the row's `states` (issue #694), and none for a row
-     *  that carried no state (the listing fetched without `withStates`, or a client with no survey). */
+    /** [summarizeForm] carries the core details status read from the row's `states` (issue #694), and none for a row
+     *  that carried no state (the listing fetched without `withStates`, or a client with no core details workflow). */
     @Test
-    fun summarizeReadsSurveyStatusFromStates() {
+    fun summarizeReadsCoreDetailsStatusFromStates() {
         val item = mapOf(
             GDF.gedraId to "gd.fd.acme.u20",
             GDF.entries to emptyList<Any?>(),
             GDF.states to listOf(
-                mapOf(GE.traitId to SVY.surveyCompletion, GE.data to mapOf(SVY.complete to false, SVY.valid to true)),
+                mapOf(GE.traitId to CDF.coreDetailsCompletion, GE.data to mapOf(CDF.complete to false, CDF.valid to true)),
             ),
         )
-        assertEquals(SurveyStatus.needsInfo, summarizeForm(item, entriesUnion()).surveyStatus)
+        assertEquals(CoreDetailsStatus.needsInfo, summarizeForm(item, entriesUnion()).coreDetailsStatus)
         val bare = mapOf(GDF.gedraId to "gd.fd.acme.u21", GDF.entries to emptyList<Any?>())
-        assertNull(summarizeForm(bare, entriesUnion()).surveyStatus)
+        assertNull(summarizeForm(bare, entriesUnion()).coreDetailsStatus)
     }
 
 }

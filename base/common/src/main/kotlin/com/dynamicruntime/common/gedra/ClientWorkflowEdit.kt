@@ -106,14 +106,14 @@ object ClientWorkflowEdit {
     }
 
     /**
-     * Why a workflow cannot be made from [template] now, or null (issue #1120): a client has one creation and one
-     * survey, and a plan ([limits]; null for a client on none) limits its workflows and their tasks. The trial would
-     * refuse each; this says so first.
+     * Why a workflow cannot be made from [template] now, or null (issue #1120): a client has one creation and one core
+     * details workflow, and a plan ([limits]; null for a client on none) limits its workflows and their tasks. The
+     * trial would refuse each; this says so first.
      */
     private fun refusalOf(template: WfDef, own: List<WfDeclared>, limits: PlanRoom?): String? {
         if (template.entry in WfEntry.singletons) {
             own.firstOrNull { it.def.entry == template.entry }?.let {
-                return "This client already has a ${template.entry} workflow, '${it.def.workflowId}', and can have only one."
+                return "This client already has a ${template.entry.words} workflow, '${it.def.workflowId}', and can have only one."
             }
         }
         limits ?: return null
@@ -338,7 +338,7 @@ object ClientWorkflowEdit {
             ?: throw KdrException("Client '$client' has no workflow '$workflowId'.", code = EXC.notFound)
         if (declared.def.entry != WfEntry.normal && (edit.windows != null || WFP.windows in unset)) {
             throw KdrException.mkInput(
-                "Workflow '$workflowId' is a ${declared.def.entry} workflow, which has no time windows; only a normal workflow does.",
+                "Workflow '$workflowId' is a ${declared.def.entry.words} workflow, which has no time windows; only a normal workflow does.",
             )
         }
         edit.problem(workflowId)?.let { throw KdrException.mkInput(it) }

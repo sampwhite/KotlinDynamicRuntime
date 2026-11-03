@@ -20,7 +20,7 @@ fun coreWorkflowTemplates(cxt: KdrCxt): GedraConfig = gedraConfig(cxt, WFT.confi
             save("create", "Create form", WfSaveKind.create)
         }
     }
-    workflow(WFT.survey, WfEntry.survey) {
+    workflow(WFT.coreDetails, WfEntry.coreDetails) {
         label = "Form details"
         comment = "What an owner fills in about the form, and saves."
         task("details", "Details") {

@@ -40,17 +40,18 @@ import com.dynamicruntime.common.user.PERSONA
  * stored configuration, the way a customer's client is -- so that its forms are definitions Design View can show
  * as the client's own, rather than ones compiled into a component.
  *
- * Its one form carries each case the inspector has to tell apart: copy written inline in a layout (label,
- * description, a bounds hint), a closed choice list, a field only an administrator sees and one only a requester
- * sees (`g-visibleWhen` -- the second is a ghost to the administrator using Design View), a field asked only under
- * one answer (a conditional), a field whose fields come from a shared named type (`schemaDef`), a field with no layout
+ * Its one form carries each case the inspector has to tell apart: copy written inline in a layout (label, description,
+ * a bounds hint), a closed choice list, a field only an administrator sees and one only a requester sees
+ * (`g-visibleWhen` -- the second is a ghost to the administrator using Design View), a field asked only under one
+ * answer (a conditional), a field whose fields come from a shared named type (`schemaDef`), a field with no layout
  * entry -- whose form copy is the field's own -- and one its type's layout leaves out of a list that decides the order
- * (issue #1039), and -- beside it in the task -- the global `kdr:name` trait, which no client edits in place. The
- * survey's form requires the headcount the request leaves optional, a form requirement (issue #1022). Its workflows, a
- * creation, a survey, and a normal one, collect the same trait, which is what makes a workflow's own copy (issue #984)
- * visible as its own. The normal one, the logistics (issue #1071), shows only the fields it arranges, so it and the
- * survey each save their own part of one request; its last step is a reviewer's approval, which a client
- * administrator without the `reviewer` label -- the designer -- sees as someone else's.
+ * (issue #1039), and -- beside it in the task -- the global `kdr:name` trait, which no client edits in place. The core
+ * details workflow's form requires the headcount the request leaves optional, a form requirement (issue #1022). Its
+ * workflows, a creation, a core details workflow, and a normal one, collect the same trait, which is what makes a
+ * workflow's own copy (issue #984) visible as its own. The normal one, the logistics (issue #1071), shows only the
+ * fields it arranges, so it and the core details workflow each save their own part of one request; its last step is a
+ * reviewer's approval, which a client administrator without the `reviewer` label -- the designer -- sees as someone
+ * else's.
  *
  * The `design-demo` probe scenario provisions it on a running node, and the Design View tests provision it in
  * theirs. A test asserts the demo's copy through the constants here (`titleLabel`, ...), not as literals, so the
@@ -206,7 +207,7 @@ fun designDemoConfig(cxt: KdrCxtBase = LiteCxt(), client: String = DesignDemo.cl
             }
         }
 
-        workflow(DesignDemo.reviewWorkflow, WfEntry.survey) {
+        workflow(DesignDemo.reviewWorkflow, WfEntry.coreDetails) {
             label = "Event request"
             // The review's own form asks for the headcount, which the request leaves optional (issue #1022): a form
             // requirement, not a schema change -- a request saved without it reads here as unfinished. The entry
@@ -228,7 +229,7 @@ fun designDemoConfig(cxt: KdrCxtBase = LiteCxt(), client: String = DesignDemo.cl
 
         // A second form over the same request (issue #1071), as a normal workflow -- a form is engaged in it. Its form
         // shows only the fields it arranges (and those the data requires), so its save writes those and leaves the rest
-        // of the request -- what the survey above collects -- as it is. Then a reviewer approves: a step the designer
+        // of the request -- what the core details workflow above collects -- as it is. Then a reviewer approves: a step the designer
         // does not carry the label for, so it is someone else's.
         workflow(DesignDemo.logisticsWorkflow, WfEntry.normal) {
             label = "Plan the logistics"

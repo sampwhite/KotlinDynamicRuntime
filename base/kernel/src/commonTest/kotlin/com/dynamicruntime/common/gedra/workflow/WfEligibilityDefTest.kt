@@ -27,11 +27,11 @@ class WfEligibilityDefTest {
             cxt,
             normal {
                 label = "Audit"
-                eligibility("surveyDone", "surveyComplete", "Finish the survey first.")
+                eligibility("coreDetailsDone", "coreDetailsComplete", "Finish the core details workflow first.")
                 eligibility("notAudited", "~underAudit", "An audit is already open.")
             },
         )
-        assertEquals(listOf("surveyDone", "notAudited"), def.eligibility.map { it.id })
+        assertEquals(listOf("coreDetailsDone", "notAudited"), def.eligibility.map { it.id })
         assertEquals("~underAudit", def.eligibility[1].test)
 
         val again = parseWfDef(cxt, def.toJsonMap())
@@ -63,7 +63,7 @@ class WfEligibilityDefTest {
 
     @Test
     fun onlyANormalWorkflowHasEligibility() {
-        val raw = WfDefBuilder("review", WfEntry.survey).apply {
+        val raw = WfDefBuilder("review", WfEntry.coreDetails).apply {
             eligibility("x", "a", "A")
             task("t", "T") { trait("a"); save("s", "S", WfSaveKind.edit) }
         }.build()

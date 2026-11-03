@@ -514,27 +514,27 @@ under the name starts past every revision it had. A bundle the editor added and 
 `ClientWorkflowsTest`): under Traits, offered where they are, from `GET /clientAdmin/client/workflows`
 (`ClientsApi.workflowCatalog`): the client's workflows -- for a client with a sandbox, as the sandbox runs them, its
 latest configuration with drafts in, so the list shows what a draft made or removed, as Files does -- then the
-deployment's **templates** -- the global workflows,
-which no client runs as they are. A template is greyed with the backend's reason when a workflow cannot be made from
-it now (a client has one creation and one survey, and a plan limits workflows and their tasks); a workflow not made
-from a template says why its slots cannot be changed here. **Use…** and **Edit…** open `WorkflowSlotEditor` on the
-**slots** -- the kernel's `WfTemplateSlots`: the workflow's name, and per data-entry task its label and the traits it
-collects, each required or not, named as a form names it (the catalog's trait `name`, `catalogTraitName`, issue
+deployment's **templates** -- the global workflows, which no client runs as they are. A template is greyed with the
+backend's reason when a workflow cannot be made from it now (a client has one creation and one core details workflow,
+and a plan limits workflows and their tasks); a workflow not made from a template says why its slots cannot be changed
+here. **Use…** and **Edit…** open `WorkflowSlotEditor` on the **slots** -- the kernel's `WfTemplateSlots`: the
+workflow's name, and per data-entry task its label and the traits it collects, each required or not, named as a form
+names it (the catalog's trait `name`, `catalogTraitName`, issue
 #1438) -- and say in words what the template fixes (`workflowFixedParts`), from the workflow
 the slots make (`workflowPreview`, the kernel's `withTemplateSlots`). Save posts `/clientAdmin/client/workflows/save`
 (`workflowSaveRequest`, with `mode`): a new workflow lands in a configuration of its own, `workflow_<id>`; a change is
-patched where it is. What is stored is the workflow's overlay of the template, read over the template at load, so a
-fix to the template reaches it; Design View edits the same workflow and keeps its changes in the same overlay.
-**Remove** (issue #1346; `workflowRemovable`, a `danger` link behind a confirmation that names where it acts,
+patched where it is. What is stored is the workflow's overlay of the template, read over the template at load, so a fix
+to the template reaches it; Design View edits the same workflow and keeps its changes in the same overlay. **Remove**
+(issue #1346; `workflowRemovable`, a `danger` link behind a confirmation that names where it acts,
 `workflowRemoveQuestion`) takes a template-made workflow out, through `/clientAdmin/client/workflows/remove`: the
 workflow's entry leaves its configuration, the template can make it again, and a live removal of a workflow forms take
 part in is refused with the impact report until acknowledged. **A new client starts with two**: every create makes a
-creation workflow and a survey from `WFT.starters` (`newForm`, `formDetails`), each in its own `workflow_<id>`
-configuration published with the definition, and includes the trait they collect (`kdr:name`) -- unless the create's
-`starterWorkflows` is false. A client built on another (`extendsFromClientId`) gets only the starter of a kind its base
-declares none of, since its own would replace the base's; one a person starts from a template gets none. The
-self-serve card asks with a ticked checkbox; the platform's and a customer's creates draw it from their input schema.
-They count toward a plan's workflows, which is what Remove is for.
+creation workflow and a core details workflow from `WFT.starters` (`newForm`, `formDetails`), each in its own
+`workflow_<id>` configuration published with the definition, and includes the trait they collect (`kdr:name`) --
+unless the create's `starterWorkflows` is false. A client built on another (`extendsFromClientId`) gets only the starter
+of a kind its base declares none of, since its own would replace the base's; one a person starts from a template gets
+none. The self-serve card asks with a ticked checkbox; the platform's and a customer's creates draw it from their input
+schema. They count toward a plan's workflows, which is what Remove is for.
 
 **Time windows** (issues #1121, #1356, `WorkflowWindowsEditor.kt`, its pure half in `WorkflowWindows.kt`, covered by
 `WorkflowWindowsTest`): a normal workflow's row in Workflows says where it stands now (`windowPhaseText`) and offers
@@ -566,22 +566,23 @@ A setter the caller may not administer (an operator who set a client's windows) 
 byline, say only when.
 
 **Visibility** (issue #1384, `WorkflowVisibilityEditor.kt`, its pure half in `WorkflowVisibility.kt`, covered by
-`WorkflowVisibilityTest`): who sees a workflow, a parameter beside its windows -- on a workflow of **any** kind, so every
-row of Workflows offers **Visibility…** and a **Seen by** column (`visibilityText`; restricted ones in `.wf-restricted`).
-The value is the kernel's `WfVisibility`: `everyone`, or `restricted` to the client's administrators and the people
-holding one of its labels -- the user labels the Users page puts on people, offered from the catalog's `CWF.userLabels`
-and free to type. **One parameter, mode and labels together** (`WFP.visibility`), so a sandbox restricting a workflow
-never inherits its client's group, and the labels are kept when it is opened to everyone. It saves as the windows do
-(`visibilitySaveRequest`, the same `/clientAdmin/client/workflows/params`), with the provenance line, the way back to a
-client's choice, and the earlier choices (`historyOf`, which leaves out a setting that changed only the other
-parameter -- the windows editor uses it too). Restricting a workflow out of engaged forms' owners' sight is refused with
-the impact report (`ImpactKind.workflowUnseen`). **A new workflow is made with who sees it**: the slot editor's "Seen
-by" starts on administrators only and is sent as `CWF.visibility`, written before the workflow exists; on a client with
-a sandbox it is the sandbox's, and the client's own stays administrators only. The backend enforces it wherever a person
-meets a workflow (`WorkflowPhases.liveFor`, `WorkflowAudience`): one a person does not see is, to them, as one deleted
-or past its lifetime is to everybody -- its part in their forms hidden and kept, its locks on their data released
-(`TraitLocks`) -- and a restricted creation workflow sends them to the trait picker, a survey to the raw editor. The `clients` file's `workflows.newWorkflowNote` and the home file's `publicHome.createClientNote` ship empty
-and say how to open a workflow up where the `reference` flavor fills them in.
+`WorkflowVisibilityTest`): who sees a workflow, a parameter beside its windows -- on a workflow of **any** kind, so
+every row of Workflows offers **Visibility…** and a **Seen by** column (`visibilityText`; restricted ones in
+`.wf-restricted`). The value is the kernel's `WfVisibility`: `everyone`, or `restricted` to the client's administrators
+and the people holding one of its labels -- the user labels the Users page puts on people, offered from the catalog's
+`CWF.userLabels` and free to type. **One parameter, mode and labels together** (`WFP.visibility`), so a sandbox
+restricting a workflow never inherits its client's group, and the labels are kept when it is opened to everyone. It
+saves as the windows do (`visibilitySaveRequest`, the same `/clientAdmin/client/workflows/params`), with the provenance
+line, the way back to a client's choice, and the earlier choices (`historyOf`, which leaves out a setting that changed
+only the other parameter -- the windows editor uses it too). Restricting a workflow out of engaged forms' owners' sight
+is refused with the impact report (`ImpactKind.workflowUnseen`). **A new workflow is made with who sees it**: the slot
+editor's "Seen by" starts on administrators only and is sent as `CWF.visibility`, written before the workflow exists; on
+a client with a sandbox it is the sandbox's, and the client's own stays administrators only. The backend enforces it
+wherever a person meets a workflow (`WorkflowPhases.liveFor`, `WorkflowAudience`): one a person does not see is, to
+them, as one deleted or past its lifetime is to everybody -- its part in their forms hidden and kept, its locks on their
+data released (`TraitLocks`) -- and a restricted creation workflow sends them to the trait picker, a core details
+workflow to the raw editor. The `clients` file's `workflows.newWorkflowNote` and the home file's
+`publicHome.createClientNote` ship empty and say how to open a workflow up where the `reference` flavor fills them in.
 
 **Long text** is the schema's mark (issue #1550): a plain string's `g-longText: true` (`SchType.longText`, refused on
 anything but plain text) makes `SchemaForm` draw antd's `TextArea` (`ControlKind.LongText`) on every form, the

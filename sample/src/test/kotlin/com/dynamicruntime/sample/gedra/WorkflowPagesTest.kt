@@ -40,13 +40,14 @@ class WorkflowPagesTest : StringSpec({
     val engage = clientPath(GEP.workflowEngage, SC.acme)
     val list = clientPath(GEP.formDocs, SC.acme)
 
-    fun newForm(user: TestUser, surveyDone: Boolean): String {
+    fun newForm(user: TestUser, coreDetailsDone: Boolean): String {
         val audit = listOf(mapOf(GE.traitId to SC.siteAudit, GE.data to mapOf(SC.auditor to "A Person", SC.findings to "seen")))
-        val survey = listOf(
+        val coreDetails = listOf(
             mapOf(GE.traitId to ST.expenseReport, GE.data to mapOf(ST.year to 2026)),
             mapOf(GE.traitId to SC.userInfo, GE.data to mapOf(SC.userName to "A Person")),
         )
-        return user.postItem(create, mapOf(GDF.entries to audit + if (surveyDone) survey else emptyList()))[GDF.gedraId].toOptStr()!!
+        return user.postItem(create,
+            mapOf(GDF.entries to audit + if (coreDetailsDone) coreDetails else emptyList()))[GDF.gedraId].toOptStr()!!
     }
 
     fun aggregate(user: TestUser) = user.getItems(GEP.workflowAggregate).associateBy { it[WFD.workflowId].toOptStr()!! }
@@ -67,9 +68,9 @@ class WorkflowPagesTest : StringSpec({
 
     "each count is the forms in that state, and its drill-down opens exactly those forms" {
         val user = TestUser.create(cxt, "pages-counts@acme.test", userClient = SC.acme)
-        val ready = newForm(user, surveyDone = true)
-        val unready = newForm(user, surveyDone = false)
-        val engaged = newForm(user, surveyDone = true)
+        val ready = newForm(user, coreDetailsDone = true)
+        val unready = newForm(user, coreDetailsDone = false)
+        val engaged = newForm(user, coreDetailsDone = true)
         user.postData(engage, mapOf(GDF.gedraId to engaged, GDF.workflowId to SW.auditReview))
 
         val agg = aggregate(user)
@@ -89,7 +90,7 @@ class WorkflowPagesTest : StringSpec({
 
     "a cross-client administrator's drill-down resolves the workflow in each form's own client" {
         val owner = TestUser.create(cxt, "pages-cross@acme.test", userClient = SC.acme)
-        val engaged = newForm(owner, surveyDone = true)
+        val engaged = newForm(owner, coreDetailsDone = true)
         owner.postData(engage, mapOf(GDF.gedraId to engaged, GDF.workflowId to SW.auditReview))
         // No client named: the workflow is acme's, not the administrator's own client's, and the row still matches.
         val admin = TestUser.createFullAdmin(cxt, "pages-cross-admin@acme.test")
@@ -99,9 +100,9 @@ class WorkflowPagesTest : StringSpec({
 
     "the drill-down composes with the status filter" {
         val user = TestUser.create(cxt, "pages-compose@acme.test", userClient = SC.acme)
-        newForm(user, surveyDone = true)
-        val unready = newForm(user, surveyDone = false)
-        user.getItems(list, mapOf(WAGG.workflowId to SW.siteFollowUp, "surveyStatus" to "needsInfo"))
+        newForm(user, coreDetailsDone = true)
+        val unready = newForm(user, coreDetailsDone = false)
+        user.getItems(list, mapOf(WAGG.workflowId to SW.siteFollowUp, "coreDetailsStatus" to "needsInfo"))
             .map { it[GDF.gedraId] } shouldBe listOf(unready)
     }
 

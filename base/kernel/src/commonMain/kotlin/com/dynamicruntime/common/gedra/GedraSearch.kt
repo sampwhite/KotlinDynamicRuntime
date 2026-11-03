@@ -2,7 +2,7 @@ package com.dynamicruntime.common.gedra
 
 import com.dynamicruntime.common.endpoint.EI
 import com.dynamicruntime.common.endpoint.EP
-import com.dynamicruntime.common.gedra.workflow.SVY
+import com.dynamicruntime.common.gedra.workflow.CDF
 import com.dynamicruntime.common.gedra.workflow.WAGG
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SCT
@@ -225,7 +225,7 @@ fun formDocsQueryDefName(): String = qualifyTypeName(GEP.formDocsQuery, GEP.gedr
  */
 val reservedQueryFieldNames: Set<String> = setOf(
     EP.offset, EP.limit, EP.after, EI.user, EI.client, EI.q, EI.includeUsers, GSORT.sort, GSORT.sortDir,
-    GDF.withStates, GDF.withWorkflowSummary, SVY.surveyStatus, WAGG.workflowId, WAGG.workflowState,
+    GDF.withStates, GDF.withWorkflowSummary, CDF.coreDetailsStatus, WAGG.workflowId, WAGG.workflowState,
 )
 
 /**

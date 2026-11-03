@@ -21,7 +21,7 @@ import kotlin.test.assertTrue
 class WorkflowColumnViewTest {
     private fun summaryEntry(client: String, id: String, phase: WfPhase = WfPhase.engageable) = mapOf(
         WCOL.client to client, WFD.workflowId to id, WFD.label to "Label of $id", WCOL.phase to phase.name,
-        WCOL.explanations to mapOf("surveyDone" to "Finish the survey first."), WCOL.lastTask to "last",
+        WCOL.explanations to mapOf("coreDetailsDone" to "Finish the core details workflow first."), WCOL.lastTask to "last",
     )
 
     private val summary = parseWorkflowSummary(
@@ -46,7 +46,7 @@ class WorkflowColumnViewTest {
     fun theSummaryParsesAndARowJoinsItsOwnClientsEntries() {
         assertEquals(listOf("acme/audit", "acme/followUp", "globex/audit"), summary.map { "${it.client}/${it.workflowId}" })
         val states = listOf(
-            state("audit", WFS.eligible to false, WFS.eligibilityFailures to listOf(mapOf(WFD.id to "surveyDone"))),
+            state("audit", WFS.eligible to false, WFS.eligibilityFailures to listOf(mapOf(WFD.id to "coreDetailsDone"))),
             state("followUp", WFS.ctaTask to "note"),
             engaged("followUp"),
         )
@@ -54,7 +54,7 @@ class WorkflowColumnViewTest {
         assertEquals(listOf("followUp" to WfColumnCategory.engaged, "audit" to WfColumnCategory.ineligible), cell.map { it.entry.workflowId to it.workflow.category })
         // The engaged one opens on its current task; the ineligible one explains itself instead.
         assertEquals("note", cell[0].linkTask)
-        assertEquals(listOf("Finish the survey first."), cell[1].reasons)
+        assertEquals(listOf("Finish the core details workflow first."), cell[1].reasons)
         // Another client's form with the same workflow id joins that client's entry, never acme's.
         assertEquals("Label of audit", workflowCellOf(states, "globex", summary).single().entry.label)
         // A client the summary does not name shows nothing.
@@ -90,7 +90,10 @@ class WorkflowColumnViewTest {
             workflowId = "audit", entry = entry.name, showTaskList = true, tasks = emptyList(), cfacts = emptyMap(),
             phase = phase?.name, engaged = engaged, eligible = eligible,
         )
-        assertNull(workflowNote(view(null, null, WfEntry.survey)))
+        assertNull(workflowNote(view(null, null, WfEntry.coreDetails)))
+        // The core details view says its data is not all of the form's (issue #1571); no other view says so.
+        assertTrue(coreDetailsNote(view(null, null, WfEntry.coreDetails)).orEmpty().contains("Each workflow keeps its own"))
+        assertNull(coreDetailsNote(view(WfPhase.relevant, true)))
         assertNull(workflowNote(view(WfPhase.relevant, true)))
         assertTrue(workflowNote(view(WfPhase.engageable, false, eligible = true)).orEmpty().contains("Engage"))
         assertTrue(workflowNote(view(WfPhase.lifetimeOnly, true)).orEmpty().contains("closed"))
@@ -119,7 +122,7 @@ class WorkflowColumnViewTest {
             phase = WfPhase.engageable.name.takeIf { entry == WfEntry.normal }, engaged = engaged, eligible = eligible,
             keptToOwner = true,
         )
-        assertEquals(TraitLockCopy.keptToOwner, workflowNote(kept(WfEntry.survey, null)))
+        assertEquals(TraitLockCopy.keptToOwner, workflowNote(kept(WfEntry.coreDetails, null)))
         assertEquals(TraitLockCopy.keptToOwner, workflowNote(kept(WfEntry.normal, true)))
         assertTrue(!kept(WfEntry.normal, false, eligible = true).canEngage)
         // Not eligible: no Engage that could only be refused, and the note leads into the reasons.
@@ -131,7 +134,8 @@ class WorkflowColumnViewTest {
     @Test
     fun onlyAnEngagedWorkflowsLinkOpensInEditMode() {
         assertEquals(
-            listOf(HP.page to pageSurveyEdit, HP.from to "forms", HP.gedra to "g1", HP.workflow to "audit", HP.task to "record", HP.edit to "1"),
+            listOf(HP.page to pageCoreDetailsEdit, HP.from to "forms", HP.gedra to "g1", HP.workflow to "audit",
+                HP.task to "record", HP.edit to "1"),
             workflowPageRoute("g1", "audit", "record", edit = true),
         )
         // A finished workflow's last task is there to be looked at; an eligible one opens on the workflow.
@@ -141,14 +145,15 @@ class WorkflowColumnViewTest {
 
     @Test
     fun engagingOpensTheWorkflowInEditMode() {
-        val before = mapOf(HP.page to pageSurveyEdit, HP.from to "forms", HP.gedra to "g1", HP.workflow to "audit")
+        val before = mapOf(HP.page to pageCoreDetailsEdit, HP.from to "forms", HP.gedra to "g1", HP.workflow to "audit")
         assertEquals(before.toList() + (HP.edit to "1"), engagedRoute(before))
         // An address already in edit mode keeps one flag, not two.
-        assertEquals(listOf(HP.page to pageSurveyEdit, HP.edit to "1"), engagedRoute(mapOf(HP.page to pageSurveyEdit, HP.edit to "1")))
+        assertEquals(listOf(HP.page to pageCoreDetailsEdit, HP.edit to "1"), engagedRoute(mapOf(HP.page to pageCoreDetailsEdit,
+            HP.edit to "1")))
     }
 
     @Test
     fun theWorkflowKeyIsNavigationNotASearchFilter() {
-        assertEquals(mapOf("q" to "x"), formsSearchFromRoute(mapOf(HP.page to "surveyEdit", HP.workflow to "audit", "q" to "x")))
+        assertEquals(mapOf("q" to "x"), formsSearchFromRoute(mapOf(HP.page to "coreDetailsEdit", HP.workflow to "audit", "q" to "x")))
     }
 }

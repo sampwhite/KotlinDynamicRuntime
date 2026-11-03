@@ -298,7 +298,7 @@ does**, not by where it sits:
 - A **button** is one of the page's *verbs* — something that changes the state of the page or the form. Start
   editing (`Edit`, `type = "primary"`), save (`Save changes`, primary), finish or cancel (`Done`, `Cancel`,
   default), delete (`Delete form` and its confirm, `danger`). "Start editing" is a verb whether it flips the
-  survey view into edit mode or hops to the raw editor, so the two read-only views draw the same primary
+  core details view into edit mode or hops to the raw editor, so the two read-only views draw the same primary
   `Edit`.
 - A **link-styled control** (`type = "link"`, or the shared `<a class="back-link">`) goes somewhere else
   without changing anything (off these surfaces, the Users page's test-only Become sits among a row's links, and is

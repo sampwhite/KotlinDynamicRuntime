@@ -2,6 +2,7 @@ package com.dynamicruntime.webapp
 
 import com.dynamicruntime.common.gedra.traitNameOf
 import com.dynamicruntime.common.gedra.workflow.TraitLockCopy
+import com.dynamicruntime.common.gedra.workflow.WfEntry
 import com.dynamicruntime.common.gedra.workflow.WfPhase
 import com.dynamicruntime.common.gedra.GDF
 import com.dynamicruntime.common.schema.LAYSTR
@@ -35,10 +36,10 @@ import com.dynamicruntime.common.util.humanizeFieldName
 private val wfFormScope = MainScope()
 
 external interface WorkflowFormProps : Props {
-    /** The resolved workflow view to render -- a creation workflow, or a survey resolved against a form. */
+    /** The resolved workflow view to render -- a creation workflow, or a core details workflow resolved against a form. */
     var view: WorkflowView
 
-    /** The form a survey edit updates (issue #659); null for a creation workflow, which makes a new form. */
+    /** The form a core details edit updates (issue #659); null for a creation workflow, which makes a new form. */
     var gedraId: String?
 
     /**
@@ -50,31 +51,31 @@ external interface WorkflowFormProps : Props {
     var client: String?
 
     /**
-     * Whether a survey edit opens already in edit mode (issue #694): the forms-list status chip's direct-to-edit
+     * Whether a core details edit opens already in edit mode (issue #694): the forms-list status chip's direct-to-edit
      * link sets it; the "View Info" action leaves it unset for the read-only view. Ignored for a creation form,
      * which is always editable.
      */
     var initialEditing: Boolean?
 
     /**
-     * Opens the **raw** editor for this form (issue #694), offered as a "Raw edit" link on the survey's read-only
-     * view. The survey is an on-boarding *subset* of traits; the raw editor edits every trait, including ones set
-     * by API or other workflows. Null when the caller's surface has no patch endpoint (a control that could only
-     * fail is not shown), or for a creation form.
+     * Opens the **raw** editor for this form (issue #694), offered as a "Raw edit" link on the core details workflow's
+     * read-only view. The core details workflow is an on-boarding *subset* of traits; the raw editor edits every trait,
+     * including ones set by API or other workflows. Null when the caller's surface has no patch endpoint (a control
+     * that could only fail is not shown), or for a creation form.
      */
     var onRawEdit: (() -> Unit)?
 
     /**
      * Opens the raw **read-only** view of this form (issue #726), offered as "View raw" beside "Raw edit" on the
-     * survey's read-only view: every trait, looked at rather than edited. Null for a creation form, which has no
+     * core details workflow's read-only view: every trait, looked at rather than edited. Null for a creation form, which has no
      * stored form to view yet.
      */
     var onRawView: (() -> Unit)?
 
     /**
-     * The task the rail shows (issue #700), for a multi-task survey; ignored (every task renders) for a
-     * single-task survey or a creation form. The page chooses it from the URL or the view's earliest task
-     * needing action.
+     * The task the rail shows (issue #700), for a multi-task core details workflow; ignored (every task renders) for a
+     * single-task core details workflow or a creation form. The page chooses it from the URL or the view's earliest
+     * task needing action.
      */
     var activeTask: String?
 
@@ -91,7 +92,7 @@ external interface WorkflowFormProps : Props {
     /**
      * Whether a **create** workflow may be run for another user (issue #727): true for an administrator, so the
      * creation form offers the [FormUserPicker] and the create save carries the chosen user. Ignored for a
-     * survey edit (that acts on an existing form). Absent/false hides the picker -- the ordinary self-create.
+     * core details edit (that acts on an existing form). Absent/false hides the picker -- the ordinary self-create.
      */
     var allowCreateForUser: Boolean?
 
@@ -141,9 +142,9 @@ class ApproveRefusal(val taskId: String, val error: DisplayError)
  *  - **Creation** (`gedraId == null`): one task, always editable, its `create` save makes the form; on success
  *    the page returns to the listing it was launched from with the new row flashed (issue #758), through the
  *    one shared return every create surface uses (`formsCreateReturn`).
- *  - **Survey edit** (`gedraId != null`): the form's one-to-three tasks, each seeded from its current entries,
- *    shown **read-only with an Edit toggle** ("View Info"); editing reveals each task's `edit` save, which
- *    updates the form. Saving does not gate on completeness -- an incomplete survey is recorded as state, not
+ *  - **Core details edit** (`gedraId != null`): the form's one-to-three tasks, each seeded from its current entries,
+ *    shown **read-only with an Edit toggle** ("View Info"); editing reveals each task's `edit` save, which updates the
+ *    form. Saving does not gate on completeness -- incomplete core details are recorded as state, not
  *    refused -- so a required trait left empty comes back only through the status column, not as a block here.
  *
  * A field the schema rejects is a per-trait validation failure shown against that field. A required trait is met
@@ -164,16 +165,16 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
     val presentation = prefillPresentationOf(wf)
     val seeded: Map<String, Map<String, Any?>> = presentation.working
 
-    // A creation form is always editable; a survey edit starts read-only (the "View Info" view) unless the URL
+    // A creation form is always editable; a core details edit starts read-only (the "View Info" view) unless the URL
     // asked for edit mode (issue #694, the forms-list chip's direct-to-edit link).
     // A normal workflow's tasks are worked on only once the form is engaged and while the workflow is still
     // calculated (issue #791): before, the page offers Engage; after it closes (frozen), what it recorded stands.
-    // The one task on screen when the survey shows a task at a time (issue #700), else null -- what Edit is offered on.
+    // The one task on screen when the core details workflow shows a task at a time (issue #700), else null -- what Edit is offered on.
     val railMode = isEdit && wf.tasks.size > 1 && props.onSelectTask != null
     val shownTask = if (railMode) wf.tasks.firstOrNull { it.id == props.activeTask } ?: wf.tasks.firstOrNull() else null
     var editing by useState(if (isEdit) props.initialEditing == true && wf.offersEdit(shownTask) else true)
     // The user a create is being made for (issue #727), when an admin picked one; null is the self-create.
-    // Meaningful only on a creation form; a survey edit never reads it.
+    // Meaningful only on a creation form; a core details edit never reads it.
     var pickedUser by useState<AdminUser?>(null)
     // Each of the four states a save settles is also held by its setter, which a save's continuation updates with a
     // transform: it runs after two round trips (the save, then the view's re-read, issue #827), and the values its
@@ -221,7 +222,7 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
     // A save that landed but whose re-read of the view failed (issue #827): said beside the save rather than as a failed
     // save, since the data is stored -- only what the page shows of the form's state may be behind.
     var refreshError by useState<DisplayError?>(null)
-    // Whether a survey edit has saved since the page opened -- the "✓ Saved." beside the header's actions.
+    // Whether a core details edit has saved since the page opened -- the "✓ Saved." beside the header's actions.
     var justSaved by useState(false)
 
     // Design View (issue #972): on when this session asked for it and the backend answered with its block, which it
@@ -353,15 +354,15 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
                 } else if (!isEdit) {
                     // A create goes straight back to the listing it was launched from, the new row flashed (issue
                     // #758) -- the same return the trait-picker create makes (#663, #669), which this surface
-                    // never got: it stopped on an in-place "Form created" page instead. A form whose survey still
-                    // needs information says so on its row's status chip, which links into the survey editor.
+                    // never got: it stopped on an in-place "Form created" page instead. A form whose core details workflow still
+                    // needs information says so on its row's status chip, which links into the core details editor.
                     formsCreateReturn(launched, routeParams(), outcome.item[GDF.gedraId] as? String)?.let {
                         leaving = true
                         navigate(it)
                     }
                 } else {
                     justSaved = true
-                    // A survey edit stays on the form and in edit mode -- a multi-task survey is saved one task
+                    // A core details edit stays on the form and in edit mode -- a multi-task core details workflow is saved one task
                     // at a time, so exiting or re-seeding the whole form here would discard the other tasks'
                     // in-progress edits. The save answers only that the form's state may have moved (issue #827),
                     // so the page re-reads the whole view in place, and the stored snapshot is re-taken from it --
@@ -724,8 +725,8 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
 
         // One header line, shared with the raw editor (issues #719, #726): the back link, the title beside
         // it, and the actions right-aligned. The back link (issue #671 for the create fill-out, #694 for the
-        // survey's views, including an arrival straight into edit mode from the status chip) is the shared
-        // forms link, so it returns to the same filtered, sorted listing. The survey edit's actions are Edit
+        // core details workflow's views, including an arrival straight into edit mode from the status chip) is the shared
+        // forms link, so it returns to the same filtered, sorted listing. The core details edit's actions are Edit
         // over the read-only "View Info" (with the raw editor beside it) and Done while editing, with the
         // saved note beside either.
         formsEditorHeader(title = {
@@ -760,7 +761,7 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
                             +"Engage"
                         }
                     }
-                    // The raw read-only view (issue #726): every trait, including the ones the survey does
+                    // The raw read-only view (issue #726): every trait, including the ones the core details workflow does
                     // not show, without entering the editor -- the look-before-editing counterpart of the
                     // raw editor beside it.
                     props.onRawView?.let { rawView ->
@@ -770,7 +771,7 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
                             +"View raw"
                         }
                     }
-                    // The raw editor, for the traits the survey does not show (issue #694): offered only
+                    // The raw editor, for the traits the core details workflow does not show (issue #694): offered only
                     // when the caller's surface carries the patch endpoint (the page decides; null hides it).
                     props.onRawEdit?.let { rawEdit ->
                         Button {
@@ -789,7 +790,15 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
             }
         }
 
-        // Help the workflow's copy gives it (issue #1221), under the title: what this form is for, or where to read more.
+        // What the core details are (issue #1571): what every form carries, which is not all of its data.
+        coreDetailsNote(wf)?.let { note ->
+            p {
+                className = ClassName("subtitle")
+                +note
+            }
+        }
+        // Help the workflow's copy gives it (issue #1221), under the title: what this form is for, or where to read
+        // more.
         if (wf.help.isNotBlank()) {
             div {
                 className = ClassName("wf-help")
@@ -823,9 +832,9 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
             FormUserPicker { onPick = { pickedUser = it } }
         }
 
-        // A multi-task survey shows ONE task at a time, picked from the rail (issue #700) -- so there is one
+        // A multi-task core details workflow shows ONE task at a time, picked from the rail (issue #700) -- so there is one
         // Save in view, and the other tasks' working values stay in state across the switch. A single-task
-        // survey and the creation form keep the single panel with their one task.
+        // core details workflow and the creation form keep the single panel with their one task.
         val active = props.activeTask
         if (railMode) {
             div {
@@ -882,7 +891,7 @@ private fun ChildrenBuilder.designFramed(
 
 /**
  * Why a normal workflow's tasks are read-only on this page (issue #791), or null when they are not (or the view is
- * a creation or survey) -- or, for any view, that the form is kept to its owner from this caller (issue #1433). Pure,
+ * a creation or core details workflow) -- or, for any view, that the form is kept to its owner from this caller (issue #1433). Pure,
  * and covered under `jsNodeTest`.
  */
 fun workflowNote(wf: WorkflowView): String? = when {
@@ -896,6 +905,14 @@ fun workflowNote(wf: WorkflowView): String? = when {
     wf.engaged == true -> null
     else -> "This form is not in this workflow, and it is not taking new forms."
 }
+
+/**
+ * What a core details view says under its title (issue #1571), or null for any other view: that the core details are
+ * what every form carries, not all of its data, since each workflow a form takes part in keeps traits of its own. Pure,
+ * and covered under `jsNodeTest`.
+ */
+fun coreDetailsNote(wf: WorkflowView): String? =
+    if (wf.entry == WfEntry.coreDetails.name) "Core details: what every form carries. Each workflow keeps its own." else null
 
 /**
  * A trait's name (issue #1520), by the rule every page names a trait with: its layout `label`, its title, else its id
@@ -916,7 +933,7 @@ external interface LoadStateCardProps : Props {
 }
 
 /**
- * The load-state chrome shared by the workflow pages ([CreationPage], [SurveyEditPage]): a `card wide` carrying
+ * The load-state chrome shared by the workflow pages ([CreationPage], [CoreDetailsEditPage]): a `card wide` carrying
  * the page's [LoadStateCardProps.title] and either "Loading…" or the load error. Keeps the two pages from each
  * hand-rolling the same scaffolding that differs only in the heading text.
  */

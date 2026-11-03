@@ -5,7 +5,7 @@ import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.gedra.GDF
 import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.gedra.GSRC
-import com.dynamicruntime.common.gedra.workflow.SVY
+import com.dynamicruntime.common.gedra.workflow.CDF
 import com.dynamicruntime.common.gedra.workflow.WFD
 import com.dynamicruntime.common.gedra.workflow.WSF
 import com.dynamicruntime.common.gedra.workflow.WVF
@@ -63,12 +63,12 @@ class WorkflowModelTest {
         ),
     )
 
-    // A survey view carrying a `userInfo` trait (name, email) whose entry [source] is set: a layout marks `name`
+    // A core details view carrying a `userInfo` trait (name, email) whose entry [source] is set: a layout marks `name`
     // filled and `email` offer, so the two modes can be told apart (issue #710).
     private fun prefillView(source: String): Map<String, Any?> = mapOf(
         WVF.found to true,
         WFD.workflowId to "reviewForm",
-        WFD.entry to "survey",
+        WFD.entry to "coreDetails",
         WVF.showTaskList to false,
         WVF.fieldLayouts to mapOf(
             "ns.UserInfoData" to mapOf(
@@ -246,7 +246,7 @@ class WorkflowModelTest {
         assertEquals(entries, body[GDF.entries])
         assertTrue(!body.containsKey(GDF.gedraId))
 
-        // A survey edit save carries the form's gedraId (issue #659).
+        // A core details edit save carries the form's gedraId (issue #659).
         val editBody = workflowSaveBody("reviewForm", "only", "save", entries, gedraId = "gd.fd.acme.u7")
         assertEquals("gd.fd.acme.u7", editBody[GDF.gedraId])
 
@@ -259,10 +259,11 @@ class WorkflowModelTest {
     }
 
     @Test
-    fun parsesASurveyViewWithSeededEntriesAndItsKind() {
-        // A survey view (issue #659): the same shape plus WFD.entry="survey" and each task's current entries.
-        val surveyView = view().toMutableMap().apply {
-            put(WFD.entry, "survey")
+    fun parsesACoreDetailsViewWithSeededEntriesAndItsKind() {
+        // A core details view (issue #659): the same shape plus WFD.entry="coreDetails" and each task's current
+        // entries.
+        val coreDetailsView = view().toMutableMap().apply {
+            put(WFD.entry, "coreDetails")
             put(
                 WFD.tasks,
                 listOf(
@@ -279,8 +280,8 @@ class WorkflowModelTest {
                 ),
             )
         }
-        val wf = parseWorkflowView(surveyView)!!
-        assertEquals("survey", wf.entry)
+        val wf = parseWorkflowView(coreDetailsView)!!
+        assertEquals("coreDetails", wf.entry)
         val task = wf.tasks.single()
         assertEquals("edit", task.saves.single().kind)
         // seedValuesOf is the inverse of workflowSaveEntries over every task of the view, {traitId -> data} -- what
@@ -313,8 +314,8 @@ class WorkflowModelTest {
         problems: List<Pair<String, String>> = emptyList(),
         userMessage: String? = null,
     ) = mapOf(
-        SVY.complete to complete, SVY.valid to valid, SVY.missingTraits to missing,
-        SVY.invalidTraits to problems.map { it.first }.distinct(),
+        CDF.complete to complete, CDF.valid to valid, CDF.missingTraits to missing,
+        CDF.invalidTraits to problems.map { it.first }.distinct(),
         // The kernel's failure wire shape (SchFailure.toWireMap) plus the trait, as the view emits it -- with the
         // schema author's own wording beside the validator's when a field declares one.
         WVF.problems to problems.map { (t, m) ->
@@ -328,8 +329,8 @@ class WorkflowModelTest {
         },
     )
 
-    /** A two-task survey view, each task collecting `name`, with the given statuses and focus task. */
-    private fun surveyView(aStatus: Map<String, Any?>?, bStatus: Map<String, Any?>?, focus: String?): Map<String, Any?> {
+    /** A two-task core details view, each task collecting `name`, with the given statuses and focus task. */
+    private fun coreDetailsView(aStatus: Map<String, Any?>?, bStatus: Map<String, Any?>?, focus: String?): Map<String, Any?> {
         fun task(id: String, st: Map<String, Any?>?): Map<String, Any?> = buildMap {
             put(WFD.id, id)
             put(WFD.label, id.uppercase())
@@ -338,7 +339,7 @@ class WorkflowModelTest {
             st?.let { put(WVF.status, it) }
         }
         return view().toMutableMap().apply {
-            put(WFD.entry, "survey")
+            put(WFD.entry, "coreDetails")
             put(WFD.tasks, listOf(task("a", aStatus), task("b", bStatus)))
             focus?.let { put(WVF.focusTask, it) }
         }
@@ -347,7 +348,9 @@ class WorkflowModelTest {
     /** The view's per-task status and its focus task parse through; a task carrying none has a null status. */
     @Test
     fun parsesTaskStatusAndTheFocusTask() {
-        val wf = parseWorkflowView(surveyView(status(true, true), status(true, false, problems = listOf("name" to "Too long.")), "b"))!!
+        val wf = parseWorkflowView(coreDetailsView(status(true, true), status(true, false, problems = listOf("name" to "Too long.")),
+            "b",
+        ))!!
         assertEquals("b", wf.focusTask)
         val a = wf.tasks[0].status!!
         assertTrue(a.complete && a.valid && a.problems.isEmpty())
@@ -359,7 +362,7 @@ class WorkflowModelTest {
         assertEquals("text", b.problems.single().path)
         // The schema author's wording wins over the validator's when the failure carries one.
         val worded = parseWorkflowView(
-            surveyView(status(true, false, problems = listOf("name" to "raw"), userMessage = "Keep it short."), null, null),
+            coreDetailsView(status(true, false, problems = listOf("name" to "raw"), userMessage = "Keep it short."), null, null),
         )!!
         assertEquals("Keep it short.", worded.tasks[0].status!!.problems.single().message)
         // The creation fixture carries no status and no focus task.
@@ -371,12 +374,13 @@ class WorkflowModelTest {
     /** The mark: absence wins over invalidity (an orange check says "complete"), and no status draws as not started. */
     @Test
     fun marksATaskByItsStatus() {
-        val wf = parseWorkflowView(surveyView(status(true, true), status(true, false, problems = listOf("name" to "x")), null))!!
+        val wf = parseWorkflowView(coreDetailsView(status(true, true), status(true, false, problems = listOf("name" to "x")), null))!!
         assertEquals(RailMark.complete, railMark(wf.tasks[0].status))
         assertEquals(RailMark.invalid, railMark(wf.tasks[1].status))
         assertEquals(RailMark.incomplete, railMark(null))
         // Incomplete AND invalid: the mark says incomplete; the problem still reaches the tooltip via the status.
-        val both = parseWorkflowView(surveyView(status(false, false, listOf("name"), listOf("name" to "x")), null, null))!!.tasks[0].status
+        val both = parseWorkflowView(coreDetailsView(status(false, false, listOf("name"), listOf("name" to "x")), null,
+            null))!!.tasks[0].status
         assertEquals(RailMark.incomplete, railMark(both))
         assertEquals(1, both!!.problems.size)
     }
@@ -384,18 +388,18 @@ class WorkflowModelTest {
     /** The task the page opens on: the URL's task if it is one of the view's, else the focus task, else the first. */
     @Test
     fun choosesTheInitialTask() {
-        val wf = parseWorkflowView(surveyView(status(true, true), status(false, true, listOf("name")), "b"))!!
+        val wf = parseWorkflowView(coreDetailsView(status(true, true), status(false, true, listOf("name")), "b"))!!
         assertEquals("a", initialTaskFor(wf, "a"))
         assertEquals("b", initialTaskFor(wf, null))
         assertEquals("b", initialTaskFor(wf, "not-a-task"))
-        val allDone = parseWorkflowView(surveyView(status(true, true), status(true, true), null))!!
+        val allDone = parseWorkflowView(coreDetailsView(status(true, true), status(true, true), null))!!
         assertEquals("a", initialTaskFor(allDone, null))
     }
 
     /** Unsaved is per task and client-side: a trait's working value differing from its stored one. */
     @Test
     fun detectsUnsavedEditsPerTask() {
-        val wf = parseWorkflowView(surveyView(status(true, true), status(true, true), null))!!
+        val wf = parseWorkflowView(coreDetailsView(status(true, true), status(true, true), null))!!
         val stored = mapOf("name" to mapOf<String, Any?>("name" to "kept"))
         assertTrue(!taskUnsaved(wf.tasks[0], stored, stored))
         assertTrue(taskUnsaved(wf.tasks[0], mapOf("name" to mapOf<String, Any?>("name" to "changed")), stored))
@@ -407,17 +411,19 @@ class WorkflowModelTest {
     /** The tooltip / screen-reader wording: one line per thing to know, friendly trait names, else "Complete". */
     @Test
     fun explainsARailMarkInWords() {
-        val done = parseWorkflowView(surveyView(status(true, true), null, null))!!.tasks[0].status
+        val done = parseWorkflowView(coreDetailsView(status(true, true), null, null))!!.tasks[0].status
         assertEquals("Complete", railExplanation(done, unsaved = false))
         assertEquals("Unsaved changes", railExplanation(done, unsaved = true))
-        val needs = parseWorkflowView(surveyView(status(false, true, listOf("expenseReport")), null, null))!!.tasks[0].status
+        val needs = parseWorkflowView(coreDetailsView(status(false, true, listOf("expenseReport")), null, null))!!.tasks[0].status
         assertEquals("Needs information: Expense report", railExplanation(needs, unsaved = false))
         // A caller names the traits the way its headings do, so tooltip and heading cannot disagree.
         assertEquals("Needs information: Site audit", railExplanation(needs, unsaved = false) { if (it == "expenseReport") "Site audit" else it })
-        val bad = parseWorkflowView(surveyView(status(true, false, problems = listOf("name" to "Too long.")), null, null))!!.tasks[0].status
+        val bad = parseWorkflowView(coreDetailsView(status(true, false, problems = listOf("name" to "Too long.")), null,
+            null))!!.tasks[0].status
         assertEquals("Too long.", railExplanation(bad, unsaved = false))
         // Unsaved first, then what is missing, then each problem -- and no status at all reads as not started.
-        val both = parseWorkflowView(surveyView(status(false, false, listOf("name"), listOf("name" to "Too long.")), null, null))!!.tasks[0].status
+        val both = parseWorkflowView(coreDetailsView(status(false, false, listOf("name"), listOf("name" to "Too long.")), null,
+            null))!!.tasks[0].status
         assertEquals("Unsaved changes\nNeeds information: Name\nToo long.", railExplanation(both, unsaved = true))
         assertEquals("Not started", railExplanation(null, unsaved = false))
     }
@@ -432,7 +438,7 @@ class WorkflowModelTest {
         val typed = mapOf<String, Any?>("year" to "2025", "flag" to "true", "note" to "", "gone" to null, "sub" to mapOf("b" to "1"), "tags" to listOf("x", "2"))
         assertEquals(comparableValues(wire), comparableValues(typed))
         assertEquals(mapOf("year" to "2025", "flag" to "true", "sub" to mapOf("b" to "1"), "tags" to listOf("x", "2")), comparableValues(wire))
-        val wf = parseWorkflowView(surveyView(status(true, true), status(true, true), null))!!
+        val wf = parseWorkflowView(coreDetailsView(status(true, true), status(true, true), null))!!
         val stored = mapOf("name" to mapOf<String, Any?>("name" to "kept"))
         assertTrue(!taskUnsaved(wf.tasks[0], mapOf("name" to mapOf<String, Any?>("name" to "kept", "extra" to "")), stored))
         assertTrue(taskUnsaved(wf.tasks[0], mapOf("name" to mapOf<String, Any?>("name" to "kept ")), stored))
@@ -445,7 +451,7 @@ class WorkflowModelTest {
      */
     @Test
     fun projectsATaskStatusFromWorkingValues() {
-        val task = parseWorkflowView(surveyView(null, null, null))!!.tasks[0]
+        val task = parseWorkflowView(coreDetailsView(null, null, null))!!.tasks[0]
         val untouched = mapOf("name" to emptyMap<String, Any?>())
         val empty = localTaskStatus(task, untouched)
         assertTrue(empty.complete && empty.valid && empty.missingTraits.isEmpty())
@@ -472,7 +478,7 @@ class WorkflowModelTest {
      */
     @Test
     fun aRequiredFieldLeftEmptyIsMissing() {
-        val strict = surveyView(null, null, null).toMutableMap().apply {
+        val strict = coreDetailsView(null, null, null).toMutableMap().apply {
             put(
                 SCH.dDefs,
                 mapOf(
@@ -527,9 +533,10 @@ class WorkflowModelTest {
         assertFalse(view.isEditable(view.tasks.single(), isEdit = true))
         // Nor is Edit offered over it, with its one task on the page -- the browser check that found it offered.
         assertFalse(view.offersEdit(null))
-        // A survey, whose task has an edit save, is.
-        val survey = WorkflowView(workflowId = "review", entry = "survey", showTaskList = false, tasks = listOf(task(edit)), cfacts = emptyMap())
-        assertTrue(survey.offersEdit(null))
+        // A core details workflow, whose task has an edit save, is.
+        val coreDetails = WorkflowView(workflowId = "review", entry = "coreDetails", showTaskList = false,
+            tasks = listOf(task(edit)), cfacts = emptyMap())
+        assertTrue(coreDetails.offersEdit(null))
     }
 
     /**

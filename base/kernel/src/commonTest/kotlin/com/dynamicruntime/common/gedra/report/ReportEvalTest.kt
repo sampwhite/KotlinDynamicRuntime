@@ -2,8 +2,8 @@ package com.dynamicruntime.common.gedra.report
 
 import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.gedra.GT
-import com.dynamicruntime.common.gedra.workflow.SVY
-import com.dynamicruntime.common.gedra.workflow.SVYS
+import com.dynamicruntime.common.gedra.workflow.CDF
+import com.dynamicruntime.common.gedra.workflow.CDS
 import com.dynamicruntime.common.gedra.workflow.WFD
 import com.dynamicruntime.common.gedra.workflow.WFS
 import com.dynamicruntime.common.gedra.workflow.WSC
@@ -65,7 +65,7 @@ class ReportEvalTest {
         ),
         state(WFS.workflowState, mapOf(WFD.workflowId to "other", WFS.eligible to false)),
         state(WFS.workflowApproval, mapOf(WFD.workflowId to "auditReview", WFS.taskId to "approveAudit", WFS.approvedAt to approvedAt, WFS.approvedBy to 12L)),
-        state(SVY.surveyCompletion, mapOf(SVY.valid to true, SVY.complete to true)),
+        state(CDF.coreDetailsCompletion, mapOf(CDF.valid to true, CDF.complete to true)),
         state(GT.cfacts, mapOf(GT.facts to listOf("big", WSC.needsReview))),
     )
 
@@ -296,8 +296,8 @@ class ReportEvalTest {
         assertEquals(t0, value("meta.createdAt"))
         assertNull(value("meta.updatedAt"))
         // Status and cfacts come from the state entries, by the same readers the forms listing uses.
-        assertEquals(SVYS.needsReview, value("meta.formStatus"))
-        assertEquals(SVYS.valid, value("meta.surveyStatus"))
+        assertEquals(CDS.needsReview, value("meta.formStatus"))
+        assertEquals(CDS.valid, value("meta.coreDetailsStatus"))
         assertEquals(listOf("big", WSC.needsReview), value("meta.cfacts"))
         assertNull(value("meta.formStatus", s = subject(states = emptyList())))
     }

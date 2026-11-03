@@ -128,7 +128,7 @@ class DesignViewTest : StringSpec({
         )
         contact[DSV.entry].toJsonMapOrEmpty()[CCT.schema].toJsonMapOrEmpty().containsKey(SCH.layout) shouldBe true
         val workflow = admin.getItem(DSV.definition, mapOf(DSV.slot to CCT.workflowDef, DSV.key to DesignDemo.reviewWorkflow))
-        workflow[DSV.entry].toJsonMapOrEmpty()[CCT.definition].toJsonMapOrEmpty()[WFD.entry] shouldBe "survey"
+        workflow[DSV.entry].toJsonMapOrEmpty()[CCT.definition].toJsonMapOrEmpty()[WFD.entry] shouldBe "coreDetails"
     }
 
     "an unknown address is a 404 that names it, and the read is an administrator's" {

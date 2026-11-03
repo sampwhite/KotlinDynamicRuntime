@@ -87,7 +87,8 @@ class WfDefTest {
         // parse and the JSON form a stored definition is written back in, and changes nothing about the definition.
         val built = WfDefBuilder("review", WfEntry.normal).apply {
             comment = "Committee review."
-            eligibility("surveyDone", "surveyComplete", "Finish the survey first.", comment = "Reviewers need the track.")
+            eligibility("coreDetailsDone", "coreDetailsComplete", "Finish the core details workflow first.",
+                comment = "Reviewers need the track.")
             task("score", "Score it") {
                 comment = "The committee's score."
                 trait("talkScore")
@@ -142,42 +143,45 @@ class WfDefTest {
     }
 
     @Test
-    fun surveyWorkflowRules() {
-        fun surveyTask(id: String) = WfTask(id, id, listOf(WfTraitRef("a")), listOf(WfSave("s", "S", WfSaveKind.edit)))
+    fun coreDetailsWorkflowRules() {
+        fun coreDetailsTask(id: String) = WfTask(id, id, listOf(WfTraitRef("a")), listOf(WfSave("s", "S", WfSaveKind.edit)))
 
-        // A survey may have several tasks (a creation workflow may not), up to the ceiling, with `edit` saves.
-        val ok = WfDef("review", WfEntry.survey, (1..WfDef.surveyMaxTasks).map { surveyTask("t$it") })
-        assertEquals(WfDef.surveyMaxTasks, ok.tasks.size)
+        // A core details workflow may have several tasks (a creation workflow may not), up to the ceiling, with `edit`
+        // saves.
+        val ok = WfDef("review", WfEntry.coreDetails, (1..WfDef.coreDetailsMaxTasks).map { coreDetailsTask("t$it") })
+        assertEquals(WfDef.coreDetailsMaxTasks, ok.tasks.size)
         assertTrue(ok.showTaskList)
 
         // More than the ceiling, a `create` save, and a save-less task are each refused.
         assertFailsWith<KdrException> {
-            WfDef("review", WfEntry.survey, (1..WfDef.surveyMaxTasks + 1).map { surveyTask("t$it") })
+            WfDef("review", WfEntry.coreDetails, (1..WfDef.coreDetailsMaxTasks + 1).map { coreDetailsTask("t$it") })
         }
         assertFailsWith<KdrException> {
-            WfDef("review", WfEntry.survey, listOf(WfTask("t", "T", listOf(WfTraitRef("a")), listOf(WfSave("s", "S", WfSaveKind.create)))))
+            WfDef("review", WfEntry.coreDetails, listOf(WfTask("t", "T", listOf(WfTraitRef("a")), listOf(WfSave("s", "S",
+                WfSaveKind.create)))))
         }
         assertFailsWith<KdrException> {
-            WfDef("review", WfEntry.survey, listOf(WfTask("t", "T", listOf(WfTraitRef("a")), emptyList())))
+            WfDef("review", WfEntry.coreDetails, listOf(WfTask("t", "T", listOf(WfTraitRef("a")), emptyList())))
         }
 
-        // The full data path: a survey built in source, its `edit` save admitted by the definition schema.
-        val built = WfDefBuilder("review", WfEntry.survey).apply {
+        // The full data path: a core details workflow built in source, its `edit` save admitted by the definition
+        // schema.
+        val built = WfDefBuilder("review", WfEntry.coreDetails).apply {
             task("details", "Details") { trait("expenseReport"); save("save", "Save changes", WfSaveKind.edit) }
             task("extra", "Extra") { trait("questionnaire", required = false); save("save2", "Save", WfSaveKind.edit) }
         }.build()
         val def = parseWfDef(cxt, built)
-        assertEquals(WfEntry.survey, def.entry)
+        assertEquals(WfEntry.coreDetails, def.entry)
         assertEquals(WfSaveKind.edit, def.tasks.first().saves.single().kind)
     }
 
     @Test
     fun multiTaskModelDerivesStatusPerTask() {
-        // Not a creation workflow -- the multi-task branch a one-task fixture never reaches. A survey's saves
+        // Not a creation workflow -- the multi-task branch a one-task fixture never reaches. A core details workflow's saves
         // are `edit`, which its structural check requires.
         val income = task("income", "income", saveKind = WfSaveKind.edit)
         val assets = task("assets", "assets", "assetNotes" to false, saveKind = WfSaveKind.edit)
-        val def = WfDef("survey", WfEntry.survey, listOf(income, assets))
+        val def = WfDef("coreDetails", WfEntry.coreDetails, listOf(income, assets))
         assertTrue(def.showTaskList)
         assertEquals(assets, def.task("assets"))
         assertNull(def.task("missing"))

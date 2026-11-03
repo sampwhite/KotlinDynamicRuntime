@@ -2,9 +2,9 @@
 
 # Client
 
-The `base` bundle's `kdr:clientDef` slot holds one entry. It says who the client is and what it is made of. The
-bundle's other slots hold the client's own traits and the columns of the forms list, and the [survey](talk-survey.md),
-which is the first thing to use them, explains them.
+The `base` bundle's `kdr:clientDef` slot holds one entry. It says who the client is and what it is made of. The bundle's
+other slots hold the client's own traits and the columns of the forms list, and the [core details
+workflow](talk-core-details.md), which is the first thing to use them, explains them.
 
 <!-- kdr-doc: bundle=base pointer=/kdr:clientDef/0 -->
 ```json
@@ -37,7 +37,7 @@ which is the first thing to use them, explains them.
       "label": "Committee member",
       "persona": "editor",
       "userLabels": ["committee"],
-      "summary": "Review the talks whose survey is complete, and accept them."
+      "summary": "Review the talks whose core details are complete, and accept them."
     }
   ]
 }
@@ -63,7 +63,7 @@ A **trait** is a named part of a form's data, with its own schema. A form is mad
 Some traits, such as `kdr:name`, are defined by the platform and shared by every client, and a client lists the ones
 it uses in `includedTraits`. A client can also define traits of its own, with whatever fields it needs. The pages on
 the demo's workflows show several, each where the workflow that collects it is introduced. The first two appear in
-[Talk survey](talk-survey.md).
+[Talk core details](talk-core-details.md).
 
 ## What the bundle holds
 
@@ -74,8 +74,8 @@ bundle as a whole, kept current as the pages add to it.
 | Slot | What it holds | Explained on |
 | --- | --- | --- |
 | `kdr:clientDef` | The client's definition, above. | This page |
-| `kdr:traitDef` | Five traits: `session` and `questionnaire`, `abstract`, `review`, and `logistics`. | [Talk survey](talk-survey.md), [Abstract](abstract.md), [Committee review](committee-review.md), [Workshop logistics](workshop-logistics.md) |
-| `kdr:usageDef` | The four columns of the forms list: Talk, Track, Audience, and First talk. | [Talk survey](talk-survey.md#columns-in-the-forms-list) |
+| `kdr:traitDef` | Five traits: `session` and `questionnaire`, `abstract`, `review`, and `logistics`. | [Talk core details](talk-core-details.md), [Abstract](abstract.md), [Committee review](committee-review.md), [Workshop logistics](workshop-logistics.md) |
+| `kdr:usageDef` | The four columns of the forms list: Talk, Track, Audience, and First talk. | [Talk core details](talk-core-details.md#columns-in-the-forms-list) |
 | `kdr:schemaDef` | The demo's name for the platform's `kdr:name` trait, and the shared `Speaker` type. | [Creating a talk](create-talk.md#the-traits-name), [Abstract](abstract.md#a-shared-type) |
 | `kdr:cfactDef` | The client's two facts, `isWorkshop` and `talkAccepted`. | [Workshop logistics](workshop-logistics.md#a-computed-fact) |
 | `kdr:uiBlockDef` | The menu entry that turns the Workflows page on. | [Abstract](abstract.md#what-the-speaker-sees) |

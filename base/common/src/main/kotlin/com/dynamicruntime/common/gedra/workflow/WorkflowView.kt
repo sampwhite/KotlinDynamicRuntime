@@ -21,11 +21,11 @@ import com.dynamicruntime.common.util.toOptLong
 import com.dynamicruntime.common.util.toOptStr
 
 /**
- * Resolves a declared workflow into the **view** a workflow page renders (issue #534) -- a creation, a survey, or
- * a normal workflow against its form (issue #794): tasks with their traits in task-layout order, each trait a
- * `$ref` into *this client's* schema with the workflow's required flag beside it, saves with resolved labels, and
- * the target facts about each task -- run through the same content pipeline every other rendered surface uses,
- * so the page renders JSON and never learns what a task is.
+ * Resolves a declared workflow into the **view** a workflow page renders (issue #534) -- a creation, a core details
+ * workflow, or a normal workflow against its form (issue #794): tasks with their traits in task-layout order, each
+ * trait a `$ref` into *this client's* schema with the workflow's required flag beside it, saves with resolved labels,
+ * and the target facts about each task -- run through the same content pipeline every other rendered surface uses, so
+ * the page renders JSON and never learns what a task is.
  *
  * The resolution is the pipeline the design settled on:
  *  - **Labels** get `MarkdownFragmentService.backendPass`: a `%{...}` block resolves here -- a fragment pull
@@ -116,8 +116,8 @@ fun resolveWorkflowView(
     // no task (`focusTask`, issue #700), and its task carries the `kdr:isCta` fact a selector can choose on.
     val ctaTaskId = judge.ctaTaskId
 
-    // The task's status for the task rail: complete/valid in the survey's words, plus each problem as the
-    // kernel's own failure wire map with its trait, so the page reads it by the same rule it reads any reported
+    // The task's status for the task rail: complete/valid in the core details workflow's words, plus each problem as
+    // the kernel's own failure wire map with its trait, so the page reads it by the same rule it reads any reported
     // failure (the author's wording first).
     fun taskStatus(status: WfTaskStatus): Map<String, Any?> {
         val problems = status.failures.flatMap { (traitId, fs) -> fs.map { f -> f.toWireMap() + (GE.traitId to traitId) } }
@@ -176,7 +176,7 @@ fun resolveWorkflowView(
         // How the task is shown (issue #788): usually a selector, which the filter below resolves against this
         // caller's task facts -- so what arrives is the one branch that applies, never the others or their tests.
         task.display?.let { raw[WFD.display] = it }
-        // The entries the page seeds each field from: the task's stored ones (a survey edit; a creation view has
+        // The entries the page seeds each field from: the task's stored ones (a core details edit; a creation view has
         // none), their computed values already stored by the traits' `g-onWrite` functions (issue #1501), decorated
         // with any prefillData defaults (issue #679). A default enriches only the *presented* set, never the
         // `entries` above that `taskFacts` and `taskStatus` judge completeness and validity from -- a person never

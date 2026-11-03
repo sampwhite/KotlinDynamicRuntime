@@ -22,11 +22,11 @@ class GedraGuardedWrite(
 
 /**
  * A component-registered check on a write to an **existing** gedra's data (issue #857), run inside the write's own
- * transaction, **under the gedra's lock and before anything is written** -- so what it decides from the gedra's
- * state holds at the moment of the write, and a refusal (a throw) rolls back with nothing written. Every edit of an
- * existing gedra goes through the patch -- the raw editor, the patch endpoint, the survey's and a workflow's saves --
- * and its deletion through the delete, so the two cover them all; a create or an import makes a new gedra, which has
- * no state to guard it by.
+ * transaction, **under the gedra's lock and before anything is written** -- so what it decides from the gedra's state
+ * holds at the moment of the write, and a refusal (a throw) rolls back with nothing written. Every edit of an existing
+ * gedra goes through the patch -- the raw editor, the patch endpoint, the core details workflow's and a workflow's
+ * saves -- and its deletion through the delete, so the two cover them all; a create or an import makes a new gedra,
+ * which has no state to guard it by.
  *
  * On a patch a guard may also return a **state change** to apply with the write -- the trail a permitted override
  * leaves, say. It is applied after the edits and before the post-write hooks, whose recompute preserves it (it is

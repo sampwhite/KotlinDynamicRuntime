@@ -16,7 +16,7 @@
 # +label Answer an issues question and enter your expense report
 # +save Create expense form
 
-/- The survey workflow's tasks (issue #656): the owner revisits the same data after creation. Two tasks, one
+/- The core details workflow's tasks (issue #656): the owner revisits the same data after creation. Two tasks, one
    namespace each -- the review of the two form traits, and the supplied-defaults profile (issue #711). -/
 
 # @details
@@ -34,4 +34,4 @@
 
 # @auditReview
 
-# +surveyDone Finish reviewing your form first -- an audit review starts from a completed review.
+# +coreDetailsDone Finish reviewing your form first -- an audit review starts from a completed review.

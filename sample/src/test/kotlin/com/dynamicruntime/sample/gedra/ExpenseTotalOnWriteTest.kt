@@ -22,13 +22,13 @@ import io.kotest.matchers.shouldBe
 
 /**
  * The expense report's total, computed on every write by the trait's own `g-onWrite` function (issue #1501) and stored:
- * `computeValue` over the per-item amount and the item count. This pins what is stored -- the total present, a
- * caller's own total ignored, a missing amount leaving none -- and the three read surfaces the two read-only form views
- * are built from: the single GET, the listing (the raw read-only view is built from a listing row), and the survey
- * workflow view, which now read the stored value as they read any other.
+ * `computeValue` over the per-item amount and the item count. This pins what is stored -- the total present, a caller's
+ * own total ignored, a missing amount leaving none -- and the three read surfaces the two read-only form views are
+ * built from: the single GET, the listing (the raw read-only view is built from a listing row), and the core details
+ * workflow workflow view, which now read the stored value as they read any other.
  *
- * Its own clients, as the neighboring gedra sample tests do. `acme` collects `expenseReport` (its creation and survey
- * workflows), so both the endpoints and the view resolve against a real trait.
+ * Its own clients, as the neighboring gedra sample tests do. `acme` collects `expenseReport` (its creation and core
+ * details workflow workflows), so both the endpoints and the view resolve against a real trait.
  */
 class ExpenseTotalOnWriteTest : StringSpec({
     val cxt = Startup.mkTestBootCxt(
@@ -93,7 +93,7 @@ class ExpenseTotalOnWriteTest : StringSpec({
         entryData(row[GDF.entries].toJsonListOfMaps(), ST.expenseReport)[ST.totalAmount] shouldBe 50.0
     }
 
-    "the survey workflow view presents the stored total in a task's entries" {
+    "the core details workflow view presents the stored total in a task's entries" {
         val user = TestUser.create(cxt, "dd-view@acme.test", userClient = SC.acme)
         val gid = createExpense(user)
         val view = user.getData(acmeView, mapOf(GDF.gedraId to gid))

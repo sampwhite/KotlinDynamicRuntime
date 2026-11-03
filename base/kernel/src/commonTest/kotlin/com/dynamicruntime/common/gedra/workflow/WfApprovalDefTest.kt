@@ -46,7 +46,7 @@ class WfApprovalDefTest {
 
     @Test
     fun onlyANormalWorkflowHasApprovalTasks() {
-        val raw = WfDefBuilder("review", WfEntry.survey).apply {
+        val raw = WfDefBuilder("review", WfEntry.coreDetails).apply {
             task("approve", "Approve") { approval("x", "P", "B") }
         }.build()
         assertFailsWith<KdrException> { parseWfDef(cxt, raw) }

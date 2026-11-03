@@ -33,10 +33,10 @@ import io.kotest.matchers.string.shouldContain
 
 /**
  * Form requirements (issue #1022): a workflow's layout asks for more than the schema -- a field it requires, a shorter
- * list of choices -- on its own save and in its own task status, and nowhere else. One client, one event type, and
- * two workflows over it: `plan`, its creation workflow, asks for the attendees and the rain plan and offers only the
- * park and the office; `review`, a survey, asks for the attendees. A plain form create -- a general data edit --
- * is held to the schema alone, which is how "saved elsewhere" is made here.
+ * list of choices -- on its own save and in its own task status, and nowhere else. One client, one event type, and two
+ * workflows over it: `plan`, its creation workflow, asks for the attendees and the rain plan and offers only the park
+ * and the office; `review`, a core details workflow, asks for the attendees. A plain form create -- a general data edit
+ * -- is held to the schema alone, which is how "saved elsewhere" is made here.
  */
 class FormRequirementsTest : StringSpec({
     val cxt = TestInstances.default("formReq1022")
@@ -80,7 +80,7 @@ class FormRequirementsTest : StringSpec({
                 save("create", "Create")
             }
         }
-        workflow("review", WfEntry.survey) {
+        workflow("review", WfEntry.coreDetails) {
             alterType(eventType, alteration(asksForAttendees))
             task("check", "Check") {
                 trait("event")
@@ -137,7 +137,7 @@ class FormRequirementsTest : StringSpec({
         // Judged by the schema alone, the same data is fine.
         WorkflowTaskStatus.of(cxt.mkSubContext("judge", client), client, task, entries).valid shouldBe true
 
-        // The survey's own save is held to its form too, and goes through once the form's answer is there.
+        // The core details workflow's own save is held to its form too, and goes through once the form's answer is there.
         user.expectError(400, savePath, saveArgs("review", "venue" to "park", "rainPlan" to "Tents", gedraId = formId))
         user.postData(savePath, saveArgs("review", "venue" to "park", "rainPlan" to "Tents", "attendees" to 40, gedraId = formId))["saved"] shouldBe true
     }
@@ -147,7 +147,7 @@ class FormRequirementsTest : StringSpec({
         val fields = view[WVF.fieldLayouts].toJsonMapOrEmpty()[eventType].toJsonMapOrEmpty()[SL.schemaFields].toJsonListOfMaps()
         fields.single { it[SL.field] == "attendees" }[SL.required] shouldBe true
         fields.single { it[SL.field] == "venue" }[SL.choices].toJsonListOfMaps().map { it[SL.value] } shouldBe listOf("park", "office")
-        // The survey's page asks only for what its own form does.
+        // The core details workflow's page asks only for what its own form does.
         val reviewFields = user.getData(clientPath(GEP.workflowView, client), mapOf(GDF.workflowId to "review"))[WVF.fieldLayouts]
             .toJsonMapOrEmpty()[eventType].toJsonMapOrEmpty()[SL.schemaFields].toJsonListOfMaps()
         reviewFields.map { it[SL.field] } shouldBe listOf("attendees")

@@ -188,7 +188,8 @@ fun clientCatalogSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CLD.catalogN
             type = SCT.array
             items { type = SCT.string }
         }
-        property(CLD.hasSurvey, "Whether the client declares a survey workflow (issue #695): a forms surface working in this client then offers its survey-status filter.", required = true) {
+        property(CLD.hasCoreDetails, "Whether the client declares a core details workflow (issue #695): a forms surface working in " +
+            "this client then offers its core details status filter.", required = true) {
             type = SCT.boolean
         }
         property(CLD.status, "Where the client stands on this node (issue #828).", required = true) {
@@ -341,7 +342,7 @@ private fun clientSummaryOf(cxt: KdrCxt, def: ClientDef): Map<String, Any?> {
         CLD.workflowIds to workflowIdsFor(cxt, def.clientId),
         CLD.traitIds to schema.supportedGedraTraitsFor(def.clientId, def).map { it.traitId },
         CLD.usageLabels to schema.traitUsagesFor(def.clientId).map { it.label },
-        CLD.hasSurvey to (WorkflowService.get(cxt).forClient(def.clientId).survey != null),
+        CLD.hasCoreDetails to (WorkflowService.get(cxt).forClient(def.clientId).coreDetails != null),
         CLD.issues to ClientConfigIssues.get(cxt).issuesFor(def.clientId).map { it.toWireMap() },
         CLD.status to ClientStatus.present.name,
     )
@@ -391,7 +392,7 @@ private fun absentClientSummaries(cxt: KdrCxt): List<Map<String, Any?>> {
             CLD.workflowIds to emptyList<String>(),
             CLD.traitIds to emptyList<String>(),
             CLD.usageLabels to emptyList<String>(),
-            CLD.hasSurvey to false,
+            CLD.hasCoreDetails to false,
             CLD.issues to issues.issuesFor(absent.clientId).map { it.toWireMap() },
             CLD.status to absent.status.name,
         )

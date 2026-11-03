@@ -7,7 +7,7 @@ import com.dynamicruntime.common.gedra.choiceLabel
 import com.dynamicruntime.common.gedra.decodeSearchParam
 import com.dynamicruntime.common.gedra.reservedQueryFieldNames
 import com.dynamicruntime.common.gedra.yesNoText
-import com.dynamicruntime.common.gedra.workflow.SVY
+import com.dynamicruntime.common.gedra.workflow.CDF
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SchOption
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
@@ -21,12 +21,12 @@ import react.useState
 import web.cssom.ClassName
 
 /**
- * The chip for an applied survey-status filter (issue #695), `Status: Valid`, or null when none is applied --
+ * The chip for an applied core details status filter (issue #695), `Status: Valid`, or null when none is applied --
  * beside the trait chips [activeFilterChips] makes, so a narrowed list never looks like the whole. Pure, and
  * covered under `jsNodeTest`.
  */
-fun surveyStatusChip(applied: Map<String, Any?>): String? =
-    SurveyStatus.fromWire(applied[SVY.surveyStatus]?.toString())?.let { "Status: ${it.label}" }
+fun coreDetailsStatusChip(applied: Map<String, Any?>): String? =
+    CoreDetailsStatus.fromWire(applied[CDF.coreDetailsStatus]?.toString())?.let { "Status: ${it.label}" }
 
 /** How long a type-ahead waits after a keystroke before it fetches, so a fast typist makes one call not many. */
 private const val suggestDebounceMs = 200
@@ -70,8 +70,8 @@ private fun yesNoOptions(): Array<dynamic> = listOf("true" to "Yes", "false" to 
     o
 }.toTypedArray()
 
-/** antd `{label, value}` options for the survey-status filter (issue #695): the three statuses, labelled as the chip labels them. */
-private fun surveyStatusOptions(): Array<dynamic> = SurveyStatus.entries.map { s ->
+/** antd `{label, value}` options for the core details status filter (issue #695): the three statuses, labelled as the chip labels them. */
+private fun coreDetailsStatusOptions(): Array<dynamic> = CoreDetailsStatus.entries.map { s ->
     val o: dynamic = js("({})")
     o.label = s.label
     o.value = s.wire
@@ -337,11 +337,11 @@ external interface FormsSearchProps : Props {
     var onClear: () -> Unit
 
     /**
-     * Whether to offer the survey-status filter (issue #695): true when the caller's client declares a survey
-     * (the shell's `hasSurvey`), which is a fact about the client rather than about the rows on screen -- a
-     * control that vanished the moment a filter matched nothing could never be cleared. Unset means no.
+     * Whether to offer the core details status filter (issue #695): true when the caller's client declares a core
+     * details workflow (the shell's `hasCoreDetails`), which is a fact about the client rather than about the rows on
+     * screen -- a control that vanished the moment a filter matched nothing could never be cleared. Unset means no.
      */
-    var showSurveyStatus: Boolean?
+    var showCoreDetailsStatus: Boolean?
 
     /**
      * Fetches distinct value suggestions for a text trait (issue #581): given the trait id and a typed prefix,
@@ -362,7 +362,7 @@ val FormsSearch = FC<FormsSearchProps> { props ->
     val groups = props.groups
     // The free-text term searches the text fields, so the box is offered only where there is one to search.
     val hasText = groups.any { it.kind == UsageKind.string }
-    val chips = activeFilterChips(groups, props.applied) + listOfNotNull(surveyStatusChip(props.applied))
+    val chips = activeFilterChips(groups, props.applied) + listOfNotNull(coreDetailsStatusChip(props.applied))
     val termApplied = props.applied[EI.q]?.toString()?.isNotBlank() == true
     div {
         className = ClassName("row forms-toolbar")
@@ -392,17 +392,17 @@ val FormsSearch = FC<FormsSearchProps> { props ->
     }
     filterChips(chips, props.panelOpen)
     filterWell(props.panelOpen, formsFiltersWellId) {
-        // The survey-status filter (issue #695): a closed choice over the three statuses the column shows, first
+        // The core details status filter (issue #695): a closed choice over the three statuses the column shows, first
         // in the well since it is the one filter every form has rather than a trait's. Cleared means any.
-        if (props.showSurveyStatus == true) {
+        if (props.showCoreDetailsStatus == true) {
             filterGroup("Status") {
                 Select {
-                    value = props.values[SVY.surveyStatus]?.ifBlank { null }
-                    options = surveyStatusOptions()
+                    value = props.values[CDF.coreDetailsStatus]?.ifBlank { null }
+                    options = coreDetailsStatusOptions()
                     allowClear = true
                     placeholder = "Any"
                     style = js("({ minWidth: 160 })")
-                    onChange = { v -> props.onChange(SVY.surveyStatus, (v as? String) ?: "") }
+                    onChange = { v -> props.onChange(CDF.coreDetailsStatus, (v as? String) ?: "") }
                 }
             }
         }

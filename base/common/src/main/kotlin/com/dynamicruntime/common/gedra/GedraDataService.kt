@@ -606,7 +606,7 @@ class GedraDataService : ServiceInitializer {
         SqlTopicTranProvider.executeTopicTran(sqlCxt, tranCreate, null, mapOf(GD.gedraId to gedraId.fullId)) {
             sqlCxt.sqlDb.executeStatement(txCxt, stmt, data)
             // The post-write hooks (issue #675), run on the SAME GedraDataTran lock so whatever they write commits
-            // with the data. The built-in one records this form's initial derived state -- a survey's
+            // with the data. The built-in one records this form's initial derived state -- a core details workflow's
             // "unfinished", say -- so it lands even on a plain API create or a bad import, not only in an
             // interactive workflow step. Import reaches here per doc, so every imported doc runs them too.
             fireWriteHooks(txCxt, sqlCxt, row)
@@ -625,11 +625,11 @@ class GedraDataService : ServiceInitializer {
      *
      * The derivers run **in registration order, each seeing what the earlier ones produced**
      * ([GedraStateContext.derivedThisPass], issue #783), so a projection built on another's output -- eligibility
-     * on the survey's cfacts -- is current with this write rather than one behind it.
+     * on the core details workflow's cfacts -- is current with this write rather than one behind it.
      *
-     * The form's one [GT.cfacts] set is **merged from contributions** (issue #784): any deriver may emit a
-     * [GT.cfacts] entry -- the survey its facts, the per-workflow deriver its engaged workflows' singletons --
-     * and they are folded into one entry here ([mergeCfactContributions]), so no producer clobbers another's.
+     * The form's one [GT.cfacts] set is **merged from contributions** (issue #784): any deriver may emit a [GT.cfacts]
+     * entry -- the core details workflow its facts, the per-workflow deriver its engaged workflows' singletons -- and
+     * they are folded into one entry here ([mergeCfactContributions]), so no producer clobbers another's.
      */
     private fun computeDerivedState(
         cxt: KdrCxt,
@@ -876,12 +876,12 @@ class GedraDataService : ServiceInitializer {
      * workflow, say) without racing another. [change] is handed the entries as they stand under the lock --
      * **freshly recomputed** first -- and answers with the complete set to store.
      *
-     * Why recompute *before* the change as well as after (issue #783 review): stored derived state is current
-     * with the last data write, not with configuration. A change that decides from derived state -- the engage
-     * gate reads the form's cfacts -- would otherwise decide against facts the form no longer has (a survey that
-     * gained a required trait since) or has never had stored (a form older than its client's survey), and the
-     * recompute after the change would then store the opposite verdict beside it. The recompute after stays,
-     * because the change itself can alter what is derived (an engaged workflow keeps a derived entry).
+     * Why recompute *before* the change as well as after (issue #783 review): stored derived state is current with the
+     * last data write, not with configuration. A change that decides from derived state -- the engage gate reads the
+     * form's cfacts -- would otherwise decide against facts the form no longer has (a core details workflow that gained
+     * a required trait since) or has never had stored (a form older than its client's core details workflow), and the
+     * recompute after the change would then store the opposite verdict beside it. The recompute after stays, because
+     * the change itself can alter what is derived (an engaged workflow keeps a derived entry).
      *
      * Why not `readState` then [writeState]: the read would come from the resident cache, outside any lock, so
      * two acts on one form at once -- or one landing within another node's cache throttle -- would each write
@@ -1530,7 +1530,7 @@ class GedraDataService : ServiceInitializer {
             }
             // The post-write hooks (issue #675), on the same lock the patch holds: the built-in one recomputes
             // this form's derived state from the patched data, so state follows the edit on the raw patch path
-            // exactly as on the survey save. `row` carries the post-edit entries so a deriver reads what is stored.
+            // exactly as on the core details save. `row` carries the post-edit entries so a deriver reads what is stored.
             row.entries = entries
             fireWriteHooks(txCxt, sqlCxt, row)
         }
@@ -1933,7 +1933,7 @@ class GedraDataService : ServiceInitializer {
 
     /**
      * Narrows the **stored** [rows] to those whose state entries satisfy [stateFilter] (issue #695, the
-     * survey-status filter) -- a predicate over a row's state rather than over the row, since the status lives in
+     * core details status filter) -- a predicate over a row's state rather than over the row, since the status lives in
      * the states table. Runs on the raw rows, **before** extraction, on both listing paths: it needs only each
      * row's id, which the stored map carries, so a status-only filter extracts just the survivors rather than
      * every scope-matched row (the trait filter and the sort, which read display values, still extract what

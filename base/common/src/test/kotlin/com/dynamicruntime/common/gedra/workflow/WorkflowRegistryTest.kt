@@ -73,8 +73,8 @@ class WorkflowRegistryTest : StringSpec({
         }
     }
 
-    fun survey(id: String, vararg traits: String, label: String = "Review"): GedraConfigBuilderBlock = {
-        workflow(id, WfEntry.survey) {
+    fun coreDetails(id: String, vararg traits: String, label: String = "Review"): GedraConfigBuilderBlock = {
+        workflow(id, WfEntry.coreDetails) {
             task("only", label) {
                 traits.forEach { trait(it) }
                 save("go", label, WfSaveKind.edit)
@@ -110,7 +110,7 @@ class WorkflowRegistryTest : StringSpec({
         val issues = mutableListOf<GedraConfigIssue>()
         // The cfact vocabulary eligibility tests parse against: global gets one name, a client adds its own.
         val cfactNames: (String?) -> Set<String> = { scope ->
-            if (scope == null) setOf("surveyComplete") else setOf("surveyComplete", "${scope}Only")
+            if (scope == null) setOf("coreDetailsComplete") else setOf("coreDetailsComplete", "${scope}Only")
         }
         val regs = buildWorkflowRegistries(
             checkCxt, collector, clients, { emptySet() }, fragments, cfactNames = cfactNames, issues = issues,
@@ -165,7 +165,7 @@ class WorkflowRegistryTest : StringSpec({
         )
         val (regs, issues) = build(devCxt, configs)
         issues.shouldBeEmpty()
-        // Many per scope, unlike creation and survey, where a second declaration takes the kind over.
+        // Many per scope, unlike creation and core details workflow, where a second declaration takes the kind over.
         regs.forClient("acme").workflows.keys shouldBe setOf("auditReview", "secondReview")
     }
 
@@ -188,11 +188,11 @@ class WorkflowRegistryTest : StringSpec({
                 task("a", "A") { trait("kdr:name"); save("s", "S", WfSaveKind.edit) }
             }
         }
-        val (regs, issues) = build(devCxt, listOf(globalTraits(devCxt), eligible("surveyComplete, acmeOnly")))
+        val (regs, issues) = build(devCxt, listOf(globalTraits(devCxt), eligible("coreDetailsComplete, acmeOnly")))
         issues.shouldBeEmpty()
         regs.forClient("acme").workflow("auditReview").shouldNotBeNull()
 
-        val e = shouldThrow<KdrException> { build(devCxt, listOf(globalTraits(devCxt), eligible("surveyComplet"))) }
+        val e = shouldThrow<KdrException> { build(devCxt, listOf(globalTraits(devCxt), eligible("coreDetailsComplet"))) }
         e.message shouldContain "eligibility test 'check'"
     }
 
@@ -279,7 +279,7 @@ class WorkflowRegistryTest : StringSpec({
     "an eligibility explanation rides the label check" {
         val bad = client(devCxt, "acme", listOf("kdr:name")) {
             workflow("auditReview", WfEntry.normal) {
-                eligibility("check", "surveyComplete", """%{@t("wfCopy.identify.gone")}""")
+                eligibility("check", "coreDetailsComplete", """%{@t("wfCopy.identify.gone")}""")
                 task("a", "A") { trait("kdr:name"); save("s", "S", WfSaveKind.edit) }
             }
         }
@@ -287,28 +287,28 @@ class WorkflowRegistryTest : StringSpec({
         e.message shouldContain "explanation on eligibility test 'check'"
     }
 
-    "a survey workflow is admitted, beside the creation workflow in one scope" {
+    "a core details workflow is admitted, beside the creation workflow in one scope" {
         val configs = listOf(
             globalTraits(devCxt),
             client(devCxt, "acme", listOf("kdr:name", "kdr:report")) {
                 creation("createForm", "kdr:name")(this)
-                survey("reviewForm", "kdr:report")(this)
+                coreDetails("reviewForm", "kdr:report")(this)
             },
         )
         val (regs, issues) = build(devCxt, configs)
         issues.shouldBeEmpty()
         val acme = regs.forClient("acme")
         acme.creation.shouldNotBeNull().def.workflowId shouldBe "createForm"
-        acme.survey.shouldNotBeNull().def.workflowId shouldBe "reviewForm"
+        acme.coreDetails.shouldNotBeNull().def.workflowId shouldBe "reviewForm"
     }
 
-    "a second survey workflow in one scope is refused" {
+    "a second core details workflow in one scope is refused" {
         val bad = client(devCxt, "acme", listOf("kdr:name", "kdr:report")) {
-            survey("one", "kdr:name")(this)
-            survey("two", "kdr:report")(this)
+            coreDetails("one", "kdr:name")(this)
+            coreDetails("two", "kdr:report")(this)
         }
         val e = shouldThrow<KdrException> { build(devCxt, listOf(globalTraits(devCxt), bad)) }
-        e.message shouldContain "second survey workflow"
+        e.message shouldContain "second core details workflow"
     }
 
     "a workflow collecting a trait its client does not support is refused" {

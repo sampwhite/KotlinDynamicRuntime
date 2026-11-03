@@ -19,13 +19,13 @@ import com.dynamicruntime.common.gedra.workflow.WorkflowService
 import com.dynamicruntime.common.gedra.workflow.ComputeCFactsFromDataCreation
 import com.dynamicruntime.common.gedra.workflow.PrefillFromOwnerCreation
 import com.dynamicruntime.common.gedra.workflow.UserHasLabelCreation
-import com.dynamicruntime.common.gedra.workflow.SurveyStateDeriver
+import com.dynamicruntime.common.gedra.workflow.CoreDetailsStateDeriver
 import com.dynamicruntime.common.gedra.workflow.WorkflowStateDeriver
-import com.dynamicruntime.common.gedra.workflow.addSurveyCFacts
+import com.dynamicruntime.common.gedra.workflow.addCoreDetailsCFacts
 import com.dynamicruntime.common.gedra.workflow.addWorkflowSingletonCFacts
 import com.dynamicruntime.common.gedra.workflow.addWorkflowCFacts
 import com.dynamicruntime.common.gedra.workflow.coreWorkflowTemplates
-import com.dynamicruntime.common.gedra.workflow.surveyStateConfig
+import com.dynamicruntime.common.gedra.workflow.coreDetailsStateConfig
 import com.dynamicruntime.common.gedra.workflow.workflowStateConfig
 import com.dynamicruntime.common.cfact.cfactSchema
 import com.dynamicruntime.common.context.ACFG
@@ -175,13 +175,15 @@ class CommonComponent : ComponentDefinition {
         addCoreCFacts(collector)
         // The two workflow target facts (issue #533), declared everywhere for the reason the core ones are.
         addWorkflowCFacts(collector)
-        // The two survey form-facts (issue #657), and the deriver that fills them: a form records its survey
-        // state on any create/import path, so a plain create or a bad import is recorded, not only a workflow step.
-        addSurveyCFacts(collector)
-        collector.addStateDeriver(SurveyStateDeriver)
+        // The two core details form-facts (issue #657), and the deriver that fills them: a form records its core
+        // details workflow state on any create/import path, so a plain create or a bad import is recorded, not only a
+        // workflow step.
+        addCoreDetailsCFacts(collector)
+        collector.addStateDeriver(CoreDetailsStateDeriver)
         // The per-workflow state a normal workflow computes about a form (issue #794). Registered **after** the
-        // survey's, and the order matters: eligibility (issue #783) is evaluated against the cfacts the survey's
-        // deriver emits in the same pass, which a deriver sees only from the derivers registered before it.
+        // core details workflow's, and the order matters: eligibility (issue #783) is evaluated against the cfacts
+        // the core details workflow's deriver emits in the same pass, which a deriver sees only from the derivers
+        // registered before it.
         collector.addStateDeriver(WorkflowStateDeriver)
         // The batch job that recomputes derived state nightly and on demand (issue #793): the derivers above run
         // on every write, and this catches the forms nobody wrote -- state gone stale against configuration or time.
@@ -192,7 +194,7 @@ class CommonComponent : ComponentDefinition {
         // so any scope's expressions can name them.
         addWorkflowSingletonCFacts(collector)
         // The first cfactCalc function (issue #678): a workflow's cfactCalc usages emit cfacts into the same
-        // form-singleton state the survey derives, run inside that recompute (not a standalone pass).
+        // form-singleton state the core details workflow derives, run inside that recompute (not a standalone pass).
         collector.addWorkflowFunction(ComputeCFactsFromDataCreation)
         // The first prefillData function (issue #679): a task's prefillData usages default a field from the form
         // owner's attributes as the view resolves -- presented as entered, never counted toward requiredness.
@@ -203,7 +205,7 @@ class CommonComponent : ComponentDefinition {
         // object's own data each time it is written.
         collector.addSchemaFunction(ComputeValueCreation)
         // The built-in post-write hook (issue #675): recompute derived state after every gedra data write, inside
-        // its transaction. This is what makes a raw patch (not only the survey save) keep survey state fresh.
+        // its transaction. This is what makes a raw patch (not only the core details save) keep core details state fresh.
         collector.addWriteHook(DerivedStateWriteHook)
         // The trait-lock guard (issue #857): a normal workflow's locks refuse an edit of a locked trait on every
         // path, under the form's lock -- or record the override a permitted writer asked for.
@@ -352,7 +354,7 @@ class CommonComponent : ComponentDefinition {
      * because anything a test needs to reach has to come from a component that always loads.
      */
     override fun gedraConfigs(cxt: KdrCxt): List<GedraConfig> =
-        listOf(coreTraits(cxt), surveyStateConfig(cxt), workflowStateConfig(cxt), coreWorkflowTemplates(cxt)) + coreClients(cxt)
+        listOf(coreTraits(cxt), coreDetailsStateConfig(cxt), workflowStateConfig(cxt), coreWorkflowTemplates(cxt)) + coreClients(cxt)
 
     /**
      * The fragment files `base/common` ships, each saying where the application shows it (issue #933). `errors`

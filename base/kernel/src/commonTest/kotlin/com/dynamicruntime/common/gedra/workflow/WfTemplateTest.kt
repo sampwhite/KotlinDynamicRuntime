@@ -75,7 +75,7 @@ class WfTemplateTest {
     @Test
     fun anOverlayMayNotChangeWhatTheTemplateFixes() {
         fun refusal(o: Map<String, Any?>) = assertFailsWith<KdrException> { expand(o) }.message.orEmpty()
-        assertTrue(refusal(overlay + (WFD.entry to WfEntry.survey.name)).contains("'entry' is the template's"))
+        assertTrue(refusal(overlay + (WFD.entry to WfEntry.coreDetails.name)).contains("'entry' is the template's"))
         assertTrue(refusal(overlay + (WFD.singletons to emptyList<Any?>())).contains("'singletons' is the template's"))
         val saveKind = mapOf(WFD.id to "record", WFD.saves to listOf(mapOf(WFD.id to "saveRecord", WFD.kind to "create")))
         assertTrue(refusal(overlay + (WFD.tasks to listOf(saveKind))).contains("save 'saveRecord''s 'kind'"))

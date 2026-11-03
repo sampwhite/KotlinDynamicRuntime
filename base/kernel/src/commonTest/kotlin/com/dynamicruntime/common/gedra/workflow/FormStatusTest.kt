@@ -11,33 +11,33 @@ import kotlin.test.assertNull
  * Kotlin/JS alike -- the frontend's chip and the backend's filter run this one rule.
  */
 class FormStatusTest {
-    private fun survey(complete: Boolean, valid: Boolean) = mapOf(
-        GE.traitId to SVY.surveyCompletion,
-        GE.data to mapOf(SVY.complete to complete, SVY.valid to valid),
+    private fun coreDetails(complete: Boolean, valid: Boolean) = mapOf(
+        GE.traitId to CDF.coreDetailsCompletion,
+        GE.data to mapOf(CDF.complete to complete, CDF.valid to valid),
     )
 
     private fun cfacts(vararg facts: String) = mapOf(GE.traitId to GT.cfacts, GE.data to mapOf(GT.facts to facts.toList()))
 
     @Test
-    fun theSurveyStatusStandsWhenNoWorkflowSaysMore() {
-        assertEquals(SVYS.valid, formStatusOf(listOf(survey(complete = true, valid = true))))
-        assertEquals(SVYS.needsInfo, formStatusOf(listOf(survey(complete = false, valid = true))))
-        assertEquals(SVYS.invalid, formStatusOf(listOf(survey(complete = true, valid = false))))
-        // No survey state, no status -- whatever a workflow emits.
+    fun theCoreDetailsStatusStandsWhenNoWorkflowSaysMore() {
+        assertEquals(CDS.valid, formStatusOf(listOf(coreDetails(complete = true, valid = true))))
+        assertEquals(CDS.needsInfo, formStatusOf(listOf(coreDetails(complete = false, valid = true))))
+        assertEquals(CDS.invalid, formStatusOf(listOf(coreDetails(complete = true, valid = false))))
+        // No core details state, no status -- whatever a workflow emits.
         assertNull(formStatusOf(listOf(cfacts(WSC.needsReview))))
     }
 
     @Test
     fun aSingletonTakesThePlaceOfValidOnly() {
-        assertEquals(SVYS.needsReview, formStatusOf(listOf(survey(true, true), cfacts(WSC.needsReview))))
-        assertEquals(SVYS.finished, formStatusOf(listOf(survey(true, true), cfacts(WSC.finished))))
+        assertEquals(CDS.needsReview, formStatusOf(listOf(coreDetails(true, true), cfacts(WSC.needsReview))))
+        assertEquals(CDS.finished, formStatusOf(listOf(coreDetails(true, true), cfacts(WSC.finished))))
         // The owner's own work first: Needs Info and Invalid are not replaced.
-        assertEquals(SVYS.needsInfo, formStatusOf(listOf(survey(false, true), cfacts(WSC.needsReview))))
-        assertEquals(SVYS.invalid, formStatusOf(listOf(survey(true, false), cfacts(WSC.finished))))
+        assertEquals(CDS.needsInfo, formStatusOf(listOf(coreDetails(false, true), cfacts(WSC.needsReview))))
+        assertEquals(CDS.invalid, formStatusOf(listOf(coreDetails(true, false), cfacts(WSC.finished))))
     }
 
     @Test
     fun needsReviewWinsOverFinished() {
-        assertEquals(SVYS.needsReview, formStatusOf(listOf(survey(true, true), cfacts(WSC.finished, WSC.needsReview))))
+        assertEquals(CDS.needsReview, formStatusOf(listOf(coreDetails(true, true), cfacts(WSC.finished, WSC.needsReview))))
     }
 }

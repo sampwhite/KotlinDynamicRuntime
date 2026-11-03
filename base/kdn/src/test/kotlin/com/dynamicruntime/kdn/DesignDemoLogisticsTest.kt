@@ -18,9 +18,9 @@ import io.kotest.matchers.shouldBe
 
 /**
  * The design demo's logistics workflow (issue #1071): a normal workflow whose form shows only the fields it arranges,
- * so it and the survey each save their own part of one request, ending in a reviewer's approval -- a step the designer,
- * an administrator without the `reviewer` label, sees as someone else's. Over a fresh copy of the demo, provisioned by
- * its simulation with its labeled reviewer.
+ * so it and the core details workflow each save their own part of one request, ending in a reviewer's approval -- a
+ * step the designer, an administrator without the `reviewer` label, sees as someone else's. Over a fresh copy of the
+ * demo, provisioned by its simulation with its labeled reviewer.
  */
 class DesignDemoLogisticsTest : StringSpec({
     val cxt = TestInstances.default("designDemoLogistics1071")
@@ -56,7 +56,7 @@ class DesignDemoLogisticsTest : StringSpec({
                 GDF.entries to listOf(mapOf(GE.traitId to DesignDemo.eventRequest, GE.data to mapOf(DesignDemo.title to "Offsite", DesignDemo.venue to "hotel", DesignDemo.catering to true))),
             ),
         )
-        // The headcount is the request's and the survey's, not the logistics form's: it stays.
+        // The headcount is the request's and the core details workflow's, not the logistics form's: it stays.
         answers(requester, gid) shouldBe mapOf(DesignDemo.title to "Offsite", DesignDemo.attendees to 30L, DesignDemo.venue to "hotel", DesignDemo.catering to true)
     }
 

@@ -76,9 +76,10 @@ class ClientWorkflowWindowsTest : StringSpec({
                         sandbox = sandbox,
                     ),
                 )
-                // A normal workflow written whole, beside a survey, which has no windows.
+                // A normal workflow written whole, beside a core details workflow, which has no windows.
                 workflow("review", WfEntry.normal) { task("record", "Record it") { trait(GT.name); save("go", "Save", WfSaveKind.edit) } }
-                workflow("details", WfEntry.survey) { task("fill", "Fill it in") { trait(GT.name); save("go", "Save", WfSaveKind.edit) } }
+                workflow("details", WfEntry.coreDetails) { task("fill", "Fill it in") { trait(GT.name); save("go", "Save",
+                    WfSaveKind.edit) } }
             },
         )
         svc.publish(setup, listOf(GedraId.of(GedraConfigType.configDoc, client, "main")))
@@ -133,7 +134,7 @@ class ClientWorkflowWindowsTest : StringSpec({
         history.map { it.params.windowsInForce.lifetime.end } shouldBe listOf(now + 42.days, now + 41.days, now + 30.days)
         history.first().setByName.shouldNotBeNull()
         WfParamsSetting.fromInfo(listed[WFP.current].toJsonMapOrEmpty()).params.windowsInForce.lifetime.end shouldBe now + 43.days
-        // A survey has parameters too -- who sees it, issue #1384 -- but never windows.
+        // A core details workflow has parameters too -- who sees it, issue #1384 -- but never windows.
         chief.getItem(UADEP.clientWorkflows)[CWF.workflows].toJsonListOfMaps()
             .single { it[CWF.definition].toJsonMapOrEmpty()[WFD.workflowId] == "details" }[CWF.params].toJsonMapOrEmpty()[WFP.inForce]
             .toJsonMapOrEmpty().containsKey(WFP.windows) shouldBe false

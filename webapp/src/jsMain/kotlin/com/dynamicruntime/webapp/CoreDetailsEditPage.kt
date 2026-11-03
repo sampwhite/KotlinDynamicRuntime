@@ -18,32 +18,32 @@ import react.useState
 import web.cssom.ClassName
 
 /**
- * The survey Edit Form's route id (issue #659). Frontend-only, like `pageEditForm` -- it is reached from the
- * forms list's "View Info" action and its status chip, carrying a `g=<gedraId>`, not from the top nav, so it
- * has no `HMENU` entry.
+ * The core details workflow Edit Form's route id (issue #659). Frontend-only, like `pageEditForm` -- it is reached from
+ * the forms list's "View Info" action and its status chip, carrying a `g=<gedraId>`, not from the top nav, so it has no
+ * `HMENU` entry.
  */
-const val pageSurveyEdit = "surveyEdit"
+const val pageCoreDetailsEdit = "coreDetailsEdit"
 
-private val surveyEditScope = MainScope()
+private val coreDetailsEditScope = MainScope()
 
 /**
- * The survey-driven Edit Form (issue #659) -- the **on-boarding** view: the caller's client's survey resolved
- * against a form, seeded from its current entries, showing the survey's *subset* of traits. Reached at
+ * The core details workflow-driven Edit Form (issue #659) -- the **on-boarding** view: the caller's client's core details workflow resolved
+ * against a form, seeded from its current entries, showing the core details workflow's *subset* of traits. Reached at
  * `/wa/forms/<gedraId>` as the read-only "View Info" view with an Edit toggle, or at `/wa/forms/<gedraId>/edit`
  * (issue #694, the forms-list status chip) already in edit mode. Its read-only view offers the **raw** editor
  * -- every trait, including ones set by API or by other workflows -- when the caller's surface carries the
- * patch endpoint. When the client has no survey (`found=false`) it says so rather than showing an empty form.
+ * patch endpoint. When the client has no core details workflow (`found=false`) it says so rather than showing an empty form.
  *
  * With `wf=<workflowId>` (issue #791) it opens that **normal workflow** against the form instead -- where the forms
  * list's workflow column links. The same form component draws it; the view says whether the form is engaged and
  * where the workflow stands in its windows, so a form not yet in it is offered Engage, and a closed one is shown
  * read-only.
  */
-val SurveyEditPage = FC<Props> {
+val CoreDetailsEditPage = FC<Props> {
     var gedraId by useState(routeParams()[HP.gedra].orEmpty())
     // The task the URL names (issue #700), or null to open on the earliest task needing action.
     var requestedTask by useState(routeParams()[HP.task])
-    // The normal workflow the URL names (issue #791), or null for the form's survey.
+    // The normal workflow the URL names (issue #791), or null for the form's core details workflow.
     var workflowId by useState(routeParams()[HP.workflow])
     // Bumped to reload the view in place -- after engaging, which changes what the view says.
     var reloads by useState(0)
@@ -51,7 +51,7 @@ val SurveyEditPage = FC<Props> {
     // The refusal the last approval came back with (issue #832), kept across the reload that followed it.
     var approveRefusal by useState<ApproveRefusal?>(null)
     var view by useState<WorkflowView?>(null)
-    var noSurvey by useState(false)
+    var noCoreDetails by useState(false)
     var loading by useState(true)
     var loadError by useState<DisplayError?>(null)
     // Whether the caller's surface carries the patch endpoint, so the raw-editor link can work (issue #694).
@@ -68,11 +68,11 @@ val SurveyEditPage = FC<Props> {
     // moment the edits are saved or reverted, so a clean page never nags.
     useEffect(dirty) {
         if (dirty) {
-            // "Still here" is this page AND this form: a task switch stays; another form's survey -- the same
+            // "Still here" is this page AND this form: a task switch stays; another form's core details workflow -- the same
             // page, but a keyed remount that would drop the edits -- is a leave.
             val form = gedraId
             val wf = workflowId
-            LeaveGuard.arm({ h -> h[HP.page] == pageSurveyEdit && h[HP.gedra] == form && h[HP.workflow] == wf }) {
+            LeaveGuard.arm({ h -> h[HP.page] == pageCoreDetailsEdit && h[HP.gedra] == form && h[HP.workflow] == wf }) {
                 LeaveGuard.confirmLeave("You have unsaved changes on this form. Leave the page and lose them?")
             }
         } else {
@@ -80,7 +80,7 @@ val SurveyEditPage = FC<Props> {
         }
     }
 
-    // Keep the open id in step with the address: App is the router, and a surveyEdit->surveyEdit move
+    // Keep the open id in step with the address: App is the router, and a coreDetailsEdit->coreDetailsEdit move
     // does not remount this page, so without this the first form would stay loaded under the new URL (mirrors
     // EditFormPage, issue #417).
     useEffectOnce {
@@ -89,7 +89,7 @@ val SurveyEditPage = FC<Props> {
             // Only an address that still names THIS page drives its state (the lesson FormsPage learned in #694, and
             // what the leave guard depends on): a vetoed leave shows this listener the other page's address for a
             // moment before the router puts the address back, and reading `g=` off it here would blank the form.
-            if (h[HP.page] != pageSurveyEdit) return@onRouteChange
+            if (h[HP.page] != pageCoreDetailsEdit) return@onRouteChange
             gedraId = h[HP.gedra].orEmpty()
             workflowId = h[HP.workflow]
             // Back/forward between tasks (issue #700): the rail's own pushes tell no route listener, so this only
@@ -98,24 +98,25 @@ val SurveyEditPage = FC<Props> {
         }
     }
 
-    // Resolve the survey against the named form, re-running whenever the id changes; drop the previous load's
+    // Resolve the core details workflow against the named form, re-running whenever the id changes; drop the previous load's
     // result first so none of it bleeds across.
     useEffect(gedraId, workflowId, reloads) {
         view = null
         engageError = null
-        noSurvey = false
+        noCoreDetails = false
         loadError = null
         workflowClient = null
         loading = true
         val id = gedraId
         val wfId = workflowId
-        surveyEditScope.launch {
+        coreDetailsEditScope.launch {
             try {
-                // The form's own client (from its id, issue #714): the survey view, its save and the raw-edit
-                // link's patch endpoint are all resolved on *that* client's surface, so an `allClients` admin
-                // opening another client's form gets that client's survey -- resolved on their own it reads "no
-                // survey", since the survey is the form's client's. Null for an unparseable id, which resolves on
-                // the caller's own surface (an ordinary caller, whose client is the form's).
+                // The form's own client (from its id, issue #714): the core details view, its save and the raw-edit
+                // link's patch endpoint are all resolved on *that* client's surface, so an `allClients` admin opening
+                // another client's form gets that client's core details workflow -- resolved on their own it reads "no
+                // core details workflow", since the core details workflow is the form's client's. Null for an
+                // unparseable id, which resolves on the caller's own surface (an ordinary caller, whose client is the
+                // form's).
                 val formClient = formClientOf(id)
                 // The patch-endpoint check and the view lookup are independent, so they run together (one round
                 // trip). The check only gates a link, so its own failure just hides the link rather than failing
@@ -135,7 +136,7 @@ val SurveyEditPage = FC<Props> {
                 val v = if (id.isBlank()) null else fetchFormView(id, wfId, surfaceClient)
                 rawEditAvailable = patchFetch.await()
                 workflowClient = surfaceClient
-                if (v == null) noSurvey = true else view = v
+                if (v == null) noCoreDetails = true else view = v
             } catch (e: Throwable) {
                 loadError = userFacingError(e)
             } finally {
@@ -154,7 +155,7 @@ val SurveyEditPage = FC<Props> {
         val wf = workflowId
         val fresh = apiResult { fetchFormView(form, wf, workflowClient) }.designRereadValue()
         val h = routeParams()
-        if (fresh != null && h[HP.page] == pageSurveyEdit && h[HP.gedra] == form && h[HP.workflow] == wf) view = fresh
+        if (fresh != null && h[HP.page] == pageCoreDetailsEdit && h[HP.gedra] == form && h[HP.workflow] == wf) view = fresh
     }
     useDesignViewReread { reread() }
 
@@ -164,15 +165,16 @@ val SurveyEditPage = FC<Props> {
             title = "Edit form"
             this.loadError = loadError
         }
-        noSurvey -> div {
+        noCoreDetails -> div {
             className = ClassName("card wide")
             h1 { +"Edit form" }
             p {
                 className = ClassName("subtitle")
-                +(if (workflowId != null) "There is no such workflow for this form." else "There is no survey for this form.")
+                +(if (workflowId != null) "There is no such workflow for this form."
+                else "There is no core details workflow for this form.")
             }
             // The shared way back (issue #714 review): carries the listing's chosen client, filter and sort home,
-            // as the survey's own header and the raw editor do -- a bare `page=forms` dropped them all.
+            // as the core details workflow's own header and the raw editor do -- a bare `page=forms` dropped them all.
             formsBackToListing()
         }
         view != null -> {
@@ -214,7 +216,7 @@ val SurveyEditPage = FC<Props> {
                     selectTask(id)
                 }
                 onDirtyChange = { dirty = it }
-                onDesignEdited = { surveyEditScope.launch { reread() } }
+                onDesignEdited = { coreDetailsEditScope.launch { reread() } }
                 // An approval settled (issue #832): approved, or refused by the endpoint. Either way the form's state may
                 // have moved -- the step now reads approved, someone else approved it first -- so the view is read again,
                 // as after an engage, keeping the refusal to show by its step. It stays on that step: with every step
@@ -237,10 +239,10 @@ val SurveyEditPage = FC<Props> {
                 val refreshForm = gedraId
                 val refreshWorkflow = workflowId
                 refreshView = { taskId ->
-                    surveyEditScope.promise {
+                    coreDetailsEditScope.promise {
                         val fresh = fetchFormView(refreshForm, refreshWorkflow, refreshClient)
                         val h = routeParams()
-                        if (h[HP.page] == pageSurveyEdit && h[HP.gedra] == refreshForm && h[HP.workflow] == refreshWorkflow) {
+                        if (h[HP.page] == pageCoreDetailsEdit && h[HP.gedra] == refreshForm && h[HP.workflow] == refreshWorkflow) {
                             if (h[HP.task] == null) {
                                 requestedTask = taskId
                                 replaceRoute(h.toList() + (HP.task to taskId))
@@ -256,13 +258,13 @@ val SurveyEditPage = FC<Props> {
                 val engageClient = workflowClient
                 onEngage = workflowId?.let { wfId ->
                     {
-                        surveyEditScope.launch {
+                        coreDetailsEditScope.launch {
                             try {
                                 WorkflowApi.engage(gedraId, wfId, engageClient)
                                 // Only while the page still shows this form and workflow (the #758 rule), so an engage
                                 // landing after a move elsewhere does not rewrite that address.
                                 val h = routeParams()
-                                if (h[HP.page] == pageSurveyEdit && h[HP.gedra] == gedraId && h[HP.workflow] == wfId) {
+                                if (h[HP.page] == pageCoreDetailsEdit && h[HP.gedra] == gedraId && h[HP.workflow] == wfId) {
                                     replaceRoute(engagedRoute(h))
                                 }
                                 reloads += 1
@@ -288,13 +290,14 @@ fun engagedRoute(params: Map<String, String>): List<Pair<String, String>> =
     params.filterKeys { it != HP.edit }.toList() + (HP.edit to "1")
 
 /**
- * The view the survey page shows (issue #827): normal workflow [workflowId] against form [gedraId] when one is named,
- * else the form's survey, from [client]'s copy of the endpoint. Null when there is no such workflow or survey. The one
- * read behind both the page's load and its re-read after a save, so the two cannot ask differently.
+ * The view the core details page shows (issue #827): normal workflow [workflowId] against form [gedraId] when one is
+ * named, else the form's core details workflow, from [client]'s copy of the endpoint. Null when there is no such
+ * workflow or core details workflow. The one read behind both the page's load and its re-read after a save, so the two
+ * cannot ask differently.
  */
 suspend fun fetchFormView(gedraId: String, workflowId: String?, client: String?): WorkflowView? =
     if (workflowId != null) {
         WorkflowApi.fetchWorkflowView(workflowId, gedraId, client)
     } else {
-        WorkflowApi.fetchSurveyView(gedraId, client)
+        WorkflowApi.fetchCoreDetailsView(gedraId, client)
     }

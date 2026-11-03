@@ -257,7 +257,8 @@ class SandboxEditsTest : StringSpec({
         admin.getItem(UADEP.clientTraits)[CIT.ownTraits].toJsonListOfMaps().map { it[CIT.configName] } shouldContain configName
 
         // A workflow made from a template, collecting the trait the draft now includes.
-        val slots = WfTemplateSlots(null, WFT.survey, "Site survey", listOf(WfTaskSlot("details", "The site", listOf(WfTraitRef(GT.name)))))
+        val slots = WfTemplateSlots(null, WFT.coreDetails, "Site details", listOf(WfTaskSlot("details", "The site",
+            listOf(WfTraitRef(GT.name)))))
         val workflow = admin.postData(UADEP.clientWorkflowSave, mapOf(CWF.slots to slots.toInfo()))
         workflow[CPY.mode] shouldBe EDM.draft
         val workflowConfig = workflow[CWF.configName].toString()

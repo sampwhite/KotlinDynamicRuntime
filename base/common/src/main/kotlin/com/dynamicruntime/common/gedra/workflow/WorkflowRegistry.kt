@@ -58,8 +58,8 @@ class WorkflowRegistry(
     /** The creation workflow of this scope, or null when it has none. At most one, by check. */
     val creation: WfDeclared? = workflows.values.firstOrNull { it.def.entry == WfEntry.creation }
 
-    /** The survey workflow of this scope, or null when it has none. At most one, by check (issue #656). */
-    val survey: WfDeclared? = workflows.values.firstOrNull { it.def.entry == WfEntry.survey }
+    /** The core details workflow of this scope, or null when it has none. At most one, by check (issue #656). */
+    val coreDetails: WfDeclared? = workflows.values.firstOrNull { it.def.entry == WfEntry.coreDetails }
 
     /** The workflow named, or null. */
     fun workflow(id: String): WfDeclared? = workflows[id]
@@ -97,15 +97,16 @@ fun interface WfFragmentLookup {
  * dropping what does not hold up (issue #533).
  *
  * **A client runs only its own workflows** (issue #1120). A global workflow is a **template**: checked here, against
- * the global scope, so a broken one fails as any source configuration does, and inherited by no client. A client
- * takes a workflow from a template by declaring one of its own that names it (`WFD.fromTemplate`), which is read as
- * the template with the client's changes ([expandWorkflowTemplate]) before it reaches this build -- so here it is a
- * client's workflow like any other, held to the client's traits and cfacts. A global id is rooted (`kdr:survey`, issue
+ * the global scope, so a broken one fails as any source configuration does, and inherited by no client. A client takes
+ * a workflow from a template by declaring one of its own that names it (`WFD.fromTemplate`), which is read as the
+ * template with the client's changes ([expandWorkflowTemplate]) before it reaches this build -- so here it is a
+ * client's workflow like any other, held to the client's traits and cfacts. A global id is rooted (`kdr:coreDetails`,
+ * issue
  * #953) and a client's bare, so the two never meet.
  *
  * **What is checked**, per scope and per workflow -- each a thing that would otherwise fail silently or late:
  *
- * - The entry kind is one that is built. `creation`, `survey` and `normal` (issue #794) all are; the check
+ * - The entry kind is one that is built. `creation`, `coreDetails` and `normal` (issue #794) all are; the check
  *   stays so a kind added to the enum ahead of its implementation is refused rather than accepted and inert.
  * - Every trait a task collects is one the scope may use: the client's supported set, or for a global
  *   workflow the traits global can see. A workflow naming a trait its client cannot store would fail at the
@@ -114,7 +115,7 @@ fun interface WfFragmentLookup {
  *   **backend** file, a present key -- unless the pull guards its own absence. The same static check the
  *   fragment service runs over files, applied to the labels a definition carries; a frontend pull (`${...}`)
  *   binds at request time and is the author's assertion, as it is everywhere.
- * - At most one workflow of each single-instance kind (creation, survey) per client. The templates may offer several.
+ * - At most one workflow of each single-instance kind (creation, core details workflow) per client. The templates may offer several.
  * - Every cfact expression the definition carries -- eligibility tests, singleton-cfact rules, trait locks, a
  *   task's display, and its who-may-save rule -- parses against the scope's cfact names, as UiBlocks' do, so a
  *   misspelled cfact refuses the workflow here rather than being a test that silently never passes.
@@ -158,7 +159,7 @@ fun buildWorkflowRegistries(
 ): WorkflowRegistries {
     // The entry kinds that are implemented; a workflow declaring any other is dropped rather than run
     // half-built. `normal` landed with issue #794.
-    val builtEntries = setOf(WfEntry.creation, WfEntry.survey, WfEntry.normal)
+    val builtEntries = setOf(WfEntry.creation, WfEntry.coreDetails, WfEntry.normal)
     // The entry kinds a scope has at most one of: declaring one takes over that kind, and a second is refused.
     // `normal` is many-per-form, so it is deliberately not here now that it is built.
     val singletonEntries = WfEntry.singletons
@@ -198,7 +199,7 @@ fun buildWorkflowRegistries(
                     workflowId in declaredBy -> refuse("are declared a second time, beside '${declaredBy.getValue(workflowId).gedraId}'.")
                     w == null || (w.bundle.isStored && w.bundle.inheritedFrom == null) ->
                         refuse("name no workflow of client '$client' declared in source code, its own or its template's.")
-                    w.def.entry != WfEntry.normal -> refuse("name a ${w.def.entry} workflow; only a normal workflow has parameters.")
+                    w.def.entry != WfEntry.normal -> refuse("name a ${w.def.entry.words} workflow; only a normal workflow has parameters.")
                     else -> out[workflowId] = params
                 }
                 declaredBy.putIfAbsent(workflowId, bundle)
@@ -382,7 +383,7 @@ fun buildWorkflowRegistries(
                         cxt,
                         problem(
                             scope, extra,
-                            "is a second $kind workflow beside '${ofKind.first().ref}'. A client can have only one $kind " +
+                            "is a second ${kind.words} workflow beside '${ofKind.first().ref}'. A client can have only one ${kind.words} " +
                                 "workflow; keeping the first declared.",
                         ),
                         issues,

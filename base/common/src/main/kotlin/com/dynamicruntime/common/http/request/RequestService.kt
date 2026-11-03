@@ -494,13 +494,12 @@ class RequestService : ServiceInitializer {
         }
         // Publication is restricted to the user sections (issue #433).
         //
-        // Note what this is *not* protecting. `publicApi` decides advertisement, not access, so a stray tag
-        // cannot expose anything -- the section gate still refuses an anonymous caller at an admin endpoint.
-        // What it protects is the **answerability of a promise**: "what did we commit to supporting?" has to
-        // be checkable by reading one rule, and overrides scattered across sections turn it into a survey.
-        // An endpoint that genuinely belongs in the published set gets a twin under a user section, which is
-        // also the honest thing to do -- a path documented to outside developers as `/admin/...` tells them
-        // something false about what it is for.
+        // Note what this is *not* protecting. `publicApi` decides advertisement, not access, so a stray tag cannot
+        // expose anything -- the section gate still refuses an anonymous caller at an admin endpoint. What it protects
+        // is the **answerability of a promise**: "what did we commit to supporting?" has to be checkable by reading one
+        // rule, and overrides scattered across sections turn it into a core details workflow. An endpoint that
+        // genuinely belongs in the published set gets a twin under a user section, which is also the honest thing to do
+        // -- a path documented to outside developers as `/admin/...` tells them something false about what it is for.
         //
         // **Production warns; everywhere else refuses** -- the house rule for a defect a running deployment
         // survives (`MarkdownFragmentService.fragmentCheckMode`, `GedraConfigCollector`). It applies here

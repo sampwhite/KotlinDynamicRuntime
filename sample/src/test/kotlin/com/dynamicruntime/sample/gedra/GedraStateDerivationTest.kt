@@ -13,7 +13,7 @@ import com.dynamicruntime.common.gedra.GedraEdit
 import com.dynamicruntime.common.gedra.GedraEditAction
 import com.dynamicruntime.common.gedra.GedraId
 import com.dynamicruntime.common.gedra.GedraPatchTarget
-import com.dynamicruntime.common.gedra.workflow.SVY
+import com.dynamicruntime.common.gedra.workflow.CDF
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptLong
 import com.dynamicruntime.common.util.toOptStr
@@ -73,7 +73,7 @@ class GedraStateDerivationTest : StringSpec({
 
         // The derivation ran in the create transaction: the form now has traitPresenceByYear state for 2024,
         // recording that its expenseReport trait carried data that year -- read back with no separate write.
-        // acme also carries survey state now (issue #657), so assert this deriver's entry specifically rather
+        // acme also carries core details state now (issue #657), so assert this deriver's entry specifically rather
         // than the whole set.
         val state = service().readState(acme, gid, ReadScope.ofClient(SC.acme))
         traitIds(state) shouldContain ST.traitPresenceByYear
@@ -130,13 +130,13 @@ class GedraStateDerivationTest : StringSpec({
             listOf(mapOf(GE.traitId to ST.externalId, GE.data to mapOf(ST.externalSource to "salesforce", ST.externalRef to "SF-1"))),
         )
 
-        // The recompute rebuilds every derived entry (acme's survey completion and its year presence) and keeps
+        // The recompute rebuilds every derived entry (acme's core details completion and its year presence) and keeps
         // the asserted one untouched.
         service().recomputeDerivedState(acme, gid, scope)
         val ids = traitIds(service().readState(acme, gid, scope))
         ids shouldContain ST.externalId          // asserted: preserved
         ids shouldContain ST.traitPresenceByYear // derived: recomputed
-        ids shouldContain SVY.surveyCompletion   // derived: recomputed
+        ids shouldContain CDF.coreDetailsCompletion   // derived: recomputed
     }
 
     "a recompute handed an older copy derives from the data under the lock (issue #862)" {

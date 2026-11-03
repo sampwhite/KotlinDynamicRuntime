@@ -47,10 +47,10 @@ class GedraStateContext(
     val currentState: List<Map<String, Any?>>,
     /**
      * The entries the derivers registered **before** this one produced in this same recompute (issue #783), in
-     * registration order. What lets one derived projection build on another without lagging a write behind: the
-     * survey's deriver emits the form's cfacts, and the per-workflow deriver evaluates eligibility against them
-     * -- reading [currentState] instead would see the cfacts as they stood *before* this write. Registration
-     * order is therefore meaningful; a deriver reads only what came earlier.
+     * registration order. What lets one derived projection build on another without lagging a write behind: the core
+     * details workflow's deriver emits the form's cfacts, and the per-workflow deriver evaluates eligibility against
+     * them -- reading [currentState] instead would see the cfacts as they stood *before* this write. Registration order
+     * is therefore meaningful; a deriver reads only what came earlier.
      */
     val derivedThisPass: List<Map<String, Any?>> = emptyList(),
 )
@@ -80,12 +80,12 @@ interface GedraStateDeriver {
  * Folds every [GT.cfacts] entry in [entries] into **one** (issue #784), keeping every other entry as it is.
  *
  * `cfacts` is form-singleton -- a form's cfacts are one set about the form -- but it has several producers: the
- * survey's deriver contributes its facts, the per-workflow deriver its engaged workflows' singleton cfacts. Each
+ * core details workflow's deriver contributes its facts, the per-workflow deriver its engaged workflows' singleton cfacts. Each
  * emits its own contribution rather than reading and rewriting a shared list (which would make every producer
  * responsible for every other's facts), and the union is taken here, where they all meet. Two entries would
  * otherwise collide on the unkeyed trait's one address and refuse the whole write.
  *
- * The union keeps first-seen order -- registration order, so the survey's facts lead -- and lands where the
+ * The union keeps first-seen order -- registration order, so the core details workflow's facts lead -- and lands where the
  * first contribution stood.
  */
 fun mergeCfactContributions(entries: List<Map<String, Any?>>): List<Map<String, Any?>> {

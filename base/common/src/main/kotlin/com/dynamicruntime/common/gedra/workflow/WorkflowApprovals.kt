@@ -33,7 +33,7 @@ import com.dynamicruntime.common.util.toOptStr
  * could be disengaged, changed, and re-engaged into a Finished workflow no reviewer looked at.
  *
  * Deliberately **not** invalidated by edits made while engaged: nothing in the design ties an approval to the
- * data it saw, and a survey edits the same traits. That is a policy a later change could add, with a fingerprint.
+ * data it saw, and a core details workflow edits the same traits. That is a policy a later change could add, with a fingerprint.
  */
 object WorkflowApprovals {
     /**
