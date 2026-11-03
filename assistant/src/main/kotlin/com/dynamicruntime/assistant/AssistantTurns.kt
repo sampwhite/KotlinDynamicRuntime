@@ -221,12 +221,20 @@ object AssistantTurns {
      */
     fun personOf(cxt: KdrCxt): AssistantPerson {
         AdminRules.requireClientAdministrator(cxt)
+        return personOrNull(cxt) ?: throw KdrException.mkInput(
+            "Use the assistant from '${sandboxParentOf(cxt.userProfile.client)}' itself, as one of its administrators.",
+        )
+    }
+
+    /**
+     * [personOf] without the administrator check, or null when a sandbox caller has nobody outside to speak for: what the
+     * `assistant:usable` cfact asks. Outside a sandbox it reads nothing.
+     */
+    fun personOrNull(cxt: KdrCxt): AssistantPerson? {
         val client = cxt.userProfile.client
         val parent = sandboxParentOf(client) ?: return AssistantPerson(cxt.userProfile.userId, client, sandboxUser = null)
-        val own = UserService.get(cxt).queryByUserId(cxt, cxt.userProfile.userId)
-            ?: throw KdrException("Your user could not be found.", code = EXC.notFound)
-        val opener = SandboxAccess.standingOf(cxt, own).actsAs?.takeIf { it.client == parent }
-            ?: throw KdrException.mkInput("Use the assistant from '$parent' itself, as one of its administrators.")
+        val own = UserService.get(cxt).queryByUserId(cxt, cxt.userProfile.userId) ?: return null
+        val opener = SandboxAccess.standingOf(cxt, own).actsAs?.takeIf { it.client == parent } ?: return null
         return AssistantPerson(opener.userId, parent, sandboxUser = own)
     }
 

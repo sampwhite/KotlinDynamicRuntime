@@ -117,7 +117,9 @@ The client to set is chosen from the clients this node carries, its sandbox left
 **The `assistant:on` cfact** is true when this node has a model and the caller's client (a sandbox's parent) is
 switched on. It does not say whether the month's budget is spent: the page says that. It is read on every cfact
 assembly, so the switch is held in a table cache. The cache holds the enabled rows only, which is exactly the set the
-cfact asks about.
+cfact asks about. **`assistant:usable`** (#1527) adds the rule the page's endpoints answer by: in a sandbox, the caller
+must be there as a user opened from one of the client's own (`AssistantTurns.personOrNull`). Read only once the switch
+says yes, so a node with the assistant off asks nothing more of a sandbox caller.
 
 ## Conversations and turns
 
@@ -219,19 +221,21 @@ pass. They are a fair-use limit, not a fence; the budget is the fence, checked a
 
 `/wa/assistant` (`AssistantPage.kt`; what it decides is in the `kdr-webapp-pages` skill's `workflow-assistant.md`). Its
 menu entry is the module's own: an overlay on the menu (`AssistantComponent.uiBlocks`), offered to a client's
-administrator while `assistant:on` holds, placed after Reports. Core never names the cfact, which exists only while the
-module is loaded. The operator's page, `/wa/operator/assistant`, is offered the same way under Operator.
+administrator while `assistant:usable` holds -- so never to a caller every assistant endpoint would refuse -- placed
+after Reports. Core never names the cfact, which exists only while the module is loaded, and a client's menu editor can
+put the entry back to it, "As shipped". The operator's page, `/wa/operator/assistant`, is offered the same way under Operator.
 
 Before anything is sent the page reads `GET /clientAdmin/assistant/status`: whether the assistant is on, whether the
 client has a sandbox, whether the caller is in it, the month's use **as a share** of the budget -- never the amount,
-which is the operator's -- when it resets (the first of next month, UTC), and the data notice. Its panels:
+which is the operator's -- when it resets (the first of next month in UTC, shown in the client's zone), and the data
+notice. Its panels:
 
 - **Sandbox**, only while there is none: turning one on, confirmed, through the Clients page's own call.
 - **Conversation**: the person's conversations to reopen, the transcript, Send and Stop, and "What is sent to Anthropic"
   beside a conversation's first message. The tool results the API stores as the person's are joined to their calls, and
   an answer's calls collapse into one line ("Looked at: workflows, bundle `flows`", "Drafted `flows` (v3)") that opens
   to each call and its result. The model's notes show muted. It polls every 1.5 seconds while a turn runs, reading only
-  the messages after the last it has, and nothing when idle.
+  the messages after the last it has, backing off after a failed read rather than stopping, and nothing when idle.
 - **Drafts from this conversation**: each bundle a write made, and the included traits, with **Try it in the sandbox**
   (opening it at the workflow's forms) and **Check impact and publish**, a link to the Clients page's publishing panel.
   The page has no Publish button.

@@ -16,6 +16,7 @@ import com.dynamicruntime.common.util.jsonMapOrNull
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
+import java.util.UUID
 import java.util.concurrent.atomic.AtomicLong
 
 /**
@@ -71,7 +72,8 @@ class ScriptedModel(steps: List<(ModelRequest) -> ModelResponse>, override val l
 
         /**
          * A response that calls the tools [calls] names, each with its input, stopping for their results (or for
-         * [stopReason]), billed [usage]. Each call's id is unique within the test run.
+         * [stopReason]), billed [usage]. Each call's id is unique, across boots too: a conversation stored in a database
+         * outlives the node, and a history that makes one call twice cannot go on.
          */
         fun toolResponse(
             vararg calls: Pair<String, Map<String, Any?>>,
@@ -79,7 +81,10 @@ class ScriptedModel(steps: List<(ModelRequest) -> ModelResponse>, override val l
             usage: ModelUsage = ModelUsage(inputTokens = 100, outputTokens = 20),
         ): ModelResponse = response(
             calls.map { (name, input) ->
-                mapOf(MSG.type to TOOL.toolUse, TOOL.id to "toolu_${callIds.incrementAndGet()}", TOOL.name to name, TOOL.input to input)
+                mapOf(
+                    MSG.type to TOOL.toolUse, TOOL.id to "toolu_$callIdPrefix${callIds.incrementAndGet()}", TOOL.name to name,
+                    TOOL.input to input,
+                )
             },
             stopReason, usage,
         )
@@ -102,6 +107,10 @@ class ScriptedModel(steps: List<(ModelRequest) -> ModelResponse>, override val l
 
         @KdrPrivate
         val callIds = AtomicLong()
+
+        /** This boot's own start to a call's id, so the counter, which starts again with every boot, repeats no id. */
+        @KdrPrivate
+        val callIdPrefix = UUID.randomUUID().toString().take(8) + "_"
 
         /**
          * The built-in demo for `KDR_ASSISTANT_PROVIDER=fake`, for trying the assistant locally with no key and no
@@ -161,7 +170,10 @@ class ScriptedModel(steps: List<(ModelRequest) -> ModelResponse>, override val l
                 ?: catalog[CWF.templates].toJsonListOfMaps().filter { it[CWF.refusal] == null }
                     .map { it[CWF.definition].toJsonMapOrEmpty() }.firstOrNull(normal)
                 ?: return null
-            val definition = source + mapOf(CCT.workflowId to DEMO.workflowId, WFD.label to "Demo: ${source[WFD.label] ?: "workflow"}")
+            // Whole, not as an overlay of a template: a definition naming its template is stored as only what it changes,
+            // and the listing's is the template expanded, so a copy that kept the name would be refused as changing it.
+            val definition = (source - WFD.fromTemplate) +
+                mapOf(CCT.workflowId to DEMO.workflowId, WFD.label to "Demo: ${source[WFD.label] ?: "workflow"}")
             val edit = mapOf(
                 CFEP.slot to CCT.workflowDef, GED.action to GedraEditAction.addOrReplace.name,
                 GE.data to mapOf(CCT.workflowId to DEMO.workflowId, CCT.definition to definition),

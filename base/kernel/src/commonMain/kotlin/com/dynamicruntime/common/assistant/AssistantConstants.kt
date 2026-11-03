@@ -18,6 +18,13 @@ object ASST {
      */
     const val onCFact = "$root:on"
 
+    /**
+     * The cfact true when the caller can talk to the assistant (issue #1527): [onCFact], and -- signed in to the client's
+     * sandbox -- they are there as a user opened from one of the client's own, whom the assistant answers for. The menu
+     * entry asks it, so the page is never offered to a caller every assistant endpoint would refuse.
+     */
+    const val usableCFact = "$root:usable"
+
     /** The webapp page the assistant's menu entry opens (issue #1527). */
     const val page = "assistant"
 
@@ -25,10 +32,12 @@ object ASST {
     const val operatorPage = "operatorAssistant"
 
     /**
-     * The menu entries the module adds (issue #1527): the page, offered to a client's administrator while [onCFact]
-     * holds, and the operator's page, under the Operator group.
+     * The menu entry the module adds for the page (issue #1527), offered to a client's administrator while [usableCFact]
+     * holds. An item's id, not a page's: it is what a client's menu edit names, and stays when the page is renamed.
      */
     const val menuItem = "assistant"
+
+    /** The menu entry for [operatorPage], under the Operator group; an item's id, as [menuItem] is. */
     const val operatorMenuItem = "operatorAssistant"
 
     /**

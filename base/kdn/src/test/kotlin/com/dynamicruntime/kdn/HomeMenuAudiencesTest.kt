@@ -82,10 +82,12 @@ class HomeMenuAudiencesTest : StringSpec({
     "an item may be shown to the offered audiences, and put back to its own" {
         val offered = HomeMenuAudiences.offered.map { it.condition }
         fun choices(shipped: String?) = HomeMenuAudiences.choicesFor(shipped).map { it.condition }
-        // An item shipped for an offered audience, for nobody, or under a condition with no name: the offered ones.
+        // An item shipped for an offered audience, or for nobody: the offered ones.
         choices("${CFACTS.loggedIn},${CFACTS.app}") shouldBe offered
         choices(CFACT.neverName) shouldBe offered
-        choices("isChief") shouldBe offered
+        // One shipped under a condition with no name -- a module's own, say (issue #1527) -- may go back to it, as shipped.
+        choices("isChief") shouldBe offered + "isChief"
+        HomeMenuAudiences.choicesFor("isChief").last().name shouldBe HomeMenuAudiences.asShipped
         // One shipped for an audience that is not offered may still go back to it -- and only that one may.
         choices(CFACTS.isDeploymentOperator) shouldBe offered + CFACTS.isDeploymentOperator
         // No condition at all is everyone, on every node: named, and the item's own.

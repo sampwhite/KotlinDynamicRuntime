@@ -16,6 +16,7 @@ import com.dynamicruntime.common.gedra.CFEP
 import com.dynamicruntime.common.gedra.CLD
 import com.dynamicruntime.common.gedra.CPY
 import com.dynamicruntime.common.gedra.CUST
+import com.dynamicruntime.common.gedra.CWF
 import com.dynamicruntime.common.gedra.ClientAudience
 import com.dynamicruntime.common.gedra.ClientDef
 import com.dynamicruntime.common.gedra.ClientUsageType
@@ -31,8 +32,13 @@ import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.GedraEditAction
 import com.dynamicruntime.common.gedra.GedraId
 import com.dynamicruntime.common.gedra.gedraConfig
+import com.dynamicruntime.common.gedra.sandboxOf
+import com.dynamicruntime.common.gedra.workflow.WFT
 import com.dynamicruntime.common.gedra.workflow.WfEntry
 import com.dynamicruntime.common.gedra.workflow.WfSaveKind
+import com.dynamicruntime.common.gedra.workflow.WfTaskSlot
+import com.dynamicruntime.common.gedra.workflow.WfTemplateSlots
+import com.dynamicruntime.common.gedra.workflow.WfTraitRef
 import com.dynamicruntime.common.home.HEP
 import com.dynamicruntime.common.home.HFLD
 import com.dynamicruntime.common.home.HMENU
@@ -488,6 +494,20 @@ class AssistantTurnsTest : StringSpec({
         // Its tools act as the user the session has in the sandbox.
         AssistantStore.turn(cxt, turn[ACNV.turnId].toString()).shouldNotBeNull()[ATBL.sandboxUserId].toOptLong() shouldBe sandboxUserId
 
+        // Nobody outside stands behind these two in the sandbox, so the assistant answers neither -- and the menu, asking
+        // the same, does not offer them the page: an administrator of every client who opened this client's sandbox from
+        // their own, and a sandbox's own administrator whom nobody opened it for.
+        val across = TestUser.createFullAdmin(cxt, "across@example.com")
+        across.postData(AEP.openSandbox, mapOf(AFLD.client to client))[UPF.client] shouldBe sandboxOf(client)
+        // Its admin takes effect through the same person's administrator in the client.
+        TestUser.create(cxt, "deputy@$client.test", level = ROLE.admin, userClient = client)
+        val own = TestUser.create(cxt, "deputy@$client.test", level = ROLE.admin, userClient = sandboxOf(client))
+        for (refused in listOf(across, own)) {
+            menuIds(refused) shouldNotContain ASST.menuItem
+            refused.expectError(EXC.badInput, ACNV.statusPath)
+            refused.expectError(EXC.badInput, ACNV.conversationsPath)
+        }
+
         // A client with no sandbox, or one it is off for, says so; a spent month says when it starts again.
         clientWithAssistant(cxt, "asstpagenosbx", sandbox = false).getData(ACNV.statusPath)[ACNV.hasSandbox] shouldBe false
         val spent = clientWithAssistant(cxt, "asstpagespent")
@@ -575,6 +595,14 @@ class AssistantTurnsTest : StringSpec({
         drafted.last()[MSG.content].toJsonListOfMaps().single()[MSG.text].toString() shouldContain "Drafted the workflow"
         admin.getItem(CFEP.bundle, mapOf(CFEP.name to DEMO.bundle))[CFEP.slots].toJsonMapOrEmpty()[CCT.workflowDef]
             .toJsonListOfMaps().map { it[CCT.workflowId] } shouldBe listOf(DEMO.workflowId)
+
+        // A client whose only workflow was made from a template: the copy is written whole, not as the template's overlay.
+        val fromTemplate = clientWithAssistant(demo, "asstdemotpl", workflows = 0)
+        val slots = WfTemplateSlots(null, WFT.collect, "Collect memos", listOf(WfTaskSlot("collect", "Memo", listOf(WfTraitRef("memo")))))
+        fromTemplate.postData(UADEP.clientWorkflowSave, mapOf(CWF.slots to slots.toInfo()))
+        val copied = send(fromTemplate, "Draft one like it.", on = demo)
+        messagesOf(fromTemplate, copied).last()[MSG.content].toJsonListOfMaps().single()[MSG.text].toString() shouldContain
+            "Drafted the workflow"
     }
 
     "a long result is cut, saying so, and never through a character written as two" {

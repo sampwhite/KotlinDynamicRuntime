@@ -31,8 +31,9 @@ class MenuAudience(
  * **Every condition the shipped menu writes is here**, which `HomeMenuAudiencesTest` holds: a new menu item with a
  * new condition fails that test until the condition is given a name and it is decided whether to offer it. A condition
  * the shipped menu stopped writing stays, [retired][MenuAudience.retired], for the clients whose edits chose it. A
- * condition that is not here -- one a source config or another component wrote by hand -- has no name, reads as
- * custom, and is never offered.
+ * condition that is not here -- one a source config or another component wrote by hand, such as the workflow
+ * assistant's (issue #1527) -- has no name and reads as custom. It is offered to its own item alone, as "As shipped"
+ * ([choicesFor]), so the item can be put back.
  *
  * **Which are offered.** The ones that divide a client's own people in a way an administrator of it would mean. The
  * rest are named and withheld, each for a reason that is the same reason: within one client they pick out nobody an
@@ -105,12 +106,17 @@ object HomeMenuAudiences {
 
     /**
      * The audiences an item **shipped under [shippedCondition]** may be shown to: every [offered]
-     * one, and the item's own when that is named and not among them -- so an item can always be put back where it
+     * one, and the item's own when it is not among them -- so an item can always be put back where it
      * shipped, and an audience that is the deployment's own is not handed to every other item. The one answer to
-     * "what may be chosen", for the listing that offers and the write that accepts.
+     * "what may be chosen", for the listing that offers and the write that accepts. A shipped condition with no name
+     * is its item's own as [asShipped] (issue #1527); a withdrawn item's `#never` is no audience to put it back to.
      */
     fun choicesFor(shippedCondition: String?): List<MenuAudience> {
         val own = of(shippedCondition)
+            ?: shippedCondition?.takeIf { it != CFACT.neverName }?.let { MenuAudience(it, asShipped, offered = false) }
         return if (own == null || own.offered) offered else offered + own
     }
+
+    /** What an item's own condition is called when the table has no name for it: the one it shipped under. */
+    val asShipped: String = "As shipped"
 }

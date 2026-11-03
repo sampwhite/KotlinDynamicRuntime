@@ -54,22 +54,33 @@ class AssistantComponent : ComponentDefinition {
                     "month's budget is left.",
             ),
         ) { AssistantService.getOrNull(it)?.isOn(it, it.userProfile.client) == true }
+        collector.addCFact(
+            CFactDef(
+                ASST.usableCFact, CFGRP.caller,
+                "True when the caller can talk to the workflow assistant: it is on for their client, and -- signed in to the " +
+                    "client's sandbox -- they are there as a user opened from one of the client's own. Not whether they " +
+                    "administer the client, nor whether the month's budget is left.",
+            ),
+        ) {
+            // Read only once the switch says yes, so a node with the assistant off asks nothing more of a sandbox caller.
+            AssistantService.getOrNull(it)?.isOn(it, it.userProfile.client) == true && AssistantTurns.personOrNull(it) != null
+        }
     }
 
     override fun services(cxt: KdrCxt): List<ServiceEntry> = listOf(service(::AssistantService))
 
     /**
      * The module's menu entries (issue #1527), added by an overlay so core never names a cfact that exists only while
-     * this module is loaded: the page beside Reports, for a client's administrator while [ASST.onCFact] holds -- in
-     * the client, and in its sandbox, where the page goes on working -- and the operator's page last in the Operator
-     * group.
+     * this module is loaded: the page beside Reports, for a client's administrator while [ASST.usableCFact] holds -- in
+     * the client, and in its sandbox when the assistant answers for them there, as the page's endpoints do -- and the
+     * operator's page last in the Operator group.
      */
     override fun uiBlocks(cxt: KdrCxt): List<UiBlockSource> = listOf(
         uiBlockOverlay(HMENU.block, origin = providerName) {
             items(HFLD.menu) {
                 menuItem(
                     ASST.menuItem, "Workflow assistant", UiRoute(ASST.page),
-                    cfactExpression = "${CFACTS.administersClient},${ASST.onCFact},${CFACTS.app}",
+                    cfactExpression = "${CFACTS.administersClient},${ASST.usableCFact},${CFACTS.app}",
                     displayOrder = orderAfter(HMENU.reports),
                 )
                 menuItem(

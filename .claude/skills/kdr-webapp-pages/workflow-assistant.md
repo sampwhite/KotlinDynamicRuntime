@@ -9,9 +9,12 @@ message's content blocks (the Messages API's own names), and `ATOOL` for the too
 labeled by.
 
 **Offered by the module, not by core.** The menu entry is an overlay the assistant component adds
-(`AssistantComponent.uiBlocks`), gated on `administersClient` and the module's cfact `assistant:on`, placed right after
-Reports by reading the base menu's numbering (`orderAfter`). Core names no cfact that exists only while the module is
-loaded -- a cfact expression naming an undeclared cfact is refused. The operator's page (`/wa/operator/assistant`,
+(`AssistantComponent.uiBlocks`), gated on `administersClient` and the module's cfact `assistant:usable`, placed right
+after Reports by reading the base menu's numbering (`orderAfter`). `assistant:usable` is `assistant:on` and, in a
+sandbox, the endpoints' own rule (`AssistantTurns.personOrNull`), so the menu never offers the page to a caller every
+assistant endpoint would refuse -- "see" and "use" are one answer. Core names no cfact that exists only while the module
+is loaded -- a cfact expression naming an undeclared cfact is refused. A client's menu editor lists the entry under its
+shipped condition, which has no audience name: it may be put back to it, "As shipped" (`HomeMenuAudiences.choicesFor`). The operator's page (`/wa/operator/assistant`,
 `OperatorAssistantPage.kt`) is offered the same way under the Operator group. Both routes exist unconditionally; where
 the module is not loaded the page says it could not load the assistant.
 
@@ -40,8 +43,10 @@ Panels, by the rules of "Page structure" in `webapp/CLAUDE.md`:
    sandbox), where Check impact and Publish selected live. The Clients page follows a named panel (`HP.section`) while
    the sections above it fill in, until it stays put. **This page has no Publish button**, by design.
 4. **Allowance** (view): the month's use as a share of the budget, as a bar and a line (`allowanceText`), never an
-   amount -- money is the operator's -- and when it is used up, the day it starts again (UTC's first of the month)
-   and that an operator can raise it.
+   amount -- money is the operator's -- when it starts again, and once it is used up that an operator can raise it. Use
+   is kept by the UTC month, and when it starts again is shown in the client's zone as every moment is
+   (`formatTimestamp`): a client west of UTC reads the last afternoon of the month before. A failed re-read of the
+   status keeps what the page had, and says so here.
 
 **The transcript** (`transcriptItems`): what the person wrote, and the model's answers rendered as Markdown with the
 kernel's renderer. Its summarized thinking shows as muted notes; an empty note (thinking the API did not summarize)
@@ -55,7 +60,15 @@ cut to fit what the model is shown and then is not JSON: the label goes without 
 before the conversation first reads as running. Each poll reads only the messages after the last one the page has
 (`afterSeq`). The poll is the effect's own coroutine (`delay`), which React cancels when the effect re-runs or the page
 goes, so a wait never doubles up. Idle, the page reads nothing. A turn's end re-reads the status and the conversation
-list.
+list. **A failed poll is tried again**, each time later (`pollDelayMs`: 1.5 s doubling up to 12 s), so one dropped read
+never strands the page saying the assistant is working. A read is dropped when it comes back for a conversation no
+longer open -- its token is taken before a poll's wait, and the open conversation checked again on its answer -- so one
+conversation's messages never land in another's. The counters a coroutine bumps are bumped through their setters, never
+counted from the render that launched it. The transcript keeps its newest message in view, and is a polite live region.
+
+**A refused send is acted on**: a spent allowance, no sandbox, or the assistant off re-reads the status; a conversation
+that cannot go on, or one a turn is already running in, is read again, which blocks the box or follows the turn. Stop
+has its own failure line.
 
 **A message sent again keeps its id** (`messageIdFor`): a send that got no answer at all (`ApiFailure`) keeps the id it
 was given while its text is unchanged, so pressing Send again is the same turn on the server rather than a second one.
@@ -67,5 +80,6 @@ it. Choosing another conversation does not add a history entry.
 **The operator's page**: whether this node can reach the model (provider, model, or why not), and a table of every
 client -- its switch, its monthly budget in dollars (its own, or the default), this month's use in dollars and as a
 share, the model calls made, the last turn (relative time), and the share of input the prompt cache served. Each row's
-controls act at once. **Switch on…** asks first, showing the data notice, since switching a client on acknowledges it.
-Set a budget in dollars, or go back to the default.
+controls act at once, and each is an ordinary button: a row's control, not the page's one verb. **Switch on…** asks
+first, showing the data notice, since switching a client on acknowledges it. Set a budget in dollars -- "25", "$25", or
+"1,000.50" (`budgetDollarsOf`); anything else is said not to be an amount -- or go back to the default.

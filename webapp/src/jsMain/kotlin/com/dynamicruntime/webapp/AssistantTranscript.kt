@@ -218,32 +218,34 @@ fun pollsConversation(running: Boolean, pendingTurnId: String?, turns: List<Turn
 /** How often the page polls while it does, in milliseconds. */
 const val assistantPollMs = 1_500
 
+/**
+ * How long the page waits before its next poll after [failures] polls in a row failed: [assistantPollMs], doubling
+ * with each failure up to eight times as long, so a blip is ridden out and an outage is not hammered.
+ */
+fun pollDelayMs(failures: Int): Int = assistantPollMs shl failures.coerceIn(0, 3)
+
 /** The allowance as the page reads it (`ACNV.statusType`): this month's use as a share of the budget, and when it resets. */
 class AllowanceView(val usedShare: Double, val spent: Boolean, val resetsAt: String)
 
+/** A share as a whole percentage, from 0 to 100: "12" for 0.123. */
+fun sharePercent(share: Double): Int = if (share.isNaN()) 0 else (share * 100).toInt().coerceIn(0, 100)
+
 /** The allowance's percentage, whole, at most 100: "12". */
-fun allowancePercent(allowance: AllowanceView): Int = (allowance.usedShare * 100).toInt().coerceIn(0, 100)
+fun allowancePercent(allowance: AllowanceView): Int = sharePercent(allowance.usedShare)
 
 /**
  * The allowance panel's line (issue #1527): the share used, or -- once it is used up -- that it is, when it starts again,
- * and that an operator can raise it.
+ * and that an operator can raise it. When is the start of the month in UTC, which use is kept by, shown in [zone] as
+ * every moment is: a client west of UTC sees it start on the last afternoon of the month before.
  */
-fun allowanceText(allowance: AllowanceView): String = if (allowance.spent) {
-    "This month's allowance is used up, so the assistant cannot be sent anything until it starts again on " +
-        "${resetDayText(allowance.resetsAt)}. An operator can raise it."
-} else {
-    "${allowancePercent(allowance)}% of this month's allowance is used. It starts again on ${resetDayText(allowance.resetsAt)}."
-}
-
-private val monthNames = listOf(
-    "January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December",
-)
-
-/** The day a month's use starts again, from its instant: "December 1". UTC's day, which is the one it is kept by. */
-fun resetDayText(resetsAt: String): String {
-    val month = resetsAt.drop(5).take(2).toIntOrNull()?.let { monthNames.getOrNull(it - 1) } ?: return resetsAt.take(10)
-    val day = resetsAt.drop(8).take(2).toIntOrNull() ?: return resetsAt.take(10)
-    return "$month $day"
+fun allowanceText(allowance: AllowanceView, zone: String = DisplayZone.current): String {
+    val resets = formatTimestamp(allowance.resetsAt, zone)
+    return if (allowance.spent) {
+        "This month's allowance is used up, so the assistant cannot be sent anything until it starts again, $resets. " +
+            "An operator can raise it."
+    } else {
+        "${allowancePercent(allowance)}% of this month's allowance is used. It starts again $resets."
+    }
 }
 
 /**

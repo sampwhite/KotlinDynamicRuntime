@@ -2,7 +2,9 @@ package com.dynamicruntime.webapp
 
 import com.dynamicruntime.common.assistant.ABLK
 import com.dynamicruntime.common.assistant.ACNV
+import com.dynamicruntime.common.assistant.ASST
 import com.dynamicruntime.common.assistant.ATOOL
+import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.gedra.CCT
 import com.dynamicruntime.common.gedra.CFEP
 import com.dynamicruntime.common.gedra.CLD
@@ -150,15 +152,24 @@ class AssistantTranscriptTest {
     }
 
     @Test
-    fun theAllowanceSaysTheShareUsedOrThatItIsUsedUp() {
-        val part = AllowanceView(0.123, spent = false, resetsAt = "2026-12-01T00:00:00Z")
+    fun thePagePollsLaterAfterEachFailedPoll() {
+        assertEquals(listOf(1_500, 3_000, 6_000, 12_000, 12_000), (0..4).map { pollDelayMs(it) })
+    }
+
+    @Test
+    fun theAllowanceSaysTheShareUsedOrThatItIsUsedUpAndWhenItStartsAgainInTheClientsZone() {
+        val part = AllowanceView(0.123, spent = false, resetsAt = "2026-12-01T00:00:00.000Z")
         assertEquals(12, allowancePercent(part))
-        assertEquals("12% of this month's allowance is used. It starts again on December 1.", allowanceText(part))
+        assertEquals("12% of this month's allowance is used. It starts again Dec 1, 2026, 12:00 AM GMT.", allowanceText(part, "UTC"))
+        // West of UTC the month's use starts again on the last afternoon of the month before.
         val spent = AllowanceView(1.7, spent = true, resetsAt = "2027-01-01T00:00:00.000Z")
         assertEquals(100, allowancePercent(spent))
-        assertTrue(allowanceText(spent).contains("used up"))
-        assertTrue(allowanceText(spent).contains("January 1"))
-        assertTrue(allowanceText(spent).contains("An operator can raise it."))
+        assertEquals(
+            "This month's allowance is used up, so the assistant cannot be sent anything until it starts again, " +
+                "Dec 31, 2026, 6:00 PM CT. An operator can raise it.",
+            allowanceText(spent, "America/Chicago"),
+        )
+        assertEquals(0, sharePercent(Double.NaN))
     }
 
     @Test
@@ -173,6 +184,64 @@ class AssistantTranscriptTest {
         assertEquals(listOf("Drafted " to false, "rsvp" to true, " (v3)" to false), codeSpans("Drafted `rsvp` (v3)"))
         assertEquals(listOf(mapOf(ABLK.type to ABLK.text, ABLK.text to "Hi")), blocksOf("Hi"))
         assertEquals("$12.30", dollarsText(12.3))
-        assertEquals("$0.05", dollarsText(0.049))
+        assertEquals("$1,500.00", dollarsText(1500.0))
+    }
+
+    @Test
+    fun aBudgetTypedInDollarsIsReadAsAnAmountOrNotAtAll() {
+        assertEquals(25.0, budgetDollarsOf("25"))
+        assertEquals(25.0, budgetDollarsOf(" $25 "))
+        assertEquals(1000.5, budgetDollarsOf("1,000.50"))
+        for (notAnAmount in listOf("", "NaN", "0x10", "-5", "1e3", "Infinity", "$", "12.")) {
+            assertNull(budgetDollarsOf(notAnAmount), notAnAmount)
+        }
+    }
+
+    @Test
+    fun theWireIsReadAsThePageNeedsIt() {
+        val status = parseAssistantStatus(
+            mapOf(
+                ASST.client to "acme", ACNV.on to true, ACNV.hasSandbox to false, ACNV.sandboxInSource to true, ACNV.inSandbox to false,
+                ACNV.usedShare to 0.5, ACNV.spent to false, ACNV.resetsAt to "2026-12-01T00:00:00.000Z", ASST.dataNotice to "Sent.",
+            ),
+        )
+        assertEquals("acme", status.client)
+        assertTrue(status.on && status.sandboxInSource && !status.hasSandbox)
+        assertEquals(0.5, status.allowance.usedShare)
+
+        val read = parseConversationRead(
+            mapOf(
+                ACNV.conversation to mapOf(ACNV.conversationId to "c1", ACNV.title to "Hi", ACNV.running to true, ACNV.readOnly to false),
+                ACNV.messages to listOf(
+                    mapOf(ACNV.seq to 1, ACNV.turnId to "t1", ACNV.role to ABLK.user, ACNV.content to listOf(text("Hi"))),
+                ),
+                ACNV.turns to listOf(mapOf(ACNV.turnId to "t1", ACNV.text to "Hi", ACNV.status to ACNV.statusRunning)),
+            ),
+        )
+        assertEquals("c1", read.summary.conversationId)
+        assertTrue(read.summary.running)
+        assertEquals(1L, read.messages.single().seq)
+        assertEquals("Hi", read.messages.single().blocks.single()[ABLK.text])
+        assertEquals(ACNV.statusRunning, read.turns.single().status)
+
+        val clients = parseAssistantClients(
+            mapOf(
+                EP.items to listOf(
+                    mapOf(
+                        ASST.client to "acme", ASST.enabled to true, ASST.monthlyBudgetDollars to 20.0, ASST.budgetIsDefault to true,
+                        ASST.usedDollars to 1.25, ASST.calls to 4, ASST.cacheHitRatio to 0.5,
+                    ),
+                ),
+                EP.summary to mapOf(ASST.available to false, ASST.reason to "No key.", ASST.defaultMonthlyBudgetDollars to 20.0),
+            ),
+        )
+        assertFalse(clients.status.available)
+        assertEquals("No key.", clients.status.reason)
+        clients.clients.single().let {
+            assertTrue(it.enabled && it.budgetIsDefault)
+            assertEquals(4L, it.calls)
+            assertNull(it.lastUsedAt)
+            assertEquals(0.5, it.cacheHitRatio)
+        }
     }
 }

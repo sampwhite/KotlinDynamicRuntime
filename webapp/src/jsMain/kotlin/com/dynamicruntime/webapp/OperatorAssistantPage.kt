@@ -35,7 +35,8 @@ val OperatorAssistantPage = FC<Props> {
     val now = useRelativeClock()
     var read by useState<AssistantClientsRead?>(null)
     var loadError by useState<DisplayError?>(null)
-    var reads by useState(0)
+    // Bumped through its setter: two rows' changes finishing together must each count, not both count from one render.
+    val (reads, setReads) = useState(0)
 
     useEffect(generation, reads) {
         operatorAssistantScope.launch {
@@ -98,7 +99,7 @@ val OperatorAssistantPage = FC<Props> {
                                     this.line = line
                                     dataNotice = node.dataNotice
                                     this.now = now
-                                    onChanged = { reads += 1 }
+                                    onChanged = { setReads { it + 1 } }
                                 }
                             }
                         }
@@ -159,9 +160,9 @@ private val AssistantClientRow = FC<AssistantClientRowProps> { props ->
                     okText = "Switch on"
                     cancelText = "Cancel"
                     onConfirm = { set { AssistantApi.setClient(line.client, enabled = true, acknowledges = true) } }
+                    // A row's control, not the page's one verb: an ordinary button, as Switch off is.
                     Button {
                         size = "small"
-                        type = "primary"
                         disabled = busy
                         +"Switch on…"
                     }
@@ -178,12 +179,12 @@ private val AssistantClientRow = FC<AssistantClientRowProps> { props ->
                     disabled = busy
                     style = js("({ width: 110 })")
                     onChange = { e -> budget = e.target.value as String }
-                    onPressEnter = { budget.toDoubleOrNull()?.let { d -> set { AssistantApi.setClient(line.client, budgetDollars = d) } } }
+                    onPressEnter = { budgetDollarsOf(budget)?.let { d -> set { AssistantApi.setClient(line.client, budgetDollars = d) } } }
                 }
                 Button {
                     size = "small"
-                    disabled = busy || budget.toDoubleOrNull() == null
-                    onClick = { budget.toDoubleOrNull()?.let { d -> set { AssistantApi.setClient(line.client, budgetDollars = d) } } }
+                    disabled = busy || budgetDollarsOf(budget) == null
+                    onClick = { budgetDollarsOf(budget)?.let { d -> set { AssistantApi.setClient(line.client, budgetDollars = d) } } }
                     +"Set budget"
                 }
                 if (!line.budgetIsDefault) {
@@ -196,12 +197,15 @@ private val AssistantClientRow = FC<AssistantClientRowProps> { props ->
                     }
                 }
             }
+            if (budget.isNotBlank() && budgetDollarsOf(budget) == null) {
+                p { className = ClassName("type-hint"); +"An amount in dollars, such as 25 or 1,000.50." }
+            }
             error?.let { errorText("Couldn't set ${line.client}.", it) }
         }
         td {
             +dollarsText(line.usedDollars)
             if (line.budgetDollars > 0) {
-                span { className = ClassName("type-hint"); +" ${(line.usedDollars / line.budgetDollars * 100).toInt()}%" }
+                span { className = ClassName("type-hint"); +" ${sharePercent(line.usedDollars / line.budgetDollars)}%" }
             }
         }
         td { +line.calls.toString() }

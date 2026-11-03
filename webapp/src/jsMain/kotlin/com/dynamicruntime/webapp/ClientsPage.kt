@@ -207,23 +207,22 @@ val ClientsPage = FC<Props> {
     }
 
     // A panel the address names (issue #1527): the assistant page's "Check impact and publish" leads to the publishing
-    // panel. The sections above it fill in as their reads answer, moving it down, so it is followed until it has stayed
-    // put for two checks -- or for at most five seconds, so a reader who scrolls away is not pulled back for long.
+    // panel. The sections above it fill in as their reads answer, moving it down, so it is followed for five seconds --
+    // scrolled to again whenever it moves -- unless the reader scrolls the page themselves, which ends it at once.
     val section = routeParams()[HP.section]
     useEffect(section) {
         if (section == null) return@useEffect
         var lastTop: Double? = null
-        var steady = 0
+        var scrolledTo: Double? = null
         repeat(sectionFollowChecks) {
+            if (scrolledTo != null && window.scrollY != scrolledTo) return@useEffect
             val panel = document.getElementById(section)
             if (panel != null) {
                 val top = panel.getBoundingClientRect().top + window.scrollY
-                if (top == lastTop) {
-                    if (++steady >= 2) return@useEffect
-                } else {
-                    steady = 0
+                if (top != lastTop) {
                     lastTop = top
                     panel.asDynamic().scrollIntoView(js("({ block: 'start' })"))
+                    scrolledTo = window.scrollY
                 }
             }
             delay(sectionFollowMs.milliseconds)
@@ -672,14 +671,14 @@ private const val panelDefinition = "client-definition"
 private const val panelFormsData = "client-forms-data"
 private const val panelCopy = "client-copy"
 private const val panelImages = "client-images"
-/** How often, and how many times, a panel the address names is checked while the page above it fills in. */
-private const val sectionFollowMs = 200
-private const val sectionFollowChecks = 25
-
 /** Public, unlike its neighbors: the assistant page's "Check impact and publish" leads to it (issue #1527). */
 const val panelPublishing = "client-publishing"
 private const val panelMenu = "client-menu"
 private const val panelRetirement = "client-retirement"
+
+/** How often, and how many times, a panel the address names is checked while the page above it fills in. */
+private const val sectionFollowMs = 200
+private const val sectionFollowChecks = 25
 
 /** The publishing panel's heading: a sandbox has no sandbox of its own, only its parent's configuration. */
 private fun publishingHeading(row: ClientOverview?): String = if (row?.sandboxOf != null) "Publishing" else "Sandbox and publishing"

@@ -55,8 +55,9 @@ val AssistantPage = FC<Props> {
     val bump = useRefreshBump()
     var status by useState<AssistantStatus?>(null)
     var statusError by useState<DisplayError?>(null)
-    // Bumped when something the status shows may have changed: a turn ended, or a send was refused for it.
-    var statusReads by useState(0)
+    // Bumped when something the status shows may have changed: a turn ended, or a send was refused for it. Counters
+    // are bumped through their setters, since a bump from a coroutine must not count from the render that launched it.
+    val (statusReads, setStatusReads) = useState(0)
     var conversations by useState<List<ConversationSummary>?>(null)
     var conversationId by useState(routeParams()[HP.conversation])
     var summary by useState<ConversationSummary?>(null)
@@ -65,21 +66,29 @@ val AssistantPage = FC<Props> {
     var readError by useState<DisplayError?>(null)
     // The turn just sent, until the conversation says it has ended: polled for even before it reads as running.
     var pendingTurnId by useState<String?>(null)
-    var pollTick by useState(0)
+    val (pollTick, setPollTick) = useState(0)
+    // Polls failed in a row: each waits longer before the next (pollDelayMs), and a success starts over.
+    var pollFailures by useState(0)
     var text by useState("")
     // The id and the text of a message sent and not answered, so sending it again starts no second turn.
     var unanswered by useState<Pair<String, String>?>(null)
     var sending by useState(false)
     var stopping by useState(false)
     var sendError by useState<DisplayError?>(null)
+    var stopError by useState<DisplayError?>(null)
     var sandboxBusy by useState(false)
     var sandboxError by useState<DisplayError?>(null)
     var tryError by useState<DisplayError?>(null)
-    // Drops an answer for a conversation the page has moved on from.
+    // Drops an answer for a conversation the page has moved on from: a read's token must still be current, and the
+    // conversation it read still the one open.
     val readToken = useRef(0)
+    val openId = useRef<String>(null)
+    openId.current = conversationId
+    val transcriptBox = useRef<dynamic>(null)
 
     useEffect(generation, statusReads) {
         assistantScope.launch {
+            // A failed re-read keeps the status the page has: the conversation stays, and the allowance says it is old.
             try {
                 status = AssistantApi.status()
                 statusError = null
@@ -88,35 +97,47 @@ val AssistantPage = FC<Props> {
             }
         }
         assistantScope.launch {
-            apiResult { AssistantApi.conversations() }.valueOrNull()?.let { conversations = it }
+            when (val listed = apiResult { AssistantApi.conversations() }) {
+                is ApiResult.Ok -> conversations = listed.value
+                else -> console.error("$errorLogPrefix could not list the assistant's conversations: ${listed.failureOrNull()?.message}")
+            }
         }
     }
 
-    /** Reads the open conversation: whole when [whole], else only the messages after those the page has. */
-    fun read(id: String, whole: Boolean) {
-        val token = readToken.current ?: 0
+    /**
+     * Reads the open conversation [id]: whole when [whole], else only the messages after those the page has. [token] is
+     * the read token as the read was asked for -- a poll's, before its wait -- so a conversation opened meanwhile drops it.
+     */
+    fun read(id: String, whole: Boolean, token: Int = readToken.current ?: 0) {
         val after = if (whole) 0L else messages.lastOrNull()?.seq ?: 0L
+        val wasPolling = pollsConversation(summary?.running == true, pendingTurnId, turns)
         assistantScope.launch {
+            fun current() = readToken.current == token && openId.current == id
             try {
                 val loaded = AssistantApi.conversation(id, after)
-                if (readToken.current != token) return@launch
+                if (!current()) return@launch
                 summary = loaded.summary
                 messages = if (whole) loaded.messages else messages + loaded.messages.filter { m -> messages.none { it.seq == m.seq } }
-                val wasPolling = pollsConversation(summary?.running == true, pendingTurnId, turns)
                 turns = loaded.turns
                 readError = null
-                val pending = pendingTurnId
-                if (pending != null && loaded.turns.any { it.turnId == pending && it.status != ACNV.statusRunning }) {
-                    pendingTurnId = null
-                }
-                if (pollsConversation(loaded.summary.running, pendingTurnId, loaded.turns)) {
-                    pollTick += 1
+                pollFailures = 0
+                val pending = pendingTurnId?.takeIf { p -> loaded.turns.none { it.turnId == p && it.status != ACNV.statusRunning } }
+                pendingTurnId = pending
+                if (pollsConversation(loaded.summary.running, pending, loaded.turns)) {
+                    setPollTick { it + 1 }
                 } else if (wasPolling || !whole) {
                     // A turn ended: what it spent, and the conversation's place in the list, are read again.
-                    statusReads += 1
+                    setStatusReads { it + 1 }
                 }
             } catch (e: Throwable) {
-                if (readToken.current == token) readError = userFacingError(e)
+                if (!current()) return@launch
+                readError = userFacingError(e)
+                // A failed poll is tried again, each time a little later: a turn the page was following keeps going on
+                // the server, and its answer must not be lost to one dropped read.
+                if (wasPolling) {
+                    pollFailures += 1
+                    setPollTick { it + 1 }
+                }
             }
         }
     }
@@ -124,6 +145,7 @@ val AssistantPage = FC<Props> {
     // A conversation opened -- from the address, the list, or a first message -- is read whole.
     useEffect(conversationId) {
         readToken.current = (readToken.current ?: 0) + 1
+        pollFailures = 0
         messages = emptyList()
         turns = emptyList()
         summary = null
@@ -136,13 +158,23 @@ val AssistantPage = FC<Props> {
     useEffect(pollTick) {
         val id = conversationId
         if (pollTick == 0 || id == null) return@useEffect
-        delay(assistantPollMs.milliseconds)
-        read(id, whole = false)
+        val token = readToken.current ?: 0
+        delay(pollDelayMs(pollFailures).milliseconds)
+        read(id, whole = false, token = token)
+    }
+
+    // The newest message in view as messages arrive, as a chat's is.
+    useEffect(messages.size) {
+        val box: dynamic = transcriptBox.current
+        if (box != null) box.scrollTop = box.scrollHeight
     }
 
     fun open(id: String?) {
         pendingTurnId = null
         sendError = null
+        stopError = null
+        // A message never answered belongs to the conversation it was sent in; here it is a new one.
+        unanswered = null
         replaceRoute(listOfNotNull(HP.page to ASST.page, id?.let { HP.conversation to it }))
         conversationId = id
     }
@@ -164,13 +196,18 @@ val AssistantPage = FC<Props> {
                     replaceRoute(listOf(HP.page to ASST.page, HP.conversation to conversation))
                     conversationId = conversation
                 } else {
-                    pollTick += 1
+                    setPollTick { it + 1 }
                 }
             } catch (e: ApiError) {
                 // Answered, if refused: a new message, or this one sent again, gets an id of its own.
                 unanswered = null
                 sendError = userFacingError(e)
-                if (e.errorCode in setOf(ACNV.budgetSpentCode, ACNV.noSandboxCode, ACNV.notOnCode, ACNV.readOnlyCode)) statusReads += 1
+                when (e.errorCode) {
+                    ACNV.budgetSpentCode, ACNV.noSandboxCode, ACNV.notOnCode -> setStatusReads { it + 1 }
+                    // The conversation changed under the page: read again, it says it cannot go on, or that a turn runs
+                    // in it -- which the read then follows.
+                    ACNV.readOnlyCode, ACNV.busyCode -> conversationId?.let { read(it, whole = false) }
+                }
             } catch (e: Throwable) {
                 sendError = userFacingError(e)
             } finally {
@@ -182,12 +219,13 @@ val AssistantPage = FC<Props> {
     fun stop() {
         val id = conversationId ?: return
         stopping = true
+        stopError = null
         assistantScope.launch {
             try {
                 AssistantApi.cancel(id)
-                pollTick += 1
+                setPollTick { it + 1 }
             } catch (e: Throwable) {
-                sendError = userFacingError(e)
+                stopError = userFacingError(e)
             } finally {
                 stopping = false
             }
@@ -241,7 +279,7 @@ val AssistantPage = FC<Props> {
         }
         val current = status
         when {
-            statusError != null -> errorText("Couldn't load the assistant.", statusError!!)
+            current == null && statusError != null -> errorText("Couldn't load the assistant.", statusError!!)
             current == null -> p { className = ClassName("subtitle"); +"Loading…" }
             !current.on -> p {
                 className = ClassName("subtitle")
@@ -292,9 +330,8 @@ val AssistantPage = FC<Props> {
                     }
                 }
                 panel(panelConversation, "Conversation", kind = PanelKind.live) {
-                    conversationPicker(conversations, conversationId, running) { open(it) }
-                    readError?.let { errorText("Couldn't read the conversation.", it) }
-                    transcript(transcriptItems(messages), running)
+                    conversationPicker(conversations, conversationId, summary, running) { open(it) }
+                    transcript(transcriptItems(messages), running, transcriptBox)
                     turnEndText(turns.lastOrNull()?.takeIf { !running })?.let { p { className = ClassName("type-hint"); +it } }
                     val readOnly = summary?.readOnly == true
                     val blocked = when {
@@ -305,6 +342,7 @@ val AssistantPage = FC<Props> {
                     }
                     textarea {
                         className = ClassName("assistant-input")
+                        asDynamic()["aria-label"] = "Message to the assistant"
                         value = text
                         disabled = sending || blocked != null
                         placeholder = if (conversationId == null) {
@@ -346,6 +384,9 @@ val AssistantPage = FC<Props> {
                         }
                     }
                     panelNote(sendError, null, "Couldn't send the message.")
+                    panelNote(stopError, null, "Couldn't stop the assistant.")
+                    val readLead = if (running) "Couldn't read the conversation; trying again." else "Couldn't read the conversation."
+                    panelNote(readError, null, readLead)
                 }
                 panel(panelDrafts, "Drafts from this conversation") {
                     if (drafts.isEmpty()) {
@@ -356,7 +397,7 @@ val AssistantPage = FC<Props> {
                             className = ClassName("type-hint")
                             +"In the sandbox, Design View in the app bar shows which definitions are behind what you see."
                         }
-                        tryError?.let { errorText("Couldn't open the sandbox.", it) }
+                        panelNote(tryError, null, "Couldn't open the sandbox.")
                     }
                 }
                 panel(panelAllowance, "Allowance") {
@@ -370,6 +411,7 @@ val AssistantPage = FC<Props> {
                         }
                     }
                     p { +allowanceText(current.allowance) }
+                    panelNote(statusError, null, "Couldn't read the allowance again; this is what it was.")
                 }
             }
         }
@@ -380,15 +422,22 @@ val AssistantPage = FC<Props> {
 private fun ChildrenBuilder.conversationPicker(
     conversations: List<ConversationSummary>?,
     openId: String?,
+    open: ConversationSummary?,
     running: Boolean,
     onOpen: (String?) -> Unit,
 ) {
+    // One just begun is not in the list until the list is read again: named by its own summary meanwhile.
+    val listed = conversations.orEmpty().map { it.conversationId to it.title }
+    val choices = listed + listOfNotNull(
+        openId?.takeIf { id -> listed.none { it.first == id } }?.let { it to (open?.title ?: "This conversation") },
+    )
     div {
         className = ClassName("row")
         Select {
             value = openId ?: ""
             disabled = running
-            options = (listOf("" to "New conversation") + conversations.orEmpty().map { it.conversationId to it.title }).map { (v, l) ->
+            asDynamic()["aria-label"] = "Conversation"
+            options = (listOf("" to "New conversation") + choices).map { (v, l) ->
                 val o: dynamic = js("({})")
                 o.label = l
                 o.value = v
@@ -409,10 +458,13 @@ private fun ChildrenBuilder.conversationPicker(
 }
 
 /** The transcript: each thing said, each note, and each line of tool calls, which opens to the calls and their results. */
-private fun ChildrenBuilder.transcript(items: List<TranscriptItem>, running: Boolean) {
+private fun ChildrenBuilder.transcript(items: List<TranscriptItem>, running: Boolean, box: react.RefObject<dynamic>) {
     if (items.isEmpty() && !running) return
     div {
         className = ClassName("assistant-transcript")
+        ref = box.unsafeCast<react.Ref<web.html.HTMLDivElement>>()
+        // Read out as answers arrive, without taking the reader's place.
+        asDynamic()["aria-live"] = "polite"
         for (item in items) {
             when (item) {
                 is TranscriptItem.Said -> div {

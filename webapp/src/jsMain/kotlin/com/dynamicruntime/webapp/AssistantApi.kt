@@ -3,6 +3,7 @@ package com.dynamicruntime.webapp
 import com.dynamicruntime.common.assistant.ACNV
 import com.dynamicruntime.common.assistant.ASST
 import com.dynamicruntime.common.endpoint.EP
+import com.dynamicruntime.common.util.currencyText
 import com.dynamicruntime.common.util.getOptStr
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
@@ -127,11 +128,19 @@ fun parseAssistantClients(envelope: Map<String, Any?>): AssistantClientsRead {
     )
 }
 
-/** Dollars as the operator's page shows them: "$12.34". Pure. */
-fun dollarsText(dollars: Double): String {
-    val cents = kotlin.math.round(dollars * 100).toLong()
-    return "$" + (cents / 100).toString() + "." + (cents % 100).toString().padStart(2, '0')
+/** Dollars as the operator's page shows them, by the kernel's own currency rule: "$1,234.50". Pure. */
+fun dollarsText(dollars: Double): String = currencyText(dollars, "USD")
+
+/**
+ * A budget the operator typed, in dollars, or null when it is not an amount: "25", "$25", "1,000.50" are; "NaN", "0x10",
+ * "-5", and "" are not. The backend holds it to its bounds.
+ */
+fun budgetDollarsOf(text: String): Double? {
+    val plain = text.trim().removePrefix("$").replace(",", "")
+    return if (budgetPattern.matches(plain)) plain.toDouble() else null
 }
+
+private val budgetPattern = Regex("""\d+(\.\d+)?""")
 
 /** The calls behind the workflow assistant's page and the operator's (issue #1527). */
 object AssistantApi {
