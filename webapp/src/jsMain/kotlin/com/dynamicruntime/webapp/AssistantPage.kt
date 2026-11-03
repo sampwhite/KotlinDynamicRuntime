@@ -35,6 +35,7 @@ private val assistantScope = MainScope()
 
 /** The page's panels' element ids, which the links at its top lead to. */
 private const val panelSandbox = "assistant-sandbox"
+private const val panelSwitchOn = "assistant-switch-on"
 private const val panelConversation = "assistant-conversation"
 private const val panelDrafts = "assistant-drafts"
 private const val panelAllowance = "assistant-allowance"
@@ -78,6 +79,8 @@ val AssistantPage = FC<Props> {
     var stopError by useState<DisplayError?>(null)
     var sandboxBusy by useState(false)
     var sandboxError by useState<DisplayError?>(null)
+    var switchBusy by useState(false)
+    var switchError by useState<DisplayError?>(null)
     var tryError by useState<DisplayError?>(null)
     // Drops an answer for a conversation the page has moved on from: a read's token must still be current, and the
     // conversation it read still the one open.
@@ -85,15 +88,23 @@ val AssistantPage = FC<Props> {
     val openId = useRef<String>(null)
     openId.current = conversationId
     val transcriptBox = useRef<dynamic>(null)
+    // Taken by each status read and by a switch-on, so only the latest answer is shown: a read already under way when
+    // the assistant is switched on must not put the switch-on panel back.
+    val statusToken = useRef(0)
 
     useEffect(generation, statusReads) {
+        val token = (statusToken.current ?: 0) + 1
+        statusToken.current = token
         assistantScope.launch {
             // A failed re-read keeps the status the page has: the conversation stays, and the allowance says it is old.
             try {
-                status = AssistantApi.status()
-                statusError = null
+                val read = AssistantApi.status()
+                if (statusToken.current == token) {
+                    status = read
+                    statusError = null
+                }
             } catch (e: Throwable) {
-                statusError = userFacingError(e)
+                if (statusToken.current == token) statusError = userFacingError(e)
             }
         }
         assistantScope.launch {
@@ -248,6 +259,25 @@ val AssistantPage = FC<Props> {
         }
     }
 
+    // The person switches the assistant on for their own client, where it is offered (issue #1568).
+    fun switchOn() {
+        switchBusy = true
+        switchError = null
+        val token = (statusToken.current ?: 0) + 1
+        statusToken.current = token
+        assistantScope.launch {
+            try {
+                val switched = AssistantApi.switchOn()
+                if (statusToken.current == token) status = switched
+                setStatusReads { it + 1 }
+            } catch (e: Throwable) {
+                switchError = userFacingError(e)
+            } finally {
+                switchBusy = false
+            }
+        }
+    }
+
     // Into the sandbox (unless already there), at the draft's workflow's forms -- or the forms, for traits.
     fun tryIt(draft: AssistantDraft, inSandbox: Boolean) {
         val to = draft.workflowIds.firstOrNull()?.let { listOf(HP.page to pageWorkflowForms, WAGG.workflowId to it) }
@@ -278,14 +308,43 @@ val AssistantPage = FC<Props> {
             )
         }
         val current = status
-        when {
-            current == null && statusError != null -> errorText("Couldn't load the assistant.", statusError!!)
-            current == null -> p { className = ClassName("subtitle"); +"Loading…" }
-            !current.on -> p {
-                className = ClassName("subtitle")
-                +"The workflow assistant is not on for ${current.client}. A deployment operator switches it on for a client."
+        when (assistantViewOf(current, statusError != null)) {
+            AssistantView.failed -> errorText("Couldn't load the assistant.", statusError!!)
+            AssistantView.loading -> p { className = ClassName("subtitle"); +"Loading…" }
+            AssistantView.switchOn -> panel(panelSwitchOn, "Switch on the assistant", kind = PanelKind.live) {
+                val name = current!!.clientName
+                p {
+                    +(
+                        "The workflow assistant is not on for $name yet, and you can switch it on. It works within a monthly " +
+                            "allowance, which this page shows once it is on."
+                    )
+                }
+                p { +current.dataNotice }
+                Popconfirm {
+                    title = "Switch on the workflow assistant for $name?"
+                    description = "What you write to it, and what it reads for you, is sent to Anthropic."
+                    okText = "Switch on"
+                    cancelText = "Cancel"
+                    onConfirm = { switchOn() }
+                    Button {
+                        type = "primary"
+                        loading = switchBusy
+                        +"Switch on the assistant"
+                    }
+                }
+                panelNote(switchError, null, "Couldn't switch the assistant on.")
             }
-            else -> {
+            AssistantView.switchOnFromClient -> p {
+                className = ClassName("subtitle")
+                val name = current!!.clientName
+                +"The workflow assistant is not on for $name yet. Leave the sandbox to switch it on from $name itself."
+            }
+            AssistantView.off -> p {
+                className = ClassName("subtitle")
+                +"The workflow assistant is not on for ${current!!.clientName}. A deployment operator switches it on for a client."
+            }
+            AssistantView.on -> {
+                current!!
                 val running = summary?.running == true || pendingTurnId != null
                 val drafts = draftsOf(messages)
                 panelLinks(

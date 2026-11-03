@@ -9,6 +9,7 @@ import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.ClientService
 import com.dynamicruntime.common.gedra.isSandboxClient
+import com.dynamicruntime.common.gedra.isSelfServeClient
 import com.dynamicruntime.common.gedra.sandboxParentOf
 import com.dynamicruntime.common.logging.LogStartup
 import com.dynamicruntime.common.sql.PF
@@ -76,6 +77,18 @@ class AssistantService : ServiceInitializer {
     @Volatile
     @KdrPrivate
     var clientCache: SqlTableCache<Map<String, Any?>>? = null
+
+    /**
+     * The clients this node has found a row for (issue #1568): never forgotten, since a client's row is set, never
+     * removed. With [unsetCheckedAt], what keeps [offeredTo] -- which a cfact asks on every assembly -- from asking SQL
+     * each time: the table cache holds enabled rows only, so it cannot say a client was switched off.
+     */
+    @KdrPrivate
+    val setClients: MutableSet<String> = ConcurrentHashMap.newKeySet()
+
+    /** When this node last found no row for a client, in epoch milliseconds: asked again after [unsetRecheckMs]. */
+    @KdrPrivate
+    val unsetCheckedAt = ConcurrentHashMap<String, Long>()
 
     @Volatile
     @KdrPrivate
@@ -146,6 +159,60 @@ class AssistantService : ServiceInitializer {
         return cache.snapshot.get(cache.idOf(payer)) != null
     }
 
+    /**
+     * Whether [client]'s administrator may switch the assistant on themselves (issue #1568): this node has a model, the
+     * deployment offers it to self-serve clients ([AENV.selfServe]), [client] is one, and nobody has set it yet -- so an
+     * operator's choice, off as much as on, stands. Never inside a sandbox: a client is switched on from itself. Read
+     * from the switch's cache first, so only a self-serve client that is off asks SQL whether it was ever set.
+     */
+    fun offeredTo(cxt: KdrCxt, client: String): Boolean {
+        if (model == null || !settings.selfServe || isSandboxClient(client) || !isSelfServeClient(client)) return false
+        if (ClientService.getOrNull(cxt)?.isPresent(client) != true || isOn(cxt, client)) return false
+        return !isSet(cxt, client)
+    }
+
+    /**
+     * Whether anybody has set [client]'s switch, on or off. A row once found is remembered ([setClients]); none found is
+     * asked again only after [unsetRecheckMs], so a client whose administrator keeps the page open costs SQL a few times
+     * a minute at most, whoever on it asks. An answer that has gone stale can only offer what [switchOn] then refuses,
+     * since that asks again under the row's lock.
+     */
+    @KdrPrivate
+    fun isSet(cxt: KdrCxt, client: String): Boolean {
+        if (client in setClients) return true
+        val now = cxt.now().toEpochMilliseconds()
+        unsetCheckedAt[client]?.let { if (now - it < unsetRecheckMs) return false }
+        val set = clientRow(cxt, client) != null
+        if (set) {
+            setClients.add(client)
+            unsetCheckedAt.remove(client)
+        } else {
+            unsetCheckedAt[client] = now
+        }
+        return set
+    }
+
+    /**
+     * Switches the assistant on for [client] as its own administrator on [cxt], where it is offered ([offeredTo]): the
+     * administrator has acknowledged what is sent to the model ([acknowledgedNotice]), which is recorded as an
+     * operator's is, and the client starts with the self-serve budget. Refused when it is not offered -- and asked again
+     * under the row's lock, so an operator's setting made meanwhile, off as much as on, is never written over, and a
+     * second switch-on racing the first is refused rather than repeated.
+     */
+    fun switchOn(cxt: KdrCxt, client: String, acknowledgedNotice: Boolean): Map<String, Any?> {
+        if (!offeredTo(cxt, client)) throw notOffered(client)
+        return setClient(
+            cxt, client, enabled = true, settings.selfServeBudget, useDefaultBudget = false, acknowledgedNotice, onlyIfUnset = true,
+        )
+    }
+
+    /** The refusal of a switch-on where the assistant is not offered. */
+    @KdrPrivate
+    fun notOffered(client: String): KdrException = AssistantTurns.refused(
+        "The workflow assistant is not offered to '$client' to switch on; an operator switches it on.",
+        EXC.notAuthorized, ACNV.notOfferedCode,
+    )
+
     /** [client]'s row, switched on or off; null when an operator has never set it. Always from SQL. */
     fun clientRow(cxt: KdrCxt, client: String): Map<String, Any?>? {
         val sqlCxt = SqlTopicService.mkSqlCxt(cxt, ATBL.topic)
@@ -187,6 +254,8 @@ class AssistantService : ServiceInitializer {
         monthlyBudget: Long?,
         useDefaultBudget: Boolean,
         acknowledgedNotice: Boolean,
+        /** Refuse, under the row's lock, when the client has a row already: a self-serve switch-on ([switchOn]). */
+        onlyIfUnset: Boolean = false,
     ): Map<String, Any?> {
         if (isSandboxClient(client)) {
             throw KdrException.mkInput("'$client' is a sandbox; it goes by its parent, '${payerOf(client)}'.")
@@ -201,12 +270,15 @@ class AssistantService : ServiceInitializer {
             throw KdrException.mkInput("A ${ASST.monthlyBudget} must be at least 1, not $monthlyBudget.")
         }
         val existed = clientRow(cxt, client) != null
-        return try {
-            writeClient(cxt, client, enabled, monthlyBudget, useDefaultBudget, acknowledgedNotice)
+        val written = try {
+            writeClient(cxt, client, enabled, monthlyBudget, useDefaultBudget, acknowledgedNotice, onlyIfUnset)
         } catch (e: KdrException) {
-            if (existed || e.code == EXC.badInput || clientRow(cxt, client) == null) throw e
-            writeClient(cxt, client, enabled, monthlyBudget, useDefaultBudget, acknowledgedNotice)
+            if (existed || e.code == EXC.badInput || e.code == EXC.notAuthorized || clientRow(cxt, client) == null) throw e
+            writeClient(cxt, client, enabled, monthlyBudget, useDefaultBudget, acknowledgedNotice, onlyIfUnset)
         }
+        setClients.add(client)
+        unsetCheckedAt.remove(client)
+        return written
     }
 
     /** One locked read-modify-write of [client]'s row, for [setClient]. */
@@ -218,6 +290,7 @@ class AssistantService : ServiceInitializer {
         monthlyBudget: Long?,
         useDefaultBudget: Boolean,
         acknowledgedNotice: Boolean,
+        onlyIfUnset: Boolean = false,
     ): Map<String, Any?> {
         val table = ATBL.table(cxt, ATBL.clients)
         val sqlCxt = SqlTopicService.mkSqlCxt(cxt, ATBL.topic)
@@ -232,6 +305,7 @@ class AssistantService : ServiceInitializer {
         db.withTran(cxt) {
             db.executeStatement(cxt, lock, key)
             val prior = db.queryOneStatement(cxt, SqlTopicUtil.mkTableSelectStmt(sqlCxt, table), key)
+            if (onlyIfUnset && prior != null) throw notOffered(client)
             val wasOn = prior?.get(PF.enabled) == true
             val on = enabled ?: wasOn
             if (on && !wasOn && !acknowledgedNotice) {
@@ -384,6 +458,9 @@ class AssistantService : ServiceInitializer {
 
         /** The instance-config key a test hands in its own [AssistantModel] under. */
         const val modelConfigKey = "assistantModel"
+
+        /** How long a node trusts having found no row for a client ([isSet]) before asking again. */
+        const val unsetRecheckMs = 30_000L
 
         fun get(cxt: KdrCxt): AssistantService =
             getOrNull(cxt) ?: throw KdrException("The $serviceName is not available on this node.")

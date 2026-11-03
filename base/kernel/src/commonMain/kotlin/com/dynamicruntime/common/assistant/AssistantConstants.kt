@@ -120,6 +120,12 @@ object ACNV {
      */
     const val statusPath = "/${SECT.clientAdmin}/assistant/status"
 
+    /**
+     * Switches the assistant on for the caller's own client, where it is offered (issue #1568): a self-serve client, on
+     * a deployment that offers it to them. The client's administrator acknowledges the data notice, as an operator does.
+     */
+    const val switchOnPath = "/${SECT.clientAdmin}/assistant/switchOn"
+
     // --- Type names ---
     const val statusType = "AssistantClientStatus"
     const val startedType = "AssistantTurnStarted"
@@ -156,6 +162,12 @@ object ACNV {
     // A row's protocol date, as a summary carries it: the backend's `PF.updatedAt`, which the kernel cannot name.
     const val updatedAt = "updatedAt"
     const val on = "on"
+
+    /** Whether the client's administrator may switch the assistant on themselves ([switchOnPath], issue #1568). */
+    const val offered = "offered"
+
+    /** The client's display name, which a person who named a self-serve client knows it by (issue #1568). */
+    const val clientName = "clientName"
     const val hasSandbox = "hasSandbox"
     const val sandboxInSource = "sandboxInSource"
     const val inSandbox = "inSandbox"
@@ -173,6 +185,8 @@ object ACNV {
 
     // --- Error codes a refused message carries (`errorCode`), for the page to act on ---
     const val notOnCode = "assistantNotOn"
+    const val notOfferedCode = "assistantNotOffered"
+    const val inSandboxCode = "assistantInSandbox"
     const val noSandboxCode = "noSandbox"
     const val budgetSpentCode = "budgetSpent"
     const val turnLimitCode = "turnLimit"

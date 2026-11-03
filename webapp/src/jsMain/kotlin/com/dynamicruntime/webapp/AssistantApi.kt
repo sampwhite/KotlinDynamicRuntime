@@ -17,13 +17,46 @@ class AssistantStatus(
     /** The client the assistant works for: the person's, or the one whose sandbox they are in. */
     val client: String,
     val on: Boolean,
+    /**
+     * Whether the client's administrator may switch the assistant on (issue #1568): a self-serve client. From the
+     * client itself, never its sandbox ([inSandbox]).
+     */
+    val offered: Boolean,
     val hasSandbox: Boolean,
     /** Whether the client is defined in source code, where its sandbox is turned on -- not from this page. */
     val sandboxInSource: Boolean,
     val inSandbox: Boolean,
     val allowance: AllowanceView,
     val dataNotice: String,
+    /** The client's display name, which a person knows a self-serve client by; its id when it has none. */
+    val clientName: String = client,
 )
+
+/** Which face the assistant page shows (issue #1568). */
+@Suppress("EnumEntryName")
+enum class AssistantView {
+    loading,
+    failed,
+
+    /** Off, and the person may switch it on here. */
+    switchOn,
+
+    /** Off and offered, but the person is in the client's sandbox: it is switched on from the client itself. */
+    switchOnFromClient,
+
+    /** Off, and only an operator switches it on. */
+    off,
+    on,
+}
+
+/** The face of the page for [status], or none read yet ([failed] when the read failed). Pure, and covered under `jsNodeTest`. */
+fun assistantViewOf(status: AssistantStatus?, failed: Boolean): AssistantView = when {
+    status == null -> if (failed) AssistantView.failed else AssistantView.loading
+    status.on -> AssistantView.on
+    status.offered && status.inSandbox -> AssistantView.switchOnFromClient
+    status.offered -> AssistantView.switchOn
+    else -> AssistantView.off
+}
 
 /** One of the person's conversations, for the list. */
 class ConversationSummary(
@@ -41,6 +74,7 @@ class ConversationRead(val summary: ConversationSummary, val messages: List<Stor
 fun parseAssistantStatus(results: Map<String, Any?>): AssistantStatus = AssistantStatus(
     client = results.getOptStr(ASST.client).orEmpty(),
     on = results[ACNV.on] == true,
+    offered = results[ACNV.offered] == true,
     hasSandbox = results[ACNV.hasSandbox] == true,
     sandboxInSource = results[ACNV.sandboxInSource] == true,
     inSandbox = results[ACNV.inSandbox] == true,
@@ -48,6 +82,7 @@ fun parseAssistantStatus(results: Map<String, Any?>): AssistantStatus = Assistan
         results[ACNV.usedShare].toOptDoubleOrNull() ?: 0.0, results[ACNV.spent] == true, results.getOptStr(ACNV.resetsAt).orEmpty(),
     ),
     dataNotice = results.getOptStr(ASST.dataNotice).orEmpty(),
+    clientName = results.getOptStr(ACNV.clientName) ?: results.getOptStr(ASST.client).orEmpty(),
 )
 
 /** One conversation summary. Pure. */
@@ -166,6 +201,11 @@ object AssistantApi {
         val started = Http.sendApi("POST", ACNV.messagePath, body)[EP.results].toJsonMapOrEmpty()
         return started.getOptStr(ACNV.conversationId).orEmpty() to started.getOptStr(ACNV.turnId).orEmpty()
     }
+
+    /** Switches the assistant on for the person's own client, acknowledging the data notice; answers the status after. */
+    suspend fun switchOn(): AssistantStatus = parseAssistantStatus(
+        Http.sendApi("POST", ACNV.switchOnPath, mapOf(ASST.acknowledgeDataNotice to true))[EP.results].toJsonMapOrEmpty(),
+    )
 
     suspend fun cancel(conversationId: String) {
         Http.sendApi("POST", ACNV.cancelPath, mapOf(ACNV.conversationId to conversationId))
