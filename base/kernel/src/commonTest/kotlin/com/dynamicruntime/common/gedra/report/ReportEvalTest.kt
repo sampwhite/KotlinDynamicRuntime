@@ -3,7 +3,7 @@ package com.dynamicruntime.common.gedra.report
 import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.gedra.GT
 import com.dynamicruntime.common.gedra.workflow.CDF
-import com.dynamicruntime.common.gedra.workflow.CDS
+import com.dynamicruntime.common.gedra.workflow.FSV
 import com.dynamicruntime.common.gedra.workflow.WFD
 import com.dynamicruntime.common.gedra.workflow.WFS
 import com.dynamicruntime.common.gedra.workflow.WSC
@@ -296,8 +296,8 @@ class ReportEvalTest {
         assertEquals(t0, value("meta.createdAt"))
         assertNull(value("meta.updatedAt"))
         // Status and cfacts come from the state entries, by the same readers the forms listing uses.
-        assertEquals(CDS.needsReview, value("meta.formStatus"))
-        assertEquals(CDS.valid, value("meta.coreDetailsStatus"))
+        assertEquals(FSV.needsReview, value("meta.formStatus"))
+        assertEquals(FSV.valid, value("meta.coreDetailsStatus"))
         assertEquals(listOf("big", WSC.needsReview), value("meta.cfacts"))
         assertNull(value("meta.formStatus", s = subject(states = emptyList())))
     }

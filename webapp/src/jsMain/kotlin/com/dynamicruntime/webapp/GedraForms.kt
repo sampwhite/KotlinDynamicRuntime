@@ -29,8 +29,7 @@ import com.dynamicruntime.common.gedra.UsageKind
 import com.dynamicruntime.common.gedra.presentColumnValue
 import com.dynamicruntime.common.util.ScriptEnv
 import com.dynamicruntime.common.util.parseDateOrNull
-import com.dynamicruntime.common.gedra.workflow.CDF
-import com.dynamicruntime.common.gedra.workflow.CDS
+import com.dynamicruntime.common.gedra.workflow.FSV
 import com.dynamicruntime.common.gedra.workflow.SWF
 import com.dynamicruntime.common.gedra.workflow.WFD
 import com.dynamicruntime.common.gedra.workflow.WSC
@@ -746,18 +745,18 @@ fun presentedCellTip(display: DisplayValue, shown: String): String? = when {
 }
 
 /**
- * A form's status for the forms-list column (issues #694, #789) and its filter (issue #695): the kernel's [CDS]
+ * A form's status for the forms-list column (issues #694, #789) and its filter (issue #695): the kernel's [FSV]
  * value on the [wire], the label the chip and the filter's choice show, and the [PSTAT] colour class the chip
  * renders in. The derivation itself is the kernel's `formStatusOf`, shared with the backend filter, so the column
  * and the filter cannot disagree -- **invalid trumps incomplete**, and a workflow's Needs Review or Finished takes
  * the place of Valid only.
  */
-enum class CoreDetailsStatus(val wire: String, val label: String, val pstat: String) {
-    valid(CDS.valid, "Valid", PSTAT.ok),
-    needsInfo(CDS.needsInfo, "Needs Info", PSTAT.warning),
-    invalid(CDS.invalid, "Invalid", PSTAT.error),
-    needsReview(CDS.needsReview, "Needs Review", PSTAT.info),
-    finished(CDS.finished, "Finished", PSTAT.ok),
+enum class FormStatus(val wire: String, val label: String, val pstat: String) {
+    valid(FSV.valid, "Valid", PSTAT.ok),
+    needsInfo(FSV.needsInfo, "Needs Info", PSTAT.warning),
+    invalid(FSV.invalid, "Invalid", PSTAT.error),
+    needsReview(FSV.needsReview, "Needs Review", PSTAT.info),
+    finished(FSV.finished, "Finished", PSTAT.ok),
     ;
 
     /**
@@ -772,17 +771,17 @@ enum class CoreDetailsStatus(val wire: String, val label: String, val pstat: Str
         }
 
     companion object {
-        /** The status a [CDS] wire value names, or null for anything else. */
-        fun fromWire(value: String?): CoreDetailsStatus? = entries.firstOrNull { it.wire == value }
+        /** The status a [FSV] wire value names, or null for anything else. */
+        fun fromWire(value: String?): FormStatus? = entries.firstOrNull { it.wire == value }
     }
 }
 
 /**
- * The [CoreDetailsStatus] from a row's state entries (issues #694, #789), or null when the form has no core details state —
+ * The [FormStatus] from a row's state entries (issues #694, #789), or null when the form has no core details state —
  * a client with no core details workflow, or a row not yet computed — in which case the column shows nothing for it. The
  * kernel's `formStatusOf`, mapped onto the enum; covered under `jsNodeTest`.
  */
-fun coreDetailsStatusFrom(states: List<Map<String, Any?>>): CoreDetailsStatus? = CoreDetailsStatus.fromWire(formStatusOf(states))
+fun formStatusFrom(states: List<Map<String, Any?>>): FormStatus? = FormStatus.fromWire(formStatusOf(states))
 
 /**
  * One workflow behind a Needs Review / Finished chip (issue #789), as `formDocSingletonWorkflows` answers: its
@@ -865,8 +864,8 @@ class FormSummary(
     /** The owning client, from the row's `client` (issue #668): what the Client column shows for a caller who
      *  administers across clients. Every row carries it; empty only when the row somehow arrived without one. */
     val client: String = "",
-    /** The form's global core details status (issue #694), or null when it has no core details state — see [coreDetailsStatusFrom]. */
-    val coreDetailsStatus: CoreDetailsStatus? = null,
+    /** The form's global core details status (issue #694), or null when it has no core details state — see [formStatusFrom]. */
+    val formStatus: FormStatus? = null,
     /** The form's state entries as the row carried them (`withStates`) -- what its workflow cell is drawn from (issue #791). */
     val states: List<Map<String, Any?>> = emptyList(),
 )
@@ -929,7 +928,7 @@ fun summarizeForm(item: Map<String, Any?>, entriesUnion: SchType?, layouts: Map<
         client = item[GDF.client] as? String ?: "",
         // The global core details status (issue #694): present only when the row carried state (`withStates`), null
         // for a client with no core details workflow, in which case the list draws no status for the row.
-        coreDetailsStatus = coreDetailsStatusFrom(item[GDF.states].toJsonListOfMaps()),
+        formStatus = formStatusFrom(item[GDF.states].toJsonListOfMaps()),
         states = item[GDF.states].toJsonListOfMaps(),
     )
 }

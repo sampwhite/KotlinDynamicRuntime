@@ -27,8 +27,9 @@ const val pageCoreDetailsEdit = "coreDetailsEdit"
 private val coreDetailsEditScope = MainScope()
 
 /**
- * The core details workflow-driven Edit Form (issue #659) -- the **on-boarding** view: the caller's client's core details workflow resolved
- * against a form, seeded from its current entries, showing the core details workflow's *subset* of traits. Reached at
+ * The Edit Form the core details workflow drives (issue #659) -- the **on-boarding** view: the caller's client's core
+ * details workflow resolved against a form, seeded from its current entries, showing the core details workflow's
+ * *subset* of traits. Reached at
  * `/wa/forms/<gedraId>` as the read-only "View Info" view with an Edit toggle, or at `/wa/forms/<gedraId>/edit`
  * (issue #694, the forms-list status chip) already in edit mode. Its read-only view offers the **raw** editor
  * -- every trait, including ones set by API or by other workflows -- when the caller's surface carries the

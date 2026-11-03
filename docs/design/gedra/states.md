@@ -218,8 +218,8 @@ read than a data read. Inside a write's transaction, state is read from SQL unde
 
 | Read | What it returns |
 |---|---|
-| `GET /gedra/formDocs?withStates=true` (#600) | each listed form's `states`, absent rather than empty when not asked for. The webapp's forms page always asks, for its core details status column (#694) and workflow cell (#791). |
-| `GET /gedra/formDocs` filters | the core details status filter (#695) and the workflow drill-down (#792) test each row's state before paging |
+| `GET /gedra/formDocs?withStates=true` (#600) | each listed form's `states`, absent rather than empty when not asked for. The webapp's forms page always asks, for its status column (#694) and workflow cell (#791). |
+| `GET /gedra/formDocs` filters | the status filter (#695) and the workflow drill-down (#792) test each row's state before paging |
 | `withWorkflowSummary` (#791) | the workflow column's summary, computed over the state of every form the caller can see |
 | `POST /gedra/workflow/engage`, `POST /gedra/workflow/approve`, `POST /gedra/formDoc/recomputeState` | the form's state as it stands after the act (`WorkflowStates`) |
 | `GET /gedra/formDoc/states` (#1366) | one form's state as stored, with no recompute (`WorkflowStates`); with `includeRetired`, the entries of workflows that are not live too, named in `retiredWorkflows` |

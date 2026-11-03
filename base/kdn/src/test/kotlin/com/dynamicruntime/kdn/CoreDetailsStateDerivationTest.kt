@@ -92,7 +92,7 @@ class CoreDetailsStateDerivationTest : StringSpec({
     }
 
     "a form missing the core details workflow's required trait is incomplete, and names what is missing" {
-        // Only a non-core details trait present, so the core details workflow's `detail` is missing.
+        // Only a trait outside the core details present, so the core details workflow's `detail` is missing.
         val gid = create(user, "note", "aside")
 
         val completion = stateEntry(user, gid, CDF.coreDetailsCompletion)

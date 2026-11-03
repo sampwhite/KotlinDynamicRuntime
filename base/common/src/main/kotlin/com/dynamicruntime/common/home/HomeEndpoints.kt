@@ -156,7 +156,7 @@ fun homeSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.home") {
                 type = SCT.boolean
             }
             property(HFEAT.hasCoreDetails, "Whether the caller's client declares a core details workflow (issue #695) -- the forms " +
-                "list then offers its core details status filter.", required = true) {
+                "list then offers its status filter.", required = true) {
                 type = SCT.boolean
             }
             property(HFEAT.canOpenSandbox, "Whether the caller may open their own client's sandbox (issue #931).", required = true) {

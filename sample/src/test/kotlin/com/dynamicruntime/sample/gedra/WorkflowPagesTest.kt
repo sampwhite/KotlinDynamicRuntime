@@ -102,7 +102,7 @@ class WorkflowPagesTest : StringSpec({
         val user = TestUser.create(cxt, "pages-compose@acme.test", userClient = SC.acme)
         newForm(user, coreDetailsDone = true)
         val unready = newForm(user, coreDetailsDone = false)
-        user.getItems(list, mapOf(WAGG.workflowId to SW.siteFollowUp, "coreDetailsStatus" to "needsInfo"))
+        user.getItems(list, mapOf(WAGG.workflowId to SW.siteFollowUp, "formStatus" to "needsInfo"))
             .map { it[GDF.gedraId] } shouldBe listOf(unready)
     }
 

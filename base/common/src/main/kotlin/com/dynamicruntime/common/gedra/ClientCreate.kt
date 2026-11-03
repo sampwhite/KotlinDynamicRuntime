@@ -270,15 +270,15 @@ object ClientCreate {
 
     /**
      * The starters a client starts with (issue #1346): every one, or -- for a client built on [base] (issue #1567) --
-     * those of a kind the base declares none of. A client has one creation workflow and one survey, and its own
-     * replaces its base's, so a starter of a kind the base has would take the base's place; a base with no New form,
-     * a plain code client, still gets one.
+     * those of a kind the base declares none of. A client has one creation workflow and one core details workflow,
+     * and its own replaces its base's, so a starter of a kind the base has would take the base's place; a base with no
+     * New form, a plain code client, still gets one.
      */
     private fun startersBeside(cxt: KdrCxt, base: String?): List<WfDef> {
         val all = starterTemplates(cxt)
         if (base == null) return all
         val registry = WorkflowService.get(cxt).forClient(base)
-        val declared = setOfNotNull(registry.creation?.def?.entry, registry.survey?.def?.entry)
+        val declared = setOfNotNull(registry.creation?.def?.entry, registry.coreDetails?.def?.entry)
         return all.filter { it.entry !in declared }
     }
 

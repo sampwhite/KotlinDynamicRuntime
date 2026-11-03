@@ -30,7 +30,7 @@ import com.dynamicruntime.common.gedra.workflow.CDF
 import com.dynamicruntime.common.gedra.workflow.WSC
 import com.dynamicruntime.common.gedra.workflow.WFD
 import com.dynamicruntime.common.gedra.workflow.SWF
-import com.dynamicruntime.common.gedra.workflow.CDS
+import com.dynamicruntime.common.gedra.workflow.FSV
 import com.dynamicruntime.common.schema.SL
 import com.dynamicruntime.common.schema.parseSchLayout
 import com.dynamicruntime.common.schema.SCH
@@ -1011,7 +1011,7 @@ class GedraFormsTest {
         assertEquals("acme", formsCreateReturn(forUser, forUser, "g.fd.acme.new", mapOf(EI.client to "acme"))!!.toMap()[EI.client])
     }
 
-    // --- core details status column (issue #694) --------------------------------------------------------------
+    // --- status column (issue #694) --------------------------------------------------------------
 
     /** A row's state entries carrying a `coreDetailsCompletion` entry with the given booleans. */
     private fun coreDetailsStates(complete: Boolean?, valid: Boolean?): List<Map<String, Any?>> {
@@ -1034,15 +1034,15 @@ class GedraFormsTest {
     fun aWorkflowSingletonTakesThePlaceOfValid() {
         fun withFacts(complete: Boolean, valid: Boolean, vararg facts: String) = coreDetailsStates(complete, valid) +
             mapOf(GE.traitId to GT.cfacts, GE.data to mapOf(GT.facts to facts.toList()))
-        assertEquals(CoreDetailsStatus.needsReview, coreDetailsStatusFrom(withFacts(true, true, WSC.needsReview)))
-        assertEquals(CoreDetailsStatus.finished, coreDetailsStatusFrom(withFacts(true, true, WSC.finished)))
-        assertEquals(CoreDetailsStatus.needsReview, coreDetailsStatusFrom(withFacts(true, true, WSC.finished, WSC.needsReview)))
-        assertEquals(CoreDetailsStatus.needsInfo, coreDetailsStatusFrom(withFacts(false, true, WSC.needsReview)))
-        assertEquals(WSC.needsReview, CoreDetailsStatus.needsReview.singletonCfact)
-        assertEquals(WSC.finished, CoreDetailsStatus.finished.singletonCfact)
-        assertNull(CoreDetailsStatus.needsInfo.singletonCfact)
+        assertEquals(FormStatus.needsReview, formStatusFrom(withFacts(true, true, WSC.needsReview)))
+        assertEquals(FormStatus.finished, formStatusFrom(withFacts(true, true, WSC.finished)))
+        assertEquals(FormStatus.needsReview, formStatusFrom(withFacts(true, true, WSC.finished, WSC.needsReview)))
+        assertEquals(FormStatus.needsInfo, formStatusFrom(withFacts(false, true, WSC.needsReview)))
+        assertEquals(WSC.needsReview, FormStatus.needsReview.singletonCfact)
+        assertEquals(WSC.finished, FormStatus.finished.singletonCfact)
+        assertNull(FormStatus.needsInfo.singletonCfact)
         // The filter offers every status the chip can show, from the same enum.
-        assertEquals(CoreDetailsStatus.needsReview, CoreDetailsStatus.fromWire(CDS.needsReview))
+        assertEquals(FormStatus.needsReview, FormStatus.fromWire(FSV.needsReview))
     }
 
     /** What the chip's popover lists (issue #789): each workflow's name, its action for this caller, if any. */
@@ -1070,32 +1070,32 @@ class GedraFormsTest {
     @Test
     fun derivesCoreDetailsStatusInvalidTrumpsIncomplete() {
         // Invalid whenever the present data fails schema, complete or not.
-        assertEquals(CoreDetailsStatus.invalid, coreDetailsStatusFrom(coreDetailsStates(complete = false, valid = false)))
-        assertEquals(CoreDetailsStatus.invalid, coreDetailsStatusFrom(coreDetailsStates(complete = true, valid = false)))
+        assertEquals(FormStatus.invalid, formStatusFrom(coreDetailsStates(complete = false, valid = false)))
+        assertEquals(FormStatus.invalid, formStatusFrom(coreDetailsStates(complete = true, valid = false)))
         // Valid data but a required trait missing: needs info.
-        assertEquals(CoreDetailsStatus.needsInfo, coreDetailsStatusFrom(coreDetailsStates(complete = false, valid = true)))
+        assertEquals(FormStatus.needsInfo, formStatusFrom(coreDetailsStates(complete = false, valid = true)))
         // Complete and valid: valid.
-        assertEquals(CoreDetailsStatus.valid, coreDetailsStatusFrom(coreDetailsStates(complete = true, valid = true)))
+        assertEquals(FormStatus.valid, formStatusFrom(coreDetailsStates(complete = true, valid = true)))
         // The wire vocabulary is the kernel's (issue #695): the filter sends what the column reads.
-        assertEquals(CoreDetailsStatus.invalid, CoreDetailsStatus.fromWire(CDS.invalid))
-        assertEquals(CoreDetailsStatus.needsInfo, CoreDetailsStatus.fromWire(CDS.needsInfo))
-        assertEquals(CoreDetailsStatus.valid, CoreDetailsStatus.fromWire(CDS.valid))
-        assertNull(CoreDetailsStatus.fromWire("bogus"))
-        assertNull(CoreDetailsStatus.fromWire(null))
+        assertEquals(FormStatus.invalid, FormStatus.fromWire(FSV.invalid))
+        assertEquals(FormStatus.needsInfo, FormStatus.fromWire(FSV.needsInfo))
+        assertEquals(FormStatus.valid, FormStatus.fromWire(FSV.valid))
+        assertNull(FormStatus.fromWire("bogus"))
+        assertNull(FormStatus.fromWire(null))
         // The chip contract each status renders under.
-        assertEquals("Needs Info" to "warning", CoreDetailsStatus.needsInfo.label to CoreDetailsStatus.needsInfo.pstat)
-        assertEquals("Invalid" to "error", CoreDetailsStatus.invalid.label to CoreDetailsStatus.invalid.pstat)
-        assertEquals("Valid" to "ok", CoreDetailsStatus.valid.label to CoreDetailsStatus.valid.pstat)
+        assertEquals("Needs Info" to "warning", FormStatus.needsInfo.label to FormStatus.needsInfo.pstat)
+        assertEquals("Invalid" to "error", FormStatus.invalid.label to FormStatus.invalid.pstat)
+        assertEquals("Valid" to "ok", FormStatus.valid.label to FormStatus.valid.pstat)
     }
 
     /** No core details state -> no status (a client with no core details workflow, or a row not yet computed): the column shows
      *  nothing for the row rather than guessing. Missing booleans are treated the same, defensively. */
     @Test
-    fun coreDetailsStatusIsNullWithoutCoreDetailsState() {
-        assertNull(coreDetailsStatusFrom(emptyList()))
-        assertNull(coreDetailsStatusFrom(listOf(mapOf(GE.traitId to "otherState", GE.data to mapOf("x" to 1)))))
-        assertNull(coreDetailsStatusFrom(coreDetailsStates(complete = null, valid = null)))
-        assertNull(coreDetailsStatusFrom(coreDetailsStates(complete = true, valid = null)))
+    fun formStatusIsNullWithoutCoreDetailsState() {
+        assertNull(formStatusFrom(emptyList()))
+        assertNull(formStatusFrom(listOf(mapOf(GE.traitId to "otherState", GE.data to mapOf("x" to 1)))))
+        assertNull(formStatusFrom(coreDetailsStates(complete = null, valid = null)))
+        assertNull(formStatusFrom(coreDetailsStates(complete = true, valid = null)))
     }
 
     /** [summarizeForm] carries the core details status read from the row's `states` (issue #694), and none for a row
@@ -1109,9 +1109,9 @@ class GedraFormsTest {
                 mapOf(GE.traitId to CDF.coreDetailsCompletion, GE.data to mapOf(CDF.complete to false, CDF.valid to true)),
             ),
         )
-        assertEquals(CoreDetailsStatus.needsInfo, summarizeForm(item, entriesUnion()).coreDetailsStatus)
+        assertEquals(FormStatus.needsInfo, summarizeForm(item, entriesUnion()).formStatus)
         val bare = mapOf(GDF.gedraId to "gd.fd.acme.u21", GDF.entries to emptyList<Any?>())
-        assertNull(summarizeForm(bare, entriesUnion()).coreDetailsStatus)
+        assertNull(summarizeForm(bare, entriesUnion()).formStatus)
     }
 
 }

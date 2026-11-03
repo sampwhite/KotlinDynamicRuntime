@@ -950,9 +950,9 @@ input:where(:not([type=checkbox]):not([type=radio])) {
 .wf-panel .wf-task > :first-child { margin-top: 0; }
 .wf-panel .wf-trait:first-of-type > h2, .wf-panel .wf-trait:first-of-type > .markdown { margin-top: 0; }
 
-/* The core details workflow's task rail (issue #700): a multi-task core details workflow shows ONE task at a time, chosen from a left rail
-   whose entries carry the task's status mark and, orthogonally, an unsaved badge. Single-task core details workflows and the
-   creation form keep the single panel. The items are real buttons (keyboard reachable, `aria-current` on the
+/* The core details workflow's task rail (issue #700): a multi-task core details workflow shows ONE task at a time,
+   chosen from a left rail whose entries carry the task's status mark and, orthogonally, an unsaved badge. Single-task
+   core details workflows and the creation form keep the single panel. The items are real buttons (keyboard reachable, `aria-current` on the
    open one), restyled from the global `button`. */
 .wf-layout { display: flex; gap: 28px; align-items: flex-start; }
 .wf-rail { flex: 0 0 220px; display: flex; flex-direction: column; gap: 4px; }

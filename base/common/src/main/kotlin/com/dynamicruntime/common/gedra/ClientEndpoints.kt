@@ -189,7 +189,7 @@ fun clientCatalogSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CLD.catalogN
             items { type = SCT.string }
         }
         property(CLD.hasCoreDetails, "Whether the client declares a core details workflow (issue #695): a forms surface working in " +
-            "this client then offers its core details status filter.", required = true) {
+            "this client then offers its status filter.", required = true) {
             type = SCT.boolean
         }
         property(CLD.status, "Where the client stands on this node (issue #828).", required = true) {

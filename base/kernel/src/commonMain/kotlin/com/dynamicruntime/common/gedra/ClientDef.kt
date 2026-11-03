@@ -668,7 +668,7 @@ object CLD {
 
     /**
      * On a summary row (issue #695): whether the client declares a core details workflow -- what a cross-client surface
-     * working in that client keys its core details status filter on, as the shell's `hasCoreDetails` does for the
+     * working in that client keys its status filter on, as the shell's `hasCoreDetails` does for the
      * caller's own client.
      */
     const val hasCoreDetails = "hasCoreDetails"

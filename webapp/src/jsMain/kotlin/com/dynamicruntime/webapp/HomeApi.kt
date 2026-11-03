@@ -64,7 +64,7 @@ class HomeConfig(
      *  Client column and its filter-by-client. */
     val canSeeAllClients: Boolean,
     /** Whether the caller's client declares a core details workflow (issue #695) -- drives the forms list's
-     *  core details status filter. */
+     *  status filter. */
     val hasCoreDetails: Boolean,
     /**
      * The source repository's blob base (`.../blob/<branch>`) for rewriting a document's interior links, or

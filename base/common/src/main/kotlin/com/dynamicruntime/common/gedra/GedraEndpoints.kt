@@ -12,8 +12,7 @@ import com.dynamicruntime.common.endpoint.defaultListLimit
 import com.dynamicruntime.common.endpoint.schemaModule
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
-import com.dynamicruntime.common.gedra.workflow.CDF
-import com.dynamicruntime.common.gedra.workflow.CDS
+import com.dynamicruntime.common.gedra.workflow.FSV
 import com.dynamicruntime.common.gedra.workflow.WSF
 import com.dynamicruntime.common.gedra.workflow.WVF
 import com.dynamicruntime.common.gedra.workflow.formStatusOf
@@ -274,18 +273,18 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
         // chip means, nothing pending or finished. Not a trait search field -- it reads the form's state, not a
         // display value -- so it is applied over the states cache before paging, and `numAvailable` counts what
         // matched. A form with no computed state matches none. Not admin-gated: a caller filters the forms they
-        // can already see. The wire name stays `coreDetailsStatus`, which the first three statuses still are.
+        // can already see.
         property(
-            CDF.coreDetailsStatus,
-            "Only forms whose status chip is this: ${CDS.valid} / ${CDS.needsInfo} / ${CDS.invalid} / " +
-                "${CDS.needsReview} / ${CDS.finished}. Absent means any.",
+            GDF.formStatus,
+            "Only forms whose status chip is this: ${FSV.valid} / ${FSV.needsInfo} / ${FSV.invalid} / " +
+                "${FSV.needsReview} / ${FSV.finished}. Absent means any.",
         ) {
             emptyIsAbsent = true
-            option(CDS.valid, "Valid")
-            option(CDS.needsInfo, "Needs Info")
-            option(CDS.invalid, "Invalid")
-            option(CDS.needsReview, "Needs Review")
-            option(CDS.finished, "Finished")
+            option(FSV.valid, "Valid")
+            option(FSV.needsInfo, "Needs Info")
+            option(FSV.invalid, "Invalid")
+            option(FSV.needsReview, "Needs Review")
+            option(FSV.finished, "Finished")
         }
         // The workflow pages' drill-down (issue #792): only forms whose workflow cell has this workflow -- of the
         // listing's client (the chosen one, else the caller's) -- in the given state. The same kernel rule the
@@ -415,11 +414,11 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
         val columns = SchemaService.get(c).listingColumnsFor(c.client)
         val filter = searchFilter(c, request, columns)
         val sort = gedraSortFor(c, request, columns, scope)
-        // The core details status filter (issue #695): a predicate over a row's state entries, through the same rule
+        // The status filter (issue #695): a predicate over a row's state entries, through the same rule
         // the status column reads them by, applied by `listGedras` over the states cache before paging. The
         // schema has already settled the value: a blank is absent (`emptyIsAbsent`), anything but the three
         // options was refused, so what arrives is one of them or nothing.
-        val statusWanted = request[CDF.coreDetailsStatus] as? String
+        val statusWanted = request[GDF.formStatus] as? String
         val statusFilter: GedraStateFilter? = statusWanted?.let { wanted -> { _, states -> formStatusOf(states) == wanted } }
         val workflowFilter = workflowDrillFilter(c, request)
         val stateFilter: GedraStateFilter? = when {

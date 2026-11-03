@@ -1933,7 +1933,7 @@ class GedraDataService : ServiceInitializer {
 
     /**
      * Narrows the **stored** [rows] to those whose state entries satisfy [stateFilter] (issue #695, the
-     * core details status filter) -- a predicate over a row's state rather than over the row, since the status lives in
+     * status filter) -- a predicate over a row's state rather than over the row, since the status lives in
      * the states table. Runs on the raw rows, **before** extraction, on both listing paths: it needs only each
      * row's id, which the stored map carries, so a status-only filter extracts just the survivors rather than
      * every scope-matched row (the trait filter and the sort, which read display values, still extract what

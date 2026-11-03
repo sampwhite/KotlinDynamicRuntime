@@ -790,7 +790,8 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
             }
         }
 
-        // What the core details are (issue #1571): what every form carries, which is not all of its data.
+        // What the core details are (issue #1571): what every form carries, which is not all of its data -- unless the
+        // workflow's own help, just below, says it in the client's words.
         coreDetailsNote(wf)?.let { note ->
             p {
                 className = ClassName("subtitle")
@@ -908,11 +909,16 @@ fun workflowNote(wf: WorkflowView): String? = when {
 
 /**
  * What a core details view says under its title (issue #1571), or null for any other view: that the core details are
- * what every form carries, not all of its data, since each workflow a form takes part in keeps traits of its own. Pure,
- * and covered under `jsNodeTest`.
+ * what every form carries, not all of its data, since each workflow a form takes part in keeps traits of its own. Only
+ * when the workflow has no help of its own (`workflowHelp` copy, issue #1221): a client that explains its core details
+ * in its own words replaces the platform's line. Pure, and covered under `jsNodeTest`.
  */
 fun coreDetailsNote(wf: WorkflowView): String? =
-    if (wf.entry == WfEntry.coreDetails.name) "Core details: what every form carries. Each workflow keeps its own." else null
+    if (wf.entry == WfEntry.coreDetails.name && wf.help.isBlank()) {
+        "Core details: what every form carries. Each workflow keeps its own."
+    } else {
+        null
+    }
 
 /**
  * A trait's name (issue #1520), by the rule every page names a trait with: its layout `label`, its title, else its id

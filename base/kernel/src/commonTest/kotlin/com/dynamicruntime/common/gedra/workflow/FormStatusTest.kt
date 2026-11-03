@@ -20,24 +20,24 @@ class FormStatusTest {
 
     @Test
     fun theCoreDetailsStatusStandsWhenNoWorkflowSaysMore() {
-        assertEquals(CDS.valid, formStatusOf(listOf(coreDetails(complete = true, valid = true))))
-        assertEquals(CDS.needsInfo, formStatusOf(listOf(coreDetails(complete = false, valid = true))))
-        assertEquals(CDS.invalid, formStatusOf(listOf(coreDetails(complete = true, valid = false))))
+        assertEquals(FSV.valid, formStatusOf(listOf(coreDetails(complete = true, valid = true))))
+        assertEquals(FSV.needsInfo, formStatusOf(listOf(coreDetails(complete = false, valid = true))))
+        assertEquals(FSV.invalid, formStatusOf(listOf(coreDetails(complete = true, valid = false))))
         // No core details state, no status -- whatever a workflow emits.
         assertNull(formStatusOf(listOf(cfacts(WSC.needsReview))))
     }
 
     @Test
     fun aSingletonTakesThePlaceOfValidOnly() {
-        assertEquals(CDS.needsReview, formStatusOf(listOf(coreDetails(true, true), cfacts(WSC.needsReview))))
-        assertEquals(CDS.finished, formStatusOf(listOf(coreDetails(true, true), cfacts(WSC.finished))))
+        assertEquals(FSV.needsReview, formStatusOf(listOf(coreDetails(true, true), cfacts(WSC.needsReview))))
+        assertEquals(FSV.finished, formStatusOf(listOf(coreDetails(true, true), cfacts(WSC.finished))))
         // The owner's own work first: Needs Info and Invalid are not replaced.
-        assertEquals(CDS.needsInfo, formStatusOf(listOf(coreDetails(false, true), cfacts(WSC.needsReview))))
-        assertEquals(CDS.invalid, formStatusOf(listOf(coreDetails(true, false), cfacts(WSC.finished))))
+        assertEquals(FSV.needsInfo, formStatusOf(listOf(coreDetails(false, true), cfacts(WSC.needsReview))))
+        assertEquals(FSV.invalid, formStatusOf(listOf(coreDetails(true, false), cfacts(WSC.finished))))
     }
 
     @Test
     fun needsReviewWinsOverFinished() {
-        assertEquals(CDS.needsReview, formStatusOf(listOf(coreDetails(true, true), cfacts(WSC.finished, WSC.needsReview))))
+        assertEquals(FSV.needsReview, formStatusOf(listOf(coreDetails(true, true), cfacts(WSC.finished, WSC.needsReview))))
     }
 }

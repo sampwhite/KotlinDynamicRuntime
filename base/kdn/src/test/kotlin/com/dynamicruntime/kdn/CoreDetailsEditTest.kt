@@ -18,7 +18,7 @@ import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.GedraEditAction
 import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.gedra.workflow.CDF
-import com.dynamicruntime.common.gedra.workflow.CDS
+import com.dynamicruntime.common.gedra.workflow.FSV
 import com.dynamicruntime.common.gedra.workflow.WFC
 import com.dynamicruntime.common.gedra.workflow.WFD
 import com.dynamicruntime.common.gedra.workflow.WSF
@@ -204,16 +204,16 @@ class CoreDetailsEditTest : StringSpec({
         // Invalid is "needs action" too, so the task is the focus even though it is complete.
         v[WVF.focusTask] shouldBe "only"
 
-        // The listing's core details status filter (#695) reads the STORED state, which is re-derived on a write and
+        // The listing's status filter (#695) reads the STORED state, which is re-derived on a write and
         // not by a view -- so the form still lists as valid, and no write can change that today: every write
         // re-validates the stored entries, so a patch to any trait of this form is refused ("would leave 1
         // problem in the stored entries") until the long value is fixed. Stored `invalid` is what the design's
         // deferred batch-recompute job produces; the filter's `invalid` value is covered by the shared rule's
         // own tests until then.
         fun listed(status: String): List<Any?> = nUser.getItems(GEP.formDocs,
-            mapOf(CDF.coreDetailsStatus to status)).map { it[GDF.gedraId] }
-        listed(CDS.valid) shouldContain gid
-        listed(CDS.invalid) shouldNotContain gid
+            mapOf(GDF.formStatus to status)).map { it[GDF.gedraId] }
+        listed(FSV.valid) shouldContain gid
+        listed(FSV.invalid) shouldNotContain gid
     }
 
     "the listing filters by core details status over the states cache, and counts what matched (#695)" {
@@ -223,13 +223,13 @@ class CoreDetailsEditTest : StringSpec({
         val needs = create("note", "aside only")
         // The whole envelope, since the total (`numAvailable`) rides beside the items rather than under `results`.
         fun page(status: String?): Map<String, Any?> =
-            user.client.sendJsonGetRequest(GEP.formDocs, buildMap { status?.let { put(CDF.coreDetailsStatus, it) } })
+            user.client.sendJsonGetRequest(GEP.formDocs, buildMap { status?.let { put(GDF.formStatus, it) } })
         fun ids(page: Map<String, Any?>): List<Any?> = page[EP.items].toJsonListOfMaps().map { it[GDF.gedraId] }
 
-        val valid = page(CDS.valid)
+        val valid = page(FSV.valid)
         ids(valid) shouldContain done
         ids(valid) shouldNotContain needs
-        val needsInfo = page(CDS.needsInfo)
+        val needsInfo = page(FSV.needsInfo)
         ids(needsInfo) shouldContain needs
         ids(needsInfo) shouldNotContain done
         // Applied before paging: the total is the matched set, not the scope's whole set, on each answer.
@@ -238,18 +238,18 @@ class CoreDetailsEditTest : StringSpec({
         // No filter still lists both.
         ids(page(null)) shouldContainAll listOf(done, needs)
         // A value outside the closed choice is refused rather than silently matching nothing.
-        user.expectError(400, GEP.formDocs, args = mapOf(CDF.coreDetailsStatus to "bogus"))
+        user.expectError(400, GEP.formDocs, args = mapOf(GDF.formStatus to "bogus"))
 
         // The same through the CACHE path: an ordinary user's scope carries no client, so the listing above took
         // the SQL fallback; a client-scoped admin's scope keys the client+kind index, and the state filter runs
         // there too -- on the raw cached rows, before extraction.
         val clientAdmin = TestUser.create(cxt, "admin695@$client.test", level = ROLE.admin, userClient = client)
         fun adminIds(status: String): List<Any?> = clientAdmin.getItems(GEP.formDocs,
-            mapOf(CDF.coreDetailsStatus to status)).map { it[GDF.gedraId] }
-        adminIds(CDS.valid) shouldContain done
-        adminIds(CDS.valid) shouldNotContain needs
-        adminIds(CDS.needsInfo) shouldContain needs
-        adminIds(CDS.needsInfo) shouldNotContain done
+            mapOf(GDF.formStatus to status)).map { it[GDF.gedraId] }
+        adminIds(FSV.valid) shouldContain done
+        adminIds(FSV.valid) shouldNotContain needs
+        adminIds(FSV.needsInfo) shouldContain needs
+        adminIds(FSV.needsInfo) shouldNotContain done
     }
 
     "a core details edit save folds new data into the form" {
@@ -261,7 +261,7 @@ class CoreDetailsEditTest : StringSpec({
     }
 
     "a core details edit supplying the missing trait flips completeness -- recomputed on the edit, no restart" {
-        // Created with only a non-core details trait, so the core details workflow's `detail` is missing: it starts
+        // Created with only a trait outside the core details, so the core details workflow's `detail` is missing: it starts
         // incomplete.
         val gid = create("note", "aside")
         coreDetailsCompletion(gid)[CDF.complete] shouldBe false

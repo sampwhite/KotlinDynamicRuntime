@@ -178,12 +178,8 @@ fun parseWorkflowCatalog(raw: Map<String, Any?>): WorkflowCatalogView = Workflow
     userLabels = raw[CWF.userLabels].toJsonListOfStrings(),
 )
 
-/** What a kind of workflow is, in a word. */
-fun workflowEntryText(entry: WfEntry): String = when (entry) {
-    WfEntry.creation -> "Creation"
-    WfEntry.coreDetails -> "Core details"
-    WfEntry.normal -> "Step"
-}
+/** What a kind of workflow is, in a word: its [WfEntry.words], as a label (issue #1571), so a kind has one name. */
+fun workflowEntryText(entry: WfEntry): String = entry.words.replaceFirstChar { it.uppercase() }
 
 /** What a kind of workflow does, in a sentence: what the template fixes about when it runs. */
 fun workflowEntryExplained(entry: WfEntry): String = when (entry) {

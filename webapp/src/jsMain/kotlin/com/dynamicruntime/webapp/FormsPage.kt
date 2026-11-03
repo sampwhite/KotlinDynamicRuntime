@@ -158,7 +158,7 @@ val FormsPage = FC<FormsPageProps> { props ->
     // column and the filter-by-client control; false until known and when it cannot be learned.
     var canSeeAllClients by useState(false)
     // Whether the caller's client declares a core details workflow (issue #695), from the same UI-config: gates the
-    // core details status filter. A fact about the client, not the rows, so the control stays while a filter matches
+    // status filter. A fact about the client, not the rows, so the control stays while a filter matches
     // nothing.
     var hasCoreDetails by useState(false)
     // The clients to offer in the filter-by-client control (issue #668), fetched only for a cross-client caller.
@@ -459,7 +459,7 @@ val FormsPage = FC<FormsPageProps> { props ->
                 }.valueOrNull()
             }?.let { homeCopy = it }
             // The clients to offer in the filter, for a cross-client caller (issue #668) -- with each one's
-            // `hasCoreDetails` (issue #695), so the core details status filter can follow the chosen client.
+            // `hasCoreDetails` (issue #695), so the status filter can follow the chosen client.
             if (seeAllClients) {
                 clientChoices = apiResult { AdminApi.listClientSummaries() }.valueOr(emptyList())
             }
@@ -958,12 +958,12 @@ val FormsPage = FC<FormsPageProps> { props ->
                 // the filters but leaves whose forms are shown to the scope bar -- as *applied*, so a user typed
                 // into the scope box and never applied is not applied by Clear either (#562 review).
                 val groups = searchGroups(ep.inputSchema)
-                // Whether the core details status filter is on offer (issue #695): a fact about the client whose rows are
+                // Whether the status filter is on offer (issue #695): a fact about the client whose rows are
                 // on screen -- the chosen client's (#714), read off its summary, else the caller's own from the
                 // shell. A client not (yet) in the choices reads as offering none.
                 val coreDetailsFilterOffered =
                     chosenClient?.let { id -> clientChoices.firstOrNull { it.clientId == id }?.hasCoreDetails == true } ?: hasCoreDetails
-                // The panel is also worth drawing with no trait fields at all when the core details status filter is
+                // The panel is also worth drawing with no trait fields at all when the status filter is
                 // on offer: that one is every form's, not a trait's.
                 if (groups.isNotEmpty() || coreDetailsFilterOffered) {
                     FormsSearch {

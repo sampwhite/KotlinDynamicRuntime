@@ -12,7 +12,7 @@ import com.dynamicruntime.common.util.toJsonMapOrEmpty
  *
  * In the kernel (transpile-clean, alongside [WVF]/[WFD]/[WSF]) because both sides of the wire share it: the
  * backend writes the `coreDetailsCompletion` state and the two cfacts under these names, and the **frontend** reads
- * them back to render the forms-list core details status column (issue #694). The producer -- the state config and
+ * them back to render the forms-list status column (issue #694). The producer -- the state config and
  * the deriver -- stays in `base:common` (`CoreDetailsState.kt`); only these shared names live here.
  *
  * **The core details workflow gates nothing on its own** (issue #829). Complete core details surface as
@@ -51,13 +51,6 @@ object CDF {
 
     /** The config bundle the core details state trait is declared in. */
     const val stateBundle = "coreDetailsState"
-
-    /**
-     * The forms-listing query parameter that filters by a form's core details status (issue #695), taking one of the
-     * [CDS] values. Named for the core details workflow rather than as a generic "status": a later form-singleton
-     * status gets a parameter of its own, and the listing composes them.
-     */
-    const val coreDetailsStatus = "coreDetailsStatus"
 }
 
 /**
@@ -67,7 +60,7 @@ object CDF {
  * workflow contributes, which take the place of [valid] ([formStatusOf], the one rule the chip and the filter share).
  */
 @Suppress("ConstPropertyName")
-object CDS {
+object FSV {
     /** Every required core details trait present, the present data passes its schema, and nothing is pending or finished. */
     const val valid = "valid"
 
@@ -92,7 +85,7 @@ object CDS {
  * A form's core details status from its state entries (issues #694, #695), or null when the form has no core details
  * state -- a client with no core details workflow, or a row not yet computed -- in which case a column shows nothing
  * and a filter matches nothing. Reads the [CDF.coreDetailsCompletion] entry's `complete` / `valid` booleans: **invalid
- * trumps incomplete** (`!valid` -> [CDS.invalid], else `!complete` -> [CDS.needsInfo], else [CDS.valid]), so data that
+ * trumps incomplete** (`!valid` -> [FSV.invalid], else `!complete` -> [FSV.needsInfo], else [FSV.valid]), so data that
  * fails schema reads as invalid even when a required trait is also missing. Pure over maps, so the frontend's chip and
  * the backend's filter run the same code.
  */
@@ -102,16 +95,16 @@ fun coreDetailsStatusOf(states: List<Map<String, Any?>>): String? {
     val valid = data[CDF.valid] as? Boolean ?: return null
     val complete = data[CDF.complete] as? Boolean ?: return null
     return when {
-        !valid -> CDS.invalid
-        !complete -> CDS.needsInfo
-        else -> CDS.valid
+        !valid -> FSV.invalid
+        !complete -> FSV.needsInfo
+        else -> FSV.valid
     }
 }
 
 /**
  * The status a form's chip shows and its filter matches (issue #789): the core details workflow's
  * ([coreDetailsStatusOf]), except that where the core details workflow would read **Valid** the form's merged cfacts
- * may say more -- [CDS.needsReview] when some engaged workflow is waiting on a review, else [CDS.finished] when some
+ * may say more -- [FSV.needsReview] when some engaged workflow is waiting on a review, else [FSV.finished] when some
  * has finished. Only Valid gives way: Needs Info and Invalid still describe work the owner has to do, which trumps a
  * review or a finish. Needs Review beats Finished, since it is something waiting on someone. Null when the form has no
  * core details status, as [coreDetailsStatusOf] is.
@@ -121,7 +114,7 @@ fun coreDetailsStatusOf(states: List<Map<String, Any?>>): String? {
  */
 fun formStatusOf(states: List<Map<String, Any?>>): String? {
     val coreDetails = coreDetailsStatusOf(states) ?: return null
-    if (coreDetails != CDS.valid) {
+    if (coreDetails != FSV.valid) {
         return coreDetails
     }
     val facts = states.filter { it[GE.traitId] == GT.cfacts }
@@ -129,8 +122,8 @@ fun formStatusOf(states: List<Map<String, Any?>>): String? {
         .mapNotNull { it?.toString() }
         .toSet()
     return when {
-        WSC.needsReview in facts -> CDS.needsReview
-        WSC.finished in facts -> CDS.finished
-        else -> CDS.valid
+        WSC.needsReview in facts -> FSV.needsReview
+        WSC.finished in facts -> FSV.finished
+        else -> FSV.valid
     }
 }

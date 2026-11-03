@@ -75,7 +75,7 @@ object HFEAT {
 
     /**
      * Whether the caller's client declares a **core details** workflow (issue #695) -- the signal the forms list keys
-     * its core details status filter on. A fact about the client's configuration rather than about the rows on
+     * its status filter on. A fact about the client's configuration rather than about the rows on
      * screen: the status column appears when some row carries core details state, but a control that vanished the
      * moment a filter matched nothing could never be cleared.
      */

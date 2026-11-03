@@ -45,7 +45,8 @@ and a global trait that client renamed would get the admin's client's name for i
 
 A row's **View Info** opens the form through its client's core details workflow (`CoreDetailsEditPage`), so the page
 shows the form's **core details** -- what every form carries -- and not the traits its workflows collect. A line under
-the title says so (`coreDetailsNote`), and **View raw** shows everything. Listing the workflow traits on the page is in
+the title says so (`coreDetailsNote`), unless the workflow has help of its own (`workflowHelp` copy), which says it in
+the client's words instead; **View raw** shows everything. Listing the workflow traits on the page is in
 `deferred-work.md`, under someone wanting a form's whole data in one place.
 
 ## The forms listing across clients (issues #668, #714)

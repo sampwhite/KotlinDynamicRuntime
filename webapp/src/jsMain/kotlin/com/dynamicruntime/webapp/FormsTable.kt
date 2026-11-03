@@ -36,7 +36,7 @@ import com.dynamicruntime.common.user.userKeyLabel
  * carries **View Info** (the core details workflow's read-only on-boarding view, with its Edit toggle) and Delete, so
  * neither needs the form opened first. There is no separate "View All" action (issue #726): the raw view is the row
  * click where there is no core details workflow, and the raw *editor* is reached from the core details view's Raw edit
- * and the raw view's Edit form. The core details status chip on an unfinished row is itself a link straight into the
+ * and the raw view's Edit form. The status chip on an unfinished row is itself a link straight into the
  * core details workflow's edit mode. Delete arms an inline confirm in the row rather than navigating, since it is the
  * one irreversible action here.
  *
@@ -153,11 +153,11 @@ val FormsTable = FC<FormsTableProps> { props ->
     // client with no core details workflow has none on any row, so an empty column or a dead-end action would say
     // nothing. (A persistent store's rows written before the core details workflow deriver existed carry none until
     // re-touched or batch-recomputed -- a documented, deferred gap.)
-    val anyCoreDetailsStatus = props.forms.any { it.second.coreDetailsStatus != null }
+    val anyFormStatus = props.forms.any { it.second.formStatus != null }
     // Whether the Actions column has anything to carry (issue #726 review): View Info needs a core details workflow,
     // Delete needs its endpoint; with neither there is no column, not an empty one.
     val drill = props.drillWorkflowId
-    val showActions = anyCoreDetailsStatus || props.canDelete || drill != null
+    val showActions = anyFormStatus || props.canDelete || drill != null
     // What the Updated and Created columns read their relative times against (issue #1141), and every display
     // column's presentation too (issue #1323), so a due date's "in 3h" moves with them.
     val now = useRelativeClock()
@@ -220,9 +220,9 @@ val FormsTable = FC<FormsTableProps> { props ->
             // column is), keyed on `GSORT.client` -- both the row-data key and the endpoint's sort key. Headed as an id,
             // since an id is what it shows and sorts by (issue #1438).
             if (props.showClient) add(sortableColumn("Client ID", GSORT.client, 140, props.sortColumn, props.sortDescending))
-            // The global core details status column (issue #694): a fixed, non-sortable column (its sort/filter is
+            // The global status column (issue #694): a fixed, non-sortable column (its sort/filter is
             // deferred to #695), rendering a status chip and a CTA on the unfinished rows.
-            if (anyCoreDetailsStatus) add(statusColumn(props))
+            if (anyFormStatus) add(statusColumn(props))
             // The workflow column (issue #791): drawn when the summary names any workflow -- decided over every form
             // the caller may see, not this page, so it does not come and go as a search narrows.
             if (props.workflowSummary.isNotEmpty()) add(workflowColumn(props))
@@ -233,7 +233,7 @@ val FormsTable = FC<FormsTableProps> { props ->
             // All" gone (issue #726) the column can have nothing to show -- a no-core-details client whose caller
             // cannot delete -- and then it is not drawn at all: an empty column pinned right would be a blank sticky
             // band whose shadow overlays every scrolled row. The row click is the open there.
-            if (showActions) add(actionsColumn(props, showCoreDetails = anyCoreDetailsStatus,
+            if (showActions) add(actionsColumn(props, showCoreDetails = anyFormStatus,
                 onViewWorkflow = drill?.let { ::openWorkflow }))
         }
         // Pinned while the table scrolls sideways (issue #726 follow-up): the first column -- the client's first
@@ -280,7 +280,7 @@ val FormsTable = FC<FormsTableProps> { props ->
             row.states = summary.states
             // The core details status for the fixed Status column (issue #694): its chip label + colour class, and
             // whether it warrants the CTA (anything but Valid). Absent on a row with no core details state.
-            summary.coreDetailsStatus?.let {
+            summary.formStatus?.let {
                 row.svyLabel = it.label
                 row.svyPstat = it.pstat
                 // The unfinished chip links straight into the core details workflow's edit mode; a workflow's Needs
@@ -291,7 +291,7 @@ val FormsTable = FC<FormsTableProps> { props ->
                         row.svyCfact = cfact
                         row.svyGedraId = id
                     }
-                    it != CoreDetailsStatus.valid -> row.svyEditHref = props.coreDetailsEditHref(id)
+                    it != FormStatus.valid -> row.svyEditHref = props.coreDetailsEditHref(id)
                 }
             }
             row
@@ -306,7 +306,7 @@ val FormsTable = FC<FormsTableProps> { props ->
             // batch-recomputed).
             val open = {
                 val id = record.key as String
-                if (anyCoreDetailsStatus) props.onCoreDetailsView(id) else props.onView(id)
+                if (anyFormStatus) props.onCoreDetailsView(id) else props.onView(id)
             }
             if (drill == null) {
                 handlers.onClick = open
@@ -381,12 +381,12 @@ private fun actionsColumn(
 }
 
 /**
- * The global core details status column (issue #694): a status chip which, on an unfinished (Invalid / Needs Info) row,
+ * The global status column (issue #694): a status chip which, on an unfinished (Invalid / Needs Info) row,
  * **is itself the link** straight into the core details workflow's edit mode -- a real `<a href>`, so it is keyboard
  * reachable and can open in a new tab; Valid is a plain chip. Like [actionsColumn], `onCell` stops a click inside the
  * cell from reaching the row's own handler, so following the chip does not also open the raw view. A row with no core
  * details status renders an em dash. The chip label/colour and the edit href are read off the row (set in the
- * dataSource above), so the table stays free of the `CoreDetailsStatus` enum itself.
+ * dataSource above), so the table stays free of the `FormStatus` enum itself.
  */
 private fun statusColumn(props: FormsTableProps): dynamic {
     val c = column("Status", "status", 150)

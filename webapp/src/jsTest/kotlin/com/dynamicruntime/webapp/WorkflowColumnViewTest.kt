@@ -94,6 +94,9 @@ class WorkflowColumnViewTest {
         // The core details view says its data is not all of the form's (issue #1571); no other view says so.
         assertTrue(coreDetailsNote(view(null, null, WfEntry.coreDetails)).orEmpty().contains("Each workflow keeps its own"))
         assertNull(coreDetailsNote(view(WfPhase.relevant, true)))
+        // A client's own help for the workflow replaces the platform's line.
+        assertNull(coreDetailsNote(WorkflowView(workflowId = "details", entry = WfEntry.coreDetails.name, showTaskList = true,
+            tasks = emptyList(), cfacts = emptyMap(), help = "What we ask every applicant.")))
         assertNull(workflowNote(view(WfPhase.relevant, true)))
         assertTrue(workflowNote(view(WfPhase.engageable, false, eligible = true)).orEmpty().contains("Engage"))
         assertTrue(workflowNote(view(WfPhase.lifetimeOnly, true)).orEmpty().contains("closed"))

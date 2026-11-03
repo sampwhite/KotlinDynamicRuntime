@@ -92,7 +92,7 @@ class ClientDefinitionEndpointTest : StringSpec({
         val acme = rows.first { it[CLD.clientId].toOptStr() == SC.acme }
         acme[CLD.usageLabels].toJsonListOfStrings() shouldContain "Auditor"
         // The core details fact (issue #695): acme declares a core details workflow, globex does not -- what a forms
-        // surface working in the chosen client keys its core details status filter on.
+        // surface working in the chosen client keys its status filter on.
         acme[CLD.hasCoreDetails] shouldBe true
         rows.first { it[CLD.clientId] == SC.globex }[CLD.hasCoreDetails] shouldBe false
         acme[CLD.traitIds].toJsonListOfStrings() shouldContain SC.siteAudit

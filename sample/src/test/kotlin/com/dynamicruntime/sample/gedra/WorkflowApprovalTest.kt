@@ -6,8 +6,7 @@ import com.dynamicruntime.common.gedra.GDF
 import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.gedra.GEP
 import com.dynamicruntime.common.gedra.GT
-import com.dynamicruntime.common.gedra.workflow.CDF
-import com.dynamicruntime.common.gedra.workflow.CDS
+import com.dynamicruntime.common.gedra.workflow.FSV
 import com.dynamicruntime.common.gedra.workflow.SWF
 import com.dynamicruntime.common.gedra.workflow.WDSP
 import com.dynamicruntime.common.gedra.workflow.WFC
@@ -271,7 +270,7 @@ class WorkflowApprovalTest : StringSpec({
     val chipWorkflows = clientPath(GEP.formDocSingletonWorkflows, SC.acme)
 
     fun listedAs(status: String): List<Any?> =
-        owner.getItems(GEP.formDocs, mapOf(CDF.coreDetailsStatus to status)).map { it[GDF.gedraId] }
+        owner.getItems(GEP.formDocs, mapOf(GDF.formStatus to status)).map { it[GDF.gedraId] }
 
     fun chip(user: TestUser, gid: String, cfact: String) =
         user.getData(chipWorkflows, mapOf(GDF.gedraId to gid, WFD.cfact to cfact))[SWF.workflows].toJsonListOfMaps()
@@ -279,8 +278,8 @@ class WorkflowApprovalTest : StringSpec({
     "a form awaiting review reads as Needs Review, and its chip names the workflow and what it asks of each caller" {
         // Open findings: acme's audit review emits needsReview, which takes the place of a Valid chip.
         val gid = engagedForm(findings = SC.findingsOpen)
-        listedAs(CDS.needsReview) shouldContain gid
-        listedAs(CDS.valid) shouldNotContain gid
+        listedAs(FSV.needsReview) shouldContain gid
+        listedAs(FSV.valid) shouldNotContain gid
 
         // What stands behind the chip, from the form's state and the caller -- the same current task, told to each
         // person as their own display: the approve button for a reviewer, a wait for anyone else.
@@ -300,8 +299,8 @@ class WorkflowApprovalTest : StringSpec({
     "an approved review reads as Finished, and Needs Review still wins while something waits" {
         val closed = engagedForm()
         reviewer.postData(approve, approveBody(closed))
-        listedAs(CDS.finished) shouldContain closed
-        listedAs(CDS.valid) shouldNotContain closed
+        listedAs(FSV.finished) shouldContain closed
+        listedAs(FSV.valid) shouldNotContain closed
         // Finished: the workflow is listed with no current task -- there is nothing left to do.
         val done = chip(owner, closed, WSC.finished).single()
         done[WFD.workflowId] shouldBe SW.auditReview
@@ -310,8 +309,8 @@ class WorkflowApprovalTest : StringSpec({
         // Findings still open after approval: both singletons at once, and Needs Review is the chip.
         val open = engagedForm(findings = SC.findingsOpen)
         reviewer.postData(approve, approveBody(open))
-        listedAs(CDS.needsReview) shouldContain open
-        listedAs(CDS.finished) shouldNotContain open
+        listedAs(FSV.needsReview) shouldContain open
+        listedAs(FSV.finished) shouldNotContain open
     }
 
     "Needs Info still trumps a pending review: the chip describes the owner's own work first" {
@@ -321,8 +320,8 @@ class WorkflowApprovalTest : StringSpec({
             create,
             mapOf(GDF.entries to listOf(mapOf(GE.traitId to SC.siteAudit, GE.data to mapOf(SC.auditor to "A", SC.findings to SC.findingsOpen)))),
         )[GDF.gedraId].toOptStr()!!
-        listedAs(CDS.needsInfo) shouldContain gid
-        listedAs(CDS.needsReview) shouldNotContain gid
+        listedAs(FSV.needsInfo) shouldContain gid
+        listedAs(FSV.needsReview) shouldNotContain gid
     }
 
     "an approval waits for the work before it" {

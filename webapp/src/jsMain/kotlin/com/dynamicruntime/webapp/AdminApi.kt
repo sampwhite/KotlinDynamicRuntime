@@ -248,7 +248,7 @@ object AdminApi {
 
     /**
      * The clients with their summary facts (issue #672's cross-client listing), as choices carrying `hasCoreDetails`
-     * (issue #695) -- what the forms list's choose-a-client reads, so the core details status filter follows the client
+     * (issue #695) -- what the forms list's choose-a-client reads, so the status filter follows the client
      * whose rows are on screen. Full-scope like [listClients]; the same clients, one more fact each.
      */
     suspend fun listClientSummaries(): List<ClientChoice> =
