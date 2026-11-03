@@ -151,7 +151,7 @@ fun writtenVersions(result: String?): Map<String, Long> =
     result?.jsonMapOrNull()?.get(CFEP.configs).toJsonListOfMaps().mapNotNull { config ->
         val name = config.getOptStr(CFEP.name) ?: return@mapNotNull null
         config[CFEP.version].toOptLongOrNull()?.let { name to it }
-    }?.toMap().orEmpty()
+    }.toMap()
 
 /**
  * One configuration the conversation drafted (issue #1527): a bundle written by `patch_config` -- its latest version, as

@@ -65,7 +65,7 @@ dependencies {
 // directory laid out as `md-docs/readme.md` rather than duplicated in the tree (the same arrangement `appui`
 // uses to embed the webapp bundle). Because the served build id is a content hash, re-copying an unchanged
 // README keeps its URL stable.
-val embedDocs by tasks.registering(Copy::class) {
+val embedDocs = tasks.register<Copy>("embedDocs") {
     // Resolved from this module's own directory (base/common -> the repo root), so it does not depend on what
     // the checkout directory is named.
     from(layout.projectDirectory.file("../../README.md")) {
@@ -113,7 +113,7 @@ val embedDocs by tasks.registering(Copy::class) {
 
 // The images the README shows (issue #1510), kept once in docs/images/ so GitHub draws them from the file, and copied
 // onto the classpath as component images so the app serves the same file (the kdr-images skill; kdn's `embedImages`).
-val embedImages by tasks.registering(Copy::class) {
+val embedImages = tasks.register<Copy>("embedImages") {
     from(layout.projectDirectory.dir("../../docs/images")) {
         include("overview.svg")
     }
@@ -152,7 +152,7 @@ val docTrees = listOf("docs", "examples", ".claude/skills")
 // Resolved from this module's own directory (base/common -> the repo root), as `embedDocs` is.
 val repoRoot = layout.projectDirectory.dir("../..")
 
-val docLinksTest by tasks.registering(Test::class) {
+val docLinksTest = tasks.register<Test>("docLinksTest") {
     description = "Checks that every link in the repository's documentation resolves."
     group = "verification"
     testClassesDirs = sourceSets.test.get().output.classesDirs

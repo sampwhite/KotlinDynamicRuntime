@@ -233,7 +233,7 @@ object ConfigImpact {
                 // A trait newly supported counts too: its entries were never checked, and every edit now checks them.
                 report.add(ImpactKind.dataInvalid, row, traitId = traitId)
             } else if (knownNext &&
-                recomputes(cxt, entry, now?.variants?.select(traitId)?.takeIf { knownNow }, next?.variants?.select(traitId))
+                recomputes(cxt, entry, now?.variants?.select(traitId)?.takeIf { knownNow }, next.variants?.select(traitId))
             ) {
                 report.add(ImpactKind.valuesRecomputed, row, traitId = traitId)
             }

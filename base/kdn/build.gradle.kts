@@ -14,7 +14,7 @@ dependencies {
 // doc id is `demo-client-<name>`, and its source path, which a link resolves by, stays `docs/demo-client/<name>.md`.
 // The walk-through that starts with the demo (issue #1429) is copied beside them.
 // Keep the ids in step with the documents `KdnComponent` declares.
-val embedDocs by tasks.registering(Copy::class) {
+val embedDocs = tasks.register<Copy>("embedDocs") {
     // Resolved from this module's own directory (base/kdn -> the repo root), so it does not depend on what the
     // checkout directory is named.
     from(layout.projectDirectory.dir("../../docs/demo-client")) {
@@ -29,7 +29,7 @@ val embedDocs by tasks.registering(Copy::class) {
 
 // The walk-through's banners (issues #1429, #1463), copied from the repo's `docs/images/` beside the documents, where the
 // page names them by their repo path so GitHub draws them too. `WalkThrough.images` declares them with that path.
-val embedImages by tasks.registering(Copy::class) {
+val embedImages = tasks.register<Copy>("embedImages") {
     from(layout.projectDirectory.dir("../../docs/images")) {
         include("walk-part*.svg")
     }
