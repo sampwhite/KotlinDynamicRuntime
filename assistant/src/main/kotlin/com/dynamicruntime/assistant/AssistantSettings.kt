@@ -149,11 +149,14 @@ class AssistantSettings(
         @KdrPrivate
         fun text(cxt: KdrCxt, def: EnvVarDef): String? = cxt.getEnvVar(def)?.trim()?.ifEmpty { null }
 
+        /**
+         * [def] read as every switch is (`getEnvBool`: true, yes, 1 and the like), absent meaning off -- and a value
+         * that reads as neither refuses the boot, since this one decides whether the deployment spends money.
+         */
         @KdrPrivate
-        fun flag(cxt: KdrCxt, def: EnvVarDef): Boolean = when (val value = text(cxt, def)?.lowercase()) {
-            null, "false" -> false
-            "true" -> true
-            else -> throw configError("${def.name} is '$value'; it must be true or false.")
+        fun flag(cxt: KdrCxt, def: EnvVarDef): Boolean {
+            val value = text(cxt, def) ?: return false
+            return cxt.getEnvBool(def) ?: throw configError("${def.name} is '$value'; it must be true or false.")
         }
 
         @KdrPrivate

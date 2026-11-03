@@ -4,16 +4,23 @@ import com.dynamicruntime.common.assistant.ACNV
 import com.dynamicruntime.common.assistant.ASST
 import com.dynamicruntime.common.content.UIC
 import com.dynamicruntime.common.context.CL
+import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.UPF
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.CLD
+import com.dynamicruntime.common.gedra.CUST
+import com.dynamicruntime.common.gedra.ClientAudience
+import com.dynamicruntime.common.gedra.ClientUsageType
 import com.dynamicruntime.common.home.HEP
 import com.dynamicruntime.common.home.HFLD
 import com.dynamicruntime.common.http.request.ROLE
+import com.dynamicruntime.common.sql.PF
+import com.dynamicruntime.common.user.ADEP
 import com.dynamicruntime.common.user.AEP
 import com.dynamicruntime.common.user.TestUser
+import com.dynamicruntime.common.user.UADEP
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptLong
@@ -35,10 +42,10 @@ import io.kotest.matchers.string.shouldContain
  */
 class AssistantSelfServeTest : StringSpec({
     val budget = 1_234_567L
-    fun boot(name: String, selfServe: Boolean): KdrCxt = Startup.mkTestBootCxt(
+    fun boot(name: String, selfServe: Boolean, withModel: Boolean = true): KdrCxt = Startup.mkTestBootCxt(
         name, name,
         buildMap {
-            put(AssistantService.modelConfigKey, ScriptedModel(emptyList()))
+            if (withModel) put(AssistantService.modelConfigKey, ScriptedModel(emptyList()))
             if (selfServe) {
                 put(AENV.selfServe.name, "true")
                 put(AENV.selfServeBudget.name, budget.toString())
@@ -64,14 +71,24 @@ class AssistantSelfServeTest : StringSpec({
         admin.getData(ACNV.statusPath).let {
             it[ACNV.on] shouldBe false
             it[ACNV.offered] shouldBe true
+            // The name the person gave it, not its generated id.
+            it[ACNV.clientName] shouldBe "Shop"
         }
         // The page is offered, to switch it on from; a message is still refused until it is on.
         menuIds(admin) shouldContain ASST.menuItem
         admin.expectError(EXC.notAuthorized, ACNV.messagePath, mapOf(ACNV.clientMessageId to "m1", ACNV.text to "Hi"))
             .toString() shouldContain ACNV.notOnCode
-        // Not without acknowledging what is sent.
+        // Not by a member or an editor of the client: the section is its administrators'.
+        val member = TestUser.create(cxt, "member@asst1568.test", userClient = client)
+        val editor = TestUser.create(cxt, "editor@asst1568.test", capabilities = listOf(ROLE.editor), userClient = client)
+        for (other in listOf(member, editor)) {
+            other.userInfo[UPF.client] shouldBe client
+            other.expectError(EXC.notAuthorized, ACNV.switchOnPath, mapOf(ASST.acknowledgeDataNotice to true))
+        }
+        // Not without acknowledging what is sent, and a refusal writes nothing.
         admin.expectError(EXC.badInput, ACNV.switchOnPath, mapOf(ASST.acknowledgeDataNotice to false))
             .toString() shouldContain ASST.acknowledgeDataNotice
+        service.clientRow(cxt, client) shouldBe null
         val status = admin.postData(ACNV.switchOnPath, mapOf(ASST.acknowledgeDataNotice to true))
         status[ACNV.on] shouldBe true
         status[ACNV.offered] shouldBe false
@@ -85,28 +102,62 @@ class AssistantSelfServeTest : StringSpec({
             .toString() shouldContain ACNV.notOfferedCode
     }
 
-    "a client an operator has set is not offered, even switched off" {
+    "a client an operator has set is not offered, whether switched off or on" {
         val (client, admin) = ownClient(cxt, "held@asst1568.test")
+        // Offered first, as a page left open would show it -- so the refusal below is the lock's, not a stale answer's.
+        admin.getData(ACNV.statusPath)[ACNV.offered] shouldBe true
         service.setClient(cxt, client, enabled = false, monthlyBudget = null, useDefaultBudget = false, acknowledgedNotice = false)
         admin.getData(ACNV.statusPath)[ACNV.offered] shouldBe false
         menuIds(admin) shouldNotContain ASST.menuItem
         admin.expectError(EXC.notAuthorized, ACNV.switchOnPath, mapOf(ASST.acknowledgeDataNotice to true))
             .toString() shouldContain ACNV.notOfferedCode
+        // The operator's off stands: the switch-on wrote nothing over it.
+        service.clientRow(cxt, client).shouldNotBeNull()[PF.enabled] shouldBe false
+
+        val (onClient, onAdmin) = ownClient(cxt, "operated@asst1568.test")
+        service.setClient(cxt, onClient, enabled = true, monthlyBudget = null, useDefaultBudget = false, acknowledgedNotice = true)
+        onAdmin.getData(ACNV.statusPath).let {
+            it[ACNV.on] shouldBe true
+            it[ACNV.offered] shouldBe false
+        }
     }
 
     "it is switched on from the client itself, not from its sandbox" {
         val (client, admin) = ownClient(cxt, "boxed@asst1568.test")
         admin.postData(AEP.openSandbox, emptyMap())
-        admin.getData(ACNV.statusPath)[ACNV.offered] shouldBe false
-        admin.expectError(EXC.badInput, ACNV.switchOnPath, mapOf(ASST.acknowledgeDataNotice to true))
-            .toString() shouldContain "from '$client' itself"
+        // Offered still, so the page can say where to switch it on from.
+        admin.getData(ACNV.statusPath).let {
+            it[ACNV.offered] shouldBe true
+            it[ACNV.inSandbox] shouldBe true
+        }
+        val refusal = admin.expectError(EXC.badInput, ACNV.switchOnPath, mapOf(ASST.acknowledgeDataNotice to true)).toString()
+        refusal shouldContain "from '$client' itself"
+        refusal shouldContain ACNV.inSandboxCode
         service.clientRow(cxt, client) shouldBe null
     }
 
-    "a client that is not self-serve is never offered it" {
+    "a client that is not self-serve is never offered it: the platform's, and a customer's" {
         val hubAdmin = TestUser.create(cxt, "chief@asst1568.test", level = ROLE.admin, userClient = CL.hub)
         hubAdmin.getData(ACNV.statusPath)[ACNV.offered] shouldBe false
         hubAdmin.expectError(EXC.notAuthorized, ACNV.switchOnPath, mapOf(ASST.acknowledgeDataNotice to true))
+            .toString() shouldContain ACNV.notOfferedCode
+        // A customer's client: its id is prefixed, but by the customer, not as a self-serve one's is.
+        val root = "cust1568"
+        TestUser.createFullAdmin(cxt, "operator@asst1568.test").postData(
+            ADEP.clientCreate,
+            mapOf(
+                CLD.clientId to root, CLD.name to "Customer", CLD.usageType to ClientUsageType.production.name,
+                CLD.audience to ClientAudience.customer.name, CLD.enabledEnvironments to listOf(ENV.unit, ENV.local),
+                CLD.newCustomer to mapOf(CUST.name to "Customer Co"),
+            ),
+        )
+        val made = "${root}_east"
+        TestUser.create(cxt, "admin@cust1568.test", level = ROLE.admin, userClient = root)
+            .postData(UADEP.clientCreate, mapOf(CLD.clientId to made, CLD.name to "East"))
+        val madeAdmin = TestUser.create(cxt, "admin@cust1568.test", userClient = made)
+        madeAdmin.getData(ACNV.statusPath)[ACNV.offered] shouldBe false
+        madeAdmin.expectError(EXC.notAuthorized, ACNV.switchOnPath, mapOf(ASST.acknowledgeDataNotice to true))
+            .toString() shouldContain ACNV.notOfferedCode
     }
 
     "a deployment that does not offer it to self-serve clients offers it to none" {
@@ -115,6 +166,13 @@ class AssistantSelfServeTest : StringSpec({
         AssistantService.get(plain).offeredTo(plain, client) shouldBe false
         admin.getData(ACNV.statusPath)[ACNV.offered] shouldBe false
         menuIds(admin) shouldNotContain ASST.menuItem
+    }
+
+    "a node with no model offers it to nobody" {
+        val noModel = boot("assistantSelfServeNoModel1568", selfServe = true, withModel = false)
+        val (client, admin) = ownClient(noModel, "nomodel@asst1568.test")
+        AssistantService.get(noModel).offeredTo(noModel, client) shouldBe false
+        admin.getData(ACNV.statusPath)[ACNV.offered] shouldBe false
     }
 
     "a switch that is not true or false refuses the boot" {

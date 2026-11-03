@@ -198,6 +198,24 @@ class AssistantTranscriptTest {
     }
 
     @Test
+    fun thePageShowsTheFaceItsStatusCallsFor() {
+        fun status(on: Boolean = false, offered: Boolean = false, inSandbox: Boolean = false) = parseAssistantStatus(
+            mapOf(ASST.client to "free_shop1", ACNV.on to on, ACNV.offered to offered, ACNV.inSandbox to inSandbox),
+        )
+        assertEquals(AssistantView.loading, assistantViewOf(null, failed = false))
+        assertEquals(AssistantView.failed, assistantViewOf(null, failed = true))
+        assertEquals(AssistantView.on, assistantViewOf(status(on = true), failed = false))
+        // On wins over offered, which a status never says together but a page must not mistake.
+        assertEquals(AssistantView.on, assistantViewOf(status(on = true, offered = true), failed = false))
+        assertEquals(AssistantView.switchOn, assistantViewOf(status(offered = true), failed = false))
+        // In the sandbox it is switched on from the client itself.
+        assertEquals(AssistantView.switchOnFromClient, assistantViewOf(status(offered = true, inSandbox = true), failed = false))
+        assertEquals(AssistantView.off, assistantViewOf(status(), failed = false))
+        // A status read already failed again keeps the one the page has.
+        assertEquals(AssistantView.on, assistantViewOf(status(on = true), failed = true))
+    }
+
+    @Test
     fun theWireIsReadAsThePageNeedsIt() {
         val status = parseAssistantStatus(
             mapOf(
@@ -208,9 +226,12 @@ class AssistantTranscriptTest {
         assertEquals("acme", status.client)
         assertTrue(status.on && status.sandboxInSource && !status.hasSandbox)
         assertEquals(0.5, status.allowance.usedShare)
-        // Offered to switch on only when the status says so (issue #1568).
+        // Offered to switch on only when the status says so (issue #1568), and known by its name where it has one.
         assertTrue(!status.offered)
-        assertTrue(parseAssistantStatus(mapOf(ASST.client to "free_shop1", ACNV.offered to true)).offered)
+        assertEquals("acme", status.clientName)
+        val shop = parseAssistantStatus(mapOf(ASST.client to "free_shop1", ACNV.clientName to "Shop", ACNV.offered to true))
+        assertTrue(shop.offered)
+        assertEquals("Shop", shop.clientName)
 
         val read = parseConversationRead(
             mapOf(

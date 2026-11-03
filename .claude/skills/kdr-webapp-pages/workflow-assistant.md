@@ -24,11 +24,14 @@ the person comes back to the page to go on. The backend answers for the person e
 act as the session's own sandbox user. A sandbox user nobody opened has nobody outside to speak for, and is refused.
 
 **Switching it on, where it is offered** (issue #1568). While the assistant is off but offered to the client -- a
-self-serve client, on a deployment with `KDR_ASSISTANT_SELF_SERVE` on, that no operator has set -- the page shows one
-live panel instead of the rest, **Switch on the assistant**: the data notice, and the switch behind a `Popconfirm`
-(`AssistantApi.switchOn`, `POST /clientAdmin/assistant/switchOn`), whose answer is the status the page then shows. The
-menu offers the page while it is offered (`assistant:usable`), so the person finds it. Off and not offered, the page
-says an operator switches it on.
+self-serve client, on a deployment with `KDR_ASSISTANT_SELF_SERVE` on and a model, that no operator has set -- the page
+shows one live panel instead of the rest, **Switch on the assistant**: the data notice, and the switch behind a
+`Popconfirm` (`AssistantApi.switchOn`, `POST /clientAdmin/assistant/switchOn`), whose answer is the status the page then
+shows. It names the client by its name (`clientName`), since a self-serve client's id is generated. From the sandbox it
+says to switch it on from the client itself. Off and not offered, the page says an operator switches it on. Which of
+these it shows is `assistantViewOf`, covered by `AssistantTranscriptTest`. Each status read, and the switch-on, takes a
+token, so a read under way when the assistant is switched on cannot put the panel back. The menu offers the page while it
+is offered (`assistant:usable`), so the person finds it.
 
 Panels, by the rules of "Page structure" in `webapp/CLAUDE.md`:
 

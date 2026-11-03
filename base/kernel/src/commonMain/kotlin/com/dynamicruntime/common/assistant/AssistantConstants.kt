@@ -165,6 +165,9 @@ object ACNV {
 
     /** Whether the client's administrator may switch the assistant on themselves ([switchOnPath], issue #1568). */
     const val offered = "offered"
+
+    /** The client's display name, which a person who named a self-serve client knows it by (issue #1568). */
+    const val clientName = "clientName"
     const val hasSandbox = "hasSandbox"
     const val sandboxInSource = "sandboxInSource"
     const val inSandbox = "inSandbox"
@@ -183,6 +186,7 @@ object ACNV {
     // --- Error codes a refused message carries (`errorCode`), for the page to act on ---
     const val notOnCode = "assistantNotOn"
     const val notOfferedCode = "assistantNotOffered"
+    const val inSandboxCode = "assistantInSandbox"
     const val noSandboxCode = "noSandbox"
     const val budgetSpentCode = "budgetSpent"
     const val turnLimitCode = "turnLimit"

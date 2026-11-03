@@ -82,13 +82,20 @@ not configuration. A sandbox goes by its parent. Switching a client on asks the 
 Anthropic (the listing's `dataNotice`); when and by whom is recorded on the row.
 
 **Or by a self-serve client's own administrator, where the deployment says so** (#1568). Anyone may sign up for a
-self-serve client, so this is off unless `KDR_ASSISTANT_SELF_SERVE` is `true`. Then a self-serve client nobody has set
-is **offered** the assistant (`AssistantService.offeredTo`, the status's `offered`): its administrator switches it on at
-`POST /clientAdmin/assistant/switchOn`, acknowledging the data notice as an operator does, and the client starts with
-the self-serve budget (`KDR_ASSISTANT_SELF_SERVE_BUDGET`, about $5 by default), which an operator may change after. A
-client an operator has set, off as much as on, is not offered it, so an operator's choice stands. It is switched on
-from the client itself, never its sandbox. What bounds the spend is what bounds any client's: the budget, turns per hour
-per user, and one self-serve client per person.
+self-serve client, so this is off unless `KDR_ASSISTANT_SELF_SERVE` is `true`. Then a self-serve client this node
+carries, which nobody has set, is **offered** the assistant when the node has a model (`AssistantService.offeredTo`,
+the status's `offered`): its administrator switches it on at `POST /clientAdmin/assistant/switchOn`, acknowledging the
+data notice as an operator does, and the client starts with the self-serve budget (`KDR_ASSISTANT_SELF_SERVE_BUDGET`,
+about $5 by default), which an operator may change after. A client an operator has set, off as much as on, is not
+offered it, so an operator's choice stands: the switch-on asks again under the row's lock, and refuses a row it finds
+there. It is switched on from the client itself, never its sandbox, where the status still says it is offered so the
+page can say where. What bounds the spend is what bounds any client's: the budget, turns per hour per user, and one
+self-serve client per person. The operator's listing shows such a row as any other: who acknowledged the notice is a
+user of the client, not an operator.
+
+Whether a client was ever set cannot come from the table cache, which holds enabled rows only, so the service keeps its
+own answer: a client found to have a row is remembered (a row is never removed), and one found to have none is asked
+again after 30 seconds. A stale answer can only offer what the switch-on then refuses.
 
 **A monthly budget in weighted tokens**, the deployment's default (`KDR_ASSISTANT_MONTHLY_BUDGET`) unless the
 operator sets the client's own. The unit is proportional to cost at Sonnet's prices, and steady whether or not the
@@ -130,7 +137,8 @@ assembly, so the switch is held in a table cache. The cache holds the enabled ro
 cfact asks about. **`assistant:usable`** (#1527) adds the rule the page's endpoints answer by: in a sandbox, the caller
 must be there as a user opened from one of the client's own (`AssistantTurns.personOrNull`). Read only once the switch
 says yes, so a node with the assistant off asks nothing more of a sandbox caller. It also holds while the assistant is
-offered to the client (#1568), so the menu shows the page to switch it on from; every other endpoint still needs it on.
+offered to the client (#1568), so the menu shows the page to switch it on from. A message is refused until it is on;
+the status, the conversations, and cancel answer either way, with nothing to show while it is off.
 
 ## Conversations and turns
 

@@ -88,15 +88,23 @@ val AssistantPage = FC<Props> {
     val openId = useRef<String>(null)
     openId.current = conversationId
     val transcriptBox = useRef<dynamic>(null)
+    // Taken by each status read and by a switch-on, so only the latest answer is shown: a read already under way when
+    // the assistant is switched on must not put the switch-on panel back.
+    val statusToken = useRef(0)
 
     useEffect(generation, statusReads) {
+        val token = (statusToken.current ?: 0) + 1
+        statusToken.current = token
         assistantScope.launch {
             // A failed re-read keeps the status the page has: the conversation stays, and the allowance says it is old.
             try {
-                status = AssistantApi.status()
-                statusError = null
+                val read = AssistantApi.status()
+                if (statusToken.current == token) {
+                    status = read
+                    statusError = null
+                }
             } catch (e: Throwable) {
-                statusError = userFacingError(e)
+                if (statusToken.current == token) statusError = userFacingError(e)
             }
         }
         assistantScope.launch {
@@ -255,9 +263,12 @@ val AssistantPage = FC<Props> {
     fun switchOn() {
         switchBusy = true
         switchError = null
+        val token = (statusToken.current ?: 0) + 1
+        statusToken.current = token
         assistantScope.launch {
             try {
-                status = AssistantApi.switchOn()
+                val switched = AssistantApi.switchOn()
+                if (statusToken.current == token) status = switched
                 setStatusReads { it + 1 }
             } catch (e: Throwable) {
                 switchError = userFacingError(e)
@@ -297,19 +308,20 @@ val AssistantPage = FC<Props> {
             )
         }
         val current = status
-        when {
-            current == null && statusError != null -> errorText("Couldn't load the assistant.", statusError!!)
-            current == null -> p { className = ClassName("subtitle"); +"Loading…" }
-            !current.on && current.offered -> panel(panelSwitchOn, "Switch on the assistant", kind = PanelKind.live) {
+        when (assistantViewOf(current, statusError != null)) {
+            AssistantView.failed -> errorText("Couldn't load the assistant.", statusError!!)
+            AssistantView.loading -> p { className = ClassName("subtitle"); +"Loading…" }
+            AssistantView.switchOn -> panel(panelSwitchOn, "Switch on the assistant", kind = PanelKind.live) {
+                val name = current!!.clientName
                 p {
                     +(
-                        "The workflow assistant is not on for ${current.client} yet, and you can switch it on. It works within " +
-                            "a monthly allowance, which this page shows once it is on."
+                        "The workflow assistant is not on for $name yet, and you can switch it on. It works within a monthly " +
+                            "allowance, which this page shows once it is on."
                     )
                 }
                 p { +current.dataNotice }
                 Popconfirm {
-                    title = "Switch on the workflow assistant for ${current.client}?"
+                    title = "Switch on the workflow assistant for $name?"
                     description = "What you write to it, and what it reads for you, is sent to Anthropic."
                     okText = "Switch on"
                     cancelText = "Cancel"
@@ -322,11 +334,17 @@ val AssistantPage = FC<Props> {
                 }
                 panelNote(switchError, null, "Couldn't switch the assistant on.")
             }
-            !current.on -> p {
+            AssistantView.switchOnFromClient -> p {
                 className = ClassName("subtitle")
-                +"The workflow assistant is not on for ${current.client}. A deployment operator switches it on for a client."
+                val name = current!!.clientName
+                +"The workflow assistant is not on for $name yet. Leave the sandbox to switch it on from $name itself."
             }
-            else -> {
+            AssistantView.off -> p {
+                className = ClassName("subtitle")
+                +"The workflow assistant is not on for ${current!!.clientName}. A deployment operator switches it on for a client."
+            }
+            AssistantView.on -> {
+                current!!
                 val running = summary?.running == true || pendingTurnId != null
                 val drafts = draftsOf(messages)
                 panelLinks(

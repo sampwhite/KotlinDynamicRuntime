@@ -565,8 +565,10 @@ class AssistantTurnsTest : StringSpec({
             for (name in tool.sends) input.properties.keys shouldContain name
         }
         AssistantTools.byName.keys shouldBe AssistantTools.all.map { it.name }.toSet()
-        for (path in listOf(ACNV.messagePath, ACNV.cancelPath)) schema.endpoints["$path:POST"].shouldNotBeNull().sessionOnly shouldBe true
-        for (path in listOf(ACNV.conversationPath, ACNV.conversationsPath)) {
+        for (path in listOf(ACNV.messagePath, ACNV.cancelPath, ACNV.switchOnPath)) {
+            schema.endpoints["$path:POST"].shouldNotBeNull().sessionOnly shouldBe true
+        }
+        for (path in listOf(ACNV.statusPath, ACNV.conversationPath, ACNV.conversationsPath)) {
             schema.endpoints["$path:GET"].shouldNotBeNull().sessionOnly shouldBe true
         }
         AssistantTools.readableDoc(cxt, "client-configuration").shouldNotBeNull()

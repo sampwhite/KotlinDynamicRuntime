@@ -92,9 +92,11 @@ fun assistantChatSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "${ASST.root
         property(
             ACNV.offered,
             "Whether the client's administrator may switch the assistant on themselves (a self-serve client, on a deployment " +
-                "that offers it): false once it is on, or an operator has set it.",
+                "that offers it): false once it is on, or an operator has set it. Said in its sandbox too, where it is " +
+                "switched on from the client itself.",
             required = true,
         ) { type = SCT.boolean }
+        property(ACNV.clientName, "The client's display name; its id when it has none.", required = true)
         property(ACNV.hasSandbox, "Whether the client has a sandbox, which the assistant drafts in.", required = true) {
             type = SCT.boolean
         }
@@ -132,8 +134,8 @@ fun assistantChatSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "${ASST.root
         "Switches the workflow assistant on for the caller's own client, where it is offered: a self-serve client, on a " +
             "deployment that offers it to them, which no operator has set. The administrator acknowledges what using it " +
             "sends to Anthropic (the status's dataNotice), as an operator does; the client starts with the self-serve " +
-            "budget. Refused from inside the client's sandbox, and with the errorCode " + ACNV.notOfferedCode + " where it " +
-            "is not offered. Answers the status after.",
+            "budget. Refused from inside the client's sandbox (errorCode " + ACNV.inSandboxCode + "), and where it is not " +
+            "offered (errorCode " + ACNV.notOfferedCode + "). Answers the status after.",
         HttpMethod.POST,
         outputRef = ACNV.statusType,
         inputFields = {
@@ -148,7 +150,7 @@ fun assistantChatSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "${ASST.root
         if (person.sandboxUser != null) {
             throw AssistantTurns.refused(
                 "Switch the workflow assistant on from '${person.client}' itself, not from its sandbox.",
-                EXC.badInput, ACNV.notOfferedCode,
+                EXC.badInput, ACNV.inSandboxCode,
             )
         }
         service.switchOn(c, person.client, request[ASST.acknowledgeDataNotice] == true)
@@ -276,7 +278,8 @@ fun clientStatus(cxt: KdrCxt, service: AssistantService, person: AssistantPerson
     return mapOf(
         ASST.client to client,
         ACNV.on to service.isOn(cxt, client),
-        ACNV.offered to (person.sandboxUser == null && service.offeredTo(cxt, client)),
+        ACNV.offered to service.offeredTo(cxt, client),
+        ACNV.clientName to (ClientService.get(cxt).known(client)?.name ?: client),
         ACNV.hasSandbox to SandboxAccess.hasSandbox(cxt, client),
         ACNV.sandboxInSource to (ClientService.get(cxt).originOf(client) == GedraConfigOrigin.source),
         ACNV.inSandbox to (person.sandboxUser != null),
