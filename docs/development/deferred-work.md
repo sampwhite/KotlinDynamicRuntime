@@ -438,6 +438,28 @@ When one does:
 - **Read it back**: `traitDesignOf` refuses a trait with an `if`/`then` today, as a field not of the editor's kinds;
   the gated shape would be the one conditional it reads.
 
+## When a form needs a field shown only in some state of the form
+
+`g-visibleWhen` tests the **caller**: it sees only the request's facts, and a write that would change the field it
+hides is refused, so the page and the API agree (issues #545, #830). A fact about the **form** -- one of a client's own,
+such as the demo's `isWorkshop` or `talkAccepted`, or a workflow's -- cannot gate a field: the schema check judges
+`g-visibleWhen` against the platform's facts alone, and a client's `toFrontend` therefore does nothing yet (#1561,
+deferred here 2026-11-03). The trigger is a client wanting a field on a form only while the form is in some state.
+When one does:
+
+- **A `visibleWhen` on a `g-layout` field entry**, a test over the facts the surface has: on a workflow's task, the set
+  `saveWhen` sees (the request's, the task's, the viewer's, the form's, and the workflow's own). The layout is where a
+  workflow may vary a type, and where a form's own requirements live (#1022), so a test of the form's state belongs
+  there rather than in the schema every surface shares.
+- **Presentation only.** A field left out keeps its stored value, and a write is not refused: the layout narrows what
+  the schema shows and never overrules it.
+- **`required` follows the test.** A layout-required field whose test fails is not required, in the save check and the
+  task's status alike, as the schema's conditionals filter requirements today.
+- **Worked out on the server** as the layout is delivered: form facts change only on a save, so the view assembled
+  after it is current, and no client fact needs to reach the browser.
+- **Not for an answer on the same page.** A field that follows another field as the person types is the gated trait
+  above, which the schema's `if`/`then` already says.
+
 ## When a closed choice list has to change
 
 A closed `g-options` list is a promise that nothing else is valid, and the promise is made at **both** ends:

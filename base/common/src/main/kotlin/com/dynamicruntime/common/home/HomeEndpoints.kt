@@ -17,6 +17,7 @@ import com.dynamicruntime.common.content.fragmentRefs
 import com.dynamicruntime.common.content.uiFragmentsProperty
 import com.dynamicruntime.common.cfact.CFACT
 import com.dynamicruntime.common.cfact.CFACTS
+import com.dynamicruntime.common.cfact.factsMarkdown
 import com.dynamicruntime.common.context.ENVGRP
 import com.dynamicruntime.common.context.EnvVarDef
 import com.dynamicruntime.common.uiblock.UIB
@@ -662,6 +663,9 @@ fun coreDocs(): List<MarkdownDocDef> = listOf(
     MarkdownDocDef(HDOC.expressions, "Expressions", "docs/reference/expressions.md",
         "The expression language copy, columns, layouts, and computed values are written in, and its functions -- made from the functions.",
         generate = ::expressionsMarkdown),
+    MarkdownDocDef(HDOC.facts, "Facts", "docs/reference/facts.md",
+        "The yes-or-no facts that decide who sees a menu entry or a field, who may save, and which forms a workflow takes.",
+        generate = ::factsMarkdown),
     MarkdownDocDef(HDOC.clientConfiguration, "Client configuration", "docs/reference/client-configuration.md",
         "Every slot of a client's configuration, what its entries hold, and what a write or an edit of one must send.",
         generate = ::clientConfigurationMarkdown),

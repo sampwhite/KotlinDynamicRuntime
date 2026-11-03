@@ -2,6 +2,8 @@
 
 package com.dynamicruntime.common.util
 
+import com.dynamicruntime.common.schema.SCH
+
 /**
  * The **expressions reference** (issue #1560): the `${…}` language a client's copy, columns, layouts, computed values,
  * and validation messages are written in, for whoever writes one -- a person or an AI configuring a client. A Markdown
@@ -25,6 +27,9 @@ in a small language that the server and the browser run alike, so a form shows w
 This page describes the language and lists its functions. The list of functions is made from the functions themselves.
 
 Text outside `${` and `}` is kept as written, so `Hello, ${name}.` joins the words and the value.
+
+A test of yes-or-no facts, such as a field's `$${SCH.visibleWhen}` or a workflow's eligibility test, is not an
+expression. It has a syntax of its own, described in [Facts](facts.md).
 
 ## Where you write them
 

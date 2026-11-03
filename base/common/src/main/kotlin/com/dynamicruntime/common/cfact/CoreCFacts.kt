@@ -2,6 +2,9 @@ package com.dynamicruntime.common.cfact
 
 import com.dynamicruntime.common.context.BOOT
 import com.dynamicruntime.common.gedra.CustomerAccess
+import com.dynamicruntime.common.gedra.workflow.addCoreDetailsCFacts
+import com.dynamicruntime.common.gedra.workflow.addWorkflowCFacts
+import com.dynamicruntime.common.gedra.workflow.addWorkflowSingletonCFacts
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.http.request.RequestService
 import com.dynamicruntime.common.http.request.RoleLadder
@@ -100,6 +103,22 @@ object CFACTS {
 }
 
 /**
+ * Declares every cfact `base:common` declares, in one list (issue #1561): the core ones here, then the workflow task
+ * facts, the core details form facts, and the workflow singletons. `CommonComponent` declares them through this, and the
+ * facts reference ([factsMarkdown]) lists them from it, so a fact declared beside the others cannot be left off the page.
+ */
+fun addCommonCFacts(collector: SchemaCollector) {
+    addCoreCFacts(collector)
+    // The workflow target facts (issue #533), declared everywhere for the reason the core ones are.
+    addWorkflowCFacts(collector)
+    // The core details workflow's two form facts (issue #657); the deriver that fills them is registered by the component.
+    addCoreDetailsCFacts(collector)
+    // The framework singleton cfacts a normal workflow may emit about a form (issue #784), declared globally so any
+    // scope's expressions can name them.
+    addWorkflowSingletonCFacts(collector)
+}
+
+/**
  * Declares the cfacts every deployment has: what this node is, and who is calling (issue #455).
  *
  * **Contributed by a component every node carries, and that is load-bearing.** A cfact declared by an
@@ -167,14 +186,14 @@ fun addCoreCFacts(collector: SchemaCollector) {
     collector.addCFact(
         CFactDef(
             CFACTS.edge, CFGRP.node,
-            "True on an edge node: the perimeter that fronts other servers, booted by `StartEdge`.",
+            "True on an edge node: the perimeter that fronts other servers.",
         ),
     ) { role == BOOT.edge }
     collector.addCFact(
         CFactDef(
             CFACTS.isTestInstance, CFGRP.node,
-            "True on a test instance -- one carrying the test-only fixtures (issue #997), whoever is asking. That " +
-                "a caller may use them is `${CFACTS.hasTestAccess}`.",
+            "True on a test instance -- one carrying the test-only fixtures, whoever is asking. That a caller may " +
+                "use them is `${CFACTS.hasTestAccess}`.",
         ),
     ) { it.instanceConfig.isTestInstance }
 
@@ -189,7 +208,7 @@ fun addCoreCFacts(collector: SchemaCollector) {
         CFactDef(
             CFACTS.anonymous, CFGRP.caller,
             "True when the request carries no authenticated identity. The positive form of `~${CFACTS.loggedIn}`, and " +
-                "preferred over it: an expression written by exclusion admits every state invented later.",
+                "preferred over it: a test written by exclusion admits every state invented later.",
         ),
     ) { !it.userProfile.isLoggedIn }
     collector.addCFact(
@@ -197,7 +216,7 @@ fun addCoreCFacts(collector: SchemaCollector) {
             CFACTS.hasOperatorLevel, CFGRP.caller,
             "True when the caller ranks at `operator` or above on the privilege ladder -- so an administrator " +
                 "satisfies it without holding `operator` at all. **Level only**: the `operator` section also " +
-                "requires `allClients` since issue #464, so this is not the test that section applies -- " +
+                "requires `allClients`, so this is not the test that section applies -- " +
                 "`${CFACTS.isDeploymentOperator}` is.",
         ),
     ) { RoleLadder.satisfies(it.userProfile.roles, ROLE.operator) }
@@ -205,7 +224,7 @@ fun addCoreCFacts(collector: SchemaCollector) {
         CFactDef(
             CFACTS.isDeploymentOperator, CFGRP.caller,
             "True when the caller may reach the `operator` section -- the deployment-wide surface, which " +
-                "takes the operator level **and** the `allClients` capability since issue #464. A " +
+                "takes the operator level **and** the `allClients` capability. A " +
                 "client-scoped administrator is not one, despite the ladder ranking them above operator.",
         ),
         // Asked of the dispatcher rather than restated here, which is the whole point: the menu offering this
@@ -228,7 +247,7 @@ fun addCoreCFacts(collector: SchemaCollector) {
         CFactDef(
             CFACTS.isClientOperator, CFGRP.caller,
             "True when the caller may reach the `clientOperator` section -- the client-scoped operator surface " +
-                "(issue #488), which takes the operator level but **not** `allClients`, so an operator or an " +
+                "(its own client's pages), which takes the operator level but **not** `allClients`, so an operator or an " +
                 "administrator confined to one client is one, unlike `${CFACTS.isDeploymentOperator}`.",
         ),
         // Asked of the dispatcher, like `isDeploymentOperator`: the menu item offering the cfacts page and the
@@ -238,8 +257,8 @@ fun addCoreCFacts(collector: SchemaCollector) {
         CFactDef(
             CFACTS.administersClient, CFGRP.caller,
             "True when the caller administers a client -- their own, or every one with `allClients`. An " +
-                "administrator in the `public` placeholder is not one: they reach their own users only (issue " +
-                "#805), so `${CFACTS.hasAdminLevel}` is true for them and this is not. It is what a caller's reads " +
+                "administrator in the `public` placeholder is not one: they reach their own users only, so " +
+                "`${CFACTS.hasAdminLevel}` is true for them and this is not. It is what a caller's reads " +
                 "reach beyond their own rows by, so a surface named for whose rows it shows asks it.",
         ),
         // `AdminRules`' own answer rather than a restatement of it: the rule has a carve-out (`public`) that a
@@ -248,7 +267,7 @@ fun addCoreCFacts(collector: SchemaCollector) {
     collector.addCFact(
         CFactDef(
             CFACTS.administersCustomer, CFGRP.caller,
-            "True when the caller administers a customer's root client, client-wide (issue #1114): the administrators " +
+            "True when the caller administers a customer's root client, client-wide: the administrators " +
                 "who act for the customer as a whole, and may see its page. An administrator confined to an " +
                 "organization of the root is not one.",
         ),
@@ -257,7 +276,7 @@ fun addCoreCFacts(collector: SchemaCollector) {
     collector.addCFact(
         CFactDef(
             CFACTS.isEditor, CFGRP.caller,
-            "True when the caller is an editor of its client (issue #1432): holds the `editor` role and is no " +
+            "True when the caller is an editor of its client: holds the `editor` role and is no " +
                 "administrator. An editor sees every user and form of its client and edits forms, but administers " +
                 "nothing -- no user edits, no user creation, no client configuration.",
         ),
@@ -267,7 +286,7 @@ fun addCoreCFacts(collector: SchemaCollector) {
         CFactDef(
             CFACTS.seesClientForms, CFGRP.caller,
             "True when the caller's reads reach every form of a client: an administrator of one " +
-                "(`${CFACTS.administersClient}`) or an editor (`${CFACTS.isEditor}`), issue #1432. So a surface named " +
+                "(`${CFACTS.administersClient}`) or an editor (`${CFACTS.isEditor}`). So a surface named " +
                 "for whose forms it shows -- \"Forms\" against \"My forms\" -- asks it.",
         ),
     ) { AdminRules.isClientAdministrator(it) || AdminRules.editsClient(it) }
@@ -286,7 +305,7 @@ fun addCoreCFacts(collector: SchemaCollector) {
     collector.addCFact(
         CFactDef(
             CFACTS.hasEnvAuth, CFGRP.caller,
-            "True when the session's env auth is effective (issue #545): the request came through an authenti" +
+            "True when the session's env auth is effective: the request came through an authenti" +
                 "cated edge, or a direct local start assumed it, and it is not suppressed. Gates a field a " +
                 "caller may set only from such a channel -- e.g. importing with entry ids preserved.",
             // Delivered to the frontend (issue #564): `preserveEntryIds` is gated `hasEnvAuth`, so the client
@@ -299,7 +318,7 @@ fun addCoreCFacts(collector: SchemaCollector) {
     collector.addCFact(
         CFactDef(
             CFACTS.hasTestAccess, CFGRP.caller,
-            "True when the caller may use the test-only fixtures (issue #1149): a test instance, with env auth " +
+            "True when the caller may use the test-only fixtures: a test instance, with env auth " +
                 "effective. The Simulations menu item is offered on it, since the simulations exist for nobody else.",
         ),
     ) { it.hasTestAccess }
@@ -311,14 +330,14 @@ fun addCoreCFacts(collector: SchemaCollector) {
     collector.addCFact(
         CFactDef(
             CFACTS.isEnvDebug, CFGRP.caller,
-            "True when the session is in ENV DEBUG (issue #517): env auth is effective and it turned debug on. " +
+            "True when the session is in ENV DEBUG: env auth is effective and it turned debug on. " +
                 "The debug menu items are offered on it.",
         ),
     ) { it.isEnvDebug }
     collector.addCFact(
         CFactDef(
             CFACTS.canEnableDebug, CFGRP.caller,
-            "True when the session may **turn debug on** (issue #517): env auth is effective and debug is not " +
+            "True when the session may **turn debug on**: env auth is effective and debug is not " +
                 "already on -- so the 'Enable debug' item is offered exactly to a session that could act on it.",
         ),
     ) { it.isEnvAuthEffective && !it.isEnvDebug }

@@ -1,12 +1,12 @@
 package com.dynamicruntime.common
 
+import com.dynamicruntime.common.cfact.addCommonCFacts
 import com.dynamicruntime.common.context.DebugTagDef
 import com.dynamicruntime.common.gedra.GDBG
 import com.dynamicruntime.common.gedra.stateRecomputeJob
 import com.dynamicruntime.common.gedra.workflow.OwnerOnlyGuard
 import com.dynamicruntime.common.gedra.workflow.TraitLockGuard
 import com.dynamicruntime.common.gedra.EditorDeleteGuard
-import com.dynamicruntime.common.cfact.addCoreCFacts
 import com.dynamicruntime.common.gedra.report.ReportDefSchema
 import com.dynamicruntime.common.gedra.workflow.WfDefSchema
 import com.dynamicruntime.common.gedra.report.ReportService
@@ -21,9 +21,6 @@ import com.dynamicruntime.common.gedra.workflow.PrefillFromOwnerCreation
 import com.dynamicruntime.common.gedra.workflow.UserHasLabelCreation
 import com.dynamicruntime.common.gedra.workflow.CoreDetailsStateDeriver
 import com.dynamicruntime.common.gedra.workflow.WorkflowStateDeriver
-import com.dynamicruntime.common.gedra.workflow.addCoreDetailsCFacts
-import com.dynamicruntime.common.gedra.workflow.addWorkflowSingletonCFacts
-import com.dynamicruntime.common.gedra.workflow.addWorkflowCFacts
 import com.dynamicruntime.common.gedra.workflow.coreWorkflowTemplates
 import com.dynamicruntime.common.gedra.workflow.coreDetailsStateConfig
 import com.dynamicruntime.common.gedra.workflow.workflowStateConfig
@@ -169,16 +166,13 @@ class CommonComponent : ComponentDefinition {
         // its job: it has no user store, so serving the application's account endpoints from its own database
         // is an account-creation surface on the one node that should have none.
         val appOnly = Presence(roles = setOf(BOOT.app))
-        // The cfacts every deployment has (issue #455). Not presence-gated, and that is the point: a cfact
-        // an expression may name has to be declared on every node that could serve the data naming it, or
-        // shared data would parse on some nodes and refuse the boot on others.
-        addCoreCFacts(collector)
-        // The two workflow target facts (issue #533), declared everywhere for the reason the core ones are.
-        addWorkflowCFacts(collector)
-        // The two core details form-facts (issue #657), and the deriver that fills them: a form records its core
-        // details workflow state on any create/import path, so a plain create or a bad import is recorded, not only a
-        // workflow step.
-        addCoreDetailsCFacts(collector)
+        // The cfacts every deployment has (issue #455): the core, workflow, core details, and singleton ones, in one
+        // list the facts reference reads too. Not presence-gated, and that is the point: a cfact an expression may name
+        // has to be declared on every node that could serve the data naming it, or shared data would parse on some
+        // nodes and refuse the boot on others.
+        addCommonCFacts(collector)
+        // The deriver that fills the two core details form-facts (issue #657): a form records its core details workflow
+        // state on any create/import path, so a plain create or a bad import is recorded, not only a workflow step.
         collector.addStateDeriver(CoreDetailsStateDeriver)
         // The per-workflow state a normal workflow computes about a form (issue #794). Registered **after** the
         // core details workflow's, and the order matters: eligibility (issue #783) is evaluated against the cfacts
@@ -190,9 +184,6 @@ class CommonComponent : ComponentDefinition {
         collector.addJob(stateRecomputeJob())
         // The nightly report snapshots (issue #1035), half an hour after the recompute they read the results of.
         collector.addJob(reportHistoryJob())
-        // The framework singleton cfacts a normal workflow may emit about a form (issue #784), declared globally
-        // so any scope's expressions can name them.
-        addWorkflowSingletonCFacts(collector)
         // The first cfactCalc function (issue #678): a workflow's cfactCalc usages emit cfacts into the same
         // form-singleton state the core details workflow derives, run inside that recompute (not a standalone pass).
         collector.addWorkflowFunction(ComputeCFactsFromDataCreation)

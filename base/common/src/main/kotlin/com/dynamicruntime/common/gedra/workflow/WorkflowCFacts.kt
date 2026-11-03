@@ -42,15 +42,14 @@ fun addWorkflowCFacts(collector: SchemaCollector) {
         CFactDef(
             WFC.isCta, WFGRP.workflow,
             "True, about the task being rendered, when it is the workflow's call to action: the earliest task, in " +
-                "list order, that is not both complete and valid (issue #785).",
+                "list order, that is not both complete and valid.",
         ),
     )
     collector.addCFact(
         CFactDef(
             WFC.reviewer, WFGRP.workflow,
-            "True, about the task being rendered, when the person viewing it may review it -- concluded at " +
-                "presentation time by the task's viewerCfacts functions (typically userHasLabel), never stored " +
-                "(issue #786).",
+            "True, about the task being rendered, when the person viewing it may review it -- concluded as the " +
+                "task is shown, by the task's own functions (typically `userHasLabel`), and never stored.",
         ),
     )
 }

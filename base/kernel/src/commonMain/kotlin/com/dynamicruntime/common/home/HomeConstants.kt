@@ -601,6 +601,8 @@ object HDOC {
     const val validationMessages = "validation-messages"
     /** The `${…}` expression language and its functions (issue #1560). Generated. */
     const val expressions = "expressions"
+    /** The facts (cfacts) a configuration tests, where they come from, and how a test is written (issue #1561). Generated. */
+    const val facts = "facts"
     const val clientConfiguration = "client-configuration"
     const val apiKeysAndTokens = "api-keys-and-tokens"
     /** The guide for a program or an AI assistant using a site's API (issue #1493), which the endpoint catalog names. */

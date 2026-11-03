@@ -573,6 +573,7 @@ class AssistantTurnsTest : StringSpec({
         // The codes a refused value is reported with (issue #1559), generated, are readable too.
         AssistantTools.readableDoc(cxt, "validation-messages").shouldNotBeNull()
         AssistantTools.readableDoc(cxt, "expressions").shouldNotBeNull()
+        AssistantTools.readableDoc(cxt, "facts").shouldNotBeNull()
         AssistantTools.readableDoc(cxt, "api-guide").shouldBeNull()
     }
 

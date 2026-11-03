@@ -112,6 +112,9 @@ A normal workflow can list **eligibility tests** in `eligibility`. Each is a fac
 `explanation` shown when it does not. A form that fails a test cannot enter the workflow, and the forms list says
 why. A test can be negated with `~`, as in `~kdr:needsReview`.
 
+The [facts reference](../reference/facts.md) lists the platform's facts, says which facts each kind of test sees, and
+shows how to join facts in one test.
+
 ## Who may work on a task
 
 A task can run a `userHasLabel` function, which asserts the fact `kdr:reviewer` for a person whose user has the
