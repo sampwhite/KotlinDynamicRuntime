@@ -688,6 +688,9 @@ a:not([class]):hover { color: var(--accent-brighter); text-decoration: underline
     padding: 12px 14px;
     overflow-x: auto;
 }
+/* A code block scrolls sideways only (issue #1551, as `.card .ant-table-wrapper` below). Not on `.code`, whose
+   textareas scroll down. */
+.markdown pre { overflow-y: hidden; }
 .markdown pre code { background: none; border: none; padding: 0; }
 /* A JSON block's runs, classified by the renderer itself (issue #1227), so the colour travels with the HTML. */
 .md-tok-key { color: #7dd3fc; }
@@ -731,8 +734,9 @@ a:not([class]):hover { color: var(--accent-brighter); text-decoration: underline
 
 /* Markdown pipe tables (issue #547): the same look as an operator `.op-table` -- collapsed borders, left-aligned
    header/cells, a row rule, top-aligned cells -- and wrapped in an overflow-x box so a wide table scrolls inside
-   the page rather than pushing it sideways. Emitted by the renderer as `<div class="md-table-scroll"><table>`. */
-.md-table-scroll { overflow-x: auto; max-width: 100%; margin: 12px 0; }
+   the page rather than pushing it sideways. Emitted by the renderer as `<div class="md-table-scroll"><table>`.
+   Sideways only: `overflow-y: hidden` as on `.card .ant-table-wrapper` (issue #1551). */
+.md-table-scroll { overflow-x: auto; overflow-y: hidden; max-width: 100%; margin: 12px 0; }
 .markdown table { border-collapse: collapse; width: 100%; }
 .markdown th, .markdown td {
     text-align: left;
@@ -793,8 +797,16 @@ a:not([class]):hover { color: var(--accent-brighter); text-decoration: underline
 /* ...and when the window is narrower than the table wants, the table scrolls **inside** the card rather than
    spilling over its edge -- which is what it did, rows running past the rounded corner and off the screen.
    Pre-existing (ten columns never fitted a phone) and made more visible by the three columns #462 added, so
-   it is fixed here rather than left as the cost of them. `auto`, so the scrollbar exists only when needed. */
-.card .ant-table-wrapper { overflow-x: auto; }
+   it is fixed here rather than left as the cost of them. `auto`, so the scrollbar exists only when needed.
+   `overflow-y: hidden` because CSS makes the other axis `auto` too, and the table is a pixel taller than its wrapper:
+   every table in a card drew a vertical scrollbar of its own beside the page's, even in a window wide enough that
+   nothing scrolled sideways (issue #1551). The page scrolls the rows; a table that scrolls its own does it in antd's
+   inner body, not here. */
+.card .ant-table-wrapper { overflow-x: auto; overflow-y: hidden; }
+/* A table keeps its pinned columns' stacking to itself. antd gives a pinned cell `z-index: columns + position + 2`, so
+   on a table with enough columns the last one pinned left (the Users table's Persona) reached the app bar's 20 and,
+   coming later in the page, drew over the bar as the rows scrolled under it (issue #1551). */
+.ant-table-wrapper { isolation: isolate; }
 
 /* The heading scale (see `--h1-size`): more space above a heading than below it, so it belongs to what follows. */
 h1, h2, h3, h4 { line-height: 1.25; color: var(--text); }
@@ -1394,8 +1406,8 @@ textarea.json-edit.json-field { min-height: 4.5rem; }
 .profile-users th, .profile-users td { white-space: nowrap; }
 .profile-users td:last-child { width: 100%; white-space: normal; }
 /* Where the window is too narrow for even that, the table scrolls inside the card rather than running past its edge
-   (issue #1445). */
-.profile-users-scroll { overflow-x: auto; }
+   (issue #1445), sideways only, as `.card .ant-table-wrapper` does (issue #1551). */
+.profile-users-scroll { overflow-x: auto; overflow-y: hidden; }
 /* The profile's card (issues #1445, #1479), always wide for its tables -- the person's users and their API keys: room
    for the users' columns -- the marks side by side in their own -- and a `public` user's three buttons on one line, so
    a row is one line high. Short of a content page's width, since its prose keeps to a readable measure. */
