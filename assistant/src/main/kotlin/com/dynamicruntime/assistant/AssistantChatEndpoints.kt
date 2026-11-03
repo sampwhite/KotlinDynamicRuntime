@@ -7,6 +7,7 @@ import com.dynamicruntime.common.endpoint.HttpMethod
 import com.dynamicruntime.common.endpoint.ListPage
 import com.dynamicruntime.common.endpoint.SchModule
 import com.dynamicruntime.common.endpoint.schemaModule
+import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.ClientService
 import com.dynamicruntime.common.gedra.GedraConfigOrigin
@@ -88,6 +89,12 @@ fun assistantChatSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "${ASST.root
         description = "What the assistant page shows before anything is sent: whether it can be used, and how much is left."
         property(ASST.client, "The client the assistant works for: the caller's, or the one whose sandbox they are in.", required = true)
         property(ACNV.on, "Whether the assistant is on for the client.", required = true) { type = SCT.boolean }
+        property(
+            ACNV.offered,
+            "Whether the client's administrator may switch the assistant on themselves (a self-serve client, on a deployment " +
+                "that offers it): false once it is on, or an operator has set it.",
+            required = true,
+        ) { type = SCT.boolean }
         property(ACNV.hasSandbox, "Whether the client has a sandbox, which the assistant drafts in.", required = true) {
             type = SCT.boolean
         }
@@ -119,6 +126,34 @@ fun assistantChatSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "${ASST.root
         outputRef = ACNV.statusType,
         sessionOnly = true,
     ) { c, _ -> clientStatus(c, AssistantService.get(c), AssistantTurns.personOf(c)) }
+
+    generalEndpoint(
+        ACNV.switchOnPath,
+        "Switches the workflow assistant on for the caller's own client, where it is offered: a self-serve client, on a " +
+            "deployment that offers it to them, which no operator has set. The administrator acknowledges what using it " +
+            "sends to Anthropic (the status's dataNotice), as an operator does; the client starts with the self-serve " +
+            "budget. Refused from inside the client's sandbox, and with the errorCode " + ACNV.notOfferedCode + " where it " +
+            "is not offered. Answers the status after.",
+        HttpMethod.POST,
+        outputRef = ACNV.statusType,
+        inputFields = {
+            field(ASST.acknowledgeDataNotice, "That the administrator has read the data notice.", required = true) {
+                type = SCT.boolean
+            }
+        },
+        sessionOnly = true,
+    ) { c, request ->
+        val service = AssistantService.get(c)
+        val person = AssistantTurns.personOf(c)
+        if (person.sandboxUser != null) {
+            throw AssistantTurns.refused(
+                "Switch the workflow assistant on from '${person.client}' itself, not from its sandbox.",
+                EXC.badInput, ACNV.notOfferedCode,
+            )
+        }
+        service.switchOn(c, person.client, request[ASST.acknowledgeDataNotice] == true)
+        clientStatus(c, service, person)
+    }
 
     generalEndpoint(
         ACNV.messagePath,
@@ -241,6 +276,7 @@ fun clientStatus(cxt: KdrCxt, service: AssistantService, person: AssistantPerson
     return mapOf(
         ASST.client to client,
         ACNV.on to service.isOn(cxt, client),
+        ACNV.offered to (person.sandboxUser == null && service.offeredTo(cxt, client)),
         ACNV.hasSandbox to SandboxAccess.hasSandbox(cxt, client),
         ACNV.sandboxInSource to (ClientService.get(cxt).originOf(client) == GedraConfigOrigin.source),
         ACNV.inSandbox to (person.sandboxUser != null),

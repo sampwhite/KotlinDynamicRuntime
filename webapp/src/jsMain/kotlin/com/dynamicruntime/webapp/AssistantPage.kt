@@ -35,6 +35,7 @@ private val assistantScope = MainScope()
 
 /** The page's panels' element ids, which the links at its top lead to. */
 private const val panelSandbox = "assistant-sandbox"
+private const val panelSwitchOn = "assistant-switch-on"
 private const val panelConversation = "assistant-conversation"
 private const val panelDrafts = "assistant-drafts"
 private const val panelAllowance = "assistant-allowance"
@@ -78,6 +79,8 @@ val AssistantPage = FC<Props> {
     var stopError by useState<DisplayError?>(null)
     var sandboxBusy by useState(false)
     var sandboxError by useState<DisplayError?>(null)
+    var switchBusy by useState(false)
+    var switchError by useState<DisplayError?>(null)
     var tryError by useState<DisplayError?>(null)
     // Drops an answer for a conversation the page has moved on from: a read's token must still be current, and the
     // conversation it read still the one open.
@@ -248,6 +251,22 @@ val AssistantPage = FC<Props> {
         }
     }
 
+    // The person switches the assistant on for their own client, where it is offered (issue #1568).
+    fun switchOn() {
+        switchBusy = true
+        switchError = null
+        assistantScope.launch {
+            try {
+                status = AssistantApi.switchOn()
+                setStatusReads { it + 1 }
+            } catch (e: Throwable) {
+                switchError = userFacingError(e)
+            } finally {
+                switchBusy = false
+            }
+        }
+    }
+
     // Into the sandbox (unless already there), at the draft's workflow's forms -- or the forms, for traits.
     fun tryIt(draft: AssistantDraft, inSandbox: Boolean) {
         val to = draft.workflowIds.firstOrNull()?.let { listOf(HP.page to pageWorkflowForms, WAGG.workflowId to it) }
@@ -281,6 +300,28 @@ val AssistantPage = FC<Props> {
         when {
             current == null && statusError != null -> errorText("Couldn't load the assistant.", statusError!!)
             current == null -> p { className = ClassName("subtitle"); +"Loading…" }
+            !current.on && current.offered -> panel(panelSwitchOn, "Switch on the assistant", kind = PanelKind.live) {
+                p {
+                    +(
+                        "The workflow assistant is not on for ${current.client} yet, and you can switch it on. It works within " +
+                            "a monthly allowance, which this page shows once it is on."
+                    )
+                }
+                p { +current.dataNotice }
+                Popconfirm {
+                    title = "Switch on the workflow assistant for ${current.client}?"
+                    description = "What you write to it, and what it reads for you, is sent to Anthropic."
+                    okText = "Switch on"
+                    cancelText = "Cancel"
+                    onConfirm = { switchOn() }
+                    Button {
+                        type = "primary"
+                        loading = switchBusy
+                        +"Switch on the assistant"
+                    }
+                }
+                panelNote(switchError, null, "Couldn't switch the assistant on.")
+            }
             !current.on -> p {
                 className = ClassName("subtitle")
                 +"The workflow assistant is not on for ${current.client}. A deployment operator switches it on for a client."

@@ -23,6 +23,13 @@ the person comes back to the page to go on. The backend answers for the person e
 (`AssistantTurns.personOf`): signed in to the sandbox, it is the user the sandbox user was opened from, and the tools
 act as the session's own sandbox user. A sandbox user nobody opened has nobody outside to speak for, and is refused.
 
+**Switching it on, where it is offered** (issue #1568). While the assistant is off but offered to the client -- a
+self-serve client, on a deployment with `KDR_ASSISTANT_SELF_SERVE` on, that no operator has set -- the page shows one
+live panel instead of the rest, **Switch on the assistant**: the data notice, and the switch behind a `Popconfirm`
+(`AssistantApi.switchOn`, `POST /clientAdmin/assistant/switchOn`), whose answer is the status the page then shows. The
+menu offers the page while it is offered (`assistant:usable`), so the person finds it. Off and not offered, the page
+says an operator switches it on.
+
 Panels, by the rules of "Page structure" in `webapp/CLAUDE.md`:
 
 1. **Sandbox** (live), only while the client has none: what a sandbox does, and **Turn on sandbox**, behind a

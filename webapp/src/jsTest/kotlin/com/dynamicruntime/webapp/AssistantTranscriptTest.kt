@@ -208,6 +208,9 @@ class AssistantTranscriptTest {
         assertEquals("acme", status.client)
         assertTrue(status.on && status.sandboxInSource && !status.hasSandbox)
         assertEquals(0.5, status.allowance.usedShare)
+        // Offered to switch on only when the status says so (issue #1568).
+        assertTrue(!status.offered)
+        assertTrue(parseAssistantStatus(mapOf(ASST.client to "free_shop1", ACNV.offered to true)).offered)
 
         val read = parseConversationRead(
             mapOf(

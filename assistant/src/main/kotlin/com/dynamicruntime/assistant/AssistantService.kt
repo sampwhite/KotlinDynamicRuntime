@@ -9,6 +9,7 @@ import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.ClientService
 import com.dynamicruntime.common.gedra.isSandboxClient
+import com.dynamicruntime.common.gedra.isSelfServeClient
 import com.dynamicruntime.common.gedra.sandboxParentOf
 import com.dynamicruntime.common.logging.LogStartup
 import com.dynamicruntime.common.sql.PF
@@ -144,6 +145,34 @@ class AssistantService : ServiceInitializer {
         if (cache == null) return clientRow(cxt, payer)?.get(PF.enabled) == true
         cache.checkRefresh(cxt)
         return cache.snapshot.get(cache.idOf(payer)) != null
+    }
+
+    /**
+     * Whether [client]'s administrator may switch the assistant on themselves (issue #1568): this node has a model, the
+     * deployment offers it to self-serve clients ([AENV.selfServe]), [client] is one, and nobody has set it yet -- so an
+     * operator's choice, off as much as on, stands. Never inside a sandbox: a client is switched on from itself. Read
+     * from the switch's cache first, so only a self-serve client that is off asks SQL whether it was ever set.
+     */
+    fun offeredTo(cxt: KdrCxt, client: String): Boolean {
+        if (model == null || !settings.selfServe || isSandboxClient(client) || !isSelfServeClient(client)) return false
+        if (isOn(cxt, client)) return false
+        return clientRow(cxt, client) == null
+    }
+
+    /**
+     * Switches the assistant on for [client] as its own administrator on [cxt], where it is offered ([offeredTo]): the
+     * administrator has acknowledged what is sent to the model ([acknowledgedNotice]), which is recorded as an
+     * operator's is, and the client starts with the self-serve budget. Refused when it is not offered -- which is also
+     * the answer to a second switch-on racing the first, since the first's row is there by then.
+     */
+    fun switchOn(cxt: KdrCxt, client: String, acknowledgedNotice: Boolean): Map<String, Any?> {
+        if (!offeredTo(cxt, client)) {
+            throw AssistantTurns.refused(
+                "The workflow assistant is not offered to '$client' to switch on; an operator switches it on.",
+                EXC.notAuthorized, ACNV.notOfferedCode,
+            )
+        }
+        return setClient(cxt, client, enabled = true, settings.selfServeBudget, useDefaultBudget = false, acknowledgedNotice)
     }
 
     /** [client]'s row, switched on or off; null when an operator has never set it. Always from SQL. */

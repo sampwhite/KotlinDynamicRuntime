@@ -57,13 +57,16 @@ class AssistantComponent : ComponentDefinition {
         collector.addCFact(
             CFactDef(
                 ASST.usableCFact, CFGRP.caller,
-                "True when the caller can talk to the workflow assistant: it is on for their client, and -- signed in to the " +
-                    "client's sandbox -- they are there as a user opened from one of the client's own. Not whether they " +
-                    "administer the client, nor whether the month's budget is left.",
+                "True when the caller can talk to the workflow assistant, or switch it on: it is on for their client, or " +
+                    "offered to it (a self-serve client, issue #1568) -- and, signed in to the client's sandbox, they are " +
+                    "there as a user opened from one of the client's own. Not whether they administer the client, nor " +
+                    "whether the month's budget is left.",
             ),
         ) {
             // Read only once the switch says yes, so a node with the assistant off asks nothing more of a sandbox caller.
-            AssistantService.getOrNull(it)?.isOn(it, it.userProfile.client) == true && AssistantTurns.personOrNull(it) != null
+            val service = AssistantService.getOrNull(it)
+            val client = it.userProfile.client
+            service != null && (service.isOn(it, client) || service.offeredTo(it, client)) && AssistantTurns.personOrNull(it) != null
         }
     }
 

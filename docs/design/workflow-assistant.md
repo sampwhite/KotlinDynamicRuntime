@@ -15,6 +15,7 @@ This document says how it is built and why. It grows with the issues below.
 | The `assistant` module: the model provider, operator opt-in, and monthly budgets | #1525 | built |
 | Conversations: tools, the turn loop, storage, and budget enforcement | #1526 | built |
 | The page: chat, try it in the sandbox, the publish link, and the allowance | #1527 | built |
+| Self-serve clients switch it on themselves, behind a deployment switch | #1568 | built |
 
 ## Where it lives
 
@@ -80,6 +81,15 @@ definition: a definition change is a draft on a client with a sandbox, and what 
 not configuration. A sandbox goes by its parent. Switching a client on asks the operator to acknowledge what is sent to
 Anthropic (the listing's `dataNotice`); when and by whom is recorded on the row.
 
+**Or by a self-serve client's own administrator, where the deployment says so** (#1568). Anyone may sign up for a
+self-serve client, so this is off unless `KDR_ASSISTANT_SELF_SERVE` is `true`. Then a self-serve client nobody has set
+is **offered** the assistant (`AssistantService.offeredTo`, the status's `offered`): its administrator switches it on at
+`POST /clientAdmin/assistant/switchOn`, acknowledging the data notice as an operator does, and the client starts with
+the self-serve budget (`KDR_ASSISTANT_SELF_SERVE_BUDGET`, about $5 by default), which an operator may change after. A
+client an operator has set, off as much as on, is not offered it, so an operator's choice stands. It is switched on
+from the client itself, never its sandbox. What bounds the spend is what bounds any client's: the budget, turns per hour
+per user, and one self-serve client per person.
+
 **A monthly budget in weighted tokens**, the deployment's default (`KDR_ASSISTANT_MONTHLY_BUDGET`) unless the
 operator sets the client's own. The unit is proportional to cost at Sonnet's prices, and steady whether or not the
 cache hits:
@@ -119,7 +129,8 @@ switched on. It does not say whether the month's budget is spent: the page says 
 assembly, so the switch is held in a table cache. The cache holds the enabled rows only, which is exactly the set the
 cfact asks about. **`assistant:usable`** (#1527) adds the rule the page's endpoints answer by: in a sandbox, the caller
 must be there as a user opened from one of the client's own (`AssistantTurns.personOrNull`). Read only once the switch
-says yes, so a node with the assistant off asks nothing more of a sandbox caller.
+says yes, so a node with the assistant off asks nothing more of a sandbox caller. It also holds while the assistant is
+offered to the client (#1568), so the menu shows the page to switch it on from; every other endpoint still needs it on.
 
 ## Conversations and turns
 

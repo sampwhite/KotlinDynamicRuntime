@@ -19,6 +19,7 @@ object AENV {
     const val defaultTurnsPerHour = 20
     const val defaultConcurrentTurns = 3
     const val defaultMonthlyBudget = 10_000_000L
+    const val defaultSelfServeBudget = 2_500_000L
     const val defaultKeySecret = "anthropicApiKey"
 
     /**
@@ -76,6 +77,18 @@ object AENV {
             "at Sonnet's prices: 500,000 to the dollar, so the default is about \$20), when an operator has set none of " +
             "its own. A sandbox counts against its parent's.",
     )
+    val selfServe = EnvVarDef(
+        "KDR_ASSISTANT_SELF_SERVE", group = ENVGRP.assistant, defaultDoc = "false",
+        description = "Whether the assistant is offered to self-serve clients (issue #1568): `true` lets a self-serve " +
+            "client's administrator switch it on for their client, acknowledging the data notice themselves, with the " +
+            "budget KDR_ASSISTANT_SELF_SERVE_BUDGET sets. Anyone may sign up for one, so it is off unless the deployment " +
+            "says so; a client an operator has set, on or off, stays as the operator set it.",
+    )
+    val selfServeBudget = EnvVarDef(
+        "KDR_ASSISTANT_SELF_SERVE_BUDGET", group = ENVGRP.assistant, defaultDoc = "$defaultSelfServeBudget",
+        description = "A self-serve client's monthly budget in weighted tokens, when its administrator switches the " +
+            "assistant on (KDR_ASSISTANT_SELF_SERVE): the default is about \$5. An operator may change it after.",
+    )
     val keySecret = EnvVarDef(
         ASST.keySecretEnvVar, group = ENVGRP.assistant, defaultDoc = defaultKeySecret,
         description = "The name of the secret in `private/secrets.properties` holding the Anthropic API key. With no such " +
@@ -99,6 +112,10 @@ class AssistantSettings(
     val concurrentTurns: Int,
     val defaultMonthlyBudget: Long,
     val keySecret: String,
+    /** Whether self-serve clients may switch the assistant on themselves ([AENV.selfServe]). */
+    val selfServe: Boolean = false,
+    /** The monthly budget a self-serve client switches on with ([AENV.selfServeBudget]). */
+    val selfServeBudget: Long = AENV.defaultSelfServeBudget,
 ) {
     companion object {
         fun read(cxt: KdrCxt): AssistantSettings {
@@ -124,11 +141,20 @@ class AssistantSettings(
                 concurrentTurns = count(cxt, AENV.concurrentTurns, AENV.defaultConcurrentTurns.toLong()).toInt(),
                 defaultMonthlyBudget = count(cxt, AENV.monthlyBudget, AENV.defaultMonthlyBudget, max = Long.MAX_VALUE / 2),
                 keySecret = text(cxt, AENV.keySecret) ?: AENV.defaultKeySecret,
+                selfServe = flag(cxt, AENV.selfServe),
+                selfServeBudget = count(cxt, AENV.selfServeBudget, AENV.defaultSelfServeBudget, max = Long.MAX_VALUE / 2),
             )
         }
 
         @KdrPrivate
         fun text(cxt: KdrCxt, def: EnvVarDef): String? = cxt.getEnvVar(def)?.trim()?.ifEmpty { null }
+
+        @KdrPrivate
+        fun flag(cxt: KdrCxt, def: EnvVarDef): Boolean = when (val value = text(cxt, def)?.lowercase()) {
+            null, "false" -> false
+            "true" -> true
+            else -> throw configError("${def.name} is '$value'; it must be true or false.")
+        }
 
         @KdrPrivate
         fun count(cxt: KdrCxt, def: EnvVarDef, default: Long, max: Long = Int.MAX_VALUE.toLong()): Long {
