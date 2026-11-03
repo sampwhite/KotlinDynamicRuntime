@@ -103,6 +103,8 @@ class HomeConfig(
     val selfServeClient: String? = null,
     /** Beside [selfServeClient], whether this site no longer carries that client (retired, or run elsewhere). */
     val selfServeClientAbsent: Boolean = false,
+    /** For a caller who has made no self-serve client, the code-defined templates a new one may start from. */
+    val selfServeTemplates: List<SelfServeTemplate> = emptyList(),
     /**
      * Whether this deployment offers a caller signed in to `public` to join a demo client (issue #1248), so the public
      * home page (issue #1324) asks which demos there are.
@@ -202,6 +204,7 @@ fun homeConfigFrom(config: UiConfig): HomeConfig {
         sharedDemo = config.state[HFLD.sharedDemo] == true,
         selfServeClient = (config.state[HFLD.selfServeClient] as? String)?.ifBlank { null },
         selfServeClientAbsent = config.state[HFLD.selfServeClientAbsent] == true,
+        selfServeTemplates = selfServeTemplatesFrom(config.state[HFLD.selfServeTemplates]),
         joinOffered = config.state[HFLD.joinOffered] == true,
         webAssets = webAssetNamesFrom(config.state[HFLD.webAssets]),
         fileRefs = fileRefNamesFrom(config.state[HFLD.fileRefs]),

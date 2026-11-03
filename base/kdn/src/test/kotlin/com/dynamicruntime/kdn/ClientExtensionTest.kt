@@ -275,6 +275,8 @@ class ExtensionTemplateComponent : ComponentDefinition {
             }
             cfact("tplFlag", "tpl", "A template flag.")
             workflow("tplFlow", WfEntry.normal) { task("a", "A") { trait("tplNote"); save("s", "Save", WfSaveKind.edit) } }
+            // What a client started from the template makes forms with, until it writes its own.
+            workflow(creationWorkflow, WfEntry.creation) { task("n", "Note") { trait("tplNote"); save("c", "Create") } }
             // Wide enough to change nothing any case here sees (issue #1386).
             workflowParams("tplFlow") { lifetime(start = "2000-01-01T00:00:00Z", end = "2999-01-01T00:00:00Z") }
             fragmentOverlay("home") {
@@ -305,6 +307,7 @@ class ExtensionTemplateComponent : ComponentDefinition {
     @Suppress("ConstPropertyName")
     companion object {
         const val template = "tplbase"
+        const val creationWorkflow = "tplCreate"
         const val packageId = "tplfix:tplres"
         const val child = "tplkid"
     }

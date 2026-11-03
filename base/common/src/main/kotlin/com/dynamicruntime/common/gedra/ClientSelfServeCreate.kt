@@ -25,6 +25,9 @@ import com.dynamicruntime.common.home.HFRAG
  *   own -- which is why the limit is enforced only here. Its audience is `customer`, its usage type follows the
  *   deployment's environment ([usageTypeIn]), it runs where the deployment does, and it has a sandbox, so it runs
  *   only what is published.
+ * - **What it starts from.** Blank -- the starter workflows, a New form asking for the form's name -- or a
+ *   code-defined template client it extends ([ClientService.templateClients]), whose traits, workflows, and copy it
+ *   inherits and may replace, its creation workflow included.
  * - **Who is in it.** The creator, as their own admin user there, under their identity; the endpoint moves the
  *   session there. Moving the client to a customer later is the platform's to do: it keeps its id, and the
  *   customer link is what makes it the customer's.
@@ -65,11 +68,23 @@ object ClientSelfServeCreate {
         home: Map<String, String> = emptyMap(),
         /** Whether the client starts with workflows made from the starter templates (issue #1346). */
         starterWorkflows: Boolean = true,
+        /**
+         * The code-defined template client the new one extends, one of [ClientService.templateClients]: it inherits the
+         * template's traits, workflows, and copy, and replaces any it redefines -- its creation workflow included. It
+         * then starts with no starter workflows, which would replace the template's own. Null for a blank client.
+         */
+        extendsFromClientId: String? = null,
     ): Result {
         val profile = cxt.userProfile
         if (profile.client != CL.public) {
             throw KdrException.mkInput(
                 "A self-serve client is created from '${CL.public}'; this session acts in '${profile.client}'.",
+            )
+        }
+        if (extendsFromClientId != null && ClientService.get(cxt).templateClients().none { it.clientId == extendsFromClientId }) {
+            throw KdrException.mkInput(
+                "'$extendsFromClientId' is not a template a client can start from: a template is a code-defined client " +
+                    "of the template kind.",
             )
         }
         val users = UserService.get(cxt)
@@ -91,7 +106,10 @@ object ClientSelfServeCreate {
             throw KdrException("Another create of your client is under way.", e, EXC.conflict)
         }
         val created = try {
-            ClientCreate.create(cxt, definition(cxt, client, name, description, timeZone), copy = homeCopy(home), starterWorkflows = starterWorkflows)
+            ClientCreate.create(
+                cxt, definition(cxt, client, name, description, timeZone, extendsFromClientId), copy = homeCopy(home),
+                starterWorkflows = starterWorkflows && extendsFromClientId == null,
+            )
         } catch (e: Exception) {
             // Nothing of the client was stored, so the one is not used.
             try {
@@ -119,10 +137,18 @@ object ClientSelfServeCreate {
     fun usageTypeIn(env: String): ClientUsageType = if (env == ENV.prod) ClientUsageType.production else ClientUsageType.dev
 
     /** The definition of the self-serve client [client], as the platform's create takes one. */
-    private fun definition(cxt: KdrCxt, client: String, name: String, description: String?, timeZone: String?): Map<String, Any?> {
+    private fun definition(
+        cxt: KdrCxt,
+        client: String,
+        name: String,
+        description: String?,
+        timeZone: String?,
+        extendsFromClientId: String?,
+    ): Map<String, Any?> {
         val env = cxt.instanceConfig.env
         return buildMap {
             put(CLD.clientId, client)
+            extendsFromClientId?.let { put(CLD.extendsFromClientId, it) }
             put(CLD.name, name)
             description?.let { put(CLD.description, it) }
             timeZone?.let { put(CLD.timeZone, it) }

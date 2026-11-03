@@ -1515,10 +1515,7 @@ fun adminGedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, ACEP.name
     // The templates a client made from data may extend: defined in source code, and of the template kind -- what
     // the load's own rule admits (`extendsProblem`). A choice list for a form; the rule is still the load's.
     optionsProvider(CLD.templateOptions) { c, _ ->
-        val clients = ClientService.get(c)
-        clients.declaredClients()
-            .filter { it.usageType == ClientUsageType.template && clients.originOf(it.clientId) == GedraConfigOrigin.source }
-            .map { SchOption(it.clientId, clientLabel(it.clientId, it.name)) }
+        ClientService.get(c).templateClients().map { SchOption(it.clientId, clientLabel(it.clientId, it.name)) }
     }
 
     // The customers a client may be filed under (issue #1107), for a form; whether the id falls in the chosen one's

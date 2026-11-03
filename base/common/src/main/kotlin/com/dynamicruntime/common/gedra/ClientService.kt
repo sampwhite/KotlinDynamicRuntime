@@ -177,6 +177,14 @@ class ClientService : ServiceInitializer {
     fun originOf(clientId: String): GedraConfigOrigin? =
         collector?.gedraConfigs?.configs?.firstOrNull { it.client?.clientId == clientId }?.origin
 
+    /**
+     * The clients a configured client may extend (`extendsFromClientId`): code-defined, and of the template kind --
+     * what the load's own rule admits (`GedraConfigLoadService.extendsProblem`). The one list behind the platform
+     * create's choices and the self-serve create's, so neither offers a template the load would drop.
+     */
+    fun templateClients(): List<ClientDef> =
+        declaredClients().filter { it.usageType == ClientUsageType.template && originOf(it.clientId) == GedraConfigOrigin.source }
+
     override fun onCreate(cxt: KdrCxt) {
         collector = SchemaCollector.get(cxt)
             ?: throw KdrException("Schema collector was not created for $serviceName.")

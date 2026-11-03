@@ -240,7 +240,10 @@ the missing link, so a demonstration or test client is never held to them.
   The creator gets their own admin user there, and the session moves to it. The one is recorded on the identity
   (`selfServeClient`) by a guarded write before the client is made, so two creates at once cannot both pass; a
   refused create gives it back, and once made it stays used, whatever becomes of the client. Moving the client to a
-  customer later is the platform's to do: it keeps its id, and the link makes it the customer's.
+  customer later is the platform's to do: it keeps its id, and the link makes it the customer's. It may start from a
+  code-defined **template** client (`extendsFromClientId`, held to the templates the platform's create offers): it
+  then inherits the template's definitions and starts with no starter workflows, so its New form is the template's
+  until it writes a creation workflow of its own, which replaces the inherited one.
 - **A customer's first client can make the customer.** The operator's create takes `newCustomer` (a name, and
   optionally a description) instead of naming a customer: the customer's id is the client's, and the client is its
   root. It is three writes, each judged as any is -- the customer into `hub`'s `customers` configuration

@@ -180,6 +180,13 @@ object HFLD {
     const val selfServeClientAbsent = "selfServeClientAbsent"
 
     /**
+     * `state.selfServeTemplates`: for a caller signed in to `public` who has made no client, the code-defined template
+     * clients a new one may start from (each its [id] and [label]), so the create card offers them;
+     * absent when there are none.
+     */
+    const val selfServeTemplates = "selfServeTemplates"
+
+    /**
      * `state.joinOffered`: true for a caller signed in to `public` on a deployment that offers joining a demo client
      * (issue #1248), so the public home page (issue #1324) asks which demos there are; absent otherwise, and the page
      * draws no demos section rather than asking and being refused.
@@ -237,6 +244,9 @@ object HTYPE {
 
     /** One app-bar menu item in `state.menu`. */
     const val menuItem = "MenuItem"
+
+    /** One template a self-serve client may start from, in `state.selfServeTemplates`. */
+    const val selfServeTemplate = "SelfServeTemplate"
 }
 
 /**
