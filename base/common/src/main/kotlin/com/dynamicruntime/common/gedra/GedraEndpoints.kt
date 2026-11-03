@@ -104,15 +104,16 @@ import com.dynamicruntime.common.util.toOptStr
  * An `allClients` holder can ask for one client's surface with the catalog's `client` filter.
  */
 /**
- * One stored row's wire map with the client's computed display values attached (issue #537). The list path
- * inlines the same thing over a page; this is the single-read counterpart, so a form opened directly presents
- * the same columns a listing does.
+ * One stored row's wire map with the client's computed display values (issue #537) and its trait names (issue #1543)
+ * attached. The list path inlines the same thing over a page; this is the single-read counterpart, so a form opened
+ * directly presents the same columns, and names its traits the same way, as a listing does.
  */
 private fun withDisplayValues(cxt: KdrCxt, row: GedraDataRow): Map<String, Any?> =
     row.toJsonMap() +
         (GDF.displayValues to computeDisplayValues(
             cxt, row, SchemaService.get(cxt).listingColumnsFor(cxt.client), cxt.client,
-        ))
+        )) +
+        (GDF.traitNames to rowTraitNames(row, traitNamesByClient(cxt, listOf(row))))
 
 /**
  * How many of the caller's most-recent documents a field-value suggestion list scans (issue #581). A suggestion
@@ -443,10 +444,13 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
         // the owner is then not this caller's to see even though the row is.
         val includeUsers = request.getOptBool(EI.includeUsers) == true
         val owners = if (includeUsers && AdminRules.seesOthersRows(c)) ownersOf(c, page.rows, callerScope) else emptyMap()
+        // Each row's traits named as its own client names them (issue #1543), worked out once per client on the page.
+        val traitNames = traitNamesByClient(c, page.rows)
         ListPage(
             page.rows.map { row ->
                 val display = computeDisplayValues(c, row, columns, c.client)
-                row.toJsonMap() + (GDF.displayValues to display) + ownerFields(owners[row.userId]) +
+                row.toJsonMap() + (GDF.displayValues to display) + (GDF.traitNames to rowTraitNames(row, traitNames)) +
+                    ownerFields(owners[row.userId]) +
                     if (withStates) mapOf(GDF.states to statesByGedra[row.gedraId.fullId].orEmpty()) else emptyMap()
             },
             page.numAvailable,
@@ -1408,6 +1412,26 @@ private fun searchFilter(
  */
 private fun ownersOf(c: KdrCxt, rows: List<GedraDataRow>, scope: ReadScope): Map<Long, AuthUserRow> =
     UserService.get(c).queryUsersByIds(c, rows.map { it.userId }, scope)
+
+/**
+ * The traits of [rows] named as each row's own client names them (issue #1543), by client and then trait id: the rule
+ * every page names a trait by ([formTraitNames]), in that client's schema and resolved with its copy, worked out once
+ * per client for the page. A listing spans clients for a caller who sees them all, and the page's catalog is one
+ * client's, so the page could name neither another client's own traits nor a global trait that client renamed.
+ */
+private fun traitNamesByClient(c: KdrCxt, rows: List<GedraDataRow>): Map<String, Map<String, String>> =
+    rows.groupBy { it.client }.mapValues { (client, clientRows) ->
+        formTraitNames(c, client, clientRows.flatMap { it.traitIds() }.distinct())
+    }
+
+/** [row]'s own traits' names out of [byClient], as [traitNamesByClient] worked them out: what a row's `traitNames` holds. */
+private fun rowTraitNames(row: GedraDataRow, byClient: Map<String, Map<String, String>>): Map<String, String> {
+    val names = byClient[row.client].orEmpty()
+    return row.traitIds().mapNotNull { id -> names[id]?.let { id to it } }.toMap()
+}
+
+/** The trait ids of [GedraDataRow]'s entries, in entry order. */
+private fun GedraDataRow.traitIds(): List<String> = entries.mapNotNull { it[GE.traitId] as? String }
 
 /** The name the User column shows for [owner] (issue #666): the account's own name, else its public name. */
 private fun ownerSortName(owner: AuthUserRow): String = owner.shownName()

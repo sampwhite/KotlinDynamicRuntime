@@ -90,7 +90,7 @@ object ReportEdit {
             for (trait in scope.formTraits.values) {
                 val paths = traitPaths(scope, store, trait)
                 // Named as every page names a trait (issue #1520): its heading, its title, its id.
-                if (paths.isNotEmpty()) add(group(ReportPathGroupKind.trait, trait.traitId, formTraitName(cxt, store, trait.traitId), paths))
+                if (paths.isNotEmpty()) add(group(ReportPathGroupKind.trait, trait.traitId, formTraitName(cxt, view, trait.traitId), paths))
             }
             for (wf in scope.workflows.values.filter { it.entry == WfEntry.normal }) {
                 val paths = workflowPaths(scope, wf)

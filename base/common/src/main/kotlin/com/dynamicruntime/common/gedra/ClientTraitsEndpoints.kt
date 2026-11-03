@@ -60,7 +60,7 @@ object ClientTraitsEdit {
         // Each trait's name as the client's people see it (issue #1534): for a client with a sandbox, as the sandbox runs
         // it, drafts included.
         val globalTraits = schema.gedraTraitsFor(client).filter { schema.isGlobalTrait(it.traitId) }
-        val names = formTraitNames(cxt, schema.storeFor(ClientStoredEdit.editedView(cxt, client)), globalTraits.map { it.traitId })
+        val names = formTraitNames(cxt, ClientStoredEdit.editedView(cxt, client), globalTraits.map { it.traitId })
         val traits = globalTraits.map { trait ->
             // The data's `$ref`, as the workflow view reads it: always one, the author's own or the generated one.
             val dataRef = trait.dataSchema[SCH.dRef].toOptStr()

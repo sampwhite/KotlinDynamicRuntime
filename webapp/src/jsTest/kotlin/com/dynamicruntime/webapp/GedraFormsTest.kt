@@ -598,6 +598,25 @@ class GedraFormsTest {
     }
 
     /**
+     * A listed row's `traitNames` (issue #1543), worked out for the row's own client, name its traits before the page's
+     * catalog does, since a listing across clients holds rows that catalog cannot name. A trait the row has no name for
+     * falls back to the catalog.
+     */
+    @Test
+    fun aRowsOwnTraitNamesComeBeforeTheCatalogs() {
+        val item = mapOf(
+            GDF.gedraId to "gd.fd.globex.u12",
+            GDF.entries to listOf(
+                mapOf(GE.traitId to "visit", GE.data to emptyMap<String, Any?>()),
+                mapOf(GE.traitId to "name", GE.data to emptyMap<String, Any?>()),
+                mapOf(GE.traitId to "expenseReport", GE.data to emptyMap<String, Any?>()),
+            ),
+            GDF.traitNames to mapOf("visit" to "Site visit", "name" to "Talk title"),
+        )
+        assertEquals(listOf("Site visit", "Talk title", "Expense claim"), summarizeForm(item, entriesUnion()).traitLabels)
+    }
+
+    /**
      * A union on another discriminator is no entries union (issue #1541): a friendly form reads its branches by their own
      * titles, else their values humanized -- never by a trait's name, even where a branch's `data` type has a heading.
      */

@@ -212,7 +212,7 @@ object ClientWorkflowEdit {
         val served = schema.schemaStore.servedDefs
         val usable = supportedTraits(collector.gedraConfigs, client, def, schema.overlaidTypesFor(client), schema.droppedTypesFor(client))
             .filter { GedraDataType.formDoc in it.appliesTo }
-        val names = formTraitNames(cxt, schema.storeFor(client), usable.map { it.traitId })
+        val names = formTraitNames(cxt, client, usable.map { it.traitId })
         return usable.map { trait ->
             buildMap {
                 put(CCT.traitId, trait.traitId)
