@@ -232,7 +232,7 @@ changed, and the overlay is merged over the template's current definition whenev
 template therefore reaches every workflow made from it:
 
 ```json
-{"workflowId": "eventSurvey", "fromTemplate": "kdr:survey", "label": "Event survey",
+{"workflowId": "eventCoreDetails", "fromTemplate": "kdr:coreDetails", "label": "Event details",
  "tasks": [{"id": "details", "label": "Your event", "traits": [{"traitId": "eventRequest"}]}]}
 ```
 
@@ -265,8 +265,8 @@ keeps its overlay as stored, so an edit of anything else does not delete it. A w
 overlay is refused.
 
 There is no shadowing. A client's `loanReview` beside the template `kdr:loanReview` is the client's own, and the
-template is nobody's. A client has one creation workflow and one survey; the templates may offer several of each. A
-client built on a template client (#945) runs that client's workflows, under the same rule.
+template is nobody's. A client has one creation workflow and one core details workflow; the templates may offer several
+of each. A client built on a template client (#945) runs that client's workflows, under the same rule.
 
 A template's rooted id is not a variable name, so where it is named (`fromTemplate`, the client page's catalog) it is
 carried as a string.

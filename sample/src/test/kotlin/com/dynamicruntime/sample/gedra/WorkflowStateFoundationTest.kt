@@ -7,7 +7,7 @@ import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.gedra.GEP
 import com.dynamicruntime.common.gedra.GT
 import com.dynamicruntime.common.gedra.mergeCfactContributions
-import com.dynamicruntime.common.gedra.workflow.SVY
+import com.dynamicruntime.common.gedra.workflow.CDF
 import com.dynamicruntime.common.gedra.workflow.WFC
 import com.dynamicruntime.common.gedra.workflow.WFD
 import com.dynamicruntime.common.gedra.workflow.WFS
@@ -57,19 +57,19 @@ class WorkflowStateFoundationTest : StringSpec({
         mapOf(GE.traitId to SC.siteAudit, GE.data to mapOf(SC.auditor to "A Person", SC.findings to findings)),
     )
 
-    // What acme's review survey requires (an expense report and the owner's details), so a form carrying these
-    // has the `surveyComplete` cfact -- which is what `auditReview`'s eligibility asks for (issue #783).
-    fun surveyEntries() = listOf(
+    // What acme's review core details workflow requires (an expense report and the owner's details), so a form carrying
+    // these has the `coreDetailsComplete` cfact -- which is what `auditReview`'s eligibility asks for (issue #783).
+    fun coreDetailsEntries() = listOf(
         mapOf(GE.traitId to ST.expenseReport, GE.data to mapOf(ST.year to 2026)),
         mapOf(GE.traitId to SC.userInfo, GE.data to mapOf(SC.userName to "A Person")),
     )
 
     /**
-     * A form in acme; eligible for `auditReview` unless [surveyDone] is false. [findings] of
+     * A form in acme; eligible for `auditReview` unless [coreDetailsDone] is false. [findings] of
      * [SC.findingsOpen] gives the workflow its own `acmeUnderAudit` cfact (issue #784).
      */
-    fun newForm(user: TestUser, surveyDone: Boolean = true, findings: String = "seen"): String {
-        val entries = auditEntries(findings) + if (surveyDone) surveyEntries() else emptyList()
+    fun newForm(user: TestUser, coreDetailsDone: Boolean = true, findings: String = "seen"): String {
+        val entries = auditEntries(findings) + if (coreDetailsDone) coreDetailsEntries() else emptyList()
         return user.postItem(create, mapOf(GDF.entries to entries))[GDF.gedraId].toOptStr()!!
     }
 
@@ -129,7 +129,7 @@ class WorkflowStateFoundationTest : StringSpec({
     "engaging with something that is not a normal workflow of the client is refused" {
         val user = TestUser.create(cxt, "wfs-bad@acme.test", userClient = SC.acme)
         val gid = newForm(user)
-        // A typo, and the survey workflow -- neither is a normal workflow this form may be put into.
+        // A typo, and the core details workflow -- neither is a normal workflow this form may be put into.
         user.expectError(EXC.badInput, engage, data = mapOf(GDF.gedraId to gid, GDF.workflowId to "nosuchworkflow"))
         user.expectError(EXC.badInput, engage, data = mapOf(GDF.gedraId to gid, GDF.workflowId to SW.reviewForm))
     }
@@ -194,22 +194,23 @@ class WorkflowStateFoundationTest : StringSpec({
         done[WFS.eligible] shouldBe true
         failureIds(done).shouldBeEmpty()
 
-        // Not done: the survey is incomplete, so `surveyDone` fails -- by id, with no explanation text stored.
-        // `surveyClean` passes, since nothing present is invalid; every test is evaluated, not the first failure.
-        val notDone = auditState(stored(newForm(user, surveyDone = false)))
+        // Not done: the core details are incomplete, so `coreDetailsDone` fails -- by id, with no explanation
+        // text stored. `coreDetailsClean` passes, since nothing present is invalid; every test is evaluated, not the
+        // first failure.
+        val notDone = auditState(stored(newForm(user, coreDetailsDone = false)))
         notDone[WFS.eligible] shouldBe false
-        failureIds(notDone) shouldContainExactly listOf(SW.surveyDone)
+        failureIds(notDone) shouldContainExactly listOf(SW.coreDetailsDone)
     }
 
     "engaging a form that is not eligible is refused, with the reasons" {
         val user = TestUser.create(cxt, "wfs-refused@acme.test", userClient = SC.acme)
-        val gid = newForm(user, surveyDone = false)
+        val gid = newForm(user, coreDetailsDone = false)
         val err = user.expectError(
             EXC.badInput, engage, data = mapOf(GDF.gedraId to gid, GDF.workflowId to SW.auditReview),
         )
         // The explanation is pulled from the acmeWf fragment file, so this is the evaluated text, not the template.
         err.toString() shouldContain "Finish reviewing your form first"
-        err.toString() shouldContain SW.surveyDone
+        err.toString() shouldContain SW.coreDetailsDone
     }
 
     "the engage gate decides on freshly recomputed cfacts, not on what was last stored" {
@@ -217,9 +218,9 @@ class WorkflowStateFoundationTest : StringSpec({
         val admin = TestUser.createFullAdmin(cxt, "wfs-fresh-admin@example.com")
         val gid = newForm(user)
         // Clear the stored state, the stand-in for a form whose stored cfacts predate the configuration (one
-        // created before its client had a survey, say). The data still completes the survey.
+        // created before its client had a core details workflow, say). The data still completes the core details workflow.
         admin.postItem(GEP.adminGedraState, mapOf(GDF.gedraId to gid, GDF.states to emptyList<Any?>()))
-        // Judged on the stored state, this form has no `surveyComplete` and would be refused. Recomputed first,
+        // Judged on the stored state, this form has no `coreDetailsComplete` and would be refused. Recomputed first,
         // its data says it is complete, so it is eligible and the engagement lands.
         val after = statesOf(user.postData(engage, mapOf(GDF.gedraId to gid, GDF.workflowId to SW.auditReview)))
         entriesOf(after, WFS.workflowEngagement).single()[WFS.engaged] shouldBe true
@@ -228,31 +229,31 @@ class WorkflowStateFoundationTest : StringSpec({
 
     // --- singleton cfacts as a contributed set (issue #784) --------------------------------------------------
 
-    "an engaged workflow contributes its singleton to the form's one cfacts set, beside the survey's" {
+    "an engaged workflow contributes its singleton to the form's one cfacts set, beside the core details workflow's" {
         val user = TestUser.create(cxt, "wfs-single@acme.test", userClient = SC.acme)
         val gid = newForm(user, findings = SC.findingsOpen)
         fun formFacts(states: List<Map<String, Any?>>) =
             entriesOf(states, GT.cfacts).single()[GT.facts].toJsonListOrEmpty().map { it.toOptStr() }
 
         // Not engaged: the workflow has concluded its own cfact from the data, and keeps it on its own entry --
-        // but contributes nothing, so the form's set is the survey's alone.
+        // but contributes nothing, so the form's set is the core details workflow's alone.
         val before = statesOf(user.postData(recompute, mapOf(GDF.gedraId to gid)))
         auditState(before)[WFS.cfacts].toJsonListOrEmpty().map { it.toOptStr() } shouldContainExactly listOf(SC.underAudit)
         auditState(before)[WFS.singletonCfacts].toJsonListOrEmpty().shouldBeEmpty()
-        formFacts(before) shouldContainExactly listOf(SVY.surveyComplete, SVY.surveyValid)
+        formFacts(before) shouldContainExactly listOf(CDF.coreDetailsComplete, CDF.coreDetailsValid)
 
         // Engaged: its rule emits `needsReview`, attributed on its entry and merged into the one form set -- after
-        // the survey's facts, which the merge keeps rather than one producer clobbering the other.
+        // the core details workflow's facts, which the merge keeps rather than one producer clobbering the other.
         val engaged = statesOf(user.postData(engage, mapOf(GDF.gedraId to gid, GDF.workflowId to SW.auditReview)))
         auditState(engaged)[WFS.singletonCfacts].toJsonListOrEmpty().map { it.toOptStr() } shouldContainExactly
             listOf(WSC.needsReview)
-        formFacts(engaged) shouldContainExactly listOf(SVY.surveyComplete, SVY.surveyValid, WSC.needsReview)
+        formFacts(engaged) shouldContainExactly listOf(CDF.coreDetailsComplete, CDF.coreDetailsValid, WSC.needsReview)
 
         // Disengaged: the contribution goes with the engagement.
         val out = statesOf(
             user.postData(engage, mapOf(GDF.gedraId to gid, GDF.workflowId to SW.auditReview, WFS.engaged to false)),
         )
-        formFacts(out) shouldContainExactly listOf(SVY.surveyComplete, SVY.surveyValid)
+        formFacts(out) shouldContainExactly listOf(CDF.coreDetailsComplete, CDF.coreDetailsValid)
     }
 
     "a workflow is gated by its peers' singletons, never by its own" {
@@ -307,9 +308,9 @@ class WorkflowStateFoundationTest : StringSpec({
         firstOpen[WFS.ctaTask] shouldBe SW.confirmContact
         firstOpen[WFS.tasksDone] shouldBe false
         val status = firstOpen[WFS.ctaStatus].toJsonMapOrEmpty()
-        status[SVY.complete] shouldBe false
-        status[SVY.valid] shouldBe true
-        status[SVY.missingTraits] shouldBe listOf(SC.userInfo)
+        status[CDF.complete] shouldBe false
+        status[CDF.valid] shouldBe true
+        status[CDF.missingTraits] shouldBe listOf(SC.userInfo)
 
         // The first task done: the CTA moves on to the second.
         engagedFollowUp(form(contact))[WFS.ctaTask] shouldBe SW.recordFollowUp

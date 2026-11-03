@@ -33,7 +33,7 @@ import io.kotest.matchers.string.shouldNotContain
  * workflows by the shared kernel rule against it.
  *
  * Acme is the vehicle: it declares two normal workflows (`auditReview`, `siteFollowUp`), and a form's review
- * survey decides whether it is eligible for the audit.
+ * core details workflow decides whether it is eligible for the audit.
  */
 class FormsWorkflowColumnTest : StringSpec({
     val cxt = Startup.mkTestBootCxt(
@@ -44,13 +44,14 @@ class FormsWorkflowColumnTest : StringSpec({
     val create = clientPath(GEP.formDocCreate, SC.acme)
     val engage = clientPath(GEP.workflowEngage, SC.acme)
 
-    fun newForm(user: TestUser, surveyDone: Boolean): String {
+    fun newForm(user: TestUser, coreDetailsDone: Boolean): String {
         val audit = listOf(mapOf(GE.traitId to SC.siteAudit, GE.data to mapOf(SC.auditor to "A Person", SC.findings to "seen")))
-        val survey = listOf(
+        val coreDetails = listOf(
             mapOf(GE.traitId to ST.expenseReport, GE.data to mapOf(ST.year to 2026)),
             mapOf(GE.traitId to SC.userInfo, GE.data to mapOf(SC.userName to "A Person")),
         )
-        return user.postItem(create, mapOf(GDF.entries to audit + if (surveyDone) survey else emptyList()))[GDF.gedraId].toOptStr()!!
+        return user.postItem(create,
+            mapOf(GDF.entries to audit + if (coreDetailsDone) coreDetails else emptyList()))[GDF.gedraId].toOptStr()!!
     }
 
     /** The whole listing envelope -- the summary sits beside `items`, where the TestUser helpers do not look. */
@@ -68,8 +69,8 @@ class FormsWorkflowColumnTest : StringSpec({
 
     "with states, the summary names the workflows over every visible form, whatever the page or the search" {
         val user = TestUser.create(cxt, "col-owner@acme.test", userClient = SC.acme)
-        newForm(user, surveyDone = true)
-        newForm(user, surveyDone = false)
+        newForm(user, coreDetailsDone = true)
+        newForm(user, coreDetailsDone = false)
 
         val full = summaryOf(listing(user))
         full.map { it[WFD.workflowId] } shouldContainExactly listOf(SW.auditReview, SW.siteFollowUp)
@@ -79,8 +80,8 @@ class FormsWorkflowColumnTest : StringSpec({
         audit[WCOL.phase] shouldBe WfPhase.engageable.name
         // Every test's reason, resolved -- the fragment pull included -- so the ineligible dialog needs no call.
         val reasons = audit[WCOL.explanations].toJsonMapOrEmpty()
-        reasons.keys shouldContainExactly setOf(SW.surveyDone, SW.surveyClean, SW.noOpenReview)
-        reasons[SW.surveyDone].toOptStr().orEmpty() shouldNotContain "%{"
+        reasons.keys shouldContainExactly setOf(SW.coreDetailsDone, SW.coreDetailsClean, SW.noOpenReview)
+        reasons[SW.coreDetailsDone].toOptStr().orEmpty() shouldNotContain "%{"
 
         // A one-row page, and a search matching nothing, see the same summary.
         summaryOf(listing(user, mapOf(EP.limit to 1))) shouldBe full
@@ -89,7 +90,7 @@ class FormsWorkflowColumnTest : StringSpec({
 
     "the summary is sent only when asked for, and only with states" {
         val user = TestUser.create(cxt, "col-nostates@acme.test", userClient = SC.acme)
-        newForm(user, surveyDone = true)
+        newForm(user, coreDetailsDone = true)
         // The listing's summary always says its columns (issue #1323); the workflows are in it only when asked for.
         fun hasWorkflows(args: Map<String, Any?>) = WCOL.workflows in user.client.sendJsonGetRequest(list, args)[EP.summary].toJsonMapOrEmpty()
         hasWorkflows(emptyMap()) shouldBe false
@@ -101,8 +102,8 @@ class FormsWorkflowColumnTest : StringSpec({
 
     "each row sorts its workflows by the shared rule: engaged, eligible, then ineligible" {
         val user = TestUser.create(cxt, "col-rows@acme.test", userClient = SC.acme)
-        val ready = newForm(user, surveyDone = true)
-        val unready = newForm(user, surveyDone = false)
+        val ready = newForm(user, coreDetailsDone = true)
+        val unready = newForm(user, coreDetailsDone = false)
         cell(listing(user), ready) shouldBe listOf(
             SW.auditReview to WfColumnCategory.eligible,
             SW.siteFollowUp to WfColumnCategory.eligible,
@@ -123,8 +124,8 @@ class FormsWorkflowColumnTest : StringSpec({
 
     "the workflow's view says whether the form may engage, and why not" {
         val user = TestUser.create(cxt, "col-view@acme.test", userClient = SC.acme)
-        val ready = newForm(user, surveyDone = true)
-        val unready = newForm(user, surveyDone = false)
+        val ready = newForm(user, coreDetailsDone = true)
+        val unready = newForm(user, coreDetailsDone = false)
         val view = clientPath(GEP.workflowView, SC.acme)
         fun viewOf(gid: String) = user.getData(view, mapOf(WFD.workflowId to SW.auditReview, GDF.gedraId to gid))
         viewOf(ready).let {
@@ -147,7 +148,7 @@ class FormsWorkflowColumnTest : StringSpec({
     "nothing visible means an empty summary, and a deleted form stops counting" {
         val user = TestUser.create(cxt, "col-empty@acme.test", userClient = SC.acme)
         summaryOf(listing(user)).shouldBeEmpty()
-        val only = newForm(user, surveyDone = true)
+        val only = newForm(user, coreDetailsDone = true)
         summaryOf(listing(user)).size shouldBe 2
         user.deleteData(clientPath(GEP.formDoc, SC.acme), mapOf(GDF.gedraId to only))
         summaryOf(listing(user)).shouldBeEmpty()
@@ -155,7 +156,7 @@ class FormsWorkflowColumnTest : StringSpec({
 
     "a client administrator and a cross-client administrator see the client's workflows too" {
         val owner = TestUser.create(cxt, "col-admin-owner@acme.test", userClient = SC.acme)
-        newForm(owner, surveyDone = true)
+        newForm(owner, coreDetailsDone = true)
         // Served from the cache's client index...
         val clientAdmin = TestUser.create(cxt, "col-client-admin@acme.test", level = ROLE.admin, userClient = SC.acme)
         summaryOf(listing(clientAdmin)).map { it[WFD.workflowId] } shouldContainExactly listOf(SW.auditReview, SW.siteFollowUp)

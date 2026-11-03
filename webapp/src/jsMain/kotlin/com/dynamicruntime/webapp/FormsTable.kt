@@ -29,16 +29,16 @@ import com.dynamicruntime.common.user.personaTag
 import com.dynamicruntime.common.user.userKeyLabel
 
 /**
- * The caller's form documents as an antd table: one row per form, most recently written first as the endpoint
- * returns them (issue #562), with a User column for a caller who sees other users' documents.
- * The list is the hub for the whole lifecycle (issue #417): a **row click** is the default open -- the survey's
- * **View Info** where the client has a survey, else the raw read-only view (issue #694) -- and a per-row
- * **Actions** column carries **View Info** (the survey's read-only on-boarding view, with its Edit toggle) and
- * Delete, so neither needs the form opened first. There is no separate "View All" action (issue #726): the raw
- * view is the row click where there is no survey, and the raw *editor* is reached from the survey view's Raw
- * edit and the raw view's Edit form. The survey-status chip on an unfinished row is itself a link straight into
- * the survey's edit mode. Delete arms an inline confirm in the row rather than navigating, since it is the one
- * irreversible action here.
+ * The caller's form documents as an antd table: one row per form, most recently written first as the endpoint returns
+ * them (issue #562), with a User column for a caller who sees other users' documents. The list is the hub for the whole
+ * lifecycle (issue #417): a **row click** is the default open -- the core details workflow's **View Info** where the
+ * client has a core details workflow, else the raw read-only view (issue #694) -- and a per-row **Actions** column
+ * carries **View Info** (the core details workflow's read-only on-boarding view, with its Edit toggle) and Delete, so
+ * neither needs the form opened first. There is no separate "View All" action (issue #726): the raw view is the row
+ * click where there is no core details workflow, and the raw *editor* is reached from the core details view's Raw edit
+ * and the raw view's Edit form. The status chip on an unfinished row is itself a link straight into the
+ * core details workflow's edit mode. Delete arms an inline confirm in the row rather than navigating, since it is the
+ * one irreversible action here.
  *
  * Presentational: every value is a [FormSummary] the parent already computed and every action is a callback the
  * parent owns, so the table itself knows nothing about gedra shapes or endpoints. An action a caller's surface
@@ -49,7 +49,7 @@ external interface FormsTableProps : Props {
     /** Each form's id paired with its summary, in display order. */
     var forms: List<Pair<String, FormSummary>>
 
-    /** Opens the raw read-only view of a form: the row click where the client has no survey (issue #726). */
+    /** Opens the raw read-only view of a form: the row click where the client has no core details workflow (issue #726). */
     var onView: (String) -> Unit
 
     /** Whether the caller's surface carries the delete endpoint, so a Delete action can work. */
@@ -80,12 +80,12 @@ external interface FormsTableProps : Props {
      */
     var showClient: Boolean
 
-    /** Opens the survey's read-only "View Info" view for a form (issue #694), from which its Edit toggle edits. */
-    var onSurveyView: (String) -> Unit
+    /** Opens the core details workflow's read-only "View Info" view for a form (issue #694), from which its Edit toggle edits. */
+    var onCoreDetailsView: (String) -> Unit
 
-    /** The `href` of the survey's **edit-mode** page for a form (issue #694) -- what the Needs Info / Invalid
+    /** The `href` of the core details workflow's **edit-mode** page for a form (issue #694) -- what the Needs Info / Invalid
      *  status chip links to, landing straight on the fields and bypassing the read-only view. */
-    var surveyEditHref: (String) -> String
+    var coreDetailsEditHref: (String) -> String
 
     /**
      * The workflow column's summary (issue #791): what it may show, over every form the caller may see. Empty
@@ -149,15 +149,15 @@ val FormsTable = FC<FormsTableProps> { props ->
     // (issue #1323). A client with no usage rules has none, and `Contains` carries the identity, as it did before
     // this was configurable.
     val displayCols = props.columns
-    // Draw the Status column, and offer "View Info", only when some row carries a survey status (issue #694): a
-    // client with no survey has none on any row, so an empty column or a dead-end action would say nothing. (A
-    // persistent store's rows written before the survey deriver existed carry none until re-touched or
-    // batch-recomputed -- a documented, deferred gap.)
-    val anySurveyStatus = props.forms.any { it.second.surveyStatus != null }
-    // Whether the Actions column has anything to carry (issue #726 review): View Info needs a survey, Delete needs
-    // its endpoint; with neither there is no column, not an empty one.
+    // Draw the Status column, and offer "View Info", only when some row carries a core details status (issue #694): a
+    // client with no core details workflow has none on any row, so an empty column or a dead-end action would say
+    // nothing. (A persistent store's rows written before the core details workflow deriver existed carry none until
+    // re-touched or batch-recomputed -- a documented, deferred gap.)
+    val anyFormStatus = props.forms.any { it.second.formStatus != null }
+    // Whether the Actions column has anything to carry (issue #726 review): View Info needs a core details workflow,
+    // Delete needs its endpoint; with neither there is no column, not an empty one.
     val drill = props.drillWorkflowId
-    val showActions = anySurveyStatus || props.canDelete || drill != null
+    val showActions = anyFormStatus || props.canDelete || drill != null
     // What the Updated and Created columns read their relative times against (issue #1141), and every display
     // column's presentation too (issue #1323), so a due date's "in 3h" moves with them.
     val now = useRelativeClock()
@@ -220,20 +220,21 @@ val FormsTable = FC<FormsTableProps> { props ->
             // column is), keyed on `GSORT.client` -- both the row-data key and the endpoint's sort key. Headed as an id,
             // since an id is what it shows and sorts by (issue #1438).
             if (props.showClient) add(sortableColumn("Client ID", GSORT.client, 140, props.sortColumn, props.sortDescending))
-            // The global survey-status column (issue #694): a fixed, non-sortable column (its sort/filter is
+            // The global status column (issue #694): a fixed, non-sortable column (its sort/filter is
             // deferred to #695), rendering a status chip and a CTA on the unfinished rows.
-            if (anySurveyStatus) add(statusColumn(props))
+            if (anyFormStatus) add(statusColumn(props))
             // The workflow column (issue #791): drawn when the summary names any workflow -- decided over every form
             // the caller may see, not this page, so it does not come and go as a search narrows.
             if (props.workflowSummary.isNotEmpty()) add(workflowColumn(props))
             // Relative times (issue #1141), with the exact one on hover: `23h 59m ago` at the widest (86px).
             add(timeColumn(sortableColumn("Updated", GSORT.updated, 110, props.sortColumn, props.sortDescending)))
             add(timeColumn(sortableColumn("Created", GSORT.created, 110, props.sortColumn, props.sortDescending)))
-            // View Info (survey clients) and Delete (where its endpoint is on the surface). With "View All" gone
-            // (issue #726) the column can have nothing to show -- a no-survey client whose caller cannot delete
-            // -- and then it is not drawn at all: an empty column pinned right would be a blank sticky band
-            // whose shadow overlays every scrolled row. The row click is the open there.
-            if (showActions) add(actionsColumn(props, showSurvey = anySurveyStatus, onViewWorkflow = drill?.let { ::openWorkflow }))
+            // View Info (core details workflow clients) and Delete (where its endpoint is on the surface). With "View
+            // All" gone (issue #726) the column can have nothing to show -- a no-core-details client whose caller
+            // cannot delete -- and then it is not drawn at all: an empty column pinned right would be a blank sticky
+            // band whose shadow overlays every scrolled row. The row click is the open there.
+            if (showActions) add(actionsColumn(props, showCoreDetails = anyFormStatus,
+                onViewWorkflow = drill?.let { ::openWorkflow }))
         }
         // Pinned while the table scrolls sideways (issue #726 follow-up): the first column -- the client's first
         // display column, or `Contains` when it declares none, either way the row's identity -- stays on the
@@ -277,34 +278,35 @@ val FormsTable = FC<FormsTableProps> { props ->
             row.ownerId = summary.ownerId
             // And its state, so the same cell asks whether it is in a workflow (issue #1452).
             row.states = summary.states
-            // The survey status for the fixed Status column (issue #694): its chip label + colour class, and
-            // whether it warrants the CTA (anything but Valid). Absent on a row with no survey state.
-            summary.surveyStatus?.let {
+            // The core details status for the fixed Status column (issue #694): its chip label + colour class, and
+            // whether it warrants the CTA (anything but Valid). Absent on a row with no core details state.
+            summary.formStatus?.let {
                 row.svyLabel = it.label
                 row.svyPstat = it.pstat
-                // The unfinished chip links straight into the survey's edit mode; a workflow's Needs Review or
-                // Finished chip (issue #789) opens the workflows behind it instead; Valid is a plain chip.
+                // The unfinished chip links straight into the core details workflow's edit mode; a workflow's Needs
+                // Review or Finished chip (issue #789) opens the workflows behind it instead; Valid is a plain chip.
                 val cfact = it.singletonCfact
                 when {
                     cfact != null -> {
                         row.svyCfact = cfact
                         row.svyGedraId = id
                     }
-                    it != SurveyStatus.valid -> row.svyEditHref = props.surveyEditHref(id)
+                    it != FormStatus.valid -> row.svyEditHref = props.coreDetailsEditHref(id)
                 }
             }
             row
         }.toTypedArray()
         onRow = { record, _ ->
             val handlers: dynamic = js("({})")
-            // The row click is the default open (issue #694): the survey's "View Info" where the client has a
-            // survey -- the friendlier on-boarding view, with its Edit toggle and a "Raw edit" escape -- else the
-            // raw read-only view. The same signal gates the Status column and the View Info action, so the three
-            // can never disagree about whether a survey exists (it is a proxy read off the loaded rows; a
-            // persistent store's pre-deriver rows fall back to the raw view until re-touched or batch-recomputed).
+            // The row click is the default open (issue #694): the core details workflow's "View Info" where the client
+            // has a core details workflow -- the friendlier on-boarding view, with its Edit toggle and a "Raw edit"
+            // escape -- else the raw read-only view. The same signal gates the Status column and the View Info action,
+            // so the three can never disagree about whether a core details workflow exists (it is a proxy read off the
+            // loaded rows; a persistent store's pre-deriver rows fall back to the raw view until re-touched or
+            // batch-recomputed).
             val open = {
                 val id = record.key as String
-                if (anySurveyStatus) props.onSurveyView(id) else props.onView(id)
+                if (anyFormStatus) props.onCoreDetailsView(id) else props.onView(id)
             }
             if (drill == null) {
                 handlers.onClick = open
@@ -330,16 +332,16 @@ val FormsTable = FC<FormsTableProps> { props ->
 }
 
 /**
- * The per-row Actions column (issue #417): **View Info** (the survey's read-only view; offered when the client
- * has a survey, issue #694) and Delete when its endpoint is on the surface. The former "View All" is gone
- * (issue #726): it duplicated the row click. Delete arms an inline confirm on the row it belongs to
- * rather than acting on the first click. `onCell` stops a click anywhere in this cell from bubbling to the row's
- * own click handler, so using an action never also opens the view. The cell content is a component
- * ([FormRowActions]) rendered per row, since the render callback must return a React node.
+ * The per-row Actions column (issue #417): **View Info** (the core details workflow's read-only view; offered when the
+ * client has a core details workflow, issue #694) and Delete when its endpoint is on the surface. The former "View All"
+ * is gone (issue #726): it duplicated the row click. Delete arms an inline confirm on the row it belongs to rather than
+ * acting on the first click. `onCell` stops a click anywhere in this cell from bubbling to the row's own click handler,
+ * so using an action never also opens the view. The cell content is a component ([FormRowActions]) rendered per row,
+ * since the render callback must return a React node.
  */
 private fun actionsColumn(
     props: FormsTableProps,
-    showSurvey: Boolean,
+    showCoreDetails: Boolean,
     onViewWorkflow: ((String, List<WorkflowCellItem>) -> Unit)? = null,
 ): dynamic {
     // Wider in a drilled listing (issue #792), which adds View Workflow to each row.
@@ -357,8 +359,8 @@ private fun actionsColumn(
         return FormRowActions.create {
             this.id = id
             this.onViewWorkflow = onViewWorkflow?.let { open -> { open(id, items) } }
-            this.showSurvey = showSurvey
-            this.onSurveyView = props.onSurveyView
+            this.showCoreDetails = showCoreDetails
+            this.onCoreDetailsView = props.onCoreDetailsView
             this.canDelete = props.canDelete && mayDeleteForm(
                 record.ownerId as? Long, props.selfUserId, props.limitedDelete,
                 // Typed before the call, which the compiler calls needless: an extension called on a `dynamic` is a JS method
@@ -379,12 +381,12 @@ private fun actionsColumn(
 }
 
 /**
- * The global survey-status column (issue #694): a status chip which, on an unfinished (Invalid / Needs Info)
- * row, **is itself the link** straight into the survey's edit mode -- a real `<a href>`, so it is keyboard
- * reachable and can open in a new tab; Valid is a plain chip. Like [actionsColumn], `onCell` stops a click
- * inside the cell from reaching the row's own handler, so following the chip does not also open the raw view.
- * A row with no survey status renders an em dash. The chip label/colour and the edit href are read off the row
- * (set in the dataSource above), so the table stays free of the `SurveyStatus` enum itself.
+ * The global status column (issue #694): a status chip which, on an unfinished (Invalid / Needs Info) row,
+ * **is itself the link** straight into the core details workflow's edit mode -- a real `<a href>`, so it is keyboard
+ * reachable and can open in a new tab; Valid is a plain chip. Like [actionsColumn], `onCell` stops a click inside the
+ * cell from reaching the row's own handler, so following the chip does not also open the raw view. A row with no core
+ * details status renders an em dash. The chip label/colour and the edit href are read off the row (set in the
+ * dataSource above), so the table stays free of the `FormStatus` enum itself.
  */
 private fun statusColumn(props: FormsTableProps): dynamic {
     val c = column("Status", "status", 150)
@@ -406,11 +408,11 @@ private fun statusColumn(props: FormsTableProps): dynamic {
 }
 
 private external interface FormStatusCellProps : Props {
-    /** The status chip's label ("Valid"/"Needs Info"/"Invalid"), or null for a row with no survey status. */
+    /** The status chip's label ("Valid"/"Needs Info"/"Invalid"), or null for a row with no core details status. */
     var label: String?
     /** The [PSTAT] colour class for the chip; null falls back to the neutral colour. */
     var pstat: String?
-    /** The survey edit-mode href the chip links to on an unfinished row; null makes it a plain chip. */
+    /** The core details edit-mode href the chip links to on an unfinished row; null makes it a plain chip. */
     var editHref: String?
     /** On a Needs Review / Finished chip (issue #789): the singleton cfact whose workflows its click lists. */
     var cfact: String?
@@ -418,7 +420,7 @@ private external interface FormStatusCellProps : Props {
     var gedraId: String?
 }
 
-/** One Status cell: the coloured chip -- a link straight into the survey's edit mode on an unfinished row. */
+/** One Status cell: the coloured chip -- a link straight into the core details workflow's edit mode on an unfinished row. */
 private val FormStatusCell = FC<FormStatusCellProps> { props ->
     val label = props.label
     val cls = ClassName("op-status " + (props.pstat ?: PSTAT.info))
@@ -515,8 +517,8 @@ private external interface FormRowActionsProps : Props {
     var id: String
     /** Opens the drilled workflow on this form (issue #792); null outside a drilled listing. */
     var onViewWorkflow: (() -> Unit)?
-    var showSurvey: Boolean
-    var onSurveyView: (String) -> Unit
+    var showCoreDetails: Boolean
+    var onCoreDetailsView: (String) -> Unit
     var canDelete: Boolean
     /** Whose the form is when it is not the caller's (issue #1452), for the delete question; null otherwise. */
     var otherOwner: String?
@@ -539,12 +541,12 @@ private val FormRowActions = FC<FormRowActionsProps> { props ->
                 +"View Workflow"
             }
         }
-        // The survey's read-only on-boarding view (issue #694) -- only where the client has a survey.
-        if (props.showSurvey) {
+        // The core details workflow's read-only on-boarding view (issue #694) -- only where the client has a core details workflow.
+        if (props.showCoreDetails) {
             Button {
                 type = "link"
                 size = "small"
-                onClick = { props.onSurveyView(props.id) }
+                onClick = { props.onCoreDetailsView(props.id) }
                 +"View Info"
             }
         }

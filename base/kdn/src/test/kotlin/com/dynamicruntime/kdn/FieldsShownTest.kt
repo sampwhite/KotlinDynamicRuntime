@@ -39,8 +39,8 @@ import io.kotest.matchers.string.shouldContain
  * A workflow's form showing only the fields its layout lists (issue #1071): its edit save writes those fields over the
  * stored entry and leaves the rest -- so workflows filling different parts of one questionnaire keep each other's
  * answers -- refuses a field it does not show, and still has the merged entry validated whole. Design View sets and
- * removes the list. Over a client of its own: a questionnaire trait, a creation workflow, and two workflows -- a survey
- * and a normal one -- each listing different questions.
+ * removes the list. Over a client of its own: a questionnaire trait, a creation workflow, and two workflows -- a core
+ * details workflow and a normal one -- each listing different questions.
  */
 class FieldsShownTest : StringSpec({
     val cxt = TestInstances.default("fieldsShown1071")
@@ -69,14 +69,14 @@ class FieldsShownTest : StringSpec({
                     save("create", "Create")
                 }
             }
-            workflow("partA", WfEntry.survey) {
+            workflow("partA", WfEntry.coreDetails) {
                 alterType(dataType, shows("q1", "q2"))
                 task("a", "Part A") {
                     trait("questions")
                     save("saveA", "Save part A", WfSaveKind.edit)
                 }
             }
-            // A scope has one survey workflow, so part B is a normal one -- a form is engaged in it first.
+            // A scope has one core details workflow, so part B is a normal one -- a form is engaged in it first.
             workflow("partB", WfEntry.normal) {
                 alterType(dataType, shows("q3", "q4"))
                 task("b", "Part B") {

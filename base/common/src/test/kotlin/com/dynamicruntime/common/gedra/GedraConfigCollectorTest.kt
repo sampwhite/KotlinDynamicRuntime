@@ -267,7 +267,8 @@ class GedraConfigCollectorTest : StringSpec({
                 trait("KdrNoteEntry", "kdr:note", setOf(GedraDataType.formDoc)) { property("text", "A note.") }
             },
             "task id" to clientConfig {
-                workflow("acmeWf", WfEntry.survey) { task("kdr:first", "First") { trait("acmeNote"); save("s", "Save", WfSaveKind.edit) } }
+                workflow("acmeWf", WfEntry.coreDetails) { task("kdr:first", "First") { trait("acmeNote"); save("s", "Save",
+                    WfSaveKind.edit) } }
             },
         )
         for ((kind, config) in cases) {
@@ -294,7 +295,8 @@ class GedraConfigCollectorTest : StringSpec({
         shouldThrow<KdrException> {
             gedraConfig(devCxt, "acmeMain", "client.acme", "acme") {
                 trait("AcmeNoteEntry", "acmeNote", setOf(GedraDataType.formDoc)) { property("text", "A note.") }
-                workflow("acmeWf", WfEntry.survey) { task("review-1", "First") { trait("acmeNote"); save("s", "Save", WfSaveKind.edit) } }
+                workflow("acmeWf", WfEntry.coreDetails) { task("review-1", "First") { trait("acmeNote"); save("s", "Save",
+                    WfSaveKind.edit) } }
             }
         }.fullMessage() shouldContain "'review-1' cannot be a task id"
     }

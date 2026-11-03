@@ -25,9 +25,9 @@ import io.kotest.matchers.string.shouldContain
 
 /**
  * `g-visibleWhen` enforced on trait-data writes (issue #830). Acme's `expenseReport.reviewerNote` is gated on
- * `hasAdminLevel`: an administrator may write it; for anyone else it keeps its stored value -- left out, as a form
- * that hid it sends, or sent back unchanged, as a raw editor does -- and a change to it is refused with a 403,
- * deleting the entry that holds it included. On every write path: create, patch, the survey's save, and import.
+ * `hasAdminLevel`: an administrator may write it; for anyone else it keeps its stored value -- left out, as a form that
+ * hid it sends, or sent back unchanged, as a raw editor does -- and a change to it is refused with a 403, deleting the
+ * entry that holds it included. On every write path: create, patch, the core details workflow's save, and import.
  */
 class VisibleWhenWriteTest : StringSpec({
     val cxt = Startup.mkTestBootCxt(
@@ -85,7 +85,7 @@ class VisibleWhenWriteTest : StringSpec({
             .toOptStr().orEmpty().isNotBlank() shouldBe true
     }
 
-    "a replace that leaves the gated field out keeps the stored value -- the survey form hides it" {
+    "a replace that leaves the gated field out keeps the stored value -- the core details form hides it" {
         val gid = formWithNote("Checked by admin")
         owner.postItems(patch, patchBody(gid, mapOf(ST.year to 2026L, ST.itemCount to 3L)))
         expenseData(gid).let {
@@ -119,19 +119,19 @@ class VisibleWhenWriteTest : StringSpec({
         expenseData(gid)[ST.reviewerNote] shouldBe "Revised"
     }
 
-    "the survey save -- the form an owner actually edits with -- keeps the note, and refuses changing it" {
+    "the core details save -- the form an owner actually edits with -- keeps the note, and refuses changing it" {
         val gid = formWithNote("Seen")
-        fun surveySave(data: Map<String, Any?>) = mapOf(
+        fun coreDetailsSave(data: Map<String, Any?>) = mapOf(
             WFD.workflowId to SW.reviewForm, GDF.taskId to SW.details, GDF.saveId to SW.saveDetails, GDF.gedraId to gid,
             GDF.entries to listOf(mapOf(GE.traitId to ST.expenseReport, GE.data to data)),
         )
-        // The survey form hides the note, so its save leaves it out.
-        owner.postData(save, surveySave(mapOf(ST.year to 2026L, ST.itemCount to 4L)))[WSF.saved] shouldBe true
+        // The core details form hides the note, so its save leaves it out.
+        owner.postData(save, coreDetailsSave(mapOf(ST.year to 2026L, ST.itemCount to 4L)))[WSF.saved] shouldBe true
         expenseData(gid).let {
             it[ST.itemCount] shouldBe 4L
             it[ST.reviewerNote] shouldBe "Seen"
         }
-        refused(owner, save, surveySave(mapOf(ST.year to 2026L, ST.reviewerNote to "Approved myself")))
+        refused(owner, save, coreDetailsSave(mapOf(ST.year to 2026L, ST.reviewerNote to "Approved myself")))
         expenseData(gid)[ST.reviewerNote] shouldBe "Seen"
     }
 

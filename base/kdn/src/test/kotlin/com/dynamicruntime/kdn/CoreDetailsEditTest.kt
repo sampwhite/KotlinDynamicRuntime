@@ -17,8 +17,8 @@ import com.dynamicruntime.common.gedra.GedraConfigService
 import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.GedraEditAction
 import com.dynamicruntime.common.gedra.gedraConfig
-import com.dynamicruntime.common.gedra.workflow.SVY
-import com.dynamicruntime.common.gedra.workflow.SVYS
+import com.dynamicruntime.common.gedra.workflow.CDF
+import com.dynamicruntime.common.gedra.workflow.FSV
 import com.dynamicruntime.common.gedra.workflow.WFC
 import com.dynamicruntime.common.gedra.workflow.WFD
 import com.dynamicruntime.common.gedra.workflow.WSF
@@ -41,14 +41,14 @@ import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 
 /**
- * The survey view and edit-save on the common workflow path (issue #658), over real HTTP. A per-test dynamic
- * client with a survey requiring one trait (`detail`): the view resolves the survey against an existing form by
- * `gedraId` -- seeding each field with its stored value and reporting real completeness -- and the `edit` save
- * folds new data into the form and recomputes its survey state live, no restart.
+ * The core details view and edit-save on the common workflow path (issue #658), over real HTTP. A per-test dynamic
+ * client with a core details workflow requiring one trait (`detail`): the view resolves the core details workflow
+ * against an existing form by `gedraId` -- seeding each field with its stored value and reporting real completeness --
+ * and the `edit` save folds new data into the form and recomputes its core details state live, no restart.
  */
-class SurveyEditTest : StringSpec({
-    val cxt = TestInstances.default("surveyEdit658")
-    val client = "surveyedit658"
+class CoreDetailsEditTest : StringSpec({
+    val cxt = TestInstances.default("coreDetailsEdit658")
+    val client = "coreDetailsedit658"
 
     fun asClient(): KdrCxt = cxt.mkSubContext("setup", client).also { it.userId = 9000L }
 
@@ -59,13 +59,13 @@ class SurveyEditTest : StringSpec({
                 audience = ClientAudience.internal, enabledEnvironments = setOf(ENV.unit, ENV.local),
             ),
         )
-        trait("DetailEntry", "detail", setOf(GedraDataType.formDoc), "The detail the survey requires.") {
+        trait("DetailEntry", "detail", setOf(GedraDataType.formDoc), "The detail the core details workflow requires.") {
             property("text", "A value.", required = true)
         }
-        trait("NoteEntry", "note", setOf(GedraDataType.formDoc), "An aside the survey does not ask for.") {
+        trait("NoteEntry", "note", setOf(GedraDataType.formDoc), "An aside the core details workflow does not ask for.") {
             property("text", "A value.")
         }
-        workflow("reviewForm", WfEntry.survey) {
+        workflow("reviewForm", WfEntry.coreDetails) {
             // `detail` is required (drives completeness); `note` is an optional field the task also collects, so
             // an edit can touch `note` while leaving the required `detail` unmet.
             task("only", "Review") {
@@ -96,16 +96,17 @@ class SurveyEditTest : StringSpec({
         ),
     )
 
-    fun surveyCompletion(gid: String): Map<String, Any?> {
+    fun coreDetailsCompletion(gid: String): Map<String, Any?> {
         val row = user.getItems(GEP.formDocs, mapOf(GDF.withStates to true)).first { it[GDF.gedraId] == gid }
-        return row[GDF.states].toJsonListOfMaps().first { it[GE.traitId].toOptStr() == SVY.surveyCompletion }[GE.data].toJsonMapOrEmpty()
+        return row[GDF.states].toJsonListOfMaps().first { it[GE.traitId].toOptStr() == CDF.coreDetailsCompletion }[GE.data]
+            .toJsonMapOrEmpty()
     }
 
-    "the survey view resolves against a form by gedraId, seeding each field and reporting real completeness" {
+    "the core details view resolves against a form by gedraId, seeding each field and reporting real completeness" {
         val gid = create("detail", "v1")
         val v = user.getData(viewPath, mapOf(GDF.gedraId to gid))
         v[WVF.found] shouldBe true
-        v[WFD.entry] shouldBe WfEntry.survey.name
+        v[WFD.entry] shouldBe WfEntry.coreDetails.name
         (v[WVF.ref] as String) shouldContain "#reviewForm"
 
         val task = v[WFD.tasks].toJsonListOfMaps().single()
@@ -116,27 +117,27 @@ class SurveyEditTest : StringSpec({
         (task[WVF.facts] as List<*>) shouldContain WFC.taskComplete
     }
 
-    "the survey view carries each task's status and names the earliest task needing action (#700)" {
+    "the core details view carries each task's status and names the earliest task needing action (#700)" {
         // Created with only the optional `note`: the required `detail` is missing, so the one task is incomplete
         // -- and valid, since absence is not invalidity -- and it is the task needing action.
         val gid = create("note", "aside")
         val v = user.getData(viewPath, mapOf(GDF.gedraId to gid))
         val status = v[WFD.tasks].toJsonListOfMaps().single()[WVF.status].toJsonMapOrEmpty()
-        status[SVY.complete] shouldBe false
-        status[SVY.valid] shouldBe true
-        status[SVY.missingTraits].toJsonListOrEmpty() shouldContain "detail"
-        status[SVY.invalidTraits].toJsonListOrEmpty().shouldBeEmpty()
+        status[CDF.complete] shouldBe false
+        status[CDF.valid] shouldBe true
+        status[CDF.missingTraits].toJsonListOrEmpty() shouldContain "detail"
+        status[CDF.invalidTraits].toJsonListOrEmpty().shouldBeEmpty()
         status[WVF.problems].toJsonListOrEmpty().shouldBeEmpty()
         v[WVF.focusTask] shouldBe "only"
 
         // Supplying `detail` completes the task; nothing needs action, so no focus task is named.
         editSave(gid, "answered")[WSF.saved] shouldBe true
         val done = user.getData(viewPath, mapOf(GDF.gedraId to gid))
-        done[WFD.tasks].toJsonListOfMaps().single()[WVF.status].toJsonMapOrEmpty()[SVY.complete] shouldBe true
+        done[WFD.tasks].toJsonListOfMaps().single()[WVF.status].toJsonMapOrEmpty()[CDF.complete] shouldBe true
         done.containsKey(WVF.focusTask) shouldBe false
     }
 
-    "a survey edit save answers with the form's id alone; the view read after it shows the save (#827)" {
+    "a core details edit save answers with the form's id alone; the view read after it shows the save (#827)" {
         val gid = create("note", "aside")
         val res = editSave(gid, "answered")
         // The save signals that the form's state may have moved, as a patch does, and carries none of it.
@@ -150,7 +151,7 @@ class SurveyEditTest : StringSpec({
         val view = user.getData(viewPath, mapOf(GDF.gedraId to gid))
         view[WVF.found] shouldBe true
         val task = view[WFD.tasks].toJsonListOfMaps().single()
-        task[WVF.status].toJsonMapOrEmpty()[SVY.complete] shouldBe true
+        task[WVF.status].toJsonMapOrEmpty()[CDF.complete] shouldBe true
         task[WVF.entries].toJsonListOfMaps().first { it[GE.traitId].toOptStr() == "detail" }[GE.data].toJsonMapOrEmpty()["text"] shouldBe "answered"
         view.containsKey(WVF.focusTask) shouldBe false
     }
@@ -166,10 +167,10 @@ class SurveyEditTest : StringSpec({
                         audience = ClientAudience.internal, enabledEnvironments = setOf(ENV.unit, ENV.local),
                     ),
                 )
-                trait("NarrowEntry", "ndetail", setOf(GedraDataType.formDoc), "The detail the survey requires.") {
+                trait("NarrowEntry", "ndetail", setOf(GedraDataType.formDoc), "The detail the core details workflow requires.") {
                     property("text", "A value.", required = true) { if (maxLen != null) maxLength = maxLen }
                 }
-                workflow("nReview", WfEntry.survey) {
+                workflow("nReview", WfEntry.coreDetails) {
                     task("only", "Review") { trait("ndetail"); save("save", "Save changes", WfSaveKind.edit) }
                 }
             }
@@ -191,9 +192,9 @@ class SurveyEditTest : StringSpec({
         val v = nUser.getData(clientPath(GEP.workflowView, nClient), mapOf(GDF.gedraId to gid))
         val status = v[WFD.tasks].toJsonListOfMaps().single()[WVF.status].toJsonMapOrEmpty()
         // Present, so complete; failing on content, so invalid -- absence and invalidity are kept apart.
-        status[SVY.complete] shouldBe true
-        status[SVY.valid] shouldBe false
-        status[SVY.invalidTraits].toJsonListOrEmpty() shouldContain "ndetail"
+        status[CDF.complete] shouldBe true
+        status[CDF.valid] shouldBe false
+        status[CDF.invalidTraits].toJsonListOrEmpty() shouldContain "ndetail"
         val problems = status[WVF.problems].toJsonListOfMaps()
         problems.isNotEmpty() shouldBe true
         // A problem is the kernel's failure wire map (path / code / message) plus the trait it belongs to.
@@ -203,30 +204,32 @@ class SurveyEditTest : StringSpec({
         // Invalid is "needs action" too, so the task is the focus even though it is complete.
         v[WVF.focusTask] shouldBe "only"
 
-        // The listing's survey-status filter (#695) reads the STORED state, which is re-derived on a write and
+        // The listing's status filter (#695) reads the STORED state, which is re-derived on a write and
         // not by a view -- so the form still lists as valid, and no write can change that today: every write
         // re-validates the stored entries, so a patch to any trait of this form is refused ("would leave 1
         // problem in the stored entries") until the long value is fixed. Stored `invalid` is what the design's
         // deferred batch-recompute job produces; the filter's `invalid` value is covered by the shared rule's
         // own tests until then.
-        fun listed(status: String): List<Any?> = nUser.getItems(GEP.formDocs, mapOf(SVY.surveyStatus to status)).map { it[GDF.gedraId] }
-        listed(SVYS.valid) shouldContain gid
-        listed(SVYS.invalid) shouldNotContain gid
+        fun listed(status: String): List<Any?> = nUser.getItems(GEP.formDocs,
+            mapOf(GDF.formStatus to status)).map { it[GDF.gedraId] }
+        listed(FSV.valid) shouldContain gid
+        listed(FSV.invalid) shouldNotContain gid
     }
 
-    "the listing filters by survey status over the states cache, and counts what matched (#695)" {
-        // One form the survey finds valid, one it finds needing information (its required `detail` absent).
+    "the listing filters by core details status over the states cache, and counts what matched (#695)" {
+        // One form the core details workflow finds valid, one it finds needing information (its required `detail`
+        // absent).
         val done = create("detail", "complete")
         val needs = create("note", "aside only")
         // The whole envelope, since the total (`numAvailable`) rides beside the items rather than under `results`.
         fun page(status: String?): Map<String, Any?> =
-            user.client.sendJsonGetRequest(GEP.formDocs, buildMap { status?.let { put(SVY.surveyStatus, it) } })
+            user.client.sendJsonGetRequest(GEP.formDocs, buildMap { status?.let { put(GDF.formStatus, it) } })
         fun ids(page: Map<String, Any?>): List<Any?> = page[EP.items].toJsonListOfMaps().map { it[GDF.gedraId] }
 
-        val valid = page(SVYS.valid)
+        val valid = page(FSV.valid)
         ids(valid) shouldContain done
         ids(valid) shouldNotContain needs
-        val needsInfo = page(SVYS.needsInfo)
+        val needsInfo = page(FSV.needsInfo)
         ids(needsInfo) shouldContain needs
         ids(needsInfo) shouldNotContain done
         // Applied before paging: the total is the matched set, not the scope's whole set, on each answer.
@@ -235,20 +238,21 @@ class SurveyEditTest : StringSpec({
         // No filter still lists both.
         ids(page(null)) shouldContainAll listOf(done, needs)
         // A value outside the closed choice is refused rather than silently matching nothing.
-        user.expectError(400, GEP.formDocs, args = mapOf(SVY.surveyStatus to "bogus"))
+        user.expectError(400, GEP.formDocs, args = mapOf(GDF.formStatus to "bogus"))
 
         // The same through the CACHE path: an ordinary user's scope carries no client, so the listing above took
         // the SQL fallback; a client-scoped admin's scope keys the client+kind index, and the state filter runs
         // there too -- on the raw cached rows, before extraction.
         val clientAdmin = TestUser.create(cxt, "admin695@$client.test", level = ROLE.admin, userClient = client)
-        fun adminIds(status: String): List<Any?> = clientAdmin.getItems(GEP.formDocs, mapOf(SVY.surveyStatus to status)).map { it[GDF.gedraId] }
-        adminIds(SVYS.valid) shouldContain done
-        adminIds(SVYS.valid) shouldNotContain needs
-        adminIds(SVYS.needsInfo) shouldContain needs
-        adminIds(SVYS.needsInfo) shouldNotContain done
+        fun adminIds(status: String): List<Any?> = clientAdmin.getItems(GEP.formDocs,
+            mapOf(GDF.formStatus to status)).map { it[GDF.gedraId] }
+        adminIds(FSV.valid) shouldContain done
+        adminIds(FSV.valid) shouldNotContain needs
+        adminIds(FSV.needsInfo) shouldContain needs
+        adminIds(FSV.needsInfo) shouldNotContain done
     }
 
-    "a survey edit save folds new data into the form" {
+    "a core details edit save folds new data into the form" {
         val gid = create("detail", "before")
         editSave(gid, "after")[WSF.saved] shouldBe true
         val detail = user.getItem(GEP.formDoc, mapOf(GDF.gedraId to gid))[GDF.entries].toJsonListOfMaps()
@@ -256,21 +260,22 @@ class SurveyEditTest : StringSpec({
         detail[GE.data].toJsonMapOrEmpty()["text"] shouldBe "after"
     }
 
-    "a survey edit supplying the missing trait flips completeness -- recomputed on the edit, no restart" {
-        // Created with only a non-survey trait, so the survey's `detail` is missing: it starts incomplete.
+    "a core details edit supplying the missing trait flips completeness -- recomputed on the edit, no restart" {
+        // Created with only a trait outside the core details, so the core details workflow's `detail` is missing: it starts
+        // incomplete.
         val gid = create("note", "aside")
-        surveyCompletion(gid)[SVY.complete] shouldBe false
+        coreDetailsCompletion(gid)[CDF.complete] shouldBe false
 
         // The edit supplies `detail`; the save recomputes state, and the form is now complete.
         editSave(gid, "answered")[WSF.saved] shouldBe true
-        surveyCompletion(gid)[SVY.complete] shouldBe true
-        surveyCompletion(gid)[SVY.missingTraits].toJsonListOrEmpty().shouldBeEmpty()
+        coreDetailsCompletion(gid)[CDF.complete] shouldBe true
+        coreDetailsCompletion(gid)[CDF.missingTraits].toJsonListOrEmpty().shouldBeEmpty()
     }
 
-    "a survey edit that leaves a required trait unmet still saves -- no completeness gate on edit" {
+    "a core details edit that leaves a required trait unmet still saves -- no completeness gate on edit" {
         // Created with only the non-required `note`, so the required `detail` is missing: incomplete.
         val gid = create("note", "aside")
-        surveyCompletion(gid)[SVY.complete] shouldBe false
+        coreDetailsCompletion(gid)[CDF.complete] shouldBe false
 
         // Edit the optional `note`, not the still-missing required `detail`. Unlike a create (which would refuse
         // with unmetTraits), the edit saves regardless -- the incompleteness is recorded as state, not gated.
@@ -283,17 +288,17 @@ class SurveyEditTest : StringSpec({
         )
         res[WSF.saved] shouldBe true
         res.containsKey(WSF.unmetTraits) shouldBe false
-        surveyCompletion(gid)[SVY.complete] shouldBe false
-        surveyCompletion(gid)[SVY.missingTraits].toJsonListOrEmpty() shouldContain "detail"
+        coreDetailsCompletion(gid)[CDF.complete] shouldBe false
+        coreDetailsCompletion(gid)[CDF.missingTraits].toJsonListOrEmpty() shouldContain "detail"
     }
 
-    "a raw patch that completes the survey's data refreshes survey state -- not only the survey save (#675)" {
+    "a raw patch that completes the core details refreshes core details state -- not only the core details save (#675)" {
         // Created without the required `detail`: incomplete.
         val gid = create("note", "aside")
-        surveyCompletion(gid)[SVY.complete] shouldBe false
+        coreDetailsCompletion(gid)[CDF.complete] shouldBe false
 
-        // Supply `detail` through the GENERIC patch endpoint, not the survey save. The post-write hook recomputes
-        // derived state on this path too, so the survey's completeness follows the raw edit -- the gap #675 closes.
+        // Supply `detail` through the GENERIC patch endpoint, not the core details save. The post-write hook recomputes
+        // derived state on this path too, so the core details workflow's completeness follows the raw edit -- the gap #675 closes.
         user.postItems(
             GEP.patch,
             mapOf(
@@ -312,12 +317,12 @@ class SurveyEditTest : StringSpec({
                 ),
             ),
         )
-        surveyCompletion(gid)[SVY.complete] shouldBe true
+        coreDetailsCompletion(gid)[CDF.complete] shouldBe true
     }
 
     "a first state write from a non-owner patch is owned by the form's owner, not the patcher (#687)" {
         val obClient = "ownbind687"
-        fun writeOb(withSurvey: Boolean) {
+        fun writeOb(withCoreDetails: Boolean) {
             val config = gedraConfig(cxt, "${obClient}cfg", clientNamespace(obClient), obClient) {
                 defineClient(
                     ClientDef(
@@ -325,11 +330,11 @@ class SurveyEditTest : StringSpec({
                         audience = ClientAudience.internal, enabledEnvironments = setOf(ENV.unit, ENV.local),
                     ),
                 )
-                trait("ObEntry", "obdetail", setOf(GedraDataType.formDoc), "The detail the survey requires.") {
+                trait("ObEntry", "obdetail", setOf(GedraDataType.formDoc), "The detail the core details workflow requires.") {
                     property("text", "A value.", required = true)
                 }
-                if (withSurvey) {
-                    workflow("obReview", WfEntry.survey) {
+                if (withCoreDetails) {
+                    workflow("obReview", WfEntry.coreDetails) {
                         task("only", "Review") { trait("obdetail"); save("save", "Save changes", WfSaveKind.edit) }
                     }
                 }
@@ -338,18 +343,18 @@ class SurveyEditTest : StringSpec({
             GedraConfigReload.reloadClient(cxt, obClient)
         }
 
-        // The client starts with no survey, so the form is created with no state row -- the next write INSERTs
+        // The client starts with no core details workflow, so the form is created with no state row -- the next write INSERTs
         // the first one, the case whose ownership is stamped rather than preserved.
-        writeOb(withSurvey = false)
+        writeOb(withCoreDetails = false)
         val owner = TestUser.create(cxt, "owner@$obClient.test", userClient = obClient)
         val gid = owner.postItem(
             GEP.formDocCreate,
             mapOf(GDF.entries to listOf(mapOf(GE.traitId to "obdetail", GE.data to mapOf("text" to "v1")))),
         )[GDF.gedraId].toOptStr().orEmpty()
 
-        // Add the survey live, then have a full admin -- a non-owner -- patch the owner's form. That fires the
-        // first survey-state write, triggered by someone other than the owner.
-        writeOb(withSurvey = true)
+        // Add the core details workflow live, then have a full admin -- a non-owner -- patch the owner's form. That
+        // fires the first core details state write, triggered by someone other than the owner.
+        writeOb(withCoreDetails = true)
         val admin = TestUser.createFullAdmin(cxt, "admin687@$obClient.test")
         admin.postItems(
             GEP.patch,
@@ -370,10 +375,10 @@ class SurveyEditTest : StringSpec({
             ),
         )
 
-        // The owner sees their form's survey state -- so the state row is owned by the owner (their scoped read
+        // The owner sees their form's core details state -- so the state row is owned by the owner (their scoped read
         // admits it), not by the admin who triggered the write. Were it admin-owned, the owner's own-scoped
         // withStates would not carry it.
         val row = owner.getItems(GEP.formDocs, mapOf(GDF.withStates to true)).first { it[GDF.gedraId] == gid }
-        row[GDF.states].toJsonListOfMaps().mapNotNull { it[GE.traitId].toOptStr() } shouldContain SVY.surveyCompletion
+        row[GDF.states].toJsonListOfMaps().mapNotNull { it[GE.traitId].toOptStr() } shouldContain CDF.coreDetailsCompletion
     }
 })

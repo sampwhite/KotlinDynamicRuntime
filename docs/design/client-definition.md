@@ -1014,7 +1014,7 @@ The merge is **by rule, per kind of definition**, and only two kinds look inside
 | Schema type, by qualified name | The client's replaces the base's, whole. |
 | Cfact, by name | The client's replaces the base's. |
 | Workflow, by workflow id | The client's replaces the base's, whole. Its tasks are not merged: a task list has an order, and placing a new task relative to its neighbors is not built, so a client that changes a base workflow restates it. |
-| Creation or survey workflow | The client's replaces the base's of that kind, whatever its id. |
+| Creation or core details workflow | The client's replaces the base's of that kind, whatever its id. |
 | Report, by report id | The client's replaces the base's, whole (issue #979). Both are client-owned bare ids; a global report is rooted and never replaced. Each report a client may run also has typed endpoints of its own, generated from it on every reload — see `docs/design/reporting.md`, "Typed endpoints per report". |
 | Trait usages (listing columns) | The client's list replaces the base's list. |
 | Fragment copy | Merged key by key: two levels, string values. The base's layer sits below the client's own. |

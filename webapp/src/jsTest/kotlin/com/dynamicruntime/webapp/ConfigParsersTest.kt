@@ -136,7 +136,7 @@ class ConfigParsersTest {
                     HFEAT.leftBar to false,
                     HFEAT.inlineLinks to true,
                     HFEAT.canManageUsers to true,
-                    HFEAT.hasSurvey to true,
+                    HFEAT.hasCoreDetails to true,
                     HFEAT.administersClient to true,
                 ),
                 state = mapOf(
@@ -155,9 +155,9 @@ class ConfigParsersTest {
         assertEquals(false, cfg.layout.leftBar)
         assertEquals(true, cfg.layout.inlineLinks)
         assertTrue(cfg.canManageUsers)
-        // The client declares a survey (issue #695); absent reads as false like the other flags.
-        assertTrue(cfg.hasSurvey)
-        assertFalse(homeConfigFrom(uiConfig(features = emptyMap(), state = emptyMap())).hasSurvey)
+        // The client declares a core details workflow (issue #695); absent reads as false like the other flags.
+        assertTrue(cfg.hasCoreDetails)
+        assertFalse(homeConfigFrom(uiConfig(features = emptyMap(), state = emptyMap())).hasCoreDetails)
         // Whether their listings reach beyond their own rows (issue #1091); absent reads as false, as an older
         // backend that does not say leaves a caller listing their own.
         assertTrue(cfg.administersClient)

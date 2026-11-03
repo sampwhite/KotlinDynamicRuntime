@@ -17,7 +17,7 @@ import com.dynamicruntime.common.gedra.GedraConfigReload
 import com.dynamicruntime.common.gedra.GedraConfigService
 import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.gedraConfig
-import com.dynamicruntime.common.gedra.workflow.SVY
+import com.dynamicruntime.common.gedra.workflow.CDF
 import com.dynamicruntime.common.gedra.workflow.WfEntry
 import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.schema.SCH
@@ -262,12 +262,12 @@ class StoredSchemaRepairTest : StringSpec({
     "a client cfact redeclaring a global one is dropped, and the client stands" {
         val client = "rep841cf"
         val result = storeAndReload(cxt, client) {
-            cfact(SVY.surveyComplete, "rep841", "A redeclaration.")
+            cfact(CDF.coreDetailsComplete, "rep841", "A redeclaration.")
             cfact("rep841Own", "rep841", "The client's own.")
         }
         val issue = result.issues.single()
         issue.elementKind shouldBe GCEL.cfact
-        issue.elementId shouldBe SVY.surveyComplete
+        issue.elementId shouldBe CDF.coreDetailsComplete
         val names = SchemaService.get(cxt).cfactsFor(client).names
         names.contains("rep841Own") shouldBe true
         ClientService.get(cxt).present(client).shouldNotBeNull()
@@ -309,7 +309,7 @@ class StoredSchemaRepairTest : StringSpec({
         // boot-time repair is under test.
         val first = Startup.mkTestBootCxt("storedRepairCf1", "storedSchemaRepairCf1", db + warn)
         storeAndReload(first, client) {
-            cfact(SVY.surveyComplete, "rep821", "A redeclaration.")
+            cfact(CDF.coreDetailsComplete, "rep821", "A redeclaration.")
             cfact("rep821Own", "rep821", "The client's own.")
         }.issues.size shouldBe 1
 
@@ -317,12 +317,12 @@ class StoredSchemaRepairTest : StringSpec({
         val restarted = Startup.mkTestBootCxt("storedRepairCf2", "storedSchemaRepairCf2", db + warn)
         val issue = ClientConfigIssues.get(restarted).issuesFor(client).single()
         issue.elementKind shouldBe GCEL.cfact
-        issue.elementId shouldBe SVY.surveyComplete
+        issue.elementId shouldBe CDF.coreDetailsComplete
         val registry = SchemaService.get(restarted).cfactsFor(client)
         registry.names.contains("rep821Own") shouldBe true
         // The global declaration stands, not the client's.
-        registry.defs.getValue(SVY.surveyComplete).group shouldBe
-            SchemaService.get(restarted).cfactsFor(null).defs.getValue(SVY.surveyComplete).group
+        registry.defs.getValue(CDF.coreDetailsComplete).group shouldBe
+            SchemaService.get(restarted).cfactsFor(null).defs.getValue(CDF.coreDetailsComplete).group
     }
 
     "a client with nothing wrong is repaired of nothing" {

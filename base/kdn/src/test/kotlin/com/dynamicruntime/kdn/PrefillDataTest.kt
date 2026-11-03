@@ -15,7 +15,7 @@ import com.dynamicruntime.common.gedra.GedraConfigReload
 import com.dynamicruntime.common.gedra.GedraConfigService
 import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.gedraConfig
-import com.dynamicruntime.common.gedra.workflow.SVY
+import com.dynamicruntime.common.gedra.workflow.CDF
 import com.dynamicruntime.common.gedra.workflow.WFD
 import com.dynamicruntime.common.gedra.workflow.WVF
 import com.dynamicruntime.common.gedra.workflow.WfEntry
@@ -35,10 +35,10 @@ import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 
 /**
- * The `prefillData` event and `prefillFromOwner` end to end (issue #679): a survey task declares a
+ * The `prefillData` event and `prefillFromOwner` end to end (issue #679): a core details task declares a
  * `prefillFromOwner` function, and the resolved view defaults the target trait's field from the form owner's
  * attribute -- as a **view-only** entry sourced [GSRC.prefill]. It is presented as entered but never written and
- * never counted toward requiredness: a prefilled required trait still reads as missing in the survey state.
+ * never counted toward requiredness: a prefilled required trait still reads as missing in the core details state.
  *
  * Driven over the real `workflowView` endpoint (a per-test dynamic client), so the handler's owner read and the
  * resolver's decoration are both exercised.
@@ -49,8 +49,8 @@ class PrefillDataTest : StringSpec({
 
     fun asClient(): KdrCxt = cxt.mkSubContext("setup", client).also { it.userId = 9000L }
 
-    // A survey whose task requires `participant` (with a `fullName` field) and prefills it from the owner's
-    // public name; `note` is an optional trait, so a form can exist without a participant entry.
+    // A core details workflow whose task requires `participant` (with a `fullName` field) and prefills it from the
+    // owner's public name; `note` is an optional trait, so a form can exist without a participant entry.
     val config = gedraConfig(cxt, "${client}cfg", clientNamespace(client), client) {
         defineClient(
             ClientDef(
@@ -61,7 +61,7 @@ class PrefillDataTest : StringSpec({
         trait("ParticipantEntry", "participant", setOf(GedraDataType.formDoc), "Who is taking part.") {
             property("fullName", "The participant's full name.", required = true)
         }
-        trait("NoteEntry", "note", setOf(GedraDataType.formDoc), "An aside the survey does not require.") {
+        trait("NoteEntry", "note", setOf(GedraDataType.formDoc), "An aside the core details workflow does not require.") {
             property("text", "A value.")
         }
         // A trait with a nested field, for the dotted targetValuePath case.
@@ -71,7 +71,7 @@ class PrefillDataTest : StringSpec({
                 property("fullName", "The owner's full name.")
             }
         }
-        workflow("reviewForm", WfEntry.survey) {
+        workflow("reviewForm", WfEntry.coreDetails) {
             task("only", "Review") {
                 trait("participant")
                 trait("note", required = false)
@@ -117,9 +117,10 @@ class PrefillDataTest : StringSpec({
         return task[WVF.entries].toJsonListOfMaps().first { it[GE.traitId].toOptStr() == "participant" }
     }
 
-    fun surveyCompletion(gid: String): Map<String, Any?> {
+    fun coreDetailsCompletion(gid: String): Map<String, Any?> {
         val row = user.getItems(GEP.formDocs, mapOf(GDF.withStates to true)).first { it[GDF.gedraId] == gid }
-        return row[GDF.states].toJsonListOfMaps().first { it[GE.traitId].toOptStr() == SVY.surveyCompletion }[GE.data].toJsonMapOrEmpty()
+        return row[GDF.states].toJsonListOfMaps().first { it[GE.traitId].toOptStr() == CDF.coreDetailsCompletion }[GE.data]
+            .toJsonMapOrEmpty()
     }
 
     "an absent trait is prefilled from the owner, as a view-only entry sourced prefill" {
@@ -155,9 +156,9 @@ class PrefillDataTest : StringSpec({
 
         // The view presents the prefill...
         participantEntry(gid)[GE.source] shouldBe GSRC.prefill
-        // ...but the survey state, computed on real data, still reports the required trait missing.
-        val completion = surveyCompletion(gid)
-        completion[SVY.complete] shouldBe false
-        completion[SVY.missingTraits].toJsonListOrEmpty() shouldContain "participant"
+        // ...but the core details state, computed on real data, still reports the required trait missing.
+        val completion = coreDetailsCompletion(gid)
+        completion[CDF.complete] shouldBe false
+        completion[CDF.missingTraits].toJsonListOrEmpty() shouldContain "participant"
     }
 })

@@ -35,8 +35,8 @@ class WfSaveRuleDefTest {
     }
 
     @Test
-    fun aSurveyTaskMayNotDeclareOne() {
-        assertFailsWith<KdrException> { parseWfDef(cxt, normal(entry = WfEntry.survey)) }
+    fun aCoreDetailsTaskMayNotDeclareOne() {
+        assertFailsWith<KdrException> { parseWfDef(cxt, normal(entry = WfEntry.coreDetails)) }
     }
 
     @Test

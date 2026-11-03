@@ -28,7 +28,7 @@ import com.dynamicruntime.common.gedra.report.RWF
 import com.dynamicruntime.common.gedra.report.ReportCombine
 import com.dynamicruntime.common.gedra.report.ReportSource
 import com.dynamicruntime.common.gedra.workflow.PFO
-import com.dynamicruntime.common.gedra.workflow.SVY
+import com.dynamicruntime.common.gedra.workflow.CDF
 import com.dynamicruntime.common.gedra.workflow.WfEntry
 import com.dynamicruntime.common.gedra.workflow.WFC
 import com.dynamicruntime.common.gedra.workflow.WSC
@@ -108,9 +108,9 @@ object SW {
     const val create = "create"
 
     /**
-     * Acme's survey workflow (issue #656): the owner revisits the same form data outside creation. Two tasks,
-     * to exercise the survey's multi-task allowance (creation is capped at one) and the task list. Its labels
-     * come from the same `acmeWf` backend fragment file the creation workflow uses.
+     * Acme's core details workflow (issue #656): the owner revisits the same form data outside creation. Two tasks, to
+     * exercise the core details workflow's multi-task allowance (creation is capped at one) and the task list. Its
+     * labels come from the same `acmeWf` backend fragment file the creation workflow uses.
      *
      * `details` is the review task -- both of the creation workflow's traits in one panel, mirroring
      * `createForm` (issue #710); `profile` is the supplied-defaults demo (issue #711), a `userInfo` trait
@@ -124,10 +124,10 @@ object SW {
 
     /**
      * Acme's **normal** workflow (issue #794) -- many-per-form and chosen rather than automatic, unlike the
-     * one-per-form creation and survey. It is what the per-workflow state is computed against: a form in acme
-     * carries a `workflowState` entry for it, and can be engaged with it. The sample's fullest workflow: it has
-     * eligibility tests (#783), its own cfact and a singleton rule (#784), a record task then an approval task
-     * (#785, #787) -- so not the fixture to reach for when a plain normal workflow is wanted.
+     * one-per-form creation and core details workflow. It is what the per-workflow state is computed against: a form in
+     * acme carries a `workflowState` entry for it, and can be engaged with it. The sample's fullest workflow: it has
+     * eligibility tests (#783), its own cfact and a singleton rule (#784), a record task then an approval task (#785,
+     * #787) -- so not the fixture to reach for when a plain normal workflow is wanted.
      */
     const val auditReview = "auditReview"
     const val recordAudit = "recordAudit"
@@ -137,11 +137,11 @@ object SW {
     const val approveAudit = "approveAudit"
 
     /**
-     * `auditReview`'s eligibility test ids (issue #783): the survey is complete, and its entries are valid. The
+     * `auditReview`'s eligibility test ids (issue #783): the core details are complete, and its entries are valid. The
      * first explains itself from the `acmeWf` fragment file, the second with literal text, so both paths show.
      */
-    const val surveyDone = "surveyDone"
-    const val surveyClean = "surveyClean"
+    const val coreDetailsDone = "coreDetailsDone"
+    const val coreDetailsClean = "coreDetailsClean"
 
     /**
      * An eligibility test on both acme normal workflows (issue #784 review): not while a review is pending. It
@@ -470,16 +470,16 @@ private fun acmeClient(cxt: KdrCxt): GedraConfig =
             }
         }
 
-        // --- a survey workflow (issue #656) ----------------------------------------------------------------
+        // --- a core details workflow (issue #656) ----------------------------------------------------------------
         //
         // The second face of the create/edit paradigm: an owner revisits the same global form data outside
         // creation, over the very traits the creation workflow collected. Two tasks -- which a creation
-        // workflow may not have -- so the survey exercises the multi-task allowance and the task list, and its
+        // workflow may not have -- so the core details workflow exercises the multi-task allowance and the task list, and its
         // saves are `edit` (they update the existing form, they do not create a second one). Labels come from
-        // the same `acmeWf` backend fragment file, so the survey's own labels ride the label boot check too.
-        workflow(SW.reviewForm, WfEntry.survey) {
+        // the same `acmeWf` backend fragment file, so the core details workflow's own labels ride the label boot check too.
+        workflow(SW.reviewForm, WfEntry.coreDetails) {
             label = "%{@t(\"${SF.acmeWf}.${SW.reviewForm}.label\")}"
-            // The review task -- both of the creation workflow's traits in one panel (issue #710), so the survey
+            // The review task -- both of the creation workflow's traits in one panel (issue #710), so the core details workflow
             // edits the same data the creation form collected rather than splitting it across two tasks. Same
             // trait pair and layout order as `createForm.identify`, with an `edit` save.
             task(SW.details, "%{@t(\"${SF.acmeWf}.${SW.details}.label\")}") {
@@ -515,12 +515,12 @@ private fun acmeClient(cxt: KdrCxt): GedraConfig =
         // exercise the state machinery, and a fragment key per label would be noise until it has a real page.
         workflow(SW.auditReview, WfEntry.normal) {
             label = "Audit review"
-            // Eligibility (issue #783), against the cfacts the survey emits: a form is offered the audit review
+            // Eligibility (issue #783), against the cfacts the core details workflow emits: a form is offered the audit review
             // once its review is done and still valid. Every test is evaluated, so a form failing both says both.
-            // Requiring the survey is this workflow's choice, not the framework's (issue #829): another may leave
-            // these tests out and engage a form before its survey is finished.
-            eligibility(SW.surveyDone, SVY.surveyComplete, "%{@t(\"${SF.acmeWf}.${SW.auditReview}.${SW.surveyDone}\")}")
-            eligibility(SW.surveyClean, SVY.surveyValid, "Some of the form's entries no longer pass their checks.")
+            // Requiring the core details workflow is this workflow's choice, not the framework's (issue #829): another may leave
+            // these tests out and engage a form before its core details are finished.
+            eligibility(SW.coreDetailsDone, CDF.coreDetailsComplete, "%{@t(\"${SF.acmeWf}.${SW.auditReview}.${SW.coreDetailsDone}\")}")
+            eligibility(SW.coreDetailsClean, CDF.coreDetailsValid, "Some of the form's entries no longer pass their checks.")
             // The workflow's own cfact (issue #784): an audit whose findings are still open means the site is under
             // audit. Its own, so it stays on the workflow's state entry rather than in the form's set...
             function(computeCFactsFromData {
@@ -633,7 +633,7 @@ private fun acmeClient(cxt: KdrCxt): GedraConfig =
         }
 
         // The supplied-defaults demo trait (issue #711): the form owner's name and email, both prefilled by the
-        // survey's `profile` task. Its `g-layout` sets each field's `defaultMode` -- `name` filled (low value:
+        // core details workflow's `profile` task. Its `g-layout` sets each field's `defaultMode` -- `name` filled (low value:
         // shown, marked, confirm) and `email` offered (high value: a deliberate click to accept) -- which is
         // what the frontend reads to present the two differently. It also overrides the prefill-summary wording
         // (issue #710) to prove a client can reword that line; `${'$'}{count}` is resolved on the frontend.

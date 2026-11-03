@@ -149,9 +149,9 @@ object RMETA {
     const val createdAt = "createdAt"
     const val updatedAt = "updatedAt"
 
-    /** The form's overall status, from its survey and its workflows. */
+    /** The form's overall status, from its core details workflow and its workflows. */
     const val formStatus = "formStatus"
-    const val surveyStatus = "surveyStatus"
+    const val coreDetailsStatus = "coreDetailsStatus"
     const val cfacts = "cfacts"
 
     val attrs: Map<String, ReportAttr> = listOf(
@@ -162,7 +162,7 @@ object RMETA {
         ReportAttr(createdAt, ReportKind.date),
         ReportAttr(updatedAt, ReportKind.date),
         ReportAttr(formStatus, ReportKind.string),
-        ReportAttr(surveyStatus, ReportKind.string),
+        ReportAttr(coreDetailsStatus, ReportKind.string),
         ReportAttr(cfacts, ReportKind.string, multiValued = true),
     ).associateBy { it.name }
 }

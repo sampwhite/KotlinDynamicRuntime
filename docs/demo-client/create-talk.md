@@ -41,7 +41,7 @@ workflow itself in `definition`.
 | Key | What it means |
 | --- | --- |
 | `workflowId` | The workflow's id. It is unique within the client, and the entry repeats it. |
-| `entry` | How the workflow starts. A `creation` workflow runs when a form is created. The other two kinds, `survey` and `normal`, run on a form that already exists, and later pages cover them. |
+| `entry` | How the workflow starts. A `creation` workflow runs when a form is created. The other two kinds, `coreDetails` and `normal`, run on a form that already exists, and later pages cover them. |
 | `$comment` | A note for whoever maintains the workflow. See [Comments](reference.md#comments). |
 | `label` | The page's title, above the form. |
 | `tasks` | The workflow's steps, in order. |
@@ -115,4 +115,4 @@ Under the heading is the line from the layout, with its icon, and then one field
 The field's description, *What to call it.*, comes from the trait's own schema, which every client shares, since the
 layout gives the field a label and nothing else.
 
-Next: [Talk survey](talk-survey.md).
+Next: [Talk core details](talk-core-details.md).

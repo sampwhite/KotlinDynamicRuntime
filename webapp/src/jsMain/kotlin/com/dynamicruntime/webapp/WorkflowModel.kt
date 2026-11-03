@@ -7,7 +7,7 @@ import com.dynamicruntime.common.gedra.GDF
 import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.gedra.GSRC
 import com.dynamicruntime.common.gedra.headingLine
-import com.dynamicruntime.common.gedra.workflow.SVY
+import com.dynamicruntime.common.gedra.workflow.CDF
 import com.dynamicruntime.common.gedra.workflow.WDSP
 import com.dynamicruntime.common.gedra.workflow.WFC
 import com.dynamicruntime.common.gedra.workflow.WFD
@@ -40,9 +40,9 @@ import com.dynamicruntime.common.gedra.workflow.TraitLockCopy
 import com.dynamicruntime.common.gedra.workflow.WfSaveKind
 
 /**
- * The frontend's model of a resolved workflow (issue #536) — the `/gedra/workflow/view` response parsed into what
- * the create page, and the edit page for a survey or a normal workflow, renders. **Self-contained**: each trait's
- * schema comes from the view's own `$defs`, resolved here with the same kernel `parseSchemaTypes` the endpoint
+ * The frontend's model of a resolved workflow (issue #536) — the `/gedra/workflow/view` response parsed into what the
+ * create page, and the edit page for a core details workflow or a normal workflow, renders. **Self-contained**: each
+ * trait's schema comes from the view's own `$defs`, resolved here with the same kernel `parseSchemaTypes` the endpoint
  * catalog uses, so the page needs no second fetch and a workflow that narrows a trait renders the narrowed shape.
  *
  * These are pure maps-in, model-out functions with no React and no server, so they carry the `jsNodeTest`
@@ -96,7 +96,7 @@ class WfTaskStatus(
 
 /**
  * One task of the workflow: its traits in the order the page draws them, its saves, and — when the view was
- * resolved against an existing form (a survey edit, issue #659) — that task's **current entries**, the source a
+ * resolved against an existing form (a core details edit, issue #659) — that task's **current entries**, the source a
  * page seeds its fields from. A creation view carries none, so [entries] defaults empty.
  */
 class WfTaskView(
@@ -109,7 +109,7 @@ class WfTaskView(
     val status: WfTaskStatus? = null,
     /**
      * Whether this caller may save the task (issue #856), by its rule for who may -- the rule the save endpoint
-     * enforces. True when the view says nothing (creation, survey, or a task with no rule).
+     * enforces. True when the view says nothing (creation, core details workflow, or a task with no rule).
      */
     val canSave: Boolean = true,
     /**
@@ -152,9 +152,10 @@ class WfApprovalView(
 )
 
 /**
- * A resolved workflow view, ready to render (issue #536, #659). It serves the **creation** workflow (no form yet),
- * and a **survey** or a **normal** workflow (issue #791) resolved against an existing form (each task seeded from its
- * current [WfTaskView.entries]); [entry] says which (`WfEntry.name`, e.g. `"creation"`/`"survey"`/`"normal"`).
+ * A resolved workflow view, ready to render (issue #536, #659). It serves the **creation** workflow (no form yet), and
+ * a **core details workflow** or a **normal** workflow (issue #791) resolved against an existing form (each task seeded
+ * from its current [WfTaskView.entries]); [entry] says which (`WfEntry.name`, e.g.
+ * `"creation"`/`"coreDetails"`/`"normal"`).
  */
 class WorkflowView(
     val workflowId: String,
@@ -188,7 +189,7 @@ class WorkflowView(
      * invalid -- or null when every task is done. What the rail opens on when the URL names no task.
      */
     val focusTask: String? = null,
-    /** A normal workflow's [WfPhase] name (issue #790); null for creation and survey. */
+    /** A normal workflow's [WfPhase] name (issue #790); null for creation and core details workflow. */
     val phase: String? = null,
     /** For a normal workflow viewed against a form: whether the form is engaged with it (issue #791). */
     val engaged: Boolean? = null,
@@ -212,7 +213,7 @@ class WorkflowView(
      */
     val design: WfDesign? = null,
 ) {
-    /** A normal workflow (issue #791): one a form is put into, rather than the creation or the survey. */
+    /** A normal workflow (issue #791): one a form is put into, rather than the creation or the core details workflow. */
     val isNormal: Boolean get() = entry == WfEntry.normal.name
 
     /**
@@ -244,11 +245,11 @@ class WorkflowView(
     /**
      * Whether the form may be put into this normal workflow from here: not yet engaged, eligible, and engagement is open.
      *
-     * Offering Engage here -- on the form's own page, once it is eligible, which for a workflow that tests the survey
-     * means once the survey is complete -- is the current **best-guess presentation**, not a direction (issue #829): a
-     * large client may well need a different UI, and an API integration may engage a form as soon as the engage
-     * endpoint allows. The endpoint's gates -- the engagement window and the eligibility tests -- are the rule; this
-     * only mirrors them, so a page does not offer what the endpoint would refuse.
+     * Offering Engage here -- on the form's own page, once it is eligible, which for a workflow that tests the core
+     * details workflow means once the core details are complete -- is the current **best-guess presentation**,
+     * not a direction (issue #829): a large client may well need a different UI, and an API integration may engage a
+     * form as soon as the engage endpoint allows. The endpoint's gates -- the engagement window and the eligibility
+     * tests -- are the rule; this only mirrors them, so a page does not offer what the endpoint would refuse.
      */
     val canEngage: Boolean get() =
         isNormal && engaged == false && eligible == true && phase == WfPhase.engageable.name && !keptToOwner
@@ -259,10 +260,10 @@ private fun parseTaskStatus(raw: Any?): WfTaskStatus? {
     val s = raw.toJsonMapOrEmpty()
     if (s.isEmpty()) return null
     return WfTaskStatus(
-        complete = s[SVY.complete] == true,
-        valid = s[SVY.valid] == true,
-        missingTraits = s[SVY.missingTraits].toJsonListOfStrings(),
-        invalidTraits = s[SVY.invalidTraits].toJsonListOfStrings(),
+        complete = s[CDF.complete] == true,
+        valid = s[CDF.valid] == true,
+        missingTraits = s[CDF.missingTraits].toJsonListOfStrings(),
+        invalidTraits = s[CDF.invalidTraits].toJsonListOfStrings(),
         // Each problem is the kernel's own failure wire map (`SchFailure.toWireMap`) plus the trait it belongs to,
         // read by the same constants every other reported failure is.
         problems = s[WVF.problems].toJsonListOfMaps().map {
@@ -276,10 +277,10 @@ private fun parseTaskStatus(raw: Any?): WfTaskStatus? {
 }
 
 /**
- * Parses a `/gedra/workflow/view` `results` map into a [WorkflowView], or **null** when the caller has no such
- * workflow (`found=false`) — the signal the page uses (a create page falls back to the trait picker; a survey
- * edit page reports there is no survey). Each trait's `schemaRef` is resolved against the view's `$defs`; a ref
- * that names no carried type is a fault, since the view is supposed to carry every type it points at.
+ * Parses a `/gedra/workflow/view` `results` map into a [WorkflowView], or **null** when the caller has no such workflow
+ * (`found=false`) — the signal the page uses (a create page falls back to the trait picker; a core details workflow
+ * edit page reports there is no core details workflow). Each trait's `schemaRef` is resolved against the view's
+ * `$defs`; a ref that names no carried type is a fault, since the view is supposed to carry every type it points at.
  */
 fun parseWorkflowView(results: Map<String, Any?>): WorkflowView? {
     if (results[WVF.found] != true) return null
@@ -301,7 +302,7 @@ fun parseWorkflowView(results: Map<String, Any?>): WorkflowView? {
             saves = t[WFD.saves].toJsonListOfMaps().map { s ->
                 WfSaveView(s[WFD.id].toOptStr() ?: "", s[WFD.label].toOptStr() ?: "", s[WFD.kind].toOptStr() ?: "")
             },
-            // Present only for a survey view resolved against a form (issue #659) -- the seed for each field.
+            // Present only for a core details view resolved against a form (issue #659) -- the seed for each field.
             entries = t[WVF.entries].toJsonListOfMaps(),
             status = parseTaskStatus(t[WVF.status]),
             canSave = t[WVF.canSave] != false,
@@ -397,7 +398,7 @@ fun saveOfKind(task: WfTaskView, isEdit: Boolean): WfSaveView? {
 }
 
 /**
- * The task the survey page opens on (issue #700): the one the URL names when it is a task of the view, else the
+ * The task the core details page opens on (issue #700): the one the URL names when it is a task of the view, else the
  * view's earliest task needing action, else the first task. Null only for a view with no tasks.
  */
 fun initialTaskFor(view: WorkflowView, requested: String?): String? {
@@ -482,7 +483,7 @@ private fun comparableValue(value: Any?): Any? = when (value) {
 /**
  * A task's status computed from its **working** values (issue #718), for the rail while the task holds unsaved
  * edits -- the client's projection of the verdict the server will give once they are saved, by the server's
- * own rule (`WfEngine.missingTraits`, `SurveyStateDeriver` and its `surveyContentFailures`) so a save does not
+ * own rule (`WfEngine.missingTraits`, `CoreDetailsStateDeriver` and its `coreDetailsContentFailures`) so a save does not
  * flip the mark. Presence is an **entry being there, not its data being filled in** (issue #826): a save sends
  * every trait of the task ([workflowSaveEntries]), an untouched one as `{}`, and a present-but-empty entry
  * satisfies a required trait -- what a trait *requires of its content* is its schema's `required` fields. So an
@@ -596,7 +597,7 @@ fun prefillPresentationOf(view: WorkflowView): PrefillPresentation {
 
 /**
  * Every task's seed values in one map, keyed by trait id (trait ids are unique across a workflow's tasks) -- what
- * the form starts from, and what it re-snapshots from the view the page re-reads after a survey edit save (issue
+ * the form starts from, and what it re-snapshots from the view the page re-reads after a core details edit save (issue
  * #827). Supplied defaults are split by mode ([prefillPresentationOf]): a `filled` default seeds, an `offer` one
  * does not (it is offered, not entered), so the seed and the presented form never disagree about "unsaved".
  */
@@ -658,7 +659,7 @@ fun workflowSaveEntries(valuesByTrait: Map<String, Map<String, Any?>>): List<Map
     valuesByTrait.map { (traitId, data) -> mapOf(GE.traitId to traitId, GE.data to data) }
 
 /**
- * The body a workflow save posts: which workflow, task and save, and the collected entries. A survey `edit`
+ * The body a workflow save posts: which workflow, task and save, and the collected entries. A core details workflow `edit`
  * save (issue #659) also carries the [gedraId] of the form it updates; a create save omits it (null).
  */
 fun workflowSaveBody(

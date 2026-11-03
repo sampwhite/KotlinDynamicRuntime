@@ -360,7 +360,7 @@ left out):
 [
   { "traitId": "sample:yearly", "data": { "year": 2024, "note": "Filed late." } },
   { "traitId": "sample:yearly", "data": { "year": 2025 } },
-  { "traitId": "kdr:name",      "data": { "name": "Site survey" } }
+  { "traitId": "kdr:name",      "data": { "name": "Site details" } }
 ]
 ```
 
@@ -663,7 +663,7 @@ client, answers everything the page draws in one call:
       {
         "gedraId": "gd.fd.acme.e20260812130405123AbCd",
         "edits": [
-          { "action": "addOrReplace", "traitId": "kdr:name", "data": { "name": "2024 site survey" } },
+          { "action": "addOrReplace", "traitId": "kdr:name", "data": { "name": "2024 site core details workflow" } },
           { "action": "addOrMerge", "traitId": "sample:questionnaire", "data": { "hasIssue": false } },
           { "action": "deleteOrNoOp", "traitId": "sample:yearly", "data": { "year": 2023 } }
         ]

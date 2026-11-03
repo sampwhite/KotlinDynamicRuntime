@@ -82,15 +82,16 @@ class ClientWorkflowTemplateTest : StringSpec({
 
     fun save(user: TestUser, slots: WfTemplateSlots) = user.postData(UADEP.clientWorkflowSave, mapOf(CWF.slots to slots.toInfo()))
 
-    fun surveySlots(workflowId: String? = null, label: String = "Event survey", taskLabel: String = "Your event") =
-        WfTemplateSlots(workflowId, WFT.survey, label, listOf(WfTaskSlot("details", taskLabel, listOf(WfTraitRef(GT.name)))))
+    fun coreDetailsSlots(workflowId: String? = null, label: String = "Event details", taskLabel: String = "Your event") =
+        WfTemplateSlots(workflowId, WFT.coreDetails, label, listOf(WfTaskSlot("details", taskLabel, listOf(WfTraitRef(GT.name)))))
 
     "the catalog lists core's templates, the client's workflows, and the traits they may collect" {
         val client = "wfcat1120"
         defineClient(client, ownCreation = true)
         val read = catalog(admin(client))
         val templates = read[CWF.templates].toJsonListOfMaps()
-        templates.map { it[CWF.definition].toJsonMapOrEmpty()[WFD.workflowId] } shouldContainExactly listOf(WFT.createForm, WFT.survey, WFT.collect)
+        templates.map { it[CWF.definition].toJsonMapOrEmpty()[WFD.workflowId] } shouldContainExactly listOf(WFT.createForm,
+            WFT.coreDetails, WFT.collect)
         // The client has a creation workflow, so the creation template is greyed, saying why.
         templates.first()[CWF.refusal].toOptStr().shouldNotBeNull() shouldContain "has a creation workflow, 'start'"
         templates[1][CWF.refusal].shouldBeNull()
@@ -107,43 +108,47 @@ class ClientWorkflowTemplateTest : StringSpec({
         val client = "wfmake1120"
         defineClient(client)
         val chief = admin(client)
-        val saved = save(chief, surveySlots())
+        val saved = save(chief, coreDetailsSlots())
         saved[CPY.mode] shouldBe EDM.live
-        saved[CWF.configName] shouldBe "${CWF.configPrefix}eventSurvey"
-        saved[CWF.slots].toJsonMapOrEmpty()[WFD.workflowId] shouldBe "eventSurvey"
+        saved[CWF.configName] shouldBe "${CWF.configPrefix}eventDetails"
+        saved[CWF.slots].toJsonMapOrEmpty()[WFD.workflowId] shouldBe "eventDetails"
         // It runs as the template with the client's choices.
-        val made = WorkflowService.get(cxt).forClient(client).workflow("eventSurvey").shouldNotBeNull().def
-        made.fromTemplate shouldBe WFT.survey
-        made.entry shouldBe WfEntry.survey
-        made.label shouldBe "Event survey"
+        val made = WorkflowService.get(cxt).forClient(client).workflow("eventDetails").shouldNotBeNull().def
+        made.fromTemplate shouldBe WFT.coreDetails
+        made.entry shouldBe WfEntry.coreDetails
+        made.label shouldBe "Event details"
         made.tasks.single().label shouldBe "Your event"
         made.tasks.single().saves.single().label shouldBe "Save"
         // What is stored is only what the client chose: the template's traits and saves are the template's.
-        val row = GedraConfigService.get(cxt).readLatest(cxt.mkSubContext("read", client), GedraId.of(GedraConfigType.configDoc, client, "${CWF.configPrefix}eventSurvey"))
+        val row = GedraConfigService.get(cxt).readLatest(cxt.mkSubContext("read", client), GedraId.of(GedraConfigType.configDoc,
+            client, "${CWF.configPrefix}eventDetails"))
         val stored = row.shouldNotBeNull().entriesBySlot().getValue(CCT.workflowDef).single()[CCT.definition]
         stored shouldBe mapOf(
-            WFD.workflowId to "eventSurvey", WFD.fromTemplate to WFT.survey, WFD.label to "Event survey",
+            WFD.workflowId to "eventDetails", WFD.fromTemplate to WFT.coreDetails, WFD.label to "Event details",
             WFD.tasks to listOf(mapOf(WFD.id to "details", WFD.label to "Your event")),
         )
-        // The catalog now lists it as changeable, and greys the survey template.
+        // The catalog now lists it as changeable, and greys the core details template.
         val read = catalog(chief)
         read[CWF.workflows].toJsonListOfMaps().single()[CWF.notEditable].shouldBeNull()
-        read[CWF.templates].toJsonListOfMaps().single { it[CWF.definition].toJsonMapOrEmpty()[WFD.workflowId] == WFT.survey }[CWF.refusal]
-            .toOptStr().shouldNotBeNull() shouldContain "has a survey workflow, 'eventSurvey'"
+        read[CWF.templates].toJsonListOfMaps()
+            .single { it[CWF.definition].toJsonMapOrEmpty()[WFD.workflowId] == WFT.coreDetails }[CWF.refusal]
+            .toOptStr().shouldNotBeNull() shouldContain "has a core details workflow, 'eventDetails'"
     }
 
     "a workflow's slots are changed where it is stored, and a change of nothing is refused" {
         val client = "wfedit1120"
         defineClient(client)
         val chief = admin(client)
-        save(chief, surveySlots())
-        save(chief, surveySlots("eventSurvey", label = "Event details", taskLabel = "About the event"))[CWF.configName] shouldBe
-            "${CWF.configPrefix}eventSurvey"
-        val made = WorkflowService.get(cxt).forClient(client).workflow("eventSurvey").shouldNotBeNull().def
+        save(chief, coreDetailsSlots())
+        save(chief, coreDetailsSlots("eventDetails", label = "Event details", taskLabel = "About the event"))[CWF.configName] shouldBe
+            "${CWF.configPrefix}eventDetails"
+        val made = WorkflowService.get(cxt).forClient(client).workflow("eventDetails").shouldNotBeNull().def
         made.label shouldBe "Event details"
         made.tasks.single().label shouldBe "About the event"
-        chief.expectError(EXC.badInput, UADEP.clientWorkflowSave, mapOf(CWF.slots to surveySlots("eventSurvey", "Event details", "About the event").toInfo()))
-            .toString() shouldContain "nothing to save"
+        chief.expectError(
+            EXC.badInput, UADEP.clientWorkflowSave,
+            mapOf(CWF.slots to coreDetailsSlots("eventDetails", "Event details", "About the event").toInfo()),
+        ).toString() shouldContain "nothing to save"
     }
 
     // Design View edits the workflow as it runs, and what it saves is still the overlay: the diff from the template.
@@ -151,21 +156,25 @@ class ClientWorkflowTemplateTest : StringSpec({
         val client = "wfdesign1120"
         defineClient(client)
         val chief = admin(client)
-        save(chief, surveySlots())
-        val before = WorkflowService.get(cxt).forClient(client).workflow("eventSurvey").shouldNotBeNull().def
+        save(chief, coreDetailsSlots())
+        val before = WorkflowService.get(cxt).forClient(client).workflow("eventDetails").shouldNotBeNull().def
         chief.postData(
             DSV.labelEdit,
-            mapOf(DSV.workflowId to "eventSurvey", DSV.taskId to "details", DSV.saveId to "saveDetails", DSV.label to "Keep it", DSV.basedOn to workflowDefStamp(before)),
+            mapOf(DSV.workflowId to "eventDetails", DSV.taskId to "details", DSV.saveId to "saveDetails", DSV.label to "Keep it",
+                DSV.basedOn to workflowDefStamp(before)),
         )
-        WorkflowService.get(cxt).forClient(client).workflow("eventSurvey").shouldNotBeNull().def.tasks.single().saves.single().label shouldBe "Keep it"
-        val row = GedraConfigService.get(cxt).readLatest(cxt.mkSubContext("read", client), GedraId.of(GedraConfigType.configDoc, client, "${CWF.configPrefix}eventSurvey"))
+        WorkflowService.get(cxt).forClient(client).workflow("eventDetails").shouldNotBeNull()
+            .def.tasks.single().saves.single().label shouldBe "Keep it"
+        val row = GedraConfigService.get(cxt).readLatest(cxt.mkSubContext("read", client), GedraId.of(GedraConfigType.configDoc,
+            client, "${CWF.configPrefix}eventDetails"))
         row.shouldNotBeNull().entriesBySlot().getValue(CCT.workflowDef).single()[CCT.definition] shouldBe mapOf(
-            WFD.workflowId to "eventSurvey", WFD.fromTemplate to WFT.survey, WFD.label to "Event survey",
+            WFD.workflowId to "eventDetails", WFD.fromTemplate to WFT.coreDetails, WFD.label to "Event details",
             WFD.tasks to listOf(mapOf(WFD.id to "details", WFD.label to "Your event", WFD.saves to listOf(mapOf(WFD.id to "saveDetails", WFD.label to "Keep it")))),
         )
         // And the slots save keeps what Design View changed.
-        save(chief, surveySlots("eventSurvey", taskLabel = "About the event"))
-        WorkflowService.get(cxt).forClient(client).workflow("eventSurvey").shouldNotBeNull().def.tasks.single().saves.single().label shouldBe "Keep it"
+        save(chief, coreDetailsSlots("eventDetails", taskLabel = "About the event"))
+        WorkflowService.get(cxt).forClient(client).workflow("eventDetails").shouldNotBeNull()
+            .def.tasks.single().saves.single().label shouldBe "Keep it"
     }
 
     "a new workflow's id passes over the name of a configuration left from another" {
@@ -175,10 +184,11 @@ class ClientWorkflowTemplateTest : StringSpec({
         // A configuration of that name with no workflow in it, as a workflow taken out by hand would leave.
         GedraConfigService.get(cxt).writeConfig(
             cxt.mkSubContext("setup", client).also { it.userId = 11200L },
-            gedraConfig(cxt, "${CWF.configPrefix}eventSurvey", clientNamespace(client), client) { cfact("leftOver", "Test", "Left over.", false) },
+            gedraConfig(cxt, "${CWF.configPrefix}eventDetails", clientNamespace(client), client) { cfact("leftOver", "Test",
+                "Left over.", false) },
         )
         GedraConfigReload.reloadClient(cxt, client)
-        save(chief, surveySlots())[CWF.configName] shouldBe "${CWF.configPrefix}eventSurvey2"
+        save(chief, coreDetailsSlots())[CWF.configName] shouldBe "${CWF.configPrefix}eventDetails2"
     }
 
     "a plan's limit on workflows greys every template, saying why" {
@@ -243,19 +253,21 @@ class ClientWorkflowTemplateTest : StringSpec({
         shouldThrow<KdrException> { relabel("lost", "Found") }.fullMessage() shouldContain "kdr:gone"
     }
 
-    "slots that are not a workflow's, a template that is not one, and a second survey are refused" {
+    "slots that are not a workflow's, a template that is not one, and a second core details workflow are refused" {
         val client = "wfrefuse1120"
         defineClient(client)
         val chief = admin(client)
-        chief.expectError(EXC.badInput, UADEP.clientWorkflowSave, mapOf(CWF.slots to surveySlots(label = " ").toInfo()))
+        chief.expectError(EXC.badInput, UADEP.clientWorkflowSave, mapOf(CWF.slots to coreDetailsSlots(label = " ").toInfo()))
             .toString() shouldContain "needs a name"
-        val noTraits = WfTemplateSlots(null, WFT.survey, "Empty", listOf(WfTaskSlot("details", "Details", emptyList())))
+        val noTraits = WfTemplateSlots(null, WFT.coreDetails, "Empty", listOf(WfTaskSlot("details", "Details", emptyList())))
         chief.expectError(EXC.badInput, UADEP.clientWorkflowSave, mapOf(CWF.slots to noTraits.toInfo()))
             .toString() shouldContain "at least one trait"
         chief.expectError(EXC.notFound, UADEP.clientWorkflowSave, mapOf(CWF.slots to WfTemplateSlots(null, "kdr:nothing", "X", emptyList()).toInfo()))
-        // A client has one survey: the trial refuses a second, as the load would.
-        save(chief, surveySlots())
-        chief.expectError(EXC.badInput, UADEP.clientWorkflowSave, mapOf(CWF.slots to surveySlots(label = "Another survey").toInfo()))
-            .toString() shouldContain "second survey workflow"
+        // A client has one core details workflow: the trial refuses a second, as the load would.
+        save(chief, coreDetailsSlots())
+        chief.expectError(
+            EXC.badInput, UADEP.clientWorkflowSave, mapOf(CWF.slots to coreDetailsSlots(label = "Another core details workflow").toInfo()),
+        )
+            .toString() shouldContain "second core details workflow"
     }
 })

@@ -40,7 +40,7 @@ class ClientsPageTest {
                 mapOf(
                     CLD.clientId to "acme", CLD.name to "Acme", CLD.status to ClientStatus.present.name,
                     CLD.origin to GedraConfigOrigin.source.name, CLD.storedConfigs to 1, CLD.forms to 3, CLD.users to 5,
-                    CLD.unclaimedUsers to 2, CLD.workflowCount to 4, CLD.hasSurvey to true,
+                    CLD.unclaimedUsers to 2, CLD.workflowCount to 4, CLD.hasCoreDetails to true,
                     CLD.issues to listOf(mapOf(GCI.message to "m", GCI.degradedTo to "d"), mapOf(GCI.degradedTo to "no message")),
                     CLD.copyOverrides to 5, CLD.blockOverrides to 4,
                 ),
@@ -53,14 +53,14 @@ class ClientsPageTest {
         assertEquals(listOf("acme", "bare"), parsed.map { it.clientId })
         val acme = parsed[0]
         assertEquals(listOf(1, 3, 5, 2, 4), listOf(acme.storedConfigs, acme.forms, acme.users, acme.unclaimedUsers, acme.workflowCount))
-        assertEquals(true, acme.hasSurvey)
+        assertEquals(true, acme.hasCoreDetails)
         // The messages, so the listing can say what was forgiven; an issue with none is not a message.
         assertEquals(listOf("m"), acme.issues)
         assertEquals(5 to 4, acme.copyOverrides to acme.blockOverrides)
         val bare = parsed[1]
         assertEquals("", bare.name)
         assertEquals(0, bare.forms + bare.users + bare.issues.size)
-        assertEquals(false, bare.hasSurvey)
+        assertEquals(false, bare.hasCoreDetails)
     }
 
     @Test
@@ -853,7 +853,7 @@ class ClientsPageTest {
         assertEquals("12", userCountText(12, 0))
         assertEquals("12 (3 unclaimed)", userCountText(12, 3))
         assertEquals("4", workflowsText(4, false))
-        assertEquals("4, survey", workflowsText(4, true))
+        assertEquals("4, core details", workflowsText(4, true))
     }
 
     /** Retiring is offered only where the backend's switch can take it, and each place it cannot says why (issue #1182). */

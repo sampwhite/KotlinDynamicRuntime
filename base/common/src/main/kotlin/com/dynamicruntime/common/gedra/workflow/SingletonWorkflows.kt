@@ -56,7 +56,7 @@ object SingletonWorkflows {
                 val task = data[WFS.ctaTask].toOptStr()?.takeIf { WorkflowPhases.of(cxt, registry.client, def).calculates }?.let { def.task(it) }
                 if (task != null) {
                     val viewerFacts = viewer.forTask(task)
-                    val complete = data[WFS.ctaStatus].toJsonMapOrEmpty()[SVY.complete] == true
+                    val complete = data[WFS.ctaStatus].toJsonMapOrEmpty()[CDF.complete] == true
                     // The CTA's task facts, from state: available, the CTA, complete as stored, never approved.
                     val taskFacts = buildSet {
                         add(WFC.taskAvailable)

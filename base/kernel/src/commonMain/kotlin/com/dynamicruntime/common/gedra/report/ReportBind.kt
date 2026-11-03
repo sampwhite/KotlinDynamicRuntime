@@ -312,11 +312,11 @@ private fun bindWorkflowPath(path: WorkflowPath, scope: ReportScope): Parsed<Bou
     val wf = scope.workflows[path.workflowId]
         ?: return Parsed.failed(ReportBindProblem.unknownWorkflow, "'${path.workflowId}' is not a workflow here.")
     // A report says about a workflow what the forms listing's workflow column does, which only a normal workflow has:
-    // a creation or survey workflow has no phase on a form, so every cell would be blank (issue #981 review).
+    // a creation or core details workflow has no phase on a form, so every cell would be blank (issue #981 review).
     if (wf.entry != WfEntry.normal) {
         return Parsed.failed(
             ReportBindProblem.unknownWorkflow,
-            "'${path.workflowId}' is a ${wf.entry.name} workflow; a report reads where a form stands in a " +
+            "'${path.workflowId}' is a ${wf.entry.words} workflow; a report reads where a form stands in a " +
                 "${WfEntry.normal.name} workflow, which is the only kind a form has a place in.",
         )
     }

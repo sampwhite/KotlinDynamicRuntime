@@ -83,14 +83,14 @@ import java.io.File
  * The walk-through a reference deployment links from a signed-in visitor's home page (issue #1429), followed as its
  * reader would, so the page cannot fall behind the product without a failing build.
  *
- * The page's tables are what the reader enters, each marked on the line before it with the form it is for
- * (`<!-- kdr-walk: workflow=review -->`) or `<!-- kdr-walk: name -->` for the name on the profile. This reads each
- * table, finds each **label** among the fields of the traits that workflow's form shows -- a field's `title`, or its
- * key with a capital where it has none, as the form labels it -- and turns each **value** into what the form would send:
- * a choice by its label, yes or no, a number, or text. Then it walks the page's steps through the endpoints the pages
- * use: join as a speaker, create the talk, answer the survey, write the abstract, join the committee, name that user,
- * and review and accept the talk. A field or a choice the demo renames, a step the demo no longer allows, and a role the
- * page names that the demo does not offer each fail here.
+ * The page's tables are what the reader enters, each marked on the line before it with the form it is for (`<!--
+ * kdr-walk: workflow=review -->`) or `<!-- kdr-walk: name -->` for the name on the profile. This reads each table,
+ * finds each **label** among the fields of the traits that workflow's form shows -- a field's `title`, or its key with
+ * a capital where it has none, as the form labels it -- and turns each **value** into what the form would send: a
+ * choice by its label, yes or no, a number, or text. Then it walks the page's steps through the endpoints the pages
+ * use: join as a speaker, create the talk, answer the core details workflow, write the abstract, join the committee,
+ * name that user, and review and accept the talk. A field or a choice the demo renames, a step the demo no longer
+ * allows, and a role the page names that the demo does not offer each fail here.
  *
  * Part 2, the reader's own client, is followed the same way, but its forms are read off the workflow view -- each
  * field by the label the form shows and with the choices it offers -- since the reader builds them: create the client,
@@ -129,7 +129,7 @@ class PublicWalkThroughTest : StringSpec({
     /** The traits each form shows, by the workflow it belongs to: the forms the page has the reader fill in. */
     val traitsByForm = mapOf(
         ConfDemo.createTalkWorkflow to listOf(GT.name),
-        ConfDemo.talkSurveyWorkflow to listOf(ConfDemo.session, ConfDemo.questionnaire),
+        ConfDemo.talkCoreDetailsWorkflow to listOf(ConfDemo.session, ConfDemo.questionnaire),
         ConfDemo.abstractWorkflow to listOf(ConfDemo.abstract, ConfDemo.questionnaire),
         ConfDemo.reviewWorkflow to listOf(ConfDemo.review),
     )
@@ -243,10 +243,10 @@ class PublicWalkThroughTest : StringSpec({
         visitor.selfClient() shouldBe CL.public
         val publicUser = visitor.getData(AEP.selfInfo)[UPF.userId].toOptLong().shouldNotBeNull()
 
-        // As a speaker: the talk, its survey, and its abstract.
+        // As a speaker: the talk, its core details workflow, and its abstract.
         val speaker = join(visitor, ConfDemo.speakerRole)
         val gid = save(visitor, ConfDemo.createTalkWorkflow, ConfDemo.nameTalkTask, ConfDemo.createSave, null)
-        save(visitor, ConfDemo.talkSurveyWorkflow, ConfDemo.describeTask, ConfDemo.saveAbout, gid)
+        save(visitor, ConfDemo.talkCoreDetailsWorkflow, ConfDemo.describeTask, ConfDemo.saveAbout, gid)
         visitor.postData(GEP.workflowEngage, mapOf(GDF.gedraId to gid, WFD.workflowId to ConfDemo.abstractWorkflow))
         save(visitor, ConfDemo.abstractWorkflow, ConfDemo.writeTask, ConfDemo.saveAbstract, gid)
 

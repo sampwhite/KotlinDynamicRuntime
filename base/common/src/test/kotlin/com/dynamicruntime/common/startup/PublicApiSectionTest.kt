@@ -20,7 +20,7 @@ import io.kotest.matchers.string.shouldContain
  * **What this protects is not access.** `publicApi` decides what the catalog advertises, so a stray mark
  * cannot expose anything -- the section gate still refuses an anonymous caller at an admin endpoint. What it
  * protects is the answerability of a promise: "what did we commit to supporting?" must be checkable by reading
- * one rule, and an override sitting anywhere turns that into a survey of every declaration.
+ * one rule, and an override sitting anywhere turns that into a core details workflow of every declaration.
  *
  * Refused at boot rather than documented for the same reason as the unruled-section check beside it: a rule
  * everyone has to remember is not a rule.

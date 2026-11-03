@@ -408,7 +408,7 @@ object ClientCreateFields {
 object CLD {
     /**
      * On a create (issue #1346): whether the new client starts with workflows made from the starter templates
-     * (`WFT.starters`), a creation workflow, and a survey -- on unless set false.
+     * (`WFT.starters`), a creation workflow, and a core details workflow -- on unless set false.
      */
     const val starterWorkflows = "starterWorkflows"
 
@@ -667,11 +667,11 @@ object CLD {
     const val usageLabels = "usageLabels"
 
     /**
-     * On a summary row (issue #695): whether the client declares a survey workflow -- what a cross-client
-     * surface working in that client keys its survey-status filter on, as the shell's `hasSurvey` does for the
+     * On a summary row (issue #695): whether the client declares a core details workflow -- what a cross-client surface
+     * working in that client keys its status filter on, as the shell's `hasCoreDetails` does for the
      * caller's own client.
      */
-    const val hasSurvey = "hasSurvey"
+    const val hasCoreDetails = "hasCoreDetails"
 
     // --- a client's configuration issues (issue #840) -------------------------------------------------------
 
@@ -857,7 +857,7 @@ data class ClientDef(
      * Another client whose definitions are cloned in first, with this client's own configuration applied over them
      * (issue #945). Each of the named client's **source** configs is copied under this client's id; whatever this
      * client defines itself replaces the copy's definition of the same id whole -- a trait, a type, a cfact, a
-     * workflow, its creation or survey workflow, its listing columns -- while copy and interface overlays merge key
+     * workflow, its creation or core details workflow, its listing columns -- while copy and interface overlays merge key
      * by key, the template's below this client's. Its own definition takes the template's `webResourcesId` when it
      * sets none, and the template's `includedTraits` and `userLabels` ahead of its own. See `ClientExtension`.
      *
@@ -1161,8 +1161,8 @@ data class ClientDef(
         private fun SchTypeBuilder.starterWorkflowsProperty() {
             property(
                 CLD.starterWorkflows,
-                "Start the client with a creation workflow and a survey, made from the deployment's templates around the " +
-                    "form's name (which the client then includes). On unless set false. A client built on another gets " +
+                "Start the client with a creation workflow and a core details workflow, made from the deployment's templates " +
+                    "around the form's name (which the client then includes). On unless set false. A client built on another gets " +
                     "only the one of a kind its base has none of, since its own would replace the base's.",
             ) {
                 type = SCT.boolean

@@ -107,7 +107,7 @@ class WorkflowSaveTest : StringSpec({
         acme.expectError(EXC.badInput, acmeSave, edit(mapOf(GE.traitId to ST.questionnaire)))
         hasQuestionnaire() shouldBe false
         // Called from code, past that check, the save refuses it itself -- naming the trait, and pointing at delete.
-        val declared = WorkflowService.get(cxt).forClient(SC.acme).survey!!
+        val declared = WorkflowService.get(cxt).forClient(SC.acme).coreDetails!!
         shouldThrow<KdrException> {
             saveWorkflow(
                 cxt.mkSubContext("save818", SC.acme).also { it.userId = acme.userId }, declared, SW.details, SW.saveDetails,

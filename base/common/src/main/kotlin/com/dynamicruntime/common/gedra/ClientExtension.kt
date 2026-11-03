@@ -32,9 +32,9 @@ object CEXT {
  *
  * - **Traits** by trait id, **types** by qualified name, **cfacts** by name, **workflows** by workflow id,
  *   **reports** by report id (issue #979).
- * - A **creation or survey** workflow of the client's own replaces the template's of that kind, whatever its id --
- *   a client has one answer to how a form is created or surveyed, which is the rule a client already has against
- *   the global workflows.
+ * - A **creation or core details** workflow of the client's own replaces the template's of that kind, whatever its id
+ *   -- a client has one answer to how a form is created or how its core details are kept, which is the rule a client
+ *   already has against the global workflows.
  * - **Trait usages** (listing columns) as a set: a client that says how it presents its forms says all of it, as it
  *   does against the global defaults.
  * - **Copy and interface** are not taken out but layered: the copy's fragment and UiBlock overlays rank below the

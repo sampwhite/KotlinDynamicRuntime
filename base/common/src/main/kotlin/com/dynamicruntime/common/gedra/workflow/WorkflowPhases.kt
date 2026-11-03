@@ -59,7 +59,7 @@ object WorkflowPhases {
     fun liveFor(cxt: KdrCxt, registry: WorkflowRegistry, id: String): WfDeclared? =
         live(cxt, registry, id)?.takeIf { WorkflowAudience.of(cxt).sees(registry.client, id) }
 
-    /** [declared] -- a client's creation or survey workflow -- when the person [cxt] acts as sees it ([liveFor]), else null. */
+    /** [declared] -- a client's creation or core details workflow -- when the person [cxt] acts as sees it ([liveFor]), else null. */
     fun seenOrNull(cxt: KdrCxt, registry: WorkflowRegistry, declared: WfDeclared?): WfDeclared? =
         declared?.takeIf { WorkflowAudience.of(cxt).sees(registry.client, it.def.workflowId) }
 

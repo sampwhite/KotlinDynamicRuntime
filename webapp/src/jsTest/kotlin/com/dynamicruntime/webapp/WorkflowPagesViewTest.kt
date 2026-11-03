@@ -88,7 +88,7 @@ class WorkflowPagesViewTest {
     @Test
     fun aFormOpenedFromTheWorkflowsListingReturnsToIt() {
         val fromWorkflow = mapOf(
-            HP.page to pageSurveyEdit, HP.from to pageWorkflowForms, HP.gedra to "g1", HP.workflow to "audit",
+            HP.page to pageCoreDetailsEdit, HP.from to pageWorkflowForms, HP.gedra to "g1", HP.workflow to "audit",
             WAGG.workflowId to "audit", WAGG.workflowState to "engaged",
         )
         val home = formsListingReturn(fromWorkflow, "g1").toMap()
@@ -97,8 +97,8 @@ class WorkflowPagesViewTest {
         assertEquals("audit", home[WAGG.workflowId])
         assertEquals("engaged", home[WAGG.workflowState])
         assertEquals(pageWorkflowForms, formsRawViewRoute(fromWorkflow, "g1").toMap()[HP.page])
-        assertEquals(pageWorkflowForms, formsSurveyViewRoute(fromWorkflow, "g1").toMap()[HP.from])
-        // A workflow-column link on the workflow's listing says so, so the survey page's back link leads there.
+        assertEquals(pageWorkflowForms, formsCoreDetailsViewRoute(fromWorkflow, "g1").toMap()[HP.from])
+        // A workflow-column link on the workflow's listing says so, so the core details page's back link leads there.
         assertEquals(pageWorkflowForms, workflowPageRoute("g1", "audit", "t", edit = true, from = pageWorkflowForms).toMap()[HP.from])
         assertEquals(HMENU.pageForms, workflowPageRoute("g1", "audit", "t", edit = true).toMap()[HP.from])
         // Opened from My forms, or from an unknown page, home is My forms.

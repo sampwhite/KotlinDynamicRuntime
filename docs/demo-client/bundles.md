@@ -12,7 +12,9 @@ The JSON is what a running instance returns for each bundle, as the reference de
 
 ## base
 
-The client, its traits, its columns in the forms list, its shared type, its facts, and its menu entry. Explained on the [client](client.md), [talk survey](talk-survey.md), [abstract](abstract.md), [committee review](committee-review.md), and [workshop logistics](workshop-logistics.md) pages.
+The client, its traits, its columns in the forms list, its shared type, its facts, and its menu entry. Explained on the
+[client](client.md), [talk core details](talk-core-details.md), [abstract](abstract.md), [committee
+review](committee-review.md), and [workshop logistics](workshop-logistics.md) pages.
 
 <!-- kdr-doc: bundle=base -->
 ```json
@@ -37,7 +39,7 @@ The client, its traits, its columns in the forms list, its shared type, its fact
           "label": "Committee member",
           "persona": "editor",
           "userLabels": ["committee"],
-          "summary": "Review the talks whose survey is complete, and accept them."
+          "summary": "Review the talks whose core details are complete, and accept them."
         }
       ]
     }
@@ -281,7 +283,7 @@ The client, its traits, its columns in the forms list, its shared type, its fact
     {
       "name": "isWorkshop",
       "group": "confDemo",
-      "description": "The talk's track is the workshop track; computed by the survey from the session.",
+      "description": "The talk's track is the workshop track; computed by the core details workflow from the session.",
       "toFrontend": false
     },
     {
@@ -324,21 +326,21 @@ The creation workflow. Explained on [Creating a talk](create-talk.md).
 }
 ```
 
-## talkSurvey
+## talkCoreDetails
 
-The survey. Explained on [Talk survey](talk-survey.md).
+The core details workflow. Explained on [Talk core details](talk-core-details.md).
 
-<!-- kdr-doc: bundle=talkSurvey -->
+<!-- kdr-doc: bundle=talkCoreDetails -->
 ```json
 {
   "kdr:workflowDef": [
     {
-      "workflowId": "talkSurvey",
+      "workflowId": "talkCoreDetails",
       "definition": {
-        "$comment": "The form's survey: what every talk needs before it is reviewed.",
-        "entry": "survey",
+        "$comment": "The form's core details workflow: what every talk needs before it is reviewed.",
+        "entry": "coreDetails",
         "label": "About your talk",
-        "workflowId": "talkSurvey",
+        "workflowId": "talkCoreDetails",
         "functions": [
           {
             "fn": "computeCFactsFromData",
@@ -359,7 +361,7 @@ The survey. Explained on [Talk survey](talk-survey.md).
         "types": {
           "client.confdemo.QuestionnaireData": {
             "g-layout": {
-              "$comment": "The survey asks one of the five questions. The abstract workflow asks the rest.",
+              "$comment": "The core details workflow asks one of the five questions. The abstract workflow asks the rest.",
               "mode": "authoritative",
               "schemaFields": [{"field": "firstTalk"}]
             }
@@ -397,7 +399,7 @@ The first normal workflow. Explained on [Abstract](abstract.md).
         "types": {
           "client.confdemo.QuestionnaireData": {
             "g-layout": {
-              "$comment": "The four questions the survey left out.",
+              "$comment": "The four questions the core details workflow left out.",
               "mode": "authoritative",
               "schemaFields": [
                 {"field": "audienceLevel"},
@@ -425,16 +427,16 @@ The committee review. Explained on [Committee review](committee-review.md).
     {
       "workflowId": "review",
       "definition": {
-        "$comment": "The committee reviews a talk once its survey is complete, then accepts it.",
+        "$comment": "The committee reviews a talk once its core details are complete, then accepts it.",
         "entry": "normal",
         "label": "Committee review",
         "workflowId": "review",
         "eligibility": [
           {
             "$comment": "Reviewers need the track.",
-            "explanation": "The talk's survey has to be complete before the committee reviews it.",
-            "id": "surveyDone",
-            "test": "kdr:surveyComplete"
+            "explanation": "The talk's core details have to be complete before the committee reviews it.",
+            "id": "coreDetailsDone",
+            "test": "kdr:coreDetailsComplete"
           }
         ],
         "locks": [
@@ -499,7 +501,7 @@ Workshop logistics. Explained on [Workshop logistics](workshop-logistics.md).
     {
       "workflowId": "logistics",
       "definition": {
-        "$comment": "For workshops only: the eligibility test asks for the fact the survey computes from the track.",
+        "$comment": "For workshops only: the eligibility test asks for the fact the core details workflow computes from the track.",
         "entry": "normal",
         "label": "Workshop logistics",
         "workflowId": "logistics",

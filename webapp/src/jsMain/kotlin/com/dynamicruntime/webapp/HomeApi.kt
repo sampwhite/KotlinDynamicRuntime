@@ -63,9 +63,9 @@ class HomeConfig(
     /** Whether the caller administers across clients (holds allClients, issue #668) -- drives the forms list's
      *  Client column and its filter-by-client. */
     val canSeeAllClients: Boolean,
-    /** Whether the caller's client declares a survey workflow (issue #695) -- drives the forms list's
-     *  survey-status filter. */
-    val hasSurvey: Boolean,
+    /** Whether the caller's client declares a core details workflow (issue #695) -- drives the forms list's
+     *  status filter. */
+    val hasCoreDetails: Boolean,
     /**
      * The source repository's blob base (`.../blob/<branch>`) for rewriting a document's interior links, or
      * null when the deployment configured none -- then a non-document interior link is left as written (#492).
@@ -192,7 +192,7 @@ fun homeConfigFrom(config: UiConfig): HomeConfig {
         users = userChoicesFrom(config.state[HFLD.users]),
         canManageUsers = config.features[HFEAT.canManageUsers] == true,
         canSeeAllClients = config.features[HFEAT.canSeeAllClients] == true,
-        hasSurvey = config.features[HFEAT.hasSurvey] == true,
+        hasCoreDetails = config.features[HFEAT.hasCoreDetails] == true,
         sourceRepoBase = config.state[HFLD.sourceRepoBase] as? String,
         canOpenSandbox = config.features[HFEAT.canOpenSandbox] == true,
         administersClient = config.features[HFEAT.administersClient] == true,

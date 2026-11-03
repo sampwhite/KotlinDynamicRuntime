@@ -54,7 +54,7 @@ class WfSingletonDefTest {
 
     @Test
     fun onlyANormalWorkflowEmitsSingletons() {
-        val raw = WfDefBuilder("review", WfEntry.survey).apply {
+        val raw = WfDefBuilder("review", WfEntry.coreDetails).apply {
             singleton(WSC.finished, "a")
             task("t", "T") { trait("a"); save("s", "S", WfSaveKind.edit) }
         }.build()

@@ -68,8 +68,9 @@ class OwnerOnlyTest : StringSpec({
         trait("VerdictEntry", "verdict", setOf(GedraDataType.formDoc), "A judge's verdict on the note.") {
             property("ruling", "The ruling.") { type = SCT.string }
         }
-        // The survey may put the fact on a form with no workflow at all (issue #1452), from a note that says "always".
-        workflow("noteSurvey", WfEntry.survey) {
+        // The core details workflow may put the fact on a form with no workflow at all (issue #1452), from a note that
+        // says "always".
+        workflow("noteCoreDetails", WfEntry.coreDetails) {
             function(computeCFactsFromData {
                 trait = "note"
                 valuePath = "kept"
@@ -275,7 +276,7 @@ class OwnerOnlyTest : StringSpec({
 
     "a form kept to its owner with no workflow is still not an editor's to delete" {
         val gid = owner.postItem(GEP.formDocCreate, mapOf(GDF.entries to listOf(noteEntry("private", "always"))))[GDF.gedraId].toOptStr()!!
-        // The survey put the fact on it, with no workflow engaged: the delete rule lets the editor through, and the owner-
+        // The core details workflow put the fact on it, with no workflow engaged: the delete rule lets the editor through, and the owner-
         // only rule, which does not ask about workflows, still keeps it out.
         editor.getData(GEP.formDocLocks, mapOf(GDF.gedraId to gid))[WVF.keptToOwner] shouldBe true
         editor.expectError(EXC.notAuthorized, GEP.formDoc, args = mapOf(GDF.gedraId to gid), method = HttpMethod.DELETE)[

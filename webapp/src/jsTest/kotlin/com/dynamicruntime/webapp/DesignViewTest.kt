@@ -586,7 +586,7 @@ class DesignViewTest {
 
     @Test
     fun aBlankLabelIsTheGenericTitleOnlyForThePageAndIsSentAsAbsent() {
-        // The generic title the page falls back to: a survey edit's, or a creation's.
+        // The generic title the page falls back to: a core details edit's, or a creation's.
         assertEquals("Edit form", labelFallback(LabelSlot(null, null), isEdit = true).text)
         assertEquals("New form", labelFallback(LabelSlot(null, null), isEdit = false).text)
         assertNull(labelFallback(LabelSlot("describe", null), isEdit = true).text)

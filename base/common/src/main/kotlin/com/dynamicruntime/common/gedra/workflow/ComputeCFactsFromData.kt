@@ -53,7 +53,7 @@ object CFD {
  *
  * Definition is data, computation is Kotlin: this class is the computation, built from validated initialization
  * data by [ComputeCFactsFromDataCreation]. A value not in any mapping (or a trait/path that is absent) emits
- * nothing rather than faulting -- a form part-way through its survey is the normal case, not an error.
+ * nothing rather than faulting -- a form part-way through its core details are the normal case, not an error.
  */
 class ComputeCFactsFromDataFn(
     override val priority: Int,

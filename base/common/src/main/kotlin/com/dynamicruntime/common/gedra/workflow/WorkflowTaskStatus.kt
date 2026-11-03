@@ -19,12 +19,12 @@ class WfTaskStatus(
     /** Neither incomplete nor invalid: nothing here for a person to do. */
     val done: Boolean get() = complete && valid
 
-    /** The stored form -- what the workflow state keeps as [WFS.ctaStatus], in the survey's own words. */
+    /** The stored form -- what the workflow state keeps as [WFS.ctaStatus], in the core details workflow's own words. */
     fun toStateMap(): Map<String, Any?> = linkedMapOf(
-        SVY.complete to complete,
-        SVY.valid to valid,
-        SVY.missingTraits to missingTraits,
-        SVY.invalidTraits to invalidTraits,
+        CDF.complete to complete,
+        CDF.valid to valid,
+        CDF.missingTraits to missingTraits,
+        CDF.invalidTraits to invalidTraits,
     )
 }
 
@@ -33,15 +33,15 @@ class WfTaskStatus(
  * the per-workflow deriver that stores it, the workflow view's task rail and `focusTask`, and the `kdr:isCta` task
  * cfact, so none of them can disagree about where a person's next piece of work is.
  *
- * Presence from the same engine every completeness check uses ([WfEngine]); content from the survey's one
- * validity rule ([surveyContentFailures]), so "valid" means what it means on a save.
+ * Presence from the same engine every completeness check uses ([WfEngine]); content from the core details workflow's
+ * one validity rule ([coreDetailsContentFailures]), so "valid" means what it means on a save.
  */
 object WorkflowTaskStatus {
     /**
      * [task]'s status over the form's [entries] (only the task's own traits' entries matter). An **approval task**
      * (issue #787) collects no traits, so presence cannot judge it: it is complete exactly when [approved], and
      * always valid -- which is what lets it be the CTA until a reviewer approves it, and not after. With [declared],
-     * the workflow the task is in, its form requirements count toward valid (issue #1022, [surveyContentFailures]).
+     * the workflow the task is in, its form requirements count toward valid (issue #1022, [coreDetailsContentFailures]).
      */
     fun of(
         cxt: KdrCxt,
@@ -55,7 +55,7 @@ object WorkflowTaskStatus {
             return WfTaskStatus(approved, true, emptyList(), emptyList(), emptyMap())
         }
         val missing = WfEngine.missingTraits(task.requiredTraitIds, entries)
-        val failures = surveyContentFailures(cxt, client, task.traits.map { it.traitId }.toSet(), entries, declared)
+        val failures = coreDetailsContentFailures(cxt, client, task.traits.map { it.traitId }.toSet(), entries, declared)
         return WfTaskStatus(missing.isEmpty(), failures.isEmpty(), missing, failures.keys.toList(), failures)
     }
 

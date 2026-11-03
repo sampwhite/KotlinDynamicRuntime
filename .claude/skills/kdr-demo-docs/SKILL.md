@@ -65,14 +65,14 @@ Every workflow page follows one shape, so the reader learns it once:
 
 1. Nav line: `[← Previous page](prev.md) · [Contents](README.md#the-pages)`.
 2. Title, then one or two paragraphs saying what this kind of workflow is and what the demo's instance of it does.
-   If the page covers more than the workflow (the survey page also introduces traits and columns), say so up front
+   If the page covers more than the workflow (the core details page also introduces traits and columns), say so up front
    and list the pieces with in-page links.
 3. The whole bundle, marked (below), introduced with "Here is the whole `<name>` bundle:".
 4. Sections for what the page explains. Two patterns, deliberately:
    - **A key table** the first time a shape appears (a trait, a task, a column rule): one row per key, meaning
      starts with a capital.
-   - **Bold-lead paragraphs** for what is new since the previous page: "**The entry is `survey`.** A survey runs
-     on a form that already exists...". Link back to the page that explained the rest.
+   - **Bold-lead paragraphs** for what is new since the previous page: "**The entry is `coreDetails`.** A core details
+     workflow runs on a form that already exists...". Link back to the page that explained the rest.
 5. **What the speaker sees**: the page title, the fields and buttons by their on-screen labels in bold, and what
    happens in the forms list. This is the one place the docs connect JSON to a screen; every workflow page has it.
 6. `Next: [Page](page.md).` as the last line. The last page says more are coming and links to Contents.

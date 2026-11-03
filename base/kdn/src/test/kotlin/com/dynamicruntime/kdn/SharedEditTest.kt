@@ -59,7 +59,7 @@ class SharedEditTest : StringSpec({
         .entries.first { it.value.toJsonMapOrEmpty()[DSV.key] == DesignDemo.eventRequest }.key
     val contactType = "client.$client.${DesignDemo.contactType}"
 
-    // A survey needs a form; create one through the request workflow.
+    // A core details workflow needs a form; create one through the request workflow.
     val formId = admin.postData(
         clientPath(GEP.workflowSave, client),
         mapOf(
@@ -124,7 +124,7 @@ class SharedEditTest : StringSpec({
     }
 
     "a workflow's own variant still wins on its pages, and the read names it" {
-        // The request workflow overrides the title; a later shared edit reaches only the survey.
+        // The request workflow overrides the title; a later shared edit reaches only the core details workflow.
         admin.postData(
             DSV.layoutEntryEdit,
             mapOf(

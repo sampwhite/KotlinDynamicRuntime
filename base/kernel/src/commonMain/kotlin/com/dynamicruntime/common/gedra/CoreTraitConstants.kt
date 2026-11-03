@@ -33,13 +33,13 @@ object GT {
     const val nameMaxLength = 128
 
     /**
-     * The `cfacts` **state** trait (issue #599): the state→cfact bridge's convention. A gedra's stored state may
-     * assert cfact names in this trait's [facts]; `GedraDataService.formCfacts` reads them and feeds them into
-     * `CFactRegistry.assemble` as target facts, so a workflow-eligibility expression can gate on state. `derived`
-     * -- a projection a batch may recompute -- and form-global (unkeyed): one set about the form, however many
-     * produce it. Since issue #784 it is **merged from contributions** -- the survey's facts, and the framework
-     * singletons (`needsReview`, `finished`) its engaged workflows emit -- folded into this one entry by the
-     * recompute (`mergeCfactContributions`). Which workflow contributed what is kept on that workflow's own state.
+     * The `cfacts` **state** trait (issue #599): the state→cfact bridge's convention. A gedra's stored state may assert
+     * cfact names in this trait's [facts]; `GedraDataService.formCfacts` reads them and feeds them into
+     * `CFactRegistry.assemble` as target facts, so a workflow-eligibility expression can gate on state. `derived` -- a
+     * projection a batch may recompute -- and form-global (unkeyed): one set about the form, however many produce it.
+     * Since issue #784 it is **merged from contributions** -- the core details workflow's facts, and the framework
+     * singletons (`needsReview`, `finished`) its engaged workflows emit -- folded into this one entry by the recompute
+     * (`mergeCfactContributions`). Which workflow contributed what is kept on that workflow's own state.
      */
     const val cfacts = "kdr:cfacts"
 

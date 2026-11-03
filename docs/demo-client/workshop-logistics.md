@@ -8,7 +8,7 @@ heading from a file, without changing the trait itself.
 
 Three pieces of configuration go into it, and this page shows all three:
 
-- [the fact that says a talk is a workshop](#a-computed-fact), which the survey computes;
+- [the fact that says a talk is a workshop](#a-computed-fact), which the core details workflow computes;
 - [the logistics trait](#the-logistics-trait), in the `base` bundle;
 - [the workflow](#workflow), in the `logistics` bundle.
 
@@ -26,7 +26,7 @@ The client declares two facts of its own in the `kdr:cfactDef` slot of its `base
   {
     "name": "isWorkshop",
     "group": "confDemo",
-    "description": "The talk's track is the workshop track; computed by the survey from the session.",
+    "description": "The talk's track is the workshop track; computed by the core details workflow from the session.",
     "toFrontend": false
   },
   {
@@ -45,12 +45,12 @@ The client declares two facts of its own in the `kdr:cfactDef` slot of its `base
 | `description` | What the fact means. |
 | `toFrontend` | Whether the fact is sent to the browser, where a form could show or hide a field by it. Neither of these is. |
 
-A declaration says only that the fact exists. Something has to set it. For `isWorkshop` that is the
-[survey](talk-survey.md), not this workflow: a talk's eligibility is judged before it enters a workflow, so the fact
-has to come from something that has already run, and the survey is where the track is answered. The survey runs a
-function after every save:
+A declaration says only that the fact exists. Something has to set it. For `isWorkshop` that is the [core details
+workflow](talk-core-details.md), not this workflow: a talk's eligibility is judged before it enters a workflow, so the
+fact has to come from something that has already run, and the core details workflow is where the track is answered. The
+workflow runs a function after every save:
 
-<!-- kdr-doc: bundle=talkSurvey pointer=/kdr:workflowDef/0/definition/functions/0 -->
+<!-- kdr-doc: bundle=talkCoreDetails pointer=/kdr:workflowDef/0/definition/functions/0 -->
 ```json
 {
   "fn": "computeCFactsFromData",
@@ -133,7 +133,7 @@ Here is the whole `logistics` bundle:
       "definition": {
         "workflowId": "logistics",
         "entry": "normal",
-        "$comment": "For workshops only: the eligibility test asks for the fact the survey computes from the track.",
+        "$comment": "For workshops only: the eligibility test asks for the fact the core details workflow computes from the track.",
         "label": "Workshop logistics",
         "eligibility": [
           {

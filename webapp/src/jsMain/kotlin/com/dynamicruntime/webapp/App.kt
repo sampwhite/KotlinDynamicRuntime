@@ -293,7 +293,7 @@ val App = FC<Props> {
                                 pageAssistant -> AssistantPage {}
                                 pageOperatorAssistant -> OperatorAssistantPage {}
                                 pageEditForm -> EditFormPage {}
-                                pageSurveyEdit -> SurveyEditPage {}
+                                pageCoreDetailsEdit -> CoreDetailsEditPage {}
                                 pageCreateForUser -> CreateForUserPage {}
                                 // Resolved here rather than in `currentPage()` because the answer depends on the
                                 // app config, which arrives asynchronously -- see `debugAllowed` above. Where the
@@ -453,7 +453,7 @@ private fun currentPage(): String {
         params[HP.page] == pageAssistant -> pageAssistant
         params[HP.page] == pageOperatorAssistant -> pageOperatorAssistant
         params[HP.page] == pageEditForm -> pageEditForm
-        params[HP.page] == pageSurveyEdit -> pageSurveyEdit
+        params[HP.page] == pageCoreDetailsEdit -> pageCoreDetailsEdit
         params[HP.page] == pageCreateForUser -> pageCreateForUser
         params[HP.page] == pageDebug -> pageDebug
         params[HP.page] == pageSimulations -> pageSimulations

@@ -53,21 +53,21 @@ class ClientBaseRulesTest : StringSpec({
     )
 
     fun creation(client: String) = WorkflowService.get(cxt).forClient(client).creation?.def?.workflowId
-    fun survey(client: String) = WorkflowService.get(cxt).forClient(client).survey?.def?.workflowId
+    fun coreDetails(client: String) = WorkflowService.get(cxt).forClient(client).coreDetails?.def?.workflowId
 
     "a platform operator builds on a code client that is no template, with the starters its base lacks" {
-        // A plain code client and an unmarked template, neither with a New form or a survey: both starters come.
+        // A plain code client and an unmarked template, neither with a New form or a core details workflow: both starters come.
         val built = listOf("plainkid1567" to ExtensionTemplateComponent.plainClient, "tplkid1567" to ExtensionTemplateComponent.template)
         for ((id, base) in built) {
             operator.postData(ADEP.clientCreate, platformBody(id, base))[CLD.present] shouldBe true
             ClientService.get(cxt).present(id).shouldNotBeNull().extendsFromClientId shouldBe base
             creation(id).shouldNotBeNull()
-            survey(id).shouldNotBeNull()
+            coreDetails(id).shouldNotBeNull()
         }
-        // A base with a New form keeps it: only the survey's starter is added beside it.
+        // A base with a New form keeps it: only the core details workflow's starter is added beside it.
         operator.postData(ADEP.clientCreate, platformBody("pubkid1567", ExtensionTemplateComponent.publicTemplate))
         creation("pubkid1567") shouldBe ExtensionTemplateComponent.creationWorkflow
-        survey("pubkid1567").shouldNotBeNull()
+        coreDetails("pubkid1567").shouldNotBeNull()
     }
 
     "a customer's administrator builds only on a base marked for public use" {

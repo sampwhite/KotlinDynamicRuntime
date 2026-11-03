@@ -113,9 +113,9 @@ object TraitLocks {
 
 /**
  * The trait-lock guard (issue #857): refuses a patch that changes a trait locked for the writer, unless the writer
- * asked to override (a non-blank reason) and may override every lock the edit touches -- and then records the
- * override on each workflow's engagement trail, with the write. Registered as a [GedraWriteGuard], so it runs under
- * the form's lock on every edit path: the raw editor and patch endpoint, and the survey's and a workflow's saves.
+ * asked to override (a non-blank reason) and may override every lock the edit touches -- and then records the override
+ * on each workflow's engagement trail, with the write. Registered as a [GedraWriteGuard], so it runs under the form's
+ * lock on every edit path: the raw editor and patch endpoint, and the core details workflow's and a workflow's saves.
  * It also refuses deleting a form holding a trait locked for the deleter -- with no override, since a deletion leaves
  * nothing for the trail to be read on.
  */

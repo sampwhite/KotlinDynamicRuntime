@@ -15,7 +15,7 @@ class WorkflowColumnTest {
     private fun engagement(id: String, engaged: Boolean = true) =
         mapOf(GE.traitId to WFS.workflowEngagement, GE.data to mapOf(WFD.workflowId to id, WFS.engaged to engaged))
 
-    private val failing = listOf(mapOf(WFD.id to "surveyDone"))
+    private val failing = listOf(mapOf(WFD.id to "coreDetailsDone"))
 
     private fun cell(states: List<Map<String, Any?>>, phases: Map<String, WfPhase>) =
         formWorkflowsOf(states) { phases[it] }.map { it.workflowId to it.category }
@@ -44,7 +44,7 @@ class WorkflowColumnTest {
         )
         val inProgress = formWorkflowsOf(states) { all[it] }.first()
         assertEquals("record", inProgress.ctaTask)
-        assertEquals(listOf("surveyDone"), formWorkflowsOf(states) { all[it] }.last().failureIds)
+        assertEquals(listOf("coreDetailsDone"), formWorkflowsOf(states) { all[it] }.last().failureIds)
     }
 
     @Test

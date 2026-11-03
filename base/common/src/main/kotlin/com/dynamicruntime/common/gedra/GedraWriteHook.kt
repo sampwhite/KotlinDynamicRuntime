@@ -52,11 +52,11 @@ fun interface GedraWriteHook {
 }
 
 /**
- * The built-in write hook (issue #675): recompute a form's **derived** state on every data write, preserving
- * its **asserted** state. This is what makes derived state (a survey's completeness/validity, a year-presence
- * projection) follow the data on *every* path -- a plain `formDoc/create`, a raw patch, an import -- not only an
- * interactive survey save. It delegates to [GedraDataService.recomputeDerivedStateUnderLock], which reads the
- * asserted entries to keep under the write's own lock rather than from the cache (the cache is not the source of
+ * The built-in write hook (issue #675): recompute a form's **derived** state on every data write, preserving its
+ * **asserted** state. This is what makes derived state (a core details workflow's completeness/validity, a
+ * year-presence projection) follow the data on *every* path -- a plain `formDoc/create`, a raw patch, an import -- not
+ * only an interactive core details save. It delegates to [GedraDataService.recomputeDerivedStateUnderLock], which reads
+ * the asserted entries to keep under the write's own lock rather than from the cache (the cache is not the source of
  * truth mid-transaction).
  */
 object DerivedStateWriteHook : GedraWriteHook {

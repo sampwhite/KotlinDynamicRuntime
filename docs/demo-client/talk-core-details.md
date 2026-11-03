@@ -1,23 +1,25 @@
 [← Creating a talk](create-talk.md) · [Contents](README.md#the-pages)
 
-# Talk survey
+# Talk core details
 
-A **survey** collects what every form needs, after the form exists. A client has at most one survey. In the demo, the
-survey asks each speaker for the talk's track and one background question.
+A form's **core details** are what every form needs, and the client's **core details workflow** collects them after the
+form exists. They are not all of a form's data: each workflow a form takes part in collects traits of its own. A client
+has at most one core details workflow. In the demo, it asks each speaker for the talk's track and one background
+question.
 
-Adding a survey takes three pieces of configuration, and this page shows all three:
+Adding the core details workflow takes three pieces of configuration, and this page shows all three:
 
-- [two traits](#traits) for the survey to collect, in the `base` bundle;
+- [two traits](#traits) for the core details workflow to collect, in the `base` bundle;
 - [four columns](#columns-in-the-forms-list) for the forms list, also in the `base` bundle;
-- [the survey itself](#survey), in the `talkSurvey` bundle.
+- [the core details workflow itself](#core-details-workflow), in the `talkCoreDetails` bundle.
 
 The traits and the columns are the `base` bundle's first additions beyond the client itself. The
 [client page](client.md#what-the-bundle-holds) lists everything the bundle holds, as the pages add to it.
 
 ## Traits
 
-Before the survey can collect anything, the client needs traits for it to collect. It defines two of its own,
-`session` and `questionnaire`, and keeps them in the `kdr:traitDef` slot of the `base` bundle.
+Before the core details workflow can collect anything, the client needs traits for it to collect. It defines two of its
+own, `session` and `questionnaire`, and keeps them in the `kdr:traitDef` slot of the `base` bundle.
 
 ### Session
 
@@ -64,7 +66,7 @@ not valid until it has a track.
 
 ### Questionnaire
 
-The `questionnaire` trait holds five questions that every speaker answers. The survey asks the first; the abstract
+The `questionnaire` trait holds five questions that every speaker answers. The core details workflow asks the first; the abstract
 workflow, on a later page, asks the other four.
 
 <!-- kdr-doc: bundle=base pointer=/kdr:traitDef/1 -->
@@ -173,20 +175,20 @@ answers. Its filter is a choice between Yes and No, and its search, `firstTalk`,
 or `no`). A column whose `display` does more than name one field, such as
 `${city}, ${state}`, works as the name column does: its filter suggests only the values the forms hold.
 
-## Survey
+## Core details workflow
 
-Here is the whole `talkSurvey` bundle:
+Here is the whole `talkCoreDetails` bundle:
 
-<!-- kdr-doc: bundle=talkSurvey -->
+<!-- kdr-doc: bundle=talkCoreDetails -->
 ```json
 {
   "kdr:workflowDef": [
     {
-      "workflowId": "talkSurvey",
+      "workflowId": "talkCoreDetails",
       "definition": {
-        "workflowId": "talkSurvey",
-        "entry": "survey",
-        "$comment": "The form's survey: what every talk needs before it is reviewed.",
+        "workflowId": "talkCoreDetails",
+        "entry": "coreDetails",
+        "$comment": "The form's core details workflow: what every talk needs before it is reviewed.",
         "label": "About your talk",
         "tasks": [
           {
@@ -211,7 +213,7 @@ Here is the whole `talkSurvey` bundle:
         "types": {
           "client.confdemo.QuestionnaireData": {
             "g-layout": {
-              "$comment": "The survey asks one of the five questions. The abstract workflow asks the rest.",
+              "$comment": "The core details workflow asks one of the five questions. The abstract workflow asks the rest.",
               "mode": "authoritative",
               "schemaFields": [{ "field": "firstTalk" }]
             }
@@ -226,12 +228,13 @@ Here is the whole `talkSurvey` bundle:
 Most of it reads as the creation workflow does (see [Creating a talk](create-talk.md#workflow)). Four things are
 new.
 
-**The entry is `survey`.** A survey runs on a form that already exists, as often as the speaker likes. It can have more
-than one task, though this one has a single task.
+**The entry is `coreDetails`.** The core details workflow runs on a form that already exists, as often as the speaker
+likes. It can have more than one task, though this one has a single task.
 
-**The save is of kind `edit`.** It updates the form rather than creating one. A survey's saves are all `edit`.
+**The save is of kind `edit`.** It updates the form rather than creating one. A core details workflow's saves are all
+`edit`.
 
-**The workflow has its own field layout, in `types`.** The survey's form shows only the questionnaire's first question.
+**The workflow has its own field layout, in `types`.** The workflow's form shows only the questionnaire's first question.
 The layout is `authoritative`, so its list of fields is the whole list: `firstTalk`, and nothing else. The other four
 questions are still part of the data. This form simply does not ask them. See [Field layouts](reference.md#field-layouts).
 
@@ -241,21 +244,21 @@ where it matters.
 
 ## What the speaker sees
 
-The forms list shows each talk's survey status in its **Status** column. A survey is **complete** when the form has an
-entry for every trait its tasks require: here, `session` and `questionnaire`.
+The forms list shows the status of each talk's core details in its **Status** column. A talk's core details are
+**complete** when the form has an entry for every trait the workflow's tasks require: here, `session` and `questionnaire`.
 
 | Status | What it means |
 | --- | --- |
-| **Needs Info** | A trait the survey requires has no entry yet. |
+| **Needs Info** | A trait the core details workflow requires has no entry yet. |
 | **Invalid** | An entry's data does not pass its schema. |
 | **Valid** | Every required trait has an entry, and every entry passes. |
 
 A new talk starts as **Needs Info**, since the creation workflow collects only its name. The status is a link, and it
-opens the survey ready to fill in: a page titled **About your talk**, with a **Track** choice, the question **Is this
-your first conference talk?**, and a **Save** button. Once the speaker saves a track and an answer, the talk becomes
-**Valid**, and the **Track** column shows the track.
+opens the core details workflow ready to fill in: a page titled **About your talk**, with a **Track** choice, the
+question **Is this your first conference talk?**, and a **Save** button. Once the speaker saves a track and an answer,
+the talk becomes **Valid**, and the **Track** column shows the track.
 
-A complete survey has one more effect. The platform marks the form with a fact, `kdr:surveyComplete`, and other
-workflows can test for it. The committee's review, on a later page, waits for that fact before it will start.
+Complete core details have one more effect. The platform marks the form with a fact, `kdr:coreDetailsComplete`, and
+other workflows can test for it. The committee's review, on a later page, waits for that fact before it will start.
 
 Next: [Abstract](abstract.md).

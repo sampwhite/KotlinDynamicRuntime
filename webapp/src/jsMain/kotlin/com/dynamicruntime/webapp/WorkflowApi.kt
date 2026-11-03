@@ -10,12 +10,12 @@ import com.dynamicruntime.common.gedra.workflow.WFD
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 
 /**
- * The workflow endpoints the create and survey-edit pages use (issue #536, #659). All are gedra-section endpoints
- * whose handlers read `cxt.client`, so the **shared** path answers for the caller's own client -- which is what
- * a creation workflow always is. A survey is resolved against a stored form, and that form may be another
+ * The workflow endpoints the create and core details edit pages use (issue #536, #659). All are gedra-section endpoints
+ * whose handlers read `cxt.client`, so the **shared** path answers for the caller's own client -- which is what a
+ * creation workflow always is. A core details workflow is resolved against a stored form, and that form may be another
  * client's (an `allClients` admin, issue #714): then the view and its save take that client's copy of the path,
- * `clientPath`, so the survey is that client's and the save is checked under its rules. The page passes the
- * client only when the copy exists (see `clientOfResolvedPath`); null keeps the shared path.
+ * `clientPath`, so the core details workflow is that client's and the save is checked under its rules. The page passes
+ * the client only when the copy exists (see `clientOfResolvedPath`); null keeps the shared path.
  */
 object WorkflowApi {
     /**
@@ -26,12 +26,12 @@ object WorkflowApi {
         parseWorkflowView(Http.getApi(GEP.workflowView)[EP.results].toJsonMapOrEmpty())
 
     /**
-     * The **survey** resolved against the form [gedraId] (issue #659), each task seeded from the form's current
-     * entries; **null** when the client has no survey (`found=false`). The `gedraId` query arg is what makes the
-     * endpoint resolve the survey rather than the creation workflow. [client] is the form's client when its copy
-     * of the path exists (issue #714), else null for the caller's own.
+     * The **core details workflow** resolved against the form [gedraId] (issue #659), each task seeded from the form's
+     * current entries; **null** when the client has no core details workflow (`found=false`). The `gedraId` query arg
+     * is what makes the endpoint resolve the core details workflow rather than the creation workflow. [client] is the
+     * form's client when its copy of the path exists (issue #714), else null for the caller's own.
      */
-    suspend fun fetchSurveyView(gedraId: String, client: String? = null): WorkflowView? =
+    suspend fun fetchCoreDetailsView(gedraId: String, client: String? = null): WorkflowView? =
         parseWorkflowView(
             Http.getApi(pathFor(GEP.workflowView, client) + queryString(mapOf(GDF.gedraId to gedraId)))[EP.results]
                 .toJsonMapOrEmpty(),
@@ -41,7 +41,7 @@ object WorkflowApi {
      * A **normal workflow** [workflowId] resolved against the form [gedraId] (issue #791) -- what the forms list's
      * workflow column opens. Null when the backend has no such workflow for this caller (`found=false`); a workflow
      * the caller may not see is refused with a 404, which the page shows as its load error. [client] as for
-     * [fetchSurveyView].
+     * [fetchCoreDetailsView].
      */
     suspend fun fetchWorkflowView(workflowId: String, gedraId: String, client: String? = null): WorkflowView? =
         parseWorkflowView(
@@ -57,7 +57,7 @@ object WorkflowApi {
     /**
      * Approves approval task [taskId] of normal workflow [workflowId] for form [gedraId] (issue #787), as a reviewer.
      * The endpoint decides who may and when -- a reviewer, not the form's owner, on the current task, once -- and a
-     * refusal comes back as the error it raised. [client] as for [fetchSurveyView].
+     * refusal comes back as the error it raised. [client] as for [fetchCoreDetailsView].
      */
     suspend fun approve(gedraId: String, workflowId: String, taskId: String, client: String? = null) {
         Http.sendApi(
@@ -68,7 +68,7 @@ object WorkflowApi {
 
     /**
      * Posts a task's collected entries; the outcome is either a refusal naming what is missing, or the form.
-     * [client] as for [fetchSurveyView]: the form's client's copy of the save, so it runs under that client's rules.
+     * [client] as for [fetchCoreDetailsView]: the form's client's copy of the save, so it runs under that client's rules.
      */
     suspend fun save(body: Map<String, Any?>, client: String? = null): WorkflowSaveOutcome =
         parseSaveOutcome(Http.sendApi("POST", pathFor(GEP.workflowSave, client), body)[EP.results].toJsonMapOrEmpty())
@@ -76,7 +76,7 @@ object WorkflowApi {
     /**
      * The workflows behind form [gedraId]'s Needs Review or Finished chip (issue #789) -- [cfact] names which.
      * Asked of the form's own client's surface, resolved by the backend (a client that varies nothing has only
-     * the shared endpoint, bound to the caller's own client), for the reason the survey page resolves its path:
+     * the shared endpoint, bound to the caller's own client), for the reason the core details page resolves its path:
      * an `allClients` admin may be looking at another client's form.
      */
     suspend fun fetchSingletonWorkflows(gedraId: String, cfact: String): List<SingletonWorkflow> {

@@ -75,10 +75,10 @@ fun WfDef.cfactCalcFns(): List<CfactCalcFn> =
     resolvedFunctions.filter { it.event == WfEventType.cfactCalc }.map { CfactCalcFn.of(it) }
 
 /**
- * Runs [def]'s `cfactCalc` functions over a form's [entries] and returns the cfacts they emit that [client]
- * actually declares (issue #678), inside the derived-state recompute. Two callers, with two destinations: the
- * survey's deriver adds the result to its contribution to the form's [com.dynamicruntime.common.gedra.GT.cfacts]
- * set, while a normal workflow's are **its own** (issue #784) -- kept on its per-workflow state entry, where its
+ * Runs [def]'s `cfactCalc` functions over a form's [entries] and returns the cfacts they emit that [client] actually
+ * declares (issue #678), inside the derived-state recompute. Two callers, with two destinations: the core details
+ * workflow's deriver adds the result to its contribution to the form's [com.dynamicruntime.common.gedra.GT.cfacts] set,
+ * while a normal workflow's are **its own** (issue #784) -- kept on its per-workflow state entry, where its
  * singleton-cfact rules read them, rather than in the form's set.
  *
  * A function's **literal** emitted cfacts are already boot-checked -- the resolution pass dropped a function that

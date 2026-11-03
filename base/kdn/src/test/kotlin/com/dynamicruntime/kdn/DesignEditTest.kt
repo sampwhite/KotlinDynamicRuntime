@@ -57,7 +57,7 @@ class DesignEditTest : StringSpec({
     val design = mapOf(EP.view to DSV.design)
     val viewPath = clientPath(GEP.workflowView, client)
 
-    // A form, so the survey workflow -- the second over the same trait -- has a view to compare against.
+    // A form, so the core details workflow -- the second over the same trait -- has a view to compare against.
     val formId = admin.postData(
         clientPath(GEP.workflowSave, client),
         mapOf(
@@ -102,7 +102,7 @@ class DesignEditTest : StringSpec({
     "an edit shows on that workflow's pages only, and the block accounts for it" {
         edit(dataType, DesignDemo.title, mapOf(SL.label to "Name the event"))
         label(requestView(), dataType, DesignDemo.title) shouldBe "Name the event"
-        // The survey collects the same trait and keeps the shared copy.
+        // The core details workflow collects the same trait and keeps the shared copy.
         label(reviewView(), dataType, DesignDemo.title) shouldBe DesignDemo.titleLabel
         val facts = block(requestView())[DSV.layoutEdits].toJsonMapOrEmpty()[dataType].toJsonMapOrEmpty()[DesignDemo.title]
             .toJsonMapOrEmpty()
@@ -162,7 +162,7 @@ class DesignEditTest : StringSpec({
         val facts = block(requestView())[DSV.layoutEdits].toJsonMapOrEmpty()[dataType].toJsonMapOrEmpty()[DesignDemo.title]
             .toJsonMapOrEmpty()
         facts[DSV.inheritedChanged] shouldBe true
-        // The workflow's own wording still stands; the survey picks up the client's new one.
+        // The workflow's own wording still stands; the core details workflow picks up the client's new one.
         label(requestView(), dataType, DesignDemo.title) shouldBe "Name the event"
         label(reviewView(), dataType, DesignDemo.title) shouldBe "What are we holding?"
     }
@@ -226,7 +226,8 @@ class DesignEditTest : StringSpec({
         facts[DSV.inherited] shouldBe shared
         facts[DSV.inheritedChanged] shouldBe false
 
-        // The shared heading changes, for every workflow: the survey shows it, and the block says the override is behind.
+        // The shared heading changes, for every workflow: the core details workflow shows it, and the block says the
+        // override is behind.
         val sharedBasedOn = admin.getItem(DSV.definition, mapOf(DSV.slot to CCT.traitDef, DSV.key to DesignDemo.eventRequest))[DSV.sharedBasedOn]
         admin.postData(DSV.sharedHeadingEdit, mapOf(DSV.typeName to dataType, DSV.label to "The event", DSV.sharedBasedOn to sharedBasedOn))
         heading(reviewView()) shouldBe "The event"

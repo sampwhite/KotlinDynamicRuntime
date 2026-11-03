@@ -1,4 +1,4 @@
-[← Talk survey](talk-survey.md) · [Contents](README.md#the-pages)
+[← Talk core details](talk-core-details.md) · [Contents](README.md#the-pages)
 
 # Abstract
 
@@ -7,8 +7,8 @@ the form is then *engaged* with the workflow until the workflow finishes. A form
 workflows at once.
 
 The abstract is the demo's simplest normal workflow. Any talk may enter it at any time. It asks for the abstract itself
-and for the rest of the questionnaire: the survey asked one of its five questions, and this workflow asks the other
-four.
+and for the rest of the questionnaire: the core details workflow asked one of its five questions, and this workflow asks
+the other four.
 
 Three pieces of configuration go into it, and this page shows all three:
 
@@ -168,7 +168,7 @@ Here is the whole `abstract` bundle:
         "types": {
           "client.confdemo.QuestionnaireData": {
             "g-layout": {
-              "$comment": "The four questions the survey left out.",
+              "$comment": "The four questions the core details workflow left out.",
               "mode": "authoritative",
               "schemaFields": [
                 { "field": "audienceLevel" },
@@ -185,7 +185,7 @@ Here is the whole `abstract` bundle:
 }
 ```
 
-It reads as the [survey](talk-survey.md#survey) does, with two differences.
+It reads as the [core details workflow](talk-core-details.md#core-details-workflow) does, with two differences.
 
 **The entry is `normal`.** The form enters the workflow when the speaker chooses to, and stays in it. A normal workflow
 may list eligibility tests that a form has to pass first; this one lists none, so every talk may enter it. The next
@@ -194,9 +194,9 @@ two pages show workflows that do.
 A workflow is finished when every one of its tasks is complete, which for this one means the abstract has been saved.
 The next page shows a workflow that decides for itself, with an approval step.
 
-**The questionnaire layout shows the other four questions.** The survey's layout showed only `firstTalk`; this one
-shows the rest. The two forms save their own parts of the same trait, and a form never writes a field it does not
-show, so neither can overwrite the other's answers.
+**The questionnaire layout shows the other four questions.** The core details workflow's layout showed only `firstTalk`;
+this one shows the rest. The two forms save their own parts of the same trait, and a form never writes a field it does
+not show, so neither can overwrite the other's answers.
 
 ## What the speaker sees
 

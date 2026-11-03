@@ -87,7 +87,8 @@ class WorkflowVisibilityTest : StringSpec({
                 )
                 // One of each kind, written whole: visibility is a parameter of every kind, windows of a normal one only.
                 workflow("make", WfEntry.creation) { task("name", "Name it") { trait(GT.name); save("go", "Go", WfSaveKind.create) } }
-                workflow("details", WfEntry.survey) { task("fill", "Fill it in") { trait(GT.name); save("go", "Save", WfSaveKind.edit) } }
+                workflow("details", WfEntry.coreDetails) { task("fill", "Fill it in") { trait(GT.name); save("go", "Save",
+                    WfSaveKind.edit) } }
                 workflow("review", WfEntry.normal) { task("record", "Record it") { trait(GT.name); save("go", "Save", WfSaveKind.edit) } }
             },
         )
@@ -153,7 +154,7 @@ class WorkflowVisibilityTest : StringSpec({
         chief.postData(UADEP.clientWorkflowParams, visibilityRequest("make", restrictedTo("pilot")))
         opens(plain, null) shouldBe false
         opens(pilot, null) shouldBe true
-        // A survey takes a visibility, but still no windows.
+        // A core details workflow takes a visibility, but still no windows.
         chief.postData(UADEP.clientWorkflowParams, visibilityRequest("details", WfVisibility.adminsOnly))
         chief.expectError(
             EXC.badInput, UADEP.clientWorkflowParams,

@@ -51,8 +51,8 @@ fun createOwnClientRequest(
     /** The new client's home copy (issue #1336), by the create's field names ([CLD.homeCopyFields]' keys). */
     home: Map<String, String> = emptyMap(),
     /**
-     * Whether the client starts with a creation workflow and a survey (issue #1346); sent only when it does not, and
-     * not at all for a client started from a template, which inherits the template's.
+     * Whether the client starts with a creation workflow and a core details workflow (issue #1346); sent only when it
+     * does not, and not at all for a client started from a template, which inherits the template's.
      */
     starterWorkflows: Boolean = true,
     /** The template the client starts from ([SelfServeTemplate.clientId]); blank for a blank client. */
@@ -259,7 +259,8 @@ val CreateOwnClientCard = FC<CreateOwnClientCardProps> { props ->
     var name by useState("")
     var description by useState("")
     var timeZone by useState(ownClientStartZone(browserTimeZone()))
-    // Whether it starts with a creation workflow and a survey (issue #1346): on unless the person says otherwise.
+    // Whether it starts with a creation workflow and a core details workflow (issue #1346): on unless the person says
+    // otherwise.
     var starters by useState(true)
     // The template it starts from, by client id; blank for a blank client.
     var startFrom by useState("")
@@ -365,7 +366,7 @@ val CreateOwnClientCard = FC<CreateOwnClientCardProps> { props ->
                             checked = starters
                             disabled = busy
                             onChange = { e -> starters = e.target.checked == true }
-                            +"Start with a creation workflow and a survey"
+                            +"Start with a creation workflow and a core details workflow"
                         }
                         div {
                             className = ClassName("type-hint")

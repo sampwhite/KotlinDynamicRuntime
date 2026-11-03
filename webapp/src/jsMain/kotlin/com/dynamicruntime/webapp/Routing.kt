@@ -82,18 +82,18 @@ object HP {
     const val gedra = "g"
 
     /**
-     * Survey edit page: present (`edit=1`) to open the survey **in edit mode** rather than the read-only
-     * "View Info" view (issue #694) -- how the forms list's status chip lands a user straight on the fields
+     * Core details edit page: present (`edit=1`) to open the core details workflow **in edit mode** rather than the
+     * read-only "View Info" view (issue #694) -- how the forms list's status chip lands a user straight on the fields
      * needing attention, bypassing the read-only stop.
      */
     const val edit = "edit"
 
-    /** Survey edit page: the task the rail shows (issue #700); absent opens the earliest task needing action. */
+    /** Core details edit page: the task the rail shows (issue #700); absent opens the earliest task needing action. */
     const val task = "task"
 
     /**
-     * Survey edit page: a **normal workflow** to open against the form instead of its survey (issue #791) -- where
-     * the forms list's workflow column links. Absent opens the survey, as before.
+     * Core details edit page: a **normal workflow** to open against the form instead of its core details workflow (issue #791) -- where
+     * the forms list's workflow column links. Absent opens the core details workflow, as before.
      */
     const val workflow = "wf"
 
@@ -189,7 +189,7 @@ private val legacyRouteKeys = setOf(HP.page, HP.method, HP.doc)
 
 /**
  * One route: the page a path shows, the path's pattern -- literal segments, and `:name` for a param carried in the
- * path -- any params the path fixes (`forms/:g/edit` is the survey page with `edit=1`), and the param, if any, that
+ * path -- any params the path fixes (`forms/:g/edit` is the core details page with `edit=1`), and the param, if any, that
  * is the address's anchor (`docs/:doc` reads `#configuration` as the heading to scroll to). On any other route an
  * anchor is the browser's business alone, and a jump to one tells nobody.
  */
@@ -232,8 +232,8 @@ private val routes: List<RouteDef> = listOf(
     RouteDef(HMENU.pageForms, "forms"),
     RouteDef(HMENU.pageNewForm, "forms/new"),
     RouteDef(pageCreateForUser, "forms/new-for-user"),
-    RouteDef(pageSurveyEdit, "forms/:${HP.gedra}"),
-    RouteDef(pageSurveyEdit, "forms/:${HP.gedra}/edit", mapOf(HP.edit to "1")),
+    RouteDef(pageCoreDetailsEdit, "forms/:${HP.gedra}"),
+    RouteDef(pageCoreDetailsEdit, "forms/:${HP.gedra}/edit", mapOf(HP.edit to "1")),
     RouteDef(pageEditForm, "forms/:${HP.gedra}/raw"),
     RouteDef(HMENU.pageWorkflows, "workflows"),
     RouteDef(pageWorkflowForms, "workflows/:${WAGG.workflowId}/forms"),
@@ -659,16 +659,16 @@ fun restoreUrl(url: String) {
 }
 
 /**
- * A page's veto on being left while it holds unsaved work (issue #700). The survey editor **arms** it when a
+ * A page's veto on being left while it holds unsaved work (issue #700). The core details editor **arms** it when a
  * task has edits not yet saved and **disarms** it when they are saved or reverted; the router asks it on every
  * move, **before** switching, so a "stay" changes nothing -- the page never unmounts and its working state is
  * intact. That ordering is the whole point: reverting from the leaving page's own listener is too late, because the
  * router has already switched by the time it runs.
  *
- * What counts as "still here" is the armed page's to say, through the `stays` predicate it arms with: the
- * survey editor answers true for an address naming its page *and its form*, so a task switch or Back between
- * tasks is never a leave, while a move to another form's survey -- the same page, whose keyed remount would
- * drop the edits just as surely -- is one. One slot, not a list: only the page on screen can hold unsaved work.
+ * What counts as "still here" is the armed page's to say, through the `stays` predicate it arms with: the core details
+ * editor answers true for an address naming its page *and its form*, so a task switch or Back between tasks is never a
+ * leave, while a move to another form's core details workflow -- the same page, whose keyed remount would drop the
+ * edits just as surely -- is one. One slot, not a list: only the page on screen can hold unsaved work.
  *
  * Arming also sets `onbeforeunload`, so a reload, a closed tab or a typed address get the browser's own
  * "leave site?" prompt -- the one exit the app cannot see. A permitted in-app leave clears both.
@@ -715,7 +715,7 @@ object LeaveGuard {
 
     /**
      * The browser's blocking confirm, for a guard's `check` -- and for a control that discards the same edits in
-     * place (the survey editor's Done, issue #716), so the two ask through one dialog.
+     * place (the core details editor's Done, issue #716), so the two ask through one dialog.
      */
     fun confirmLeave(message: String): Boolean = js("window.confirm(message)") as Boolean
 }
