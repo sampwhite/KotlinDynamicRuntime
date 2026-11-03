@@ -481,9 +481,13 @@ class UserService : ServiceInitializer {
             if (org != null) existing.org = org
             existing.activatedAt = createdAt
             existing.registeredAt = if (registered) createdAt else null
+            // To whoever asked, this is a creation, and a creation is the first edit (issue #1555). Stamped from createdAt,
+            // as activatedAt is, rather than by `isEdit`, which would take a later now and leave Edited a few milliseconds
+            // after Activated. With no creation time, the user keeps the Edited date it had.
+            createdAt?.let { existing.lastEditedAt = it }
             customize(existing.authUserData)
             existing.enabled = true
-            updateUser(cxt, existing, isEdit = false) // a re-enable, like the admin toggle: not an edit
+            updateUser(cxt, existing, isEdit = false) // Edited is stamped above, from the creation's own moment
             return existing.userId
         }
         val data = AuthUserRow.mkInitialUser(identity.identityId, primaryId, client, roles, org, persona, personaSuffix, createdAt, registered).toMutableMap()

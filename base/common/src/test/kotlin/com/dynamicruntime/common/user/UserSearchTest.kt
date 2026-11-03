@@ -162,17 +162,26 @@ class UserSearchTest : StringSpec({
         // The other half of the rule, and why it is two rules rather than one: an account with no real-world
         // name has nothing to order by, so it belongs at the end either way rather than heading an ascending
         // list of names.
+        // Named, so the nameless one is the only row without a value: four nameless rows would tie, and the tiebreak
+        // rather than this rule would decide which came last.
+        val named = listOf(user(1, "ada@example.com", "ada_l", name = "Ada"), user(2, "grace@example.com", "grace_h", name = "Grace"))
         val nameless = user(9, "zzz@example.com", "zzz").also { it.name = null }
-        val rows = all + nameless
+        val rows = named + nameless
         ids(searchUserRows(rows, UserSearchCriteria(sortBy = USF.name, descending = true))).last() shouldBe 9L
         ids(searchUserRows(rows, UserSearchCriteria(sortBy = USF.name, descending = false))).last() shouldBe 9L
     }
 
-    "a tie on the sort field breaks by userId for a stable order" {
-        // Two users with no update time tie on the (null) sort value; userId decides.
-        val a = user(7, "a@x.com", "a", updatedAt = null)
-        val b = user(5, "b@x.com", "b", updatedAt = null)
-        ids(searchUserRows(listOf(a, b), UserSearchCriteria())) shouldBe listOf(5L, 7L)
+    "a tie on the sort field breaks by userId, in the sort's own direction (issue #1555)" {
+        // Two users equal on the sort value -- created together, say -- tie; userId decides, newer first when the sort is.
+        val a = user(7, "a@x.com", "a", updatedAt = t1)
+        val b = user(5, "b@x.com", "b", updatedAt = t1)
+        ids(searchUserRows(listOf(a, b), UserSearchCriteria(descending = true))) shouldBe listOf(7L, 5L)
+        ids(searchUserRows(listOf(a, b), UserSearchCriteria(descending = false))) shouldBe listOf(5L, 7L)
+        // Two with no date tie as the earliest, and are ordered among themselves the same way.
+        val c = user(9, "c@x.com", "c", updatedAt = null)
+        val d = user(8, "d@x.com", "d", updatedAt = null)
+        ids(searchUserRows(listOf(c, a, d), UserSearchCriteria(descending = true))) shouldBe listOf(7L, 9L, 8L)
+        ids(searchUserRows(listOf(c, a, d), UserSearchCriteria(descending = false))) shouldBe listOf(8L, 9L, 7L)
     }
 
     "the limit caps the rows but numAvailable reports the full match" {

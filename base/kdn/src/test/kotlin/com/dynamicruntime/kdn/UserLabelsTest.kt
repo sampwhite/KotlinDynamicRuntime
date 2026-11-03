@@ -40,6 +40,7 @@ import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.collections.shouldNotContain
+import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 
@@ -204,8 +205,9 @@ class UserLabelsTest : StringSpec({
             mapOf(ADF.primaryId to "made@$client.test", ADF.labels to listOf(" reviewer", "reviewer", "siteLead")),
         )
         labelsOf(made) shouldContainExactly listOf("reviewer", "siteLead")
-        // Starting with labels is part of the creation, not an edit of it.
-        made[USF.lastEdited.at] shouldBe null
+        // Starting with labels is part of the creation, not an edit of it: Edited is the creation's own moment (issue
+        // #1555), which the write of the labels that follows it does not move.
+        made[USF.lastEdited.at].shouldNotBeNull() shouldBe made[USF.activated.at]
         fun found(args: Map<String, Any?>) = admin.getItems(UADEP.userSearch, args).map { it[ADF.primaryId] }
         // The Labels filter matches one label exactly, ignoring case; the free text finds a fragment of one.
         found(mapOf(USF.labels to "REVIEWER")) shouldContain "made@$client.test"
@@ -226,7 +228,7 @@ class UserLabelsTest : StringSpec({
         found(mapOf(EI.q to "lead")) shouldContain "dir@$client.test"
     }
 
-    "a user created disabled starts with its labels, and the disable is what stamps Edited" {
+    "a user created disabled starts with its labels and an Edited date" {
         val made = admin.postData(
             UADEP.userCreate,
             mapOf(ADF.primaryId to "off@$client.test", ADF.enabled to false, ADF.labels to listOf("reviewer")),
