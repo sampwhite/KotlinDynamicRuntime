@@ -12,7 +12,6 @@ import com.dynamicruntime.common.gedra.workflow.WVF
 import com.dynamicruntime.common.gedra.GEP
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.schema.SL
-import com.dynamicruntime.common.startup.SchemaService
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.user.UADEP
 import com.dynamicruntime.common.util.toJsonListOfMaps
@@ -37,9 +36,9 @@ class ConfDemoTalkNameTest : StringSpec({
 
     "the demo names the platform's name trait Talk title, wherever a trait is named" {
         // The rule every page and message names a trait by.
-        formTraitName(cxt, SchemaService.get(cxt).storeFor(client), GT.name) shouldBe "Talk title"
+        formTraitName(cxt, client, GT.name) shouldBe "Talk title"
         // A client that takes the trait as it is still calls it Name.
-        formTraitName(cxt, SchemaService.get(cxt).storeFor(null), GT.name) shouldBe "Name"
+        formTraitName(cxt, null, GT.name) shouldBe "Name"
         // The workflow editor's catalog, which names the traits a workflow may collect.
         val admin = TestUser.create(cxt, "admin@$client.example", ROLE.admin, userClient = client)
         admin.getItem(UADEP.clientWorkflows)[CWF.traits].toJsonListOfMaps()

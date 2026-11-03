@@ -101,10 +101,10 @@ object TraitLocks {
 
     /**
      * A trait's name for a message, by the rule the pages name it with ([formTraitName], issue #1520), in [client]'s
-     * schema: "Acme site audit", not `acmeSiteAudit`.
+     * schema and copy: "Acme site audit", not `acmeSiteAudit`.
      */
     fun traitName(cxt: KdrCxt, client: String, traitId: String): String =
-        formTraitName(cxt, SchemaService.get(cxt).storeFor(client), traitId)
+        formTraitName(cxt, client, traitId)
 
     /** A workflow's name, in [client]'s wording, for saying which workflow holds a lock. */
     fun workflowLabel(cxt: KdrCxt, client: String, held: Held): String =

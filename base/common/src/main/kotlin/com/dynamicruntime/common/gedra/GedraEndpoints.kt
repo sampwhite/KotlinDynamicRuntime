@@ -1419,14 +1419,10 @@ private fun ownersOf(c: KdrCxt, rows: List<GedraDataRow>, scope: ReadScope): Map
  * per client for the page. A listing spans clients for a caller who sees them all, and the page's catalog is one
  * client's, so the page could name neither another client's own traits nor a global trait that client renamed.
  */
-private fun traitNamesByClient(c: KdrCxt, rows: List<GedraDataRow>): Map<String, Map<String, String>> {
-    val schema = SchemaService.get(c)
-    return rows.groupBy { it.client }.mapValues { (client, clientRows) ->
-        // The copy a heading pulls is the client's, which the context's client selects.
-        val clientCxt = if (client == c.client) c else c.mkSubContext("traitNames", client)
-        formTraitNames(clientCxt, schema.storeFor(client), clientRows.flatMap { it.traitIds() }.distinct())
+private fun traitNamesByClient(c: KdrCxt, rows: List<GedraDataRow>): Map<String, Map<String, String>> =
+    rows.groupBy { it.client }.mapValues { (client, clientRows) ->
+        formTraitNames(c, client, clientRows.flatMap { it.traitIds() }.distinct())
     }
-}
 
 /** [row]'s own traits' names out of [byClient], as [traitNamesByClient] worked them out: what a row's `traitNames` holds. */
 private fun rowTraitNames(row: GedraDataRow, byClient: Map<String, Map<String, String>>): Map<String, String> {

@@ -2,7 +2,6 @@ package com.dynamicruntime.kdn
 
 import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.endpoint.EI
-import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.gedra.ClientAudience
 import com.dynamicruntime.common.gedra.ClientDef
 import com.dynamicruntime.common.gedra.ClientUsageType
@@ -92,9 +91,10 @@ class ListingTraitNamesTest : StringSpec({
     "with no client chosen, an operator's listing names each row's traits as the row's own client does" {
         // In plain, so the page's catalog would be plain's.
         val operator = TestUser.createFullAdmin(cxt, "chief@$plain.test", userClient = plain)
-        val rows = operator.getItems(GEP.formDocs, mapOf(EP.limit to 500))
-        namesOf(rows, renamerDoc) shouldBe renamerNames
-        namesOf(rows, plainDoc) shouldBe mapOf(GT.name to "Name")
+        // Narrowed by user, which keeps the listing across clients (no client chosen) and its page this spec's own.
+        fun listed(email: String) = operator.getItems(GEP.formDocs, mapOf(EI.user to email))
+        namesOf(listed("u@$renamer.test"), renamerDoc) shouldBe renamerNames
+        namesOf(listed("u@$plain.test"), plainDoc) shouldBe mapOf(GT.name to "Name")
         // And as a client is chosen, and on a single read: the same names.
         namesOf(operator.getItems(GEP.formDocs, mapOf(EI.client to renamer)), renamerDoc) shouldBe renamerNames
         operator.getItem(GEP.formDoc, mapOf(GDF.gedraId to renamerDoc[GDF.gedraId]))[GDF.traitNames] shouldBe renamerNames

@@ -85,19 +85,23 @@ fun formTraitData(types: Map<String, SchType>, traitId: String): SchProperty? =
     types["${GCFG.globalNamespace}.${GU.unionName(GedraDataType.formDoc)}"]?.variants?.select(traitId)?.properties?.get(GE.data)
 
 /**
- * Form trait [traitId]'s name in [store], by the rule every page names a trait with (`traitNameOf`, issue #1520): its
- * data type's layout heading, then its title, then its id. The heading's backend `%{@t(...)}` pulls are resolved for
- * [cxt] as delivery to a page resolves them, so a server message or a report names the trait as the page does. Only
- * the heading is resolved, not the layout's field copy.
+ * Form trait [traitId]'s name for [client], by the rule every page names a trait with (`traitNameOf`, issue #1520): its
+ * data type's layout heading, then its title, then its id, in the schema [client] runs (the global schema for null). The
+ * heading's backend `%{@t(...)}` pulls are resolved with [client]'s copy, as delivery to that client's page resolves
+ * them, so a server message or a report names the trait as the page does -- whichever client the caller is in (issue
+ * #1543). Only the heading is resolved, not the layout's field copy.
  */
-fun formTraitName(cxt: KdrCxt, store: KdrSchemaStore, traitId: String): String =
-    formTraitNames(cxt, store, listOf(traitId)).getValue(traitId)
+fun formTraitName(cxt: KdrCxt, client: String?, traitId: String): String =
+    formTraitNames(cxt, client, listOf(traitId)).getValue(traitId)
 
 /**
  * [formTraitName] for each of [traitIds] (issue #1438): the union looked up once and the headings resolved together,
  * for a page that lists many traits.
  */
-fun formTraitNames(cxt: KdrCxt, store: KdrSchemaStore, traitIds: List<String>): Map<String, String> {
+fun formTraitNames(cxt: KdrCxt, client: String?, traitIds: List<String>): Map<String, String> {
+    val store = SchemaService.get(cxt).storeFor(client)
+    // The copy a heading pulls is the one the context's client selects, so it is bound to [client] when that differs.
+    val copyCxt = if (client == null || client == cxt.client) cxt else cxt.mkSubContext("traitNames", client)
     val union = store.types["${GCFG.globalNamespace}.${GU.unionName(GedraDataType.formDoc)}"]
     val dataTypes = traitIds.associateWith { union?.variants?.byValue?.get(it)?.properties?.get(GE.data)?.valueType }
     val headings = dataTypes.values.mapNotNull { it?.name }.distinct().mapNotNull { typeName ->
@@ -106,7 +110,7 @@ fun formTraitNames(cxt: KdrCxt, store: KdrSchemaStore, traitIds: List<String>): 
             typeName to listOfNotNull(SL.label to label, layout.fragmentFileId?.let { SL.fragmentFileId to it }).toMap()
         }
     }.toMap()
-    val delivered = resolveDeliveredLayouts(cxt, headings)
+    val delivered = resolveDeliveredLayouts(copyCxt, headings)
     return dataTypes.mapValues { (traitId, dataType) ->
         val heading = dataType?.name?.let { delivered[it] }.toJsonMapOrEmpty()[SL.label].toOptStr()
         traitNameOf(traitId, heading, dataType?.title)
