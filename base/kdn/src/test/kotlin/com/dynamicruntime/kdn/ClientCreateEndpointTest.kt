@@ -252,7 +252,8 @@ class ClientCreateEndpointTest : StringSpec({
         environments.containsKey(SCH.openOptions) shouldBe false
         // The templates there are, offered by name -- and offered only: the rule is the load's.
         val templates = properties[CLD.extendsFromClientId].toJsonMapOrEmpty()
-        choices(templates) shouldBe listOf(ExtensionTemplateComponent.template)
+        // Every template in use, whoever it is for; not the retired one.
+        choices(templates) shouldBe listOf(ExtensionTemplateComponent.template, ExtensionTemplateComponent.publicTemplate)
         templates.containsKey(SCH.optionsSource) shouldBe false
         admin.getData("/schema/endpoints", mapOf(SS.pathRegex to ADEP.clientCreate))[EI.endpoints]
             .toJsonListOfMaps().single()[EI.inputSchema].toJsonMapOrEmpty()[SCH.required].toJsonListOfStrings().toSet() shouldBe

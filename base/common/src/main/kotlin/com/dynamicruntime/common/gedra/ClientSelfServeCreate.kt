@@ -26,7 +26,7 @@ import com.dynamicruntime.common.home.HFRAG
  *   deployment's environment ([usageTypeIn]), it runs where the deployment does, and it has a sandbox, so it runs
  *   only what is published.
  * - **What it starts from.** Blank -- the starter workflows, a New form asking for the form's name -- or a
- *   code-defined template client it extends ([ClientService.templateClients]), whose traits, workflows, and copy it
+ *   code-defined template client it extends ([ClientService.selfServeTemplates]), whose traits, workflows, and copy it
  *   inherits and may replace, its creation workflow included.
  * - **Who is in it.** The creator, as their own admin user there, under their identity; the endpoint moves the
  *   session there. Moving the client to a customer later is the platform's to do: it keeps its id, and the
@@ -69,7 +69,7 @@ object ClientSelfServeCreate {
         /** Whether the client starts with workflows made from the starter templates (issue #1346). */
         starterWorkflows: Boolean = true,
         /**
-         * The code-defined template client the new one extends, one of [ClientService.templateClients]: it inherits the
+         * The code-defined template client the new one extends, one of [ClientService.selfServeTemplates]: it inherits the
          * template's traits, workflows, and copy, and replaces any it redefines -- its creation workflow included. It
          * then starts with no starter workflows, which would replace the template's own. Null for a blank client.
          */
@@ -81,10 +81,10 @@ object ClientSelfServeCreate {
                 "A self-serve client is created from '${CL.public}'; this session acts in '${profile.client}'.",
             )
         }
-        if (extendsFromClientId != null && ClientService.get(cxt).templateClients().none { it.clientId == extendsFromClientId }) {
+        if (extendsFromClientId != null && ClientService.get(cxt).selfServeTemplates().none { it.clientId == extendsFromClientId }) {
             throw KdrException.mkInput(
                 "'$extendsFromClientId' is not a template a client can start from: a template is a code-defined client " +
-                    "of the template kind.",
+                    "of the template kind, made for customers.",
             )
         }
         val users = UserService.get(cxt)

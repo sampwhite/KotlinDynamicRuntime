@@ -398,7 +398,8 @@ fun clientOverviewSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CLD.overvie
         val home = CLD.homeCopyFields.mapNotNull { (field, key) -> request[field].toOptStr()?.let { key to it } }.toMap()
         val result = ClientSelfServeCreate.create(
             c, request.getValue(CLD.name).toOptStr().orEmpty(), request[CLD.description].toOptStr(), request[CLD.timeZone].toOptStr(),
-            home, starterWorkflows = request[CLD.starterWorkflows] != false, extendsFromClientId = request[CLD.extendsFromClientId].toOptStr(),
+            home, starterWorkflows = request[CLD.starterWorkflows] != false,
+            extendsFromClientId = request[CLD.extendsFromClientId].toOptStr(),
         )
         val switched = result.userId != null && result.created.present
         if (switched) authHandler(c).switchClient(c, result.created.client)

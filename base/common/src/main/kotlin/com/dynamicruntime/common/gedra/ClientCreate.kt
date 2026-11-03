@@ -301,11 +301,12 @@ object ClientCreate {
      * from the start: every form with its name, its owner, its status, and when it was made, grouped by status. The
      * Reports page makes more in this configuration (issue #1492), but none is there unless asked for, so this is the
      * report a client made from data starts with. The name column is there only when
-     * [definition] includes the trait it reads, as it does whenever the client starts with the starter workflows: a
-     * report naming a trait the client does not support would be refused at the write.
+     * [definition] includes the trait it reads, as it does whenever the client starts with the starter workflows, or
+     * the template it extends does: a report naming a trait the client does not support would be refused at the write.
      */
     private fun starterReportConfig(bound: KdrCxt, client: String, definition: Map<String, Any?>): GedraConfig {
-        val included = definition[CLD.includedTraits].toJsonListOfStrings()
+        val template = definition[CLD.extendsFromClientId].toOptStr()?.let { ClientService.get(bound).declared(it) }
+        val included = definition[CLD.includedTraits].toJsonListOfStrings() + template?.includedTraits.orEmpty()
         val withName = GT.name in included || CLD.allGlobal in included
         return gedraConfig(bound, starterReportsConfig, clientNamespace(client), client) {
             report(starterReport, "Forms") {

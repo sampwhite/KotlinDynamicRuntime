@@ -38,7 +38,9 @@ fun templateClient(cxt: KdrCxt): GedraConfig =
                 description = "A template: a New form with a name and a questionnaire, and an expense review.",
                 usageType = ClientUsageType.template,
                 audience = ClientAudience.customer,
-                enabledEnvironments = setOf(ENV.unit, ENV.local, ENV.dev),
+                // Not `dev`: a template is offered to the public where it is enabled, and a deployment running as `dev`
+                // (the public test deployment) loads the sample too.
+                enabledEnvironments = setOf(ENV.unit, ENV.local),
                 includedTraits = listOf(GT.name, ST.questionnaire, ST.expenseReport),
             ),
         )

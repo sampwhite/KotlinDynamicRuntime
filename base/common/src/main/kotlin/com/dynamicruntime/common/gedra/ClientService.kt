@@ -179,11 +179,21 @@ class ClientService : ServiceInitializer {
 
     /**
      * The clients a configured client may extend (`extendsFromClientId`): code-defined, and of the template kind --
-     * what the load's own rule admits (`GedraConfigLoadService.extendsProblem`). The one list behind the platform
-     * create's choices and the self-serve create's, so neither offers a template the load would drop.
+     * what the load's own rule admits (`GedraConfigLoadService.extendsProblem`) -- among the definitions the checks
+     * kept, so none a check dropped is offered only to be refused, and none retired. The platform create's choices.
      */
-    fun templateClients(): List<ClientDef> =
-        declaredClients().filter { it.usageType == ClientUsageType.template && originOf(it.clientId) == GedraConfigOrigin.source }
+    fun templateClients(): List<ClientDef> = clients.values.filter {
+        it.usageType == ClientUsageType.template && !it.retired && originOf(it.clientId) == GedraConfigOrigin.source
+    }
+
+    /**
+     * The templates a person may start a self-serve client from: [templateClients] meant for customers
+     * ([ClientAudience.customer]) and enabled in this environment. Everyone signed in to `public` is offered them, so a
+     * template made for the platform's own use is not, and neither is one meant for developers' environments only --
+     * the sample's, which a deployment running as `dev` would otherwise show its public visitors.
+     */
+    fun selfServeTemplates(): List<ClientDef> =
+        templateClients().filter { it.audience == ClientAudience.customer && it.isEnabledIn(env) }
 
     override fun onCreate(cxt: KdrCxt) {
         collector = SchemaCollector.get(cxt)

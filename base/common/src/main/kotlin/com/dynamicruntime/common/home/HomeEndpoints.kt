@@ -62,14 +62,15 @@ import com.dynamicruntime.common.util.toOptStr
  * Registered by the `common` component.
  */
 fun homeSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.home") {
-    // One navigable document: a display label plus the versioned id the frontend fetches it by.
+    // A template a self-serve client may start from: its name alone, since a definition's description is an internal
+    // note, not for the public.
     type(HTYPE.selfServeTemplate) {
         type = SCT.kObject
         property(HFLD.id, "The template client's id, which the create names as the client to extend.", required = true)
-        // Its name alone: a definition's description is an internal note, not for the public.
         property(HFLD.label, "The template's display name.", required = true)
     }
 
+    // One navigable document: a display label plus the versioned id the frontend fetches it by.
     type(HTYPE.homeLink) {
         type = SCT.kObject
         property(HFLD.id, "Stable id for this link (the frontend addresses it in its own URL).", required = true)
@@ -322,7 +323,7 @@ fun homeSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.home") {
                             if (ClientService.getOrNull(c)?.isPresent(it) != true) put(HFLD.selfServeClientAbsent, true)
                         }
                         // What a new one may start from, while the person may still make one.
-                        val templates = if (made != null) emptyList() else ClientService.getOrNull(c)?.templateClients().orEmpty()
+                        val templates = if (made != null) emptyList() else ClientService.getOrNull(c)?.selfServeTemplates().orEmpty()
                         if (templates.isNotEmpty()) {
                             put(HFLD.selfServeTemplates, templates.map { mapOf(HFLD.id to it.clientId, HFLD.label to it.name) })
                         }
