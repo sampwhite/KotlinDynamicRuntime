@@ -399,8 +399,18 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
         val callerScope = ReadScopeRules.forCaller(c)
         // A client filter narrows an `allClients` caller's (unrestricted) scope to one client (issue #668); it is
         // ignored for anyone else, whose scope cannot widen to a client they are not in. Naming a client that is
-        // not present just yields no rows, the same as a search matching nothing.
+        // not present just yields no rows, the same as a search matching nothing. On a client's own copy the path
+        // has already chosen the client (issue #1575), so a filter naming another contradicts it, and is refused as
+        // a gedra id naming another client is there.
         val clientFilter = (request[EI.client] as? String)?.trim()?.ifEmpty { null }?.takeIf { AdminRules.canSeeAllClients(c) }
+        c.clientFromPath?.let { confined ->
+            if (clientFilter != null && clientFilter != confined) {
+                throw KdrException.mkInput(
+                    "This endpoint is the one for the client '$confined', so it cannot list '$clientFilter'. " +
+                        "Use that client's own endpoint, or the shared one.",
+                )
+            }
+        }
         val baseScope = if (clientFilter != null) ReadScope.ofClient(clientFilter) else callerScope
         // A named user narrows further to that user -- but only within what the caller may already see (see
         // [resolveTargetUser], resolved within the client-narrowed scope); no name is the client/caller scope.
