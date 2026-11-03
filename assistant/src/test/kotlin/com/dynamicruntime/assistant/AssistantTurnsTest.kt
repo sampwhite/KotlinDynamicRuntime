@@ -60,7 +60,6 @@ import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptInstantOrNull
 import com.dynamicruntime.common.util.toOptLong
-import com.dynamicruntime.common.util.toOptStr
 import com.dynamicruntime.kdn.Startup
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldBeEmpty
@@ -571,6 +570,8 @@ class AssistantTurnsTest : StringSpec({
             schema.endpoints["$path:GET"].shouldNotBeNull().sessionOnly shouldBe true
         }
         AssistantTools.readableDoc(cxt, "client-configuration").shouldNotBeNull()
+        // The codes a refused value is reported with (issue #1559), generated, are readable too.
+        AssistantTools.readableDoc(cxt, "validation-messages").shouldNotBeNull()
         AssistantTools.readableDoc(cxt, "api-guide").shouldBeNull()
     }
 
