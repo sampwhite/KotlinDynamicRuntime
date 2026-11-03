@@ -803,6 +803,10 @@ a:not([class]):hover { color: var(--accent-brighter); text-decoration: underline
    nothing scrolled sideways (issue #1551). The page scrolls the rows; a table that scrolls its own does it in antd's
    inner body, not here. */
 .card .ant-table-wrapper { overflow-x: auto; overflow-y: hidden; }
+/* A table keeps its pinned columns' stacking to itself. antd gives a pinned cell `z-index: columns + position + 2`, so
+   on a table with enough columns the last one pinned left (the Users table's Persona) reached the app bar's 20 and,
+   coming later in the page, drew over the bar as the rows scrolled under it (issue #1551). */
+.ant-table-wrapper { isolation: isolate; }
 
 /* The heading scale (see `--h1-size`): more space above a heading than below it, so it belongs to what follows. */
 h1, h2, h3, h4 { line-height: 1.25; color: var(--text); }
