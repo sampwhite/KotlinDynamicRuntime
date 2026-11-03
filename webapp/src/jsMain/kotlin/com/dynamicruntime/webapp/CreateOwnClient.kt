@@ -1,8 +1,10 @@
 package com.dynamicruntime.webapp
 
+import com.dynamicruntime.common.assistant.ASST
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.gedra.CLD
 import com.dynamicruntime.common.user.AEP
+import com.dynamicruntime.common.home.HEP
 import com.dynamicruntime.common.home.HFLD
 import com.dynamicruntime.common.util.isPlaceZoneName
 import com.dynamicruntime.common.util.toJsonListOfMaps
@@ -213,6 +215,14 @@ fun startFromHint(startFrom: String, starters: Boolean): String = when {
     else -> "Your client starts empty, and you build its forms and workflows."
 }
 
+/**
+ * Where the page goes once a person's new client is made and moved to (issue #1569): the workflow assistant, when the
+ * new client's menu -- [menuIds], read as its administrator -- offers it, so the person goes on to design its New form
+ * and a workflow; else the client's home. Pure, and covered under `jsNodeTest`.
+ */
+fun landingAfterCreate(menuIds: List<String>): List<Pair<String, String>> =
+    if (ASST.menuItem in menuIds) listOf(HP.page to ASST.page) else emptyList()
+
 /** The zone the card starts on: the browser's, when it is a place's zone a client may name -- never an `Etc/` offset. */
 fun ownClientStartZone(browserZone: String?): String = browserZone?.takeIf { isPlaceZoneName(it) }.orEmpty()
 
@@ -275,6 +285,8 @@ val CreateOwnClientCard = FC<CreateOwnClientCardProps> { props ->
     var images by useState<Map<String, PickedImage>>(emptyMap())
     // Set once the client is made and moved to but an image did not upload: the card stays to say so, then goes on.
     var continueReady by useState(false)
+    // Where the page goes once the client is made: its home, or the workflow assistant where its menu offers it.
+    var landing by useState<List<Pair<String, String>>>(emptyList())
     val bump = useRefreshBump()
     val imageProblems = images.mapValues { (slot, img) -> imageProblem(slot, img.mimeType, img.size) }.filterValues { it != null }
 
@@ -460,8 +472,14 @@ val CreateOwnClientCard = FC<CreateOwnClientCardProps> { props ->
                                     }.awaitAll().filterNotNull()
                                 }
                                 val uploadsNote = imageUploadsNote(failures)
+                                // Where to land (issue #1569): read from the new client's own menu, now the session's. Used
+                                // from this value, not the state, which this closure would still read as it was.
+                                val to = apiResult {
+                                    landingAfterCreate(homeConfigFrom(fetchUiConfig(HEP.homeUiConfig)).menu.map { it.id })
+                                }.valueOr(emptyList())
+                                landing = to
                                 if (uploadsNote == null) {
-                                    afterSessionChange(bump)
+                                    afterSessionChange(bump, to)
                                 } else {
                                     note = uploadsNote
                                     continueReady = true
@@ -477,7 +495,7 @@ val CreateOwnClientCard = FC<CreateOwnClientCardProps> { props ->
         if (continueReady) {
             Button {
                 type = "primary"
-                onClick = { afterSessionChange(bump) }
+                onClick = { afterSessionChange(bump, landing) }
                 +"Continue to your client"
             }
         }

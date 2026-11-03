@@ -190,6 +190,21 @@ and never instructions, and then gives the API guide. A conversation is bound to
 read-only, and the administrator starts a new one. A new build that changes the API guide or a tool does that to every
 conversation. The prompt names the client by its id alone, so renaming a client does not.
 
+**The New form** (#1569). The prompt says what the creation workflow is -- the one workflow whose entry is `creation`,
+whose one task's traits are exactly what the New form page asks for -- that a client has one, that a trait a new
+workflow wants may go on it or on the new workflow's own task, and how a starter made from a template is stored (an
+overlay, `fromTemplate`, whose task traits are edited in place). It also says what kind of client this is
+(`AssistantPrompt.clientLine`), since that decides who changes the New form:
+
+| The client is | The prompt says |
+|---|---|
+| configured | its creation workflow is its own configuration, which the assistant may change |
+| built on a code-defined base | it inherits the base's creation workflow, and replaces it whole by writing its own |
+| defined in code | its creation workflow is changed in code; offer a normal workflow that collects more instead |
+
+The kind is part of the conversation's version, so a client the platform rebuilds on another base starts its
+conversations afresh. The page says the same for a client defined in code, under the Conversation heading.
+
 **A turn** starts with `POST /clientAdmin/assistant/message` (`conversationId`, `clientMessageId`, `text`), which
 checks, in order: the assistant is on for the client, the client has a sandbox, its budget is not spent, the caller
 has turns left this hour (`KDR_ASSISTANT_TURNS_PER_HOUR`, counted in the database), the client has room for another

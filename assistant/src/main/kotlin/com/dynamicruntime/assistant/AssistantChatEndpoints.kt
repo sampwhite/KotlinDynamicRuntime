@@ -247,7 +247,7 @@ fun summaryOf(cxt: KdrCxt, row: Map<String, Any?>): Map<String, Any?> {
         ACNV.conversationId to row[ACNV.conversationId],
         ACNV.title to row[ACNV.title],
         ACNV.running to (row[ATBL.runningTurnId] != null),
-        ACNV.readOnly to (row[ACNV.readOnly] == true || row[ATBL.toolsetVersion] != AssistantPrompt.versionOf(client)),
+        ACNV.readOnly to (row[ACNV.readOnly] == true || row[ATBL.toolsetVersion] != AssistantPrompt.versionOf(cxt, client)),
         PF.createdAt to row[PF.createdAt],
         PF.updatedAt to row[PF.updatedAt],
     )

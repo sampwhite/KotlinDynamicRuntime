@@ -1958,6 +1958,8 @@ body.dv-open .app-content { padding-right: calc(var(--dv-panel-width) + 16px); }
     width: 100%; min-height: 96px; padding: 8px 10px; resize: vertical; font: inherit; color: var(--text);
     background: var(--surface-page); border: 1px solid var(--border); border-radius: 8px;
 }
+/* Example requests a person may start from (issue #1569): small buttons that wrap under the box. */
+.assistant-examples { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 6px; }
 .assistant-drafts { padding-left: 18px; }
 .assistant-drafts > li + li { margin-top: 12px; }
 .assistant-drafts .row { margin-top: 6px; }

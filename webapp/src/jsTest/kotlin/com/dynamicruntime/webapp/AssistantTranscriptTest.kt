@@ -198,6 +198,22 @@ class AssistantTranscriptTest {
     }
 
     @Test
+    fun aPersonIsOfferedSomewhereToStart() {
+        // What a new form asks for is offered only where it is the assistant's to change.
+        assertTrue(assistantExamples(definedInCode = false).any { it.contains("new form") })
+        assertTrue(assistantExamples(definedInCode = true).none { it.contains("new form") })
+        val none = emptyList<ConversationSummary>()
+        assertTrue(showsExamples(null, none, "", null))
+        // Not once they have a conversation, have one open, have begun typing, or cannot send.
+        assertTrue(!showsExamples(null, listOf(ConversationSummary("c1", "Hi", false, false, null)), "", null))
+        assertTrue(!showsExamples("c1", none, "", null))
+        assertTrue(!showsExamples(null, none, "Add", null))
+        assertTrue(!showsExamples(null, none, "", "This month's allowance is used up."))
+        // Nor before the list has been read.
+        assertTrue(!showsExamples(null, null, "", null))
+    }
+
+    @Test
     fun thePageShowsTheFaceItsStatusCallsFor() {
         fun status(on: Boolean = false, offered: Boolean = false, inSandbox: Boolean = false) = parseAssistantStatus(
             mapOf(ASST.client to "free_shop1", ACNV.on to on, ACNV.offered to offered, ACNV.inSandbox to inSandbox),

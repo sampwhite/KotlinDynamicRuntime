@@ -99,7 +99,7 @@ object AssistantTurns {
                 EXC.tooManyRequests, ACNV.turnLimitCode,
             )
         }
-        val version = AssistantPrompt.versionOf(client)
+        val version = AssistantPrompt.versionOf(cxt, client)
         val turnId = cxt.mkUniqueId()
         // Claimed before anything is written for the turn: a message refused as busy writes nothing.
         val newConversation = conversationId == null
@@ -354,7 +354,7 @@ class TurnRunner(@KdrPrivate val service: AssistantService, @KdrPrivate val cxt:
 
     @KdrPrivate
     fun loop() {
-        val system = AssistantPrompt.system(client)
+        val system = AssistantPrompt.system(cxt, client)
         val tools = AssistantTools.definitions()
         val principal = InProcessPrincipal(
             turn[ATBL.sandboxUserId].toOptLong()!!, turn[ATBL.sandboxIdentityId].toString(), turn[ATBL.sandboxClient].toString(),

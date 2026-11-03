@@ -389,6 +389,16 @@ val AssistantPage = FC<Props> {
                     }
                 }
                 panel(panelConversation, "Conversation", kind = PanelKind.live) {
+                    // What its New form asks for is the code's for a client defined there (issue #1569).
+                    if (current.sandboxInSource) {
+                        p {
+                            className = ClassName("type-hint")
+                            +(
+                                "${current.clientName} is defined in code, so what its New form asks for is changed in code. " +
+                                    "The assistant can add a workflow that collects more once a form exists."
+                            )
+                        }
+                    }
                     conversationPicker(conversations, conversationId, summary, running) { open(it) }
                     transcript(transcriptItems(messages), running, transcriptBox)
                     turnEndText(turns.lastOrNull()?.takeIf { !running })?.let { p { className = ClassName("type-hint"); +it } }
@@ -414,6 +424,20 @@ val AssistantPage = FC<Props> {
                             if (e.key == "Enter" && (e.metaKey || e.ctrlKey)) {
                                 e.preventDefault()
                                 if (!running) send()
+                            }
+                        }
+                    }
+                    // Somewhere to start, for a person who has not talked to it yet (issue #1569): each fills the box.
+                    if (showsExamples(conversationId, conversations, text, blocked)) {
+                        div {
+                            className = ClassName("assistant-examples")
+                            span { className = ClassName("type-hint"); +"For example: " }
+                            for (example in assistantExamples(definedInCode = current.sandboxInSource)) {
+                                Button {
+                                    size = "small"
+                                    onClick = { text = example }
+                                    +example
+                                }
                             }
                         }
                     }

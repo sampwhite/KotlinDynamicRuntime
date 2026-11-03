@@ -33,6 +33,13 @@ these it shows is `assistantViewOf`, covered by `AssistantTranscriptTest`. Each 
 token, so a read under way when the assistant is switched on cannot put the panel back. The menu offers the page while it
 is offered (`assistant:usable`), so the person finds it.
 
+**Where a person starts** (issue #1569). A self-serve client's create lands here when the new client's menu offers
+the page (`landingAfterCreate`, on the create card). On a new conversation, for a person with none yet, the
+Conversation panel offers a few example requests under the box (`assistantExamples`, `showsExamples`): each fills the
+box, and one about what a new form asks for is left out for a client defined in code. For such a client the panel also
+says, under its heading, that what its New form asks for is changed in code (the status's `sandboxInSource`, which is
+whether the client is defined in code).
+
 Panels, by the rules of "Page structure" in `webapp/CLAUDE.md`:
 
 1. **Sandbox** (live), only while the client has none: what a sandbox does, and **Turn on sandbox**, behind a

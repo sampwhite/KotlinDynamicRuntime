@@ -652,7 +652,7 @@ class AssistantTurnsTest : StringSpec({
             own,
             mapOf(
                 ACNV.conversationId to "starting1526", "client" to "asstlease", PF.userId to admin.userId, ACNV.title to "Starting",
-                ATBL.toolsetVersion to AssistantPrompt.versionOf("asstlease"), ATBL.runningTurnId to "notYetRecorded",
+                ATBL.toolsetVersion to AssistantPrompt.versionOf(own, "asstlease"), ATBL.runningTurnId to "notYetRecorded",
             ),
         )
         fun starting() = admin.getData(ACNV.conversationPath, mapOf(ACNV.conversationId to "starting1526"))[ACNV.conversation]
