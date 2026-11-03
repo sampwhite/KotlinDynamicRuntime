@@ -74,6 +74,8 @@ For a program, or an AI assistant, given a site's address and an API key.
    configuration.
 5. **[Validation messages](reference/validation-messages.md),** for every code a refused value is reported with, what
    each means, and how to give one a message of your own.
+6. **[Expressions](reference/expressions.md),** for the `${…}` language that copy, columns, layouts, and computed values
+   are written in, and its functions.
 
 Most of this documentation was written by an AI and reviewed by people;
 [the README says why](../README.md#how-this-was-made).

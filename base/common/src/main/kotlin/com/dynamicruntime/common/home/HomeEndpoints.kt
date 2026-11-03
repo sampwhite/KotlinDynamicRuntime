@@ -36,6 +36,7 @@ import com.dynamicruntime.common.endpoint.schemaModule
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.schemaDialectMarkdown
 import com.dynamicruntime.common.schema.validationMessagesMarkdown
+import com.dynamicruntime.common.util.expressionsMarkdown
 import com.dynamicruntime.common.user.AdminRules
 import com.dynamicruntime.common.user.UserChoice
 import com.dynamicruntime.common.user.UserService
@@ -635,6 +636,9 @@ fun coreDocs(): List<MarkdownDocDef> = listOf(
     MarkdownDocDef(HDOC.validationMessages, "Validation messages", "docs/reference/validation-messages.md",
         "Every code a refused value is reported with, what a message for it may say, and how to write your own -- made from the validator's codes.",
         generate = ::validationMessagesMarkdown),
+    MarkdownDocDef(HDOC.expressions, "Expressions", "docs/reference/expressions.md",
+        "The expression language copy, columns, layouts, and computed values are written in, and its functions -- made from the functions.",
+        generate = ::expressionsMarkdown),
     MarkdownDocDef(HDOC.clientConfiguration, "Client configuration", "docs/reference/client-configuration.md",
         "Every slot of a client's configuration, what its entries hold, and what a write or an edit of one must send.",
         generate = ::clientConfigurationMarkdown),

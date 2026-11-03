@@ -589,6 +589,8 @@ object HDOC {
     const val schemaDialect = "schema-dialect"
     /** Every code a refused value is reported with, and how to give one a message (issue #1559). Generated. */
     const val validationMessages = "validation-messages"
+    /** The `${…}` expression language and its functions (issue #1560). Generated. */
+    const val expressions = "expressions"
     const val clientConfiguration = "client-configuration"
     const val apiKeysAndTokens = "api-keys-and-tokens"
     /** The guide for a program or an AI assistant using a site's API (issue #1493), which the endpoint catalog names. */

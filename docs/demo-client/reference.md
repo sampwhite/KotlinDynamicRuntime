@@ -166,9 +166,11 @@ larger picture beside the text that follows it.
 
 ## Copy from a file
 
-A label or description can pull its words from a fragment file instead of holding them: `%{@t("logistics.heading")}`
-takes the `heading` key of the `logistics` namespace in the file the layout's `fragmentFileId` names. The words then
-live in one place, and a client's copy overlay can change them without touching the definition.
+A label, description, or line of copy can hold an expression between `${` and `}`, described in
+[Expressions](../reference/expressions.md) with its functions. A label or description can also pull its words from a
+fragment file instead of holding them: `%{@t("logistics.heading")}` takes the `heading` key of the `logistics` namespace
+in the file the layout's `fragmentFileId` names. The words then live in one place, and a client's copy overlay can
+change them without touching the definition.
 
 ## Report paths
 
