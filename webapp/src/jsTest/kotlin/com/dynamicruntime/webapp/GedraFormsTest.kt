@@ -2,6 +2,8 @@ package com.dynamicruntime.webapp
 
 import com.dynamicruntime.common.gedra.workflow.WFS
 import com.dynamicruntime.common.gedra.workflow.WCOL
+import com.dynamicruntime.common.gedra.workflow.WAGG
+import com.dynamicruntime.common.gedra.workflow.WfColumnCategory
 import com.dynamicruntime.common.user.PERSONA
 import com.dynamicruntime.common.endpoint.EI
 import com.dynamicruntime.common.endpoint.EP
@@ -853,6 +855,24 @@ class GedraFormsTest {
         assertNull(savedNotShownNote(null, filter, listOf("g.fd.acme.a")))
         // Saved and absent, but no filter is active: left unremarked (the row was on the list the user came from).
         assertNull(savedNotShownNote("g.fd.acme.new", emptyMap(), listOf("g.fd.acme.a")))
+    }
+
+    /**
+     * On a workflow's listing (issue #792) what makes it that listing is not a filter, which Clear would not remove: a
+     * form engaged from the eligible ones is told as having left the list, and only a real filter is named as one.
+     */
+    @Test
+    fun aWorkflowListingSaysWhichFormsItShowsRatherThanBlamingAFilter() {
+        val eligible = mapOf(WAGG.workflowId to "rsvp", WAGG.workflowState to WfColumnCategory.eligible.name)
+        val others = listOf("g.fd.acme.a")
+        assertEquals(
+            "The form you just saved isn't shown here — this list shows only the forms eligible for this workflow, not yet in it.",
+            savedNotShownNote("g.fd.acme.new", eligible, others),
+        )
+        val alsoFiltered = savedNotShownNote("g.fd.acme.new", eligible + ("acmeSiteAuditContains" to "dana"), others)!!
+        assertTrue(alsoFiltered.contains("eligible for this workflow") && alsoFiltered.contains("filter"))
+        // Every form the workflow applies to: no state narrows it, so an edited row's absence is left unremarked.
+        assertNull(savedNotShownNote("g.fd.acme.new", mapOf(WAGG.workflowId to "rsvp"), others))
     }
 
     /**
