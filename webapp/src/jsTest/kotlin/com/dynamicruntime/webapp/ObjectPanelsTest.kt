@@ -18,7 +18,11 @@ class ObjectPanelsTest {
             "gcCollectors" to listOf(mapOf("name" to "G1")),
         )
         assertEquals(
-            listOf("op-node" to "Node", "op-build" to "Build", "op-gcCollectors" to "Gc collectors"),
+            listOf(
+                ObjectPanel("node", "op-key-node", "Node"),
+                ObjectPanel("build", "op-key-build", "Build"),
+                ObjectPanel("gcCollectors", "op-key-gcCollectors", "Gc collectors"),
+            ),
             objectPanels(obj),
         )
     }
@@ -26,7 +30,17 @@ class ObjectPanelsTest {
     @Test
     fun topLevelScalarsGoInALeadingSummary() {
         val obj = mapOf("node" to mapOf("nodeId" to "n1"), "pid" to 42)
-        assertEquals(listOf("op-summary" to "Summary", "op-node" to "Node"), objectPanels(obj))
+        assertEquals(
+            listOf(ObjectPanel(null, "op-summary", "Summary"), ObjectPanel("node", "op-key-node", "Node")),
+            objectPanels(obj),
+        )
+    }
+
+    @Test
+    fun aSectionNamedSummaryKeepsItsOwnPanel() {
+        val obj = mapOf("status" to "ok", "summary" to mapOf("count" to 3))
+        val ids = objectPanels(obj).map { it.id }
+        assertEquals(listOf("op-summary", "op-key-summary"), ids)
     }
 
     @Test

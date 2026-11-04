@@ -3,29 +3,32 @@ package com.dynamicruntime.common.operator
 import com.dynamicruntime.common.util.jsonMapOrNull
 import kotlin.time.Instant
 
+/** The build-info resource (issue #1620): where the build writes it, and its field names, each matching its value. */
+@Suppress("ConstPropertyName")
+object BLD {
+    /** The classpath resource `base/common`'s `embedBuildInfo` task writes. */
+    const val resourcePath = "/build-info/kdr-build.json"
+
+    const val commit = "commit"
+    const val commitEpochSeconds = "commitEpochSeconds"
+    const val branch = "branch"
+    const val uncommittedChanges = "uncommittedChanges"
+
+    /** The commit recorded by a build that had no git to ask. */
+    const val unknown = "unknown"
+}
+
 /**
  * The commit this node's code was built from (issue #1620), as `base/common`'s `embedBuildInfo` Gradle task recorded it
  * in the `build-info/kdr-build.json` resource. Read once, on first use.
  *
  * Every field is null when the resource is missing, as it is for a run whose build skipped `processResources`. [commit]
- * is `unknown` when the build had no git to ask, or was made outside a checkout.
+ * is [BLD.unknown] when the build had no git to ask, or was made outside a checkout.
  */
-@Suppress("ConstPropertyName")
 object BuildInfo {
-    /** The classpath resource the build writes. */
-    const val resourcePath = "/build-info/kdr-build.json"
-
-    /** The resource's field names. Each matches its value. */
-    object BLD {
-        const val commit = "commit"
-        const val commitEpochSeconds = "commitEpochSeconds"
-        const val branch = "branch"
-        const val uncommittedChanges = "uncommittedChanges"
-    }
-
     /** The resource's contents, or an empty map when there is none or it does not parse. */
     val recorded: Map<String, Any?> by lazy {
-        BuildInfo::class.java.getResourceAsStream(resourcePath)?.use { it.readBytes().decodeToString() }
+        BuildInfo::class.java.getResourceAsStream(BLD.resourcePath)?.use { it.readBytes().decodeToString() }
             ?.jsonMapOrNull() ?: emptyMap()
     }
 

@@ -1,6 +1,7 @@
 package com.dynamicruntime.kdn
 
 import com.dynamicruntime.common.http.request.TestHttpClient
+import com.dynamicruntime.common.operator.BLD
 import com.dynamicruntime.common.operator.OPS
 import com.dynamicruntime.common.operator.OSI
 import com.dynamicruntime.common.user.TestUser
@@ -27,8 +28,8 @@ class SystemInfoBuildTest : StringSpec({
         info.keys.toList().take(2) shouldBe listOf(OSI.node, OSI.build)
         val build = info[OSI.build].toJsonMapOrEmpty()
         val commit = build[OSI.commit] as String
-        commit shouldMatch Regex("[0-9a-f]{40}|unknown")
-        if (commit != "unknown") {
+        commit shouldMatch Regex("[0-9a-f]{40}|${BLD.unknown}")
+        if (commit != BLD.unknown) {
             build[OSI.commitShort] shouldBe commit.take(12)
             (build[OSI.commitTime] as String).isNotEmpty() shouldBe true
             // Whole minutes, written as a Duration is: `0s` within the minute, else `43m`, `2d 5h 12m`, ...

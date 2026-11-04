@@ -280,7 +280,8 @@ private fun buildReport(now: Instant): Map<String, Any?> {
         OSI.commit to (commit ?: ""),
         OSI.commitShort to (commit?.take(12) ?: ""),
         OSI.commitTime to (commitTime?.formatDate() ?: ""),
-        OSI.commitAge to (commitTime?.let { (now - it).inWholeMinutes.minutes.toString() } ?: ""),
+        // Never negative: a node whose clock is behind the commit's date reads it as just made.
+        OSI.commitAge to (commitTime?.let { (now - it).inWholeMinutes.coerceAtLeast(0).minutes.toString() } ?: ""),
         OSI.branch to (BuildInfo.branch ?: ""),
         OSI.uncommittedChanges to BuildInfo.uncommittedChanges,
     )

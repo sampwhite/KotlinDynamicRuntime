@@ -137,30 +137,41 @@ fun gitOutput(vararg args: String): String = try {
     ""
 }
 
-val buildCommit = gitOutput("rev-parse", "HEAD")
-val buildCommitEpochSeconds = gitOutput("log", "-1", "--format=%ct")
-val buildBranch = gitOutput("rev-parse", "--abbrev-ref", "HEAD")
-val buildDirty = gitOutput("status", "--porcelain").isNotEmpty()
+/** A JSON string literal of [value]: a branch name may hold a quote, which git allows. */
+fun jsonString(value: String): String =
+    "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"").filter { it >= ' ' } + "\""
+
+// Lazy, so git runs only when this task is scheduled, not whenever Gradle configures the build.
+val buildCommit = providers.provider {
+    gitOutput("rev-parse", "HEAD").takeIf { Regex("[0-9a-f]{40}").matches(it) } ?: "unknown"
+}
+val buildCommitEpochSeconds = providers.provider { gitOutput("log", "-1", "--format=%ct").toLongOrNull() ?: -1L }
+val buildBranch = providers.provider {
+    // A detached checkout (a tag, a particular commit) names no branch: git answers `HEAD`.
+    when (val name = gitOutput("rev-parse", "--abbrev-ref", "HEAD")) {
+        "" -> "unknown"
+        "HEAD" -> "(detached)"
+        else -> name
+    }
+}
+// Tracked files only: a stray untracked file does not make the code differ from the commit.
+val buildDirty = providers.provider { gitOutput("status", "--porcelain", "--untracked-files=no").isNotEmpty() }
 
 val embedBuildInfo = tasks.register("embedBuildInfo") {
-    val commit = buildCommit.takeIf { Regex("[0-9a-f]{40}").matches(it) } ?: "unknown"
-    val commitEpochSeconds = buildCommitEpochSeconds.toLongOrNull()
-    val branch = buildBranch.ifEmpty { "unknown" }
-    val dirty = buildDirty
-    inputs.property("commit", commit)
-    inputs.property("commitEpochSeconds", commitEpochSeconds ?: -1L)
-    inputs.property("branch", branch)
-    inputs.property("dirty", dirty)
+    inputs.property("commit", buildCommit)
+    inputs.property("commitEpochSeconds", buildCommitEpochSeconds)
+    inputs.property("branch", buildBranch)
+    inputs.property("dirty", buildDirty)
     val out = layout.buildDirectory.file("docResources/build-info/kdr-build.json")
     outputs.file(out)
     doLast {
-        // Values are plain strings, digits, and a boolean, and a branch name holds no quote or backslash.
+        val epochSeconds = buildCommitEpochSeconds.get()
         val json = buildString {
             append("{\n")
-            append("  \"commit\": \"$commit\",\n")
-            append("  \"commitEpochSeconds\": ${commitEpochSeconds ?: "null"},\n")
-            append("  \"branch\": \"$branch\",\n")
-            append("  \"uncommittedChanges\": $dirty\n")
+            append("  \"commit\": ${jsonString(buildCommit.get())},\n")
+            append("  \"commitEpochSeconds\": ${if (epochSeconds < 0) "null" else epochSeconds},\n")
+            append("  \"branch\": ${jsonString(buildBranch.get())},\n")
+            append("  \"uncommittedChanges\": ${buildDirty.get()}\n")
             append("}\n")
         }
         out.get().asFile.apply { parentFile.mkdirs() }.writeText(json)

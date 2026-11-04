@@ -232,22 +232,23 @@ val OperatorObjectPage = FC<OperatorObjectPageProps> { props ->
     }
 }
 
-/** The id and heading of the panel holding an object's top-level scalars, when it has any (issue #1620). */
-private const val summaryPanelKey = "summary"
-
-/** The element id of the panel for an object's top-level [key]. */
-private fun objectPanelId(key: String): String = "op-$key"
+/**
+ * One panel of a free-form object (issue #1620): the top-level [key] it draws, or null for the Summary of the object's
+ * top-level scalars, with its element [id] and [heading].
+ */
+data class ObjectPanel(val key: String?, val id: String, val heading: String)
 
 /**
- * The panels a free-form object is drawn as (issue #1620), in its own order, as `id to heading`: one per top-level
- * section (a nested object, or a list), and a leading "Summary" panel for its top-level scalars when it has any, so
- * every value belongs to a panel. Pure, covered under `jsNodeTest`.
+ * The panels a free-form object is drawn as (issue #1620), in its own order: one per top-level section (a nested object,
+ * or a list), and a leading Summary for its top-level scalars when it has any, so every value belongs to a panel. A
+ * section's id is `op-key-<key>` and the Summary's `op-summary`, so no field's name can take the Summary's id. Pure,
+ * covered under `jsNodeTest`.
  */
-fun objectPanels(obj: Map<String, Any?>): List<Pair<String, String>> {
+fun objectPanels(obj: Map<String, Any?>): List<ObjectPanel> {
     val sections = obj.filter { (_, value) -> isPanelSection(value) }.keys
-        .map { objectPanelId(it) to humanizeFieldName(it) }
+        .map { ObjectPanel(it, "op-key-$it", humanizeFieldName(it)) }
     val hasScalars = obj.values.any { !isPanelSection(it) }
-    return if (hasScalars) listOf(objectPanelId(summaryPanelKey) to "Summary") + sections else sections
+    return if (hasScalars) listOf(ObjectPanel(null, "op-summary", "Summary")) + sections else sections
 }
 
 /** Whether a top-level value gets a panel of its own: a nested object or a list. */
@@ -259,18 +260,16 @@ private fun isPanelSection(value: Any?): Boolean = value is Map<*, *> || value i
  */
 private fun ChildrenBuilder.objectPanelsView(obj: Map<String, Any?>) {
     val panels = objectPanels(obj)
-    if (panels.size > 1) panelLinks(panels)
-    val scalars = obj.filterValues { !isPanelSection(it) }
-    for ((id, heading) in panels) {
-        panel(id, heading) {
-            if (id == objectPanelId(summaryPanelKey)) {
-                objectView(scalars, 1)
-            } else {
-                val key = obj.keys.first { objectPanelId(it) == id }
-                val value = obj[key]
-                if (value is Map<*, *>) objectView(value.toJsonMapOrEmpty(), 1)
-                else if (value is List<*> && value.any { it is Map<*, *> }) genericTable(value)
-                else objectView(mapOf(key to value), 1)
+    if (panels.size > 1) panelLinks(panels.map { it.id to it.heading })
+    for (panel in panels) {
+        panel(panel.id, panel.heading) {
+            when (val value = panel.key?.let { obj[it] }) {
+                null -> objectView(obj.filterValues { !isPanelSection(it) }, 1)
+                is Map<*, *> -> objectView(value.toJsonMapOrEmpty(), 1)
+                // A list of objects is a table; a list of scalars, one line under the panel's own heading.
+                is List<*> -> if (value.any { it is Map<*, *> }) genericTable(value)
+                    else p { className = ClassName("op-kv-val"); +scalarText(value) }
+                else -> Unit
             }
         }
     }
