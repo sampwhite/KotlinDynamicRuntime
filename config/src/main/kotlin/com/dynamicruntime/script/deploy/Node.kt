@@ -269,16 +269,9 @@ object Node {
     }
 
     private fun resetData(options: Options, target: DeployTarget): Int {
-        // What there is to remove, asked of the node while it still runs: the store-emptying run reaches no database
-        // (issue #1289), so it does not disturb the server.
-        val report = ssh(target, clearFileStoreCommand(target, remove = false))
-        val dbSize = ssh(target, databaseSizeCommand(target)).out.ifEmpty { "absent" }
         println("Reset the data of ${target.sshDestination} (${target.publicUrl})")
         println("  stop:      ${stopCommand(target)}")
-        println("  files:     empty every declared bucket, keeping the web assets of clients defined in source:")
-        report.out.lines().filter { it.isNotBlank() }.forEach { println("               $it") }
-        if (report.failed) return fail("The file store could not be read; nothing was changed.")
-        println("  database:  remove ${databasePath(target)} ($dbSize)")
+        if (!printResetPlan(target, emptiedBy = "")) return fail("The file store could not be read; nothing was changed.")
         println("  start:     ${startCommand(target)}, then /kda/health on the node and ${target.publicUrl}")
         if (options.dryRun) {
             println("Dry run: nothing was changed.")
@@ -287,17 +280,11 @@ object Node {
         if (!options.assumeYes && !confirm("This deletes the data of ${target.host}. Reset it?")) return fail("Not reset.")
 
         if (ssh(target, stopCommand(target)).failed) return fail("Stopping the service failed; nothing was removed.")
-        val cleared = ssh(target, clearFileStoreCommand(target, remove = true))
-        cleared.out.lines().filter { it.isNotBlank() }.forEach { println("  $it") }
-        if (cleared.failed) {
+        removeData(target)?.let { problem ->
             ssh(target, startCommand(target))
-            return fail("Emptying the file store failed; the database was kept, and the service started again.")
+            return fail("$problem, and the service started again.")
         }
-        if (ssh(target, removeDatabaseCommand(target)).failed) {
-            ssh(target, startCommand(target))
-            return fail("Removing the database failed; the service started again.")
-        }
-        println("Removed the database. Starting...")
+        println("Starting...")
         if (ssh(target, startCommand(target)).failed) return fail("Starting the service failed; see kdr-node ${options.target} logs.")
         return if (healthy(target)) {
             println("Reset ${target.host}.")
@@ -305,6 +292,36 @@ object Node {
         } else {
             fail("The service started but did not answer as healthy; see kdr-node ${options.target} logs.")
         }
+    }
+
+    /**
+     * Prints what a reset would remove, as the running release counts it: each bucket's files, and the size of the
+     * database. Asked of the node while it still runs, since the store-emptying run reaches no database (issue #1289)
+     * and so does not disturb the server. [emptiedBy] says which release empties the store, when that is not the
+     * running one. False when the file store could not be read.
+     */
+    fun printResetPlan(target: DeployTarget, emptiedBy: String): Boolean {
+        val report = ssh(target, clearFileStoreCommand(target, remove = false))
+        println("  files:     empty every declared bucket$emptiedBy, keeping the web assets of clients defined in source:")
+        report.out.lines().filter { it.isNotBlank() }.forEach { println("               $it") }
+        if (report.failed) return false
+        val dbSize = ssh(target, databaseSizeCommand(target)).out.ifEmpty { "absent" }
+        println("  database:  remove ${databasePath(target)} ($dbSize)")
+        return true
+    }
+
+    /**
+     * Empties the file store, from the release `current` points at, and removes the database, of a node whose service
+     * is stopped, printing what went. Null when both went, or else what failed, which leaves the service stopped for
+     * the caller to start again.
+     */
+    fun removeData(target: DeployTarget): String? {
+        val cleared = ssh(target, clearFileStoreCommand(target, remove = true))
+        cleared.out.lines().filter { it.isNotBlank() }.forEach { println("  $it") }
+        if (cleared.failed) return "Emptying the file store failed; the database was kept"
+        if (ssh(target, removeDatabaseCommand(target)).failed) return "Removing the database failed"
+        println("Removed the database.")
+        return null
     }
 
     fun parseArgs(args: List<String>): Options? {

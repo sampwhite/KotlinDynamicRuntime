@@ -303,8 +303,8 @@ The dry run shows what a deploy would do and changes nothing: the release it wou
 5. waits for the application to answer on the node, then through the public address;
 6. removes releases beyond the target's `keepReleases`, never the running one or the one before it.
 
-It never touches the database (`h2Database/`), the stored files (`fileStore/`), or the secrets (`private/`). It
-reaches the node with your own `ssh` and `rsync`, and needs no `sudo` there. If the new release does not answer as
+It never touches the database (`h2Database/`), the stored files (`fileStore/`), or the secrets (`private/`), unless
+you ask it to [reset the data](#resetting-the-data-with-a-deploy) as well. It reaches the node with your own `ssh` and `rsync`, and needs no `sudo` there. If the new release does not answer as
 healthy, it is left running and the command says how to go back, so you can look at why first.
 
 **To go back** to the release before the running one, and restart:
@@ -417,7 +417,43 @@ settings, so nothing is installed for it. The application creates an empty datab
 `reference` flavor sets up the conference demo again. Removing `h2Database/` also removes H2's trace file
 (`kdr.dat.trace.db`), which H2 writes beside the database when it runs into errors.
 
-By hand, with the files in `fileStore/`:
+### Resetting the data with a deploy
+
+When a reset goes with a deploy, let the deploy do both:
+
+```bash
+kdr-deploy dynamicruntime.org --reset-data --dry-run
+```
+
+```bash
+kdr-deploy dynamicruntime.org --reset-data
+```
+
+The dry run shows the deploy's steps and what the reset would remove, as the running release counts it. After asking
+once, the deploy copies the new release while the old one keeps running, then:
+
+1. stops the service;
+2. points `current` at the new release;
+3. empties the file store with the new release, keeping the web assets of clients defined in code;
+4. removes the database;
+5. starts the service, and waits until it answers on the node and through the public address.
+
+**The order matters when a release changes what stored configuration looks like,** for example by renaming
+something a client's configuration names. Then neither command run on its own gets the order right:
+
+- **A reset before the deploy:** the old release starts on the empty data and sets up the conference demo in the old
+  shape. The new release then refuses that configuration as it starts, and fails its health check.
+- **A reset after the deploy:** the new release first starts on the old data, refuses it in the same way, and the
+  deploy reports a failure that the reset then repairs.
+
+With `--reset-data` the new release is the only one that ever runs on the fresh data. If anything fails after the
+stop, the service is started again rather than left down, and the command says what is left to do. It cannot be
+combined with `--rollback`. If you roll back after a reset, reset again with `kdr-node reset-data`, since the
+data was written by the newer release.
+
+### By hand
+
+With the files in `fileStore/`:
 
 ```bash
 systemctl --user stop kdr
