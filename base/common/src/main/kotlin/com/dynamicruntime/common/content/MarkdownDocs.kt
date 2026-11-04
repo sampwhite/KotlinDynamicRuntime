@@ -38,7 +38,8 @@ class MarkdownDocDef(
      * nothing but code: its build id is a hash of the text, and a URL carrying it is cached for good.
      *
      * Its [sourcePath] still names a file in the repository, so a link to the document resolves in both places: in
-     * the app it opens the generated page, and on GitHub it opens that file, which says where the page is served.
+     * the app it opens the generated page, and on GitHub it opens that file, which holds a copy of the page (issue
+     * #1603: `refDocsDump` writes it, and `refDocsTest` fails while it is behind) and says where the page is served.
      */
     val generate: (() -> String)? = null,
 ) {

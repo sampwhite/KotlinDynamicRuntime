@@ -217,15 +217,22 @@ removes".
 
 ### Linking a generated document
 
-A document a running server generates (the schema dialect, the client configuration reference) has a stub in the
-repository at its source path, under `docs/reference/`. **Link the stub, by its relative path**, never the server's
-address. On GitHub the link opens the stub, and in the app the same link opens the generated document. The stub says
-where the document is in the app and gives its address on the public reference site, `dynamicruntime.org`, so that
-address is written once per document, in its stub.
+A document a running server generates (the schema dialect, the client configuration reference) has a file in the
+repository at its source path, under `docs/reference/`. **Link the file, by its relative path**, never the server's
+address. On GitHub the link opens the file, and in the app the same link opens the generated document. The file holds
+a copy of the document between two marker lines, and below them, by hand, where the document comes from, where it is
+in the app, and its address on the public reference site, `dynamicruntime.org`, so that address is written once per
+document, in its file.
 
-That makes the reference site part of the documentation: a reader on GitHub follows the stub's link to it. A change
-that adds a generated document, or changes one a page relies on, is therefore followed by a deploy to the reference
-site (see [the deploy guide](../deploy/lightweight-node.md)), or the stub's link reaches nothing.
+The copy is rewritten by `./gradlew :base:common:refDocsDump`, which touches only a file whose copy changed, and
+`check` fails while one is behind its generator (issue #1603). So a change to what a generator reads -- a keyword, a
+fact, a slot -- is committed with the rewritten copy, and its effect on the reference shows in the diff. The copy is
+there to be read and searched without a server; edit the generator, never the copy.
+
+The reference site is still part of the documentation: each file links to the document there, as the app shows it. A
+change that adds a generated document is therefore followed by a deploy to the reference site (see
+[the deploy guide](../deploy/lightweight-node.md)), or the file's link reaches nothing, and one that changes a document
+leaves the site behind the repository until the next deploy.
 
 ### Strings with a literal `$`
 

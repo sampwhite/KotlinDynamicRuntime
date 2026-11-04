@@ -1,14 +1,150 @@
+<!-- kdr-generated: begin -- copied from its generator by `./gradlew :base:common:refDocsDump`; edit the generator, not this -->
 # Facts
 
-A fact is a yes-or-no statement about the request, a task, or a form, and a client's configuration tests facts to
-decide who sees a menu entry or a field, who may save a task, and which forms a workflow takes. The full reference says
-where facts come from, where a test is written and which facts it sees there, and how a test is written (which is not
-the `${…}` expression language), then lists every fact the platform declares.
+A **fact** is a yes-or-no statement about the request, a task, or a form: the caller is signed in, a task is the next
+one to do, a form's core details are complete. A fact is present or absent, and never holds a value. A client's configuration
+tests facts to decide who sees a menu entry or a field, who may save a task, and which forms a workflow takes. This
+page says where facts come from and how a test is written, and lists the facts the platform declares. The list is made
+from the declarations themselves.
 
-**The reference is generated, so it is not kept in this file.** A running server makes its list of facts from the
-declarations themselves, so it cannot disagree with them. Read it on the server's **Documents** page, under **Facts**,
-where anyone may open it without signing in. On the public reference site it is at
-[dynamicruntime.org/wa/docs/facts](https://dynamicruntime.org/wa/docs/facts).
+## Where facts come from
+
+- **The request.** For every request, the platform works out facts about the caller and the node: whether the caller
+  is signed in, how far their administration reaches, and whether the node is a test instance.
+- **A task.** As a task is shown, the platform works out facts about it, such as whether it is the one to do next
+  (`kdr:isCta`). A task's own functions add facts about the person looking at it: `userHasLabel` gives
+  `kdr:reviewer` to a user with the label it names.
+- **A form.** Facts about a form are kept with it and worked out again whenever it is saved: whether its core details
+  are complete, what the core details workflow's functions concluded from its data, and what its workflows say about
+  it, such as `kdr:finished`.
+- **A workflow.** While a form is in a normal workflow, the workflow has facts of its own about it: what the workflow's
+  functions concluded from the form's data, and the fact of each approval a reviewer gave.
+
+A client can declare facts of its own, in the `kdr:cfactDef` slot. A declaration only says that a fact exists, so
+that a test may name it. Something then has to set it:
+
+- **A `computeCFactsFromData` function** reads one field and gives the fact when the field's value is one it maps. In the
+  core details workflow, the fact is the form's; in a normal workflow, it is the workflow's.
+- **An approval task** names, in its `approval`, the fact a reviewer's approval gives.
+
+| Key | What it means |
+|---|---|
+| `name` | The name a test writes. A client's own is a bare name, such as `isWorkshop`; the platform's begin with `kdr:`. |
+| `group` | A heading the fact is listed under, for people. |
+| `description` | What makes the fact true. |
+| `toFrontend` | Whether the fact is sent to the browser with the page. Off unless set. |
+
+See [Workshop logistics](../demo-client/workshop-logistics.md#a-computed-fact) for a fact the core details workflow
+computes, and [Committee review](../demo-client/committee-review.md) for one an approval gives.
+
+## Where you write a test
+
+What a test can see depends on where it is written.
+
+| Where | What it decides | The facts it sees |
+|---|---|---|
+| A menu entry's `cfactExpression` | Whether the entry is shown. | The request's: the caller and the node. |
+| A field's `g-visibleWhen`, in its schema | Whether the field is on the form. A write that would change a field kept off is refused. | The request's, and only those sent to the browser. |
+| A task's `saveWhen` | Who may save the task. Without one, anyone who can see the form may. | The request's, the task's, and those the task's functions give the person looking. |
+| A `cfactExpression` in a task's `display` | Which of the task's displays is shown: the first whose test passes. | The same as `saveWhen`. |
+| A `test` in a workflow's `eligibility` | Whether a form may enter the workflow. | The form's alone, never the caller's, so the answer can be kept with the form. |
+| A `when` in a workflow's `singletons` | Whether the workflow gives the form the rule's fact. | The form's, and the workflow's own. |
+| A `when` in a workflow's `locks` | Whether the lock holds. | The form's, and the workflow's own. |
+| A lock's `overrideWhen` | Who may change the locked trait anyway. | The request's, for whoever is writing. |
+
+## How a test is written
+
+A test is not an [expression](expressions.md). It has no `${` and `}`, and no values to compare: it names facts, and
+joins them.
+
+| Write | Means |
+|---|---|
+| `kdr:loggedIn` | The fact is present. |
+| `a,b` | Both: every part is present. |
+| `a\|b` | Either: at least one part is present. |
+| `~a` | Not: the part is absent. |
+| `(a,b)\|c` | Grouping. |
+| `#always` | Always true. |
+| `#never` | Never true. |
+
+- **`,` and `|` are not mixed without parentheses.** A test such as `a,b|c` is refused, since
+  a reader would have to know which joins tighter. Write `(a,b)|c` or `a,(b|c)`.
+- **Every name must be declared.** A test that names a fact nobody declared is refused when its configuration is
+  checked, so a misspelling is caught at once. Otherwise `~kdr:admn` would always be true, and show something
+  to everyone.
+- **Prefer the positive form.** `kdr:anonymous` says what is meant, where `~kdr:loggedIn` says it
+  by exclusion.
+- **Leaving a test out means always,** where a test may be left out. An empty test is refused; write `#always`
+  to say so.
+- **`#never` takes something away.** A client hides one of the platform's menu entries by giving it `#never`,
+  and brings one back that a layer beneath turned off by giving it `#always`.
+
+## The platform's facts
+
+Every deployment declares these. The last column says whether a fact is sent to the browser with the page. A field's
+`g-visibleWhen` may name only a fact that is, and sees only the request's facts among them, so the caller's facts
+marked Yes are the ones it can test.
+
+A component a deployment adds can declare facts under a name of its own, as the workflow assistant declares
+`assistant:on`. The **Client facts** page, for a client's operators and administrators, lists every fact the client
+knows, its own included, with whether each is present for them now.
+
+### Node
+
+| Fact | What makes it true | Reaches the page |
+|---|---|---|
+| `kdr:app` | True on an ordinary application node -- the boot role a node has when it declares none. Exactly one boot-role cfact is present on any node. | No |
+| `kdr:edge` | True on an edge node: the perimeter that fronts other servers. | No |
+| `kdr:isTestInstance` | True on a test instance -- one carrying the test-only fixtures, whoever is asking. That a caller may use them is `kdr:hasTestAccess`. | No |
+
+### Caller
+
+| Fact | What makes it true | Reaches the page |
+|---|---|---|
+| `kdr:loggedIn` | True when the request carries an authenticated identity -- neither the anonymous profile nor the unauthenticated system one. | No |
+| `kdr:anonymous` | True when the request carries no authenticated identity. The positive form of `~kdr:loggedIn`, and preferred over it: a test written by exclusion admits every state invented later. | No |
+| `kdr:hasOperatorLevel` | True when the caller ranks at `operator` or above on the privilege ladder -- so an administrator satisfies it without holding `operator` at all. **Level only**: the `operator` section also requires `allClients`, so this is not the test that section applies -- `kdr:isDeploymentOperator` is. | No |
+| `kdr:isDeploymentOperator` | True when the caller may reach the `operator` section -- the deployment-wide surface, which takes the operator level **and** the `allClients` capability. A client-scoped administrator is not one, despite the ladder ranking them above operator. | No |
+| `kdr:isDeploymentAdmin` | True when the caller may reach the `admin` section -- the deployment-wide administrative surface, which takes the admin level **and** the `allClients` capability. A client-scoped administrator is not one. It is what may name another client on a scoped surface. | Yes |
+| `kdr:isClientOperator` | True when the caller may reach the `clientOperator` section -- the client-scoped operator surface (its own client's pages), which takes the operator level but **not** `allClients`, so an operator or an administrator confined to one client is one, unlike `kdr:isDeploymentOperator`. | No |
+| `kdr:administersClient` | True when the caller administers a client -- their own, or every one with `allClients`. An administrator in the `public` placeholder is not one: they reach their own users only, so `kdr:hasAdminLevel` is true for them and this is not. It is what a caller's reads reach beyond their own rows by, so a surface named for whose rows it shows asks it. | No |
+| `kdr:administersCustomer` | True when the caller administers a customer's root client, client-wide: the administrators who act for the customer as a whole, and may see its page. An administrator confined to an organization of the root is not one. | No |
+| `kdr:isEditor` | True when the caller is an editor of its client: holds the `editor` role and is no administrator. An editor sees every user and form of its client and edits forms, but administers nothing -- no user edits, no user creation, no client configuration. | No |
+| `kdr:seesClientForms` | True when the caller's reads reach every form of a client: an administrator of one (`kdr:administersClient`) or an editor (`kdr:isEditor`). So a surface named for whose forms it shows -- "Forms" against "My forms" -- asks it. | No |
+| `kdr:hasAdminLevel` | True when the caller ranks at `admin` on the privilege ladder. **Level only**: it says what the caller may do, not over whose rows, so it is not the same as reaching the deployment-wide `/admin` section, which takes the `allClients` capability too. | Yes |
+| `kdr:hasEnvAuth` | True when the session's env auth is effective: the request came through an authenticated edge, or a direct local start assumed it, and it is not suppressed. Gates a field a caller may set only from such a channel -- e.g. importing with entry ids preserved. | Yes |
+| `kdr:hasTestAccess` | True when the caller may use the test-only fixtures: a test instance, with env auth effective. The Simulations menu item is offered on it, since the simulations exist for nobody else. | No |
+| `kdr:isEnvDebug` | True when the session is in ENV DEBUG: env auth is effective and it turned debug on. The debug menu items are offered on it. | No |
+| `kdr:canEnableDebug` | True when the session may **turn debug on**: env auth is effective and debug is not already on -- so the 'Enable debug' item is offered exactly to a session that could act on it. | No |
+
+### Workflow
+
+| Fact | What makes it true | Reaches the page |
+|---|---|---|
+| `kdr:taskComplete` | True, about the task being rendered, when an entry is present for every trait the task requires. Presence, not content: an entry with empty data counts. | No |
+| `kdr:taskAvailable` | True, about the task being rendered, when it may be worked on now. **Always true today**: a placeholder holding the shape until availability rules (dates, prior tasks) exist. | No |
+| `kdr:isCta` | True, about the task being rendered, when it is the workflow's call to action: the earliest task, in list order, that is not both complete and valid. | No |
+| `kdr:reviewer` | True, about the task being rendered, when the person viewing it may review it -- concluded as the task is shown, by the task's own functions (typically `userHasLabel`), and never stored. | No |
+| `kdr:needsReview` | True, about a form, when a workflow it is engaged with is waiting on a review -- contributed by that workflow's singleton rule. | Yes |
+| `kdr:finished` | True, about a form, when a workflow it is engaged with has finished -- contributed by that workflow's singleton rule. | Yes |
+| `kdr:ownerOnly` | True, about a form, when it is kept to its owner: an editor may change it only as its owner or as a reviewer of an engaged workflow's current task -- contributed by a workflow's singleton rule. | Yes |
+
+### Core details
+
+| Fact | What makes it true | Reaches the page |
+|---|---|---|
+| `kdr:coreDetailsComplete` | True, about a form, when every trait its client's core details workflow requires has an entry present -- asserted by the form's stored core details state. Presence, not content. | Yes |
+| `kdr:coreDetailsValid` | True, about a form, when the present core details trait data passes its schema (ignoring missing required values) and meets the core details form's own requirements (a field its layout requires, a choice it offers) -- asserted by the form's stored core details state. | Yes |
+<!-- kdr-generated: end -->
+
+## About this file
+
+**Everything above this section is generated.** A running server makes its list of facts from the declarations
+themselves, so it cannot disagree with them. Read it on the server's **Documents** page, under **Facts**, where anyone
+may open it without signing in. On the public reference site it is at
+[dynamicruntime.org/wa/docs/facts](https://dynamicruntime.org/wa/docs/facts). `./gradlew :base:common:refDocsDump`
+copies it into this file, and the suite fails while the copy is behind the code, so edit the generator (below), never
+the copy.
 
 On a running server, a link to this file opens the reference itself.
 

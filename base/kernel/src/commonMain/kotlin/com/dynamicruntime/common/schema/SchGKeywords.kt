@@ -64,7 +64,8 @@ object SchGKeywords {
         SCH.longText to "Marks a string as long text, free text that may run over several lines, which a form " +
             "draws as a text area.",
         SCH.outerWhitespace to "What to do with leading and trailing whitespace on a string: 'trim' it, 'reject' a " +
-            "value that has any, or 'keep' it.",
+            "value that has any, or 'keep' it. Unset, a plain string is trimmed when it arrives in a request, and left " +
+            "as it is when stored or sent back.",
         SCH.derived to "Marks a property the caller does not supply, because something else produces it.",
         SCH.onWrite to "The functions run on the object's data each time it is written, such as one computing a " +
             "derived property from the others. Each names its kind in 'fn'. Always a list, even of one.",
