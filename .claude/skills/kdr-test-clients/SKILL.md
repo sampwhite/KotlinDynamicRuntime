@@ -173,7 +173,10 @@ later schema rejects" test.
     the **same task** emits -- and the function may read only traits the client has; the load reports anything else,
     which a unit test sees as a refused `reloadClient`. Both are stored with the CTA
     in the workflow's state (`WFS.ctaKeyword`, `WFS.ctaFilter`, `WFS.ctaFilterLabel`) and recomputed with it.
-    `CtaFilterTest` (kdn) is the reference.
+    **The filter narrows who may act** (issue #1595): on the CTA task a person failing it loses `kdr:reviewer` (so
+    the approve endpoint, display branches, and the owner-only rule all hear it), may not save whatever `saveWhen`
+    says, and the view's task carries `WVF.waitingOn`, the filter's label. A test's reviewer therefore needs the label
+    the filter names, not only `reviewer`. `CtaFilterTest` and `CtaFilterActsTest` (kdn) are the references.
   - **A workflow made from a template** (issue #1120): `workflowFromMap(mapOf(WFD.workflowId to "mine", WFD.fromTemplate
     to "kdr:coreDetails", ...))`, after `workflowTemplates = WorkflowTemplates.lookup(cxt)` in the block -- the map is
     an overlay, only what differs from the template, and is stored as such. Templates are the global workflows (core

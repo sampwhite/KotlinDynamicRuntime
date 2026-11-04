@@ -113,6 +113,11 @@ class WfTaskView(
      */
     val canSave: Boolean = true,
     /**
+     * Who this task is waiting on, when the CTA's filter is what keeps this caller from acting on it (issue #1595):
+     * the filter's label, resolved -- what the page says in place of a general "someone else". Null otherwise.
+     */
+    val waitingOn: String? = null,
+    /**
      * How the task is shown (issue #788): the one branch of its display selector that applies to this caller, chosen
      * on the backend -- the page never sees the others or their conditions. Null when the task declares no display,
      * which means its own rendering.
@@ -306,6 +311,7 @@ fun parseWorkflowView(results: Map<String, Any?>): WorkflowView? {
             entries = t[WVF.entries].toJsonListOfMaps(),
             status = parseTaskStatus(t[WVF.status]),
             canSave = t[WVF.canSave] != false,
+            waitingOn = t[WVF.waitingOn].toOptStr(),
             display = parseTaskDisplay(t[WFD.display]),
             approval = parseApproval(t[WVF.approval]),
             facts = t[WVF.facts].toJsonListOfStrings().toSet(),

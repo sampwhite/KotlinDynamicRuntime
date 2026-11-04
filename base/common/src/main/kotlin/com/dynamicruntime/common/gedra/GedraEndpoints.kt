@@ -1,6 +1,7 @@
 package com.dynamicruntime.common.gedra
 
 import com.dynamicruntime.common.cfact.CFACTS
+import com.dynamicruntime.common.content.MarkdownFragmentService
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.ReadScope
 import com.dynamicruntime.common.endpoint.EI
@@ -45,6 +46,7 @@ import com.dynamicruntime.common.gedra.workflow.WfPhase
 import com.dynamicruntime.common.gedra.workflow.WorkflowAudience
 import com.dynamicruntime.common.gedra.workflow.WorkflowPhases
 import com.dynamicruntime.common.gedra.workflow.WorkflowFormFacts
+import com.dynamicruntime.common.gedra.workflow.ctaAssignment
 import com.dynamicruntime.common.gedra.workflow.noWorkflowView
 import com.dynamicruntime.common.gedra.workflow.resolveWorkflowView
 import com.dynamicruntime.common.gedra.workflow.saveWorkflow
@@ -832,7 +834,10 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
             val approvals = WorkflowApprovals.forView(c, declared.def, row?.gedraId?.fullId)
             // Kept to its owner (issue #1433): the whole form read-only for this caller, as the guard would refuse a save.
             val keptToOwner = row != null && states != null && OwnerOnly.keepsOut(c, row, states)
-            resolveWorkflowView(c, declared, entriesByTask, ownerAttributes, approvals, formFacts, lockedTraits, keptToOwner)
+            resolveWorkflowView(
+                c, declared, entriesByTask, ownerAttributes, approvals, formFacts, lockedTraits, keptToOwner,
+                formEntries = row?.entries.orEmpty(),
+            )
         }
     }
 
@@ -982,10 +987,21 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
             )
         }
         // Authority is the task's own reviewer cfact -- the one its page shows the button on -- asked of the caller
-        // here rather than trusted from the page, since a cfact decides presentation and never permission.
-        if (WFC.reviewer !in ViewerCfacts(c, row.client).forTask(task)) {
+        // here rather than trusted from the page, since a cfact decides presentation and never permission. An approval
+        // is only ever of the current task (WorkflowApprovals.approve refuses another), so it is the CTA, and its filter
+        // (issue #1595) narrows who that is: a reviewer it does not name is refused, told who the task waits on.
+        val cfacts = SchemaService.get(c).cfactsFor(row.client)
+        val requestFacts = cfacts.assemble(c)
+        val viewer = ViewerCfacts.forRequest(c, row.client)
+        val cta = ctaAssignment(c, cfacts, workflowId, task, row.entries)
+        if (WFC.reviewer !in viewer.forCta(task, cta.filter, requestFacts)) {
+            // A reviewer refused by the filter alone is told who the task waits on; anyone else is simply no reviewer.
+            val waiting = cta.filter?.takeIf { WFC.reviewer in viewer.forTask(task) }?.let {
+                cta.label ?: "This step is waiting on someone else."
+            }
             throw KdrException(
-                "You are not a reviewer of task '$taskId' of workflow '$workflowId'.",
+                waiting?.let { MarkdownFragmentService.get(c).backendPass(c, it) }
+                    ?: "You are not a reviewer of task '$taskId' of workflow '$workflowId'.",
                 code = EXC.notAuthorized,
             )
         }
@@ -1338,10 +1354,15 @@ private fun normalTaskSaveCheck(c: KdrCxt, declared: WfDeclared, taskId: String)
         declared.def.task(taskId)?.let { task ->
             val judge = WorkflowTaskJudge(
                 c, row.client, declared, entriesByTaskOf(declared, row), WorkflowApprovals.of(states, workflowId),
-                SchemaService.get(c).cfactsFor(row.client).assemble(c),
+                SchemaService.get(c).cfactsFor(row.client).assemble(c), row.entries,
             )
             if (!judge.maySave(task)) {
-                throw KdrException("You may not save task '$taskId' of workflow '$workflowId'.", code = EXC.notAuthorized)
+                // When the CTA's filter is what refuses (issue #1595), say who the task waits on.
+                throw KdrException(
+                    judge.waitingOn(task)?.let { MarkdownFragmentService.get(c).backendPass(c, it) }
+                        ?: "You may not save task '$taskId' of workflow '$workflowId'.",
+                    code = EXC.notAuthorized,
+                )
             }
         }
     }

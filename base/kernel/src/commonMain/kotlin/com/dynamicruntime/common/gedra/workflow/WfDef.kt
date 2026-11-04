@@ -227,9 +227,17 @@ object WVF {
 
     /**
      * On each task of a normal workflow's view (issue #856): whether this caller may save it, by the task's rule for
-     * who may ([WFD.saveWhen]) -- the rule the save endpoint enforces, so the page offers Save only where it works.
+     * who may ([WFD.saveWhen]) and, on the call to action, its filter (issue #1595) -- the rules the save endpoint
+     * enforces, so the page offers Save only where it works.
      */
     const val canSave = "canSave"
+
+    /**
+     * On the task that is a normal workflow's call to action (issue #1595): who it is waiting on, when the CTA's filter
+     * is what keeps this caller from acting -- the filter's label, resolved. Absent when the caller passes it, or the
+     * task carries none: then [canSave] and the reviewer fact say all there is.
+     */
+    const val waitingOn = "waitingOn"
 
     /**
      * On a view resolved against a form, and the locks endpoint's answer (issue #857): the traits locked for this

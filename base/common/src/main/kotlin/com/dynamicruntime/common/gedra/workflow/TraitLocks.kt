@@ -66,7 +66,7 @@ object TraitLocks {
             val judge by lazy {
                 WorkflowTaskJudge(
                     cxt, client, declared, taskEntriesOf(declared, entries), WorkflowApprovals.of(states, workflowId),
-                    requestFacts,
+                    requestFacts, entries,
                 )
             }
             declared.def.locks

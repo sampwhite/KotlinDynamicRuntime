@@ -470,7 +470,8 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
                     if (!task.isReviewer || gid == null) {
                         p {
                             className = ClassName("subtitle")
-                            +"Waiting for a reviewer to approve this."
+                            // Who it waits on, when the CTA's filter names someone other than this caller (issue #1595).
+                            +(task.waitingOn ?: "Waiting for a reviewer to approve this.")
                         }
                     } else {
                         val blocked = task.isDisabled || busy || anyUnsaved
@@ -551,7 +552,8 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
             if (!task.canSave && task.traits.isNotEmpty() && !wf.keptToOwner) {
                 p {
                     className = ClassName("subtitle")
-                    +"Someone else completes this step; you can see it here."
+                    // Who it waits on, when the CTA's filter is what keeps this caller out (issue #1595).
+                    +(task.waitingOn ?: "Someone else completes this step; you can see it here.")
                 }
             }
             // An approval task's own rendering (issue #832): its prompt and, for a reviewer, the button.

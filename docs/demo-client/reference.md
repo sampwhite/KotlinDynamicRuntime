@@ -144,6 +144,14 @@ An **approval task** has no traits to fill in. It has an `approval` with the fac
 `button`, and it is complete once a reviewer has pressed the button. Its `display` chooses what the step shows, by
 trying its branches in order against the facts of whoever is looking.
 
+A task can also say **who it waits on** from the form's own data, with a `ctaFilterByValue` function. The function
+reads one field, such as a site's region, and picks a filter for each value it lists, with an `otherwise` for every
+other value. A filter is a fact test that may name only facts about the person looking, such as the ones a
+`userHasLabel` function asserts. While the task is the workflow's current step, a person has to pass both the task's
+`saveWhen` and its filter to save it, and a reviewer has to pass the filter to approve it. Anyone else sees the filter's
+`label`, such as "Waiting on a Northwest reviewer", where the step's buttons would be. The demo's workflows do not use
+one.
+
 Once the button is pressed, a text branch can name who pressed it as `${approvedByName}`. That is the name on the
 approver's profile, or their email when their profile has none. Since the person reading the step may be the form's
 owner, who may not know the approver, a branch can keep an email off the page by testing for its `@`:

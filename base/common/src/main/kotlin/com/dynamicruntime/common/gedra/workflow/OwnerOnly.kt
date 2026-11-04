@@ -8,6 +8,7 @@ import com.dynamicruntime.common.gedra.GT
 import com.dynamicruntime.common.gedra.GedraDataRow
 import com.dynamicruntime.common.gedra.GedraGuardedWrite
 import com.dynamicruntime.common.gedra.GedraWriteGuard
+import com.dynamicruntime.common.startup.SchemaService
 import com.dynamicruntime.common.user.AdminRules
 import com.dynamicruntime.common.user.UserService
 import com.dynamicruntime.common.util.toJsonListOrEmpty
@@ -82,7 +83,8 @@ object OwnerOnly {
             return false
         }
         val registry = WorkflowService.get(cxt).forClient(client)
-        val viewer = ViewerCfacts(cxt, client)
+        val viewer = ViewerCfacts.forRequest(cxt, client)
+        val requestFacts by lazy { SchemaService.get(cxt).cfactsFor(client).assemble(cxt) }
         return states
             .filter { it[GE.traitId].toOptStr() == WFS.workflowState }
             .map { it[GE.data].toJsonMapOrEmpty() }
@@ -94,7 +96,8 @@ object OwnerOnly {
                     return@any false
                 }
                 val task = data[WFS.ctaTask].toOptStr()?.let { def.task(it) } ?: return@any false
-                WFC.reviewer in viewer.forTask(task)
+                // A reviewer the CTA's filter does not name (issue #1595) is not a reviewer of the current work.
+                WFC.reviewer in viewer.forCta(task, data[WFS.ctaFilter].toOptStr(), requestFacts)
             }
     }
 }

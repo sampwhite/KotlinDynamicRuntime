@@ -33,7 +33,7 @@ object SingletonWorkflows {
         val registry = WorkflowService.get(cxt).forClient(client)
         val cfacts = SchemaService.get(cxt).cfactsFor(client)
         val requestFacts = cfacts.assemble(cxt)
-        val viewer = ViewerCfacts(cxt, client)
+        val viewer = ViewerCfacts.forRequest(cxt, client)
         val fragments = MarkdownFragmentService.get(cxt)
         fun label(text: String): String = fragments.backendPass(cxt, text)
 
@@ -55,7 +55,8 @@ object SingletonWorkflows {
                 // -- its saves and approvals are refused -- so it is listed without an action.
                 val task = data[WFS.ctaTask].toOptStr()?.takeIf { WorkflowPhases.of(cxt, registry.client, def).calculates }?.let { def.task(it) }
                 if (task != null) {
-                    val viewerFacts = viewer.forTask(task)
+                    // Less the reviewer fact when the CTA's stored filter (issue #1595) does not name this caller.
+                    val viewerFacts = viewer.forCta(task, data[WFS.ctaFilter].toOptStr(), requestFacts)
                     val complete = data[WFS.ctaStatus].toJsonMapOrEmpty()[CDF.complete] == true
                     // The CTA's task facts, from state: available, the CTA, complete as stored, never approved.
                     val taskFacts = buildSet {

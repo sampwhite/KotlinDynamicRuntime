@@ -2,6 +2,7 @@ package com.dynamicruntime.common.gedra.workflow
 
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.startup.SchemaService
 import com.dynamicruntime.common.user.UserService
 
 /**
@@ -65,29 +66,65 @@ fun WfTask.viewerCfactsFns(): List<ViewerCfactsFn> =
     resolvedFunctions.filter { it.event == WfEventType.viewerCfacts }.map { ViewerCfactsFn.of(it) }
 
 /**
- * The `viewerCfacts` evaluation for **one view** (issue #786) of [client]'s workflow, as the person [cxt] acts as:
- * [forTask] answers each task's viewer facts, which the workflow view adds to the task's own target facts so a
+ * The `viewerCfacts` evaluation for **one request** (issues #786, #1595) of [client]'s workflows, as the person [cxt]
+ * acts as: [forTask] answers each task's viewer facts, which the workflow view adds to the task's own target facts so a
  * selector can choose on them (today a task's display selector, issue #788; field-layout selectors are to follow)
  * -- and which the approve endpoint (#787) asks for the same way, so the button a page shows and the permission
  * the endpoint grants are one computation.
  *
- * One object per view, so what is about the *viewer* is looked up once however many tasks carry functions: a
- * workflow with two approval points asks twice and reads the labels once. A task with no functions costs nothing,
- * and a caller with no user row -- a system context, an anonymous one, an identity the request carries without a
- * row behind it -- is answered "no labels" without a lookup, rather than missing the cache into SQL on every view.
+ * One object per request and client ([forRequest]), so what is about the *viewer* is worked out once however many
+ * forms and tasks ask: the labels are read once, and each task's facts once, which is what lets a listing of many
+ * forms judge each row's CTA without a lookup per row. A task with no functions costs nothing, and a caller with no
+ * user row -- a system context, an anonymous one, an identity the request carries without a row behind it -- is
+ * answered "no labels" without a lookup, rather than missing the cache into SQL on every view.
  */
 class ViewerCfacts(private val cxt: KdrCxt, private val client: String?) {
-    private val labels: Set<String> by lazy { viewerLabels(cxt) }
+    private val labels: Set<String> by lazy { labelReads += 1; viewerLabels(cxt) }
+    private val byTask = HashMap<WfTask, Set<String>>()
+
+    /**
+     * How many times the viewer's labels were read: at most once per object, which [forRequest] makes once per request
+     * -- what a test counts to show a listing's many rows share one lookup.
+     */
+    var labelReads = 0
+        private set
 
     /** [task]'s viewer facts: what its `viewerCfacts` functions emit, narrowed to the cfacts [client] declares. */
-    fun forTask(task: WfTask): Set<String> {
+    fun forTask(task: WfTask): Set<String> = byTask.getOrPut(task) {
         val fns = task.viewerCfactsFns()
         if (fns.isEmpty()) {
-            return emptySet()
+            return@getOrPut emptySet()
         }
         val params = ViewerCfactsParams { labels }
         fns.forEach { it.computeViewerCfacts(cxt, params) }
-        return declaredCfactsOnly(cxt, client, params.emitted, "A viewerCfacts function on task '${task.id}'")
+        declaredCfactsOnly(cxt, client, params.emitted, "A viewerCfacts function on task '${task.id}'")
+    }
+
+    /**
+     * [task]'s viewer facts while it is its workflow's CTA carrying [ctaFilter] (issue #1595): [forTask], less
+     * [WFC.reviewer] when the caller fails the filter -- a reviewer, but not the one this CTA waits on, may not review
+     * it, which is what that fact says. Everything that asks "may this person review the current task?" -- a display
+     * branch, the approve endpoint, the owner-only rule -- then hears the filter without a check of its own.
+     */
+    fun forCta(task: WfTask, ctaFilter: String?, requestFacts: Set<String>): Set<String> {
+        val facts = forTask(task)
+        return if (ctaFilter == null || passes(ctaFilter, requestFacts + facts)) facts else facts - WFC.reviewer
+    }
+
+    /** Whether [facts] -- the request's and the viewer's -- satisfy the CTA filter [ctaFilter] (issue #1595). */
+    fun passes(ctaFilter: String, facts: Set<String>): Boolean =
+        SchemaService.get(cxt).cfactsFor(client).parse(ctaFilter).matches(facts)
+
+    companion object {
+        /**
+         * The request's one [ViewerCfacts] for [client] (issue #1595), kept on [cxt]'s `locals` -- the context's
+         * place for the results of computation -- so every form and task a request judges shares its labels and
+         * its facts. Keyed by the acting user too, since a facts set is about one person.
+         */
+        fun forRequest(cxt: KdrCxt, client: String?): ViewerCfacts {
+            val key = "kdr.viewerCfacts|${client.orEmpty()}|${cxt.userProfile.userId}"
+            return cxt.locals[key] as? ViewerCfacts ?: ViewerCfacts(cxt, client).also { cxt.locals[key] = it }
+        }
     }
 }
 
