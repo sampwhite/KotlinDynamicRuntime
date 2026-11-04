@@ -46,7 +46,7 @@ val CreationPage = FC<Props> {
     suspend fun reread() {
         if (workflow != null) apiResult { WorkflowApi.fetchCreationView() }.designRereadValue()?.let { workflow = it }
     }
-    useDesignViewReread { reread() }
+    val toggleDesign = useDesignViewSwitch { reread() }
 
     when {
         loading -> LoadStateCard { title = "New form" }
@@ -62,6 +62,7 @@ val CreationPage = FC<Props> {
             gedraId = null
             allowCreateForUser = createsForOthers
             onDesignEdited = { creationScope.launch { reread() } }
+            onDesignToggle = toggleDesign
         }
     }
 }

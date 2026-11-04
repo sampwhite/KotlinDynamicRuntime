@@ -275,6 +275,9 @@ val AppBar = FC<AppBarProps> { props ->
                 return@launch
             }
             config = cfg
+            // Design View is a client administrator's (issue #1577): a session that is no longer one drops it here,
+            // since the form header that turns it off is not drawn for them.
+            dropDesignViewUnlessOffered(cfg.administersClient)
             // The caller left since the last read -- the session ended (a timeout, a restarted instance, a sign-out in
             // another tab), or another tab signed in as someone else (an invitation accepted there, issue #1547): go
             // home, as Log out does, rather than leave a page drawn for a caller who is gone. Noticed on the idle
