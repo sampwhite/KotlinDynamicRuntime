@@ -14,7 +14,7 @@ import kotlin.system.exitProcess
  * Deploys a build of KotlinDynamicRuntime to a lightweight node, from the developer's machine (issue #1243):
  *
  * ```sh
- * kdr-deploy <target> [--dry-run] [--yes] [--skip-build]
+ * kdr-deploy <target> [--dry-run] [--yes] [--skip-build] [--reset-data]
  * kdr-deploy <target> --rollback [--dry-run] [--yes]
  * ```
  *
@@ -27,8 +27,17 @@ import kotlin.system.exitProcess
  * 5. waits for `/kda/health` on the node itself, then through the public address;
  * 6. deletes releases beyond the target's `keepReleases`, never the running one.
  *
- * It never touches the node's data (`h2Database/`, `fileStore/`) or its secrets (`private/`), which are outside
- * every release. `--rollback` points `current` back at the release before it, and restarts. A failed health check
+ * It never touches the node's data (`h2Database/`, `fileStore/`) unless asked, or its secrets (`private/`), which are
+ * outside every release.
+ *
+ * **`--reset-data` resets the node's data under the new release** (issue #1601), as `kdr-node reset-data` does, in
+ * the one pass: it stops the service, points `current` at the new release, empties the file store with that
+ * release's own code, removes the database, and starts it. The new release is then the only one that writes the fresh
+ * data -- a `reference` node provisions the conference demo again as it starts -- which a reset before or after the
+ * deploy cannot promise: before it, the old release writes the demo in a shape a release changing stored
+ * configuration may refuse; after it, the new release first starts on the old data, and may refuse that.
+ *
+ * `--rollback` points `current` back at the release before it, and restarts. A failed health check
  * leaves the new release running and says how to roll back, rather than rolling back on its own: whoever deployed
  * should see why it failed first.
  *
@@ -46,6 +55,7 @@ object Deploy {
         const val yes = "--yes"
         const val skipBuild = "--skip-build"
         const val rollback = "--rollback"
+        const val resetData = "--reset-data"
         const val repo = "--repo"
         const val cwd = "--cwd"
     }
@@ -65,6 +75,8 @@ object Deploy {
         val assumeYes: Boolean,
         val skipBuild: Boolean,
         val rollback: Boolean,
+        /** Whether a deploy also resets the node's data, under the new release. */
+        val resetData: Boolean = false,
     )
 
     // --- the pure parts: what a deploy or a rollback does, decided without a node -------------------------------
@@ -123,10 +135,13 @@ object Deploy {
     fun releaseOfLink(readlink: String?): String? =
         readlink?.trim()?.trimEnd('/')?.substringAfterLast('/')?.takeIf { isReleaseName(it) }
 
+    /** The command that points `current` at [release], and nothing else. */
+    fun linkCommand(target: DeployTarget, release: String): String =
+        "ln -sfn ${shellQuote("${target.releasesDir}/$release")} ${shellQuote(target.currentLink)}"
+
     /** The command that points `current` at [release] and restarts the service. */
     fun switchCommand(target: DeployTarget, release: String): String =
-        "ln -sfn ${shellQuote("${target.releasesDir}/$release")} ${shellQuote(target.currentLink)} && " +
-            "systemctl --user restart ${shellQuote(target.service)}"
+        "${linkCommand(target, release)} && ${Node.restartCommand(target)}"
 
     /** The command that answers the HTTP status of `/kda/health` on the node itself. */
     fun nodeHealthCommand(target: DeployTarget): String =
@@ -164,7 +179,10 @@ object Deploy {
             ?: return fail("${options.repoDir} is not a git checkout.")
         val dirty = capture(options.repoDir, "git", "status", "--porcelain").out.isNotEmpty()
         val release = releaseName(LocalDateTime.now(), sha, dirty)
-        val (releases, current) = listing(target) ?: return fail("Could not reach ${target.sshDestination}, or ${target.releasesDir} is not there. Has the node been set up (docs/deploy/lightweight-node.md)?")
+        val (releases, current) = listing(target) ?: return fail(
+            "Could not reach ${target.sshDestination}, or ${target.releasesDir} is not there. " +
+                "Has the node been set up (docs/deploy/lightweight-node.md)?",
+        )
         val remoteEnv = ssh(target, "cat ${shellQuote(target.envFile)} 2>/dev/null || true").out
         val wantedEnv = envFileText(target)
         val envChanges = if (target.env.isEmpty()) emptyList() else envDiff(remoteEnv, wantedEnv)
@@ -187,14 +205,24 @@ object Deploy {
                 envChanges.forEach { println("               $it") }
             }
         }
-        println("  switch:    ${switchCommand(target, release)}")
+        if (options.resetData) {
+            println("  stop:      ${Node.stopCommand(target)}")
+            println("  switch:    ${linkCommand(target, release)}")
+            if (!Node.printResetPlan(target, emptiedBy = " with the new release")) {
+                return fail("The file store could not be read with the running release; nothing was changed.")
+            }
+            println("  start:     ${Node.startCommand(target)}")
+        } else {
+            println("  switch:    ${switchCommand(target, release)}")
+        }
         println("  check:     /kda/health on the node, then ${target.publicUrl}/kda/health")
         println("  remove:    ${prune.joinToString(", ").ifEmpty { "nothing" }}")
         if (options.dryRun) {
             println("Dry run: nothing was changed.")
             return 0
         }
-        if (!options.assumeYes && !confirm("Deploy $release to ${target.host}?")) return fail("Not deployed.")
+        val question = "Deploy $release to ${target.host}" + if (options.resetData) " and delete its data?" else "?"
+        if (!options.assumeYes && !confirm(question)) return fail("Not deployed.")
 
         if (!options.skipBuild) {
             val workspace = options.repoDir.parentFile
@@ -212,11 +240,21 @@ object Deploy {
             if (ssh(target, write, stdin = wantedEnv).failed) return fail("Writing kdr.env failed; nothing was switched.")
             println("Wrote kdr.env.")
         }
-        println("Switching to $release and restarting...")
-        if (ssh(target, switchCommand(target, release)).failed) return fail("Switching or restarting failed.")
+        if (options.resetData) {
+            if (!switchAndReset(options, target, release)) return failureExit
+        } else {
+            println("Switching to $release and restarting...")
+            if (ssh(target, switchCommand(target, release)).failed) return fail("Switching or restarting failed.")
+        }
         if (!healthy(target)) {
-            val back = current?.let { "kdr-deploy ${options.target} ${DPF.rollback} (back to $it)" } ?: "there is no earlier release to go back to"
-            return fail("$release is running but did not answer as healthy. Look at its log (journalctl --user -u ${target.service} on the node); to go back: $back.")
+            // Data the new release wrote may not suit the old one, so going back after a reset resets again.
+            val resetAgain = if (options.resetData) ", then kdr-node ${options.target} ${Node.NDF.resetData}" else ""
+            val back = current?.let { "kdr-deploy ${options.target} ${DPF.rollback} (back to $it)$resetAgain" }
+                ?: "there is no earlier release to go back to"
+            return fail(
+                "$release is running but did not answer as healthy. Look at its log " +
+                    "(journalctl --user -u ${target.service} on the node); to go back: $back.",
+            )
         }
         if (prune.isNotEmpty()) {
             val remove = "cd ${shellQuote(target.releasesDir)} && rm -rf -- " + prune.joinToString(" ") { shellQuote(it) }
@@ -225,6 +263,36 @@ object Deploy {
         }
         println("Deployed $release to ${target.publicUrl}.")
         return 0
+    }
+
+    /**
+     * Stops the service, points `current` at [release], resets the data with it, and starts it; whether it was
+     * started on emptied data, having said why not when it was not. A failure after the stop starts the service again
+     * rather than leaving the site down.
+     */
+    private fun switchAndReset(options: Options, target: DeployTarget, release: String): Boolean {
+        println("Stopping the service...")
+        if (ssh(target, Node.stopCommand(target)).failed) {
+            fail("Stopping the service failed; nothing was switched or removed.")
+            return false
+        }
+        if (ssh(target, linkCommand(target, release)).failed) {
+            ssh(target, Node.startCommand(target))
+            fail("Switching to $release failed; the service started again on the release it ran, with its data.")
+            return false
+        }
+        println("Switched to $release. Resetting the data...")
+        Node.removeData(target)?.let { problem ->
+            ssh(target, Node.startCommand(target))
+            fail("$problem. $release started on what was left; kdr-node ${options.target} ${Node.NDF.resetData} resets it.")
+            return false
+        }
+        println("Starting $release...")
+        if (ssh(target, Node.startCommand(target)).failed) {
+            fail("Starting the service failed; see kdr-node ${options.target} ${Node.NDF.logs}.")
+            return false
+        }
+        return true
     }
 
     private fun rollback(options: Options, target: DeployTarget): Int {
@@ -250,8 +318,8 @@ object Deploy {
         return if (result.failed) null else parseListing(result.out)
     }
 
-    /** Waits for the application to answer on the node, then through the public address. */
-    private fun parseArgs(args: List<String>): Options? {
+    /** The options [args] give, or null when they are not ones the command accepts. */
+    fun parseArgs(args: List<String>): Options? {
         var target: String? = null
         var repo: File? = null
         var cwd: File? = null
@@ -259,6 +327,7 @@ object Deploy {
         var yes = false
         var skipBuild = false
         var rollback = false
+        var resetData = false
         var i = 0
         while (i < args.size) {
             when (val arg = args[i]) {
@@ -266,13 +335,16 @@ object Deploy {
                 DPF.yes, "-y" -> yes = true
                 DPF.skipBuild -> skipBuild = true
                 DPF.rollback -> rollback = true
+                DPF.resetData -> resetData = true
                 DPF.repo -> repo = File(args.getOrNull(++i) ?: return null)
                 DPF.cwd -> cwd = File(args.getOrNull(++i) ?: return null)
                 else -> if (arg.startsWith("-") || target != null) return null else target = arg
             }
             i++
         }
-        return Options(target ?: return null, repo ?: File("."), cwd ?: File("."), dryRun, yes, skipBuild, rollback)
+        // A rollback onto emptied data is another operation, and one nobody has asked for.
+        if (rollback && resetData) return null
+        return Options(target ?: return null, repo ?: File("."), cwd ?: File("."), dryRun, yes, skipBuild, rollback, resetData)
     }
 
     private fun usage(): Int {
@@ -288,6 +360,8 @@ object Deploy {
               ${DPF.dryRun}     show what would happen and stop
               ${DPF.yes}, -y      do not ask for confirmation
               ${DPF.skipBuild}  deploy the distribution already built
+              ${DPF.resetData}  reset the node's data under the new release: stop, switch, empty the file
+                            store (keeping source clients' web assets), remove the database, and start
               ${DPF.rollback}   go back to the release before the running one
             """.trimIndent(),
         )

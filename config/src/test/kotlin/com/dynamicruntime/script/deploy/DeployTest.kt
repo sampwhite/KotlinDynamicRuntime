@@ -2,6 +2,8 @@ package com.dynamicruntime.script.deploy
 
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
+import io.kotest.matchers.nulls.shouldBeNull
+import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 import java.io.File
@@ -90,6 +92,19 @@ class DeployTest : StringSpec({
         }
     }
 
+    "the arguments: a target, and a reset only with a deploy (issue #1601)" {
+        val plain = Deploy.parseArgs(listOf("node")).shouldNotBeNull()
+        plain.resetData shouldBe false
+        plain.rollback shouldBe false
+        val reset = Deploy.parseArgs(listOf("node", "--reset-data", "--dry-run")).shouldNotBeNull()
+        reset.resetData shouldBe true
+        reset.dryRun shouldBe true
+        // Going back to an older release on emptied data is another operation.
+        Deploy.parseArgs(listOf("node", "--rollback", "--reset-data")).shouldBeNull()
+        Deploy.parseArgs(listOf("node", "--reset")).shouldBeNull()
+        Deploy.parseArgs(listOf("--reset-data")).shouldBeNull()
+    }
+
     "a release is named for when it was built and from which commit" {
         val at = LocalDateTime.of(2026, 10, 16, 9, 5)
         Deploy.releaseName(at, "076cf2de", dirty = false) shouldBe "20261016-0905-076cf2de"
@@ -134,6 +149,9 @@ class DeployTest : StringSpec({
         Deploy.shellQuote("it's") shouldBe "'it'\\''s'"
         Deploy.switchCommand(target, "20261016-0905-076cf2de") shouldBe
             "ln -sfn '/home/kdr/kdr/releases/20261016-0905-076cf2de' '/home/kdr/kdr/current' && systemctl --user restart 'kdr'"
+        // A deploy that resets its data points `current` at the release with the service stopped, and starts it after.
+        Deploy.linkCommand(target, "20261016-0905-076cf2de") shouldBe
+            "ln -sfn '/home/kdr/kdr/releases/20261016-0905-076cf2de' '/home/kdr/kdr/current'"
         Deploy.nodeHealthCommand(target) shouldContain "http://127.0.0.1:7171/kda/health"
     }
 })

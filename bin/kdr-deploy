@@ -5,7 +5,7 @@
 # or a path to a target file -- on a node set up by docs/deploy/lightweight-node.md. Runnable from any directory.
 #
 # Usage:
-#   kdr-deploy <target> [--dry-run] [--yes] [--skip-build]
+#   kdr-deploy <target> [--dry-run] [--yes] [--skip-build] [--reset-data]
 #   kdr-deploy <target> --rollback [--dry-run] [--yes]
 #
 # Start with --dry-run: it shows the release, how kdr.env would change, and what would be switched and removed.
