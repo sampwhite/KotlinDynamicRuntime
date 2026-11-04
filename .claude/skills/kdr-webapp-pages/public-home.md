@@ -35,7 +35,9 @@ For a caller **signed in** to `public` (a visitor who has not signed in acts in 
 it), Home draws `CreateOwnClientCard` (`CreateOwnClient.kt`) under its copy: a name, an optional note, and a time
 zone (`TimeZonePicker`, starting on the browser's), with what creating one means (an id made from the name, the free
 plan, the person its administrator). It posts `POST /user/self/createClient`, and a create that moved the session
-moves the page with it (`afterSessionChange`). One that made the client but did not move -- the person's user there
+moves the page with it (`afterSessionChange`): to the workflow assistant when the new client's menu offers it -- read
+as its administrator, after the move (`landingAfterCreate`, issue #1569) -- so the person goes on to design its New form
+and a workflow, and to the client's home otherwise. One that made the client but did not move -- the person's user there
 could not be made (`userFailure`), or this node does not carry it -- says so (`createOwnClientFailureText`) and
 re-reads the config. A person creates one, so the card asks the shell config which they made (`state.selfServeClient`,
 read off the identity, for `public` callers only) rather than trying the create: once made, the card opens it

@@ -215,6 +215,23 @@ fun pollsConversation(running: Boolean, pendingTurnId: String?, turns: List<Turn
     return turns.none { it.turnId == pending && it.status != ACNV.statusRunning }
 }
 
+/**
+ * What the page offers a person to start with (issue #1569), each filling the box: what a new form asks for -- unless
+ * the client is [definedInCode], where that is the code's -- and a workflow. Pure, and covered under `jsNodeTest`.
+ */
+fun assistantExamples(definedInCode: Boolean): List<String> = listOfNotNull(
+    "What should a new form ask for?".takeIf { !definedInCode },
+    "Add a workflow where a manager reviews and approves each form.",
+    "Add a workflow that collects a short answer once a form exists.",
+)
+
+/**
+ * Whether the page offers [assistantExamples]: on a new conversation, for a person with none yet, while the box is empty
+ * and nothing blocks a send ([blocked]). Pure, and covered under `jsNodeTest`.
+ */
+fun showsExamples(conversationId: String?, conversations: List<ConversationSummary>?, text: String, blocked: String?): Boolean =
+    conversationId == null && conversations?.isEmpty() == true && text.isBlank() && blocked == null
+
 /** How often the page polls while it does, in milliseconds. */
 const val assistantPollMs = 1_500
 

@@ -1,5 +1,6 @@
 package com.dynamicruntime.webapp
 
+import com.dynamicruntime.common.assistant.ASST
 import com.dynamicruntime.common.gedra.CLD
 import com.dynamicruntime.common.home.HFLD
 import com.dynamicruntime.common.webasset.WAS
@@ -43,6 +44,13 @@ class CreateOwnClientTest {
         )
         assertEquals(listOf("starterkit" to "Starter kit", "bare" to "bare"), templates.map { it.clientId to it.name })
         assertEquals(emptyList(), selfServeTemplatesFrom(null))
+    }
+
+    @Test
+    fun aNewClientLandsOnTheAssistantWhereItsMenuOffersIt() {
+        assertEquals(listOf(HP.page to ASST.page), landingAfterCreate(listOf("home", ASST.menuItem, "forms")))
+        // No assistant on the menu: the client's home, as before.
+        assertEquals(emptyList(), landingAfterCreate(listOf("home", "forms")))
     }
 
     @Test

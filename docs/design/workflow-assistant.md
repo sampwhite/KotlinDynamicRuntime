@@ -190,6 +190,31 @@ and never instructions, and then gives the API guide. A conversation is bound to
 read-only, and the administrator starts a new one. A new build that changes the API guide or a tool does that to every
 conversation. The prompt names the client by its id alone, so renaming a client does not.
 
+**The New form** (#1569). The prompt says what the creation workflow is -- the workflow whose entry is `creation`,
+whose one task's traits are exactly what the New form page asks for -- that a client has at most one, that a trait a
+new workflow wants may go on it or on the new workflow's own task, and how a starter made from a template is stored
+(an overlay, `fromTemplate`, which the assistant reads first and writes back with only the task's traits changed, since
+a written entry replaces the old one whole). It says the core details workflow is also at most one, for what a form
+carries and edits after it exists. And it says what kind of client this is, and where its creation workflow comes
+from (`AssistantPrompt.clientLine`), since that decides who changes the New form:
+
+| The client | The prompt says |
+|---|---|
+| is defined in code | its creation workflow is changed in code; offer a normal workflow that collects more instead |
+| is built on a base and inherits its creation workflow | replace it whole by writing the client's own |
+| has a creation workflow of its own (a starter, or one written since) | the assistant may change it |
+| has none (built on a base with none, which takes no starter) | it offers no New form until the assistant writes one |
+
+A configured or built client is also told which it is, and a built one the base it inherits traits and workflows from.
+
+The line is decided from the client's creation workflow as it is loaded (its bundle's `inheritedFrom`), not from
+whether the client has a base: a base that declares no creation workflow leaves the client one of its own, or none.
+
+The line is part of the conversation's version, so a client whose kind changes starts its conversations afresh. A turn
+works the line out once and builds both its prompt and the version it checks from it: if the line has changed since the
+conversation began, the turn ends, saying so, rather than send a prompt the conversation's version does not name. The
+page says the same for a client defined in code, under the Conversation heading.
+
 **A turn** starts with `POST /clientAdmin/assistant/message` (`conversationId`, `clientMessageId`, `text`), which
 checks, in order: the assistant is on for the client, the client has a sandbox, its budget is not spent, the caller
 has turns left this hour (`KDR_ASSISTANT_TURNS_PER_HOUR`, counted in the database), the client has room for another
