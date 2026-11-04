@@ -693,7 +693,9 @@ fun designViewSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, DSV.namespace) 
             field(DSV.workflowId, "The workflow whose heading changes.", required = true)
             field(DSV.typeName, "The type whose heading it is -- a trait's data type, as the page draws it.", required = true)
             field(DSV.label, "The heading; absent or blank to go back to the shared one.")
-            field(DSV.description, "The introduction under it (issue #1539), Markdown; absent or blank to go back to the shared one.")
+            field(DSV.description, "The introduction under it (issue #1539), Markdown; absent or blank to go back to the shared one.") {
+                longText = true
+            }
             field(DSV.basedOn, "The stamp of the definition the edit was made against, from the page's Design View block.", required = true)
             designClientField()
         },
@@ -739,7 +741,7 @@ fun designViewSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, DSV.namespace) 
         inputFields = {
             field(DSV.typeName, "The type whose heading it is.", required = true)
             field(DSV.label, "The heading; absent or blank to remove it, so forms show the type's own title.")
-            field(DSV.description, "The introduction under it (issue #1539), Markdown; absent or blank to remove it.")
+            field(DSV.description, "The introduction under it (issue #1539), Markdown; absent or blank to remove it.") { longText = true }
             field(DSV.sharedBasedOn, "The stamp of the entry the edit was made against, from the definition read.", required = true)
             designClientField()
         },

@@ -501,6 +501,8 @@ private fun ChildrenBuilder.fieldSummary(target: DesignTarget.Field, layout: Sch
     }
     fact("Field", target.path, mono = true)
     fact("Type", typeWord(vt))
+    // Long text (issue #1592) is the schema's mark, so it is said right after the type, which stays "string".
+    if (vt.longText) fact("Long text", "yes — drawn as a box of several lines")
     fact("Required by the data", if (target.required) "yes" else "no")
     // What this form asks for beyond the schema (issue #1022), from the layout entry the page draws it with.
     if (layout?.required == true) fact("Required on this form", "yes")

@@ -29,7 +29,9 @@ with a closed list, a row per schema choice, offered or not, with the form's lab
 schema's. They save into the workflow's own entry beside its copy (`formEntryFrom`), so Reset to shared removes them
 too. The schema's list left as it is writes no `choices`; any change -- a choice dropped, one relabeled -- writes the
 list in **full**, every label with it: a form customizing its choices controls exactly what it shows, and does not
-inherit a later relabel. The editor keeps the list's order rather than offering to change it.
+inherit a later relabel. The editor keeps the list's order rather than offering to change it. A field the schema
+marks long text (`g-longText`, issue #1592) says so in its summary, as **Long text** right after its **Type**, which
+stays "string" since `typeWord` also describes the wire type in the endpoint catalog's outline.
 
 The **shared definition** -- what every workflow on the client draws -- is edited separately (issue #1029,
 `SharedFieldSection`), behind a deliberate **Edit the shared definition** button and never as an option beside a
