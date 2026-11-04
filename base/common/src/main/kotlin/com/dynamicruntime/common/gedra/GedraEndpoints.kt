@@ -987,25 +987,26 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
             )
         }
         // Authority is the task's own reviewer cfact -- the one its page shows the button on -- asked of the caller
-        // here rather than trusted from the page, since a cfact decides presentation and never permission. An approval
-        // is only ever of the current task (WorkflowApprovals.approve refuses another), so it is the CTA, and its filter
-        // (issue #1595) narrows who that is: a reviewer it does not name is refused, told who the task waits on.
-        val cfacts = SchemaService.get(c).cfactsFor(row.client)
-        val requestFacts = cfacts.assemble(c)
-        val viewer = ViewerCfacts.forRequest(c, row.client)
-        val cta = ctaAssignment(c, cfacts, workflowId, task, row.entries)
-        if (WFC.reviewer !in viewer.forCta(task, cta.filter, requestFacts)) {
-            // A reviewer refused by the filter alone is told who the task waits on; anyone else is simply no reviewer.
-            val waiting = cta.filter?.takeIf { WFC.reviewer in viewer.forTask(task) }?.let {
-                cta.label ?: "This step is waiting on someone else."
-            }
+        // here rather than trusted from the page, since a cfact decides presentation and never permission.
+        val viewer = ViewerCfacts(c, row.client)
+        if (WFC.reviewer !in viewer.forTask(task)) {
             throw KdrException(
-                waiting?.let { MarkdownFragmentService.get(c).backendPass(c, it) }
-                    ?: "You are not a reviewer of task '$taskId' of workflow '$workflowId'.",
+                "You are not a reviewer of task '$taskId' of workflow '$workflowId'.",
                 code = EXC.notAuthorized,
             )
         }
-        val states = WorkflowApprovals.approve(c, row, declared, task)
+        // And the task's CTA filter (issue #1595), checked once the approval knows the task is the current one: a
+        // reviewer the filter does not name is refused, told who the task waits on.
+        val states = WorkflowApprovals.approve(c, row, declared, task) {
+            val cfacts = SchemaService.get(c).cfactsFor(row.client)
+            val cta = ctaAssignment(c, cfacts, workflowId, task, row.entries)
+            if (WFC.reviewer !in viewer.forCta(task, cta.filter, cfacts.assemble(c))) {
+                throw KdrException(
+                    MarkdownFragmentService.get(c).backendPass(c, cta.label ?: "This step is waiting on someone else."),
+                    code = EXC.notAuthorized,
+                )
+            }
+        }
         mapOf(GDF.gedraId to row.gedraId.fullId, GDF.states to WorkflowPhases.shownStates(c, row.client, states))
     }
 

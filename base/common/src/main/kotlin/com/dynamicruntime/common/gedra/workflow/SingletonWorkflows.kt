@@ -33,7 +33,7 @@ object SingletonWorkflows {
         val registry = WorkflowService.get(cxt).forClient(client)
         val cfacts = SchemaService.get(cxt).cfactsFor(client)
         val requestFacts = cfacts.assemble(cxt)
-        val viewer = ViewerCfacts.forRequest(cxt, client)
+        val viewer = ViewerCfacts(cxt, client)
         val fragments = MarkdownFragmentService.get(cxt)
         fun label(text: String): String = fragments.backendPass(cxt, text)
 

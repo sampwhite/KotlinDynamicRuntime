@@ -7,19 +7,26 @@ import com.dynamicruntime.common.gedra.ClientDef
 import com.dynamicruntime.common.gedra.ClientUsageType
 import com.dynamicruntime.common.gedra.GDF
 import com.dynamicruntime.common.gedra.GE
+import com.dynamicruntime.common.gedra.GED
 import com.dynamicruntime.common.gedra.GEP
+import com.dynamicruntime.common.gedra.GPF
 import com.dynamicruntime.common.gedra.GedraConfigReload
 import com.dynamicruntime.common.gedra.GedraConfigService
 import com.dynamicruntime.common.gedra.GedraDataType
+import com.dynamicruntime.common.gedra.GedraEditAction
 import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.gedra.workflow.CtaFilterByValueBuilder
 import com.dynamicruntime.common.gedra.workflow.OwnerOnly
+import com.dynamicruntime.common.gedra.workflow.SWF
+import com.dynamicruntime.common.gedra.workflow.TraitLockCopy
 import com.dynamicruntime.common.gedra.workflow.ViewerCfacts
 import com.dynamicruntime.common.gedra.workflow.WFC
 import com.dynamicruntime.common.gedra.workflow.WFD
+import com.dynamicruntime.common.gedra.workflow.WSC
 import com.dynamicruntime.common.gedra.workflow.WVF
 import com.dynamicruntime.common.gedra.workflow.WfEntry
 import com.dynamicruntime.common.gedra.workflow.WfSaveKind
+import com.dynamicruntime.common.gedra.workflow.WorkflowService
 import com.dynamicruntime.common.gedra.workflow.ctaFilterByValue
 import com.dynamicruntime.common.gedra.workflow.userHasLabel
 import com.dynamicruntime.common.http.request.ROLE
@@ -70,6 +77,9 @@ class CtaFilterActsTest : StringSpec({
         trait("NotesEntry", "notes", setOf(GedraDataType.formDoc), "What was seen.") { property("text", "The notes.") }
         trait("CheckEntry", "check", setOf(GedraDataType.formDoc), "The reviewer's check.") { property("verdict", "The verdict.") }
         workflow("siteReview", WfEntry.normal) {
+            // Waiting on a review, and kept to its owner but for the reviewer of the current work, while engaged.
+            singleton(WSC.needsReview, "#always")
+            singleton(WSC.ownerOnly, "#always")
             task("describe", "Describe the visit") { trait("notes"); save("saveNotes", "Save", WfSaveKind.edit) }
             task("approve", "Approve the visit") {
                 approval("visitApproved", "Approve the visit?", "Approve")
@@ -172,16 +182,45 @@ class CtaFilterActsTest : StringSpec({
         (WVF.waitingOn in describe) shouldBe false
     }
 
-    "one request works out a task's viewer facts once, however many forms it judges" {
+    "the Needs Review popover and the owner-only rule hear the filter: only the reviewer it names reviews the current work" {
+        val gid = engagedForm("northwest", "siteReview")
+        fun isReviewer(viewer: TestUser): Any? =
+            viewer.getData(GEP.formDocSingletonWorkflows, mapOf(GDF.gedraId to gid, WFD.cfact to WSC.needsReview))[SWF.workflows]
+                .toJsonListOfMaps().single { it[WFD.workflowId] == "siteReview" }[SWF.isReviewer]
+        isReviewer(south) shouldBe false
+        isReviewer(northwest) shouldBe true
+        // Kept to its owner: an editor may change it only as the reviewer of the current work, which the South's is not.
+        val patch = mapOf(
+            GPF.targets to mapOf(
+                GedraDataType.formDoc.name to listOf(
+                    mapOf(
+                        GDF.gedraId to gid,
+                        GPF.edits to listOf(
+                            mapOf(
+                                GED.action to GedraEditAction.addOrReplace.name, GE.traitId to "notes",
+                                GE.data to mapOf("text" to "Seen again."),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+        south.expectError(EXC.notAuthorized, GEP.patch, patch)["errorMessage"].toOptStr() shouldBe TraitLockCopy.keptToOwner
+        northwest.postData(GEP.patch, patch)
+    }
+
+    "one viewer-facts object works out a task's facts once, however many forms it is asked about" {
         val forms = (1..3).map { engagedForm("northwest", "siteReview") }
-        val states = owner.getItems(GEP.formDocs, mapOf(GDF.withStates to true))
-            .filter { it[GDF.gedraId] in forms }.map { it[GDF.states].toJsonListOfMaps() }
-        states.size shouldBe 3
-        // Each form asks whether the caller reviews its current task: the same task, three forms, one request.
+        val rows = owner.getItems(GEP.formDocs, mapOf(GDF.withStates to true)).filter { it[GDF.gedraId] in forms }
+        rows.size shouldBe 3
+        // A caller judging many forms makes one and passes it to each form's check.
         val request = cxt.mkSubContext("listing", client)
-        states.forEach { OwnerOnly.isReviewer(request, client, it) }
-        val viewer = ViewerCfacts.forRequest(request, client)
-        (viewer === ViewerCfacts.forRequest(request, client)) shouldBe true
-        viewer.labelReads shouldBe 1
+        val viewer = ViewerCfacts(request, client)
+        val approve = WorkflowService.get(cxt).forClient(client).workflow("siteReview")!!.def.task("approve")!!
+        val first = viewer.forTask(approve)
+        rows.forEach {
+            OwnerOnly.isReviewer(request, client, it[GDF.entries].toJsonListOfMaps(), it[GDF.states].toJsonListOfMaps(), viewer)
+        }
+        (viewer.forTask(approve) === first) shouldBe true
     }
 })

@@ -66,28 +66,22 @@ fun WfTask.viewerCfactsFns(): List<ViewerCfactsFn> =
     resolvedFunctions.filter { it.event == WfEventType.viewerCfacts }.map { ViewerCfactsFn.of(it) }
 
 /**
- * The `viewerCfacts` evaluation for **one request** (issues #786, #1595) of [client]'s workflows, as the person [cxt]
- * acts as: [forTask] answers each task's viewer facts, which the workflow view adds to the task's own target facts so a
- * selector can choose on them (today a task's display selector, issue #788; field-layout selectors are to follow)
+ * The `viewerCfacts` evaluation for **one piece of work** (issues #786, #1595) on [client]'s workflows, as the person
+ * [cxt] acts as: [forTask] answers each task's viewer facts, which the workflow view adds to the task's own target facts
+ * so a selector can choose on them (today a task's display selector, issue #788; field-layout selectors are to follow)
  * -- and which the approve endpoint (#787) asks for the same way, so the button a page shows and the permission
  * the endpoint grants are one computation.
  *
- * One object per request and client ([forRequest]), so what is about the *viewer* is worked out once however many
- * forms and tasks ask: the labels are read once, and each task's facts once, which is what lets a listing of many
- * forms judge each row's CTA without a lookup per row. A task with no functions costs nothing, and a caller with no
- * user row -- a system context, an anonymous one, an identity the request carries without a row behind it -- is
- * answered "no labels" without a lookup, rather than missing the cache into SQL on every view.
+ * What is about the *viewer* is worked out once per object, however many forms and tasks ask: the labels are read once
+ * and each task's facts once. So a caller judging many forms -- a listing of them -- makes **one** and passes it to
+ * each form's check, which then costs no lookup per row; the object lives as long as that work and no longer, so it
+ * never answers from labels changed since. A task with no functions costs nothing, and a caller with no user row -- a
+ * system context, an anonymous one, an identity the request carries without a row behind it -- is answered "no labels"
+ * without a lookup, rather than missing the cache into SQL on every view.
  */
 class ViewerCfacts(private val cxt: KdrCxt, private val client: String?) {
-    private val labels: Set<String> by lazy { labelReads += 1; viewerLabels(cxt) }
+    private val labels: Set<String> by lazy { viewerLabels(cxt) }
     private val byTask = HashMap<WfTask, Set<String>>()
-
-    /**
-     * How many times the viewer's labels were read: at most once per object, which [forRequest] makes once per request
-     * -- what a test counts to show a listing's many rows share one lookup.
-     */
-    var labelReads = 0
-        private set
 
     /** [task]'s viewer facts: what its `viewerCfacts` functions emit, narrowed to the cfacts [client] declares. */
     fun forTask(task: WfTask): Set<String> = byTask.getOrPut(task) {
@@ -114,18 +108,6 @@ class ViewerCfacts(private val cxt: KdrCxt, private val client: String?) {
     /** Whether [facts] -- the request's and the viewer's -- satisfy the CTA filter [ctaFilter] (issue #1595). */
     fun passes(ctaFilter: String, facts: Set<String>): Boolean =
         SchemaService.get(cxt).cfactsFor(client).parse(ctaFilter).matches(facts)
-
-    companion object {
-        /**
-         * The request's one [ViewerCfacts] for [client] (issue #1595), kept on [cxt]'s `locals` -- the context's
-         * place for the results of computation -- so every form and task a request judges shares its labels and
-         * its facts. Keyed by the acting user too, since a facts set is about one person.
-         */
-        fun forRequest(cxt: KdrCxt, client: String?): ViewerCfacts {
-            val key = "kdr.viewerCfacts|${client.orEmpty()}|${cxt.userProfile.userId}"
-            return cxt.locals[key] as? ViewerCfacts ?: ViewerCfacts(cxt, client).also { cxt.locals[key] = it }
-        }
-    }
 }
 
 /**

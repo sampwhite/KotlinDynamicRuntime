@@ -53,7 +53,7 @@ object OwnerOnly {
         if (!AdminRules.editsClient(cxt) || !isOn(states)) {
             return false
         }
-        return !isOwner(cxt, row) && !isReviewer(cxt, row.client, states)
+        return !isOwner(cxt, row) && !isReviewer(cxt, row.client, row.entries, states)
     }
 
     /** Refuses (403) a change [keepsOut] keeps the caller from. */
@@ -77,14 +77,22 @@ object OwnerOnly {
      * Whether the caller is a reviewer of the current task of a normal workflow the form is engaged with. A workflow
      * the caller does not see, or one frozen past its relevancy (whose current task takes no action), names no one.
      */
-    fun isReviewer(cxt: KdrCxt, client: String, states: List<Map<String, Any?>>): Boolean {
+    fun isReviewer(
+        cxt: KdrCxt,
+        client: String,
+        /** The form's entries, which the current task's CTA filter (issue #1595) is concluded from. */
+        entries: List<Map<String, Any?>>,
+        states: List<Map<String, Any?>>,
+        /** The caller's viewer facts -- one shared by a caller asking of many forms. */
+        viewer: ViewerCfacts = ViewerCfacts(cxt, client),
+    ): Boolean {
         val engaged = engagedWorkflowIds(states).toSet()
         if (engaged.isEmpty()) {
             return false
         }
         val registry = WorkflowService.get(cxt).forClient(client)
-        val viewer = ViewerCfacts.forRequest(cxt, client)
-        val requestFacts by lazy { SchemaService.get(cxt).cfactsFor(client).assemble(cxt) }
+        val cfacts = SchemaService.get(cxt).cfactsFor(client)
+        val requestFacts by lazy { cfacts.assemble(cxt) }
         return states
             .filter { it[GE.traitId].toOptStr() == WFS.workflowState }
             .map { it[GE.data].toJsonMapOrEmpty() }
@@ -96,8 +104,11 @@ object OwnerOnly {
                     return@any false
                 }
                 val task = data[WFS.ctaTask].toOptStr()?.let { def.task(it) } ?: return@any false
-                // A reviewer the CTA's filter does not name (issue #1595) is not a reviewer of the current work.
-                WFC.reviewer in viewer.forCta(task, data[WFS.ctaFilter].toOptStr(), requestFacts)
+                // A reviewer the CTA's filter does not name (issue #1595) is not a reviewer of the current work. The filter
+                // is concluded from the form's data now, as the judge and the approve endpoint conclude it: whoever may
+                // act is decided by the data as it stands, and stored state only ever shows it.
+                val filter = ctaAssignment(cxt, cfacts, workflowId, task, entries).filter
+                WFC.reviewer in viewer.forCta(task, filter, requestFacts)
             }
     }
 }

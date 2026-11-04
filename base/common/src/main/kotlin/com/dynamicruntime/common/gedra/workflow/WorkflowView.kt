@@ -173,9 +173,10 @@ fun resolveWorkflowView(
             raw[WVF.canSave] = false
         } else if (declared.def.entry == WfEntry.normal) {
             raw[WVF.canSave] = judge.maySave(task, taskFacts)
-            // Who the CTA waits on, when its filter is what keeps this caller from acting (issue #1595).
-            judge.waitingOn(task)?.let { raw[WVF.waitingOn] = label(it) }
         }
+        // Who the CTA waits on, when its filter is what keeps this caller from acting (issue #1595) -- said even of a
+        // form kept to its owner, since it is who the step is for, not why this caller may not change the form.
+        if (declared.def.entry == WfEntry.normal) judge.waitingOn(task)?.let { raw[WVF.waitingOn] = label(it) }
         task.approval?.let { raw[WVF.approval] = approvalView(it, approvals[task.id]) }
         // How the task is shown (issue #788): usually a selector, which the filter below resolves against this
         // caller's task facts -- so what arrives is the one branch that applies, never the others or their tests.
@@ -296,9 +297,10 @@ class WorkflowTaskJudge(
     /** The request's cfacts, assembled once by whoever already holds them. */
     private val requestFacts: Set<String>,
     formEntries: List<Map<String, Any?>> = emptyList(),
+    /** The caller's viewer facts -- one shared by a caller judging many forms, so each is worked out once. */
+    private val viewer: ViewerCfacts = ViewerCfacts(cxt, client),
 ) {
     private val cfacts = SchemaService.get(cxt).cfactsFor(client)
-    private val viewer = ViewerCfacts.forRequest(cxt, client)
 
     val statuses: List<Pair<WfTask, WfTaskStatus>> = declared.def.tasks.map {
         it to WorkflowTaskStatus.of(cxt, client, it, entriesByTask[it.id] ?: emptyList(), approved = it.id in approvals, declared = declared)
@@ -325,10 +327,12 @@ class WorkflowTaskJudge(
 
     /**
      * Whether the caller may save [task] (issues #856, #1595): its rule, over the request's facts and [facts] -- no
-     * rule admits anyone -- **and**, when [task] is the CTA, its filter.
+     * rule admits anyone -- **and**, when [task] is the CTA and offers a save, its filter. An approval task offers none:
+     * its filter reaches it through the reviewer fact ([taskFacts]), so its answer here means what it always has.
      */
     fun maySave(task: WfTask, facts: Set<String> = taskFacts(task)): Boolean =
-        (task.saveWhen?.let { cfacts.parse(it).matches(requestFacts + facts) } ?: true) && waitingOn(task) == null
+        (task.saveWhen?.let { cfacts.parse(it).matches(requestFacts + facts) } ?: true) &&
+            (task.saves.isEmpty() || waitingOn(task) == null)
 
     /**
      * Why the caller may not act on [task] for its CTA filter (issue #1595), or null when they may -- or when [task] is
