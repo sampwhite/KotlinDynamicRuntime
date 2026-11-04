@@ -305,8 +305,8 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
         if (override != null) {
             return override.analyzeTemplate(evaluateWith = mapOf("count" to count)).value ?: override
         }
-        val lead = if (count == 1) "1 field was" else "$count fields were"
-        return "$lead filled in from your account — review and save to keep them."
+        val default = if (count == 1) LAYSTR.defaultPrefillOne else LAYSTR.defaultPrefillMany
+        return default.analyzeTemplate(evaluateWith = mapOf("count" to count)).value ?: default
     }
 
     // The save a task offers for this page's mode -- its edit save against an existing form, else its create save --

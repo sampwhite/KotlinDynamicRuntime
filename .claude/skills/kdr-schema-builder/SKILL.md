@@ -469,15 +469,14 @@ is equivalent):
 }
 ```
 
-- The block's vocabulary is the `SL` object (`schemaFields`, `field`, `label`, `description`, `hint`, `errors`,
-  `defaultMode`, `required`, `choices`, `lines`, `fragmentFileId`, `strings`, `mode`). `lines` (issue #1550) is how
-  many lines a **long text** field's box starts with on the form, 1 to `maxLongTextLines`, `defaultLongTextLines` (3)
-  when unset; whether a field is long text is the schema's (`g-longText`, below), so the boot refuses `lines` on any
-  other field (`linesProblems`). The parser is **strict**: an unknown key on the block or
-  on an entry, a present block that says nothing, or a non-object value all fail the boot — a layout must never
-  parse clean and render nothing. A block says something with at least one field entry, or -- with no field list
-  and no `mode` -- a name (`label`), an introduction (`description`), or form `strings` (issues #1070, #1534), so a
-  type with no field copy can still be given a heading. A field list that is present must not be empty.
+- **What a layout may hold is in the generated [form layouts reference](../../../docs/reference/form-layouts.md)**
+  (issue #1609): every key of the block, a field entry, and a choice; the modes; the `defaultMode` options; the form
+  strings and their default wording; the two template passes; how a client's layout merges; and every code the load
+  refuses one with. It is made from `SL` (`blockMeanings`, `fieldMeanings`, `choiceMeanings`), `SLM`, `SLDM`, `LAYSTR`,
+  and `LayoutError`, and `SchLayoutReferenceTest` fails on a key added without a meaning. What follows is what the
+  reference does not say: why, and where the code is. The parser is **strict** -- a layout must never parse clean and
+  render nothing -- and a block with no field list says something only with a name, an introduction, or `strings`
+  (issues #1070, #1534), so a type with no field copy can still be given a heading.
 - **The block's `label` is its type's name, and its `description` the introduction under it** (issues #1520, #1534) --
   the same pair a field entry has. The `label` is **one line** (a line break is refused at boot, pointing at
   `description`); a workflow form shows it as the section's heading and the `description`, Markdown, under it. For a
@@ -489,26 +488,18 @@ is equivalent):
   title is never read for a name. A blank `label`, or heading marks alone, is no heading either: a workflow form's
   section then shows the trait's name (issue #1541). Declare both with
   `layout(label = "Site visit", description = "Tell us what you saw.") { … }`.
-- **Field order and membership** (`mode`, issue #777): who owns *which* fields render and *in what order* — the
-  `SLM` values, set via `layout(mode = SchLayoutMode.…) { … }`. `overlay` (default) — the schema owns order and
-  the full set, the layout only annotates (historic behavior). `reorder` — the layout's listed fields draw
-  first, in list order, then every other declared field in schema order (nothing hidden). `authoritative` —
-  only the listed fields render, in list order; the boot then requires the list to name every **required,
-  non-derived** property (an omitted required field could never be submitted). All three **narrow and order,
-  never widen**: a field the schema hides (`g-derived` in a friendly form, a `g-visibleWhen` the caller fails,
-  a forbidden field) stays hidden even when `authoritative` lists it. The kernel decides the order in
-  `orderedFieldNames(type, layout)` (`SchFormPlan.kt`) — the render loop calls it and applies its gates on top,
-  so the same rule is JVM-testable and browser-run.
+- **Field order and membership** (`mode`, issue #777): set via `layout(mode = SchLayoutMode.…) { … }`. The kernel
+  decides the order in `orderedFieldNames(type, layout)` (`SchFormPlan.kt`) -- the render loop calls it and applies its
+  gates on top, so the same rule is JVM-testable and browser-run -- and `authoritativeLayoutProblems` holds an
+  authoritative list to every required, non-derived property.
   **Why a mode (issue #834):** two kinds of author. A *form author* lives with the schema's defaults and tweaks
   copy or order (`overlay`/`reorder`); an *application builder* treats the field layout as the source of truth
   for every GUI decision (`authoritative`). For the latter, repeating the schema — listing every field, even in
   the schema's own order — is **intended**, not redundancy to remove. Guidance, not a rule: a change that does
   not alter the schema's API semantics (order, copy) belongs in the field layout rather than a schema overlay.
-- **Default handling** (`defaultMode`, issue #709): a per-field `field(..., defaultMode = SLDM.filled)` says how
-  a **supplied default** (a value the backend hands the form that a person did not enter — a `prefillData`
-  default, later other sources) is presented: `SLDM.filled` (shown in the control, marked) or `SLDM.offer` (an
-  empty control beside a "use it" affordance). A closed set (a bad value fails the boot); absent leaves the
-  surface's own default (`filled`). It is about the *field*, not the source, so it never names `prefill`.
+- **Default handling** (`defaultMode`, issue #709): `field(..., defaultMode = SLDM.offer)`. It is about the *field*,
+  not where the value came from, so it never names `prefill`: a `prefillData` default is the first source, not the
+  only one.
 - **Form requirements** (`required`, `choices`, issue #1022): what *this form* asks for beyond the schema --
   `field(name, required = true)`, and `field(name, choices = listOf(SchLayoutChoice("park", "Outdoors"), …))`, a
   **restated** list of the schema's choices (which, in what order, with the form's labels). They never change what
@@ -521,27 +512,19 @@ is equivalent):
   name values the schema offers, on a field with a closed list; and a field nobody could always fill in (derived,
   or gated by `g-visibleWhen`) may not be required -- all checked at load. A workflow entry replaces the shared
   entry for that field whole, so restate its copy beside a requirement.
-- **Form-level strings** (`strings`, issue #641): a `{ LAYSTR-name → copy }` block of overridable wording a form
-  shows for the type as a whole rather than for one field — declared with `string(LAYSTR.key, "...")`. The keys
-  are the closed `LAYSTR` vocabulary (an unknown one fails the boot, like every other layout key); the default
-  copy for each lives on the surface that renders it, so a layout carries only overrides. A client may override
-  these on their variant like any other presentation key.
+- **Form-level strings** (`strings`, issue #641): declared with `string(LAYSTR.key, "...")`. The default wording is
+  `LAYSTR`'s own constants (`defaultSaveHint`, ...), which the webapp's pages read (issue #1609), so a layout carries
+  only overrides and the reference prints the defaults the pages show.
 - Only a **named type's own top-level** `g-layout` is collected. One nested on an inline sub-object is
   **refused** at boot (pull the sub-object out as a named type), not ignored.
 - **Boot check** (`checkLayouts`): a layout naming a field its type does not declare, or sitting on a union or
   array type, refuses the boot. A client that narrows a type inherits the base layout by reference and has it
   **pruned** to the properties it kept — a sanctioned narrowing never fails the boot.
-- A client may overlay a type's `g-layout` freely: it is in the narrowing allowlist as a presentation key. The
-  alteration **merges with the inherited layout by field** (issue #985, `layoutMergeSpec`): it states only the
-  `schemaFields` entries it changes, each replacing the inherited entry for that field whole, and `strings` merge
-  by key — everything else is global's. An entry for a field the inherited layout does not list is appended under
-  `overlay` mode and refused under `reorder`/`authoritative` (it would need a place in the order). An alteration
-  that **sets** `mode` to `reorder` or `authoritative` instead **restates** `schemaFields`: its list is the order
-  (and, authoritative, the membership), and an entry naming only its `field` keeps the inherited entry. With no
-  inherited layout the client's stands as written, and `g-layout: null` drops the inherited one. A layout a client
-  writes that would fail the boot check, or whose merge refuses an entry, is dropped instead (the type falls back
-  to global's layout, or none) — see *A client's own definitions* below. The merge itself is the general declared
-  merger in `common/overlay/OverlayMerge.kt`; `schemaTypeMergeSpec` is the whole of how an alteration applies.
+- A client may overlay a type's `g-layout` freely: it is in the narrowing allowlist as a presentation key, and the
+  alteration merges with the inherited layout by field (issue #985), as the reference describes. The rule is
+  `layoutMergeSpec`, applied by the general declared merger in `common/overlay/OverlayMerge.kt`;
+  `schemaTypeMergeSpec` is the whole of how an alteration applies. A layout a client writes that would fail the boot
+  check, or whose merge refuses an entry, is dropped instead -- see *A client's own definitions* below.
 - **`properties` in an alteration** is the restated set by default (`{}` keeps a property, an unmentioned one is
   dropped). An alteration may say `"g-merge": { "properties": "merge" }` to merge instead: it names only the
   properties it changes (`{}` keeps one, `null` removes one) and inherits the rest, including any the base gains
@@ -550,28 +533,13 @@ is equivalent):
   a client's own type, a nested part — does nothing and is refused like any misplaced keyword. Either way the
   narrowing check judges the merged result.
 
-**Substitution — two passes, by prefix (issues #586, #587, #605).** Layout copy (`label` / `description` /
-`hint`) carries two kinds of template block, resolved in different passes:
-
-- **Frontend `${…}`**, resolved at render. A **`hint`** templates over the field's **bounds** — `${min}` /
-  `${max}` resolve to the field's declared `minimum` / `maximum`, replacing the derived `range: X to Y`. A
-  **`label`** / **`description`** templates over the **field's own data** — `${someField}` reads the value being
-  entered.
-- **Backend `%{@t("…")}`**, resolved **server-side at delivery** (`MarkdownFragmentService.backendPass`, the
-  mechanism task labels use), for shared copy pulled from a **backend** fragment file. A two-part key
-  `%{@t("ns.key")}` resolves against the block's `fragmentFileId`; a three-part `%{@t("fileId.ns.key")}` names
-  its file outright. Only the finished copy ships (backend fragment files are private, never served). The two
-  prefixes coexist in one string: `%{@t("help.topic")} for ${topicField}` resolves the pull on the backend and
-  the field value on the frontend.
-
-Boot checks (`layoutTemplateProblems` + `SchemaService.checkLayouts`): a **malformed** `${…}` **or** `%{…}`
-block, a **hint** referencing a bounds param its field lacks (`${max}` with no maximum), and a **frontend**
-`${@t(...)}` (a fragment pull must use the backend `%` prefix) all fail the boot. A field-data `${…}` is not
-boot-checked (dynamic) — an unresolvable one renders **as written** with a `[kdr]` console warning. Whether a
-literal `%{@t}` pull actually resolves — its file exists, is a backend file, and holds the key — is checked at
-boot too (issue #620: `SchemaService.checkLayoutPulls`, run from `LayoutCheckService`, which holds the fragment
-registry the schema service cannot reach). Only a **computed** (`%{@t(chosenKey)}`) or guarded (`?:`) pull is
-left to delivery, where an unresolvable one degrades to the copy as written with a `[schema]` warning.
+**Substitution -- two passes, by prefix (issues #586, #587, #605)**, as the reference describes: the backend
+`%{@t("…")}` pull is resolved at delivery by `MarkdownFragmentService.backendPass` (the mechanism task labels use), and
+the frontend `${…}` at render. The boot checks are `layoutTemplateProblems` and `SchemaService.checkLayouts`; whether a
+literal pull resolves is `SchemaService.checkLayoutPulls`, run from `LayoutCheckService`, which holds the fragment
+registry the schema service cannot reach (issue #620). A field-data `${…}` is not boot-checked (it is dynamic): an
+unresolvable one renders as written with a `[kdr]` console warning, and a computed pull left to delivery degrades to
+the copy as written with a `[schema]` warning.
 
 **Delivery (issues #585, #835).** Both friendly surfaces carry a `fieldLayouts` map beside their `$defs` —
 the endpoint catalog under `EI.fieldLayouts`, the workflow view under `WVF.fieldLayouts` — built by one call,

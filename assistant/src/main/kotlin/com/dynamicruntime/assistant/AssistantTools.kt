@@ -59,7 +59,7 @@ object TOOL {
     /** The documents `read_doc` may read ([AssistantTools.readableDoc]), beyond the demo client's pages. */
     val docs = listOf(
         HDOC.clientConfiguration, HDOC.schemaDialect, HDOC.validationMessages, HDOC.expressions, HDOC.facts, HDOC.copy,
-        HDOC.reportPaths,
+        HDOC.reportPaths, HDOC.formLayouts,
     )
 
     /** How deep a tool's input may nest before it is refused rather than walked. */
@@ -210,7 +210,8 @@ object AssistantTools {
                 $$"${…} language of copy, columns, layouts, and computed values), '$${HDOC.facts}' (the facts a menu entry, " +
                 "a field's visibility, a save rule, or an eligibility test is written over), '${HDOC.copy}' (the Markdown copy " +
                 "is written in, its roles, and the fragment file format), '${HDOC.reportPaths}' (how a report column's path is " +
-                "written, and every attribute it can end in), or a page of the demo client's " +
+                "written, and every attribute it can end in), '${HDOC.formLayouts}' (what a type's g-layout may hold, and " +
+                "how a client's layout changes the shared one), or a page of the demo client's " +
                 "('${ConfDemo.docIdPrefix}README' lists them), which shows a whole client's configuration worked through.",
             objectSchema(ATOOL.doc to stringSchema("The document's id."), required = listOf(ATOOL.doc)),
             method = null, path = null,

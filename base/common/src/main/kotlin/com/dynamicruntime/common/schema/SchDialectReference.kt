@@ -40,7 +40,8 @@ $${keywordSection(
 A key beginning `$${SCH.gPrefix}` belongs to the runtime, and the list of them is closed. A stock JSON Schema validator
 ignores them, as it ignores any keyword it does not know. They are listed here by where each one is written. The codes
 a refused value is reported with, and how `$${SCH.errors}` gives one a message of its own, are in
-[Validation messages](validation-messages.md).
+[Validation messages](validation-messages.md); what a `$${SCH.layout}` block may hold is in
+[Form layouts](form-layouts.md).
 
 $${gKeywordSections()}
 

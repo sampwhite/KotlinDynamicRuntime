@@ -7,6 +7,7 @@ import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.gedra.GEP
 import com.dynamicruntime.common.gedra.GPF
 import com.dynamicruntime.common.home.HMENU
+import com.dynamicruntime.common.schema.LAYSTR
 import com.dynamicruntime.common.schema.SchFailure
 import com.dynamicruntime.common.schema.clearedAt
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
@@ -476,8 +477,8 @@ val EditFormPage = FC<Props> {
                 failures?.let { fs ->
                     formFailureSummary(
                         fs, appConfig().envAuthDebug, formTraitLayouts(targetType, cat.fieldLayouts),
-                        defaultSummary = "Please fix these before saving",
-                        defaultHint = "Fix highlighted errors in entered data before saving.",
+                        defaultSummary = LAYSTR.defaultSaveSummary,
+                        defaultHint = LAYSTR.defaultSaveHint,
                     )
                 }
 
