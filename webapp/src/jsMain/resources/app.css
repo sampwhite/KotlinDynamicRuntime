@@ -1494,6 +1494,9 @@ textarea.json-edit.json-field { min-height: 4.5rem; }
     --design: #2dd4bf;
     --design-soft: rgba(45, 212, 191, .14);
     --dv-panel-width: 380px;
+    /* What is shown of it (issue #1617): a width dragged wider, then a window narrowed, still leaves the form 480px.
+       `--dv-panel-width` is what the inspector's grip sets on the page root. */
+    --dv-panel-shown: min(var(--dv-panel-width), max(320px, calc(100vw - 480px)));
 }
 
 /* The Shadow Sandbox (issue #931). Outside a sandbox, "Open sandbox" is a quiet outline chip beside the admin cue: a
@@ -1644,8 +1647,8 @@ textarea.json-edit.json-field { min-height: 4.5rem; }
 .dv-ghost-reason { margin: 0 0 2px; color: var(--text-muted); font-size: 12px; font-style: italic; }
 
 /* Room for the inspector: the page narrows instead of sliding under the panel. */
-body.dv-open { --content-width: min(1400px, calc(95vw - var(--dv-panel-width))); }
-body.dv-open .app-content { padding-right: calc(var(--dv-panel-width) + 16px); }
+body.dv-open { --content-width: min(1400px, calc(95vw - var(--dv-panel-shown))); }
+body.dv-open .app-content { padding-right: calc(var(--dv-panel-shown) + 16px); }
 
 .dv-inspector {
     position: fixed;
@@ -1653,7 +1656,7 @@ body.dv-open .app-content { padding-right: calc(var(--dv-panel-width) + 16px); }
     right: 0;
     bottom: 0;
     z-index: 15;
-    width: var(--dv-panel-width);
+    width: var(--dv-panel-shown);
     padding: 76px 18px 24px;
     overflow-y: auto;
     background: var(--surface-raised);
@@ -1661,6 +1664,19 @@ body.dv-open .app-content { padding-right: calc(var(--dv-panel-width) + 16px); }
     box-shadow: -8px 0 24px rgba(0, 0, 0, .3);
     font-size: 13px;
 }
+/* The grip on the inspector's left edge (issue #1617): drag it, or focus it and use the arrow keys, to widen the panel;
+   a double-click goes back to the default. A line in Design View's hue shows where it is when pointed at. */
+.dv-resize-handle {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: -3px;
+    width: 6px;
+    cursor: col-resize;
+    touch-action: none;
+}
+.dv-resize-handle:hover, .dv-resize-handle:focus-visible { background: var(--design); outline: none; }
+body.dv-resizing { cursor: col-resize; user-select: none; }
 .dv-inspector h2 { margin: 12px 0 8px; font-size: 18px; }
 .dv-inspector h3 { margin: 18px 0 6px; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--text-muted); }
 .dv-inspector-head { display: flex; align-items: center; justify-content: space-between; }
@@ -1679,16 +1695,22 @@ body.dv-open .app-content { padding-right: calc(var(--dv-panel-width) + 16px); }
 .dv-note, .dv-caption { color: var(--text-muted); }
 .dv-caption { margin: 10px 0 4px; font-size: 12px; }
 .dv-callout { padding: 6px 10px; border-left: 3px solid var(--text-faint); background: rgba(148, 163, 184, .08); color: var(--text-dim); }
+/* A read-only text area (issue #1617): it starts at its lines, up to sixteen, and its grip drags it taller. */
 .dv-json {
-    max-height: 320px;
+    display: block;
+    width: 100%;
     margin: 0;
     padding: 10px;
     overflow: auto;
     border: 1px solid var(--border);
     border-radius: 8px;
     background: var(--surface-page);
+    color: var(--text);
     font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace;
+    white-space: pre;
+    resize: vertical;
 }
+.dv-json:focus { outline: none; border-color: var(--design); }
 .dv-inspector details { margin-top: 12px; }
 .dv-inspector summary { cursor: pointer; color: var(--text-dim); }
 
@@ -1696,6 +1718,7 @@ body.dv-open .app-content { padding-right: calc(var(--dv-panel-width) + 16px); }
 @media (max-width: 900px) {
     .dv-inspector { top: auto; left: 0; width: auto; height: 45vh; padding-top: 14px; border-left: 0;
         border-top: 1px solid var(--border); }
+    .dv-resize-handle { display: none; }
     body.dv-open { --content-width: min(1400px, 95vw); }
     body.dv-open .app-content { padding-right: 16px; padding-bottom: calc(45vh + 16px); }
 }
