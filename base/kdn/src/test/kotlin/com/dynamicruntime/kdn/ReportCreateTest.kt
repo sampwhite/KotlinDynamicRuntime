@@ -228,7 +228,7 @@ class ReportCreateTest : StringSpec({
         // A global report is the deployment's, declared in source code.
         ReportService.get(cxt).forClient(client).reports.keys.firstOrNull { it.contains(':') }?.let { global ->
             chief.expectError(EXC.badInput, UADEP.reportRemove, mapOf(RRUN.reportId to global))[EP.errorMessage].toString() shouldContain
-                "declared in source code"
+                "declared in code"
         }
     }
 

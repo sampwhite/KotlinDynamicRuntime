@@ -206,7 +206,7 @@ class ClientDefinitionEditTest : StringSpec({
         val full = TestUser.createFullAdmin(cxt, "full@$client.test")
         // The full administrator's own client is declared in source code: edited there.
         full.expectError(EXC.badInput, UADEP.clientDefinitionSet, mapOf(CLD.client to full.selfClient(), CLD.name to "X"))
-            .toString() shouldContain "source code"
+            .toString() shouldContain "is defined in code"
         // A sandbox's definition is its parent's, so a save named for it is a draft of the parent's (issue #1358).
         full.postData(UADEP.clientDefinitionSet, mapOf(CLD.client to sandboxOf(client), CLD.name to "X"))[CPY.mode] shouldBe EDM.draft
         present(sandboxOf(client)).name shouldBe "X (sandbox)"

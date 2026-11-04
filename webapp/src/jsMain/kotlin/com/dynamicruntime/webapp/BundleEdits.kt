@@ -46,7 +46,9 @@ class BundleEditGate(val editable: Boolean, val note: String?, val sandbox: Stri
  */
 fun bundleEditGate(row: ClientOverview?): BundleEditGate = when {
     row == null -> BundleEditGate(false, null)
-    row.staticHere -> BundleEditGate(false, "This client takes no configuration made in the app on this server, so there is nothing to edit here.")
+    row.staticHere -> BundleEditGate(
+        false, "This client takes no configuration made in the app on this server, so there is nothing to edit here.",
+    )
     row.hasSandbox && row.sandboxOf == null -> BundleEditGate(false, null, sandboxOf(row.clientId))
     else -> BundleEditGate(true, null)
 }

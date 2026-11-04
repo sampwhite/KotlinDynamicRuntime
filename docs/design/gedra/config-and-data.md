@@ -178,7 +178,7 @@ The mechanism is namespace ownership, not a separate store per client:
   of the template's configs **in code**, filed under the client. The copy keeps the template's namespace, so no type is
   renamed and a `$ref` inside the template's types still resolves, and the template keeps owning that namespace, so
   the client cannot author into it. Because the copy is the client's own config, an entry the client stores against a
-  template trait resolves against the client. A template's configured overlays are never copied.
+  template trait resolves against the client. A template's configuration made in the app is never copied.
 
 Global names are owned by **root** (#950): every component declares the owner root its namespaces live under --
 core's one root is `kdr` (`kdr.core`, `kdr.gedra`, ...) -- and a module or config under another owner's root says

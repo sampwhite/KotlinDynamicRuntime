@@ -220,7 +220,7 @@ val ClientUsagesSection = FC<ClientUsagesSectionProps> { props ->
                                     span {
                                         className = ClassName("type-hint")
                                         title = column.notEditable
-                                        +"Not stored here"
+                                        +"Not edited here"
                                     }
                                 }
                             }

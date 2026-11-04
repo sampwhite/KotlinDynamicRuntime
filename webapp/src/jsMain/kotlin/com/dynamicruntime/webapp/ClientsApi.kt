@@ -166,8 +166,8 @@ fun sandboxWayBackTarget(row: ClientOverview?, acrossClients: Boolean, inSandbox
 }
 
 /**
- * The detail's Sandbox section for [row] (issue #932). A sandbox says whose it is; a client defined in source code
- * says its flag is set there; a stored, present client offers adding or removing one, saying what follows. Pure,
+ * The detail's Sandbox section for [row] (issue #932). A sandbox says whose it is; a client defined in code
+ * says its flag is set there; a configured, present client offers adding or removing one, saying what follows. Pure,
  * and covered under `jsNodeTest`.
  */
 fun sandboxControl(row: ClientOverview): SandboxControl {
@@ -207,7 +207,7 @@ class RetirementControl(val text: String, val retire: Boolean?)
 /**
  * The detail's Retirement section for [row], for an administrator who sees every client (issue #1182). The action is
  * offered only where the backend's switch (`/admin/client/retirement/set`, #1111) can take it, and each place it
- * cannot says why in the backend's terms: a sandbox goes with its parent, a client defined in source code is retired
+ * cannot says why in the backend's terms: a sandbox goes with its parent, a client defined in code is retired
  * there, a customer's root waits for another root, and a definition whose configuration [storedConfig] has unpublished
  * changes ([configs] say so) would publish them. Pure, and covered under `jsNodeTest`.
  */
@@ -966,7 +966,7 @@ const val configurationSetNote = "(set in its configuration)"
  * Who sets [field], said beside its read-only value (issue #1116), or null when the caller edits it here: the
  * platform's, for a client's own administrator ([platformSetNote]); and for an administrator who sees every client,
  * a platform field the editor does not offer -- the customer, the template -- which a configuration write sets
- * ([configurationSetNote]), and the static lock and the web resources package (issue #1301), which only source code
+ * ([configurationSetNote]), and the static lock and the web resources package (issue #1301), which only code
  * sets ([sourceSetNote]). Read from the field's
  * policy, so the editor and the notes cannot disagree. Pure, and covered under `jsNodeTest`.
  */
@@ -1678,7 +1678,7 @@ fun bundleAction(row: ClientOverview?, bundle: ConfigSummaryView): BundleAction 
 }
 
 /**
- * What the Stored configuration table offers for a **group** of bundles (issue #1353): rows select, and the bar above
+ * What the Configuration table offers for a **group** of bundles (issue #1353): rows select, and the bar above
  * acts on the selection. [BundleAction.publish] when this page publishes, [BundleAction.checkImpact] when a
  * selection's impact can be checked here (on a client with a sandbox, check only: it publishes from the sandbox), and
  * the [BundleAction.note] -- with [BundleAction.sandboxClient] to link to -- that once sat on every row. Read off any one draft's [bundleAction], since every

@@ -104,7 +104,7 @@ class StoredOverlayRepairTest : StringSpec({
         GedraConfigService.get(cxt).writeConfig(writer(cxt, client), config)
         val result = GedraConfigReload.reloadClient(cxt, client)
         result.loaded shouldBe 0
-        result.issues.single().message shouldContain "which is not defined in source"
+        result.issues.single().message shouldContain "which is not defined in code"
         ClientService.get(cxt).known(client) shouldBe null
     }
 

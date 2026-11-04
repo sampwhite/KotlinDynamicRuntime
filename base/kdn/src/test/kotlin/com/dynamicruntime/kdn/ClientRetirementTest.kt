@@ -99,7 +99,7 @@ class ClientRetirementTest : StringSpec({
     }
 
     "a source client, a sandbox, and a customer's root are not retired here" {
-        refusal(CL.hub) shouldContain "is defined in source code, so it is retired there"
+        refusal(CL.hub) shouldContain "is defined in code, so it is retired there"
         refusal(sandboxOf("ret1111")) shouldContain "it is retired with its parent"
         val root = "rootco1111"
         operator.postData(ADEP.clientCreate, createBody(root) + (CLD.newCustomer to mapOf(CUST.name to "Rootco")))

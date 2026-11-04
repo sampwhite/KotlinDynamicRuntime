@@ -56,7 +56,7 @@ fun clientOverviewSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CLD.overvie
         property(
             CLD.storedConfigs,
             "How many stored configurations this node loaded for the client: its own definition when stored, or " +
-                "overlays on a definition from source.",
+                "overlays on a definition in code.",
             required = true,
         ) { type = SCT.integer }
         property(CLD.sandboxOf, "When the client is a sandbox (issue #932): the client whose sandbox it is; absent otherwise.")

@@ -106,8 +106,8 @@ class ClientCreateEndpointTest : StringSpec({
     "an id that is taken is a 409, whoever holds it" {
         val client = "taken1054"
         admin.postData(ADEP.clientCreate, body(client))[CLD.present] shouldBe true
-        refusal(EXC.conflict, body(client)) shouldContain "already exists: it is defined in stored configuration"
-        refusal(EXC.conflict, body(CL.hub)) shouldContain "defined in source code"
+        refusal(EXC.conflict, body(client)) shouldContain "already exists: it is a configured client"
+        refusal(EXC.conflict, body(CL.hub)) shouldContain "already exists: it is defined in code"
         // Nothing of the refused create was written over what is there.
         ClientService.get(cxt).present(client).shouldNotBeNull().name shouldBe "Created $client"
 
@@ -128,8 +128,8 @@ class ClientCreateEndpointTest : StringSpec({
     "an id differing from a taken one only by case is a 409, and a bundle defining one is refused (issue #1106)" {
         val client = "case1106"
         admin.postData(ADEP.clientCreate, body(client))[CLD.present] shouldBe true
-        refusal(EXC.conflict, body("Case1106")) shouldContain "'case1106' is defined in stored configuration, and two client ids may not differ only by case"
-        refusal(EXC.conflict, body("HUB")) shouldContain "'hub' is defined in source code"
+        refusal(EXC.conflict, body("Case1106")) shouldContain "'case1106' is a configured client, and two client ids may not differ only by case"
+        refusal(EXC.conflict, body("HUB")) shouldContain "'hub' is defined in code"
         ClientService.get(cxt).known("Case1106") shouldBe null
 
         // Stored configuration that never made a client holds its id up to case too.

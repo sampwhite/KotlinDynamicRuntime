@@ -222,8 +222,8 @@ later schema rejects" test.
 - **Code may file an overlay under a sandbox** (issue #940): a config built with `client = sandboxOf(parent)`
   and the **parent's** namespace (`clientNamespace(parent)`), which the sandbox runs and the parent does not -- a
   per-client feature flag, promoted by moving it into the parent's code. It layers above the parent's code and
-  below its stored revisions (so a configured copy or menu change wins over the overlay's); only a configured or
-  imported config under a sandbox is refused. An overlay for a parent without the `sandbox` flag is reported on the
+  below its stored revisions (so a configured copy or menu change wins over the overlay's); only a config made in the app,
+  or imported, under a sandbox is refused. An overlay for a parent without the `sandbox` flag is reported on the
   parent and not loaded, and one repeating the parent's code is reported. `SandboxOverlayTest.kt` is the reference.
 - **The sample's acme has a sandbox** (issue #994), so it is published-only: a sample test that stores config for
   acme -- through an editor or `writeConfig` -- publishes it before asserting what acme serves (`publishAcme` in the

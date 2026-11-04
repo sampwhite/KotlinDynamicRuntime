@@ -193,7 +193,8 @@ anyway.
 `GET /clientAdmin/client/overrides` (`ClientsApi.overrides`, parsed by the pure `parseClientOverrides`; the wire
 names are the kernel's `COV`). Each copy row says who set the key -- `config (code|configured)`, `setByText` (the
 origin worded by `originWord`), or `config (template <id>)` for a value the client inherits from the template it
-extends, issue #945 -- the shipped value, and for a configured change over the client's own value in code that value;
+extends, issue #945 -- the shipped value, and, for a configured change over a value the client's code sets, that code
+value;
 an orphan is a key no shipped file declares, so its value is never read. The copy is drawn by the file view below;
 the interface items the client changes are a table (`menuChangeText`: added, hidden, shown, renamed, reordered;
 `blockValueText`; the shipped label rides on the row as `baseLabel`, so a row that only hides an item still names it;
@@ -203,7 +204,8 @@ cut before it, since a cut through a link would show its syntax. The listing's *
 (`customizedText`, "3 copy, 2 menu" -- "menu" because every block a client can overlay today is one) and links to
 the detail; an `allClients` administrator also gets **Copy & menu across clients** (`ov=1` on the same route,
 `overridesAcrossHref`): one retrieve per listed client, grouped by the pure `overridesAcrossClients` into
-file-or-block → key → the clients overriding it. A scoped administrator has one client and is never shown that view, whatever the address says.
+file-or-block → key → the clients overriding it. A scoped administrator has one client and is never shown that view,
+whatever the address says.
 
 **How a save takes effect, said before and sent with it** (issues #930, #1176, #1191). Every editor on a client's
 page that saves its configuration -- the copy, the menu, the definition, the traits, the workflows, the files -- is live at once for a client

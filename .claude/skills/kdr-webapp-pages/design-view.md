@@ -6,7 +6,7 @@ definition behind it, where it was declared, and its authored JSON, and the fiel
 as hatched ghosts saying why. A field's copy -- label, description, hint -- can be edited there as **this workflow's
 own** (issue #984, `WorkflowCopyEditor`): the edit is written into the workflow's stored definition as an alteration
 of the field's type, shows on that workflow's pages only, and **Reset to shared** removes it. It is offered only
-where the workflow is the client's own stored definition; elsewhere the inspector says why, from the block's
+where the workflow is the client's own configured definition; elsewhere the inspector says why, from the block's
 `editRefusal`. **A Design View save is made as the Clients page's editors make theirs** (`ClientStoredEdit`, issue
 #1026): published and live at once for a client without a sandbox -- so it is refused while the config carries
 somebody's unpublished changes (`unpublishedChanges`) -- and a draft of the parent's config, shown by the sandbox, for
@@ -24,7 +24,7 @@ inherit a later relabel. The editor keeps the list's order rather than offering 
 
 The **shared definition** -- what every workflow on the client draws -- is edited separately (issue #1029,
 `SharedFieldSection`), behind a deliberate **Edit the shared definition** button and never as an option beside a
-workflow's Save. It is offered for a definition the client declares in its own stored configuration, and says first
+workflow's Save. It is offered for a definition the client declares in its own configuration, and says first
 where it is used ("Used by 2 workflows: …") and which workflows keep their own copy of the field. It edits the
 field's copy and its choices -- relabel, add or remove one; a changed value is a removal and an addition. A save that
 removes a choice is checked against the forms the client stores (issue #1040, #935's impact report, on any tier) and
@@ -42,7 +42,7 @@ client shares and what is this client's own, however it was assembled.
 **Shared wording** (issue #1010, `SharedWordingSection`): field copy **pulled from a fragment file** --
 `%{@t("questionnaire.topicHelp")}` in a label, description or hint -- is edited at its key, as the client's copy
 override (#918, the Clients page's `/clientAdmin/client/copy/set` and `/reset`), so the change reaches everywhere the
-key is used, in every workflow. It is offered whatever the definition's origin -- a global or source-declared
+key is used, in every workflow. It is offered whatever the definition's origin -- a global or code-declared
 definition included, which nothing else in Design View can edit -- since an override is the client's own data. It
 keeps the rule every Design View save keeps (#1026): a client with a sandbox changes its wording from the sandbox,
 where the draft shows, so its own page shows the words with the reason (`DSV.sharedWordingRefusal`). The
@@ -71,7 +71,7 @@ title or no introduction. The Introduction box keeps what is typed and trims onl
 introduction that pulls a fragment key is shared wording (`DSV.pulledLabels`, `DSV.pulledHeadings`,
 `DSV.pulledIntros`); the shared editor shows such a heading or introduction as shared wording and sends it back as
 written, so saving the other never replaces it. It is edited at the
-key in the same `SharedWordingSection` a field's copy uses -- whatever the workflow's origin, so a source-declared
+key in the same `SharedWordingSection` a field's copy uses -- whatever the workflow's origin, so a code-declared
 workflow's pulled labels (the sample's acme `createForm`) are editable there -- and never overwritten with literal text
 by the label or heading editor. What the inspector says the page shows is read from the view, never from the selection,
 which predates any save's re-read.

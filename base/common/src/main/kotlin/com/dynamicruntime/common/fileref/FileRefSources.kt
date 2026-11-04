@@ -82,7 +82,7 @@ class StoreFileSource : FileRefSource {
     override fun defProblem(def: FileRefDef, ref: String): String? = when {
         !def.stored ->
             "$ref is declared in code and names bytes in the file store. Those are in one deployment's " +
-                "store, and source configuration runs on every machine, so only stored configuration may hold such " +
+                "store, and configuration in code runs on every machine, so only configuration made in the app may hold such " +
                 "a ref; one in code names a local file."
         !FREF.isHash(def.hash.orEmpty()) ->
             "$ref has the hash '${def.hash.orEmpty()}', which is not one: a SHA-256 is ${FREF.hashLength} lowercase hex characters."

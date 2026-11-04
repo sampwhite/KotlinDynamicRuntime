@@ -17,10 +17,10 @@ the plan as it was written before any of that, kept for its reasoning.
 **Configured and code-defined clients** (issue #1570). A client is one of two kinds, named for where it is defined:
 
 - A **configured client** is defined by configuration made in the app: its definition and its parts are rows,
-  changed on the Clients page, drafted in a sandbox, and published. One may be built on a code-defined client
-  (`extendsFromClientId`).
+  changed in the app (the Clients page, the bundle editor, the API) -- as drafts published later when it has a
+  sandbox, live at once when it does not. One may be built on a code-defined client (`extendsFromClientId`).
 - A **code-defined client** is declared by a component in code, and changes with a release. It may also carry
-  configured overlays, which the Clients page shows as "Code + 2 configured".
+  configured overlays, which the Clients page counts: "Code + N configured", such as "Code + 2 configured".
 
 The code says `GedraConfigOrigin.stored` and `GedraConfigOrigin.source`; the UI says "Configured" and "Code".
 
@@ -60,8 +60,8 @@ For the client configuration itself, the client has the following attributes.
   that read as one to a person, so a create is refused (409) for an id another client holds up to case, and the
   load drops the later of two such definitions -- a reload's own client being the later -- as it does any other
   refused definition. How strictly follows where the definition came from (issue #839): one in code is
-  strict outside production, and one in stored configuration is forgiven, dropped with a warning, everywhere but
-  the unit tests.
+  strict outside production, and one made in the app (stored configuration) is forgiven, dropped with a warning,
+  everywhere but the unit tests.
 * `description` - An optional internal description for humans to understand who, what, or why for the client.
 * `usageType` - An enum list of usage purposes for the client which may grow over time. Some new behaviors
   or features may condition themselves on the usage type to control visibility of changes. 

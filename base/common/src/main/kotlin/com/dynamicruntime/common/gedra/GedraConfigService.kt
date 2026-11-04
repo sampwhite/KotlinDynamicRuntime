@@ -378,7 +378,7 @@ class GedraConfigService : ServiceInitializer {
         // a stored definition claiming it would describe a client with no definition there at all.
         if (config.client?.staticConfig == true) {
             throw KdrException.mkInput(
-                "Config '${config.gedraId}' sets staticConfig, which only a client's source definition may: a static " +
+                "Config '${config.gedraId}' sets staticConfig, which only a client's definition in code may: a static " +
                     "client takes nothing from the database in production.",
             )
         }
@@ -386,8 +386,8 @@ class GedraConfigService : ServiceInitializer {
         // is a package a component ships, which a stored definition has no way to vouch for.
         config.client?.webResourcesId?.let { named ->
             throw KdrException.mkInput(
-                "Config '${config.gedraId}' names the web resources package '$named', which only a client's source " +
-                    "definition may. A client defined in data presents the package of the template it extends, if any, " +
+                "Config '${config.gedraId}' names the web resources package '$named', which only a client's " +
+                    "definition in code may. A configured client presents the package of the template it extends, if any, " +
                     "and its own images are uploaded on the Clients page.",
             )
         }
@@ -881,8 +881,8 @@ class GedraConfigService : ServiceInitializer {
     private fun requireNotStaticHere(cxt: KdrCxt, client: String, what: String) {
         if (isStaticHere(cxt, client)) {
             throw KdrException.mkInput(
-                "Client '$client' is statically configured: in production its configuration comes from source " +
-                    "alone, so $what is refused. Change it outside production and bring it into source.",
+                "Client '$client' is statically configured: in production its configuration comes from code " +
+                    "alone, so $what is refused. Change it outside production and bring it into code.",
             )
         }
     }

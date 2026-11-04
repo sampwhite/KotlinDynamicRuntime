@@ -408,7 +408,7 @@ the database. The reset then, after asking:
 
 **The buckets themselves stay.** The application never creates one, and it refuses to start without them.
 
-**The web assets of clients defined in source stay too.** The sample's Acme is one. A client's favicon and brand mark
+**The web assets of clients defined in code stay too.** The sample's Acme is one. A client's favicon and brand mark
 live only in the file store, and a reset brings such a client back with the same id, so its images come back with it.
 A client created on the site is not brought back, so its images go with everything else.
 

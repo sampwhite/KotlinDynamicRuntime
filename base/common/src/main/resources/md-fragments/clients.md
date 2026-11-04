@@ -51,9 +51,9 @@ What the platform sets about the client. A client's own administrator sees these
 # +whatIsThis
 Where the client is defined, and where it runs.
 
-- **Definition** says where the client's definition comes from: **code**, which changes with a release of the
-  application, or **configured**, made in the app and changed on this page. A code-defined client may have
-  configuration of its own on top: "Code + 2 configured".
+- **Definition** reads **Code**, for a client defined in code, which changes with a release of the application, or
+  **Configured**, for one made in the app and changed on this page. A code-defined client may have configuration of
+  its own on top: "Code + 2 configured".
 - **Enabled in** lists the environments that load the client, such as `local` and `production`.
 - **Static config** means that in production the client takes no configuration made in the app, only what its code
   says. Elsewhere it is edited as any client is, and the changes are brought into its code.

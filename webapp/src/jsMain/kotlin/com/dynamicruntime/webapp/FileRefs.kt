@@ -559,7 +559,8 @@ fun fileRefRemovedNote(change: FileRefChange): String {
     }
     val done = when {
         left == null -> "Removed '${change.refId}'."
-        left.stored -> "Removed one entry of '${change.refId}'; another configuration${left.configName?.let { ", $it," }.orEmpty()} still holds one."
+        left.stored ->
+            "Removed one entry of '${change.refId}'; another configuration${left.configName?.let { ", $it," }.orEmpty()} still holds one."
         else -> "Removed the upload of '${change.refId}': the image the client was shipped with is shown again."
     }
     return if (change.mode == EDM.draft) "$done A draft: the sandbox shows the change, and the client's people keep what they have until it is published." else done
