@@ -38,6 +38,12 @@ interface CtaFilterFn : WfFunction {
      */
     val possibleFilters: List<String>
 
+    /**
+     * The traits this function reads from the form, for the resolution pass to hold to the client's traits: any trait of
+     * the form, not only the task's own, since what routes a CTA (a region, say) is usually collected earlier.
+     */
+    val readTraits: Set<String>
+
     companion object {
         /**
          * Narrows a resolved [WfFunction] to a [CtaFilterFn]. The resolution pass already checked the kind, so a
@@ -124,7 +130,17 @@ fun ctaAssignment(cxt: KdrCxt, registry: CFactRegistry, workflowId: String, task
         }
         false
     }
-    // A keyword is held to the closed list as a task's own is; a function's that is not one is dropped, not stored.
-    val keyword = params.keyword?.takeIf { it in CTAK.all } ?: task.ctaKeyword
+    // A keyword is held to the closed list as a task's own is; a function's that is not one is dropped, with a warning
+    // as a bad filter is, and the task's own stands.
+    val keyword = params.keyword?.takeIf { keyword ->
+        (keyword in CTAK.all).also { known ->
+            if (!known) {
+                LogSchema.warn(cxt) {
+                    "Workflow '$workflowId' task '${task.id}' concluded the keyword '$keyword', which is not a search keyword " +
+                        "(${CTAK.all.joinToString(", ")}). Not storing it."
+                }
+            }
+        }
+    } ?: task.ctaKeyword
     return CtaAssignment(keyword, filter, filter?.let { params.label })
 }

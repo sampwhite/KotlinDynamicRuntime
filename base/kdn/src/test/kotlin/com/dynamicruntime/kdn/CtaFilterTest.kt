@@ -26,6 +26,7 @@ import com.dynamicruntime.common.gedra.workflow.ctaFilterByValue
 import com.dynamicruntime.common.gedra.workflow.userHasLabel
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.naming.clientNamespace
+import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.user.ADF
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.user.UADEP
@@ -48,15 +49,23 @@ class CtaFilterTest : StringSpec({
     val cxt = TestInstances.default("ctaFilter1594")
     val svc = GedraConfigService.get(cxt)
 
-    fun CtaFilterByValueBuilder.regions(northwest: String) {
+    fun CtaFilterByValueBuilder.regions(northwest: String, path: String = "region") {
         trait = "site"
-        valuePath = "region"
+        valuePath = path
         case("northwest", northwest, "Waiting on a Northwest reviewer")
         case("south", "reviewerSouth", "Waiting on a South reviewer")
+        otherwise("reviewerNorthwest,reviewerSouth", "Waiting on a reviewer of both regions")
     }
 
-    /** Writes [client]'s configuration with the site review, its approval's filter from [filters], and reloads it. */
-    fun store(client: String, filters: CtaFilterByValueBuilder.() -> Unit = { regions("reviewerNorthwest") }) {
+    /**
+     * Writes [client]'s configuration with the site review, its approval's filter from [filters], and anything [more]
+     * adds, and reloads it.
+     */
+    fun store(
+        client: String,
+        filters: CtaFilterByValueBuilder.() -> Unit = { regions("reviewerNorthwest") },
+        more: GedraConfigBuilder.() -> Unit = {},
+    ) {
         val config = gedraConfig(cxt, "${client}cfg", clientNamespace(client), client) {
             defineClient(
                 ClientDef(
@@ -68,23 +77,28 @@ class CtaFilterTest : StringSpec({
             cfact("reviewerSouth", "Review", "The viewer reviews the South region's sites.")
             cfact("visitApproved", "Review", "A reviewer approved the visit.")
             cfact("flagged", "Review", "A fact about the form, not the person.")
-            trait("SiteEntry", "site", setOf(GedraDataType.formDoc), "The site visited.") { property("region", "Its region.") }
+            trait("SiteEntry", "site", setOf(GedraDataType.formDoc), "The site visited.") {
+                property("region", "Its region.")
+                property("areas", "The regions it spans.") { type = SCT.array; items { type = SCT.string } }
+            }
             trait("NotesEntry", "notes", setOf(GedraDataType.formDoc), "What was seen.") { property("text", "The notes.") }
             trait("FollowUpEntry", "followUp", setOf(GedraDataType.formDoc), "What happens next.") { property("plan", "The plan.") }
             siteReview(filters)
+            more()
         }
         svc.writeConfig(cxt.mkSubContext("setup", client).also { it.userId = 15940L }, config)
         GedraConfigReload.reloadClient(cxt, client)
     }
 
-    fun site(region: String) = mapOf(GE.traitId to "site", GE.data to mapOf("region" to region))
+    fun site(region: String, areas: List<String> = emptyList()) =
+        mapOf(GE.traitId to "site", GE.data to mapOf("region" to region, "areas" to areas))
 
     class Form(val owner: TestUser, val gid: String)
 
     /** A form of a new owner's in [client], at [region], engaged with the site review. */
-    fun engagedForm(client: String, region: String): Form {
+    fun engagedForm(client: String, region: String, areas: List<String> = emptyList()): Form {
         val owner = TestUser.create(cxt, "owner@$client.test", userClient = client)
-        val gid = owner.postItem(GEP.formDocCreate, mapOf(GDF.entries to listOf(site(region))))[GDF.gedraId].toOptStr()!!
+        val gid = owner.postItem(GEP.formDocCreate, mapOf(GDF.entries to listOf(site(region, areas))))[GDF.gedraId].toOptStr()!!
         owner.postData(GEP.workflowEngage, mapOf(GDF.gedraId to gid, WFD.workflowId to "siteReview"))
         return Form(owner, gid)
     }
@@ -167,17 +181,64 @@ class CtaFilterTest : StringSpec({
         reviewState(form)[WFS.ctaFilter] shouldBe "reviewerNorthwest"
         // Northwest's sites go to the South's reviewers now; the stored filter stands until the state is recomputed --
         // by the form's next write, the batch job, or (here) the recompute the job runs, one form at a time.
-        store(client) { regions("reviewerSouth") }
+        store(client, filters = { regions("reviewerSouth") })
         reviewState(form)[WFS.ctaFilter] shouldBe "reviewerNorthwest"
         form.owner.postData(GEP.formDocRecomputeState, mapOf(GDF.gedraId to form.gid))
         reviewState(form)[WFS.ctaFilter] shouldBe "reviewerSouth"
+    }
+
+    "a value no case lists falls to otherwise, so a gap in the cases never opens the approval to every reviewer" {
+        val client = "ctaotherwise1594"
+        store(client)
+        val form = engagedForm(client, "east")
+        saveNotes(form)
+        reviewState(form).let {
+            it[WFS.ctaFilter] shouldBe "reviewerNorthwest,reviewerSouth"
+            it[WFS.ctaFilterLabel] shouldBe "Waiting on a reviewer of both regions"
+        }
+    }
+
+    "a list value chooses the first case any of its values matches" {
+        val client = "ctalist1594"
+        store(client, filters = { regions("reviewerNorthwest", path = "areas") })
+        val form = engagedForm(client, "", areas = listOf("east", "south"))
+        saveNotes(form)
+        reviewState(form)[WFS.ctaFilter] shouldBe "reviewerSouth"
+    }
+
+    "a function reading a trait the client does not have, or without otherwise, is reported" {
+        // A misspelled trait would never match, routing every form the same way; refused rather than quietly wrong.
+        shouldThrow<KdrException> { store("ctabadtrait1594", filters = { regions("reviewerNorthwest"); trait = "sites" }) }
+            .message.orEmpty() shouldContain "reads trait(s) [sites]"
+        // A function with no otherwise would leave a gap in its cases open to everyone saveWhen admits.
+        shouldThrow<KdrException> {
+            store("ctanootherwise1594", filters = {
+                trait = "site"
+                valuePath = "region"
+                case("northwest", "reviewerNorthwest")
+            })
+        }.message.orEmpty() shouldContain "otherwise"
+    }
+
+    "a ctaFilter function on a core details workflow's task is reported: only a normal workflow has a call to action" {
+        shouldThrow<KdrException> {
+            store("ctacoredetails1594", more = {
+                workflow("siteDetails", WfEntry.coreDetails) {
+                    task("site", "The site") {
+                        trait("site")
+                        save("saveSite", "Save", WfSaveKind.edit)
+                        function(ctaFilterByValue { regions("reviewerNorthwest") })
+                    }
+                }
+            })
+        }.message.orEmpty() shouldContain "only a normal workflow's task has"
     }
 
     "a filter naming a fact that is not about the person is reported, and never stored" {
         val client = "ctabadfilter1594"
         // `flagged` is a fact about the form: a listing could not evaluate it without the form. In a unit test, where
         // configuration is strict, the report refuses the reload.
-        shouldThrow<KdrException> { store(client) { regions("flagged") } }.message.orEmpty().let {
+        shouldThrow<KdrException> { store(client, filters = { regions("flagged") }) }.message.orEmpty().let {
             it shouldContain "ctaFilterByValue"
             it shouldContain "'flagged'"
             it shouldContain "not facts about the person"

@@ -167,9 +167,11 @@ later schema rejects" test.
   - **What a task's call to action carries** (issue #1594): `keyword(CTAK.review)` in a task block declares its
     search keyword, and an approval task carries `review` without it. Who may act on it comes from a `ctaFilter`
     function on the task, `function(ctaFilterByValue { trait = "site"; valuePath = "region"; case("northwest",
-    "reviewerNorthwest", "Waiting on a Northwest reviewer") })`: a value in the form's data chooses a filter. A filter
-    may name only facts about the person -- the request's, or a cfact a `userHasLabel` on the **same task** emits --
-    and the load reports any other, which a unit test sees as a refused `reloadClient`. Both are stored with the CTA
+    "reviewerNorthwest", "Waiting on a Northwest reviewer"); otherwise("reviewerLead") })`: a value in the form's data
+    chooses a filter, and `otherwise` (required) decides when none matches, so a gap never opens the task to everyone
+    `saveWhen` admits. A filter may name only facts about the person -- the request's, or a cfact a `userHasLabel` on
+    the **same task** emits -- and the function may read only traits the client has; the load reports anything else,
+    which a unit test sees as a refused `reloadClient`. Both are stored with the CTA
     in the workflow's state (`WFS.ctaKeyword`, `WFS.ctaFilter`, `WFS.ctaFilterLabel`) and recomputed with it.
     `CtaFilterTest` (kdn) is the reference.
   - **A workflow made from a template** (issue #1120): `workflowFromMap(mapOf(WFD.workflowId to "mine", WFD.fromTemplate

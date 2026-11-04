@@ -36,7 +36,10 @@ object CFV {
     /** Under a [cases] entry, or [otherwise]: the filter's label, a template saying who the CTA waits on. */
     const val label = "label"
 
-    /** The `{filter, label?}` used when no case matches, or the value is absent; with none, no filter is set. */
+    /**
+     * The `{filter, label?}` used when no case matches, or the value is absent. Required, so a gap in the cases -- a
+     * blank or unlisted value, a misspelled path -- leaves the CTA to whoever the author chose, never open to everyone.
+     */
     const val otherwise = "otherwise"
 
     /** The search keyword ([CTAK]) to set, whatever the value. Optional. */
@@ -55,30 +58,38 @@ class CtaFilterChoice(val value: String?, val filter: String, val label: String?
 /**
  * The first `ctaFilter` executor (issue #1594): read a trait entry's data at a path, and set the CTA filter of the
  * first case whose value matches -- "the reviewer for this form's region", where a `region` field's `northwest` chooses
- * `reviewerNorthwest`, a cfact a `userHasLabel` function on the task emits for the region's reviewers. With no match,
- * or no value yet, [otherwise] decides, or no filter is set and the task's `saveWhen` alone says who may act. It may
- * also set a search keyword, whatever the value.
+ * `reviewerNorthwest`, a cfact a `userHasLabel` function on the task emits for the region's reviewers. A value that is
+ * a list (a multi-select field, a spread path) chooses the first case any of its values matches. With no match, or no
+ * value yet, [otherwise] decides: it is required, so a gap in the cases never falls back to `saveWhen` alone, which
+ * would open the CTA to everyone it admits. It may also set a search keyword, whatever the value.
  *
- * Every filter it can set is known from its definition, so the resolution pass holds each to the person's facts before
- * it ever runs ([possibleFilters]).
+ * Every filter it can set, and the trait it reads, are known from its definition, so the resolution pass holds them to
+ * the person's facts and the client's traits before it ever runs ([possibleFilters], [readTraits]).
  */
 class CtaFilterByValueFn(
     override val priority: Int,
     private val trait: String,
     private val valuePath: String,
     private val cases: List<CtaFilterChoice>,
-    private val otherwise: CtaFilterChoice?,
+    private val otherwise: CtaFilterChoice,
     private val keyword: String?,
 ) : CtaFilterFn {
     override val fn: String = CFV.fn
 
-    override val possibleFilters: List<String> = (cases + listOfNotNull(otherwise)).map { it.filter }
+    override val possibleFilters: List<String> = (cases + otherwise).map { it.filter }
+
+    override val readTraits: Set<String> = setOf(trait)
 
     override fun computeCtaFilter(cxt: KdrCxt, params: CtaFilterParams) {
         keyword?.let { params.setKeyword(it) }
         val entry = params.entries.firstOrNull { it[GE.traitId].toOptStr() == trait }
-        val value = entry?.let { pluckDataPath(it[GE.data].toJsonMapOrEmpty(), valuePath)?.toOptStr() }
-        val chosen = value?.let { v -> cases.firstOrNull { it.value == v } } ?: otherwise ?: return
+        // A list (a multi-select, a spread path) is read as its values, a scalar as one, as computeCFactsFromData does.
+        val values = when (val plucked = entry?.let { pluckDataPath(it[GE.data].toJsonMapOrEmpty(), valuePath) }) {
+            null -> emptySet()
+            is List<*> -> plucked.mapNotNull { it.toOptStr() }.toSet()
+            else -> setOfNotNull(plucked.toOptStr())
+        }
+        val chosen = cases.firstOrNull { it.value in values } ?: otherwise
         params.setFilter(chosen.filter, chosen.label)
     }
 }
@@ -99,7 +110,7 @@ object CtaFilterByValueCreation : WfFunctionCreation {
             trait = m[CFV.trait].toOptStr() ?: "",
             valuePath = m[CFV.valuePath].toOptStr() ?: "",
             cases = m[CFV.cases].toJsonListOfMaps().map { choiceOf(it[CFV.value].toOptStr(), it) },
-            otherwise = (m[CFV.otherwise] as? Map<*, *>)?.let { choiceOf(null, it.toJsonMapOrEmpty()) },
+            otherwise = choiceOf(null, m[CFV.otherwise].toJsonMapOrEmpty()),
             keyword = m[CFV.keyword].toOptStr(),
         )
     }
@@ -138,7 +149,9 @@ object CtaFilterByValueCreation : WfFunctionCreation {
                 allowCoerce = true
                 items { ref(CFV.caseType) }
             }
-            property(CFV.otherwise, "The filter when no case matches; with none, no filter is set.") { ref(CFV.otherwiseType) }
+            property(CFV.otherwise, "The filter when no case matches, or the value is absent.", required = true) {
+                ref(CFV.otherwiseType)
+            }
             property(CFV.keyword, "The search keyword to set, whatever the value.") { CTAK.all.forEach { option(it) } }
         }
     }
@@ -172,7 +185,7 @@ class CtaFilterByValueBuilder {
         cases.add(buildMap { put(CFV.value, value); put(CFV.filter, filter); label?.let { put(CFV.label, it) } })
     }
 
-    /** The filter (and its label) set when no case matches, or the value is absent. */
+    /** The filter (and its label) set when no case matches, or the value is absent. Required: see [CFV.otherwise]. */
     fun otherwise(filter: String, label: String? = null) {
         otherwise = buildMap { put(CFV.filter, filter); label?.let { put(CFV.label, it) } }
     }
