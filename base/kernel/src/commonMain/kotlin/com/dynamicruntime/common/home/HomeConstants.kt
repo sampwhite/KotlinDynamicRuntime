@@ -472,6 +472,12 @@ object HFRAG {
     const val intro = "intro"
     const val note = "note"
 
+    /**
+     * The home page's jump links (issue #1576), a Markdown list under the title: links to its sections by their ids
+     * (`#home.demos`), of which the page keeps those it draws for the caller, and any other link as written.
+     */
+    const val jumpLinks = "jumpLinks"
+
     /** The home file's namespace for the forms listing's copy (issue #791). */
     const val formsNs = "forms"
 

@@ -26,6 +26,15 @@ To read how it is put together, [start here](/docs/start-here.md): it is first u
 Reference section, and says what to read for what you want to do, from trying a demo to having an AI assistant
 configure a client.
 
+/- The shipped jump links with "Start here" before them (issue #1576). A document link is kept for every caller, so a
+   visitor who has not signed in sees it alone. -/
+# +jumpLinks
+- [Start here](/docs/start-here.md)
+- [Try a demo](#home.demos)
+- [Your other accounts](#home.accounts)
+- [Your own client](#home.own-client)
+
+
 # @publicHome
 # +demosIntro
 This is a teaching site: join a demo client to see one from the inside, as an administrator or as one of its people,

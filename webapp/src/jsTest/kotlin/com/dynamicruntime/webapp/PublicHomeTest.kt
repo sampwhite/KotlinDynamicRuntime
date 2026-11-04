@@ -50,4 +50,28 @@ class PublicHomeTest {
         assertEquals(listOf("speaker"), joinedRoles(partly).map { it.name })
         assertTrue(hasRoleToJoin(partly))
     }
+
+    @Test
+    fun theSectionsDrawnAreTheOnesThatHaveSomethingToOffer() {
+        fun config(joinOffered: Boolean, users: List<UserChoice>) = HomeConfig(
+            fragment = FragmentRef("home", "b1"),
+            layout = HomeLayout(topBar = false, leftBar = false, inlineLinks = false),
+            links = emptyList(),
+            menu = emptyList(),
+            user = UserProfile(authId = "a1", client = CL.public),
+            users = users,
+            canManageUsers = false,
+            canSeeAllClients = false,
+            hasCoreDetails = false,
+            sourceRepoBase = null,
+            joinOffered = joinOffered,
+        )
+        val me = UserChoice(1, CL.public, PERSONA.member, isCurrent = true)
+        val other = UserChoice(2, "acme", PERSONA.admin, clientName = "Acme")
+        assertEquals(setOf(HSEC.demos, HSEC.accounts, HSEC.ownClient), publicHomeSections(config(true, listOf(me, other))))
+        // No joining offered: no demos. No other accounts: no accounts list. Your own client is always there.
+        assertEquals(setOf(HSEC.accounts, HSEC.ownClient), publicHomeSections(config(false, listOf(me, other))))
+        assertEquals(setOf(HSEC.demos, HSEC.ownClient), publicHomeSections(config(true, listOf(me))))
+        assertEquals(setOf(HSEC.ownClient), publicHomeSections(config(false, emptyList())))
+    }
 }

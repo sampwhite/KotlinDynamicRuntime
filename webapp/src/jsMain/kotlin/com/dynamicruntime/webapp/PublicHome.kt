@@ -18,11 +18,25 @@ import react.dom.html.ReactHTML.ul
 import react.useEffect
 import react.useState
 import web.cssom.ClassName
+import web.dom.ElementId
 
 private val publicHomeScope = MainScope()
 
 /** Where a switch asked from "Your other accounts" reports its failure; a demo card's is its client id. */
-private const val accountsSection = "#accounts"
+private const val accountsSection = "#" + HSEC.accounts
+
+/**
+ * The ids of the public home page's sections (issue #1576): what the home copy's jump links (`home.jumpLinks`) point
+ * at, as `#home.demos`. Fixed here rather than taken from a heading's text, since the headings are copy and are
+ * reworded. Each has a dot, which the id Markdown gives a heading never has (`headingSlug`), so a heading in the copy
+ * above -- an intro's "Demos", say -- cannot take a section's id.
+ */
+@Suppress("ConstPropertyName")
+object HSEC {
+    const val demos = "home.demos"
+    const val accounts = "home.accounts"
+    const val ownClient = "home.own-client"
+}
 
 /**
  * Whether Home is the public home page (issue #1324): for a caller **signed in** to `public`. A visitor who has not
@@ -32,6 +46,17 @@ fun isPublicHome(user: UserProfile): Boolean = user.isLoggedIn && user.client ==
 
 /** The person's users other than the one the session acts as: what "Your other accounts" lists. Pure. */
 fun otherAccounts(users: List<UserChoice>): List<UserChoice> = users.filterNot { it.isCurrent }
+
+/**
+ * The sections the public home page draws for [config] (issue #1576), by their [HSEC] ids: Try a demo where joining is
+ * offered, Your other accounts where the person has any, and Your own client always. The page draws by it, and the
+ * jump links are kept by it ([jumpLinksFor]), so a link and its section cannot disagree. Pure.
+ */
+fun publicHomeSections(config: HomeConfig): Set<String> = buildSet {
+    if (config.joinOffered) add(HSEC.demos)
+    if (otherAccounts(config.users).isNotEmpty()) add(HSEC.accounts)
+    add(HSEC.ownClient)
+}
 
 /** The roles of [demo] the caller has joined as, each to open. Pure. */
 fun joinedRoles(demo: JoinableView): List<JoinRoleView> = demo.roles.filter { it.userId != null }
@@ -70,6 +95,7 @@ val PublicHome = FC<PublicHomeProps> { props ->
     val bump = useRefreshBump()
     // The copy's links, as a document's are: `/docs/...` to the in-app document, `/wa/...` under the live app root.
     val copyLinks = useShellFacts().copyLinkResolver()
+    val sections = publicHomeSections(config)
 
     useEffect(generation, config.joinOffered) {
         if (!config.joinOffered) return@useEffect
@@ -109,9 +135,10 @@ val PublicHome = FC<PublicHomeProps> { props ->
             }
         }
 
-        if (config.joinOffered) {
+        if (HSEC.demos in sections) {
             div {
                 className = ClassName("public-home-section")
+                id = ElementId(HSEC.demos)
                 copy.opt("publicHome", "demosTitle")?.let { h2 { +it } }
                 copy.opt("publicHome", "demosIntro")?.let { Markdown { source = it; linkResolver = copyLinks } }
                 demosError?.let { errorText("Couldn't read the demo clients.", it) }
@@ -156,10 +183,11 @@ val PublicHome = FC<PublicHomeProps> { props ->
             }
         }
 
-        val others = otherAccounts(config.users)
-        if (others.isNotEmpty()) {
+        if (HSEC.accounts in sections) {
+            val others = otherAccounts(config.users)
             div {
                 className = ClassName("public-home-section")
+                id = ElementId(HSEC.accounts)
                 copy.opt("publicHome", "accountsTitle")?.let { h2 { +it } }
                 copy.opt("publicHome", "accountsIntro")?.let { Markdown { source = it; linkResolver = copyLinks } }
                 ul {
@@ -182,12 +210,16 @@ val PublicHome = FC<PublicHomeProps> { props ->
             }
         }
 
-        CreateOwnClientCard {
-            made = config.selfServeClient
-            madeAbsent = config.selfServeClientAbsent
-            madeName = config.users.firstOrNull { it.client == config.selfServeClient }?.clientName
-            workflowsNote = copy.opt("publicHome", "createClientNote")
-            templates = config.selfServeTemplates
+        // Always drawn ([publicHomeSections]); the wrapper carries the id the jump links point at.
+        div {
+            id = ElementId(HSEC.ownClient)
+            CreateOwnClientCard {
+                made = config.selfServeClient
+                madeAbsent = config.selfServeClientAbsent
+                madeName = config.users.firstOrNull { it.client == config.selfServeClient }?.clientName
+                workflowsNote = copy.opt("publicHome", "createClientNote")
+                templates = config.selfServeTemplates
+            }
         }
     }
 }
