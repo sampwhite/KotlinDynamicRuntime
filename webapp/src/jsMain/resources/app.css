@@ -1032,6 +1032,11 @@ button.wf-cell-more { font-size: .8rem; margin-top: 2px; }
 .wf-help { color: var(--text-muted); margin: 4px 0 8px; }
 .wf-help p, .home-note p { margin: 4px 0; }
 .home-note { margin-top: 12px; }
+/* The home page's jump links (issue #1576): a recessive row of links under the title, wrapping on a phone. */
+.home-jump-links { margin: 6px 0 16px; }
+.home-jump-links ul { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 4px 18px; }
+.home-jump-links li { margin: 0; font-size: 0.95rem; }
+.home-jump-links p { margin: 0; }
 .wf-reasons li { margin: 4px 0; }
 
 /* presentation:table -- an array rendered as rows/columns. */

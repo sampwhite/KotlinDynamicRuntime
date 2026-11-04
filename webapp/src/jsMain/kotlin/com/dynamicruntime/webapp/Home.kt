@@ -120,6 +120,16 @@ val Home = FC<Props> {
                             }
                         }
                         copy.opt(HFRAG.homeNs, HFRAG.title)?.let { h1 { +it } }
+                        // Jump links to what this page offers further down (issue #1576), from the copy, keeping only
+                        // those whose section is drawn for this caller -- none outside the public home page.
+                        val drawn = if (isPublicHome(current.user)) publicHomeSections(current) else emptySet()
+                        jumpLinksFor(copy.opt(HFRAG.homeNs, HFRAG.jumpLinks), drawn)?.let {
+                            nav {
+                                className = ClassName("home-jump-links")
+                                asDynamic()["aria-label"] = "On this page"
+                                Markdown { source = it; linkResolver = copyLinks }
+                            }
+                        }
                         copy.opt(HFRAG.homeNs, HFRAG.intro)?.let { Markdown { source = it; linkResolver = copyLinks } }
                         // A note beneath the intro (issue #1221), empty as shipped: room for a component's own word on
                         // a deployment -- a flavor's, say -- without its competing with whoever rewords the intro.
