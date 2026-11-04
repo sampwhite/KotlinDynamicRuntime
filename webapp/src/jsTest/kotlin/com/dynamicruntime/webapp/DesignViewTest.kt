@@ -18,6 +18,7 @@ import com.dynamicruntime.common.schema.parseSchemaTypes
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -684,6 +685,21 @@ class DesignViewTest {
         // Filtered by name or label.
         assertEquals(listOf("q2"), rows.filter { shownFieldMatches(it, "SECOND") }.map { it.name })
         assertEquals(4, rows.count { shownFieldMatches(it, " ") })
+    }
+
+    @Test
+    fun theSwitchIsOfferedOnlyToACallerTheBackendAnswers() {
+        // A client's administrator, or one of every client: `administersClient` is true for both (issue #1577).
+        assertTrue(designSwitchOffered(ShellFacts(reach = CallerReach(managesUsers = true, administersClient = true))))
+        assertTrue(
+            designSwitchOffered(
+                ShellFacts(reach = CallerReach(managesUsers = true, allClients = true, administersClient = true)),
+            ),
+        )
+        // A `public` administrator manages users but administers no client; the backend would ignore the switch.
+        assertFalse(designSwitchOffered(ShellFacts(reach = CallerReach(managesUsers = true))))
+        assertFalse(designSwitchOffered(ShellFacts(reach = CallerReach(editsClient = true))))
+        assertFalse(designSwitchOffered(ShellFacts()))
     }
 
     @Test

@@ -20,7 +20,10 @@ import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonListOfStrings
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
+import react.ChildrenBuilder
 import react.createContext
+import react.dom.html.ReactHTML.button
+import web.cssom.ClassName
 import react.useEffect
 import react.useRef
 
@@ -46,6 +49,37 @@ private const val designViewStorageKey = "kdrDesignView"
 fun designViewRequested(): Boolean = sessionStorageGet(designViewStorageKey) == DSV.design
 
 fun setDesignViewRequested(on: Boolean) = sessionStorageSet(designViewStorageKey, if (on) DSV.design else "")
+
+/**
+ * Whether the workflow form offers Design View's switch (issue #1577): only to a caller the backend answers --
+ * one who administers a client, their own or every one (`administersClient`, which is `isClientAdministrator`).
+ * A `public` administrator, an editor, or an ordinary user would get a switch that does nothing. Pure, covered under
+ * `jsNodeTest`.
+ */
+fun designSwitchOffered(facts: ShellFacts): Boolean = facts.reach.administersClient
+
+/**
+ * Design View's switch (issues #972, #1577), drawn in the workflow form's header. It names the state and is the
+ * control, as the app bar's chips do. Flipping it bumps the refresh generation ([bump]), and the page's
+ * [useDesignViewReread] then re-reads its view in place, so what has been typed survives.
+ */
+fun ChildrenBuilder.designSwitch(bump: () -> Unit) {
+    val designOn = designViewRequested()
+    button {
+        className = ClassName("design-switch" + if (designOn) " on" else "")
+        asDynamic()["aria-pressed"] = designOn
+        title = if (designOn) {
+            "Design view is on: this form shows what defines each part. Click to turn it off."
+        } else {
+            "Turn on Design view to see what defines each part of this form."
+        }
+        onClick = {
+            setDesignViewRequested(!designOn)
+            bump()
+        }
+        +(if (designOn) "Design on" else "Design")
+    }
+}
 
 /**
  * Re-reads a workflow page's view when Design View is switched while the page is open (issue #972). The view only

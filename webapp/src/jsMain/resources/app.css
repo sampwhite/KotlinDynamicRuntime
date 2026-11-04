@@ -1581,14 +1581,23 @@ textarea.json-edit.json-field { min-height: 4.5rem; }
     cursor: pointer;
 }
 
-.design-badge {
-    border-color: var(--border);
-    border-style: dashed;
+/* Design View's switch (issue #1577), in the workflow form's header: the chip the app bar used to carry, sized to
+   sit among the header's buttons. Dashed while off, the Design View teal while on. */
+.design-switch {
+    padding: 3px 10px;
+    border: 1px dashed var(--border);
+    border-radius: 10px;
     background: transparent;
     color: var(--text-dim);
+    font: inherit;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    white-space: nowrap;
     cursor: pointer;
 }
-.design-badge.on {
+.design-switch.on {
     border-style: solid;
     border-color: var(--design);
     background: var(--design-soft);

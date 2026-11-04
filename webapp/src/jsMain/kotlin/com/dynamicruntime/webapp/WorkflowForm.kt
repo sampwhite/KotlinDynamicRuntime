@@ -158,7 +158,9 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
     val gedraId = props.gedraId
     val isEdit = gedraId != null
     // A link in the workflow's copy to a document opens it in the app (issue #1136).
-    val copyLinks = useShellFacts().copyLinkResolver()
+    val shellFacts = useShellFacts()
+    val copyLinks = shellFacts.copyLinkResolver()
+    val refreshBump = useRefreshBump()
 
     // Seed every task's fields from its current entries (empty for a creation view). Trait ids are unique across
     // a workflow's tasks, so one map serves them all.
@@ -788,6 +790,9 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
                     }
                 }
             }
+            // Design View's switch (issues #972, #1577), last in the row: this header is the one surface the switch
+            // changes, so it sits here rather than in the app bar. Offered only to a caller the backend answers.
+            if (designSwitchOffered(shellFacts)) designSwitch(refreshBump)
         }
 
         // What the core details are (issue #1571): what every form carries, which is not all of its data -- unless the

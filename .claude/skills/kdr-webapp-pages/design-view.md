@@ -1,6 +1,12 @@
 ## Design View: marking a form with the definitions behind it (issue #972)
 
-An administrator's switch in the app bar (`Design`) turns the workflow pages into an annotated view: each trait
+An administrator's switch turns the workflow pages into an annotated view. The switch (`designSwitch`, issue #1577) is
+a chip at the end of the workflow form's header, labeled "Design", or "Design on" while on. It sits there, not in the
+app bar, because that form (New form, and View/Edit form) is the only surface it changes, and the bar holds only what
+describes the session. It is offered only where `designSwitchOffered` says so: to a caller who administers a client
+(the shell's `administersClient`, which is the backend's `isClientAdministrator`, the same check `DesignView.isOn`
+makes), so a `public` administrator or an editor is never handed a switch the server ignores. The raw editor and raw
+view do not draw it. The setting stays in `sessionStorage` from one form to the next. In the annotated view each trait
 block and field is outlined on hover with its id, a click opens a side inspector (`DesignInspector.kt`) with the
 definition behind it, where it was declared, and its authored JSON, and the fields the form leaves out are drawn
 as hatched ghosts saying why. A field's copy -- label, description, hint -- can be edited there as **this workflow's
