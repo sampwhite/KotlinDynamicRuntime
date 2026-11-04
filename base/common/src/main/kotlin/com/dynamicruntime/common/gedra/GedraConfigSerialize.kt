@@ -32,14 +32,15 @@ import com.dynamicruntime.common.util.toOptStr
  *
  * Pure over the model and the stored maps; the database write path (#633) and the boot loader (#614) are what
  * persist and consume what this produces. With [shownAsRun], a workflow made from a template is given as it expands,
- * since what is shown is what runs rather than what would be stored (issue #1616): the bundle editor's code layer.
+ * and config and state traits, which have no slot, are left out rather than refused, since what is shown is what runs
+ * rather than what would be stored (issue #1616): the bundle editor's code layer.
  */
 fun gedraConfigToEntries(config: GedraConfig, shownAsRun: Boolean = false): Map<String, List<Map<String, Any?>>> {
     // A stored config is a client's, and config traits are hardwired by the runtime (#316) -- never authored as
     // data, never on a row. One carrying them cannot be stored faithfully (its slots have no home and their
     // generated types would misfile as directly-declared ones), so refuse it here rather than silently corrupt
     // the round trip. In practice only `coreConfigTraits` itself has any, and it is not something anyone stores.
-    if (config.configTraits.isNotEmpty()) {
+    if (config.configTraits.isNotEmpty() && !shownAsRun) {
         throw KdrException.mkConv(
             "Config '${config.gedraId}' declares config traits (${config.configTraits.keys}), which are hardwired " +
                 "and cannot be stored on a row. Only a client configuration is stored.",
@@ -47,13 +48,18 @@ fun gedraConfigToEntries(config: GedraConfig, shownAsRun: Boolean = false): Map<
     }
     // State traits likewise (issue #873): state is global, declared by components, and a stored config is always
     // a client's -- so there is no slot for one, and a config carrying one is refused rather than stored without.
-    if (config.stateTraits.isNotEmpty()) {
+    if (config.stateTraits.isNotEmpty() && !shownAsRun) {
         throw KdrException.mkInput(
             "Config '${config.gedraId}' declares state traits (${config.stateTraits.keys}). State is global and " +
                 "declared by components, so a client's configuration cannot declare it.",
         )
     }
-    val generated = generatedTypeNames(config)
+    // Shown as run, the types a state or config trait generates are not directly declared ones either.
+    val leftOut = if (!shownAsRun) emptySet() else {
+        config.stateTraits.values.flatMap { listOfNotNull(it.typeName, inlineDataTypeName(config, it)) } +
+            config.configTraits.values.map { it.typeName }
+    }
+    val generated = generatedTypeNames(config) + leftOut
     val out = linkedMapOf<String, List<Map<String, Any?>>>()
     config.client?.let { out[CCT.clientDef] = listOf(it.toInfo()) }
     out[CCT.customerDef] = config.customers.map { it.toInfo() }

@@ -331,31 +331,7 @@ val BundleEditorPage = FC<Props> {
                                 }
                             }
                         }
-                        for (slot in slotsWithDrafts(bundle, ed)) {
-                            div {
-                                key = slot.slot.unsafeCast<Key>()
-                                className = ClassName("bundle-editor-slot")
-                                Disclosure {
-                                    summaryText = slotSummaryText(slot)
-                                    initiallyOpen = slot.entries.isEmpty()
-                                    slotReplacement(shown.replacements, bundle.name, slot.slot)?.let { replacedSet(it, ed) }
-                                    slot.entries.forEachIndexed { i, entry -> entryView(bundle, slot.slot, entry, i, ed) }
-                                    newEntries(bundle.name, slot.slot, ed)
-                                    if (ed.editable && shown.slotKeys[slot.slot].orEmpty().isNotEmpty()) {
-                                        Button {
-                                            size = "small"
-                                            onClick = {
-                                                val (next, _) = ed.edits.adding(
-                                                    bundle.name, slot.slot, newEntryText(shown.slotKeys[slot.slot].orEmpty()), shown.client, portable,
-                                                )
-                                                ed.change(next)
-                                            }
-                                            +"Add entry"
-                                        }
-                                    }
-                                }
-                            }
-                        }
+                        for (slot in slotsWithDrafts(bundle, ed)) slotView(bundle, slot, ed)
                         if (ed.editable) addSlotControl(bundle.name, ed)
                     }
                 }
@@ -398,34 +374,43 @@ val BundleEditorPage = FC<Props> {
  */
 private fun ChildrenBuilder.codeBundleView(code: CodeBundle, ed: EditContext) {
     val bundle = code.asEditorBundle()
-    val from = code.template?.let { "From template $it" } ?: "From code"
+    val readOnly = ed.readOnly()
     div {
         key = "code:${code.name}".unsafeCast<Key>()
         Disclosure {
             summaryText = codeBundleLineText(code)
             p { className = ClassName("type-hint"); +codeBundleNoteText(code) }
             for (slot in editorSlots(bundle, ed.view.slotKeys)) {
-                div {
-                    key = slot.slot.unsafeCast<Key>()
-                    className = ClassName("bundle-editor-slot")
-                    Disclosure {
-                        summaryText = slotSummaryText(slot)
-                        slotReplacement(ed.view.replacements, code.name, slot.slot)?.let { replacedSet(it, ed) }
-                        slot.entries.forEachIndexed { i, entry ->
-                            val data = entry.latest ?: return@forEachIndexed
-                            val keyFields = ed.view.slotKeys[slot.slot].orEmpty()
-                            val replaced = replacementOf(ed.view.replacements, code.name, slot.slot, keyFields, data)
-                            div {
-                                key = "${entry.label}#$i".unsafeCast<Key>()
-                                className = ClassName("bundle-editor-entry")
-                                Disclosure {
-                                    summaryText = listOfNotNull(entry.label, replaced?.let { "replaces the template's" })
-                                        .joinToString(" — ")
-                                    jsonColumn(from, slot.slot, data, ed, withSwitch = true)
-                                    replaced?.let { replacedVersion(it, slot.slot, ed) }
-                                }
-                            }
+                slotView(bundle, slot, readOnly, from = code.template?.let { "From template $it" } ?: "From code")
+            }
+        }
+    }
+}
+
+/**
+ * One slot of [bundle]: what it replaces as a set, its entries, and, where the page edits, its new entries and **Add
+ * entry**. [from] heads each entry's JSON in a code bundle (issue #1616), which holds no revisions and is never edited.
+ */
+private fun ChildrenBuilder.slotView(bundle: EditorBundle, slot: EditorSlot, ed: EditContext, from: String? = null) {
+    div {
+        key = slot.slot.unsafeCast<Key>()
+        className = ClassName("bundle-editor-slot")
+        Disclosure {
+            summaryText = slotSummaryText(slot)
+            initiallyOpen = slot.entries.isEmpty()
+            slotReplacement(ed.view.replacements, bundle.name, slot.slot)?.let { replacedSet(it, ed) }
+            slot.entries.forEachIndexed { i, entry -> entryView(bundle, slot.slot, entry, i, ed, from) }
+            if (ed.editable) {
+                newEntries(bundle.name, slot.slot, ed)
+                val keys = ed.view.slotKeys[slot.slot].orEmpty()
+                if (keys.isNotEmpty()) {
+                    Button {
+                        size = "small"
+                        onClick = {
+                            val (next, _) = ed.edits.adding(bundle.name, slot.slot, newEntryText(keys), ed.view.client, ed.portable)
+                            ed.change(next)
                         }
+                        +"Add entry"
                     }
                 }
             }
@@ -464,6 +449,9 @@ private class EditContext(
     val switchable: Boolean,
     val onPortable: (Boolean) -> Unit,
 ) {
+    /** This context, for what the page never edits: a code bundle (issue #1616). */
+    fun readOnly(): EditContext = EditContext(false, view, edits, checks, change, portable, switchable, onPortable)
+
     /** [data], an entry of [slot] as stored, in the form the page shows. */
     fun shownData(data: Map<String, Any?>, slot: String): Map<String, Any?> = entryShown(data, slot, view.client, portable)
 
@@ -491,11 +479,19 @@ private fun slotsWithDrafts(bundle: EditorBundle, ed: EditContext): List<EditorS
 }
 
 /** One entry: its name and how it stands against the published revision, opening to its JSON, and its edit. */
-private fun ChildrenBuilder.entryView(bundle: EditorBundle, slot: String, entry: EditorEntry, at: Int, ed: EditContext) {
+private fun ChildrenBuilder.entryView(
+    bundle: EditorBundle,
+    slot: String,
+    entry: EditorEntry,
+    at: Int,
+    ed: EditContext,
+    from: String? = null,
+) {
     val data = entry.latest
     val key = ed.view.slotKeys[slot].orEmpty()
-    // The entry's place among the latest revision's: the published ones the draft removed come after them.
-    val id = data?.let { existingEntryId(bundle.name, slot, key, it, at) }
+    // The entry's place among the latest revision's: the published ones the draft removed come after them. A code
+    // entry has none, so a stored bundle of the same name never lends it a draft.
+    val id = if (from != null) null else data?.let { existingEntryId(bundle.name, slot, key, it, at) }
     val draft = id?.let { ed.edits.drafts[it] }
     val check = id?.let { ed.checks[it] }
     // An entry of the client's that replaces its template's (issue #1616), judged on the latest revision.
@@ -529,13 +525,13 @@ private fun ChildrenBuilder.entryView(bundle: EditorBundle, slot: String, entry:
                     jsonColumn(publishedHeading, slot, before, ed)
                 }
             } else if (data != null) {
-                jsonColumn("Version ${bundle.latest.version}", slot, data, ed, withSwitch = true)
+                jsonColumn(from ?: "Version ${bundle.latest.version}", slot, data, ed, withSwitch = true)
             } else if (before != null) {
                 jsonColumn(publishedHeading, slot, before, ed, withSwitch = true)
             }
             replaced?.let { replacedVersion(it, slot, ed) }
             // An entry has an id only when the latest revision holds it, so `data` is there too.
-            if (ed.editable && id != null) {
+            if (ed.editable && id != null && data != null) {
                 div {
                     className = ClassName("bundle-editor-actions")
                     when {

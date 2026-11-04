@@ -29,8 +29,53 @@ class TemplateReplacement(
         CFEP.templateEntries to templateEntries,
     )
 
-    /** What it replaces, by where it stands: two the same are one replacement, before and after a patch. */
-    val address: List<Any?> get() = listOf(name, slot, key, templateName)
+    /**
+     * What it replaces, wherever the client's entry stands: two the same are one replacement, before and after a patch,
+     * so an entry moved to another of the client's configurations is not a new one.
+     */
+    val address: List<Any?> get() = listOf(slot, key, template, templateName)
+}
+
+/** A configuration's slots, as a bundle holds them. */
+typealias ConfigSlots = Map<String, List<Map<String, Any?>>>
+
+/**
+ * A client's code layer, read once for a request (issue #1616): its code configurations with their slots ([configs],
+ * its own code's, then its template's copies), and, when it extends one, its [template]'s code configurations by name
+ * ([templateBundles]). Built once because making slots of a configuration loads its copy files, and a request asks of
+ * it more than once. [kindOf] answers a workflow entry's kind ([ConfigCodeLayer.workflowKind]).
+ */
+class CodeLayer(
+    val configs: List<Pair<GedraConfig, ConfigSlots>>,
+    val template: String?,
+    val templateBundles: List<Pair<String, ConfigSlots>>,
+    private val kindOf: (Map<String, Any?>) -> WfEntry?,
+) {
+    /**
+     * The client's entries that replace one of its template's: in its own code, and in [stored], its configurations'
+     * latest revisions by name, so a draft is judged as it would run once published. [keys] are each slot's key fields.
+     */
+    fun replacements(stored: List<Pair<String, ConfigSlots>>, keys: Map<String, List<String>>): List<TemplateReplacement> {
+        val template = template ?: return emptyList()
+        val ownCode = configs.filter { it.first.inheritedFrom == null }.map { (c, slots) -> c.name to slots }
+        return ConfigCodeLayer.replacements(template, templateBundles, ownCode + stored, keys, kindOf)
+    }
+
+    /**
+     * The layer as the editor shows it ([ConfigCodeLayer.bundleOf]), each template copy without what [replacements]
+     * replace. A copy is cut at load by what the client runs, and is cut here by what its latest revisions hold too, so
+     * the page never shows one entry as both replaced and run: a draft's replacement, or a stored file ref, which
+     * the load leaves in the copy and the registry overrides.
+     */
+    fun bundles(
+        replacements: List<TemplateReplacement>,
+        keys: Map<String, List<String>>,
+        isTestInstance: Boolean,
+    ): List<Map<String, Any?>> =
+        configs.map { (config, slots) ->
+            val shown = if (config.inheritedFrom == null) slots else ConfigCodeLayer.withoutReplaced(config, slots, replacements, keys)
+            ConfigCodeLayer.bundleOf(config, ConfigCodeLayer.redacted(shown, isTestInstance))
+        }
 }
 
 /**
@@ -63,27 +108,54 @@ object ConfigCodeLayer {
         collector.gedraConfigs.configs.filter { it.gedraId.client == template && it.inheritedFrom == null && !it.isStored }
 
     /**
-     * A code configuration as the editor shows it: its name, where it comes from, its namespace, and its slots, each
-     * workflow as it runs. The client's definition loses `testFeatures` off a test instance ([isTestInstance]), as a
-     * stored one does when emitted (issue #696).
+     * [client]'s code layer, read once ([CodeLayer]): its code configurations' slots, and those of [template], the client
+     * it extends, when it extends one.
      */
-    fun bundleOf(config: GedraConfig, isTestInstance: Boolean): Map<String, Any?> = buildMap {
+    fun read(collector: SchemaCollector, client: String, template: String?): CodeLayer = CodeLayer(
+        configs = codeConfigs(collector, client).map { it to slotsOf(it) },
+        template = template,
+        templateBundles = template?.let { t -> templateConfigs(collector, t).map { it.name to slotsOf(it) } }.orEmpty(),
+        kindOf = { workflowKind(collector, it) },
+    )
+
+    /** A code configuration as the editor shows it: its name, where it comes from, its namespace, and its [slots]. */
+    fun bundleOf(config: GedraConfig, slots: ConfigSlots): Map<String, Any?> = buildMap {
         put(CFEP.name, config.name)
         put(CFEP.origin, if (config.inheritedFrom != null) CFEP.originTemplate else CFEP.originCode)
         config.inheritedFrom?.let { put(CFEP.template, it) }
         put(CFEP.namespaceField, config.namespace)
-        put(CFEP.slots, slotsOf(config, isTestInstance))
+        put(CFEP.slots, slots)
     }
 
-    /** [config]'s slots, each workflow as it runs; see [bundleOf]. */
-    fun slotsOf(config: GedraConfig, isTestInstance: Boolean): Map<String, List<Map<String, Any?>>> {
-        // A client's configuration holds neither; one that did is no client's, and has no slots to show.
-        if (config.configTraits.isNotEmpty() || config.stateTraits.isNotEmpty()) return emptyMap()
-        val slots = gedraConfigToEntries(config, shownAsRun = true)
-        if (isTestInstance) return slots
+    /**
+     * [config]'s slots, each workflow as it runs. State and config traits have no slot, so they are left out rather than
+     * refused, as a stored configuration's would be: the rest of what the configuration declares is still shown.
+     */
+    fun slotsOf(config: GedraConfig): ConfigSlots = gedraConfigToEntries(config, shownAsRun = true)
+
+    /** [slots] as they may be shown: the client's definition loses `testFeatures` off a test instance (issue #696). */
+    fun redacted(slots: ConfigSlots, isTestInstance: Boolean): ConfigSlots = if (isTestInstance) slots else {
+        slots.mapValues { (slot, entries) -> if (slot != CCT.clientDef) entries else entries.map { it - CLD.testFeatures } }
+    }
+
+    /** [copy]'s [slots] -- a template's copy -- without each entry one of [replacements] replaces, by its [keys]. */
+    fun withoutReplaced(
+        copy: GedraConfig,
+        slots: ConfigSlots,
+        replacements: List<TemplateReplacement>,
+        keys: Map<String, List<String>>,
+    ): ConfigSlots {
+        val mine = replacements.filter { ClientExtension.cloneName(it.template, it.templateName) == copy.name }
+        if (mine.isEmpty()) return slots
         return slots.mapValues { (slot, entries) ->
-            if (slot != CCT.clientDef) entries else entries.map { it - CLD.testFeatures }
-        }
+            val here = mine.filter { it.slot == slot }
+            when {
+                here.isEmpty() -> entries
+                // The columns of the forms list replace as one set.
+                here.any { it.key.isEmpty() } -> emptyList()
+                else -> entries.filterNot { entry -> here.any { addressesEntry(keys[slot].orEmpty(), it.key, entry) } }
+            }
+        }.filterValues { it.isNotEmpty() }
     }
 
     /**
@@ -94,8 +166,8 @@ object ConfigCodeLayer {
      */
     fun replacements(
         template: String,
-        templateBundles: List<Pair<String, Map<String, List<Map<String, Any?>>>>>,
-        own: List<Pair<String, Map<String, List<Map<String, Any?>>>>>,
+        templateBundles: List<Pair<String, ConfigSlots>>,
+        own: List<Pair<String, ConfigSlots>>,
         keys: Map<String, List<String>>,
         kindOf: (Map<String, Any?>) -> WfEntry?,
     ): List<TemplateReplacement> {
@@ -118,13 +190,15 @@ object ConfigCodeLayer {
                 }
             }
         }
-        // The columns of the forms list are one set: a client that declares any declares all of them.
+        // The columns of the forms list are one set: a client that declares any declares all of them, so each of its
+        // configurations holding some is part of what replaces the template's.
         val theirColumns = templateBundles.flatMap { (name, slots) -> slots[CCT.usageDef].orEmpty().map { name to it } }
-        val ownColumns = own.firstOrNull { (_, slots) -> slots[CCT.usageDef].orEmpty().isNotEmpty() }
-        if (theirColumns.isNotEmpty() && ownColumns != null) {
-            out += TemplateReplacement(
-                ownColumns.first, CCT.usageDef, emptyMap(), template, theirColumns.first().first, theirColumns.map { it.second },
-            )
+        if (theirColumns.isNotEmpty()) {
+            for ((name, slots) in own) {
+                if (slots[CCT.usageDef].orEmpty().isEmpty()) continue
+                val from = theirColumns.first().first
+                out += TemplateReplacement(name, CCT.usageDef, emptyMap(), template, from, theirColumns.map { it.second })
+            }
         }
         return out
     }

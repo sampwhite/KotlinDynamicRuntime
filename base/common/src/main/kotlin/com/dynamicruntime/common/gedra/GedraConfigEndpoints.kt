@@ -551,7 +551,8 @@ private fun cfgEditorBody(c: KdrCxt): Map<String, Any?> {
     AdminRules.requireClientAdministrator(c)
     val svc = GedraConfigService.get(c)
     val published = svc.configsAt(c, c.client, published = true).associateBy { it.configId.baseId }
-    val configs = svc.listConfigs(c).map { latest ->
+    val rows = svc.listConfigs(c)
+    val configs = rows.map { latest ->
         val name = latest.configId.baseId
         buildMap {
             put(CFEP.name, name)
@@ -566,35 +567,28 @@ private fun cfgEditorBody(c: KdrCxt): Map<String, Any?> {
     }
     val schema = SchemaService.get(c)
     val shapes = ConfigSlotShapes.served(c, schema.workflowFunctionKinds(), schema.schemaFunctions().values.toList())
-    val collector = SchemaCollector.get(c)
-    val code = collector?.let { ConfigCodeLayer.codeConfigs(it, c.client) }.orEmpty()
+    val layer = codeLayerOf(c)
+    val keys = svc.configSlotPrimaryKeys()
+    val replacements = layer?.replacements(storedSlots(rows), keys).orEmpty()
     return mapOf(
         CFEP.client to c.client,
         CFEP.configs to configs,
         CFEP.slotTypes to shapes.entryTypes,
         CFEP.slotKeys to shapes.keys,
         SCH.dDefs to shapes.defs,
-        CFEP.codeConfigs to code.map { ConfigCodeLayer.bundleOf(it, c.instanceConfig.isTestInstance) },
-        CFEP.replacements to templateReplacementsOf(c, svc.listConfigs(c)).map { it.toMap() },
+        CFEP.codeConfigs to layer?.bundles(replacements, keys, c.instanceConfig.isTestInstance).orEmpty(),
+        CFEP.replacements to replacements.map { it.toMap() },
     )
 }
 
-/**
- * The entries of the caller's client that replace one of its template's (issue #1616): in its own code, and in
- * [stored] -- each configuration's latest revision, so a draft is judged as it would run once published. Empty for a
- * client that extends nothing.
- */
-private fun templateReplacementsOf(c: KdrCxt, stored: List<GedraConfigRow>): List<TemplateReplacement> {
-    val collector = SchemaCollector.get(c) ?: return emptyList()
-    val template = ClientService.getOrNull(c)?.known(c.client)?.extendsFromClientId ?: return emptyList()
-    val theirs = ConfigCodeLayer.templateConfigs(collector, template).map { it.name to ConfigCodeLayer.slotsOf(it, isTestInstance = true) }
-    val ownCode = ConfigCodeLayer.codeConfigs(collector, c.client).filter { it.inheritedFrom == null }
-        .map { it.name to ConfigCodeLayer.slotsOf(it, isTestInstance = true) }
-    val own = ownCode + stored.map { it.configId.baseId to it.entriesBySlot() }
-    return ConfigCodeLayer.replacements(template, theirs, own, GedraConfigService.get(c).configSlotPrimaryKeys()) {
-        ConfigCodeLayer.workflowKind(collector, it)
-    }
+/** The caller's client's code layer (issue #1616), read once for the request; null with no collector to read it from. */
+private fun codeLayerOf(c: KdrCxt): CodeLayer? {
+    val collector = SchemaCollector.get(c) ?: return null
+    return ConfigCodeLayer.read(collector, c.client, ClientService.getOrNull(c)?.known(c.client)?.extendsFromClientId)
 }
+
+/** Each of [rows] -- configurations' latest revisions -- by name, with its slots. */
+private fun storedSlots(rows: List<GedraConfigRow>): List<Pair<String, ConfigSlots>> = rows.map { it.configId.baseId to it.entriesBySlot() }
 
 private fun cfgWriteBody(c: KdrCxt, request: Map<String, Any?>): Map<String, Any?> {
     AdminRules.requireClientAdministrator(c)
@@ -664,9 +658,11 @@ private fun cfgPatchBody(c: KdrCxt, request: Map<String, Any?>): Map<String, Any
         // What the patch would newly replace of the client's template (issue #1616), so a save asks with it in view.
         val latest = svc.listConfigs(c)
         val patched = wouldWrite.associateBy { it.configId.baseId }
-        val before = templateReplacementsOf(c, latest).map { it.address }.toSet()
+        val layer = codeLayerOf(c)
+        val before = layer?.replacements(storedSlots(latest), pk).orEmpty().map { it.address }.toSet()
         val created = wouldWrite.filter { w -> latest.none { it.configId.baseId == w.configId.baseId } }
-        val after = templateReplacementsOf(c, latest.map { patched[it.configId.baseId] ?: it } + created)
+        val after = layer?.replacements(storedSlots(latest.map { patched[it.configId.baseId] ?: it } + created), pk).orEmpty()
+            .distinctBy { it.address }
         return mapOf(
             CFEP.dryRun to true,
             CFEP.configs to wouldWrite.map { bundleOf(c, it) },

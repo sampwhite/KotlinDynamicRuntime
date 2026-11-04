@@ -499,8 +499,10 @@ edits its parent's, as drafts. A client with a sandbox stays read-only and says 
 **The code layer** (issue #1616; the backend's `ConfigCodeLayer`, covered by `ConfigCodeLayerTest`, and the page's
 `CodeBundle` and `TemplateReplacementView`, covered by `BundleEditorTest`). The editor read also answers what the client
 runs that no row stores: `codeConfigs`, each configuration its own code declares (`origin` `code`), then each copy of
-its template's (`origin` `template`, named `from_<template>_<name>`, cut to what the client defines itself), with
-its slots as a bundle holds them, each workflow as it runs. The page lists them after the stored bundles under **From
+its template's (`origin` `template`, named `from_<template>_<name>`, cut to what the client defines itself, and
+further by the replacements below -- a draft's, or a stored file ref's, which the load leaves in the copy -- so no
+entry shows as both replaced and run), with its slots as a bundle holds them, each workflow as it runs. The backend
+reads the layer once per request (`CodeLayer`), since making slots loads copy files. The page lists them after the stored bundles under **From
 code** (its "What is this?" is the `clients` file's `bundleCode`), read-only, the same way as a stored bundle, each
 entry's JSON headed by where it comes from. Nothing there is editable: a template's entry is changed by giving the
 client one of its own with the same key, which replaces the template's whole.
@@ -513,7 +515,7 @@ client one of its own with the same key, which replaces the template's whole.
   (`replacementOf`), and opens to the template's version beside its own (`replacedVersion`). A slot that replaces as a
   set says so at its top (`slotReplacement`, `slotReplacementText`).
 - **A save that would newly replace one** is told by its dry run (`replacements` on the patch's dry-run answer: only
-  the ones the patch adds), which the save area shows (`replacingText`) and asks to confirm with **Save anyway**, with
+  the ones the patch adds, judged by what is replaced, so moving a replacing entry to another bundle is not one), which the save area shows (`replacingText`) and asks to confirm with **Save anyway**, with
   the impact report when there is one too.
 
 **Deleting a bundle** (issue #1461) is in the Configuration table (`StoredConfigTable`), on the client's page
