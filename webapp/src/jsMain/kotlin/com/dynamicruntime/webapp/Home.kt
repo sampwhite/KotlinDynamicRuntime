@@ -1,6 +1,8 @@
 package com.dynamicruntime.webapp
 
 import com.dynamicruntime.common.home.HFRAG
+import kotlinx.browser.document
+import kotlinx.browser.window
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.launch
 import react.ChildrenBuilder
@@ -15,6 +17,7 @@ import react.dom.html.ReactHTML.main
 import react.dom.html.ReactHTML.nav
 import react.dom.html.ReactHTML.p
 import react.useEffect
+import react.useRef
 import react.useState
 import web.cssom.ClassName
 
@@ -65,6 +68,18 @@ val Home = FC<Props> {
     }
     val current = config
     val layout = current?.layout
+
+    // An address naming a section (`/wa#home.own-client`, after a jump link and a reload, say) scrolls to it once the
+    // page is drawn (issue #1576): the browser looks for it as the page loads, before Home has fetched what it draws.
+    // Drawn means the copy too, which arrives after the config and adds the intro above the sections.
+    val hashScrolled = useRef(false)
+    val drawnWithCopy = current != null && copy !== Copy.empty
+    useEffect(drawnWithCopy) {
+        if (!drawnWithCopy || hashScrolled.current == true) return@useEffect
+        hashScrolled.current = true
+        val id = window.location.hash.removePrefix("#")
+        if (id.isNotEmpty()) document.getElementById(id)?.scrollIntoView()
+    }
     // Only the documents the listing offers; a suite's inner pages are reached by links (issue #1136).
     val links = current?.links?.filter { it.listed } ?: emptyList()
 

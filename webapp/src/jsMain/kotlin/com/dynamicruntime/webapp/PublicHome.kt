@@ -23,17 +23,19 @@ import web.dom.ElementId
 private val publicHomeScope = MainScope()
 
 /** Where a switch asked from "Your other accounts" reports its failure; a demo card's is its client id. */
-private const val accountsSection = "#accounts"
+private const val accountsSection = "#" + HSEC.accounts
 
 /**
  * The ids of the public home page's sections (issue #1576): what the home copy's jump links (`home.jumpLinks`) point
- * at, as `#demos`. Fixed here rather than taken from a heading's text, since the headings are copy and are reworded.
+ * at, as `#home.demos`. Fixed here rather than taken from a heading's text, since the headings are copy and are
+ * reworded. Each has a dot, which the id Markdown gives a heading never has (`headingSlug`), so a heading in the copy
+ * above -- an intro's "Demos", say -- cannot take a section's id.
  */
 @Suppress("ConstPropertyName")
 object HSEC {
-    const val demos = "demos"
-    const val accounts = "accounts"
-    const val ownClient = "own-client"
+    const val demos = "home.demos"
+    const val accounts = "home.accounts"
+    const val ownClient = "home.own-client"
 }
 
 /**

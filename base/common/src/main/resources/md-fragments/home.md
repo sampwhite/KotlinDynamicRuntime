@@ -7,13 +7,14 @@
 /- The wordmark shown beside the brand mark in the home page's hero. Absent = no hero. -/
 # +brand KDR
 # +title Welcome
-/- Under the title (issue #1576): links to the page's sections further down, by their ids -- `#demos`, `#accounts`,
-   `#own-client` (the public home page's). A link to a section not drawn for the caller is left out, and with no link
-   left the row is not drawn, so empty removes it. A link to anything else (`/docs/...`, `/wa/...`) is always kept. -/
+/- Under the title (issue #1576): links to the page's sections further down, by their ids -- `#home.demos`,
+   `#home.accounts`, `#home.own-client` (the public home page's; a heading's id never has a dot, so none can clash). A
+   link to a section not drawn for the caller is left out, and with no link left the row is not drawn, so empty removes
+   it. A link to anything else (`/docs/...`, `/wa/...`) is always kept. -/
 # +jumpLinks
-- [Try a demo](#demos)
-- [Your other accounts](#accounts)
-- [Your own client](#own-client)
+- [Try a demo](#home.demos)
+- [Your other accounts](#home.accounts)
+- [Your own client](#home.own-client)
 
 # +intro
 This is the **KotlinDynamicRuntime** runtime shell. Everything you see is assembled from data the backend

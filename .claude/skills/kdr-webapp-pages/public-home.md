@@ -90,30 +90,40 @@ person can do next on a teaching site, in three sections, each worded by `home.m
 3. **Your own client**: `CreateOwnClientCard`.
 
 Which of the three are drawn is `publicHomeSections(config)`, and the page draws by it. Each section's container has a
-fixed id from `HSEC` (`demos`, `accounts`, `own-client`), never one taken from its heading, since the heading is copy.
+fixed id from `HSEC` (`home.demos`, `home.accounts`, `home.own-client`), never one taken from its heading, since the
+heading is copy. The dot is deliberate: the id Markdown gives a heading (`headingSlug`) never has one, so a heading in
+the copy above (an intro's "Demos", say) cannot take a section's id.
 
 ### Jump links under the title (issue #1576)
 
 The sections sit below the hero, title, intro, and note, so Home draws a row of links to them directly under the title
 (`nav.home-jump-links`). The links are copy, `home.jumpLinks` in `home.md`'s `@home`: a Markdown list, shipped as one
-link per section by its id (`[Try a demo](#demos)`). A flavor or a client rewords, reorders, or extends it like any
-other copy.
+link per section by its id (`[Try a demo](#home.demos)`). A flavor or a client rewords, reorders, or extends it like
+any other copy.
 
 Copy cannot say who sees what, so `jumpLinksFor(source, drawn)` (`JumpLinks.kt`) filters it against
 `publicHomeSections`:
 
-- A list item whose every link is an anchor (`#id`) for a section not drawn is dropped, with its continuation lines.
-  So there is no "Try a demo" where joining is not offered, and no "Your other accounts" for a person with none.
-- Every other line is kept as written, including a link to a document (`/docs/...`), a page (`/wa/...`), or outside
-  the site. Links resolve as the intro's do (`copyLinkResolver`, which leaves an anchor alone).
-- With no link left, or the key blank, no row is drawn. That is how a client's copy removes it.
+- A list item whose every link is an anchor (`#id`) for a section not drawn is dropped, with its continuation lines
+  and any items nested under it. So there is no "Try a demo" where joining is not offered, and no "Your other
+  accounts" for a person with none.
+- Anywhere else (a row written on one line, `[A](#home.demos) · [B](#home.own-client)`, or an item that also links
+  elsewhere), such a link is removed with the separator after it when a separator or the line's end follows it, and
+  is otherwise left as its words with no link, so a sentence still reads.
+- Every other link is kept as written, including one to a document (`/docs/...`), a page (`/wa/...`), or outside the
+  site. Links resolve as the intro's do (`copyLinkResolver`, which leaves an anchor alone).
+- With no link left (an image is not one), or the key blank, no row is drawn. That is how a client's copy removes it.
 
 Outside the public home page (a visitor who has not signed in, or any other client's Home), the drawn set is empty, so
-only links to something other than a section would show; the shipped list shows nothing there. The `reference`
-flavor puts **Start here** (`/docs/start-here.md`) before the shipped links, so its visitors who have not signed in see
-that one link. The anchors need no
-routing: a Markdown anchor is the browser's to follow (#1125), `scroll-padding-top` stops it below the app bar, and Back
-returns from it.
+only links to something other than a section would show; the shipped list shows nothing there. The `reference` flavor
+puts **Start here** (`/docs/start-here.md`) before the shipped links, so its visitors who have not signed in see that
+one link.
+
+The anchors need no routing: a Markdown anchor is the browser's to follow (#1125), `scroll-padding-top` stops it below
+the app bar, and Back returns from it. An address that names a section on arrival (a reload after a jump) is scrolled
+to by Home once it has drawn the page, since the browser looks for the element before Home has fetched what it draws.
+Content that arrives later above the section (the demo cards) is left to the browser's scroll anchoring, which keeps
+the section in place in Chrome and Firefox; Safari has none.
 
 A component's props set inside its builder must be qualified when the calling component has state of the same name:
 `PublicHome { this.config = current }`. A bare `config = current` resolves to Home's own state, sets it during render,

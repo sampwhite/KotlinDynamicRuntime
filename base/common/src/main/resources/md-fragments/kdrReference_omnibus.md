@@ -30,9 +30,9 @@ configure a client.
    visitor who has not signed in sees it alone. -/
 # +jumpLinks
 - [Start here](/docs/start-here.md)
-- [Try a demo](#demos)
-- [Your other accounts](#accounts)
-- [Your own client](#own-client)
+- [Try a demo](#home.demos)
+- [Your other accounts](#home.accounts)
+- [Your own client](#home.own-client)
 
 
 # @publicHome

@@ -474,7 +474,7 @@ object HFRAG {
 
     /**
      * The home page's jump links (issue #1576), a Markdown list under the title: links to its sections by their ids
-     * (`#demos`), of which the page keeps those it draws for the caller, and any other link as written.
+     * (`#home.demos`), of which the page keeps those it draws for the caller, and any other link as written.
      */
     const val jumpLinks = "jumpLinks"
 
