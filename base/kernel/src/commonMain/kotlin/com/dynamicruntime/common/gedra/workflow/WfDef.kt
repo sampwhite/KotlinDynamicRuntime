@@ -136,6 +136,13 @@ object WFD {
     const val saveWhen = "saveWhen"
 
     /**
+     * On a normal workflow's task (issue #1594): the **search keyword** ([CTAK]) its call to action carries while it
+     * is the workflow's CTA -- what kind of action it asks for. An approval task carries [CTAK.review] without saying
+     * so. A task-level `ctaFilter` function may set one instead, from the form's data.
+     */
+    const val keyword = "keyword"
+
+    /**
      * A normal workflow's trait locks (issue #857): each a [traitId] the form's data may not change -- by any path --
      * while the form is engaged with the workflow and the lock's [kWhen] condition holds, except by whoever may save
      * its [writableVia] task (issue #856's rule), or by a write that overrides it where [overrideWhen] allows.
@@ -547,6 +554,11 @@ class WfTask(
     val saveWhen: String? = null,
     /** The author's note on the task (issue #1135): its `$comment`, stored and read back, changing nothing. */
     val comment: String? = null,
+    /**
+     * The search keyword ([CTAK]) the task declares for its call to action (issue #1594), or null. See [ctaKeyword] for
+     * what it carries when it declares none.
+     */
+    val keyword: String? = null,
 ) {
     /** The task-scoped function **usages** this task declares (e.g. `prefillData`), in priority order (issue #677). */
     val functionUsages: List<WfFunctionUsage> = functionUsages.sortedBy { it.priority }
@@ -595,7 +607,19 @@ class WfTask(
                 throw KdrException.mkConv("Approval task '$id' names no cfact for its approval to emit.")
             }
         }
+        if (keyword != null && keyword !in CTAK.all) {
+            throw KdrException.mkConv(
+                "Task '$id' carries the keyword '$keyword', which is not a search keyword. The keywords are: " +
+                    "${CTAK.all.joinToString(", ")}.",
+            )
+        }
     }
+
+    /**
+     * The search keyword this task's call to action carries while it is the CTA (issue #1594): the one it declares, or
+     * [CTAK.review] for an approval task, which waits on a review by definition. A `ctaFilter` function may replace it.
+     */
+    val ctaKeyword: String? get() = keyword ?: if (approval != null) CTAK.review else null
 
     /** The traits an entry must be present for -- what [WfEngine.taskComplete] checks. */
     val requiredTraitIds: List<String> get() = traits.filter { it.required }.map { it.traitId }
@@ -812,6 +836,16 @@ class WfDef(
                 )
             }
         }
+        // A keyword rides a call to action, which only an engaged normal workflow has (issue #1594); on a creation or
+        // core details workflow it would be kept and never read, so it is refused rather than looking as if it did something.
+        tasks.firstOrNull { it.keyword != null }?.let {
+            if (entry != WfEntry.normal) {
+                throw KdrException.mkConv(
+                    "${entry.words.replaceFirstChar { c -> c.uppercase() }} workflow '$workflowId' task '${it.id}' carries " +
+                        "a search keyword; only a normal workflow's tasks do, since only it has a call to action.",
+                )
+            }
+        }
         for (task in tasks) {
             val rule = task.saveWhen ?: continue
             // Core details workflow and creation saves keep their own ownership rules (issue #856); a rule there would be ignored,
@@ -1023,6 +1057,13 @@ object WfDefSchema {
                 additionalProperties = true
             }
             property(WFD.saveWhen, "A normal workflow task's rule for who may save it: a cfact expression over the caller's task and viewer facts. Absent means anyone who can see the form.")
+            property(
+                WFD.keyword,
+                "A normal workflow task's search keyword: what kind of action its call to action asks for. An approval task " +
+                    "carries 'review' without saying so.",
+            ) {
+                CTAK.all.forEach { option(it) }
+            }
         }
         type(WFD.defType) {
             type = SCT.kObject
@@ -1110,6 +1151,7 @@ fun WfDef.toJsonMap(): Map<String, Any?> = buildMap {
                 }
                 task.display?.let { put(WFD.display, it) }
                 task.saveWhen?.let { put(WFD.saveWhen, it) }
+                task.keyword?.let { put(WFD.keyword, it) }
             }
         },
     )
@@ -1175,6 +1217,7 @@ fun parseWfDef(cxt: KdrCxtBase, raw: Map<String, Any?>, templateOverlay: Map<Str
                 // "anyone who can see the form", the same as leaving it out.
                 saveWhen = t[WFD.saveWhen].toOptStr(),
                 comment = t[SCH.dComment].toOptStr(),
+                keyword = t[WFD.keyword].toOptStr(),
             )
         },
         functionUsages = usagesOf(m[WFD.functions]),
@@ -1334,6 +1377,7 @@ class WfTaskBuilder(private val id: String, private val label: String) {
     private var approval: Map<String, Any?>? = null
     private var display: Map<String, Any?>? = null
     private var saveWhen: String? = null
+    private var keyword: String? = null
 
     /** The author's note on the task (issue #1135), stored as its `$comment`; it changes nothing. */
     var comment: String? = null
@@ -1376,6 +1420,14 @@ class WfTaskBuilder(private val id: String, private val label: String) {
     }
 
     /**
+     * The search keyword ([CTAK]) the task's call to action carries while it is the CTA (issue #1594) -- what kind of
+     * action it asks for. An approval task carries [CTAK.review] without this. A normal workflow's task only.
+     */
+    fun keyword(keyword: String) {
+        this.keyword = keyword
+    }
+
+    /**
      * How the task is shown (issue #788): the branches [WfDisplayBuilder] collects, tried **in order** against the
      * caller's task facts -- the first whose condition holds is what the view delivers.
      */
@@ -1399,6 +1451,7 @@ class WfTaskBuilder(private val id: String, private val label: String) {
         approval?.let { out[WFD.approval] = it }
         display?.let { out[WFD.display] = it }
         saveWhen?.let { out[WFD.saveWhen] = it }
+        keyword?.let { out[WFD.keyword] = it }
         return out
     }
 }

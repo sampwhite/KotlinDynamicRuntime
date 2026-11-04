@@ -53,16 +53,21 @@ fun resolveWorkflowFunctions(
         // The labels the client suggests (issue #786), or null for a bundle with no client definition present
         // here -- a global workflow has no one client's list to be held to, so its labels are not checked.
         val suggestedLabels = clientDefOf(client)?.userLabels?.toSet()
-        val bundleScope = ResolutionScope(cxt, bundle, byFn, declaredCfacts, suggestedLabels, issues)
+        // The traits the client can see -- its own and the global ones -- for a function reading anywhere in the form.
+        val visibleTraits = configs.traitsFor(client).map { it.traitId }.toSet()
+        val bundleScope = ResolutionScope(cxt, bundle, byFn, declaredCfacts, suggestedLabels, visibleTraits, issues)
         for (def in bundle.workflows.values) {
             val defFunctions = bundleScope.resolveList(
                 def.workflowId, "the workflow", def.functionUsages, WfEventScope.global, collectedTraits = null,
             )
             if (assign) def.resolvedFunctions = defFunctions
             for (task in def.tasks) {
-                val taskFunctions = bundleScope.resolveList(
-                    def.workflowId, "task '${task.id}'", task.functionUsages, WfEventScope.task,
-                    collectedTraits = task.traits.map { it.traitId }.toSet(),
+                val taskFunctions = bundleScope.checkCtaFilters(
+                    def, task,
+                    bundleScope.resolveList(
+                        def.workflowId, "task '${task.id}'", task.functionUsages, WfEventScope.task,
+                        collectedTraits = task.traits.map { it.traitId }.toSet(),
+                    ),
                 )
                 if (assign) task.resolvedFunctions = taskFunctions
                 bundleScope.checkApprovalAuthority(def, task, taskFunctions)
@@ -85,6 +90,8 @@ private class ResolutionScope(
     val byFn: Map<String, WfFunctionCreation>,
     val declaredCfacts: Set<String>,
     val suggestedLabels: Set<String>?,
+    /** The trait ids the client can see (issue #1594): what a function reading anywhere in the form may name. */
+    val visibleTraits: Set<String>,
     val issues: MutableList<GedraConfigIssue>,
 ) {
     val client: String get() = bundle.gedraId.client
@@ -122,6 +129,43 @@ private fun ResolutionScope.grantsReviewer(task: WfTask, resolved: List<WfFuncti
         val creation = byFn[usage.fn]
         usage.fn in resolvedFns && creation?.event == WfEventType.viewerCfacts &&
             WFC.reviewer in creation.emittedCfacts(usage)
+    }
+}
+
+/**
+ * A task's `ctaFilter` functions (issue #1594), held to what a CTA filter is for: each sits on a normal workflow's
+ * task, since only that has a call to action; reads only traits the client has, since a misspelled one would never
+ * match and quietly route every form the same way; and every filter it can set parses and names only facts about the
+ * person -- the request's, and what the task's own resolved `viewerCfacts` functions emit -- since a listing evaluates
+ * the filter against those alone, without the form. A function failing any of these is dropped and reported, so a
+ * filter a listing could not evaluate is never stored. Returns [resolved] without the dropped ones.
+ */
+private fun ResolutionScope.checkCtaFilters(def: WfDef, task: WfTask, resolved: List<WfFunction>): List<WfFunction> {
+    if (resolved.none { it.event == WfEventType.ctaFilter }) return resolved
+    // From the list just resolved, not the task's stored one: a trial resolves without assigning.
+    val personFacts = SchemaService.get(cxt).cfactsFor(client).requestNames +
+        resolved.filter { it.event == WfEventType.viewerCfacts }.flatMap { ViewerCfactsFn.of(it).emittedCfacts }
+    return resolved.filter { fn ->
+        if (fn.event != WfEventType.ctaFilter) return@filter true
+        val ctaFn = CtaFilterFn.of(fn)
+        val unknownTraits = ctaFn.readTraits - visibleTraits
+        val why = when {
+            def.entry != WfEntry.normal -> "sets a call to action's filter, which only a normal workflow's task has"
+            unknownTraits.isNotEmpty() -> "reads trait(s) ${unknownTraits.sorted()}, which the client does not have"
+            else -> ctaFn.possibleFilters.firstNotNullOfOrNull { filter ->
+                ctaFilterProblem(declaredCfacts, personFacts, filter)?.let { "can set the CTA filter '$filter', which $it" }
+            }
+        } ?: return@filter true
+        reportConfigProblem(
+            cxt,
+            bundle.issue(
+                "Workflow '${def.workflowId}' in client '$client' declares function '${fn.fn}' on task '${task.id}', which $why.",
+                "Dropping that function.",
+                GCEL.function, "${def.workflowId}/${fn.fn}",
+            ),
+            issues,
+        )
+        false
     }
 }
 

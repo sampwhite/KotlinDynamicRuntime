@@ -334,6 +334,7 @@ Each is a type the server declares, named as the endpoint catalog names it. A fi
 | `approval` | [WfApproval](#wfapproval) |  | Makes this an approval task: it collects no traits and is complete when a reviewer approves it. |
 | `display` | object |  | How the task is shown: a display branch (mode, text, disabled), or a selector choosing among several by the caller's task facts. |
 | `saveWhen` | string |  | A normal workflow task's rule for who may save it: a cfact expression over the caller's task and viewer facts. Absent means anyone who can see the form. |
+| `keyword` | one of `review` |  | A normal workflow task's search keyword: what kind of action its call to action asks for. An approval task carries 'review' without saying so. |
 
 ### WfTraitRef
 

@@ -18,6 +18,7 @@ import com.dynamicruntime.common.gedra.report.reportSchema
 import com.dynamicruntime.common.gedra.workflow.WorkflowService
 import com.dynamicruntime.common.gedra.workflow.ComputeCFactsFromDataCreation
 import com.dynamicruntime.common.gedra.workflow.PrefillFromOwnerCreation
+import com.dynamicruntime.common.gedra.workflow.CtaFilterByValueCreation
 import com.dynamicruntime.common.gedra.workflow.UserHasLabelCreation
 import com.dynamicruntime.common.gedra.workflow.CoreDetailsStateDeriver
 import com.dynamicruntime.common.gedra.workflow.WorkflowStateDeriver
@@ -192,6 +193,9 @@ class CommonComponent : ComponentDefinition {
         collector.addWorkflowFunction(PrefillFromOwnerCreation)
         // The first viewerCfacts function (issue #786): a temporary cfact about the viewer, from a user label.
         collector.addWorkflowFunction(UserHasLabelCreation)
+        // The first ctaFilter function (issue #1594): who may act on a task as its workflow's CTA, chosen by a value
+        // in the form's data.
+        collector.addWorkflowFunction(CtaFilterByValueCreation)
         // The first schema function (issue #1501): a type's `g-onWrite` usages compute a derived property from the
         // object's own data each time it is written.
         collector.addSchemaFunction(ComputeValueCreation)

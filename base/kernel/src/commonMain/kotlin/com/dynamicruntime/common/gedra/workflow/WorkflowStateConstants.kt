@@ -86,6 +86,22 @@ object WFS {
     const val workflowCtaStatus = "WorkflowCtaStatus"
 
     /**
+     * The [ctaTask]'s search keyword ([CTAK], issue #1594): what kind of action the CTA asks for -- the task's own, or
+     * [CTAK.review] for an approval task, unless a `ctaFilter` function set one. Absent when it carries none.
+     */
+    const val ctaKeyword = "ctaKeyword"
+
+    /**
+     * Who may act on the [ctaTask] (issue #1594): a cfact expression naming only facts about the person, which a
+     * `ctaFilter` function concluded from the form's data. It narrows the task's `saveWhen`, never widens it. Absent
+     * when nothing set one: then `saveWhen` alone decides.
+     */
+    const val ctaFilter = "ctaFilter"
+
+    /** The [ctaFilter]'s label (issue #1594): a template saying who the CTA waits on, for a page to give as the reason. */
+    const val ctaFilterLabel = "ctaFilterLabel"
+
+    /**
      * Every task is complete and valid, so there is no [ctaTask] (issue #785). Explicit rather than read from an
      * absent [ctaTask], which would be ambiguous with "not computed" -- the CTA is computed for engaged workflows
      * only, so a non-engaged entry carries neither.

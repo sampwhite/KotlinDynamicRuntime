@@ -24,6 +24,12 @@ interface ViewerCfactsFn : WfFunction {
      */
     fun computeViewerCfacts(cxt: KdrCxt, params: ViewerCfactsParams)
 
+    /**
+     * Every cfact this function may emit (issue #1594): what a CTA filter on the same task may name, since these are
+     * facts about the person and nothing else.
+     */
+    val emittedCfacts: Set<String>
+
     companion object {
         /**
          * Narrows a resolved [WfFunction] to a [ViewerCfactsFn]. The resolution pass already checked the kind, so a

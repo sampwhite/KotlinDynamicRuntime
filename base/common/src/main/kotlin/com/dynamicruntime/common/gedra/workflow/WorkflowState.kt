@@ -97,6 +97,15 @@ fun workflowStateConfig(cxt: KdrCxt): GedraConfig = gedraConfig(cxt, WFS.stateBu
         property(WFS.ctaTask, "The workflow's call-to-action task: the earliest not both complete and valid. Engaged workflows only; absent when every task is done.")
         property(WFS.ctaStatus, "The CTA task's general status.") { ref(WFS.workflowCtaStatus) }
         property(WFS.tasksDone, "Every task is complete and valid, so there is no CTA. Engaged workflows only.") { type = SCT.boolean }
+        property(WFS.ctaKeyword, "The CTA's search keyword: what kind of action it asks for. Absent when it carries none.") {
+            CTAK.all.forEach { option(it) }
+        }
+        property(
+            WFS.ctaFilter,
+            "Who may act on the CTA: a cfact expression naming only facts about the person, concluded from the form's data. " +
+                "It narrows the task's saveWhen.",
+        )
+        property(WFS.ctaFilterLabel, "The CTA filter's label: a template saying who the CTA waits on.")
         property(WFS.eligible, "Whether the form meets every eligibility test of the workflow.") { type = SCT.boolean }
         property(WFS.eligibilityFailures, "The eligibility tests the form fails, in the workflow's order; empty when eligible.") {
             type = SCT.array
@@ -214,7 +223,9 @@ fun addWorkflowSingletonCFacts(collector: SchemaCollector) {
  *     meant (issue #784 review). No cycle either way: a singleton never reads eligibility.
  *
  * An **engaged** workflow's entry also carries its **CTA** (issue #785): [WFS.ctaTask], the earliest task not
- * both complete and valid, with its [WFS.ctaStatus] -- or [WFS.tasksDone] when there is none. Engaged only: the
+ * both complete and valid, with its [WFS.ctaStatus] -- or [WFS.tasksDone] when there is none. With the CTA go what it
+ * carries (issue #1594, [ctaAssignment]): its search keyword ([WFS.ctaKeyword]) and, when a `ctaFilter` function set
+ * one, who may act on it ([WFS.ctaFilter], with its [WFS.ctaFilterLabel]). Engaged only: the
  * CTA is where an engaged workflow's link points, and a workflow the form has not entered has no work under way
  * (its view computes the same answer live, from the same [WorkflowTaskStatus]).
  *
@@ -294,6 +305,11 @@ object WorkflowStateDeriver : GedraStateDeriver {
                     cta?.let { (task, status) ->
                         data[WFS.ctaTask] = task.id
                         data[WFS.ctaStatus] = status.toStateMap()
+                        // Who may act on it, and what kind of action it is (issue #1594), from the form's data now.
+                        val assigned = ctaAssignment(cxt, registry, workflowId, task, state.row.entries)
+                        assigned.keyword?.let { k -> data[WFS.ctaKeyword] = k }
+                        assigned.filter?.let { f -> data[WFS.ctaFilter] = f }
+                        assigned.label?.let { l -> data[WFS.ctaFilterLabel] = l }
                     }
                 }
                 val failures = WorkflowEligibility.failures(registry, it.def, eligibilityFacts(workflowId))

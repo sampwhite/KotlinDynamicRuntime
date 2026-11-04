@@ -41,6 +41,13 @@ class CFactRegistry(
     /** The names an expression in this scope may write -- what [CFactParser] validates against. */
     val names: Set<String> = defs.keys
 
+    /**
+     * The names something computes from the **request** alone (issue #1594) -- the ones with a [CFactSource]. Facts
+     * about the caller, never about a form, so a check that may only name the person (a CTA filter) holds an
+     * expression to these and the viewer's.
+     */
+    val requestNames: Set<String> get() = sources.keys
+
     /** Parses [expression] against [names], reading absence as "always matches"; see [parseCFactOrAlways]. */
     fun parse(expression: String?): CFactPredicate = parseCFactOrAlways(expression, names)
 

@@ -32,6 +32,14 @@ enum class WfEventType(val scope: WfEventScope) {
      * approval" -- and a workflow with two approval points asks it twice.
      */
     viewerCfacts(WfEventScope.task),
+
+    /**
+     * Says **who** may act on a task while it is its workflow's call to action, and **what kind** of action it is
+     * (issue #1594): a CTA filter (a cfact expression over facts about the person) and its label, a search keyword
+     * ([CTAK]), or both -- concluded from the form's data, so "the reviewer for this form's region" can be said.
+     * Stored with the CTA in the workflow's state, recomputed on every write. Per task, because the CTA is a task.
+     */
+    ctaFilter(WfEventScope.task),
 }
 
 /**

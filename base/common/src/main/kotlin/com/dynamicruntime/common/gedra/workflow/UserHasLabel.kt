@@ -41,6 +41,8 @@ class UserHasLabelFn(
 ) : ViewerCfactsFn {
     override val fn: String = ULH.fn
 
+    override val emittedCfacts: Set<String> = setOf(cfact)
+
     override fun computeViewerCfacts(cxt: KdrCxt, params: ViewerCfactsParams) {
         if (label in params.viewerLabels) {
             params.emit(cfact)
