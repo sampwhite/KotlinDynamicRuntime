@@ -496,6 +496,26 @@ edits its parent's, as drafts. A client with a sandbox stays read-only and says 
 - **The save area sticks below the app bar** (`.bundle-editor-save`). A save's answer is drawn inside it, so it shows
   wherever the page is scrolled.
 
+**The code layer** (issue #1616; the backend's `ConfigCodeLayer`, covered by `ConfigCodeLayerTest`, and the page's
+`CodeBundle` and `TemplateReplacementView`, covered by `BundleEditorTest`). The editor read also answers what the client
+runs that no row stores: `codeConfigs`, each configuration its own code declares (`origin` `code`), then each copy of
+its template's (`origin` `template`, named `from_<template>_<name>`, cut to what the client defines itself), with
+its slots as a bundle holds them, each workflow as it runs. The page lists them after the stored bundles under **From
+code** (its "What is this?" is the `clients` file's `bundleCode`), read-only, the same way as a stored bundle, each
+entry's JSON headed by where it comes from. Nothing there is editable: a template's entry is changed by giving the
+client one of its own with the same key, which replaces the template's whole.
+
+- **Replacements** (`CFEP.replacements`): each of the client's entries, in its code or in a bundle's latest revision,
+  that replaces one of its template's, by the rules `ClientExtension.clones` cuts copies by. Traits, types, cfacts,
+  workflows, reports, and file refs replace by their keys; a creation or core details workflow also by its kind; and
+  the columns of the forms list as one set (an empty `key`). Copy and interface layer key by key, so they never
+  replace. Each carries the template's entries it replaces. A replacing entry's line says **replaces the template's**
+  (`replacementOf`), and opens to the template's version beside its own (`replacedVersion`). A slot that replaces as a
+  set says so at its top (`slotReplacement`, `slotReplacementText`).
+- **A save that would newly replace one** is told by its dry run (`replacements` on the patch's dry-run answer: only
+  the ones the patch adds), which the save area shows (`replacingText`) and asks to confirm with **Save anyway**, with
+  the impact report when there is one too.
+
 **Deleting a bundle** (issue #1461) is in the Configuration table (`StoredConfigTable`), on the client's page
 and in the bundle editor's Publishing section alike, beside the publishing it depends on. A **Contents** column says
 what each bundle holds (`bundleContentsText`: "2 slots, 5 entries", "Empty", or "Empty; v2: 1 slot, 3 entries" while

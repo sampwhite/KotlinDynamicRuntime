@@ -6,6 +6,7 @@ import com.dynamicruntime.common.gedra.CFEP
 import com.dynamicruntime.common.gedra.PORT
 import com.dynamicruntime.common.home.PFRAG
 import com.dynamicruntime.common.util.jsonMapResult
+import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toJsonStr
 import kotlinx.coroutines.MainScope
@@ -66,6 +67,8 @@ val BundleEditorPage = FC<Props> {
     var saveError by useState<DisplayError?>(null)
     var stale by useState<List<StaleEntryView>?>(null)
     var impact by useState<ImpactReportView?>(null)
+    // What a save's dry run said the edits would newly replace of the client's template (issue #1616), to confirm.
+    var replacing by useState<List<TemplateReplacementView>?>(null)
     var savedNote by useState<String?>(null)
     var showCall by useState(false)
     var newBundleName by useState("")
@@ -129,6 +132,7 @@ val BundleEditorPage = FC<Props> {
         stale = null
         saveError = null
         impact = null
+        replacing = null
     }
 
     fun save(confirmed: Boolean) {
@@ -145,19 +149,23 @@ val BundleEditorPage = FC<Props> {
                 if (!confirmed) {
                     val answer = Http.sendApi("POST", dry.path, dry.body)[EP.results].toJsonMapOrEmpty()
                     val report = parseImpactReport(answer[CFEP.impact].toJsonMapOrEmpty())
-                    if (report.blocks) {
-                        impact = report
+                    val replaces = answer[CFEP.replacements].toJsonListOfMaps().map { parseReplacement(it) }
+                    if (report.blocks || replaces.isNotEmpty()) {
+                        impact = report.takeIf { it.blocks }
+                        replacing = replaces.ifEmpty { null }
                         return@launch
                     }
                 }
                 Http.sendApi("POST", real.path, real.body)
                 edits = BundleEdits()
                 impact = null
+                replacing = null
                 showCall = false
                 savedNote = "Saved ${if (count == 1) "1 edit" else "$count edits"}${if (row?.sandboxOf != null) " as a draft" else ""}, and reloaded the client."
                 bump()
             } catch (e: Throwable) {
                 impact = null
+                replacing = null
                 val named = staleEntriesOf(e)
                 if (named != null) stale = named else saveError = userFacingError(e)
             } finally {
@@ -180,8 +188,8 @@ val BundleEditorPage = FC<Props> {
         h1 { +"Configuration${row?.name?.let { " of $it" } ?: ""}" }
         p {
             className = ClassName("subtitle")
-            +"Every configuration bundle this client stores. Open a bundle to see its slots, a slot to see its "
-            +"entries, and an entry to see its JSON. A draft's entries are shown beside the published revision's."
+            +"Every configuration bundle this client stores, then what it runs from code. Open a bundle to see its slots, a "
+            +"slot to see its entries, and an entry to see its JSON. A draft's entries are shown beside the published revision's."
         }
         row?.sandboxOf?.let { parent ->
             p {
@@ -252,11 +260,14 @@ val BundleEditorPage = FC<Props> {
                 saveBar(
                     SaveBarState(
                         edits.count, failing, saving, showCall, savedNote, saveError, stale, impact, row?.sandboxOf != null,
-                        impactFormsOpenable(acrossClients, row?.sandboxOf != null),
+                        impactFormsOpenable(acrossClients, row?.sandboxOf != null), replacing,
                     ),
                     onSave = { save(confirmed = false) },
                     onConfirm = { save(confirmed = true) },
-                    onCancelImpact = { impact = null },
+                    onCancelImpact = {
+                        impact = null
+                        replacing = null
+                    },
                     onToggleCall = { showCall = !showCall },
                     onDiscard = {
                         changeEdits(BundleEdits())
@@ -327,6 +338,7 @@ val BundleEditorPage = FC<Props> {
                                 Disclosure {
                                     summaryText = slotSummaryText(slot)
                                     initiallyOpen = slot.entries.isEmpty()
+                                    slotReplacement(shown.replacements, bundle.name, slot.slot)?.let { replacedSet(it, ed) }
                                     slot.entries.forEachIndexed { i, entry -> entryView(bundle, slot.slot, entry, i, ed) }
                                     newEntries(bundle.name, slot.slot, ed)
                                     if (ed.editable && shown.slotKeys[slot.slot].orEmpty().isNotEmpty()) {
@@ -369,8 +381,73 @@ val BundleEditorPage = FC<Props> {
                 }
                 p { className = ClassName("type-hint"); +"A new bundle is created when a save writes its first entry: give it a slot first." }
             }
+            if (shown.codeConfigs.isNotEmpty()) {
+                WhatIsThis {
+                    heading = "From code"
+                    text = pageCopy.explanation(PFRAG.bundleCodeNs)
+                }
+                for (code in shown.codeConfigs) codeBundleView(code, ed)
+            }
         }
     }
+}
+
+/**
+ * One configuration of the client's code layer (issue #1616), read-only: its slots and entries as a stored bundle's
+ * are listed, each entry's JSON under where it comes from, and the template's version beside an entry that replaces it.
+ */
+private fun ChildrenBuilder.codeBundleView(code: CodeBundle, ed: EditContext) {
+    val bundle = code.asEditorBundle()
+    val from = code.template?.let { "From template $it" } ?: "From code"
+    div {
+        key = "code:${code.name}".unsafeCast<Key>()
+        Disclosure {
+            summaryText = codeBundleLineText(code)
+            p { className = ClassName("type-hint"); +codeBundleNoteText(code) }
+            for (slot in editorSlots(bundle, ed.view.slotKeys)) {
+                div {
+                    key = slot.slot.unsafeCast<Key>()
+                    className = ClassName("bundle-editor-slot")
+                    Disclosure {
+                        summaryText = slotSummaryText(slot)
+                        slotReplacement(ed.view.replacements, code.name, slot.slot)?.let { replacedSet(it, ed) }
+                        slot.entries.forEachIndexed { i, entry ->
+                            val data = entry.latest ?: return@forEachIndexed
+                            val keyFields = ed.view.slotKeys[slot.slot].orEmpty()
+                            val replaced = replacementOf(ed.view.replacements, code.name, slot.slot, keyFields, data)
+                            div {
+                                key = "${entry.label}#$i".unsafeCast<Key>()
+                                className = ClassName("bundle-editor-entry")
+                                Disclosure {
+                                    summaryText = listOfNotNull(entry.label, replaced?.let { "replaces the template's" })
+                                        .joinToString(" — ")
+                                    jsonColumn(from, slot.slot, data, ed, withSwitch = true)
+                                    replaced?.let { replacedVersion(it, slot.slot, ed) }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** The template's version of what an entry replaces (issue #1616), closed to start: it does not run. */
+private fun ChildrenBuilder.replacedVersion(r: TemplateReplacementView, slot: String, ed: EditContext) {
+    div {
+        className = ClassName("bundle-editor-replaced")
+        Disclosure {
+            summaryText = replacedHeadingText(r)
+            r.templateEntries.forEach { jsonColumn("Template ${r.template}", slot, it, ed) }
+        }
+    }
+}
+
+/** A slot that replaces its template's as a set (issue #1616), the columns of the forms list: what it says, and theirs. */
+private fun ChildrenBuilder.replacedSet(r: TemplateReplacementView, ed: EditContext) {
+    p { className = ClassName("type-hint"); +slotReplacementText(r) }
+    replacedVersion(r, r.slot, ed)
 }
 
 /**
@@ -421,11 +498,15 @@ private fun ChildrenBuilder.entryView(bundle: EditorBundle, slot: String, entry:
     val id = data?.let { existingEntryId(bundle.name, slot, key, it, at) }
     val draft = id?.let { ed.edits.drafts[it] }
     val check = id?.let { ed.checks[it] }
+    // An entry of the client's that replaces its template's (issue #1616), judged on the latest revision.
+    val replaced = data?.let { replacementOf(ed.view.replacements, bundle.name, slot, key, it) }
     div {
         this.key = "${entry.label}#$at".unsafeCast<Key>()
         className = ClassName("bundle-editor-entry")
         Disclosure {
-            summaryText = listOfNotNull(entry.label, entryChangeText(entry.change), draftMark(draft, check)).joinToString(" — ")
+            summaryText = listOfNotNull(
+                entry.label, entryChangeText(entry.change), replaced?.let { "replaces the template's" }, draftMark(draft, check),
+            ).joinToString(" — ")
             val before = entry.published
             val publishedHeading = "Published (version ${bundle.published?.version})"
             // The first column's heading carries the page's portable switch, where JSON is copied from and pasted into.
@@ -452,6 +533,7 @@ private fun ChildrenBuilder.entryView(bundle: EditorBundle, slot: String, entry:
             } else if (before != null) {
                 jsonColumn(publishedHeading, slot, before, ed, withSwitch = true)
             }
+            replaced?.let { replacedVersion(it, slot, ed) }
             // An entry has an id only when the latest revision holds it, so `data` is there too.
             if (ed.editable && id != null) {
                 div {
@@ -576,6 +658,8 @@ private class SaveBarState(
     val impact: ImpactReportView?,
     val asDraft: Boolean,
     val formsOpenable: Boolean,
+    /** What the dry run said the edits would newly replace of the client's template (issue #1616); null for nothing. */
+    val replacing: List<TemplateReplacementView>? = null,
 )
 
 private fun ChildrenBuilder.saveBar(
@@ -593,7 +677,7 @@ private fun ChildrenBuilder.saveBar(
         span { +editCountText(state.count, state.failing) }
         Button {
             type = "primary"
-            disabled = state.count == 0 || state.failing > 0 || state.impact != null
+            disabled = state.count == 0 || state.failing > 0 || state.impact != null || state.replacing != null
             this.loading = state.saving
             onClick = { onSave() }
             +"Save"
@@ -621,6 +705,23 @@ private fun ChildrenBuilder.saveBar(
                 +"Reading them again drops your edits of them, so you can see what they hold now and make the edits again. Your other edits are kept."
             }
             Button { onClick = { onReadAgain() }; +"Read them again" }
+        }
+    }
+    state.replacing?.let { replacing ->
+        div {
+            className = ClassName("bundle-editor-notice")
+            p { +"Saving these edits replaces these of the template's, whole:" }
+            ul { replacingText(replacing).forEachIndexed { i, line -> li { key = i.toString().unsafeCast<Key>(); +line } } }
+            p {
+                className = ClassName("type-hint")
+                +"The client then runs its own instead, and whatever the template's had that the edits do not restate is gone. "
+                +"Remove the client's entry later and the template's runs again."
+            }
+            // With an effect on the forms too, the impact report below asks once for both.
+            if (state.impact == null) {
+                Button { type = "primary"; danger = true; this.loading = state.saving; onClick = { onConfirm() }; +"Save anyway" }
+                Button { onClick = { onCancelImpact() }; +"Cancel" }
+            }
         }
     }
     state.impact?.let { report ->

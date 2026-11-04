@@ -31,9 +31,10 @@ import com.dynamicruntime.common.util.toOptStr
  * -- re-manufacture it) or a `$ref` (shared -- the target is a `schemaDef`).
  *
  * Pure over the model and the stored maps; the database write path (#633) and the boot loader (#614) are what
- * persist and consume what this produces.
+ * persist and consume what this produces. With [shownAsRun], a workflow made from a template is given as it expands,
+ * since what is shown is what runs rather than what would be stored (issue #1616): the bundle editor's code layer.
  */
-fun gedraConfigToEntries(config: GedraConfig): Map<String, List<Map<String, Any?>>> {
+fun gedraConfigToEntries(config: GedraConfig, shownAsRun: Boolean = false): Map<String, List<Map<String, Any?>>> {
     // A stored config is a client's, and config traits are hardwired by the runtime (#316) -- never authored as
     // data, never on a row. One carrying them cannot be stored faithfully (its slots have no home and their
     // generated types would misfile as directly-declared ones), so refuse it here rather than silently corrupt
@@ -62,6 +63,7 @@ fun gedraConfigToEntries(config: GedraConfig): Map<String, List<Map<String, Any?
         // One made from a template is stored as its overlay of the template (issue #1120), never as what it expands to:
         // read back, an expanded definition naming its template would be taken for an overlay, and refused.
         val stored = when {
+            shownAsRun -> it.toJsonMap()
             it.templateOverlay != null -> it.templateOverlay
             it.fromTemplate != null -> throw KdrException.mkConv(
                 "Workflow '${it.workflowId}' is made from template '${it.fromTemplate}' and carries no overlay to store; " +

@@ -274,3 +274,21 @@ client's own name is written `@self`, which is filled in for whichever client it
 each JSON heading, copies that JSON as shown; **Copy as portable JSON** on a bundle copies all of it. JSON pasted
 from another client, naming that client's own name, is offered as this client's: take it, and its names are written
 `@self` too.
+
+
+# @bundleCode
+# +whatIsThis
+What the client runs that no bundle it stores holds, read-only.
+
+- **From the client's code:** bundles a component declares for a client defined in code, such as the sample's Acme.
+  They run as written, and are changed in the code.
+- **A copy of a template's code:** for a client built on a template, such as one started from a starter kit, each of
+  the template's bundles is copied in under the name `from_<template>_<bundle>`. A copy leaves out whatever the
+  client defines itself.
+
+The client defines something itself when an entry of its own has the same key as the template's: a trait or a
+workflow with the same id, for example. Its entry **replaces the template's whole**, so the client runs only its own,
+and whatever the template's had that it does not restate is gone. A creation or core details workflow replaces the
+template's of the same kind, whatever its id, and the columns of the forms list replace the template's as a set. An
+entry that replaces one of the template's is marked **replaces the template's**, with the template's version beside
+it, and a save that would make a new replacement says so before it is made.

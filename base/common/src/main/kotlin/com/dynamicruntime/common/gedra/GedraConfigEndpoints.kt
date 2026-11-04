@@ -23,6 +23,7 @@ import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
 import com.dynamicruntime.common.util.truncateToMs
 import com.dynamicruntime.common.util.toOptInstantOrNull
+import com.dynamicruntime.common.startup.SchemaCollector
 import com.dynamicruntime.common.startup.SchemaService
 
 /**
@@ -198,6 +199,34 @@ fun gedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CFEP.namespace
             required = true,
         ) { type = SCT.kObject }
     }
+    // The client's code layer, on the editor's answer (issue #1616): what it runs that no row stores.
+    type(CFEP.codeBundleType) {
+        type = SCT.kObject
+        description = "One configuration of the client's code layer, read-only: its own code's, or a copy of its template's."
+        property(CFEP.name, "The configuration's name; a template's copy is named `from_<template>_<name>`.", required = true)
+        property(CFEP.origin, "Where it comes from: the client's own code, or its template's.", required = true) {
+            option(CFEP.originCode, "The client's own code")
+            option(CFEP.originTemplate, "A copy of its template's code")
+        }
+        property(CFEP.template, "For a template's copy, the template's client id.")
+        property(CFEP.namespaceField, "The configuration's namespace.", required = true)
+        property(CFEP.slots, "Its slots, as a bundle holds them, each workflow as it runs.", required = true) { type = SCT.kObject }
+    }
+    type(CFEP.replacementType) {
+        type = SCT.kObject
+        description = "An entry of the client's that replaces one of its template's whole, so the client runs its own instead."
+        property(CFEP.name, "The client's configuration holding the entry.", required = true)
+        property(CFEP.slot, "The slot the entry is in.", required = true)
+        property(CFEP.key, "The entry's key fields; empty for the columns of the forms list, which replace as one set.", required = true) {
+            type = SCT.kObject
+        }
+        property(CFEP.template, "The template's client id.", required = true)
+        property(CFEP.templateName, "The template's configuration declaring what is replaced.", required = true)
+        property(CFEP.templateEntries, "The template's entries it replaces: one, or every column of the forms list.", required = true) {
+            type = SCT.array
+            items { type = SCT.kObject }
+        }
+    }
     type(CFEP.editorType) {
         type = SCT.kObject
         description = "Everything the bundle editor page draws (issue #1436)."
@@ -213,6 +242,24 @@ fun gedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CFEP.namespace
             type = SCT.kObject
         }
         property(SCH.dDefs, "The schema types the slot types need.", required = true) { type = SCT.kObject }
+        property(
+            CFEP.codeConfigs,
+            "The client's code layer, read-only (issue #1616): each configuration its own code declares, then each copy of " +
+                "its template's.",
+            required = true,
+        ) {
+            type = SCT.array
+            items { ref(CFEP.codeBundleType) }
+        }
+        property(
+            CFEP.replacements,
+            "Each entry of the client's, in code or stored, that replaces one of its template's whole (issue #1616), judged " +
+                "against each configuration's latest revision.",
+            required = true,
+        ) {
+            type = SCT.array
+            items { ref(CFEP.replacementType) }
+        }
     }
 
     // What a patch or a publish answers (issue #1352): every configuration it wrote, in the order asked, and the reload
@@ -226,6 +273,14 @@ fun gedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CFEP.namespace
         }
         property(CFEP.dryRun, "Present and true for a dry run (issue #1434): nothing was stored.") { type = SCT.boolean }
         property(CFEP.impact, "For a dry run: what the patch would do to the data the client already stores.") { ref(IMP.reportType) }
+        property(
+            CFEP.replacements,
+            "For a dry run (issue #1616): each entry the patch would make replace one of the client's template's whole, " +
+                "which it does not replace now.",
+        ) {
+            type = SCT.array
+            items { ref(CFEP.replacementType) }
+        }
         reloadResultProperty()
     }
 
@@ -511,13 +566,34 @@ private fun cfgEditorBody(c: KdrCxt): Map<String, Any?> {
     }
     val schema = SchemaService.get(c)
     val shapes = ConfigSlotShapes.served(c, schema.workflowFunctionKinds(), schema.schemaFunctions().values.toList())
+    val collector = SchemaCollector.get(c)
+    val code = collector?.let { ConfigCodeLayer.codeConfigs(it, c.client) }.orEmpty()
     return mapOf(
         CFEP.client to c.client,
         CFEP.configs to configs,
         CFEP.slotTypes to shapes.entryTypes,
         CFEP.slotKeys to shapes.keys,
         SCH.dDefs to shapes.defs,
+        CFEP.codeConfigs to code.map { ConfigCodeLayer.bundleOf(it, c.instanceConfig.isTestInstance) },
+        CFEP.replacements to templateReplacementsOf(c, svc.listConfigs(c)).map { it.toMap() },
     )
+}
+
+/**
+ * The entries of the caller's client that replace one of its template's (issue #1616): in its own code, and in
+ * [stored] -- each configuration's latest revision, so a draft is judged as it would run once published. Empty for a
+ * client that extends nothing.
+ */
+private fun templateReplacementsOf(c: KdrCxt, stored: List<GedraConfigRow>): List<TemplateReplacement> {
+    val collector = SchemaCollector.get(c) ?: return emptyList()
+    val template = ClientService.getOrNull(c)?.known(c.client)?.extendsFromClientId ?: return emptyList()
+    val theirs = ConfigCodeLayer.templateConfigs(collector, template).map { it.name to ConfigCodeLayer.slotsOf(it, isTestInstance = true) }
+    val ownCode = ConfigCodeLayer.codeConfigs(collector, c.client).filter { it.inheritedFrom == null }
+        .map { it.name to ConfigCodeLayer.slotsOf(it, isTestInstance = true) }
+    val own = ownCode + stored.map { it.configId.baseId to it.entriesBySlot() }
+    return ConfigCodeLayer.replacements(template, theirs, own, GedraConfigService.get(c).configSlotPrimaryKeys()) {
+        ConfigCodeLayer.workflowKind(collector, it)
+    }
 }
 
 private fun cfgWriteBody(c: KdrCxt, request: Map<String, Any?>): Map<String, Any?> {
@@ -585,10 +661,17 @@ private fun cfgPatchBody(c: KdrCxt, request: Map<String, Any?>): Map<String, Any
         // client stores -- live at once for a client without a sandbox, at publishing for one with -- so it is judged
         // whatever the client's tier.
         val wouldWrite = svc.dryRunPatchConfigs(c, patches)
+        // What the patch would newly replace of the client's template (issue #1616), so a save asks with it in view.
+        val latest = svc.listConfigs(c)
+        val patched = wouldWrite.associateBy { it.configId.baseId }
+        val before = templateReplacementsOf(c, latest).map { it.address }.toSet()
+        val created = wouldWrite.filter { w -> latest.none { it.configId.baseId == w.configId.baseId } }
+        val after = templateReplacementsOf(c, latest.map { patched[it.configId.baseId] ?: it } + created)
         return mapOf(
             CFEP.dryRun to true,
             CFEP.configs to wouldWrite.map { bundleOf(c, it) },
             CFEP.impact to ConfigImpact.reportFor(c, c.client, wouldWrite, anyTier = true).toMap(),
+            CFEP.replacements to after.filter { it.address !in before }.map { it.toMap() },
         )
     }
     val written = svc.patchConfigs(c, trial = true, patches)
