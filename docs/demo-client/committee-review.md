@@ -41,12 +41,16 @@ The `review` trait is small: a score and a note for the speaker.
       "notes": {
         "type": "string",
         "title": "Notes for the speaker",
-        "description": "Feedback the speaker will see."
+        "description": "Feedback the speaker will see.",
+        "g-longText": true
       }
     }
   }
 }
 ```
+
+The notes are long text, so the form gives the reviewer a box of several lines to write them in. See
+[Long text](reference.md#long-text).
 
 Nothing here says who may fill it in. That is the workflow's job.
 

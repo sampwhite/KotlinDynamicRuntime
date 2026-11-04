@@ -307,12 +307,18 @@ fun confDemoBase(cxt: KdrCxtBase = LiteCxt(), client: String = ConfDemo.client):
                 option("intermediate", "People with some experience")
                 option("advanced", "Experts")
             }
-            property(ConfDemo.takeaway, "What the audience leaves knowing.") { title = "What will the audience take away?" }
+            property(ConfDemo.takeaway, "What the audience leaves knowing.") {
+                title = "What will the audience take away?"
+                longText = true
+            }
             property(ConfDemo.recordingOk, "Whether the talk may be recorded and published.") {
                 title = "May we record the talk?"
                 type = SCT.boolean
             }
-            property(ConfDemo.needs, "Anything the organizers should know for the day.") { title = "Anything we should know for the day?" }
+            property(ConfDemo.needs, "Anything the organizers should know for the day.") {
+                title = "Anything we should know for the day?"
+                longText = true
+            }
         }
 
         trait(ConfDemo.abstractEntry, ConfDemo.abstract, setOf(GedraDataType.formDoc), "What the talk is about.") {
@@ -355,6 +361,7 @@ fun confDemoBase(cxt: KdrCxtBase = LiteCxt(), client: String = ConfDemo.client):
             // Left off the speaker's form (issue #564): shown only to a caller with an administrator's level.
             property(ConfDemo.programNote, "Scheduling notes for the organizers; the speaker's form leaves this out.") {
                 title = "Organizer's note"
+                longText = true
                 visibleWhen = CFACTS.hasAdminLevel
             }
         }
@@ -365,7 +372,10 @@ fun confDemoBase(cxt: KdrCxtBase = LiteCxt(), client: String = ConfDemo.client):
                 minimum = 1
                 maximum = 5
             }
-            property(ConfDemo.notes, "Feedback the speaker will see.") { title = "Notes for the speaker" }
+            property(ConfDemo.notes, "Feedback the speaker will see.") {
+                title = "Notes for the speaker"
+                longText = true
+            }
         }
         trait(ConfDemo.logisticsEntry, ConfDemo.logistics, setOf(GedraDataType.formDoc), "What a workshop needs on the day.") {
             property(ConfDemo.room, "The room the session is in.") {
@@ -380,7 +390,10 @@ fun confDemoBase(cxt: KdrCxtBase = LiteCxt(), client: String = ConfDemo.client):
                 title = "Do attendees need their own laptop?"
                 type = SCT.boolean
             }
-            property(ConfDemo.setup, "What attendees install before they arrive.") { title = "What should they install beforehand?" }
+            property(ConfDemo.setup, "What attendees install before they arrive.") {
+                title = "What should they install beforehand?"
+                longText = true
+            }
             presentWhen(ConfDemo.setup, on = ConfDemo.needsLaptops, value = true)
         }
 

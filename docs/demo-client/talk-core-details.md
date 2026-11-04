@@ -97,7 +97,8 @@ workflow, on a later page, asks the other four.
       "takeaway": {
         "type": "string",
         "title": "What will the audience take away?",
-        "description": "What the audience leaves knowing."
+        "description": "What the audience leaves knowing.",
+        "g-longText": true
       },
       "recordingOk": {
         "type": "boolean",
@@ -107,7 +108,8 @@ workflow, on a later page, asks the other four.
       "needs": {
         "type": "string",
         "title": "Anything we should know for the day?",
-        "description": "Anything the organizers should know for the day."
+        "description": "Anything the organizers should know for the day.",
+        "g-longText": true
       }
     }
   }
@@ -117,6 +119,10 @@ workflow, on a later page, asks the other four.
 The schema requires none of the questions, so the data stays valid as the answers arrive in stages. Each workflow
 that asks questions from the trait can choose which questions to show and which ones its form requires. A requirement
 the workflow adds applies to its form only. The trait's schema does not change.
+
+**Two answers are long text.** The `g-longText` on `takeaway` and `needs` says each one holds free text that may run
+over several lines, so a form shows a box of several lines for it rather than a single line. See
+[Long text](reference.md#long-text).
 
 ## Columns in the forms list
 

@@ -106,6 +106,13 @@ class SharedEditTest : StringSpec({
         (d[DSV.sharedBasedOn] as String).isNotBlank() shouldBe true
     }
 
+    "the request's notes and backup plan are long text, and its title is not (issue #1591)" {
+        val properties = traitRead()[DSV.entry].toJsonMapOrEmpty()[CCT.dataSchema].toJsonMapOrEmpty()[SCH.properties].toJsonMapOrEmpty()
+        listOf(DesignDemo.title, DesignDemo.budgetNote, DesignDemo.backupPlan, DesignDemo.requesterNote)
+            .associateWith { properties[it].toJsonMapOrEmpty()[SCH.longText] == true } shouldBe
+            mapOf(DesignDemo.title to false, DesignDemo.budgetNote to true, DesignDemo.backupPlan to true, DesignDemo.requesterNote to true)
+    }
+
     "the read says which fields cannot take shared copy, and the save refuses them" {
         // The contact type's layout decides the order and leaves the phone out (issue #1039).
         val contact = definition(CCT.schemaDef, contactType)
