@@ -1,11 +1,22 @@
 package kdn
 
+import com.dynamicruntime.appui.AppUiComponent
+import com.dynamicruntime.common.context.ACFG
+import com.dynamicruntime.common.context.BOOT
 import com.dynamicruntime.common.context.EnvVarDef
 import com.dynamicruntime.common.context.EnvVarRegistry
+import com.dynamicruntime.common.context.KdrCxt
+import com.dynamicruntime.common.endpoint.KdrEndpoint
+import com.dynamicruntime.common.endpoint.endpointIndexMarkdown
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.home.coreDocs
+import com.dynamicruntime.common.http.request.RequestService
 import com.dynamicruntime.common.operator.envVarCatalogMarkdown
+import com.dynamicruntime.common.startup.ComponentDefinition
+import com.dynamicruntime.common.startup.KdrProvider
+import com.dynamicruntime.kdn.Startup
 import java.io.File
+import java.util.ServiceLoader
 import java.util.zip.ZipFile
 
 /**
@@ -34,6 +45,12 @@ object GENREF {
     /** The environment variables' copy, which no server serves. */
     const val envVarsPath = "docs/reference/environment-variables.md"
 
+    /** The endpoint index's copy, which no server serves either. */
+    const val endpointsPath = "docs/reference/endpoints.md"
+
+    /** What switches the sample component on in a test boot, whose environment (`unit`) leaves it off. */
+    const val loadSampleEnvVar = "KDR_LOAD_SAMPLE"
+
     /** How a class file names [EnvVarDef] when it refers to it. */
     const val envVarDefInternalName = "com/dynamicruntime/common/context/EnvVarDef"
 }
@@ -41,10 +58,44 @@ object GENREF {
 /** One committed copy: the repository file holding it, and what makes its text. */
 class ReferenceCopy(val sourcePath: String, val generate: () -> String)
 
-/** Every committed copy: the documents a server generates, then the environment variables. */
+/** Every committed copy: the documents a server generates, then the environment variables and the endpoints. */
 fun referenceCopies(repoRoot: File): List<ReferenceCopy> =
-    coreDocs().mapNotNull { doc -> doc.generate?.let { ReferenceCopy(doc.sourcePath, it) } } +
-        ReferenceCopy(GENREF.envVarsPath) { envVarCatalogMarkdown(declaredEnvVars(repoRoot)) }
+    coreDocs().mapNotNull { doc -> doc.generate?.let { ReferenceCopy(doc.sourcePath, it) } } + listOf(
+        ReferenceCopy(GENREF.envVarsPath) { envVarCatalogMarkdown(declaredEnvVars(repoRoot)) },
+        ReferenceCopy(GENREF.endpointsPath) { endpointIndex(repoRoot) },
+    )
+
+/**
+ * The endpoint index (issue #1608), from two test boots holding every component the repository ships, as the launcher
+ * finds them: an application node, with the sample switched on as a developer's node has it, and an edge node, for
+ * what an edge adds. A test boot, so the test-only endpoints are there to be marked as such. A served copy would show
+ * one deployment's components, which is why this one is made here and committed instead.
+ */
+fun endpointIndex(repoRoot: File): String {
+    val components = repoComponents(repoRoot)
+    val app = Startup.mkTestBootCxt("refDocsApp", "refDocsApp", mapOf(GENREF.loadSampleEnvVar to "true"), components)
+    val edge = Startup.mkTestBootCxt("refDocsEdge", "refDocsEdge", mapOf(ACFG.bootRole to BOOT.edge), components)
+    val appEndpoints = sharedEndpoints(app)
+    val appKeys = appEndpoints.map { it.collationKey }.toSet()
+    val edgeOnly = sharedEndpoints(edge).filter { it.collationKey !in appKeys }
+    val rules = RequestService.get(app).sectionRulesMap + RequestService.get(edge).sectionRulesMap
+    return endpointIndexMarkdown(appEndpoints, edgeOnly, rules)
+}
+
+/** The endpoints [cxt]'s node offers every caller's client alike: none of a client's own copies. */
+private fun sharedEndpoints(cxt: KdrCxt): List<KdrEndpoint> = cxt.getGlobalSchema().endpoints.values.filter { it.client == null }
+
+/**
+ * The components a launcher boots beyond the base two, as `bootInstance` gathers them -- the webapp host, and every
+ * component the service loader finds -- less any from outside [repoRoot], such as a workspace's injected config.
+ */
+private fun repoComponents(repoRoot: File): List<ComponentDefinition> {
+    val root = repoRoot.canonicalPath + File.separator
+    val discovered = ServiceLoader.load(KdrProvider::class.java, KdrProvider::class.java.classLoader).toList()
+        .filterIsInstance<ComponentDefinition>()
+        .filter { File(it::class.java.protectionDomain.codeSource.location.toURI()).canonicalPath.startsWith(root) }
+    return listOf(AppUiComponent()) + discovered
+}
 
 /**
  * Every environment variable the repository declares. A declaration registers itself ([EnvVarRegistry]) when the

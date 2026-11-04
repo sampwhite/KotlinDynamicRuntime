@@ -8,6 +8,8 @@ import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldContainAll
 import io.kotest.matchers.ints.shouldBeGreaterThan
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldContain
+import io.kotest.matchers.string.shouldNotContain
 import java.io.File
 
 /**
@@ -37,6 +39,17 @@ class ReferenceCopiesTest : StringSpec({
         declaredEnvVars(repoRoot).map { it.name } shouldContainAll listOf(
             "KDR_PORT", "KDR_EDGE_UPSTREAM", "KDR_ASSISTANT_MODEL", "KDR_MULTI_NODE_TEST", "KDR_CUSTOM_CONFIG",
         )
+    }
+
+    "the endpoint index holds every component's endpoints, and what only an edge adds apart" {
+        val index = endpointIndex(repoRoot)
+        // Core, the webapp host, the assistant, and the sample on the application node.
+        for (path in listOf("`/admin/clients`", "`/app/ui/config`", "`/clientAdmin/assistant/status`", "`/demo/file/list`")) {
+            index shouldContain path
+        }
+        // The edge's sign-in, under its own heading after the application's sections.
+        index.substringAfter("## On an edge node") shouldContain "`/auth/env/login`"
+        index.substringBefore("## On an edge node") shouldNotContain "`/auth/env/login`"
     }
 
     "a region is replaced, and the file's own text around it is kept" {
