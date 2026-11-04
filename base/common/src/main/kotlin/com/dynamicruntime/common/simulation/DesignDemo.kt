@@ -177,13 +177,15 @@ fun designDemoConfig(cxt: KdrCxtBase = LiteCxt(), client: String = DesignDemo.cl
                 option("outdoors", "Outdoors")
             }
             property(DesignDemo.budgetNote, "A note on budget, for administrators.") {
+                longText = true
                 visibleWhen = CFACTS.hasAdminLevel
             }
             property(DesignDemo.contact, "Who to talk to.") { ref(DesignDemo.contactType) }
-            property(DesignDemo.backupPlan, "What happens if the weather turns.")
+            property(DesignDemo.backupPlan, "What happens if the weather turns.") { longText = true }
             // No layout entry: the form shows a label made from the name, and this description.
             property(DesignDemo.catering, "Whether the event needs food and drink.") { type = SCT.boolean }
             property(DesignDemo.requesterNote, "Anything the requester wants the organizers to know.") {
+                longText = true
                 visibleWhen = "~${CFACTS.hasAdminLevel}"
             }
             // Asked only for an outdoor event -- so Design View shows it as a ghost until that venue is chosen.

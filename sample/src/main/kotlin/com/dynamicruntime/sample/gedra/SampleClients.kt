@@ -617,7 +617,7 @@ private fun acmeClient(cxt: KdrCxt): GedraConfig =
             // What the pages head it, and what a lock refusal calls it -- rather than the humanized "Acme site audit".
             title = "Site audit"
             property(SC.auditor, "Who carried out the audit.", required = true)
-            property(SC.findings, "What they found.")
+            property(SC.findings, "What they found.") { longText = true }
         }
 
         // What a site follow-up visit records (issue #856) -- its own trait, so a follow-up never touches the audit.
@@ -629,7 +629,7 @@ private fun acmeClient(cxt: KdrCxt): GedraConfig =
         ) {
             title = "Site follow-up"
             property(SC.followUpBy, "Who made the follow-up visit.", required = true)
-            property(SC.followUpOutcome, "What the follow-up found.")
+            property(SC.followUpOutcome, "What the follow-up found.") { longText = true }
         }
 
         // The supplied-defaults demo trait (issue #711): the form owner's name and email, both prefilled by the

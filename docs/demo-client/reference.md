@@ -88,6 +88,15 @@ number 45. A schema can say otherwise for one field: `"g-outerWhitespace": "keep
 `"g-allowCoerce": false` refuses a number that arrives as text. The demo's schemas say `"g-outerWhitespace": "trim"`
 where trimming matters, which also trims a value that arrives by other routes than a form.
 
+## Long text
+
+A text field with `"g-longText": true` holds free text that may run over several lines, such as an answer of a
+sentence or two, or a note. Every form shows it as a box of several lines rather than a single line, and you can drag
+the box taller. A form that shows a saved answer without letting you edit it keeps the answer's line breaks. Long text
+changes nothing about what may be saved, so bounds and trimming apply to it as to any other text. Only a plain text
+field can be long text: not a date, and not a field with choices. A layout can say how many lines the box starts with
+(see [Field layouts](#field-layouts)).
+
 ## Lists
 
 A field whose `type` is `array` holds a list. Its `items` say what each element is: a choice from `g-options`,
@@ -148,7 +157,7 @@ labels of its own. A form never offers a choice the schema does not. And an entr
 this form, which the schema may leave optional.
 
 A layout entry can also say how many `lines` a long text field's box starts with, which is three when no layout says.
-Whether a field is long text is the schema's to say, with `g-longText`, since it is a fact about the data rather than
+Whether a field is [long text](#long-text) is the schema's to say, with `g-longText`, since it is a fact about the data rather than
 about one form. The [abstract's summary](abstract.md) is one.
 
 A layout can also name the trait and introduce it. Its `label` is the trait's name, the heading of its section on a

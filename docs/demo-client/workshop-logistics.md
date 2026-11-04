@@ -100,7 +100,8 @@ do, what to install.
       "setup": {
         "type": "string",
         "title": "What should they install beforehand?",
-        "description": "What attendees install before they arrive."
+        "description": "What attendees install before they arrive.",
+        "g-longText": true
       }
     },
     "if": {
@@ -117,6 +118,9 @@ do, what to install.
 they say: when `needsLaptops` is `true`, `setup` is required; otherwise it may not be given at all. The form shows the
 setup field only once the laptop question is answered yes, and a save without it is refused. This is the one shape of
 condition the platform supports: a field required or forbidden by another field's value.
+
+The setup answer is long text, since a list of what to install often runs over several lines. See
+[Long text](reference.md#long-text).
 
 The room list offers every room the conference has. The workflow narrows it.
 

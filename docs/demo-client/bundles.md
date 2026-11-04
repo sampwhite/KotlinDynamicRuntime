@@ -93,6 +93,7 @@ review](committee-review.md), and [workshop logistics](workshop-logistics.md) pa
           "takeaway": {
             "description": "What the audience leaves knowing.",
             "title": "What will the audience take away?",
+            "g-longText": true,
             "type": "string"
           },
           "recordingOk": {
@@ -103,6 +104,7 @@ review](committee-review.md), and [workshop logistics](workshop-logistics.md) pa
           "needs": {
             "description": "Anything the organizers should know for the day.",
             "title": "Anything we should know for the day?",
+            "g-longText": true,
             "type": "string"
           }
         },
@@ -162,6 +164,7 @@ review](committee-review.md), and [workshop logistics](workshop-logistics.md) pa
           "programNote": {
             "description": "Scheduling notes for the organizers; the speaker's form leaves this out.",
             "title": "Organizer's note",
+            "g-longText": true,
             "g-visibleWhen": "kdr:hasAdminLevel",
             "type": "string"
           }
@@ -187,6 +190,7 @@ review](committee-review.md), and [workshop logistics](workshop-logistics.md) pa
           "notes": {
             "description": "Feedback the speaker will see.",
             "title": "Notes for the speaker",
+            "g-longText": true,
             "type": "string"
           }
         },
@@ -220,6 +224,7 @@ review](committee-review.md), and [workshop logistics](workshop-logistics.md) pa
           "setup": {
             "description": "What attendees install before they arrive.",
             "title": "What should they install beforehand?",
+            "g-longText": true,
             "type": "string"
           }
         },

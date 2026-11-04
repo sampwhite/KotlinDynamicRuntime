@@ -200,9 +200,9 @@ fun sampleTraits(cxt: KdrCxt): GedraConfig = gedraConfig(cxt, ST.sampleTraits, S
         "A body of answers, updated a page at a time.",
     ) {
         property(ST.topic, "What this questionnaire is about.")
-        property(ST.notes, "Anything the answerer wanted to add.")
+        property(ST.notes, "Anything the answerer wanted to add.") { longText = true }
         property(ST.hasIssue, "Whether the answerer flagged a problem.") { type = SCT.boolean }
-        property(ST.explanation, "What the problem is.")
+        property(ST.explanation, "What the problem is.") { longText = true }
         // A conditional over two *optional* fields, which is what makes it possible to send a fragment that is
         // valid alone and invalid once merged: `{hasIssue: false}` says nothing wrong by itself, and says
         // something wrong when it lands on a stored explanation.
@@ -242,7 +242,7 @@ fun sampleTraits(cxt: KdrCxt): GedraConfig = gedraConfig(cxt, ST.sampleTraits, S
         title = "Manager approval"
         property(ST.approved, "Whether it was approved.", required = true) { type = SCT.boolean }
         property(ST.decidedBy, "Who decided.")
-        property(ST.rejectionReason, "Why it was rejected.")
+        property(ST.rejectionReason, "Why it was rejected.") { longText = true }
         // A reason is required when the decision is a rejection and inadmissible when it is not -- now one
         // level down, inside `data`, which is the arrangement worth having under test.
         presentWhen(ST.rejectionReason, on = ST.approved, value = false)
@@ -293,7 +293,7 @@ fun sampleTraits(cxt: KdrCxt): GedraConfig = gedraConfig(cxt, ST.sampleTraits, S
             minimum = 2000
             maximum = 2100
         }
-        property(ST.note, "Anything recorded for the year.")
+        property(ST.note, "Anything recorded for the year.") { longText = true }
     }
 
     // A **state** trait (issue #597), and the one that exercises the state union the way `yearly` exercises the
