@@ -445,10 +445,10 @@ fun compareReportKeys(a: List<Any?>, b: List<Any?>): Int {
 
 private fun isDateValue(value: Any): Boolean = value is Instant || value is LocalDate
 
-private fun compareDates(a: Any, b: Any): Int = when {
-    a is Instant && b is Instant -> a.compareTo(b)
-    a is LocalDate && b is LocalDate -> a.compareTo(b)
-    // A day beside an instant: the day's text is a prefix of the instant's, and ISO text orders as time does.
+private fun compareDates(a: Any, b: Any): Int = when (a) {
+    is Instant if b is Instant -> a.compareTo(b)
+    is LocalDate if b is LocalDate -> a.compareTo(b)
+// A day beside an instant: the day's text is a prefix of the instant's, and ISO text orders as time does.
     else -> dateText(a).compareTo(dateText(b))
 }
 
