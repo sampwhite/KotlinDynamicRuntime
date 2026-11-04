@@ -11,6 +11,11 @@ frontend shares it. Endpoints are built **immediately** (the full output schema 
 runs), and the code to run is a **plain trailing lambda** (no MVC-style indirection). Builds on the schema
 layer — see the `kdr-schema-builder` skill.
 
+Every endpoint the repository declares is listed, by section and with who may call it, in the generated
+[endpoint index](../../../docs/reference/endpoints.md) (issue #1608) -- look there before adding one that may already
+exist. A new endpoint, or a changed path, description, or section, changes the index, so rewrite it with
+`./gradlew :launch:refDocsDump` (`check` fails until you do).
+
 ## The DSL
 
 Declare types and endpoints together for a namespace with `schemaModule`. In a component, the namespace sits

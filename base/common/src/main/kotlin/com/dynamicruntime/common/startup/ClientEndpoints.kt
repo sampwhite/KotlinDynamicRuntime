@@ -38,7 +38,7 @@ fun buildClientEndpoints(
     if (clients.isEmpty()) {
         return emptyList()
     }
-    val copyable = shared.filter { it.path.startsWith("/${CLIENT_SHAPED_SECTION}/") || it.clientShaped }
+    val copyable = shared.filter { hasClientCopy(it) }
     if (copyable.isEmpty()) {
         return emptyList()
     }
@@ -68,6 +68,14 @@ fun buildClientEndpoints(
  * section is not.
  */
 private const val CLIENT_SHAPED_SECTION = GEP.gedraSection
+
+/**
+ * Whether the shared [endpoint] gets a copy per client, at [clientPath] (issue #455): everything in the `gedra`
+ * section, and an endpoint elsewhere that says it is [KdrEndpoint.clientShaped]. The one statement of the rule, for
+ * [buildClientEndpoints] and for the endpoint index that reports it (issue #1608).
+ */
+fun hasClientCopy(endpoint: KdrEndpoint): Boolean =
+    endpoint.path.startsWith("/${CLIENT_SHAPED_SECTION}/") || endpoint.clientShaped
 
 /** [endpoint] under [client]'s path, bound to that client, with the shared handler untouched. */
 private fun copyFor(endpoint: KdrEndpoint, client: String): KdrEndpoint {
