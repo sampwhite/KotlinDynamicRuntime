@@ -97,6 +97,8 @@ class AssistantNewFormTest : StringSpec({
         val text = AssistantPrompt.system(cxt, configured).single()[MSG.text].toString()
         text shouldContain "is configured"
         text shouldContain "The New form page asks for exactly the traits of the client's creation workflow"
+        // Long text (issue #1592): a trait it writes marks its free text, so a form draws a box of several lines.
+        text shouldContain "Give it \"g-longText\": true in the trait's dataSchema"
         AssistantPrompt.versionFor(configured, "one line") shouldNotBe AssistantPrompt.versionFor(configured, "another line")
         AssistantPrompt.versionOf(cxt, configured) shouldBe
             AssistantPrompt.versionFor(configured, AssistantPrompt.clientLine(cxt, configured))

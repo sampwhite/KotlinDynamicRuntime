@@ -378,8 +378,14 @@ fun clientOverviewSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CLD.overvie
                 maxLength = CLD.homeBrandMaxLength
             }
             field(CLD.homeTitle, "The home page's title.") { maxLength = CLD.homeTitleMaxLength }
-            field(CLD.homeIntro, "The home page's introduction, in Markdown.") { maxLength = CLD.homeTextMaxLength }
-            field(CLD.homeNote, "A note beneath the home page's introduction, in Markdown.") { maxLength = CLD.homeTextMaxLength }
+            field(CLD.homeIntro, "The home page's introduction, in Markdown.") {
+                maxLength = CLD.homeTextMaxLength
+                longText = true
+            }
+            field(CLD.homeNote, "A note beneath the home page's introduction, in Markdown.") {
+                maxLength = CLD.homeTextMaxLength
+                longText = true
+            }
             field(
                 CLD.starterWorkflows,
                 "Start the client with a creation workflow and a core details workflow, made from the deployment's templates around the " +

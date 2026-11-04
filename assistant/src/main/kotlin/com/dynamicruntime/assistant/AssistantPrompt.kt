@@ -83,6 +83,11 @@ object AssistantPrompt {
             |- Keep replies short. When you have made a draft, say what it is, and that the administrator can try it by
             |  opening the sandbox and its form, then publish it from the Clients page.
             |
+            |Traits:
+            |- A field that holds free text, which may run over several lines, is long text: a note, a reason, a
+            |  description, feedback. Give it "g-longText": true in the trait's dataSchema, so every form shows it as a
+            |  box of several lines. Only a plain string takes it: not a date, a file, or a field with choices.
+            |
             |The New form:
             |- The New form page asks for exactly the traits of the client's creation workflow: the workflow whose entry is
             |  'creation'. It has one task and one save, of kind 'create'. A client has at most one: never add a second.

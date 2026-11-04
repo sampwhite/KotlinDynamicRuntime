@@ -22,7 +22,9 @@ somebody's unpublished changes (`unpublishedChanges`) -- and a draft of the pare
 one with a sandbox, whose own page points to the sandbox instead (`publishedOnly`). The two kinds of editor therefore
 never leave each other a draft to refuse. A field's summary keeps what the data requires apart from what this form
 asks for (issue #1022): **Required by the data** beside **Required on this form** and **Choices on this form**, the
-form's requirements from its layout entry. The workflow copy editor sets them (issue #1048,
+form's requirements from its layout entry. A field the schema marks long text (`g-longText`, issue #1592) says so,
+as **Long text**, beside its **Type**, which stays "string" since `typeWord` also describes the wire type in the
+endpoint catalog's outline. The workflow copy editor sets them (issue #1048,
 `formRequirementControls`): a **Required on this form** checkbox -- locked when the data already requires the field,
 and replaced by the reason on a derived or `g-visibleWhen` field, which the load check refuses -- and, for a field
 with a closed list, a row per schema choice, offered or not, with the form's label for it, filled in from the

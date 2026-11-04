@@ -215,6 +215,12 @@ works the line out once and builds both its prompt and the version it checks fro
 conversation began, the turn ends, saying so, rather than send a prompt the conversation's version does not name. The
 page says the same for a client defined in code, under the Conversation heading.
 
+**Long text** (#1592). The prompt says that a trait field holding free text that may run over several lines -- a
+note, a reason, a description, feedback -- is long text, marked `"g-longText": true` in the trait's `dataSchema`, so
+every form shows it as a box of several lines, and that only a plain string takes it. The schema dialect reference
+lists the keyword with the rest, but the assistant reads the API guide rather than that reference, so without the line
+it would write a one-line field.
+
 **A turn** starts with `POST /clientAdmin/assistant/message` (`conversationId`, `clientMessageId`, `text`), which
 checks, in order: the assistant is on for the client, the client has a sandbox, its budget is not spent, the caller
 has turns left this hour (`KDR_ASSISTANT_TURNS_PER_HOUR`, counted in the database), the client has room for another

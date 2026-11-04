@@ -108,7 +108,10 @@ fun clientCopySchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CPY.namespace) 
         needsClientConfig = true,
         inputFields = {
             copyKeyInput()
-            field(COV.value, "The value, as Markdown.", required = true) { emptyIsAbsent = false }
+            field(COV.value, "The value, as Markdown.", required = true) {
+                emptyIsAbsent = false
+                longText = true
+            }
         },
     ) { c, request ->
         val client = overseenClient(c, request[COV.client].toOptStr())

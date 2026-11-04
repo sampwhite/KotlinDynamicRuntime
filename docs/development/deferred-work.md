@@ -410,6 +410,21 @@ values in the table itself.
   stored values on screen. Left out because the tooltip and the file already give the values, and no client has
   asked for them in the table.
 
+## When long notes crowd a listing or a report
+
+A field the schema marks long text (`g-longText`, issue #1550) holds free text over several lines. A report cell
+holding such text keeps its lines and wraps within a bounded width (issue #1591). A forms listing column that shows
+one draws it like any other text, and its free-text search (`q`) matches it like any other text column.
+
+- **Shorten a long cell** *(#1592, deferred here 2026-11-04).* Show the first lines of long text in a listing or
+  report cell, with the whole text on hover or a click. It needs a long-text flag on a listing column (from
+  `columnField`, `ListingColumns.kt`) and on a report column (`ReportBind.kt`). The downloaded file stays whole. Left
+  out because the demo and sample notes are short, and no client has a listing or report crowded by them.
+- **Leave long text out of the free-text search** *(#1592, deferred here 2026-11-04).* Skip a long text column in
+  `textSearchColumns` (`GedraSearch.kt`), through a flag on the column's search shape, while its own `...Contains`
+  filter still searches it. Left out because a client shows a column on purpose, and a match in a note is usually
+  what the person searching wants.
+
 ## When someone wants to see a form's whole data in one place
 
 A form's info page is drawn from its client's core details workflow, so it shows only the core details, and a line

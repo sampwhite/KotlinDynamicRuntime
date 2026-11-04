@@ -385,7 +385,7 @@ internal fun SchModuleBuilder.clientTraitsEndpoints() {
             CIT.description,
             "The trait's introduction for the client (issue #1534), its layout description: Markdown a workflow form shows " +
                 "above the trait's fields. Absent keeps the platform's; empty shows none.",
-        )
+        ) { longText = true }
         property(CIT.hidden, "The fields the client's forms leave out; the data still accepts them.") {
             type = SCT.array
             items { type = SCT.string }

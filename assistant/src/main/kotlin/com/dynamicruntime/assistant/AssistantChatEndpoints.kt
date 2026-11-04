@@ -168,7 +168,7 @@ fun assistantChatSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "${ASST.root
         inputFields = {
             field(ACNV.conversationId, "The conversation to go on with; absent to begin one.")
             field(ACNV.clientMessageId, "The page's own id for this message, so sending it again starts no second turn.", required = true)
-            field(ACNV.text, "What the administrator writes.", required = true)
+            field(ACNV.text, "What the administrator writes.", required = true) { longText = true }
         },
         sessionOnly = true,
     ) { c, request ->

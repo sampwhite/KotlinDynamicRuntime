@@ -510,6 +510,8 @@ private fun ChildrenBuilder.fieldSummary(target: DesignTarget.Field, layout: Sch
     vt.options?.let { options ->
         fact("Choices", choicesText(options))
     }
+    // Long text (issue #1592) is the schema's mark, so it is said here beside the type, which stays "string".
+    if (vt.longText) fact("Long text", "yes — drawn as a box of several lines")
     if (layout?.choices != null) {
         fact("Choices on this form", choicesText(offeredChoices(vt, layout).orEmpty()))
     }
