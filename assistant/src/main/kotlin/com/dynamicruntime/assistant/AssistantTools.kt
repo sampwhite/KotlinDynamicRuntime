@@ -204,7 +204,7 @@ object AssistantTools {
             "Reads a reference document as Markdown: '${HDOC.clientConfiguration}' (every config slot and its fields), " +
                 "'${HDOC.schemaDialect}' (how a trait's data type is written), '${HDOC.validationMessages}' (the codes " +
                 "a refused value is reported with, and how a schema gives one a message), '${HDOC.expressions}' (the " +
-                "${'$'}{…} language of copy, columns, layouts, and computed values), '${HDOC.facts}' (the facts a menu entry, " +
+                $$"${…} language of copy, columns, layouts, and computed values), '$${HDOC.facts}' (the facts a menu entry, " +
                 "a field's visibility, a save rule, or an eligibility test is written over), '${HDOC.copy}' (the Markdown copy " +
                 "is written in, its roles, and the fragment file format), or a page of the demo client's " +
                 "('${ConfDemo.docIdPrefix}README' lists them), which shows a whole client's configuration worked through.",
