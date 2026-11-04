@@ -68,7 +68,7 @@ internal fun SchModuleBuilder.customerOverviewEndpoints() {
         property(CUST.plan, "The plan its clients are on (issue #1109), as every plan decision reads it.", required = true)
         property(CUST.rootClientId, "The root client, whose administrators act for the customer; absent when none is named.")
         property(CUST.clientCount, "How many clients it owns, sandboxes aside.", required = true) { type = SCT.integer }
-        property(CUST.isSource, "Whether it is declared in source code rather than stored configuration.", required = true) {
+        property(CUST.isSource, "Whether it is declared in code rather than stored configuration.", required = true) {
             type = SCT.boolean
         }
     }

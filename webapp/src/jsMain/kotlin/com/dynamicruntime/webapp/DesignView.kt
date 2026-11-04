@@ -302,7 +302,7 @@ fun provenanceText(address: DesignAddress): String {
 /** Where a client's own layer is held, as [provenanceText] says it after "declared in" or "altered … in". */
 private fun layerText(layer: DesignLayer): String {
     val named = layer.config?.let { " ($it)" }.orEmpty()
-    return if (layer.origin == DesignOrigin.stored.name) "its stored configuration$named" else "source$named"
+    return if (layer.origin == DesignOrigin.stored.name) "its configuration$named" else "code$named"
 }
 
 /** A slot's name for a reader: `kdr:traitDef` reads "trait". */
@@ -564,7 +564,7 @@ fun sharedWordingRefusalOf(read: Map<String, Any?>?): String? = read?.get(DSV.sh
 fun pulledSourceLine(pull: PulledKey): String {
     val whose = when (pull.origin) {
         null -> "the shipped wording"
-        GedraConfigOrigin.source.name -> "this client's own, set in its source configuration"
+        GedraConfigOrigin.source.name -> "this client's own, set in its code"
         else -> "this client's own" + (pull.baseValue?.takeIf { it != pull.value }?.let { "; shipped: \"$it\"" } ?: "")
     }
     return "Shared wording \"${pull.name}\" (${pull.fileId}) \u2014 $whose. Used wherever that wording appears, in every workflow."
@@ -577,7 +577,7 @@ fun pulledSourceLine(pull: PulledKey): String {
  */
 fun pulledResetLabel(pull: PulledKey): String? = when {
     pull.origin != GedraConfigOrigin.stored.name -> null
-    pull.sourceValue != null -> "Back to the source wording"
+    pull.sourceValue != null -> "Back to the code's wording"
     else -> "Back to shipped"
 }
 

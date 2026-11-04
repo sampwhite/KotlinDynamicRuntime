@@ -51,11 +51,12 @@ What the platform sets about the client. A client's own administrator sees these
 # +whatIsThis
 Where the client is defined, and where it runs.
 
-- **Definition** says where the client's definition comes from: written in **source** code, which changes with a
-  release, or **stored** configuration, which is changed on this page.
+- **Definition** says where the client's definition comes from: **code**, which changes with a release of the
+  application, or **configured**, made in the app and changed on this page. A code-defined client may have
+  configuration of its own on top: "Code + 2 configured".
 - **Enabled in** lists the environments that load the client, such as `local` and `production`.
-- **Static config** means that in production the client takes no stored configuration, only what source code says.
-  Elsewhere it is edited as any client is, and the changes are brought into source code.
+- **Static config** means that in production the client takes no configuration made in the app, only what its code
+  says. Elsewhere it is edited as any client is, and the changes are brought into its code.
 - **Preload** means the client's caches are computed before a node reports that it is ready.
 - **Plan** is what the client may hold, and how much of it is used.
 
@@ -193,7 +194,7 @@ own. Every saved change makes a new **revision** of its part.
   differs. A part that holds nothing, in its latest revision and its published one, can be **deleted**. To delete one
   that holds entries, remove them from it on the bundles page, save, and publish the emptied part.
 
-Configuration written in source code is not listed here: it changes with a release of the application.
+Configuration written in code is not listed here: it changes with a release of the application.
 
 
 # @files

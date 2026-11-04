@@ -227,7 +227,7 @@ val ClientUsagesSection = FC<ClientUsagesSectionProps> { props ->
                             if (column.notRunning) {
                                 div {
                                     className = ClassName("type-hint")
-                                    +"Stored, but not run: the client's issues say why."
+                                    +"Configured, but not run: the client's issues say why."
                                 }
                             }
                         }

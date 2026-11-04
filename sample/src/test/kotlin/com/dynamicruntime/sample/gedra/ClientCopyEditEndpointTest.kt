@@ -153,7 +153,7 @@ class ClientCopyEditEndpointTest : StringSpec({
         served(SC.acme, key = "title").first shouldBe "Hello, Acme"
         // Now the source alone sets it: a second reset has nothing to remove.
         val refused = admin.expectError(EXC.badInput, CPY.resetPath, data = address(SC.acme, "home", "brand"))
-        refused[EP.errorMessage].toOptStr().orEmpty() shouldContain "source code or the shipped copy"
+        refused[EP.errorMessage].toOptStr().orEmpty() shouldContain "code or the shipped copy"
         // A key the client never overrides at all, likewise.
         admin.expectError(EXC.badInput, CPY.resetPath, data = address(SC.globex, "home", "title"))
     }

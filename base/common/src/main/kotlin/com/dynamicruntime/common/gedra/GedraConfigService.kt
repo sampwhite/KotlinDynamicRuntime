@@ -509,7 +509,7 @@ class GedraConfigService : ServiceInitializer {
         if (config.workflowParams.isNotEmpty()) {
             throw KdrException.mkInput(
                 "Config '${config.gedraId}' declares default parameters for workflow(s) ${config.workflowParams.keys}, " +
-                    "which only source code declares. Set a workflow's parameters on the client's page instead.",
+                    "which only code declares. Set a workflow's parameters on the client's page instead.",
             )
         }
         // Refuses a config carrying config traits (they are hardwired, never stored); one raw entry map per slot.

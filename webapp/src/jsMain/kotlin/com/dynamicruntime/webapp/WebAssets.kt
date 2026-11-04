@@ -152,7 +152,7 @@ fun webAssetUploadedText(slot: WebAssetSlot): String? {
     val file = slot.file ?: return null
     if (webAssetFromPackage(slot)) {
         return "From the client's web resources package${slot.packageId?.let { ", $it" }.orEmpty()}, shipped with its " +
-            "source code. An upload replaces it for the client's people."
+            "code. An upload replaces it for the client's people."
     }
     val at = file.uploadedAt.takeIf { it.isNotEmpty() }?.let { " ${formatTimestamp(it)}" }.orEmpty()
     val by = slot.uploadedByName?.let { " by $it" }.orEmpty()

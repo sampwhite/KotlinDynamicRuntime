@@ -132,7 +132,7 @@ internal fun SchModuleBuilder.reportEditEndpoints() {
     generalEndpoint(
         UADEP.reportRemove,
         "Removes a report the client stores (issue #1492), from the stored configuration holding it, wherever that is. " +
-            "One declared in source code, or copied from the client this one is built on, is refused. Its snapshots are " +
+            "One declared in code, or copied from the client this one is built on, is refused. Its snapshots are " +
             "kept. Then as every editor's save: published and reloaded, or a draft for a client with a Shadow Sandbox.",
         HttpMethod.POST,
         outputRef = RCR.createResultTypeName,

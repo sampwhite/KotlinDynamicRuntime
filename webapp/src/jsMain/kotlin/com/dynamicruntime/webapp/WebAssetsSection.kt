@@ -100,7 +100,7 @@ val WebAssetsSection = FC<WebAssetsSectionProps> { props ->
     p {
         className = ClassName("subtitle")
         if (parent == null) {
-            +"The images this client's people see in place of the deployment's. A change takes effect at once for everyone in the client: these are not part of its stored configuration, so there is no draft and no publish."
+            +"The images this client's people see in place of the deployment's. A change takes effect at once for everyone in the client: these are not part of its configuration, so there is no draft and no publish."
         } else {
             +"A sandbox shows the web assets of $parent. A change to them takes effect for $parent's people at once, so it is made on that client's own page, not here."
         }

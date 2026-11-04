@@ -57,7 +57,7 @@ object ClientDefinitionEdit {
         if (changes.isEmpty()) throw KdrException.mkInput("A definition edit changes at least one field; this one names none.")
         if (ClientService.get(cxt).originOf(owner) == GedraConfigOrigin.source) {
             throw KdrException.mkInput(
-                "Client '$owner' is defined in source code (its ClientDef), so its definition is edited there; a " +
+                "Client '$owner' is defined in code (its ClientDef), so its definition is edited there; a " +
                     "stored definition cannot override it.",
             )
         }

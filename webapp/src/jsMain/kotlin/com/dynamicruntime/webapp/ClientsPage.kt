@@ -421,7 +421,7 @@ private fun ChildrenBuilder.clientDetail(
                         p {
                             className = ClassName("subtitle")
                             +"$note, in "
-                            panelLink(panelPublishing, "Stored configuration")
+                            panelLink(panelPublishing, "Configuration")
                             +" below."
                         }
                     }
@@ -582,20 +582,20 @@ private fun ChildrenBuilder.clientDetail(
                 }
             }
             WhatIsThis {
-                heading = row?.sandboxParentName?.let { "Configuration it runs ($it's)" } ?: "Stored configuration"
+                heading = row?.sandboxParentName?.let { "Configuration it runs ($it's)" } ?: "Configuration"
                 headingLevel = 3
                 headingId = storedConfigurationId
                 text = pageCopy.explanation(PFRAG.storedConfigNs)
             }
             when {
-                storedError != null -> errorText("Couldn't load this client's stored configuration.", storedError)
+                storedError != null -> errorText("Couldn't load this client's configuration.", storedError)
                 configs == null -> p {
                     className = ClassName("subtitle")
                     +"Loading…"
                 }
                 configs.isEmpty() -> p {
                     className = ClassName("subtitle")
-                    +"This node holds no stored configuration for this client."
+                    +"This node holds no configuration made in the app for this client."
                 }
                 else -> {
                     StoredConfigTable {

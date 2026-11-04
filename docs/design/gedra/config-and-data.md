@@ -29,10 +29,10 @@ Entries are instances of traits, so stored config needs traits of its own — de
 by us, and they are a different animal from the everyday sort: one of them has to describe a JSON Schema
 document, which is checked by *parsing* the candidate rather than by describing our schema layer in schema.
 
-**Config written in source code is not.** It is declared directly, with no entry envelope around it, because
+**Config written in code is not.** It is declared directly, with no entry envelope around it, because
 the envelope exists to answer *when* and *by whom* — and once config is code, version control answers both
 for free. So the wrapper is a **storage** concern rather than a definitional one, and extracting config from
-a database unwraps the definition out of its protocol parent before it becomes ordinary source. See
+a database unwraps the definition out of its protocol parent before it becomes ordinary code. See
 [Where config comes from](#where-config-comes-from-and-where-it-goes).
 
 ### The bundle is an authoring unit, not an architectural one
@@ -137,7 +137,7 @@ of the cut is a choice we make per deployment rather than once for the architect
 The intent, stated plainly:
 
 - A client can be served by a **different deployment**. That deployment loads *that client only*, plus the
-  demo and internal clients we will mandate in source code.
+  demo and internal clients we will mandate in code.
 - Other deployments do not load it and are not aware it exists.
 - It may still live in the **same database**. That is a separate decision from which deployment serves it —
   sharing storage while separating service is a legitimate configuration, and so is separating both.
@@ -175,10 +175,10 @@ The mechanism is namespace ownership, not a separate store per client:
   construction: C's own types sit in C's overlays, never in the global defs, and C's schema is the global defs
   plus C's overlays, so another client's type is simply not there to resolve.
 - **The template exception** (issue #945). A client that extends another (`extendsFromClientId`) runs a copy of each
-  of the template's **source** configs, filed under the client. The copy keeps the template's namespace, so no type is
+  of the template's configs **in code**, filed under the client. The copy keeps the template's namespace, so no type is
   renamed and a `$ref` inside the template's types still resolves, and the template keeps owning that namespace, so
   the client cannot author into it. Because the copy is the client's own config, an entry the client stores against a
-  template trait resolves against the client. A template's stored configs are never copied.
+  template trait resolves against the client. A template's configured overlays are never copied.
 
 Global names are owned by **root** (#950): every component declares the owner root its namespaces live under --
 core's one root is `kdr` (`kdr.core`, `kdr.gedra`, ...) -- and a module or config under another owner's root says
@@ -187,7 +187,7 @@ namespaces. Stating it as ownership is what makes the rule survive the arrival o
 list of reserved names would not.
 
 Visibility is also *why* two clients may define the same trait id harmlessly — neither can see the other's
-(issue #807). Each gets its own trait, and it stops nothing working. Promoting one into source code as a global
+(issue #807). Each gets its own trait, and it stops nothing working. Promoting one into code as a global
 trait gives it a rooted id (`kdr:…`, or its component's root), so it can never collide with either.
 
 ## Two uniqueness rules that only look contradictory
@@ -251,12 +251,12 @@ show (`types`, which for a workflow holds layouts only). Anything else is refuse
 those are its parameters, set per client and in force at once, and never part of a definition or an overlay (issue
 #1356). They outlive the workflow: a workflow removed keeps its parameters and their history, so one made again under
 the same id runs with the windows the old one had. Each parameter resolves on its own (issue #1386): a scope's own
-value, else a sandbox's client's, else a default the client's source code declares (`workflowParams` in a source
-configuration, beside the workflow; a stored configuration cannot hold one), else no limit. Who sees a workflow is a
+value, else a sandbox's client's, else a default the client's code declares (`workflowParams` in its configuration in
+code, beside the workflow; configuration made in the app cannot hold one), else no limit. Who sees a workflow is a
 parameter too, of a workflow of any kind (issue #1384): everybody, or the client's administrators and the people holding
 one of its user labels. A workflow made from a template starts as its maker chose, administrators only by default, and
 on a client with a sandbox the client's own stays administrators only, so a publish never makes a workflow visible.
-A workflow nobody restricted -- one declared in source, a new client's starters, one a bundle write or an import
+A workflow nobody restricted -- one declared in code, a new client's starters, one a bundle write or an import
 brought -- is seen by everybody. An editor (the client page's slot form, Design
 View) changes the workflow as it runs, and what is stored is the diff from the template. A change the overlay cannot
 state, such as a task removed, is refused. If a template later changes in a way an overlay no longer fits, or is
@@ -354,7 +354,7 @@ governs it (default `warn`, `strict` in `unit`), independently of `KDR_GEDRA_CON
 
 Which rule applies follows **the definition holding the reference**, not whichever side changed last: a stored
 workflow naming a function a code change unregistered is a stored problem, and forgiven; a dangling reference
-inside source code still refuses the boot outside production. Each reported problem names its client, the
+inside code still refuses the boot outside production. Each reported problem names its client, the
 stored config holding it (when stored), and the definition at fault.
 
 **A forgiven problem is kept on its client** (issue #840), whatever its origin: the client's definition
@@ -440,7 +440,7 @@ already stored is read by the lenient reader (`ClientDef.fromInfo`, through `rea
 that tightens a rule strands nobody.
 
 The unit is the **client**, not the config. A client's definition is spread across its configs (its `clientDef` in
-one, the traits its workflows collect in another), and a stored config depends only on source code and its own
+one, the traits its workflows collect in another), and a stored config depends only on code and its own
 client's other configs, never another client's. So every config write takes the **client's** lock (on the
 `GedraConfigClientTran` root, keyed by client), and the trial judges the client's configs **as stored**, not as the
 node last loaded them:
@@ -485,7 +485,7 @@ bundle whose latest revision is already published rather than refusing the group
 new bundle with a fresh envelope (`entryId`, `createdAt`/`createdBy` of the move); the old bundle's earlier revisions
 keep its history.
 
-A **component's** schema fault follows the source rule: it refuses the boot outside production, and in production
+A **component's** schema fault follows the rule for code: it refuses the boot outside production, and in production
 the faulty keyword, message or layout is dropped and the node serves. A global document that will not compile still
 refuses everywhere.
 
@@ -543,10 +543,10 @@ The move is cheap because the two forms are built by the same objects and identi
 bundle declared in code carries a real `GedraId` — `gc.cd.global.coreTraits` — exactly as a stored one does,
 so nothing downstream has to know which sort it is holding.
 
-The unwrapping is what makes the result idiomatic source rather than a database dump. Stored config is
+The unwrapping is what makes the result idiomatic code rather than a database dump. Stored config is
 wrapped in entries so that a database can answer *when* and *by whom*; extracting it takes the definition out
 of that protocol parent and adds it as ordinary config, because the questions the envelope existed to answer
-are now answered by the commit history. Carrying the wrapper into source would preserve a record of edits
+are now answered by the commit history. Carrying the wrapper into code would preserve a record of edits
 that git already keeps, in a form nobody would read.
 
 Outstanding configuration warnings must be cleared before a config is promoted. A duplicated trait id is
@@ -578,8 +578,8 @@ is what gives the warning teeth.
 | A patch and a publish across several of a client's bundles, judged together | **built** — #1352 |
 | Protection tiers: a client runs its latest revision or only its published one, per environment | **built** — #617 |
 | Sandboxes: a client's `<parent>:sandbox`, for trying a change against its own data | **built** — #927, #928; see [`docs/design/sandboxes.md`](../sandboxes.md) |
-| Template extension: a client built on a copy of another's source configuration | **built** — #945 |
-| Promotion from database to source code | intended |
+| Template extension: a client built on a copy of another's configuration in code | **built** — #945 |
+| Promotion from database to code | intended |
 
 Anything marked *intended* is a rule the built code is shaped to leave room for, not a promise about when it
 arrives. Where the room matters, the code says so at the point somebody would otherwise take it away.

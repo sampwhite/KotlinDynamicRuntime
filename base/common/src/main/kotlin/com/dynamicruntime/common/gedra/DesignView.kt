@@ -230,7 +230,7 @@ object DesignView {
         if (!bundle.isStored || bundle.gedraId.client != cxt.client) {
             return EditRefusal(
                 DesignRefusal.declaredInSource,
-                "Workflow '${declared.def.workflowId}' is declared in source, not in this client's stored configuration, so copy " +
+                "Workflow '${declared.def.workflowId}' is declared in code, not in this client's configuration, so copy " +
                     "just for this workflow cannot be saved here yet. Copy it pulls from a fragment file can be changed here " +
                     "as this client's shared wording, for every workflow that uses it.",
             )

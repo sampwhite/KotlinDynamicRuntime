@@ -198,7 +198,7 @@ fun buildWorkflowRegistries(
                     bundle.checkMode(cxt) == BootCheckMode.off -> out[workflowId] = params
                     workflowId in declaredBy -> refuse("are declared a second time, beside '${declaredBy.getValue(workflowId).gedraId}'.")
                     w == null || (w.bundle.isStored && w.bundle.inheritedFrom == null) ->
-                        refuse("name no workflow of client '$client' declared in source code, its own or its template's.")
+                        refuse("name no workflow of client '$client' declared in code, its own or its template's.")
                     w.def.entry != WfEntry.normal -> refuse("name a ${w.def.entry.words} workflow; only a normal workflow has parameters.")
                     else -> out[workflowId] = params
                 }

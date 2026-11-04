@@ -155,7 +155,7 @@ class WebAssetsTest {
         assertEquals(true, webAssetFromPackage(shipped))
         assertEquals(false, webAssetRemovable(shipped))
         assertEquals(
-            "From the client's web resources package, sample:acme, shipped with its source code. An upload replaces it for the client's people.",
+            "From the client's web resources package, sample:acme, shipped with its code. An upload replaces it for the client's people.",
             webAssetUploadedText(shipped),
         )
         // An upload in front of it is removable, and removing it brings the package's back.

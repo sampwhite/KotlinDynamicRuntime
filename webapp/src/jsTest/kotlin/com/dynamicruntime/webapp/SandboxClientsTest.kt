@@ -56,7 +56,7 @@ class SandboxClientsTest {
         assertNull(sandbox.add)
         assertTrue(sandbox.text.startsWith("This is the sandbox of acme"))
         assertNull(sandboxControl(row("hub", origin = GedraConfigOrigin.source)).add)
-        assertTrue("source code" in sandboxControl(row("hub", origin = GedraConfigOrigin.source)).text)
+        assertTrue("Defined in code" in sandboxControl(row("hub", origin = GedraConfigOrigin.source)).text)
         assertNull(sandboxControl(row("gone", status = ClientStatus.notEnabled)).add)
     }
 

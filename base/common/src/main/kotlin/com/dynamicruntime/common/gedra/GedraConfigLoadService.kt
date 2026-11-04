@@ -658,6 +658,6 @@ fun storedOwnershipProblem(config: GedraConfig): String? = when {
             "config belongs to a real client."
     config.customers.isNotEmpty() && config.gedraId.client != CL.hub ->
         "Config '${config.gedraId}' declares the customer(s) ${config.customers.map { "'${it.customerId}'" }}. A " +
-            "customer is the platform's to declare: in source code, or in the stored configuration of '${CL.hub}'."
+            "customer is the platform's to declare: in code, or in the stored configuration of '${CL.hub}'."
     else -> null
 }

@@ -25,7 +25,7 @@ class CustomersPageTest {
         val view = parseCustomerView(mapOf(CUST.customer to summary, CUST.clients to listOf(mapOf(CLD.clientId to "acme"), mapOf("no" to "id"))))!!
         assertEquals("Acme Co", view.customer.name)
         assertEquals(2, view.customer.clientCount)
-        assertEquals("Source code", customerOriginText(view.customer))
+        assertEquals("Code", customerOriginText(view.customer))
         assertEquals(listOf("acme"), view.clients.map { it.clientId })
         assertNull(parseCustomerView(mapOf(CUST.clients to emptyList<Any>())))
         assertEquals("Unlimited", planNameText("unlimited"))
@@ -58,7 +58,7 @@ class CustomersPageTest {
         assertEquals("Latest", clientRunsText(row("a")))
         assertEquals("Published only", clientRunsText(row("a", CLD.publishedOnly to true)))
         assertEquals("Published; has a sandbox", clientRunsText(row("a", CLD.hasSandbox to true, CLD.publishedOnly to true)))
-        assertEquals("Source only", clientRunsText(row("a", CLD.staticHere to true)))
+        assertEquals("Code only", clientRunsText(row("a", CLD.staticHere to true)))
         assertEquals("—", clientRunsText(row("a", CLD.status to ClientStatus.retired.name)))
     }
 }

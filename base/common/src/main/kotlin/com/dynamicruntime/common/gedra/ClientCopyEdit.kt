@@ -149,7 +149,7 @@ object ClientCopyEdit {
         held.entries.firstOrNull { it.key.value == null && it.value == null }?.key?.let { c ->
             throw KdrException.mkInput(
                 "No stored value sets '$fileId: ${c.namespace}.${c.key}' for client '$owner'; what it reads comes from " +
-                    "source code or the shipped copy, which a reset cannot remove.",
+                    "code or the shipped copy, which a reset cannot remove.",
             )
         }
         val holders = held.values.filterNotNull().distinctBy { it.configId }

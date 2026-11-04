@@ -123,7 +123,7 @@ fun reportSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, REP.namespace) {
             items { type = SCT.string }
         }
         property(RRUN.configName, "The configuration that declares the report.", required = true)
-        property(RRUN.origin, "Whether that configuration is in source code or stored.", required = true) {
+        property(RRUN.origin, "Whether that configuration is in code or stored.", required = true) {
             options(GedraConfigOrigin.entries)
         }
         property(RRUN.template, "The template the report came from, for a client's copy of its template's report.")

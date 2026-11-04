@@ -228,7 +228,7 @@ object ClientCreate {
     private fun taken(cxt: KdrCxt, client: String): KdrException {
         val clients = ClientService.get(cxt)
         val message = if (clients.known(client) != null) {
-            val where = if (clients.originOf(client) == GedraConfigOrigin.source) "source code" else "stored configuration"
+            val where = if (clients.originOf(client) == GedraConfigOrigin.source) "code" else "configuration"
             "Client '$client' already exists: it is defined in $where."
         } else {
             "Client '$client' already has stored configuration, though this node does not carry the client. Its " +
@@ -255,7 +255,7 @@ object ClientCreate {
         val clients = ClientService.get(cxt)
         val where = when {
             clients.known(holder) == null -> "has stored configuration"
-            clients.originOf(holder) == GedraConfigOrigin.source -> "is defined in source code"
+            clients.originOf(holder) == GedraConfigOrigin.source -> "is defined in code"
             else -> "is defined in stored configuration"
         }
         return KdrException(

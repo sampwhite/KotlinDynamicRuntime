@@ -116,7 +116,7 @@ object ClientTraitsEdit {
         val owner = sandboxParentOf(client) ?: client
         if (ClientService.get(cxt).originOf(owner) == GedraConfigOrigin.source) {
             throw KdrException.mkInput(
-                "Client '$owner' is defined in source code (its ClientDef), so the traits it includes are chosen " +
+                "Client '$owner' is defined in code (its ClientDef), so the traits it includes are chosen " +
                     "there; a stored definition cannot override it.",
             )
         }
@@ -225,7 +225,7 @@ internal fun SchModuleBuilder.clientTraitsEndpoints() {
         description = "One of the client's own traits (issue #1118): where it is stored, and its design or why the " +
             "editor cannot edit it."
         property(CIT.traitId, "The trait's id.", required = true)
-        property(CIT.configName, "The stored configuration holding it; absent for one declared in source code.")
+        property(CIT.configName, "The stored configuration holding it; absent for one declared in code.")
         property(CIT.design, "The trait as the editor designs it; absent when it cannot.") { ref(CIT.designTypeName) }
         property(CIT.notEditable, "Why the editor cannot edit it; absent when it can.")
     }
@@ -297,7 +297,7 @@ internal fun SchModuleBuilder.clientTraitsEndpoints() {
             "trial reload finds a new problem, then published and reloaded -- refused, with the impact report, when " +
             "that would leave forms the client stores holding a trait it no longer supports, unless the impact is " +
             "acknowledged. For a client with a Shadow Sandbox (issue #930) saved as a draft instead, judged when it " +
-            "is published. Refused for a client defined in source code, for a sandbox (its traits are its parent's), " +
+            "is published. Refused for a client defined in code, for a sandbox (its traits are its parent's), " +
             "and while the definition's configuration has somebody's unpublished changes, which a live save would " +
             "publish.",
         HttpMethod.POST,
@@ -348,7 +348,7 @@ internal fun SchModuleBuilder.clientTraitsEndpoints() {
             "attributes among them -- then published and reloaded; for a client with a Shadow Sandbox saved as a " +
             "draft instead. An edit that would leave stored forms holding data the trait no longer accepts is refused " +
             "with the impact report unless the impact is acknowledged. Refused for a sandbox (its traits are its " +
-            "parent's) and for a trait declared in source code.",
+            "parent's) and for a trait declared in code.",
         HttpMethod.POST,
         outputRef = CIT.designResultTypeName,
         needsClientConfig = true,
@@ -418,7 +418,7 @@ internal fun SchModuleBuilder.clientTraitsEndpoints() {
             "save: published and reloaded, or a draft for a client with a Shadow Sandbox, whose impact on the live " +
             "client's stored forms is reported for information. A live save leaving stored forms holding data the " +
             "narrowed trait refuses is refused with the impact report unless the impact is acknowledged. Refused for a " +
-            "sandbox, and for an alteration declared in source code.",
+            "sandbox, and for an alteration declared in code.",
         HttpMethod.POST,
         outputRef = CIT.narrowResultTypeName,
         needsClientConfig = true,

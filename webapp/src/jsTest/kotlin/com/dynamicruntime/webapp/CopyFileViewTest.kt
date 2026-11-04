@@ -134,7 +134,7 @@ class CopyFileViewTest {
     @Test
     fun aKeySaysWhatIsPendingElseWhatTheClientChanged() {
         val brand = row("home", "home", "brand")
-        assertEquals("changed by copy (stored)", copyRowStatus(brand, emptyMap()))
+        assertEquals("changed by copy (configured)", copyRowStatus(brand, emptyMap()))
         assertEquals("edited, not saved", copyRowStatus(brand, mapOf(brand.address to PendingCopy("X"))))
         assertEquals("reset, not saved", copyRowStatus(brand, mapOf(brand.address to PendingCopy(null))))
         assertEquals(null, copyRowStatus(row("home", "home", "title"), emptyMap()))

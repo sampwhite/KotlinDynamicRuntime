@@ -1549,7 +1549,7 @@ fun adminGedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, ACEP.name
             "this node's environment is one it is enabled in. The definition is held to what any written definition " +
             "is -- its schema, a domain no other client holds, a trial load that judges its id, its environments " +
             "and the template it extends -- and refused for the same reasons, in the same words. Refused with a 409 " +
-            "for an id that is taken, by a client in source code or in stored configuration. With '" + CLD.newCustomer +
+            "for an id that is taken, by a client in code or in stored configuration. With '" + CLD.newCustomer +
             "' it makes a customer too, whose id is the client's and whose root the client is (issue #1107). Unless '" +
             CLD.starterWorkflows + "' is false, it starts with a creation workflow and a core details workflow made from the " +
             "deployment's templates, and includes the trait they collect (issue #1346). What else a definition does not " +
@@ -1571,7 +1571,7 @@ fun adminGedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, ACEP.name
         "Retires a client, or brings a retired one back (issue #1111). A retired client keeps everything it stored and " +
             "is inert: absent in every environment, its users unable to sign in, their open sessions no longer " +
             "honored, and its sandbox with it. Brought back, it is as it was. Takes effect live, whatever the client's " +
-            "tier. Refused for a client defined in source code (retired there), a sandbox (retired with its parent), " +
+            "tier. Refused for a client defined in code (retired there), a sandbox (retired with its parent), " +
             "a customer's root client, and a definition whose configuration carries unpublished changes.",
         HttpMethod.POST,
         outputRef = CLD.retirementResultTypeName,

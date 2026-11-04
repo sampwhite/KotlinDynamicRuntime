@@ -174,7 +174,7 @@ internal fun customerLinkFaults(
                 "Client '${def.clientId}' names the customer '$id', which this deployment does not declare.",
             )
             isSource && !customer.isSource -> out.add(
-                "Client '${def.clientId}' is defined in source code and names the customer '$id', which only " +
+                "Client '${def.clientId}' is defined in code and names the customer '$id', which only " +
                     "stored configuration declares. A source client names a source customer, so that what it " +
                     "belongs to changes with a deployment rather than with a database write.",
             )

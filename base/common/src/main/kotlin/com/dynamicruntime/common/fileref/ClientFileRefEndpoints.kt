@@ -61,14 +61,14 @@ fun clientFileRefSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, FREF.namespa
         property(CCT.hash, "The SHA-256 of the file's bytes: the hash the ref names, or for a local file the hash of the file as it is now. Absent for a local file that is missing.")
         property(FREF.name, "The ref by name and content, `<refId>:<hash>`: what the static root serves it as, at `/<appId>/ref/<name>`. Absent with the hash.")
         property(CCT.description, "What the file is for, in the administrator's words.") { maxLength = FREF.maxDescriptionLength }
-        property(FREF.configName, "The configuration holding the ref's entry: a stored one, or for a ref the client was shipped with, one in source code.")
+        property(FREF.configName, "The configuration holding the ref's entry: a stored one, or for a ref the client was shipped with, one in code.")
         property(FREF.live, "Whether the client's own people are served this ref as listed; false for a draft only its sandbox shows.", required = true) {
             type = SCT.boolean
         }
         property(
             FREF.stored,
             "Whether a stored configuration holds the ref's entry. False for a ref the client was shipped with, in " +
-                "source code: an upload overrides one, and it cannot be removed.",
+                "code: an upload overrides one, and it cannot be removed.",
             required = true,
         ) { type = SCT.boolean }
         property(

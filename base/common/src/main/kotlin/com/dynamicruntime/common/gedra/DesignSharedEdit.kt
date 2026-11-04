@@ -76,7 +76,7 @@ object DesignSharedEdit {
         if (!declaredBy.isStored || declaredBy.gedraId.client != cxt.client) {
             return EditRefusal(
                 DesignRefusal.declaredInSource,
-                "This definition is declared in source (${declaredBy.name}), not in this client's stored configuration, " +
+                "This definition is declared in code (${declaredBy.name}), not in this client's configuration, " +
                     "so it cannot be edited here.",
             )
         }

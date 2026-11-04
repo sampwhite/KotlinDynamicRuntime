@@ -134,13 +134,17 @@ enum class StateTraitClass {
  * Where a [GedraConfig] came from (issue #839), which decides how a problem found in it is treated: a defect in
  * [source] config refuses the boot outside production, while one in [stored] config is forgiven -- logged,
  * dropped at the smallest grain, and recorded -- everywhere but unit tests.
+ *
+ * The names are wire values and stay; the UI and the documents say **code-defined** for [source] and **configured**
+ * for [stored] (issue #1570), naming what a person can change rather than where it is kept: a client defined in code
+ * changes with a release, and a configured one is changed in the app.
  */
 @Suppress("EnumEntryName")
 enum class GedraConfigOrigin {
-    /** Declared in source code by a component. */
+    /** Declared in code by a component: shown as "code" or "code-defined". */
     source,
 
-    /** Read back from the database: a client's stored configuration. */
+    /** Read back from the database, configuration made in the app: shown as "configured". */
     stored,
 }
 
@@ -632,7 +636,7 @@ class GedraConfigBuilder(
      */
     fun workflowParams(workflowId: String, build: WfParamsBuilder.() -> Unit) {
         val where = "Default parameters for workflow '$workflowId'"
-        if (isStored) throw KdrException.mkConv("$where are declared only in source code; a stored configuration cannot hold them.")
+        if (isStored) throw KdrException.mkConv("$where are declared only in code; a stored configuration cannot hold them.")
         val client = configClient
             ?: throw KdrException.mkConv("$where cannot be declared in a global configuration: a template has no windows.")
         sandboxParentOf(client)?.let {

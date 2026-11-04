@@ -70,7 +70,7 @@ class ClientsPageTest {
         assertEquals("Loaded, 2 issues forgiven", clientLoadText(ClientStatus.present.name, 2))
         assertEquals("Not enabled here", clientLoadText(ClientStatus.notEnabled.name, 0))
         assertEquals("Dropped by a check \u2014 1 issue", clientLoadText(ClientStatus.dropped.name, 1))
-        assertEquals("Stored config only", clientLoadText(ClientStatus.storedOnly.name, 0))
+        assertEquals("Configuration only", clientLoadText(ClientStatus.storedOnly.name, 0))
         // A status this build does not know still says something.
         assertEquals("odd", clientLoadText("odd", 0))
     }
@@ -90,12 +90,12 @@ class ClientsPageTest {
 
     @Test
     fun aDefinitionsOriginCountsOverlaysButNeverItself() {
-        assertEquals("Source", clientOriginText(GedraConfigOrigin.source.name, 0))
-        assertEquals("Source + 2 stored", clientOriginText(GedraConfigOrigin.source.name, 2))
-        // A stored definition's own config is among the loaded ones, so one is just "Stored".
-        assertEquals("Stored", clientOriginText(GedraConfigOrigin.stored.name, 1))
-        assertEquals("Stored", clientOriginText(GedraConfigOrigin.stored.name, 0))
-        assertEquals("Stored (3 configs)", clientOriginText(GedraConfigOrigin.stored.name, 3))
+        assertEquals("Code", clientOriginText(GedraConfigOrigin.source.name, 0))
+        assertEquals("Code + 2 configured", clientOriginText(GedraConfigOrigin.source.name, 2))
+        // A configured definition's own config is among the loaded ones, so one is just "Configured".
+        assertEquals("Configured", clientOriginText(GedraConfigOrigin.stored.name, 1))
+        assertEquals("Configured", clientOriginText(GedraConfigOrigin.stored.name, 0))
+        assertEquals("Configured (3 configs)", clientOriginText(GedraConfigOrigin.stored.name, 3))
     }
 
     @Test
@@ -258,7 +258,7 @@ class ClientsPageTest {
         val row = ClientOverview("acme", "Acme", ClientStatus.present.name, GedraConfigOrigin.source.name, 1, 3, 5, 2, 4, true, emptyList(), 0, 0)
         val across = clientSummaryRows("acme", row, acmeDefinition(), canSeeAllClients = true).toMap()
         assertEquals("acme", across["Client id"])
-        assertEquals("Source + 1 stored", across["Definition"])
+        assertEquals("Code + 1 configured", across["Definition"])
         assertEquals("production", across["Usage type"])
         assertEquals("customer", across["Audience"])
         assertEquals("local, unit", across["Enabled in"])
@@ -281,7 +281,7 @@ class ClientsPageTest {
         assertEquals("acme (prefix) $platformSetNote", scoped["Domain"])
         // Without a definition (a client this node does not carry), the listing's facts still show.
         val listingOnly = clientSummaryRows("acme", row, null, canSeeAllClients = true).toMap()
-        assertEquals("Source + 1 stored", listingOnly["Definition"])
+        assertEquals("Code + 1 configured", listingOnly["Definition"])
         assertEquals(null, listingOnly["Traits"])
         // Without a listing row (a deep link before the listing loads), the definition's do.
         val definitionOnly = clientSummaryRows("acme", null, acmeDefinition(), canSeeAllClients = true).toMap()
@@ -414,9 +414,11 @@ class ClientsPageTest {
 
     @Test
     fun whoSetAValueReadsWithWhereTheConfigLives() {
-        assertEquals("acmeClient (source)", setByText("acmeClient", "source"))
-        assertEquals("edits (stored)", setByText("edits", "stored"))
-        assertEquals("source", setByText(null, "source"))
+        assertEquals("code", originWord(GedraConfigOrigin.source.name))
+        assertEquals("configured", originWord(GedraConfigOrigin.stored.name))
+        assertEquals("acmeClient (code)", setByText("acmeClient", "source"))
+        assertEquals("edits (configured)", setByText("edits", "stored"))
+        assertEquals("code", setByText(null, "source"))
         assertEquals("acmeClient", setByText("acmeClient", ""))
         // A value inherited from the template the client extends (issue #945) names the template, not the origin.
         assertEquals("base (template starter)", setByText("base", "source", "starter"))
@@ -438,13 +440,13 @@ class ClientsPageTest {
         )
         assertEquals("starter", inherited.copy.single().template)
         assertEquals("base (template starter)", blockSetByText(inherited.blocks.single()))
-        assertEquals("acmeClient (source)", blockSetByText(acmeOverrides().blocks[2]))
+        assertEquals("acmeClient (code)", blockSetByText(acmeOverrides().blocks[2]))
         // A row two configs set names both, the stored one first: applied last, its values are the ones that win.
         val mixed = BlockOverrideView("m", "items", "x", added = false, hidden = false, baseLabel = "A", fields = listOf(
             BlockFieldView(HFLD.label, "A", "B", "edits", "stored"), BlockFieldView(UIB.cfactExpression, null, "kdr:loggedIn", "acmeClient", "source"),
             BlockFieldView(UIB.displayOrder, null, "5", "acmeClient", "source"),
         ))
-        assertEquals("edits (stored), acmeClient (source)", blockSetByText(mixed))
+        assertEquals("edits (configured), acmeClient (code)", blockSetByText(mixed))
     }
 
     @Test
@@ -869,7 +871,7 @@ class ClientsPageTest {
         fun refusal(r: ClientOverview, configs: List<ConfigSummaryView>? = published) =
             retirementControl(r, "main", configs).also { assertEquals(null, it.retire) }.text
         assertTrue("with its parent, acme" in refusal(row(CLD.clientId to "acme:sandbox", CLD.sandboxOf to "acme")))
-        assertTrue("source code" in refusal(row(CLD.origin to GedraConfigOrigin.source.name)))
+        assertTrue("Defined in code" in refusal(row(CLD.origin to GedraConfigOrigin.source.name)))
         assertTrue("root of the customer 'acme'" in refusal(row(CLD.rootOf to "acme")))
         assertTrue("unpublished changes" in refusal(row(), listOf(ConfigSummaryView("main", 3, false, null, null, 0))))
         assertTrue("Not loaded" in refusal(row(CLD.status to ClientStatus.notEnabled.name)))

@@ -32,13 +32,13 @@ Three kinds of people vary the runtime, at three speeds:
 |---|---|---|
 | **A deployment's operator** | environment variables, flavors, the deployment's own configuration code, and the modules it adds to the build | when the node is restarted, or rebuilt and redeployed |
 | **A component author** | Kotlin code, in a component the runtime discovers at startup | when the node is rebuilt and redeployed |
-| **A client's administrator** | stored configuration, written through the API or the webapp | at a reload of that client, with no restart, and as a draft first where the client has a sandbox |
+| **A client's administrator** | configuration, written through the API or the webapp | at a reload of that client, with no restart, and as a draft first where the client has a sandbox |
 
 The layers are built from the same objects. A trait, a workflow, a report, or a piece of copy declared in a
 component's code is the same definition as one a client stores, identified the same way. That is what lets a
-definition **mature**: it starts as a client's stored configuration, quick to change while the client is still finding
-out what it needs, and when the client's application settles, it moves into source code as a component that is
-reviewed, tested, and released. See *Where config comes from, and where it goes* in
+definition **mature**: it starts as a client's configuration, quick to change while the client is still finding out
+what it needs, and when the client's application settles, it moves into code as a component that is reviewed,
+tested, and released. See *Where config comes from, and where it goes* in
 [`design/gedra/config-and-data.md`](design/gedra/config-and-data.md).
 
 ## The deployment
@@ -95,7 +95,7 @@ trait or workflow names a function, and a component registers the function with 
 
 | Hook | What it does | Registered with |
 |---|---|---|
-| **Options provider** | Supplies the choices a field offers at run time (`g-optionsSource`). Stored configuration may name only a provider registered as allowed to be named. | `addOptionsProvider` |
+| **Options provider** | Supplies the choices a field offers at run time (`g-optionsSource`). A client's configuration may name only a provider registered as allowed to be named. | `addOptionsProvider` |
 | **Schema function** | The Kotlin behind a function a type lists under a life-cycle keyword, such as `g-onWrite`, which runs each time the type's data is written. `computeValue`, which stores a script's value in a derived property, is the first. | `addSchemaFunction` |
 | **State deriver** | Computes a form's derived state from its data, in the same transaction as each write. | `addStateDeriver` |
 | **Prep-for-save function** | Adjusts a trait's data before it is saved. | `addPrepForSaveFn` |

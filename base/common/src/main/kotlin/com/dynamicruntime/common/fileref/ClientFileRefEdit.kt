@@ -217,7 +217,7 @@ object ClientFileRefEdit {
     private fun requireNotStatic(svc: GedraConfigService, bound: KdrCxt, owner: String) {
         if (svc.isStaticHere(bound, owner)) {
             throw KdrException.mkInput(
-                "Client '$owner' is statically configured: in production its configuration comes from source code, " +
+                "Client '$owner' is statically configured: in production its configuration comes from code, " +
                     "so it takes no file ref here.",
             )
         }

@@ -108,7 +108,7 @@ object ClientTraitNarrowEdit {
      * Why an alteration the client runs but does not store cannot be edited: it is declared in source code -- the
      * client's own, or a template's it extends.
      */
-    private const val sourceAlteration = "Its alteration is declared in source code, where it is edited."
+    private const val sourceAlteration = "Its alteration is declared in code, where it is edited."
 
     /**
      * Saves [narrowing] of a global trait for [client] -- see the class note. [expected] is how the caller told its

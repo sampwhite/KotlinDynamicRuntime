@@ -113,7 +113,7 @@ fun checkClientDefs(
         if (only != null && config.gedraId.client !in only) continue
         val issue = GedraConfigIssue(
             "Client '${config.gedraId.client}' names the web resources package '$named', which only a client defined in " +
-                "source code may name.",
+                "code may name.",
             "Dropping it; the client presents the package of the template it extends, if any.",
         )
         reportConfigProblem(cxt, issue.heldBy(config, GCEL.client, config.gedraId.client), issues)

@@ -49,7 +49,7 @@ fun clientOverviewSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CLD.overvie
         }
         property(
             CLD.origin,
-            "Where the client's definition comes from: a component's source code, or stored configuration. A " +
+            "Where the client's definition comes from: a component's code, or stored configuration. A " +
                 "client known only from stored configuration reads as stored.",
             required = true,
         ) { options(GedraConfigOrigin.entries) }
@@ -150,7 +150,7 @@ fun clientOverviewSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CLD.overvie
             "when nothing else sets the key.")
         property(COV.value, "What this client reads.")
         property(COV.configName, "The client config that set the value.")
-        property(COV.origin, "Whether that config is in source code or stored configuration.", required = true) {
+        property(COV.origin, "Whether that config is in code or stored configuration.", required = true) {
             options(GedraConfigOrigin.entries)
         }
         property(COV.template, "The template the client extends, when its configuration set the value rather " +
@@ -169,7 +169,7 @@ fun clientOverviewSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CLD.overvie
         property(COV.baseValue, "What everybody else gets, as text; absent when the field is new.")
         property(COV.value, "What this client gets, as text.")
         property(COV.configName, "The client config that set the field.")
-        property(COV.origin, "Whether that config is in source code or stored configuration.", required = true) {
+        property(COV.origin, "Whether that config is in code or stored configuration.", required = true) {
             options(GedraConfigOrigin.entries)
         }
         property(COV.template, "The template the client extends, when its configuration set the field rather " +
@@ -252,7 +252,7 @@ fun clientOverviewSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CLD.overvie
         "Adds or removes a client's sandbox (issue #932): sets the sandbox flag of the client's stored definition, " +
             "publishes it and reloads, so the sandbox is loaded or withdrawn at once. A client with a sandbox runs " +
             "only its published configuration; the sandbox runs the latest, for previewing it. Refused for a client " +
-            "defined in source code (its flag is set there), for a sandbox, and while the definition's configuration " +
+            "defined in code (its flag is set there), for a sandbox, and while the definition's configuration " +
             "has unpublished changes, which this would publish. Removing a sandbox keeps its users and data.",
         HttpMethod.POST,
         outputRef = CLD.sandboxResultTypeName,
@@ -430,7 +430,7 @@ fun clientOverviewSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CLD.overvie
             "is left as it is; a blank one clears it (the name may not be blank). Written to the client's stored definition under the config lock, " +
             "refused when a trial reload finds a new problem, then published and reloaded; for a client with a Shadow " +
             "Sandbox (issue #930) saved as a draft instead -- written and reloaded, not published -- so its sandbox " +
-            "shows it and it goes live once published. Refused for a client defined in source code (its definition " +
+            "shows it and it goes live once published. Refused for a client defined in code (its definition " +
             "is edited there), for a sandbox (its definition is its parent's), and while the definition's " +
             "configuration has somebody's unpublished changes, which a live save would publish.",
         HttpMethod.POST,
