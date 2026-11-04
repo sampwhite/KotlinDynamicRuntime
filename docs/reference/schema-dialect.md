@@ -1,4 +1,4 @@
-<!-- kdr-generated: begin -- copied from its generator by `./gradlew :base:common:refDocsDump`; edit the generator, not this -->
+<!-- kdr-generated: begin -- copied from its generator by `./gradlew :launch:refDocsDump`; edit the generator, not this -->
 # The schema dialect
 
 The runtime describes data with JSON Schema, and reads a dialect of it: most of the standard keywords, some refused,
@@ -125,7 +125,7 @@ trial load, check these as well:
 cannot disagree with the parser. Read it on the server's **Documents** page, under **Schema dialect**, where anyone may
 open it without signing in. On the public reference site it is at
 [dynamicruntime.org/wa/docs/schema-dialect](https://dynamicruntime.org/wa/docs/schema-dialect). The same content is
-served as JSON, as a schema for schemas, at `GET /schema/metaSchema`. `./gradlew :base:common:refDocsDump` copies it
+served as JSON, as a schema for schemas, at `GET /schema/metaSchema`. `./gradlew :launch:refDocsDump` copies it
 into this file, and the suite fails while the copy is behind the code, so edit the generator (below), never the copy.
 
 On a running server, a link to this file opens the reference itself.

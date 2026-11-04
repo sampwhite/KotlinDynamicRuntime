@@ -1,4 +1,4 @@
-<!-- kdr-generated: begin -- copied from its generator by `./gradlew :base:common:refDocsDump`; edit the generator, not this -->
+<!-- kdr-generated: begin -- copied from its generator by `./gradlew :launch:refDocsDump`; edit the generator, not this -->
 # Expressions
 
 Much of what a client configures can hold an expression: a line of copy, a column in the forms list, a form's labels,
@@ -116,7 +116,7 @@ may be left out.
 themselves, so it cannot disagree with them. Read it on the server's **Documents** page, under **Expressions**, where
 anyone may open it without signing in. On the public reference site it is at
 [dynamicruntime.org/wa/docs/expressions](https://dynamicruntime.org/wa/docs/expressions). `./gradlew
-:base:common:refDocsDump` copies it into this file, and the suite fails while the copy is behind the code, so edit the
+:launch:refDocsDump` copies it into this file, and the suite fails while the copy is behind the code, so edit the
 generator (below), never the copy.
 
 On a running server, a link to this file opens the reference itself.

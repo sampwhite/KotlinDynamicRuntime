@@ -7,9 +7,10 @@ machine-specific configuration belongs in your own non-versioned `CLAUDE.md` in 
 
 Coding conventions live in [`docs/development/code-guide.md`](docs/development/code-guide.md). Environment variables are
 **declared once in code** as `EnvVarDef` values, grouped by area (`DbEnv`, `NodeUtil`, `LogSetup`, and their neighbors)
-— the declaration is the reference, since the read path takes a declared def, so an undeclared variable cannot be read;
-a running node serves the live set, with each variable's resolved value, at the `operator` endpoint
-`/operator/env/reference`.
+— the declaration is the reference, since the read path takes a declared def, so an undeclared variable cannot be read.
+Every one, with its default and what it does, is listed in
+[`docs/reference/environment-variables.md`](docs/reference/environment-variables.md); a running node serves the ones it
+has read, with each variable's resolved value, at the `operator` endpoint `/operator/env/reference`.
 
 ## Skills: the house APIs, already written down
 
@@ -38,9 +39,9 @@ API, change its skill in the same edit — the test will tell you which one, and
 source, so a wrong one is followed rather than noticed.
 
 **What exists — every schema keyword, validation code, fact, expression function, copy role, report path attribute,
-and configuration slot — is in [`docs/reference/`](docs/reference/)**, as copies of the reference documents a server
-generates from the code (issue #1603). Read them there rather than inferring a list from source; a skill says how to
-use what they list. When a change alters one, `check` fails until `./gradlew :base:common:refDocsDump` rewrites the
+configuration slot, and environment variable — is in [`docs/reference/`](docs/reference/)**, as copies of reference
+documents generated from the code (issues #1603, #1607). Read them there rather than inferring a list from source; a skill says how to
+use what they list. When a change alters one, `check` fails until `./gradlew :launch:refDocsDump` rewrites the
 copy, which is then committed with the change.
 
 ## Before a pull request

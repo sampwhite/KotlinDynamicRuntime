@@ -32,8 +32,10 @@ Each is **declared once in code** as an `EnvVarDef` value (grouped by area — s
 `LogSetup` and their neighbors — carrying its name, default, and documentation), and the read path takes a
 declared def, so an undeclared variable cannot be read and the declaration is the reference. Resolution
 consults the running instance's config *before* the real process environment, and under a boot role tries the
-role-prefixed name (`KDR_EDGE_PORT`) before the plain one. A running node serves the live set — each variable
-and the value it resolved to there — at the `operator` endpoint `/operator/env/reference`.
+role-prefixed name (`KDR_EDGE_PORT`) before the plain one. Every declared variable is listed, by area, in
+[the environment variables reference](../reference/environment-variables.md), made from the declarations. A running
+node serves the ones it has read — each variable and the value it resolved to there — at the `operator` endpoint
+`/operator/env/reference`.
 
 * Generally, we will choose to write our own code instead of using a library to implement a feature. We will still
 use core libraries such as Jetty and libraries to interact with third parties such as AWS. If we do use libraries,
@@ -224,7 +226,7 @@ a copy of the document between two marker lines, and below them, by hand, where 
 in the app, and its address on the public reference site, `dynamicruntime.org`, so that address is written once per
 document, in its file.
 
-The copy is rewritten by `./gradlew :base:common:refDocsDump`, which touches only a file whose copy changed, and
+The copy is rewritten by `./gradlew :launch:refDocsDump`, which touches only a file whose copy changed, and
 `check` fails while one is behind its generator (issue #1603). So a change to what a generator reads -- a keyword, a
 fact, a slot -- is committed with the rewritten copy, and its effect on the reference shows in the diff. The copy is
 there to be read and searched without a server; edit the generator, never the copy.

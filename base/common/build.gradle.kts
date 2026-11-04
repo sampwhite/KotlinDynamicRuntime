@@ -171,36 +171,10 @@ val docLinksTest = tasks.register<Test>("docLinksTest") {
     )
 }
 
-// The generated reference documents are committed (issue #1603): each `docs/reference` file holds a copy of what its
-// generator makes, between marker lines, so it can be read without a server and a change to it shows in a diff.
-// `refDocsDump` rewrites the copies, touching only a file whose copy changed; `refDocsTest` fails while one is behind
-// its generator. Both run code from the test source set, so nothing of this ships. The test is a task of its own for
-// the reason `docLinksTest` is: it reads the tree, so the files are declared as its inputs.
-val refDocsTestClass = "com.dynamicruntime.common.content.GeneratedReferenceDocsTest"
-
-val refDocsTest = tasks.register<Test>("refDocsTest") {
-    description = "Checks that the committed copies of the generated reference documents are current."
-    group = "verification"
-    testClassesDirs = sourceSets.test.get().output.classesDirs
-    classpath = sourceSets.test.get().runtimeClasspath
-    filter.includeTestsMatching(refDocsTestClass)
-    inputs.files(fileTree(repoRoot.dir("docs/reference")) { include("**/*.md") })
-        .withPathSensitivity(PathSensitivity.RELATIVE)
-}
-
-tasks.register<JavaExec>("refDocsDump") {
-    description = "Rewrites the committed copies of the generated reference documents in docs/reference."
-    group = "documentation"
-    classpath = sourceSets.test.get().runtimeClasspath
-    mainClass.set("com.dynamicruntime.common.content.GeneratedReferenceDocsKt")
-    args(repoRoot.asFile.path)
-}
-
 tasks.named<Test>("test") {
     filter.excludeTestsMatching(docLinksTestClass)
-    filter.excludeTestsMatching(refDocsTestClass)
 }
 
 tasks.named("check") {
-    dependsOn(docLinksTest, refDocsTest)
+    dependsOn(docLinksTest)
 }

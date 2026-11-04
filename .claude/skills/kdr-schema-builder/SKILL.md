@@ -635,7 +635,7 @@ number, a list of something, a schema node, a map of nodes, either of two. Three
   its one-line meaning (`SchStdKeywords.meanings`, `SchGKeywords.meanings`) -- served to anyone as the "Schema
   dialect" document and committed as [`docs/reference/schema-dialect.md`](../../../docs/reference/schema-dialect.md).
   A keyword added to a table needs a meaning too; `SchMetaSchemaTest` fails without one. A changed table or meaning
-  changes the committed copy, so rewrite it with `./gradlew :base:common:refDocsDump` (`check` fails until you do).
+  changes the committed copy, so rewrite it with `./gradlew :launch:refDocsDump` (`check` fails until you do).
 
 ```kotlin
 val body = mapOf(
