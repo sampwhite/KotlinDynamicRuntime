@@ -99,7 +99,7 @@ itself in `definition`.
 | --- | --- |
 | `columnId` | The column's id within the report. It is what `groupBy` and `excludeEmpty` refer to. |
 | `label` | The column's heading. |
-| `path` | Where the column's value comes from. See [Report paths](reference.md#report-paths). |
+| `path` | Where the column's value comes from. See [Report paths](reference.md#report-paths), and the [full reference](../reference/report-paths.md) for every attribute a path can end in. |
 | `rollup` | How the column is combined across the talks of a group, when the report is run grouped. |
 
 **A path says where a column's value comes from.** The first part is the source. The value `form` means a field of

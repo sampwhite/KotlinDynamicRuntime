@@ -40,23 +40,27 @@ import kotlinx.datetime.TimeZone
  * what it yields is [resultKind].
  */
 @Suppress("EnumEntryName")
-enum class ReportCombine {
+enum class ReportCombine(
+    /** What it gives, for whoever builds a report (issue #1563): the reference lists the combines from these. */
+    val description: String,
+) {
     /** The first value in order -- for a keyed trait, the lowest key's. */
-    first,
+    first("The first value, in order. For a keyed trait read whole, the entry with the lowest key."),
 
     /** Every value, in order. */
-    list,
+    list("Every value, in order, as a list."),
 
     /** Each value once, sorted. */
-    distinct,
+    distinct("Each value once, sorted, as a list."),
 
     /** How many values there are. */
-    count,
+    count("How many values there are."),
 
-    sum,
-    min,
-    max,
-    avg;
+    sum("The values added up. For numbers only."),
+    min("The least value. Not for yes or no."),
+    max("The greatest value. Not for yes or no."),
+    avg("The average of the values. For numbers only."),
+    ;
 
     /** Whether this may combine values of [kind]: arithmetic needs numbers, and an order needs something ordered. */
     fun allows(kind: ReportKind): Boolean = when (this) {
@@ -441,10 +445,10 @@ fun compareReportKeys(a: List<Any?>, b: List<Any?>): Int {
 
 private fun isDateValue(value: Any): Boolean = value is Instant || value is LocalDate
 
-private fun compareDates(a: Any, b: Any): Int = when {
-    a is Instant && b is Instant -> a.compareTo(b)
-    a is LocalDate && b is LocalDate -> a.compareTo(b)
-    // A day beside an instant: the day's text is a prefix of the instant's, and ISO text orders as time does.
+private fun compareDates(a: Any, b: Any): Int = when (a) {
+    is Instant if b is Instant -> a.compareTo(b)
+    is LocalDate if b is LocalDate -> a.compareTo(b)
+// A day beside an instant: the day's text is a prefix of the instant's, and ISO text orders as time does.
     else -> dateText(a).compareTo(dateText(b))
 }
 

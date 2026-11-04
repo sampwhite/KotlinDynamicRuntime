@@ -577,6 +577,7 @@ class AssistantTurnsTest : StringSpec({
         AssistantTools.readableDoc(cxt, "expressions").shouldNotBeNull()
         AssistantTools.readableDoc(cxt, "facts").shouldNotBeNull()
         AssistantTools.readableDoc(cxt, "copy").shouldNotBeNull()
+        AssistantTools.readableDoc(cxt, "report-paths").shouldNotBeNull()
         AssistantTools.readableDoc(cxt, "api-guide").shouldBeNull()
     }
 

@@ -382,5 +382,6 @@ For a client with a sandbox, the upload is a draft, like any other change. The c
 | Expressions: the `${…}` language of copy, columns, layouts, and computed values, and its functions | [reference/expressions.md](reference/expressions.md) | `/st/api/doc/expressions` |
 | Facts: the yes-or-no facts a menu entry, a field's visibility, a save rule, or an eligibility test is written over | [reference/facts.md](reference/facts.md) | `/st/api/doc/facts` |
 | Copy: the Markdown copy is written in, its roles, and the fragment files it is kept in | [reference/copy.md](reference/copy.md) | `/st/api/doc/copy` |
+| Report paths: how a report column names its value, and every attribute a path can end in | [reference/report-paths.md](reference/report-paths.md) | `/st/api/doc/report-paths` |
 | API keys and access tokens | [api-keys-and-tokens.md](api-keys-and-tokens.md) | `/st/api/doc/api-keys-and-tokens` |
 | The conference demo: a whole client, bundle by bundle | [demo-client/README.md](demo-client/README.md) | `/st/api/doc/demo-client-README` |

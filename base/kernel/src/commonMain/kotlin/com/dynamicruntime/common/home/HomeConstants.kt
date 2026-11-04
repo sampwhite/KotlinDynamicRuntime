@@ -611,6 +611,8 @@ object HDOC {
     const val facts = "facts"
     /** Copy: the Markdown the runtime renders, its roles, and the fragment files copy is kept in (issue #1562). Generated. */
     const val copy = "copy"
+    /** How a report column's path is written, and every name it may end in (issue #1563). Generated. */
+    const val reportPaths = "report-paths"
     const val clientConfiguration = "client-configuration"
     const val apiKeysAndTokens = "api-keys-and-tokens"
     /** The guide for a program or an AI assistant using a site's API (issue #1493), which the endpoint catalog names. */
