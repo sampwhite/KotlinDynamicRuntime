@@ -253,7 +253,7 @@ client), issue #627 — the config id is always built from `cxt.client`, so a ca
 **What a slot's entries hold, and what each edit action's `data` must carry** (the key alone for `deleteOrNoOp`, the
 fields to change for `addOrMerge`, the whole entry for `addOrReplace`), is the generated client configuration
 reference (issue #1476): its Markdown at `GET /st/<appId>/doc/client-configuration` on a running server, or **Documents** →
-**Client configuration**; its stub is [`docs/reference/client-configuration.md`](../../../docs/reference/client-configuration.md).
+**Client configuration**; the repository holds a copy in [`docs/reference/client-configuration.md`](../../../docs/reference/client-configuration.md).
 The endpoints' input schema types an edit's envelope (`slot`, `action`, `expectUpdatedAt`, `expectNew`) and leaves
 `data` an object for the gate to judge.
 

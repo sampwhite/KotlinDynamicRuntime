@@ -15,6 +15,15 @@ runs — so the two cannot disagree about what a schema means. Keep it plain Kot
 `Map`/`List`/primitives: no `java.*`, no reflection. (Its tests are on the JVM, in
 `base/common/src/test/.../schema/`.)
 
+**What exists is in the generated references; this skill is how to author with it, and why.** Every keyword this
+layer reads, with the shape its value must take, where it may be written, and a line on what it means, and every
+standard keyword it refuses, with what to write instead, is in the
+[schema dialect reference](../../../docs/reference/schema-dialect.md). Every code a refused value is reported with,
+the keywords that raise it, and the parameters its message may use are in
+[validation messages](../../../docs/reference/validation-messages.md). Both are made from the parser's and the
+validator's own tables and committed (issue #1603), so they are current where this skill may lag; read them before
+asking whether a keyword exists or what it is called.
+
 ## The DSL
 
 ```kotlin
@@ -155,19 +164,16 @@ type("Order") {
   values: `1` equals `1.0`, `"5"` coerced to an integer equals `5`, and object key order does not matter.
 
 **Held to its shape** (`SchStdKeywords`, issue #1053). Every standard keyword this layer reads must have a value
-of the right kind, or the parse fails naming the keyword and the type or property: `type` is one of the seven `SCT`
-values (a *list* of types is not supported); `required` is a list of names; `properties` an object whose values are
-schema objects (a `null` is a property not set); `items` an object; `additionalProperties` true, false or a schema
-object; `oneOf` a list; `title`, `description`, `format` and `$ref` text; a bound a number (or text that spells one, as it always
-read). Most of these used to be read as though the keyword were absent -- `type: "strng"` constrained nothing.
-A keyword the layer does **not** read is still the document's own, whatever its value. Some refusals are of legal
-JSON Schema this layer does not read (a tuple of `items`, `true`/`false` as a schema), and their messages say so.
+of the shape the reference lists for it, or the parse fails naming the keyword and the type or property (a bound may
+also be text that spells a number, as it always read). Before #1053 most were read as though absent when wrong --
+`type: "strng"` constrained nothing. A keyword the layer does **not** read is still the document's own, whatever its
+value. Some refusals are of legal JSON Schema this layer does not read (a tuple of `items`, `true`/`false` as a
+schema), and their messages say so.
 
-**Refused by name** at parse -- on a type, a property, or beside a `$ref`: `enum` (use `options`), `allOf`,
-`anyOf`, `not` (legal only inside an `if`/`then`/`else` clause), `dependentSchemas`, and, as before, `oneOf`
-without a `discriminator`. A **denylist**: any other keyword this layer does not read stays allowed, so a document
-may carry its own. A client's alteration of a type may not change any of these (they take part in validation);
-it extends instead.
+**Refused by name** at parse -- on a type, a property, or beside a `$ref`: the keywords the reference lists as
+refused (`not` stays legal inside an `if`/`then`/`else` clause), and, as before, `oneOf` without a `discriminator`.
+A **denylist**: any other keyword this layer does not read stays allowed, so a document may carry its own. A client's
+alteration of a type may not change any of these (they take part in validation); it extends instead.
 
 ## Keys: `g-primaryKey` (issues #487, #1521)
 
@@ -627,7 +633,9 @@ number, a list of something, a schema node, a map of nodes, either of two. Three
   `kdr.meta.SchemaNode`, served at `GET /schema/metaSchema` -- for a reader, a test, or an editor's form.
 - **the reference**, `schemaDialectMarkdown()`: the same tables written for a person -- each keyword's shape and
   its one-line meaning (`SchStdKeywords.meanings`, `SchGKeywords.meanings`) -- served to anyone as the "Schema
-  dialect" document. A keyword added to a table needs a meaning too; `SchMetaSchemaTest` fails without one.
+  dialect" document and committed as [`docs/reference/schema-dialect.md`](../../../docs/reference/schema-dialect.md).
+  A keyword added to a table needs a meaning too; `SchMetaSchemaTest` fails without one. A changed table or meaning
+  changes the committed copy, so rewrite it with `./gradlew :base:common:refDocsDump` (`check` fails until you do).
 
 ```kotlin
 val body = mapOf(
@@ -643,15 +651,10 @@ val byDocument = validate(SchMetaSchema.nodeType, body).map { it.path } // the s
 `SchMetaSchemaTest` holds them to the parser (each fault fixture is refused by all three) while
 `MetaSchemaCoverageTest` holds them to the repository (every type any component or sample client declares passes).
 
-Our dialect cannot say three things a schema node needs said, so the document does not state them and
-`SchMetaSchema.notStated` lists them, generated from the same tables: a value that is **one shape or another**
-(`additionalProperties`, `g-derived` -- left untyped), the **closed `g-` list** (any other unknown key passes), and
-the **refused keywords** (`enum`, `allOf`, `anyOf`, `not`, `dependentSchemas`). The walk enforces all three. The one
-place the document is *stricter* than the walk is a property set to `null` -- how an alteration removes one -- which
-is listed too.
-
-Neither is validity: a body that passes may still name a type that does not exist, put a `pattern` on an integer,
-or widen what it alters. Those stay the parser's and the load's (`SchMetaSchema.notChecked`).
+What our dialect cannot say about a schema node, the document does not state; `SchMetaSchema.notStated` lists it,
+generated from the same tables, and the walk enforces it. Neither is validity: what a body may still get wrong once
+every shape is right stays the parser's and the load's (`SchMetaSchema.notChecked`). The reference prints both lists
+(*Rules the shapes do not state*, *What a shape does not decide*).
 
 ## A client's own definitions: dropped, not refused (issue #841)
 
@@ -732,10 +735,9 @@ validation even when no output is requested:
 - Missing required properties with a `default` are injected (deep-cloned), not failed.
 - A `binary`-format field is exempt from all of it (see above), though `required` still applies.
 
-`SchFailCode`: `missingRequired`, `invalidOption`, **`wrongType`** (a plain type check
-rejected it), **`badValue`** (its content was inspected and failed to coerce), `additionalProperty`,
-`notAllowed`, `belowMinimum` / `aboveMaximum` (any bound), `patternMismatch`, `duplicateItem`. A
-parse-driven `badValue` carries the parser exception in `SchFailure.cause`.
+A failure's code is a `SchFailCode`; the codes, what raises each, and the parameters a message for it may use are in
+[validation messages](../../../docs/reference/validation-messages.md). A parse-driven `badValue` carries the parser
+exception in `SchFailure.cause`.
 
 ## Casts
 

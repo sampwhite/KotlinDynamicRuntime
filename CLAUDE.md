@@ -37,6 +37,12 @@ all: only the rule that a page's change updates its file in the same edit keeps 
 API, change its skill in the same edit — the test will tell you which one, and a skill is read *instead of* the
 source, so a wrong one is followed rather than noticed.
 
+**What exists — every schema keyword, validation code, fact, expression function, copy role, report path attribute,
+and configuration slot — is in [`docs/reference/`](docs/reference/)**, as copies of the reference documents a server
+generates from the code (issue #1603). Read them there rather than inferring a list from source; a skill says how to
+use what they list. When a change alters one, `check` fails until `./gradlew :base:common:refDocsDump` rewrites the
+copy, which is then committed with the change.
+
 ## Before a pull request
 
 - **Run the full suite from the build root: `./gradlew check`** (`bin/kdr-tests` runs exactly this). `./gradlew test`
