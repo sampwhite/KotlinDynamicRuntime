@@ -165,7 +165,8 @@ brackets is what a reader sees where the image cannot be drawn.
 
 What follows in braces places the image. `{.float-left .icon width=20}` puts a small one at the start of its line, at
 the height of the text, which is how the demo opens the talk's introduction. Without `.icon`, `.float-left` floats a
-larger picture beside the text that follows it.
+larger picture beside the text that follows it. The [copy reference](../reference/copy.md) lists every role, and the
+rest of the Markdown a label, a description, or a line of copy can hold.
 
 ## Copy from a file
 

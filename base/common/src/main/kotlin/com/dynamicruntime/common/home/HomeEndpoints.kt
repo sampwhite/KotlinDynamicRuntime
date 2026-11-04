@@ -37,6 +37,7 @@ import com.dynamicruntime.common.endpoint.schemaModule
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.schemaDialectMarkdown
 import com.dynamicruntime.common.schema.validationMessagesMarkdown
+import com.dynamicruntime.common.util.copyMarkdown
 import com.dynamicruntime.common.util.expressionsMarkdown
 import com.dynamicruntime.common.user.AdminRules
 import com.dynamicruntime.common.user.UserChoice
@@ -666,6 +667,9 @@ fun coreDocs(): List<MarkdownDocDef> = listOf(
     MarkdownDocDef(HDOC.facts, "Facts", "docs/reference/facts.md",
         "The yes-or-no facts that decide who sees a menu entry or a field, who may save, and which forms a workflow takes.",
         generate = ::factsMarkdown),
+    MarkdownDocDef(HDOC.copy, "Copy", "docs/reference/copy.md",
+        "The Markdown copy is written in, the roles that set a phrase or an image apart, and the fragment files copy is kept in.",
+        generate = ::copyMarkdown),
     MarkdownDocDef(HDOC.clientConfiguration, "Client configuration", "docs/reference/client-configuration.md",
         "Every slot of a client's configuration, what its entries hold, and what a write or an edit of one must send.",
         generate = ::clientConfigurationMarkdown),

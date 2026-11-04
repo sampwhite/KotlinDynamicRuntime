@@ -78,6 +78,8 @@ For a program, or an AI assistant, given a site's address and an API key.
    are written in, and its functions.
 7. **[Facts](reference/facts.md),** for the yes-or-no facts that decide who sees a menu entry or a field, who may save a
    task, and which forms a workflow takes.
+8. **[Copy](reference/copy.md),** for the Markdown that pages, mails, and labels are written in, and the fragment files
+   copy is kept in.
 
 Most of this documentation was written by an AI and reviewed by people;
 [the README says why](../README.md#how-this-was-made).

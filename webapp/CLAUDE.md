@@ -37,7 +37,9 @@ behind a shared cache: a URL names one document, because the `buildId` hashes th
 the underlying file, so two clients reading different copy never share a URL.
 
 **Beyond standard Markdown** the renderer takes two Pandoc-style attributed constructs (issue #795): a bracketed
-span with a role, `[text]{.role}`, and an image with placement, `![alt](src){.float-right width=240}`. A role
+span with a role, `[text]{.role}`, and an image with placement, `![alt](src){.float-right width=240}`. The roles are
+declared in the kernel's `markdownRoles` (issue #1562), each with its place and what it does; a role not there, or on
+the wrong construct, is a problem of the copy (`roleProblems`), and the generated copy reference lists them. A role
 renders as a `md-`-prefixed class by default (`.md-value`, `.md-code` are styled in `app.css`, and so are an
 image's `.md-float-left` and `.md-float-right`, issue #1382: floated beside the text that follows, at the copy's width,
 contained in their `.markdown` block, and not floated below 480 px, except an icon's, `{.float-left .icon width=20}`,

@@ -1,3 +1,5 @@
+@file:Suppress("RegExpRedundantEscape")
+
 package com.dynamicruntime.common.util
 
 import com.dynamicruntime.common.annotation.KdrPrivate
@@ -40,6 +42,15 @@ enum class MarkdownIssue : ProblemCode {
 
     /** A table row with more or fewer cells than its header; it is padded or cut to fit. */
     raggedRow,
+
+    /**
+     * A role no surface realizes (issue #1562): not one of [markdownRoles], so it renders as a class nothing styles and
+     * the span or image shows as though it had none -- most often a misspelling.
+     */
+    unknownRole,
+
+    /** A role written on what it does not apply to (issue #1562): an image role on a span, or a span role on an image. */
+    misplacedRole,
 
     /**
      * Inline constructs nested past the cap -- the one fault that stops the render. A guard: each inline construct
@@ -159,7 +170,38 @@ class ReportingSink(private val html: HtmlSink, private val hooks: MarkdownHooks
 
     override fun image(alt: String, src: String, attrs: MdAttrs?): String {
         record(src, image = true)
+        attrs?.let { checkRoles(it.roles, MdRolePlace.image) }
         return html.image(alt, src, attrs)
+    }
+
+    override fun span(roles: List<String>, inner: String): String {
+        checkRoles(roles, MdRolePlace.span)
+        return html.span(roles, inner)
+    }
+
+    /** Reports each of [roles] that is no declared role, or one that is declared for the other [place] (issue #1562). */
+    private fun checkRoles(roles: List<String>, place: MdRolePlace) {
+        for (name in roles) {
+            val role = markdownRoles.firstOrNull { it.name == name }
+            val (what, applies) = if (place == MdRolePlace.image) "an image" to "a span" else "a span" to "an image"
+            when {
+                role == null -> problems.add(
+                    mdWarning(
+                        MarkdownIssue.unknownRole,
+                        "The role '.$name' is not one the renderer knows (${markdownRoles.joinToString(", ") { "." + it.name }}), " +
+                            "so it does nothing.",
+                        line + 1,
+                    ),
+                )
+                role.place != place -> problems.add(
+                    mdWarning(
+                        MarkdownIssue.misplacedRole,
+                        "The role '.$name' is written on $what, but it applies only to $applies, so it does nothing there.",
+                        line + 1,
+                    ),
+                )
+            }
+        }
     }
 
     private fun record(target: String, image: Boolean) {
@@ -220,6 +262,15 @@ fun String.imageRefIds(): List<String> = analyzeMarkdown().links.mapNotNull { it
  * copy needs some component to ship. As with [imageRefIds], what a placeholder would produce is not counted.
  */
 fun String.componentImageNames(): List<String> = analyzeMarkdown().links.mapNotNull { it.imageName }.distinct()
+
+/**
+ * What is wrong with the roles [this] Markdown writes (issue #1562): each role no surface realizes, and each written on
+ * what it does not apply to, as [MarkdownIssue.unknownRole] and [MarkdownIssue.misplacedRole] problems. For a check of
+ * copy, which reports them rather than letting a misspelled role render as nothing.
+ */
+fun String.roleProblems(): List<Problem> =
+    if (!contains("{.")) emptyList()
+    else analyzeMarkdown().problems.filter { it.code == MarkdownIssue.unknownRole || it.code == MarkdownIssue.misplacedRole }
 
 /** A target with no scheme that is not a same-document anchor or protocol-relative: a path the resolver maps. */
 private fun isRelativeTarget(target: String): Boolean {
