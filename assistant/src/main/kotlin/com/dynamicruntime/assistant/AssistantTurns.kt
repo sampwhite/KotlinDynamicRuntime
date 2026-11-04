@@ -354,7 +354,13 @@ class TurnRunner(@KdrPrivate val service: AssistantService, @KdrPrivate val cxt:
 
     @KdrPrivate
     fun loop() {
-        val system = AssistantPrompt.system(cxt, client)
+        // The kind of client, worked out once: the prompt sent is the one the conversation's version names, or none is.
+        val line = AssistantPrompt.clientLine(cxt, client)
+        val conversation = AssistantStore.conversation(cxt, conversationId) ?: return
+        if (conversation[ATBL.toolsetVersion] != AssistantPrompt.versionFor(client, line)) {
+            return end(ACNV.statusFailed, AssistantTurns.readOnlyReason(conversation))
+        }
+        val system = AssistantPrompt.systemFor(client, line)
         val tools = AssistantTools.definitions()
         val principal = InProcessPrincipal(
             turn[ATBL.sandboxUserId].toOptLong()!!, turn[ATBL.sandboxIdentityId].toString(), turn[ATBL.sandboxClient].toString(),

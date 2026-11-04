@@ -219,7 +219,9 @@ fun assistantChatSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "${ASST.root
         sessionOnly = true,
     ) { c, _ ->
         val person = AssistantTurns.personOf(c)
-        val items = AssistantStore.conversationsOf(c, person.userId, person.client).map { summaryOf(c, it) }
+        // Every conversation listed is in the one client: its version is worked out once.
+        val version = AssistantPrompt.versionOf(c, person.client)
+        val items = AssistantStore.conversationsOf(c, person.userId, person.client).map { summaryOf(c, it, version) }
         ListPage(items, items.size, false)
     }
 
@@ -240,14 +242,20 @@ fun assistantChatSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "${ASST.root
     }
 }
 
-/** [row], a stored conversation, as a listing shows it. */
-fun summaryOf(cxt: KdrCxt, row: Map<String, Any?>): Map<String, Any?> {
-    val client = row[ASST.client].toString()
+/**
+ * [row], a stored conversation, as a listing shows it: read-only when the model declined it, or when it was begun under
+ * another version than [version], the current one for its client.
+ */
+fun summaryOf(
+    cxt: KdrCxt,
+    row: Map<String, Any?>,
+    version: String = AssistantPrompt.versionOf(cxt, row[ASST.client].toString()),
+): Map<String, Any?> {
     return mapOf(
         ACNV.conversationId to row[ACNV.conversationId],
         ACNV.title to row[ACNV.title],
         ACNV.running to (row[ATBL.runningTurnId] != null),
-        ACNV.readOnly to (row[ACNV.readOnly] == true || row[ATBL.toolsetVersion] != AssistantPrompt.versionOf(cxt, client)),
+        ACNV.readOnly to (row[ACNV.readOnly] == true || row[ATBL.toolsetVersion] != version),
         PF.createdAt to row[PF.createdAt],
         PF.updatedAt to row[PF.updatedAt],
     )

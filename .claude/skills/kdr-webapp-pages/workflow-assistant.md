@@ -36,7 +36,10 @@ is offered (`assistant:usable`), so the person finds it.
 **Where a person starts** (issue #1569). A self-serve client's create lands here when the new client's menu offers
 the page (`landingAfterCreate`, on the create card). On a new conversation, for a person with none yet, the
 Conversation panel offers a few example requests under the box (`assistantExamples`, `showsExamples`): each fills the
-box, and one about what a new form asks for is left out for a client defined in code. For such a client the panel also
+box and puts the focus back in it. Filling the box hides them, until it is cleared again, which is deliberate: they are
+a way to start, not a menu. The list of conversations is read again as soon as a first message makes one, so a new
+conversation begun while that turn runs does not offer them again. The one about what a new form asks for is left out
+for a client defined in code. For such a client the panel also
 says, under its heading, that what its New form asks for is changed in code (the status's `sandboxInSource`, which is
 whether the client is defined in code).
 

@@ -5,7 +5,7 @@ import com.dynamicruntime.common.content.MarkdownDocService
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.gedra.ClientService
 import com.dynamicruntime.common.gedra.GedraConfigOrigin
-import com.dynamicruntime.common.annotation.KdrPrivate
+import com.dynamicruntime.common.gedra.workflow.WorkflowService
 import com.dynamicruntime.common.home.HDOC
 import com.dynamicruntime.common.util.sha256Hex
 import com.dynamicruntime.common.util.toJsonStr
@@ -32,28 +32,35 @@ object AssistantPrompt {
 
     /**
      * What the model is told of [client]'s own kind (issue #1569): configured, built on a code-defined base, or defined in
-     * code -- since that decides who changes its creation workflow, and so what its New form collects.
+     * code -- and, beside that, where its creation workflow comes from, since that decides who changes it, and so what its
+     * New form collects. A client built on a base whose code declares no creation workflow was given one of its own at its
+     * creation (`ClientCreate.startersBeside`), or none at all, and is told so rather than that it inherits one.
      */
     fun clientLine(cxt: KdrCxt, client: String): String {
         val clients = ClientService.getOrNull(cxt)
+        if (clients?.originOf(client) == GedraConfigOrigin.source) {
+            return "'$client' is defined in code: its creation workflow, and everything else its code declares, are " +
+                "changed in code, not by you. When the administrator wants the New form to ask for more, say so, and offer " +
+                "a normal workflow that collects it once a form exists."
+        }
         val base = clients?.known(client)?.extendsFromClientId
-        return when {
-            clients?.originOf(client) == GedraConfigOrigin.source ->
-                "'$client' is defined in code: its creation workflow, and everything else its code declares, are changed " +
-                    "in code, not by you. When the administrator wants the New form to ask for more, say so, and offer a " +
-                    "normal workflow that collects it once a form exists."
-            base != null ->
-                "'$client' is built on '$base', a client defined in code: it inherits that client's traits and workflows, " +
-                    "its creation workflow included. To change what the New form asks for, write the client's own creation " +
-                    "workflow, which replaces the inherited one whole: restate what it should keep."
-            else ->
-                "'$client' is configured: its definitions are its own configuration, its creation workflow included, which " +
-                    "you may change."
+        val creation = WorkflowService.get(cxt).forClient(client).creation
+        val inheritedFrom = creation?.bundle?.inheritedFrom
+        val builtOn = base?.let { "'$client' is built on '$it', a client defined in code: it inherits that client's traits and workflows. " }
+            ?: "'$client' is configured: its definitions are its own configuration. "
+        return builtOn + when {
+            inheritedFrom != null ->
+                "Its creation workflow is inherited from '$inheritedFrom'. To change what the New form asks for, write the " +
+                    "client's own creation workflow, which replaces the inherited one whole: restate what it should keep."
+            creation != null -> "Its creation workflow is its own, which you may change."
+            else -> "It has no creation workflow yet, so it offers no New form: you may write one."
         }
     }
 
-    /** The system prompt for [client], whose kind [clientLine] said. */
-    @KdrPrivate
+    /**
+     * The system prompt for [client], whose kind [clientLine] said. A turn works the line out once and passes it both here
+     * and to [versionFor], so the prompt it sends is the one its conversation's version names.
+     */
     fun systemFor(client: String, clientLine: String): List<Map<String, Any?>> {
         val text = """
             |You help an administrator of the client '$client' build workflows for it, in its configuration.
@@ -77,15 +84,19 @@ object AssistantPrompt {
             |  opening the sandbox and its form, then publish it from the Clients page.
             |
             |The New form:
-            |- The New form page asks for exactly the traits of the client's creation workflow: its one workflow whose entry
-            |  is 'creation'. It has one task and one save, of kind 'create'. A client has exactly one: never add a second.
+            |- The New form page asks for exactly the traits of the client's creation workflow: the workflow whose entry is
+            |  'creation'. It has one task and one save, of kind 'create'. A client has at most one: never add a second.
             |- A new workflow often wants something the New form does not ask for. Either add the trait to the creation
             |  workflow's task, so every new form asks for it, or have the new workflow's own task collect it once a form
             |  exists. Say which you chose, and why.
-            |- view_workflow with no workflowId shows the creation workflow as it runs.
+            |- view_workflow with no workflowId shows the creation workflow as it runs, if there is one.
             |- A workflow made from a template is stored as an overlay of it ('fromTemplate'), naming only what it changes:
-            |  its label, and per task its label and the traits it collects. To change what such a creation workflow asks
-            |  for, edit the traits of its task in that overlay, keeping the overlay's other choices.
+            |  for example its label, and per task its label and the traits it collects, but also its saves' labels and its
+            |  layouts. To change what such a creation workflow asks for, read its stored entry first and write it back
+            |  with only the task's traits changed: an entry you write replaces the old one whole, so anything you leave
+            |  out is lost.
+            |- The core details workflow, whose entry is 'coreDetails', is also at most one per client: it holds what every
+            |  form carries and edits after it exists. Data a form needs from its start belongs on the New form instead.
             |
             |The application's API guide follows, for what it says about a client's configuration: its bundles, slots,
             |entries, and edits. It is written for a program calling the API with a key; your tools make those calls for
@@ -99,11 +110,11 @@ object AssistantPrompt {
      * tools. A conversation is continued only under the version it began with. Worked out once per client and kind of
      * client ([clientLine]), which is all that varies while the node runs.
      */
-    fun versionOf(cxt: KdrCxt, client: String): String {
-        val line = clientLine(cxt, client)
-        return versions.getOrPut("$client|$line") {
-            (systemFor(client, line) + AssistantTools.definitions()).toJsonStr(compact = true).toByteArray().sha256Hex().take(32)
-        }
+    fun versionOf(cxt: KdrCxt, client: String): String = versionFor(client, clientLine(cxt, client))
+
+    /** The version of the prompt [systemFor] makes of [client] and [clientLine], with the tools. */
+    fun versionFor(client: String, clientLine: String): String = versions.getOrPut("$client|$clientLine") {
+        (systemFor(client, clientLine) + AssistantTools.definitions()).toJsonStr(compact = true).toByteArray().sha256Hex().take(32)
     }
 
     // Private for real: a wrong entry would make every conversation in its client read-only.

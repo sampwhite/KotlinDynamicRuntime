@@ -13,6 +13,7 @@ import react.ChildrenBuilder
 import react.FC
 import react.Key
 import react.Props
+import react.dom.aria.AriaRole
 import react.dom.html.ReactHTML.a
 import react.dom.html.ReactHTML.code
 import react.dom.html.ReactHTML.details
@@ -29,6 +30,7 @@ import react.useEffect
 import react.useRef
 import react.useState
 import web.cssom.ClassName
+import web.html.HTMLTextAreaElement
 import kotlin.time.Duration.Companion.milliseconds
 
 private val assistantScope = MainScope()
@@ -88,6 +90,8 @@ val AssistantPage = FC<Props> {
     val openId = useRef<String>(null)
     openId.current = conversationId
     val transcriptBox = useRef<dynamic>(null)
+    // The message box, focused again when an example fills it: the example's button goes as the box fills.
+    val inputBox = useRef<HTMLTextAreaElement>(null)
     // Taken by each status read and by a switch-on, so only the latest answer is shown: a read already under way when
     // the assistant is switched on must not put the switch-on panel back.
     val statusToken = useRef(0)
@@ -206,6 +210,9 @@ val AssistantPage = FC<Props> {
                 if (conversation != conversationId) {
                     replaceRoute(listOf(HP.page to ASST.page, HP.conversation to conversation))
                     conversationId = conversation
+                    // The list is read again now, not when the turn ends: it holds the new conversation from the start,
+                    // and a new one begun meanwhile does not offer the examples again.
+                    setStatusReads { it + 1 }
                 } else {
                     setPollTick { it + 1 }
                 }
@@ -356,12 +363,12 @@ val AssistantPage = FC<Props> {
                     ),
                 )
                 if (!current.hasSandbox) {
-                    // Live while it can be turned on here; a client defined in source code has it turned on there.
+                    // Live while it can be turned on here; a client defined in code has it turned on there.
                     panel(panelSandbox, "Sandbox", kind = if (current.sandboxInSource) PanelKind.view else PanelKind.live) {
                         p {
                             +(
-                                "The assistant drafts in ${current.client}'s sandbox, which ${current.client} has not got yet. " +
-                                    "With a sandbox, ${current.client} itself runs only what is published, and the sandbox runs " +
+                                "The assistant drafts in ${current.clientName}'s sandbox, which ${current.clientName} has not got yet. " +
+                                    "With a sandbox, ${current.clientName} itself runs only what is published, and the sandbox runs " +
                                     "everything drafted, with users and data of its own, so a draft can be tried before anyone " +
                                     "else sees it."
                             )
@@ -369,12 +376,12 @@ val AssistantPage = FC<Props> {
                         if (current.sandboxInSource) {
                             p {
                                 className = ClassName("type-hint")
-                                +"${current.client} is defined in source code, so its sandbox is turned on there, in its definition."
+                                +"${current.clientName} is defined in code, so its sandbox is turned on there, in its definition."
                             }
                         } else {
                             Popconfirm {
-                                title = "Turn on ${current.client}'s sandbox?"
-                                description = "From now on ${current.client} runs only published configuration."
+                                title = "Turn on ${current.clientName}'s sandbox?"
+                                description = "From now on ${current.clientName} runs only published configuration."
                                 okText = "Turn on sandbox"
                                 cancelText = "Cancel"
                                 onConfirm = { turnOnSandbox(current.client) }
@@ -410,6 +417,7 @@ val AssistantPage = FC<Props> {
                         else -> null
                     }
                     textarea {
+                        ref = inputBox
                         className = ClassName("assistant-input")
                         asDynamic()["aria-label"] = "Message to the assistant"
                         value = text
@@ -431,11 +439,16 @@ val AssistantPage = FC<Props> {
                     if (showsExamples(conversationId, conversations, text, blocked)) {
                         div {
                             className = ClassName("assistant-examples")
+                            role = AriaRole.group
+                            ariaLabel = "Example messages"
                             span { className = ClassName("type-hint"); +"For example: " }
                             for (example in assistantExamples(definedInCode = current.sandboxInSource)) {
                                 Button {
                                     size = "small"
-                                    onClick = { text = example }
+                                    onClick = {
+                                        text = example
+                                        inputBox.current?.focus()
+                                    }
                                     +example
                                 }
                             }
