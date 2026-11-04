@@ -120,6 +120,53 @@ val embedImages = tasks.register<Copy>("embedImages") {
     into(layout.buildDirectory.dir("docResources/component-images"))
 }
 
+// The commit this build was made from (issue #1620), recorded as `build-info/kdr-build.json` so Operator › System info
+// can say which code a node runs and how old it is. Only this repository's commit. A build with no git, or outside a
+// checkout, records none and still builds. There is deliberately no build timestamp: it would change the resource on
+// every build and rerun every test downstream of it, and the commit's own time is what dates the code.
+val gitRepoDir: File = layout.projectDirectory.dir("../..").asFile
+
+fun gitOutput(vararg args: String): String = try {
+    providers.exec {
+        workingDir = gitRepoDir
+        commandLine("git", *args)
+        isIgnoreExitValue = true
+    }.standardOutput.asText.get().trim()
+} catch (e: Exception) {
+    // No git at all: the build goes on, and the record says the commit is unknown.
+    ""
+}
+
+val buildCommit = gitOutput("rev-parse", "HEAD")
+val buildCommitEpochSeconds = gitOutput("log", "-1", "--format=%ct")
+val buildBranch = gitOutput("rev-parse", "--abbrev-ref", "HEAD")
+val buildDirty = gitOutput("status", "--porcelain").isNotEmpty()
+
+val embedBuildInfo = tasks.register("embedBuildInfo") {
+    val commit = buildCommit.takeIf { Regex("[0-9a-f]{40}").matches(it) } ?: "unknown"
+    val commitEpochSeconds = buildCommitEpochSeconds.toLongOrNull()
+    val branch = buildBranch.ifEmpty { "unknown" }
+    val dirty = buildDirty
+    inputs.property("commit", commit)
+    inputs.property("commitEpochSeconds", commitEpochSeconds ?: -1L)
+    inputs.property("branch", branch)
+    inputs.property("dirty", dirty)
+    val out = layout.buildDirectory.file("docResources/build-info/kdr-build.json")
+    outputs.file(out)
+    doLast {
+        // Values are plain strings, digits, and a boolean, and a branch name holds no quote or backslash.
+        val json = buildString {
+            append("{\n")
+            append("  \"commit\": \"$commit\",\n")
+            append("  \"commitEpochSeconds\": ${commitEpochSeconds ?: "null"},\n")
+            append("  \"branch\": \"$branch\",\n")
+            append("  \"uncommittedChanges\": $dirty\n")
+            append("}\n")
+        }
+        out.get().asFile.apply { parentFile.mkdirs() }.writeText(json)
+    }
+}
+
 sourceSets {
     main {
         // The generated docs and images join this module's resources, so they land on the runtime classpath.
@@ -128,7 +175,7 @@ sourceSets {
 }
 
 tasks.named("processResources") {
-    dependsOn(embedDocs, embedImages)
+    dependsOn(embedDocs, embedImages, embedBuildInfo)
 }
 
 // RepoDocLinksTest (issues #1294, #1474) reads the repository's Markdown straight from the tree, not from the

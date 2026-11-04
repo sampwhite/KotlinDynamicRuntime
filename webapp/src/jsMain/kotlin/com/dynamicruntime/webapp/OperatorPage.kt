@@ -226,7 +226,51 @@ val OperatorObjectPage = FC<OperatorObjectPageProps> { props ->
             current == null -> p { className = ClassName("subtitle"); +"Loading…" }
             else -> {
                 asOf?.let { p { className = ClassName("op-asof"); +"as of $it" } }
-                objectView(current)
+                objectPanelsView(current)
+            }
+        }
+    }
+}
+
+/** The id and heading of the panel holding an object's top-level scalars, when it has any (issue #1620). */
+private const val summaryPanelKey = "summary"
+
+/** The element id of the panel for an object's top-level [key]. */
+private fun objectPanelId(key: String): String = "op-$key"
+
+/**
+ * The panels a free-form object is drawn as (issue #1620), in its own order, as `id to heading`: one per top-level
+ * section (a nested object, or a list), and a leading "Summary" panel for its top-level scalars when it has any, so
+ * every value belongs to a panel. Pure, covered under `jsNodeTest`.
+ */
+fun objectPanels(obj: Map<String, Any?>): List<Pair<String, String>> {
+    val sections = obj.filter { (_, value) -> isPanelSection(value) }.keys
+        .map { objectPanelId(it) to humanizeFieldName(it) }
+    val hasScalars = obj.values.any { !isPanelSection(it) }
+    return if (hasScalars) listOf(objectPanelId(summaryPanelKey) to "Summary") + sections else sections
+}
+
+/** Whether a top-level value gets a panel of its own: a nested object or a list. */
+private fun isPanelSection(value: Any?): Boolean = value is Map<*, *> || value is List<*>
+
+/**
+ * A free-form object drawn to the page structure (issues #1477, #1620): the links to its panels, then a view panel per
+ * top-level section ([objectPanels]), each section's contents drawn value-driven as before.
+ */
+private fun ChildrenBuilder.objectPanelsView(obj: Map<String, Any?>) {
+    val panels = objectPanels(obj)
+    if (panels.size > 1) panelLinks(panels)
+    val scalars = obj.filterValues { !isPanelSection(it) }
+    for ((id, heading) in panels) {
+        panel(id, heading) {
+            if (id == objectPanelId(summaryPanelKey)) {
+                objectView(scalars, 1)
+            } else {
+                val key = obj.keys.first { objectPanelId(it) == id }
+                val value = obj[key]
+                if (value is Map<*, *>) objectView(value.toJsonMapOrEmpty(), 1)
+                else if (value is List<*> && value.any { it is Map<*, *> }) genericTable(value)
+                else objectView(mapOf(key to value), 1)
             }
         }
     }
@@ -313,7 +357,7 @@ val OperatorIndex = FC<Props> {
             }
             li {
                 a { href = childHref(HMENU.pageSystemInfo, HMENU.pageOperator); +"System info" }
-                +" \u2014 this node's identity, uptime, and JVM statistics."
+                +" \u2014 this node's build, identity, uptime, and JVM statistics."
             }
             li {
                 a { href = childHref(HMENU.pageBootChecks, HMENU.pageOperator); +"Boot checks" }

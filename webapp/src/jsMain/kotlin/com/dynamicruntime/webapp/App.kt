@@ -263,7 +263,7 @@ val App = FC<Props> {
                                 pageSystemInfo -> OperatorObjectPage {
                                     path = OPS.systemInfoPath
                                     title = "System info"
-                                    description = "This node's identity, uptime, and JVM statistics."
+                                    description = "This node's build, identity, uptime, and JVM statistics."
                                 }
                                 pageDbTables -> OperatorListPage {
                                     method = "GET"
