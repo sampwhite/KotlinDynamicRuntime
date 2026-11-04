@@ -164,9 +164,11 @@ Here is the whole `logistics` bundle:
               "schemaFields": [
                 {
                   "field": "room",
+                  "$comment": "This form asks for a lab, though the trait does not, so it says why in its own words.",
                   "label": "Lab",
                   "description": "%{@t(\"logistics.roomHelp\")}",
                   "required": true,
+                  "errors": { "missingRequired": "Choose a lab, so attendees know where to go." },
                   "choices": [
                     { "value": "labA", "label": "Lab A (24 seats)" },
                     { "value": "labB", "label": "Lab B (40 seats)" }
@@ -194,6 +196,10 @@ with the `label` and `description` it gives each one in place of the trait's `ti
 **The layout narrows the room list.** Its entry for `room` restates `choices`: the two labs, with labels that say how
 many seats each has. The form offers those two and no other, and a save naming the main hall is refused, though the
 trait's schema would allow it. The entry also marks the room `required` for this form, which the schema does not.
+
+**The layout gives its own message for the room.** The requirement is the form's, so the entry's `errors` says why
+the form asks, and the form shows it in place of the platform's message when the speaker saves without a lab. Only
+this form shows it. See [Bounds and their messages](reference.md#bounds-and-their-messages).
 
 **The heading and one description come from a file.** The block's `label` is `%{@t("logistics.heading")}`, and the
 room's description is a pull of the same kind. Both take their words from the `confDemo` fragment file, which the

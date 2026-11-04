@@ -330,8 +330,8 @@ fun confDemoBase(cxt: KdrCxtBase = LiteCxt(), client: String = ConfDemo.client):
                 trimmed()
                 errors {
                     missingRequired("Every talk needs a summary.")
-                    belowMinimum("A summary is at least 50 characters; give the audience a reason to come.")
-                    aboveMaximum("Keep the summary under 600 characters; the program has limited space.")
+                    belowMinimum($$"A summary is at least ${min} characters; give the audience a reason to come.")
+                    aboveMaximum($$"Keep the summary to ${max} characters; the program has limited space.")
                 }
             }
             property(ConfDemo.durationMinutes, "How long the talk runs, in minutes.") {
@@ -339,12 +339,18 @@ fun confDemoBase(cxt: KdrCxtBase = LiteCxt(), client: String = ConfDemo.client):
                 type = SCT.integer
                 minimum = 20
                 maximum = 90
+                errors {
+                    belowMinimum($$"${value} minutes is shorter than any slot; a talk runs at least ${min} minutes.")
+                    aboveMaximum($$"${value} minutes is longer than any slot; a talk runs at most ${max} minutes.")
+                    badValue("Give the duration as a whole number of minutes, such as 45.")
+                }
             }
             property(ConfDemo.topics, "The topics the talk covers; choose up to three.") {
                 title = "Topics"
                 type = SCT.array
                 uniqueItems = true
                 maxItems = 3
+                errors { aboveMaximum($$"Choose at most ${max} topics, the ones the talk is most about.") }
                 items {
                     option("coroutines", "Coroutines")
                     option("multiplatform", "Multiplatform")
@@ -398,11 +404,10 @@ fun confDemoBase(cxt: KdrCxtBase = LiteCxt(), client: String = ConfDemo.client):
         }
 
         // The forms listing's columns (issue #1138). A client that declares any replaces the default name column, so
-        // the name is declared here too. Two columns read the questionnaire (issue #1490), each named for its search.
+        // the name is declared here too. The questionnaire's column is named for its search (issue #1490).
         traitUsage(GT.name, "Talk", $$"${name}", substring = true)
         traitUsage(ConfDemo.session, "Track", $$"${track}")
         traitUsage(ConfDemo.questionnaire, "Audience", $$"${audienceLevel}", columnId = "audience")
-        traitUsage(ConfDemo.questionnaire, "First talk", $$"${firstTalk}", columnId = "firstTalk")
     }
 
 /** The `createTalk` bundle: the workflow that runs when a speaker starts a submission. */
@@ -438,7 +443,9 @@ fun confDemoTalkCoreDetails(cxt: KdrCxtBase = LiteCxt(), client: String = ConfDe
                     ).apply { field(ConfDemo.firstTalk) }.build(),
                 ),
             )
-            task(ConfDemo.describeTask, "Track and background") {
+            task(ConfDemo.describeTask, "Title, track, and background") {
+                comment = "The title comes first, so a speaker can change the one they started with."
+                trait(GT.name)
                 trait(ConfDemo.session)
                 trait(ConfDemo.questionnaire)
                 save(ConfDemo.saveAbout, "Save", WfSaveKind.edit)
@@ -537,7 +544,8 @@ fun confDemoLogistics(cxt: KdrCxtBase = LiteCxt(), client: String = ConfDemo.cli
                             ConfDemo.room, label = "Lab", description = "%{@t(\"logistics.roomHelp\")}",
                             choices = listOf(SchLayoutChoice("labA", "Lab A (24 seats)"), SchLayoutChoice("labB", "Lab B (40 seats)")),
                             required = true,
-                        )
+                            comment = "This form asks for a lab, though the trait does not, so it says why in its own words.",
+                        ) { missingRequired("Choose a lab, so attendees know where to go.") }
                         field(ConfDemo.needsLaptops, label = "Laptops", description = "Say yes if attendees work on their own machines.")
                         field(ConfDemo.setup, label = "Setup instructions", description = "Sent to attendees a week before.")
                     }.build(),
