@@ -300,20 +300,32 @@ const val reportNoGroupValue = "(none)"
 
 /**
  * A cell's text. Nothing is a dash -- or, for what a group is grouped by, "(none)", since that row *is* the forms
- * with no value. A list is its elements joined; a boolean is Yes or No; a number is whole or to two places; a date
- * that carries a time is shown as the app shows timestamps, and a day as it is written; and a choice by its label
- * among [choices] (issue #1438), as the form shows it, with any other text as it is.
+ * with no value. A list is its elements joined -- by a blank line when any runs over several lines, as long text
+ * (`g-longText`, issue #1591) may, so where one ends stays plain; a boolean is Yes or No; a number is whole or to two
+ * places; a date that carries a time is shown as the app shows timestamps, and a day as it is written; and a choice by
+ * its label among [choices] (issue #1438), as the form shows it, with any other text as it is.
  */
 fun reportCellText(
     value: Any?, kind: String, source: ReportCellSource = ReportCellSource.value, choices: List<SchOption> = emptyList(),
 ): String = when (value) {
     null -> if (source == ReportCellSource.group) reportNoGroupValue else reportBlank
-    is List<*> -> if (value.isEmpty()) reportBlank else value.joinToString(", ") { reportCellText(it, kind, choices = choices) }
+    is List<*> -> if (value.isEmpty()) {
+        reportBlank
+    } else {
+        val texts = value.map { reportCellText(it, kind, choices = choices) }
+        texts.joinToString(if (texts.any { reportTextHasLines(it) }) "\n\n" else ", ")
+    }
     is Boolean -> if (value) "Yes" else "No"
     is Number -> reportNumberText(value.toDouble())
     is String -> if (kind == ReportKind.date.name) formatTimestamp(value) else choiceLabel(value, choices) ?: value
     else -> value.toString()
 }
+
+/**
+ * Whether a cell's [text] runs over several lines (issue #1591), as long text may: such a cell keeps its lines, where
+ * every other stays on one.
+ */
+fun reportTextHasLines(text: String): Boolean = '\n' in text
 
 /**
  * A cell's tooltip (issue #1438): the stored values behind the labels [reportCellText] showed in their place, which a

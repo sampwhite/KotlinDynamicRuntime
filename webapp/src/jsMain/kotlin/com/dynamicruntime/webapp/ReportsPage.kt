@@ -668,10 +668,15 @@ private fun ChildrenBuilder.reportTable(run: ReportRunPage, client: String?) {
                         columns.forEach { c ->
                             td {
                                 key = "${c.source.name}:${c.key}".unsafeCast<Key>()
-                                if (c.numeric) className = ClassName("op-num")
                                 val value = reportCellValue(row, c)
+                                val text = reportCellText(value, c.kind, c.source, c.choices)
+                                if (c.numeric) {
+                                    className = ClassName("op-num")
+                                } else if (reportTextHasLines(text)) {
+                                    className = ClassName("report-lines")
+                                }
                                 reportCellTip(value, c.choices)?.let { title = it }
-                                +reportCellText(value, c.kind, c.source, c.choices)
+                                +text
                             }
                         }
                     }

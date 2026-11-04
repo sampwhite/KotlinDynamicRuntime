@@ -227,6 +227,11 @@ class ReportsPageTest {
         assertEquals("2024-03-05", reportCellText("2024-03-05", ReportKind.date.name))
         assertEquals("2026-10-05T18:47:50.836Z", reportCellText("2026-10-05T18:47:50.836Z", ReportKind.string.name))
         assertEquals("2022, 2023", reportCellText(listOf(2022, 2023), ReportKind.number.name))
+        // Long text keeps its lines, and a list holding any is split by a blank line, so where one ends stays plain.
+        assertEquals("Kotlin\nand more", reportCellText("Kotlin\nand more", ReportKind.string.name))
+        assertEquals("One\n\nTwo\nlines", reportCellText(listOf("One", "Two\nlines"), ReportKind.string.name))
+        assertEquals(true, reportTextHasLines("Two\nlines"))
+        assertEquals(false, reportTextHasLines("One, Two"))
         // Nothing is a dash -- except what a group is grouped by, where the row is the forms with no value.
         assertEquals(reportBlank, reportCellText(null, ReportKind.string.name))
         assertEquals(reportBlank, reportCellText(emptyList<Any>(), ReportKind.string.name))

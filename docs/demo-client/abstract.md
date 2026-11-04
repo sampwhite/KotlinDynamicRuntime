@@ -124,8 +124,7 @@ ends of whatever is saved, so a summary pasted in with a stray space is stored w
 
 **The summary is long text.** Its `g-longText` says the field holds free text that may run over several lines, so
 every form shows it as a box of several lines rather than a single line, and you can drag the box taller. It changes
-nothing about what may be saved, so the bounds above still apply. The organizer's note is long text too. See
-[Long text](reference.md#long-text).
+nothing about what may be saved, so the bounds above still apply. See [Long text](reference.md#long-text).
 
 **The duration is a number.** A form shows the range as a hint, and a value typed as text, such as `45`, is saved as
 the number 45.
@@ -138,7 +137,7 @@ speaker can add to, with a name and an email in each entry.
 
 **The organizer's note is left off the speaker's form.** Its `g-visibleWhen` says the field is for someone with an
 administrator's level. The speaker's form does not show it; an organizer's does. See
-[Who sees a field](reference.md#who-sees-a-field).
+[Who sees a field](reference.md#who-sees-a-field). It is long text too, like the summary.
 
 ## Workflow
 

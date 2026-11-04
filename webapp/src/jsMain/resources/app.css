@@ -1782,6 +1782,9 @@ body.dv-open .app-content { padding-right: calc(var(--dv-panel-width) + 16px); }
 /* One line per row: a report has many narrow columns, and wrapped timestamps make each row four lines tall. The table
    scrolls sideways inside `.op-table-scroll` instead. */
 .reports-run .op-table th, .reports-run .op-table td { white-space: nowrap; }
+/* Except a cell whose text runs over several lines, as long text may (issue #1591): it keeps its lines, wrapping within a
+   bounded width rather than stretching the table across one line. */
+.reports-run .op-table td.report-lines { white-space: pre-line; min-width: 16rem; max-width: 32rem; }
 /* A narrow window stacks the two: the list first, the run under it. */
 @media (max-width: 900px) {
     .reports-layout { grid-template-columns: minmax(0, 1fr); }

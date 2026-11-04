@@ -30,6 +30,10 @@ is. The pure half -- parsers, the run's query, the table's columns, a cell's tex
   the stored ones, since a spreadsheet wants the value. A path ending in one of the vocabulary's closed sets -- a
   form's status, a workflow's category -- takes its labels from the page (`vocabularyChoices`): the listing chip's
   words and the Workflows page's, which are the app's, not a schema's.
+- **A cell stays on one line** (`nowrap`), so a report's many narrow columns keep one line per row, except one whose
+  text runs over several lines, as long text may (`g-longText`, issue #1591): it keeps its lines, wrapping within a
+  bounded width (`reportTextHasLines`, `.report-lines`). A list holding any multi-line text is split by blank lines
+  rather than commas (`reportCellText`), so where one answer ends stays plain. The CSV is untouched.
 - **Download CSV** (issue #1008) is the browser walking the cursor: `ReportsApi.runAll` → `walkReportRun` fetches
   the run as set up from its first page at `reportDownloadPageSize` (500), following `next` to the end, and
   `reportCsv` writes it -- there is no export endpoint. The walk asks `stillWanted` around every page, so changing
