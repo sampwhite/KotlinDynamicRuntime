@@ -1,4 +1,4 @@
-<!-- kdr-generated: begin -- copied from its generator by `./gradlew :base:common:refDocsDump`; edit the generator, not this -->
+<!-- kdr-generated: begin -- copied from its generator by `./gradlew :launch:refDocsDump`; edit the generator, not this -->
 # Facts
 
 A **fact** is a yes-or-no statement about the request, a task, or a form: the caller is signed in, a task is the next
@@ -142,7 +142,7 @@ knows, its own included, with whether each is present for them now.
 **Everything above this section is generated.** A running server makes its list of facts from the declarations
 themselves, so it cannot disagree with them. Read it on the server's **Documents** page, under **Facts**, where anyone
 may open it without signing in. On the public reference site it is at
-[dynamicruntime.org/wa/docs/facts](https://dynamicruntime.org/wa/docs/facts). `./gradlew :base:common:refDocsDump`
+[dynamicruntime.org/wa/docs/facts](https://dynamicruntime.org/wa/docs/facts). `./gradlew :launch:refDocsDump`
 copies it into this file, and the suite fails while the copy is behind the code, so edit the generator (below), never
 the copy.
 

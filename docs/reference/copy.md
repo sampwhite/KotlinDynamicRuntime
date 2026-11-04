@@ -1,4 +1,4 @@
-<!-- kdr-generated: begin -- copied from its generator by `./gradlew :base:common:refDocsDump`; edit the generator, not this -->
+<!-- kdr-generated: begin -- copied from its generator by `./gradlew :launch:refDocsDump`; edit the generator, not this -->
 # Copy
 
 Copy is the words a client's pages and mails show: a home page, the explanations beside a page's heading, a mail's
@@ -140,7 +140,7 @@ See the [client configuration reference](client-configuration.md) for the slot, 
 **Everything above this section is generated.** A running server makes its list of roles from the roles themselves,
 which the copy checks hold copy to, so it cannot disagree with them. Read it on the server's **Documents** page, under
 **Copy**, where anyone may open it without signing in. On the public reference site it is at
-[dynamicruntime.org/wa/docs/copy](https://dynamicruntime.org/wa/docs/copy). `./gradlew :base:common:refDocsDump` copies
+[dynamicruntime.org/wa/docs/copy](https://dynamicruntime.org/wa/docs/copy). `./gradlew :launch:refDocsDump` copies
 it into this file, and the suite fails while the copy is behind the code, so edit the generator (below), never the copy.
 
 On a running server, a link to this file opens the reference itself.

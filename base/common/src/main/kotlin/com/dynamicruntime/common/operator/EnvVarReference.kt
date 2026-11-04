@@ -36,8 +36,6 @@ private val groupOrder = listOf(
 fun renderEnvVarReference(cxt: KdrCxt): String {
     val config = cxt.instanceConfig
     val byGroup = EnvVarRegistry.all().groupBy { it.group }
-    val orderedGroups = groupOrder.filter { it in byGroup.keys } +
-        byGroup.keys.filter { it !in groupOrder }.sorted()
 
     val sb = StringBuilder()
     sb.append("# Environment variables\n\n")
@@ -47,10 +45,52 @@ fun renderEnvVarReference(cxt: KdrCxt): String {
             "path has read yet is not listed, so an absent name means \"not touched yet on this node\", not " +
             "\"not a variable\".\n\n",
     )
-    for (group in orderedGroups) {
+    for (group in orderedGroups(byGroup.keys)) {
         sb.append("## ").append(group).append("\n\n")
         for (def in byGroup.getValue(group).sortedBy { it.name }) {
             appendVar(sb, config, def)
+        }
+    }
+    return sb.toString()
+}
+
+/** [groups] in the order they render: [groupOrder]'s, then any it does not name, alphabetically. */
+private fun orderedGroups(groups: Set<String>): List<String> =
+    groupOrder.filter { it in groups } + groups.filter { it !in groupOrder }.sorted()
+
+/**
+ * The environment variables [defs] declares, as a reference document (issue #1607): by group, as the operator view
+ * orders them, each with its documented default and its description, and whether it is read before deployment
+ * flavors resolve. Unlike [renderEnvVarReference] it says nothing of any node -- no value, no source -- so it depends
+ * only on the declarations it is handed; the committed copy in `docs/reference/environment-variables.md` is made from
+ * every declaration in the repository.
+ */
+fun envVarCatalogMarkdown(defs: List<EnvVarDef>): String {
+    val byGroup = defs.groupBy { it.group }
+    val sb = StringBuilder()
+    sb.append("# Environment variables\n\n")
+    sb.append(
+        "Every environment variable the runtime reads, by area, with what it does and what applies when it is unset. A " +
+            "variable is read only through its declaration in the code, so this list is complete: a name not here is " +
+            "not read. A deployment reads only the variables of the components it carries.\n\n",
+    )
+    sb.append(
+        "A variable is set in the process environment, or as an entry of the instance config, which wins over it; a " +
+            "workspace's `${KdrInstanceConfig.defaultEnvVarsFileName}` supplies those the environment leaves unset " +
+            "(see `${KdrInstanceConfig.defaultsFileEnvVar.name}`). On a node with a boot role, a name carrying the role " +
+            "wins over the plain one: `KDR_EDGE_PORT` over `KDR_PORT` on an edge. A deployment flavor may default a " +
+            "variable nothing else sets. A running node's operator view, `GET /operator/env/reference`, lists the " +
+            "variables it has read, with the value each resolved to and where the value came from.\n\n",
+    )
+    for (group in orderedGroups(byGroup.keys)) {
+        sb.append("## ").append(group).append("\n\n")
+        for (def in byGroup.getValue(group).sortedBy { it.name }) {
+            sb.append("### `").append(def.name).append("`\n\n")
+            sb.append("**Default when unset:** ").append(def.defaultDoc.kdocRefsAsCode()).append("\n\n")
+            if (def.bootstrap) {
+                sb.append("**Read before deployment flavors resolve**, so a flavor cannot default it.\n\n")
+            }
+            sb.append(def.description.kdocRefsAsCode()).append("\n\n")
         }
     }
     return sb.toString()

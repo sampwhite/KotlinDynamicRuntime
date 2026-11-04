@@ -1,4 +1,4 @@
-<!-- kdr-generated: begin -- copied from its generator by `./gradlew :base:common:refDocsDump`; edit the generator, not this -->
+<!-- kdr-generated: begin -- copied from its generator by `./gradlew :launch:refDocsDump`; edit the generator, not this -->
 # Report paths
 
 Each column of a report takes its value from somewhere on a form, named by its `path`: a field of one of the
@@ -168,7 +168,7 @@ See the demo's [Reports](../demo-client/reports.md) page for two reports worked 
 so they cannot disagree with it. Read it on the server's **Documents** page, under **Report paths**, where anyone may
 open it without signing in. On the public reference site it is at
 [dynamicruntime.org/wa/docs/report-paths](https://dynamicruntime.org/wa/docs/report-paths). `./gradlew
-:base:common:refDocsDump` copies it into this file, and the suite fails while the copy is behind the code, so edit the
+:launch:refDocsDump` copies it into this file, and the suite fails while the copy is behind the code, so edit the
 generator (below), never the copy.
 
 On a running server, a link to this file opens the reference itself.

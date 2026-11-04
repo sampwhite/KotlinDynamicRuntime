@@ -32,7 +32,9 @@ sourceSets {
         resources.setSrcDirs(emptyList<Any>())
     }
     test {
-        kotlin.setSrcDirs(emptyList<Any>())
+        // The committed reference copies' dump and check (issues #1603, #1607), and nothing else: they are here
+        // because this module's classpath is the only one holding every module. Package `kdn`, as `apps` has it.
+        kotlin.setSrcDirs(listOf("test"))
         resources.setSrcDirs(emptyList<Any>())
     }
 }
@@ -92,6 +94,55 @@ distributions {
             from(webappBundle) { into("lib") }
         }
     }
+}
+
+// The committed reference documents (issues #1603, #1607): each `docs/reference` file holds a copy of what its
+// generator makes, between marker lines, so it can be read without a server and a change to it shows in a diff.
+// `refDocsDump` rewrites the copies, touching only a file whose copy changed; `refDocsTest` fails while one is behind
+// its generator. Here, because the environment variables are gathered from every module's declarations, and this
+// module's classpath is the only one holding them all -- so a build leaving out an optional module refuses both
+// rather than writing a list that lacks its variables. The test is a task of its own for the reason
+// `:base:common:docLinksTest` is: it reads the tree, so the files are declared as its inputs.
+val refDocsTestClass = "kdn.ReferenceCopiesTest"
+val repoRoot = layout.projectDirectory.dir("..")
+val missingModules = listOf(":edge" to edgeProject, ":multiNodeTest" to multiNodeTestProject, ":assistant" to assistantProject)
+    .filter { it.second == null }.map { it.first }
+fun Task.requireEveryModule() = doFirst {
+    if (missingModules.isNotEmpty()) {
+        throw GradleException("The reference copies are made from every module, and this build leaves out " +
+            "${missingModules.joinToString()}: include them in settings.gradle.kts, as the example does.")
+    }
+}
+
+val refDocsTest = tasks.register<Test>("refDocsTest") {
+    description = "Checks that the committed copies of the reference documents are current."
+    group = "verification"
+    testClassesDirs = sourceSets.test.get().output.classesDirs
+    classpath = sourceSets.test.get().runtimeClasspath
+    filter.includeTestsMatching(refDocsTestClass)
+    inputs.files(fileTree(repoRoot.dir("docs/reference")) { include("**/*.md") })
+        .withPathSensitivity(PathSensitivity.RELATIVE)
+    requireEveryModule()
+}
+
+tasks.register<JavaExec>("refDocsDump") {
+    description = "Rewrites the committed copies of the reference documents in docs/reference."
+    group = "documentation"
+    classpath = sourceSets.test.get().runtimeClasspath
+    mainClass.set("kdn.ReferenceCopiesKt")
+    args(repoRoot.asFile.path)
+    requireEveryModule()
+}
+
+tasks.named<Test>("test") {
+    filter.excludeTestsMatching(refDocsTestClass)
+    // Its only tests are the reference check's, which run in `refDocsTest`, so this task finds none, and says so.
+    filter.isFailOnNoMatchingTests = false
+    failOnNoDiscoveredTests = false
+}
+
+tasks.named("check") {
+    dependsOn(refDocsTest)
 }
 
 // Deployment-injected providers (issue #171): custom config now, custom components later. The deployment
