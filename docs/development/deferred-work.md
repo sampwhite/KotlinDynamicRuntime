@@ -382,6 +382,15 @@ The trigger is a client asking for it; none has. When one does:
 - **Design View's ghost for a conditional field** (#972) shows a field that is absent; a choice that is absent needs a
   marking of its own.
 
+## When a client's forms list has more columns than its users want to see
+
+The forms list shows every column a client declares in `kdr:usageDef`, after the application's own, for everyone. The
+conference demo dropped a column (#1612) because the table had grown wide, which is the cost the fixed set has.
+
+- **Columns a user chooses** *(#1612, deferred here 2026-11-04).* Each user picks which of the client's columns they
+  see, and in what order, remembered per user. The client's list stays the set to choose from and the default. Left
+  out because a client can still keep its own list short, and no client yet has more columns than fit.
+
 ## When a customer wants choices or a picker on a computed column
 
 A listing column whose `display` is a lone `${field}` is searched as the field's schema says: its choices with their

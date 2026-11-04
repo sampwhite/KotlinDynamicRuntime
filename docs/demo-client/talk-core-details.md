@@ -4,13 +4,13 @@
 
 A form's **core details** are what every form needs, and the client's **core details workflow** collects them after the
 form exists. They are not all of a form's data: each workflow a form takes part in collects traits of its own. A client
-has at most one core details workflow. In the demo, it asks each speaker for the talk's track and one background
-question.
+has at most one core details workflow. In the demo, it lets each speaker change the talk's title, and asks for its
+track and one background question.
 
 Adding the core details workflow takes three pieces of configuration, and this page shows all three:
 
 - [two traits](#traits) for the core details workflow to collect, in the `base` bundle;
-- [four columns](#columns-in-the-forms-list) for the forms list, also in the `base` bundle;
+- [three columns](#columns-in-the-forms-list) for the forms list, also in the `base` bundle;
 - [the core details workflow itself](#core-details-workflow), in the `talkCoreDetails` bundle.
 
 The traits and the columns are the `base` bundle's first additions beyond the client itself. The
@@ -138,10 +138,6 @@ in the `kdr:usageDef` slot of its `base` bundle.
   {
     "traitId": "questionnaire", "label": "Audience", "display": "${audienceLevel}", "substring": false,
     "columnId": "audience"
-  },
-  {
-    "traitId": "questionnaire", "label": "First talk", "display": "${firstTalk}", "substring": false,
-    "columnId": "firstTalk"
   }
 ]
 ```
@@ -155,8 +151,8 @@ in the `kdr:usageDef` slot of its `base` bundle.
 | `substring` | Whether a search may match part of the value. On the talk's name, a search for `scale` finds `Kotlin at scale`. |
 | `columnId` | The column's name in a search, when it is not the trait's id. The Audience column is searched with `audience`. |
 
-In this example, the demo promotes four fields to be columns: `name`, from the built-in `kdr:name` trait, `track`,
-from its own `session` trait, and two answers from its `questionnaire` trait. A promoted value also becomes available
+In this example, the demo promotes three fields to be columns: `name`, from the built-in `kdr:name` trait, `track`,
+from its own `session` trait, and one answer from its `questionnaire` trait. A promoted value also becomes available
 for search.
 As soon as a client declares columns of its own, the platform's default column, the form's name, disappears. So the
 demo redeclares the name column too, but relabels the heading to be **Talk**.
@@ -166,19 +162,18 @@ the column's cells read, with the column's value available as `value`. For examp
 an amount as `$1,234.50`, and `${city}, ${state}` composes two fields of the trait. The column still sorts and
 searches by its value, so a formatted amount never sorts as text.
 
-One trait can give more than one column. The demo's questionnaire gives two, so the program committee can see at a
-glance who each talk is for and which speakers are new to the stage, and can search for either. Each column of a trait
-needs its own heading, and every column after the first also needs a `columnId`: a name of letters, digits, and
-underscores. A column without a `columnId` is searched by its trait's id, so two of them from one trait would share a
-search. The demo names both questionnaire columns, and a search for `firstTalk` with the value `true` finds the
-first-time speakers.
+One trait can give more than one column, each with its own heading. Every column of a trait after the first also
+needs a `columnId`: a name of letters, digits, and underscores. A column without a `columnId` is searched by its
+trait's id, so two of them from one trait would share a search. The demo's questionnaire gives only the Audience
+column, but the demo still names it `audience`, so a search for it says what it looks for rather than which trait it
+reads.
 
 The Track and Audience columns each read a single field that offers choices, so each shows the choice's label, such
 as **Workshop (hands-on)** or **Beginners**, and sorts in the order the choices are listed. A search on either matches
 the stored value or the label. Its filter suggests the choices as soon as it is clicked, and anything else can still
-be typed. The First talk column reads a yes-or-no field, so it shows **Yes** or **No**, and a dash until the speaker
-answers. Its filter is a choice between Yes and No, and its search, `firstTalk`, takes `true` or `false` (or `yes`
-or `no`). A column whose `display` does more than name one field, such as
+be typed. A column that reads a yes-or-no field shows **Yes** or **No**, and a dash until the field is answered. Its
+filter is a choice between Yes and No, and its search takes `true` or `false` (or `yes` or `no`). A column whose
+`display` does more than name one field, such as
 `${city}, ${state}`, works as the name column does: its filter suggests only the values the forms hold.
 
 ## Core details workflow
@@ -199,8 +194,10 @@ Here is the whole `talkCoreDetails` bundle:
         "tasks": [
           {
             "id": "describe",
-            "label": "Track and background",
+            "label": "Title, track, and background",
+            "$comment": "The title comes first, so a speaker can change the one they started with.",
             "traits": [
+              { "traitId": "kdr:name", "required": true },
               { "traitId": "session", "required": true },
               { "traitId": "questionnaire", "required": true }
             ],
@@ -231,11 +228,16 @@ Here is the whole `talkCoreDetails` bundle:
 }
 ```
 
-Most of it reads as the creation workflow does (see [Creating a talk](create-talk.md#workflow)). Four things are
+Most of it reads as the creation workflow does (see [Creating a talk](create-talk.md#workflow)). Five things are
 new.
 
 **The entry is `coreDetails`.** The core details workflow runs on a form that already exists, as often as the speaker
 likes. It can have more than one task, though this one has a single task.
+
+**The task starts with the built-in `kdr:name` trait.** The creation workflow asked for the title, and the
+form already has an entry for it. Listing the trait again here shows that entry, ready to change, so a speaker who
+started with a working title can give the real one later. A trait can be part of any number of workflows, and each
+shows the same entry.
 
 **The save is of kind `edit`.** It updates the form rather than creating one. A core details workflow's saves are all
 `edit`.
@@ -251,7 +253,8 @@ where it matters.
 ## What the speaker sees
 
 The forms list shows the status of each talk's core details in its **Status** column. A talk's core details are
-**complete** when the form has an entry for every trait the workflow's tasks require: here, `session` and `questionnaire`.
+**complete** when the form has an entry for every trait the workflow's tasks require: here, `kdr:name`, `session`, and
+`questionnaire`.
 
 | Status | What it means |
 | --- | --- |
@@ -260,9 +263,10 @@ The forms list shows the status of each talk's core details in its **Status** co
 | **Valid** | Every required trait has an entry, and every entry passes. |
 
 A new talk starts as **Needs Info**, since the creation workflow collects only its name. The status is a link, and it
-opens the core details workflow ready to fill in: a page titled **About your talk**, with a **Track** choice, the
-question **Is this your first conference talk?**, and a **Save** button. Once the speaker saves a track and an answer,
-the talk becomes **Valid**, and the **Track** column shows the track.
+opens the core details workflow ready to fill in: a page titled **About your talk**. Under **Talk title** is the
+**Title** field, already holding the title the talk was created with, which the speaker may change. Then come a
+**Track** choice, the question **Is this your first conference talk?**, and a **Save** button. Once the speaker saves
+a track and an answer, the talk becomes **Valid**, and the **Track** column shows the track.
 
 Complete core details have one more effect. The platform marks the form with a fact, `kdr:coreDetailsComplete`, and
 other workflows can test for it. The committee's review, on a later page, waits for that fact before it will start.

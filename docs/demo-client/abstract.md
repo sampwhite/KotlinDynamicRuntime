@@ -70,8 +70,8 @@ and a list of objects.
         "g-outerWhitespace": "trim",
         "g-errors": {
           "missingRequired": "Every talk needs a summary.",
-          "belowMinimum": "A summary is at least 50 characters; give the audience a reason to come.",
-          "aboveMaximum": "Keep the summary under 600 characters; the program has limited space."
+          "belowMinimum": "A summary is at least ${min} characters; give the audience a reason to come.",
+          "aboveMaximum": "Keep the summary to ${max} characters; the program has limited space."
         }
       },
       "durationMinutes": {
@@ -79,7 +79,12 @@ and a list of objects.
         "title": "Duration (minutes)",
         "description": "How long the talk runs, in minutes.",
         "minimum": 20,
-        "maximum": 90
+        "maximum": 90,
+        "g-errors": {
+          "belowMinimum": "${value} minutes is shorter than any slot; a talk runs at least ${min} minutes.",
+          "aboveMaximum": "${value} minutes is longer than any slot; a talk runs at most ${max} minutes.",
+          "badValue": "Give the duration as a whole number of minutes, such as 45."
+        }
       },
       "topics": {
         "type": "array",
@@ -87,6 +92,7 @@ and a list of objects.
         "description": "The topics the talk covers; choose up to three.",
         "uniqueItems": true,
         "maxItems": 3,
+        "g-errors": { "aboveMaximum": "Choose at most ${max} topics, the ones the talk is most about." },
         "items": {
           "g-options": [
             { "value": "coroutines", "label": "Coroutines" },
@@ -117,7 +123,8 @@ and a list of objects.
 ```
 
 **The summary has bounds, and its own messages.** It must be between 50 and 600 characters, and `g-errors` gives the
-words the form shows when it is not, in place of the platform's. See
+words the form shows when it is not, in place of the platform's. The messages say `${min}` and `${max}` rather than
+50 and 600, so they stay right if the bounds change. See
 [Bounds and their messages](reference.md#bounds-and-their-messages). Its `g-outerWhitespace` trims spaces from the
 ends of whatever is saved, so a summary pasted in with a stray space is stored without it. See
 [Trimming and coercion](reference.md#trimming-and-coercion).
@@ -127,10 +134,13 @@ every form shows it as a box of several lines rather than a single line, and you
 nothing about what may be saved, so the bounds above still apply. See [Long text](reference.md#long-text).
 
 **The duration is a number.** A form shows the range as a hint, and a value typed as text, such as `45`, is saved as
-the number 45.
+the number 45. Its messages name the value refused as well as the bound, with `${value}`, so a duration of 120 is
+refused with *120 minutes is longer than any slot; a talk runs at most 90 minutes.* A duration that is not a whole
+number gets the `badValue` message.
 
 **The topics are a multi-select.** The field is a list whose items are choices, so the form offers the five topics
-and lets the speaker pick up to three, each once. See [Lists](reference.md#lists).
+and lets the speaker pick up to three, each once. Its one message is for a fourth topic, and its `${max}` reads as 3.
+See [Lists](reference.md#lists).
 
 **The co-speakers are a list of objects.** Each item is a `Speaker`, the shared type above. The form shows a list the
 speaker can add to, with a name and an email in each entry.

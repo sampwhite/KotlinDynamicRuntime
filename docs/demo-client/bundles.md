@@ -127,8 +127,8 @@ review](committee-review.md), and [workshop logistics](workshop-logistics.md) pa
             "g-outerWhitespace": "trim",
             "g-errors": {
               "missingRequired": "Every talk needs a summary.",
-              "belowMinimum": "A summary is at least 50 characters; give the audience a reason to come.",
-              "aboveMaximum": "Keep the summary under 600 characters; the program has limited space."
+              "belowMinimum": "A summary is at least ${min} characters; give the audience a reason to come.",
+              "aboveMaximum": "Keep the summary to ${max} characters; the program has limited space."
             },
             "type": "string"
           },
@@ -137,7 +137,12 @@ review](committee-review.md), and [workshop logistics](workshop-logistics.md) pa
             "title": "Duration (minutes)",
             "type": "integer",
             "minimum": 20,
-            "maximum": 90
+            "maximum": 90,
+            "g-errors": {
+              "belowMinimum": "${value} minutes is shorter than any slot; a talk runs at least ${min} minutes.",
+              "aboveMaximum": "${value} minutes is longer than any slot; a talk runs at most ${max} minutes.",
+              "badValue": "Give the duration as a whole number of minutes, such as 45."
+            }
           },
           "topics": {
             "description": "The topics the talk covers; choose up to three.",
@@ -145,6 +150,7 @@ review](committee-review.md), and [workshop logistics](workshop-logistics.md) pa
             "type": "array",
             "uniqueItems": true,
             "maxItems": 3,
+            "g-errors": { "aboveMaximum": "Choose at most ${max} topics, the ones the talk is most about." },
             "items": {
               "g-options": [
                 {"label": "Coroutines", "value": "coroutines"},
@@ -245,10 +251,6 @@ review](committee-review.md), and [workshop logistics](workshop-logistics.md) pa
     {"display": "${track}", "label": "Track", "substring": false, "traitId": "session"},
     {
       "columnId": "audience", "display": "${audienceLevel}", "label": "Audience", "substring": false,
-      "traitId": "questionnaire"
-    },
-    {
-      "columnId": "firstTalk", "display": "${firstTalk}", "label": "First talk", "substring": false,
       "traitId": "questionnaire"
     }
   ],
@@ -358,9 +360,14 @@ The core details workflow. Explained on [Talk core details](talk-core-details.md
         "tasks": [
           {
             "id": "describe",
-            "label": "Track and background",
+            "label": "Title, track, and background",
+            "$comment": "The title comes first, so a speaker can change the one they started with.",
             "saves": [{"id": "saveAbout", "label": "Save", "kind": "edit"}],
-            "traits": [{"traitId": "session", "required": true}, {"traitId": "questionnaire", "required": true}]
+            "traits": [
+              {"traitId": "kdr:name", "required": true},
+              {"traitId": "session", "required": true},
+              {"traitId": "questionnaire", "required": true}
+            ]
           }
         ],
         "types": {
@@ -535,9 +542,11 @@ Workshop logistics. Explained on [Workshop logistics](workshop-logistics.md).
               "schemaFields": [
                 {
                   "field": "room",
+                  "$comment": "This form asks for a lab, though the trait does not, so it says why in its own words.",
                   "label": "Lab",
                   "description": "%{@t(\"logistics.roomHelp\")}",
                   "required": true,
+                  "errors": { "missingRequired": "Choose a lab, so attendees know where to go." },
                   "choices": [
                     {"value": "labA", "label": "Lab A (24 seats)"},
                     {"value": "labB", "label": "Lab B (40 seats)"}
