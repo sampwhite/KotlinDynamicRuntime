@@ -103,7 +103,7 @@ class BundleRowsTest {
         assertEquals(listOf("flows", "moved"), selectableBundles(client(hasSandbox = true, publishedOnly = true), configs))
         // A client static here takes nothing stored: nothing to select, and the bar says why.
         assertEquals(emptyList(), selectableBundles(client(staticHere = true), configs))
-        assertTrue(publishGroup(client(staticHere = true), configs)!!.note!!.contains("nothing stored"))
+        assertTrue(publishGroup(client(staticHere = true), configs)!!.note!!.contains("no configuration made in the app"))
         // Everything published: no group at all.
         assertNull(publishGroup(client(), listOf(bundle(2, published = true))))
     }

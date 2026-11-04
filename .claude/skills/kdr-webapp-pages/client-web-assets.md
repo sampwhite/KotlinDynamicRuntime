@@ -1,7 +1,7 @@
 ## A client's own web assets (issue #1130)
 
 A client's administrator may upload a **favicon** and a **brand mark** of its own, which stand in for the
-deployment's for that client's people -- and a client defined in source code may name a **web resources package** a
+deployment's for that client's people -- and a client defined in code may name a **web resources package** a
 component ships (issue #1301, `ClientDef.webResourcesId`), whose images it shows in a slot nothing is uploaded to; an
 upload stands in front of the package's, and removing it shows the package's again. To the frontend the two are one
 slot: the shell config names whichever is shown, and the address serves it. They are static content too, under the

@@ -172,7 +172,7 @@ fun copyRowOffersReset(row: CopyKeyRow, pending: Map<CopyAddress, PendingCopy>):
 
 /**
  * What a key's head says about it, beside its address: a pending change first ("edited, not saved", "reset, not
- * saved"), else what the client's configuration did ("changed by copy (stored)"; an orphan says it is read by
+ * saved"), else what the client's configuration did ("changed by copy (configured)"; an orphan says it is read by
  * nothing); null for a key that reads the shipped copy. Pure, and covered under `jsNodeTest`.
  */
 fun copyRowStatus(row: CopyKeyRow, pending: Map<CopyAddress, PendingCopy>): String? {

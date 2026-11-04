@@ -155,7 +155,7 @@ class WorkflowParamsSourceTest : StringSpec({
                 },
             )
         }
-        written.message.orEmpty() shouldContain "only source code declares"
+        written.message.orEmpty() shouldContain "only code declares"
         // Nor a global one, since a template has no windows, nor a sandbox's overlay.
         shouldThrow<KdrException> {
             gedraConfig(cxt, "templates", "kdr.templates") { workflowParams("review") { lifetime(end = "2099-01-01T00:00:00Z") } }

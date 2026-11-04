@@ -13,7 +13,7 @@ under #1083 (#1086, #1088, and #1128).
 
 ## A report
 
-A named report is declared in a client's configuration, in source or stored, beside its traits and workflows:
+A named report is declared in a client's configuration, in code or configured in the app, beside its traits and workflows:
 
 ```kotlin
 report("auditOverview", "Audit overview") {
@@ -259,7 +259,7 @@ instead (`createFrom`), whose page makes the report as a draft of the parent's c
 there, as the bundle editor does.
 
 **`POST /clientAdmin/report/remove`** takes a report out of whichever stored configuration holds it, and takes effect
-the same way; a refused publish puts it back. A report declared in source code, or copied from the client this one is
+the same way; a refused publish puts it back. A report declared in code, or copied from the client this one is
 built on, is refused, saying so. Its snapshots are kept, listable under its id, as they are for any report removed
 from the configuration.
 

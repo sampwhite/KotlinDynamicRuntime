@@ -29,7 +29,7 @@ object ClientSandboxEdit {
         }
         if (ClientService.get(cxt).originOf(client) == GedraConfigOrigin.source) {
             throw KdrException.mkInput(
-                "Client '$client' is defined in source code, so whether it has a sandbox is set there " +
+                "Client '$client' is defined in code, so whether it has a sandbox is set there " +
                     "(its ClientDef's sandbox flag); a stored definition cannot override it.",
             )
         }

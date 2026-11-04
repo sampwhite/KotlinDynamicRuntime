@@ -119,7 +119,7 @@ class WorkflowWindowsTest {
         val fromSource = parseWorkflowParams(mapOf(WFP.source to source, WFP.history to emptyList<Any?>()))
         assertEquals(sourceWindows, fromSource.windows)
         assertEquals(WfParamsFrom.source, fromSource.windowsFrom)
-        assertTrue(windowsSourceText(fromSource, "acme", zone).orEmpty().startsWith("The source code's default windows"))
+        assertTrue(windowsSourceText(fromSource, "acme", zone).orEmpty().startsWith("The code's default windows"))
         assertTrue(windowsSourceText(fromSource, sandboxOf("acme"), zone).orEmpty().contains("until it or its client sets its own"))
         assertNull(windowsFallbackLabel(fromSource))
         // A sandbox following its client: the client's setting is named.
@@ -132,7 +132,7 @@ class WorkflowWindowsTest {
         val own = parseWorkflowParams(mapOf(WFP.current to clientSet, WFP.source to source, WFP.history to emptyList<Any?>()))
         assertNull(own.windowsFrom)
         assertTrue(windowsSourceText(own, "acme", zone).orEmpty().endsWith("by Pat Lee."))
-        assertEquals("Use the source code's windows", windowsFallbackLabel(own))
+        assertEquals("Use the code's windows", windowsFallbackLabel(own))
         assertEquals("Use its client's windows", windowsFallbackLabel(parseWorkflowParams(mapOf(WFP.current to clientSet, WFP.parent to clientSet))))
         // Nothing set anywhere: no limits, and nothing said.
         assertNull(windowsSourceText(WorkflowParamsView.none, "acme", zone))

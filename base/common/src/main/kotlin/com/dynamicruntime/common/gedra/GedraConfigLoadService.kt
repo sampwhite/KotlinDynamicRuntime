@@ -543,9 +543,9 @@ class GedraConfigLoadService : ServiceInitializer {
         val parentId = config.client?.extendsFromClientId ?: return null
         if (parentId !in sourceClients) {
             return config.issue(
-                "Stored config '${config.gedraId}' extends '$parentId', which is not defined in source. A " +
-                    "configuration authored from data may extend only a source-code client, so that only the " +
-                    "source definition is ever pulled in.",
+                "Stored config '${config.gedraId}' extends '$parentId', which is not defined in code. A " +
+                    "configured client may extend only a code-defined client, so that only a definition in code is " +
+                    "ever pulled in.",
                 "Dropping the stored config '${config.gedraId}'.",
                 GCEL.config, config.gedraId.fullId,
             )
@@ -658,6 +658,6 @@ fun storedOwnershipProblem(config: GedraConfig): String? = when {
             "config belongs to a real client."
     config.customers.isNotEmpty() && config.gedraId.client != CL.hub ->
         "Config '${config.gedraId}' declares the customer(s) ${config.customers.map { "'${it.customerId}'" }}. A " +
-            "customer is the platform's to declare: in source code, or in the stored configuration of '${CL.hub}'."
+            "customer is the platform's to declare: in code, or in the stored configuration of '${CL.hub}'."
     else -> null
 }

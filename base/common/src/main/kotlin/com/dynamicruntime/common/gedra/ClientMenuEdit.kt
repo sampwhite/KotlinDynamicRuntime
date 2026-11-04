@@ -183,7 +183,7 @@ object ClientMenuEdit {
         val holder = holderOf(bound, target.client, itemId)?.takeIf { storedItem(it, itemId) != null }
             ?: throw KdrException.mkInput(
                 "No stored configuration changes the menu item '$itemId' for client '${target.client}'; what it shows " +
-                    "comes from source code or the shipped menu, which a reset cannot remove.",
+                    "comes from code or the shipped menu, which a reset cannot remove.",
             )
         ClientStoredEdit.requireNoForeignDraft(target, holder, "a menu edit")
         val before = storedItem(holder, itemId)

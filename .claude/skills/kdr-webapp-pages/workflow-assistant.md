@@ -47,9 +47,10 @@ Panels, by the rules of "Page structure" in `webapp/CLAUDE.md`:
 
 1. **Sandbox** (live), only while the client has none: what a sandbox does, and **Turn on sandbox**, behind a
    `Popconfirm` saying the client then runs only published configuration. It calls the Clients page's own
-   `ClientsApi.setSandbox`, then bumps the refresh, so the app bar offers the sandbox too. A client defined in source
-   code (the status's `sandboxInSource`) has its sandbox turned on there, so the panel says so instead and offers no
-   button: the switch would only refuse.
+   `ClientsApi.setSandbox`, then bumps the refresh, so the app bar offers the sandbox too. A client defined in code
+   (the status's `sandboxInSource`) has its sandbox turned on there, so the panel says so instead, by the client's
+   name ("<client> is defined in code, so its sandbox is turned on there, in its definition."), and offers no button:
+   the switch would only refuse.
 2. **Conversation** (live): the conversation picker (the person's conversations, and "New conversation"), the
    transcript, the text box, **Send**, and **Stop** while a turn runs. Ctrl or Cmd+Enter sends. The send is blocked,
    saying why, when the conversation is read-only, the month's allowance is used up, or there is no sandbox. "What is

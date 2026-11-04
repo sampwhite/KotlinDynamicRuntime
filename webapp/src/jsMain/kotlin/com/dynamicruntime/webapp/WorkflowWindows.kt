@@ -181,8 +181,8 @@ fun windowsSourceText(params: WorkflowParamsView, clientId: String, zone: String
         "Its client's windows, which this sandbox runs until it sets its own." +
             (params.parent?.let { settingByline(it, zone) }?.let { " $it." } ?: "")
     WfParamsFrom.source ->
-        if (isSandboxClient(clientId)) "The source code's default windows, which this sandbox runs until it or its client sets its own."
-        else "The source code's default windows, which this client runs until it sets its own."
+        if (isSandboxClient(clientId)) "The code's default windows, which this sandbox runs until it or its client sets its own."
+        else "The code's default windows, which this client runs until it sets its own."
     null -> params.own?.takeIf { params.ownWindows }?.let { settingByline(it, zone) }?.let { "$it." }
 }
 
@@ -192,7 +192,7 @@ fun windowsSourceText(params: WorkflowParamsView, clientId: String, zone: String
  */
 fun windowsFallbackLabel(params: WorkflowParamsView): String? = if (!params.ownWindows) null else when (params.windowsFallbackFrom) {
     WfParamsFrom.parent -> "Use its client's windows"
-    WfParamsFrom.source -> "Use the source code's windows"
+    WfParamsFrom.source -> "Use the code's windows"
     null -> null
 }
 

@@ -274,7 +274,7 @@ object ReportEdit {
                 ?: throw KdrException("Client '$owner' has no report '$reportId'.", code = EXC.notFound)
             val where = when {
                 declared.fromTemplate -> "it comes from the client this one is built on, '${declared.bundle.inheritedFrom}'"
-                !declared.bundle.isStored -> "it is declared in source code, where it is removed"
+                !declared.bundle.isStored -> "it is declared in code, where it is removed"
                 else -> "its configuration's latest revision no longer holds it"
             }
             throw KdrException.mkInput("Report '$reportId' cannot be removed here: $where.")

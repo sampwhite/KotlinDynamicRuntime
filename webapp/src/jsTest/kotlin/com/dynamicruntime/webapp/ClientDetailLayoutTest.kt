@@ -31,7 +31,7 @@ class ClientDetailLayoutTest {
         assertEquals(listOf(PFRAG.aboutNs, PFRAG.behaviorNs, PFRAG.platformNs, PFRAG.runsNs), groups.map { it.explanationNs })
         assertEquals(listOf("Client id", "Name", "Description"), groups[0].rows.map { it.first })
         assertEquals("customer", groups[2].rows.toMap()["Audience"])
-        assertEquals("Stored", groups[3].rows.toMap()["Definition"])
+        assertEquals("Configured", groups[3].rows.toMap()["Definition"])
         // The traits are listed only where their own section is not drawn.
         assertEquals("acmeSiteAudit", groups[1].rows.toMap()["Traits"])
         val withPanel = clientSummaryGroups("acme", row(), definition(), canSeeAllClients = true, traitsShownBelow = true)

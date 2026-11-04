@@ -77,7 +77,7 @@ fun visibilitySourceText(params: WorkflowParamsView, zone: String): String = whe
     WfParamsFrom.parent ->
         "Its client's choice, which this sandbox follows until it makes its own." +
             (params.parent?.let { settingByline(it, zone) }?.let { " $it." } ?: "")
-    WfParamsFrom.source -> "The source code's default, which this client follows until it makes its own."
+    WfParamsFrom.source -> "The code's default, which this client follows until it makes its own."
     null -> if (params.ownVisibility) params.own?.let { settingByline(it, zone) }?.let { "$it." } ?: "Set here."
     else "Nobody has restricted it, so everybody sees it."
 }
@@ -89,7 +89,7 @@ fun visibilitySourceText(params: WorkflowParamsView, zone: String): String = whe
  */
 fun visibilityFallbackLabel(params: WorkflowParamsView): String? = if (!params.ownVisibility) null else when (params.visibilityFallbackFrom) {
     WfParamsFrom.parent -> "Use its client's choice"
-    WfParamsFrom.source -> "Use the source code's default"
+    WfParamsFrom.source -> "Use the code's default"
     null -> null
 }
 

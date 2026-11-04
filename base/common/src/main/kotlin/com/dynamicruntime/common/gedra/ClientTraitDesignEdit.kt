@@ -97,7 +97,7 @@ object ClientTraitDesignEdit {
             }
         }
         val inSource = runningOwnTraitIds(cxt, owner).filterNot { it in stored }.map {
-            mapOf(CIT.traitId to it, CIT.notEditable to "It is declared in source code, where it is edited.")
+            mapOf(CIT.traitId to it, CIT.notEditable to "It is declared in code, where it is edited.")
         }
         return listed + inSource
     }
@@ -137,7 +137,7 @@ object ClientTraitDesignEdit {
         val taken = stored.keys + runningOwnTraitIds(cxt, owner)
         val existing = design.traitId?.let { id ->
             stored[id] ?: throw KdrException(
-                if (id in taken) "Trait '$id' is declared in source code, where it is edited."
+                if (id in taken) "Trait '$id' is declared in code, where it is edited."
                 else "Client '$owner' has no trait '$id' to edit.",
                 code = if (id in taken) EXC.badInput else EXC.notFound,
             )

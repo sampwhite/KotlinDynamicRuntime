@@ -176,7 +176,7 @@ class FileRefsTest {
         // The list is the sandbox's view, and a file removed as a draft is in it too, marked (issue #1188).
         assertTrue(drafts.contains("What is listed is what the sandbox shows: the client's latest configuration, drafts included"))
         assertTrue(drafts.contains("a file removed as a draft, which the client's people are served until that is published, marked so and offered to be put back."))
-        assertTrue(drafts.contains("from the stored configuration below"))
+        assertTrue(drafts.contains("from the configuration listed below"))
 
         val inSandbox = fileRefsIntro("acme", hasSandbox = false, staticHere = false)
         assertTrue(inSandbox.startsWith("The files of acme's sandbox."))
@@ -188,7 +188,7 @@ class FileRefsTest {
 
         // A client that takes nothing stored here is told that, and nothing of drafts it cannot make.
         for (static in listOf(fileRefsIntro(null, hasSandbox = true, staticHere = true), fileRefsIntro("acme", hasSandbox = false, staticHere = true))) {
-            assertTrue(static.endsWith("This client's configuration comes from source code on this node, so its files are listed here and not changed."))
+            assertTrue(static.endsWith("This client's configuration comes from code on this node, so its files are listed here and not changed."))
             assertFalse(static.contains("draft"))
         }
 
@@ -564,7 +564,7 @@ class FileRefsTest {
         val shipped = List(200) { ref("s$it", source = FREF.sourceLocal, stored = false) }
         assertEquals(
             "This client has 200 files, which is as many as a client is served. Every one was shipped with it, so none " +
-                "can be removed here: replace one of them, or have the client's source configuration changed.",
+                "can be removed here: replace one of them, or have the client's code changed.",
             fileRefAtLimitText(shipped, takes),
         )
         // A backend that names no limit holds the page to none.

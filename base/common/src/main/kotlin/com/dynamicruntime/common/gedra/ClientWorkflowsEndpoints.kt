@@ -33,7 +33,7 @@ internal fun SchModuleBuilder.clientWorkflowsEndpoints() {
         property(CWF.definition, "Its definition as it runs; one made from a template names it in `fromTemplate`.", required = true) {
             type = SCT.kObject
         }
-        property(CWF.configName, "The stored configuration holding it; absent for one declared in source code.")
+        property(CWF.configName, "The stored configuration holding it; absent for one declared in code.")
         property(CWF.notEditable, "Why its slots cannot be changed here; absent when they can.")
         property(
             CWF.labels,
@@ -68,7 +68,7 @@ internal fun SchModuleBuilder.clientWorkflowsEndpoints() {
         property(
             WFP.inForce,
             "The parameters in force, each the scope's own, else -- on a sandbox -- its client's, else the default the " +
-                "client's source code declares. A parameter set nowhere is absent: no limits, and seen by everybody.",
+                "client's code declares. A parameter set nowhere is absent: no limits, and seen by everybody.",
             required = true,
         ) { type = SCT.kObject }
         property(
@@ -84,7 +84,7 @@ internal fun SchModuleBuilder.clientWorkflowsEndpoints() {
         property(WFP.parent, "On a sandbox: its client's own setting, which it follows for any parameter it does not set; absent while the client has none.") {
             ref(CWF.settingTypeName)
         }
-        property(WFP.source, "The defaults the client's source code declares, which it follows for any parameter nobody set; absent when there are none.") {
+        property(WFP.source, "The defaults the client's code declares, which it follows for any parameter nobody set; absent when there are none.") {
             type = SCT.kObject
         }
     }

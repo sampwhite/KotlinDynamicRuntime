@@ -120,7 +120,7 @@ object ClientUsageEdit {
     /** Why a column the client runs, declared by [config], cannot be changed here: it is not in the client's storage. */
     private fun notEditable(config: GedraConfig?): String = when {
         config?.inheritedFrom != null -> "It comes from the client this one is built on, '${config.inheritedFrom}'."
-        config != null && !config.isStored -> "It is declared in source code, where it is edited."
+        config != null && !config.isStored -> "It is declared in code, where it is edited."
         else -> "Its configuration's latest revision no longer holds it; it is edited in the bundle editor."
     }
 

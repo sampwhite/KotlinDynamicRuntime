@@ -194,7 +194,7 @@ object ClientWorkflowEdit {
     private fun notEditable(client: String, declared: WfDeclared, templateIds: Set<String>): String? = when {
         declared.def.fromTemplate == null -> "It is written whole, not made from a template: its layouts and labels are edited in Design View."
         declared.def.fromTemplate !in templateIds -> "Its template, '${declared.def.fromTemplate}', is not offered by this deployment now."
-        !declared.bundle.isStored -> "It is declared in source code, where it is edited."
+        !declared.bundle.isStored -> "It is declared in code, where it is edited."
         declared.bundle.gedraId.client != client || declared.bundle.inheritedFrom != null ->
             "It comes from the client this one is built on, '${declared.bundle.inheritedFrom ?: declared.bundle.gedraId.client}'."
         else -> null

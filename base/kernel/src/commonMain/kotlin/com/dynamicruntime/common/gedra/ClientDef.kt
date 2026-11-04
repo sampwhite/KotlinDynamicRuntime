@@ -1204,7 +1204,7 @@ data class ClientDef(
             prop(CLD.audience, "Whose client this is: ours, or somebody else's.", required = true) {
                 options(ClientAudience.entries)
             }
-            prop(CLD.webResourcesId, "The web resources package a component ships that the client presents its images from; named in source code only.")
+            prop(CLD.webResourcesId, "The web resources package a component ships that the client presents its images from; named in code only.")
             prop(CLD.timeZone, "The client's IANA time zone (America/Chicago), which its dates are read and shown in.")
             // The environments there are ([ENV.names]), as choices (issue #1051): a form drawn from this type
             // offers the real ones, and a written definition is held to them.

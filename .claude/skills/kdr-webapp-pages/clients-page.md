@@ -2,19 +2,20 @@
 
 `/wa/clients` lists the clients an administrator oversees, from `GET /clientAdmin/clients/overview`
 (`ClientsApi.listOverview`, rows parsed by the pure `parseClientOverview`): an `allClients` administrator sees
-every client the node knows of -- present, not enabled here, dropped by a check, or known only from stored
-configuration. A client-scoped one is answered with their own client alone, and the page shows it as that
-client's detail rather than as a listing of one row (issue #1082, below). It is the **scoped** surface on purpose:
-that section admits both kinds of administrator and an `allClients` holder is unconfined there, so the calls need no
-branch on who is asking. Per row: the load status (`clientLoadText`), where the
-definition came from (`clientOriginText`: source, stored, and how many stored configurations are loaded), live
-forms, active users with the unclaimed ones told apart (`userCountText`), and workflows. Counts are client-wide
-and count active users only -- disabled and deleted users are never in the cache the count reads. A present
-client's Forms and Users counts link to the listings behind them (`clientFormsHref`, `clientUsersHref`), in the
-listing and again in the detail's summary (`clientSummaryHref`): with the client chosen or filtered for an
-`allClients` administrator, bare for a scoped one -- who meets them only in the summary -- whose listings are their
-own client already (the Users page draws no client filter for them, so a `client=` in the address would be one they
-could not clear). The Workflows page takes no client, so that count is plain text until it does.
+every client the node knows of -- present, not enabled here, dropped by a check, or known only from configuration
+made in the app ("Configuration only"). A client-scoped one is answered with their own client alone, and the page
+shows it as that client's detail rather than as a listing of one row (issue #1082, below). It is the **scoped**
+surface on purpose: that section admits both kinds of administrator and an `allClients` holder is unconfined there,
+so the calls need no branch on who is asking. Per row: the load status (`clientLoadText`), where the definition came
+from (`clientOriginText`: code or configured, and how many configurations made in the app are loaded -- "Code + 2
+configured", "Configured (3 configs)"), live forms, active users with the unclaimed ones told apart
+(`userCountText`), and workflows. Counts are client-wide and count active users only -- disabled and deleted users
+are never in the cache the count reads. A present client's Forms and Users counts link to the listings behind them
+(`clientFormsHref`, `clientUsersHref`), in the listing and again in the detail's summary (`clientSummaryHref`): with
+the client chosen or filtered for an `allClients` administrator, bare for a scoped one -- who meets them only in the
+summary -- whose listings are their own client already (the Users page draws no client filter for them, so a
+`client=` in the address would be one they could not clear). The Workflows page takes no client, so that count is
+plain text until it does.
 
 **An administrator of one client opens it in place** (issue #1082): with no `c=` in the address, a caller who may
 administer and does not see across clients is shown their own client's detail, not a listing of one row
@@ -35,7 +36,7 @@ would refuse piece by piece. Nothing is opened in place until the shell config h
 **One client** (`c=<id>`, issue #906) shows, on the same route with `← Clients` back: the listing's facts for it,
 its definition from `/clientAdmin/client/definition` (`clientSummaryRows`, drawn with `readOnlyField`; the
 operator-only `audience` and `usageType` (#820) are noted "(set by the platform)" for a scoped administrator, so
-the later editor disables exactly those), the issues its checks forgave, and the stored configurations this node
+the later editor disables exactly those), the issues its checks forgave, and the configurations this node
 holds for it -- the full-scope bundles listing naming the client for an `allClients` administrator, the scoped
 one otherwise. Each configuration row (`StoredConfigTable`, issue #1001) says whether its latest revision is
 **live** by the client's tier (`bundleLiveText`: "Live", "v3 draft; v2 live" for a published-only client --
@@ -51,7 +52,7 @@ lists its parent's bundles, the configuration it runs, and publishes them there 
 the note once in the bar rather than on every row: a client with a sandbox publishes from it, after previewing --
 the word "sandbox" leads to the sandbox's page, directly for an `allClients` administrator, and for a client-scoped
 one by opening the sandbox first (a fresh session as their user there) and landing on that page -- and a client
-static in production takes nothing stored, so nothing is selectable. A publish reloads the client.
+static in production takes no configuration made in the app, so nothing is selectable. A publish reloads the client.
 A publish is judged against the client's **stored data** (issue #935): one that would affect it is refused with an
 impact report on the whole selection (the envelope's `errorCode` `IMP.refusedCode`, the report in its `extraData`,
 which `ApiError` carries for this), and the table opens it in a dialog (`ImpactReportDialog`, titled by the
@@ -81,7 +82,7 @@ The page has a header, and then panels: each a keyed `section` (the shared `pane
   2. **Forms and data**: Traits, then Listing columns, then Workflows, then Form states.
   3. **Copy**.
   4. **Images**: Web assets, then Files.
-  5. **Sandbox and publishing**: Sandbox, then Stored configuration. Drafts made in the panels above are published here.
+  5. **Sandbox and publishing**: Sandbox, then Configuration. Drafts made in the panels above are published here.
      Under the table, **Open every bundle** leads to the bundle editor (below).
   6. **Menu**: closed (`Disclosure`), its editor read only once opened. By default it lists only the items a client's people may be offered (`menuItemsForPeople`). It hides those shipped for the deployment's own people, which the items listing marks `deploymentOnly` from `MenuAudience.deployment`.
   7. **Retirement**: last, as a danger zone.
@@ -92,26 +93,26 @@ The page has a header, and then panels: each a keyed `section` (the shared `pane
 **Sandbox** (issue #932, `SandboxSection` in `ClientsPage.kt`): the detail says whether the client has a Shadow
 Sandbox and offers **Add a sandbox** / **Remove the sandbox** (`sandboxControl`), posting
 `/clientAdmin/client/sandbox {client, sandbox}` (`ClientsApi.setSandbox`), which sets the flag in the client's
-stored definition, **publishes** it and reloads -- the published definition decides both the sandbox and the tier,
-so a draft would change nothing -- and is refused for a source-defined client (its flag is set in source), for a
+configured definition, **publishes** it and reloads -- the published definition decides both the sandbox and the tier,
+so a draft would change nothing -- and is refused for a code-defined client (its flag is set in code), for a
 sandbox, and while that config has unpublished changes. A client with a sandbox runs only published configuration.
 A sandbox's own detail says whose it is. It also offers the way back (issue #1422), in the same panel as the publishing
 bar's "Publish from its sandbox" and whatever is published (`sandboxWayBackTarget`): **Back to <client>**, which in a
 sandbox session leaves it as the app bar's **Back to** does (`ShellFacts.sandboxWayBackUserId`, the same user) and
 lands on the client's page, and for an `allClients` administrator looking from outside is a plain link. It is in this
-section rather than beside the publishing bar because the bar is not drawn for a sandbox whose client stores no
-configuration (one defined in source code, as the sample's acme is). In the listing each sandbox follows its parent
-(`withSandboxesBesideParents`) with a "sandbox of <name>" note (`sandboxRowNote`); the overview rows carry `sandboxOf`
-and `hasSandbox`. A sandbox's row also carries its parent's name, `sandboxOfName`, which every sentence on the page
-names the parent by (`sandboxParentName`; the id stays in addresses), issue #1438. A scoped administrator has no listing
-(issue #1082), so only an `allClients` one sees sandbox rows.
+section rather than beside the publishing bar because the bar is not drawn for a sandbox whose client holds no
+configuration made in the app (one defined in code, as the sample's acme is). In the listing each sandbox follows its
+parent (`withSandboxesBesideParents`) with a "sandbox of <name>" note (`sandboxRowNote`); the overview rows carry
+`sandboxOf` and `hasSandbox`. A sandbox's row also carries its parent's name, `sandboxOfName`, which every sentence
+on the page names the parent by (`sandboxParentName`; the id stays in addresses), issue #1438. A scoped administrator
+has no listing (issue #1082), so only an `allClients` one sees sandbox rows.
 
 **Retirement** (issue #1182, `RetirementSection` in `ClientsPage.kt`): under Sandbox, for an administrator who sees
 every client -- the platform's switch, `POST /admin/client/retirement/set {client, retired}` (#1111,
 `ClientsApi.setRetired`). **Retire** is a `danger` button behind a confirmation saying what follows
 (`retireConsequence`): the data is kept, the users can no longer sign in, open sessions end, and the sandbox goes with
 it. A retired client shows **Bring back** instead, unconfirmed since it only restores. Either is live at once. The
-action is offered only where the switch can take it (`retirementControl`, pure): a sandbox, a client defined in source
+action is offered only where the switch can take it (`retirementControl`, pure): a sandbox, a client defined in
 code, a customer's root (the overview row's `rootOf`), and a definition whose configuration has unpublished changes
 each say why instead. A retired client stays in the listing, as "Retired", which is the way to its page and back.
 
@@ -121,7 +122,7 @@ are listed under "A client's file refs" in `client-web-assets.md`). A row a ref:
 (`fileRefTags`: a draft, a missing file, one the client was shipped with), its description, what the file is
 (`fileRefHoldsText`), where it is by its source and which configuration holds it (`fileRefWhereText`), and the
 address it is served at; then **Replace…** (and **Use a kept file…** where a root is open to clients), and for a
-ref a stored configuration holds, **Reword…** and **Remove**. Under the list, the way to add one: an id and a description, then **Upload…** -- or, where
+ref a configuration made in the app holds, **Reword…** and **Remove**. Under the list, the way to add one: an id and a description, then **Upload…** -- or, where
 `…/files/takes` lists a root open to clients, a root and a typed path. What is decided here, and why:
 
 - **A section, not a page of its own**, because it mirrors Web assets. A client may hold 200 refs; previews load
@@ -129,16 +130,16 @@ ref a stored configuration holds, **Reword…** and **Remove**. Under the list, 
 - **Unlike a web asset, a ref is configuration.** For a client with a sandbox a change is a **draft**, and the list
   is the *sandbox's* view: the client's latest, drafts marked. So `fileRefsIntro` says how a change takes effect
   for this client, and that a file *removed* as a draft is no longer listed though the client's people are still
-  served it. Drafts are published from the **Stored configuration** table below the section, not from here.
+  served it. Drafts are published from the **Configuration** table below the section, not from here.
 - **A sandbox's own page edits too** -- unlike Web assets, which a sandbox may not change. A change made there is
   a draft of its parent's, and the calls are sent with the sandbox's id as they are with any client's.
-- **A client that takes nothing stored on this node** (`staticHere`, which for a sandbox is its parent's answer)
-  is listed with no actions, and told so and nothing of drafts.
+- **A client that takes no configuration made in the app on this node** (`staticHere`, which for a sandbox is its
+  parent's answer) is listed with no actions, and told so and nothing of drafts.
 - **An id the client already has is refused by the add form**: that ref is replaced, reworded or removed from its
   own row, where it can be seen. Where a root is open to clients, the row offers **Use a kept file…** beside
   Replace… (issue #1189, `fileRefRepointable`): a root and a typed path in place under the row -- the add form's
   own fields (`keptFileFields`) -- sent as `…/files/local` with the ref's own id and no description, so the
-  description stays. A shipped ref becomes a stored override, which Remove takes back off; an upload is replaced;
+  description stays. A shipped ref becomes a configured override, which Remove takes back off; an upload is replaced;
   for a client with a sandbox it is a draft, as every change is. `fileRefRepointProblem` refuses the file the ref
   already names, before anything is sent; where the editor starts is `fileRefRepointStart`. The section has one
   row editor open at a time (`editing`: which ref, and Reword… or Use a kept file…), so opening one closes any other.
@@ -146,7 +147,7 @@ ref a stored configuration holds, **Reword…** and **Remove**. Under the list, 
   nothing is added from the page then, and it says so. At the limit of refs the form gives way to a sentence,
   since an upload would be sent whole and then refused -- one that says what can be done (`fileRefAtLimitText`,
   issue #1169): a ref the client was shipped with cannot be removed here, so a client whose every ref was shipped
-  is told to replace one, or to have its source configuration changed, and the backend's refusal says the same.
+  is told to replace one, or to have its code changed, and the backend's refusal says the same.
 - **The section keeps its place among the page's.** It and Web assets are keyed, and the Issues block above them
   is one element with or without issues in it: mending a file ref clears an issue, and were Issues two elements
   that come and go, every section after it would be remounted and lose what was typed in it.
@@ -162,8 +163,8 @@ refusals use too), and **Upload…** / **Replace…** and **Remove**. Picking a 
 the upload: `POST /clientAdmin/client/web/upload` as `multipart/form-data` (`Http.uploadApi`, the one multipart
 call outside the endpoint catalog; both build their body with `formDataOf`). A file over the slot's size is said
 before it is sent (`webAssetFileProblem`); whether it is the image it claims to be is the backend's to say, and
-its refusal shows beside the slot in its words. **There is no draft and no publish** -- a web asset is not stored
-configuration, and the section says so -- so a change is live for the whole client at once. That is why
+its refusal shows beside the slot in its words. **There is no draft and no publish** -- a web asset is not part of the
+client's configuration, and the section says so -- so a change is live for the whole client at once. That is why
 **Remove** is a `danger` button behind a confirmation that names where it acts (`webAssetRemoveQuestion`:
 "Remove the favicon of acme (live data)?", issue #1049's rule), where "Remove the sandbox" beside it is not: this
 one has no draft to come back from. Whichever control was used is the one that shows the work (`webAssetBusyKey`),
@@ -174,7 +175,7 @@ confirmation, and the last failure or refusal beside its row are one `RowActionS
 shared with the Files section: change it only through its transitions, which the hook applies through the state's
 transform, since an action ends after an await. A slot showing the client's **web resources package**'s image
 (issue #1301: the listing's `source` is `package`, beside the `packageId`) says it was shipped with the client's
-source code rather than who uploaded it, and offers **Replace…** but no Remove (`webAssetFromPackage`,
+code rather than who uploaded it, and offers **Replace…** but no Remove (`webAssetFromPackage`,
 `webAssetRemovable`): an upload stands in front of it, and removing that upload -- whose confirmation says the
 package's image comes back when the listing's `packaged` says it ships one (`webAssetRemoveConsequence`) -- shows it
 again.
@@ -190,19 +191,21 @@ anyway.
 
 **Copy & menu** (issue #917): what a client's own configuration changes about what its people see, from
 `GET /clientAdmin/client/overrides` (`ClientsApi.overrides`, parsed by the pure `parseClientOverrides`; the wire
-names are the kernel's `COV`). Each copy row says who set the key -- `config (source|stored)`, `setByText`, or
-`config (template <id>)` for a value the client inherits from the template it extends, issue #945 -- the shipped
-value, and for a stored change over the client's own source value that source value; an orphan is a key no shipped
-file declares, so its value is never read. The copy is drawn by the file view below; the interface items the client
-changes are a table (`menuChangeText`: added, hidden, shown, renamed, reordered; `blockValueText`; the shipped label
-rides on the row as `baseLabel`, so a row that only hides an item still names it; "Set by" names every config that
-set a field, a stored one first -- `blockSetByText`), each value rendered with `MarkdownInline` and clamped to one
-line by `.cell-clamp` with the whole on hover -- clamped after rendering, never cut before it, since a cut through a
-link would show its syntax. The listing's **Customized** column says how much (`customizedText`, "3 copy,
-2 menu" -- "menu" because every block a client can overlay today is one) and links to the detail; an `allClients`
-administrator also gets **Copy & menu across clients** (`ov=1` on the same route, `overridesAcrossHref`): one
-retrieve per listed client, grouped by the pure `overridesAcrossClients` into file-or-block → key → the clients
-overriding it. A scoped administrator has one client and is never shown that view, whatever the address says.
+names are the kernel's `COV`). Each copy row says who set the key -- `config (code|configured)`, `setByText` (the
+origin worded by `originWord`), or `config (template <id>)` for a value the client inherits from the template it
+extends, issue #945 -- the shipped value, and, for a configured change over a value the client's code sets, that code
+value;
+an orphan is a key no shipped file declares, so its value is never read. The copy is drawn by the file view below;
+the interface items the client changes are a table (`menuChangeText`: added, hidden, shown, renamed, reordered;
+`blockValueText`; the shipped label rides on the row as `baseLabel`, so a row that only hides an item still names it;
+"Set by" names every config that set a field, a configured one first -- `blockSetByText`), each value rendered with
+`MarkdownInline` and clamped to one line by `.cell-clamp` with the whole on hover -- clamped after rendering, never
+cut before it, since a cut through a link would show its syntax. The listing's **Customized** column says how much
+(`customizedText`, "3 copy, 2 menu" -- "menu" because every block a client can overlay today is one) and links to
+the detail; an `allClients` administrator also gets **Copy & menu across clients** (`ov=1` on the same route,
+`overridesAcrossHref`): one retrieve per listed client, grouped by the pure `overridesAcrossClients` into
+file-or-block → key → the clients overriding it. A scoped administrator has one client and is never shown that view,
+whatever the address says.
 
 **How a save takes effect, said before and sent with it** (issues #930, #1176, #1191). Every editor on a client's
 page that saves its configuration -- the copy, the menu, the definition, the traits, the workflows, the files -- is live at once for a client
@@ -230,7 +233,7 @@ since there is nothing to fill them from. **Find** searches every file's keys *a
 the keys the client's configuration sets. The view opens on **no** file (`copyViewOpenFile`): a preselected one read as
 nothing having been chosen, and choosing it again changed nothing. With no file chosen, **Only changed** lists every
 file's changed keys -- the client's customizations at a glance (`copyViewSpansFiles`). A changed key says who set it (`copyRowStatus`), with "What it replaces"
-(the shipped value, and the source value a reset returns to) a click away.
+(the shipped value, and the value in code a reset returns to) a click away.
 
 **Edit** opens the key's text with a **Preview** (the hint says which template syntax the file takes, by its
 `audience` -- `copySyntaxHint`, issue #1001), and, for a client with file refs, **Insert an image…**: the client's refs
@@ -238,12 +241,12 @@ file's changed keys -- the client's customizations at a glance (`copyViewSpansFi
 (`insertAtCaret`; at the end, on a line of its own, when the box has not been clicked). Every value the editor draws
 -- preview, rendered value, what it replaces -- draws a ref image from the **page's client's** refs, by the named
 download (`refPreviewAddressFrom`), never the static root, which answers the caller's own client (issue #1186).
-**Reset**, for a stored value only, removes it -- data cannot remove
-what source code or the shipped file says (`copyRowOffersReset`). Neither saves: each is a **pending** change
+**Reset**, for a configured value only, removes it -- data cannot remove
+what code or the shipped file says (`copyRowOffersReset`). Neither saves: each is a **pending** change
 (`pendingAfterEdit`; typed back to the value it is no change), marked down the key's left edge with a **Revert**, and
 the panel shows it as it will read once saved (`copyRowShownValue`). A sticky bar (the shared `SaveBar`, issue #1477:
 **Save copy** and **Discard**) saves every pending change to the
-file **together** -- `POST /clientAdmin/client/copy/apply` (`copyApplyRequest`), one stored config (the one already
+file **together** -- `POST /clientAdmin/client/copy/apply` (`copyApplyRequest`), one configuration (the one already
 setting any of the keys, else the first overlaying the file, else `copy`, created on first use), one trial, one
 publish and reload, so the changes go live at once -- or discards them. A save is of one file, so while one file has
 pending changes another's keys are not editable (`copyRowEditable`), and opening a key's editor makes its file the
@@ -261,16 +264,16 @@ shell re-reads its copy: a changed `home.brand` appears in the app bar without a
 **Editing the menu** (issue #919, `MenuEditor` in `ClientsPage.kt`): the detail's "Menu" table lists every home-menu
 item for the client from `/clientAdmin/client/menu/items` (`ClientsApi.menuItems`; shipped and effective label
 and condition, before any one caller's cfacts -- an editor lists what can be changed), with **Rename**, **Hide**,
-**Show** (a choice of audiences, by name -- below) and, where the client's stored config changed the item, **Reset**; a group (`menuGroups`: anything another item
+**Show** (a choice of audiences, by name -- below) and, where the client's configuration changed the item, **Reset**; a group (`menuGroups`: anything another item
 sits under) gets no Hide, since the bar draws a child only under a parent it keeps, and the backend refuses it
-too. "Set by" comes from the overrides report's rows, which know source from stored.
+too. "Set by" comes from the overrides report's rows, which know code from configured.
 
 **An audience is chosen and read by its name** (issue #1094), never as its cfact expression. The names are the
 backend's, declared beside the menu (`HomeMenuAudiences`, held in step with the shipped menu by
 `HomeMenuAudiencesTest`): each item's row carries what its shipped and its current condition are called
 (`baseAudience`, `audience`) and the audiences it may be shown to (`audiences`, each a condition and a name).
 `menuVisibilityText` reads "hidden", the name, or "Custom" for a condition the table does not hold -- one written by
-hand in a source config -- noting the shipped state when the client changed it; the expression is the cell's tooltip
+hand in a config in code -- noting the shipped state when the client changed it; the expression is the cell's tooltip
 (`menuVisibilityDetail`). The Show control lists exactly the item's `audiences` (`menuShowChoices`, the shipped one
 marked "(as shipped)"), and the write accepts exactly those: six audiences of a client's own people for any item,
 plus the item's own shipped audience when that is one of the withheld ones (the deployment's operators, a test
@@ -285,15 +288,15 @@ reload path as a copy edit (a draft, likewise, for a client with a sandbox), lan
 the table says so. Blocks other than the home menu (the sample's nav) stay read-only under "Other interface
 changes". Wire names: `MNU` in the kernel.
 
-**Editing the definition** (issue #1026, `DefinitionEditor` in `ClientsPage.kt`): under the summary rows of a client
-defined in **stored** configuration (`definitionEditable`: present, origin stored, not static here -- the backend
+**Editing the definition** (issue #1026, `DefinitionEditor` in `ClientsPage.kt`): under the summary rows of a
+**configured** client (`definitionEditable`: present, origin `stored`, not static here -- the backend
 refuses each in its own words; the page only spares showing an editor that cannot save), **Edit
 definition** opens the fields the caller's policy lets them edit (issue #1116, `ClientPresentationFields.namesFor`):
 for a client's administrator its name, description, time zone (issue #1115; the editor says a change moves no stored
 moment; picked, not typed -- see "The time-zone picker" below), user labels as one comma line (`labelsOfText`), and
 session lifetime in hours (issue #1308); for an administrator who sees every client also its refresh interval in
 seconds, usage type and audience (selects), environments (a multi-select), preload (a checkbox), domain prefix, custom
-domain, and web resources -- seeded from the client's **stored** definition, the retrieve's
+domain, and web resources -- seeded from the client's **configured** definition, the retrieve's
 `storedDefinition` (`definitionDraftOf`; what the client runs differs from it by an unpublished draft, which the
 editor must show and be able to take back, and by what a template fills in, which written back would become the
 client's own). The fields are drawn under the kernel's sections (`ClientPresentationFields.bySection`: About, How it
@@ -306,13 +309,13 @@ default)"). Save posts
 nothing differs), the same write-trial-publish-reload path as a copy edit, a draft likewise for a client with a
 sandbox (`savedNote` says which). Every field the caller does not edit there stays in the read-only rows, saying who
 sets it (`whoSetsNote`): "(set by the platform)" to a client's administrator, and to an administrator who sees every
-client "(set in its configuration)" for the customer and the template, or "(set in source code)" for the static lock.
+client "(set in its configuration)" for the customer and the template, or "(set in code)" for the static lock.
 The endpoint refuses a platform field from a client's administrator (403). A domain prefix or custom domain another client declares is
 refused by the stored write itself (`GedraConfigService`), whatever write carries it. When the configuration
 holding the definition (the retrieve's `storedDefinitionConfig`) has unpublished changes and the definition does not
 ask for a sandbox (its saves would be drafts), the backend's draft rule would refuse every save, so the page says so
 instead of offering the editor (`definitionEditOffer`; nothing is offered until the configurations have loaded, so
-an open editor is never replaced by the note), linking down to the Stored configuration table, where a row
+an open editor is never replaced by the note), linking down to the Configuration table, where a row
 that could be published there is tinted (`configRowNeedsPublish`, `.op-row-attention`). After a save the editor keeps the stored
 definition the result returned as its baseline until the page re-reads, so a quick reopen does not send the old
 values back. A success bumps the refresh generation, so the heading, the
@@ -321,8 +324,8 @@ the endpoint's input and this editor both read.
 
 **On a sandbox's page too** (issue #1358). A sandbox holds no configuration, so the definition editor, Traits and
 Workflows -- like copy, menu and files -- edit its **parent's**, as drafts the sandbox runs and publishes from here:
-`definitionEditable` admits a sandbox, the definition retrieve hands it its parent's stored definition, and the
-catalogs read what the sandbox runs (its parent's latest, drafts included) beside the parent's stored configuration.
+`definitionEditable` admits a sandbox, the definition retrieve hands it its parent's configured definition, and the
+catalogs read what the sandbox runs (its parent's latest, drafts included) beside the parent's configuration.
 The backend binds each save to the parent as the person's user there (`ClientStoredEdit.target`). Whether there is a
 sandbox stays the parent's to say: its Sandbox section offers nothing on a sandbox's page.
 
@@ -344,7 +347,7 @@ and `CCT`, in the kernel.
 
 **Its own traits** (issue #1118, `TraitDesignEditor.kt`, its pure half in `TraitDesigner.kt`, covered by
 `TraitDesignerTest`): under the picker, the client's own traits from the same catalog read (`ownTraits`) -- each
-stored one with its design, or why it cannot be edited here (a field not of the editor's kinds, or declared in source
+configured one with its design, or why it cannot be edited here (a field not of the editor's kinds, or declared in
 code) -- with **Edit**, then **New trait**. The editor designs a trait from a fixed set of field kinds (`TraitFieldKind`:
 text, long text, number, whole number, yes/no, date, choice, several choices): a name and description, then per field
 a label, a kind, **Required** (in the data -- every entry, whoever writes it; a form's own requirement is Design
@@ -396,9 +399,9 @@ and nothing typed there is saved.
 **Listing columns** (issue #1491, `ClientUsagesSection.kt`, its pure half in `ClientUsages.kt`, covered by
 `ClientUsagesTest`): after Traits, since every column reads one, and offered where they are. It reads
 `GET /clientAdmin/client/usages` (`ClientsApi.usageCatalog`): the client's columns as they run -- for a client with a
-sandbox, as the sandbox runs them, drafts in -- each with how it reads (`CUS.readsAs`) and the stored configuration
-holding it, or why it cannot be changed here (declared in source code, or in the client it is built on); a stored
-column the load dropped is listed and said to be not running. Beside them, whether these are the deployment's
+sandbox, as the sandbox runs them, drafts in -- each with how it reads (`CUS.readsAs`) and the configuration
+holding it, or why it cannot be changed here (declared in code, or in the client it is built on); a configured
+column the load dropped is listed as "Configured, but not run". Beside them, whether these are the deployment's
 **defaults** (`CUS.defaults`), the configuration a new column goes into (the definition's), and the form traits the
 client supports, each with the fields a column may show (those reading as text, a number, a date, or yes or no), labeled
 from their layouts. A table, one row per column -- heading (and its `columnId` when it has one), trait, what it shows
@@ -493,7 +496,7 @@ edits its parent's, as drafts. A client with a sandbox stays read-only and says 
 - **The save area sticks below the app bar** (`.bundle-editor-save`). A save's answer is drawn inside it, so it shows
   wherever the page is scrolled.
 
-**Deleting a bundle** (issue #1461) is in the Stored configuration table (`StoredConfigTable`), on the client's page
+**Deleting a bundle** (issue #1461) is in the Configuration table (`StoredConfigTable`), on the client's page
 and in the bundle editor's Publishing section alike, beside the publishing it depends on. A **Contents** column says
 what each bundle holds (`bundleContentsText`: "2 slots, 5 entries", "Empty", or "Empty; v2: 1 slot, 3 entries" while
 the published revision under a draft holds something else), from the listing summary's `slotCount`/`entryCount` and
@@ -542,7 +545,7 @@ schema. They count toward a plan's workflows, which is what Remove is for.
 that workflow's (the table's height cap lifted while it is open, `.op-table-scroll.detail-open`). **Windows are the workflow's parameters, not part of
 its definition** (issue #1356): kept per client or sandbox in a table of their own (`WorkflowParamsService`), in force
 at once with no draft and no publish. **Each parameter resolves on its own** (issue #1386): the scope's own value, else a
-sandbox's client's, else the defaults the client's source code declares (`GedraConfigBuilder.workflowParams`), else no
+sandbox's client's, else the defaults the client's code declares (`GedraConfigBuilder.workflowParams`), else no
 limit -- the kernel's `WfParamsLayers`, which the page runs as the backend does. The catalog carries each layer for the
 page's own scope (`CWF.params`: `WFP.current`, `WFP.parent`, `WFP.source`, and `WFP.history`; `parseWorkflowParams` →
 `WorkflowParamsView`). The editor sets **Available** (lifetime), **Tracked** (relevancy) and **New forms
@@ -554,8 +557,8 @@ Available (Oct 20, 2026, 9:30 AM CT)"). Beneath them a timeline of the three ban
 now, and a **Try a date** picker that says where it would stand then ("On Dec 10: …") -- the kernel's `phaseAt` in the
 browser, no clock moved, nothing saved. Where the windows
 in force come from is said under the title (`windowsSourceText`): set here (`settingByline`), its client's on a
-sandbox, or the source code's defaults. While the scope sets its own and a fallback would set some, **Use its client's
-windows** / **Use the source code's windows** (`windowsFallbackLabel`) saves an unset (`WFP.unset`), judged and recorded
+sandbox, or the code's defaults. While the scope sets its own and a fallback would set some, **Use its client's
+windows** / **Use the code's windows** (`windowsFallbackLabel`) saves an unset (`WFP.unset`), judged and recorded
 like any change. Save posts `/clientAdmin/client/workflows/params`
 (`windowsSaveRequest`; no `mode`, since a save is never a draft -- `windowsEffectText` says so). A change that would,
 now, freeze or hide forms engaged with the workflow is refused with the impact report (`ImpactKind.workflowFrozen` /

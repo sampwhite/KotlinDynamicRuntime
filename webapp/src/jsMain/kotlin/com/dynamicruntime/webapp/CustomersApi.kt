@@ -65,14 +65,14 @@ fun planNameText(plan: String): String = plan.replaceFirstChar { it.uppercase() 
  */
 fun clientRunsText(row: ClientOverview): String = when {
     row.status != ClientStatus.present.name -> "—"
-    row.staticHere -> "Source only"
+    row.staticHere -> "Code only"
     row.hasSandbox -> "Published; has a sandbox"
     row.publishedOnly -> "Published only"
     else -> "Latest"
 }
 
 /** Where a customer is declared, as its page says it. */
-fun customerOriginText(customer: CustomerSummary): String = if (customer.isSource) "Source code" else "Stored configuration"
+fun customerOriginText(customer: CustomerSummary): String = if (customer.isSource) "Code" else "Configuration"
 
 /** The customer endpoints (issue #1114), on the scoped surface both kinds of administrator reach. */
 object CustomersApi {

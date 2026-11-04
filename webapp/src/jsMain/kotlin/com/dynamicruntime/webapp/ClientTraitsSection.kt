@@ -446,7 +446,7 @@ private fun ChildrenBuilder.ownTraits(
                         th { +"Trait" }
                         th { +"Name" }
                         th { className = ClassName("op-num"); +"Fields" }
-                        th { +"Stored in" }
+                        th { +"Defined in" }
                         th { +"" }
                     }
                 }
@@ -457,7 +457,7 @@ private fun ChildrenBuilder.ownTraits(
                             td { code { +own.traitId } }
                             td { +(own.design?.label ?: "—") }
                             td { className = ClassName("op-num"); +(own.design?.fields?.size?.toString() ?: "—") }
-                            td { +(own.configName ?: "source code") }
+                            td { +(own.configName ?: "code") }
                             td {
                                 if (own.design != null) {
                                     Button {

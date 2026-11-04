@@ -146,7 +146,7 @@ class WebResourcesTest : StringSpec({
                 },
             )
         }.message.orEmpty()
-        message shouldContain "only a client's source definition may"
+        message shouldContain "only a client's definition in code may"
         ClientService.get(cxt).known(client).shouldBeNull()
     }
 })

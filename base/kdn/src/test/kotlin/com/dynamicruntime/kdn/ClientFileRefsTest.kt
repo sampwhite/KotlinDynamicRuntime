@@ -952,7 +952,7 @@ class ClientFileRefsTest : StringSpec({
             // Its own instance (issue #1075): the boot itself is under test.
             Startup.mkTestBootCxt("srcRef", "sourceFileRef1153", additionalComponents = listOf(SourceFileRefComponent()))
         }
-        failure.message.orEmpty() shouldContain "declared in source code"
+        failure.message.orEmpty() shouldContain "declared in code"
         // Nothing of the kind is served on the instance every other case runs on.
         refs.forClient(SourceFileRefComponent.client).refs.isEmpty() shouldBe true
     }

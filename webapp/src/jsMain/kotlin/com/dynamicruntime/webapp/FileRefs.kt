@@ -150,11 +150,11 @@ fun fileRefsIntro(sandboxOf: String?, hasSandbox: Boolean, staticHere: Boolean):
         "configuration, drafts included -- and a file removed as a draft, which $owner's people are served until that is " +
         "published, marked so and offered to be put back."
     return when {
-        staticHere -> "$what This client's configuration comes from source code on this node, so its files are listed here and not changed."
+        staticHere -> "$what This client's configuration comes from code on this node, so its files are listed here and not changed."
         sandboxOf != null -> "The files of $sandboxOf's sandbox. $listed A change made here is a draft of $sandboxOf's, and goes live for its people once that is published."
         hasSandbox ->
             "$what This client has a sandbox, so a change here is a draft: the sandbox shows it, and it goes live " +
-                "for the client's people once its configuration is published, from the stored configuration below. $listed"
+                "for the client's people once its configuration is published, from the configuration listed below. $listed"
         else -> "$what A change takes effect at once for everyone in the client."
     }
 }
@@ -255,7 +255,7 @@ fun fileRefAtLimitText(refs: List<FileRefView>, takes: FileRefTakes?): String? {
         "$full Remove one to add another, or replace one of them."
     } else {
         "$full Every one was shipped with it, so none can be removed here: replace one of them, or have the client's " +
-            "source configuration changed."
+            "code changed."
     }
 }
 
@@ -559,7 +559,8 @@ fun fileRefRemovedNote(change: FileRefChange): String {
     }
     val done = when {
         left == null -> "Removed '${change.refId}'."
-        left.stored -> "Removed one entry of '${change.refId}'; another configuration, ${left.configName ?: "stored"}, still holds one."
+        left.stored ->
+            "Removed one entry of '${change.refId}'; another configuration${left.configName?.let { ", $it," }.orEmpty()} still holds one."
         else -> "Removed the upload of '${change.refId}': the image the client was shipped with is shown again."
     }
     return if (change.mode == EDM.draft) "$done A draft: the sandbox shows the change, and the client's people keep what they have until it is published." else done

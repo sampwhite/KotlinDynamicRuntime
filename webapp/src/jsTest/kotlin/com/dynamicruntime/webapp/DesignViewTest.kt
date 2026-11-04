@@ -139,17 +139,17 @@ class DesignViewTest {
     fun provenanceIsOneSentenceSharedOrTheClientsOwnWithAnyAlteration() {
         fun at(origin: DesignOrigin, config: String?, alteredBy: DesignLayer? = null) =
             DesignAddress(CCT.schemaDef, "x.Thing", null, origin.name, config, alteredBy)
-        assertEquals("This client's own, declared in its stored configuration (designDemo).", provenanceText(at(DesignOrigin.stored, "designDemo")))
-        assertEquals("This client's own, declared in source (acmeClient).", provenanceText(at(DesignOrigin.source, "acmeClient")))
+        assertEquals("This client's own, declared in its configuration (designDemo).", provenanceText(at(DesignOrigin.stored, "designDemo")))
+        assertEquals("This client's own, declared in code (acmeClient).", provenanceText(at(DesignOrigin.source, "acmeClient")))
         assertEquals("Shared by every client, from coreTraits.", provenanceText(at(DesignOrigin.global, "coreTraits")))
         assertEquals("Shared by every client, from the platform.", provenanceText(at(DesignOrigin.global, null)))
         assertEquals(
-            "Shared by every client, from sampleTraits; altered for this client in source (acmeClient).",
+            "Shared by every client, from sampleTraits; altered for this client in code (acmeClient).",
             provenanceText(at(DesignOrigin.global, "sampleTraits", DesignLayer(DesignOrigin.source.name, "acmeClient"))),
         )
         // The alteration rides below the address into a field, so a field reads the same as its type.
         val field = at(DesignOrigin.global, "coreTraits", DesignLayer(DesignOrigin.stored.name, "copy")).below(listOf("name"))
-        assertEquals("Shared by every client, from coreTraits; altered for this client in its stored configuration (copy).", provenanceText(field))
+        assertEquals("Shared by every client, from coreTraits; altered for this client in its configuration (copy).", provenanceText(field))
     }
 
     @Test
@@ -508,10 +508,10 @@ class DesignViewTest {
         val shipped = PulledKey("formHelp", "questionnaire", "topicHelp", "Shipped", "Shipped", null, null)
         assertTrue(pulledSourceLine(shipped).contains("the shipped wording"))
         val inSource = PulledKey("formHelp", "questionnaire", "topicHelp", "Source", "Shipped", GedraConfigOrigin.source.name, null)
-        assertTrue(pulledSourceLine(inSource).contains("set in its source configuration"))
+        assertTrue(pulledSourceLine(inSource).contains("set in its code"))
         // Reset is the stored value's alone: back to the source wording when it overrides one, else to shipped.
         assertEquals("Back to shipped", pulledResetLabel(ours))
-        assertEquals("Back to the source wording", pulledResetLabel(PulledKey("f", "n", "k", "Ours", "Shipped", GedraConfigOrigin.stored.name, "Source")))
+        assertEquals("Back to the code's wording", pulledResetLabel(PulledKey("f", "n", "k", "Ours", "Shipped", GedraConfigOrigin.stored.name, "Source")))
         assertNull(pulledResetLabel(shipped))
         assertNull(pulledResetLabel(inSource))
     }

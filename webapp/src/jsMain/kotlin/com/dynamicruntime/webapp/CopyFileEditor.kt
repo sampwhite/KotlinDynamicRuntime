@@ -494,7 +494,7 @@ private fun ChildrenBuilder.copyKeyItem(
                 o.sourceValue?.let {
                     p {
                         className = ClassName("subtitle")
-                        +"Set in the client's source configuration (what a reset returns to):"
+                        +"Set in the client's code (what a reset returns to):"
                     }
                     copyValuePanel(it, isRaw, refAddress)
                 }

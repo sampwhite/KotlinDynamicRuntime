@@ -183,11 +183,11 @@ object ClientFileRefEdit {
         return when {
             removable == 0 ->
                 "$full, and all $shipped were shipped with it, so none can be removed here. Upload over one of them to " +
-                    "replace its file, or have the client's source configuration changed."
+                    "replace its file, or have the client's code changed."
             removable < toGo ->
                 "$full, and only $removable of them are held in stored configuration -- fewer than the $toGo that would " +
                     "have to go to make room, since the other $shipped were shipped with it. Upload over one of them to " +
-                    "replace its file, or have the client's source configuration changed."
+                    "replace its file, or have the client's code changed."
             shipped == 0 -> "$full. Remove $remove first."
             else ->
                 "$full. Remove $remove of the $removable it holds in stored configuration first ($shipped were shipped " +
@@ -217,7 +217,7 @@ object ClientFileRefEdit {
     private fun requireNotStatic(svc: GedraConfigService, bound: KdrCxt, owner: String) {
         if (svc.isStaticHere(bound, owner)) {
             throw KdrException.mkInput(
-                "Client '$owner' is statically configured: in production its configuration comes from source code, " +
+                "Client '$owner' is statically configured: in production its configuration comes from code, " +
                     "so it takes no file ref here.",
             )
         }

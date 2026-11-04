@@ -166,8 +166,8 @@ fun sandboxWayBackTarget(row: ClientOverview?, acrossClients: Boolean, inSandbox
 }
 
 /**
- * The detail's Sandbox section for [row] (issue #932). A sandbox says whose it is; a client defined in source code
- * says its flag is set there; a stored, present client offers adding or removing one, saying what follows. Pure,
+ * The detail's Sandbox section for [row] (issue #932). A sandbox says whose it is; a client defined in code
+ * says its flag is set there; a configured, present client offers adding or removing one, saying what follows. Pure,
  * and covered under `jsNodeTest`.
  */
 fun sandboxControl(row: ClientOverview): SandboxControl {
@@ -176,7 +176,7 @@ fun sandboxControl(row: ClientOverview): SandboxControl {
     }
     if (row.origin == GedraConfigOrigin.source.name) {
         return SandboxControl(
-            if (row.hasSandbox) "Has a sandbox, set in its source code." else "Defined in source code; a sandbox is turned on there.",
+            if (row.hasSandbox) "Has a sandbox, set in its code." else "Defined in code; a sandbox is turned on there.",
             null,
         )
     }
@@ -207,14 +207,14 @@ class RetirementControl(val text: String, val retire: Boolean?)
 /**
  * The detail's Retirement section for [row], for an administrator who sees every client (issue #1182). The action is
  * offered only where the backend's switch (`/admin/client/retirement/set`, #1111) can take it, and each place it
- * cannot says why in the backend's terms: a sandbox goes with its parent, a client defined in source code is retired
+ * cannot says why in the backend's terms: a sandbox goes with its parent, a client defined in code is retired
  * there, a customer's root waits for another root, and a definition whose configuration [storedConfig] has unpublished
  * changes ([configs] say so) would publish them. Pure, and covered under `jsNodeTest`.
  */
 fun retirementControl(row: ClientOverview, storedConfig: String?, configs: List<ConfigSummaryView>?): RetirementControl {
     row.sandboxParentName?.let { return RetirementControl("A sandbox is retired with its parent, $it.", null) }
     if (row.origin == GedraConfigOrigin.source.name) {
-        return RetirementControl("Defined in source code, so it is retired there.", null)
+        return RetirementControl("Defined in code, so it is retired there.", null)
     }
     if (row.status == ClientStatus.retired.name) {
         return RetirementControl(
@@ -251,18 +251,28 @@ fun clientLoadText(status: String, issueCount: Int): String = when (status) {
     ClientStatus.notEnabled.name -> "Not enabled here"
     ClientStatus.retired.name -> "Retired"
     ClientStatus.dropped.name -> "Dropped by a check" + (if (issueCount == 0) "" else " \u2014 ${issues(issueCount)}")
-    ClientStatus.storedOnly.name -> "Stored config only"
+    ClientStatus.storedOnly.name -> "Configuration only"
     else -> status
 }
 
 /**
- * Where a client's definition comes from, as the listing says it (issue #905): "Source", or "Source + 2 stored" when
- * stored overlays are loaded on it; "Stored", or "Stored (2 configs)" -- a stored definition counts its own config,
- * so it is never "+ N". Pure, and covered under `jsNodeTest`.
+ * Where a client's definition comes from, as the listing says it (issues #905, #1570): "Code", or "Code + 2 configured"
+ * when configured overlays are loaded on it; "Configured", or "Configured (2 configs)" -- a configured definition counts
+ * its own config, so it is never "+ N". Pure, and covered under `jsNodeTest`.
  */
 fun clientOriginText(origin: String, storedConfigs: Int): String = when (origin) {
-    GedraConfigOrigin.source.name -> if (storedConfigs == 0) "Source" else "Source + $storedConfigs stored"
-    GedraConfigOrigin.stored.name -> if (storedConfigs <= 1) "Stored" else "Stored ($storedConfigs configs)"
+    GedraConfigOrigin.source.name -> if (storedConfigs == 0) "Code" else "Code + $storedConfigs configured"
+    GedraConfigOrigin.stored.name -> if (storedConfigs <= 1) "Configured" else "Configured ($storedConfigs configs)"
+    else -> origin
+}
+
+/**
+ * A config's origin in the UI's words (issue #1570): "code" for one written in code ([GedraConfigOrigin.source]),
+ * "configured" for one made in the app ([GedraConfigOrigin.stored]). Pure, and covered under `jsNodeTest`.
+ */
+fun originWord(origin: String): String = when (origin) {
+    GedraConfigOrigin.source.name -> "code"
+    GedraConfigOrigin.stored.name -> "configured"
     else -> origin
 }
 
@@ -536,12 +546,12 @@ fun blockSummaryText(row: BlockOverrideView): String {
 }
 
 /**
- * Which config set a value, and where that config lives: "acmeClient (source)". A value the client inherited from the
+ * Which config set a value, and where that config lives: "acmeClient (code)". A value the client inherited from the
  * template it extends (issue #945) names the template instead of the origin -- "starterCopy (template starter)" --
  * since its config is the template's, not the client's. Pure, and covered under `jsNodeTest`.
  */
 fun setByText(configName: String?, origin: String, template: String? = null): String {
-    val where = if (template != null) "template $template" else origin
+    val where = if (template != null) "template $template" else originWord(origin)
     return when {
         configName == null -> where
         where.isEmpty() -> configName
@@ -956,7 +966,7 @@ const val configurationSetNote = "(set in its configuration)"
  * Who sets [field], said beside its read-only value (issue #1116), or null when the caller edits it here: the
  * platform's, for a client's own administrator ([platformSetNote]); and for an administrator who sees every client,
  * a platform field the editor does not offer -- the customer, the template -- which a configuration write sets
- * ([configurationSetNote]), and the static lock and the web resources package (issue #1301), which only source code
+ * ([configurationSetNote]), and the static lock and the web resources package (issue #1301), which only code
  * sets ([sourceSetNote]). Read from the field's
  * policy, so the editor and the notes cannot disagree. Pure, and covered under `jsNodeTest`.
  */
@@ -970,8 +980,8 @@ fun whoSetsNote(field: String, canSeeAllClients: Boolean): String? {
     }
 }
 
-/** The note beside the static lock and the web resources package for an administrator who sees every client: only source code sets them. */
-const val sourceSetNote = "(set in source code)"
+/** The note beside the static lock and the web resources package for an administrator who sees every client: only code sets them. */
+const val sourceSetNote = "(set in code)"
 
 /** The two counts with a listing behind them, which the header links to ([clientHeaderLinks]); see [clientSummaryHref]. */
 const val summaryFormsRow = "Forms"
@@ -1657,7 +1667,7 @@ class BundleAction(val publish: Boolean, val note: String?, val sandboxClient: S
 fun bundleAction(row: ClientOverview?, bundle: ConfigSummaryView): BundleAction = when {
     bundle.published -> BundleAction(false, null)
     row == null -> BundleAction(false, null)
-    row.staticHere -> BundleAction(false, "This client takes nothing stored on this node, so publishing changes nothing.")
+    row.staticHere -> BundleAction(false, "This client takes no configuration made in the app on this node, so publishing changes nothing.")
     row.hasSandbox -> BundleAction(
         false, "Publish from its sandbox, after previewing it there.", sandboxClient = sandboxOf(row.clientId), checkImpact = true,
     )
@@ -1668,7 +1678,7 @@ fun bundleAction(row: ClientOverview?, bundle: ConfigSummaryView): BundleAction 
 }
 
 /**
- * What the Stored configuration table offers for a **group** of bundles (issue #1353): rows select, and the bar above
+ * What the Configuration table offers for a **group** of bundles (issue #1353): rows select, and the bar above
  * acts on the selection. [BundleAction.publish] when this page publishes, [BundleAction.checkImpact] when a
  * selection's impact can be checked here (on a client with a sandbox, check only: it publishes from the sandbox), and
  * the [BundleAction.note] -- with [BundleAction.sandboxClient] to link to -- that once sat on every row. Read off any one draft's [bundleAction], since every

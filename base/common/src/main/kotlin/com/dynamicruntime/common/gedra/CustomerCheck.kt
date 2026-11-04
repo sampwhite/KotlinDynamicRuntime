@@ -140,7 +140,7 @@ private fun customerProblem(
     kept[id]?.let { first ->
         return GedraConfigIssue(
             "Customer '$id' is defined twice; '${config.gedraId}' is the second, after '${first.config.gedraId}'. " +
-                "A customer is declared once, and a source declaration is never redefined by stored configuration.",
+                "A customer is declared once, and a declaration in code is never redefined by configuration made in the app.",
             "Keeping the first definition; '${config.gedraId}''s is dropped.",
         )
     }
@@ -174,8 +174,8 @@ internal fun customerLinkFaults(
                 "Client '${def.clientId}' names the customer '$id', which this deployment does not declare.",
             )
             isSource && !customer.isSource -> out.add(
-                "Client '${def.clientId}' is defined in source code and names the customer '$id', which only " +
-                    "stored configuration declares. A source client names a source customer, so that what it " +
+                "Client '${def.clientId}' is defined in code and names the customer '$id', which only " +
+                    "configuration made in the app declares. A code-defined client names a code-defined customer, so that what it " +
                     "belongs to changes with a deployment rather than with a database write.",
             )
         }

@@ -220,14 +220,14 @@ val ClientUsagesSection = FC<ClientUsagesSectionProps> { props ->
                                     span {
                                         className = ClassName("type-hint")
                                         title = column.notEditable
-                                        +"Not stored here"
+                                        +"Not edited here"
                                     }
                                 }
                             }
                             if (column.notRunning) {
                                 div {
                                     className = ClassName("type-hint")
-                                    +"Stored, but not run: the client's issues say why."
+                                    +"Configured, but not run: the client's issues say why."
                                 }
                             }
                         }

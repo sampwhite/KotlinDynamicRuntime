@@ -100,7 +100,7 @@ fun clientCopySchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CPY.namespace) 
             "(the config already overlaying the file, else one named '${CPY.copyConfigName}', created on the first " +
             "edit), " +
             "refused with its findings when a trial reload would find a new problem, then published and reloaded. A " +
-            "key the client's source configuration sets is overridden, not replaced. " +
+            "key the client's code sets is overridden, not replaced. " +
             "For a client with a Shadow Sandbox (issue #930) the change is saved as a draft instead -- written and " +
             "reloaded, not published -- so its sandbox shows it and it goes live once published.",
         HttpMethod.POST,
@@ -123,7 +123,7 @@ fun clientCopySchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CPY.namespace) 
     generalEndpoint(
         CPY.resetPath,
         "Removes a client's stored value for one key and makes that take effect, so the key reads as the client's " +
-            "source configuration or the shipped copy says. Refused when no stored value sets it. " +
+            "code or the shipped copy says. Refused when no stored value sets it. " +
             "For a client with a Shadow Sandbox (issue #930) the change is saved as a draft instead -- written and " +
             "reloaded, not published -- so its sandbox shows it and it goes live once published.",
         HttpMethod.POST,

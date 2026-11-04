@@ -52,7 +52,7 @@ import kotlin.time.Duration.Companion.milliseconds
 
 private val clientsScope = MainScope()
 
-/** The Stored configuration heading's element id, which a note above links down to. */
+/** The Configuration heading's element id (named for its old heading), which a note above links down to. */
 private const val storedConfigurationId = "stored-configuration"
 
 /**
@@ -314,10 +314,12 @@ private fun ChildrenBuilder.clientDetail(
     // Whether the client's stored configuration is edited on this page: its definition, traits, and workflows.
     val configEditable = def?.stored != null && definitionEditable(row) &&
         definitionEditOffer(def.storedConfig, configs, sandbox = savesDraft).editor
-    // A client whose configuration is not edited here -- declared in source code -- still lists its workflows, for
+    // A client whose configuration is not edited here -- declared in code -- still lists its workflows, for
     // their time windows: parameters, set here whoever declared the workflow (issue #1386).
     val workflowsShown = configEditable || present
-    val issues = def?.issues?.map { "${it.message} ${it.degradedTo}".trim() + (if (it.origin.isEmpty()) "" else " (${it.origin})") }
+    val issues = def?.issues?.map {
+        "${it.message} ${it.degradedTo}".trim() + (if (it.origin.isEmpty()) "" else " (${originWord(it.origin)})")
+    }
         ?: row?.issues.orEmpty()
     // The panels drawn, in their order (issue #1397): what the section links under the header lead to.
     val panels = buildList {
@@ -421,7 +423,7 @@ private fun ChildrenBuilder.clientDetail(
                         p {
                             className = ClassName("subtitle")
                             +"$note, in "
-                            panelLink(panelPublishing, "Stored configuration")
+                            panelLink(panelPublishing, "Configuration")
                             +" below."
                         }
                     }
@@ -582,20 +584,20 @@ private fun ChildrenBuilder.clientDetail(
                 }
             }
             WhatIsThis {
-                heading = row?.sandboxParentName?.let { "Configuration it runs ($it's)" } ?: "Stored configuration"
+                heading = row?.sandboxParentName?.let { "Configuration it runs ($it's)" } ?: "Configuration"
                 headingLevel = 3
                 headingId = storedConfigurationId
                 text = pageCopy.explanation(PFRAG.storedConfigNs)
             }
             when {
-                storedError != null -> errorText("Couldn't load this client's stored configuration.", storedError)
+                storedError != null -> errorText("Couldn't load this client's configuration.", storedError)
                 configs == null -> p {
                     className = ClassName("subtitle")
                     +"Loading…"
                 }
                 configs.isEmpty() -> p {
                     className = ClassName("subtitle")
-                    +"This node holds no stored configuration for this client."
+                    +"This node holds no configuration made in the app for this client."
                 }
                 else -> {
                     StoredConfigTable {

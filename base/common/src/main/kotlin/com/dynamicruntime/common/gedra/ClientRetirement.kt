@@ -34,7 +34,7 @@ object ClientRetirement {
         val clients = ClientService.get(cxt)
         if (clients.originOf(client) == GedraConfigOrigin.source) {
             throw KdrException.mkInput(
-                "Client '$client' is defined in source code, so it is retired there; a stored definition cannot override it.",
+                "Client '$client' is defined in code, so it is retired there; a configured definition cannot override it.",
             )
         }
         if (retired) {

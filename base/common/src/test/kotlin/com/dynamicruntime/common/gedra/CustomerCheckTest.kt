@@ -111,7 +111,7 @@ class CustomerCheckTest : StringSpec({
 
     "a source client names a source customer" {
         val stored = config(CL.hub, customers = listOf(customer("acme")), origin = GedraConfigOrigin.stored, defineIt = false, configName = "customers")
-        refusal(stored, config("acme", "acme")) shouldContain "is defined in source code and names the customer 'acme', which only stored configuration declares"
+        refusal(stored, config("acme", "acme")) shouldContain "is defined in code and names the customer 'acme', which only configuration made in the app declares"
         // A stored client may name either.
         checkClientDefs(prodCxt, collectorOf(stored, config("beta", "acme", origin = GedraConfigOrigin.stored))).issues.shouldBeEmpty()
     }

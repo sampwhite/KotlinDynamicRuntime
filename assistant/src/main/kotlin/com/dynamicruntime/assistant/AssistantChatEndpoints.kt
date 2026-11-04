@@ -102,7 +102,7 @@ fun assistantChatSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "${ASST.root
         }
         property(
             ACNV.sandboxInSource,
-            "Whether the client is defined in source code, where its sandbox is turned on, rather than from the Clients page.",
+            "Whether the client is defined in code, where its sandbox is turned on, rather than from the Clients page.",
             required = true,
         ) { type = SCT.boolean }
         property(ACNV.inSandbox, "Whether the caller is signed in to the sandbox rather than the client.", required = true) {

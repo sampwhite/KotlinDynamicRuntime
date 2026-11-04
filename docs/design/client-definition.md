@@ -14,6 +14,16 @@ copies of the client-shaped endpoints (#387); and a client -- its definition inc
 database, loaded, reloaded and protected at runtime (#611 and its slices). *What it means, and what it takes* is
 the plan as it was written before any of that, kept for its reasoning.
 
+**Configured and code-defined clients** (issue #1570). A client is one of two kinds, named for where it is defined:
+
+- A **configured client** is defined by configuration made in the app: its definition and its parts are rows,
+  changed in the app (the Clients page, the bundle editor, the API) -- as drafts published later when it has a
+  sandbox, live at once when it does not. One may be built on a code-defined client (`extendsFromClientId`).
+- A **code-defined client** is declared by a component in code, and changes with a release. It may also carry
+  configured overlays, which the Clients page counts: "Code + N configured", such as "Code + 2 configured".
+
+The code says `GedraConfigOrigin.stored` and `GedraConfigOrigin.source`; the UI says "Configured" and "Code".
+
 ## How to read it
 
 **The specification** states what a client definition holds. It began as a statement written to drive
@@ -49,9 +59,9 @@ For the client configuration itself, the client has the following attributes.
   the GedraId. It is unique **without regard to case** (issue #1106): `Acme` beside `acme` would be two clients
   that read as one to a person, so a create is refused (409) for an id another client holds up to case, and the
   load drops the later of two such definitions -- a reload's own client being the later -- as it does any other
-  refused definition. How strictly follows where the definition came from (issue #839): one in source code is
-  strict outside production, and one in stored configuration is forgiven, dropped with a warning, everywhere but
-  the unit tests.
+  refused definition. How strictly follows where the definition came from (issue #839): one in code is
+  strict outside production, and one made in the app (stored configuration) is forgiven, dropped with a warning,
+  everywhere but the unit tests.
 * `description` - An optional internal description for humans to understand who, what, or why for the client.
 * `usageType` - An enum list of usage purposes for the client which may grow over time. Some new behaviors
   or features may condition themselves on the usage type to control visibility of changes. 
@@ -77,15 +87,15 @@ For the client configuration itself, the client has the following attributes.
   can be `production`, `dev` or `test`. It is not merely a label: it relaxes the functional-group restriction
   below, which is the only thing that reads it today. (It was also to decide what a caller is proactively shown,
   which is not built; see "Usage types, and what a caller is shown" below.) Because it gates a capability, **only
-  the platform sets it** -- source code, or an `allClients` administrator -- and never a client's own
+  the platform sets it** -- code, or an `allClients` administrator -- and never a client's own
   administrator (issue #1108). The same reasoning keeps who may build a client on which base to the platform: only
   a client marked `publicTemplate` may be built on by anyone else (issue #1567).
 * `webResourcesId` - The **web resources package** the client presents itself with (issue #1301): the id of a
   package a component ships, whose **favicon** and **brand mark** the client's people see in place of the
   deployment's. Two clients may share a package, and a client built on a template presents the template's when it
-  names none. **Only source code names one**: a stored definition naming a package is refused at the write (and loses
+  names none. **Only code names one**: a configured definition naming a package is refused at the write (and loses
   it, reported, should a stored row carry one), so the definition editor does not offer the field and no create sets
-  it. A source definition naming a package no component ships refuses the boot outside production; in production
+  it. A definition in code naming a package no component ships refuses the boot outside production; in production
   the client stands and shows the deployment's images.
 
   A package is a set of classpath files a component declares, beside its images
@@ -104,11 +114,11 @@ For the client configuration itself, the client has the following attributes.
   **An upload stands in front of the package.** A client's administrator uploads a favicon or a brand mark from the
   Clients page (issue #1130), kept in the file store and shown to the client's signed-in people in place of the
   package's image -- or of the deployment's, for a slot the package leaves empty. Removing the upload shows the
-  package's again; the package's image itself is the source code's, and the page offers no Remove for it. Neither is
+  package's again; the package's image itself is the code's, and the page offers no Remove for it. Neither is
   configuration -- no draft, no publish -- and a sandbox shows its parent's. Where a package could live other than the
   classpath (the file store, a CDN) is for later.
 
-  Beside them (issue #1153) a client's stored configuration holds **file refs**:
+  Beside them (issue #1153) a client's configuration holds **file refs**:
   named images of its own, kept in the file store by the hash of their bytes, and -- unlike the two above --
   drafted, previewed in the sandbox, and published with the rest of its configuration. A ref may also name an
   image already on the machine, under a root the deployment declares (issue #1154) -- how a client is shipped
@@ -130,12 +140,12 @@ For the client configuration itself, the client has the following attributes.
 * `preload` - Whether to practively load all computations done on freshly loaded cache for the client before the
   node says it is ready to receive requests. Not yet testable.
 * `staticConfig` - If true, **in production** the client takes nothing from the database (issue #824): its
-  definition is its source alone, implicitly published. A write of stored config for it is refused there, and
+  definition is its code alone, implicitly published. A write of stored config for it is refused there, and
   stored config that exists is ignored at boot and on reload. Outside production it behaves like any client,
-  which is where its configuration is edited before the changes are brought into its source component by PR
-  and shipped. Only a source definition may set it.
-* `extendsFromClientId` - A reference to another client. When done in source code, it can be any reference.
- When done as data in the database, it can only reference a client defined in source code, and which one is the
+  which is where its configuration is edited before the changes are brought into its component's code by PR
+  and shipped. Only a definition in code may set it.
+* `extendsFromClientId` - A reference to another client. When done in code, it can be any reference.
+ When done in configuration made in the app, it can only reference a code-defined client, and which one is the
  create's to judge (issue #1567): a platform operator may name any code-defined client that extends none itself and
  is not retired; a customer's administrator and a person making their own client may name only one marked
  `publicTemplate`, and only where it is enabled. Only a create sets it, and only the platform changes it after.
@@ -147,9 +157,9 @@ For the client configuration itself, the client has the following attributes.
  If this value is present, it will also default the `webResourceId` to the `webResourceId` of the pulled in client,
  and the client includes the pulled-in client's `includedTraits` and `userLabels` ahead of its own. It will also
  pull in the same `organizations` once a client can declare them (it cannot yet; see below). Note, this key can only
- cross-reference to a client that is defined in source code and will pull in only the source code definition. Any
- database data overlays that may be present will be ignored. How the clone and the overlay combine is described
- under "Inheritance between clients" below.
+ cross-reference to a code-defined client and will pull in only its definition in code. Any configured overlays
+ that may be present will be ignored. How the clone and the overlay combine is described under "Inheritance between
+ clients" below.
 * `domainPrefix` - If the client is given its own domain by prefixing a core domain by a prefix string, then
  this is that prefix. If a user acccesses the application through that domain, then the web resources
  identified by `webResourceId` should be applied to the anonymous view of the application and any
@@ -172,8 +182,8 @@ For the client configuration itself, the client has the following attributes.
  (`ReadScope.ofOrg`), and which reports, sandbox access, and a customer root's client create all respect. A client
  declaring its organizations, and a client inheriting them, are what is still to come.
 * `customerId` - The **customer** that owns this client (issue #1107), set only by the platform, like `audience`.
- A source client names a customer declared in source; a stored client may name either. Optional, since some clients
- belong to no customer; see "Customers" below.
+ A code-defined client names a customer declared in code; a configured client may name either. Optional, since some
+ clients belong to no customer; see "Customers" below.
 * `testFeatures` - A free-form set of test and demo feature names (issue #599): a behavior asks whether its name is
  in the set, so adding one needs no enum change. It gates behavior, never schema, and is **honored only on a test
  instance** -- elsewhere it is stripped from the client the node carries -- so it can never switch a demo behavior
@@ -191,9 +201,9 @@ clients can never compete for an id. A customer's id is ASCII letters and digits
 no `_`, since the first `_` in a client id is where its prefix ends -- and is unique without regard to case. It also
 names a **root** client (`rootClientId`), one of its own, whose administrators will act for the customer as a whole.
 
-Only the platform declares a customer: in source code, with `defineCustomer` beside a client's definition, or in the
-stored configuration of `hub` (the `kdr:customerDef` slot), which only an `allClients` administrator may change. A
-stored configuration of any other client declaring one is refused at write and dropped at load. Core declares the
+Only the platform declares a customer: in code, with `defineCustomer` beside a client's definition, or in the
+configuration of `hub` (the `kdr:customerDef` slot), which only an `allClients` administrator may change. A
+configuration of any other client declaring one is refused at write and dropped at load. Core declares the
 platform's own customer, `kdr`, whose root is `hub`, and `hub` and `public` belong to it. Some ids no customer may
 take, case aside: the platform's own (`kdr`, `hub`, `public`, `house`, and the global client's `global`) and the
 self-serve prefix, `free`. Core's `kdr` is the one declaration allowed its id.
@@ -217,18 +227,18 @@ the missing link, so a demonstration or test client is never held to them.
   prefix, and an id holding `_` is otherwise a self-serve client's (`free_...`). After that the link is the
   authority: a client moved to another customer keeps its id.
 - **A link is read when it is used** (`ClientService.customerOf`), and answers only for a customer that is there --
-  and, for a source client, declared in source. The load reports a link naming no customer, or an id holding `_`
+  and, for a code-defined client, declared in code. The load reports a link naming no customer, or an id holding `_`
   under no customer's prefix; the client stands. A write's trial refuses whichever of these it would introduce.
 - **Customers arrive and leave with `hub`'s configuration.** A customer new to a reload may not take the prefix of
   ids another customer's clients hold (a client linked to none may sit there, which is how one is adopted), and one
   a client still uses may not leave -- a prefix is permanent once a client uses it. Both are refused by the trial of
   the `hub` write that would do it.
-- **A source customer is never redefined by stored configuration**: a stored customer of the same id, case aside,
-  is the second definition -- strict outside production, and in production dropped, the source one standing.
+- **A customer declared in code is never redefined by configuration**: a configured customer of the same id, case
+  aside, is the second definition -- strict outside production, and in production dropped, the one in code standing.
 
 - **A customer's root administrators make its other clients** (issue #1112), at `POST /clientAdmin/client/create`:
   an id `<customer>_<name>`, holding the creator's choices (its id, name, note, template, and sandbox) and what the
-  root passes on (its customer, environments, usage type, and audience -- not its web resources, which source code
+  root passes on (its customer, environments, usage type, and audience -- not its web resources, which code
   alone names, issue #1301), with no configuration. The
   creator gets their own admin user there, returned rather than switched to -- `/user/self/switchClient` moves the
   session; a creator's user that could not be made is said in the result (`userFailure`), the client made all the
@@ -298,7 +308,7 @@ and a customer-wide `ReadScope` arrives with the first customer-wide data read t
 **Who sets each field** (issue #1108). Every field has a policy, declared once beside the definition's schema
 (`ClientFieldPolicies`; a field the schema declares without one fails as it is built). A policy has two parts: what
 a client made **by another client** (#1112) takes for the field, and who changes it once the client exists. The
-platform -- source code, or an `allClients` administrator -- sets any field. What a client's own administrator may
+platform -- code, or an `allClients` administrator -- sets any field. What a client's own administrator may
 change (the write check of #820), what the definition editor offers, and what the platform's create takes are all
 read from it.
 
@@ -311,7 +321,7 @@ read from it.
 | `refreshIntervalSeconds` | copied from the maker | the platform, in the definition editor |
 | `userLabels` | cleared | the definition editor |
 | `usageType`, `audience`, `enabledEnvironments` | copied from the maker | the platform, in the definition editor |
-| `webResourcesId` | cleared (source code only, issue #1301) | source code only |
+| `webResourcesId` | cleared (code only, issue #1301) | code only |
 | `domainPrefix`, `customDomain` | cleared (a domain routes to one client) | the platform, in the definition editor |
 | `preload` | cleared | the platform, in the definition editor |
 | `customerId` | copied from the maker | the platform, by a configuration write |
@@ -319,8 +329,8 @@ read from it.
 | `sandbox` | the creator | its own surface (the sandbox's management) |
 | `includedTraits` | cleared | its own surface (the traits editor, #1117) |
 | `retired` | cleared | the platform, in its own surface (#1182) |
-| `publicTemplate` | cleared | source code (it marks a code-defined client anyone may build on, #1567) |
-| `staticConfig`, `testFeatures` | cleared | the platform (`staticConfig` only in source) |
+| `publicTemplate` | cleared | code (it marks a code-defined client anyone may build on, #1567) |
+| `staticConfig`, `testFeatures` | cleared | the platform (`staticConfig` only in code) |
 
 **The definition editor offers each caller what its policy lets them edit** (issue #1116). A client's own
 administrator edits its name, note, time zone, suggested labels, and session lifetime. An administrator who sees every client edits
@@ -423,8 +433,8 @@ deployment's zone (`serverTimeZone`, a fixed UTC-8), as every client was before.
   upper bound includes the whole of that day.
 - **The Clients page edits them** (#1491), in a Listing columns section after Traits, through
   `/clientAdmin/client/usages` and its `save` and `remove`. The server decides where a column is stored: a new one
-  with the client's definition, a change where the column is. A column the client does not store, declared in source
-  code or in the client it is built on, is shown with why it is not edited there. A column's trait and its
+  with the client's definition, a change where the column is. A column the client does not store, declared in code
+  or in the client it is built on, is shown with why it is not edited there. A column's trait and its
   `columnId` are fixed once saved; the server makes a `columnId` from the heading when the trait already has a
   column, and a heading renamed replaces the entry where it stands. A client with no columns of its own shows the
   deployment's, so its first change makes those its own, the change made, and removing its last column of its own
@@ -438,12 +448,12 @@ schema states the definition's **shape**: its keys and no others (not even the `
 off-contract: a definition is stored in its canonical form, so one would be accepted and then gone), each one's type
 (a flag is a boolean, not text that reads like one), and the choices of `usageType`, `audience` and each entry of
 `enabledEnvironments`. A fault is a 400 naming each path. The two types differ in one thing: an *answer* leaves the
-environments an open list, since a stored client naming one that does not exist is dropped by the load and still
+environments an open list, since a configured client naming one that does not exist is dropped by the load and still
 answers its definition read, with the issue that says why. It does not state what a definition means beside the
 deployment's other clients, which only code that sees them can judge and which stays where it was: the id's
 characters and its being the config's own, the environment set being a legal one, the extended client existing
 and being a template, a domain not being another client's (`checkClientDefs`, the write's own guards, and the
-trial reload). A definition declared in source is built by its constructor and never passes the schema; a
+trial reload). A definition declared in code is built by its constructor and never passes the schema; a
 definition already stored is read leniently, as it always was, so a tightened rule refuses a write and never a
 client that is already there.
 
@@ -455,7 +465,7 @@ retirement, and its test features, as "Who sets each field" above says. So the e
 catalog draws a form from it, with the environments and the templates there are as choices. The definition is
 written as the client's first stored configuration (`main`), published, and the client loaded; it is present at
 once on a node whose environment it is enabled in, and stored but not present on one it is not (the result says
-which). The create adds one rule of its own -- an id that is taken, in source or in stored configuration, is a 409
+which). The create adds one rule of its own -- an id that is taken, in code or in configuration, is a 409
 -- and is otherwise refused for exactly what a bundle write of the same definition would be, in the same words,
 because it goes through that write. The rule is kept by the write itself, under the client's lock
 (`ConfigWrite.mustBeNew`), so two creates of one id cannot both succeed. An id differing from a taken one only by
@@ -593,7 +603,7 @@ client is, and no registry that can be asked whether one exists or is enabled.
    later consults it.
 4. **User creation by client** — the fixture's explicit client and role parameters, the same for unit tests, and
    the `+client%persona` email convention (since retired, issue #750).
-5. Probably **`extendsFromClientId` for source-code clients** — clone then overlay. The largest single piece
+5. Probably **`extendsFromClientId` for code-defined clients** — clone then overlay. The largest single piece
    here, and reasonably its own step. (Since built, issue #945.)
 
 ## What has to wait
@@ -687,7 +697,7 @@ client's stored definition (`POST /admin/client/retirement/set`), and the client
 nothing scoped by it is reached, its users cannot sign in, a session already open is no longer honored, and its
 sandbox goes with it. Clearing the flag brings it back as it was -- its `enabledEnvironments` were never touched,
 which is why retiring is a flag of its own rather than emptying them (a client enabled nowhere is still legal,
-and absent everywhere). A client defined in source code is retired there; a customer's root is retired only once
+and absent everywhere). A client defined in code is retired there; a customer's root is retired only once
 another root is named. The definition stays, the content stays, only access stops. That is the same decision #326
 made for a gedra one level up: keep the row, flip a flag, let reads treat it as absent. Two things follow from the
 resemblance being real. **Retiring reclaims nothing** — a retired client's content is still stored and bringing it
@@ -726,7 +736,7 @@ same time.
 **The table cache inherits it.** Rows held in memory are held for the clients this deployment supports, so
 client presence is a filter on what is cached rather than a check applied afterward.
 
-**It is testable without a second instance.** A client **defined in source code and not enabled in `unit`** is
+**It is testable without a second instance.** A client **defined in code and not enabled in `unit`** is
 precisely a client that is known and not present — one instance, no configuration reload, no frontend. A unit test
 can declare one enabled in `local` only, then assert that in a `unit` boot its users cannot be created or sign in;
 once the `GedraId` gate is built, that its ids are refused and an `allClients` caller can still reach it on the
@@ -906,7 +916,7 @@ force the question "which is it?". That is the same conflation as using `allClie
 
 **And it makes `audience` an authority axis.** It stops being a label the moment it gates a capability, so it
 must not be self-declarable: a client authoring its own configuration could otherwise write `audience:
-internal` and take a functional group with it. Set by the platform -- source code, or an `allClients`
+internal` and take a functional group with it. Set by the platform -- code, or an `allClients`
 administrator -- and refused from a client's own administrator (issue #1108), as "Who sets each field" records.
 
 ### Two consequences
@@ -999,7 +1009,7 @@ creating and patching entries" true without pulling per-client generated endpoin
 **`extendsFromClientId` does not need to support chains.** One level: a client extends a template, and that is
 all.
 
-**How a client is built on another** (issue #945). Each of the base client's *source* configs is **cloned** under
+**How a client is built on another** (issue #945). Each of the base client's configs *in code* is **cloned** under
 the extending client's id, and the extending client's own configuration is applied over the clone. Cloning rather
 than referencing is what makes the base's definitions the client's own: the client's schema variant, cfacts,
 workflows and listing columns include them with no knowledge of extension, and an entry the client stores against
@@ -1019,7 +1029,7 @@ The merge is **by rule, per kind of definition**, and only two kinds look inside
 | Trait usages (listing columns) | The client's list replaces the base's list. |
 | Fragment copy | Merged key by key: two levels, string values. The base's layer sits below the client's own. |
 | UiBlock | The UiBlock merge (keyed arrays, recursive), the base's layer below the client's own. |
-| File ref, by ref id | The client's source ref replaces the base's; a stored one overrides it instead. See [`file-refs.md`](file-refs.md#inheritance-sandboxes-and-what-is-stored). |
+| File ref, by ref id | The client's ref in code replaces the base's; a configured one overrides it instead. See [`file-refs.md`](file-refs.md#inheritance-sandboxes-and-what-is-stored). |
 | Client definition | The client's own fields stand; see `extendsFromClientId` above for what is defaulted. |
 
 So the built client holds each definition **once**. A redefinition takes the base's definition out of the clone

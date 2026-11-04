@@ -64,7 +64,7 @@ class ReferenceComponent : ComponentDefinition {
 ## Where a flavor's copy ranks
 
 A flavor's fragment overlays rank **above the components' own overlays and below every client layer** (inherited,
-source, and stored): a deployment varies what components ship, and a client that reworded its copy keeps its
+code, and configured): a deployment varies what components ship, and a client that reworded its copy keeps its
 wording. Among flavors, the later in `KDR_DEPLOY_FLAVORS` wins; within one, component order. The rule is
 `overlayPrecedence` plus each layer's `flavorRank`, not the order layers happened to register in.
 

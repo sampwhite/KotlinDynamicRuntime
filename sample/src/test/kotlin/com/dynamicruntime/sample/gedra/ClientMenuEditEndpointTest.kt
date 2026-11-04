@@ -202,7 +202,7 @@ class ClientMenuEditEndpointTest : StringSpec({
         admin.expectError(EXC.badInput, MNU.resetPath, data = mapOf(COV.client to SC.acme, COV.itemId to HMENU.docs))
         // An item acme's *source* config changes is not data's to reset.
         val refused = admin.expectError(EXC.badInput, MNU.resetPath, data = mapOf(COV.client to SC.acme, COV.itemId to HMENU.cfactReference))
-        refused[EP.errorMessage].toOptStr().orEmpty() shouldContain "source code or the shipped menu"
+        refused[EP.errorMessage].toOptStr().orEmpty() shouldContain "code or the shipped menu"
     }
 
     "a client-scoped administrator edits their own client's menu and may not name another" {

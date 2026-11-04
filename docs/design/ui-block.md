@@ -58,7 +58,7 @@ client **inherited** from the template it extends (issue #945), then the client'
 configuration, then the client's own from **stored** configuration. The flavor step applies to fragments only: no
 UiBlock layer comes from a flavor yet. A stable sort, so declaration order settles ties within a step. Stored last
 is a rule rather than a load-order accident because editing a client's copy or menu writes stored configuration,
-and that edit has to win over the client's own source config. Inherited sits below the client's own layers for
+and that edit has to win over the client's own config in code. Inherited sits below the client's own layers for
 the same kind of reason: a template is what the client starts from, so anything the client says itself wins.
 
 `GET /clientAdmin/client/overrides` reports what a client's own layers change — fragment keys, and UiBlock items
@@ -188,7 +188,7 @@ The frontend half of the action check is a webapp test: it asserts that `Fronten
 declared name (`ActionRegistry.missing()`), the one gap the backend cannot see.
 
 **A fault costs only its layer** (issue #841). A client's overlay at fault is dropped, and the block serves without
-it, under the check mode of the configuration holding it. By default a source config's fault refuses the boot
+it, under the check mode of the configuration holding it. By default a fault in config in code refuses the boot
 outside production, and a stored config's refuses it only in unit tests. A fault in a component's own base block
 refuses the boot outside production; in production it is reported and the block kept as it is, since there is
 nothing narrower to drop.

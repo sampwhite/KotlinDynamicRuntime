@@ -107,7 +107,7 @@ fun clientCatalogSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CLD.catalogN
         property(GCI.storedConfigId, "The stored configuration holding it, when it came from the database.")
         property(GCI.elementKind, "What kind of definition is at fault: config, client, workflow, function, type or usage.")
         property(GCI.elementId, "Which one: its id within its kind.")
-        property(GCI.origin, "Where the offending definition came from: source code, or stored configuration.", required = true) {
+        property(GCI.origin, "Where the offending definition came from: code, or stored configuration.", required = true) {
             options(GedraConfigOrigin.entries)
         }
     }
@@ -120,7 +120,7 @@ fun clientCatalogSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CLD.catalogN
             CLD.storedDefinition,
             "On the scoped retrieve: the client's stored definition as its latest revision holds it (issue #1026), " +
                 "when it has one -- what an edit starts from, which differs from the attributes the client runs by " +
-                "an unpublished draft and by what a template fills in. Absent for a client defined in source code, " +
+                "an unpublished draft and by what a template fills in. Absent for a client defined in code, " +
                 "for a sandbox, and on the full-scope retrieve.",
         ) { ref(CLD.infoTypeName) }
         property(CLD.storedDefinitionConfig, "With storedDefinition: the name of the stored configuration holding it.")

@@ -228,8 +228,8 @@ object ClientCreate {
     private fun taken(cxt: KdrCxt, client: String): KdrException {
         val clients = ClientService.get(cxt)
         val message = if (clients.known(client) != null) {
-            val where = if (clients.originOf(client) == GedraConfigOrigin.source) "source code" else "stored configuration"
-            "Client '$client' already exists: it is defined in $where."
+            val what = if (clients.originOf(client) == GedraConfigOrigin.source) "is defined in code" else "is a configured client"
+            "Client '$client' already exists: it $what."
         } else {
             "Client '$client' already has stored configuration, though this node does not carry the client. Its " +
                 "configuration is published, or mended, through the configuration endpoints."
@@ -255,8 +255,8 @@ object ClientCreate {
         val clients = ClientService.get(cxt)
         val where = when {
             clients.known(holder) == null -> "has stored configuration"
-            clients.originOf(holder) == GedraConfigOrigin.source -> "is defined in source code"
-            else -> "is defined in stored configuration"
+            clients.originOf(holder) == GedraConfigOrigin.source -> "is defined in code"
+            else -> "is a configured client"
         }
         return KdrException(
             "Client '$client' cannot be created: '$holder' $where, and two client ids may not differ only by case.",

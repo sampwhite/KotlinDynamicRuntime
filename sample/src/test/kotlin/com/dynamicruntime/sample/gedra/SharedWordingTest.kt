@@ -99,7 +99,7 @@ class SharedWordingTest : StringSpec({
         admin.expectError(
             400, DSV.labelEdit,
             mapOf(DSV.workflowId to SW.createForm, DSV.label to "Start a form", DSV.basedOn to "any", DSV.client to SC.acme),
-        ).toString() shouldContain "declared in source"
+        ).toString() shouldContain "declared in code"
     }
 
     "the definition read names the key a type's heading pulls" {

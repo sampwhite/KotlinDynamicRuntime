@@ -100,7 +100,7 @@ class GedraConfigBootLoadTest : StringSpec({
         // The restart refuses the boot: in the unit environment a config problem is strict (it refuses rather
         // than degrading), and an unloadable stored config is that same kind of problem.
         val ex = shouldThrow<KdrException> { Startup.mkTestBootCxt("cfgLoad2b", "cfgBootLoad2b", db) }
-        ex.message.shouldNotBeNull() shouldContain "which is not defined in source"
+        ex.message.shouldNotBeNull() shouldContain "which is not defined in code"
         // Judged as stored config (issue #839): the refusal names the stored config and the variable that forgives it.
         ex.message.shouldNotBeNull() shouldContain GCFG.storedCheckEnvVar.name
         ex.message.shouldNotBeNull() shouldContain "extcfg"
@@ -135,7 +135,7 @@ class GedraConfigBootLoadTest : StringSpec({
         )
         ClientService.get(cxt2).known(client) shouldBe null
         val issue = GedraConfigLoadService.get(cxt2).issues.single()
-        issue.message shouldContain "which is not defined in source"
+        issue.message shouldContain "which is not defined in code"
         issue.origin shouldBe GedraConfigOrigin.stored
         issue.storedConfigId.shouldNotBeNull() shouldContain "forgivecfg"
         issue.client shouldBe client

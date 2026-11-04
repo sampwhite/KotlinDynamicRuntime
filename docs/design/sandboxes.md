@@ -16,7 +16,7 @@ who may enter it and with what authority, and how it changes the way edits and p
 | Entering, marking, and leaving the sandbox in the webapp | #931 |
 | Managing a client's sandbox from the Clients page | #932 |
 | The impact report a publish is judged by | #935 |
-| Source-code overlays for a sandbox | #940 |
+| Overlays in code for a sandbox | #940 |
 
 Later work tightened the access rules (#1194, #1196, #1197, #1199, #1200), made a session change without a page reload
 (#1015), and made being in a sandbox unmistakable (#1049). What is not built is listed at the end.
@@ -55,10 +55,10 @@ The sample's `acme` client has a sandbox (#994), and so does the client the impa
 ## The sandbox client
 
 **Its id is the parent's, with `:sandbox` appended:** `acme:sandbox`. The colon is reserved for this form. No author
-can write such an id: a client definition whose id holds a colon is refused, a stored configuration filed under a
-sandbox is refused, and the create endpoints refuse one. A client whose id holds a colon has no sandbox, so there is no
-sandbox of a sandbox, and the global client has none. The form `<parent>:<role>` leaves room for another kind of linked
-client one day.
+can write such an id: a client definition whose id holds a colon is refused, a configuration made in the app filed
+under a sandbox is refused, and the create endpoints refuse one. A client whose id holds a colon has no sandbox, so
+there is no sandbox of a sandbox, and the global client has none. The form `<parent>:<role>` leaves room for another
+kind of linked client one day.
 
 The colon was checked everywhere a client id travels (`SandboxClient.kt`):
 
@@ -89,8 +89,8 @@ parent's customer but is not listed as one of the customer's clients.
 
 **Three layers, in order** (`SandboxConfigs.configsFor`):
 
-1. the parent's source configuration;
-2. the sandbox's own source overlays (#940);
+1. the parent's configuration in code;
+2. the sandbox's own overlays in code (#940);
 3. the parent's **latest** stored revisions, whatever tier the parent itself runs.
 
 Each layer is rebound to the sandbox: its configurations' ids and their copy and menu overlays name the sandbox, and
@@ -102,11 +102,11 @@ too, a draft would reach them as soon as it was written, and the sandbox would p
 makes the client published-only. The rule reads the client's *published* definition, not a draft of it, and the boot
 applies the same rule, so the tier survives a restart.
 
-**A source overlay is a per-client feature flag.** A source configuration filed under `<parent>:sandbox` is loaded into
-the sandbox only. Code can therefore try a change on one client's sandbox and be promoted by moving it into the
-parent's source. An overlay for a client that asks for no sandbox is reported on that client and not loaded, and so is
-an overlay that repeats what the parent's source already declares. Where the parent's configuration is static on this
-node, its sandbox runs source and overlays only, with no stored layer.
+**An overlay in code is a per-client feature flag.** A configuration in code filed under `<parent>:sandbox` is loaded
+into the sandbox only. Code can therefore try a change on one client's sandbox and be promoted by moving it into the
+parent's code. An overlay for a client that asks for no sandbox is reported on that client and not loaded, and so is
+an overlay that repeats what the parent's code already declares. Where the parent's configuration is static on this
+node, its sandbox runs code and overlays only, with no stored layer.
 
 **Loading and reloading:**
 
@@ -211,12 +211,12 @@ The behavior above is pinned by these specs, in `base/kdn`:
 | Spec | What it covers |
 |---|---|
 | `SandboxClientTest` | loading and reloading beside the parent, and placing a `TestUser` in a sandbox |
-| `SandboxBootAndSyncTest` | the source layer, a persistent boot, and a peer catching up by the sandbox's marker |
+| `SandboxBootAndSyncTest` | the code layer, a persistent boot, and a peer catching up by the sandbox's marker |
 | `SandboxBootTierTest` | published-only surviving a restart |
 | `SandboxAccessTest` | who may open, and what a sandbox user acts with |
 | `SandboxEditsTest` | edits from inside as the parent's drafts |
 | `SandboxManageTest` | adding and removing a sandbox |
-| `SandboxOverlayTest` | source overlays |
+| `SandboxOverlayTest` | overlays in code |
 
 The `kdr-test-clients` skill shows how a test gives its own client a sandbox and acts inside it.
 

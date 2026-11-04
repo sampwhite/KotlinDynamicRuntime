@@ -121,7 +121,7 @@ fun clientMenuSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, MNU.namespace) 
     generalEndpoint(
         MNU.resetPath,
         "Removes a client's stored changes to one home-menu item and makes that take effect, so the item shows as " +
-            "the client's source configuration or the shipped menu says. Refused when no stored change touches it. " +
+            "the client's code or the shipped menu says. Refused when no stored change touches it. " +
             "For a client with a Shadow Sandbox (issue #930) the change is saved as a draft instead -- written and " +
             "reloaded, not published -- so its sandbox shows it and it goes live once published.",
         HttpMethod.POST,

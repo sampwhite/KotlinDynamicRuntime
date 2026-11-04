@@ -127,11 +127,12 @@ later schema rejects" test.
 - **`gedraConfig(cxt, name, namespace, client) { … }`** (`base/kernel/.../gedra/GedraConfig.kt`) builds one
   config **bundle** for one client. A client's **namespace** is `clientNamespace(client)` -- `client.<clientId>`,
   or beneath it (`client.acme.forms`) -- and nothing else is accepted (issue #949): the write refuses another,
-  the load drops it, and a source config using one fails the boot outside production. Inside the block:
+  the load drops it, and a config in code using one fails the boot outside production. Inside the block:
   - **`defineClient(ClientDef(...))`** — exactly one per bundle (a second throws). `ClientDef` needs
     `clientId`, `name`, `usageType` (`ClientUsageType`), `audience` (`ClientAudience`), and
     `enabledEnvironments` (include `ENV.unit` and `ENV.local` so a test node loads it). `staticConfig = true`
-    (source only) makes it take nothing stored **in production**; elsewhere it is an ordinary client.
+    (set only in code) makes it take no configuration made in the app **in production**; elsewhere it is an
+    ordinary client.
     - **`testFeatures = setOf(...)`** — test/demo feature names honored only on a test instance (a demo state
       derivation, a `cfactCalc` strict-unknown-cfact throw). It **round-trips through stored config (#696)**, so
       on a test instance you author a test-feature client over the API the same `writeConfig` + `reloadClient`
@@ -150,11 +151,11 @@ later schema rejects" test.
     - **`customerId`** — the customer that owns the client (#1107), optional; a scenario client needs none.
       **Keep `_` out of a scenario client's id**: an id holding one must fall under a customer's prefix
       (`acme_east`) or the self-serve one (`free_...`), or the load reports it -- a refused `reloadClient` in a
-      unit test. Customers are declared with `defineCustomer` in source, or in `hub`'s stored configuration;
+      unit test. Customers are declared with `defineCustomer` in code, or in `hub`'s configuration;
       `CustomerTest` (kdn) and `CustomerCheckTest` (common) are the references.
   - **`trait(typeName, traitId, appliesTo, description) { <SchTypeBuilder> }`** — a trait whose data shape is
     written inline; the `{ … }` is the `kdr-schema-builder` DSL. An overload takes `dataType` (a `$ref`) instead.
-    **A trait declared in source gets a `title`** (or a layout heading): it is the trait's name wherever one is shown
+    **A trait declared in code gets a `title`** (or a layout heading): it is the trait's name wherever one is shown
     (`traitNameOf`, issue #1520), and without either a person reads its id humanized, "Kdr:name". The sample's
     `SourceTraitNamesTest` holds every trait loaded at boot to it. A test's own throwaway trait need not have one.
   - **`workflow(workflowId, entry: WfEntry) { <WfDefBuilder> }`** — a workflow definition (or `workflowFromMap`
@@ -170,11 +171,11 @@ later schema rejects" test.
     its own from it. `RootedWorkflowTest` (kdn) is the reference.
   - **`cfact(name, group, description, toFrontend)`** — the cfacts the client may name in expressions.
   - **Not `stateTrait(...)`.** State is global, declared by components (issue #873): a client's config declaring
-    one is refused at write, and a client-owned source config declaring one refuses the boot outside production.
+    one is refused at write, and a client-owned config in code declaring one refuses the boot outside production.
   - A `schemaDef` slot exists for plain schema types too; most schema rides in via a trait's data shape. **Not one
     named as a type the client's own trait generates** (issue #1542) -- its `<Name>Entry`, or the `<Name>Data` of a
     trait whose data is written inline: the trait's type replaces it, so the load reports it (a refused
-    `reloadClient` in a unit test), the trial refuses a write adding one, and a source config declaring one refuses
+    `reloadClient` in a unit test), the trial refuses a write adding one, and a config in code declaring one refuses
     the build. A type the trait refers to by name (`trait(..., dataType, ...)`) is the trait's data, and fine.
     `TraitTypeClashTest` (kdn) is the reference.
 - **`GedraConfigService.get(cxt).writeConfig(clientCxt, config)`** persists the bundle. What must be named is
@@ -190,7 +191,7 @@ later schema rejects" test.
   `WorkflowService.reloadClient`. A request in flight keeps the store it started with; the next request sees the
   new one. **No restart.**
 - **A sandbox reloads with its parent** (issue #928). A client whose `ClientDef` sets `sandbox = true` has a live
-  sandbox client, `sandboxOf(client)` = `<client>:sandbox`, running the parent's source config and **latest**
+  sandbox client, `sandboxOf(client)` = `<client>:sandbox`, running the parent's config in code and **latest**
   stored revisions whatever the parent's tier (copied under its id by `SandboxConfigs`), with users and data of its
   own. `reloadClient(parent)` reloads it too and returns its result in `.sandbox` (`.all` is both); a sandbox can
   also be reloaded on its own. A test wanting a preview client sets the flag on the parent and places a
@@ -218,19 +219,19 @@ later schema rejects" test.
   attributed to the person's parent user, and a write reloads the parent (so the sandbox shows it, while the
   parent -- published-only, as every client with a sandbox is -- keeps its published revision). The editors save a **draft** for any client with a sandbox
   (result `mode` = `EDM.draft`) and publish at once for one without. `SandboxEditsTest.kt` is the reference.
-- **Source code may file an overlay under a sandbox** (issue #940): a config built with `client = sandboxOf(parent)`
+- **Code may file an overlay under a sandbox** (issue #940): a config built with `client = sandboxOf(parent)`
   and the **parent's** namespace (`clientNamespace(parent)`), which the sandbox runs and the parent does not -- a
-  per-client feature flag, promoted by moving it into the parent's source. It layers above the parent's source and
-  below its stored revisions (so a stored copy or menu change wins over the overlay's); only a stored or imported
-  config under a sandbox is refused. An overlay for a parent without the `sandbox` flag is reported on the parent and
-  not loaded, and one repeating the parent's source is reported. `SandboxOverlayTest.kt` is the reference.
+  per-client feature flag, promoted by moving it into the parent's code. It layers above the parent's code and
+  below its stored revisions (so a configured copy or menu change wins over the overlay's); only a config made in the app,
+  or imported, under a sandbox is refused. An overlay for a parent without the `sandbox` flag is reported on the
+  parent and not loaded, and one repeating the parent's code is reported. `SandboxOverlayTest.kt` is the reference.
 - **The sample's acme has a sandbox** (issue #994), so it is published-only: a sample test that stores config for
   acme -- through an editor or `writeConfig` -- publishes it before asserting what acme serves (`publishAcme` in the
   sample's tests does what the client page's Publish does). A scenario that needs a client without a sandbox, or one on
   the latest tier, takes a dynamic client of its own as above; the sample's globex has none either.
 
-Stored config is **added beside** the source-declared config in the same collector, keyed by the client in its
-id — downstream services can't tell a stored client from a source one.
+Stored config is **added beside** the config declared in code in the same collector, keyed by the client in its
+id — downstream services can't tell a configured client from a code-defined one.
 
 ## The HTTP path (driving it as an admin)
 
@@ -297,7 +298,7 @@ in the client's own directory, `<root>/<clientId>/<path>`, and nowhere at all wh
 (`LocalFileRefsTest.kt`). **Publishing does not go live immediately** — it stamps `publishedAt`, changing which revision a
 later reload/boot picks up for a **published-only** client. A client on the **latest** tier loads its latest revision
 whether published or not. The tier is `publishedOnly(client) = toggled(client, env) || asksForSandbox(client)`
-(`GedraConfigControl`; issue #930): a client whose source or **published** definition sets `sandbox = true` is
+(`GedraConfigControl`; issue #930): a client whose code-defined or **published** definition sets `sandbox = true` is
 published-only whatever the toggle says, so a test wanting a client on the latest tier leaves the flag off.
 
 **A publish can be refused over the client's stored data** (issue #935). For a published-only client the publish
@@ -307,8 +308,8 @@ validating, or whose workflow or recorded task it removes. A non-empty report re
 publishes such a change on purpose acknowledges it; `GedraConfigService.publish` called directly checks nothing
 unless asked (`impact = ImpactGate.refuse`). `ConfigImpactTest.kt` is the reference.
 
-**`staticConfig`** is not a tier (issue #824): set only in source, it makes the client take nothing stored in
-production -- writes refused, stored config ignored -- and leaves it an ordinary client everywhere else.
+**`staticConfig`** is not a tier (issue #824): set only in code, it makes the client take no configuration made in
+the app in production -- writes refused, stored config ignored -- and leaves it an ordinary client everywhere else.
 
 ## How config reaches a node
 
