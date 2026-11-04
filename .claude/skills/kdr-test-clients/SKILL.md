@@ -164,6 +164,14 @@ later schema rejects" test.
     to the code by `ConfDemoDocsTest`. (`docs/history/gedra-workflow.md` is a superseded design; do not follow it.) An
     optional `label = "…"` in the block titles the page over the form (issue #719); like a task's label it is a
     template, so `%{@t("file.ns.key")}` pulls it from a fragment file and the boot checks the pull resolves.
+  - **What a task's call to action carries** (issue #1594): `keyword(CTAK.review)` in a task block declares its
+    search keyword, and an approval task carries `review` without it. Who may act on it comes from a `ctaFilter`
+    function on the task, `function(ctaFilterByValue { trait = "site"; valuePath = "region"; case("northwest",
+    "reviewerNorthwest", "Waiting on a Northwest reviewer") })`: a value in the form's data chooses a filter. A filter
+    may name only facts about the person -- the request's, or a cfact a `userHasLabel` on the **same task** emits --
+    and the load reports any other, which a unit test sees as a refused `reloadClient`. Both are stored with the CTA
+    in the workflow's state (`WFS.ctaKeyword`, `WFS.ctaFilter`, `WFS.ctaFilterLabel`) and recomputed with it.
+    `CtaFilterTest` (kdn) is the reference.
   - **A workflow made from a template** (issue #1120): `workflowFromMap(mapOf(WFD.workflowId to "mine", WFD.fromTemplate
     to "kdr:coreDetails", ...))`, after `workflowTemplates = WorkflowTemplates.lookup(cxt)` in the block -- the map is
     an overlay, only what differs from the template, and is stored as such. Templates are the global workflows (core

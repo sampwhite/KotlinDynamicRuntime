@@ -60,9 +60,12 @@ fun resolveWorkflowFunctions(
             )
             if (assign) def.resolvedFunctions = defFunctions
             for (task in def.tasks) {
-                val taskFunctions = bundleScope.resolveList(
-                    def.workflowId, "task '${task.id}'", task.functionUsages, WfEventScope.task,
-                    collectedTraits = task.traits.map { it.traitId }.toSet(),
+                val taskFunctions = bundleScope.checkCtaFilters(
+                    def, task,
+                    bundleScope.resolveList(
+                        def.workflowId, "task '${task.id}'", task.functionUsages, WfEventScope.task,
+                        collectedTraits = task.traits.map { it.traitId }.toSet(),
+                    ),
                 )
                 if (assign) task.resolvedFunctions = taskFunctions
                 bundleScope.checkApprovalAuthority(def, task, taskFunctions)
@@ -122,6 +125,40 @@ private fun ResolutionScope.grantsReviewer(task: WfTask, resolved: List<WfFuncti
         val creation = byFn[usage.fn]
         usage.fn in resolvedFns && creation?.event == WfEventType.viewerCfacts &&
             WFC.reviewer in creation.emittedCfacts(usage)
+    }
+}
+
+/**
+ * A task's `ctaFilter` functions (issue #1594), held to what a CTA filter is for: each sits on a normal workflow's
+ * task, since only that has a call to action, and every filter it can set parses and names only facts about the
+ * person -- the request's, and what the task's own resolved `viewerCfacts` functions emit -- since a listing evaluates
+ * the filter against those alone, without the form. A function failing either is dropped and reported, so a filter a
+ * listing could not evaluate is never stored. Returns [resolved] without the dropped ones.
+ */
+private fun ResolutionScope.checkCtaFilters(def: WfDef, task: WfTask, resolved: List<WfFunction>): List<WfFunction> {
+    if (resolved.none { it.event == WfEventType.ctaFilter }) return resolved
+    // From the list just resolved, not the task's stored one: a trial resolves without assigning.
+    val personFacts = SchemaService.get(cxt).cfactsFor(client).requestNames +
+        resolved.filter { it.event == WfEventType.viewerCfacts }.flatMap { ViewerCfactsFn.of(it).emittedCfacts }
+    return resolved.filter { fn ->
+        if (fn.event != WfEventType.ctaFilter) return@filter true
+        val why = if (def.entry != WfEntry.normal) {
+            "sets a call to action's filter, which only a normal workflow's task has"
+        } else {
+            CtaFilterFn.of(fn).possibleFilters.firstNotNullOfOrNull { filter ->
+                ctaFilterProblem(declaredCfacts, personFacts, filter)?.let { "can set the CTA filter '$filter', which $it" }
+            }
+        } ?: return@filter true
+        reportConfigProblem(
+            cxt,
+            bundle.issue(
+                "Workflow '${def.workflowId}' in client '$client' declares function '${fn.fn}' on task '${task.id}', which $why.",
+                "Dropping that function.",
+                GCEL.function, "${def.workflowId}/${fn.fn}",
+            ),
+            issues,
+        )
+        false
     }
 }
 

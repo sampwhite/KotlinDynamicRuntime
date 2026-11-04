@@ -142,6 +142,32 @@ class WfDefTest {
         }
     }
 
+    /**
+     * A task's search keyword (issue #1594): it round-trips, an approval task carries `review` without saying so, and
+     * a keyword the closed list does not hold, or one on a workflow with no call to action, is refused where written.
+     */
+    @Test
+    fun aTasksKeywordRoundTripsAndIsHeldToTheList() {
+        val def = parseWfDef(
+            cxt,
+            WfDefBuilder("review", WfEntry.normal).apply {
+                task("describe", "Describe it") { trait("notes"); save("s", "Save", WfSaveKind.edit); keyword(CTAK.review) }
+                task("approve", "Approve it") { approval("approved", "Approve?", "Approve") }
+                task("plan", "Plan it") { trait("plan"); save("p", "Save", WfSaveKind.edit) }
+            }.build(),
+        )
+        assertEquals(CTAK.review, def.tasksById.getValue("describe").keyword)
+        assertEquals(CTAK.review, parseWfDef(cxt, def.toJsonMap()).tasksById.getValue("describe").keyword)
+        // An approval task waits on a review by definition; a plain task with none declared carries none.
+        assertNull(def.tasksById.getValue("approve").keyword)
+        assertEquals(CTAK.review, def.tasksById.getValue("approve").ctaKeyword)
+        assertNull(def.tasksById.getValue("plan").ctaKeyword)
+        assertFailsWith<KdrException> {
+            WfTask("t", "T", listOf(WfTraitRef("a")), listOf(WfSave("s", "S", WfSaveKind.edit)), keyword = "sign")
+        }
+        assertFailsWith<KdrException> { parseWfDef(cxt, creation { trait("name"); save("create", "Create"); keyword(CTAK.review) }) }
+    }
+
     @Test
     fun coreDetailsWorkflowRules() {
         fun coreDetailsTask(id: String) = WfTask(id, id, listOf(WfTraitRef("a")), listOf(WfSave("s", "S", WfSaveKind.edit)))
