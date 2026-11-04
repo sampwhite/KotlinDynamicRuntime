@@ -1581,14 +1581,16 @@ textarea.json-edit.json-field { min-height: 4.5rem; }
     cursor: pointer;
 }
 
-.design-badge {
+/* Design View's switch (issue #1577), in the workflow form's header: a .bar-badge chip like the app bar's, dashed
+   while off and the Design View teal while on. */
+.design-switch {
     border-color: var(--border);
     border-style: dashed;
     background: transparent;
     color: var(--text-dim);
     cursor: pointer;
 }
-.design-badge.on {
+.design-switch.on {
     border-style: solid;
     border-color: var(--design);
     background: var(--design-soft);

@@ -20,9 +20,13 @@ import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonListOfStrings
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
+import react.ChildrenBuilder
 import react.createContext
+import react.dom.html.ReactHTML.button
 import react.useEffect
 import react.useRef
+import react.useState
+import web.cssom.ClassName
 
 /*
  * Design View, the webapp's half (issue #972): an administrator's mode that marks each part of a workflow form with
@@ -48,20 +52,64 @@ fun designViewRequested(): Boolean = sessionStorageGet(designViewStorageKey) == 
 fun setDesignViewRequested(on: Boolean) = sessionStorageSet(designViewStorageKey, if (on) DSV.design else "")
 
 /**
- * Re-reads a workflow page's view when Design View is switched while the page is open (issue #972). The view only
- * carries Design View's block when it was fetched with the switch on, so a page loaded before the switch would
- * otherwise show nothing until it was left and reopened. [reread] fetches and swaps the view **in place** -- never
- * through the page's loading state -- so a form keeps whatever has been typed into it; it is skipped on the first
- * render, where the page's own load already asked with the switch as it stands. A re-read that gets no usable answer
- * should leave the page as it was (see [designRereadValue]): the switch is a lens, not something to fail a page over.
+ * Whether the workflow form offers Design View's switch (issue #1577): only to a caller the backend answers --
+ * one who administers a client, their own or every one (`administersClient`, which is `isClientAdministrator`).
+ * A `public` administrator, an editor, or an ordinary user would get a switch that does nothing. Pure, covered under
+ * `jsNodeTest`.
  */
-fun useDesignViewReread(reread: suspend () -> Unit) {
+fun designSwitchOffered(facts: ShellFacts): Boolean = facts.reach.administersClient
+
+/**
+ * Turns Design View off for a caller who cannot have it (issue #1577), told on every read of the shell config. The
+ * switch is drawn only for a client administrator, so a session that turned it on and then stopped being one --
+ * switched to an editor or a `public` user, or had the role taken away -- would keep the flag, and send the view
+ * header on every request, with no control left to clear it.
+ */
+fun dropDesignViewUnlessOffered(administersClient: Boolean) {
+    if (!administersClient && designViewRequested()) setDesignViewRequested(false)
+}
+
+/**
+ * Design View's switch (issues #972, #1577), drawn in the workflow form's header. It names the state and is the
+ * control, as the app bar's chips do. [onToggle] is the page's, from [useDesignViewSwitch], which re-reads the view
+ * in place, so what has been typed survives.
+ */
+fun ChildrenBuilder.designSwitch(onToggle: () -> Unit) {
     val designOn = designViewRequested()
+    button {
+        className = ClassName("bar-badge design-switch" + if (designOn) " on" else "")
+        asDynamic()["aria-pressed"] = designOn
+        title = if (designOn) {
+            "Design view is on: this form shows what defines each part. Click to turn it off."
+        } else {
+            "Turn on Design view to see what defines each part of this form."
+        }
+        onClick = { onToggle() }
+        +(if (designOn) "Design on" else "Design")
+    }
+}
+
+/**
+ * A workflow page's Design View switch (issues #972, #1577): the toggle its form's [designSwitch] calls, which flips
+ * the session's flag and redraws this page alone -- not the app-wide refresh, which would re-read the shell too. The
+ * view only carries Design View's block when it was fetched with the switch on, so each flip then runs [reread],
+ * which fetches and swaps the view **in place** -- never through the page's loading state -- so a form keeps whatever
+ * has been typed into it. It is skipped on the first render, where the page's own load already asked with the switch
+ * as it stands. A re-read that gets no usable answer should leave the page as it was (see [designRereadValue]): the
+ * switch is a lens, not something to fail a page over.
+ */
+fun useDesignViewSwitch(reread: suspend () -> Unit): () -> Unit {
+    var designOn by useState { designViewRequested() }
     val applied = useRef(designOn)
     useEffect(designOn) {
         if (applied.current == designOn) return@useEffect
         applied.current = designOn
         reread()
+    }
+    return {
+        val next = !designViewRequested()
+        setDesignViewRequested(next)
+        designOn = next
     }
 }
 
