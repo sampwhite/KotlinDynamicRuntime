@@ -29,6 +29,7 @@ import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.startup.ComponentDefinition
+import com.dynamicruntime.common.startup.SchemaService
 import com.dynamicruntime.common.user.AEP
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.util.toJsonListOfMaps
@@ -99,6 +100,9 @@ class AssistantNewFormTest : StringSpec({
         text shouldContain "The New form page asks for exactly the traits of the client's creation workflow"
         // Long text (issue #1592): a trait it writes marks its free text, so a form draws a box of several lines.
         text shouldContain "Give it \"g-longText\": true in the trait's dataSchema"
+        // And the message the administrator writes is long text too, so the endpoint catalog draws a box for it.
+        SchemaService.get(cxt).schemaStore.endpoints.values.single { it.path == ACNV.messagePath }.inputFields.orEmpty()
+            .single { it.name == ACNV.text }.schema[SCH.longText] shouldBe true
         AssistantPrompt.versionFor(configured, "one line") shouldNotBe AssistantPrompt.versionFor(configured, "another line")
         AssistantPrompt.versionOf(cxt, configured) shouldBe
             AssistantPrompt.versionFor(configured, AssistantPrompt.clientLine(cxt, configured))
