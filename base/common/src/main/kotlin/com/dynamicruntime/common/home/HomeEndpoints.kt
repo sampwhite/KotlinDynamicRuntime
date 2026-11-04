@@ -37,6 +37,7 @@ import com.dynamicruntime.common.endpoint.schemaModule
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.schemaDialectMarkdown
 import com.dynamicruntime.common.schema.validationMessagesMarkdown
+import com.dynamicruntime.common.gedra.report.reportPathsMarkdown
 import com.dynamicruntime.common.util.copyMarkdown
 import com.dynamicruntime.common.util.expressionsMarkdown
 import com.dynamicruntime.common.user.AdminRules
@@ -670,6 +671,9 @@ fun coreDocs(): List<MarkdownDocDef> = listOf(
     MarkdownDocDef(HDOC.copy, "Copy", "docs/reference/copy.md",
         "The Markdown copy is written in, the roles that set a phrase or an image apart, and the fragment files copy is kept in.",
         generate = ::copyMarkdown),
+    MarkdownDocDef(HDOC.reportPaths, "Report paths", "docs/reference/report-paths.md",
+        "How a report column names where its value comes from, and every attribute a path can end in, with its kind.",
+        generate = ::reportPathsMarkdown),
     MarkdownDocDef(HDOC.clientConfiguration, "Client configuration", "docs/reference/client-configuration.md",
         "Every slot of a client's configuration, what its entries hold, and what a write or an edit of one must send.",
         generate = ::clientConfigurationMarkdown),

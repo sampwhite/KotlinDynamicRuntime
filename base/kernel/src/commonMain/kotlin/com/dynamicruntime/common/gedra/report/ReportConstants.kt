@@ -40,9 +40,10 @@ enum class ReportKind {
 
 /**
  * One name a path may end in outside a trait's own data (issue #977): its [kind], fixed by the vocabulary rather
- * than read from a schema, and whether it holds several values ([multiValued]) -- a user's labels, a form's cfacts.
+ * than read from a schema, what it holds ([description], written for whoever builds a report, issue #1563), and
+ * whether it holds several values ([multiValued]) -- a user's labels, a form's cfacts.
  */
-class ReportAttr(val name: String, val kind: ReportKind, val multiValued: Boolean = false)
+class ReportAttr(val name: String, val kind: ReportKind, val description: String, val multiValued: Boolean = false)
 
 /** The report path's punctuation and bounds (issue #977). */
 @Suppress("ConstPropertyName")
@@ -95,19 +96,25 @@ object RWF {
     const val approvedBy = "approvedBy"
 
     val attrs: Map<String, ReportAttr> = listOf(
-        ReportAttr(category, ReportKind.string),
-        ReportAttr(engaged, ReportKind.boolean),
-        ReportAttr(eligible, ReportKind.boolean),
-        ReportAttr(finished, ReportKind.boolean),
-        ReportAttr(tasksDone, ReportKind.boolean),
-        ReportAttr(ctaTask, ReportKind.string),
-        ReportAttr(lastEngagedAt, ReportKind.date),
+        ReportAttr(
+            category, ReportKind.string,
+            "Where the form stands with the workflow: `engaged` while it is under way, `eligible` when it could start, " +
+                "`finished` once it is done, and `ineligible` when an eligibility test fails.",
+        ),
+        ReportAttr(engaged, ReportKind.boolean, "Whether the form has entered the workflow."),
+        ReportAttr(eligible, ReportKind.boolean, "Whether the form passes every one of the workflow's eligibility tests."),
+        ReportAttr(finished, ReportKind.boolean, "Whether the workflow has finished for the form."),
+        ReportAttr(tasksDone, ReportKind.boolean, "Whether every task of the workflow is complete and valid for the form, so none is left to do."),
+        ReportAttr(
+            ctaTask, ReportKind.string, "The id of the task the form's people are asked to do next, while the workflow is under way.",
+        ),
+        ReportAttr(lastEngagedAt, ReportKind.date, "When the form last entered the workflow."),
     ).associateBy { it.name }
 
     val approvalAttrs: Map<String, ReportAttr> = listOf(
-        ReportAttr(approved, ReportKind.boolean),
-        ReportAttr(approvedAt, ReportKind.date),
-        ReportAttr(approvedBy, ReportKind.number),
+        ReportAttr(approved, ReportKind.boolean, "Whether a reviewer has approved the task."),
+        ReportAttr(approvedAt, ReportKind.date, "When the task was approved."),
+        ReportAttr(approvedBy, ReportKind.number, "The user id of the reviewer who approved it."),
     ).associateBy { it.name }
 }
 
@@ -127,15 +134,18 @@ object RUSR {
     const val enabled = "enabled"
 
     val attrs: Map<String, ReportAttr> = listOf(
-        ReportAttr(userId, ReportKind.number),
-        ReportAttr(name, ReportKind.string),
-        ReportAttr(publicName, ReportKind.string),
-        ReportAttr(email, ReportKind.string),
-        ReportAttr(persona, ReportKind.string),
-        ReportAttr(org, ReportKind.string),
-        ReportAttr(labels, ReportKind.string, multiValued = true),
-        ReportAttr(isEntity, ReportKind.boolean),
-        ReportAttr(enabled, ReportKind.boolean),
+        ReportAttr(userId, ReportKind.number, "The owner's user id."),
+        ReportAttr(name, ReportKind.string, "The owner's name: a person's full name, or a business's. Empty when they gave none."),
+        ReportAttr(
+            publicName, ReportKind.string,
+            "The name shown to others: the owner's username, or their email address until they choose one.",
+        ),
+        ReportAttr(email, ReportKind.string, "The owner's email address."),
+        ReportAttr(persona, ReportKind.string, "The kind of user the owner is in the client: `member`, `editor`, or `admin`."),
+        ReportAttr(org, ReportKind.string, "The owner's organization within the client. Empty when they have none."),
+        ReportAttr(labels, ReportKind.string, "The labels the owner's user carries, such as `committee`.", multiValued = true),
+        ReportAttr(isEntity, ReportKind.boolean, "Whether the account belongs to a business rather than a person."),
+        ReportAttr(enabled, ReportKind.boolean, "Whether the owner's account is enabled."),
     ).associateBy { it.name }
 }
 
@@ -155,15 +165,23 @@ object RMETA {
     const val cfacts = "cfacts"
 
     val attrs: Map<String, ReportAttr> = listOf(
-        ReportAttr(gedraId, ReportKind.string),
-        ReportAttr(client, ReportKind.string),
-        ReportAttr(org, ReportKind.string),
-        ReportAttr(ownerId, ReportKind.number),
-        ReportAttr(createdAt, ReportKind.date),
-        ReportAttr(updatedAt, ReportKind.date),
-        ReportAttr(formStatus, ReportKind.string),
-        ReportAttr(coreDetailsStatus, ReportKind.string),
-        ReportAttr(cfacts, ReportKind.string, multiValued = true),
+        ReportAttr(gedraId, ReportKind.string, "The form's id."),
+        ReportAttr(client, ReportKind.string, "The client the form belongs to."),
+        ReportAttr(org, ReportKind.string, "The organization the form belongs to within the client. Empty when it has none."),
+        ReportAttr(ownerId, ReportKind.number, "The user id of the form's owner."),
+        ReportAttr(createdAt, ReportKind.date, "When the form was created."),
+        ReportAttr(updatedAt, ReportKind.date, "When the form was last changed."),
+        ReportAttr(
+            formStatus, ReportKind.string,
+            "The status the forms list shows: the core details status, except that a valid form reads `needsReview` " +
+                "while a workflow waits on a review, and `finished` once one has finished.",
+        ),
+        ReportAttr(
+            coreDetailsStatus, ReportKind.string,
+            "Whether the form's core details are done: `valid`, `needsInfo` when a required trait is missing, or " +
+                "`invalid` when entered data fails its checks. Empty for a client with no core details workflow.",
+        ),
+        ReportAttr(cfacts, ReportKind.string, "The facts the form has, such as `kdr:finished`.", multiValued = true),
     ).associateBy { it.name }
 }
 
@@ -178,10 +196,10 @@ object RENV {
     const val source = GE.source
 
     val attrs: Map<String, ReportAttr> = listOf(
-        ReportAttr(createdAt, ReportKind.date),
-        ReportAttr(updatedAt, ReportKind.date),
-        ReportAttr(createdBy, ReportKind.number),
-        ReportAttr(updatedBy, ReportKind.number),
-        ReportAttr(source, ReportKind.string),
+        ReportAttr(createdAt, ReportKind.date, "When the entry was first written."),
+        ReportAttr(updatedAt, ReportKind.date, "When the entry was last changed."),
+        ReportAttr(createdBy, ReportKind.number, "The user id of whoever first wrote the entry, who may not be the form's owner."),
+        ReportAttr(updatedBy, ReportKind.number, "The user id of whoever last changed the entry."),
+        ReportAttr(source, ReportKind.string, "How the entry's value came to be: `user` when a person entered, edited, or approved it."),
     ).associateBy { it.name }
 }

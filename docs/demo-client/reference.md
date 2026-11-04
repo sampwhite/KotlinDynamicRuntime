@@ -198,4 +198,5 @@ grouped. A column with no rollup is left out of a grouped run, and one the run g
 group's value. The demo's [Reports](reports.md) page shows `sum`, `list`, and `count`.
 
 Paths are checked when the configuration loads. A path that names a trait, a field, or a workflow the client does
-not have costs the report that holds it, not the bundle.
+not have costs the report that holds it, not the bundle. The [report paths reference](../reference/report-paths.md)
+lists every attribute a path can end in, with its kind, and the selectors a keyed trait takes.
