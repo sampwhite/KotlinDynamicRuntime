@@ -602,7 +602,7 @@ private fun ChildrenBuilder.jsonBlock(caption: String?, value: Any?) {
         }
     }
     // A read-only text area rather than a `pre` (issue #1617), so its grip drags it taller: it starts at its lines, up
-    // to [jsonBlockRows], and its lines never wrap, so each counts as one.
+    // to [DVI.jsonRows], and its lines never wrap, so each counts as one.
     val text = value.toJsonStr()
     textarea {
         className = ClassName("dv-json")
@@ -612,12 +612,6 @@ private fun ChildrenBuilder.jsonBlock(caption: String?, value: Any?) {
         this.value = text
     }
 }
-
-/** The most rows a JSON block in the inspector starts at, before it is dragged taller (issue #1617). */
-const val jsonBlockRows = 16
-
-/** The rows a JSON block in the inspector starts at for [text]: its lines, which never wrap, from 2 up to [jsonBlockRows]. */
-fun jsonBlockRowsFor(text: String): Int = fittedRows(text, 2, jsonBlockRows, charsPerLine = 10_000)
 
 private fun ChildrenBuilder.fact(name: String, value: String, mono: Boolean = false) {
     div {

@@ -713,17 +713,17 @@ class DesignViewTest {
     @Test
     fun inspectorWidthIsHeldBetweenItsMinimumAndTheFormsRoom() {
         // Issue #1617: dragged too narrow, too wide, or within the range, in a 1600px window (1120px at most).
-        assertEquals(inspectorMinWidth, inspectorWidthFor(100, 1600))
+        assertEquals(DVI.minWidth, inspectorWidthFor(100, 1600))
         assertEquals(700, inspectorWidthFor(700, 1600))
-        assertEquals(1600 - inspectorFormRoom, inspectorWidthFor(1500, 1600))
+        assertEquals(1600 - DVI.formRoom, inspectorWidthFor(1500, 1600))
         // A window too narrow to spare both still keeps the inspector at its minimum.
-        assertEquals(inspectorMinWidth, inspectorWidthFor(600, 700))
+        assertEquals(DVI.minWidth, inspectorWidthFor(600, 700))
     }
 
     @Test
     fun aJsonBlockStartsAtItsLinesWithoutWrapping() {
         // Issue #1617: a long line counts as one, since the block does not wrap.
         assertEquals(3, jsonBlockRowsFor("{\n  \"a\": \"${"x".repeat(500)}\"\n}"))
-        assertEquals(jsonBlockRows, jsonBlockRowsFor((1..40).joinToString("\n")))
+        assertEquals(DVI.jsonRows, jsonBlockRowsFor((1..40).joinToString("\n")))
     }
 }

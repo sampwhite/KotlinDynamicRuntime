@@ -1493,9 +1493,10 @@ textarea.json-edit.json-field { min-height: 4.5rem; }
 :root {
     --design: #2dd4bf;
     --design-soft: rgba(45, 212, 191, .14);
-    --dv-panel-width: 380px;
+    --dv-panel-width: 380px; /* DVI.defaultWidth (InspectorResize.kt): change the two together. */
     /* What is shown of it (issue #1617): a width dragged wider, then a window narrowed, still leaves the form 480px.
-       `--dv-panel-width` is what the inspector's grip sets on the page root. */
+       `--dv-panel-width` is what the inspector's grip sets on the page root. 320px and 480px are DVI.minWidth and
+       DVI.formRoom, which the grip holds a width to before remembering it: change them together. */
     --dv-panel-shown: min(var(--dv-panel-width), max(320px, calc(100vw - 480px)));
 }
 
@@ -1676,7 +1677,8 @@ body.dv-open .app-content { padding-right: calc(var(--dv-panel-shown) + 16px); }
     touch-action: none;
 }
 .dv-resize-handle:hover, .dv-resize-handle:focus-visible { background: var(--design); outline: none; }
-body.dv-resizing { cursor: col-resize; user-select: none; }
+body.dv-resizing { user-select: none; }
+body.dv-resizing, body.dv-resizing * { cursor: col-resize !important; }
 .dv-inspector h2 { margin: 12px 0 8px; font-size: 18px; }
 .dv-inspector h3 { margin: 18px 0 6px; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--text-muted); }
 .dv-inspector-head { display: flex; align-items: center; justify-content: space-between; }
