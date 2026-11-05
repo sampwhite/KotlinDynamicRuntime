@@ -53,7 +53,8 @@ external interface ClientTraitsSectionProps : Props {
  * A trait the client customizes is supported without being included, and one under every global trait is included
  * already, so their boxes are drawn ticked and locked, saying why ([traitLockedReason]). The switch is locked off for
  * a client that may not take it -- a customer's production client -- with the backend's reason. Turning it off keeps
- * the traits ticked one by one.
+ * the traits ticked one by one. What the client's template includes (issue #1621) is the client's whatever it stores,
+ * so it is drawn ticked and locked too, naming the template, and a save never stores it.
  *
  * **Save** sends the whole list ([includedTraitsAfter]), the picker's changes made in place, and takes effect as the
  * page's other editors' saves do: live, or a draft for a client with a sandbox, which it says beside Save
@@ -135,7 +136,7 @@ val ClientTraitsSection = FC<ClientTraitsSectionProps> { props ->
         return@FC
     }
     loadError?.let { errorText("Couldn't refresh the global traits; showing what was loaded.", it) }
-    val after = includedTraitsAfter(baseline, draft, shown.traits)
+    val after = includedTraitsAfter(baseline, draft, shown.traits, shown.byTemplate)
     val changed = after != baseline
 
     fun save(acknowledge: Boolean) {
@@ -166,7 +167,7 @@ val ClientTraitsSection = FC<ClientTraitsSectionProps> { props ->
     val groupLock = allGlobalLockedReason(shown, draft)
     p {
         Checkbox {
-            checked = draft.allGlobal
+            checked = allGlobalShownOn(shown, draft)
             disabled = busy || groupLock != null
             onChange = { e -> draft = draft.copy(allGlobal = e.target.checked == true) }
             +"Every global trait, including ones added later"
@@ -433,8 +434,8 @@ private fun ChildrenBuilder.ownTraits(
     h4 { +"Its own traits" }
     p {
         className = ClassName("subtitle")
-        +("Traits this client defines for itself, supported without being included. A new one is stored in a " +
-            "configuration of its own.")
+        +("Traits this client defines for itself, and those it has from its template, supported without being " +
+            "included. A new one is stored in a configuration of its own.")
     }
     if (catalog.own.isNotEmpty()) {
         div {
@@ -457,7 +458,7 @@ private fun ChildrenBuilder.ownTraits(
                             td { code { +own.traitId } }
                             td { +(own.design?.label ?: "—") }
                             td { className = ClassName("op-num"); +(own.design?.fields?.size?.toString() ?: "—") }
-                            td { +(own.configName ?: "code") }
+                            td { +ownTraitDefinedIn(own) }
                             td {
                                 if (own.design != null) {
                                     Button {

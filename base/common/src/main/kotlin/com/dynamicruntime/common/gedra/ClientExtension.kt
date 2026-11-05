@@ -125,6 +125,21 @@ object ClientExtension {
     )
 
     /**
+     * What [template] supplies of [child]'s definition by [mergeDef] (issue #1621), by [CLD] key, so a page can say
+     * which values in force are the template's: each of `webResourcesId`, the session lifetime and the refresh
+     * interval that [child] leaves unset and [template] sets, and the template's `includedTraits` and `userLabels`
+     * that [child] does not name itself. [child] is the client's own definition, before the merge. Kept beside
+     * [mergeDef], and held to it by a test, so the two cannot disagree.
+     */
+    fun templateFills(child: ClientDef, template: ClientDef): Map<String, Any?> = buildMap {
+        if (child.webResourcesId == null) template.webResourcesId?.let { put(CLD.webResourcesId, it) }
+        if (child.sessionHours == null) template.sessionHours?.let { put(CLD.sessionHours, it) }
+        if (child.refreshIntervalSeconds == null) template.refreshIntervalSeconds?.let { put(CLD.refreshIntervalSeconds, it) }
+        template.includedTraits.filterNot { it in child.includedTraits }.ifEmpty { null }?.let { put(CLD.includedTraits, it) }
+        template.userLabels.filterNot { it in child.userLabels }.ifEmpty { null }?.let { put(CLD.userLabels, it) }
+    }
+
+    /**
      * The name a clone of [template]'s config [name] is filed under in the extending client: prefixed, so a client
      * config of the same name -- two clients built from one template often name theirs alike -- never collides with
      * the copy. Base-id characters only (`[A-Za-z0-9_]`), as every config name is.

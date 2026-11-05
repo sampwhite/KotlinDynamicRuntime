@@ -49,6 +49,11 @@ class TraitChoiceView(
     val namePulled: Boolean = false,
     /** Whether the platform's introduction for it is a fragment pull, which one given replaces. */
     val introPulled: Boolean = false,
+    /**
+     * The template that includes it (issue #1621), so the client has it whatever it stores: drawn included and locked,
+     * and never stored by a save. Null when no template does.
+     */
+    val includedBy: String? = null,
 )
 
 /**
@@ -64,52 +69,86 @@ class TraitCatalogView(
     val quotas: TraitQuotasView? = null,
     /** The global layouts of the types in [defs], by type name (issue #1119), so a preview is labeled. */
     val layouts: Map<String, SchLayout> = emptyMap(),
+    /** The template the client is built on (issue #1621), or null for none. */
+    val template: String? = null,
+    /** With [template]: what the template includes -- trait ids, and [CLD.allGlobal] -- which the client includes too. */
+    val templateIncluded: List<String> = emptyList(),
+) {
+    /** Whether the template includes every global trait, so the switch for them is on whatever the client stores. */
+    val templateIncludesAllGlobal: Boolean get() = template != null && CLD.allGlobal in templateIncluded
+
+    /** The picker's entries the template includes (issue #1621): its traits among [traits], and [CLD.allGlobal]. */
+    val byTemplate: Set<String> get() = buildSet {
+        traits.filter { it.includedBy != null }.forEach { add(it.traitId) }
+        if (templateIncludesAllGlobal) add(CLD.allGlobal)
+    }
+}
+
+/**
+ * One of the client's own traits: where it is stored, and its design or why the editor cannot edit it -- or, for one
+ * copied from its template (issue #1621), the template, in [fromTemplate].
+ */
+class OwnTraitView(
+    val traitId: String,
+    val configName: String?,
+    val design: TraitDesign?,
+    val notEditable: String?,
+    val fromTemplate: String? = null,
 )
 
-/** One of the client's own traits: where it is stored, and its design or why the editor cannot edit it. */
-class OwnTraitView(val traitId: String, val configName: String?, val design: TraitDesign?, val notEditable: String?)
+/** Where an own trait is defined, as its table says: its stored configuration, its template (issue #1621), or code. */
+fun ownTraitDefinedIn(own: OwnTraitView): String = own.configName ?: own.fromTemplate?.let { "template $it" } ?: "code"
 
 /** The plan's limits a design is held to (issue #1109): schemas declared and allowed, and attributes per schema. */
 class TraitQuotasView(val plan: String, val schemasUsed: Int?, val schemasLimit: Int?, val attributesLimit: Int?)
 
 /** The catalog as `/clientAdmin/client/traits` answers it. */
-fun parseTraitCatalog(raw: Map<String, Any?>): TraitCatalogView = TraitCatalogView(
-    client = raw[CLD.client].toOptStr().orEmpty(),
-    traits = raw[CIT.traits].toJsonListOfMaps().map {
-        TraitChoiceView(
-            traitId = it[CCT.traitId].toOptStr().orEmpty(),
-            description = it[CCT.description].toOptStr(),
-            appliesTo = it[CCT.appliesTo].toJsonListOfStrings(),
-            dataRef = it[CIT.dataRef].toOptStr(),
-            customized = it[CIT.customized] == true,
-            narrowing = it[CIT.narrowing]?.toJsonMapOrEmpty()?.let(::traitNarrowingFromInfo),
-            narrowingConfig = it[CIT.narrowingConfig].toOptStr(),
-            narrowingNotEditable = it[CIT.narrowingNotEditable].toOptStr(),
-            name = it[CIT.label].toOptStr(),
-            namePulled = it[CIT.namePulled] == true,
-            introPulled = it[CIT.introPulled] == true,
-        )
-    },
-    defs = raw[SCH.dDefs].toJsonMapOrEmpty(),
-    groupsRefused = raw[CIT.groupsRefused].toOptStr(),
-    layouts = parseDeliveredLayouts(raw[CIT.layouts]),
-    own = raw[CIT.ownTraits].toJsonListOfMaps().map {
-        OwnTraitView(
-            traitId = it[CIT.traitId].toOptStr().orEmpty(),
-            configName = it[CIT.configName].toOptStr(),
-            design = it[CIT.design]?.toJsonMapOrEmpty()?.let(::traitDesignFromInfo),
-            notEditable = it[CIT.notEditable].toOptStr(),
-        )
-    },
-    quotas = raw[CIT.quotas]?.toJsonMapOrEmpty()?.let { q ->
-        TraitQuotasView(
-            plan = q[CIT.plan].toOptStr().orEmpty(),
-            schemasUsed = (q[CIT.schemasUsed] as? Number)?.toInt(),
-            schemasLimit = (q[CIT.schemasLimit] as? Number)?.toInt(),
-            attributesLimit = (q[CIT.attributesLimit] as? Number)?.toInt(),
-        )
-    },
-)
+fun parseTraitCatalog(raw: Map<String, Any?>): TraitCatalogView {
+    val template = raw[CIT.template].toOptStr()
+    val templateIncluded = if (template == null) emptyList() else raw[CIT.templateIncluded].toJsonListOfStrings()
+    return TraitCatalogView(
+        client = raw[CLD.client].toOptStr().orEmpty(),
+        template = template,
+        templateIncluded = templateIncluded,
+        traits = raw[CIT.traits].toJsonListOfMaps().map {
+            val traitId = it[CCT.traitId].toOptStr().orEmpty()
+            TraitChoiceView(
+                traitId = traitId,
+                description = it[CCT.description].toOptStr(),
+                appliesTo = it[CCT.appliesTo].toJsonListOfStrings(),
+                dataRef = it[CIT.dataRef].toOptStr(),
+                customized = it[CIT.customized] == true,
+                narrowing = it[CIT.narrowing]?.toJsonMapOrEmpty()?.let(::traitNarrowingFromInfo),
+                narrowingConfig = it[CIT.narrowingConfig].toOptStr(),
+                narrowingNotEditable = it[CIT.narrowingNotEditable].toOptStr(),
+                name = it[CIT.label].toOptStr(),
+                namePulled = it[CIT.namePulled] == true,
+                introPulled = it[CIT.introPulled] == true,
+                includedBy = template?.takeIf { traitId in templateIncluded || CLD.allGlobal in templateIncluded },
+            )
+        },
+        defs = raw[SCH.dDefs].toJsonMapOrEmpty(),
+        groupsRefused = raw[CIT.groupsRefused].toOptStr(),
+        layouts = parseDeliveredLayouts(raw[CIT.layouts]),
+        own = raw[CIT.ownTraits].toJsonListOfMaps().map {
+            OwnTraitView(
+                traitId = it[CIT.traitId].toOptStr().orEmpty(),
+                configName = it[CIT.configName].toOptStr(),
+                design = it[CIT.design]?.toJsonMapOrEmpty()?.let(::traitDesignFromInfo),
+                notEditable = it[CIT.notEditable].toOptStr(),
+                fromTemplate = it[CIT.fromTemplate].toOptStr(),
+            )
+        },
+        quotas = raw[CIT.quotas]?.toJsonMapOrEmpty()?.let { q ->
+            TraitQuotasView(
+                plan = q[CIT.plan].toOptStr().orEmpty(),
+                schemasUsed = (q[CIT.schemasUsed] as? Number)?.toInt(),
+                schemasLimit = (q[CIT.schemasLimit] as? Number)?.toInt(),
+                attributesLimit = (q[CIT.attributesLimit] as? Number)?.toInt(),
+            )
+        },
+    )
+}
 
 /** The picker's choices: the traits ticked one by one, and whether every global trait is included. */
 data class TraitsDraft(val chosen: Set<String>, val allGlobal: Boolean)
@@ -123,31 +162,52 @@ fun traitsDraftOf(included: List<String>): TraitsDraft =
  * a trait of [traits], or [CLD.allGlobal] -- stays where it is while chosen, and goes when not; one newly chosen joins
  * at the end, in the catalog's order. An entry the picker does not show is kept as it is: a trait a code change
  * removed is the load's to drop, with an issue saying so, not something a save of another trait takes away unseen.
+ *
+ * An entry [byTemplate] names (issue #1621) is the template's, which the client has whatever it stores: never added,
+ * so a save stores no duplicate, and kept where the client already stores one, since its box is locked and a save of
+ * another trait should not change it unseen.
  */
-fun includedTraitsAfter(stored: List<String>, draft: TraitsDraft, traits: List<TraitChoiceView>): List<String> {
+fun includedTraitsAfter(
+    stored: List<String>,
+    draft: TraitsDraft,
+    traits: List<TraitChoiceView>,
+    byTemplate: Set<String> = emptySet(),
+): List<String> {
     val shown = traits.map { it.traitId } + CLD.allGlobal
     val wanted = (traits.map { it.traitId }.filter { it in draft.chosen } + listOfNotNull(CLD.allGlobal.takeIf { draft.allGlobal })).toSet()
-    val kept = stored.filter { it !in shown || it in wanted }
-    return kept + shown.filter { it in wanted && it !in stored }
+    val kept = stored.filter { it !in shown || it in wanted || it in byTemplate }
+    return kept + shown.filter { it in wanted && it !in stored && it !in byTemplate }
 }
 
-/** Whether a trait shows as included: chosen, under every global trait, or customized. */
+/** Whether a trait shows as included: by its template, customized, under every global trait, or chosen. */
 fun traitShownIncluded(trait: TraitChoiceView, draft: TraitsDraft): Boolean =
-    trait.customized || draft.allGlobal || trait.traitId in draft.chosen
+    trait.includedBy != null || trait.customized || draft.allGlobal || trait.traitId in draft.chosen
 
 /** Why a trait's own box cannot be changed, or null when it can: the box would change nothing the client supports. */
 fun traitLockedReason(trait: TraitChoiceView, draft: TraitsDraft): String? = when {
+    trait.includedBy != null -> includedByTemplateText(trait.includedBy)
     trait.customized -> "This client customizes it, so it is supported without being included."
     draft.allGlobal -> "Included with every global trait."
     else -> null
 }
 
+/** Why a trait the template includes is locked on (issue #1621). */
+fun includedByTemplateText(template: String): String =
+    "Included by its template, $template: a client built on it always has it."
+
+/** Whether the switch for every global trait shows on: the client's own choice, or its template's (issue #1621). */
+fun allGlobalShownOn(catalog: TraitCatalogView, draft: TraitsDraft): Boolean = draft.allGlobal || catalog.templateIncludesAllGlobal
+
 /**
- * Why the switch for every global trait cannot be turned on, or null when it can. Only on: a client already holding
- * the group may always let it go.
+ * Why the switch for every global trait cannot be changed, or null when it can: locked on when the template includes
+ * every global trait (issue #1621), and otherwise only refused on -- a client already holding the group may always let
+ * it go.
  */
-fun allGlobalLockedReason(catalog: TraitCatalogView, draft: TraitsDraft): String? =
-    catalog.groupsRefused?.takeIf { !draft.allGlobal }
+fun allGlobalLockedReason(catalog: TraitCatalogView, draft: TraitsDraft): String? = when {
+    catalog.templateIncludesAllGlobal ->
+        "Included by its template, ${catalog.template}: a client built on it always has every global trait."
+    else -> catalog.groupsRefused?.takeIf { !draft.allGlobal }
+}
 
 /** The kinds a trait applies to, in words: "Form doc, User data". */
 fun traitAppliesToText(appliesTo: List<String>): String = appliesTo.joinToString(", ") { humanizeFieldName(it) }

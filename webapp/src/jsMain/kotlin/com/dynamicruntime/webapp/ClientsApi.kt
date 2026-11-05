@@ -900,7 +900,16 @@ class ClientDefinitionView(
      * carries none.
      */
     val platformDefaults: Map<String, Int> = emptyMap(),
-)
+    /**
+     * What the client's template supplies of the definition it runs (issue #1621), by [CLD] key -- the web resources,
+     * session lifetime and refresh interval the client leaves unset, and the template's included traits and user
+     * labels the client does not name -- so a row can say its value is the template's. Empty for a client built on none.
+     */
+    val templateFills: Map<String, Any?> = emptyMap(),
+) {
+    /** The template the client is built on, or null for none. */
+    val template: String? get() = info[CLD.extendsFromClientId].toOptStr()?.ifBlank { null }
+}
 
 /** One stored configuration as the detail lists it (issue #906): a row of the config bundles listing. */
 class ConfigSummaryView(
@@ -937,6 +946,7 @@ fun parseClientDefinition(item: Map<String, Any?>): ClientDefinitionView = Clien
     usageLabels = item[CLD.usages].toJsonListOfMaps().mapNotNull { it[UF.label].toOptStr() },
     workflowIds = item[CLD.workflows].toJsonListOfStrings(),
     platformDefaults = item[CLD.platformDefaults].toJsonMapOrEmpty().mapNotNull { (k, v) -> (v as? Number)?.let { k to it.toInt() } }.toMap(),
+    templateFills = item[CLD.templateFills].toJsonMapOrEmpty(),
 )
 
 /** The config bundles listing's items as [ConfigSummaryView]s; one without a name is not a configuration. Pure, and covered under `jsNodeTest`. */
@@ -1048,12 +1058,39 @@ fun numberFieldText(name: String, value: Int): String =
     if (name == CLD.sessionHours) hoursText(value) else secondsText(value)
 
 /**
- * What the platform default of [name] is said as ("Platform default: 2 days"), with the session lifetime's limit when
- * [defaults] has it ("Platform default: 2 days; at most 30 days"), or null when [defaults] has no default. Pure.
+ * What an unset [name] takes, as the editor's placeholder says it: the platform default ("Platform default: 2 days"),
+ * with the session lifetime's limit when [defaults] has it ("Platform default: 2 days; at most 30 days") -- or, for a
+ * client whose [template] sets it (issue #1621), the template's ("From template starterkit: 1 day"), as [templateFills]
+ * has it. Null when neither is known. Pure.
  */
-fun platformDefaultText(name: String, defaults: Map<String, Int>): String? = defaults[name]?.let { value ->
-    val most = defaults[CLD.maxSessionHours]?.takeIf { name == CLD.sessionHours }?.let { "; at most ${hoursText(it)}" }.orEmpty()
-    "Platform default: ${numberFieldText(name, value)}$most"
+fun platformDefaultText(
+    name: String,
+    defaults: Map<String, Int>,
+    template: String? = null,
+    templateFills: Map<String, Any?> = emptyMap(),
+): String? {
+    val fromTemplate = (templateFills[name] as? Number)?.takeIf { template != null }
+    if (fromTemplate != null) return "From template $template: ${numberFieldText(name, fromTemplate.toInt())}"
+    return defaults[name]?.let { value ->
+        val most = defaults[CLD.maxSessionHours]?.takeIf { name == CLD.sessionHours }?.let { "; at most ${hoursText(it)}" }.orEmpty()
+        "Platform default: ${numberFieldText(name, value)}$most"
+    }
+}
+
+/**
+ * What a summary row adds when [def]'s template supplies [name] (issue #1621): "(from template starterkit)", naming
+ * the entries for a list the template adds to ("(from template starterkit: vip)"). Null when the template supplies
+ * none of it. Pure, and covered under `jsNodeTest`.
+ */
+fun templateFillNote(name: String, def: ClientDefinitionView?): String? {
+    val template = def?.template ?: return null
+    val filled = def.templateFills[name] ?: return null
+    return if (filled is List<*> || filled is Array<*>) {
+        val entries = def.templateFills[name].toJsonListOfStrings().ifEmpty { return null }
+        "(from template $template: ${entries.joinToString(", ")})"
+    } else {
+        "(from template $template)"
+    }
 }
 
 /**

@@ -25,6 +25,7 @@ import com.dynamicruntime.common.home.HMENU
 import com.dynamicruntime.common.uiblock.UIB
 import com.dynamicruntime.common.endpoint.EI
 import com.dynamicruntime.common.user.USF
+import com.dynamicruntime.common.util.humanizeFieldName
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -875,6 +876,45 @@ class ClientsPageTest {
         assertTrue("root of the customer 'acme'" in refusal(row(CLD.rootOf to "acme")))
         assertTrue("unpublished changes" in refusal(row(), listOf(ConfigSummaryView("main", 3, false, null, null, 0))))
         assertTrue("Not loaded" in refusal(row(CLD.status to ClientStatus.notEnabled.name)))
+    }
+
+    @Test
+    fun aValueTheTemplateFillsInSaysSo() {
+        // Issue #1621: the rows a template supplies name it; the editor's placeholder says what an unset field takes.
+        val item = mapOf(
+            CLD.client to mapOf(
+                CLD.clientId to "free_x", CLD.name to "Mine", CLD.extendsFromClientId to "starterkit",
+                CLD.userLabels to listOf("vip", "own"), CLD.sessionHours to 24, CLD.webResourcesId to "kit:pack",
+            ),
+            CLD.templateFills to mapOf(
+                CLD.userLabels to listOf("vip"), CLD.sessionHours to 24, CLD.webResourcesId to "kit:pack",
+                CLD.includedTraits to listOf("kdr:name"),
+            ),
+            CLD.platformDefaults to mapOf(CLD.sessionHours to 720, CLD.refreshIntervalSeconds to 30),
+            CLD.present to true,
+        )
+        val def = parseClientDefinition(item)
+        assertEquals("starterkit", def.template)
+        assertEquals("(from template starterkit: vip)", templateFillNote(CLD.userLabels, def))
+        assertEquals("(from template starterkit)", templateFillNote(CLD.sessionHours, def))
+        assertNull(templateFillNote(CLD.refreshIntervalSeconds, def))
+        val rows = clientSummaryRows("free_x", null, def, canSeeAllClients = false).toMap()
+        assertEquals("vip, own (from template starterkit: vip)", rows["User labels"])
+        assertEquals("1 day (from template starterkit)", rows[humanizeFieldName(CLD.sessionHours)])
+        assertEquals("30 seconds (platform default)", rows[humanizeFieldName(CLD.refreshIntervalSeconds)])
+        assertTrue(rows.getValue("Web resources").endsWith("(from template starterkit)"))
+        assertEquals(
+            "From template starterkit: 1 day",
+            platformDefaultText(CLD.sessionHours, def.platformDefaults, def.template, def.templateFills),
+        )
+        assertEquals(
+            "Platform default: 30 seconds",
+            platformDefaultText(CLD.refreshIntervalSeconds, def.platformDefaults, def.template, def.templateFills),
+        )
+        // A client on no template has no note.
+        val plain = parseClientDefinition(mapOf(CLD.client to mapOf(CLD.clientId to "acme"), CLD.present to true))
+        assertNull(plain.template)
+        assertNull(templateFillNote(CLD.userLabels, plain))
     }
 
     @Test

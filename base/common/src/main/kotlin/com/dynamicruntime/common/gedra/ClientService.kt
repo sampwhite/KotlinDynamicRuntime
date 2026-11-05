@@ -162,6 +162,22 @@ class ClientService : ServiceInitializer {
         ?: collector?.gedraConfigs?.configs?.firstNotNullOfOrNull { it.client?.takeIf { d -> d.clientId == clientId } }
 
     /**
+     * What [clientId]'s template supplies of the definition it runs ([ClientExtension.templateFills], issue #1621), by
+     * [CLD] key: empty for a client built on none. Judged against the client's own declaration, before the merge -- a
+     * sandbox's being its parent's, whose definition it copies.
+     */
+    fun templateFills(clientId: String): Map<String, Any?> {
+        val def = known(clientId) ?: return emptyMap()
+        val template = def.extendsFromClientId?.let { known(it) } ?: return emptyMap()
+        val own = ownDeclaration(clientId) ?: sandboxParentOf(clientId)?.let { ownDeclaration(it) } ?: def
+        return ClientExtension.templateFills(own, template)
+    }
+
+    /** [clientId]'s definition as the first config declaring it holds it: the client's own, before a template's merge. */
+    private fun ownDeclaration(clientId: String): ClientDef? =
+        collector?.gedraConfigs?.configs?.firstNotNullOfOrNull { it.client?.takeIf { d -> d.clientId == clientId } }
+
+    /**
      * Every client a kept config declares, as the first such config declares it, whether or not a check kept the
      * definition (issue #828) -- the set [declared] answers over, for a listing of clients that are not working.
      */

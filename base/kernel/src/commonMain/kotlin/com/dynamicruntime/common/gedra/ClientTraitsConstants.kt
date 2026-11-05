@@ -35,6 +35,25 @@ object CIT {
      */
     const val groupsRefused = "groupsRefused"
 
+    /**
+     * On the catalog (issue #1621): the template the client is built on (`extendsFromClientId`), absent for none. Its
+     * included traits ([templateIncluded]) are the client's whatever the client stores, and its own traits are copied
+     * into the client ([fromTemplate]).
+     */
+    const val template = "template"
+
+    /**
+     * With [template]: the traits the template includes -- trait ids, and a group such as `#allGlobal` -- which the
+     * client includes too, by its template, so the picker draws them included and a save need not store them.
+     */
+    const val templateIncluded = "templateIncluded"
+
+    /**
+     * On an own trait (issue #1621): the template it is copied from, absent for the client's own. Changed by a trait
+     * of the client's own with the same id, which replaces it whole.
+     */
+    const val fromTemplate = "fromTemplate"
+
     // --- the client's own traits (issue #1118) ---
     const val ownTraitTypeName = "ClientOwnTrait"
     const val designTypeName = "ClientTraitDesign"

@@ -5,6 +5,7 @@ import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.schema.SCH
+import com.dynamicruntime.common.startup.SchemaCollector
 import com.dynamicruntime.common.startup.SchemaService
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
@@ -82,7 +83,8 @@ object ClientTraitDesignEdit {
 
     /**
      * [client]'s own traits for the catalog: each stored one with its design, or why the editor cannot edit it, then
-     * any declared in source code, which are edited there. In the order they are stored.
+     * any declared in source code, which are edited there, then those copied from its template (issue #1621), marked
+     * with it. In the order they are stored.
      */
     fun ownTraits(cxt: KdrCxt, client: String): List<Map<String, Any?>> {
         // Named for a sandbox, its parent's, which the sandbox runs and its editors change (issue #1358).
@@ -96,11 +98,33 @@ object ClientTraitDesignEdit {
                 t.read.notEditable?.let { put(CIT.notEditable, it) }
             }
         }
-        val inSource = runningOwnTraitIds(cxt, owner).filterNot { it in stored }.map {
+        val copied = templateTraitIds(cxt, owner)
+        val running = runningOwnTraitIds(cxt, owner).filterNot { it in stored }
+        val inSource = running.filterNot { it in copied }.map {
             mapOf(CIT.traitId to it, CIT.notEditable to "It is declared in code, where it is edited.")
         }
-        return listed + inSource
+        val fromTemplate = running.mapNotNull { id ->
+            copied[id]?.let { template ->
+                mapOf(
+                    CIT.traitId to id,
+                    CIT.fromTemplate to template,
+                    CIT.notEditable to "From its template, $template. A trait of this client's own with the same id " +
+                        "replaces it whole.",
+                )
+            }
+        }
+        return listed + inSource + fromTemplate
     }
+
+    /**
+     * The traits [client] runs from its template's copies (`ClientExtension.clones`), each to the template: what the
+     * client has not replaced with one of its own.
+     */
+    private fun templateTraitIds(cxt: KdrCxt, client: String): Map<String, String> =
+        SchemaCollector.get(cxt)?.gedraConfigs?.configs.orEmpty()
+            .filter { it.gedraId.client == client }
+            .flatMap { config -> config.inheritedFrom?.let { template -> config.traits.keys.map { it to template } }.orEmpty() }
+            .toMap()
 
     /**
      * The plan's limits the editor holds a design to (issue #1109): the schemas [client] declares and may, and the
