@@ -381,6 +381,7 @@ internal class AbsentClient(val clientId: String, val name: String, val status: 
  * both list, so an administrator asking why a client is not working sees the client, not its absence. Costs one
  * query for the stored clients.
  */
+@Suppress("DestructuringDeclaration")
 internal fun absentClients(cxt: KdrCxt): List<AbsentClient> {
     val service = ClientService.get(cxt)
     val present = service.presentClients.map { it.clientId }.toSet()
