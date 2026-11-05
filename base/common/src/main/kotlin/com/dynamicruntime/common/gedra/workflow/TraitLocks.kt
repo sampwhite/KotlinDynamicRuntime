@@ -55,8 +55,7 @@ object TraitLocks {
         }
         if (locking.isEmpty()) return emptyList()
         val cfacts = SchemaService.get(cxt).cfactsFor(client)
-        // With the caller's relation to the form (issue #1595), which a writableVia task's rule may name.
-        val requestFacts = cfacts.assemble(cxt, RowCfacts.of(cxt, row.userId))
+        val requestFacts = cfacts.assemble(cxt)
         val formFacts = states.filter { it[GE.traitId].toOptStr() == GT.cfacts }
             .flatMap { it[GE.data].toJsonMapOrEmpty()[GT.facts].toJsonListOrEmpty() }
             .mapNotNull { it.toOptStr() }.toSet()
@@ -69,7 +68,9 @@ object TraitLocks {
             val judge by lazy {
                 WorkflowTaskJudge(
                     cxt, client, declared, taskEntriesOf(declared, entries), WorkflowApprovals.of(states, workflowId),
-                    requestFacts, entries,
+                    // The caller's relation to the form (issue #1595), which a writableVia task's rule may name: worked out
+                    // here, with the judge, only once some lock's condition holds.
+                    requestFacts, RowCfacts.of(cxt, row.userId), entries,
                 )
             }
             declared.def.locks

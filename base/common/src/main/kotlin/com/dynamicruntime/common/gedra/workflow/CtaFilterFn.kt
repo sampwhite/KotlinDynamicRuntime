@@ -111,8 +111,22 @@ fun ctaFilterProblem(declared: Set<String>, personFacts: Set<String>, filter: St
     }
 }
 
-/** What a workflow's CTA carries (issue #1594): its search [keyword], and who may act on it -- [filter], with its [label]. */
-class CtaAssignment(val keyword: String?, val filter: String?, val label: String?)
+/**
+ * What a workflow's CTA carries (issue #1594): its search [keyword], and who may act on it -- [filterRule], with its
+ * [filterLabel]. The filter is a **rule**, a cfact expression the deriver stores and each caller's check evaluates
+ * against that caller's facts ([passesCtaFilterRule]); nothing here says whether anyone passes it.
+ */
+class CtaAssignment(val keyword: String?, val filterRule: String?, val filterLabel: String?)
+
+/**
+ * Whether a caller passes a CTA's [filterRule] (issue #1595), given [facts]: the request's, the caller's relation to
+ * the form (`kdr:isOwner`), and the task's viewer facts for them. The **one** place a filter rule is evaluated, so a
+ * stored rule (the state's, for a surface that reads state alone) and one worked out from the form's data now (the
+ * judge's, for permission) are judged alike. No rule passes everyone; what passes is reported as
+ * [WFC.passesCtaFilter].
+ */
+fun passesCtaFilterRule(registry: CFactRegistry, filterRule: String?, facts: Set<String>): Boolean =
+    filterRule == null || registry.parse(filterRule).matches(facts)
 
 /**
  * What [task], as its workflow's CTA, carries for a form with [entries] (issue #1594): its `ctaFilter` functions run in
@@ -143,5 +157,5 @@ fun ctaAssignment(cxt: KdrCxt, registry: CFactRegistry, workflowId: String, task
             }
         }
     } ?: task.ctaKeyword
-    return CtaAssignment(keyword, filter, filter?.let { params.label })
+    return CtaAssignment(keyword, filterRule = filter, filterLabel = filter?.let { params.label })
 }

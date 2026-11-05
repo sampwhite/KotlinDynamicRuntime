@@ -20,13 +20,14 @@ import com.dynamicruntime.common.gedra.workflow.formStatusOf
 import com.dynamicruntime.common.gedra.workflow.PFO
 import com.dynamicruntime.common.gedra.workflow.WFS
 import com.dynamicruntime.common.gedra.workflow.WfDeclared
+import com.dynamicruntime.common.gedra.workflow.WfApproval
+import com.dynamicruntime.common.gedra.workflow.WfTask
 import com.dynamicruntime.common.gedra.workflow.WfEntry
 import com.dynamicruntime.common.gedra.workflow.WFD
 import com.dynamicruntime.common.gedra.workflow.WSC
 import com.dynamicruntime.common.gedra.workflow.SingletonWorkflows
 import com.dynamicruntime.common.gedra.workflow.SWF
 import com.dynamicruntime.common.gedra.workflow.WorkflowApprovals
-import com.dynamicruntime.common.gedra.workflow.ViewerCfacts
 import com.dynamicruntime.common.gedra.workflow.WFC
 import com.dynamicruntime.common.gedra.workflow.RCF
 import com.dynamicruntime.common.gedra.workflow.RowCfacts
@@ -48,7 +49,6 @@ import com.dynamicruntime.common.gedra.workflow.WfPhase
 import com.dynamicruntime.common.gedra.workflow.WorkflowAudience
 import com.dynamicruntime.common.gedra.workflow.WorkflowPhases
 import com.dynamicruntime.common.gedra.workflow.WorkflowFormFacts
-import com.dynamicruntime.common.gedra.workflow.ctaAssignment
 import com.dynamicruntime.common.gedra.workflow.noWorkflowView
 import com.dynamicruntime.common.gedra.workflow.resolveWorkflowView
 import com.dynamicruntime.common.gedra.workflow.saveWorkflow
@@ -943,9 +943,10 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
         mapOf(GDF.gedraId to row.gedraId.fullId, GDF.states to WorkflowPhases.shownStates(c, row.client, states, alsoShow = workflowId))
     }
 
-    // A reviewer approves an approval task (issue #787). Who may is settled here -- by the approval's rule, by default
-    // a reviewer of the task who does not own the form (issue #1595) -- and when is settled under the lock by WorkflowApprovals.approve: engaged, the current
-    // task, not already approved. The button a page draws is presentation; this is the permission.
+    // A reviewer approves an approval task (issue #787). When is settled under the lock by WorkflowApprovals.approve:
+    // engaged, the current task, not already approved. Who may is settled there too, by the approval's rule -- by
+    // default a reviewer of the task who does not own the form (issue #1595) -- and the CTA's filter rule. The button a
+    // page draws is presentation; this is the permission.
     generalEndpoint(
         GEP.workflowApprove,
         "Approves an approval task of a normal workflow for a form, as a reviewer of that task, and answers with " +
@@ -972,46 +973,20 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
         val task = declared.def.task(taskId)
         val approval = task?.approval
             ?: throw KdrException.mkInput("'$taskId' is not an approval task of workflow '$workflowId'.")
-        // Who may approve (issues #787, #1595) is the approval's rule, asked of the caller here rather than trusted from
-        // the page, since a cfact decides presentation and never permission. Left out, it is a reviewer who does not own
-        // the form: the second-person rule, which keeps a label an administrator put on themselves (#786) from becoming
-        // self-approval -- a default a client restates only on purpose, in its configuration. Whether the caller owns
-        // the form is `kdr:isOwner`, by RowCfacts: the owner's *person* in production (any of their users), only the
-        // owning user on a test instance, so one tester's personas can play submitter and reviewer.
-        val cfacts = SchemaService.get(c).cfactsFor(row.client)
-        val requestFacts = cfacts.assemble(c, RowCfacts.of(c, row.userId))
-        val viewer = ViewerCfacts(c, row.client)
-        val rule = cfacts.parse(approval.effectiveApproveWhen)
-        val viewerFacts = viewer.forTask(task)
-        if (!rule.matches(requestFacts + viewerFacts)) {
-            throw KdrException(
-                when {
-                    // Ownership is what refuses: say so, as the second-person rule always has.
-                    RCF.isOwner in requestFacts && rule.matches(requestFacts - RCF.isOwner + viewerFacts) ->
-                        if (row.userId == c.userProfile.userId) {
-                            "You cannot approve your own form; approval needs a reviewer other than its owner."
-                        } else {
-                            "You cannot approve a form owned by another of your own users; approval needs a different " +
-                                "person as reviewer."
-                        }
-                    WFC.reviewer !in viewerFacts && rule.matches(requestFacts + viewerFacts + WFC.reviewer) ->
-                        "You are not a reviewer of task '$taskId' of workflow '$workflowId'."
-                    else -> "You may not approve task '$taskId' of workflow '$workflowId'."
-                },
-                code = EXC.notAuthorized,
+        // Who may approve (issues #787, #1595) is the judge's answer, asked here rather than trusted from the page: the
+        // approval's rule -- by default a reviewer who does not own the form, the second-person rule, which keeps a label
+        // an administrator put on themselves (#786) from becoming self-approval -- and the CTA's filter rule. The same
+        // computation gives the page its `canApprove`, so the button and this refusal agree. Asked under the form's lock,
+        // once the approval knows the task is the current one, with the approvals as they then stand.
+        val requestFacts = SchemaService.get(c).cfactsFor(row.client).assemble(c)
+        val rowFacts = RowCfacts.of(c, row.userId)
+        val states = WorkflowApprovals.approve(c, row, declared, task) { current ->
+            val judge = WorkflowTaskJudge(
+                c, row.client, declared, entriesByTaskOf(declared, row), WorkflowApprovals.of(current, workflowId),
+                requestFacts, rowFacts, row.entries,
             )
-        }
-        // And the task's CTA filter (issue #1595), checked once the approval knows the task is the current one: a
-        // caller the filter does not name is refused, told who the task waits on. Whatever the rule names, the filter
-        // only narrows it.
-        val states = WorkflowApprovals.approve(c, row, declared, task) {
-            val cta = ctaAssignment(c, cfacts, workflowId, task, row.entries)
-            val filter = cta.filter
-            if (filter != null && !viewer.passes(filter, requestFacts + viewerFacts)) {
-                throw KdrException(
-                    MarkdownFragmentService.get(c).backendPass(c, cta.label ?: "This step is waiting on someone else."),
-                    code = EXC.notAuthorized,
-                )
+            if (!judge.mayApprove(task)) {
+                throw KdrException(approveRefusal(c, judge, task, approval, row), code = EXC.notAuthorized)
             }
         }
         mapOf(GDF.gedraId to row.gedraId.fullId, GDF.states to WorkflowPhases.shownStates(c, row.client, states))
@@ -1362,7 +1337,7 @@ private fun normalTaskSaveCheck(c: KdrCxt, declared: WfDeclared, taskId: String)
         declared.def.task(taskId)?.let { task ->
             val judge = WorkflowTaskJudge(
                 c, row.client, declared, entriesByTaskOf(declared, row), WorkflowApprovals.of(states, workflowId),
-                SchemaService.get(c).cfactsFor(row.client).assemble(c, RowCfacts.of(c, row.userId)), row.entries,
+                SchemaService.get(c).cfactsFor(row.client).assemble(c), RowCfacts.of(c, row.userId), row.entries,
             )
             if (!judge.maySave(task)) {
                 // When the CTA's filter is what refuses (issue #1595), say who the task waits on.
@@ -1373,6 +1348,30 @@ private fun normalTaskSaveCheck(c: KdrCxt, declared: WfDeclared, taskId: String)
                 )
             }
         }
+    }
+}
+
+/**
+ * Why [judge] refuses the caller approval task [task] of form [row] (issues #787, #1595), in the order a person
+ * can act on: whom the CTA waits on, when its filter rule is what stands in the way; that the caller owns the form, when
+ * the approval's rule would pass but for that (the second-person rule's own words); that they are no reviewer, when that
+ * is what is missing; and otherwise that they may not.
+ */
+private fun approveRefusal(c: KdrCxt, judge: WorkflowTaskJudge, task: WfTask, approval: WfApproval, row: GedraDataRow): String {
+    judge.waitingOn(task)?.let { return MarkdownFragmentService.get(c).backendPass(c, it) }
+    val rule = SchemaService.get(c).cfactsFor(row.client).parse(approval.effectiveApproveWhen)
+    val facts = judge.callerFacts + judge.taskFacts(task)
+    val workflowId = judge.declared.def.workflowId
+    return when {
+        RCF.isOwner in facts && rule.matches(facts - RCF.isOwner) ->
+            if (row.userId == c.userProfile.userId) {
+                "You cannot approve your own form; approval needs a reviewer other than its owner."
+            } else {
+                "You cannot approve a form owned by another of your own users; approval needs a different person as reviewer."
+            }
+        WFC.reviewer !in facts && rule.matches(facts + WFC.reviewer) ->
+            "You are not a reviewer of task '${task.id}' of workflow '$workflowId'."
+        else -> "You may not approve task '${task.id}' of workflow '$workflowId'."
     }
 }
 

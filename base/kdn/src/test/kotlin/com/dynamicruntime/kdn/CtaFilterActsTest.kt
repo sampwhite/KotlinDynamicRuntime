@@ -144,17 +144,21 @@ class CtaFilterActsTest : StringSpec({
         GDF.entries to listOf(mapOf(GE.traitId to "check", GE.data to mapOf("verdict" to "Fine."))),
     )
 
-    "a reviewer the approval's filter does not name is no reviewer of it: the view says who it waits on, and approving is refused" {
+    "a reviewer the approval's filter does not name may not approve it: the view says who it waits on, and approving is refused" {
         val gid = engagedForm("northwest", "siteReview")
         taskView(south, gid, "siteReview", "approve").let {
-            it[WVF.facts].toJsonListOfStrings() shouldNotContain WFC.reviewer
+            // Still a reviewer, as the labels say; the filter's answer is a fact of its own, and it is no.
+            it[WVF.facts].toJsonListOfStrings() shouldContain WFC.reviewer
+            it[WVF.facts].toJsonListOfStrings() shouldNotContain WFC.passesCtaFilter
+            it[WVF.canApprove] shouldBe false
             it[WVF.waitingOn] shouldBe "Waiting on a Northwest reviewer"
         }
         south.expectError(EXC.notAuthorized, GEP.workflowApprove, approve(gid)).toString() shouldContain
             "Waiting on a Northwest reviewer"
         // The reviewer it names sees the approval as theirs, and approves.
         taskView(northwest, gid, "siteReview", "approve").let {
-            it[WVF.facts].toJsonListOfStrings() shouldContain WFC.reviewer
+            it[WVF.facts].toJsonListOfStrings() shouldContain WFC.passesCtaFilter
+            it[WVF.canApprove] shouldBe true
             (WVF.waitingOn in it) shouldBe false
         }
         northwest.postData(GEP.workflowApprove, approve(gid))

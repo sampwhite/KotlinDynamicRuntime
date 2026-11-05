@@ -148,7 +148,7 @@ private fun placesTable(): String {
         Triple(
             "A filter a task's `${CFV.fn}` function gives",
             "Whom the task waits on while it is the workflow's next step. It narrows `${WFD.saveWhen}` and " +
-                "`${WFD.approveWhen}`, and never widens them.",
+                "`${WFD.approveWhen}`, and never widens them. Its answer for the person looking is `${WFC.passesCtaFilter}`.",
             "The request's, those the task's functions give the person looking, and `${RCF.isOwner}`: none of the " +
                 "task's or the form's, so a list of forms can test it without reading them.",
         ),

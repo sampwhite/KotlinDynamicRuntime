@@ -420,6 +420,15 @@ object WFC {
      * Rooted like its neighbors, so a client remains free to declare a cfact called plain `reviewer`.
      */
     const val reviewer = "kdr:reviewer"
+
+    /**
+     * The caller passes the task's **CTA filter rule** (issue #1595): present on every task except the workflow's CTA
+     * when its rule (`WFS.ctaFilterRule`) names someone other than this caller. The rule's evaluation for one caller,
+     * given a name of its own so that nothing has to reshape another fact to carry it: [reviewer] means only what the
+     * task's functions say, and a save, an approval, the owner-only rule, and a display branch each test this fact
+     * where the filter is meant to narrow them. Never stored, since it is about the caller.
+     */
+    const val passesCtaFilter = "kdr:passesCtaFilter"
 }
 
 /**

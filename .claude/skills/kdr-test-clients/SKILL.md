@@ -172,10 +172,13 @@ later schema rejects" test.
     `saveWhen` admits. A filter may name only facts about the person -- the request's, a cfact a `userHasLabel` on
     the **same task** emits, or `kdr:isOwner` -- and the function may read only traits the client has; the load reports anything else,
     which a unit test sees as a refused `reloadClient`. Both are stored with the CTA
-    in the workflow's state (`WFS.ctaKeyword`, `WFS.ctaFilter`, `WFS.ctaFilterLabel`) and recomputed with it.
-    **The filter narrows who may act** (issue #1595): on the CTA task a person failing it loses `kdr:reviewer` (so
-    display branches and the owner-only rule hear it), may neither save nor approve whatever `saveWhen` or
-    `approveWhen` says, and the view's task carries `WVF.waitingOn`, the filter's label. A test's reviewer therefore
+    in the workflow's state (`WFS.ctaKeyword`, `WFS.ctaFilterRule`, `WFS.ctaFilterLabel`) and recomputed with it --
+    the filter as the **rule** it is, never whether anyone passes it.
+    **The filter narrows who may act** (issue #1595): it is evaluated for each caller (`passesCtaFilterRule`) into the
+    task fact `kdr:passesCtaFilter` (`WFC.passesCtaFilter`), absent on the CTA for a person failing it, and `kdr:reviewer`
+    is left as the labels say. A person without it may neither save nor approve whatever `saveWhen` or `approveWhen`
+    says, is no reviewer of the current work to the owner-only rule or the popover (`SWF.isReviewer`), and the view's
+    task carries `WVF.waitingOn`, the filter's label. A test's reviewer therefore
     needs the label the filter names, not only `reviewer`. `CtaFilterTest` and `CtaFilterActsTest` (kdn) are the
     references.
   - **`kdr:isOwner`** (`RCF.isOwner`, issue #1595) is true for the form's owner, worked out from the row on read

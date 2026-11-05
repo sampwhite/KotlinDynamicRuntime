@@ -36,11 +36,12 @@ object SingletonWorkflows {
         client: String,
         states: List<Map<String, Any?>>,
         cfact: String,
-        rowFacts: Set<String> = emptySet(),
+        rowFacts: Set<String>,
     ): List<Map<String, Any?>> {
         val registry = WorkflowService.get(cxt).forClient(client)
         val cfacts = SchemaService.get(cxt).cfactsFor(client)
-        val requestFacts = cfacts.assemble(cxt, rowFacts)
+        // The request's facts and the caller's relation to this one form: per form, as the call is.
+        val callerFacts = cfacts.assemble(cxt) + rowFacts
         val viewer = ViewerCfacts(cxt, client)
         val fragments = MarkdownFragmentService.get(cxt)
         fun label(text: String): String = fragments.backendPass(cxt, text)
@@ -63,18 +64,23 @@ object SingletonWorkflows {
                 // -- its saves and approvals are refused -- so it is listed without an action.
                 val task = data[WFS.ctaTask].toOptStr()?.takeIf { WorkflowPhases.of(cxt, registry.client, def).calculates }?.let { def.task(it) }
                 if (task != null) {
-                    // Less the reviewer fact when the CTA's stored filter (issue #1595) does not name this caller.
-                    val viewerFacts = viewer.forCta(task, data[WFS.ctaFilter].toOptStr(), requestFacts)
+                    val viewerFacts = viewer.forTask(task)
+                    // The CTA's filter rule (issue #1595) as the state stores it, evaluated for this caller: this listing
+                    // reads state alone, so it shows who the step is for as of the last recompute. Permission (the approve
+                    // endpoint, the judge) works the rule out again from the form's data.
+                    val passes = passesCtaFilterRule(cfacts, data[WFS.ctaFilterRule].toOptStr(), callerFacts + viewerFacts)
                     val complete = data[WFS.ctaStatus].toJsonMapOrEmpty()[CDF.complete] == true
                     // The CTA's task facts, from state: available, the CTA, complete as stored, never approved.
                     val taskFacts = buildSet {
                         add(WFC.taskAvailable)
                         add(WFC.isCta)
                         if (complete) add(WFC.taskComplete)
+                        if (passes) add(WFC.passesCtaFilter)
                     }
                     out[WFS.ctaTask] = task.id
-                    out[SWF.actionText] = actionText(task, requestFacts + taskFacts + viewerFacts, cfacts::parse, ::label)
-                    out[SWF.isReviewer] = WFC.reviewer in viewerFacts
+                    out[SWF.actionText] = actionText(task, callerFacts + taskFacts + viewerFacts, cfacts::parse, ::label)
+                    // A reviewer of the current work, as the owner-only rule asks it: the functions' reviewer, and the rule.
+                    out[SWF.isReviewer] = WFC.reviewer in viewerFacts && passes
                 }
                 out
             }

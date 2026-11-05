@@ -98,11 +98,13 @@ object OwnerOnly {
                     return@any false
                 }
                 val task = data[WFS.ctaTask].toOptStr()?.let { def.task(it) } ?: return@any false
-                // A reviewer the CTA's filter does not name (issue #1595) is not a reviewer of the current work. The filter
-                // is concluded from the form's data now, as the judge and the approve endpoint conclude it: whoever may
-                // act is decided by the data as it stands, and stored state only ever shows it.
-                val filter = ctaAssignment(cxt, cfacts, workflowId, task, entries).filter
-                WFC.reviewer in viewer.forCta(task, filter, requestFacts)
+                // A reviewer of the current work: one the task's functions call a reviewer **and** who passes the CTA's
+                // filter rule (issue #1595). The rule is worked out from the form's data now, as the judge works it out,
+                // and evaluated for this caller: whoever may act is decided by the data as it stands, and stored state
+                // only ever shows it.
+                val viewerFacts = viewer.forTask(task)
+                val filterRule = ctaAssignment(cxt, cfacts, workflowId, task, entries).filterRule
+                WFC.reviewer in viewerFacts && passesCtaFilterRule(cfacts, filterRule, requestFacts + viewerFacts)
             }
     }
 }

@@ -125,14 +125,14 @@ class CtaFilterTest : StringSpec({
         reviewState(form).let {
             it[WFS.ctaTask] shouldBe "describe"
             it[WFS.ctaKeyword] shouldBe CTAK.review
-            (WFS.ctaFilter in it) shouldBe false
+            (WFS.ctaFilterRule in it) shouldBe false
         }
         // The approval carries `review` without saying so, and its filter names the region's reviewers.
         saveNotes(form)
         reviewState(form).let {
             it[WFS.ctaTask] shouldBe "approve"
             it[WFS.ctaKeyword] shouldBe CTAK.review
-            it[WFS.ctaFilter] shouldBe "reviewerNorthwest"
+            it[WFS.ctaFilterRule] shouldBe "reviewerNorthwest"
             it[WFS.ctaFilterLabel] shouldBe "Waiting on a Northwest reviewer"
         }
         // Approved, the CTA moves to the follow-up, which carries nothing.
@@ -143,7 +143,7 @@ class CtaFilterTest : StringSpec({
         reviewState(form).let {
             it[WFS.ctaTask] shouldBe "followUp"
             (WFS.ctaKeyword in it) shouldBe false
-            (WFS.ctaFilter in it) shouldBe false
+            (WFS.ctaFilterRule in it) shouldBe false
             (WFS.ctaFilterLabel in it) shouldBe false
         }
     }
@@ -153,7 +153,7 @@ class CtaFilterTest : StringSpec({
         store(client)
         val form = engagedForm(client, "northwest")
         saveNotes(form)
-        reviewState(form)[WFS.ctaFilter] shouldBe "reviewerNorthwest"
+        reviewState(form)[WFS.ctaFilterRule] shouldBe "reviewerNorthwest"
         form.owner.postData(
             GEP.patch,
             mapOf(
@@ -168,7 +168,7 @@ class CtaFilterTest : StringSpec({
             ),
         )
         reviewState(form).let {
-            it[WFS.ctaFilter] shouldBe "reviewerSouth"
+            it[WFS.ctaFilterRule] shouldBe "reviewerSouth"
             it[WFS.ctaFilterLabel] shouldBe "Waiting on a South reviewer"
         }
     }
@@ -178,13 +178,13 @@ class CtaFilterTest : StringSpec({
         store(client)
         val form = engagedForm(client, "northwest")
         saveNotes(form)
-        reviewState(form)[WFS.ctaFilter] shouldBe "reviewerNorthwest"
+        reviewState(form)[WFS.ctaFilterRule] shouldBe "reviewerNorthwest"
         // Northwest's sites go to the South's reviewers now; the stored filter stands until the state is recomputed --
         // by the form's next write, the batch job, or (here) the recompute the job runs, one form at a time.
         store(client, filters = { regions("reviewerSouth") })
-        reviewState(form)[WFS.ctaFilter] shouldBe "reviewerNorthwest"
+        reviewState(form)[WFS.ctaFilterRule] shouldBe "reviewerNorthwest"
         form.owner.postData(GEP.formDocRecomputeState, mapOf(GDF.gedraId to form.gid))
-        reviewState(form)[WFS.ctaFilter] shouldBe "reviewerSouth"
+        reviewState(form)[WFS.ctaFilterRule] shouldBe "reviewerSouth"
     }
 
     "a value no case lists falls to otherwise, so a gap in the cases never opens the approval to every reviewer" {
@@ -193,7 +193,7 @@ class CtaFilterTest : StringSpec({
         val form = engagedForm(client, "east")
         saveNotes(form)
         reviewState(form).let {
-            it[WFS.ctaFilter] shouldBe "reviewerNorthwest,reviewerSouth"
+            it[WFS.ctaFilterRule] shouldBe "reviewerNorthwest,reviewerSouth"
             it[WFS.ctaFilterLabel] shouldBe "Waiting on a reviewer of both regions"
         }
     }
@@ -203,7 +203,7 @@ class CtaFilterTest : StringSpec({
         store(client, filters = { regions("reviewerNorthwest", path = "areas") })
         val form = engagedForm(client, "", areas = listOf("east", "south"))
         saveNotes(form)
-        reviewState(form)[WFS.ctaFilter] shouldBe "reviewerSouth"
+        reviewState(form)[WFS.ctaFilterRule] shouldBe "reviewerSouth"
     }
 
     "a function reading a trait the client does not have, or without otherwise, is reported" {

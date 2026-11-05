@@ -113,10 +113,11 @@ object WorkflowApprovals {
         declared: WfDeclared,
         task: WfTask,
         /**
-         * Who else must agree (issue #1595): run under the lock once the checks above pass -- the task is the current
-         * one -- and throwing to refuse. The CTA filter's check, which only means something of the current task.
+         * Whether the caller may (issue #1595): run under the lock once the checks above pass -- the task is the current
+         * one -- with the form's state as it then stands, and throwing to refuse. The approve endpoint's judge: the
+         * approval's rule and the CTA's filter rule, which only means something of the current task.
          */
-        authorize: () -> Unit = {},
+        authorize: (current: List<Map<String, Any?>>) -> Unit = {},
     ): List<Map<String, Any?>> {
         val workflowId = declared.def.workflowId
         // The actor and the moment, taken before the owner binding -- they are who approved, not whose form it is.
@@ -148,7 +149,7 @@ object WorkflowApprovals {
                         "An approval is given once the work before it is complete.",
                 )
             }
-            authorize()
+            authorize(current)
             // After every stamp already on the engagement (issue #1267), so the approval reads as later than the
             // engagement it belongs to even inside one millisecond.
             val stamp = WorkflowEngagement.stampAfter(current, workflowId, at)
