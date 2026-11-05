@@ -598,7 +598,8 @@ val refusedKeywords: Map<String, String> = linkedMapOf(
     SCH.enum to "Declare the choices with '${SCH.options}' (the builder's option(...)); they export as 'enum'.",
     SCH.allOf to "Compose by extending a type, or declare the properties on the type itself.",
     SCH.anyOf to "Use a discriminated '${SCH.oneOf}', whose branches say which one they are.",
-    SCH.not to "Constrain what is accepted directly; a negated schema is not supported.",
+    SCH.not to "Constrain what is accepted directly; a negated schema is not supported. Inside a '${SCH.kThen}' or " +
+        "'${SCH.kElse}' clause, '${SCH.not}': {'${SCH.required}': [...]} forbids properties.",
     SCH.dependentSchemas to "Use '${SCH.kIf}'/'${SCH.kThen}'/'${SCH.kElse}' to require or forbid properties by " +
         "another's value.",
 )

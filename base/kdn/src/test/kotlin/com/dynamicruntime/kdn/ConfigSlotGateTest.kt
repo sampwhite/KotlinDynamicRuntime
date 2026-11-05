@@ -414,7 +414,7 @@ class ConfigSlotGateTest : StringSpec({
         val types = parseSchemaTypes(served[SCH.dDefs].toJsonMapOrEmpty())
         types.getValue(MSCH.nodeTypeName).properties.keys shouldBe SchMetaSchema.nodeType.properties.keys
         served[MSCH.notStated].toJsonListOfMaps().map { it[MSCH.rule] }.toSet() shouldBe
-            setOf(MSCH.closedPrefix, MSCH.refusedKeyword, MSCH.eitherOf, MSCH.unsetEntry, MSCH.placement)
+            setOf(MSCH.closedPrefix, MSCH.refusedKeyword, MSCH.eitherOf, MSCH.unsetEntry, MSCH.closeRead, MSCH.placement)
         (served[MSCH.notChecked] as List<*>).shouldNotBeEmpty()
     }
 

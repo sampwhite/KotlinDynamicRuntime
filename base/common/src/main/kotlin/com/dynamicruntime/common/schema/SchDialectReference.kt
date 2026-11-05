@@ -35,6 +35,14 @@ $${keywordSection(
         SchStdKeywords.entries, SchStdKeywords.meanings,
     )}
 
+## Standard keywords read more closely
+
+The runtime reads these too, and holds each to more than the shape of its value: what one accepts turns on the type it
+sits on, or on the keywords beside it. The parser checks each as it reads the schema, and says what is wrong in its
+own words.
+
+$${closeReadTable()}
+
 ## The runtime's own keywords
 
 A key beginning `$${SCH.gPrefix}` belongs to the runtime, and the list of them is closed. A stock JSON Schema validator
@@ -94,6 +102,14 @@ private fun keywordSection(heading: String, lead: String, shapes: Map<String, Sc
         "| `$keyword` | ${shape.described.replaceFirstChar { it.uppercase() }} | ${meanings[keyword].orEmpty()} |"
     }
     return (listOf(heading, "", lead, "", "| Keyword | Value | Meaning |", "|---|---|---|") + rows).joinToString("\n")
+}
+
+/** The standard keywords read more closely than a shape (issue #1606), each with the value it takes and its meaning. */
+private fun closeReadTable(): String {
+    val rows = SchStdKeywords.closeReads.map { (keyword, value) ->
+        "| `$keyword` | ${value.replaceFirstChar { it.uppercase() }} | ${SchStdKeywords.meanings[keyword].orEmpty()} |"
+    }
+    return (listOf("| Keyword | Value | Meaning |", "|---|---|---|") + rows).joinToString("\n")
 }
 
 /** The standard keywords refused, each with what to write instead. */

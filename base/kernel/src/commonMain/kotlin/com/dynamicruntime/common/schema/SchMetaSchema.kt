@@ -41,6 +41,12 @@ object MSCH {
     /** [rule]: a keyword whose entries may be null -- a name not set -- where the document says each is a schema. */
     const val unsetEntry = "unsetEntry"
 
+    /**
+     * [rule]: a standard keyword the parser reads more closely than a shape (issue #1606), whose value the document
+     * does not declare; [detail] is its meaning and the value it takes.
+     */
+    const val closeRead = "closeRead"
+
     /** How deep a schema body's nodes are followed. Matches the JSON nesting cap, so a parsed document cannot pass it. */
     const val maxDepth = 50
 }
@@ -129,6 +135,10 @@ object SchMetaSchema {
                     ),
                 )
             }
+            SchStdKeywords.closeReads.forEach { (keyword, value) ->
+                val meaning = SchStdKeywords.meanings[keyword].orEmpty()
+                add(rule(MSCH.closeRead, listOf(keyword), "$meaning Must be $value; the parser judges it, not the document."))
+            }
             add(
                 rule(
                     MSCH.placement, SchGKeywords.directives.sorted(),
@@ -144,8 +154,8 @@ object SchMetaSchema {
         "Whether a '${SCH.dRef}' names a type that exists, and whose namespace a type may be declared in.",
         "Whether a keyword applies to the type it sits on, and what it means there: a '${SCH.pattern}' on an " +
             "integer, a '${SCH.oneOf}' with no '${SCH.discriminator}', a bound below its partner.",
-        "The keywords read more closely than a shape: '${SCH.pattern}', '${SCH.const}', '${SCH.default}', " +
-            "'${SCH.uniqueItems}', the exclusive bounds, '${SCH.kIf}'/'${SCH.kThen}'/'${SCH.kElse}', '${SCH.discriminator}'.",
+        "What the keywords read more closely than a shape accept: " +
+            "${SchStdKeywords.closeReads.keys.joinToString(", ") { "'$it'" }}.",
         "Whether '${SCH.required}' names properties the type declares.",
         "What a client's alteration of a global type may change: it may narrow, never widen.",
         "The content of '${SCH.errors}', '${SCH.layout}' and '${SCH.options}', each with a vocabulary of its own.",
