@@ -2,6 +2,7 @@ package com.dynamicruntime.kdn
 
 import com.dynamicruntime.common.http.request.TestHttpClient
 import com.dynamicruntime.common.operator.BLD
+import com.dynamicruntime.common.operator.BuildInfo
 import com.dynamicruntime.common.operator.OPS
 import com.dynamicruntime.common.operator.OSI
 import com.dynamicruntime.common.user.TestUser
@@ -36,5 +37,9 @@ class SystemInfoBuildTest : StringSpec({
             build[OSI.commitAge] as String shouldMatch Regex("0s|\\d+[dhm]( \\d+[hm])*")
         }
         (build[OSI.branch] as String).isNotEmpty() shouldBe true
+        // Said only when true: a clean build's section has no such key at all.
+        val dirty = BuildInfo.uncommittedChanges == true
+        build.containsKey(OSI.builtWithUncommittedChanges) shouldBe dirty
+        if (dirty) build[OSI.builtWithUncommittedChanges] shouldBe true
     }
 })

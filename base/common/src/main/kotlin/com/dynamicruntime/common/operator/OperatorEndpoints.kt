@@ -54,7 +54,7 @@ object OSI {
     const val commitTime = "commitTime"
     const val commitAge = "commitAge"
     const val branch = "branch"
-    const val uncommittedChanges = "uncommittedChanges"
+    const val builtWithUncommittedChanges = "builtWithUncommittedChanges"
 
     // gc (`collect` is the request field that asks for one)
     const val collect = "collect"
@@ -132,7 +132,8 @@ private object OLB {
  *
  * `/operator/system/info` reports this node's identity, uptime, and JVM statistics, and will **request a
  * garbage collection first if asked** ([OSI.collect], off by default). Its [OSI.build] section (issue #1620) names the
- * commit the code was built from, when that commit was made, and how long ago, read from [BuildInfo].
+ * commit the code was built from, when that commit was made, and how long ago, read from [BuildInfo], and says when the
+ * build also carried uncommitted changes.
  *
  * The collection is opt-in because a full GC is a real pause: an endpoint that triggers one on every call is
  * a denial-of-service lever pointed at the deployment by anyone who can reach it, including a monitor polling
@@ -272,19 +273,24 @@ private fun formatGb(bytes: Long?): String = when {
  * The [OSI.build] section (issue #1620): the commit this node was built from, and its age as of [now] in whole minutes,
  * written as `uptimeText` is (`43m`, `2d 5h 12m`). A field the build did not record is left blank rather than left out, so the
  * section always reads the same way.
+ *
+ * The one exception is [OSI.builtWithUncommittedChanges], present only when true: then the node is not running exactly
+ * the commit named, which `kdr-deploy` allows (it names such a release `-dirty`). A clean build says nothing about it,
+ * since "false" beside a deployed node's commit tells an operator nothing.
  */
 private fun buildReport(now: Instant): Map<String, Any?> {
     val commit = BuildInfo.commit
     val commitTime = BuildInfo.commitTime
-    return linkedMapOf(
+    val report = linkedMapOf<String, Any?>(
         OSI.commit to (commit ?: ""),
         OSI.commitShort to (commit?.take(12) ?: ""),
         OSI.commitTime to (commitTime?.formatDate() ?: ""),
         // Never negative: a node whose clock is behind the commit's date reads it as just made.
         OSI.commitAge to (commitTime?.let { (now - it).inWholeMinutes.coerceAtLeast(0).minutes.toString() } ?: ""),
         OSI.branch to (BuildInfo.branch ?: ""),
-        OSI.uncommittedChanges to BuildInfo.uncommittedChanges,
     )
+    if (BuildInfo.uncommittedChanges == true) report[OSI.builtWithUncommittedChanges] = true
+    return report
 }
 
 /**
