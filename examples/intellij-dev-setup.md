@@ -49,6 +49,11 @@ Gradle ones, set the **Gradle project** to the workspace directory and the
 | `webapp (no browser, for debugging)` | Gradle | `:webapp:jsBrowserDevelopmentRun`, arguments `-Pwebapp.open=false` |
 | `webapp debug (Chrome @8080)` | JavaScript Debug | URL `http://localhost:8080`, browser Chrome |
 | `KDR app (server + webapp)` | Compound | runs `KDR server (:launch:run)` + `webapp` |
+| `KDR server (dev webapp)` | Gradle | `:launch:run`, arguments `-Pwebapp.dev=true` |
+| `webapp debug (Chrome @7070/wa)` | JavaScript Debug | URL `http://localhost:7070/wa`, browser Chrome |
+| `KDR debug (server + webapp)` | Compound | runs `KDR server (dev webapp)` + `webapp debug (Chrome @7070/wa)` |
+
+The last three are for [debugging in one launch](#one-launch-debugging-no-dev-server).
 
 The Gradle and Compound configs are plain XML. For example, `KDR server`:
 
@@ -113,6 +118,79 @@ separate debuggers, run at the same time:
 
 You then get the full loop: JS breakpoints in the browser → `fetch('/kda/…')`
 → proxied to :7070 → JVM breakpoints in the endpoint handlers.
+
+### One-launch debugging (no dev server)
+
+The flow above takes three launches. This one takes one, at the cost of live
+reload: the server embeds the development webapp bundle itself and serves it at
+`/wa`, so there is no dev server on :8080 at all.
+
+Start **`KDR debug (server + webapp)`** with **Debug**. A compound started with
+Debug debugs every configuration in it, which here is what you want:
+
+- **The server:** `:launch:run` with `-Pwebapp.dev=true`, which embeds the
+  development bundle (readable, with its source map inline) in place of the
+  production one. Server breakpoints bind as in step 1 above.
+- **The webapp:** the JavaScript Debug config opens Chrome at
+  `http://localhost:7070/wa` with the debugger attached. Breakpoints in `.kt`
+  files bind through the bundle's source map, as they do from the dev server.
+
+What to expect:
+
+- **Chrome opens before the server is up**, so the first page fails to load.
+  Refresh once the server log says it has booted.
+- **A frontend change needs a restart** of the compound: the server rebuilds and
+  embeds the bundle, about a minute. For a stretch of frontend work, the
+  three-launch flow above (or the dev server alone) is the faster loop.
+- **The first start is slower** than a normal one: the development bundle is
+  about 24 MB, against about 2 MB for the production one.
+
+The configs, as XML. `KDR server (dev webapp)` is `KDR server` with the argument:
+
+```xml
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="KDR server (dev webapp)" type="GradleRunConfiguration" factoryName="Gradle">
+    <ExternalSystemSettings>
+      <option name="externalProjectPath" value="$PROJECT_DIR$" />
+      <option name="externalSystemIdString" value="GRADLE" />
+      <option name="scriptParameters" value="-Pwebapp.dev=true" />
+      <option name="taskNames">
+        <list>
+          <option value=":launch:run" />
+        </list>
+      </option>
+    </ExternalSystemSettings>
+    <method v="2" />
+  </configuration>
+</component>
+```
+
+`webapp debug (Chrome @7070/wa)`, best created through the UI as above. Its
+`engineId` names the browser and may differ in your IDE; copy it from your own
+`webapp debug (Chrome @8080)`:
+
+```xml
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="webapp debug (Chrome @7070/wa)" type="JavascriptDebugType" engineId="98ca6316-2f89-46d9-a9e5-fa9e2b0625b3" uri="http://localhost:7070/wa">
+    <method v="2" />
+  </configuration>
+</component>
+```
+
+The compound:
+
+```xml
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="KDR debug (server + webapp)" type="CompoundRunConfigurationType">
+    <toRun name="KDR server (dev webapp)" type="GradleRunConfiguration" />
+    <toRun name="webapp debug (Chrome @7070/wa)" type="JavascriptDebugType" />
+    <method v="2" />
+  </configuration>
+</component>
+```
+
+IntelliJ picks up XML files added to `.idea/runConfigurations/` by hand, if not at
+once then after **File › Reload All from Disk**.
 
 ### Why "no browser" for the webapp while debugging
 
