@@ -5,6 +5,7 @@ import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.endpoint.HttpMethod
 import com.dynamicruntime.common.gedra.GDF
 import com.dynamicruntime.common.gedra.GEP
+import com.dynamicruntime.common.schema.LAYSTR
 import com.dynamicruntime.common.schema.SchFailure
 import com.dynamicruntime.common.schema.clearedAt
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
@@ -216,8 +217,8 @@ val NewFormPage = FC<Props> {
                 failures?.let { fs ->
                     formFailureSummary(
                         fs, appConfig().envAuthDebug, formTraitLayouts(inputType, cat.fieldLayouts),
-                        defaultSummary = "Please fix these before creating the form",
-                        defaultHint = "Fix highlighted errors in entered data before creating the form.",
+                        defaultSummary = LAYSTR.defaultCreateSummary,
+                        defaultHint = LAYSTR.defaultCreateHint,
                     )
                 }
 

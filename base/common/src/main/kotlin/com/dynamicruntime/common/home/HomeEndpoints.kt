@@ -35,6 +35,7 @@ import com.dynamicruntime.common.endpoint.HttpMethod
 import com.dynamicruntime.common.endpoint.SchModule
 import com.dynamicruntime.common.endpoint.schemaModule
 import com.dynamicruntime.common.schema.SCT
+import com.dynamicruntime.common.schema.formLayoutsMarkdown
 import com.dynamicruntime.common.schema.schemaDialectMarkdown
 import com.dynamicruntime.common.schema.validationMessagesMarkdown
 import com.dynamicruntime.common.gedra.report.reportPathsMarkdown
@@ -674,6 +675,9 @@ fun coreDocs(): List<MarkdownDocDef> = listOf(
     MarkdownDocDef(HDOC.reportPaths, "Report paths", "docs/reference/report-paths.md",
         "How a report column names where its value comes from, and every attribute a path can end in, with its kind.",
         generate = ::reportPathsMarkdown),
+    MarkdownDocDef(HDOC.formLayouts, "Form layouts", "docs/reference/form-layouts.md",
+        "What a type's layout may hold: field copy, which fields show and in what order, form wording, and a client's changes.",
+        generate = ::formLayoutsMarkdown),
     MarkdownDocDef(HDOC.clientConfiguration, "Client configuration", "docs/reference/client-configuration.md",
         "Every slot of a client's configuration, what its entries hold, and what a write or an edit of one must send.",
         generate = ::clientConfigurationMarkdown),

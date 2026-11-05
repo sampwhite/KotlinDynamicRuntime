@@ -62,7 +62,7 @@ class SchLayout(
     val fields: List<SchLayoutField>,
     /**
      * The type's **form-level strings** (issue #641): overridable copy a form shows for the type as a whole
-     * rather than for one field, keyed by [LAYSTR]. A surface holds a built-in default for each; a component
+     * rather than for one field, keyed by [LAYSTR]. Each has a default ([LAYSTR.defaults]); a component
      * sets one here on the base type and a client overrides it on their variant, so the wording a consumer sees
      * can be altered without touching the surface. Empty when the layout says nothing about them, which reads as
      * "use the built-in copy" the same way an absent field override does.
@@ -384,6 +384,54 @@ object SL {
 
     /** Every key a [choices] entry may carry. */
     val choiceKeys: Set<String> = setOf(value, label, description)
+
+    /**
+     * What each key of the block means, in a sentence or two (issue #1609): the form layouts reference prints them. A
+     * test holds this to [blockKeys], so a key added without a meaning fails rather than publishing a blank.
+     */
+    val blockMeanings: Map<String, String> = linkedMapOf(
+        schemaFields to "The fields the layout addresses, in order: one entry each, described below. Optional when the " +
+            "block names the type or introduces it; a list that is present may not be empty.",
+        label to "The type's name, on one line: the heading over the type as a whole on a form, and, for a trait's " +
+            "data type, the trait's name wherever one is shown to a person. Inline Markdown. Unset, the type's " +
+            "schema `title` names it.",
+        description to "The introduction under the heading, in Markdown: on a workflow form, shown above the type's " +
+            "fields.",
+        fragmentFileId to "The fragment file a two-part backend pull, `%{@t(\"namespace.key\")}`, resolves against.",
+        mode to "Who decides which fields the form shows, and in what order: one of the modes below. Unset is " +
+            "`${SLM.overlay}`.",
+        strings to "The form-level wording the layout overrides, by name: an object whose keys are the form strings " +
+            "below.",
+        SCH.dComment to "A note for whoever maintains the layout. Kept with the schema it sits in, never delivered to " +
+            "a page.",
+    )
+
+    /** What each key of a [schemaFields] entry means (issue #1609); held to [fieldKeys] by a test. */
+    val fieldMeanings: Map<String, String> = linkedMapOf(
+        field to "The property of the type this entry is about. Required, and one the type declares.",
+        label to "The field's label on the form, in place of the schema's `title`.",
+        description to "The field's description on the form, in place of the schema's `description`.",
+        hint to "The hint under the field, in place of the one the form derives from its bounds (`range: 1 to 10`). " +
+            "May use `\${min}` and `\${max}`, its declared bounds.",
+        errors to "The form's message for a failure against the field, keyed by its code (and `default` for any " +
+            "other), in place of the built-in wording and the schema's own `g-errors`.",
+        defaultMode to "How the form presents a value supplied for the field that nobody entered, such as a default " +
+            "from the caller's account: one of the default-value options below. Unset is `${SLDM.filled}`.",
+        required to "`true` when this form asks for the field, though the schema may not require it. Checked when a " +
+            "workflow saves, never by a general edit of the data; only adds, so `false` is refused.",
+        choices to "The choices this form offers, restated: which of the schema's choices, in what order, with the " +
+            "form's own copy for each. Each entry is described below.",
+        lines to "How many lines a long text field's box starts with, from 1 to $maxLongTextLines " +
+            "($defaultLongTextLines when unset). Only on a field the schema marks long text (`g-longText`).",
+        SCH.dComment to "A note for whoever maintains the layout, never delivered to a page.",
+    )
+
+    /** What each key of a [choices] entry means (issue #1609); held to [choiceKeys] by a test. */
+    val choiceMeanings: Map<String, String> = linkedMapOf(
+        value to "The schema's value this choice offers. Required, and one the schema offers.",
+        label to "The choice's label on this form, in place of the schema's.",
+        description to "A description shown with the choice on this form.",
+    )
 }
 
 /**
@@ -438,6 +486,12 @@ object SLDM {
 
     /** The closed set of modes; a value outside it fails the boot. */
     val values: Set<String> = setOf(filled, offer)
+
+    /** What each mode does (issue #1609); held to [values] by a test. */
+    val meanings: Map<String, String> = linkedMapOf(
+        filled to "The value is shown in the field at once, marked as one nobody entered. The default.",
+        offer to "The field stays empty, beside a button that puts the value in, as though it had been entered.",
+    )
 }
 
 /**
@@ -479,6 +533,16 @@ object SLM {
 
     /** The closed set; a value outside it fails the boot. */
     val values: Set<String> = setOf(overlay, reorder, authoritative)
+
+    /** What each mode does (issue #1609); held to [values] by a test. */
+    val meanings: Map<String, String> = linkedMapOf(
+        overlay to "The schema decides which fields show and their order; the layout only gives copy for the fields " +
+            "it lists. The default.",
+        reorder to "The fields the layout lists show first, in its order; every other field the type declares " +
+            "follows, in the schema's order. Nothing is hidden.",
+        authoritative to "Only the fields the layout lists show, in its order. The list must name every required " +
+            "field a person enters, or the form could not be saved.",
+    )
 }
 
 /**
@@ -1019,8 +1083,8 @@ fun authoritativeLayoutProblems(where: String, layout: SchLayout, type: SchType)
  * whole, not tied to a single field -- for example the wording over a validation-failure summary. Bare keys
  * inside a `g-layout` block's `strings` map (see [SL.strings]); [keys] is the closed set the parser refuses
  * anything outside of, so a component or client overrides a *known* message and a mistyped name fails the boot
- * rather than silently rendering nothing. The default copy for each lives on the surface that renders it (the
- * frontend); a layout carries only the overrides.
+ * rather than silently rendering nothing. The default copy for each is here too ([defaults], issue #1609), read by the
+ * pages that show it; a layout carries only the overrides.
  */
 @Suppress("ConstPropertyName")
 object LAYSTR {
@@ -1034,11 +1098,50 @@ object LAYSTR {
 
     /** The line a form shows when the only thing left is to accept supplied defaults (issue #710) -- how many
      *  fields were filled from the caller's account, and that saving keeps them. Templated over `${'$'}{count}` on the
-     *  frontend, which also homes the default copy; a layout carries only a client's override of the wording. */
+     *  frontend; the default copy is [defaultPrefillOne] and [defaultPrefillMany], and a layout carries only a client's
+     *  override of the wording. */
     const val prefillSummary = "prefillSummary"
 
     /** Every key a `strings` block may carry; the boot check refuses anything outside it. */
     val keys: Set<String> = setOf(formErrorSummary, formErrorHint, prefillSummary)
+
+    // The wording each string has when no layout overrides it (issue #1609): here, in the kernel, so the pages that
+    // show it and the form layouts reference that prints it read one copy.
+
+    /** [formErrorSummary] on a form that saves an existing form. */
+    const val defaultSaveSummary = "Please fix these before saving"
+
+    /** [formErrorSummary] on a form that creates one. */
+    const val defaultCreateSummary = "Please fix these before creating the form"
+
+    /** [formErrorHint] on a form that saves an existing form. */
+    const val defaultSaveHint = "Fix highlighted errors in entered data before saving."
+
+    /** [formErrorHint] on a form that creates one. */
+    const val defaultCreateHint = "Fix highlighted errors in entered data before creating the form."
+
+    /** [prefillSummary] for one field; an override is a single template over `count`, for one field or several. */
+    const val defaultPrefillOne = "1 field was filled in from your account — review and save to keep them."
+
+    /** [prefillSummary] for several fields, templated over `count`. */
+    const val defaultPrefillMany = "\${count} fields were filled in from your account — review and save to keep them."
+
+    /** What each string is (issue #1609); held to [keys] by a test. */
+    val meanings: Map<String, String> = linkedMapOf(
+        formErrorSummary to "The heading over the list of what failed, which a form shows only while the page is in " +
+            "debug.",
+        formErrorHint to "The line a form shows in place of that list when the page is not in debug: the fields at " +
+            "fault are already marked, so it points to them.",
+        prefillSummary to "The line a workflow form shows while values nobody entered are still waiting to be saved. " +
+            "A template over `\${count}`, the number of fields filled in.",
+    )
+
+    /** Each string's default wording, and where that wording applies (issue #1609); held to [keys] by a test. */
+    val defaults: Map<String, List<Pair<String, String>>> = linkedMapOf(
+        formErrorSummary to listOf("saving a form" to defaultSaveSummary, "creating one" to defaultCreateSummary),
+        formErrorHint to listOf("saving a form" to defaultSaveHint, "creating one" to defaultCreateHint),
+        prefillSummary to listOf("one field" to defaultPrefillOne, "several" to defaultPrefillMany),
+    )
 }
 
 /**
@@ -1288,71 +1391,36 @@ fun layoutTemplateProblems(where: String, layout: SchLayout, type: SchType?): Li
  * its offset in the copy. The message is the same sentence as ever, naming the type.
  */
 @Suppress("EnumEntryName")
-enum class LayoutError : ProblemCode {
-    /** A key the block, a field entry or `strings` does not know -- usually a typo. */
-    unknownKey,
-
-    /** A block with no `schemaFields` entries, which would parse clean and render nothing. */
-    noFields,
-
-    /** A `schemaFields` entry with no `field`. */
-    noFieldName,
-
-    /** A value of the wrong shape or outside its closed set: a `mode`, a `defaultMode`, a `strings` value. */
-    badValue,
-
-    /** A `g-layout` below a type's top level, where there is no type name to key it by. */
-    nestedLayout,
-
-    /** A layout on a type that did not resolve. */
-    unresolvedType,
-
-    /** A layout on a union or an array, which has no single property set to render. */
-    notAnObjectType,
-
-    /** A field the type does not declare. */
-    undeclaredField,
-
-    /** An authoritative layout leaving out a field the type may require, so the form could not be submitted. */
-    omitsRequired,
-
-    /** A field entry's `choices` on a field the schema gives no closed list of choices (issue #1022). */
-    choicesWithoutOptions,
-
-    /** A field entry's `choices` naming a value the schema does not offer (issue #1022). */
-    notAChoice,
-
-    /** A field entry's `required` on a field nobody at the form could always fill in (issue #1022). */
-    requiredUnfillable,
-
-    /** A field entry's `lines` on a field the schema does not mark long text (issue #1550). */
-    linesNotLongText,
-
-    /** Copy whose `${'$'}{…}` or `%{…}` template does not parse. */
-    malformedTemplate,
-
-    /**
-     * A frontend `${'$'}{@t}` pull, where a layout pulls with the backend `%{@t}` -- or a pull where none is allowed.
-     */
-    frontendPull,
-
-    /** A template parameter its context does not provide: `${'$'}{max}` on a field with no maximum. */
-    unknownParam,
-
-    /** A backend `%{…}` block in error copy, which delivery does not resolve. */
-    backendBlock,
-
-    /** A backend pull whose key is not a `fileId.namespace.key` reference. */
-    badPullKey,
-
-    /** A backend pull naming a fragment file that is not declared. */
-    pullFileMissing,
-
-    /** A backend pull naming a frontend fragment file. */
-    pullFromFrontendFile,
-
-    /** A backend pull naming a key its file does not have. */
-    pullKeyMissing,
+enum class LayoutError(
+    /** What the code means, in a sentence, for the form layouts reference (issue #1609). */
+    val meaning: String,
+) : ProblemCode {
+    unknownKey("A key the block, a field entry, a choice, or `strings` does not know -- usually a typo."),
+    noFields("A block that says nothing: no field entries, and no name, introduction, or strings."),
+    noFieldName("A field entry with no `field`."),
+    badValue("A value of the wrong shape, or outside its closed set: a `mode`, a `defaultMode`, a `lines`, or a `strings` value."),
+    nestedLayout("A `g-layout` below a type's top level, where there is no type name to key it by."),
+    unresolvedType("A layout on a type that did not resolve."),
+    notAnObjectType("A layout on a union or an array, which has no single set of fields to lay out."),
+    undeclaredField("A field the type does not declare."),
+    omitsRequired("An authoritative layout leaving out a field the type may require, so the form could not be saved."),
+    choicesWithoutOptions("A field entry's `choices` on a field the schema gives no closed list of choices."),
+    notAChoice("A field entry's `choices` naming a value the schema does not offer."),
+    requiredUnfillable(
+        "A field entry's `required` on a field nobody at the form could always fill in: derived, or gated by `g-visibleWhen`.",
+    ),
+    linesNotLongText("A field entry's `lines` on a field the schema does not mark long text."),
+    malformedTemplate("Copy whose `\${…}` or `%{…}` template does not parse."),
+    frontendPull("A frontend `\${@t(…)}` pull, where a layout pulls with the backend `%{@t(…)}`, or a pull where none is allowed."),
+    unknownParam("A template parameter its context does not provide: `\${max}` on a field with no maximum."),
+    backendBlock("A backend `%{…}` block in an error message, which delivery does not resolve."),
+    badPullKey(
+        "A backend pull whose key names no fragment file: neither `fileId.namespace.key`, nor `namespace.key` in a block " +
+            "with a `fragmentFileId`.",
+    ),
+    pullFileMissing("A backend pull naming a fragment file that is not declared."),
+    pullFromFrontendFile("A backend pull naming a frontend fragment file."),
+    pullKeyMissing("A backend pull naming a key its file does not have."),
 }
 
 /**

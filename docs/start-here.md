@@ -82,6 +82,8 @@ For a program, or an AI assistant, given a site's address and an API key.
    copy is kept in.
 9. **[Report paths](reference/report-paths.md),** for how a report's columns name where their values come from, and
    every attribute a path can end in.
+10. **[Form layouts](reference/form-layouts.md),** for what a type's layout may hold: each field's copy, which fields
+    a form shows and in what order, the form's wording, and how a client's layout changes the shared one.
 
 Most of this documentation was written by an AI and reviewed by people;
 [the README says why](../README.md#how-this-was-made).
