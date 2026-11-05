@@ -21,7 +21,7 @@ import com.dynamicruntime.common.schema.SCT
  * page is a *different* group -- login-required, post-authentication account management -- so it gets its own
  * UI-config endpoint and its own `profile` Markdown fragment file, per the per-group endpoint model.
  *
- * The `profile` section is login-gated (see `RequestService.userSections`), so these endpoints run with a real
+ * The `profile` section is login-gated (see `SectionAccess.userSections`), so these endpoints run with a real
  * authenticated user. Registered by the `common` component.
  */
 fun profileSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.profile") {

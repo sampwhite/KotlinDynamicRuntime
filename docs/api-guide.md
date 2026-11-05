@@ -384,5 +384,6 @@ For a client with a sandbox, the upload is a draft, like any other change. The c
 | Copy: the Markdown copy is written in, its roles, and the fragment files it is kept in | [reference/copy.md](reference/copy.md) | `/st/api/doc/copy` |
 | Report paths: how a report column names its value, and every attribute a path can end in | [reference/report-paths.md](reference/report-paths.md) | `/st/api/doc/report-paths` |
 | Form layouts: what a type's `g-layout` may hold, and how a client's layout changes the shared one | [reference/form-layouts.md](reference/form-layouts.md) | `/st/api/doc/form-layouts` |
+| Roles and access: what each role grants, who may call each section, and whose data a caller reads | [reference/roles-and-access.md](reference/roles-and-access.md) | `/st/api/doc/roles-and-access` |
 | API keys and access tokens | [api-keys-and-tokens.md](api-keys-and-tokens.md) | `/st/api/doc/api-keys-and-tokens` |
 | The conference demo: a whole client, bundle by bundle | [demo-client/README.md](demo-client/README.md) | `/st/api/doc/demo-client-README` |

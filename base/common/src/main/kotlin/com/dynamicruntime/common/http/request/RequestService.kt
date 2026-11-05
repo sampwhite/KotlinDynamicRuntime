@@ -128,120 +128,12 @@ class RequestService : ServiceInitializer {
     )
 
     /**
-     * Section → access rules. A section with no entry is served permissively, which is why every section an
-     * *endpoint* declares must appear in one of the lists below: [checkInit] refuses to start when one does
+     * Section → access rules, from [SectionAccess.rules]. A section with no entry is served permissively, which is why
+     * every section an *endpoint* declares must appear in one of its lists: [checkInit] refuses to start when one does
      * not (issue #211). That check covers endpoints only -- a content focus takes its section from a document
      * path, so its sections are open-ended and stay permissive by design.
      */
     val sectionRulesMap: MutableMap<String, SectionRules> = HashMap()
-
-    // `home`/`logout` are listed here to record what they already were: each had no entry and was therefore
-    // served anonymously, so naming them changes no behavior and only makes the decision visible.
-    //
-    // `fixture` and `demo` are the two non-application roots (issue #270), and the split is by *purpose*:
-    //
-    //  - `fixture` exists so a capability can be **exercised** -- by an automated test or by a developer by
-    //    hand. It is never shown to a client, and every endpoint under it is gated (`forTestingOnly`, or a
-    //    module that loads only in developer environments).
-    //  - `demo` exists so a **person** can see a capability work, and may be deliberately enabled for a client
-    //    as a showcase. That possibility is what earns it a grooming standard: honest verbs, real
-    //    descriptions, coherent schema.
-    //
-    // Both are anonymous, which is what they already were under their old names (`test`, `file`,
-    // `gedraSketch`). The old roots described the *gate* or the *feature*; these describe the purpose, which
-    // is the thing a reader needs and the thing that stops a fixture squatting a name a real entity will want
-    // -- `gedra` and `file` were both heading for exactly that collision.
-    val anonSections: List<String> = listOf(
-        "health", "schema", "content", "portal", "site", "auth", "app",
-        "fixture", "demo", "home", "logout",
-    )
-    // `gedra` is login-gated and nothing more: how far a caller reaches into stored gedras is a *scope*
-    // question, answered per request by `ReadScopeRules.forCaller`, so one surface serves an ordinary user
-    // and an administrator rather than the two needing separate sections (issue #310).
-    val userSections: List<String> = listOf("user", "profile", "gedra")
-
-    /**
-     * Sections requiring [ROLE.operator] **and** the [ROLE.allClients] capability -- endpoints for running the
-     * deployment rather than using it (see `OperatorEndpoints`), which are deployment-wide by nature: node
-     * identity and JVM stats, cache coherence across every client, the env-var reference, boot checks.
-     *
-     * **The capability, not the level alone, is what fences these (issue #464).** The level is a rung of
-     * [RoleLadder], so an `admin` satisfies it by ranking above `operator` -- but "admin" now includes a
-     * *client-scoped* administrator (issue #225), who runs one client's users and has no business in the
-     * deployment's operational internals. Requiring `allClients` as well ladders both such an admin and a
-     * client-confined `operator` off this surface at once: the capability closes the implication route (an
-     * admin reaching operator through the ladder) and the direct one (somebody holding `operator` outright by
-     * exact rank) with a single rule, in the same shape [adminSections] already uses.
-     *
-     * The deliberate cost is that a genuine operator now needs `allClients` granted beside the role, which
-     * makes `operator` a statement about *deployment* scope. A client-scoped operator is a different surface,
-     * not this one with a narrowed view.
-     *
-     * **The bare name means deployment-wide.** The role model draws two axes -- level ([RoleLadder]:
-     * `user` < `operator` < `admin`) and, for a privileged section, scope (deployment-wide vs. one client) --
-     * and four sections name the cells (issue #466):
-     *
-     * |            | deployment-wide (`allClients`) | one client        |
-     * | ---------- | ------------------------------ | ----------------- |
-     * | admin      | `admin`                        | `clientAdmin`     |
-     * | operator   | `operator`                     | `clientOperator`  |
-     *
-     * (`node` is also admin-gated, beside `admin` in [adminSections]; it predates the scheme and is not one of
-     * its cells. And within a client-scoped cell the caller's own scope may be narrower still -- an org within
-     * the client -- which `ReadScopeRules.forCaller` resolves per request, not the section.)
-     *
-     * `clientOperator` is now **built** (issue #488, first tenant: the cfacts reference) -- see
-     * [clientOperatorSections]. The bare `operator`/`admin` are the unmarked -- and *more* privileged -- half of
-     * each scope pair; if that reads backwards now that `clientOperator` is real, the fix is to mark both ends
-     * (`deploymentOperator`/`deploymentAdmin`), deferred because those are the two paths used most.
-     */
-    val operatorSections: List<String> = listOf(SECT.operator)
-
-    /**
-     * Sections requiring [ROLE.operator] but **confined by the caller's scope** (issue #488) -- the operator
-     * counterpart of [scopedAdminSections], one rung down. Admits an `operator` or an `admin` (the ladder ranks
-     * admin above operator) **without** [ROLE.allClients], so a client's own operator reaches it and sees only
-     * their own scope, while the deployment-wide [operatorSections] takes the capability too. The
-     * client-scoped operator cell of the grid on [operatorSections].
-     */
-    val clientOperatorSections: List<String> = listOf(SECT.clientOperator)
-
-    /**
-     * Sections requiring [ROLE.admin] **and** the [ROLE.allClients] capability -- the **full-scope**
-     * administration surface (issue #225). The level alone is not enough: an administrator confined to one
-     * client does not get a narrowed view of these endpoints, they get a different surface
-     * ([scopedAdminSections], the `clientAdmin` section). The bare name means deployment-wide; see
-     * [operatorSections] for the level x scope grid the four sections fill (issue #466).
-     *
-     * **Both, not either.** These sections originally named the capability as their required role, which made
-     * holding it sufficient on its own -- `RoleLadder.satisfies` falls back to exact membership off the
-     * ladder, so it granted the surface rather than widening it. A user demoted to `user` who kept the
-     * capability therefore retained cross-client user administration while being refused the *lesser* scoped
-     * surface, which is the wrong way round. A capability qualifies an authority; it never confers one.
-     *
-     * Since #211 the same comparison has driven the endpoint catalog, so these are also *invisible* to a caller
-     * who cannot call them -- "see" and "use" are one answer.
-     */
-    val adminSections: List<String> = listOf(SECT.node, SECT.admin)
-
-    /**
-     * Sections requiring [ROLE.admin] but **confined by the caller's scope** (issue #225) -- what a
-     * client-scoped administrator has instead of a narrowed view of [adminSections]. A caller holding
-     * [ROLE.allClients] satisfies this too and is simply unconfined, so one surface serves both.
-     *
-     * The section is `clientAdmin` (renamed from `userAdmin` in issue #466): a section names **authority** --
-     * "an administrator confined to one client's scope" -- not a topic, so it reads right for everything that
-     * belongs here, not only user administration. It is the client-scoped admin cell of the grid on
-     * [operatorSections].
-     */
-    val scopedAdminSections: List<String> = listOf(SECT.clientAdmin)
-
-    /**
-     * Sections requiring [ROLE.editor] and **confined by the caller's scope** (issue #1432): the read-only user directory,
-     * where an editor -- who sees every user of its client and administers none -- reads users. An administrator holds
-     * the role by implication (`RoleLadder.impliedBy`), so passes too; an operator does not.
-     */
-    val editorSections: List<String> = listOf(SECT.clientDirectory)
 
     @KdrPrivate
     var isInit: Boolean = false
@@ -375,23 +267,8 @@ class RequestService : ServiceInitializer {
         if (isInit) {
             return
         }
-        for (s in anonSections) sectionRulesMap[s] = SectionRules(s, needsLogin = false, requiredRole = null)
-        for (s in userSections) sectionRulesMap[s] = SectionRules(s, needsLogin = true, requiredRole = ROLE.user)
-        // Reads, but only reads, that reached the node without a proxy need no login (issue #1255): whoever can make
-        // one is already on the node or inside its network. The section's POSTs still take the roles.
-        for (s in operatorSections) sectionRulesMap[s] = SectionRules(
-            s, needsLogin = true, requiredRole = ROLE.operator, requiredCapability = ROLE.allClients,
-            directReads = true,
-        )
-        for (s in scopedAdminSections) sectionRulesMap[s] = SectionRules(s, needsLogin = true, requiredRole = ROLE.admin)
-        for (s in editorSections) sectionRulesMap[s] = SectionRules(s, needsLogin = true, requiredRole = ROLE.editor)
-        // Operator level, no capability: an operator or admin confined to their own scope (issue #488).
-        for (s in clientOperatorSections) sectionRulesMap[s] = SectionRules(s, needsLogin = true, requiredRole = ROLE.operator)
-        for (s in adminSections) {
-            sectionRulesMap[s] = SectionRules(
-                s, needsLogin = true, requiredRole = ROLE.admin, requiredCapability = ROLE.allClients,
-            )
-        }
+        // The rules are a code constant (`SectionAccess`), so the roles and access reference is made from them too.
+        sectionRulesMap.putAll(SectionAccess.rules)
 
         // Read once, so a value naming no mode refuses the start rather than the first request.
         directAccess = DirectAccess.mode(cxt.instanceConfig)
@@ -462,10 +339,9 @@ class RequestService : ServiceInitializer {
         if (unruled.isNotEmpty()) {
             throw KdrException(
                 "Refusing to start: the endpoint section(s) ${unruled.joinToString(", ") { "'$it'" }} have no " +
-                    "access rules, so they would be served to anyone. Add each to anonSections, userSections, " +
-                    "operatorSections, clientOperatorSections, scopedAdminSections or adminSections in " +
-                    "RequestService -- a client-scoped surface goes in a client* list, not the deployment-wide " +
-                    "one (which requires the allClients capability).",
+                    "access rules, so they would be served to anyone. Add each to one of SectionAccess's lists -- a " +
+                    "client-scoped surface goes in a client* or editor list, not the deployment-wide one (which " +
+                    "requires the allClients capability).",
             )
         }
 
@@ -524,7 +400,7 @@ class RequestService : ServiceInitializer {
         // shortcuts that a bundle write or patch already covers. What the rule still keeps publicApi out of is the
         // deployment-wide and internal sections (admin, operator, node, clientOperator), where a published mark
         // would hide the very thing the audit exists to surface.
-        val publishableSections = userSections + listOf("auth", SECT.clientAdmin)
+        val publishableSections = SectionAccess.userSections + listOf("auth", SECT.clientAdmin)
         val published = cxt.getGlobalSchema().endpoints.values.filter { it.publicApi }
         val misplaced = published.filter { sectionOf(it.path) !in publishableSections }.map { it.path }.sorted()
         if (misplaced.isNotEmpty()) {

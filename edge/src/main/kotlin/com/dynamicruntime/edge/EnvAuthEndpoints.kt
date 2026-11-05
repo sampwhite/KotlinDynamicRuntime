@@ -28,7 +28,7 @@ object EAEP {
     /**
      * Where a browser posts the Google credential.
      *
-     * Under the **`auth`** section, which `RequestService.anonSections` already serves anonymously -- so this
+     * Under the **`auth`** section, which `SectionAccess.anonSections` already serves anonymously -- so this
      * needs no change to `base/common` and no new section. Deliberately *not* the application's
      * `/auth/login/google`: until role profiling lands, an edge still loads the application's auth endpoints,
      * and two logins answering the same path would be indistinguishable to a caller.

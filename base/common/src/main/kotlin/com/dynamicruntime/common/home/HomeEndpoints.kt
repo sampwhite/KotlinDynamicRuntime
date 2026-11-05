@@ -36,6 +36,7 @@ import com.dynamicruntime.common.endpoint.SchModule
 import com.dynamicruntime.common.endpoint.schemaModule
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.formLayoutsMarkdown
+import com.dynamicruntime.common.user.rolesAndAccessMarkdown
 import com.dynamicruntime.common.schema.schemaDialectMarkdown
 import com.dynamicruntime.common.schema.validationMessagesMarkdown
 import com.dynamicruntime.common.gedra.report.reportPathsMarkdown
@@ -678,6 +679,9 @@ fun coreDocs(): List<MarkdownDocDef> = listOf(
     MarkdownDocDef(HDOC.formLayouts, "Form layouts", "docs/reference/form-layouts.md",
         "What a type's layout may hold: field copy, which fields show and in what order, form wording, and a client's changes.",
         generate = ::formLayoutsMarkdown),
+    MarkdownDocDef(HDOC.rolesAndAccess, "Roles and access", "docs/reference/roles-and-access.md",
+        "What each role grants, who may call each section of the API, whose data a caller reads, and how to ask why not.",
+        generate = ::rolesAndAccessMarkdown),
     MarkdownDocDef(HDOC.clientConfiguration, "Client configuration", "docs/reference/client-configuration.md",
         "Every slot of a client's configuration, what its entries hold, and what a write or an edit of one must send.",
         generate = ::clientConfigurationMarkdown),

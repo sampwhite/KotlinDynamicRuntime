@@ -10,7 +10,7 @@ import com.dynamicruntime.common.http.request.SECT
 
 /**
  * **Full-scope** admin endpoint paths (before the API context root is prepended). Every one sits under the
- * `admin` *section*, which `RequestService.adminSections` gates on
+ * `admin` *section*, which `SectionAccess.adminSections` gates on
  * [com.dynamicruntime.common.http.request.ROLE.allClients] -- the path prefix is the access control, so an
  * endpoint added here reaches every client by construction (issue #225).
  *

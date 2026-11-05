@@ -36,7 +36,7 @@ import com.dynamicruntime.common.util.toOptStr
  * enabled state.
  *
  * Access control is the path itself, and this module is built **twice** under two sections (see
- * [scopedUserAdminSchema]): the full-scope `admin` section, which `RequestService.adminSections` gates on
+ * [scopedUserAdminSchema]): the full-scope `admin` section, which `SectionAccess.adminSections` gates on
  * [ROLE.admin] **and** the [ROLE.allClients] capability (issue #464), and the `clientAdmin` section, gated on
  * [ROLE.admin] alone and confined to the caller's scope. So a handler can assume an authenticated administrator
  * and never repeats the section check -- but it must **not** assume full scope: every read passes

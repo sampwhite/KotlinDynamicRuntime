@@ -33,7 +33,8 @@ fun endpointIndexMarkdown(
     sb.append(
         "Each endpoint's input and output schema is in the endpoint catalog, `GET ${PTL.endpointsApi}` (one " +
             "endpoint by its path and method at `GET /schema/endpoint`), which lists only what the caller may call. " +
-            "To ask a test node, or a session in env debug, why an endpoint is withheld, add `_debug=explainAccess`.\n\n",
+            "To ask a test node, or a session in env debug, why an endpoint is withheld, add `_debug=explainAccess`. " +
+            "What each role reaches, and whose data each caller reads, is in [Roles and access](roles-and-access.md).\n\n",
     )
     sb.append("The notes on an endpoint:\n\n")
     sb.append("- **Per client**: it has a copy for each client at a path naming the client, `/gedra/<client>/...` " +

@@ -39,11 +39,13 @@ API, change its skill in the same edit — the test will tell you which one, and
 source, so a wrong one is followed rather than noticed.
 
 **What exists — every schema keyword, form layout key, validation code, fact, expression function, copy role, report
-path attribute, configuration slot, environment variable, and endpoint — is in [`docs/reference/`](docs/reference/)**,
-as copies of reference documents generated from the code (issues #1603, #1607, #1608, #1609). Read them there rather
-than inferring a list from source: to find the endpoint for a job, and who may call it, start at
-[`endpoints.md`](docs/reference/endpoints.md). A skill says how to use what they list. When a change alters one, `check`
-fails until `./gradlew :launch:refDocsDump` rewrites the copy, which is then committed with the change.
+path attribute, configuration slot, environment variable, endpoint, role, and section — is in
+[`docs/reference/`](docs/reference/)**, as copies of reference documents generated from the code (issues #1603, #1607,
+#1608, #1609, #1610). Read them there rather than inferring a list from source: to find the endpoint for a job, and who
+may call it, start at [`endpoints.md`](docs/reference/endpoints.md), and for what a role or a read scope reaches,
+[`roles-and-access.md`](docs/reference/roles-and-access.md). A skill says how to use what they list. When a change
+alters one, `check` fails until `./gradlew :launch:refDocsDump` rewrites the copy, which is then committed with the
+change.
 
 ## Before a pull request
 
