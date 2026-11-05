@@ -151,17 +151,19 @@ class OperatorRoleTest : StringSpec({
     "no collection happens unless one is asked for" {
         val operator = TestUser.createOperator(cxt, "nogc-op@example.com")
 
-        val gc = operator.getData(systemInfo)[OSI.gc].toJsonMapOrEmpty()
-        gc[OSI.requested] shouldBe false
-        // Nothing ran, so there is no before/after to report -- a `freed` of 0 would claim a collection did.
-        gc.containsKey(OSI.freed) shouldBe false
-        gc.containsKey(OSI.durationMs) shouldBe false
+        // Nothing ran, so there is no gc block at all (#1620) -- a `freed` of 0 would claim a collection did, and
+        // `requested: false` alone drew an empty panel on the System info page.
+        operator.getData(systemInfo).containsKey(OSI.gc) shouldBe false
     }
 
     "collect=true requests a collection and reports what it reclaimed" {
         val operator = TestUser.createOperator(cxt, "gc-op@example.com")
 
-        val gc = operator.getData(systemInfo, mapOf(OSI.collect to true))[OSI.gc].toJsonMapOrEmpty()
+        val info = operator.getData(systemInfo, mapOf(OSI.collect to true))
+        // The collection's result reads beside the collectors' totals (#1620).
+        val keys = info.keys.toList()
+        keys.indexOf(OSI.gcCollectors) shouldBe keys.indexOf(OSI.gc) + 1
+        val gc = info[OSI.gc].toJsonMapOrEmpty()
         gc[OSI.requested] shouldBe true
 
         // The JVM may ignore the request, so `freed` is not asserted to be positive -- but the readings that

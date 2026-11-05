@@ -301,16 +301,18 @@ private fun buildReport(now: Instant): Map<String, Any?> {
  * do). So the report says [OSI.requested] rather than claiming a collection happened, and the before/after
  * heap readings are what actually shows whether anything came of it.
  *
- * When nothing was asked for, the `gc` block is just `requested: false`: reporting a `freed` of zero would
- * read as "a collection ran and reclaimed nothing", which is a different fact. The heap figures are in
- * [OSI.memory] either way. The collection happens before the statistics are read, so they describe the VM
- * *after* it.
+ * When nothing was asked for there is no `gc` block at all: reporting a `freed` of zero would read as "a
+ * collection ran and reclaimed nothing", which is a different fact, and a block saying only `requested: false`
+ * drew a panel with nothing in it on the System info page, which never asks for one (#1620). When there is one,
+ * it sits just before [OSI.gcCollectors], so the collection's result reads beside the collectors' totals. The
+ * heap figures are in [OSI.memory] either way. The collection happens before the statistics are read, so they
+ * describe the VM *after* it.
  */
 private fun systemInfo(cxt: KdrCxt, collect: Boolean): Map<String, Any?> {
     val node = NodeService.get(cxt)
     val memoryBean = ManagementFactory.getMemoryMXBean()
 
-    val gcReport: Map<String, Any?> = if (collect) {
+    val gcReport: Map<String, Any?>? = if (collect) {
         val heapBefore = memoryBean.heapMemoryUsage.used
         val gcStart = System.nanoTime()
         System.gc()
@@ -324,7 +326,7 @@ private fun systemInfo(cxt: KdrCxt, collect: Boolean): Map<String, Any?> {
             OSI.durationMs to gcMillis,
         )
     } else {
-        linkedMapOf(OSI.requested to false)
+        null
     }
 
     val now = cxt.now()
@@ -347,7 +349,6 @@ private fun systemInfo(cxt: KdrCxt, collect: Boolean): Map<String, Any?> {
             OSI.uptimeText to uptime.inWholeSeconds.seconds.toString(),
         ),
         OSI.build to buildReport(now),
-        OSI.gc to gcReport,
         OSI.runtime to linkedMapOf(
             OSI.vmName to runtimeBean.vmName,
             OSI.vmVendor to runtimeBean.vmVendor,
@@ -389,6 +390,9 @@ private fun systemInfo(cxt: KdrCxt, collect: Boolean): Map<String, Any?> {
             OSI.availableProcessors to osBean.availableProcessors,
             OSI.systemLoadAverage to osBean.systemLoadAverage,
         ),
+    ).apply {
+        if (gcReport != null) put(OSI.gc, gcReport)
+    } + linkedMapOf(
         OSI.gcCollectors to ManagementFactory.getGarbageCollectorMXBeans().map { collector ->
             linkedMapOf(
                 OSI.name to collector.name,
