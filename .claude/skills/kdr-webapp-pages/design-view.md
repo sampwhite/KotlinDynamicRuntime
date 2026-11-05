@@ -12,7 +12,11 @@ no switch to turn it off. The page owns the toggle (`useDesignViewSwitch`, passe
 flipping it redraws that page and re-reads its view in place, without the app-wide refresh. In the annotated view each trait
 block and field is outlined on hover with its id, a click opens a side inspector (`DesignInspector.kt`) with the
 definition behind it, where it was declared, and its authored JSON, and the fields the form leaves out are drawn
-as hatched ghosts saying why. A field's copy -- label, description, hint -- can be edited there as **this workflow's
+as hatched ghosts saying why. The inspector's left edge drags it wider (issue #1617, `InspectorResizeHandle`): the
+grip sets `--dv-panel-width` on the page root, which the room the page makes reads too, held by `inspectorWidthFor` to
+leave the form 480px; the arrow keys move it while focused, a double-click restores the default, and the width is
+remembered per browser. Its JSON blocks are read-only text areas, starting at their lines up to sixteen
+(`jsonBlockRowsFor`), that drag taller. A field's copy -- label, description, hint -- can be edited there as **this workflow's
 own** (issue #984, `WorkflowCopyEditor`): the edit is written into the workflow's stored definition as an alteration
 of the field's type, shows on that workflow's pages only, and **Reset to shared** removes it. It is offered only
 where the workflow is the client's own configured definition; elsewhere the inspector says why, from the block's

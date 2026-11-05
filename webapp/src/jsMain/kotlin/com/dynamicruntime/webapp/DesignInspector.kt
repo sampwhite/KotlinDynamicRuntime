@@ -33,7 +33,6 @@ import react.dom.html.ReactHTML.div
 import react.dom.html.ReactHTML.h2
 import react.dom.html.ReactHTML.h3
 import react.dom.html.ReactHTML.p
-import react.dom.html.ReactHTML.pre
 import react.dom.html.ReactHTML.span
 import react.dom.html.ReactHTML.summary
 import react.dom.html.ReactHTML.textarea
@@ -229,6 +228,8 @@ val DesignInspector = FC<DesignInspectorProps> { props ->
     aside {
         className = ClassName("dv-inspector")
         asDynamic()["aria-label"] = "Design view inspector"
+        // Its left edge drags it wider (issue #1617).
+        InspectorResizeHandle()
         div {
             className = ClassName("dv-inspector-head")
             span {
@@ -600,9 +601,15 @@ private fun ChildrenBuilder.jsonBlock(caption: String?, value: Any?) {
             +it
         }
     }
-    pre {
+    // A read-only text area rather than a `pre` (issue #1617), so its grip drags it taller: it starts at its lines, up
+    // to [DVI.jsonRows], and its lines never wrap, so each counts as one.
+    val text = value.toJsonStr()
+    textarea {
         className = ClassName("dv-json")
-        +value.toJsonStr()
+        readOnly = true
+        wrap = "off"
+        rows = jsonBlockRowsFor(text)
+        this.value = text
     }
 }
 
