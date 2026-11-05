@@ -128,16 +128,29 @@ object ClientExtension {
      * What [template] supplies of [child]'s definition by [mergeDef] (issue #1621), by [CLD] key, so a page can say
      * which values in force are the template's: each of `webResourcesId`, the session lifetime and the refresh
      * interval that [child] leaves unset and [template] sets, and the template's `includedTraits` and `userLabels`
-     * that [child] does not name itself. [child] is the client's own definition, before the merge. Kept beside
-     * [mergeDef], and held to it by a test, so the two cannot disagree.
+     * that [child] does not name itself. [child] is the client's own definition as [mergeDef] was handed it.
+     *
+     * Only what [running] -- the definition the client runs once the checks are done -- still holds is the template's:
+     * a check that drops a filled-in value (a session lifetime past the deployment's limit, a package no component
+     * ships, an entry naming no trait) leaves nothing of the template's to show. `ClientCheck` records it at the merge
+     * (`ClientCheckResult.templateFills`), so the two cannot disagree.
      */
-    fun templateFills(child: ClientDef, template: ClientDef): Map<String, Any?> = buildMap {
-        if (child.webResourcesId == null) template.webResourcesId?.let { put(CLD.webResourcesId, it) }
-        if (child.sessionHours == null) template.sessionHours?.let { put(CLD.sessionHours, it) }
-        if (child.refreshIntervalSeconds == null) template.refreshIntervalSeconds?.let { put(CLD.refreshIntervalSeconds, it) }
-        template.includedTraits.filterNot { it in child.includedTraits }.ifEmpty { null }?.let { put(CLD.includedTraits, it) }
-        template.userLabels.filterNot { it in child.userLabels }.ifEmpty { null }?.let { put(CLD.userLabels, it) }
-    }
+    fun templateFills(child: ClientDef, template: ClientDef, running: ClientDef = mergeDef(child, template)): Map<String, Any?> =
+        buildMap {
+            fun scalar(key: String, own: Any?, theirs: Any?, runs: Any?) {
+                if (own == null && theirs != null && runs == theirs) put(key, theirs)
+            }
+            scalar(CLD.webResourcesId, child.webResourcesId, template.webResourcesId, running.webResourcesId)
+            scalar(CLD.sessionHours, child.sessionHours, template.sessionHours, running.sessionHours)
+            scalar(
+                CLD.refreshIntervalSeconds, child.refreshIntervalSeconds, template.refreshIntervalSeconds,
+                running.refreshIntervalSeconds,
+            )
+            template.includedTraits.filter { it !in child.includedTraits && it in running.includedTraits }.ifEmpty { null }
+                ?.let { put(CLD.includedTraits, it) }
+            template.userLabels.filter { it !in child.userLabels && it in running.userLabels }.ifEmpty { null }
+                ?.let { put(CLD.userLabels, it) }
+        }
 
     /**
      * The name a clone of [template]'s config [name] is filed under in the extending client: prefixed, so a client

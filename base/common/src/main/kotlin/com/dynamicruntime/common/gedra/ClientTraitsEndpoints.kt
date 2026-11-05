@@ -93,11 +93,15 @@ object ClientTraitsEdit {
             // Their copy resolved as every delivered layout's is, so a preview reads words, not fragment pulls.
             put(CIT.layouts, resolveDeliveredLayouts(cxt.mkSubContext("traitLayouts", owner), schema.schemaStore.layoutsFor(defs)))
             val clients = ClientService.get(cxt)
-            clients.known(owner)?.let(::groupsRefusal)?.let { put(CIT.groupsRefused, it) }
-            // What its template includes is the client's too (issue #1621), whatever the client stores.
-            clients.known(owner)?.extendsFromClientId?.let { template ->
+            val ownerDef = clients.known(owner)
+            ownerDef?.let(::groupsRefusal)?.let { put(CIT.groupsRefused, it) }
+            // What its template includes is the client's too (issue #1621), whatever the client stores: its entries,
+            // and under a group every global trait listed here by id, so the page need not know what the group holds.
+            ownerDef?.extendsFromClientId?.let { template ->
+                val included = clients.known(template)?.includedTraits.orEmpty()
+                val byGroup = if (CLD.allGlobal in included) globalTraits.map { it.traitId } else emptyList()
                 put(CIT.template, template)
-                put(CIT.templateIncluded, clients.known(template)?.includedTraits.orEmpty())
+                put(CIT.templateIncluded, (included + byGroup).distinct())
             }
             // The client's own traits, for the traits editor (issue #1118), and the plan's limits it is held to.
             put(CIT.ownTraits, ClientTraitDesignEdit.ownTraits(cxt, owner))
@@ -262,7 +266,7 @@ internal fun SchModuleBuilder.clientTraitsEndpoints() {
         property(
             CIT.templateIncluded,
             "With template: the traits the template includes, which the client includes too whatever it stores -- trait ids, " +
-                "and a group such as ${CLD.allGlobal}.",
+                "and a group such as ${CLD.allGlobal}, followed by each global trait it holds.",
         ) {
             type = SCT.array
             items { type = SCT.string }

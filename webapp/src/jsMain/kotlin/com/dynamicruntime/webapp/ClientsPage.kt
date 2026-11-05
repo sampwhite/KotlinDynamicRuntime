@@ -830,7 +830,7 @@ private val DefinitionEditor = FC<DefinitionEditorProps> { props ->
                     }
                     ClientPresentationFields.Kind.number -> textField(
                         label, draft[name].orEmpty(), disabled = busy,
-                        placeholder = platformDefaultText(name, props.platformDefaults, props.template, props.templateFills.orEmpty()),
+                        placeholder = unsetValueText(name, props.platformDefaults, props.template, props.templateFills.orEmpty()),
                     ) { v -> set(v) }
                     else -> textField(label, draft[name].orEmpty(), disabled = busy) { v -> set(v) }
                 }

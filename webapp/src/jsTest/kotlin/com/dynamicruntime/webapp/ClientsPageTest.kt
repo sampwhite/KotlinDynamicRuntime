@@ -905,11 +905,16 @@ class ClientsPageTest {
         assertTrue(rows.getValue("Web resources").endsWith("(from template starterkit)"))
         assertEquals(
             "From template starterkit: 1 day",
-            platformDefaultText(CLD.sessionHours, def.platformDefaults, def.template, def.templateFills),
+            unsetValueText(CLD.sessionHours, def.platformDefaults, def.template, def.templateFills),
         )
         assertEquals(
             "Platform default: 30 seconds",
-            platformDefaultText(CLD.refreshIntervalSeconds, def.platformDefaults, def.template, def.templateFills),
+            unsetValueText(CLD.refreshIntervalSeconds, def.platformDefaults, def.template, def.templateFills),
+        )
+        // The deployment's limit holds a value whoever supplies it, so the template's placeholder says it too.
+        assertEquals(
+            "From template starterkit: 1 day; at most 30 days",
+            unsetValueText(CLD.sessionHours, def.platformDefaults + (CLD.maxSessionHours to 720), def.template, def.templateFills),
         )
         // A client on no template has no note.
         val plain = parseClientDefinition(mapOf(CLD.client to mapOf(CLD.clientId to "acme"), CLD.present to true))
@@ -927,11 +932,11 @@ class ClientsPageTest {
         assertEquals("30 seconds (platform default)", inForceText(CLD.refreshIntervalSeconds, emptyMap(), defaults))
         assertEquals("2 minutes", inForceText(CLD.refreshIntervalSeconds, mapOf(CLD.refreshIntervalSeconds to 120), defaults))
         assertEquals("\u2014", inForceText(CLD.sessionHours, emptyMap(), emptyMap()))
-        assertEquals("Platform default: 30 days", platformDefaultText(CLD.sessionHours, defaults))
+        assertEquals("Platform default: 30 days", unsetValueText(CLD.sessionHours, defaults))
         // With the limit known, the session lifetime's placeholder says it too; the refresh interval's has none.
         val withLimit = defaults + (CLD.maxSessionHours to 720)
-        assertEquals("Platform default: 30 days; at most 30 days", platformDefaultText(CLD.sessionHours, withLimit))
-        assertEquals("Platform default: 30 seconds", platformDefaultText(CLD.refreshIntervalSeconds, withLimit))
+        assertEquals("Platform default: 30 days; at most 30 days", unsetValueText(CLD.sessionHours, withLimit))
+        assertEquals("Platform default: 30 seconds", unsetValueText(CLD.refreshIntervalSeconds, withLimit))
         // The summary says so; the refresh interval a client's own administrator cannot change is marked when the
         // client sets one, and a platform default is not.
         val item = mapOf(

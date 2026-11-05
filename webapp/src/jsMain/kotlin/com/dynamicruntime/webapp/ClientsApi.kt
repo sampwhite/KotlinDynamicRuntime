@@ -1059,22 +1059,20 @@ fun numberFieldText(name: String, value: Int): String =
 
 /**
  * What an unset [name] takes, as the editor's placeholder says it: the platform default ("Platform default: 2 days"),
- * with the session lifetime's limit when [defaults] has it ("Platform default: 2 days; at most 30 days") -- or, for a
- * client whose [template] sets it (issue #1621), the template's ("From template starterkit: 1 day"), as [templateFills]
- * has it. Null when neither is known. Pure.
+ * or, for a client whose [template] sets it (issue #1621), the template's ("From template starterkit: 1 day"), as
+ * [templateFills] has it -- either followed by the session lifetime's limit when [defaults] has it ("; at most 30
+ * days"), which holds whoever supplies the value. Null when neither is known. Pure.
  */
-fun platformDefaultText(
+fun unsetValueText(
     name: String,
     defaults: Map<String, Int>,
     template: String? = null,
     templateFills: Map<String, Any?> = emptyMap(),
 ): String? {
+    val most = defaults[CLD.maxSessionHours]?.takeIf { name == CLD.sessionHours }?.let { "; at most ${hoursText(it)}" }.orEmpty()
     val fromTemplate = (templateFills[name] as? Number)?.takeIf { template != null }
-    if (fromTemplate != null) return "From template $template: ${numberFieldText(name, fromTemplate.toInt())}"
-    return defaults[name]?.let { value ->
-        val most = defaults[CLD.maxSessionHours]?.takeIf { name == CLD.sessionHours }?.let { "; at most ${hoursText(it)}" }.orEmpty()
-        "Platform default: ${numberFieldText(name, value)}$most"
-    }
+    if (fromTemplate != null) return "From template $template: ${numberFieldText(name, fromTemplate.toInt())}$most"
+    return defaults[name]?.let { "Platform default: ${numberFieldText(name, it)}$most" }
 }
 
 /**
@@ -1085,12 +1083,9 @@ fun platformDefaultText(
 fun templateFillNote(name: String, def: ClientDefinitionView?): String? {
     val template = def?.template ?: return null
     val filled = def.templateFills[name] ?: return null
-    return if (filled is List<*> || filled is Array<*>) {
-        val entries = def.templateFills[name].toJsonListOfStrings().ifEmpty { return null }
-        "(from template $template: ${entries.joinToString(", ")})"
-    } else {
-        "(from template $template)"
-    }
+    if (filled !is List<*>) return "(from template $template)"
+    val entries = filled.toJsonListOfStrings().ifEmpty { return null }
+    return "(from template $template: ${entries.joinToString(", ")})"
 }
 
 /**

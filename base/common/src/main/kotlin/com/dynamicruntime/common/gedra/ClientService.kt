@@ -59,6 +59,10 @@ class ClientService : ServiceInitializer {
     var customers: Map<String, KeptCustomer> = emptyMap()
         private set
 
+    /** What each client's template supplies of the definition it runs (issue #1621); read through [templateFills]. */
+    @Volatile
+    private var fills: Map<String, Map<String, Any?>> = emptyMap()
+
     /** Client definitions that did not hold up. Empty unless a production node degraded; see [checkClientDefs]. */
     var issues: List<GedraConfigIssue> = emptyList()
         private set
@@ -162,20 +166,12 @@ class ClientService : ServiceInitializer {
         ?: collector?.gedraConfigs?.configs?.firstNotNullOfOrNull { it.client?.takeIf { d -> d.clientId == clientId } }
 
     /**
-     * What [clientId]'s template supplies of the definition it runs ([ClientExtension.templateFills], issue #1621), by
-     * [CLD] key: empty for a client built on none. Judged against the client's own declaration, before the merge -- a
-     * sandbox's being its parent's, whose definition it copies.
+     * What [clientId]'s template supplies of the definition it runs ([ClientCheckResult.templateFills], issue #1621), by
+     * [CLD] key: empty for a client built on none. A sandbox not declared apart is told its parent's, whose definition
+     * it copies.
      */
-    fun templateFills(clientId: String): Map<String, Any?> {
-        val def = known(clientId) ?: return emptyMap()
-        val template = def.extendsFromClientId?.let { known(it) } ?: return emptyMap()
-        val own = ownDeclaration(clientId) ?: sandboxParentOf(clientId)?.let { ownDeclaration(it) } ?: def
-        return ClientExtension.templateFills(own, template)
-    }
-
-    /** [clientId]'s definition as the first config declaring it holds it: the client's own, before a template's merge. */
-    private fun ownDeclaration(clientId: String): ClientDef? =
-        collector?.gedraConfigs?.configs?.firstNotNullOfOrNull { it.client?.takeIf { d -> d.clientId == clientId } }
+    fun templateFills(clientId: String): Map<String, Any?> =
+        fills[clientId] ?: sandboxParentOf(clientId)?.let { fills[it] } ?: emptyMap()
 
     /**
      * Every client a kept config declares, as the first such config declares it, whether or not a check kept the
@@ -251,6 +247,7 @@ class ClientService : ServiceInitializer {
         val result = checkClientDefs(cxt, collected.gedraConfigs)
         clients = result.clients
         customers = result.customers
+        fills = result.templateFills
         issues = result.issues
         val present = presentClients.map { it.clientId }
         LogStartup.info(
@@ -295,6 +292,7 @@ class ClientService : ServiceInitializer {
     fun commit(client: String, result: ClientCheckResult) {
         clients = result.clients
         customers = result.customers
+        fills = result.templateFills
         issues = issues.filter { it.client != client } + result.issues
     }
 

@@ -71,7 +71,10 @@ class TraitCatalogView(
     val layouts: Map<String, SchLayout> = emptyMap(),
     /** The template the client is built on (issue #1621), or null for none. */
     val template: String? = null,
-    /** With [template]: what the template includes -- trait ids, and [CLD.allGlobal] -- which the client includes too. */
+    /**
+     * With [template]: what the template includes -- trait ids, and [CLD.allGlobal] followed by each global trait it
+     * holds -- which the client includes too.
+     */
     val templateIncluded: List<String> = emptyList(),
 ) {
     /** Whether the template includes every global trait, so the switch for them is on whatever the client stores. */
@@ -124,7 +127,8 @@ fun parseTraitCatalog(raw: Map<String, Any?>): TraitCatalogView {
                 name = it[CIT.label].toOptStr(),
                 namePulled = it[CIT.namePulled] == true,
                 introPulled = it[CIT.introPulled] == true,
-                includedBy = template?.takeIf { traitId in templateIncluded || CLD.allGlobal in templateIncluded },
+                // By id only: the catalog lists each global trait a group of the template holds (issue #1621).
+                includedBy = template?.takeIf { traitId in templateIncluded },
             )
         },
         defs = raw[SCH.dDefs].toJsonMapOrEmpty(),

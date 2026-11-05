@@ -43,8 +43,9 @@ object CIT {
     const val template = "template"
 
     /**
-     * With [template]: the traits the template includes -- trait ids, and a group such as `#allGlobal` -- which the
-     * client includes too, by its template, so the picker draws them included and a save need not store them.
+     * With [template]: the traits the template includes -- trait ids, and a group such as `#allGlobal`, followed by
+     * each global trait the group holds, by id -- which the client includes too, by its template, so the picker draws
+     * them included and a save need not store them.
      */
     const val templateIncluded = "templateIncluded"
 

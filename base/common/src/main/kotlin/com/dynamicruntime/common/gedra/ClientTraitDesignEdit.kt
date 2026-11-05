@@ -98,8 +98,8 @@ object ClientTraitDesignEdit {
                 t.read.notEditable?.let { put(CIT.notEditable, it) }
             }
         }
-        val copied = templateTraitIds(cxt, owner)
         val running = runningOwnTraitIds(cxt, owner).filterNot { it in stored }
+        val copied = templateTraitIds(cxt, owner, running)
         val inSource = running.filterNot { it in copied }.map {
             mapOf(CIT.traitId to it, CIT.notEditable to "It is declared in code, where it is edited.")
         }
@@ -117,14 +117,13 @@ object ClientTraitDesignEdit {
     }
 
     /**
-     * The traits [client] runs from its template's copies (`ClientExtension.clones`), each to the template: what the
-     * client has not replaced with one of its own.
+     * Which of [traitIds], traits [client] runs, are its template's copies (`ClientExtension.clones`), each to the
+     * template: read from the config declaring each, so a trait the client replaced with its own is not one.
      */
-    private fun templateTraitIds(cxt: KdrCxt, client: String): Map<String, String> =
-        SchemaCollector.get(cxt)?.gedraConfigs?.configs.orEmpty()
-            .filter { it.gedraId.client == client }
-            .flatMap { config -> config.inheritedFrom?.let { template -> config.traits.keys.map { it to template } }.orEmpty() }
-            .toMap()
+    private fun templateTraitIds(cxt: KdrCxt, client: String, traitIds: Collection<String>): Map<String, String> {
+        val configs = SchemaCollector.get(cxt)?.gedraConfigs ?: return emptyMap()
+        return traitIds.mapNotNull { id -> configs.configOfTrait(client, id)?.inheritedFrom?.let { id to it } }.toMap()
+    }
 
     /**
      * The plan's limits the editor holds a design to (issue #1109): the schemas [client] declares and may, and the

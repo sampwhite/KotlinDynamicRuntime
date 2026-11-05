@@ -149,7 +149,8 @@ class ClientTraitsTest {
 
     @Test
     fun aTemplateIncludingEveryGlobalTraitLocksTheSwitchOn() {
-        val catalog = templateCatalog(listOf(CLD.allGlobal))
+        // The catalog follows the group with each global trait it holds, by id.
+        val catalog = templateCatalog(listOf(CLD.allGlobal) + traits.map { it.traitId })
         val none = TraitsDraft(emptySet(), allGlobal = false)
         assertTrue(catalog.templateIncludesAllGlobal)
         assertTrue(allGlobalShownOn(catalog, none))
@@ -158,6 +159,8 @@ class ClientTraitsTest {
             allGlobalLockedReason(catalog, none),
         )
         assertTrue(catalog.traits.all { it.includedBy == "starterkit" })
+        // The group alone marks no trait: which traits it holds is the server's to say.
+        assertTrue(templateCatalog(listOf(CLD.allGlobal)).traits.all { it.includedBy == null })
         // The group is never stored for it either.
         assertEquals(emptyList(), includedTraitsAfter(emptyList(), none.copy(allGlobal = true), catalog.traits, catalog.byTemplate))
         assertFalse(allGlobalShownOn(templateCatalog(emptyList()), none))

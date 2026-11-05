@@ -302,7 +302,7 @@ editor must show and be able to take back, and by what a template fills in, whic
 client's own). The fields are drawn under the kernel's sections (`ClientPresentationFields.bySection`: About, How it
 behaves, Platform), declared beside each field rather than here. The two numbers (`Kind.number`) ride as text, and a
 blank one takes the platform's, which the retrieve's `platformDefaults` gives and each field's placeholder says
-(`platformDefaultText`); the summary rows show each as the value in force (`inForceText`: "30 days (platform
+(`unsetValueText`); the summary rows show each as the value in force (`inForceText`: "30 days (platform
 default)"). Save posts
 `/clientAdmin/client/definition/set` (`ClientsApi.setDefinition`) with **only the fields that changed**
 (`definitionEditRequest`; a cleared field goes as blank, which the backend clears, and Save is disabled while
@@ -311,12 +311,13 @@ sandbox (`savedNote` says which). Every field the caller does not edit there sta
 sets it (`whoSetsNote`): "(set by the platform)" to a client's administrator, and to an administrator who sees every
 client "(set in its configuration)" for the customer and the template, or "(set in code)" for the static lock.
 **What a template fills in** (issue #1621): for a client built on one, the retrieve's `templateFills` names what
-`ClientExtension.mergeDef` supplies (`ClientExtension.templateFills`, held to the merge by a test): the web resources,
-session lifetime, and refresh interval the client leaves unset, and the template's included traits and user labels it
-does not name itself. Each summary row it covers says so after its value (`templateFillNote`: "1 day (from template
-starterkit)", "vip, own (from template starterkit: vip)"), and a blank number's placeholder says the template's value
-rather than the platform's ("From template starterkit: 1 day"). The editor stays seeded from `storedDefinition`, so a
-save never writes the template's value as the client's own.
+`ClientExtension.mergeDef` supplies, recorded by `ClientCheck` at the merge and judged against what the checks left
+(`ClientCheckResult.templateFills`): the web resources, session lifetime, and refresh interval the client leaves unset,
+and the template's included traits and user labels it does not name itself. Each summary row it covers says so after
+its value (`templateFillNote`: "1 day (from template starterkit)", "vip, own (from template starterkit: vip)"), and a
+blank number's placeholder says the template's value rather than the platform's ("From template starterkit: 1 day",
+then the limit, which holds either way). The editor stays seeded from `storedDefinition`, so a save never writes the
+template's value as the client's own.
 The endpoint refuses a platform field from a client's administrator (403). A domain prefix or custom domain another client declares is
 refused by the stored write itself (`GedraConfigService`), whatever write carries it. When the configuration
 holding the definition (the retrieve's `storedDefinitionConfig`) has unpublished changes and the definition does not
@@ -353,7 +354,8 @@ backend's words. The read-only "Traits" summary row above still lists what the c
 and `CCT`, in the kernel.
 
 **What the template includes** (issue #1621). For a client built on a template, the catalog names it (`template`) and
-what it includes (`templateIncluded`), which the load merges into what the client runs whatever the client stores. So
+what it includes (`templateIncluded`: under `#allGlobal`, each global trait by id after it, so the page marks traits by
+id alone), which the load merges into what the client runs whatever the client stores. So
 each such trait (`TraitChoiceView.includedBy`), and the switch when the template includes `#allGlobal`
 (`allGlobalShownOn`), is drawn ticked and locked, naming the template (`includedByTemplateText`). A save never adds
 one (`includedTraitsAfter`'s `byTemplate`), and keeps a duplicate the client already stores as it is, so nothing
