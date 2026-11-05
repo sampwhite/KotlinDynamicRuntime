@@ -201,7 +201,7 @@ class ConfigCodeLayerTest : StringSpec({
         // A replacement the load has not cut yet -- a draft's, or a stored file ref's -- is cut from the copy shown.
         val draft = TemplateReplacement("drafts", CCT.traitDef, mapOf(CCT.traitId to "tplNote"), tpl, "base", emptyList())
         val shown = ConfigCodeLayer.withoutReplaced(copy, slots, listOf(draft), keys)
-        shown[CCT.traitDef].orEmpty().map { it[CCT.traitId] } shouldBe emptyList<Any?>()
+        shown[CCT.traitDef].orEmpty().map { it[CCT.traitId] } shouldBe emptyList()
         shown[CCT.workflowDef].orEmpty().map { it[CCT.workflowId] } shouldContainExactly listOf("tplFlow")
     }
 
