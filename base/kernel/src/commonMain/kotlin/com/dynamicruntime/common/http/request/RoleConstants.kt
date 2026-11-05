@@ -41,6 +41,25 @@ object ROLE {
      * and the read-only user directory (`SECT.clientDirectory`).
      */
     const val editor = "editor"
+
+    /**
+     * What each role is, for the roles and access reference (issue #1610): the levels in [RoleLadder] order, then the
+     * roles beside the ladder. `RolesReferenceTest` fails on a role without one.
+     */
+    val meanings: Map<String, String> = linkedMapOf(
+        user to "The floor every account stands on: a user without it cannot sign in. Reaches the sections any " +
+            "signed-in caller may.",
+        operator to "Runs the deployment. Paired with `$allClients`, it reaches the deployment-wide `${SECT.operator}` " +
+            "section; without it, only `${SECT.clientOperator}`, confined to the caller's own client.",
+        admin to "Administers a client: its users and their roles, its configuration, and its API keys, in " +
+            "`${SECT.clientAdmin}`. Paired with `$allClients`, every client, in `${SECT.admin}`. Ranks above `$operator`, " +
+            "so it reaches what an operator does.",
+        allClients to "A capability, not a level: it widens a level's reach from one client to every client, and " +
+            "confers nothing on its own. An `$admin` or `$operator` without it is confined to their own client.",
+        editor to "Sees every user and every form of its client and edits forms, administering nothing: no user edits, " +
+            "no user creation, no client configuration. Reaches `${SECT.clientDirectory}`. Implied by `$admin`, so an " +
+            "administrator holds it without its being granted.",
+    )
 }
 
 /**

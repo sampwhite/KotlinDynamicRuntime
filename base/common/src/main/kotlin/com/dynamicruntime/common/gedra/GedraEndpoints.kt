@@ -69,7 +69,7 @@ import com.dynamicruntime.common.util.toOptStr
  * The endpoints over stored gedra data -- create a form document, read one, list them (issue #310), delete
  * one (#326), and patch several at once (#337).
  *
- * They sit in the **`gedra`** section, which is login-gated (`RequestService.userSections`). That is the whole
+ * They sit in the **`gedra`** section, which is login-gated (`SectionAccess.userSections`). That is the whole
  * of the level check, and it is deliberately not more: how far a caller reaches is a *scope* question rather
  * than a privilege one, and `ReadScopeRules.forCaller` answers it -- an ordinary user reaches their own
  * documents, an administrator their client's (narrowed to their organization if they have one), and an

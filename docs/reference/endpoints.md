@@ -3,7 +3,7 @@
 
 Every endpoint the runtime offers, one line each, grouped by section: the first segment of its path, which decides who may call it. A path here is under the API context root, `/kda` unless a deployment names another, so `GET /health` is called as `GET /kda/health`.
 
-Each endpoint's input and output schema is in the endpoint catalog, `GET /schema/endpoints` (one endpoint by its path and method at `GET /schema/endpoint`), which lists only what the caller may call. To ask a test node, or a session in env debug, why an endpoint is withheld, add `_debug=explainAccess`.
+Each endpoint's input and output schema is in the endpoint catalog, `GET /schema/endpoints` (one endpoint by its path and method at `GET /schema/endpoint`), which lists only what the caller may call. To ask a test node, or a session in env debug, why an endpoint is withheld, add `_debug=explainAccess`. What each role reaches, and whose data each caller reads, is in [Roles and access](roles-and-access.md).
 
 The notes on an endpoint:
 

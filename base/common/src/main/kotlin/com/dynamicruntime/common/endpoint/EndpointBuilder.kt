@@ -137,7 +137,7 @@ class KdrEndpoint(
      * expose anything. Publish an admin endpoint by mistake and an anonymous caller still meets the section
      * gate. The failure is a documentation lie, not a breach.
      *
-     * Restricted to sections in `RequestService.userSections`, refused at boot. See that check for why.
+     * Restricted to sections in `SectionAccess.userSections`, refused at boot. See that check for why.
      */
     val publicApi: Boolean = false,
     /**

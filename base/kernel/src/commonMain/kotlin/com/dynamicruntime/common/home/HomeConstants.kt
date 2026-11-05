@@ -618,6 +618,8 @@ object HDOC {
     const val reportPaths = "report-paths"
     /** What a type's `g-layout` may hold, and how a client's layout merges with the shared one (issue #1609). Generated. */
     const val formLayouts = "form-layouts"
+    /** What each role grants, who may call each section, and whose data a caller reads (issue #1610). Generated. */
+    const val rolesAndAccess = "roles-and-access"
     const val clientConfiguration = "client-configuration"
     const val apiKeysAndTokens = "api-keys-and-tokens"
     /** The guide for a program or an AI assistant using a site's API (issue #1493), which the endpoint catalog names. */

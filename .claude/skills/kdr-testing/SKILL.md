@@ -333,7 +333,8 @@ It answers only a caller with **test access** -- a test instance *and* effective
 session in ENV DEBUG, silently: elsewhere the key is simply absent, because naming the privileged surface to any
 caller who asks would undo the hiding it exists to explain. Every diagnostic `_debug` tag (`explainAccess`,
 `explainScope`, `explainInput`, ...) is fenced the same way, through `KdrCxt.hasDebugDiagnostic`. Without it, a
-filtering bug shows up only as a count one lower than expected.
+filtering bug shows up only as a count one lower than expected. What each role and section admits, the sandbox rules
+the report names, and each of its keys are in [the roles and access reference](../../../docs/reference/roles-and-access.md).
 
 **Which words exist** (issue #1334): each is a `DebugTagDef` declared beside the code that reads it and contributed by
 its component's `debugTags()`. `hasDebug` and `hasDebugDiagnostic` take the def, and a word no loaded component

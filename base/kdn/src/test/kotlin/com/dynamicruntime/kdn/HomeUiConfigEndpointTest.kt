@@ -131,7 +131,7 @@ class HomeUiConfigEndpointTest : StringSpec({
             HDOC.gedraConfigAndData, HDOC.gedraEntry, HDOC.gedraStates, HDOC.uiBlock, HDOC.reporting,
             HDOC.fileRefs, HDOC.sandboxes, HDOC.userSearch, HDOC.apiKeys, HDOC.gedraWorkflow,
             HDOC.schemaDialect, HDOC.validationMessages, HDOC.expressions, HDOC.facts, HDOC.copy, HDOC.reportPaths,
-            HDOC.formLayouts, HDOC.license,
+            HDOC.formLayouts, HDOC.rolesAndAccess, HDOC.license,
         )
         ids shouldContainAll core
         // Each carries the source path the resolver needs, so none is served without it.
@@ -145,7 +145,8 @@ class HomeUiConfigEndpointTest : StringSpec({
         val listed = links.filter { it[HFLD.listed] == true }.map { it[HFLD.id] }
         val offered = listOf(
             HDOC.startHere, HDOC.readme, HDOC.extending, HDOC.apiKeysAndTokens, HDOC.codeGuide, HDOC.schemaDialect,
-            HDOC.validationMessages, HDOC.expressions, HDOC.facts, HDOC.copy, HDOC.reportPaths, HDOC.formLayouts, HDOC.license,
+            HDOC.validationMessages, HDOC.expressions, HDOC.facts, HDOC.copy, HDOC.reportPaths, HDOC.formLayouts,
+            HDOC.rolesAndAccess, HDOC.license,
         )
         listed shouldContainAll offered
         // "Start here" reads first, ahead of the README (issue #1510): it is the map of the rest.
