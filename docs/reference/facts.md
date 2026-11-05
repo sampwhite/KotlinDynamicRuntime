@@ -19,6 +19,9 @@ from the declarations themselves.
   it, such as `kdr:finished`.
 - **A workflow.** While a form is in a normal workflow, the workflow has facts of its own about it: what the workflow's
   functions concluded from the form's data, and the fact of each approval a reviewer gave.
+- **The caller and the form.** As a form is read for someone, the platform works out whether they own it
+  (`kdr:isOwner`), from the form's owner and never from its data. It is never stored, so only a test about one
+  person and one form sees it: it is how a step says it is the owner's turn.
 
 A client can declare facts of its own, in the `kdr:cfactDef` slot. A declaration only says that a fact exists, so
 that a test may name it. Something then has to set it:
@@ -45,12 +48,17 @@ What a test can see depends on where it is written.
 |---|---|---|
 | A menu entry's `cfactExpression` | Whether the entry is shown. | The request's: the caller and the node. |
 | A field's `g-visibleWhen`, in its schema | Whether the field is on the form. A write that would change a field kept off is refused. | The request's, and only those sent to the browser. |
-| A task's `saveWhen` | Who may save the task. Without one, anyone who can see the form may. | The request's, the task's, and those the task's functions give the person looking. |
+| A task's `saveWhen` | Who may save the task. Without one, anyone who can see the form may. | The request's, the task's, those the task's functions give the person looking, and `kdr:isOwner`. |
+| An approval's `approveWhen` | Who may approve the task. Without one, a reviewer who does not own the form: `kdr:reviewer,~kdr:isOwner`. | The same as `saveWhen`. |
+| A filter a task's `ctaFilterByValue` function gives | Whom the task waits on while it is the workflow's next step. It narrows `saveWhen` and `approveWhen`, and never widens them. | The request's, those the task's functions give the person looking, and `kdr:isOwner`: none of the task's or the form's, so a list of forms can test it without reading them. |
 | A `cfactExpression` in a task's `display` | Which of the task's displays is shown: the first whose test passes. | The same as `saveWhen`. |
 | A `test` in a workflow's `eligibility` | Whether a form may enter the workflow. | The form's alone, never the caller's, so the answer can be kept with the form. |
 | A `when` in a workflow's `singletons` | Whether the workflow gives the form the rule's fact. | The form's, and the workflow's own. |
 | A `when` in a workflow's `locks` | Whether the lock holds. | The form's, and the workflow's own. |
 | A lock's `overrideWhen` | Who may change the locked trait anyway. | The request's, for whoever is writing. |
+
+`kdr:isOwner` is about one person and one form, so a test where the form is judged whoever looks -- an eligibility
+test, a singleton rule, a lock, or a lock's override -- may not name it, and is refused when its configuration is checked.
 
 ## How a test is written
 
@@ -125,6 +133,7 @@ knows, its own included, with whether each is present for them now.
 | `kdr:taskAvailable` | True, about the task being rendered, when it may be worked on now. **Always true today**: a placeholder holding the shape until availability rules (dates, prior tasks) exist. | No |
 | `kdr:isCta` | True, about the task being rendered, when it is the workflow's call to action: the earliest task, in list order, that is not both complete and valid. | No |
 | `kdr:reviewer` | True, about the task being rendered, when the person viewing it may review it -- concluded as the task is shown, by the task's own functions (typically `userHasLabel`), and never stored. | No |
+| `kdr:isOwner` | True, about the form being worked on, when the caller owns it: its owning user, or in production another user of the same person; on a test instance only the owning user, so one tester's personas can play owner and reviewer. Worked out from the form's owner as it is read, and never stored. Named in a task's `saveWhen` or `display`, a CTA filter, or an approval's `approveWhen`, and nowhere else. | No |
 | `kdr:needsReview` | True, about a form, when a workflow it is engaged with is waiting on a review -- contributed by that workflow's singleton rule. | Yes |
 | `kdr:finished` | True, about a form, when a workflow it is engaged with has finished -- contributed by that workflow's singleton rule. | Yes |
 | `kdr:ownerOnly` | True, about a form, when it is kept to its owner: an editor may change it only as its owner or as a reviewer of an engaged workflow's current task -- contributed by a workflow's singleton rule. | Yes |

@@ -148,8 +148,9 @@ One more is neither authority nor identity:
   filter (`USF.labels`, `UserFilterChoices.labels`: an `AutoComplete` of the searched client's suggestions that also
   takes a typed label), and the search box matches a label too. Editable on your
   **own** row too, deliberately — a label is not privilege,
-  and the approve endpoint (#787) enforces the second-person rule itself: a reviewer can never approve a form
-  they own (in production, a form owned by any of their users). Saving compares
+  and an approval's default rule (#787, `kdr:reviewer,~kdr:isOwner` since #1595) is the second-person rule: a
+  reviewer cannot approve a form they own (in production, a form owned by any of their users) unless the workflow's
+  `approveWhen` says so in its configuration. Saving compares
   after `normalizeUserLabels`, the kernel rule the backend stores by, so re-spacing a label is no change.
 
 **Unticking "Business account" keeps the name.** It used to clear it, which was right while only a business

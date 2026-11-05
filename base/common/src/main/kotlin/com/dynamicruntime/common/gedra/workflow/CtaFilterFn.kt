@@ -86,12 +86,13 @@ fun WfTask.ctaFilterFns(): List<CtaFilterFn> =
     resolvedFunctions.filter { it.event == WfEventType.ctaFilter }.map { CtaFilterFn.of(it) }
 
 /**
- * The facts a CTA filter on [task] may name (issue #1594): [requestNames], the ones computed from the request alone
- * (`CFactRegistry.requestNames`), and the ones the task's resolved `viewerCfacts` functions may emit -- facts about the
- * person, and so the only ones a listing can evaluate without the form.
+ * The facts a CTA filter on [task] may name (issues #1594, #1595): [requestNames], the ones computed from the request
+ * alone (`CFactRegistry.requestNames`), the ones the task's resolved `viewerCfacts` functions may emit -- facts about
+ * the person -- and the caller's relation to the form ([RCF]), which the row a listing already holds says. The only ones
+ * a listing can evaluate without the form's data or state.
  */
 fun personFactNames(requestNames: Set<String>, task: WfTask): Set<String> =
-    requestNames + task.viewerCfactsFns().flatMap { it.emittedCfacts }
+    requestNames + RCF.all + task.viewerCfactsFns().flatMap { it.emittedCfacts }
 
 /**
  * Why [filter] cannot be a CTA filter, or null when it can (issue #1594): it parses against [declared], the cfacts its
@@ -105,8 +106,8 @@ fun ctaFilterProblem(declared: Set<String>, personFacts: Set<String>, filter: St
     return if (notAboutThePerson.isEmpty()) {
         null
     } else {
-        "names ${notAboutThePerson.sorted()}, which are not facts about the person (the request's, or what a " +
-            "viewerCfacts function on the task emits), so a listing could not evaluate it without the form"
+        "names ${notAboutThePerson.sorted()}, which are not facts about the person (the request's, what a " +
+            "viewerCfacts function on the task emits, or ${RCF.isOwner}), so a listing could not evaluate it without the form"
     }
 }
 

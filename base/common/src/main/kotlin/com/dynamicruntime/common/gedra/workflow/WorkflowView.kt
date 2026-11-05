@@ -62,6 +62,8 @@ fun resolveWorkflowView(
     keptToOwner: Boolean = false,
     /** All of the form's entries (issue #1595): what the CTA's filter is concluded from. Empty for a creation view. */
     formEntries: List<Map<String, Any?>> = emptyList(),
+    /** The caller's relation to the form (issue #1595), as [RowCfacts.of] works it out: `kdr:isOwner` for its owner. */
+    rowFacts: Set<String> = emptySet(),
 ): Map<String, Any?> {
     val client: String = cxt.client
     @Suppress("VariableInitializerIsRedundant2")
@@ -82,8 +84,9 @@ fun resolveWorkflowView(
     // The trait data types the workflow references, collected as they are rendered; the seeds of the closure.
     val seedRefs = LinkedHashSet<String>()
     // The request-scoped cfacts, computed once: they are the same for every task, so only each task's own
-    // target facts are unioned onto them below (each cfact source can do real work -- e.g., a section check).
-    val requestFacts = cfacts.assemble(cxt)
+    // target facts are unioned onto them below (each cfact source can do real work -- e.g., a section check). With them
+    // the caller's relation to the form (issue #1595), the same for every task too.
+    val requestFacts = cfacts.assemble(cxt, rowFacts)
     // Each task's status and facts for this caller and this form (issues #700, #785, #786, #856) -- the one
     // computation the save endpoint judges a save by too, so the page's Save and the endpoint's refusal agree.
     val judge = WorkflowTaskJudge(cxt, client, declared, entriesByTask, approvals, requestFacts, formEntries)
@@ -177,7 +180,12 @@ fun resolveWorkflowView(
         // Who the CTA waits on, when its filter is what keeps this caller from acting (issue #1595) -- said even of a
         // form kept to its owner, since it is who the step is for, not why this caller may not change the form.
         if (declared.def.entry == WfEntry.normal) judge.waitingOn(task)?.let { raw[WVF.waitingOn] = label(it) }
-        task.approval?.let { raw[WVF.approval] = approvalView(it, approvals[task.id]) }
+        task.approval?.let {
+            raw[WVF.approval] = approvalView(it, approvals[task.id])
+            // Whether this caller may approve it, by the rule the approve endpoint enforces -- so the page offers the
+            // button only where it can succeed.
+            raw[WVF.canApprove] = judge.mayApprove(task, taskFacts)
+        }
         // How the task is shown (issue #788): usually a selector, which the filter below resolves against this
         // caller's task facts -- so what arrives is the one branch that applies, never the others or their tests.
         task.display?.let { raw[WFD.display] = it }
@@ -294,7 +302,10 @@ class WorkflowTaskJudge(
     val declared: WfDeclared,
     private val entriesByTask: Map<String, List<Map<String, Any?>>>,
     private val approvals: Map<String, Map<String, Any?>>,
-    /** The request's cfacts, assembled once by whoever already holds them. */
+    /**
+     * The request's cfacts, assembled once by whoever already holds them, with the caller's relation to the form
+     * ([RowCfacts], issue #1595) among them -- so `kdr:isOwner` reaches every rule judged here.
+     */
     private val requestFacts: Set<String>,
     formEntries: List<Map<String, Any?>> = emptyList(),
     /** The caller's viewer facts -- one shared by a caller judging many forms, so each is worked out once. */
@@ -333,6 +344,17 @@ class WorkflowTaskJudge(
     fun maySave(task: WfTask, facts: Set<String> = taskFacts(task)): Boolean =
         (task.saveWhen?.let { cfacts.parse(it).matches(requestFacts + facts) } ?: true) &&
             (task.saves.isEmpty() || waitingOn(task) == null)
+
+    /**
+     * Whether the caller may approve [task] (issue #1595): an approval task, whose rule
+     * ([WfApproval.effectiveApproveWhen]) passes over the request's facts and [facts], **and** whose CTA filter, when it
+     * is the CTA and carries one, passes too -- so a filter narrows an approval whatever its rule names. Whether the task
+     * is current and not yet approved is the approve endpoint's to refuse and the display's to show.
+     */
+    fun mayApprove(task: WfTask, facts: Set<String> = taskFacts(task)): Boolean {
+        val approval = task.approval ?: return false
+        return cfacts.parse(approval.effectiveApproveWhen).matches(requestFacts + facts) && waitingOn(task) == null
+    }
 
     /**
      * Why the caller may not act on [task] for its CTA filter (issue #1595), or null when they may -- or when [task] is

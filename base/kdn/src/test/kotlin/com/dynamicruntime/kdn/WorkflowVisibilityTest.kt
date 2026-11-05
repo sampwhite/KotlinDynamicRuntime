@@ -273,7 +273,7 @@ class WorkflowVisibilityTest : StringSpec({
         val scope = ReadScope.ofClient(client)
         val row = data.readGedras(system, GedraDataType.formDoc, listOf(gid), scope).getValue(gid)
         val states = data.readState(system, row.gedraId, scope)
-        TraitLocks.heldFor(system, client, row.entries, states).map { it.lock.traitId } shouldBe listOf("note")
+        TraitLocks.heldFor(system, row, states).map { it.lock.traitId } shouldBe listOf("note")
     }
 
     "a workflow made from a template is restricted from the start, as its maker chose" {

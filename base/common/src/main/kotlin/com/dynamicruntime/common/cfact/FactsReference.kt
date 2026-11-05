@@ -4,10 +4,13 @@ package com.dynamicruntime.common.cfact
 
 import com.dynamicruntime.common.assistant.ASST
 import com.dynamicruntime.common.gedra.CCT
+import com.dynamicruntime.common.gedra.workflow.CFV
+import com.dynamicruntime.common.gedra.workflow.RCF
 import com.dynamicruntime.common.gedra.workflow.ULH
 import com.dynamicruntime.common.gedra.workflow.WFC
 import com.dynamicruntime.common.gedra.workflow.WFD
 import com.dynamicruntime.common.gedra.workflow.WSC
+import com.dynamicruntime.common.gedra.workflow.WfApproval
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.startup.SchemaCollector
 import com.dynamicruntime.common.uiblock.UIB
@@ -52,6 +55,9 @@ from the declarations themselves.
   it, such as `$${WSC.finished}`.
 - **A workflow.** While a form is in a normal workflow, the workflow has facts of its own about it: what the workflow's
   functions concluded from the form's data, and the fact of each approval a reviewer gave.
+- **The caller and the form.** As a form is read for someone, the platform works out whether they own it
+  (`$${RCF.isOwner}`), from the form's owner and never from its data. It is never stored, so only a test about one
+  person and one form sees it: it is how a step says it is the owner's turn.
 
 A client can declare facts of its own, in the `$${CCT.cfactDef}` slot. A declaration only says that a fact exists, so
 that a test may name it. Something then has to set it:
@@ -75,6 +81,9 @@ computes, and [Committee review](../demo-client/committee-review.md) for one an 
 What a test can see depends on where it is written.
 
 $${placesTable()}
+
+`$${RCF.isOwner}` is about one person and one form, so a test where the form is judged whoever looks -- an eligibility
+test, a singleton rule, a lock, or a lock's override -- may not name it, and is refused when its configuration is checked.
 
 ## How a test is written
 
@@ -129,7 +138,19 @@ private fun placesTable(): String {
         ),
         Triple(
             "A task's `${WFD.saveWhen}`", "Who may save the task. Without one, anyone who can see the form may.",
-            "The request's, the task's, and those the task's functions give the person looking.",
+            "The request's, the task's, those the task's functions give the person looking, and `${RCF.isOwner}`.",
+        ),
+        Triple(
+            "An approval's `${WFD.approveWhen}`",
+            "Who may approve the task. Without one, a reviewer who does not own the form: `${WfApproval.defaultApproveWhen}`.",
+            same,
+        ),
+        Triple(
+            "A filter a task's `${CFV.fn}` function gives",
+            "Whom the task waits on while it is the workflow's next step. It narrows `${WFD.saveWhen}` and " +
+                "`${WFD.approveWhen}`, and never widens them.",
+            "The request's, those the task's functions give the person looking, and `${RCF.isOwner}`: none of the " +
+                "task's or the form's, so a list of forms can test it without reading them.",
         ),
         Triple(
             "A `${UIB.cfactExpression}` in a task's `${WFD.display}`",

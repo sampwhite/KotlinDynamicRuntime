@@ -10,7 +10,6 @@ import com.dynamicruntime.common.gedra.GedraGuardedWrite
 import com.dynamicruntime.common.gedra.GedraWriteGuard
 import com.dynamicruntime.common.startup.SchemaService
 import com.dynamicruntime.common.user.AdminRules
-import com.dynamicruntime.common.user.UserService
 import com.dynamicruntime.common.util.toJsonListOrEmpty
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
@@ -27,8 +26,8 @@ import com.dynamicruntime.common.util.toOptStr
  *
  * ### Who still may
  *
- *  - **The owner**, by the person rule the second-person check uses ([WorkflowApprovals.isOwnForm]): in production
- *    another of the owner's own users counts, on a test instance only the owning user.
+ *  - **The owner** ([RCF.isOwner], worked out by [RowCfacts]): in production another of the owner's own users counts,
+ *    on a test instance only the owning user.
  *  - **A reviewer**: for each engaged normal workflow that still calculates, whoever its current task (`ctaTask`, as
  *    stored) names as a reviewer through its `viewerCfacts` functions -- [ViewerCfacts.forTask], the very answer the
  *    approve endpoint asks. So a reviewer may edit while the form waits on them, and not once the workflow has moved
@@ -50,10 +49,13 @@ object OwnerOnly {
      * who is no editor, or a form without the fact, costs no user or workflow lookup.
      */
     fun keepsOut(cxt: KdrCxt, row: GedraDataRow, states: List<Map<String, Any?>>): Boolean {
+        @Suppress("RedundantIf2")
         if (!AdminRules.editsClient(cxt) || !isOn(states)) {
             return false
         }
-        return !isOwner(cxt, row) && !isReviewer(cxt, row.client, row.entries, states)
+        // The rule `kdr:isOwner|kdr:reviewer`, the owner asked first: it is a comparison on a test instance, where the
+        // reviewer check resolves the engaged workflows.
+        return !RowCfacts.isOwner(cxt, row.userId) && !isReviewer(cxt, row.client, row.entries, states)
     }
 
     /** Refuses (403) a change [keepsOut] keeps the caller from. */
@@ -63,19 +65,11 @@ object OwnerOnly {
         }
     }
 
-    /** Whether the caller is [row]'s owner, by [WorkflowApprovals.isOwnForm]'s person rule. */
-    fun isOwner(cxt: KdrCxt, row: GedraDataRow): Boolean {
-        val profile = cxt.userProfile
-        if (row.userId == profile.userId) {
-            return true
-        }
-        val ownerIdentity = UserService.getOrNull(cxt)?.queryByUserId(cxt, row.userId)?.identityId
-        return WorkflowApprovals.isOwnForm(row.userId, ownerIdentity, profile.userId, profile.identityId, cxt.instanceConfig.isTestInstance)
-    }
-
     /**
      * Whether the caller is a reviewer of the current task of a normal workflow the form is engaged with. A workflow
      * the caller does not see, or one frozen past its relevancy (whose current task takes no action), names no one.
+     * Asked of a caller who does not own the form ([keepsOut] asks the owner first), so a CTA filter is judged
+     * without [RCF.isOwner].
      */
     fun isReviewer(
         cxt: KdrCxt,

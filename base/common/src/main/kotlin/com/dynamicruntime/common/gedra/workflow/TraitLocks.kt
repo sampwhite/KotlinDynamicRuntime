@@ -6,6 +6,7 @@ import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.gedra.GT
+import com.dynamicruntime.common.gedra.GedraDataRow
 import com.dynamicruntime.common.gedra.GedraGuardedWrite
 import com.dynamicruntime.common.gedra.GedraWriteGuard
 import com.dynamicruntime.common.startup.SchemaService
@@ -32,16 +33,17 @@ object TraitLocks {
     class Held(val declared: WfDeclared, val lock: WfLock, val canOverride: Boolean)
 
     /**
-     * The locks that hold for [cxt]'s caller on a form of [client] with [entries] and [states], narrowed to
-     * [traitIds] when given. Empty when the form is engaged with no workflow that locks anything.
+     * The locks that hold for [cxt]'s caller on the form [row], whose state is [states], narrowed to [traitIds] when
+     * given. Empty when the form is engaged with no workflow that locks anything.
      */
     fun heldFor(
         cxt: KdrCxt,
-        client: String,
-        entries: List<Map<String, Any?>>,
+        row: GedraDataRow,
         states: List<Map<String, Any?>>,
         traitIds: Set<String>? = null,
     ): List<Held> {
+        val client = row.client
+        val entries = row.entries
         val registry = WorkflowService.get(cxt).forClient(client)
         val engaged = engagedWorkflowIds(states)
         // Only a person sees some workflows and not others; a system writer (an import, a job) answers to them all.
@@ -53,7 +55,8 @@ object TraitLocks {
         }
         if (locking.isEmpty()) return emptyList()
         val cfacts = SchemaService.get(cxt).cfactsFor(client)
-        val requestFacts = cfacts.assemble(cxt)
+        // With the caller's relation to the form (issue #1595), which a writableVia task's rule may name.
+        val requestFacts = cfacts.assemble(cxt, RowCfacts.of(cxt, row.userId))
         val formFacts = states.filter { it[GE.traitId].toOptStr() == GT.cfacts }
             .flatMap { it[GE.data].toJsonMapOrEmpty()[GT.facts].toJsonListOrEmpty() }
             .mapNotNull { it.toOptStr() }.toSet()
@@ -126,7 +129,7 @@ object TraitLockGuard : GedraWriteGuard {
         val lockedSomewhere = registry.workflows.values.any { d -> d.def.locks.any { it.traitId in write.changedTraits } }
         if (!lockedSomewhere) return null
         val client = write.row.client
-        val held = TraitLocks.heldFor(cxt, client, write.row.entries, write.states, write.changedTraits)
+        val held = TraitLocks.heldFor(cxt, write.row, write.states, write.changedTraits)
         if (held.isEmpty()) return null
         // The messages name traits and workflows as the pages do -- never by id -- in the wording the raw editor shares.
         fun names(locks: List<TraitLocks.Held>) = locks.map {

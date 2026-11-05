@@ -19,7 +19,8 @@ import com.dynamicruntime.common.util.toOptStr
  * The design's constraint: this must not pull in the form's data. Everything comes from the form's **state** --
  * each workflow's stored entry says which singletons it emits (`singletonCfacts`), its current task (`ctaTask`) and
  * that task's status (`ctaStatus`) -- plus what can be asked of the **caller** without the form: their request
- * cfacts and the task's `viewerCfacts` functions (a reviewer is decided by the viewer's labels). That is enough to
+ * cfacts and the task's `viewerCfacts` functions (a reviewer is decided by the viewer's labels), and the caller's
+ * relation to the form ([RCF.isOwner]), which the row it already holds says. That is enough to
  * resolve the CTA task's display for this caller, since the facts a display chooses on are exactly these: it is the
  * CTA (so `kdr:isCta`), it is not yet approved (a CTA never is), whether it is complete (stored), and the viewer's
  * own. The acting user is the whole reason the text is fetched from the backend rather than read off the listing.
@@ -27,12 +28,19 @@ import com.dynamicruntime.common.util.toOptStr
 object SingletonWorkflows {
     /**
      * The workflows [states] say emit [cfact], as [cxt]'s caller sees them. [client] is the form's; [states] its
-     * state entries, already read in the caller's scope.
+     * state entries, already read in the caller's scope; [rowFacts] the caller's relation to it ([RowCfacts], issue
+     * #1595), which a display or a stored CTA filter may name -- worked out from the form's owner, not its data.
      */
-    fun of(cxt: KdrCxt, client: String, states: List<Map<String, Any?>>, cfact: String): List<Map<String, Any?>> {
+    fun of(
+        cxt: KdrCxt,
+        client: String,
+        states: List<Map<String, Any?>>,
+        cfact: String,
+        rowFacts: Set<String> = emptySet(),
+    ): List<Map<String, Any?>> {
         val registry = WorkflowService.get(cxt).forClient(client)
         val cfacts = SchemaService.get(cxt).cfactsFor(client)
-        val requestFacts = cfacts.assemble(cxt)
+        val requestFacts = cfacts.assemble(cxt, rowFacts)
         val viewer = ViewerCfacts(cxt, client)
         val fragments = MarkdownFragmentService.get(cxt)
         fun label(text: String): String = fragments.backendPass(cxt, text)

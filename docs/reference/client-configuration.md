@@ -373,6 +373,7 @@ Each is a type the server declares, named as the endpoint catalog names it. A fi
 | `cfact` | string | yes | The cfact the workflow gains once this task is approved. |
 | `prompt` | string | yes | The text above the approve button -- a template, evaluated in two passes. |
 | `button` | string | yes | The approve button's own text -- a template, evaluated in two passes. |
+| `approveWhen` | string |  | Who may approve: a cfact expression over the caller's task and viewer facts and kdr:isOwner. Absent means a reviewer who does not own the form (kdr:reviewer,~kdr:isOwner). |
 
 ### WfEligibility
 

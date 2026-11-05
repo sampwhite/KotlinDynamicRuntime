@@ -467,7 +467,9 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
                 else -> {
                     if (approval.prompt.isNotBlank()) Markdown { source = approval.prompt; linkResolver = copyLinks }
                     val gid = gedraId
-                    if (!task.isReviewer || gid == null) {
+                    // Offered only where the approve endpoint would take it (issue #1595): the approval's rule and the
+                    // CTA's filter, as the view worked them out.
+                    if (!task.canApprove || gid == null) {
                         p {
                             className = ClassName("subtitle")
                             // Who it waits on, when the CTA's filter names someone other than this caller (issue #1595):

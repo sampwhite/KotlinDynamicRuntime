@@ -357,6 +357,16 @@ class WorkflowModelTest {
         assertNull(wf.tasks[1].waitingOn)
     }
 
+    /** Whether the caller may approve a task (issue #1595) parses through, and is false when the view says nothing. */
+    @Test
+    fun parsesWhetherATaskMayBeApproved() {
+        val view = coreDetailsView(null, null, null)
+        val tasks = view[WFD.tasks].toJsonListOfMaps()
+        val wf = parseWorkflowView(view + (WFD.tasks to listOf(tasks[0] + (WVF.canApprove to true), tasks[1])))!!
+        assertTrue(wf.tasks[0].canApprove)
+        assertFalse(wf.tasks[1].canApprove)
+    }
+
     /** The view's per-task status and its focus task parse through; a task carrying none has a null status. */
     @Test
     fun parsesTaskStatusAndTheFocusTask() {

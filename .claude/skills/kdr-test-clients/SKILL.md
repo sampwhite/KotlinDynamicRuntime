@@ -169,14 +169,23 @@ later schema rejects" test.
     function on the task, `function(ctaFilterByValue { trait = "site"; valuePath = "region"; case("northwest",
     "reviewerNorthwest", "Waiting on a Northwest reviewer"); otherwise("reviewerLead") })`: a value in the form's data
     chooses a filter, and `otherwise` (required) decides when none matches, so a gap never opens the task to everyone
-    `saveWhen` admits. A filter may name only facts about the person -- the request's, or a cfact a `userHasLabel` on
-    the **same task** emits -- and the function may read only traits the client has; the load reports anything else,
+    `saveWhen` admits. A filter may name only facts about the person -- the request's, a cfact a `userHasLabel` on
+    the **same task** emits, or `kdr:isOwner` -- and the function may read only traits the client has; the load reports anything else,
     which a unit test sees as a refused `reloadClient`. Both are stored with the CTA
     in the workflow's state (`WFS.ctaKeyword`, `WFS.ctaFilter`, `WFS.ctaFilterLabel`) and recomputed with it.
     **The filter narrows who may act** (issue #1595): on the CTA task a person failing it loses `kdr:reviewer` (so
-    the approve endpoint, display branches, and the owner-only rule all hear it), may not save whatever `saveWhen`
-    says, and the view's task carries `WVF.waitingOn`, the filter's label. A test's reviewer therefore needs the label
-    the filter names, not only `reviewer`. `CtaFilterTest` and `CtaFilterActsTest` (kdn) are the references.
+    display branches and the owner-only rule hear it), may neither save nor approve whatever `saveWhen` or
+    `approveWhen` says, and the view's task carries `WVF.waitingOn`, the filter's label. A test's reviewer therefore
+    needs the label the filter names, not only `reviewer`. `CtaFilterTest` and `CtaFilterActsTest` (kdn) are the
+    references.
+  - **`kdr:isOwner`** (`RCF.isOwner`, issue #1595) is true for the form's owner, worked out from the row on read
+    (`RowCfacts`): the owning user on a test instance -- so another persona of the same `TestUser` address is **not**
+    the owner -- and any user of the owner's person in production. A task's `saveWhen` and `display`, a CTA filter,
+    and an approval's `approveWhen` may name it (`approval(cfact, prompt, button, approveWhen = RCF.isOwner)` for a
+    step the owner confirms, which then needs no `userHasLabel`); an eligibility test, a singleton rule, or a lock's
+    `when` or `overrideWhen` naming it is a refused `reloadClient`. An approval with no `approveWhen` is
+    `kdr:reviewer,~kdr:isOwner` (`WfApproval.defaultApproveWhen`), the second-person rule, and the view says whether
+    the caller may approve as `WVF.canApprove`. `OwnerFactTest` (kdn) is the reference.
   - **A workflow made from a template** (issue #1120): `workflowFromMap(mapOf(WFD.workflowId to "mine", WFD.fromTemplate
     to "kdr:coreDetails", ...))`, after `workflowTemplates = WorkflowTemplates.lookup(cxt)` in the block -- the map is
     an overlay, only what differs from the template, and is stored as such. Templates are the global workflows (core

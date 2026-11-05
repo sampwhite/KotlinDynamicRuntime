@@ -256,7 +256,7 @@ state can outlive a cfact. Those names join the request's facts when an expressi
 - **Kept to its owner** (#1433). The framework singleton `kdr:ownerOnly`, emitted like `kdr:needsReview` and
   `kdr:finished` through a normal workflow's singleton rule, lands in the form's `kdr:cfacts`. While it is there, an
   **editor** (see [`client-definition.md`](../client-definition.md#users-clients-and-personas)) may change the form only as
-  its owner (the person rule of the second-person check) or as a reviewer of an engaged workflow's current task.
+  its owner (`kdr:isOwner`, the person rule of the second-person check, #1595) or as a reviewer of an engaged workflow's current task.
   `OwnerOnlyGuard`, a write guard, refuses every other editor's patch, workflow save and delete under the form's lock,
   and engaging or withdrawing the form is refused the same way, since withdrawing it from the workflow that keeps it
   so would be a way around the rule. Administrators are unaffected, and an ordinary user reaches only their own forms
