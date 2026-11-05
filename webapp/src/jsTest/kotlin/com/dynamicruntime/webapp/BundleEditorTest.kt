@@ -114,4 +114,74 @@ class BundleEditorTest {
         assertNull(bundleEditorPath("globex", acrossClients = false, ownClient = "acme"))
         assertEquals("${ACEP.editor}?client=acme", bundleEditorPath("acme:sandbox", acrossClients = true, ownClient = "hub"))
     }
+
+    // --- the code layer (issue #1616) ---
+
+    private val codeView = parseBundleEditor(
+        mapOf(
+            CFEP.client to "kid",
+            CFEP.configs to listOf(
+                mapOf(CFEP.name to "main", CFEP.revisionLatest to revision(1, true, mapOf(CCT.traitDef to listOf(note)))),
+            ),
+            CFEP.slotKeys to keys,
+            CFEP.codeConfigs to listOf(
+                mapOf(
+                    CFEP.name to "kid", CFEP.origin to CFEP.originCode, CFEP.namespaceField to "client.kid",
+                    CFEP.slots to mapOf(CCT.traitDef to listOf(memo)),
+                ),
+                mapOf(
+                    CFEP.name to "from_tpl_base", CFEP.origin to CFEP.originTemplate, CFEP.template to "tpl",
+                    CFEP.namespaceField to "client.tpl",
+                    CFEP.slots to mapOf(CCT.traitDef to listOf(gone), CCT.cfactDef to listOf(mapOf(CCT.name to "ready"))),
+                ),
+            ),
+            CFEP.replacements to listOf(
+                mapOf(
+                    CFEP.name to "main", CFEP.slot to CCT.traitDef, CFEP.key to mapOf(CCT.traitId to "note"), CFEP.template to "tpl",
+                    CFEP.templateName to "base", CFEP.templateEntries to listOf(note + (CCT.description to "The template's note.")),
+                ),
+                mapOf(
+                    CFEP.name to "main", CFEP.slot to CCT.usageDef, CFEP.key to emptyMap<String, Any?>(), CFEP.template to "tpl",
+                    CFEP.templateName to "base", CFEP.templateEntries to listOf(mapOf("traitId" to "a"), mapOf("traitId" to "b")),
+                ),
+            ),
+        ),
+    )
+
+    @Test
+    fun theCodeLayerIsReadWithWhereEachBundleComesFrom() {
+        assertEquals(listOf("kid" to null, "from_tpl_base" to "tpl"), codeView.codeConfigs.map { it.name to it.template })
+        assertEquals("kid — from the client's code, read-only · 1 slot, 1 entry", codeBundleLineText(codeView.codeConfigs[0]))
+        assertEquals(
+            "from_tpl_base — a copy of template tpl's code, read-only · 2 slots, 2 entries",
+            codeBundleLineText(codeView.codeConfigs[1]),
+        )
+        assertTrue(codeBundleNoteText(codeView.codeConfigs[1]).contains("replaces the template's whole"))
+        // A code bundle is listed as a stored one is, with nothing beside it to compare.
+        val slots = editorSlots(codeView.codeConfigs[1].asEditorBundle(), codeView.slotKeys)
+        assertEquals(listOf(CCT.traitDef, CCT.cfactDef), slots.map { it.slot })
+        assertNull(slots.first().entries.single().change)
+    }
+
+    @Test
+    fun anEntryThatReplacesItsTemplatesIsFoundByItsKeyAndColumnsAsASet() {
+        val r = assertNotNullOf(replacementOf(codeView.replacements, "main", CCT.traitDef, listOf(CCT.traitId), note))
+        assertEquals("The template's note.", r.templateEntries.single()[CCT.description])
+        // Another key, another bundle, or another slot replaces nothing.
+        assertNull(replacementOf(codeView.replacements, "main", CCT.traitDef, listOf(CCT.traitId), memo))
+        assertNull(replacementOf(codeView.replacements, "kid", CCT.traitDef, listOf(CCT.traitId), note))
+        // The columns replace as one set, so no entry of theirs is matched, and the slot is.
+        assertNull(replacementOf(codeView.replacements, "main", CCT.usageDef, emptyList(), mapOf("traitId" to "a")))
+        val set = assertNotNullOf(slotReplacement(codeView.replacements, "main", CCT.usageDef))
+        assertTrue(slotReplacementText(set).startsWith("These replace all of template tpl's listing columns (2, in its base bundle)"))
+        assertEquals(
+            listOf(
+                "Traits note, from template tpl's base bundle, in main",
+                "all of the template's listing columns, from template tpl's base bundle, in main",
+            ),
+            replacingText(codeView.replacements),
+        )
+    }
+
+    private fun <T : Any> assertNotNullOf(value: T?): T = kotlin.test.assertNotNull(value)
 }

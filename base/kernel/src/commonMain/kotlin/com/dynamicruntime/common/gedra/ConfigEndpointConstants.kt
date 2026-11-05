@@ -56,6 +56,8 @@ object CFEP {
     const val tierType = "ConfigTier"
     const val editorType = "ConfigEditor"
     const val editorBundleType = "ConfigEditorBundle"
+    const val codeBundleType = "ConfigCodeBundle"
+    const val replacementType = "ConfigReplacement"
 
     // --- field names (each matches its value) ---
     const val name = "name"
@@ -148,6 +150,33 @@ object CFEP {
      * slot, in the order the revision's slots hold them -- what an edit of the entry says it read ([expectUpdatedAt]).
      */
     const val latestStamps = "latestStamps"
+
+    /**
+     * On the editor's answer (issue #1616): the client's **code layer**, read-only -- each configuration its own code
+     * declares, then each copy of its template's ([origin] says which), with its slots as a bundle holds them.
+     */
+    const val codeConfigs = "codeConfigs"
+
+    /** On a code bundle: where it comes from, [originCode] (the client's own code) or [originTemplate]. */
+    const val origin = "origin"
+    const val originCode = "code"
+    const val originTemplate = "template"
+
+    /** On a code bundle copied from a template, and on a replacement: the template's client id. */
+    const val template = "template"
+
+    /**
+     * On the editor's answer, and on a patch's dry run (issue #1616): each entry of the client's that replaces one of its
+     * template's, whole, so the client runs the client's and not the template's. On a dry run, only the ones the
+     * patch would add.
+     */
+    const val replacements = "replacements"
+
+    /** On a replacement: the template's configuration that declares what is replaced. */
+    const val templateName = "templateName"
+
+    /** On a replacement: the template's entries it replaces -- one, or every column of the forms list. */
+    const val templateEntries = "templateEntries"
 
     /** The `errorCode` of a patch refused because entries changed since its caller read them (issue #1434). */
     const val staleCode = "staleEntries"

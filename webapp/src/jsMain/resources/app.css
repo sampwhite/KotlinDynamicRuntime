@@ -1954,6 +1954,8 @@ body.dv-resizing, body.dv-resizing * { cursor: col-resize !important; }
    scrolling on its own rather than widening the page. */
 .bundle-editor .bundle-editor-slot { margin-left: 18px; }
 .bundle-editor .bundle-editor-entry { margin-left: 18px; }
+/* The template's version of what an entry replaces (issue #1616): beside it, set off, since it does not run. */
+.bundle-editor-replaced { margin: 6px 0 10px; padding-left: 8px; border-left: 3px solid var(--border); }
 .bundle-editor-compare { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; }
 @media (max-width: 900px) { .bundle-editor-compare { grid-template-columns: minmax(0, 1fr); } }
 .bundle-editor-json pre { margin: 4px 0 12px; padding: 8px 10px; overflow-x: auto; background: var(--surface-raised); border: 1px solid var(--border); border-radius: 6px; font-size: 12px; }

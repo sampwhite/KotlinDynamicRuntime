@@ -554,10 +554,13 @@ object PFRAG {
     const val bundlePublishingNs = "bundlePublishing"
     const val bundleListNs = "bundleList"
 
+    /** The bundle editor page's namespace for the client's code layer (issue #1616): what it runs that no row stores. */
+    const val bundleCodeNs = "bundleCode"
+
     /** Every namespace of the Clients page whose `whatIsThis` explains a panel, a group, or a part of the page. */
     val clientsExplained: List<String> = listOf(
         aboutNs, behaviorNs, platformNs, runsNs, formsDataNs, traitPreviewNs, listingColumnsNs, formStatesNs, copyNs, imagesNs,
-        filesNs, sandboxNs, storedConfigNs, menuNs, bundlePublishingNs, bundleListNs,
+        filesNs, sandboxNs, storedConfigNs, menuNs, bundlePublishingNs, bundleListNs, bundleCodeNs,
     )
 
     /**
