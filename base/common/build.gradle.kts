@@ -120,6 +120,96 @@ val embedImages = tasks.register<Copy>("embedImages") {
     into(layout.buildDirectory.dir("docResources/component-images"))
 }
 
+// The commit this build was made from (issue #1620), recorded as `build-info/kdr-build.json` so Operator › System info
+// can say which code a node runs and how old it is. Only this repository's commit. A build with no git, or outside a
+// checkout, records none and still builds. There is deliberately no build timestamp: it would change the resource on
+// every build and rerun every test downstream of it, and the commit's own time is what dates the code.
+val gitRepoDir: File = layout.projectDirectory.dir("../..").asFile
+
+// On macOS `/usr/bin/git` is a stub that finds the real git through `DEVELOPER_DIR` when it is set, and fails outright
+// ("xcrun: error: missing DEVELOPER_DIR path") when that names a directory that is not there. IntelliJ passes its Gradle
+// builds a `DEVELOPER_DIR` (the developer's IDE builds recorded `unknown`, with that error, where the same build from a
+// terminal recorded the commit), and on a machine with only the Command Line Tools it can name an Xcode that is not
+// installed. A `DEVELOPER_DIR` naming nothing is dropped, and the stub falls back to `xcode-select`'s choice, as it does
+// in a terminal.
+fun gitOutput(vararg args: String): String = try {
+    val out = providers.exec {
+        workingDir = gitRepoDir
+        commandLine("git", *args)
+        // Read as git is run, not as the build is configured. Replaced whole: the spec's `environment` is a copy, so
+        // removing from it changes nothing.
+        val developerDir = System.getenv("DEVELOPER_DIR")
+        if (developerDir != null && !File(developerDir).isDirectory) {
+            setEnvironment(System.getenv().filterKeys { it != "DEVELOPER_DIR" })
+        }
+        isIgnoreExitValue = true
+    }
+    if (out.result.get().exitValue == 0) {
+        out.standardOutput.asText.get().trim()
+    } else {
+        // Said aloud, so a build that records no commit says why rather than leaving an `unknown` to puzzle over.
+        logger.warn("Build info: 'git ${args.joinToString(" ")}' failed in $gitRepoDir: " +
+            out.standardError.asText.get().trim())
+        ""
+    }
+} catch (e: Exception) {
+    // No git at all: the build goes on, and the record says the commit is unknown.
+    logger.warn("Build info: could not run git in $gitRepoDir: ${e.message}")
+    ""
+}
+
+/** A JSON string literal of [value]: a branch name may hold a quote, which git allows. */
+fun jsonString(value: String): String =
+    "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"").filter { it >= ' ' } + "\""
+
+/** What git says about the checkout, asked once per build. */
+class BuildGitFacts(val commit: String, val commitEpochSeconds: Long, val branch: String, val dirty: Boolean)
+
+// Lazy, so git runs only when this task is scheduled, not whenever Gradle configures the build. And once: a provider
+// reruns its block on every read, so the task's input check and its write would each run git, and could each see a
+// different HEAD if a commit landed between them.
+val buildGitFacts: BuildGitFacts by lazy {
+    BuildGitFacts(
+        commit = gitOutput("rev-parse", "HEAD").takeIf { Regex("[0-9a-f]{40}").matches(it) } ?: "unknown",
+        commitEpochSeconds = gitOutput("log", "-1", "--format=%ct").toLongOrNull() ?: -1L,
+        // A detached checkout (a tag, a particular commit) names no branch: git answers `HEAD`.
+        branch = when (val name = gitOutput("rev-parse", "--abbrev-ref", "HEAD")) {
+            "" -> "unknown"
+            "HEAD" -> "(detached)"
+            else -> name
+        },
+        // Untracked files count, as they do for `kdr-deploy`'s `-dirty` release name (`Deploy.kt`), so the two never
+        // disagree about one release. An untracked source file is compiled into the build, so it does differ from the
+        // commit; a scratch file the checkout should ignore belongs in `.gitignore`.
+        dirty = gitOutput("status", "--porcelain").isNotEmpty(),
+    )
+}
+val buildCommit = providers.provider { buildGitFacts.commit }
+val buildCommitEpochSeconds = providers.provider { buildGitFacts.commitEpochSeconds }
+val buildBranch = providers.provider { buildGitFacts.branch }
+val buildDirty = providers.provider { buildGitFacts.dirty }
+
+val embedBuildInfo = tasks.register("embedBuildInfo") {
+    inputs.property("commit", buildCommit)
+    inputs.property("commitEpochSeconds", buildCommitEpochSeconds)
+    inputs.property("branch", buildBranch)
+    inputs.property("dirty", buildDirty)
+    val out = layout.buildDirectory.file("docResources/build-info/kdr-build.json")
+    outputs.file(out)
+    doLast {
+        val epochSeconds = buildCommitEpochSeconds.get()
+        val json = buildString {
+            append("{\n")
+            append("  \"commit\": ${jsonString(buildCommit.get())},\n")
+            append("  \"commitEpochSeconds\": ${if (epochSeconds < 0) "null" else epochSeconds},\n")
+            append("  \"branch\": ${jsonString(buildBranch.get())},\n")
+            append("  \"uncommittedChanges\": ${buildDirty.get()}\n")
+            append("}\n")
+        }
+        out.get().asFile.apply { parentFile.mkdirs() }.writeText(json)
+    }
+}
+
 sourceSets {
     main {
         // The generated docs and images join this module's resources, so they land on the runtime classpath.
@@ -128,7 +218,7 @@ sourceSets {
 }
 
 tasks.named("processResources") {
-    dependsOn(embedDocs, embedImages)
+    dependsOn(embedDocs, embedImages, embedBuildInfo)
 }
 
 // RepoDocLinksTest (issues #1294, #1474) reads the repository's Markdown straight from the tree, not from the

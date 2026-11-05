@@ -40,6 +40,15 @@ dependencies {
     add("testImplementation", "io.kotest:kotest-assertions-core:6.2.1")
 }
 
+// `base/common` records the commit a build was made from as the classpath resource `build-info/kdr-build.json`
+// (issue #1620). It changes with every commit, and on the first edit after one, so a test task that counted it as
+// input would rerun every module's suite for a change no test can see. Tests ignore it; the distribution still carries it.
+normalization {
+    runtimeClasspath {
+        ignore("build-info/**")
+    }
+}
+
 /** The Gradle property, and the test JVM's system property, that turns on concurrent specs (issue #1078). */
 val concurrentSpecsProperty = "kdr.concurrentSpecs"
 

@@ -18,7 +18,9 @@ import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.util.formatDate
 import java.lang.management.ManagementFactory
 import java.util.Locale
+import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
+import kotlin.time.Instant
 
 /**
  * Keys of the `/operator/system/info` report. Self-named per the code guide, even though the report is
@@ -29,6 +31,7 @@ import kotlin.time.Duration.Companion.seconds
 object OSI {
     // Top-level sections.
     const val node = "node"
+    const val build = "build"
     const val gc = "gc"
     const val runtime = "runtime"
     const val memory = "memory"
@@ -44,6 +47,14 @@ object OSI {
     const val currentTime = "currentTime"
     const val uptimeMs = "uptimeMs"
     const val uptimeText = "uptimeText"
+
+    // build (issue #1620)
+    const val commit = "commit"
+    const val commitShort = "commitShort"
+    const val commitTime = "commitTime"
+    const val commitAge = "commitAge"
+    const val branch = "branch"
+    const val builtWithUncommittedChanges = "builtWithUncommittedChanges"
 
     // gc (`collect` is the request field that asks for one)
     const val collect = "collect"
@@ -120,7 +131,9 @@ private object OLB {
  * (the ladder ranks admin above operator) while an ordinary user does not.
  *
  * `/operator/system/info` reports this node's identity, uptime, and JVM statistics, and will **request a
- * garbage collection first if asked** ([OSI.collect], off by default).
+ * garbage collection first if asked** ([OSI.collect], off by default). Its [OSI.build] section (issue #1620) names the
+ * commit the code was built from, when that commit was made, and how long ago, read from [BuildInfo], and says when the
+ * build also carried uncommitted changes.
  *
  * The collection is opt-in because a full GC is a real pause: an endpoint that triggers one on every call is
  * a denial-of-service lever pointed at the deployment by anyone who can reach it, including a monitor polling
@@ -185,7 +198,7 @@ fun operatorSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.${SECT.opera
     }
     generalEndpoint(
         OPS.systemInfoPath,
-        "Reports this node's identity, uptime and JVM statistics, optionally requesting a garbage collection first.",
+        "Reports this node's build, identity, uptime and JVM statistics, optionally requesting a garbage collection first.",
         HttpMethod.GET,
         outputRef = systemInfoType,
         inputFields = {
@@ -257,6 +270,30 @@ private fun formatGb(bytes: Long?): String = when {
 }
 
 /**
+ * The [OSI.build] section (issue #1620): the commit this node was built from, and its age as of [now] in whole minutes,
+ * written as `uptimeText` is (`43m`, `2d 5h 12m`). A field the build did not record is left blank rather than left out, so the
+ * section always reads the same way.
+ *
+ * The one exception is [OSI.builtWithUncommittedChanges], present only when true: then the node is not running exactly
+ * the commit named, which `kdr-deploy` allows (it names such a release `-dirty`). A clean build says nothing about it,
+ * since "false" beside a deployed node's commit tells an operator nothing.
+ */
+private fun buildReport(now: Instant): Map<String, Any?> {
+    val commit = BuildInfo.commit
+    val commitTime = BuildInfo.commitTime
+    val report = linkedMapOf<String, Any?>(
+        OSI.commit to (commit ?: ""),
+        OSI.commitShort to (commit?.take(12) ?: ""),
+        OSI.commitTime to (commitTime?.formatDate() ?: ""),
+        // Never negative: a node whose clock is behind the commit's date reads it as just made.
+        OSI.commitAge to (commitTime?.let { (now - it).inWholeMinutes.coerceAtLeast(0).minutes.toString() } ?: ""),
+        OSI.branch to (BuildInfo.branch ?: ""),
+    )
+    if (BuildInfo.uncommittedChanges == true) report[OSI.builtWithUncommittedChanges] = true
+    return report
+}
+
+/**
  * Gathers the VM's statistics, first requesting a collection when [collect] is set and reporting what it
  * appeared to reclaim.
  *
@@ -264,16 +301,18 @@ private fun formatGb(bytes: Long?): String = when {
  * do). So the report says [OSI.requested] rather than claiming a collection happened, and the before/after
  * heap readings are what actually shows whether anything came of it.
  *
- * When nothing was asked for, the `gc` block is just `requested: false`: reporting a `freed` of zero would
- * read as "a collection ran and reclaimed nothing", which is a different fact. The heap figures are in
- * [OSI.memory] either way. The collection happens before the statistics are read, so they describe the VM
- * *after* it.
+ * When nothing was asked for there is no `gc` block at all: reporting a `freed` of zero would read as "a
+ * collection ran and reclaimed nothing", which is a different fact, and a block saying only `requested: false`
+ * drew a panel with nothing in it on the System info page, which never asks for one (#1620). When there is one,
+ * it sits just before [OSI.gcCollectors], so the collection's result reads beside the collectors' totals. The
+ * heap figures are in [OSI.memory] either way. The collection happens before the statistics are read, so they
+ * describe the VM *after* it.
  */
 private fun systemInfo(cxt: KdrCxt, collect: Boolean): Map<String, Any?> {
     val node = NodeService.get(cxt)
     val memoryBean = ManagementFactory.getMemoryMXBean()
 
-    val gcReport: Map<String, Any?> = if (collect) {
+    val gcReport: Map<String, Any?>? = if (collect) {
         val heapBefore = memoryBean.heapMemoryUsage.used
         val gcStart = System.nanoTime()
         System.gc()
@@ -287,7 +326,7 @@ private fun systemInfo(cxt: KdrCxt, collect: Boolean): Map<String, Any?> {
             OSI.durationMs to gcMillis,
         )
     } else {
-        linkedMapOf(OSI.requested to false)
+        null
     }
 
     val now = cxt.now()
@@ -300,7 +339,7 @@ private fun systemInfo(cxt: KdrCxt, collect: Boolean): Map<String, Any?> {
     val heap = memoryBean.heapMemoryUsage
     val nonHeap = memoryBean.nonHeapMemoryUsage
 
-    return linkedMapOf(
+    val report = linkedMapOf<String, Any?>(
         OSI.node to linkedMapOf(
             OSI.nodeId to node.nodeId.label,
             OSI.nodeStartTime to NodeService.vmStartTime.formatDate(),
@@ -309,7 +348,7 @@ private fun systemInfo(cxt: KdrCxt, collect: Boolean): Map<String, Any?> {
             // Whole seconds: `Duration.toString()` writes every digit of the fraction (issue #1317).
             OSI.uptimeText to uptime.inWholeSeconds.seconds.toString(),
         ),
-        OSI.gc to gcReport,
+        OSI.build to buildReport(now),
         OSI.runtime to linkedMapOf(
             OSI.vmName to runtimeBean.vmName,
             OSI.vmVendor to runtimeBean.vmVendor,
@@ -351,21 +390,24 @@ private fun systemInfo(cxt: KdrCxt, collect: Boolean): Map<String, Any?> {
             OSI.availableProcessors to osBean.availableProcessors,
             OSI.systemLoadAverage to osBean.systemLoadAverage,
         ),
-        OSI.gcCollectors to ManagementFactory.getGarbageCollectorMXBeans().map { collector ->
-            linkedMapOf(
-                OSI.name to collector.name,
-                OSI.collectionCount to collector.collectionCount,
-                OSI.collectionTimeMs to collector.collectionTime,
-            )
-        },
-        OSI.memoryPools to ManagementFactory.getMemoryPoolMXBeans().map { pool ->
-            linkedMapOf<String, Any?>(
-                OSI.name to pool.name,
-                OSI.type to pool.type.name,
-                OSI.used to formatGb(pool.usage?.used),
-                OSI.committed to formatGb(pool.usage?.committed),
-                OSI.max to formatGb(pool.usage?.max),
-            )
-        },
     )
+    // Only when one was requested, and just before the collectors, so its result reads beside their totals.
+    if (gcReport != null) report[OSI.gc] = gcReport
+    report[OSI.gcCollectors] = ManagementFactory.getGarbageCollectorMXBeans().map { collector ->
+        linkedMapOf(
+            OSI.name to collector.name,
+            OSI.collectionCount to collector.collectionCount,
+            OSI.collectionTimeMs to collector.collectionTime,
+        )
+    }
+    report[OSI.memoryPools] = ManagementFactory.getMemoryPoolMXBeans().map { pool ->
+        linkedMapOf<String, Any?>(
+            OSI.name to pool.name,
+            OSI.type to pool.type.name,
+            OSI.used to formatGb(pool.usage?.used),
+            OSI.committed to formatGb(pool.usage?.committed),
+            OSI.max to formatGb(pool.usage?.max),
+        )
+    }
+    return report
 }
