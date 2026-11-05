@@ -126,14 +126,32 @@ val embedImages = tasks.register<Copy>("embedImages") {
 // every build and rerun every test downstream of it, and the commit's own time is what dates the code.
 val gitRepoDir: File = layout.projectDirectory.dir("../..").asFile
 
+// On macOS `/usr/bin/git` is a stub that finds the real git through `DEVELOPER_DIR` when it is set, and fails outright
+// ("xcrun: error: missing DEVELOPER_DIR path") when that names a directory that is not there. IntelliJ hands its Gradle
+// builds a `DEVELOPER_DIR` naming Xcode.app, which a machine with only the Command Line Tools does not have, so a build
+// from the IDE recorded `unknown` where the same build from a terminal recorded the commit. A `DEVELOPER_DIR` naming
+// nothing is dropped, and the stub falls back to `xcode-select`'s choice, as it does in a terminal.
+val strayDeveloperDir: Boolean = System.getenv("DEVELOPER_DIR")?.let { !File(it).isDirectory } ?: false
+
 fun gitOutput(vararg args: String): String = try {
-    providers.exec {
+    val out = providers.exec {
         workingDir = gitRepoDir
         commandLine("git", *args)
+        // Replaced whole: the spec's `environment` is a copy, so removing from it changes nothing.
+        if (strayDeveloperDir) setEnvironment(System.getenv().filterKeys { it != "DEVELOPER_DIR" })
         isIgnoreExitValue = true
-    }.standardOutput.asText.get().trim()
+    }
+    if (out.result.get().exitValue == 0) {
+        out.standardOutput.asText.get().trim()
+    } else {
+        // Said aloud, so a build that records no commit says why rather than leaving an `unknown` to puzzle over.
+        logger.warn("Build info: 'git ${args.joinToString(" ")}' failed in $gitRepoDir: " +
+            out.standardError.asText.get().trim())
+        ""
+    }
 } catch (e: Exception) {
     // No git at all: the build goes on, and the record says the commit is unknown.
+    logger.warn("Build info: could not run git in $gitRepoDir: ${e.message}")
     ""
 }
 
