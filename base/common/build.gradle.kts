@@ -127,18 +127,21 @@ val embedImages = tasks.register<Copy>("embedImages") {
 val gitRepoDir: File = layout.projectDirectory.dir("../..").asFile
 
 // On macOS `/usr/bin/git` is a stub that finds the real git through `DEVELOPER_DIR` when it is set, and fails outright
-// ("xcrun: error: missing DEVELOPER_DIR path") when that names a directory that is not there. IntelliJ hands its Gradle
-// builds a `DEVELOPER_DIR` naming Xcode.app, which a machine with only the Command Line Tools does not have, so a build
-// from the IDE recorded `unknown` where the same build from a terminal recorded the commit. A `DEVELOPER_DIR` naming
-// nothing is dropped, and the stub falls back to `xcode-select`'s choice, as it does in a terminal.
-val strayDeveloperDir: Boolean = System.getenv("DEVELOPER_DIR")?.let { !File(it).isDirectory } ?: false
-
+// ("xcrun: error: missing DEVELOPER_DIR path") when that names a directory that is not there. IntelliJ passes its Gradle
+// builds a `DEVELOPER_DIR` (the developer's IDE builds recorded `unknown`, with that error, where the same build from a
+// terminal recorded the commit), and on a machine with only the Command Line Tools it can name an Xcode that is not
+// installed. A `DEVELOPER_DIR` naming nothing is dropped, and the stub falls back to `xcode-select`'s choice, as it does
+// in a terminal.
 fun gitOutput(vararg args: String): String = try {
     val out = providers.exec {
         workingDir = gitRepoDir
         commandLine("git", *args)
-        // Replaced whole: the spec's `environment` is a copy, so removing from it changes nothing.
-        if (strayDeveloperDir) setEnvironment(System.getenv().filterKeys { it != "DEVELOPER_DIR" })
+        // Read as git is run, not as the build is configured. Replaced whole: the spec's `environment` is a copy, so
+        // removing from it changes nothing.
+        val developerDir = System.getenv("DEVELOPER_DIR")
+        if (developerDir != null && !File(developerDir).isDirectory) {
+            setEnvironment(System.getenv().filterKeys { it != "DEVELOPER_DIR" })
+        }
         isIgnoreExitValue = true
     }
     if (out.result.get().exitValue == 0) {
@@ -159,21 +162,32 @@ fun gitOutput(vararg args: String): String = try {
 fun jsonString(value: String): String =
     "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"").filter { it >= ' ' } + "\""
 
-// Lazy, so git runs only when this task is scheduled, not whenever Gradle configures the build.
-val buildCommit = providers.provider {
-    gitOutput("rev-parse", "HEAD").takeIf { Regex("[0-9a-f]{40}").matches(it) } ?: "unknown"
+/** What git says about the checkout, asked once per build. */
+class BuildGitFacts(val commit: String, val commitEpochSeconds: Long, val branch: String, val dirty: Boolean)
+
+// Lazy, so git runs only when this task is scheduled, not whenever Gradle configures the build. And once: a provider
+// reruns its block on every read, so the task's input check and its write would each run git, and could each see a
+// different HEAD if a commit landed between them.
+val buildGitFacts: BuildGitFacts by lazy {
+    BuildGitFacts(
+        commit = gitOutput("rev-parse", "HEAD").takeIf { Regex("[0-9a-f]{40}").matches(it) } ?: "unknown",
+        commitEpochSeconds = gitOutput("log", "-1", "--format=%ct").toLongOrNull() ?: -1L,
+        // A detached checkout (a tag, a particular commit) names no branch: git answers `HEAD`.
+        branch = when (val name = gitOutput("rev-parse", "--abbrev-ref", "HEAD")) {
+            "" -> "unknown"
+            "HEAD" -> "(detached)"
+            else -> name
+        },
+        // Untracked files count, as they do for `kdr-deploy`'s `-dirty` release name (`Deploy.kt`), so the two never
+        // disagree about one release. An untracked source file is compiled into the build, so it does differ from the
+        // commit; a scratch file the checkout should ignore belongs in `.gitignore`.
+        dirty = gitOutput("status", "--porcelain").isNotEmpty(),
+    )
 }
-val buildCommitEpochSeconds = providers.provider { gitOutput("log", "-1", "--format=%ct").toLongOrNull() ?: -1L }
-val buildBranch = providers.provider {
-    // A detached checkout (a tag, a particular commit) names no branch: git answers `HEAD`.
-    when (val name = gitOutput("rev-parse", "--abbrev-ref", "HEAD")) {
-        "" -> "unknown"
-        "HEAD" -> "(detached)"
-        else -> name
-    }
-}
-// Tracked files only: a stray untracked file does not make the code differ from the commit.
-val buildDirty = providers.provider { gitOutput("status", "--porcelain", "--untracked-files=no").isNotEmpty() }
+val buildCommit = providers.provider { buildGitFacts.commit }
+val buildCommitEpochSeconds = providers.provider { buildGitFacts.commitEpochSeconds }
+val buildBranch = providers.provider { buildGitFacts.branch }
+val buildDirty = providers.provider { buildGitFacts.dirty }
 
 val embedBuildInfo = tasks.register("embedBuildInfo") {
     inputs.property("commit", buildCommit)

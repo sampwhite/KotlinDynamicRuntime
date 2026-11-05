@@ -339,7 +339,7 @@ private fun systemInfo(cxt: KdrCxt, collect: Boolean): Map<String, Any?> {
     val heap = memoryBean.heapMemoryUsage
     val nonHeap = memoryBean.nonHeapMemoryUsage
 
-    return linkedMapOf(
+    val report = linkedMapOf<String, Any?>(
         OSI.node to linkedMapOf(
             OSI.nodeId to node.nodeId.label,
             OSI.nodeStartTime to NodeService.vmStartTime.formatDate(),
@@ -390,24 +390,24 @@ private fun systemInfo(cxt: KdrCxt, collect: Boolean): Map<String, Any?> {
             OSI.availableProcessors to osBean.availableProcessors,
             OSI.systemLoadAverage to osBean.systemLoadAverage,
         ),
-    ).apply {
-        if (gcReport != null) put(OSI.gc, gcReport)
-    } + linkedMapOf(
-        OSI.gcCollectors to ManagementFactory.getGarbageCollectorMXBeans().map { collector ->
-            linkedMapOf(
-                OSI.name to collector.name,
-                OSI.collectionCount to collector.collectionCount,
-                OSI.collectionTimeMs to collector.collectionTime,
-            )
-        },
-        OSI.memoryPools to ManagementFactory.getMemoryPoolMXBeans().map { pool ->
-            linkedMapOf<String, Any?>(
-                OSI.name to pool.name,
-                OSI.type to pool.type.name,
-                OSI.used to formatGb(pool.usage?.used),
-                OSI.committed to formatGb(pool.usage?.committed),
-                OSI.max to formatGb(pool.usage?.max),
-            )
-        },
     )
+    // Only when one was requested, and just before the collectors, so its result reads beside their totals.
+    if (gcReport != null) report[OSI.gc] = gcReport
+    report[OSI.gcCollectors] = ManagementFactory.getGarbageCollectorMXBeans().map { collector ->
+        linkedMapOf(
+            OSI.name to collector.name,
+            OSI.collectionCount to collector.collectionCount,
+            OSI.collectionTimeMs to collector.collectionTime,
+        )
+    }
+    report[OSI.memoryPools] = ManagementFactory.getMemoryPoolMXBeans().map { pool ->
+        linkedMapOf<String, Any?>(
+            OSI.name to pool.name,
+            OSI.type to pool.type.name,
+            OSI.used to formatGb(pool.usage?.used),
+            OSI.committed to formatGb(pool.usage?.committed),
+            OSI.max to formatGb(pool.usage?.max),
+        )
+    }
+    return report
 }
