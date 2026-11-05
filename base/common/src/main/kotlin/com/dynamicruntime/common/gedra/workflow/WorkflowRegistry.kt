@@ -1,5 +1,6 @@
 package com.dynamicruntime.common.gedra.workflow
 
+import com.dynamicruntime.common.cfact.CFactParser
 import com.dynamicruntime.common.cfact.analyzeCFactOrAlways
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.KdrException
@@ -248,6 +249,10 @@ fun buildWorkflowRegistries(
                     )
                     return false
                 }
+                rowFactProblem(e.test)?.let {
+                    reportConfigProblem(cxt, problem(scope, w, "has an eligibility test '${e.id}' that $it"), issues)
+                    return false
+                }
                 labelProblem(scope, e.explanation, fragments)?.let {
                     reportConfigProblem(cxt, problem(scope, w, "has an explanation on eligibility test '${e.id}' that $it"), issues)
                     return false
@@ -265,6 +270,10 @@ fun buildWorkflowRegistries(
                 )
                 return false
             }
+            rowFactProblem(r.whenExpr)?.let {
+                reportConfigProblem(cxt, problem(scope, w, "has a '${r.cfact}' singleton rule whose condition $it"), issues)
+                return false
+            }
         }
         // Trait locks (issue #857): each condition parses against the scope's cfacts -- a lock whose condition could not
         // parse would refuse every write, or none, and the first person to find out would be the one locked out.
@@ -276,6 +285,10 @@ fun buildWorkflowRegistries(
                         problem(scope, w, "has a lock on trait '${lock.traitId}' whose $what does not parse: ${it.message}"),
                         issues,
                     )
+                    return false
+                }
+                rowFactProblem(expr)?.let {
+                    reportConfigProblem(cxt, problem(scope, w, "has a lock on trait '${lock.traitId}' whose $what $it"), issues)
                     return false
                 }
             }
@@ -316,6 +329,16 @@ fun buildWorkflowRegistries(
                         issues,
                     )
                     return false
+                }
+                // Who may approve (issue #1595) parses like a save rule: one that failed to would refuse every approval.
+                approval.approveWhen?.let { rule ->
+                    analyzeCFactOrAlways(rule, cfactNames(scope)).problems.firstOrNull()?.let {
+                        reportConfigProblem(
+                            cxt, problem(scope, w, "has a rule for who may approve task '${task.id}' that does not parse: ${it.message}"),
+                            issues,
+                        )
+                        return false
+                    }
                 }
             }
             // A task's display (issue #788): every condition in it parses against this scope's cfacts, each branch
@@ -464,6 +487,21 @@ fun displayBranches(display: Map<String, Any?>, depth: Int = 0): List<Map<String
 
 /** How deep a task display's selectors may nest -- far beyond any real use, a guard on bad stored config. */
 private const val maxDisplayDepth = 10
+
+/**
+ * Why [expression] may not be written where it is, or null when it may (issue #1595): it names a fact about the
+ * caller's relation to the form ([RCF]), which only a rule judged for one caller on one form can see -- a task's
+ * `saveWhen` and `display`, a CTA filter, and an approval's `approveWhen`. Eligibility, singleton rules, and locks are
+ * about the form whoever looks (a lock's override, about whoever writes), so a test there naming one would read as
+ * though nobody owned the form: refused, rather than quietly never true.
+ */
+fun rowFactProblem(expression: String): String? {
+    // The names as the cfact grammar reads them, not a word scan, which would split a rooted name at its colon.
+    val named = CFactParser.analyze(expression, emptySet()).names.intersect(RCF.all)
+    if (named.isEmpty()) return null
+    return "names ${named.sorted()}, a fact about the caller's relation to the form, which only a task's saveWhen or " +
+        "display, a CTA filter, or an approval's approveWhen can see"
+}
 
 /**
  * The first thing wrong with a task [display] (issue #788), or null: a selector, at any depth, that is not a

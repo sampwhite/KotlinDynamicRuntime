@@ -55,9 +55,10 @@ object WorkflowApi {
     }
 
     /**
-     * Approves approval task [taskId] of normal workflow [workflowId] for form [gedraId] (issue #787), as a reviewer.
-     * The endpoint decides who may and when -- a reviewer, not the form's owner, on the current task, once -- and a
-     * refusal comes back as the error it raised. [client] as for [fetchCoreDetailsView].
+     * Approves approval task [taskId] of normal workflow [workflowId] for form [gedraId] (issue #787). The endpoint
+     * decides who may and when -- by the approval's rule, by default a reviewer who does not own the form (issue #1595),
+     * on the current task, once -- and a refusal comes back as the error it raised. [client] as for
+     * [fetchCoreDetailsView].
      */
     suspend fun approve(gedraId: String, workflowId: String, taskId: String, client: String? = null) {
         Http.sendApi(

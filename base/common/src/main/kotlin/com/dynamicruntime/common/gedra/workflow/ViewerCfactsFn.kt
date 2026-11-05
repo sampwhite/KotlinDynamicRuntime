@@ -65,29 +65,33 @@ fun WfTask.viewerCfactsFns(): List<ViewerCfactsFn> =
     resolvedFunctions.filter { it.event == WfEventType.viewerCfacts }.map { ViewerCfactsFn.of(it) }
 
 /**
- * The `viewerCfacts` evaluation for **one view** (issue #786) of [client]'s workflow, as the person [cxt] acts as:
- * [forTask] answers each task's viewer facts, which the workflow view adds to the task's own target facts so a
- * selector can choose on them (today a task's display selector, issue #788; field-layout selectors are to follow)
+ * The `viewerCfacts` evaluation for **one piece of work** (issues #786, #1595) on [client]'s workflows, as the person
+ * [cxt] acts as: [forTask] answers each task's viewer facts, which the workflow view adds to the task's own target facts
+ * so a selector can choose on them (today a task's display selector, issue #788; field-layout selectors are to follow)
  * -- and which the approve endpoint (#787) asks for the same way, so the button a page shows and the permission
- * the endpoint grants are one computation.
+ * the endpoint grants are one computation. They are only what the task's functions say: a CTA's filter rule never
+ * reshapes them, and is evaluated beside them, by `passesCtaFilterRule`, into a fact of its own.
  *
- * One object per view, so what is about the *viewer* is looked up once however many tasks carry functions: a
- * workflow with two approval points asks twice and reads the labels once. A task with no functions costs nothing,
- * and a caller with no user row -- a system context, an anonymous one, an identity the request carries without a
- * row behind it -- is answered "no labels" without a lookup, rather than missing the cache into SQL on every view.
+ * What is about the *viewer* is worked out once per object, however many forms and tasks ask: the labels are read once
+ * and each task's facts once. So a caller judging many forms -- a listing of them -- makes **one** and passes it to
+ * each form's check, which then costs no lookup per row; the object lives as long as that work and no longer, so it
+ * never answers from labels changed since. A task with no functions costs nothing, and a caller with no user row -- a
+ * system context, an anonymous one, an identity the request carries without a row behind it -- is answered "no labels"
+ * without a lookup, rather than missing the cache into SQL on every view.
  */
 class ViewerCfacts(private val cxt: KdrCxt, private val client: String?) {
     private val labels: Set<String> by lazy { viewerLabels(cxt) }
+    private val byTask = HashMap<WfTask, Set<String>>()
 
     /** [task]'s viewer facts: what its `viewerCfacts` functions emit, narrowed to the cfacts [client] declares. */
-    fun forTask(task: WfTask): Set<String> {
+    fun forTask(task: WfTask): Set<String> = byTask.getOrPut(task) {
         val fns = task.viewerCfactsFns()
         if (fns.isEmpty()) {
-            return emptySet()
+            return@getOrPut emptySet()
         }
         val params = ViewerCfactsParams { labels }
         fns.forEach { it.computeViewerCfacts(cxt, params) }
-        return declaredCfactsOnly(cxt, client, params.emitted, "A viewerCfacts function on task '${task.id}'")
+        declaredCfactsOnly(cxt, client, params.emitted, "A viewerCfacts function on task '${task.id}'")
     }
 }
 

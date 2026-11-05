@@ -113,6 +113,17 @@ class WfTaskView(
      */
     val canSave: Boolean = true,
     /**
+     * Who this task is waiting on, when the CTA's filter is what keeps this caller from acting on it (issue #1595):
+     * the filter's label, resolved -- what the page says in place of a general "someone else". Null otherwise.
+     */
+    val waitingOn: String? = null,
+    /**
+     * Whether this caller may approve the task (issue #1595), by its approval's rule for who may -- by default a reviewer
+     * who does not own the form -- and the CTA's filter: what the approve endpoint enforces, and what an approval's
+     * button is shown to. False on a task that is not an approval task.
+     */
+    val canApprove: Boolean = false,
+    /**
      * How the task is shown (issue #788): the one branch of its display selector that applies to this caller, chosen
      * on the backend -- the page never sees the others or their conditions. Null when the task declares no display,
      * which means its own rendering.
@@ -123,7 +134,10 @@ class WfTaskView(
     /** The task's facts for this caller (issues #786, #788) -- `kdr:reviewer` for a reviewer, `kdr:isCta`, and so on. */
     val facts: Set<String> = emptySet(),
 ) {
-    /** Whether this caller is a reviewer of the task (issue #787): what an approval's button is shown to. */
+    /**
+     * Whether this caller is a reviewer of the task (issue #787). The approve button follows [canApprove] instead
+     * (issue #1595), since an approval's rule may name the owner rather than a reviewer.
+     */
     val isReviewer: Boolean get() = WFC.reviewer in facts
 
     /** Whether the task is shown disabled (issue #788): greyed, nothing in it actionable, its rail entry inert. */
@@ -306,6 +320,8 @@ fun parseWorkflowView(results: Map<String, Any?>): WorkflowView? {
             entries = t[WVF.entries].toJsonListOfMaps(),
             status = parseTaskStatus(t[WVF.status]),
             canSave = t[WVF.canSave] != false,
+            waitingOn = t[WVF.waitingOn].toOptStr(),
+            canApprove = t[WVF.canApprove] == true,
             display = parseTaskDisplay(t[WFD.display]),
             approval = parseApproval(t[WVF.approval]),
             facts = t[WVF.facts].toJsonListOfStrings().toSet(),

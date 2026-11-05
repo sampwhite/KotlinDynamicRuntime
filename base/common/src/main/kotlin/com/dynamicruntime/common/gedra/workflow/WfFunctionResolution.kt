@@ -98,13 +98,16 @@ private class ResolutionScope(
 }
 
 /**
- * An approval task (issue #787) is approved only by a caller the task's `viewerCfacts` functions call a
- * [WFC.reviewer] -- the approve endpoint asks exactly that. So a task none of whose *resolved* functions can emit
- * it could never be approved by anyone, which is reported here rather than discovered by the first reviewer who
- * cannot press the button. Reported, not dropped: there is nothing to drop that would make the task work.
+ * An approval task (issue #787) whose rule for who may approve names [WFC.reviewer] -- as the default rule does
+ * (`WfApproval.defaultApproveWhen`, issue #1595) -- is approved only by a caller the task's `viewerCfacts` functions call
+ * one. So a task none of whose *resolved* functions can emit it could never be approved by anyone, which is reported
+ * here rather than discovered by the first reviewer who cannot press the button. Reported, not dropped: there is
+ * nothing to drop that would make the task work. A rule naming no reviewer (`kdr:isOwner`, the owner's own step)
+ * needs no such function.
  */
 private fun ResolutionScope.checkApprovalAuthority(def: WfDef, task: WfTask, resolved: List<WfFunction>) {
-    task.approval ?: return
+    val approval = task.approval ?: return
+    if (WFC.reviewer !in CFactParser.analyze(approval.effectiveApproveWhen, emptySet()).names) return
     if (!grantsReviewer(task, resolved)) {
         reportConfigProblem(
             cxt,
@@ -143,7 +146,7 @@ private fun ResolutionScope.grantsReviewer(task: WfTask, resolved: List<WfFuncti
 private fun ResolutionScope.checkCtaFilters(def: WfDef, task: WfTask, resolved: List<WfFunction>): List<WfFunction> {
     if (resolved.none { it.event == WfEventType.ctaFilter }) return resolved
     // From the list just resolved, not the task's stored one: a trial resolves without assigning.
-    val personFacts = SchemaService.get(cxt).cfactsFor(client).requestNames +
+    val personFacts = SchemaService.get(cxt).cfactsFor(client).requestNames + RCF.all +
         resolved.filter { it.event == WfEventType.viewerCfacts }.flatMap { ViewerCfactsFn.of(it).emittedCfacts }
     return resolved.filter { fn ->
         if (fn.event != WfEventType.ctaFilter) return@filter true

@@ -106,6 +106,12 @@ object WFD {
     const val button = "button"
 
     /**
+     * On an approval (issue #1595): who may approve it -- a cfact expression over the facts a task's `saveWhen` sees,
+     * [RCF.isOwner] among them. Absent means [WfApproval.defaultApproveWhen]: a reviewer who does not own the form.
+     */
+    const val approveWhen = "approveWhen"
+
+    /**
      * On a task: how it is shown (issue #788) -- one display branch ([WDSP]), or, usually, a UiBlock **selector**
      * (`select`) choosing among several by the caller's task facts. What turns an approval task into "approved by
      * ...", "waiting on earlier work", the approve button, or "wait for a reviewer", as the case may be.
@@ -227,9 +233,24 @@ object WVF {
 
     /**
      * On each task of a normal workflow's view (issue #856): whether this caller may save it, by the task's rule for
-     * who may ([WFD.saveWhen]) -- the rule the save endpoint enforces, so the page offers Save only where it works.
+     * who may ([WFD.saveWhen]) and, on the call to action, its filter (issue #1595) -- the rules the save endpoint
+     * enforces, so the page offers Save only where it works.
      */
     const val canSave = "canSave"
+
+    /**
+     * On the task that is a normal workflow's call to action (issue #1595): who it is waiting on, when the CTA's filter
+     * is what keeps this caller from acting -- the filter's label, resolved. Absent when the caller passes it, or the
+     * task carries none: then [canSave] and the reviewer fact say all there is.
+     */
+    const val waitingOn = "waitingOn"
+
+    /**
+     * On each approval task of a normal workflow's view (issue #1595): whether this caller may approve it, by its
+     * approval's rule ([WFD.approveWhen]) and, on the call to action, its filter -- the rules the approve endpoint
+     * enforces, so the page offers the button only where it works.
+     */
+    const val canApprove = "canApprove"
 
     /**
      * On a view resolved against a form, and the locks endpoint's answer (issue #857): the traits locked for this
@@ -399,6 +420,36 @@ object WFC {
      * Rooted like its neighbors, so a client remains free to declare a cfact called plain `reviewer`.
      */
     const val reviewer = "kdr:reviewer"
+
+    /**
+     * The caller passes the task's **CTA filter rule** (issue #1595): present on every task except the workflow's CTA
+     * when its rule (`WFS.ctaFilterRule`) names someone other than this caller. The rule's evaluation for one caller,
+     * given a name of its own so that nothing has to reshape another fact to carry it: [reviewer] means only what the
+     * task's functions say, and a save, an approval, the owner-only rule, and a display branch each test this fact
+     * where the filter is meant to narrow them. Never stored, since it is about the caller.
+     */
+    const val passesCtaFilter = "kdr:passesCtaFilter"
+}
+
+/**
+ * The facts about the **caller's relation to a form** (issue #1595): a third kind beside the request's facts and the
+ * person's, worked out on read from the form's row and the caller, never stored, and needing none of the form's data
+ * or state -- so a listing can work them out for every row it already holds. Declared with the platform's facts, and
+ * named only where a form's row is in hand for the caller: a task's `saveWhen` and `display`, a CTA filter, and an
+ * approval's `approveWhen`. Eligibility, singleton rules, and locks are about the form whoever looks, so a test there
+ * naming one is refused.
+ */
+@Suppress("ConstPropertyName")
+object RCF {
+    /**
+     * The caller owns the form: is its owning user, or, in production, another user of the same person (so a person's
+     * second account is not a second person). On a test instance only the owning user, so one tester's personas can
+     * play owner and reviewer.
+     */
+    const val isOwner = "kdr:isOwner"
+
+    /** Every fact about the caller's relation to a form. */
+    val all: Set<String> = setOf(isOwner)
 }
 
 /**
@@ -507,7 +558,29 @@ class WfSingleton(val cfact: String, val whenExpr: String)
  * status through an ordinary singleton rule. [prompt] is the text above the button and [button] the button's own;
  * both are templates evaluated like a label.
  */
-class WfApproval(val cfact: String, val prompt: String, val button: String)
+class WfApproval(
+    val cfact: String,
+    val prompt: String,
+    val button: String,
+    /**
+     * Who may approve (issue #1595), a cfact expression; null for [defaultApproveWhen]. A client says otherwise only on
+     * purpose -- `kdr:isOwner` for a step that is the owner's own to confirm -- and the rule then reads that way in its
+     * configuration, where a reviewer of the configuration sees it.
+     */
+    val approveWhen: String? = null,
+) {
+    /** The rule the approve endpoint judges by: [approveWhen], or [defaultApproveWhen]. */
+    val effectiveApproveWhen: String get() = approveWhen ?: defaultApproveWhen
+
+    companion object {
+        /**
+         * Who may approve when an approval does not say (issues #787, #1595): a reviewer -- whom the task's
+         * `viewerCfacts` functions call one -- who does not own the form. The second-person rule, as a default a
+         * client may restate rather than a refusal it cannot configure away.
+         */
+        const val defaultApproveWhen = "${WFC.reviewer},~${RCF.isOwner}"
+    }
+}
 
 /**
  * A task's **task layout** -- as opposed to a *field* layout (`SchLayout`, `g-layout`), which presents the fields
@@ -1016,6 +1089,11 @@ object WfDefSchema {
             property(WFD.cfact, "The cfact the workflow gains once this task is approved.", required = true)
             property(WFD.prompt, "The text above the approve button -- a template, evaluated in two passes.", required = true)
             property(WFD.button, "The approve button's own text -- a template, evaluated in two passes.", required = true)
+            property(
+                WFD.approveWhen,
+                "Who may approve: a cfact expression over the caller's task and viewer facts and kdr:isOwner. Absent means " +
+                    "a reviewer who does not own the form (${WfApproval.defaultApproveWhen}).",
+            )
         }
         type(WFD.lockType) {
             type = SCT.kObject
@@ -1147,7 +1225,12 @@ fun WfDef.toJsonMap(): Map<String, Any?> = buildMap {
                 // round-trip identically (issue #677).
                 if (task.functionUsages.isNotEmpty()) put(WFD.functions, task.functionUsages.map { it.toJsonMap() })
                 task.approval?.let {
-                    put(WFD.approval, linkedMapOf(WFD.cfact to it.cfact, WFD.prompt to it.prompt, WFD.button to it.button))
+                    put(
+                        WFD.approval,
+                        linkedMapOf<String, Any?>(WFD.cfact to it.cfact, WFD.prompt to it.prompt, WFD.button to it.button).apply {
+                            it.approveWhen?.let { rule -> put(WFD.approveWhen, rule) }
+                        },
+                    )
                 }
                 task.display?.let { put(WFD.display, it) }
                 task.saveWhen?.let { put(WFD.saveWhen, it) }
@@ -1210,7 +1293,11 @@ fun parseWfDef(cxt: KdrCxtBase, raw: Map<String, Any?>, templateOverlay: Map<Str
                 functionUsages = usagesOf(t[WFD.functions]),
                 approval = (t[WFD.approval] as? Map<*, *>)?.let { a ->
                     val am = a.toJsonMapOrEmpty()
-                    WfApproval(am[WFD.cfact].toOptStr() ?: "", am[WFD.prompt].toOptStr() ?: "", am[WFD.button].toOptStr() ?: "")
+                    WfApproval(
+                        am[WFD.cfact].toOptStr() ?: "", am[WFD.prompt].toOptStr() ?: "", am[WFD.button].toOptStr() ?: "",
+                        // Blank arrives absent, as a blank saveWhen does: the default rule.
+                        approveWhen = am[WFD.approveWhen].toOptStr(),
+                    )
                 },
                 display = (t[WFD.display] as? Map<*, *>)?.toJsonMapOrEmpty(),
                 // A blank rule arrives absent -- the schema layer reads a blank optional string that way -- which is
@@ -1403,10 +1490,13 @@ class WfTaskBuilder(private val id: String, private val label: String) {
     /**
      * Makes this an **approval task** (issue #787): no traits and no saves -- a reviewer approves it, which emits
      * [cfact] into the workflow's cfacts. [prompt] is the text above the button and [button] the button's; both are
-     * templates, like a label.
+     * templates, like a label. [approveWhen] says who may approve (issue #1595); left out, a reviewer who does not own
+     * the form ([WfApproval.defaultApproveWhen]).
      */
-    fun approval(cfact: String, prompt: String, button: String) {
-        approval = linkedMapOf(WFD.cfact to cfact, WFD.prompt to prompt, WFD.button to button)
+    fun approval(cfact: String, prompt: String, button: String, approveWhen: String? = null) {
+        approval = linkedMapOf<String, Any?>(WFD.cfact to cfact, WFD.prompt to prompt, WFD.button to button).apply {
+            approveWhen?.let { put(WFD.approveWhen, it) }
+        }
     }
 
     /**

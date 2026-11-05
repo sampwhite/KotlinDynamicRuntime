@@ -101,7 +101,7 @@ fun workflowStateConfig(cxt: KdrCxt): GedraConfig = gedraConfig(cxt, WFS.stateBu
             CTAK.all.forEach { option(it) }
         }
         property(
-            WFS.ctaFilter,
+            WFS.ctaFilterRule,
             "Who may act on the CTA: a cfact expression naming only facts about the person, concluded from the form's data. " +
                 "It narrows the task's saveWhen.",
         )
@@ -225,7 +225,7 @@ fun addWorkflowSingletonCFacts(collector: SchemaCollector) {
  * An **engaged** workflow's entry also carries its **CTA** (issue #785): [WFS.ctaTask], the earliest task not
  * both complete and valid, with its [WFS.ctaStatus] -- or [WFS.tasksDone] when there is none. With the CTA go what it
  * carries (issue #1594, [ctaAssignment]): its search keyword ([WFS.ctaKeyword]) and, when a `ctaFilter` function set
- * one, who may act on it ([WFS.ctaFilter], with its [WFS.ctaFilterLabel]). Engaged only: the
+ * one, who may act on it ([WFS.ctaFilterRule], with its [WFS.ctaFilterLabel]). Engaged only: the
  * CTA is where an engaged workflow's link points, and a workflow the form has not entered has no work under way
  * (its view computes the same answer live, from the same [WorkflowTaskStatus]).
  *
@@ -308,8 +308,9 @@ object WorkflowStateDeriver : GedraStateDeriver {
                         // Who may act on it, and what kind of action it is (issue #1594), from the form's data now.
                         val assigned = ctaAssignment(cxt, registry, workflowId, task, state.row.entries)
                         assigned.keyword?.let { k -> data[WFS.ctaKeyword] = k }
-                        assigned.filter?.let { f -> data[WFS.ctaFilter] = f }
-                        assigned.label?.let { l -> data[WFS.ctaFilterLabel] = l }
+                        // The filter is stored as the rule it is, never as whether anyone passes it.
+                        assigned.filterRule?.let { f -> data[WFS.ctaFilterRule] = f }
+                        assigned.filterLabel?.let { l -> data[WFS.ctaFilterLabel] = l }
                     }
                 }
                 val failures = WorkflowEligibility.failures(registry, it.def, eligibilityFacts(workflowId))

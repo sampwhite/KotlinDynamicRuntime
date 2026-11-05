@@ -107,7 +107,18 @@ object WorkflowApprovals {
      *  - it is **not approved already** in this engagement -- an approval is recorded once (409). A record from an
      *    earlier engagement does not count, and is replaced.
      */
-    fun approve(cxt: KdrCxt, row: GedraDataRow, declared: WfDeclared, task: WfTask): List<Map<String, Any?>> {
+    fun approve(
+        cxt: KdrCxt,
+        row: GedraDataRow,
+        declared: WfDeclared,
+        task: WfTask,
+        /**
+         * Whether the caller may (issue #1595): run under the lock once the checks above pass -- the task is the current
+         * one -- with the form's state as it then stands, and throwing to refuse. The approve endpoint's judge: the
+         * approval's rule and the CTA's filter rule, which only means something of the current task.
+         */
+        authorize: (current: List<Map<String, Any?>>) -> Unit = {},
+    ): List<Map<String, Any?>> {
         val workflowId = declared.def.workflowId
         // The actor and the moment, taken before the owner binding -- they are who approved, not whose form it is.
         val at = cxt.instanceNow()
@@ -138,6 +149,7 @@ object WorkflowApprovals {
                         "An approval is given once the work before it is complete.",
                 )
             }
+            authorize(current)
             // After every stamp already on the engagement (issue #1267), so the approval reads as later than the
             // engagement it belongs to even inside one millisecond.
             val stamp = WorkflowEngagement.stampAfter(current, workflowId, at)

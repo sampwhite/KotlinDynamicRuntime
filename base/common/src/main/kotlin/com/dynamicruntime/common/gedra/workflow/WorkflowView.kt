@@ -60,6 +60,10 @@ fun resolveWorkflowView(
     lockedTraits: List<Map<String, Any?>> = emptyList(),
     /** Whether the form is kept to its owner from this caller (issue #1433), so no task of it can be saved; see [OwnerOnly]. */
     keptToOwner: Boolean = false,
+    /** All of the form's entries (issue #1595): what the CTA's filter is concluded from. Empty for a creation view. */
+    formEntries: List<Map<String, Any?>> = emptyList(),
+    /** The caller's relation to the form (issue #1595), as [RowCfacts.of] works it out: `kdr:isOwner` for its owner. */
+    rowFacts: Set<String> = emptySet(),
 ): Map<String, Any?> {
     val client: String = cxt.client
     @Suppress("VariableInitializerIsRedundant2")
@@ -80,11 +84,12 @@ fun resolveWorkflowView(
     // The trait data types the workflow references, collected as they are rendered; the seeds of the closure.
     val seedRefs = LinkedHashSet<String>()
     // The request-scoped cfacts, computed once: they are the same for every task, so only each task's own
-    // target facts are unioned onto them below (each cfact source can do real work -- e.g., a section check).
+    // target facts are unioned onto them below (each cfact source can do real work -- e.g., a section check). The
+    // caller's relation to the form (issue #1595) is the form's, not the request's, so it is handed to the judge apart.
     val requestFacts = cfacts.assemble(cxt)
-    // Each task's status and facts for this caller and this form (issues #700, #785, #786, #856) -- the one
-    // computation the save endpoint judges a save by too, so the page's Save and the endpoint's refusal agree.
-    val judge = WorkflowTaskJudge(cxt, client, declared, entriesByTask, approvals, requestFacts)
+    // Each task's status and facts for this caller and this form (issues #700, #785, #786, #856, #1595) -- the one
+    // computation the save and approve endpoints judge by too, so the page's buttons and the endpoints' refusals agree.
+    val judge = WorkflowTaskJudge(cxt, client, declared, entriesByTask, approvals, requestFacts, rowFacts, formEntries)
 
     fun label(text: String): String = fragments.backendPass(cxt, text)
 
@@ -172,7 +177,15 @@ fun resolveWorkflowView(
         } else if (declared.def.entry == WfEntry.normal) {
             raw[WVF.canSave] = judge.maySave(task, taskFacts)
         }
-        task.approval?.let { raw[WVF.approval] = approvalView(it, approvals[task.id]) }
+        // Who the CTA waits on, when its filter is what keeps this caller from acting (issue #1595) -- said even of a
+        // form kept to its owner, since it is who the step is for, not why this caller may not change the form.
+        if (declared.def.entry == WfEntry.normal) judge.waitingOn(task)?.let { raw[WVF.waitingOn] = label(it) }
+        task.approval?.let {
+            raw[WVF.approval] = approvalView(it, approvals[task.id])
+            // Whether this caller may approve it, by the rule the approve endpoint enforces -- so the page offers the
+            // button only where it can succeed.
+            raw[WVF.canApprove] = judge.mayApprove(task, taskFacts)
+        }
         // How the task is shown (issue #788): usually a selector, which the filter below resolves against this
         // caller's task facts -- so what arrives is the one branch that applies, never the others or their tests.
         task.display?.let { raw[WFD.display] = it }
@@ -185,7 +198,7 @@ fun resolveWorkflowView(
         if (presented.isNotEmpty()) raw[WVF.entries] = presented
         // The content pipeline, per task: the request facts (hoisted) plus this task's own, then drop anything
         // gated on a cfact they do not satisfy, and put each selector's chosen branch in its place.
-        val shown = filterByCFacts(raw, requestFacts + taskFacts, cfacts::parse)
+        val shown = filterByCFacts(raw, judge.callerFacts + taskFacts, cfacts::parse)
         // The chosen display branch's text through the backend pass, as a label is -- after the choice, so only the
         // branch that is shown is evaluated. `${'$'}{…}` survives for the frontend, per the layout rule.
         val display = shown[WFD.display] as? Map<*, *> ?: return shown
@@ -272,23 +285,48 @@ class WorkflowFormFacts(val engaged: Boolean, val eligible: Boolean, val reasons
 }
 
 /**
- * What each task of [declared] is judged on for one caller and one form (issues #700, #785, #786, #856): the tasks'
- * statuses and the CTA among them, each task's facts -- its own, and what its `viewerCfacts` functions conclude about
- * the caller -- and whether the caller may save it. Shared by the view, which shows the answer, and the save endpoint,
- * which enforces it, so the two cannot disagree. [entriesByTask] is the form's entries each task collects;
- * [approvals] its approvals by task id.
+ * What each task of [declared] is judged on for one caller and one form (issues #700, #785, #786, #856, #1595): the
+ * tasks' statuses and the CTA among them, each task's facts -- its own, and what its `viewerCfacts` functions conclude
+ * about the caller -- and whether the caller may save or approve it. Shared by the view, which shows the answers, and
+ * the save and approve endpoints, which enforce them, so a page and an endpoint cannot disagree.
+ *
+ * ### The CTA's filter rule, step by step
+ *
+ * A CTA filter is a **rule** (a cfact expression), not a status, and the indirection is kept in plain sight here:
+ *
+ *  1. **The rule is worked out** from the form's data as it stands ([cta], by [ctaAssignment] -- what the state's
+ *     deriver stores as `WFS.ctaFilterRule`, so the two agree whenever the state is current).
+ *  2. **It is evaluated once per task for this caller** (`passesFilter`, by [passesCtaFilterRule]), and the answer is
+ *     a fact of its own, [WFC.passesCtaFilter], in [taskFacts]. No other fact changes: `kdr:reviewer` still means only
+ *     what the task's functions say.
+ *  3. **Each permission asks that fact**: [maySave] for a task that offers a save, [mayApprove] for an approval, and
+ *     [waitingOn] for the reason a page gives. The filter only narrows the task's own rule, never widens it.
+ *
+ * `requestFacts` are the request's alone, the same for every form; `rowFacts` the caller's relation to **this** form
+ * ([RowCfacts]); [callerFacts] both, which every rule here is judged over. Kept apart so a set built once for a page
+ * can never carry one row's `kdr:isOwner` to the next.
  */
 class WorkflowTaskJudge(
     cxt: KdrCxt,
     client: String,
     val declared: WfDeclared,
+    /** The form's entries each task collects ([taskEntriesOf]): what a task's completeness is judged on. */
     private val entriesByTask: Map<String, List<Map<String, Any?>>>,
+    /** The form's approvals of this workflow, by task id. */
     private val approvals: Map<String, Map<String, Any?>>,
-    /** The request's cfacts, assembled once by whoever already holds them. */
-    private val requestFacts: Set<String>,
+    /** The request's cfacts alone, assembled once by whoever already holds them: the same for every form. */
+    requestFacts: Set<String>,
+    /** The caller's relation to this form ([RowCfacts.of]): `kdr:isOwner` for its owner. Per form, never shared. */
+    rowFacts: Set<String>,
+    /** All of the form's entries: what the CTA's filter rule is worked out from. Empty for a creation view. */
+    formEntries: List<Map<String, Any?>>,
+    /** The caller's viewer facts -- one shared by a caller judging many forms, so each is worked out once. */
+    private val viewer: ViewerCfacts = ViewerCfacts(cxt, client),
 ) {
     private val cfacts = SchemaService.get(cxt).cfactsFor(client)
-    private val viewer = ViewerCfacts(cxt, client)
+
+    /** The request's facts and the caller's relation to this form: what every rule here is judged over. */
+    val callerFacts: Set<String> = requestFacts + rowFacts
 
     val statuses: List<Pair<WfTask, WfTaskStatus>> = declared.def.tasks.map {
         it to WorkflowTaskStatus.of(cxt, client, it, entriesByTask[it.id] ?: emptyList(), approved = it.id in approvals, declared = declared)
@@ -296,16 +334,57 @@ class WorkflowTaskJudge(
     val statusById: Map<String, WfTaskStatus> = statuses.associate { (task, status) -> task.id to status }
 
     /** The CTA: the earliest task not both complete and valid, or null when every task is done. */
-    val ctaTaskId: String? = WorkflowTaskStatus.cta(statuses)?.first?.id
+    private val ctaTask: WfTask? = WorkflowTaskStatus.cta(statuses)?.first
+    val ctaTaskId: String? = ctaTask?.id
 
-    /** [task]'s own facts and the caller's viewer facts for it. */
-    fun taskFacts(task: WfTask): Set<String> =
-        WfTaskFacts.of(task, entriesByTask[task.id] ?: emptyList(), isCta = task.id == ctaTaskId, approved = task.id in approvals) +
-            viewer.forTask(task)
+    /**
+     * Step 1: what the CTA carries (issue #1595) -- its keyword, and its filter **rule** -- worked out from the form's
+     * data now. Lazy, since most judgments (a task with no filter function, a check of a task that is not the CTA)
+     * never ask.
+     */
+    val cta: CtaAssignment? by lazy { ctaTask?.let { ctaAssignment(cxt, cfacts, declared.def.workflowId, it, formEntries) } }
 
-    /** Whether the caller may save [task] (issue #856): its rule, over the request's facts and [facts]; no rule admits anyone. */
+    /**
+     * Step 2: whether the caller passes [task]'s CTA filter rule (issue #1595). True for every task but the CTA, and for
+     * a CTA carrying no rule.
+     */
+    private fun passesFilter(task: WfTask): Boolean =
+        task.id != ctaTaskId || passesCtaFilterRule(cfacts, cta?.filterRule, callerFacts + viewer.forTask(task))
+
+    /** [task]'s own facts, the caller's viewer facts for it, and [WFC.passesCtaFilter] when the caller passes its CTA filter rule. */
+    fun taskFacts(task: WfTask): Set<String> {
+        val own = WfTaskFacts.of(task, entriesByTask[task.id] ?: emptyList(), isCta = task.id == ctaTaskId, approved = task.id in approvals)
+        val facts = own + viewer.forTask(task)
+        return if (passesFilter(task)) facts + WFC.passesCtaFilter else facts
+    }
+
+    /**
+     * Step 3, a save (issues #856, #1595): [task]'s rule over [callerFacts] and [facts] -- no rule admits anyone --
+     * **and**, on a task that offers a save, [WFC.passesCtaFilter]. An approval task offers none; its filter is
+     * [mayApprove]'s to apply.
+     */
     fun maySave(task: WfTask, facts: Set<String> = taskFacts(task)): Boolean =
-        task.saveWhen?.let { cfacts.parse(it).matches(requestFacts + facts) } ?: true
+        (task.saveWhen?.let { cfacts.parse(it).matches(callerFacts + facts) } ?: true) &&
+            (task.saves.isEmpty() || WFC.passesCtaFilter in facts)
+
+    /**
+     * Step 3, an approval (issue #1595): [task] is an approval task whose rule ([WfApproval.effectiveApproveWhen], by
+     * default a reviewer who does not own the form) passes over [callerFacts] and [facts], **and** the caller has
+     * [WFC.passesCtaFilter]. Whether the task is current and not yet approved is the approve endpoint's to refuse and
+     * the display's to show.
+     */
+    fun mayApprove(task: WfTask, facts: Set<String> = taskFacts(task)): Boolean {
+        val approval = task.approval ?: return false
+        return cfacts.parse(approval.effectiveApproveWhen).matches(callerFacts + facts) && WFC.passesCtaFilter in facts
+    }
+
+    /**
+     * Step 3, the reason (issue #1595): why the caller may not act on [task] for its CTA filter rule, or null when the
+     * rule is no obstacle. The rule's label (a template, for the caller's backend pass) or, when it has none, a plain
+     * sentence: what a page gives as the reason, and what the endpoints refuse with.
+     */
+    fun waitingOn(task: WfTask): String? =
+        if (passesFilter(task)) null else cta?.filterLabel ?: "This step is waiting on someone else."
 }
 
 /**

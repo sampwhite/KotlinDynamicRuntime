@@ -55,8 +55,8 @@ class WorkflowViewTest : StringSpec({
         save[WFD.label] shouldBe "Create form"
         save[WFD.kind] shouldBe "create"
         // Nothing entered yet: available (placeholder), not complete -- and so the CTA, the view's focus task,
-        // which the task says as a fact (issue #785).
-        task[WVF.facts] as List<*> shouldBe listOf(WFC.taskAvailable, WFC.isCta)
+        // which the task says as a fact (issue #785). Its filter rule is no obstacle, as it carries none (issue #1595).
+        task[WVF.facts] as List<*> shouldBe listOf(WFC.taskAvailable, WFC.isCta, WFC.passesCtaFilter)
     }
 
     "acme resolves its richer workflow, labels pulled from the backend fragment file, traits in task-layout order" {

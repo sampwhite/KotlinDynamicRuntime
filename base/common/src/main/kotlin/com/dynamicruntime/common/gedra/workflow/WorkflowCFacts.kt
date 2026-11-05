@@ -10,13 +10,16 @@ object WFGRP {
 }
 
 /**
- * Declares the workflow task cfacts (issues #533, #785, #786) -- each one because something produces it.
+ * Declares the workflow task cfacts (issues #533, #785, #786, #1595) -- each one because something produces it -- and
+ * the fact about the caller's relation to the form, [RCF.isOwner] (issue #1595), which [RowCfacts] produces.
  *
- * All four are **target facts**: facts about the task being rendered, passed to the registry's `assemble` beside
- * the request's own facts, so none has a request-scoped source here. [WFC.taskComplete] and [WFC.isCta] come from
- * the status engine ([WfTaskFacts]); [WFC.reviewer] from a task's `viewerCfacts` functions (`userHasLabel`), which
- * is what earned it a declaration -- it was withheld until #786 gave it a producer; and [WFC.taskAvailable] is a
- * placeholder that is always present until availability rules exist, and its description says so.
+ * All six are **target facts**: facts about the task being rendered (or, for `isOwner`, the form), passed to the
+ * registry's `assemble` beside the request's own facts, so none has a request-scoped source here. [WFC.taskComplete]
+ * and [WFC.isCta] come from the status engine ([WfTaskFacts]); [WFC.reviewer] from a task's `viewerCfacts` functions
+ * (`userHasLabel`), which is what earned it a declaration -- it was withheld until #786 gave it a producer;
+ * [WFC.passesCtaFilter] from evaluating the CTA's filter rule for the caller (`passesCtaFilterRule`); and
+ * [WFC.taskAvailable] is a placeholder that is always present until availability rules exist, and its description
+ * says so.
  *
  * The rule that kept `reviewer` out still holds for everything else: eligibility and validity are not declared
  * as task facts, because the registry is additive -- a name costs nothing once something produces it, while a
@@ -50,6 +53,26 @@ fun addWorkflowCFacts(collector: SchemaCollector) {
             WFC.reviewer, WFGRP.workflow,
             "True, about the task being rendered, when the person viewing it may review it -- concluded as the " +
                 "task is shown, by the task's own functions (typically `userHasLabel`), and never stored.",
+        ),
+    )
+    collector.addCFact(
+        CFactDef(
+            WFC.passesCtaFilter, WFGRP.workflow,
+            "True, about the task being rendered, unless it is the workflow's call to action and the person viewing it " +
+                "fails the call to action's filter: the filter evaluated for them, as the task is shown, and never stored. " +
+                "Always true on every other task, and on a call to action with no filter.",
+        ),
+    )
+    // A fact about the caller's relation to the form (issue #1595), not about a task, declared here beside the facts it
+    // is judged with. Kept off the page: a field's `g-visibleWhen` may not name it, since a form's schema is about its
+    // data whoever looks.
+    collector.addCFact(
+        CFactDef(
+            RCF.isOwner, WFGRP.workflow,
+            "True, about the form being worked on, when the caller owns it: its owning user, or in production another " +
+                "user of the same person; on a test instance only the owning user, so one tester's personas can play " +
+                "owner and reviewer. Worked out from the form's owner as it is read, and never stored. Named in a task's " +
+                "`saveWhen` or `display`, a CTA filter, or an approval's `approveWhen`, and nowhere else.",
         ),
     )
 }

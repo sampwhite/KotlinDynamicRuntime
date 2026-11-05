@@ -140,9 +140,23 @@ label the function is given (see `userLabels` on the [client](client.md)). With 
 may save the task; everyone else sees it read-only. The platform insists on a **lock** to go with a save rule, so the
 trait cannot be changed by another route while the form is in the workflow.
 
+A test about who may work on a task can also name `kdr:isOwner`, which is true for the person who owns the form. It is
+worked out from the form's owner whenever the form is read, and never stored. A task that is the owner's to do, such as
+a revision a reviewer asked for, says `"saveWhen": "kdr:isOwner"`.
+
 An **approval task** has no traits to fill in. It has an `approval` with the fact it asserts, a `prompt`, and a
-`button`, and it is complete once a reviewer has pressed the button. Its `display` chooses what the step shows, by
-trying its branches in order against the facts of whoever is looking.
+`button`, and it is complete once someone allowed to approve it has pressed the button. The approval's `approveWhen`
+says who that is. Left out, it is a reviewer who does not own the form, `kdr:reviewer,~kdr:isOwner`, so nobody
+approves their own form. A step that is the owner's own to confirm says `"approveWhen": "kdr:isOwner"`. Its `display`
+chooses what the step shows, by trying its branches in order against the facts of whoever is looking.
+
+A task can also say **who it waits on** from the form's own data, with a `ctaFilterByValue` function. The function
+reads one field, such as a site's region, and picks a filter for each value it lists, with an `otherwise` for every
+other value. A filter is a fact test that may name only facts about the person looking, such as the ones a
+`userHasLabel` function asserts, and `kdr:isOwner`. While the task is the workflow's current step, a person has to pass both the task's
+`saveWhen` and its filter to save it, and a reviewer has to pass the filter to approve it. Anyone else sees the filter's
+`label`, such as "Waiting on a Northwest reviewer", where the step's buttons would be. The demo's workflows do not use
+one.
 
 Once the button is pressed, a text branch can name who pressed it as `${approvedByName}`. That is the name on the
 approver's profile, or their email when their profile has none. Since the person reading the step may be the form's

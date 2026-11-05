@@ -19,6 +19,7 @@ import com.dynamicruntime.common.schema.SchFailCode
 import com.dynamicruntime.common.schema.SchFailure
 import com.dynamicruntime.common.schema.parseSchLayout
 import com.dynamicruntime.common.schema.parseSchemaTypes
+import com.dynamicruntime.common.util.toJsonListOfMaps
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -343,6 +344,27 @@ class WorkflowModelTest {
             put(WFD.tasks, listOf(task("a", aStatus), task("b", bStatus)))
             focus?.let { put(WVF.focusTask, it) }
         }
+    }
+
+    /** Who a task waits on (issue #1595) parses through when the view gives it, and is null when it does not. */
+    @Test
+    fun parsesWhoATaskWaitsOn() {
+        val view = coreDetailsView(null, null, null)
+        val tasks = view[WFD.tasks].toJsonListOfMaps()
+        val waiting = view + (WFD.tasks to listOf(tasks[0] + (WVF.waitingOn to "Waiting on a Northwest reviewer"), tasks[1]))
+        val wf = parseWorkflowView(waiting)!!
+        assertEquals("Waiting on a Northwest reviewer", wf.tasks[0].waitingOn)
+        assertNull(wf.tasks[1].waitingOn)
+    }
+
+    /** Whether the caller may approve a task (issue #1595) parses through, and is false when the view says nothing. */
+    @Test
+    fun parsesWhetherATaskMayBeApproved() {
+        val view = coreDetailsView(null, null, null)
+        val tasks = view[WFD.tasks].toJsonListOfMaps()
+        val wf = parseWorkflowView(view + (WFD.tasks to listOf(tasks[0] + (WVF.canApprove to true), tasks[1])))!!
+        assertTrue(wf.tasks[0].canApprove)
+        assertFalse(wf.tasks[1].canApprove)
     }
 
     /** The view's per-task status and its focus task parse through; a task carrying none has a null status. */

@@ -92,13 +92,17 @@ object WFS {
     const val ctaKeyword = "ctaKeyword"
 
     /**
-     * Who may act on the [ctaTask] (issue #1594): a cfact expression naming only facts about the person, which a
-     * `ctaFilter` function concluded from the form's data. It narrows the task's `saveWhen`, never widens it. Absent
-     * when nothing set one: then `saveWhen` alone decides.
+     * Who may act on the [ctaTask] (issues #1594, #1595), as a **rule, not a status**: a cfact expression naming only
+     * facts about the person (and `kdr:isOwner`), which a `ctaFilter` function concluded from the form's data. What is
+     * stored is the expression, never its result -- the answer differs for each caller, so it is evaluated as each one
+     * asks, against their facts (`passesCtaFilterRule`, which gives `kdr:passesCtaFilter`). It narrows the task's
+     * `saveWhen` and `approveWhen`, never widens them. Stored so a surface that reads state alone (a listing, the Needs
+     * Review popover) can evaluate it without the form's data; anything deciding permission works it out again from
+     * the data as it stands, since a stored copy lags the data until the next recompute. Absent when nothing set one.
      */
-    const val ctaFilter = "ctaFilter"
+    const val ctaFilterRule = "ctaFilterRule"
 
-    /** The [ctaFilter]'s label (issue #1594): a template saying who the CTA waits on, for a page to give as the reason. */
+    /** The [ctaFilterRule]'s label (issue #1594): a template saying who the CTA waits on, for a page to give as the reason. */
     const val ctaFilterLabel = "ctaFilterLabel"
 
     /**

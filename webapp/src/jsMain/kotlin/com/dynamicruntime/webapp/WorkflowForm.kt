@@ -467,10 +467,15 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
                 else -> {
                     if (approval.prompt.isNotBlank()) Markdown { source = approval.prompt; linkResolver = copyLinks }
                     val gid = gedraId
-                    if (!task.isReviewer || gid == null) {
+                    // Offered only where the approve endpoint would take it (issue #1595): the approval's rule and the
+                    // CTA's filter, as the view worked them out.
+                    if (!task.canApprove || gid == null) {
                         p {
                             className = ClassName("subtitle")
-                            +"Waiting for a reviewer to approve this."
+                            // Who it waits on, when the CTA's filter names someone other than this caller (issue #1595):
+                            // copy, so drawn as copy is.
+                            task.waitingOn?.let { MarkdownInline { source = it; linkResolver = copyLinks } }
+                                ?: +"Waiting for a reviewer to approve this."
                         }
                     } else {
                         val blocked = task.isDisabled || busy || anyUnsaved
@@ -551,7 +556,10 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
             if (!task.canSave && task.traits.isNotEmpty() && !wf.keptToOwner) {
                 p {
                     className = ClassName("subtitle")
-                    +"Someone else completes this step; you can see it here."
+                    // Who it waits on, when the CTA's filter is what keeps this caller out (issue #1595): copy, so drawn
+                    // as copy is.
+                    task.waitingOn?.let { MarkdownInline { source = it; linkResolver = copyLinks } }
+                        ?: +"Someone else completes this step; you can see it here."
                 }
             }
             // An approval task's own rendering (issue #832): its prompt and, for a reviewer, the button.
