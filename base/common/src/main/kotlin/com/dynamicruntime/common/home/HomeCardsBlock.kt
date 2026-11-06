@@ -55,6 +55,17 @@ fun homeCardsBlock(): UiBlockSource = uiBlock(
             cfactExpression = "${CFACTS.loggedIn},${CFACTS.clientHasWaitingWorkflows},${CFACTS.app}",
             displayOrder = UIB.orderStep / 10,
         )
+        // Configuration left as drafts (issue #1638): in a client with a sandbox an edit is a draft until published, and
+        // nothing outside the Clients page says one is waiting. Drawn only when one is, next after what waits on the
+        // caller, since publishing is also something to finish.
+        homeCard(
+            HCARD.drafts, "Unpublished drafts",
+            "Changes to your client's configuration are tried in its sandbox, and reach the client once published.",
+            jumpLabel = "Unpublished drafts",
+            kind = HCARD.kindUnpublishedDrafts,
+            cfactExpression = "${CFACTS.administersClient},${CFACTS.clientHasSandbox},${CFACTS.app}",
+            displayOrder = UIB.orderStep / 5,
+        )
         // An administrator of one client -- the caller "My client" is offered to; every client's administrator gets
         // the oversee card instead.
         homeCard(

@@ -67,10 +67,13 @@ class AssistantSelfServeTest : StringSpec({
     fun menuIds(user: TestUser): List<Any?> =
         user.getData(HEP.homeUiConfig)[UIC.state].toJsonMapOrEmpty()[HFLD.menu].toJsonListOfMaps().map { it[HFLD.id] }
 
-    /** The cards [user] is sent, but core's "Waiting on you", which every signed-in caller is (issue #1637). */
+    /**
+     * The cards [user] is sent, but core's whose live body decides whether they show: "Waiting on you" (issue #1637) and
+     * "Unpublished drafts" (issue #1638), which a client made here is sent too.
+     */
     fun cardIds(user: TestUser): List<Any?> =
         user.getData(HEP.homeUiConfig)[UIC.state].toJsonMapOrEmpty()[HCARD.cards].toJsonListOfMaps().map { it[HFLD.id] }
-            .filter { it != HCARD.waiting }
+            .filter { it != HCARD.waiting && it != HCARD.drafts }
 
     "Home shows the assistant: to a public visitor as the reason to make a client, then to its administrator (issue #1636)" {
         val person = TestUser.create(cxt, "cards@asst1636.test")

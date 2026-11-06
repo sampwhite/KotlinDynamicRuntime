@@ -68,16 +68,13 @@ val Home = FC<Props> {
     }
     val current = config
     val layout = current?.layout
-    // What the workflow assistant's status says, when a card is the assistant's (issue #1636): read here, once, so its
-    // card's button and its link under the title say the same thing.
+    // What Home reads for its live cards (issues #1636-#1638): the workflow assistant's status, what waits on the caller,
+    // and the client's unpublished drafts -- read here, once, so a card and its link under the title say the same thing,
+    // and a card whose read finds nothing is not drawn. What waits is confined to the caller's own client when they see
+    // across clients, so Home never reads the whole deployment.
     val allCards = current?.cards.orEmpty()
-    val assistantView = useAssistantCardView(allCards)
-    // What waits on the caller (issue #1637): read here too, since its card -- and the link to it -- shows only when
-    // something does.
-    // Confined to the caller's own client when they see across clients, so Home never reads the whole deployment.
-    val waitingClient = current?.takeIf { it.canSeeAllClients }?.user?.client
-    val waiting = useWaitingOnYou(allCards, waitingClient)
-    val cards = visibleHomeCards(allCards, waiting)
+    val reads = useHomeLiveReads(allCards, current?.takeIf { it.canSeeAllClients }?.user?.client)
+    val cards = visibleHomeCards(allCards, reads)
 
     // An address naming a section (`/wa#home.own-client`, after a jump link and a reload, say) scrolls to it once the
     // page is drawn (issue #1576): the browser looks for it as the page loads, before Home has fetched what it draws.
@@ -152,7 +149,8 @@ val Home = FC<Props> {
                         val drawn = (if (isPublicHome(current.user)) publicHomeSections(current) else emptySet()) +
                             cards.map { homeCardElementId(it.id) }
                         // Named apart from the Markdown components' `source` below, which a local `source` would shadow.
-                        val jumpSource = withCardJumpLinks(copy.opt(HFRAG.homeNs, HFRAG.jumpLinks), homeCardJumpLinks(cards, assistantView))
+                        val jumpSource =
+                            withCardJumpLinks(copy.opt(HFRAG.homeNs, HFRAG.jumpLinks), homeCardJumpLinks(cards, reads.assistantView))
                         jumpLinksFor(jumpSource, drawn)?.let {
                             nav {
                                 className = ClassName("home-jump-links")
@@ -172,9 +170,7 @@ val Home = FC<Props> {
                         // The home cards (issue #1636): what this caller can do next, as the backend decided for them.
                         HomeCards {
                             this.cards = cards
-                            this.assistantView = assistantView
-                            this.waiting = waiting
-                            this.waitingClient = waitingClient
+                            this.reads = reads
                             this.copy = copy
                         }
                         // The public home page (issue #1324): for someone signed in to `public` -- never a visitor who

@@ -367,6 +367,28 @@ fun gedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CFEP.namespace
         outputRef = CFEP.editorType,
     ) { c, _ -> inConfigScope(c) { cfgEditorBody(it) } }
 
+    type(CFEP.draftsType) {
+        type = SCT.kObject
+        description = "The configurations whose latest revision is not published (issue #1638)."
+        property(CFEP.client, "The client whose configurations these are -- the sandbox's parent, from inside it.", required = true)
+        property(CFEP.count, "How many configurations have unpublished changes.", required = true) { type = SCT.integer }
+        property(CFEP.names, "Their names, most recently written first.", required = true) {
+            type = SCT.array
+            items { type = SCT.string }
+        }
+        property(CFEP.inSandbox, "Whether the caller asked from inside the client's sandbox.", required = true) { type = SCT.boolean }
+    }
+
+    // Home's "Unpublished drafts" card (issue #1638): only whether each configuration's latest revision is published,
+    // with none of the bundle listing's per-row issue checks, since Home reads it on every visit.
+    itemEndpoint(
+        CFEP.drafts,
+        "The client's configurations whose latest revision is not published: their names and how many. From inside a " +
+            "sandbox, its parent's, which is what the sandbox runs.",
+        HttpMethod.GET,
+        outputRef = CFEP.draftsType,
+    ) { c, _ -> inConfigScope(c) { cfgDraftsBody(it, inSandbox = isSandboxClient(c.client)) } }
+
     generalEndpoint(
         CFEP.bundleWrite,
         "Writes a configuration from a whole bundle, applying the version/publish and diff-before-stamp rules. What each " +
@@ -525,6 +547,16 @@ private fun cfgBundlesBody(c: KdrCxt): List<Map<String, Any?>> {
     AdminRules.requireClientAdministrator(c)
     val published = publishedRevisionsOf(c, c.client)
     return GedraConfigService.get(c).listConfigs(c).map { summaryOf(c, it, published) }
+}
+
+/**
+ * The bound client's configurations whose latest revision is not published (issue #1638,
+ * [GedraConfigService.unpublishedConfigs]), [inSandbox] when asked from inside its sandbox.
+ */
+private fun cfgDraftsBody(c: KdrCxt, inSandbox: Boolean): Map<String, Any?> {
+    AdminRules.requireClientAdministrator(c)
+    val names = GedraConfigService.get(c).unpublishedConfigs(c).map { it.configId.baseId }
+    return linkedMapOf(CFEP.client to c.client, CFEP.count to names.size, CFEP.names to names, CFEP.inSandbox to inSandbox)
 }
 
 /** Each of [client]'s config classes' latest published revision, by config name (issues #1001, #1461). */

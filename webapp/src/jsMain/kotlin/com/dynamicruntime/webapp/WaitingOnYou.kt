@@ -14,19 +14,13 @@ import com.dynamicruntime.common.util.ScriptEnv
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
-import kotlinx.coroutines.MainScope
-import kotlinx.coroutines.launch
 import react.ChildrenBuilder
 import react.Key
 import react.dom.html.ReactHTML.a
 import react.dom.html.ReactHTML.li
 import react.dom.html.ReactHTML.span
 import react.dom.html.ReactHTML.ul
-import react.useEffect
-import react.useState
 import web.cssom.ClassName
-
-private val waitingScope = MainScope()
 
 /** "Waiting on you"'s sizes (issue #1637). */
 @Suppress("ConstPropertyName")
@@ -76,39 +70,16 @@ fun waitingListingRoute(client: String? = null): List<Pair<String, String>> =
     listOf(HP.page to HMENU.pageForms, GDF.needsMe to "true") + listOfNotNull(client?.let { EI.client to it })
 
 /**
- * The cards Home draws (issue #1637): all of [cards] but "Waiting on you" while nothing is known to wait -- before its
- * read answers, when it cannot be read, or when it found nothing -- so neither the card nor a link to it shows empty.
- * Pure, and covered under `jsNodeTest`.
- */
-fun visibleHomeCards(cards: List<HomeCard>, waiting: WaitingRead?): List<HomeCard> =
-    cards.filter { it.kind != HCARD.kindWaitingOnYou || (waiting?.total ?: 0) > 0 }
-
-/**
  * What waits on the caller, for Home's card (issue #1637), or null while it is read, when it cannot be, or when no card
- * in [cards] asks for it -- then nothing is read. Read again on every refresh, so a step taken elsewhere leaves it.
- * [client], for a caller who sees across clients, confines the read to their own client: Home asks about where they
- * are, never every form of the deployment.
+ * in [cards] asks for it -- then nothing is read ([useCardRead]). Read again on every refresh, so a step taken elsewhere
+ * leaves it. [client], for a caller who sees across clients, confines the read to their own client: Home asks about
+ * where they are, never every form of the deployment.
  */
-fun useWaitingOnYou(cards: List<HomeCard>, client: String?): WaitingRead? {
-    val shown = cards.any { it.kind == HCARD.kindWaitingOnYou }
-    val generation = useRefreshGeneration()
-    var read by useState<WaitingRead?>(null)
-    useEffect(shown, generation, client) {
-        if (!shown) {
-            read = null
-            return@useEffect
-        }
-        waitingScope.launch {
-            val result = apiResult {
-                val query = mapOf(GDF.needsMe to true, EP.limit to WAIT.shownForms) + listOfNotNull(client?.let { EI.client to it })
-                Http.getApi(GEP.formDocs + queryString(query))
-            }
-            result.failureOrNull()?.let { console.warn("$errorLogPrefix could not read what waits on you for Home: ${it.message}") }
-            read = result.valueOrNull()?.let { parseWaitingRead(it, DisplayZone.scriptEnv()) }
-        }
+fun useWaitingOnYou(cards: List<HomeCard>, client: String?): WaitingRead? =
+    useCardRead(cards.any { it.kind == HCARD.kindWaitingOnYou }, client, "what waits on you") {
+        val query = mapOf(GDF.needsMe to true, EP.limit to WAIT.shownForms) + listOfNotNull(client?.let { EI.client to it })
+        parseWaitingRead(Http.getApi(GEP.formDocs + queryString(query)), DisplayZone.scriptEnv())
     }
-    return read
-}
 
 /**
  * The "Waiting on you" card's body (issue #1637): each form, linked to its step, then a link to all of them -- in

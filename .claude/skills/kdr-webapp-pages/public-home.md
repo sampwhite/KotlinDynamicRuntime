@@ -101,6 +101,13 @@ none of its own.
   narrowed to them (`forms-listing.md`'s "Waiting on you"). Home reads it (`useWaitingOnYou`, the listing with `needsMe`
   and a limit of five) -- confined to the caller's own client for one who sees across clients, never the whole
   deployment -- and draws the card, and its link under the title, only once something waits (`visibleHomeCards`).
+- **Unpublished drafts** (`HCARD.drafts`, issue #1638), next, for an administrator of a client with a sandbox
+  (`kdr:clientHasSandbox`), where an edit is a draft until published: how many configurations have unpublished
+  changes, worded as the Clients page's banner is (`draftsCountText`), the first three by name, and **Review and
+  publish** to the client's publishing panel -- the sandbox's own page from inside the sandbox (`draftsPublishRoute`),
+  as the assistant's drafts link. Home reads `/clientAdmin/config/drafts` (`useUnpublishedDrafts`), which answers for
+  the sandbox's parent from inside it and skips the bundle listing's per-row checks, and draws the card only once a
+  draft is known (`visibleHomeCards`).
 - **Core's other cards** are shortcuts: **Your client** for an administrator of one client (My client, Users, Reports),
   **Clients and customers** for every client's administrator, **Your client's forms** for an editor, and
   **Operating this deployment** for a deployment operator.
@@ -112,7 +119,10 @@ none of its own.
   (`ASST.cardKind`) uses the assistant's status, read by Home, and while the person may switch it on its button reads the card's
   `offerLabel` ("Switch on the assistant", `assistantCardActionLabel`) -- in the card, so an overlay rewords it with
   the rest; until the read answers, or if it fails, the card's own words stand. A kind the page does not know draws
-  the card's words alone.
+  the card's words alone. **A new kind is added in `HomeLiveReads` alone** (`HomeCards.kt`): its read in
+  `useHomeLiveReads`, whether it has something to say (`shows`, which `visibleHomeCards` applies), its button's words,
+  and its body. Each read goes through `useCardRead`, where only the latest read lands, so a slow answer from before a
+  refresh never replaces a newer one.
 - **A card's body may be copy** (`HCARD.textCopy`, issue #1652): `namespace.key` of the shell's `home` file, drawn in
   place of its literal `text`. A blank value draws no body, as blank copy removes anything else. It is how a card's words
   are reworded by a deployment flavor, which can reword copy but cannot overlay a block.

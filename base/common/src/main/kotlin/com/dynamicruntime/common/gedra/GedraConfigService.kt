@@ -750,6 +750,14 @@ class GedraConfigService : ServiceInitializer {
     }
 
     /**
+     * The caller's client's configs whose latest revision is not published (issue #1638), as [listConfigs] orders
+     * them: what Home's "Unpublished drafts" card counts. None for a client [isStaticHere], which takes nothing stored
+     * and so has nothing to publish, whatever the database holds for it.
+     */
+    fun unpublishedConfigs(cxt: KdrCxt): List<GedraConfigRow> =
+        if (isStaticHere(cxt, cxt.client)) emptyList() else listConfigs(cxt).filter { !it.isPublished }
+
+    /**
      * Every client that has stored configuration (issue #828), from its current revisions -- what a listing of the
      * clients a node knows of adds for one whose configuration never produced a definition. Read with SQL over the
      * `(isCurrent)` index rather than the cache, whose rows are indexed by client but not enumerable by it.

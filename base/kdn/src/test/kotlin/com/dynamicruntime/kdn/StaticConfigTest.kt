@@ -116,6 +116,15 @@ class StaticConfigTest : StringSpec({
         reload.issues.single().message shouldContain "statically configured"
     }
 
+    // Runs after the cases above, over the same database: the stored edit, never published, is a draft outside
+    // production, and none in production, where the client takes nothing stored (issue #1638).
+    "in production it has no unpublished drafts, whatever is stored" {
+        val unit = bootUnit("staticUnitDrafts")
+        GedraConfigService.get(unit).unpublishedConfigs(bound(unit)).map { it.configId.baseId }.contains("edits") shouldBe true
+        val prod = bootProd("staticProdDrafts")
+        GedraConfigService.get(prod).unpublishedConfigs(bound(prod)) shouldBe emptyList()
+    }
+
     "in production every change to its stored config is refused" {
         val prod = bootProd("staticProdWrite")
         val svc = GedraConfigService.get(prod)

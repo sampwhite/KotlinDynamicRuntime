@@ -44,6 +44,12 @@ object CFEP {
      */
     const val editor = "/${SECT.clientAdmin}/config/editor"
 
+    /**
+     * The client's configurations whose latest revision is not published (issue #1638): their names and how many,
+     * with none of the bundle listing's per-row checks -- what Home's "Unpublished drafts" card reads.
+     */
+    const val drafts = "/${SECT.clientAdmin}/config/drafts"
+
     // --- type names ---
     const val bundleType = "ConfigBundle"
     const val bundleWriteType = "ConfigBundleWrite"
@@ -58,6 +64,7 @@ object CFEP {
     const val editorBundleType = "ConfigEditorBundle"
     const val codeBundleType = "ConfigCodeBundle"
     const val replacementType = "ConfigReplacement"
+    const val draftsType = "ConfigDrafts"
 
     // --- field names (each matches its value) ---
     const val name = "name"
@@ -193,6 +200,15 @@ object CFEP {
 
     /** On a stale entry: its primary-key fields, as the edit named them. */
     const val key = "key"
+
+    /** On [drafts]' answer (issue #1638): how many configurations have unpublished changes. */
+    const val count = "count"
+
+    /**
+     * On [drafts]' answer (issue #1638): whether the caller asked from inside the client's sandbox, which answers for
+     * the client it is the sandbox of -- so Home links to the sandbox's own page, where the person is.
+     */
+    const val inSandbox = "inSandbox"
 }
 
 /**

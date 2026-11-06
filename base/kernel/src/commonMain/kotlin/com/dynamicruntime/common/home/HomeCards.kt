@@ -68,6 +68,12 @@ object HCARD {
      */
     const val kindWaitingOnYou = "waitingOnYou"
 
+    /**
+     * The live body of [drafts] (issue #1638): how many of the client's configurations have unpublished changes, read
+     * from `/clientAdmin/config/drafts`, and the card drawn only when one has.
+     */
+    const val kindUnpublishedDrafts = "unpublishedDrafts"
+
     // Core's card ids.
     /**
      * An invitation to register (issue #1652), for a visitor who has not signed in, wherever anyone may: what the
@@ -80,6 +86,9 @@ object HCARD {
 
     /** The forms with a step waiting on the caller (issue #1637), first, since it is what to do next. */
     const val waiting = "waiting"
+
+    /** Configuration saved as a draft and not yet published (issue #1638), for a client with a sandbox. */
+    const val drafts = "drafts"
 
     /** Administering one client: its page, its users, its reports. */
     const val administer = "administer"
