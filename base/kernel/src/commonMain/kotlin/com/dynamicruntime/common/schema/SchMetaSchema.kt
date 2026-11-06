@@ -75,6 +75,7 @@ object MSCH {
  * client may narrow -- [notChecked] -- stay the parser's and the trial reload's, with their own wording. This is the
  * first pass, which finds every fault of shape at once where the parser stops at its first.
  */
+@Suppress("ConstPropertyName")
 object SchMetaSchema {
     private val nodeRef = mapOf(SCH.dRef to "#/${SCH.dDefs}/${MSCH.nodeTypeName}")
 

@@ -35,6 +35,7 @@ import com.dynamicruntime.common.util.toOptStr
  *
  * A JSON `null` reads as the keyword not being set.
  */
+@Suppress("ConstPropertyName")
 object SchStdKeywords {
     private val types = listOf(SCT.string, SCT.number, SCT.integer, SCT.boolean, SCT.array, SCT.kObject, SCT.kNull)
 
@@ -196,37 +197,37 @@ object SchStdKeywords {
      * properties whose schema is an object, a `oneOf` list the branches that are objects, and a `required` list the
      * names its entries spell -- a number or a flag was read as its text -- without the entries that spell none.
      */
-    fun salvaged(keyword: String, value: Any?): Any? = when {
-        keyword == SCH.properties && value is Map<*, *> -> value.filterValues { it == null || it is Map<*, *> }
-        keyword == SCH.oneOf && value is List<*> -> value.filter { it is Map<*, *> }
-        keyword == SCH.required && value is List<*> -> value.mapNotNull { it.toOptStr() }
+    fun salvaged(keyword: String, value: Any?): Any? = when (keyword) {
+        SCH.properties if value is Map<*, *> -> value.filterValues { it == null || it is Map<*, *> }
+        SCH.oneOf if value is List<*> -> value.filterIsInstance<Map<*, *>>()
+        SCH.required if value is List<*> -> value.mapNotNull { it.toOptStr() }
         else -> null
     }
 
-    private fun message(where: String, keyword: String, value: Any?, shape: SchKeywordShape): String = when {
+    private fun message(where: String, keyword: String, value: Any?, shape: SchKeywordShape): String = when (keyword) {
         // The part at fault, named: "sets 'properties' to an object" would say nothing.
-        keyword == SCH.properties && value is Map<*, *> -> {
+        SCH.properties if value is Map<*, *> -> {
             val (name, body) = value.entries.first { it.value != null && it.value !is Map<*, *> }
             "$where declares property '$name' as ${describeSchemaValue(body)}; a property's schema must be an object." +
-                (if (body is Boolean) " $booleanSchema" else "")
+                    (if (body is Boolean) " $booleanSchema" else "")
         }
-        keyword == SCH.required && value is List<*> -> {
+        SCH.required if value is List<*> -> {
             val bad = value.filter { it !is String }.joinToString(", ") { describeSchemaValue(it) }
             "$where lists $bad in '${SCH.required}'; each entry must be a property's name, as text."
         }
-        keyword == SCH.oneOf && value is List<*> -> {
+        SCH.oneOf if value is List<*> -> {
             val bad = value.filter { it !is Map<*, *> }.joinToString(", ") { describeSchemaValue(it) }
             "$where lists $bad in '${SCH.oneOf}'; each branch must be a schema object." +
-                (if (value.any { it is Boolean }) " $booleanSchema" else "")
+                    (if (value.any { it is Boolean }) " $booleanSchema" else "")
         }
         // The rest of these are legal JSON Schema, and not read here: said, rather than left to look like a typo.
-        keyword == SCH.type && value is List<*> ->
+        SCH.type if value is List<*> ->
             "$where sets '${SCH.type}' to a list; a list of types is not supported. Declare the one type it is: a " +
-                "property that may be absent is simply not required."
-        keyword == SCH.items && value is List<*> ->
+                    "property that may be absent is simply not required."
+        SCH.items if value is List<*> ->
             "$where sets '${SCH.items}' to a list; a schema per position is not supported. Declare the one schema " +
-                "every item takes."
-        keyword == SCH.items && value is Boolean ->
+                    "every item takes."
+        SCH.items if value is Boolean ->
             "$where sets '${SCH.items}' to $value; it must be a schema object. $booleanSchema"
         else -> "$where sets '$keyword' to ${describeSchemaValue(value)}; it must be ${shape.described}."
     }

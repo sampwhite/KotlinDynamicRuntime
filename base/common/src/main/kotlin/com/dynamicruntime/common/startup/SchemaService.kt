@@ -1531,7 +1531,7 @@ class SchemaService : ServiceInitializer, ClientSchemaSource {
                 mapOf(
                     MSCH.nodeType to MSCH.nodeTypeName,
                     // The functions `g-onWrite` lists, typed by the registered kinds (issue #1501).
-                    SCH.dDefs to withTypedWriteFunctions(c, SchMetaSchema.defs, SchemaService.get(c).schemaFunctions().values.toList()),
+                    SCH.dDefs to withTypedWriteFunctions(c, SchMetaSchema.defs, get(c).schemaFunctions().values.toList()),
                     MSCH.notStated to SchMetaSchema.notStated,
                     MSCH.notChecked to SchMetaSchema.notChecked,
                 )

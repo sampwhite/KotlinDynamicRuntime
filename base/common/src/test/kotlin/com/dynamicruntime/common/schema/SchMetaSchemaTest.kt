@@ -202,7 +202,7 @@ class SchMetaSchemaTest : StringSpec({
             mapOf(SCH.type to SCT.kObject, SCH.additionalProperties to mapOf(SCH.type to SCT.integer)),
             mapOf(SCH.type to SCT.string, SCH.derived to mapOf("from" to "elsewhere")),
             // A keyword this layer does not read stays the document's own -- a stock validator's must still pass.
-            mapOf(SCH.type to SCT.string, "examples" to listOf("a"), "\$comment" to "kept", "x-vendor" to mapOf(SCH.type to 5L)),
+            mapOf(SCH.type to SCT.string, "examples" to listOf("a"), $$"$comment" to "kept", "x-vendor" to mapOf(SCH.type to 5L)),
             mapOf(SCH.type to SCT.array, SCH.items to obj("k" to text), SCH.minItems to 1L),
         )
         for (body in accepted) withClue(body.toString()) {
@@ -246,7 +246,7 @@ class SchMetaSchemaTest : StringSpec({
         validate(holder, twoFaults, SchOpts(schemaDocumentsUnparsed = true)).map { it.path } shouldBe
             listOf("schema.properties.a.type", "schema.properties.b.title")
         // No fault of shape: the parse runs as it did, and its one refusal is of the whole value.
-        val unknownRef = mapOf("schema" to obj("a" to mapOf(SCH.dRef to "#/\$defs/t.Nowhere")))
+        val unknownRef = mapOf("schema" to obj("a" to mapOf(SCH.dRef to $$"#/$defs/t.Nowhere")))
         validate(holder, unknownRef).single().let {
             it.path shouldBe "schema"
             it.message shouldContain "not a valid schema definition"
