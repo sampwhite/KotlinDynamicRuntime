@@ -893,9 +893,9 @@ class GedraConfigService : ServiceInitializer {
 
     /** The clients a source-code definition marks `staticConfig`; the source configs are the not-data-loaded ones. */
     private fun staticClients(cxt: KdrCxt): Set<String> {
-        val loadedIds = GedraConfigLoadService.get(cxt).allLoadedIds()
+        val loaded = GedraConfigLoadService.get(cxt).allLoadedKeys()
         val collector = SchemaCollector.get(cxt) ?: return emptySet()
-        return GedraConfigControl.staticClients(collector.gedraConfigs.configs.filter { it.gedraId.fullId !in loadedIds })
+        return GedraConfigControl.staticClients(collector.gedraConfigs.configs.filter { it.configKey !in loaded })
     }
 
     /**

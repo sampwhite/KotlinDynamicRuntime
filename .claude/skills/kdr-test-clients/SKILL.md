@@ -284,8 +284,10 @@ a code-defined client such as acme can now be edited through stored configuratio
 refuses it, saying what it would replace and where ("which template 'tplbase''s 'base' also declares"), and so does a
 patch's dry run; configuration stored before the mark loads as it always did, with an issue saying to mark it. **Marked
 over nothing**, it is refused. **Nothing removes a code entry**: turn off what is not wanted instead (a workflow's
-`enabled`, #1635); a `$removed` is a `$` note, which no stored entry may hold. An override may sit in any stored bundle:
-one named like the code bundle it covers collides with it today (a config's id has no origin), which step 2b settles.
+`enabled`, #1635); a `$removed` is a `$` note, which no stored entry may hold. An override may sit in any stored bundle,
+and the editor files it in the one named like the code bundle it covers (issue #1646): `base` over the code's `base`,
+`from_starterKit_base` over that copy. The two share an id, and sit side by side because a config's key adds that it is
+stored (`GedraConfig.configKey`); the collector and the loader's records go by the key.
 A test that stores an entry over a template's or a code client's marks it; `CodeOverridesTest.kt` and the sample's
 `AcmeCodeOverrideTest.kt` are the references.
 

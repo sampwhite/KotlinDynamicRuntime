@@ -351,6 +351,16 @@ class ExtensionTemplateComponent : ComponentDefinition {
             trait("OwnNoteEntry", "ownNote", setOf(GedraDataType.formDoc), "A note.") { property("note", "A note.") }
             workflow("ownFlow", WfEntry.normal) { task("a", "Code's task") { trait("ownNote"); save("s", "Save", WfSaveKind.edit) } }
         },
+        // Another, so the bundle editor's tests of its code layer (issue #1646) have one of their own.
+        gedraConfig(cxt, "own", "client.$ownLayer", ownLayer) {
+            defineClient(
+                ClientDef(
+                    clientId = ownLayer, name = "Own layer", usageType = ClientUsageType.dev,
+                    audience = ClientAudience.internal, enabledEnvironments = setOf(ENV.unit, ENV.local),
+                ),
+            )
+            trait("OwnNoteEntry", "ownNote", setOf(GedraDataType.formDoc), "A note.") { property("note", "A note.") }
+        },
     )
 
     @Suppress("ConstPropertyName")
@@ -363,5 +373,6 @@ class ExtensionTemplateComponent : ComponentDefinition {
         const val packageId = "tplfix:tplres"
         const val child = "tplkid"
         const val ownCode = "tplowncode"
+        const val ownLayer = "tplownlayer"
     }
 }

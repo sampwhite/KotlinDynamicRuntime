@@ -167,6 +167,8 @@ fun newEntryText(key: List<String>): String = entryText(key.associateWith { "" }
 fun newBundleNameProblem(name: String, view: BundleEditorView, edits: BundleEdits): String? = when {
     name.isBlank() -> "Give the bundle a name."
     !name.matches(Regex("[A-Za-z][A-Za-z0-9_]*")) -> "A bundle's name is letters, digits and underscores, starting with a letter."
+    // A code bundle's changes are made by editing its entries (issue #1646), which writes them in a bundle of its name.
+    view.codeConfigs.any { it.name == name } -> "$name is a code bundle: edit its entries below to change them for this client."
     view.configs.any { it.name == name } || name in edits.newBundles -> "The client already has a bundle named $name."
     else -> null
 }

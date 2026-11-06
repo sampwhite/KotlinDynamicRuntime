@@ -146,6 +146,38 @@ class CodeOverridesTest : StringSpec({
         typeOf(cxt, sandboxOf(own), "ownNote") shouldBe "client.$own.OwnNoteEntry"
     }
 
+    // Issue #1646: an override lives in the stored bundle named like the code bundle it covers, which shares its id.
+    "a stored bundle named like a code bundle loads beside it, and stands over it" {
+        // The template's copy, by its name: a client on the template.
+        val client = "ovrsame1646"
+        store(cxt, client, template = tpl)
+        store(cxt, client, name = "from_${tpl}_base") {
+            note("SameNoteEntry", "tplNote")
+            report("notes", "Memos") { column("memo", "Memo", "form.tplNote.memo") }
+            overridesCode("tplNote", "notes")
+        }
+        GedraConfigReload.reloadClient(cxt, client)
+        typeOf(cxt, client, "tplNote") shouldBe "${clientNamespace(client)}.from_${tpl}_base.SameNoteEntry"
+        typeOf(cxt, client, "tplScore") shouldBe "client.$tpl.TplScoreEntry"
+
+        // The client's own code, by its name, in the client and its sandbox.
+        store(cxt, own, name = "own") {
+            note("SameOwnEntry", "ownNote")
+            overridesCode("ownNote")
+        }
+        publish(own, "own")
+        GedraConfigReload.reloadClient(cxt, own)
+        typeOf(cxt, own, "ownNote") shouldBe "${clientNamespace(own)}.own.SameOwnEntry"
+        typeOf(cxt, sandboxOf(own), "ownNote") shouldBe "${clientNamespace(own)}.own.SameOwnEntry"
+        // The code's other definitions in that bundle are still run.
+        firstTask(cxt, own, "ownFlow") shouldBe "Code's task"
+        // Emptied, the code's is back.
+        store(cxt, own, name = "own")
+        publish(own, "own")
+        GedraConfigReload.reloadClient(cxt, own)
+        typeOf(cxt, own, "ownNote") shouldBe "client.$own.OwnNoteEntry"
+    }
+
     "a mark is stored as the entry's own field, and read back" {
         val built = gedraConfig(cxt, "over", "${clientNamespace(own)}.over", own) {
             note("StoredNoteEntry", "ownNote")
@@ -160,7 +192,8 @@ class CodeOverridesTest : StringSpec({
         val loader = GedraConfigLoadService.get(cxt)
         // A scratch copy holds the very configs the node does, so it is cut as the node's would be, and nothing changes.
         val scratch = SchemaCollector.get(cxt).shouldNotBeNull().trialCopy()
-        fun held() = scratch.gedraConfigs.configs.single { it.gedraId.client == own && it.name == "own" }
+        // The code's: a stored bundle of the same name may sit beside it (issue #1646).
+        fun held() = scratch.gedraConfigs.configs.single { it.gedraId.client == own && it.name == "own" && !it.isStored }
         val declared = held()
         val position = scratch.gedraConfigs.configs.indexOf(declared)
         val cuts = loader.cutSource(scratch, own, ConfigKeys(traits = setOf("ownNote")), SourceCuts.none)

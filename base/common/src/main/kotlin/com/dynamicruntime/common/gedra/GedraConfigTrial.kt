@@ -77,7 +77,11 @@ object GedraConfigTrial {
         before: Map<String, GedraConfigRow?>? = null,
     ) {
         val drafts = if (published) emptyList() else draftBaseline(cxt, client)
-        val baseline = ClientConfigIssues.get(cxt).issuesFor(client) + drafts + fileRefBaseline(cxt, client, withSandbox = !published)
+        val baseline = buildList {
+            addAll(ClientConfigIssues.get(cxt).issuesFor(client))
+            addAll(drafts)
+            addAll(fileRefBaseline(cxt, client, withSandbox = !published))
+        }
         val candidate = candidate(cxt, client, replacing, published) ?: return
         var found = candidate.issues.filterNot { issue -> baseline.any { it.sameAs(issue) } }
         if (found.isNotEmpty() && !published && before != null) {
@@ -203,9 +207,9 @@ object GedraConfigTrial {
 
         // Phase one's checks, as the reload runs them: each row reassembled (one that will not costs only itself),
         // the extends rule against the source clients alone, then admission into a scratch copy of the collectors.
-        val loadedIds = loader.allLoadedIds()
+        val loaded = loader.allLoadedKeys()
         val sourceClients = collector.gedraConfigs.configs
-            .filter { it.gedraId.fullId !in loadedIds }.mapNotNull { it.client }.associateBy { it.clientId }
+            .filter { it.configKey !in loaded }.mapNotNull { it.client }.associateBy { it.clientId }
         val scratch = collector.trialCopy()
         previous.forEach { scratch.removeGedraConfig(it) }
         val taken = mutableListOf<GedraConfig>()

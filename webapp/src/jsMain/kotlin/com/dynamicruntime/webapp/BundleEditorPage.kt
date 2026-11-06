@@ -67,8 +67,8 @@ val BundleEditorPage = FC<Props> {
     var saveError by useState<DisplayError?>(null)
     var stale by useState<List<StaleEntryView>?>(null)
     var impact by useState<ImpactReportView?>(null)
-    // What a save's dry run said the edits would newly replace of the client's template (issue #1616), to confirm.
-    var replacing by useState<List<TemplateReplacementView>?>(null)
+    // What a save's dry run said the edits would newly replace of the client's code (issues #1616, #1646), to confirm.
+    var replacing by useState<List<CodeReplacementView>?>(null)
     var savedNote by useState<String?>(null)
     var showCall by useState(false)
     var newBundleName by useState("")
@@ -188,8 +188,9 @@ val BundleEditorPage = FC<Props> {
         h1 { +"Configuration${row?.name?.let { " of $it" } ?: ""}" }
         p {
             className = ClassName("subtitle")
-            +"Every configuration bundle this client stores, then what it runs from code. Open a bundle to see its slots, a "
-            +"slot to see its entries, and an entry to see its JSON. A draft's entries are shown beside the published revision's."
+            +"Every configuration bundle this client stores, then what it runs from code, each code bundle with this client's "
+            +"changes to it. Open a bundle to see its slots, a slot to see its entries, and an entry to see its JSON. A draft's "
+            +"entries are shown beside the published revision's."
         }
         row?.sandboxOf?.let { parent ->
             p {
@@ -304,7 +305,9 @@ val BundleEditorPage = FC<Props> {
                     }
                 },
             )
-            val bundles = editorBundlesInOrder(shown.configs) + edits.newBundles.map { EditorBundle(it, EditorRevision(0, false, emptyMap(), 0), null) }
+            // A stored bundle named like a code bundle holds the client's changes to it (issue #1646), drawn with it below.
+            val codeNames = shown.codeConfigs.map { it.name }.toSet()
+            val bundles = (editorBundlesInOrder(shown.configs) + edits.newBundles.map { newBundle(it) }).filter { it.name !in codeNames }
             for (bundle in bundles) {
                 div {
                     key = bundle.name.unsafeCast<Key>()
@@ -362,26 +365,188 @@ val BundleEditorPage = FC<Props> {
                     heading = "From code"
                     text = pageCopy.explanation(PFRAG.bundleCodeNs)
                 }
-                for (code in shown.codeConfigs) codeBundleView(code, ed)
+                for (code in shown.codeConfigs) mergedBundleView(code, ed)
+            }
+        }
+    }
+}
+
+/** A bundle added on the page and not written yet: no revision, nothing beside it. */
+private fun newBundle(name: String): EditorBundle = EditorBundle(name, EditorRevision(0, false, emptyMap(), 0), null)
+
+/**
+ * One configuration of the client's code layer (issues #1616, #1646), merged with the stored bundle of its name, which
+ * holds the client's changes to it. Each code entry is listed as the code declares it, marked where the client changes it
+ * in another bundle; one changed here is shown as the stored entry, with the code's beside it and **Revert to code**; and
+ * the stored bundle's other entries are the client's own, added here. **Edit** on a code entry starts the change: a new
+ * entry of the stored bundle, the code's own marked `"overrides": "code"`.
+ */
+private fun ChildrenBuilder.mergedBundleView(code: CodeBundle, ed: EditContext) {
+    val codeBundle = code.asEditorBundle()
+    val stored = ed.view.configs.firstOrNull { it.name == code.name } ?: newBundle(code.name)
+    val keyed = ed.view.slotKeys
+    val codeSlots = editorSlots(codeBundle, keyed)
+    val storedSlots = slotsWithDrafts(stored, ed)
+    val slots = (codeSlots.map { it.slot } + storedSlots.map { it.slot }).distinct()
+    div {
+        key = "code:${code.name}".unsafeCast<Key>()
+        Disclosure {
+            summaryText = codeBundleLineText(code, ed.view.replacements)
+            p { className = ClassName("type-hint"); +codeBundleNoteText(code) }
+            for (slot in slots) {
+                val codeSlot = codeSlots.firstOrNull { it.slot == slot }
+                val storedSlot = storedSlots.firstOrNull { it.slot == slot }
+                div {
+                    key = slot.unsafeCast<Key>()
+                    className = ClassName("bundle-editor-slot")
+                    Disclosure {
+                        summaryText = codeSlot?.let { slotSummaryText(it) } ?: storedSlot?.let { slotSummaryText(it) }.orEmpty()
+                        val storedSet = slotReplacement(ed.view.replacements, stored.name, slot)
+                        storedSet?.let { replacedSet(it, ed) }
+                        if (codeSlot != null && editedAsSet(slot)) {
+                            columnsSetView(code, stored, codeSlot, storedSlot, storedSet, ed)
+                        } else {
+                            codeSlot?.entries?.forEachIndexed { i, entry -> codeEntryView(code, stored, slot, entry, i, ed) }
+                        }
+                        storedSlot?.entries?.forEachIndexed { i, entry -> entryView(stored, slot, entry, i, ed, merged = true) }
+                        if (ed.editable) newEntries(stored.name, slot, ed)
+                    }
+                }
+            }
+            if (ed.editable) addSlotControl(stored.name, ed)
+        }
+    }
+}
+
+/**
+ * A code bundle's columns of the forms list (issue #1646), which replace as one set, so they are edited and reverted as
+ * one, from the slot: **Edit the columns** starts the client's own set as the code's whole, each column marked; and
+ * once the stored bundle of its name holds a set, **Revert the columns to code** removes every column of it, so the
+ * code's set runs again. The code's columns are listed one by one only while the client has no set of its own.
+ */
+private fun ChildrenBuilder.columnsSetView(
+    code: CodeBundle,
+    stored: EditorBundle,
+    codeSlot: EditorSlot,
+    storedSlot: EditorSlot?,
+    storedSet: CodeReplacementView?,
+    ed: EditContext,
+) {
+    val slot = codeSlot.slot
+    val keyFields = ed.view.slotKeys[slot].orEmpty()
+    val drafting = ed.edits.drafts.values.any { it.bundle == stored.name && it.slot == slot && it.original == null }
+    if (codeColumnsListed(storedSet, drafting)) {
+        codeSlot.entries.forEachIndexed { i, entry -> codeEntryView(code, stored, slot, entry, i, ed) }
+    }
+    if (!ed.editable) return
+    div {
+        className = ClassName("bundle-editor-actions")
+        when {
+            storedSet != null -> {
+                val ids = storedSlot?.entries.orEmpty().mapIndexedNotNull { i, entry ->
+                    entry.latest?.let { existingEntryId(stored.name, slot, keyFields, it, i) to (entry.latest to i) }
+                }
+                val reverting = ids.isNotEmpty() && ids.all { (id, _) -> ed.edits.drafts[id]?.removed == true }
+                Button {
+                    size = "small"
+                    disabled = reverting
+                    onClick = {
+                        var next = ed.edits
+                        for ((id, held) in ids) {
+                            val (data, at) = held
+                            val base = next.drafts[id] ?: ed.draftOf(stored.name, slot, data, stored.stamps[slot]?.getOrNull(at))
+                            next = next.with(id, base.withRemoved(true))
+                        }
+                        ed.change(next)
+                    }
+                    +"Revert the columns to code"
+                }
+                span {
+                    className = ClassName("type-hint")
+                    +(
+                        if (reverting) " The code's columns run again when saved."
+                        else " Removes this client's set, so the code's runs again."
+                        )
+                }
+            }
+            !drafting -> {
+                Button {
+                    size = "small"
+                    onClick = {
+                        var next = ed.edits
+                        val unwritten = ed.view.configs.none { it.name == stored.name } && stored.name !in next.newBundles
+                        if (unwritten) next = next.addingBundle(stored.name)
+                        for (column in columnsOverride(codeSlot.entries.mapNotNull { it.latest })) {
+                            next = next.adding(stored.name, slot, entryText(ed.shownData(column, slot)), ed.view.client, ed.portable).first
+                        }
+                        ed.change(next)
+                    }
+                    +"Edit the columns"
+                }
+                span {
+                    className = ClassName("type-hint")
+                    +" The columns replace as one set: this starts this client's own from all of the code's."
+                }
+            }
+            else -> span {
+                className = ClassName("type-hint")
+                +"This client's own set of columns, which replaces the code's whole when saved."
             }
         }
     }
 }
 
 /**
- * One configuration of the client's code layer (issue #1616), read-only: its slots and entries as a stored bundle's
- * are listed, each entry's JSON under where it comes from, and the template's version beside an entry that replaces it.
+ * One entry of a code bundle (issue #1646), as the code declares it: nothing when the stored bundle of its name changes
+ * it -- that entry is shown instead, or the page's new change of it -- else marked where another bundle changes it, and
+ * otherwise offering **Edit**, which starts the change in [stored].
  */
-private fun ChildrenBuilder.codeBundleView(code: CodeBundle, ed: EditContext) {
-    val bundle = code.asEditorBundle()
-    val readOnly = ed.readOnly()
+private fun ChildrenBuilder.codeEntryView(
+    code: CodeBundle,
+    stored: EditorBundle,
+    slot: String,
+    entry: EditorEntry,
+    at: Int,
+    ed: EditContext,
+) {
+    val data = entry.latest ?: return
+    val keyFields = ed.view.slotKeys[slot].orEmpty()
+    val replaced = codeReplacementOf(ed.view.replacements, code.name, slot, keyFields, data)
+    // Changed here: the stored entry is shown, with this beside it.
+    if (replaced != null && replaced.name == stored.name) return
+    val changing = ed.edits.drafts.entries.any { (id, d) ->
+        d.bundle == stored.name && d.slot == slot && d.original == null && changesCodeEntry(keyFields, ed.checks[id]?.data, data)
+    }
+    if (changing) return
     div {
-        key = "code:${code.name}".unsafeCast<Key>()
+        this.key = "code:${entry.label}#$at".unsafeCast<Key>()
+        className = ClassName("bundle-editor-entry")
         Disclosure {
-            summaryText = codeBundleLineText(code)
-            p { className = ClassName("type-hint"); +codeBundleNoteText(code) }
-            for (slot in editorSlots(bundle, ed.view.slotKeys)) {
-                slotView(bundle, slot, readOnly, from = code.template?.let { "From template $it" } ?: "From code")
+            summaryText = listOfNotNull(entry.label, replaced?.let { "changed in ${it.name}" }).joinToString(" — ")
+            jsonColumn(codeFromText(code).replaceFirstChar { it.uppercase() }, slot, data, ed, withSwitch = true)
+            // The columns are edited as one set, from the slot (`columnsSetView`).
+            if (ed.editable && replaced == null && keyFields.isNotEmpty() && !editedAsSet(slot)) {
+                div {
+                    className = ClassName("bundle-editor-actions")
+                    Button {
+                        size = "small"
+                        onClick = {
+                            var next = ed.edits
+                            // The stored bundle of its name, made on the page when the client has none yet.
+                            val unwritten = ed.view.configs.none { it.name == stored.name } && stored.name !in next.newBundles
+                            if (unwritten) next = next.addingBundle(stored.name)
+                            val text = entryText(ed.shownData(overrideOf(data), slot))
+                            ed.change(next.adding(stored.name, slot, text, ed.view.client, ed.portable).first)
+                        }
+                        +"Edit"
+                    }
+                    if (slot == CCT.workflowDef) {
+                        span {
+                            className = ClassName("type-hint")
+                            +" A workflow the client does not want is turned off on its page, not removed."
+                        }
+                    }
+                }
             }
         }
     }
@@ -389,9 +554,9 @@ private fun ChildrenBuilder.codeBundleView(code: CodeBundle, ed: EditContext) {
 
 /**
  * One slot of [bundle]: what it replaces as a set, its entries, and, where the page edits, its new entries and **Add
- * entry**. [from] heads each entry's JSON in a code bundle (issue #1616), which holds no revisions and is never edited.
+ * entry**.
  */
-private fun ChildrenBuilder.slotView(bundle: EditorBundle, slot: EditorSlot, ed: EditContext, from: String? = null) {
+private fun ChildrenBuilder.slotView(bundle: EditorBundle, slot: EditorSlot, ed: EditContext) {
     div {
         key = slot.slot.unsafeCast<Key>()
         className = ClassName("bundle-editor-slot")
@@ -399,7 +564,7 @@ private fun ChildrenBuilder.slotView(bundle: EditorBundle, slot: EditorSlot, ed:
             summaryText = slotSummaryText(slot)
             initiallyOpen = slot.entries.isEmpty()
             slotReplacement(ed.view.replacements, bundle.name, slot.slot)?.let { replacedSet(it, ed) }
-            slot.entries.forEachIndexed { i, entry -> entryView(bundle, slot.slot, entry, i, ed, from) }
+            slot.entries.forEachIndexed { i, entry -> entryView(bundle, slot.slot, entry, i, ed) }
             if (ed.editable) {
                 newEntries(bundle.name, slot.slot, ed)
                 val keys = ed.view.slotKeys[slot.slot].orEmpty()
@@ -418,19 +583,19 @@ private fun ChildrenBuilder.slotView(bundle: EditorBundle, slot: EditorSlot, ed:
     }
 }
 
-/** The template's version of what an entry replaces (issue #1616), closed to start: it does not run. */
-private fun ChildrenBuilder.replacedVersion(r: TemplateReplacementView, slot: String, ed: EditContext) {
+/** The code's version of what an entry replaces (issues #1616, #1646), closed to start: it does not run. */
+private fun ChildrenBuilder.replacedVersion(r: CodeReplacementView, slot: String, ed: EditContext) {
     div {
         className = ClassName("bundle-editor-replaced")
         Disclosure {
             summaryText = replacedHeadingText(r)
-            r.templateEntries.forEach { jsonColumn("Template ${r.template}", slot, it, ed) }
+            r.codeEntries.forEach { jsonColumn(r.template?.let { "Template $it" } ?: "Code", slot, it, ed) }
         }
     }
 }
 
-/** A slot that replaces its template's as a set (issue #1616), the columns of the forms list: what it says, and theirs. */
-private fun ChildrenBuilder.replacedSet(r: TemplateReplacementView, ed: EditContext) {
+/** A slot that replaces the code's as a set (issue #1616), the columns of the forms list: what it says, and theirs. */
+private fun ChildrenBuilder.replacedSet(r: CodeReplacementView, ed: EditContext) {
     p { className = ClassName("type-hint"); +slotReplacementText(r) }
     replacedVersion(r, r.slot, ed)
 }
@@ -449,9 +614,6 @@ private class EditContext(
     val switchable: Boolean,
     val onPortable: (Boolean) -> Unit,
 ) {
-    /** This context, for what the page never edits: a code bundle (issue #1616). */
-    fun readOnly(): EditContext = EditContext(false, view, edits, checks, change, portable, switchable, onPortable)
-
     /** [data], an entry of [slot] as stored, in the form the page shows. */
     fun shownData(data: Map<String, Any?>, slot: String): Map<String, Any?> = entryShown(data, slot, view.client, portable)
 
@@ -485,23 +647,26 @@ private fun ChildrenBuilder.entryView(
     entry: EditorEntry,
     at: Int,
     ed: EditContext,
-    from: String? = null,
+    /** Drawn in a code bundle's merged view (issue #1646), where an entry over no code entry is the client's, added here. */
+    merged: Boolean = false,
 ) {
     val data = entry.latest
     val key = ed.view.slotKeys[slot].orEmpty()
-    // The entry's place among the latest revision's: the published ones the draft removed come after them. A code
-    // entry has none, so a stored bundle of the same name never lends it a draft.
-    val id = if (from != null) null else data?.let { existingEntryId(bundle.name, slot, key, it, at) }
+    // The entry's place among the latest revision's: the published ones the draft removed come after them.
+    val id = data?.let { existingEntryId(bundle.name, slot, key, it, at) }
     val draft = id?.let { ed.edits.drafts[it] }
     val check = id?.let { ed.checks[it] }
-    // An entry of the client's that replaces its template's (issue #1616), judged on the latest revision.
+    // An entry of the client's that replaces one of its code's (issues #1616, #1646), judged on the latest revision.
     val replaced = data?.let { replacementOf(ed.view.replacements, bundle.name, slot, key, it) }
     div {
         this.key = "${entry.label}#$at".unsafeCast<Key>()
         className = ClassName("bundle-editor-entry")
         Disclosure {
             summaryText = listOfNotNull(
-                entry.label, entryChangeText(entry.change), replaced?.let { "replaces the template's" }, draftMark(draft, check),
+                entry.label, entryChangeText(entry.change),
+                // The columns are the client's own set, which replaces the code's as a whole (`columnsSetView`).
+                replaced?.let { replacesText(it, bundle.name) } ?: "added here".takeIf { merged && !editedAsSet(slot) },
+                draftMark(draft, check),
             ).joinToString(" — ")
             val before = entry.published
             val publishedHeading = "Published (version ${bundle.published?.version})"
@@ -525,7 +690,7 @@ private fun ChildrenBuilder.entryView(
                     jsonColumn(publishedHeading, slot, before, ed)
                 }
             } else if (data != null) {
-                jsonColumn(from ?: "Version ${bundle.latest.version}", slot, data, ed, withSwitch = true)
+                jsonColumn("Version ${bundle.latest.version}", slot, data, ed, withSwitch = true)
             } else if (before != null) {
                 jsonColumn(publishedHeading, slot, before, ed, withSwitch = true)
             }
@@ -536,7 +701,10 @@ private fun ChildrenBuilder.entryView(
                     className = ClassName("bundle-editor-actions")
                     when {
                         draft?.removed == true -> {
-                            span { className = ClassName("type-hint"); +"To be removed when saved. " }
+                            span {
+                                className = ClassName("type-hint")
+                                +(if (replaced != null) "Reverts to the code's when saved. " else "To be removed when saved. ")
+                            }
                             Button { size = "small"; onClick = { ed.change(ed.edits.without(id)) }; +"Keep it" }
                         }
                         draft != null -> Button { size = "small"; onClick = { ed.change(ed.edits.without(id)) }; +"Undo edits" }
@@ -555,7 +723,8 @@ private fun ChildrenBuilder.entryView(
                                 val base = draft ?: ed.draftOf(bundle.name, slot, data, bundle.stamps[slot]?.getOrNull(at))
                                 ed.change(ed.edits.with(id, base.withRemoved(true)))
                             }
-                            +"Remove"
+                            // An entry over the code's goes back to it (issue #1646): the code's is never removed.
+                            +(if (replaced != null) "Revert to code" else "Remove")
                         }
                     }
                 }
@@ -573,7 +742,10 @@ private fun ChildrenBuilder.newEntries(bundle: String, slot: String, ed: EditCon
             className = ClassName("bundle-editor-entry bundle-editor-new")
             div {
                 className = ClassName("bundle-editor-json")
-                val heading = "New entry${draftMark(draft, ed.checks[id])?.let { " — $it" } ?: ""}"
+                // A change of a code entry (issue #1646) says so; any other is the client's own, new.
+                val changesCode = ed.checks[id]?.data?.get(CCT.overrides) == CCT.overridesCodeValue
+                val what = if (changesCode) "Changing the code's entry" else "New entry"
+                val heading = "$what${draftMark(draft, ed.checks[id])?.let { " — $it" } ?: ""}"
                 columnHeading(heading, slot, ed, withSwitch = true, copyText = draft.text)
                 entryEditor(id, draft, ed.checks[id], ed)
             }
@@ -655,7 +827,7 @@ private class SaveBarState(
     val asDraft: Boolean,
     val formsOpenable: Boolean,
     /** What the dry run said the edits would newly replace of the client's template (issue #1616); null for nothing. */
-    val replacing: List<TemplateReplacementView>? = null,
+    val replacing: List<CodeReplacementView>? = null,
 )
 
 private fun ChildrenBuilder.saveBar(
@@ -706,12 +878,12 @@ private fun ChildrenBuilder.saveBar(
     state.replacing?.let { replacing ->
         div {
             className = ClassName("bundle-editor-notice")
-            p { +"Saving these edits replaces these of the template's, whole:" }
+            p { +"Saving these edits replaces these of the code's, whole:" }
             ul { replacingText(replacing).forEachIndexed { i, line -> li { key = i.toString().unsafeCast<Key>(); +line } } }
             p {
                 className = ClassName("type-hint")
-                +"The client then runs its own instead, and whatever the template's had that the edits do not restate is gone. "
-                +"Remove the client's entry later and the template's runs again."
+                +"The client then runs its own instead, and whatever the code's had that the edits do not restate is gone. "
+                +"Revert to code later and the code's runs again."
             }
             // With an effect on the forms too, the impact report below asks once for both.
             if (state.impact == null) {

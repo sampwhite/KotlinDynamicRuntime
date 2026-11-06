@@ -7,6 +7,7 @@ import com.dynamicruntime.common.gedra.CFEP
 import com.dynamicruntime.common.gedra.ClientAudience
 import com.dynamicruntime.common.gedra.ClientDef
 import com.dynamicruntime.common.gedra.ClientUsageType
+import com.dynamicruntime.common.gedra.CodeSide
 import com.dynamicruntime.common.gedra.ConfigCodeLayer
 import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.gedra.GED
@@ -16,7 +17,7 @@ import com.dynamicruntime.common.gedra.GedraConfigReload
 import com.dynamicruntime.common.gedra.GedraConfigService
 import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.GedraEditAction
-import com.dynamicruntime.common.gedra.TemplateReplacement
+import com.dynamicruntime.common.gedra.OverSide
 import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.gedra.gedraConfigToEntries
 import com.dynamicruntime.common.gedra.workflow.WfEntry
@@ -28,6 +29,7 @@ import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import io.kotest.core.spec.style.StringSpec
+import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
 import io.kotest.matchers.nulls.shouldNotBeNull
@@ -35,9 +37,10 @@ import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 
 /**
- * The bundle editor's code layer (issue #1616): a client's own code bundles and its template's copies on the editor's
- * read, read-only, each labeled by origin; which of the client's entries replace its template's, whole, in code and in
- * what it stores; and a patch's dry run saying what it would newly replace.
+ * The bundle editor's code layer (issues #1616, #1646): a client's own code bundles and its template's copies on the
+ * editor's read, as declared, each labeled by origin; which of the client's entries replace its code's, whole -- its own
+ * code over its template's, and what it stores over either -- and whether each is marked; and a patch's dry run saying
+ * what it would newly replace.
  */
 class ConfigCodeLayerTest : StringSpec({
     val tpl = ExtensionTemplateComponent.template
@@ -71,10 +74,11 @@ class ConfigCodeLayerTest : StringSpec({
         val bundles = codeBundles(editor)
         bundles.map { "${it[CFEP.origin]}:${it[CFEP.name]}" } shouldContainExactly listOf("code:kid", "template:from_${tpl}_base")
         bundles.last()[CFEP.template] shouldBe tpl
-        // The copy is cut to what the client does not define: its own score and overview replace the template's.
+        // The copy is shown whole, as the template declares it (issue #1646): what the client's own code replaces of it
+        // is said by the replacements, not cut out of it.
         val copy = bundles.last()
-        slotKeys(copy, CCT.traitDef, CCT.traitId) shouldContainExactly listOf("tplNote")
-        slotKeys(copy, CCT.reportDef, CCT.reportId) shouldContainExactly listOf("notes")
+        slotKeys(copy, CCT.traitDef, CCT.traitId) shouldContainExactly listOf("tplNote", "tplScore")
+        slotKeys(copy, CCT.reportDef, CCT.reportId) shouldContainExactly listOf("notes", "overview")
         slotKeys(copy, CCT.workflowDef, CCT.workflowId) shouldContainExactly listOf("tplFlow")
         // The template's client definition is never copied: the client defines itself.
         copy[CFEP.slots].toJsonMapOrEmpty().containsKey(CCT.clientDef) shouldBe false
@@ -85,8 +89,11 @@ class ConfigCodeLayerTest : StringSpec({
         )
         val score = editor[CFEP.replacements].toJsonListOfMaps().single { it[CFEP.slot] == CCT.traitDef }
         score[CFEP.template] shouldBe tpl
-        score[CFEP.templateName] shouldBe "base"
-        score[CFEP.templateEntries].toJsonListOfMaps().single()[CCT.typeName] shouldBe "client.tplbase.TplScoreEntry"
+        score[CFEP.origin] shouldBe CFEP.originTemplate
+        score[CFEP.codeName] shouldBe "from_${tpl}_base"
+        score[CFEP.codeEntries].toJsonListOfMaps().single()[CCT.typeName] shouldBe "client.tplbase.TplScoreEntry"
+        // The client's own code over its template's needs no mark.
+        score[CFEP.marked] shouldBe true
     }
 
     "a client that extends nothing shows only its own code, and replaces nothing" {
@@ -103,10 +110,11 @@ class ConfigCodeLayerTest : StringSpec({
             overridesCode("tplNote", "notes")
         }
         val editor = admin(client).getItem(CFEP.editor)
-        // A stored client has no code of its own: only the template's copy, cut to what the client stores.
+        // A stored client has no code of its own: only the template's copy, whole, with what the client stores over it.
         val bundles = codeBundles(editor)
         bundles.map { "${it[CFEP.origin]}:${it[CFEP.name]}" } shouldContainExactly listOf("template:from_${tpl}_base")
-        slotKeys(bundles.single(), CCT.traitDef, CCT.traitId) shouldContainExactly listOf("tplScore")
+        slotKeys(bundles.single(), CCT.traitDef, CCT.traitId) shouldContainExactly listOf("tplNote", "tplScore")
+        editor[CFEP.replacements].toJsonListOfMaps().all { it[CFEP.marked] == true } shouldBe true
         replaced(editor) shouldContainExactlyInAnyOrder listOf(
             "main/${CCT.traitDef}/{traitId=tplNote}",
             "main/${CCT.reportDef}/{reportId=notes}",
@@ -121,7 +129,7 @@ class ConfigCodeLayerTest : StringSpec({
         }
         val found = admin(client).getItem(CFEP.editor)[CFEP.replacements].toJsonListOfMaps().single()
         "${found[CFEP.name]}/${found[CFEP.slot]}/${found[CFEP.key]}" shouldBe "main/${CCT.workflowDef}/{workflowId=myCreate}"
-        found[CFEP.templateEntries].toJsonListOfMaps().single()[CCT.workflowId] shouldBe ExtensionTemplateComponent.creationWorkflow
+        found[CFEP.codeEntries].toJsonListOfMaps().single()[CCT.workflowId] shouldBe ExtensionTemplateComponent.creationWorkflow
     }
 
     "a dry run says what a patch would newly replace, and nothing for an entry the template does not have" {
@@ -173,7 +181,7 @@ class ConfigCodeLayerTest : StringSpec({
         val found = dryRun(CCT.workflowDef, flowEntry("tplFlow", overCode = true))
         found.map { "${it[CFEP.name]}/${it[CFEP.slot]}/${it[CFEP.key]}" } shouldContainExactly
             listOf("flows/${CCT.workflowDef}/{workflowId=tplFlow}")
-        found.single()[CFEP.templateEntries].toJsonListOfMaps().single()[CCT.workflowId] shouldBe "tplFlow"
+        found.single()[CFEP.codeEntries].toJsonListOfMaps().single()[CCT.workflowId] shouldBe "tplFlow"
 
         // A workflow of the client's own, with an id the template does not use, replaces nothing.
         dryRun(CCT.workflowDef, flowEntry("ownFlow")) shouldBe emptyList()
@@ -214,22 +222,39 @@ class ConfigCodeLayerTest : StringSpec({
             "none" to mapOf(CCT.traitDef to listOf(mapOf(CCT.traitId to "b"))),
             "two" to mapOf(CCT.usageDef to listOf(mapOf(CCT.traitId to "c"))),
         )
-        val found = ConfigCodeLayer.replacements(tpl, theirs, own, emptyMap()) { null }
+        val found = ConfigCodeLayer.replacements(
+            theirs.map { (n, slots) -> CodeSide(n, CFEP.originTemplate, tpl, slots) },
+            own.map { (n, slots) -> OverSide(n, slots, stored = true) },
+            emptyMap(),
+        ) { null }
         found.map { it.name } shouldContainExactly listOf("one", "two")
+        // Unmarked, a stored set of columns says so.
+        found.all { !it.marked } shouldBe true
         // One replacement wherever it is held, so a dry run counts it once.
         found.map { it.address }.distinct().size shouldBe 1
     }
 
-    "a template's copy is shown without what the client's latest revisions replace" {
-        val collector = SchemaCollector.get(cxt).shouldNotBeNull()
-        val copy = ConfigCodeLayer.codeConfigs(collector, kid).single { it.inheritedFrom == tpl }
-        val slots = ConfigCodeLayer.slotsOf(copy)
-        val keys = GedraConfigService.get(cxt).configSlotPrimaryKeys()
-        // A replacement the load has not cut yet -- a draft's, or a stored file ref's -- is cut from the copy shown.
-        val draft = TemplateReplacement("drafts", CCT.traitDef, mapOf(CCT.traitId to "tplNote"), tpl, "base", emptyList())
-        val shown = ConfigCodeLayer.withoutReplaced(copy, slots, listOf(draft), keys)
-        shown[CCT.traitDef].orEmpty().map { it[CCT.traitId] } shouldBe emptyList()
-        shown[CCT.workflowDef].orEmpty().map { it[CCT.workflowId] } shouldContainExactly listOf("tplFlow")
+    // Issue #1646: a client's own code that a stored entry stands over is shown whole, and the entry is a replacement of
+    // it, marked -- where the load cuts it.
+    "a client's own code is shown as declared, with a stored entry over it as a marked replacement" {
+        val own = ExtensionTemplateComponent.ownLayer
+        val writer = cxt.mkSubContext("codeLayerOwn", own).also { it.userId = 16461L }
+        GedraConfigService.get(cxt).writeConfig(
+            writer,
+            gedraConfig(cxt, "own", "${clientNamespace(own)}.own", own) {
+                trait("StoredNoteEntry", "ownNote", setOf(GedraDataType.formDoc), "The stored note.") { property("memo", "A memo.") }
+                overridesCode("ownNote")
+            },
+            trial = true,
+        )
+        val editor = admin(own).getItem(CFEP.editor)
+        val code = codeBundles(editor).single()
+        code[CFEP.name] shouldBe "own"
+        slotKeys(code, CCT.traitDef, CCT.traitId) shouldContainExactly listOf("ownNote")
+        val r = editor[CFEP.replacements].toJsonListOfMaps().single()
+        "${r[CFEP.name]}/${r[CFEP.codeName]}/${r[CFEP.origin]}/${r[CFEP.marked]}" shouldBe "own/own/${CFEP.originCode}/true"
+        // The stored bundle shares the code bundle's name, and both are the editor's to show.
+        editor[CFEP.configs].toJsonListOfMaps().map { it[CFEP.name] } shouldContain "own"
     }
 
     "a code configuration with state traits is shown without them, not refused" {
