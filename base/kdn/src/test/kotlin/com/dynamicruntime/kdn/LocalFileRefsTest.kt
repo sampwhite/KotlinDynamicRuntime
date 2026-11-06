@@ -112,6 +112,7 @@ class LocalFileRefComponent(val missing: Boolean = false) : ComponentDefinition 
         enabledEnvironments = setOf(ENV.unit, ENV.local), extendsFromClientId = extends,
     )
 
+    @Suppress("ConstPropertyName")
     companion object {
         const val root = "brand"
 
@@ -1039,7 +1040,7 @@ class LocalFileRefsTest : StringSpec({
         val client = "lfrclosed"
         val shutSvc = GedraConfigService.get(shut)
         val writer = shut.mkSubContext("write", client).also { it.userId = 11640L }
-        // The entry as it was written while the root was open, here by a write that is not trialled.
+        // The entry as it was written while the root was open, here by a write that is not trialed.
         shutSvc.writeConfig(
             writer,
             gedraConfig(shut, "main", clientNamespace(client), client) {
