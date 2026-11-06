@@ -11,6 +11,7 @@ import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.UserProfile
 import com.dynamicruntime.common.home.HACT
 import com.dynamicruntime.common.home.HEP
+import com.dynamicruntime.common.home.HCARD
 import com.dynamicruntime.common.home.HFLD
 import com.dynamicruntime.common.home.HMENU
 import com.dynamicruntime.common.http.request.ContextRoot
@@ -18,6 +19,7 @@ import com.dynamicruntime.common.uiblock.UIB
 import com.dynamicruntime.common.uiblock.UiBlockService
 import com.dynamicruntime.kdn.Startup
 import io.kotest.core.spec.style.StringSpec
+import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.collections.shouldNotContain
 import io.kotest.matchers.ints.shouldBeGreaterThan
@@ -75,6 +77,14 @@ class EdgeMenuTest : StringSpec({
         // exactly the account creation #432 removed). What an edge adds: a way into the app, and Log in --
         // not Log out (#493).
         menuIdsFor(UserProfile()) shouldBe listOf(HMENU.reference, HMENU.catalog, EDGEUI.openAppItem, EDGEUI.loginItem)
+    }
+
+    "an anonymous edge caller is not offered the application's Register card" {
+        // Core's Register card (issue #1652) invites a visitor to the application's registration, which an edge does not
+        // serve: it says `app`, as the menu's Register does, and an edge fails to match it.
+        val scope: KdrCxt = cxt.mkSubContext("edgeCaller")
+        scope.userProfile = UserProfile()
+        (UiBlockService.get(scope).resolve(scope, HCARD.block)?.get(HCARD.cards) as? List<*>).orEmpty().shouldBeEmpty()
     }
 
     "an env-authed edge caller is offered the catalog, the app, and a way out" {
