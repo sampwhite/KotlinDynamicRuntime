@@ -100,15 +100,23 @@ class HomeLiveReads(
     /** The client the waiting read was confined to, for a caller who sees across clients; null otherwise. */
     val waitingClient: String?,
     val drafts: DraftsRead?,
+    /** The new client's checklist's steps, the assistant's among them ([checklistSteps]); empty until read. */
+    val checklist: List<ChecklistStep>,
+    /** Whether this browser was told to hide the checklist ([checklistHiddenHere]). */
+    val checklistHidden: Boolean,
+    /** Hides the checklist in this browser, remembering it ("Hide this checklist"). */
+    val hideChecklist: () -> Unit,
 ) {
     /**
      * Whether [card] has something to show: one whose live body has nothing to say yet -- "Waiting on you" while nothing
-     * is known to wait, "Unpublished drafts" while no draft is known -- is left out, so neither it nor a link to it shows
-     * empty. A card of words alone always shows.
+     * is known to wait, "Unpublished drafts" while no draft is known, the checklist while no step is left (or once this
+     * browser was told to hide it) -- is left out, so neither it nor a link to it shows empty. A card of words alone
+     * always shows.
      */
     fun shows(card: HomeCard): Boolean = when (card.kind) {
         HCARD.kindWaitingOnYou -> (waiting?.total ?: 0) > 0
         HCARD.kindUnpublishedDrafts -> (drafts?.count ?: 0) > 0
+        HCARD.kindNewClientChecklist -> !checklistHidden && checklist.any { !it.done }
         else -> true
     }
 
@@ -126,6 +134,7 @@ class HomeLiveReads(
             when {
                 card.kind == HCARD.kindWaitingOnYou && waiting != null -> waitingCardBody(waiting, waitingClient)
                 card.kind == HCARD.kindUnpublishedDrafts && drafts != null -> draftsCardBody(drafts)
+                card.kind == HCARD.kindNewClientChecklist && checklist.isNotEmpty() -> checklistCardBody(checklist, hideChecklist)
             }
         }
     }
@@ -134,17 +143,35 @@ class HomeLiveReads(
 /**
  * Everything Home reads for its live cards ([HomeLiveReads]), each read only when a card in [cards] asks for it, and
  * read once here, by Home, so a card and the link to it under the title agree. [waitingClient] confines what waits on
- * the caller to their own client, for one who sees across clients.
+ * the caller to their own client, for one who sees across clients. [assistantOffered], whether the menu offers the
+ * workflow assistant, adds its step to the checklist (issue #1639) -- and has its status read for that, even with no
+ * card of its own.
  */
-fun useHomeLiveReads(cards: List<HomeCard>, waitingClient: String?): HomeLiveReads = HomeLiveReads(
-    assistantView = useAssistantCardView(cards),
-    waiting = useWaitingOnYou(cards, waitingClient),
-    waitingClient = waitingClient,
-    drafts = useUnpublishedDrafts(cards),
-)
+fun useHomeLiveReads(cards: List<HomeCard>, waitingClient: String?, assistantOffered: Boolean): HomeLiveReads {
+    val wantsChecklist = cards.any { it.kind == HCARD.kindNewClientChecklist }
+    val assistantView = useAssistantCardView(cards, alsoWanted = wantsChecklist && assistantOffered)
+    val checklistRead = useClientChecklist(cards)
+    // What this browser hid since Home was drawn, beside what it remembers from before: a hide redraws at once.
+    var hiddenNow by useState(emptySet<String>())
+    val checklistClient = checklistRead?.client
+    return HomeLiveReads(
+        assistantView = assistantView,
+        waiting = useWaitingOnYou(cards, waitingClient),
+        waitingClient = waitingClient,
+        drafts = useUnpublishedDrafts(cards),
+        checklist = checklistRead?.let { checklistSteps(it, assistantOffered, assistantView) }.orEmpty(),
+        checklistHidden = checklistClient != null && (checklistClient in hiddenNow || checklistHiddenHere(checklistClient)),
+        hideChecklist = {
+            if (checklistClient != null) {
+                localStorageSet(checklistHiddenKey(checklistClient), "true", "the checklist's hide choice")
+                hiddenNow = hiddenNow + checklistClient
+            }
+        },
+    )
+}
 
 /**
- * The cards Home draws (issues #1637, #1638): those of [cards] that have something to show ([HomeLiveReads.shows]).
+ * The cards Home draws (issues #1637, #1638, #1639): those of [cards] that have something to show ([HomeLiveReads.shows]).
  * Pure, and covered under `jsNodeTest`.
  */
 fun visibleHomeCards(cards: List<HomeCard>, reads: HomeLiveReads): List<HomeCard> = cards.filter(reads::shows)
@@ -201,10 +228,11 @@ fun homeCardJumpLinks(cards: List<HomeCard>, assistantView: AssistantView?): Lis
 
 /**
  * What the workflow assistant's status says, for its card and the link to it (issue #1636), or null while it is being
- * read, when it cannot be, or when no card in [cards] is the assistant's -- then nothing is read ([useCardRead]).
+ * read, when it cannot be, or when no card in [cards] is the assistant's and nothing else wants it ([alsoWanted]: the
+ * new client checklist's step, issue #1639) -- then nothing is read ([useCardRead]).
  */
-fun useAssistantCardView(cards: List<HomeCard>): AssistantView? =
-    useCardRead(cards.any { it.kind == ASST.cardKind }, null, "the assistant's status") {
+fun useAssistantCardView(cards: List<HomeCard>, alsoWanted: Boolean): AssistantView? =
+    useCardRead(alsoWanted || cards.any { it.kind == ASST.cardKind }, null, "the assistant's status") {
         assistantViewOf(AssistantApi.status(), failed = false)
     }
 

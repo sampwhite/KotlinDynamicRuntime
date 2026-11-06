@@ -16,7 +16,10 @@ import kotlin.test.assertNull
 /** Home's "Waiting on you" (issue #1637): reading the listing's answer, when the card shows, and its filter's chip. */
 class WaitingOnYouTest {
     /** What Home read, with [waiting] alone answered. */
-    private fun readsOf(waiting: WaitingRead?) = HomeLiveReads(assistantView = null, waiting = waiting, waitingClient = null, drafts = null)
+    private fun readsOf(waiting: WaitingRead?) = HomeLiveReads(
+        assistantView = null, waiting = waiting, waitingClient = null, drafts = null,
+        checklist = emptyList(), checklistHidden = false, hideChecklist = {},
+    )
 
     private fun step(task: String, text: String) =
         mapOf(WFD.workflowId to "siteReview", WFD.label to "Site review", WFS.ctaTask to task, SWF.actionText to text)

@@ -499,6 +499,9 @@ fun clientOverviewSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CLD.overvie
     // --- its workflows made from templates (issue #1120) ---
     clientWorkflowsEndpoints()
 
+    // --- a new client's checklist (issue #1639) ---
+    clientChecklistEndpoints()
+
     // --- its listing columns (issue #1491) ---
     clientUsagesEndpoints()
 

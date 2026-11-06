@@ -149,7 +149,8 @@ class HomeCardsTest : StringSpec({
         factsIn(CL.hub) shouldNotContain CFACTS.clientHasWaitingWorkflows
         cardsOf(person).first() shouldBe waitingCard
         cardsOf(person)[1] shouldBe draftsCard
-        idsOf(person) shouldBe listOf(HCARD.waiting, HCARD.drafts, HCARD.administer)
+        // And, as a self-serve client's, its checklist (issue #1639), which draws only while a step is left.
+        idsOf(person) shouldBe listOf(HCARD.waiting, HCARD.drafts, HCARD.checklist, HCARD.administer)
     }
 
     "resolving several blocks at once gives each as resolving it alone does" {

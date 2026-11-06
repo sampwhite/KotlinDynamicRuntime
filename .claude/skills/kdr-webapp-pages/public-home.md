@@ -108,6 +108,15 @@ none of its own.
   as the assistant's drafts link. Home reads `/clientAdmin/config/drafts` (`useUnpublishedDrafts`), which answers for
   the sandbox's parent from inside it and skips the bundle listing's per-row checks, and draws the card only once a
   draft is known (`visibleHomeCards`).
+- **Set up your client** (`HCARD.checklist`, issue #1639), next, for the administrator of a self-serve client, never
+  inside its sandbox (`kdr:inSandbox`), which has users and forms of its own: the steps that make the client useful,
+  each checked off from its state by `/clientAdmin/client/checklist` (`ClientChecklist`) -- its New form changed since
+  the starter (for a client whose base has a New form, one of its own at all), a workflow of its own, someone besides its
+  founder, and a first form. The workflows are read as its editors change them, drafts included. The webapp leads with
+  **Switch on the workflow assistant** where the menu offers the assistant and the person may switch it on
+  (`checklistSteps`, from the status Home already reads; core never asks the module), and links each step that is left
+  to where it is done: the client page's Forms and data panel, Users, or New form. The card draws while a step is left,
+  and **Hide this checklist** keeps it away in this browser (`checklistHiddenKey`, per client).
 - **Core's other cards** are shortcuts: **Your client** for an administrator of one client (My client, Users, Reports),
   **Clients and customers** for every client's administrator, **Your client's forms** for an editor, and
   **Operating this deployment** for a deployment operator.

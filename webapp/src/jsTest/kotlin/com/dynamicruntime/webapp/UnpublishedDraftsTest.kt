@@ -12,7 +12,10 @@ import kotlin.test.assertNull
 /** Home's "Unpublished drafts" (issue #1638): reading the drafts' answer, when the card shows, and where it links. */
 class UnpublishedDraftsTest {
     /** What Home read, with [drafts] alone answered. */
-    private fun readsOf(drafts: DraftsRead?) = HomeLiveReads(assistantView = null, waiting = null, waitingClient = null, drafts = drafts)
+    private fun readsOf(drafts: DraftsRead?) = HomeLiveReads(
+        assistantView = null, waiting = null, waitingClient = null, drafts = drafts,
+        checklist = emptyList(), checklistHidden = false, hideChecklist = {},
+    )
 
     @Test
     fun theAnswerIsReadAsTheClientsDrafts() {

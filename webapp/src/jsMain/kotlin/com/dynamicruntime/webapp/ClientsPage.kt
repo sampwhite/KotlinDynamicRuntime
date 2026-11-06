@@ -673,7 +673,8 @@ private fun ChildrenBuilder.clientDetail(
 
 /** The client page's panels' element ids (issue #1397), which its section links lead to. */
 private const val panelDefinition = "client-definition"
-private const val panelFormsData = "client-forms-data"
+/** Public, unlike its neighbors: Home's new client checklist leads to it for its workflow steps (issue #1639). */
+const val panelFormsData = "client-forms-data"
 private const val panelCopy = "client-copy"
 private const val panelImages = "client-images"
 /** Public, unlike its neighbors: the assistant page's "Check impact and publish" leads to it (issue #1527). */

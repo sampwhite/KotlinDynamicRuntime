@@ -74,6 +74,12 @@ object HCARD {
      */
     const val kindUnpublishedDrafts = "unpublishedDrafts"
 
+    /**
+     * The live body of [checklist] (issue #1639): the new client's steps, read from `/clientAdmin/client/checklist`
+     * with the webapp's own step for the workflow assistant beside them, and the card drawn only while one is left.
+     */
+    const val kindNewClientChecklist = "newClientChecklist"
+
     // Core's card ids.
     /**
      * An invitation to register (issue #1652), for a visitor who has not signed in, wherever anyone may: what the
@@ -89,6 +95,9 @@ object HCARD {
 
     /** Configuration saved as a draft and not yet published (issue #1638), for a client with a sandbox. */
     const val drafts = "drafts"
+
+    /** A new self-serve client's checklist (issue #1639): the steps that make it useful, each checked off as done. */
+    const val checklist = "checklist"
 
     /** Administering one client: its page, its users, its reports. */
     const val administer = "administer"

@@ -66,6 +66,17 @@ fun homeCardsBlock(): UiBlockSource = uiBlock(
             cfactExpression = "${CFACTS.administersClient},${CFACTS.clientHasSandbox},${CFACTS.app}",
             displayOrder = UIB.orderStep / 5,
         )
+        // A new client's checklist (issue #1639): for the administrator of a self-serve client, the few steps that make it
+        // useful, checked off from its state. Not inside its sandbox, which has users and forms of its own: the client is
+        // set up from the client. Drawn only while a step is left, after the drafts, which finish work already begun.
+        homeCard(
+            HCARD.checklist, "Set up your client",
+            "A few steps make your client ready for the people who will use it. Each is checked off once it is done.",
+            jumpLabel = "Set up your client",
+            kind = HCARD.kindNewClientChecklist,
+            cfactExpression = "${CFACTS.administersClient},${CFACTS.selfServeClient},~${CFACTS.inSandbox},${CFACTS.app}",
+            displayOrder = UIB.orderStep * 3 / 10,
+        )
         // An administrator of one client -- the caller "My client" is offered to; every client's administrator gets
         // the oversee card instead.
         homeCard(

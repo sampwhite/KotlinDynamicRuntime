@@ -1,5 +1,6 @@
 package com.dynamicruntime.webapp
 
+import com.dynamicruntime.common.assistant.ASST
 import com.dynamicruntime.common.home.HFRAG
 import kotlinx.browser.document
 import kotlinx.browser.window
@@ -68,12 +69,17 @@ val Home = FC<Props> {
     }
     val current = config
     val layout = current?.layout
-    // What Home reads for its live cards (issues #1636-#1638): the workflow assistant's status, what waits on the caller,
-    // and the client's unpublished drafts -- read here, once, so a card and its link under the title say the same thing,
-    // and a card whose read finds nothing is not drawn. What waits is confined to the caller's own client when they see
-    // across clients, so Home never reads the whole deployment.
+    // What Home reads for its live cards (issues #1636-#1639): the workflow assistant's status, what waits on the caller,
+    // the client's unpublished drafts, and a new client's checklist -- read here, once, so a card and its link under the
+    // title say the same thing, and a card whose read finds nothing is not drawn. What waits is confined to the caller's
+    // own client when they see across clients, so Home never reads the whole deployment.
     val allCards = current?.cards.orEmpty()
-    val reads = useHomeLiveReads(allCards, current?.takeIf { it.canSeeAllClients }?.user?.client)
+    val reads = useHomeLiveReads(
+        allCards,
+        waitingClient = current?.takeIf { it.canSeeAllClients }?.user?.client,
+        // The checklist's step for the workflow assistant (issue #1639), only where the menu offers it.
+        assistantOffered = current?.menu.orEmpty().any { it.id == ASST.menuItem },
+    )
     val cards = visibleHomeCards(allCards, reads)
 
     // An address naming a section (`/wa#home.own-client`, after a jump link and a reload, say) scrolls to it once the
