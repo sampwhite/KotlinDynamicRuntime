@@ -401,14 +401,97 @@ private fun ChildrenBuilder.mergedBundleView(code: CodeBundle, ed: EditContext) 
                     className = ClassName("bundle-editor-slot")
                     Disclosure {
                         summaryText = codeSlot?.let { slotSummaryText(it) } ?: storedSlot?.let { slotSummaryText(it) }.orEmpty()
-                        slotReplacement(ed.view.replacements, stored.name, slot)?.let { replacedSet(it, ed) }
-                        codeSlot?.entries?.forEachIndexed { i, entry -> codeEntryView(code, stored, slot, entry, i, ed) }
+                        val storedSet = slotReplacement(ed.view.replacements, stored.name, slot)
+                        storedSet?.let { replacedSet(it, ed) }
+                        if (codeSlot != null && editedAsSet(slot)) {
+                            columnsSetView(code, stored, codeSlot, storedSlot, storedSet, ed)
+                        } else {
+                            codeSlot?.entries?.forEachIndexed { i, entry -> codeEntryView(code, stored, slot, entry, i, ed) }
+                        }
                         storedSlot?.entries?.forEachIndexed { i, entry -> entryView(stored, slot, entry, i, ed) }
                         if (ed.editable) newEntries(stored.name, slot, ed)
                     }
                 }
             }
             if (ed.editable) addSlotControl(stored.name, ed)
+        }
+    }
+}
+
+/**
+ * A code bundle's columns of the forms list (issue #1646), which replace as one set, so they are edited and reverted as
+ * one, from the slot: **Edit the columns** starts the client's own set as the code's whole, each column marked; and
+ * once the stored bundle of its name holds a set, **Revert the columns to code** removes every column of it, so the
+ * code's set runs again. The code's columns are listed one by one only while the client has no set of its own.
+ */
+private fun ChildrenBuilder.columnsSetView(
+    code: CodeBundle,
+    stored: EditorBundle,
+    codeSlot: EditorSlot,
+    storedSlot: EditorSlot?,
+    storedSet: CodeReplacementView?,
+    ed: EditContext,
+) {
+    val slot = codeSlot.slot
+    val keyFields = ed.view.slotKeys[slot].orEmpty()
+    val drafting = ed.edits.drafts.values.any { it.bundle == stored.name && it.slot == slot && it.original == null }
+    if (codeColumnsListed(storedSet, drafting)) {
+        codeSlot.entries.forEachIndexed { i, entry -> codeEntryView(code, stored, slot, entry, i, ed) }
+    }
+    if (!ed.editable) return
+    div {
+        className = ClassName("bundle-editor-actions")
+        when {
+            storedSet != null -> {
+                val ids = storedSlot?.entries.orEmpty().mapIndexedNotNull { i, entry ->
+                    entry.latest?.let { existingEntryId(stored.name, slot, keyFields, it, i) to (entry.latest to i) }
+                }
+                val reverting = ids.isNotEmpty() && ids.all { (id, _) -> ed.edits.drafts[id]?.removed == true }
+                Button {
+                    size = "small"
+                    disabled = reverting
+                    onClick = {
+                        var next = ed.edits
+                        for ((id, held) in ids) {
+                            val (data, at) = held
+                            val base = next.drafts[id] ?: ed.draftOf(stored.name, slot, data, stored.stamps[slot]?.getOrNull(at))
+                            next = next.with(id, base.withRemoved(true))
+                        }
+                        ed.change(next)
+                    }
+                    +"Revert the columns to code"
+                }
+                span {
+                    className = ClassName("type-hint")
+                    +(
+                        if (reverting) " The code's columns run again when saved."
+                        else " Removes this client's set, so the code's runs again."
+                        )
+                }
+            }
+            !drafting -> {
+                Button {
+                    size = "small"
+                    onClick = {
+                        var next = ed.edits
+                        val unwritten = ed.view.configs.none { it.name == stored.name } && stored.name !in next.newBundles
+                        if (unwritten) next = next.addingBundle(stored.name)
+                        for (column in columnsOverride(codeSlot.entries.mapNotNull { it.latest })) {
+                            next = next.adding(stored.name, slot, entryText(ed.shownData(column, slot)), ed.view.client, ed.portable).first
+                        }
+                        ed.change(next)
+                    }
+                    +"Edit the columns"
+                }
+                span {
+                    className = ClassName("type-hint")
+                    +" The columns replace as one set: this starts this client's own from all of the code's."
+                }
+            }
+            else -> span {
+                className = ClassName("type-hint")
+                +"This client's own set of columns, which replaces the code's whole when saved."
+            }
         }
     }
 }
@@ -428,7 +511,7 @@ private fun ChildrenBuilder.codeEntryView(
 ) {
     val data = entry.latest ?: return
     val keyFields = ed.view.slotKeys[slot].orEmpty()
-    val replaced = codeReplacementOf(ed.view.replacements, code.name, slot, data)
+    val replaced = codeReplacementOf(ed.view.replacements, code.name, slot, keyFields, data)
     // Changed here: the stored entry is shown, with this beside it.
     if (replaced != null && replaced.name == stored.name) return
     val changing = ed.edits.drafts.entries.any { (id, d) ->
@@ -441,7 +524,8 @@ private fun ChildrenBuilder.codeEntryView(
         Disclosure {
             summaryText = listOfNotNull(entry.label, replaced?.let { "changed in ${it.name}" }).joinToString(" — ")
             jsonColumn(codeFromText(code).replaceFirstChar { it.uppercase() }, slot, data, ed, withSwitch = true)
-            if (ed.editable && replaced == null && keyFields.isNotEmpty()) {
+            // The columns are edited as one set, from the slot (`columnsSetView`).
+            if (ed.editable && replaced == null && keyFields.isNotEmpty() && !editedAsSet(slot)) {
                 div {
                     className = ClassName("bundle-editor-actions")
                     Button {

@@ -539,6 +539,13 @@ files. The page lists them after the stored bundles under **From code** (its "Wh
 - **Revert to code.** A stored entry over the code's offers **Revert to code** in place of Remove: removing it, when
   saved ("Reverts to the code's when saved."), brings the code's version back. A code entry is never removed: a
   workflow's says the client turns it off on its page instead.
+- **The columns of the forms list are edited and reverted as one set** (`columnsSetView`, `editedAsSet`), from the slot,
+  since a client that declares any column declares all of them. **Edit the columns** starts the client's set from all
+  of the code's, each marked (`columnsOverride`); while the client has a set of its own, saved or drafted, the code's
+  columns are not listed one by one (`codeColumnsListed`), and **Revert the columns to code** removes every column of
+  it. A column of the client's set keeps a plain **Remove**: taking one out changes the client's set, not the code's.
+- **A code entry is matched to what stands over it by its key fields** (`codeReplacementOf`), not the whole entry, so a
+  value that reads differently after a round trip cannot hide a change.
 - **Replacements** (`CFEP.replacements`, `CodeReplacement`): each of the client's entries that replaces one of its
   code's -- a stored entry over any code entry, its own code over its template's -- by the keys `ConfigKeys` states:
   traits, types, cfacts, workflows, reports, and file refs by key, a creation or core details workflow also by its

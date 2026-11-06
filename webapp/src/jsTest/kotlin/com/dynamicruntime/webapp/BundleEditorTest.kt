@@ -177,14 +177,35 @@ class BundleEditorTest {
     @Test
     fun aCodeEntryIsFoundChangedHereElsewhereOrNotAtAll() {
         // Changed here: in the stored bundle named like the code bundle, and marked.
-        val here = assertNotNullOf(codeReplacementOf(codeView.replacements, "kid", CCT.traitDef, memo))
+        val here = assertNotNullOf(codeReplacementOf(codeView.replacements, "kid", CCT.traitDef, listOf(CCT.traitId), memo))
         assertEquals("changed here", replacesText(here, "kid"))
         // Changed in another bundle, and without the mark: said so.
-        val elsewhere = assertNotNullOf(codeReplacementOf(codeView.replacements, "from_tpl_base", CCT.traitDef, note))
+        val elsewhere = assertNotNullOf(codeReplacementOf(codeView.replacements, "from_tpl_base", CCT.traitDef, listOf(CCT.traitId), note))
         assertEquals("main", elsewhere.name)
         assertEquals("matches template tpl's entry, without the mark", replacesText(elsewhere, "main"))
         // Nothing stands over an entry nobody changes.
-        assertNull(codeReplacementOf(codeView.replacements, "from_tpl_base", CCT.traitDef, gone))
+        assertNull(codeReplacementOf(codeView.replacements, "from_tpl_base", CCT.traitDef, listOf(CCT.traitId), gone))
+        // Matched by the key, not the whole entry: a field that reads differently after a round trip does not hide it.
+        val roundTripped = note + (CCT.description to 2.0)
+        assertNotNullOf(codeReplacementOf(codeView.replacements, "from_tpl_base", CCT.traitDef, listOf(CCT.traitId), roundTripped))
+    }
+
+    @Test
+    fun theColumnsAreEditedAndRevertedAsOneSet() {
+        assertTrue(editedAsSet(CCT.usageDef))
+        assertFalse(editedAsSet(CCT.traitDef))
+        // Edit the columns starts the client's set from all of the code's, each marked.
+        val columns = listOf(mapOf(CCT.traitId to "a", CCT.label to "A"), mapOf(CCT.traitId to "b", CCT.label to "B"))
+        val started = columnsOverride(columns)
+        assertEquals(listOf("a", "b"), started.map { it[CCT.traitId] })
+        assertTrue(started.all { it[CCT.overrides] == CCT.overridesCodeValue })
+        // The code's columns are listed one by one only while the client has no set of its own, saved or drafted.
+        val set = assertNotNullOf(slotReplacement(codeView.replacements, "main", CCT.usageDef))
+        assertTrue(codeColumnsListed(null, drafting = false))
+        assertFalse(codeColumnsListed(set, drafting = false))
+        assertFalse(codeColumnsListed(null, drafting = true))
+        // The code's set beside the client's is what these replace, not one entry.
+        assertTrue(replacedHeadingText(set).endsWith("which these replace"))
     }
 
     @Test

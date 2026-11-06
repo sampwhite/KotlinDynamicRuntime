@@ -154,16 +154,44 @@ fun codeBundleNoteText(bundle: CodeBundle): String =
         "entry of the code's is never removed; a workflow the client does not want is turned off on its page instead."
 
 /**
- * The replacement standing over [entry], an entry of the code bundle [codeName] in [slot] (issue #1646), or null when
- * nothing does. The columns of the forms list replace as a set: see [slotReplacement].
+ * The replacement standing over [entry], an entry of the code bundle [codeName] in [slot] keyed by [keyFields] (issue
+ * #1646), or null when nothing does. Matched by the code entry's key fields, which are text, rather than the whole
+ * entry, so a value that reads differently after a round trip cannot hide it. A creation or core details workflow
+ * replaced by its kind is matched the same way: its code entry is the one the replacement names. The columns of the
+ * forms list replace as a set: see [slotReplacement].
  */
 fun codeReplacementOf(
     replacements: List<CodeReplacementView>,
     codeName: String,
     slot: String,
+    keyFields: List<String>,
     entry: Map<String, Any?>,
-): CodeReplacementView? =
-    replacements.firstOrNull { it.codeName == codeName && it.slot == slot && it.key.isNotEmpty() && entry in it.codeEntries }
+): CodeReplacementView? {
+    if (keyFields.isEmpty()) return null
+    return replacements.firstOrNull { r ->
+        r.codeName == codeName && r.slot == slot && r.key.isNotEmpty() &&
+            r.codeEntries.any { code -> keyFields.all { code[it] == entry[it] } }
+    }
+}
+
+/**
+ * Whether a code bundle's [slot] is edited and reverted as one set, from the slot (issue #1646): the columns of the forms
+ * list, which a client that declares any declares all of. One column edited alone would leave a set of one.
+ */
+fun editedAsSet(slot: String): Boolean = slot == CCT.usageDef
+
+/**
+ * What **Edit the columns** starts (issue #1646): every one of the code's [columns], each marked to stand over it, so
+ * the client's set begins as the code's whole and a save never leaves a set of one by accident.
+ */
+fun columnsOverride(columns: List<Map<String, Any?>>): List<Map<String, Any?>> = columns.map { overrideOf(it) }
+
+/**
+ * Whether a code bundle's columns are listed one by one (issue #1646): not while the stored bundle of its name holds a
+ * set of its own ([storedSet]) or the page is drafting one ([drafting]) -- the client's set is shown then, with the
+ * code's beside it as the set it replaces.
+ */
+fun codeColumnsListed(storedSet: CodeReplacementView?, drafting: Boolean): Boolean = storedSet == null && !drafting
 
 /**
  * [entry], an entry of a code bundle, as the stored entry that changes it starts (issue #1646): the code's own, marked
@@ -212,9 +240,10 @@ fun replacementOf(
 fun slotReplacement(replacements: List<CodeReplacementView>, bundle: String, slot: String): CodeReplacementView? =
     replacements.firstOrNull { it.name == bundle && it.slot == slot && it.key.isEmpty() }
 
-/** The heading over the code's version of what [r] replaces. */
+/** The heading over the code's version of what [r] replaces: one entry's, or a whole set's (the columns). */
 fun replacedHeadingText(r: CodeReplacementView): String =
-    "${r.codeFrom.replaceFirstChar { it.uppercase() }}'s, in its ${r.codeName} bundle, which this entry replaces"
+    "${r.codeFrom.replaceFirstChar { it.uppercase() }}'s, in its ${r.codeName} bundle, which " +
+        if (r.key.isEmpty()) "these replace" else "this entry replaces"
 
 /** What a slot that replaces the code's as a set says: the columns of the forms list. */
 fun slotReplacementText(r: CodeReplacementView): String {
