@@ -30,6 +30,7 @@ import java.io.File
 object LogFileStore : KdrLogger("fileStore")
 
 /** The file store's `_debug` word (issue #1650). */
+@Suppress("ConstPropertyName")
 object FSDBG {
     /**
      * Logs every call the request makes to the file store, at debug on the `fileStore` topic, with how long it took:
