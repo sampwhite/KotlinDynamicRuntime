@@ -318,9 +318,10 @@ object ClientWorkflowEdit {
      * client's, a client its source defaults. Any other parameter is left as it is. In force at once in that scope --
      * the client's people, or a sandbox's -- with no draft and no publish, and what they replace kept in the history
      * ([WorkflowParamsService]). The workflow may be one [client] runs, or, on a client with a sandbox, one its sandbox
-     * runs and a publish has yet to bring. Who sees it may be set on a workflow of any kind; its windows only on a normal
-     * one. A change that would, now, freeze or hide forms [client] stores that are engaged with the workflow -- an end
-     * brought forward, a start pushed back -- or take one out of its owner's sight is refused with the impact report
+     * runs and a publish has yet to bring. Who sees it may be set on a workflow of any kind; its windows, and whether it
+     * is turned on (issue #1635), only on a normal one. A change that would, now, freeze or hide forms [client] stores that
+     * are engaged with the workflow -- an end brought forward, a start pushed back, turning it off -- or take one out of its
+     * owner's sight is refused with the impact report
      * until acknowledged. Returns the parameters as [client] now runs them.
      */
     fun saveParams(
@@ -339,6 +340,13 @@ object ClientWorkflowEdit {
         if (declared.def.entry != WfEntry.normal && (edit.windows != null || WFP.windows in unset)) {
             throw KdrException.mkInput(
                 "Workflow '$workflowId' is a ${declared.def.entry.words} workflow, which has no time windows; only a normal workflow does.",
+            )
+        }
+        // Turned off, a normal workflow is as if not configured (issue #1635); the creation and core details workflows a
+        // client has one of each of keep no switch until a case needs one.
+        if (declared.def.entry != WfEntry.normal && (edit.enabled != null || WFP.enabled in unset)) {
+            throw KdrException.mkInput(
+                "Workflow '$workflowId' is a ${declared.def.entry.words} workflow, which cannot be turned off; only a normal workflow can.",
             )
         }
         edit.problem(workflowId)?.let { throw KdrException.mkInput(it) }

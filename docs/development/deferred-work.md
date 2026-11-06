@@ -419,6 +419,17 @@ values in the table itself.
   stored values on screen. Left out because the tooltip and the file already give the values, and no client has
   asked for them in the table.
 
+## When a client wants a report from code withdrawn
+
+A client can turn off a workflow it does not want, its code's included, with the `enabled` workflow parameter (issue
+#1635), and so stop using the configuration that workflow binds to. A report is not bound to a workflow, so a report its
+code or its template declares stays listed for the client.
+
+- **An `enabled` switch on reports** *(from #1635, deferred here 2026-11-06).* The same rule as a workflow's: default
+  on, set per client over the code's default, and turned off the report is not listed or run while its stored history
+  is kept. See the code guide's [disable rather than delete](code-guide.md#disable-rather-than-delete). Left out until a
+  client asks, since no client has wanted a code report gone.
+
 ## When long notes crowd a listing or a report
 
 A field the schema marks long text (`g-longText`, issue #1550) holds free text over several lines. A report cell

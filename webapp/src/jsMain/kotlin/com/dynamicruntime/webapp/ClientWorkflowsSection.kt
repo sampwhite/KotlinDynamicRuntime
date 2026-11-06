@@ -1,7 +1,6 @@
 package com.dynamicruntime.webapp
 
 import com.dynamicruntime.common.gedra.workflow.WfDef
-import com.dynamicruntime.common.gedra.workflow.WfEntry
 import com.dynamicruntime.common.gedra.workflow.WfTemplateSlots
 import com.dynamicruntime.common.gedra.workflow.WfVisibility
 import com.dynamicruntime.common.gedra.workflow.WfVisibilityMode
@@ -42,8 +41,8 @@ external interface ClientWorkflowsSectionProps : Props {
     var formsOpenable: Boolean
     /**
      * Whether the client's workflows may be made, edited and removed here: its definition is in stored configuration
-     * that this page edits. False for a client declared in source code, whose workflows are shown with their time
-     * windows alone -- parameters, not configuration, so set here whoever declared the workflow (issue #1386).
+     * that this page edits. False for a client declared in source code, whose workflows are shown with their parameters
+     * alone -- the switch, who sees them, and their time windows: set here whoever declared the workflow (issue #1386).
      */
     var configEditable: Boolean
     /**
@@ -65,6 +64,11 @@ private const val visibilityPrefix = "visibility:"
 
 private fun visibilityKey(workflowId: String) = visibilityPrefix + workflowId
 
+/** What the switch editor is open on: the workflow, after this prefix (issue #1635). */
+private const val enabledPrefix = "enabled:"
+
+private fun enabledKey(workflowId: String) = enabledPrefix + workflowId
+
 /** What the slot editor is open on: a new workflow from a template, or a workflow made from one. */
 private fun openKey(templateId: String?, workflowId: String?) = workflowId?.let { "edit:$it" } ?: "new:$templateId"
 
@@ -79,10 +83,12 @@ private fun openKey(templateId: String?, workflowId: String?) = workflowId?.let 
  * effect as the page's other editors' do; what is stored is the workflow's overlay of the template, which the backend
  * reads over the template, so a fix to the template reaches the workflow.
  *
- * Every workflow has **Visibility…** (issue #1384) -- who sees it -- and each normal one **Time windows…**: its
- * parameters, set here whoever declared it, each opening its editor in a row of its own beneath the workflow's. For a
- * client whose configuration is not edited here ([ClientWorkflowsSectionProps.configEditable] false) -- one declared
- * in source code -- only the workflows are listed, with those two.
+ * Every workflow has **Visibility…** (issue #1384) -- who sees it -- and each normal one **On/off…** (issue #1635) and
+ * **Time windows…**: its parameters, set here whoever declared it, each opening its editor in a row of its own beneath
+ * the workflow's. A workflow turned off reads "Off" in the Now column ([workflowNowText]), since turning it off is how a
+ * client stops using one without deleting it. For a client whose configuration is not edited here
+ * ([ClientWorkflowsSectionProps.configEditable] false) -- one declared in source code -- only the workflows are listed,
+ * with their parameters.
  */
 val ClientWorkflowsSection = FC<ClientWorkflowsSectionProps> { props ->
     val generation = useRefreshGeneration()
@@ -127,8 +133,8 @@ val ClientWorkflowsSection = FC<ClientWorkflowsSectionProps> { props ->
                 "steps and rules; the client chooses its name, and for each step that asks for information, what it is " +
                 "called and which traits it collects."
         } else {
-            "The workflows this client's people use. They are not changed here, but who sees each one, and its time " +
-                "windows, are: they are its parameters, not its definition."
+            "The workflows this client's people use. They are not changed here, but whether each one is on, who sees it, " +
+                "and its time windows are: they are its parameters, not its definition."
         })
     }
     val shown = workflowCatalog
@@ -200,7 +206,8 @@ val ClientWorkflowsSection = FC<ClientWorkflowsSectionProps> { props ->
     // the editor appears where it was asked for.
     val windowsOf = open?.takeIf { it.startsWith(windowsPrefix) }?.removePrefix(windowsPrefix)
     val visibilityOf = open?.takeIf { it.startsWith(visibilityPrefix) }?.removePrefix(visibilityPrefix)
-    val rowEditorOpen = windowsOf != null || visibilityOf != null
+    val enabledOf = open?.takeIf { it.startsWith(enabledPrefix) }?.removePrefix(enabledPrefix)
+    val rowEditorOpen = windowsOf != null || visibilityOf != null || enabledOf != null
 
     if (shown.workflows.isEmpty()) {
         p {
@@ -237,8 +244,12 @@ val ClientWorkflowsSection = FC<ClientWorkflowsSectionProps> { props ->
                             td { +workflowEntryText(w.def.entry) }
                             td { +(w.def.fromTemplate?.let { shown.template(it)?.let { t -> workflowName(t.def) } ?: it } ?: "—") }
                             td { +w.taskLabels.joinToString(", ") }
-                            // Where a normal workflow stands in its time windows now (issue #1121); the others have none.
-                            td { +(if (w.def.entry == WfEntry.normal) windowPhaseText(w.windows, now, zone) else "—") }
+                            // Where a normal workflow stands now: turned off (issue #1635), else in its time windows (issue
+                            // #1121); the others have neither.
+                            td {
+                                if (!w.enabled) className = ClassName("wf-restricted")
+                                +workflowNowText(w, now, zone)
+                            }
                             // Who sees it (issue #1384): a restricted one stands out, since its people may not.
                             td {
                                 if (w.visibility.restricted) className = ClassName("wf-restricted")
@@ -287,6 +298,15 @@ val ClientWorkflowsSection = FC<ClientWorkflowsSectionProps> { props ->
                                             }
                                         }
                                     }
+                                    if (w.enabledOffered) {
+                                        Button {
+                                            type = "link"
+                                            size = "small"
+                                            disabled = open != null
+                                            onClick = { open = enabledKey(w.def.workflowId); note = null }
+                                            +"On/off…"
+                                        }
+                                    }
                                     Button {
                                         type = "link"
                                         size = "small"
@@ -313,6 +333,29 @@ val ClientWorkflowsSection = FC<ClientWorkflowsSectionProps> { props ->
                                     asDynamic()["colSpan"] = 7
                                     WorkflowWindowsEditor {
                                         this.key = "windows-$windowsOf".unsafeCast<Key>()
+                                        this.clientId = props.clientId
+                                        this.workflow = w.def
+                                        this.params = w.params ?: WorkflowParamsView.none
+                                        this.zone = zone
+                                        formsOpenable = props.formsOpenable
+                                        onSaved = { said ->
+                                            open = null
+                                            note = said
+                                            props.onChanged()
+                                        }
+                                        onCancel = { open = null }
+                                        onChanged = props.onChanged
+                                    }
+                                }
+                            }
+                        }
+                        if (enabledOf == w.def.workflowId && w.enabledOffered) {
+                            tr {
+                                key = "${w.def.workflowId}-enabled".unsafeCast<Key>()
+                                td {
+                                    asDynamic()["colSpan"] = 7
+                                    WorkflowEnabledEditor {
+                                        this.key = "enabled-$enabledOf".unsafeCast<Key>()
                                         this.clientId = props.clientId
                                         this.workflow = w.def
                                         this.params = w.params ?: WorkflowParamsView.none

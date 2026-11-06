@@ -9,12 +9,13 @@ import com.dynamicruntime.common.util.toOptStr
 import kotlin.time.Instant
 
 /**
- * The endpoints' side of a normal workflow's time windows (issue #790): the one place that says what each
+ * The endpoints' side of a normal workflow's time windows (issue #790), and of its switch (issue #1635): the one place that says what each
  * [WfPhase] allows and in which words, so engage, view, save, approve and the chip popover cannot drift apart.
  *
  * **Windows are parameters** (issue #1356): a workflow's windows are not in its definition but in its parameters, set
  * per client ([WorkflowParamsService]), so every phase here is asked of a workflow *in a client* -- the registry's, or
- * the form's. This is the one place that reads them for a phase.
+ * the form's. This is the one place that reads them for a phase. So is whether it is turned on (issue #1635): turned
+ * off, a workflow is outside its lifetime ([WfParams.phaseAt]), so every rule below treats it as not configured.
  *
  * **One clock.** Every phase is read at `cxt.instanceNow()`, the instance clock -- not the per-context `now()` --
  * because a phase decides what the deriver persists (a frozen entry, a dropped one), and persisted state is
@@ -22,15 +23,19 @@ import kotlin.time.Instant
  */
 object WorkflowPhases {
     /**
-     * The windows [def] runs with in [client] (issue #1356): its parameters there -- a sandbox's own, else its
-     * parent's -- or none for a workflow that is not normal, which has no windows, and on a node that keeps none.
+     * The parameters [def]'s phase is judged by in [client] (issues #1356, #1635): its parameters there -- a sandbox's
+     * own, else its parent's, else its code's -- or none for a workflow that is not normal, which has neither windows
+     * nor a switch, and on a node that keeps none.
      */
-    fun windowsOf(cxt: KdrCxt, client: String?, def: WfDef): WfWindows =
-        if (def.entry != WfEntry.normal) WfWindows.none
-        else WorkflowParamsService.getOrNull(cxt)?.windowsFor(cxt, client, def.workflowId) ?: WfWindows.none
+    private fun paramsOf(cxt: KdrCxt, client: String?, def: WfDef): WfParams =
+        if (def.entry != WfEntry.normal) WfParams.none
+        else WorkflowParamsService.getOrNull(cxt)?.paramsFor(cxt, client, def.workflowId) ?: WfParams.none
 
-    /** Where [def] stands in [client] at the moment [at]. */
-    fun phaseAt(cxt: KdrCxt, client: String?, def: WfDef, at: Instant): WfPhase = windowsOf(cxt, client, def).phaseAt(at)
+    /** The windows [def] runs with in [client] ([paramsOf]); none for a workflow that is not normal. */
+    fun windowsOf(cxt: KdrCxt, client: String?, def: WfDef): WfWindows = paramsOf(cxt, client, def).windowsInForce
+
+    /** Where [def] stands in [client] at the moment [at]: outside its lifetime while turned off (issue #1635). */
+    fun phaseAt(cxt: KdrCxt, client: String?, def: WfDef, at: Instant): WfPhase = paramsOf(cxt, client, def).phaseAt(at)
 
     /** Where [def] stands in [client] for [cxt]'s request. */
     fun of(cxt: KdrCxt, client: String?, def: WfDef): WfPhase = phaseAt(cxt, client, def, cxt.instanceNow())
@@ -142,11 +147,13 @@ object WorkflowPhases {
      */
     fun requireCalculated(cxt: KdrCxt, client: String?, def: WfDef, doing: String) {
         val now = cxt.instanceNow()
-        val windows = windowsOf(cxt, client, def)
-        if (windows.phaseAt(now).calculates) return
-        val w = windows.effectiveRelevancy
+        val params = paramsOf(cxt, client, def)
+        if (params.phaseAt(now).calculates) return
+        val w = params.windowsInForce.effectiveRelevancy
         val start = w.start
-        val reason = if (start != null && now < start) {
+        val reason = if (!params.enabledInForce) {
+            turnedOff
+        } else if (start != null && now < start) {
             "it does not open until $start"
         } else {
             "it closed at ${w.end}, and what it recorded then stands"
@@ -157,11 +164,15 @@ object WorkflowPhases {
     /** Refuses engaging a form with [def] in [client] outside its engagement window; a 400 like the eligibility refusal. */
     fun requireEngageable(cxt: KdrCxt, client: String?, def: WfDef) {
         val now = cxt.instanceNow()
-        val windows = windowsOf(cxt, client, def)
-        if (windows.phaseAt(now) == WfPhase.engageable) return
-        val w = windows.effectiveEngagement
+        val params = paramsOf(cxt, client, def)
+        if (params.phaseAt(now) == WfPhase.engageable) return
+        if (!params.enabledInForce) throw KdrException.mkInput("Workflow '${def.workflowId}' is not taking new forms: $turnedOff.")
+        val w = params.windowsInForce.effectiveEngagement
         val start = w.start
         val reason = if (start != null && now < start) "opens at $start" else "closed at ${w.end}"
         throw KdrException.mkInput("Workflow '${def.workflowId}' is not taking new forms: engagement $reason.")
     }
+
+    /** Why a workflow turned off refuses (issue #1635); an endpoint reaches it only for one it looked up before the switch. */
+    private const val turnedOff = "it is turned off for this client"
 }

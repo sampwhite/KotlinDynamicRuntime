@@ -504,6 +504,27 @@ a profile that looked correct and was missing something (issue #282). Note that 
 helper does **not** fix this: it still lists every field, one level further in. Only `copy()` carries a field
 nobody has thought of yet.
 
+### Disable rather than delete
+
+Wherever we can, we turn a thing off rather than delete it. A disabled item keeps every reference to it intact: a
+history record, a report, or an audit of the current state of data or configuration still points at the item it names,
+not at nothing. The simplest case is a history record that refers to a user, a workflow, or a setting that was later
+disabled. Read later, the record still says what it was about.
+
+Deleting comes later, and in bulk. Content that has been disabled a long time is removed in a periodic cleanup, probably
+no more than yearly, or when a client asks for it.
+
+**Which things get a switch.** Top-level configuration whose absence would break no other configuration is the kind
+that earns an `enabled` switch (default on), added when somebody needs it. A workflow is the first: turned off, it is
+as if not configured, its stored data kept, and turning it on again brings it all back (the `enabled` workflow
+parameter, issue #1635). Most configuration a client might want gone becomes harmless once the workflow that uses it is
+off, so removing it is rarely needed. Reports are the next likely case (see
+[`deferred-work.md`](deferred-work.md#when-a-client-wants-a-report-from-code-withdrawn)).
+
+**What this rules out.** A design that needs "remove" should first ask whether turning something off would do. A stored
+change that deletes something code declares is the clearest case: the overlay design (#1634) has no tombstone for that
+reason, because the code entry stays and a client turns off what it does not want.
+
 ### Universal Exception
 
 We will use a richly defined Exception class named "KdrException" which will have an attribute to

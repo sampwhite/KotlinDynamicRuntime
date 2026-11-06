@@ -623,8 +623,9 @@ class GedraConfigBuilder(
     val workflowParams: MutableMap<String, WfParams> = LinkedHashMap()
 
     /**
-     * Declares the default parameters of this client's workflow [workflowId] (issue #1386) -- its time windows, for
-     * now -- which the client runs until it, or a sandbox of it, sets its own on the client's page. A workflow's own
+     * Declares the default parameters of this client's workflow [workflowId] (issue #1386) -- its time windows, and
+     * whether it starts turned on (issue #1635) -- which the client runs until it, or a sandbox of it, sets its own on the
+     * client's page. A workflow's own
      * values are set per scope, in force at once and kept in the database; these sit below them, so a client declared
      * in source code says when its workflows run without anyone editing the database.
      *

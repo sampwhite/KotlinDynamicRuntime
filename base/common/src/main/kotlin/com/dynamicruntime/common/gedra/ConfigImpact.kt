@@ -156,15 +156,16 @@ object ConfigImpact {
      * The report for changing [workflowId]'s parameters in [client] from [before] to [after], each as in force there
      * (issues #1121, #1356, #1384): each form [client] stores that is engaged with the workflow and that the change
      * would, at this moment, hide ([ImpactKind.workflowHidden]) or freeze ([ImpactKind.workflowFrozen]) -- its phase now
-     * under each windows, so an end brought forward and a start pushed back are judged alike, by what they do now -- or
+     * under each, so an end brought forward, a start pushed back, and turning it off are judged alike, by what they do now -- or
      * take out of its owner's sight ([ImpactKind.workflowUnseen]), as [WorkflowAudience] would judge the owner. The
      * forms judged are [client]'s own, a sandbox's its own.
      */
     fun paramsReport(cxt: KdrCxt, client: String, workflowId: String, before: WfParams, after: WfParams): ImpactReport {
         val report = ImpactReport(client, emptyList())
         val at = cxt.instanceNow()
-        val was = before.windowsInForce.phaseAt(at)
-        val will = after.windowsInForce.phaseAt(at)
+        // The switch and the windows together (issue #1635): turning a workflow off hides it, as an ended lifetime does.
+        val was = before.phaseAt(at)
+        val will = after.phaseAt(at)
         val seenBefore = before.visibilityInForce
         val seenAfter = after.visibilityInForce
         val windowsHarm = (was.exists && !will.exists) || (was.calculates && !will.calculates)
