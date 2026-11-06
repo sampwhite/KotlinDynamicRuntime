@@ -16,6 +16,7 @@ import com.dynamicruntime.common.http.request.RoleLadder
 import com.dynamicruntime.common.http.request.SECT
 import com.dynamicruntime.common.startup.SchemaCollector
 import com.dynamicruntime.common.user.AdminRules
+import com.dynamicruntime.common.user.PublicTestDeployment
 import com.dynamicruntime.common.user.SandboxAccess
 
 /** The friendly labels the built-in cfacts group under. Metadata: they affect nothing but presentation. */
@@ -53,6 +54,18 @@ object CFACTS {
 
     const val loggedIn = "kdr:loggedIn"
     const val anonymous = "kdr:anonymous"
+
+    /**
+     * The caller may sign in or register whatever their address (issue #1652): anywhere but a public test deployment
+     * that refuses the public. What the home page's Register card is offered on.
+     */
+    const val signInOpenToEveryone = "kdr:signInOpenToEveryone"
+
+    /**
+     * The caller may sign in or register with some address (issue #1652): [signInOpenToEveryone], or an administrator
+     * on the admin domain where their login carries env auth. What the menu's Register and Log in are offered on.
+     */
+    const val signInOpenToSome = "kdr:signInOpenToSome"
     /** The caller ranks at `operator` or above on the ladder. **Level only** -- see the naming note. */
     const val hasOperatorLevel = "kdr:hasOperatorLevel"
 
@@ -374,6 +387,24 @@ fun addCoreCFacts(collector: SchemaCollector) {
             toFrontend = true,
         ),
     ) { it.isEnvAuthEffective }
+
+    // The sign-in pair (issue #1652), asked of the rule the sign-in flows refuse by, so an offer to sign in or register
+    // is made exactly where the flow would take the caller. Two facts, since that rule turns on the address typed.
+    collector.addCFact(
+        CFactDef(
+            CFACTS.signInOpenToEveryone, CFGRP.caller,
+            "True when the caller may sign in or register whatever their address: anywhere but a public test " +
+                "deployment that refuses the public a sign-in. The home page's Register card is offered on it.",
+        ),
+    ) { PublicTestDeployment.signInOpenToEveryone(it) }
+    collector.addCFact(
+        CFactDef(
+            CFACTS.signInOpenToSome, CFGRP.caller,
+            "True when the caller may sign in or register with some address: `${CFACTS.signInOpenToEveryone}`, or " +
+                "a public test deployment where an administrator on the admin domain still may. The menu's Register " +
+                "and Log in are offered on it.",
+        ),
+    ) { PublicTestDeployment.signInOpenToSome(it) }
 
     // Read off the context, so the menu offer and the dispatcher's fence are one answer (issue #1149).
     collector.addCFact(

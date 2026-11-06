@@ -8,7 +8,8 @@ import com.dynamicruntime.common.uiblock.UiRoute
  * The home cards (issue #1636): what Home shows a caller beyond the copy every caller of the client reads -- a card
  * per thing this caller can do next. A registered UiBlock ([block]), as the home menu is, so the cards a caller gets are
  * decided by the backend from cfacts, a component adds its own with an overlay, and a client hides or rewords one the
- * way it does a menu item. Its words are literal, as the menu's labels are, until a block can name fragment copy.
+ * way it does a menu item. Its words are literal, as the menu's labels are, except a body that names copy in the
+ * shell's `home` file ([textCopy], issue #1652), which a deployment, a flavor, or a client rewords as copy.
  */
 @Suppress("ConstPropertyName")
 object HCARD {
@@ -23,6 +24,13 @@ object HCARD {
 
     /** A card's body: Markdown, its links resolved as the home page's copy resolves them. */
     const val text = "text"
+
+    /**
+     * A card's body as copy (issue #1652): `namespace.key` of the shell's `home` fragment file, whose value the page
+     * draws in place of [text]. So a card's words can be reworded where copy is -- by a deployment flavor, which can
+     * reword copy but cannot overlay a block -- and a blank value draws no body, as blank copy removes anything else.
+     */
+    const val textCopy = "textCopy"
 
     /** The words on a card's primary button, beside its [UIB.action] (a route). */
     const val actionLabel = "actionLabel"
@@ -67,6 +75,15 @@ object HCARD {
     const val kindUnpublishedDrafts = "unpublishedDrafts"
 
     // Core's card ids.
+    /**
+     * An invitation to register (issue #1652), for a visitor who has not signed in, wherever anyone may: what the
+     * walk-through and the demos start from. Its body is the `home` file's [registerCopy].
+     */
+    const val register = "register"
+
+    /** The `home` file's key holding the [register] card's body ([textCopy]). */
+    const val registerCopy = "registerCard.text"
+
     /** The forms with a step waiting on the caller (issue #1637), first, since it is what to do next. */
     const val waiting = "waiting"
 
@@ -99,6 +116,8 @@ fun UiBlockItemsBuilder.homeCard(
     title: String? = null,
     /** Markdown, drawn with the home page's link resolution, so a link to a document or an anchor works. */
     text: String? = null,
+    /** The body as `home` copy, `namespace.key`, drawn in place of [text] ([HCARD.textCopy]). */
+    textCopy: String? = null,
     /** The page the card's primary button opens; [actionLabel] says what it reads. */
     action: UiRoute? = null,
     actionLabel: String? = null,
@@ -119,6 +138,7 @@ fun UiBlockItemsBuilder.homeCard(
         set(HFLD.id, id)
         if (title != null) set(HCARD.title, title)
         if (text != null) set(HCARD.text, text)
+        if (textCopy != null) set(HCARD.textCopy, textCopy)
         if (action != null) set(UIB.action, action.toJson())
         if (actionLabel != null) set(HCARD.actionLabel, actionLabel)
         if (offerLabel != null) set(HCARD.offerLabel, offerLabel)

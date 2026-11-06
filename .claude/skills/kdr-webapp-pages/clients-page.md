@@ -515,31 +515,48 @@ edits its parent's, as drafts. A client with a sandbox stays read-only and says 
 - **The save area sticks below the app bar** (`.bundle-editor-save`). A save's answer is drawn inside it, so it shows
   wherever the page is scrolled.
 
-**The code layer** (issue #1616; the backend's `ConfigCodeLayer`, covered by `ConfigCodeLayerTest`, and the page's
-`CodeBundle` and `TemplateReplacementView`, covered by `BundleEditorTest`). The editor read also answers what the client
-runs that no row stores: `codeConfigs`, each configuration its own code declares (`origin` `code`), then each copy of
-its template's (`origin` `template`, named `from_<template>_<name>`, cut to what the client defines itself, and
-further by the replacements below -- a draft's, or a stored file ref's, which the load leaves in the copy -- so no
-entry shows as both replaced and run), with its slots as a bundle holds them, each workflow as it runs. The backend
-reads the layer once per request (`CodeLayer`), since making slots loads copy files. The page lists them after the stored bundles under **From
-code** (its "What is this?" is the `clients` file's `bundleCode`), read-only, the same way as a stored bundle, each
-entry's JSON headed by where it comes from. Nothing there is editable: a template's entry is changed by giving the
-client one of its own with the same key, which replaces the template's whole.
+**The code layer** (issues #1616, #1646; the backend's `ConfigCodeLayer`, covered by `ConfigCodeLayerTest`, and the
+page's `CodeBundle` and `CodeReplacementView`, covered by `BundleEditorTest`). The editor read also answers what the
+client runs that no row stores, **as declared**: `codeConfigs`, each configuration its own code declares (`origin`
+`code`, from the loader's `ownSourceOf`, so what a marked entry stands over is shown, not cut), then a whole copy of
+each of its template's (`origin` `template`, named `from_<template>_<name>`), with its slots as a bundle holds them,
+each workflow as it runs. The backend reads the layer once per request (`CodeLayer`), since making slots loads copy
+files. The page lists them after the stored bundles under **From code** (its "What is this?" is the `clients` file's
+`bundleCode`).
 
-- **Replacements** (`CFEP.replacements`): each of the client's entries, in its code or in a bundle's latest revision,
-  that replaces one of its template's, by the rules `ClientExtension.clones` cuts copies by. Traits, types, cfacts,
-  workflows, reports, and file refs replace by their keys; a creation or core details workflow also by its kind; and
-  the columns of the forms list as one set (an empty `key`). Copy and interface layer key by key, so they never
-  replace. Each carries the template's entries it replaces. A replacing entry's line says **replaces the template's**
-  (`replacementOf`), and opens to the template's version beside its own (`replacedVersion`). A slot that replaces as a
-  set says so at its top (`slotReplacement`, `slotReplacementText`).
+- **One bundle per code bundle, merged** (`mergedBundleView`). Each code bundle is drawn with the stored bundle of its
+  name, which holds the client's changes to it -- a stored and a code bundle of one name sit side by side, since a
+  config's key adds that it is stored (`GedraConfig.configKey`) -- and that stored bundle is not listed again above.
+  The line counts what is changed here (`codeBundleLineText`). Each code entry is shown as the code declares it,
+  headed **From code** or **From template X** (`codeFromText`), and marked **changed in X** where a bundle of another
+  name stands over it; one the stored bundle of its name changes is shown as that stored entry instead, its line
+  **changed here** (`replacesText`), with the code's version beside it (`replacedVersion`). The stored bundle's other
+  entries are the client's own, added here.
+- **Edit writes the override.** **Edit** on a code entry starts a new entry of the stored bundle of its name -- a new
+  bundle if it has none -- holding the code's own entry marked `"overrides": "code"` (`overrideOf`); the code entry
+  gives way to it while it is edited (`changesCodeEntry`), headed "Changing the code's entry". A code bundle's name is
+  not a new bundle's to take (`newBundleNameProblem`).
+- **Revert to code.** A stored entry over the code's offers **Revert to code** in place of Remove: removing it, when
+  saved ("Reverts to the code's when saved."), brings the code's version back. A code entry is never removed: a
+  workflow's says the client turns it off on its page instead.
+- **The columns of the forms list are edited and reverted as one set** (`columnsSetView`, `editedAsSet`), from the slot,
+  since a client that declares any column declares all of them. **Edit the columns** starts the client's set from all
+  of the code's, each marked (`columnsOverride`); while the client has a set of its own, saved or drafted, the code's
+  columns are not listed one by one (`codeColumnsListed`), and **Revert the columns to code** removes every column of
+  it. A column of the client's set keeps a plain **Remove**: taking one out changes the client's set, not the code's.
+- **A code entry is matched to what stands over it by its key fields** (`codeReplacementOf`), not the whole entry, so a
+  value that reads differently after a round trip cannot hide a change.
+- **Replacements** (`CFEP.replacements`, `CodeReplacement`): each of the client's entries that replaces one of its
+  code's -- a stored entry over any code entry, its own code over its template's -- by the keys `ConfigKeys` states:
+  traits, types, cfacts, workflows, reports, and file refs by key, a creation or core details workflow also by its
+  kind, and the columns of the forms list as one set (an empty `key`). Each names the code bundle (`codeName`), its
+  `origin` and `template`, the code's entries it replaces, and whether the stored entry is `marked`; an unmarked one is
+  refused at a write, and says so on its line ("without the mark"). A slot that replaces as a set says so at its top
+  (`slotReplacement`, `slotReplacementText`).
 - **A save that would newly replace one** is told by its dry run (`replacements` on the patch's dry-run answer: only
-  the ones the patch adds, judged by what is replaced, so moving a replacing entry to another bundle is not one), which the save area shows (`replacingText`) and asks to confirm with **Save anyway**, with
-  the impact report when there is one too.
-- **Only a marked entry may replace** (issue #1634): an entry over the code's must carry `"overrides": "code"`, or the
-  dry run refuses it, saying what it would replace and where. The editor does not add the mark yet: it is typed into
-  the entry's JSON, and writing it for the person is step 2b of the overlay design, with the merged view per code bundle
-  and "Revert to code". Nothing removes a code entry: a workflow not wanted is turned off instead.
+  the ones the patch adds, judged by what is replaced, so moving a replacing entry to another bundle is not one), which
+  the save area shows (`replacingText`) and asks to confirm with **Save anyway**, with the impact report when there is
+  one too.
 
 **Deleting a bundle** (issue #1461) is in the Configuration table (`StoredConfigTable`), on the client's page
 and in the bundle editor's Publishing section alike, beside the publishing it depends on. A **Contents** column says

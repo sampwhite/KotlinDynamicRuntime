@@ -51,7 +51,12 @@ object HomeMenuAudiences {
     val all: List<MenuAudience> = listOf(
         MenuAudience(CFACTS.app, "Everyone", offered = true),
         MenuAudience("${CFACTS.loggedIn},${CFACTS.app}", "Everyone signed in", offered = true),
-        MenuAudience("${CFACTS.anonymous},${CFACTS.app}", "Signed-out visitors", offered = true),
+        // Signed-out visitors (issue #1652) are those who may sign in: Log in and Register write it, and only a public
+        // test deployment that refuses everyone without env auth tells it from every signed-out visitor -- one who can do
+        // nothing there but read.
+        MenuAudience(
+            "${CFACTS.anonymous},${CFACTS.signInOpenToSome},${CFACTS.app}", "Signed-out visitors", offered = true,
+        ),
         MenuAudience("${CFACTS.administersClient},${CFACTS.app}", "Administrators", offered = true),
         // Editors (issue #1432) see every form of the client, as its administrators do: the forms list's two entries
         // divide the client's people into those two and everyone else.
@@ -90,6 +95,11 @@ object HomeMenuAudiences {
             offered = false, retired = true,
         ),
         MenuAudience("${CFACTS.hasAdminLevel},${CFACTS.app}", "Anyone at the administrator level", offered = false, retired = true),
+        // Retired when Log in and Register came to be offered only where a sign-in is (issue #1652): what "Signed-out
+        // visitors" wrote until then, named still for the stored edits that chose it.
+        MenuAudience(
+            "${CFACTS.anonymous},${CFACTS.app}", "Signed-out visitors, even where none may sign in", offered = false, retired = true,
+        ),
     )
 
     private val byCondition: Map<String, MenuAudience> = all.associateBy { it.condition }

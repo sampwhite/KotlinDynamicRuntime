@@ -12,7 +12,8 @@ can change while the site runs.
 
 The easiest way to see it is to try it. [dynamicruntime.org](https://dynamicruntime.org) is a public reference site,
 where you can register, join a demo, and make a client of your own. Its database is cleared from time to time, so
-nothing you do there can break anything for long.
+nothing you do there can break anything for long. Register a user of your own first: the walk-through, and the demos
+it takes you through, start from being signed in.
 
 The rest of this page says what to read for what you want to do.
 

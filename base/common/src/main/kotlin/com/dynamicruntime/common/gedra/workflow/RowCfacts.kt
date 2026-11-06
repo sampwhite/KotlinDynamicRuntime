@@ -15,10 +15,15 @@ import com.dynamicruntime.common.user.UserService
 object RowCfacts {
     /**
      * The row facts for [cxt]'s caller on a form owned by [ownerUserId]; null for a form not yet made, which the caller
-     * would own (a creation view).
+     * would own (a creation view). [ownerIdentity] as [isOwner] takes it: a listing passes the identities it read in one
+     * batch (issue #1597).
      */
-    fun of(cxt: KdrCxt, ownerUserId: Long?): Set<String> =
-        if (ownerUserId == null || isOwner(cxt, ownerUserId)) setOf(RCF.isOwner) else emptySet()
+    fun of(
+        cxt: KdrCxt,
+        ownerUserId: Long?,
+        ownerIdentity: () -> String? = { ownerUserId?.let { identityOf(cxt, it) } },
+    ): Set<String> =
+        if (ownerUserId == null || isOwner(cxt, ownerUserId, ownerIdentity)) setOf(RCF.isOwner) else emptySet()
 
     /**
      * Whether [cxt]'s caller owns a form owned by [ownerUserId], by [WorkflowApprovals.isOwnForm]'s person rule. The
@@ -29,7 +34,7 @@ object RowCfacts {
     fun isOwner(
         cxt: KdrCxt,
         ownerUserId: Long,
-        ownerIdentity: () -> String? = { UserService.getOrNull(cxt)?.queryByUserId(cxt, ownerUserId)?.identityId },
+        ownerIdentity: () -> String? = { identityOf(cxt, ownerUserId) },
     ): Boolean {
         val profile = cxt.userProfile
         if (ownerUserId == profile.userId) {
@@ -41,4 +46,7 @@ object RowCfacts {
         }
         return WorkflowApprovals.isOwnForm(ownerUserId, ownerIdentity(), profile.userId, profile.identityId, isTest)
     }
+
+    /** The identity of the user [userId], by one user lookup: what [of] and [isOwner] read when given no other way. */
+    private fun identityOf(cxt: KdrCxt, userId: Long): String? = UserService.getOrNull(cxt)?.queryByUserId(cxt, userId)?.identityId
 }

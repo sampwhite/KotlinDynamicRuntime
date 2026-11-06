@@ -171,6 +171,7 @@ val Home = FC<Props> {
                         HomeCards {
                             this.cards = cards
                             this.reads = reads
+                            this.copy = copy
                         }
                         // The public home page (issue #1324): for someone signed in to `public` -- never a visitor who
                         // has not signed in, though they act in `public` too -- what they can do next.

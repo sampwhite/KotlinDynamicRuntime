@@ -123,7 +123,22 @@ Needs Review is `review`'s -- through `formStatusLabel`, falling back to `FormSt
 In the cross-client view a row's chip reads in **its own** client's words, as its trait names do: the summary adds
 `ctaKeywordsByClient`, the same words for each other client with a row on the page, and the table picks the row's
 (`CtaKeywordWords.byClientFrom`). The filter and its chip stay in the caller's client's words.
-The other words wait for the pages that show them (#1597, #1598, #1600).
+The other words wait for the pages that show them (#1598, #1600).
+
+## What each workflow asks of the caller, and the keyword search (issue #1597)
+
+The backend half of the call-to-action cell, which the page does not draw yet (#1598 moves the Workflows cell onto it):
+
+- **The classification** is `formWorkflowWeights` in the kernel: each workflow of a row's cell, from its states, weighed
+  `yourTurn`, `waiting`, `available`, or `settled`. It replaces `WfColumnCategory` for the cell, which stays the
+  workflow pages' phase (their counts and drill-down). The one input it cannot read from state, whether the caller may
+  act on a call to action, is the rule of "Waiting on you" below: a workflow is the caller's turn exactly when a step of
+  it waits on them. Asked `withStates`, a row carries its `waitingSteps` as it does with `needsMe`, and the page passes
+  their workflow ids as the function's `mayAct`. So the page, `needsMe`, and the keyword search run one rule.
+- **The keyword search** is a parameter per keyword on a **client's own** listing (`/gedra/<client>/formDocs`), for the keywords
+  its workflows use: `review=mine` (the caller's turn for a review) or `review=any` (awaiting review, whoever acts). The
+  shared listing has none, so the page offers the quick filters only where it lists one client. Applied before paging,
+  so `numAvailable` counts the matches.
 
 ## A column's filter and cells follow its field (issues #1500, #1508)
 

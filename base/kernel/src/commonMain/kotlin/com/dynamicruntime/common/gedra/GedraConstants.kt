@@ -333,8 +333,11 @@ object GDF {
     const val needsMe = "needsMe"
 
     /**
-     * On a row listed with [needsMe] (issue #1637): the steps waiting on the caller, each its workflow's id and
-     * label, the task's id, and what it asks of them in words (`SWF.actionText`), in the form's state order.
+     * On a row listed with [needsMe] (issue #1637) or [withStates] (issue #1597): the steps waiting on the caller, each
+     * its workflow's id and label, the task's id, and what it asks of them in words (`SWF.actionText`), in the form's
+     * state order. With the states it is also the one thing the classification (`formWorkflowWeights`) cannot read
+     * from them: a workflow is the caller's turn exactly when a step of it waits on them, so the page runs the
+     * classification with these as its `mayAct` and draws what the backend's keyword search counted.
      */
     const val waitingSteps = "waitingSteps"
 

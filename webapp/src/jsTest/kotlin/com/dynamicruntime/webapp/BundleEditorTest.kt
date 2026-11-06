@@ -8,6 +8,7 @@ import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -115,13 +116,14 @@ class BundleEditorTest {
         assertEquals("${ACEP.editor}?client=acme", bundleEditorPath("acme:sandbox", acrossClients = true, ownClient = "hub"))
     }
 
-    // --- the code layer (issue #1616) ---
+    // --- the code layer (issues #1616, #1646) ---
 
     private val codeView = parseBundleEditor(
         mapOf(
             CFEP.client to "kid",
             CFEP.configs to listOf(
                 mapOf(CFEP.name to "main", CFEP.revisionLatest to revision(1, true, mapOf(CCT.traitDef to listOf(note)))),
+                mapOf(CFEP.name to "kid", CFEP.revisionLatest to revision(1, true, mapOf(CCT.traitDef to listOf(overrideOf(memo))))),
             ),
             CFEP.slotKeys to keys,
             CFEP.codeConfigs to listOf(
@@ -132,52 +134,110 @@ class BundleEditorTest {
                 mapOf(
                     CFEP.name to "from_tpl_base", CFEP.origin to CFEP.originTemplate, CFEP.template to "tpl",
                     CFEP.namespaceField to "client.tpl",
-                    CFEP.slots to mapOf(CCT.traitDef to listOf(gone), CCT.cfactDef to listOf(mapOf(CCT.name to "ready"))),
+                    CFEP.slots to mapOf(CCT.traitDef to listOf(gone, note), CCT.cfactDef to listOf(mapOf(CCT.name to "ready"))),
                 ),
             ),
             CFEP.replacements to listOf(
                 mapOf(
-                    CFEP.name to "main", CFEP.slot to CCT.traitDef, CFEP.key to mapOf(CCT.traitId to "note"), CFEP.template to "tpl",
-                    CFEP.templateName to "base", CFEP.templateEntries to listOf(note + (CCT.description to "The template's note.")),
+                    CFEP.name to "main", CFEP.slot to CCT.traitDef, CFEP.key to mapOf(CCT.traitId to "note"),
+                    CFEP.codeName to "from_tpl_base", CFEP.origin to CFEP.originTemplate, CFEP.template to "tpl",
+                    CFEP.codeEntries to listOf(note), CFEP.marked to false,
                 ),
                 mapOf(
-                    CFEP.name to "main", CFEP.slot to CCT.usageDef, CFEP.key to emptyMap<String, Any?>(), CFEP.template to "tpl",
-                    CFEP.templateName to "base", CFEP.templateEntries to listOf(mapOf("traitId" to "a"), mapOf("traitId" to "b")),
+                    CFEP.name to "kid", CFEP.slot to CCT.traitDef, CFEP.key to mapOf(CCT.traitId to "memo"),
+                    CFEP.codeName to "kid", CFEP.origin to CFEP.originCode, CFEP.codeEntries to listOf(memo), CFEP.marked to true,
+                ),
+                mapOf(
+                    CFEP.name to "main", CFEP.slot to CCT.usageDef, CFEP.key to emptyMap<String, Any?>(), CFEP.codeName to "from_tpl_base",
+                    CFEP.origin to CFEP.originTemplate, CFEP.template to "tpl",
+                    CFEP.codeEntries to listOf(mapOf("traitId" to "a"), mapOf("traitId" to "b")), CFEP.marked to true,
                 ),
             ),
         ),
     )
 
     @Test
-    fun theCodeLayerIsReadWithWhereEachBundleComesFrom() {
+    fun theCodeLayerIsReadWithWhereEachBundleComesFromAndWhatIsChangedHere() {
         assertEquals(listOf("kid" to null, "from_tpl_base" to "tpl"), codeView.codeConfigs.map { it.name to it.template })
-        assertEquals("kid — from the client's code, read-only · 1 slot, 1 entry", codeBundleLineText(codeView.codeConfigs[0]))
+        // The client's own code, one entry of it changed in the stored bundle of its name.
         assertEquals(
-            "from_tpl_base — a copy of template tpl's code, read-only · 2 slots, 2 entries",
-            codeBundleLineText(codeView.codeConfigs[1]),
+            "kid — from code · 1 slot, 1 entry · 1 changed here",
+            codeBundleLineText(codeView.codeConfigs[0], codeView.replacements),
         )
-        assertTrue(codeBundleNoteText(codeView.codeConfigs[1]).contains("replaces the template's whole"))
-        // A code bundle is listed as a stored one is, with nothing beside it to compare.
+        assertEquals(
+            "from_tpl_base — from template tpl · 2 slots, 3 entries",
+            codeBundleLineText(codeView.codeConfigs[1], codeView.replacements),
+        )
+        assertTrue(codeBundleNoteText(codeView.codeConfigs[1]).contains("Revert to code"))
         val slots = editorSlots(codeView.codeConfigs[1].asEditorBundle(), codeView.slotKeys)
         assertEquals(listOf(CCT.traitDef, CCT.cfactDef), slots.map { it.slot })
-        assertNull(slots.first().entries.single().change)
+        assertNull(slots.first().entries.first().change)
     }
 
     @Test
-    fun anEntryThatReplacesItsTemplatesIsFoundByItsKeyAndColumnsAsASet() {
+    fun aCodeEntryIsFoundChangedHereElsewhereOrNotAtAll() {
+        // Changed here: in the stored bundle named like the code bundle, and marked.
+        val here = assertNotNullOf(codeReplacementOf(codeView.replacements, "kid", CCT.traitDef, listOf(CCT.traitId), memo))
+        assertEquals("changed here", replacesText(here, "kid"))
+        // Changed in another bundle, and without the mark: said so.
+        val elsewhere = assertNotNullOf(codeReplacementOf(codeView.replacements, "from_tpl_base", CCT.traitDef, listOf(CCT.traitId), note))
+        assertEquals("main", elsewhere.name)
+        assertEquals("matches template tpl's entry, without the mark", replacesText(elsewhere, "main"))
+        // Nothing stands over an entry nobody changes.
+        assertNull(codeReplacementOf(codeView.replacements, "from_tpl_base", CCT.traitDef, listOf(CCT.traitId), gone))
+        // Matched by the key, not the whole entry: a field that reads differently after a round trip does not hide it.
+        val roundTripped = note + (CCT.description to 2.0)
+        assertNotNullOf(codeReplacementOf(codeView.replacements, "from_tpl_base", CCT.traitDef, listOf(CCT.traitId), roundTripped))
+    }
+
+    @Test
+    fun theColumnsAreEditedAndRevertedAsOneSet() {
+        assertTrue(editedAsSet(CCT.usageDef))
+        assertFalse(editedAsSet(CCT.traitDef))
+        // Edit the columns starts the client's set from all of the code's, each marked.
+        val columns = listOf(mapOf(CCT.traitId to "a", CCT.label to "A"), mapOf(CCT.traitId to "b", CCT.label to "B"))
+        val started = columnsOverride(columns)
+        assertEquals(listOf("a", "b"), started.map { it[CCT.traitId] })
+        assertTrue(started.all { it[CCT.overrides] == CCT.overridesCodeValue })
+        // The code's columns are listed one by one only while the client has no set of its own, saved or drafted.
+        val set = assertNotNullOf(slotReplacement(codeView.replacements, "main", CCT.usageDef))
+        assertTrue(codeColumnsListed(null, drafting = false))
+        assertFalse(codeColumnsListed(set, drafting = false))
+        assertFalse(codeColumnsListed(null, drafting = true))
+        // The code's set beside the client's is what these replace, not one entry.
+        assertTrue(replacedHeadingText(set).endsWith("which these replace"))
+    }
+
+    @Test
+    fun editingACodeEntryStartsAMarkedChangeOfIt() {
+        val started = overrideOf(memo)
+        assertEquals(CCT.overridesCodeValue, started[CCT.overrides])
+        // A new entry of the same key is a change of the code's entry; another key, or one that does not parse, is not.
+        assertTrue(changesCodeEntry(listOf(CCT.traitId), started, memo))
+        assertFalse(changesCodeEntry(listOf(CCT.traitId), note, memo))
+        assertFalse(changesCodeEntry(listOf(CCT.traitId), null, memo))
+        // A code bundle's name is not a new bundle's to take: its changes are made by editing its entries.
+        assertTrue(newBundleNameProblem("kid", codeView, BundleEdits()).orEmpty().contains("is a code bundle"))
+    }
+
+    @Test
+    fun anEntryThatReplacesTheCodesIsFoundByItsKeyAndColumnsAsASet() {
         val r = assertNotNullOf(replacementOf(codeView.replacements, "main", CCT.traitDef, listOf(CCT.traitId), note))
-        assertEquals("The template's note.", r.templateEntries.single()[CCT.description])
+        assertEquals(listOf(note), r.codeEntries)
         // Another key, another bundle, or another slot replaces nothing.
         assertNull(replacementOf(codeView.replacements, "main", CCT.traitDef, listOf(CCT.traitId), memo))
         assertNull(replacementOf(codeView.replacements, "kid", CCT.traitDef, listOf(CCT.traitId), note))
         // The columns replace as one set, so no entry of theirs is matched, and the slot is.
         assertNull(replacementOf(codeView.replacements, "main", CCT.usageDef, emptyList(), mapOf("traitId" to "a")))
         val set = assertNotNullOf(slotReplacement(codeView.replacements, "main", CCT.usageDef))
-        assertTrue(slotReplacementText(set).startsWith("These replace all of template tpl's listing columns (2, in its base bundle)"))
+        assertTrue(
+            slotReplacementText(set).startsWith("These replace all of template tpl's listing columns (2, in its from_tpl_base bundle)"),
+        )
         assertEquals(
             listOf(
-                "Traits note, from template tpl's base bundle, in main",
-                "all of the template's listing columns, from template tpl's base bundle, in main",
+                "Traits note, from template tpl's from_tpl_base bundle, in main",
+                "Traits memo, from the code's kid bundle, in kid",
+                "all of template tpl's listing columns, from template tpl's from_tpl_base bundle, in main",
             ),
             replacingText(codeView.replacements),
         )

@@ -131,11 +131,11 @@ class GedraConfigLoadService : ServiceInitializer {
      */
     fun ownSourceOf(collector: SchemaCollector, client: String): List<GedraConfig> {
         // The client's own loaded configs alone: every config this service loads is recorded under its own client.
-        val loadedIds = loadedFor(client).mapTo(HashSet()) { it.gedraId.fullId }
-        val originals = sourceCutsFor(client).cuts.associate { it.cut.gedraId.fullId to it.original }
+        val loaded = loadedFor(client).mapTo(HashSet()) { it.configKey }
+        val originals = sourceCutsFor(client).cuts.associate { it.cut.configKey to it.original }
         return collector.gedraConfigs.configs
-            .filter { it.gedraId.client == client && it.inheritedFrom == null && it.gedraId.fullId !in loadedIds }
-            .map { originals[it.gedraId.fullId] ?: it }
+            .filter { it.gedraId.client == client && it.inheritedFrom == null && it.configKey !in loaded }
+            .map { originals[it.configKey] ?: it }
     }
 
     /**
@@ -508,8 +508,8 @@ class GedraConfigLoadService : ServiceInitializer {
 
     /** The clients defined in source code -- those whose defining config this service did not load. */
     fun sourceClientsOf(collector: SchemaCollector): Map<String, ClientDef> {
-        val loadedIds = allLoadedIds()
-        return collector.gedraConfigs.configs.filter { it.gedraId.fullId !in loadedIds }
+        val loaded = allLoadedKeys()
+        return collector.gedraConfigs.configs.filter { it.configKey !in loaded }
             .mapNotNull { it.client }.associateBy { it.clientId }
     }
 
@@ -600,33 +600,38 @@ class GedraConfigLoadService : ServiceInitializer {
      * (issue #1542): each is left out and the rest of the config loads. Reported where [unknownSlotsIssue] is -- the
      * boot load, a reload, a trial -- and judged, like it, as stored config.
      */
-    fun unreadEntryIssues(config: GedraConfig): List<GedraConfigIssue> = config.unreadReports.values.map { unread ->
-        config.issue(
-            "Stored config '${config.gedraId}' holds the report '${unread.slotKey}', which cannot be read: ${unread.why}.",
-            "Leaving the report out, kept as stored; the rest of the config loads.",
-            GCEL.report, unread.slotKey,
-        )
-    } + config.unreadWorkflows.values.map { unread ->
-        config.issue(
-            "Stored config '${config.gedraId}' holds the workflow '${unread.workflowId}', which cannot be read: ${unread.why}",
-            "Leaving the workflow out, kept as stored; the rest of the config loads.",
-            GCEL.workflow, unread.workflowId,
-        )
-    } + config.droppedSingletons.map { (workflowId, cfacts) ->
-        config.issue(
-            "Stored config '${config.gedraId}' holds the workflow '$workflowId', whose singleton rules emit $cfacts, which a " +
-                "search keyword sets now (issue #1596): a workflow whose call to action carries it has it on the form.",
-            "Leaving the rules out; the workflow loads without them, and the next write of the config removes them. " +
-                "Give the task that waits on a review the keyword instead (an approval task carries '${CTAK.review}' " +
-                "already); a workflow with neither no longer sets its forms' status.",
-            GCEL.workflow, workflowId,
-        )
-    } + config.shadowedTypes.values.map { shadowed ->
-        config.issue(
-            "Stored config '${config.gedraId}' ${shadowed.problem()}",
-            "Leaving the declared type out, kept as stored; the trait's type stands and the rest of the config loads.",
-            GCEL.type, shadowed.typeName,
-        )
+    fun unreadEntryIssues(config: GedraConfig): List<GedraConfigIssue> = buildList {
+        config.unreadReports.values.mapTo(this) { unread ->
+            config.issue(
+                "Stored config '${config.gedraId}' holds the report '${unread.slotKey}', which cannot be read: ${unread.why}.",
+                "Leaving the report out, kept as stored; the rest of the config loads.",
+                GCEL.report, unread.slotKey,
+            )
+        }
+        config.unreadWorkflows.values.mapTo(this) { unread ->
+            config.issue(
+                "Stored config '${config.gedraId}' holds the workflow '${unread.workflowId}', which cannot be read: ${unread.why}",
+                "Leaving the workflow out, kept as stored; the rest of the config loads.",
+                GCEL.workflow, unread.workflowId,
+            )
+        }
+        config.droppedSingletons.mapTo(this) { (workflowId, cfacts) ->
+            config.issue(
+                "Stored config '${config.gedraId}' holds the workflow '$workflowId', whose singleton rules emit $cfacts, which a " +
+                    "search keyword sets now (issue #1596): a workflow whose call to action carries it has it on the form.",
+                "Leaving the rules out; the workflow loads without them, and the next write of the config removes them. " +
+                    "Give the task that waits on a review the keyword instead (an approval task carries '${CTAK.review}' " +
+                    "already); a workflow with neither no longer sets its forms' status.",
+                GCEL.workflow, workflowId,
+            )
+        }
+        config.shadowedTypes.values.mapTo(this) { shadowed ->
+            config.issue(
+                "Stored config '${config.gedraId}' ${shadowed.problem()}",
+                "Leaving the declared type out, kept as stored; the trait's type stands and the rest of the config loads.",
+                GCEL.type, shadowed.typeName,
+            )
+        }
     }
 
     /**
@@ -642,9 +647,9 @@ class GedraConfigLoadService : ServiceInitializer {
         return extendsProblem(config, sourceClients)
     }
 
-    /** The ids of every data-loaded config now in the collector, across clients. */
-    fun allLoadedIds(): Set<String> = synchronized(loadedByClient) {
-        loadedByClient.values.flatten().map { it.gedraId.fullId }.toSet()
+    /** The keys ([GedraConfig.configKey]) of every data-loaded config now in the collector, across clients. */
+    fun allLoadedKeys(): Set<String> = synchronized(loadedByClient) {
+        loadedByClient.values.flatten().map { it.configKey }.toSet()
     }
 
     /**

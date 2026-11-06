@@ -100,6 +100,7 @@ class FormWorkflow(
  */
 fun formWorkflowsOf(states: List<Map<String, Any?>>, phaseOf: (String) -> WfPhase?): List<FormWorkflow> {
     val engaged = states
+        .asSequence()
         .filter { it[GE.traitId].toOptStr() == WFS.workflowEngagement }
         .map { it[GE.data].toJsonMapOrEmpty() }
         .filter { it[WFS.engaged] == true }
@@ -125,4 +126,91 @@ fun formWorkflowsOf(states: List<Map<String, Any?>>, phaseOf: (String) -> WfPhas
             FormWorkflow(id, category, data[WFS.ctaTask].toOptStr().takeIf { isEngaged }, failures.takeIf { !isEngaged }.orEmpty())
         }
         .sortedBy { it.category.ordinal }
+}
+
+/**
+ * What a workflow asks of the person looking at a form (issue #1597), the forms list's **weight**: in the order a cell
+ * draws them, strongest first. Cut by what the viewer can do, where [WfColumnCategory] is cut by the workflow's phase.
+ * Not configurable: only the workflow definitions (CTA filters, keywords, windows, and eligibility) move a workflow
+ * between weights, and a display setting only changes how each is drawn.
+ */
+@Suppress("EnumEntryName")
+enum class WfWeight {
+    /** The viewer can act now: engaged, and its call to action is one they may save or approve. */
+    yourTurn,
+
+    /**
+     * The viewer can look, not act: engaged, with a call to action they may not act on (its CTA filter, `saveWhen`, or
+     * approval rule is someone else's), or with none anyone can act on now -- a workflow outside its relevancy window,
+     * frozen until a date (or past it, with its work unfinished), or one whose call to action has not been computed.
+     */
+    waiting,
+
+    /** The viewer could start it: eligible, and not engaged. */
+    available,
+
+    /** Nothing more here: finished, or not eligible. */
+    settled,
+}
+
+/**
+ * One workflow of a form as it asks of the viewer (issue #1597): the [workflow] its cell shows, its [weight], and its
+ * CTA's [keyword].
+ */
+class FormWorkflowWeight(
+    val workflow: FormWorkflow,
+    val weight: WfWeight,
+    /** The search keyword ([CTAK]) of the workflow's call to action, as stored; null when it has none or is not engaged. */
+    val keyword: String?,
+)
+
+/**
+ * The classification (issue #1597): the workflows of a form's cell ([formWorkflowsOf], with [phaseOf] as it takes it),
+ * each with what it asks of the viewer, sorted by [WfWeight] and otherwise in the cell's order. Pure, and in the kernel,
+ * so the backend (a keyword search's `mine`, and its counts) and the page drawing the cell run one rule.
+ *
+ * It reads the form's stored state and nothing about its data. What it cannot know from state alone is whether the
+ * viewer may act on a call to action, which turns on who they are: [mayAct] answers that, for an engaged workflow
+ * whose state still calculates and has a CTA task, given the workflow and its stored state entry's data. The backend
+ * answers it from the viewer's facts (the request's, `kdr:isOwner`, and the task's viewer facts); the page from the
+ * workflows the listing says the caller may act on.
+ *
+ * An eligible workflow is [WfWeight.available] whoever looks: a keyword asking the viewer to engage (a `start` keyword)
+ * would make it their turn, and none is on the list yet.
+ */
+fun formWorkflowWeights(
+    states: List<Map<String, Any?>>,
+    phaseOf: (String) -> WfPhase?,
+    mayAct: (workflow: FormWorkflow, state: Map<String, Any?>) -> Boolean,
+): List<FormWorkflowWeight> {
+    val stateById = states
+        .filter { it[GE.traitId].toOptStr() == WFS.workflowState }
+        .map { it[GE.data].toJsonMapOrEmpty() }
+        .associateBy { it[WFD.workflowId].toOptStr() }
+    return formWorkflowsOf(states, phaseOf).map { workflow ->
+        val state = stateById[workflow.workflowId].orEmpty()
+        val engaged = workflow.category == WfColumnCategory.engaged
+        val weight = when (workflow.category) {
+            WfColumnCategory.engaged ->
+                if (workflow.ctaTask != null && phaseOf(workflow.workflowId)?.calculates == true && mayAct(workflow, state)) {
+                    WfWeight.yourTurn
+                } else {
+                    WfWeight.waiting
+                }
+            WfColumnCategory.eligible -> WfWeight.available
+            WfColumnCategory.finished, WfColumnCategory.ineligible -> WfWeight.settled
+        }
+        FormWorkflowWeight(workflow, weight, keyword = state[WFS.ctaKeyword].toOptStr()?.takeIf { engaged })
+    }.sortedBy { it.weight.ordinal }
+}
+
+/**
+ * Whether a form whose cell is [weights] matches a keyword search (issue #1597) for [keyword], asking [question]
+ * ([CTKQ]): [CTKQ.mine], some workflow carrying it is the viewer's turn; [CTKQ.any], some engaged workflow's call to
+ * action carries it, whoever may act. Any other question matches nothing.
+ */
+fun matchesKeywordSearch(weights: List<FormWorkflowWeight>, keyword: String, question: String): Boolean = when (question) {
+    CTKQ.mine -> weights.any { it.keyword == keyword && it.weight == WfWeight.yourTurn }
+    CTKQ.any -> weights.any { it.keyword == keyword }
+    else -> false
 }

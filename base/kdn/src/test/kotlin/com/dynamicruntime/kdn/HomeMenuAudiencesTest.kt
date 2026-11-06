@@ -50,7 +50,8 @@ class HomeMenuAudiencesTest : StringSpec({
         HomeMenuAudiences.offered.map { it.condition } shouldBe listOf(
             CFACTS.app,
             "${CFACTS.loggedIn},${CFACTS.app}",
-            "${CFACTS.anonymous},${CFACTS.app}",
+            // Those who may sign in (issue #1652), as Log in and Register are offered to.
+            "${CFACTS.anonymous},${CFACTS.signInOpenToSome},${CFACTS.app}",
             "${CFACTS.administersClient},${CFACTS.app}",
             "${CFACTS.seesClientForms},${CFACTS.app}",
             "${CFACTS.loggedIn},~${CFACTS.seesClientForms},${CFACTS.app}",

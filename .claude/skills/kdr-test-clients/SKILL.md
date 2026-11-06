@@ -188,6 +188,14 @@ later schema rejects" test.
     task carries `WVF.waitingOn`, the filter's label. A test's reviewer therefore
     needs the label the filter names, not only `reviewer`. `CtaFilterTest` and `CtaFilterActsTest` (kdn) are the
     references.
+    **Searching by keyword** (issue #1597): the client's **own** listing, `clientPath(GEP.formDocs, client)`, takes
+    `review=mine` (`CTKQ.mine`: the caller may act on the CTA now) or `review=any` once one of the client's workflows
+    uses the keyword -- a task's own, an approval's, or one a `ctaFilter` function sets (a function kind lists those in
+    `WfFunctionCreation.searchKeywords`); the shared listing takes neither. Asked `withStates`, each row's
+    `GDF.waitingSteps` names the steps waiting on the caller (`WaitingSteps`, the rule `needsMe` reads), whose workflows
+    are the caller's turn. Both read the kernel classification (`formWorkflowWeights`) over
+    stored state, so a test changing who may act re-saves or recomputes the form before it searches.
+    `KeywordSearchTest` (kdn) is the reference.
   - **`kdr:isOwner`** (`RCF.isOwner`, issue #1595) is true for the form's owner, worked out from the row on read
     (`RowCfacts`): the owning user on a test instance -- so another persona of the same `TestUser` address is **not**
     the owner -- and any user of the owner's person in production. A task's `saveWhen` and `display`, a CTA filter,
@@ -276,8 +284,10 @@ a code-defined client such as acme can now be edited through stored configuratio
 refuses it, saying what it would replace and where ("which template 'tplbase''s 'base' also declares"), and so does a
 patch's dry run; configuration stored before the mark loads as it always did, with an issue saying to mark it. **Marked
 over nothing**, it is refused. **Nothing removes a code entry**: turn off what is not wanted instead (a workflow's
-`enabled`, #1635); a `$removed` is a `$` note, which no stored entry may hold. An override may sit in any stored bundle:
-one named like the code bundle it covers collides with it today (a config's id has no origin), which step 2b settles.
+`enabled`, #1635); a `$removed` is a `$` note, which no stored entry may hold. An override may sit in any stored bundle,
+and the editor files it in the one named like the code bundle it covers (issue #1646): `base` over the code's `base`,
+`from_starterKit_base` over that copy. The two share an id, and sit side by side because a config's key adds that it is
+stored (`GedraConfig.configKey`); the collector and the loader's records go by the key.
 A test that stores an entry over a template's or a code client's marks it; `CodeOverridesTest.kt` and the sample's
 `AcmeCodeOverrideTest.kt` are the references.
 

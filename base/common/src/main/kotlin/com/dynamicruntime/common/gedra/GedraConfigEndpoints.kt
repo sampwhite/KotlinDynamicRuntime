@@ -214,17 +214,21 @@ fun gedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CFEP.namespace
     }
     type(CFEP.replacementType) {
         type = SCT.kObject
-        description = "An entry of the client's that replaces one of its template's whole, so the client runs its own instead."
+        description = "An entry of the client's that replaces one of its code's whole, so the client runs its own instead."
         property(CFEP.name, "The client's configuration holding the entry.", required = true)
         property(CFEP.slot, "The slot the entry is in.", required = true)
         property(CFEP.key, "The entry's key fields; empty for the columns of the forms list, which replace as one set.", required = true) {
             type = SCT.kObject
         }
-        property(CFEP.template, "The template's client id.", required = true)
-        property(CFEP.templateName, "The template's configuration declaring what is replaced.", required = true)
-        property(CFEP.templateEntries, "The template's entries it replaces: one, or every column of the forms list.", required = true) {
+        property(CFEP.codeName, "The code bundle holding what is replaced, as the code layer lists it.", required = true)
+        property(CFEP.origin, "Where that code comes from: `${CFEP.originCode}` or `${CFEP.originTemplate}`.", required = true)
+        property(CFEP.template, "For a template's code: the template's client id.")
+        property(CFEP.codeEntries, "The code's entries it replaces: one, or every column of the forms list.", required = true) {
             type = SCT.array
             items { type = SCT.kObject }
+        }
+        property(CFEP.marked, "Whether the entry says it stands over the code (`\"overrides\": \"code\"`).", required = true) {
+            type = SCT.boolean
         }
     }
     type(CFEP.editorType) {
@@ -608,7 +612,7 @@ private fun cfgEditorBody(c: KdrCxt): Map<String, Any?> {
         CFEP.slotTypes to shapes.entryTypes,
         CFEP.slotKeys to shapes.keys,
         SCH.dDefs to shapes.defs,
-        CFEP.codeConfigs to layer?.bundles(replacements, keys, c.instanceConfig.isTestInstance).orEmpty(),
+        CFEP.codeConfigs to layer?.bundles(c.instanceConfig.isTestInstance).orEmpty(),
         CFEP.replacements to replacements.map { it.toMap() },
     )
 }
@@ -616,7 +620,11 @@ private fun cfgEditorBody(c: KdrCxt): Map<String, Any?> {
 /** The caller's client's code layer (issue #1616), read once for the request; null with no collector to read it from. */
 private fun codeLayerOf(c: KdrCxt): CodeLayer? {
     val collector = SchemaCollector.get(c) ?: return null
-    return ConfigCodeLayer.read(collector, c.client, ClientService.getOrNull(c)?.known(c.client)?.extendsFromClientId)
+    val loader = GedraConfigLoadService.get(c)
+    // As declared (issue #1646): the code a marked entry stands over is shown whole, and the entry marked.
+    val template = ClientService.getOrNull(c)?.known(c.client)?.extendsFromClientId
+    val templateCode = template?.let { loader.ownSourceOf(collector, it) }.orEmpty()
+    return ConfigCodeLayer.read(collector, c.client, loader.ownSourceOf(collector, c.client), template, templateCode)
 }
 
 /** Each of [rows] -- configurations' latest revisions -- by name, with its slots. */

@@ -362,6 +362,20 @@ class GedraConfig(
     val isStored: Boolean get() = origin == GedraConfigOrigin.stored
 
     /**
+     * Whether this config is a client's own stored configuration, read back as itself: stored, and not a template's copy
+     * filed under the client with a stored client's origin.
+     */
+    val isStoredHere: Boolean get() = isStored && inheritedFrom == null
+
+    /**
+     * What tells this config apart from every other a node holds (issue #1646): its id, and for one [isStoredHere] that it
+     * is stored. A config's id has no origin in it, so a stored bundle named like a code bundle -- `base` over the code's
+     * `base`, `from_starterKit_base` over that copy, the bundle an override of their entries lives in -- shares the code's
+     * id, and the two are held side by side, each as itself.
+     */
+    val configKey: String get() = if (isStoredHere) "${gedraId.fullId}$storedKeySuffix" else gedraId.fullId
+
+    /**
      * This config with the fields named changed and every other as it is: for a caller rebuilding a config to change
      * a few of its parts -- a copy cut to what another stands over ([cutBy]) -- so no field it does not mention is lost.
      */
@@ -403,6 +417,9 @@ class GedraConfig(
 
     override fun toString(): String = gedraId.fullId
 }
+
+/** What a [GedraConfig.configKey] adds to the id of a config stored as itself. */
+private const val storedKeySuffix = "@stored"
 
 /**
  * Builds a [GedraConfig]. Extends [SchTypesBuilder], so a config can declare ordinary types beside its

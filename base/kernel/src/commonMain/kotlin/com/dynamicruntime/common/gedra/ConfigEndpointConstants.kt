@@ -159,8 +159,9 @@ object CFEP {
     const val latestStamps = "latestStamps"
 
     /**
-     * On the editor's answer (issue #1616): the client's **code layer**, read-only -- each configuration its own code
-     * declares, then each copy of its template's ([origin] says which), with its slots as a bundle holds them.
+     * On the editor's answer (issues #1616, #1646): the client's **code layer**, as declared -- each configuration its own
+     * code declares, then a copy of each of its template's ([origin] says which), with its slots as a bundle holds them,
+     * nothing cut by what stands over them.
      */
     const val codeConfigs = "codeConfigs"
 
@@ -173,17 +174,23 @@ object CFEP {
     const val template = "template"
 
     /**
-     * On the editor's answer, and on a patch's dry run (issue #1616): each entry of the client's that replaces one of its
-     * template's, whole, so the client runs the client's and not the template's. On a dry run, only the ones the
-     * patch would add.
+     * On the editor's answer, and on a patch's dry run (issues #1616, #1646): each entry of the client's that replaces one
+     * of its code's, whole -- a stored entry over any code entry, the client's own code over its template's -- so the
+     * client runs the client's. On a dry run, only the ones the patch would add.
      */
     const val replacements = "replacements"
 
-    /** On a replacement: the template's configuration that declares what is replaced. */
-    const val templateName = "templateName"
+    /** On a replacement: the code bundle holding what is replaced, as [codeConfigs] lists it. */
+    const val codeName = "codeName"
 
-    /** On a replacement: the template's entries it replaces -- one, or every column of the forms list. */
-    const val templateEntries = "templateEntries"
+    /** On a replacement: the code's entries it replaces -- one, or every column of the forms list. */
+    const val codeEntries = "codeEntries"
+
+    /**
+     * On a replacement: whether the client's entry says it stands over the code (`"overrides": "code"`, issue #1634); a
+     * stored entry that does not is refused at a write. The client's own code over its template's needs no mark.
+     */
+    const val marked = "marked"
 
     /** The `errorCode` of a patch refused because entries changed since its caller read them (issue #1434). */
     const val staleCode = "staleEntries"
