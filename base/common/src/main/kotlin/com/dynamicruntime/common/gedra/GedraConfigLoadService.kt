@@ -511,8 +511,9 @@ class GedraConfigLoadService : ServiceInitializer {
         config.issue(
             "Stored config '${config.gedraId}' holds the workflow '$workflowId', whose singleton rules emit $cfacts, which a " +
                 "search keyword sets now (issue #1596): a workflow whose call to action carries it has it on the form.",
-            "Leaving the rules out, kept as stored; the workflow loads without them. Give the task the keyword instead " +
-                "(an approval task carries '${CTAK.review}' already).",
+            "Leaving the rules out; the workflow loads without them, and the next write of the config removes them. " +
+                "Give the task that waits on a review the keyword instead (an approval task carries '${CTAK.review}' " +
+                "already); a workflow with neither no longer sets its forms' status.",
             GCEL.workflow, workflowId,
         )
     } + config.shadowedTypes.values.map { shadowed ->

@@ -309,8 +309,10 @@ class GedraConfig(
     /**
      * The singleton-cfact rules a **stored** workflow declares for a status a search keyword now sets, by workflow id
      * (issue #1596): the cfacts, `kdr:needsReview` so far. A workflow said Needs Review that way until the `review`
-     * keyword became the one way to; such a workflow loads without the rule, its approval task carrying `review` already,
-     * and the loader reports the rule. Always empty for a source config, whose rule refuses the build.
+     * keyword became the one way to; such a workflow loads without the rule, and the loader reports it. The rule is not
+     * kept: the next write of the config leaves it out. A form needs review again only where a task carries the
+     * keyword -- an approval task does without saying so; a workflow with neither no longer sets the status. Always
+     * empty for a source config, whose rule refuses the build.
      */
     val droppedSingletons: Map<String, List<String>> = emptyMap(),
     /**

@@ -117,6 +117,9 @@ The listing's summary carries `ctaKeywords`: each search keyword's words (verb, 
 label, status text), resolved on the backend for the caller's client, so a client's overlay of the `home` file's
 `ctaReview` namespace is what shows. The Status column's chip and the status filter read a status a keyword sets --
 Needs Review is `review`'s -- through `formStatusLabel`, falling back to `FormStatus.label` before the summary arrives.
+In the cross-client view a row's chip reads in **its own** client's words, as its trait names do: the summary adds
+`ctaKeywordsByClient`, the same words for each other client with a row on the page, and the table picks the row's
+(`CtaKeywordWords.byClientFrom`). The filter and its chip stay in the caller's client's words.
 The other words wait for the pages that show them (#1597, #1598, #1600).
 
 ## A column's filter and cells follow its field (issues #1500, #1508)

@@ -175,8 +175,9 @@ abstract to edit it, the form leaves off the note for the organizers, as the spe
 [Abstract](abstract.md)).
 
 On a talk whose core details are done, the member opens **Committee review** and presses **Engage**, as the speaker did
-for the abstract. The talk's status in the forms list is then **Needs Review**. The **Record the review** step is editable: a **Score** and **Notes for the speaker**, and a
-**Save the review** button. Once saved, the **Accept the talk** step offers its button. After it is pressed, the step
-reads *Accepted by* and who accepted it, and the talk's status in the forms list is **Finished**.
+for the abstract. The talk's status in the forms list is then **Needs Review**. The **Record the review** step is
+editable: a **Score** and **Notes for the speaker**, and a **Save the review** button. Once saved, the **Accept the
+talk** step offers its button. After it is pressed, the step reads *Accepted by* and who accepted it, and the talk's
+status in the forms list is **Finished**.
 
 Next: [Workshop logistics](workshop-logistics.md).

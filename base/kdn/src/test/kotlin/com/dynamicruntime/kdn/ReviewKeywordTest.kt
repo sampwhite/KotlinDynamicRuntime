@@ -130,4 +130,15 @@ class ReviewKeywordTest : StringSpec({
         words[CTKF.filterLabel] shouldBe "Needs review"
         words[CTKF.columnHeader] shouldBe "Review"
     }
+
+    "the cross-client view says a row's words as its own client says them" {
+        owner.postItem(GEP.formDocCreate, mapOf(GDF.entries to emptyList<Any>()))
+        // An administrator of every client, in a client of its own, lists this client's rows.
+        val admin = TestUser.createFullAdmin(cxt, "admin@$client.test")
+        val summary = admin.client.sendJsonGetRequest(GEP.formDocs, mapOf(GDF.client to client))[EP.summary].toJsonMapOrEmpty()
+        fun statusText(words: Any?): Any? = words.toJsonListOfMaps().single { it[CTKF.keyword] == CTAK.review }[CTKF.statusText]
+        // The admin's own client's words for the page, and this client's for its rows.
+        statusText(summary[GDF.ctaKeywords]) shouldBe "Needs Review"
+        statusText(summary[GDF.ctaKeywordsByClient].toJsonMapOrEmpty()[client]) shouldBe "Awaiting vetting"
+    }
 })

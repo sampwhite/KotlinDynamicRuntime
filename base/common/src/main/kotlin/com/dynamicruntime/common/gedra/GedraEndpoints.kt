@@ -399,6 +399,15 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
             type = SCT.array
             items { ref(CTKF.wordsType) }
         }
+        property(
+            GDF.ctaKeywordsByClient,
+            "The same words in each other client's wording, by client id, for the rows of those clients on the page.",
+        ) {
+            mapOfValues {
+                type = SCT.array
+                items { ref(CTKF.wordsType) }
+            }
+        }
     }
 
     listEndpoint(
@@ -502,6 +511,10 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
                 // Each search keyword's words (issue #1596), in the caller's client's wording: the Status column's
                 // Needs Review is the `review` keyword's status text.
                 put(GDF.ctaKeywords, ctaKeywordWords(c))
+                // And as each other client on the page says them, for its rows in the cross-client view.
+                page.rows.map { it.client }.distinct().filter { it != c.client }.takeIf { it.isNotEmpty() }?.let { others ->
+                    put(GDF.ctaKeywordsByClient, others.associateWith { ctaKeywordWords(c, it) })
+                }
                 if (withStates && request.getOptBool(GDF.withWorkflowSummary) == true) {
                     putAll(FormWorkflowSummary.of(c, svc.statesInScope(c, formDoc, callerScope)))
                 }

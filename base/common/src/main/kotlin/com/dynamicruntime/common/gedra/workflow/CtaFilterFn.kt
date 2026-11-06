@@ -113,15 +113,17 @@ fun ctaFilterProblem(declared: Set<String>, personFacts: Set<String>, filter: St
 }
 
 /**
- * Each search keyword's words for [cxt]'s caller (issue #1596): its [CtaKeywordCopy] templates through the backend pass,
- * so a client's overlay of the fragment they pull is what is said. One map per keyword, in list order, with its name
- * under [CTKF.keyword].
+ * Each search keyword's words as [client] says them (issue #1596), [cxt]'s own client unless another is named: its
+ * [CtaKeywordCopy] templates through the backend pass, so a client's overlay of the fragment they pull is what is said.
+ * One map per keyword, in list order, with its name under [CTKF.keyword].
  */
-fun ctaKeywordWords(cxt: KdrCxt): List<Map<String, Any?>> {
+fun ctaKeywordWords(cxt: KdrCxt, client: String = cxt.client): List<Map<String, Any?>> {
     val fragments = MarkdownFragmentService.get(cxt)
+    // The copy a pull resolves is the one the context's client selects, so it is bound to [client] when that differs.
+    val copyCxt = if (client == cxt.client) cxt else cxt.mkSubContext("ctaKeywordWords", client)
     return CTAK.keywords.map { keyword ->
         linkedMapOf<String, Any?>(CTKF.keyword to keyword.name) +
-            keyword.copy.byField().mapValues { (_, template) -> fragments.backendPass(cxt, template) }
+            keyword.copy.byField().mapValues { (_, template) -> fragments.backendPass(copyCxt, template) }
     }
 }
 

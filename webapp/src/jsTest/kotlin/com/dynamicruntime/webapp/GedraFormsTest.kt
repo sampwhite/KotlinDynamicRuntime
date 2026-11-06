@@ -1055,6 +1055,12 @@ class GedraFormsTest {
         assertEquals("Finished", formStatusLabel(FormStatus.finished, words))
         assertEquals("Valid", formStatusLabel(FormStatus.valid, words))
         assertEquals("Status: Awaiting vetting", formStatusChip(mapOf(GDF.formStatus to FSV.needsReview), words))
+        // Another client's words, for its rows in the cross-client view: each client's list read as one is.
+        val byClient = CtaKeywordWords.byClientFrom(
+            mapOf("globex" to listOf(mapOf(CTKF.keyword to CTAK.review, CTKF.statusText to "Pending audit"))),
+        )
+        assertEquals("Pending audit", formStatusLabel(FormStatus.needsReview, byClient.getValue("globex")))
+        assertEquals(emptyMap(), CtaKeywordWords.byClientFrom(null))
     }
 
     @Test

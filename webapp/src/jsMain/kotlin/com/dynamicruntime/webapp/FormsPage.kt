@@ -127,6 +127,8 @@ val FormsPage = FC<FormsPageProps> { props ->
     var listingColumns by useState<List<ListingColumn>>(emptyList())
     // Each search keyword's words (issue #1596), as the listing last said them: the Status column's Needs Review.
     var ctaKeywords by useState<List<CtaKeywordWords>>(emptyList())
+    // And as each other client on the page says them (issue #1596), for its rows in the cross-client view.
+    var ctaKeywordsByClient by useState<Map<String, List<CtaKeywordWords>>>(emptyMap())
     // The home file's copy, which the forms pages read (issue #791): what a row with no workflows shows, and the
     // listings' "What is this?" explanations (issue #1337). Empty until read, and if it cannot be.
     var homeCopy by useState(Copy.empty)
@@ -252,6 +254,7 @@ val FormsPage = FC<FormsPageProps> { props ->
             parseScopeUser(resp[EP.summary]),
             ListingColumn.listFrom(resp[EP.summary].toJsonMapOrEmpty()[GDF.columns]),
             CtaKeywordWords.listFrom(resp[EP.summary].toJsonMapOrEmpty()[GDF.ctaKeywords]),
+            CtaKeywordWords.byClientFrom(resp[EP.summary].toJsonMapOrEmpty()[GDF.ctaKeywordsByClient]),
         )
     }
 
@@ -300,6 +303,7 @@ val FormsPage = FC<FormsPageProps> { props ->
                 page.workflowSummary?.let { listingWorkflows = it }
                 listingColumns = page.columns
                 ctaKeywords = page.ctaKeywords
+                ctaKeywordsByClient = page.ctaKeywordsByClient
                 searchError = null
             } catch (e: Throwable) {
                 searchError = userFacingError(e)
@@ -401,6 +405,7 @@ val FormsPage = FC<FormsPageProps> { props ->
                     page.workflowSummary?.let { listingWorkflows = it }
                     listingColumns = page.columns
                     ctaKeywords = page.ctaKeywords
+                    ctaKeywordsByClient = page.ctaKeywordsByClient
                 }
                 error = null
                 searchError = null
@@ -1072,6 +1077,7 @@ val FormsPage = FC<FormsPageProps> { props ->
                     workflowSummary = listingWorkflows
                     columns = listingColumns
                     this.ctaKeywords = ctaKeywords
+                    this.ctaKeywordsByClient = ctaKeywordsByClient
                     noWorkflowsCopy = emptyWorkflowsCopy
                     workflowHref = { id, wf, task, edit ->
                         routeHref(workflowPageRoute(id, wf, task, edit, listingPage) + listingContext)

@@ -167,9 +167,10 @@ private fun withoutStoredWindows(definition: Map<String, Any?>, keepAsStored: Bo
 /**
  * [definition] without the singleton-cfact rules it was stored with for a status a search keyword sets (issue #1596),
  * when it is kept as stored, as [withoutStoredWindows] takes out windows; the cfacts taken out go to [dropped]. A
- * workflow said Needs Review with such a rule until the `review` keyword became the one way to, and the keyword stands
- * in for the rule: an approval task carries it already, and a data task can be given it. A write that adds or changes
- * such a rule is not kept so: the workflow's own check refuses it there, saying to give the task the keyword.
+ * workflow said Needs Review with such a rule until the `review` keyword became the one way to. Like windows, the rule
+ * is gone for good: a write carrying the definition unchanged stores it without the rule. The keyword stands in for it
+ * only where a task carries it -- an approval task does already, and a data task can be given it. A write that adds or
+ * changes such a rule is not kept so: the workflow's own check refuses it there, saying to give the task the keyword.
  */
 private fun withoutKeywordStatusSingletons(
     definition: Map<String, Any?>,

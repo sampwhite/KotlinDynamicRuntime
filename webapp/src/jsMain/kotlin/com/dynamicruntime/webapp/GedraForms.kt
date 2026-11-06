@@ -163,6 +163,8 @@ class FormsListPage(
     val columns: List<ListingColumn> = emptyList(),
     /** Each search keyword's words in the caller's client's wording (issue #1596); empty when the summary says none. */
     val ctaKeywords: List<CtaKeywordWords> = emptyList(),
+    /** The same words as each other client with a row on the page says them, by client id (issue #1596). */
+    val ctaKeywordsByClient: Map<String, List<CtaKeywordWords>> = emptyMap(),
 )
 
 /**
@@ -189,6 +191,10 @@ class CtaKeywordWords(
                 m[CTKF.statusText].toOptStr().orEmpty(),
             )
         }
+
+        /** The summary's [GDF.ctaKeywordsByClient]: each client's list, as [listFrom] reads one. Pure, under `jsNodeTest`. */
+        fun byClientFrom(raw: Any?): Map<String, List<CtaKeywordWords>> =
+            raw.toJsonMapOrEmpty().mapValues { (_, words) -> listFrom(words) }
     }
 }
 
