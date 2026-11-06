@@ -11,6 +11,7 @@ the **`kdr-webapp-pages`** skill, one file per page under `.claude/skills/kdr-we
 before changing that page.
 
 ## Static content: Markdown fragments (issue #59)
+<!-- Theme: #TPLPS -->
 
 The backend serves per-component UI text as **Markdown fragment files** through the **static context root**
 (`st` by default). These are content, not API, so they deliberately do **not** appear in the
@@ -107,6 +108,7 @@ is an inline value; `# +key` alone starts a next-line value (ends at two blank l
 frontend too).
 
 ## UI-config endpoints: how a widget-group learns what to build (issue #70)
+<!-- Theme: #SBXAU -->
 
 A React **widget-group** (the auth flow, the profile page, later the nav/home) fetches a normal API endpoint
 — its **UI-config** — to learn how to construct itself. Every such endpoint returns the same envelope:
@@ -533,6 +535,7 @@ save navigates where it should. The run above used the API as the witness after 
 reason.
 
 ## Errors: never a blank page (issue #223)
+<!-- Theme: #ENVAT -->
 
 A throw during render used to unmount the whole React tree and leave an empty body — the least informative
 failure the app can produce. Two nested error boundaries in `App.kt` now prevent that, and **for ordinary work
@@ -648,6 +651,7 @@ embeds the bundle, ~a minute). Never ask the developer to look at something only
 never read their window as confirmation of your edit.
 
 ## Signing a browser session in to verify a change (the `becomeUser` fixture)
+<!-- Theme: #ENVAT -->
 
 **In the UI** (issue #1183), for a caller with test access: **Become deployment admin** (one click: `admin` plus
 `allClients`, as `TEP.deploymentAdminEmail`) and **Become a user…** (`/wa/test/become-user`, the fixture's form drawn from
@@ -720,6 +724,7 @@ other per build — Kotlin/JS runs both executable modes through a single compil
 differ per mode, so one invocation cannot honestly produce both. Separate invocations are fine.
 
 ## Debug pages (issue #227)
+<!-- Theme: #ENVAT -->
 
 A small area that exists only where the deployment permits it (`allowDebugPages`, from the caller's test access --
 a test instance, with env auth effective, issue #1149 -- or ENV DEBUG), for diagnosing the app rather than using it.

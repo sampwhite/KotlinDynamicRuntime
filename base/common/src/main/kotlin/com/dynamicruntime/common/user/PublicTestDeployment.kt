@@ -116,6 +116,8 @@ object PublicTestDeployment {
      *   header, must not assume env auth, and must name a [PublicSignIn] it knows;
      * - env auth from an administrator's login needs a public test deployment, no header trust, and an admin domain
      *   that is set and is not a consumer mail domain.
+     *
+     * Theme: #ENVAT.
      */
     fun checkBoot(config: KdrInstanceConfig) {
         fun refuse(why: String): Nothing = throw KdrException("Refusing to start: $why")

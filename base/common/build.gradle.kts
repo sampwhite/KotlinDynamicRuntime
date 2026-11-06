@@ -261,10 +261,40 @@ val docLinksTest = tasks.register<Test>("docLinksTest") {
     )
 }
 
+// ThemeTagsTest (issue #1630) reads every text file of the repository straight from the tree, for the theme tags in
+// them, so the files are inputs of a task of its own, handed in by an argument provider as the documents are above:
+// tagging a file reruns the check, and nothing else does.
+class ThemeTagFilesArgument(
+    @get:InputFiles @get:PathSensitive(PathSensitivity.RELATIVE) val files: FileCollection,
+) : CommandLineArgumentProvider {
+    override fun asArguments() = listOf("-Dkdr.themeTagFiles=" + files.files.sorted().joinToString(File.pathSeparator))
+}
+
+val themeTagsTestClass = "com.dynamicruntime.common.content.ThemeTagsTest"
+
+val themeTagsTest = tasks.register<Test>("themeTagsTest") {
+    description = "Checks the theme tags against their registry, docs/development/theme-tags.md."
+    group = "verification"
+    testClassesDirs = sourceSets.test.get().output.classesDirs
+    classpath = sourceSets.test.get().runtimeClasspath
+    filter.includeTestsMatching(themeTagsTestClass)
+    // Its counts and warnings are printed, so show them.
+    testLogging.showStandardStreams = true
+    jvmArgumentProviders.add(
+        ThemeTagFilesArgument(
+            fileTree(repoRoot) {
+                include("**/*.kt", "**/*.kts", "**/*.md", "**/*.css", "**/*.py", "**/*.sh", "**/*.properties", "bin/**")
+                exclude("**/build/**", "**/node_modules/**", "**/.gradle/**", "**/.kotlin/**", ".git/**", ".idea/**")
+            },
+        ),
+    )
+}
+
 tasks.named<Test>("test") {
     filter.excludeTestsMatching(docLinksTestClass)
+    filter.excludeTestsMatching(themeTagsTestClass)
 }
 
 tasks.named("check") {
-    dependsOn(docLinksTest)
+    dependsOn(docLinksTest, themeTagsTest)
 }

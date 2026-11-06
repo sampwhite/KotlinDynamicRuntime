@@ -28,6 +28,8 @@ object AEP {
      * [switchUser] issues. In the anonymous `auth` section rather than beside [switchUser] in the gated `user` one,
      * because it is for the session the gate refuses: a sandbox user nobody stands behind any more acts with no
      * roles at all, and must still be able to go back the way it came.
+     *
+     * Theme: #SBXAU.
      */
     const val leaveSandbox = "/auth/self/leaveSandbox"
     const val logout = "/logout"
@@ -60,6 +62,8 @@ object AEP {
      * Open a client's Shadow Sandbox (issue #929): become the caller's own user in it -- created on first use, under
      * the same identity -- which then acts as the caller's user outside it, with a fresh session. For an
      * administrator of the parent, or an `allClients` administrator for any client with a sandbox.
+     *
+     * Theme: #SBXAU.
      */
     const val openSandbox = "/user/self/openSandbox"
 

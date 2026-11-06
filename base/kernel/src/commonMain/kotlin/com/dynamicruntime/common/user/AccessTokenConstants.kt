@@ -8,6 +8,8 @@ package com.dynamicruntime.common.user
  * A program sends its API key to [token] with [grantType] `client_credentials` (RFC 6749 §4.4) and is answered a signed
  * JWT (RFC 9068) that lasts a day by default. Any service verifies one with the public keys at [jwks] alone. The
  * names below are OAuth's and JOSE's wire spelling, hence the snake_case values.
+ *
+ * Theme: #APIKR.
  */
 @Suppress("ConstPropertyName")
 object ATOK {

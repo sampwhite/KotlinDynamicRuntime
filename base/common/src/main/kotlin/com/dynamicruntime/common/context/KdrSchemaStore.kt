@@ -35,6 +35,8 @@ import com.dynamicruntime.common.sql.KdrTable
  * is [defs] with every `g-layout` stripped: what the catalog and the workflow view hand out, so the wire schema
  * stays documentation-grade while the layout travels out-of-band. Both are lazy — computed once, on first use,
  * from a store that never changes after boot.
+ *
+ * Theme: #NARRW.
  */
 class KdrSchemaStore(
     val types: Map<String, SchType> = emptyMap(),

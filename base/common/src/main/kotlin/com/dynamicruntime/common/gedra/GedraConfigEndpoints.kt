@@ -775,6 +775,8 @@ private fun requireCustomersKept(c: KdrCxt, proposed: List<Map<String, Any?>>?, 
  * deliberately, since an import that carried faults across would be how they spread. Affected clients are then
  * reloaded (unless asked not to) so the import is live and a brand-new client becomes present. Returns what was
  * written, stripped, reloaded, and could not be applied.
+ *
+ * Theme: #CFGFG.
  */
 private fun cfgImportBody(c: KdrCxt, request: Map<String, Any?>): Map<String, Any?> {
     AdminRules.requireClientAdministrator(c)
@@ -1031,6 +1033,8 @@ private fun cfgReloadBody(c: KdrCxt): Map<String, Any?> {
  * Reloads the bound client's stored configuration on this node and announces it to its peers (issues #616, #618) --
  * what the reload endpoint does, and what a write, patch, or publish asking for [CFEP.reloadField] does once its
  * change is stored (issue #1156). One function, so the two cannot drift. Answers the reload's result.
+ *
+ * Theme: #RELSY.
  */
 private fun reloadAndAnnounce(c: KdrCxt): Map<String, Any?> {
     val result = GedraConfigReload.reloadClient(c, c.client)
@@ -1311,6 +1315,8 @@ private fun summaryOf(
 /**
  * The issues this stored config holds on this node (issue #840): the problems forgiven in its definitions when the
  * node last loaded the client. Keyed by the config's revision class, which is the id a loaded config carries.
+ *
+ * Theme: #CFGFG.
  */
 private fun configIssuesOf(cxt: KdrCxt, row: GedraConfigRow): List<Map<String, Any?>> =
     ClientConfigIssues.get(cxt).issuesForConfig(row.client, row.configId.fullId).map { it.toWireMap() }

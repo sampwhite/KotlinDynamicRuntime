@@ -117,6 +117,8 @@ class SchLayout(
      * intact, so the inherited layout can name a field the client's type no longer has; the field is moot for
      * that client, and pruning it is the sanctioned outcome rather than a refused boot. Returns `this` when
      * nothing is dropped.
+     *
+     * Theme: #NARRW.
      */
     fun prunedTo(props: Set<String>): SchLayout {
         val kept = fields.filter { it.field in props }
@@ -1271,6 +1273,8 @@ fun errorContextData(
  *    its `${'$'}{...}` data paths are not checked here (no boot can enumerate them).
  * [type] is the object the layout annotates; a field it does not declare is reported by [layoutFieldProblems]
  * and skipped here.
+ *
+ * Theme: #TPLPS.
  */
 fun layoutTemplateProblems(where: String, layout: SchLayout, type: SchType?): List<Problem> {
     if (type == null) return emptyList()

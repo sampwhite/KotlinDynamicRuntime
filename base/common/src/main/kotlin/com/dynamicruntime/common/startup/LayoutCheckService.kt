@@ -29,6 +29,8 @@ import com.dynamicruntime.common.util.resolveFragment
  * judges each problem under the check mode of the config holding the layout (issue #841): a refusal to start for
  * source config outside production, and for stored config only in unit tests. Forgiven, it drops nothing -- delivery
  * already renders an unresolved pull as written, with a warning.
+ *
+ * Theme: #TPLPS.
  */
 class LayoutCheckService : ServiceInitializer {
     override val serviceName: String = LayoutCheckService.serviceName

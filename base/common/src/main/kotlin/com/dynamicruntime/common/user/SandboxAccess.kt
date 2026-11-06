@@ -52,12 +52,16 @@ import com.dynamicruntime.common.http.request.RoleLadder
  * And one holding `admin` whose identity has no enabled, registered user in the parent and no such `allClients`
  * administrator acts with nothing: that is how a user opened before openings were recorded reads once its person
  * is gone from the parent.
+ *
+ * Theme: #SBXAU.
  */
 object SandboxAccess {
     /**
      * Whether the caller may open [parent]'s sandbox (issue #929, rule 1): an `allClients` administrator any client's,
      * a client administrator their own -- and never from inside a sandbox, which has none of its own. What the open
      * endpoint enforces and the shell's offer (issue #931) asks, so the two agree.
+     *
+     * Theme: #SBXAU.
      */
     fun mayOpen(cxt: KdrCxt, parent: String): Boolean {
         if (isSandboxClient(parent)) return false
@@ -71,7 +75,11 @@ object SandboxAccess {
         return clients.present(parent)?.sandbox == true && clients.isPresent(sandboxOf(parent))
     }
 
-    /** Why a role on a sandbox user's row does not take effect, with the rule as the access report words it. */
+    /**
+     * Why a role on a sandbox user's row does not take effect, with the rule as the access report words it.
+     *
+     * Theme: #SBXAU.
+     */
     @Suppress("EnumEntryName")
     enum class Withheld(val rule: String) {
         admin(
@@ -92,6 +100,8 @@ object SandboxAccess {
     /**
      * How one sandbox user stands, as the object note says: computed once, so that what it acts with, what is
      * withheld from its row, and who it acts for cannot disagree.
+     *
+     * Theme: #SBXAU.
      */
     class Standing(
         /** The roles it acts with. */
@@ -160,6 +170,8 @@ object SandboxAccess {
      * The organization a sandbox user of [sandboxClient] opened from [opener] acts in: [opener]'s, when it is a user
      * of the sandbox's parent; none otherwise, since an organization is a client's and one of another client names
      * nothing in this one.
+     *
+     * Theme: #SBXAU.
      */
     fun orgFrom(opener: AuthUserRow, sandboxClient: String): String? =
         opener.org.takeIf { opener.client == sandboxParentOf(sandboxClient) }
@@ -181,6 +193,8 @@ object SandboxAccess {
  * says it acts with. What every place that builds a session's profile from a row uses, so the gate, a login's
  * cookie, and the user info agree on the roles -- the cookie carries no organization, which only a gated request,
  * having refreshed the profile, binds.
+ *
+ * Theme: #SBXAU.
  */
 fun AuthUserRow.toActingProfile(cxt: KdrCxt): UserProfile {
     val standing = SandboxAccess.standingOf(cxt, this)

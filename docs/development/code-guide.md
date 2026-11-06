@@ -274,6 +274,7 @@ lines over 140; in a comment block it changes, rewrap that block. Leave every ot
 commit that only rewraps: the noise in the history hides where code came from, because blame then names the rewrap.
 
 ### Endpoints that are not the application: `fixture` and `demo`
+<!-- Theme: #ENVAT -->
 
 Some endpoints exist so a capability can be *exercised* or *shown*, not used. They get one of two section
 roots, chosen by **purpose** — the question is who the endpoint is for, not how it is gated:
@@ -349,6 +350,7 @@ thing, and a placeholder until how a task arranges its traits is designed. Selec
 task's display, are to come down to field layouts too, choosing which one applies; today a type has at most one.
 
 ### Relaxed validation and coercion is the default
+<!-- Theme: #CFGFG -->
 
 When a schema processes an incoming value, we lean toward **accepting and cleaning it** rather than refusing it
 on a technicality. Concretely, this shows up as several defaults that all point the same way: numeric, boolean

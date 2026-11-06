@@ -17,6 +17,8 @@ import com.dynamicruntime.common.startup.hasClientCopy
  * [appEndpoints] are an application node's shared endpoints; [edgeEndpoints], those an edge node adds beyond them.
  * [rules] maps each section to its rules. The committed copy, `docs/reference/endpoints.md`, is made from a test
  * boot holding every component the repository ships.
+ *
+ * Theme: #CLCPY.
  */
 fun endpointIndexMarkdown(
     appEndpoints: Collection<KdrEndpoint>,
@@ -74,7 +76,11 @@ private fun appendSections(sb: StringBuilder, endpoints: Collection<KdrEndpoint>
     }
 }
 
-/** Who may call an endpoint in a section with [rules], in a sentence or two. */
+/**
+ * Who may call an endpoint in a section with [rules], in a sentence or two.
+ *
+ * Theme: #SECGT.
+ */
 fun sectionAccessText(rules: SectionRules?): String {
     if (rules == null) {
         // The boot refuses a section an endpoint declares without rules, so this is not reached from a booted node.

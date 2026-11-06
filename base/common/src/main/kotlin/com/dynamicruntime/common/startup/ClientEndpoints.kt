@@ -29,6 +29,8 @@ import com.dynamicruntime.common.schema.LogSchema
  * The path names the client, so the handler runs bound to it. That is what turns #356's "the variant follows
  * the data's client" from a resolution into a **comparison**: everything downstream reads `cxt.client`, and a
  * target whose `GedraId` disagrees with the path is refused before the shared handler sees it.
+ *
+ * Theme: #CLCPY.
  */
 fun buildClientEndpoints(
     cxt: KdrCxt,
@@ -73,11 +75,17 @@ private const val CLIENT_SHAPED_SECTION = GEP.gedraSection
  * Whether the shared [endpoint] gets a copy per client, at [clientPath] (issue #455): everything in the `gedra`
  * section, and an endpoint elsewhere that says it is [KdrEndpoint.clientShaped]. The one statement of the rule, for
  * [buildClientEndpoints] and for the endpoint index that reports it (issue #1608).
+ *
+ * Theme: #CLCPY.
  */
 fun hasClientCopy(endpoint: KdrEndpoint): Boolean =
     endpoint.path.startsWith("/${CLIENT_SHAPED_SECTION}/") || endpoint.clientShaped
 
-/** [endpoint] under [client]'s path, bound to that client, with the shared handler untouched. */
+/**
+ * [endpoint] under [client]'s path, bound to that client, with the shared handler untouched.
+ *
+ * Theme: #CLCPY.
+ */
 private fun copyFor(endpoint: KdrEndpoint, client: String): KdrEndpoint {
     val shared = endpoint.handler
     return KdrEndpoint(

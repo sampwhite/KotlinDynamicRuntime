@@ -275,6 +275,8 @@ class ClientService : ServiceInitializer {
      * rechecked definition ([presentIn]) and commits only once that schema is in place, so a schema check that
      * refuses the reload leaves this service exactly as it was. A problem that would have refused the boot throws
      * here, before either.
+     *
+     * Theme: #RELSY.
      */
     fun recheck(cxt: KdrCxt, client: String): ClientCheckResult {
         val collected = collector ?: throw KdrException("$serviceName.recheck ran before onCreate.")

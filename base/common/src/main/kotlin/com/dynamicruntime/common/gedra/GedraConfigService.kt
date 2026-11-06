@@ -215,6 +215,8 @@ class GedraConfigService : ServiceInitializer {
      * staging a change that spans two configs. What such a client runs is judged when it changes -- at [publish] and
      * at [setPublishedOnly]. [before] is each written config's revision as it stood, for a client whose drafts
      * nothing runs (`GedraConfigTrial.requireClean`, issue #1171).
+     *
+     * Theme: #CFGFG.
      */
     private fun trialWritten(wcxt: KdrCxt, written: List<GedraConfigRow>, before: Map<String, GedraConfigRow?>) {
         val names = written.joinToString(", ") { "'${it.configId.baseId}'" }
@@ -545,6 +547,8 @@ class GedraConfigService : ServiceInitializer {
      * With [impact] set to [ImpactGate.refuse], it is refused too when making them live would affect the data the
      * client already stores (issue #935, [ConfigImpact]), unless the caller has [ImpactGate.acknowledged] it. As with
      * the trial, only a published-only client's publish can: for any other, the report is empty.
+     *
+     * Theme: #CFGFG.
      */
     fun publish(
         cxt: KdrCxt,

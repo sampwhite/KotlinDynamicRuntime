@@ -273,6 +273,8 @@ class KdrInstanceConfig(
      * is directly inspectable in a debugger while stepping (unlike a recomputed getter). The boot path
      * force-touches it via [warmDerived] so it is realized at a single-threaded point before any concurrent
      * request; off-boot paths (a hand-built config in a test) resolve it correctly on first access.
+     *
+     * Theme: #ENVAT.
      */
     val isTestInstance: Boolean by lazy {
         when (val explicit = get(ACFG.isTestInstance)) {

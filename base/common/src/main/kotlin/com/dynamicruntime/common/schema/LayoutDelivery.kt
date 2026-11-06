@@ -27,6 +27,8 @@ import com.dynamicruntime.common.util.toOptStr
  * (`layoutTemplateProblems`), and -- since #620 -- whether a well-formed *literal* pull's file and key actually
  * **resolve** (`SchemaService.checkLayoutPulls`, run from `LayoutCheckService`). So what still degrades here is a
  * **computed** pull (`%{@t(chosenKey)}`), which names a fragment only at delivery, or a guarded one that opts out.
+ *
+ * Theme: #TPLPS.
  */
 fun resolveDeliveredLayouts(cxt: KdrCxt, layouts: Map<String, Any?>): Map<String, Any?> {
     if (layouts.isEmpty()) {
@@ -101,6 +103,8 @@ class LayoutPullHit(val fileFound: Boolean, val backend: Boolean, val keyPresent
  * `fragmentFileId`, a three-part `fileId.namespace.key` against its own file (the composition the delivery's
  * `layoutBackendPass` does). A guarded (`?:`) or computed key is skipped -- the delivery fallback handles those,
  * exactly as the fragment layer leaves them. [where] names the type (and client, for a variant).
+ *
+ * Theme: #TPLPS.
  */
 fun layoutPullProblems(
     where: String,

@@ -416,6 +416,8 @@ class SchemaCollector(
      * A name the global document does not have is an ordinary new type for that client; a name it does have
      * is an alteration, and is held to the narrowing rules. Both arrive the same way, which is why the
      * distinction is drawn where the overlay is applied rather than where it is declared.
+     *
+     * Theme: #NARRW.
      */
     val clientOverlays: Map<String, Map<String, Any?>>
         get() = if (gedraConfigs.isBatchingHere()) workingOverlays else publishedOverlays

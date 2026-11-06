@@ -1,4 +1,5 @@
 ## The Clients page (issues #903, #905)
+<!-- Theme: #NARRW -->
 
 `/wa/clients` lists the clients an administrator oversees, from `GET /clientAdmin/clients/overview`
 (`ClientsApi.listOverview`, rows parsed by the pure `parseClientOverview`): an `allClients` administrator sees

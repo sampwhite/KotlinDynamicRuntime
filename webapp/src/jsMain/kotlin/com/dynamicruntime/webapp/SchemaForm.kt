@@ -209,6 +209,8 @@ class LayoutCopy(
  * returns as written with no parse, and a `${'$'}{…}` the data cannot resolve (or a stray `${'$'}`) is logged with the
  * `[kdr]` console prefix and returned as written rather than blanking the field -- presentation should not hide
  * a field's copy over a missing substitution, and webapp/CLAUDE.md's rule is to never swallow without a signal.
+ *
+ * Theme: #TPLPS.
  */
 private fun resolveLayoutTemplate(text: String, data: Map<String, Any?>): String {
     if ('$' !in text) return text
@@ -224,6 +226,8 @@ private fun resolveLayoutTemplate(text: String, data: Map<String, Any?>): String
  * no layout for the type addresses the field. `label` / `description` resolve against the field's own [values];
  * `hint` resolves against the field's bounds context ([boundsContextData], `${'$'}{min}` / `${'$'}{max}`). Only in
  * friendly mode -- the wire-documenting view ignores layouts as it ignores `title`.
+ *
+ * Theme: #TPLPS.
  */
 internal fun layoutCopy(type: SchType, name: String, values: Map<String, Any?>, opts: FormOpts): LayoutCopy? {
     if (!opts.friendly) return null

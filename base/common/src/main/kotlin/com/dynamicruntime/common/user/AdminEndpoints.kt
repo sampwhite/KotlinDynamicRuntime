@@ -866,6 +866,8 @@ private fun parseUserSearch(request: Map<String, Any?>): UserSearchCriteria {
  * (`SandboxAccess`). Nor, beside `admin`, another level (issue #1199): on such a user one takes effect only while
  * the person's user outside holds it, so granting it here would save and change nothing. Like
  * [requireUsableRoles], a check on *adding*: a role list sent back unchanged passes.
+ *
+ * Theme: #SBXAU.
  */
 private fun requireNoSandboxAdmin(client: String, roles: List<String>, current: List<String> = emptyList()) {
     if (!isSandboxClient(client) || ROLE.admin !in roles) return

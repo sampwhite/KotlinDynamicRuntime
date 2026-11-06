@@ -74,6 +74,7 @@ start to matter.
   #1308).
 
 ## When an organization has to hide content, not just narrow it
+<!-- Theme: #RDSCP -->
 
 The point at which someone expects an organization to be a confidentiality boundary rather than a convenience
 filter — two orgs in one client whose content must not cross.
@@ -531,6 +532,7 @@ closed list's values. Nothing is deployed, so nothing is stranded; that is the w
   being loaded. Reading it back is what buys the time to do that.
 
 ## When the people who can reach an edge stop being a small trusted group
+<!-- Theme: #ENVAT -->
 
 A diverse employee and consulting base, with active customers behind the deployment. Today everyone who can
 clear an edge's Google gate is staff, and the gate is the whole of the decision.
@@ -963,6 +965,7 @@ reword a message they cannot get to show. Then:
   change, with a merge rule for a list whose entries have no ids.
 
 ## When a program or another service needs more than an API key gives it
+<!-- Theme: #APIKR -->
 
 From #1402, which built API keys, and #1403, which exchanges a key for a signed access token (both in
 [`docs/design/api-keys.md`](../design/api-keys.md)). Each item waits on its own trigger:

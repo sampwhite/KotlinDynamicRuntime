@@ -81,6 +81,8 @@ import kotlin.time.Instant
  * routes that through a `ClientSyncTracking` write so other nodes learn to sync (#618): [recordRestartLoad]
  * keeps the per-client markers this boot loaded, and `ClientSyncService` announces them ([loadedMarkers]) once
  * the node is ready.
+ *
+ * Themes: #CFGFG, #RELSY.
  */
 class GedraConfigLoadService : ServiceInitializer {
     override val serviceName: String = GedraConfigLoadService.serviceName
@@ -101,6 +103,8 @@ class GedraConfigLoadService : ServiceInitializer {
      * [GedraConfig.inheritedFrom]). The collector does not know a source config from these, and a reload must
      * replace exactly these -- so this is the record of what a reload has to withdraw. Written at boot here and kept
      * current by the reload. A reader wanting only what is *stored* leaves the inherited copies out.
+     *
+     * Theme: #RELSY.
      */
     private val loadedByClient = HashMap<String, List<GedraConfig>>()
 
@@ -575,6 +579,8 @@ class GedraConfigLoadService : ServiceInitializer {
      * only the slots it knows, so anything else -- a slot since retired (a state trait, which a client may no longer
      * declare), one from a newer version, a hand edit -- is dropped, and this says so rather than letting it vanish.
      * The rest of the config loads. Shared by the boot load, a reload, and a trial.
+     *
+     * Theme: #CFGFG.
      */
     fun unknownSlotsIssue(row: GedraConfigRow): GedraConfigIssue? {
         val known = knownSlots ?: throw KdrException("$serviceName used before onCreate.")
@@ -680,6 +686,8 @@ class GedraConfigLoadService : ServiceInitializer {
      * config, so it is forgiven everywhere but unit tests -- it is data nobody can fix from a node that will not
      * start -- and costs only that config. Keyed by the config's revision class, the id its other issues carry.
      * Shared by the boot load and a reload.
+     *
+     * Theme: #CFGFG.
      */
     fun unloadableIssue(configId: String, client: String?, e: KdrException): GedraConfigIssue = GedraConfigIssue(
         "Stored config '$configId' could not be loaded: ${e.message}",
@@ -711,6 +719,8 @@ class GedraConfigLoadService : ServiceInitializer {
      * The newest configuration date this node loaded per client at boot (issue #618). Held in memory for
      * [ClientSyncService] to announce and to seed its baseline from, once it initializes (a regular service, so
      * after this startup one): the announce cannot happen here, before the sync topic's tables are reconciled.
+     *
+     * Theme: #RELSY.
      */
     private var loadedMarkers: Map<String, Instant> = emptyMap()
 
@@ -770,6 +780,8 @@ class SourceCuts(val cuts: List<SourceCut>, val over: ConfigKeys) {
  *
  * Its namespace is not judged here: a client's config declares into its own `client.<clientId>` namespace (#949),
  * which keeps it out of the runtime's (`kdr.core` and every other `kdr` one, #950) at the write and at the load.
+ *
+ * Theme: #CFGFG.
  */
 fun storedOwnershipProblem(config: GedraConfig): String? = when {
     config.gedraId.client == GID.globalClient ->

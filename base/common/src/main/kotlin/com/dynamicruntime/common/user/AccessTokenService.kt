@@ -136,6 +136,8 @@ class IssuedToken(val token: String, val expiresInSeconds: Long, val scope: Stri
  * instance. [rotate] publishes a new key that signs from [publishLead] later, and keeps the old one published until
  * every token it signed may have expired. A node rereads the keys each [reloadInterval] -- so by the time a new key
  * signs, every node holds it -- and at once (throttled) when a token names a key it does not hold.
+ *
+ * Theme: #APIKR.
  */
 class AccessTokenService : ServiceInitializer {
     override val serviceName: String = AccessTokenService.serviceName

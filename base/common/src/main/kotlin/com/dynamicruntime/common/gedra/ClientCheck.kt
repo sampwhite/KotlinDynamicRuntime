@@ -45,6 +45,8 @@ class ClientCheckResult(
  * config**, which is more proportionate than it first looks and is not a new rule: a client that is not there
  * is a state the design already defines, and everything scoped by it then behaves as though it were absent.
  * The bundle's traits stay declared; nothing can reach them, because reaching them goes through the client.
+ *
+ * Theme: #CFGFG.
  */
 fun checkClientDefs(
     cxt: KdrCxt,

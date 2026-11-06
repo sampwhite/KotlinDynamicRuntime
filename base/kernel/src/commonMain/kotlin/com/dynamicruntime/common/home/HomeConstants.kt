@@ -199,6 +199,8 @@ object HFLD {
      * Whatever the reason: the user it was opened from is disabled or no longer stands for the parent (lost the
      * capability that let it in from elsewhere, say), nobody in the parent stands behind a sandbox user holding
      * `admin`, or the sandbox user was itself disabled.
+     *
+     * Theme: #SBXAU.
      */
     const val sandboxStranded = "sandboxStranded"
 

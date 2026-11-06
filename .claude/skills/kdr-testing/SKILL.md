@@ -295,6 +295,7 @@ PID=$(lsof -i:$PORT -sTCP:LISTEN -t); [ -n "$PID" ] && kill "$PID"
 ```
 
 ## Driving it with curl
+<!-- Themes: #ENVAT, #SECGT -->
 
 The examples below write `7071` for readability; use the port you actually took.
 
@@ -405,6 +406,7 @@ Scenarios print as they go, so a run that dies partway leaves output that reads 
 incomplete however complete it looks.**
 
 ## Simulations: canned scenarios a person can set up (issue #997)
+<!-- Theme: #RELSY -->
 
 A **simulation** provisions a scenario -- clients, users, data -- on a test instance in one call, the way the tests do,
 so a person doing UAT (or reviewing a page) can set it up and look -- a person with env auth, since like every fixture
@@ -653,6 +655,7 @@ See `ErrorObfuscationConfigTest` (in `base/common`) for the three-way (config op
 environment) resolution pattern, and `KdrInstanceConfigTest` for the same shape on `isTestInstance`.
 
 ## Unit tests: authenticated tests with TestUser
+<!-- Themes: #ENVAT, #SECGT -->
 
 `TestUser` (in `base/common`, `user` package) is an authenticated `TestHttpClient` plus the `cxt` it was built
 from. `TestUser.create(cxt, email, level)` calls the `forTestingOnly` `/fixture/becomeUser` endpoint through a

@@ -80,6 +80,8 @@ object Simulations {
      * definition could not be edited until someone published it. A simulation whose point **is** a draft -- the
      * impact demo's (#935) -- passes [publish] false and gets the write and reload alone. A problem the reload reports
      * is thrown, so a simulation never reports success over a client that did not load.
+     *
+     * Theme: #RELSY.
      */
     fun provisionConfig(cxt: KdrCxt, config: GedraConfig, publish: Boolean = true) {
         val client = config.gedraId.client

@@ -13,6 +13,7 @@ note covers what it does, and the **server-driven-UI (SDUI) shape** the extra-cr
 description of the fields that both the backend and the console build from.
 
 ## What the search is
+<!-- Theme: #RDSCP -->
 
 `GET /clientAdmin/userSearch` (and the full-scope `/admin/userSearch`) filters and sorts **active** users.
 

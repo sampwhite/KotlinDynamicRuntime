@@ -187,6 +187,8 @@ class KdrCxt(
      * Whether the request is *acting* env-authed: an edge vouched for it and the session has not suppressed
      * it. **The question anything gating behavior or display should ask** -- reading [envAuthEmail] directly
      * for that purpose would silently ignore a suppression.
+     *
+     * Theme: #ENVAT.
      */
     val isEnvAuthEffective: Boolean get() = envAuthEmail != null && !envAuthSuppressed
 
@@ -217,6 +219,8 @@ class KdrCxt(
      * The API key this request authenticated with (issue #1402), or null for a session or nobody. Set by the session
      * extractor when the request carries `Authorization: Bearer kdr_…`; the dispatcher then refuses a read-only key
      * anything but a GET and any key a session-only endpoint, and writes no cookie.
+     *
+     * Theme: #APIKR.
      */
     var apiKey: ApiKeyAccess? = null
 
@@ -230,6 +234,8 @@ class KdrCxt(
      *
      * The one question the dispatcher, the endpoint catalog, the app config and the diagnostic tags ask, so what is
      * advertised and what is served cannot come apart.
+     *
+     * Theme: #ENVAT.
      */
     val hasTestAccess: Boolean get() = instanceConfig.isTestInstance && isEnvAuthEffective
 
@@ -253,6 +259,8 @@ class KdrCxt(
      * `allClients` holder calling `/gedra/acme/...` with a `globex` id would be stopped only by scope --
      * which is true today and stops being true the moment their scope is wide enough. Their scope was that wide for
      * a listing, which until #1575 listed every client's forms through `acme`'s endpoint.
+     *
+     * Theme: #CLCPY.
      */
     var clientFromPath: String? = null
 
@@ -447,6 +455,8 @@ class KdrCxt(
      * leak-shaped tag must not answer on an ordinary production request, nor for a caller without env auth on a
      * test instance. A plain diagnostic that only echoes the caller's own request may still use [hasDebug]
      * directly.
+     *
+     * Theme: #ENVAT.
      */
     fun hasDebugDiagnostic(tag: DebugTagDef): Boolean =
         hasDebug(tag) && (hasTestAccess || isEnvDebug)

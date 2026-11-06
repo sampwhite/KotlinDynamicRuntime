@@ -507,6 +507,8 @@ fun runBoundReport(
  * caller's own scope, which [overseenClient] has already held to their client -- and which, for an administrator with
  * a primary organization, is that organization. A report shows no form the caller could not open in the forms
  * listing, nor an owner they could not see in the user administration.
+ *
+ * Theme: #RDSCP.
  */
 fun reportScope(c: KdrCxt, client: String): ReadScope =
     if (AdminRules.canSeeAllClients(c)) ReadScope.ofClient(client) else ReadScopeRules.forCaller(c)

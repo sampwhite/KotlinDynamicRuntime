@@ -89,6 +89,8 @@ fun formClientOf(gedraId: String?): String? =
  * copy, and asking for one by exact path found nothing (the #714 review's regression), whereas resolving on
  * that client's surface answers with the shared endpoint, in that client's `$defs`. Shared by the raw editor
  * and the core details page so the rule lives once.
+ *
+ * Theme: #CLCPY.
  */
 suspend fun fetchFormEndpoint(method: String, barePath: String, formClient: String?): Catalog =
     SchemaCatalogApi.fetchEndpoint(method, barePath, resolveClient = true, client = formClient)

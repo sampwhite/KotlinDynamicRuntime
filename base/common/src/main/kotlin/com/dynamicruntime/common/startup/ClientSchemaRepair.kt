@@ -288,6 +288,8 @@ private fun baseMapAt(node: Map<String, Any?>?, key: String): Map<String, Any?>?
  * the regular phase, in `LayoutCheckService` via `SchemaService.checkLayoutPulls` (issue #620). So a literal pull that
  * misses is now refused at boot; only a *computed* or guarded pull can miss at delivery, where it degrades
  * gracefully (`resolveDeliveredLayouts`).
+ *
+ * Theme: #TPLPS.
  */
 fun layoutBackendBlockProblems(where: String, layout: SchLayout): List<Problem> {
     val problems = mutableListOf<Problem>()

@@ -271,6 +271,7 @@ input nobody declared (`password`, `verifyCode`, `formAuthToken`, names ending i
 so declare a secret whose name the list would not catch. It takes no part in validation, and exports as nothing.
 
 ## Choice lists: written down, or sourced at render time
+<!-- Theme: #NARRW -->
 
 `option(value, label)` writes the choices into the document, and they then **bind**: the validator rejects
 anything else with `invalidOption`. In a raw document each entry is a `{"value", "label"}` object or a bare value
@@ -427,6 +428,7 @@ falls back to ordinary rendering, and the validator never consults it — an end
 validates exactly as before.
 
 ## Layouts: `g-layout` (issues #584, #585)
+<!-- Themes: #NARRW, #TPLPS -->
 
 A type may carry a **field layout** — how a friendly form renders its fields — under the custom `g-layout`
 keyword. (Always qualify it: the *task* layout, `WfLayout` on a workflow task, orders the traits within a task and
@@ -552,6 +554,7 @@ Outside the schema package the delivered form is always named `fieldLayout(s)`, 
 not the task layout (`WfTask.layout`), a page layout, or prose.
 
 ## Extensions: a named type as another plus a delta (`g-extends`, issue #990)
+<!-- Theme: #NARRW -->
 
 A **new** named type may be declared as an extension of another, instead of being written out in full or composed
 by a `$ref` property: `type("Wide") { extends("kdr.B"); property("extra", "…") }`, which writes
@@ -624,6 +627,7 @@ every shape is right stays the parser's and the load's (`SchMetaSchema.notChecke
 (*Rules the shapes do not state*, *What a shape does not decide*).
 
 ## A client's own definitions: dropped, not refused (issue #841)
+<!-- Theme: #CFGFG -->
 
 The boot checks above refuse the boot for a fault in a **component's** schema -- outside production; in production
 the same repair runs on the global document and the fault is dropped, as every source-config check degrades there

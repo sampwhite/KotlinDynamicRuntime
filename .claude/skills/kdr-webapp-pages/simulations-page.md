@@ -1,4 +1,5 @@
 ## The Simulations page (issue #997)
+<!-- Theme: #ENVAT -->
 
 `/wa/test/simulations`, offered to a caller with **test access** only -- a test instance, with env auth effective (issue
 #1149; the menu item is gated on `kdr:hasTestAccess`, and the route is Home without the app config's `hasTestAccess`):

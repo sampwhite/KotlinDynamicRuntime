@@ -42,6 +42,7 @@ guessable; a 256-bit random secret is not, and a slow hash on every request woul
 compared in constant time (`constantTimeEquals`).
 
 ## How a request is authenticated
+<!-- Theme: #APIKR -->
 
 `RequestService.extractSessionAuth` looks for a bearer token beginning `kdr_`:
 
@@ -73,6 +74,7 @@ when the stamp is an hour old, and leaves `updatedAt` alone, since it is bookkee
 refused request is not a use. A change to a key reads its row from SQL, not the cache, whose stamp may be behind.
 
 ## What a key may do
+<!-- Theme: #APIKR -->
 
 - **A key acts as its owner.** It reaches what the owner may reach, and sees what the owner may see.
 - **A read-only key** (`access: read`) may make GET requests only. Anything else is refused with a 403 before the
@@ -92,6 +94,7 @@ refused request is not a use. A change to a key reads its row from SQL, not the 
   program holding their key is not them.
 
 ## Who makes keys
+<!-- Theme: #RDSCP -->
 
 - **A person, for themselves**, on Profile, through the `user` section: `/user/self/apiKeys` and
   `/user/self/apiKey/{create,extend,access,revoke}`.
@@ -121,6 +124,7 @@ endpoint is session-only.
   not, and may not widen it again.
 
 ## Keys in a sandbox (#1453)
+<!-- Theme: #SBXAU -->
 
 A sandbox's users hold keys as anyone's do, and a key on one stays in the sandbox: it works in the sandbox's own data,
 and what it writes to configuration is a draft of the parent's, as a session's write there is.
@@ -136,6 +140,7 @@ and what it writes to configuration is a draft of the parent's, as a session's w
   that person's to make.
 
 ## Calls made in this process for a user (#1524)
+<!-- Theme: #APIKR -->
 
 Work a person asks for can run on after their request ends: the workflow assistant, which builds a workflow by calling
 this application's own endpoints. Such a call goes through the whole request pipeline (`InProcessCaller`), as a key's
@@ -189,6 +194,7 @@ dialog with a copy button and a `curl` command to try it, saying it is the only 
 the component's state, never in the address or browser storage.
 
 ## Access tokens (#1403)
+<!-- Theme: #APIKR -->
 
 A key is a long-lived secret. Another service that verifies callers, such as an identity service, should not hold it or
 call back to check it. So a program can exchange its key for a short-lived **access token**, by the OAuth 2.0
@@ -229,6 +235,7 @@ A compact JWS signed with **ES256** on the JDK's `java.security` (`Es256`, `JwsP
 - **It lasts** `KDR_ACCESS_TOKEN_HOURS` hours (24 by default, at most 168), and never past its key's expiry.
 
 ### Using a token
+<!-- Theme: #APIKR -->
 
 A token is sent as the key is, `Authorization: Bearer <token>`, and the same extractor reads it.
 

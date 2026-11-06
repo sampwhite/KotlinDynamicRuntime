@@ -26,6 +26,8 @@ import com.dynamicruntime.common.http.request.ROLE
  * **Narrow by default is the whole design.** The alternative -- unrestricted unless something restricts it --
  * fails in the widening direction and does it silently: a query written without a scope returns every row and
  * looks perfectly healthy. This way the mistake surfaces as "I cannot see that", which somebody reports.
+ *
+ * Theme: #RDSCP.
  */
 object ReadScopeRules {
     /**
@@ -41,6 +43,8 @@ object ReadScopeRules {
      * narrow branch is what the first ordinary endpoint over an owned table will get, and it is covered by
      * tests rather than by a caller. It is deliberately not left to that endpoint to invent: an author who has
      * to reach for `ReadScope.ofUser` by hand is an author who can forget to.
+     *
+     * Themes: #CLCPY, #RDSCP.
      */
     fun forCaller(cxt: KdrCxt): ReadScope = when (AdminRules.adminScope(cxt)) {
         // A primary organization narrows an administrator one width further. Most have none, and then this is
@@ -85,6 +89,8 @@ object ReadScopeRules {
      *
      * A session with no identity cannot be an `ownIdentity` administrator's in practice (identities predate
      * `public` admins); should one appear, it falls back to the own-user width, the narrower answer.
+     *
+     * Theme: #RDSCP.
      */
     fun forUserAdmin(cxt: KdrCxt): ReadScope {
         if (AdminRules.adminScope(cxt) != AdminScope.ownIdentity) return forCaller(cxt)

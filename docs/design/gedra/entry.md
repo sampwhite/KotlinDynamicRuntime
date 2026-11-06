@@ -153,6 +153,7 @@ It also means the branch `const` values in the generated schema (below) come *fr
 being written alongside it, so there is one authority and nothing to drift.
 
 ### Scopes
+<!-- Theme: #NARRW -->
 
 Traits come from two places, and their ids are kept apart by how they are spelled rather than by a precedence
 rule (#807, #951):
@@ -200,6 +201,7 @@ for now only their field layout (`g-layout`). What a task requires of a form liv
 task, not in the schema; see [Tasks declare what is owed](#tasks-declare-what-is-owed).
 
 ### Augment or extend
+<!-- Theme: #NARRW -->
 
 Two moves, and which one applies follows from **storage identity**:
 
@@ -617,6 +619,7 @@ under. The cost is retaining every version's schema indefinitely and readers spa
 attractive and not yet taken — see [Open questions](#open-questions).
 
 ## Changing a gedra: the patch
+<!-- Theme: #CLCPY -->
 
 A stored gedra is changed by a **patch**, not an update. An update replaces the document, so whatever it leaves out
 is deleted; a patch says what to do with each entry it names and leaves every other entry alone.

@@ -191,7 +191,11 @@ external interface AppBarProps : Props {
      * refresh leaves the pages named as they were.
      */
     var onShellFacts: (ShellFacts) -> Unit
-    /** Whether env auth exists on this channel -- decides whether the control is shown at all. */
+    /**
+     * Whether env auth exists on this channel -- decides whether the control is shown at all.
+     *
+     * Theme: #ENVAT.
+     */
     var envAuthSuppressible: Boolean
     /** Whether the session is currently *acting* env-authed -- decides what the control says. */
     var envAuthActing: Boolean

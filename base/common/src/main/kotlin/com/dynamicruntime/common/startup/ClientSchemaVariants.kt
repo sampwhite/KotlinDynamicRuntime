@@ -242,6 +242,8 @@ private fun changedUnions(
  * proportionate answer: the type reverts to the global one, which is the shared truth and wider rather than
  * narrower, so nothing this client stores under it can be invalid to anybody else. Dropping the variant
  * entirely would do the same for every type the client altered, including the ones that were fine.
+ *
+ * Theme: #NARRW.
  */
 private fun keepWhatNarrows(
     cxt: KdrCxt,

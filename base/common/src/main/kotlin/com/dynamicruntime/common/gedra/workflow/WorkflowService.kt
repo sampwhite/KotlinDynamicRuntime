@@ -96,6 +96,8 @@ class WorkflowService : ServiceInitializer {
      * client's problems are reported again or can refuse this reload. The result is published by copy-on-write
      * over the registries the other clients keep. A problem that would have refused the boot throws here before
      * anything is published, leaving the running registries as they were.
+     *
+     * Theme: #RELSY.
      */
     fun reloadClient(cxt: KdrCxt, client: String) {
         val collector = SchemaCollector.get(cxt)

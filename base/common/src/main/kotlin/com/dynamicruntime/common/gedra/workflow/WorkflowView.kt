@@ -46,6 +46,8 @@ import com.dynamicruntime.common.util.toOptStr
  * [entriesByTask] supplies the entries a running workflow already holds, so a task's completeness is real; a
  * creation workflow has none, so it defaults empty. The resolver stays a pure function of the definition,
  * the client's schema, and its fragments -- no gedra is read here.
+ *
+ * Theme: #TPLPS.
  */
 fun resolveWorkflowView(
     cxt: KdrCxt,

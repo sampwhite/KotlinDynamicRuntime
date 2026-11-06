@@ -40,7 +40,11 @@ object GCFG {
             "`off`. Unset means strict everywhere except `prod`, which warns.",
     )
 
-    /** Overrides what a problem in **stored** config does, at boot and on a reload; see [storedConfigCheckMode]. */
+    /**
+     * Overrides what a problem in **stored** config does, at boot and on a reload; see [storedConfigCheckMode].
+     *
+     * Theme: #CFGFG.
+     */
     val storedCheckEnvVar = EnvVarDef(
         "KDR_STORED_CONFIG_CHECK", group = ENVGRP.gedra, defaultDoc = "warn (`strict` in `unit`)",
         description = "What a problem in a client's stored (database) configuration does when it is loaded: " +
@@ -128,6 +132,8 @@ fun gedraConfigCheckMode(cxt: KdrCxt): BootCheckMode =
  * hand-written SQL or a temporary code change to let the node start. So stored config is forgiven: logged, the
  * offending piece dropped, and the rest served. Unit tests stay strict so a test's bad fixture fails loudly,
  * and set this to `warn` to exercise the forgiving path itself.
+ *
+ * Theme: #CFGFG.
  */
 fun storedConfigCheckMode(cxt: KdrCxt): BootCheckMode =
     modeOverride(cxt, GCFG.storedCheckEnvVar)
@@ -153,6 +159,8 @@ fun GedraConfig.checkMode(cxt: KdrCxt): BootCheckMode = configCheckMode(cxt, ori
  * a source problem, and still refuses the boot outside production.
  *
  * Build one with [GedraConfig.issue] where the holding config is known, so the provenance cannot be left out.
+ *
+ * Theme: #CFGFG.
  */
 class GedraConfigIssue(
     /** What is wrong, as a complete sentence naming both sides. */
@@ -229,6 +237,8 @@ fun GedraConfigIssue.heldBy(
  * problem is never refused, whatever the mode -- it is said and recorded, as under `warn`. Refusing a reload would
  * not bring the thing back, and would fail a reload for something the reload did not bring: the write that led to
  * it is already stored. What a boot finds is never one of these.
+ *
+ * Theme: #CFGFG.
  */
 fun reportConfigProblem(
     cxt: KdrCxt,

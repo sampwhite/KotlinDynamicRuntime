@@ -218,6 +218,8 @@ object AssistantTurns {
      * or, when they are signed in to the sandbox, the user outside it their sandbox user was opened from, whose
      * conversations these are. So the page goes on working after "Try it in the sandbox" moved the session there. A
      * sandbox user nobody opened, or one opened from another client, has no one outside to speak for.
+     *
+     * Theme: #SBXAU.
      */
     fun personOf(cxt: KdrCxt): AssistantPerson {
         AdminRules.requireClientAdministrator(cxt)

@@ -61,6 +61,8 @@ external interface TraitNarrowEditorProps : Props {
  * what publishing it would do to the live client's forms -- and a live one that would strand data stored forms hold
  * (a field made required, a choice taken away) is refused with the impact report, whose **Save anyway** acknowledges
  * it. **As the trait is declared** clears the narrowing, so the client takes the trait as the platform declares it.
+ *
+ * Theme: #NARRW.
  */
 val TraitNarrowEditor = FC<TraitNarrowEditorProps> { props ->
     val baseline = props.trait.narrowing ?: TraitNarrowing(props.trait.traitId)
