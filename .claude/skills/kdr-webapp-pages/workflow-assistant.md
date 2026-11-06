@@ -16,7 +16,9 @@ assistant endpoint would refuse -- "see" and "use" are one answer. Core names no
 is loaded -- a cfact expression naming an undeclared cfact is refused. A client's menu editor lists the entry under its
 shipped condition, which has no audience name: it may be put back to it, "As shipped" (`HomeMenuAudiences.choicesFor`). The operator's page (`/wa/operator/assistant`,
 `OperatorAssistantPage.kt`) is offered the same way under the Operator group. Both routes exist unconditionally; where
-the module is not loaded the page says it could not load the assistant.
+the module is not loaded the page says it could not load the assistant. Home offers it as well, with the module's home cards (issue #1636,
+`public-home.md`'s "Home cards"): one for whoever the menu entry is offered to, and one in `public` that gives the
+assistant as the reason to create a client.
 
 **It works from the client and from inside its sandbox.** "Try it in the sandbox" moves the session into the sandbox, and
 the person comes back to the page to go on. The backend answers for the person either way

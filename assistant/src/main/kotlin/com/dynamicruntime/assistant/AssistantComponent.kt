@@ -8,8 +8,11 @@ import com.dynamicruntime.common.cfact.CFactDef
 import com.dynamicruntime.common.context.BOOT
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.home.HCARD
 import com.dynamicruntime.common.home.HFLD
 import com.dynamicruntime.common.home.HMENU
+import com.dynamicruntime.common.home.HSEC
+import com.dynamicruntime.common.home.homeCard
 import com.dynamicruntime.common.home.homeMenuBlock
 import com.dynamicruntime.common.home.menuItem
 import com.dynamicruntime.common.startup.ComponentDefinition
@@ -68,6 +71,14 @@ class AssistantComponent : ComponentDefinition {
             val client = it.userProfile.client
             service != null && (service.isOn(it, client) || service.offeredTo(it, client)) && AssistantTurns.personOrNull(it) != null
         }
+        collector.addCFact(
+            CFactDef(
+                ASST.selfServeOfferedCFact, CFGRP.node,
+                "True when this deployment offers the workflow assistant to the clients people create for themselves " +
+                    "(issue #1636): this node can reach the model, and self-serve clients may switch it on. A fact about " +
+                    "the node, whoever is asking.",
+            ),
+        ) { AssistantService.getOrNull(it)?.offersSelfServe() == true }
     }
 
     override fun services(cxt: KdrCxt): List<ServiceEntry> = listOf(service(::AssistantService))
@@ -90,6 +101,29 @@ class AssistantComponent : ComponentDefinition {
                     ASST.operatorMenuItem, "Workflow assistant", UiRoute(ASST.operatorPage),
                     cfactExpression = "${CFACTS.isDeploymentOperator},${CFACTS.app}",
                     displayOrder = orderAfter(HMENU.fileStore), parentId = HMENU.operator,
+                )
+            }
+        },
+        // Its home cards (issue #1636), ahead of core's: the assistant offered to whoever its menu entry is, and -- to a
+        // public administrator, where a client they create comes with it -- the reason to create one.
+        uiBlockOverlay(HCARD.block, origin = providerName) {
+            items(HCARD.cards) {
+                homeCard(
+                    ASST.homeCard, "Workflow assistant",
+                    "Describe the forms and workflows you want in your own words, and the assistant drafts them in your " +
+                        "client's sandbox, for you to try there and publish when they are right.",
+                    action = UiRoute(ASST.page), actionLabel = "Open the workflow assistant",
+                    kind = ASST.cardKind,
+                    cfactExpression = "${CFACTS.administersClient},${ASST.usableCFact},${CFACTS.app}",
+                    displayOrder = UIB.orderStep / 2,
+                )
+                homeCard(
+                    ASST.createHomeCard, "Design your own forms",
+                    "[Create a client of your own](#${HSEC.ownClient}) and the workflow assistant helps you build it: " +
+                        "describe the form you want people to fill in and the steps it goes through, and it drafts them " +
+                        "for you to try.",
+                    cfactExpression = "${CFACTS.publicMember},${ASST.selfServeOfferedCFact},${CFACTS.app}",
+                    displayOrder = UIB.orderStep / 2,
                 )
             }
         },

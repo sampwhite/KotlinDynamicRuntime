@@ -77,6 +77,30 @@ it apart from the home page's.
 rather than asking the server for `/docs/...`, which is a 404. Both the shared intro and the `reference` flavor's
 point to "Start here" that way.
 
+## Home cards (issue #1636)
+
+Under its copy (the intro and the note) and above the public home page's sections, Home draws the **home cards** the
+shell config sends this caller (`state.cards`, `HomeCards.kt`): a panel each, with its title, its Markdown text (links
+resolved as the intro's are), a row of links, and a primary button. The backend decides which cards a caller gets,
+from cfacts, as it decides the menu: the cards are a registered UiBlock (`homeCardsBlock`), so a component adds its own
+with an overlay and a client hides or rewords one in its configuration. The page draws the list it is handed and adds
+none of its own.
+
+- **Core's cards** are shortcuts: **Your client** for an administrator of one client (My client, Users, Reports),
+  **Clients and customers** for every client's administrator, **Your client's forms** for an editor, and
+  **Operating this deployment** for a deployment operator.
+- **The assistant module's cards** (`ASST.homeCard`, `ASST.createHomeCard`): the workflow assistant, for whoever its
+  menu entry is offered to, and "Design your own forms" for a person signed in to `public` where the deployment offers
+  the assistant to self-serve clients. The create card asks whether that card was sent (`ownClientAssistantOffered`)
+  and then says the page moves to the assistant once the client is made.
+- **A card with a `kind`** reads what it needs when it is drawn, never in the polled shell config. The assistant's
+  (`ASST.cardKind`) reads the assistant's status, and its button says "Switch on the assistant" while the person may
+  switch it on (`assistantCardActionLabel`); until the read answers, or if it fails, the card's own words stand. A kind
+  the page does not know draws the card's words alone.
+- **A card goes somewhere and never calls**: an action or a link that is not a route is dropped as it is read
+  (`homeCardsFrom`). Each card's element id is `home.card.<id>` (`homeCardElementId`), so an address can name it.
+- The cards sit side by side where the page is wide enough (`.home-cards`).
+
 ## The public home page (issue #1324)
 
 For a caller **signed in** to `public` (`isPublicHome`), Home draws `PublicHome` under its hero and intro: what a

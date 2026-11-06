@@ -25,6 +25,26 @@ object ASST {
      */
     const val usableCFact = "$root:usable"
 
+    /**
+     * The cfact true when this deployment offers the assistant to the clients people create for themselves (issue
+     * #1636): this node can reach the model, and self-serve clients may switch it on. Whether the caller has made one is
+     * not part of it. A public administrator's home card asks it, so it is offered only where creating a client leads to
+     * the assistant.
+     */
+    const val selfServeOfferedCFact = "$root:selfServeOffered"
+
+    /** The home card the module adds for a client's administrator (issue #1636), offered as [menuItem] is. */
+    const val homeCard = "assistant"
+
+    /**
+     * The home card the module adds for a public administrator (issue #1636), where [selfServeOfferedCFact] holds: a
+     * client they create comes with the assistant. The create card asks whether it is there, to say so too.
+     */
+    const val createHomeCard = "assistantCreate"
+
+    /** The live body of [homeCard]: it reads whether the assistant is on, or offered to be switched on. */
+    const val cardKind = "assistant"
+
     /** The webapp page the assistant's menu entry opens (issue #1527). */
     const val page = "assistant"
 

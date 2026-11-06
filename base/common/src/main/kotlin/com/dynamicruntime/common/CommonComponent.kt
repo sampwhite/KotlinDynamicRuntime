@@ -89,6 +89,7 @@ import com.dynamicruntime.common.startup.SS
 import com.dynamicruntime.common.user.AFRAG
 import com.dynamicruntime.common.app.appSchema
 import com.dynamicruntime.common.home.coreDocs
+import com.dynamicruntime.common.home.homeCardsBlock
 import com.dynamicruntime.common.home.homeMenuBlock
 import com.dynamicruntime.common.home.homeSchema
 import com.dynamicruntime.common.simulation.simulationSchema
@@ -325,7 +326,7 @@ class CommonComponent : ComponentDefinition {
     }
 
     /** The app-bar menu, registered as a UiBlock (issue #458) so its items can be varied without an `if`. */
-    override fun uiBlocks(cxt: KdrCxt): List<UiBlockSource> = listOf(homeMenuBlock())
+    override fun uiBlocks(cxt: KdrCxt): List<UiBlockSource> = listOf(homeMenuBlock(), homeCardsBlock())
 
     /** The README and the repo docs it links to (issue #492), served in-app and offered on the Documents list. */
     override fun docs(cxt: KdrCxt): List<MarkdownDocDef> = coreDocs()

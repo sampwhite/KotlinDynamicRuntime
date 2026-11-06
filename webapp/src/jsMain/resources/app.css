@@ -1533,6 +1533,15 @@ textarea.json-edit.json-field { min-height: 4.5rem; }
 .public-demo h3 { margin: 0 0 4px; }
 .public-demo ul { margin: 6px 0 10px; padding-left: 20px; }
 .public-demo-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+/* The home cards (issue #1636): under the copy, a panel each for what this caller can do next -- its words, a row of
+   links, and its one button. Side by side where the page is wide enough, so a few short cards do not make a long page. */
+.home-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 0 16px;
+    align-items: start;
+}
+.home-card-links { display: flex; flex-wrap: wrap; gap: 4px 16px; }
 .public-accounts { list-style: none; padding: 0; margin: 8px 0 0; }
 .public-accounts li { display: flex; gap: 12px; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--border); }
 .public-accounts li span { flex: 1; }

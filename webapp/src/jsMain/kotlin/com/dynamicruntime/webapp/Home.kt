@@ -154,6 +154,8 @@ val Home = FC<Props> {
                                 Markdown { source = it; linkResolver = copyLinks }
                             }
                         }
+                        // The home cards (issue #1636): what this caller can do next, as the backend decided for them.
+                        HomeCards { cards = current.cards }
                         // The public home page (issue #1324): for someone signed in to `public` -- never a visitor who
                         // has not signed in, though they act in `public` too -- what they can do next.
                         if (isPublicHome(current.user)) {

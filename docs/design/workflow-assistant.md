@@ -275,6 +275,13 @@ administrator while `assistant:usable` holds -- so never to a caller every assis
 after Reports. Core never names the cfact, which exists only while the module is loaded, and a client's menu editor can
 put the entry back to it, "As shipped". The operator's page, `/wa/operator/assistant`, is offered the same way under Operator.
 
+Home says so too (issue #1636), with two home cards the module overlays on `homeCards`. One is offered to the same
+caller as the menu entry and opens the page, its button reading "Switch on the assistant" while it is off and the person
+may switch it on. The other is offered to a person signed in to `public`, where the deployment offers the assistant to
+self-serve clients (the module's node fact `assistant:selfServeOffered`: a model, and `KDR_ASSISTANT_SELF_SERVE`), and
+gives it as a reason to create a client. The create card then says that the page moves to the assistant once the
+client is made.
+
 Before anything is sent the page reads `GET /clientAdmin/assistant/status`: whether the assistant is on, whether the
 client has a sandbox, whether the caller is in it, the month's use **as a share** of the budget -- never the amount,
 which is the operator's -- when it resets (the first of next month in UTC, shown in the client's zone), and the data

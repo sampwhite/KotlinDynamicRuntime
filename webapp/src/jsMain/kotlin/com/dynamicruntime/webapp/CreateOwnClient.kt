@@ -256,7 +256,20 @@ external interface CreateOwnClientCardProps : Props {
     var workflowsNote: String?
     /** The code-defined templates a new client may start from ([HomeConfig.selfServeTemplates]); empty for none. */
     var templates: List<SelfServeTemplate>?
+    /**
+     * Whether a client made here comes with the workflow assistant (issue #1636): the deployment offers it to self-serve
+     * clients, which the shell config says by sending the assistant module's card for a public administrator
+     * ([ownClientAssistantOffered]).
+     */
+    var assistantOffered: Boolean?
 }
+
+/**
+ * Whether a client a person makes from the public home page comes with the workflow assistant (issue #1636): among
+ * [cards], the assistant module's card for a public administrator, which it sends only where the deployment offers the
+ * assistant to self-serve clients. Pure, and covered under `jsNodeTest`.
+ */
+fun ownClientAssistantOffered(cards: List<HomeCard>): Boolean = cards.any { it.id == ASST.createHomeCard }
 
 /**
  * A person's own client, from the home page (issue #1228), for a caller signed in to `public`. Until they have made
@@ -339,7 +352,14 @@ val CreateOwnClientCard = FC<CreateOwnClientCardProps> { props ->
                     ul {
                         li { +"Its id is made from the name you give it." }
                         li { +"It is on the free plan." }
-                        li { +"You become its administrator, and the page moves there once it is made." }
+                        li {
+                            +(if (props.assistantOffered == true) {
+                                "You become its administrator, and the page moves to the workflow assistant once it is " +
+                                    "made, to help you build its forms and workflows."
+                            } else {
+                                "You become its administrator, and the page moves there once it is made."
+                            })
+                        }
                         li { +"A person creates one; once yours is made, this card opens it." }
                     }
                     textField("Name", name, disabled = busy, placeholder = "The name people see", maxLength = 80) { name = it }

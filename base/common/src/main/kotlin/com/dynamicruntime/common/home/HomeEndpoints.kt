@@ -114,6 +114,29 @@ fun homeSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.home") {
         }
     }
 
+    // One home card (issue #1636): what Home shows this caller beyond its copy -- see `homeCardsBlock`.
+    type(HTYPE.homeCardLink) {
+        type = SCT.kObject
+        property(HCARD.linkLabel, "The link's words.", required = true)
+        property(UIB.action, "The frontend page id the link opens (a route).", required = true) { anyValue() }
+    }
+    type(HTYPE.homeCard) {
+        type = SCT.kObject
+        property(HFLD.id, "Stable id for this card (see HCARD); what an overlay names to change it.", required = true)
+        property(HCARD.title, "The card's heading.")
+        property(HCARD.text, "The card's body, as Markdown.")
+        property(UIB.action, "The frontend page id the card's primary button opens (a route).") { anyValue() }
+        property(HCARD.actionLabel, "The words on the card's primary button.")
+        property(HCARD.links, "Further links, drawn under the card's text.") {
+            type = SCT.array
+            items { ref(HTYPE.homeCardLink) }
+        }
+        property(
+            HCARD.kind,
+            "The live body the card draws, which the webapp reads when it draws the card; absent for a card of words alone.",
+        )
+    }
+
     // UserInfo (declared with UserProfile) describes who the caller is, for the menu's signed-in label.
     UserProfile.defineInfoType(this)
     UserChoice.defineInfoType(this)
@@ -177,6 +200,10 @@ fun homeSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.home") {
             property(HFLD.menu, "The app-bar menu items for this caller, in display order.", required = true) {
                 type = SCT.array
                 items { ref(HTYPE.menuItem) }
+            }
+            property(HCARD.cards, "The home cards for this caller (issue #1636), in display order.", required = true) {
+                type = SCT.array
+                items { ref(HTYPE.homeCard) }
             }
             property(HFLD.userInfo, "Who the caller is (the anonymous profile when signed out).", required = true) {
                 ref(UserProfile.infoTypeName)
@@ -301,6 +328,7 @@ fun homeSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.home") {
             UIC.state to buildMap {
                 put(HFLD.links, homeLinksFor(c))
                 put(HFLD.menu, resolvedMenu(c))
+                put(HCARD.cards, resolvedHomeCards(c))
                 put(HFLD.userInfo, c.userProfile.toUserInfo())
                 // The switcher's list rides the shell config (issue #749), which the bar already re-reads on
                 // every refresh generation -- a sign-in, a switch -- so it needs no fetch of its own. An edge

@@ -2,6 +2,7 @@ package com.dynamicruntime.webapp
 
 import com.dynamicruntime.common.context.UserProfile
 import com.dynamicruntime.common.home.HEP
+import com.dynamicruntime.common.home.HCARD
 import com.dynamicruntime.common.home.HFEAT
 import com.dynamicruntime.common.home.HFLD
 import com.dynamicruntime.common.uiblock.UIB
@@ -142,6 +143,8 @@ class HomeConfig(
      * Design View (the kernel's `PFRAG`) -- by file id, as the shell's config names them after its own; see [usePageCopy].
      */
     val pageFragments: Map<String, FragmentRef> = emptyMap(),
+    /** The home cards for this caller (issue #1636), in the order Home draws them; see [HomeCards]. */
+    val cards: List<HomeCard> = emptyList(),
 )
 
 /**
@@ -212,6 +215,7 @@ fun homeConfigFrom(config: UiConfig): HomeConfig {
         imagePaths = componentImagePathsFrom(config.state[HFLD.imagePaths]),
         timeZone = (config.state[HFLD.timeZone] as? String)?.ifBlank { null },
         timeZoneLabel = (config.state[HFLD.timeZoneLabel] as? String)?.ifBlank { null },
+        cards = homeCardsFrom(config.state[HCARD.cards]),
     )
 }
 
