@@ -100,6 +100,7 @@ class FormWorkflow(
  */
 fun formWorkflowsOf(states: List<Map<String, Any?>>, phaseOf: (String) -> WfPhase?): List<FormWorkflow> {
     val engaged = states
+        .asSequence()
         .filter { it[GE.traitId].toOptStr() == WFS.workflowEngagement }
         .map { it[GE.data].toJsonMapOrEmpty() }
         .filter { it[WFS.engaged] == true }
