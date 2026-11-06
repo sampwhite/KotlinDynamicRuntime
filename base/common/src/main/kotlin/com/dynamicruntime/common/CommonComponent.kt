@@ -31,6 +31,7 @@ import com.dynamicruntime.common.context.BOOT
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.fileref.FileRefService
 import com.dynamicruntime.common.fileref.clientFileRefSchema
+import com.dynamicruntime.common.filestore.FSDBG
 import com.dynamicruntime.common.filestore.FileStoreService
 import com.dynamicruntime.common.filestore.fileStoreOperatorSchema
 import com.dynamicruntime.common.flavor.FLV
@@ -359,27 +360,31 @@ class CommonComponent : ComponentDefinition {
      * find out about during an incident. `sample` is the reference syntax file, shown nowhere, and declared so.
      */
     override fun fragments(cxt: KdrCxt): List<FragmentSource> =
-        fragmentFiles(AFRAG.auth, shownOn = "the sign-in, register and claim pages") +
-            fragmentFiles(AFRAG.profile, shownOn = "the profile page") +
-            fragmentFiles(HFRAG.home, shownOn = "the app bar and home page, the forms listing and the Documents page, and every \"What is this?\" link") +
+        buildList {
+            addAll(fragmentFiles(AFRAG.auth, shownOn = "the sign-in, register and claim pages"))
+            addAll(fragmentFiles(AFRAG.profile, shownOn = "the profile page"))
+            addAll(fragmentFiles(HFRAG.home, shownOn = "the app bar and home page, the forms listing and the Documents page, and every \"What is this?\" link"))
             // The pages with no UI-config of their own (issue #1337), named by the home config after its own file.
-            fragmentFiles(PFRAG.clients, shownOn = "the Clients page") +
-            fragmentFiles(PFRAG.reports, shownOn = "the Reports page") +
-            fragmentFiles(PFRAG.design, shownOn = "Design View's inspector") +
-            fragmentFiles(PFRAG.users, shownOn = "the Users page") +
-            fragmentFiles(PFRAG.catalog, shownOn = "the endpoint catalog page") +
-            fragmentFiles(FRAG.errors, shownOn = "error messages") +
-            fragmentFiles(FRAG.sample) +
+            addAll(fragmentFiles(PFRAG.clients, shownOn = "the Clients page"))
+            addAll(fragmentFiles(PFRAG.reports, shownOn = "the Reports page"))
+            addAll(fragmentFiles(PFRAG.design, shownOn = "Design View's inspector"))
+            addAll(fragmentFiles(PFRAG.users, shownOn = "the Users page"))
+            addAll(fragmentFiles(PFRAG.catalog, shownOn = "the endpoint catalog page"))
+            addAll(fragmentFiles(FRAG.errors, shownOn = "error messages"))
+            addAll(fragmentFiles(FRAG.sample))
             // The auth mails (issue #773): private copy, read by `MailCopy` rather than delivered.
-            backendFragmentFiles(AFRAG.mail, shownOn = "the mails the sign-in and invitation flows send")
+            addAll(backendFragmentFiles(AFRAG.mail, shownOn = "the mails the sign-in and invitation flows send"))
+        }
 
     /**
-     * The `_debug` words core reads (issue #1334): the request pipeline's own, the catalog's and the gedra layer's.
+     * The `_debug` words core reads (issue #1334): the request pipeline's own, the catalog's, the gedra layer's, and the
+     * file store's (issue #1650).
      * Core loads on every node, so a word the request pipeline checks is declared wherever it is checked.
      */
     override fun debugTags(cxt: KdrCxt): List<DebugTagDef> = listOf(
         RLOG.captureLogs,
         SQLDBG.logSql,
+        FSDBG.logFileStore,
         RequestHandler.explainError,
         SS.explainAccess,
         SS.explainInput,

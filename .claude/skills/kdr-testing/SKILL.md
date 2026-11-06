@@ -362,6 +362,13 @@ an address masked, a long value abbreviated). It is logging switched on for one 
 a node logging at info the lines reach none of the node's sinks, so pair it with `captureLogs` to read them:
 `_debug=logSql,captureLogs`.
 
+`_debug=logFileStore` (issue #1650) does the same for the file store: a line per call the request makes, at debug on
+the `fileStore` topic, naming the store, the operation (`put`, `get`, `meta`, `delete`, or `list`), the bucket and key,
+what came of it, and **how long it took** -- `File store (s3) meta web-assets/clients/acme/web/favicon: absent, 41.2 ms`.
+On S3 a call is a network round trip, so this is how to see where a slow request's time went. A read answered from a
+memo never reaches the store and logs nothing. Pair it with `captureLogs` too, and with `logSql` to see both kinds of
+I/O at once.
+
 ## Probing a running instance (`kdr-probe`)
 
 `bin/kdr-probe` drives a **running** server as a chosen caller (issue #215). Its callers sign in through `becomeUser`
