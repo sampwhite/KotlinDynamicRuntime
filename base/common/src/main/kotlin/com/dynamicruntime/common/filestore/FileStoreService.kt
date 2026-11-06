@@ -1,7 +1,9 @@
 package com.dynamicruntime.common.filestore
 
+import com.dynamicruntime.common.app.DBGK
 import com.dynamicruntime.common.context.ACFG
 import com.dynamicruntime.common.context.AppPaths
+import com.dynamicruntime.common.context.DebugTagDef
 import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.ENVGRP
 import com.dynamicruntime.common.context.EnvVarDef
@@ -26,6 +28,32 @@ import java.io.File
 
 /** Topic logger for the file store (placed beside the code that owns the `"fileStore"` topic). */
 object LogFileStore : KdrLogger("fileStore")
+
+/** The file store's `_debug` word (issue #1650). */
+object FSDBG {
+    /**
+     * Logs every call the request makes to the file store, at debug on the `fileStore` topic, with how long it took:
+     * logging turned on for one request rather than for the node, as `logSql` is for statements. A store call can be a
+     * network round trip (S3), so the time is the point. On a node logging at info the lines reach no sink of the
+     * node's, but a request capturing its log lines (`captureLogs`) keeps them. A read answered from a memo never
+     * reaches the store, and so logs nothing.
+     */
+    val logFileStore = DebugTagDef(
+        "logFileStore",
+        "Logs each file store call the request makes, with what it found and how long it took, at debug. Pair with " +
+            "captureLogs.",
+        DBGK.log,
+    )
+
+    /**
+     * The line [logFileStore] writes for one call: the store it went to ([FileStore.providerType]), the operation, the
+     * bucket and key (a listing's prefix), what came of it, and its duration in milliseconds.
+     */
+    fun callLine(store: String, operation: String, bucket: String, key: String, outcome: String, elapsedNanos: Long): String =
+        "File store ($store) $operation $bucket/$key: $outcome, ${"%.1f".format(elapsedNanos / nanosPerMs)} ms"
+
+    private const val nanosPerMs = 1_000_000.0
+}
 
 /** Environment variables of the file store. */
 object FSENV {
@@ -302,7 +330,7 @@ class FileStoreService : ServiceInitializer {
                 extra = extra,
             ).let { FileMeta.fromFileText(it.toFileText()) }
                 ?: throw KdrException("The metadata of the file '$key' in the bucket '$bucket' could not be written out and read back.")
-            store.put(cxt, bucket, key, bytes, meta)
+            logged(cxt, "put", bucket, key, { "stored, ${meta.size} bytes" }) { store.put(cxt, bucket, key, bytes, meta) }
             return meta
         }
 
@@ -319,11 +347,11 @@ class FileStoreService : ServiceInitializer {
         fun get(cxt: KdrCxt, bucket: String, key: String): StoredFile? {
             declared(bucket)
             checkedKey(key)
-            var read = store.get(cxt, bucket, key) ?: return null
+            var read = storeGet(cxt, bucket, key) ?: return null
             for (pauseMs in rereadPausesMs) {
                 if (read.bytes.sha256Hex() == read.meta.hash) return read
                 Thread.sleep(pauseMs)
-                read = store.get(cxt, bucket, key) ?: return null
+                read = storeGet(cxt, bucket, key) ?: return null
             }
             if (read.bytes.sha256Hex() == read.meta.hash) return read
             throw KdrException.mkFileIo(
@@ -336,13 +364,17 @@ class FileStoreService : ServiceInitializer {
         /** The metadata of the file at [key] in [bucket], without its content; null when there is no such file. */
         fun meta(cxt: KdrCxt, bucket: String, key: String): FileMeta? {
             declared(bucket)
-            return store.meta(cxt, bucket, checkedKey(key))
+            checkedKey(key)
+            return logged(cxt, "meta", bucket, key, { it?.let { m -> "found, ${m.size} bytes" } ?: "absent" }) {
+                store.meta(cxt, bucket, key)
+            }
         }
 
         /** Removes the file at [key] in [bucket], and its metadata; whether there was one. */
         fun delete(cxt: KdrCxt, bucket: String, key: String): Boolean {
             declared(bucket)
-            return store.delete(cxt, bucket, checkedKey(key))
+            checkedKey(key)
+            return logged(cxt, "delete", bucket, key, { if (it) "removed" else "absent" }) { store.delete(cxt, bucket, key) }
         }
 
         /**
@@ -369,7 +401,7 @@ class FileStoreService : ServiceInitializer {
             }
             // One more than the limit is asked for, which is how "there are more" is told from "exactly that many".
             val asked = if (limit == Int.MAX_VALUE) limit else limit + 1
-            val found = store.list(cxt, bucket, prefix, asked)
+            val found = logged(cxt, "list", bucket, prefix, { "${it.size} files" }) { store.list(cxt, bucket, prefix, asked) }
             if (ownFolder == null && found.any { it.key.startsWith(FNAME.clientsFolder) }) {
                 throw KdrException(
                     "The bucket '$bucket' holds clients' files, which a listing outside any client's folder does not take: list a " +
@@ -385,6 +417,39 @@ class FileStoreService : ServiceInitializer {
                 )
             }
             return found
+        }
+
+        /** One read of the file at [key], with its content, as [get] makes it -- once, or again while a replace lands. */
+        private fun storeGet(cxt: KdrCxt, bucket: String, key: String): StoredFile? =
+            logged(cxt, "get", bucket, key, { it?.let { f -> "found, ${f.bytes.size} bytes" } ?: "absent" }) {
+                store.get(cxt, bucket, key)
+            }
+
+        /**
+         * Runs [call], a call to the store, and logs it with its [outcome] and duration when the request asked for
+         * [FSDBG.logFileStore] and the fence admits it; a call that throws is logged as failed, and the throw goes on.
+         * Anything else runs [call] alone.
+         */
+        private inline fun <T> logged(
+            cxt: KdrCxt,
+            operation: String,
+            bucket: String,
+            key: String,
+            outcome: (T) -> String,
+            call: () -> T,
+        ): T {
+            if (!cxt.hasDebugDiagnostic(FSDBG.logFileStore)) return call()
+            val start = System.nanoTime()
+            val result = try {
+                call()
+            } catch (e: Exception) {
+                val line = FSDBG.callLine(store.providerType, operation, bucket, key, "failed (${e.message})", System.nanoTime() - start)
+                LogFileStore.debug(cxt) { line }
+                throw e
+            }
+            val line = FSDBG.callLine(store.providerType, operation, bucket, key, outcome(result), System.nanoTime() - start)
+            LogFileStore.debug(cxt) { line }
+            return result
         }
     }
 

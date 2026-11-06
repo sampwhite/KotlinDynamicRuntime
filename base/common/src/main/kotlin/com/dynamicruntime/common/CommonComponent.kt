@@ -31,6 +31,7 @@ import com.dynamicruntime.common.context.BOOT
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.fileref.FileRefService
 import com.dynamicruntime.common.fileref.clientFileRefSchema
+import com.dynamicruntime.common.filestore.FSDBG
 import com.dynamicruntime.common.filestore.FileStoreService
 import com.dynamicruntime.common.filestore.fileStoreOperatorSchema
 import com.dynamicruntime.common.flavor.FLV
@@ -374,12 +375,14 @@ class CommonComponent : ComponentDefinition {
             backendFragmentFiles(AFRAG.mail, shownOn = "the mails the sign-in and invitation flows send")
 
     /**
-     * The `_debug` words core reads (issue #1334): the request pipeline's own, the catalog's and the gedra layer's.
+     * The `_debug` words core reads (issue #1334): the request pipeline's own, the catalog's, the gedra layer's, and the
+     * file store's (issue #1650).
      * Core loads on every node, so a word the request pipeline checks is declared wherever it is checked.
      */
     override fun debugTags(cxt: KdrCxt): List<DebugTagDef> = listOf(
         RLOG.captureLogs,
         SQLDBG.logSql,
+        FSDBG.logFileStore,
         RequestHandler.explainError,
         SS.explainAccess,
         SS.explainInput,
