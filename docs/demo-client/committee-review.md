@@ -82,6 +82,7 @@ Here is the whole `review` bundle:
             "id": "recordReview",
             "$comment": "Only a committee member may save this task; the speaker sees it read-only.",
             "label": "Record the review",
+            "keyword": "review",
             "traits": [{ "traitId": "review", "required": true }],
             "saves": [{ "id": "saveReview", "label": "Save the review", "kind": "edit" }],
             "functions": [{ "fn": "userHasLabel", "label": "committee", "cfact": "kdr:reviewer" }],
@@ -123,7 +124,7 @@ Here is the whole `review` bundle:
 }
 ```
 
-Four things are new. The reference explains each in general under
+Five things are new. The reference explains each in general under
 [Facts and eligibility](reference.md#facts-and-eligibility) and
 [Who may work on a task](reference.md#who-may-work-on-a-task); here is what they do for the review.
 
@@ -141,6 +142,11 @@ while the talk is in the review, the `review` trait may be changed only by whoev
 administrator overriding it. Its `when` is the condition under which it holds, and `#always` means for as long as the
 talk is in the workflow.
 
+**A search keyword.** The `recordReview` task's `keyword` says what kind of step it is: `review`, a step that waits on
+someone to look the talk over. While a step carrying it is the workflow's next step, the forms list shows the talk as
+**Needs Review**. The `accept` task carries `review` too without saying so, as every approval task does, so the talk
+needs review from the moment it enters the workflow until it is accepted.
+
 **An approval task.** The `accept` task collects no traits and offers no saves; its `approval` is a button. Pressing
 it records who accepted the talk and when, and asserts the fact `talkAccepted`, which the client declared in its
 `base` bundle. The task's `display` chooses what the step shows, trying its branches in order: once accepted, who
@@ -150,9 +156,9 @@ button; for anyone else, a line saying a committee member accepts the talk.
 **A singleton.** The `singletons` list turns the workflow's own fact into one about the whole form: once
 `talkAccepted` holds, the form has `kdr:finished`, and the forms list shows the talk as **Finished**. That is a
 different thing from the workflow finishing, which it does when its tasks are complete, as any workflow does. The
-singleton is what lets a workflow decide that the *talk* is done. The framework has three such facts a workflow
-may map its own onto: `kdr:needsReview` and `kdr:finished`, which the forms list shows as **Needs Review** and
-**Finished**, and `kdr:ownerOnly`, which keeps a form to its owner, its reviewers, and administrators.
+singleton is what lets a workflow decide that the *talk* is done. The framework has two such facts a workflow may
+map its own onto: `kdr:finished`, which the forms list shows as **Finished**, and `kdr:ownerOnly`, which keeps a form to
+its owner, its reviewers, and administrators. **Needs Review** is not one of them: the `review` keyword gives it.
 
 ## What the speaker sees
 
@@ -169,7 +175,7 @@ abstract to edit it, the form leaves off the note for the organizers, as the spe
 [Abstract](abstract.md)).
 
 On a talk whose core details are done, the member opens **Committee review** and presses **Engage**, as the speaker did
-for the abstract. The **Record the review** step is then editable: a **Score** and **Notes for the speaker**, and a
+for the abstract. The talk's status in the forms list is then **Needs Review**. The **Record the review** step is editable: a **Score** and **Notes for the speaker**, and a
 **Save the review** button. Once saved, the **Accept the talk** step offers its button. After it is pressed, the step
 reads *Accepted by* and who accepted it, and the talk's status in the forms list is **Finished**.
 

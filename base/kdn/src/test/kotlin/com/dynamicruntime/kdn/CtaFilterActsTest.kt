@@ -77,8 +77,8 @@ class CtaFilterActsTest : StringSpec({
         trait("NotesEntry", "notes", setOf(GedraDataType.formDoc), "What was seen.") { property("text", "The notes.") }
         trait("CheckEntry", "check", setOf(GedraDataType.formDoc), "The reviewer's check.") { property("verdict", "The verdict.") }
         workflow("siteReview", WfEntry.normal) {
-            // Waiting on a review, and kept to its owner but for the reviewer of the current work, while engaged.
-            singleton(WSC.needsReview, "#always")
+            // Kept to its owner but for the reviewer of the current work, while engaged; waiting on a review while the
+            // approval is its call to action, since an approval carries the `review` keyword (issue #1596).
             singleton(WSC.ownerOnly, "#always")
             task("describe", "Describe the visit") { trait("notes"); save("saveNotes", "Save", WfSaveKind.edit) }
             task("approve", "Approve the visit") {

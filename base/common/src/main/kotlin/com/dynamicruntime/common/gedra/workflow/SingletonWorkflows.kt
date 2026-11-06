@@ -76,6 +76,8 @@ object SingletonWorkflows {
                         add(WFC.isCta)
                         if (complete) add(WFC.taskComplete)
                         if (passes) add(WFC.passesCtaFilter)
+                        // The workflow's CTA keyword fact (issue #1596), as the state stores the keyword.
+                        CTAK.of(data[WFS.ctaKeyword].toOptStr())?.let { add(it.workflowCfact) }
                     }
                     out[WFS.ctaTask] = task.id
                     out[SWF.actionText] = actionText(task, callerFacts + taskFacts + viewerFacts, cfacts::parse, ::label)

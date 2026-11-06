@@ -111,6 +111,14 @@ path alone does not narrow an unrestricted scope). The rules that follow from th
   in locals and publishes them together, so a failed switch leaves the previous surface whole rather than X's
   controls over the old rows.
 
+## A status a search keyword sets reads in the client's words (issue #1596)
+
+The listing's summary carries `ctaKeywords`: each search keyword's words (verb, filter label, column header, report
+label, status text), resolved on the backend for the caller's client, so a client's overlay of the `home` file's
+`ctaReview` namespace is what shows. The Status column's chip and the status filter read a status a keyword sets --
+Needs Review is `review`'s -- through `formStatusLabel`, falling back to `FormStatus.label` before the summary arrives.
+The other words wait for the pages that show them (#1597, #1598, #1600).
+
 ## A column's filter and cells follow its field (issues #1500, #1508)
 
 The listing's summary carries each column's `choices` when its `display` is a lone `${field}` over a field that

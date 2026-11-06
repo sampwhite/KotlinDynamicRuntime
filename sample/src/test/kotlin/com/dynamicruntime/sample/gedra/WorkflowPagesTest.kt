@@ -74,14 +74,16 @@ class WorkflowPagesTest : StringSpec({
         user.postData(engage, mapOf(GDF.gedraId to engaged, GDF.workflowId to SW.auditReview))
 
         val agg = aggregate(user)
-        // The unready form is not eligible for the audit, so it counts nowhere; the follow-up takes all three.
+        // The unready form is not eligible for the audit, so it counts nowhere. The follow-up takes the other two: the
+        // engaged form waits on the review (its call to action carries `review`, issue #1596), which holds the
+        // follow-up off.
         counts(agg[SW.auditReview]) shouldBe listOf(1L, 1L, 0L)
-        counts(agg[SW.siteFollowUp]) shouldBe listOf(3L, 0L, 0L)
+        counts(agg[SW.siteFollowUp]) shouldBe listOf(2L, 0L, 0L)
 
         drill(user, SW.auditReview, WfColumnCategory.eligible) shouldBe listOf(ready)
         drill(user, SW.auditReview, WfColumnCategory.engaged) shouldBe listOf(engaged)
         drill(user, SW.auditReview, WfColumnCategory.finished) shouldBe emptyList()
-        drill(user, SW.siteFollowUp, WfColumnCategory.eligible) shouldContainExactlyInAnyOrder listOf(ready, unready, engaged)
+        drill(user, SW.siteFollowUp, WfColumnCategory.eligible) shouldContainExactlyInAnyOrder listOf(ready, unready)
         // No state: every form whose column shows the workflow -- the ineligible one included.
         drill(user, SW.auditReview) shouldContainExactlyInAnyOrder listOf(ready, unready, engaged)
         // A workflow the client does not have matches nothing, as an unknown search value does.

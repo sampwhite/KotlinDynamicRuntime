@@ -160,14 +160,24 @@ fun workflowStateConfig(cxt: KdrCxt): GedraConfig = gedraConfig(cxt, WFS.stateBu
 /**
  * Declares the framework singleton cfacts ([WSC]) globally (issue #784), so every scope's expressions -- an
  * eligibility test, a `g-visibleWhen`, a search -- may name them, and so the frontend receives them. Declared by
- * the framework rather than by any workflow, since the list is hardwired: a workflow may only emit these.
+ * the framework rather than by any workflow, since the list is hardwired: a workflow may only emit these. With them,
+ * each search keyword's workflow cfact (issue #1596), which a workflow's display branches may name.
  */
 fun addWorkflowSingletonCFacts(collector: SchemaCollector) {
+    for (keyword in CTAK.keywords) {
+        collector.addCFact(
+            CFactDef(
+                keyword.workflowCfact, WFGRP.workflow,
+                "True, about a workflow, while its call to action carries the `${keyword.name}` search keyword -- in the " +
+                    "workflow's own facts, for its display branches. The form's status for it is `${keyword.statusCfact}`.",
+            ),
+        )
+    }
     collector.addCFact(
         CFactDef(
             WSC.needsReview, WSC.group,
-            "True, about a form, when a workflow it is engaged with is waiting on a review -- contributed by that " +
-                "workflow's singleton rule.",
+            "True, about a form, when a workflow it is engaged with is waiting on a review: its call to action carries " +
+                "the `review` search keyword, which an approval task carries without saying so.",
             toFrontend = true,
         ),
     )
@@ -210,12 +220,14 @@ fun addWorkflowSingletonCFacts(collector: SchemaCollector) {
  * A declared workflow's entry also carries, in this order of computation:
  *
  *  1. **Its own cfacts** (issue #784): what its `cfactCalc` functions conclude from the form's data, plus the
- *     configured cfact of each approval task a reviewer has approved (issue #787) -- [WFS.cfacts], per workflow
- *     and so kept on its entry, not in the form's set.
+ *     configured cfact of each approval task a reviewer has approved (issue #787), plus its CTA keyword's
+ *     ([CtaKeyword.workflowCfact], `kdr:ctaReview`, issue #1596) -- [WFS.cfacts], per workflow and so kept on its
+ *     entry, not in the form's set. The CTA is worked out first, for that.
  *  2. **The singleton cfacts it contributes** ([WFS.singletonCfacts]): each of its [WfDef.singletons] rules
  *     whose condition matches its *current* cfacts -- the form's (from the derivers before this one) plus its
- *     own. Only an **engaged** workflow contributes; the union is emitted as a [GT.cfacts] contribution, which
- *     the recompute merges into the form's one set beside the core details workflow's.
+ *     own -- and the status its CTA's search keyword sets ([CtaKeyword.statusCfact]: `review` sets Needs Review,
+ *     issue #1596). Only an **engaged** workflow contributes; the union is emitted as a [GT.cfacts] contribution,
+ *     which the recompute merges into the form's one set beside the core details workflow's.
  *  3. **Its eligibility** (issue #783): [WFS.eligible] and the ids of the tests the form fails, against the
  *     form's cfacts **plus the singletons of every *other* engaged workflow** -- so one workflow can gate on
  *     another (a form already `finished` somewhere else, say). Never its own: a workflow's own `finished` must
@@ -269,16 +281,32 @@ object WorkflowStateDeriver : GedraStateDeriver {
         val registry = SchemaService.get(cxt).cfactsFor(state.row.client)
         val formFacts = WorkflowEligibility.formFacts(state.derivedThisPass)
 
-        // Each declared workflow's own cfacts, then the singletons its rules emit over its current cfacts.
         // Approvals (issue #787) are asserted entries the recompute preserves; read them once for every workflow.
         val approvals = declared.mapValues { (id, _) -> WorkflowApprovals.of(state.currentState, id) }
+        // Each engaged workflow's CTA (issue #785) and what it carries (issue #1594), from the form's data now: first,
+        // since its search keyword (issue #1596) gives the workflow a fact of its own and the form a status.
+        val ctas = declared.filterKeys { it in engaged }.mapValues { (id, w) ->
+            WorkflowTaskStatus.ctaOf(cxt, state.row.client, w, state.row.entries, approvals.getValue(id).keys)?.let { (task, status) ->
+                Triple(task, status, ctaAssignment(cxt, registry, id, task, state.row.entries))
+            }
+        }
+        // The keyword the CTA carries, when it is one on the list.
+        fun keywordOf(workflowId: String): CtaKeyword? = CTAK.of(ctas[workflowId]?.third?.keyword)
+        // Each declared workflow's own cfacts: its functions', its approvals', and its CTA keyword's (`kdr:ctaReview`).
         val own = declared.mapValues { (id, w) ->
             runCfactCalc(cxt, w.def, state.row.entries, state.row.client) +
-                WorkflowApprovals.cfacts(w.def, approvals.getValue(id))
+                WorkflowApprovals.cfacts(w.def, approvals.getValue(id)) +
+                listOfNotNull(keywordOf(id)?.workflowCfact)
         }
-        // A frozen workflow still contributes what it last did: the form reads Finished after the review closes.
+        // The singletons an engaged workflow contributes: what its rules emit over its current cfacts, and the status its
+        // CTA keyword sets (`review` sets Needs Review) -- the one way a form comes to need review. A frozen workflow
+        // still contributes what it last did: the form reads Finished after the review closes.
         val singletons = declared.mapValues { (id, w) ->
-            if (id in engaged) WorkflowSingletons.emitted(registry, w.def, formFacts + own.getValue(id)) else emptyList()
+            if (id in engaged) {
+                WorkflowSingletons.emitted(registry, w.def, formFacts + own.getValue(id)) + listOfNotNull(keywordOf(id)?.statusCfact)
+            } else {
+                emptyList()
+            }
         } + frozen.mapValues { (_, entry) ->
             entry[WFS.singletonCfacts].toJsonListOrEmpty().mapNotNull { it.toOptStr() }
         }
@@ -298,15 +326,12 @@ object WorkflowStateDeriver : GedraStateDeriver {
                 data[WFS.cfacts] = own.getValue(workflowId).sorted()
                 data[WFS.singletonCfacts] = singletons.getValue(workflowId)
                 if (workflowId in engaged) {
-                    val cta = WorkflowTaskStatus.ctaOf(
-                        cxt, state.row.client, it, state.row.entries, approvals.getValue(workflowId).keys,
-                    )
+                    val cta = ctas[workflowId]
                     data[WFS.tasksDone] = cta == null
-                    cta?.let { (task, status) ->
+                    cta?.let { (task, status, assigned) ->
                         data[WFS.ctaTask] = task.id
                         data[WFS.ctaStatus] = status.toStateMap()
                         // Who may act on it, and what kind of action it is (issue #1594), from the form's data now.
-                        val assigned = ctaAssignment(cxt, registry, workflowId, task, state.row.entries)
                         assigned.keyword?.let { k -> data[WFS.ctaKeyword] = k }
                         // The filter is stored as the rule it is, never as whether anyone passes it.
                         assigned.filterRule?.let { f -> data[WFS.ctaFilterRule] = f }

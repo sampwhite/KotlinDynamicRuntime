@@ -20,7 +20,9 @@ import com.dynamicruntime.common.gedra.workflow.formStatusOf
 import com.dynamicruntime.common.gedra.workflow.PFO
 import com.dynamicruntime.common.gedra.workflow.WFS
 import com.dynamicruntime.common.gedra.workflow.WfDeclared
+import com.dynamicruntime.common.gedra.workflow.CTKF
 import com.dynamicruntime.common.gedra.workflow.WfApproval
+import com.dynamicruntime.common.gedra.workflow.ctaKeywordWords
 import com.dynamicruntime.common.gedra.workflow.WfTask
 import com.dynamicruntime.common.gedra.workflow.WfEntry
 import com.dynamicruntime.common.gedra.workflow.WFD
@@ -367,6 +369,17 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
             }
         }
     }
+    // A search keyword's words for the caller (issue #1596), as the listing's summary says them.
+    type(CTKF.wordsType) {
+        type = SCT.kObject
+        description = "A search keyword's words, as the caller's client says them."
+        property(CTKF.keyword, "The keyword.", required = true)
+        property(CTKF.verb, "The verb on a link to a call to action carrying it.", required = true)
+        property(CTKF.filterLabel, "The label of the listing's filter for it.", required = true)
+        property(CTKF.columnHeader, "A listing column's header for it.", required = true)
+        property(CTKF.reportLabel, "A report's label for it.", required = true)
+        property(CTKF.statusText, "The text of the form status it sets, as the Status column shows it.", required = true)
+    }
     type(GEP.formDocsSummary) {
         type = SCT.kObject
         description = "What is true of everything the forms listing could return, rather than of one page."
@@ -381,6 +394,10 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
         property(GDF.columns, "The listing's columns, in order: one per trait-usage rule of the client (issue #1323).") {
             type = SCT.array
             items { ref(GEP.listingColumnType) }
+        }
+        property(GDF.ctaKeywords, "Each search keyword's words, in the caller's client's wording (issue #1596).") {
+            type = SCT.array
+            items { ref(CTKF.wordsType) }
         }
     }
 
@@ -478,9 +495,13 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
             // is the row already in hand.
             //
             // And the columns (issue #1323), with the presentation each cell reads through: once here, not on every
-            // row, and always, so a listing that matched nothing still says what its columns are.
+            // row, and always, so a listing that matched nothing still says what its columns are -- as are the search
+            // keywords' words (issue #1596), which never change with the page.
             summary = buildMap {
                 if (columns.isNotEmpty()) put(GDF.columns, columns.map { ListingColumn.of(it).toMap() })
+                // Each search keyword's words (issue #1596), in the caller's client's wording: the Status column's
+                // Needs Review is the `review` keyword's status text.
+                put(GDF.ctaKeywords, ctaKeywordWords(c))
                 if (withStates && request.getOptBool(GDF.withWorkflowSummary) == true) {
                     putAll(FormWorkflowSummary.of(c, svc.statesInScope(c, formDoc, callerScope)))
                 }

@@ -199,13 +199,13 @@ class WorkflowRegistryTest : StringSpec({
     "a singleton rule's condition must parse against the scope's cfacts" {
         fun ruled(cond: String): GedraConfig = client(devCxt, "acme", listOf("kdr:name")) {
             workflow("auditReview", WfEntry.normal) {
-                singleton(WSC.needsReview, cond)
+                singleton(WSC.finished, cond)
                 task("a", "A") { trait("kdr:name"); save("s", "S", WfSaveKind.edit) }
             }
         }
         build(devCxt, listOf(globalTraits(devCxt), ruled("acmeOnly"))).second.shouldBeEmpty()
         val e = shouldThrow<KdrException> { build(devCxt, listOf(globalTraits(devCxt), ruled("acmeOnlee"))) }
-        e.message shouldContain "'${WSC.needsReview}' singleton rule"
+        e.message shouldContain "'${WSC.finished}' singleton rule"
     }
 
     // Approval tasks (issue #787): the cfact an approval emits must be declared in the scope, and its copy rides

@@ -27,6 +27,7 @@ import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.cfact.CFACTS
 import com.dynamicruntime.common.gedra.workflow.CDF
 import com.dynamicruntime.common.gedra.workflow.WFC
+import com.dynamicruntime.common.gedra.workflow.CTAK
 import com.dynamicruntime.common.gedra.workflow.WSC
 import com.dynamicruntime.common.gedra.workflow.WfEntry
 import com.dynamicruntime.common.gedra.workflow.WfSaveKind
@@ -503,6 +504,7 @@ fun confDemoReview(cxt: KdrCxtBase = LiteCxt(), client: String = ConfDemo.client
                 "committee reviews it.", comment = "Reviewers need the track.")
             task(ConfDemo.recordReviewTask, "Record the review") {
                 comment = "Only a committee member may save this task; the speaker sees it read-only."
+                keyword(CTAK.review)
                 trait(ConfDemo.review)
                 save(ConfDemo.saveReview, "Save the review", WfSaveKind.edit)
                 function(userHasLabel { label = ConfDemo.committeeLabel })

@@ -125,6 +125,8 @@ val FormsPage = FC<FormsPageProps> { props ->
     // The listing's columns (issue #1323), from every page's summary: what the table's display columns are, and the
     // presentation each cell -- and an open form's heading -- reads through.
     var listingColumns by useState<List<ListingColumn>>(emptyList())
+    // Each search keyword's words (issue #1596), as the listing last said them: the Status column's Needs Review.
+    var ctaKeywords by useState<List<CtaKeywordWords>>(emptyList())
     // The home file's copy, which the forms pages read (issue #791): what a row with no workflows shows, and the
     // listings' "What is this?" explanations (issue #1337). Empty until read, and if it cannot be.
     var homeCopy by useState(Copy.empty)
@@ -249,6 +251,7 @@ val FormsPage = FC<FormsPageProps> { props ->
             if (withSummary) parseWorkflowSummary(resp[EP.summary]) else null,
             parseScopeUser(resp[EP.summary]),
             ListingColumn.listFrom(resp[EP.summary].toJsonMapOrEmpty()[GDF.columns]),
+            CtaKeywordWords.listFrom(resp[EP.summary].toJsonMapOrEmpty()[GDF.ctaKeywords]),
         )
     }
 
@@ -296,6 +299,7 @@ val FormsPage = FC<FormsPageProps> { props ->
                 scopeAnswer = ScopeAnswer(search[EI.user] as? String, page.scopeUser)
                 page.workflowSummary?.let { listingWorkflows = it }
                 listingColumns = page.columns
+                ctaKeywords = page.ctaKeywords
                 searchError = null
             } catch (e: Throwable) {
                 searchError = userFacingError(e)
@@ -396,6 +400,7 @@ val FormsPage = FC<FormsPageProps> { props ->
                     scopeAnswer = ScopeAnswer(applied[EI.user], page.scopeUser)
                     page.workflowSummary?.let { listingWorkflows = it }
                     listingColumns = page.columns
+                    ctaKeywords = page.ctaKeywords
                 }
                 error = null
                 searchError = null
@@ -971,6 +976,7 @@ val FormsPage = FC<FormsPageProps> { props ->
                         values = searchDraft
                         applied = appliedSearch
                         showCoreDetailsStatus = coreDetailsFilterOffered
+                        this.ctaKeywords = ctaKeywords
                         // What each column's field offers (issue #1500), for its box to suggest.
                         choices = listingColumns.filter { it.choices.isNotEmpty() }.associate { it.columnId to it.choices }
                         panelOpen = filtersOpen
@@ -1065,6 +1071,7 @@ val FormsPage = FC<FormsPageProps> { props ->
                     // home like every other hop.
                     workflowSummary = listingWorkflows
                     columns = listingColumns
+                    this.ctaKeywords = ctaKeywords
                     noWorkflowsCopy = emptyWorkflowsCopy
                     workflowHref = { id, wf, task, edit ->
                         routeHref(workflowPageRoute(id, wf, task, edit, listingPage) + listingContext)

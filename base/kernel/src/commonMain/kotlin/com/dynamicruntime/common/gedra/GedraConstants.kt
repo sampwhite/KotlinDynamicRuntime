@@ -263,6 +263,14 @@ object GDF {
     const val columns = "columns"
 
     /**
+     * In a forms listing's `summary` (issue #1596): **each search keyword's words** for the caller -- its verb, filter
+     * label, column header, report label, and status text ([com.dynamicruntime.common.gedra.workflow.CTKF]) -- resolved
+     * for the caller's client, overlays applied, so a page shows a client's wording for a keyword without a copy lookup
+     * of its own.
+     */
+    const val ctaKeywords = "ctaKeywords"
+
+    /**
      * The document's **owner** as a block of user-type information (issue #580): a `{name?, email}` map keyed
      * by [DUF], attached to a listed row for a caller who may see other users' documents. Absent -- not empty --
      * for an ordinary caller, whose rows are all their own, and on a single read.

@@ -30,6 +30,8 @@ import com.dynamicruntime.common.gedra.presentColumnValue
 import com.dynamicruntime.common.util.ScriptEnv
 import com.dynamicruntime.common.util.parseDateOrNull
 import com.dynamicruntime.common.gedra.workflow.FSV
+import com.dynamicruntime.common.gedra.workflow.CTAK
+import com.dynamicruntime.common.gedra.workflow.CTKF
 import com.dynamicruntime.common.gedra.workflow.SWF
 import com.dynamicruntime.common.gedra.workflow.WFD
 import com.dynamicruntime.common.gedra.workflow.WSC
@@ -159,7 +161,47 @@ class FormsListPage(
     val scopeUser: ScopeUser? = null,
     /** The listing's columns (issue #1323), with the presentation each cell reads through; empty when it has none. */
     val columns: List<ListingColumn> = emptyList(),
+    /** Each search keyword's words in the caller's client's wording (issue #1596); empty when the summary says none. */
+    val ctaKeywords: List<CtaKeywordWords> = emptyList(),
 )
+
+/**
+ * A search keyword's words for the caller (issue #1596), as the forms listing's summary says them: resolved on the
+ * backend for the caller's client, so a client's rewording is what a page shows.
+ */
+class CtaKeywordWords(
+    val keyword: String,
+    val verb: String,
+    val filterLabel: String,
+    val columnHeader: String,
+    val reportLabel: String,
+    val statusText: String,
+) {
+    companion object {
+        /** The summary's [GDF.ctaKeywords] list; one without a keyword is skipped. Pure, under `jsNodeTest`. */
+        fun listFrom(raw: Any?): List<CtaKeywordWords> = raw.toJsonListOfMaps().mapNotNull { m ->
+            CtaKeywordWords(
+                m[CTKF.keyword].toOptStr() ?: return@mapNotNull null,
+                m[CTKF.verb].toOptStr().orEmpty(),
+                m[CTKF.filterLabel].toOptStr().orEmpty(),
+                m[CTKF.columnHeader].toOptStr().orEmpty(),
+                m[CTKF.reportLabel].toOptStr().orEmpty(),
+                m[CTKF.statusText].toOptStr().orEmpty(),
+            )
+        }
+    }
+}
+
+/**
+ * The words [status] reads as (issue #1596): its own label, except a status a search keyword sets -- Needs Review is the
+ * `review` keyword's -- which reads as that keyword's status text in [keywords], when they say one. Pure, under
+ * `jsNodeTest`.
+ */
+fun formStatusLabel(status: FormStatus, keywords: List<CtaKeywordWords>): String {
+    val cfact = status.singletonCfact ?: return status.label
+    return keywords.firstOrNull { CTAK.of(it.keyword)?.statusCfact == cfact }?.statusText?.takeIf { it.isNotBlank() }
+        ?: status.label
+}
 
 /**
  * The forms address's navigation keys -- the page, the open form, the listing a child was opened from, the arrival

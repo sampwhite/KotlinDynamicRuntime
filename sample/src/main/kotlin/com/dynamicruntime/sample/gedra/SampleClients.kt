@@ -31,6 +31,7 @@ import com.dynamicruntime.common.gedra.workflow.PFO
 import com.dynamicruntime.common.gedra.workflow.CDF
 import com.dynamicruntime.common.gedra.workflow.WfEntry
 import com.dynamicruntime.common.gedra.workflow.WFC
+import com.dynamicruntime.common.gedra.workflow.CTAK
 import com.dynamicruntime.common.gedra.workflow.WSC
 import com.dynamicruntime.common.gedra.workflow.WfSaveKind
 import com.dynamicruntime.common.gedra.workflow.computeCFactsFromData
@@ -522,20 +523,20 @@ private fun acmeClient(cxt: KdrCxt): GedraConfig =
             eligibility(SW.coreDetailsDone, CDF.coreDetailsComplete, "%{@t(\"${SF.acmeWf}.${SW.auditReview}.${SW.coreDetailsDone}\")}")
             eligibility(SW.coreDetailsClean, CDF.coreDetailsValid, "Some of the form's entries no longer pass their checks.")
             // The workflow's own cfact (issue #784): an audit whose findings are still open means the site is under
-            // audit. Its own, so it stays on the workflow's state entry rather than in the form's set...
+            // audit. Its own, so it stays on the workflow's state entry rather than in the form's set.
             function(computeCFactsFromData {
                 trait = SC.siteAudit
                 valuePath = SC.findings
                 map(SC.findingsOpen, SC.underAudit)
             })
-            // ...while this rule turns it into the framework's `needsReview` on the form -- for as long as the form
-            // is engaged with the review, since only an engaged workflow contributes.
-            singleton(WSC.needsReview, SC.underAudit)
-            // Not while a review is pending -- which this very workflow's rule above can cause. A workflow's own
-            // singleton never counts against its own eligibility, so an engaged review that raises `needsReview`
-            // stays eligible for itself; it is its peers (the follow-up below) that the pending review holds off.
+            // Not while a review is pending -- which this very workflow causes: both its tasks are review work, so while
+            // either is its call to action the `review` keyword puts `needsReview` on the form (issue #1596). A
+            // workflow's own singletons never count against its own eligibility, so an engaged review stays eligible for
+            // itself; it is its peers (the follow-up below) that the pending review holds off.
             eligibility(SW.noOpenReview, "~${WSC.needsReview}", "A review of this form is already waiting.")
             task(SW.recordAudit, "Record the audit") {
+                // A reviewer's step, so the form waits on a review from the moment it enters the workflow (issue #1596).
+                keyword(CTAK.review)
                 trait(SC.siteAudit)
                 save(SW.saveAudit, "Save the audit", WfSaveKind.edit)
                 // Recorded by a reviewer, not by the form's owner (issue #856): the same label that makes the approval
@@ -544,8 +545,9 @@ private fun acmeClient(cxt: KdrCxt): GedraConfig =
                 function(userHasLabel { label = SC.reviewerLabel })
                 saveWhen(WFC.reviewer)
             }
-            // The approval step (issue #787): once the audit is recorded, a reviewer approves it. Approving records
-            // who and when, and gives the workflow the `acmeAuditApproved` cfact...
+            // The approval step (issue #787): once the audit is recorded, a reviewer approves it -- review work too, which
+            // an approval task carries without saying so. Approving records who and when, and gives the workflow the
+            // `acmeAuditApproved` cfact...
             task(SW.approveAudit, "Approve the audit") {
                 approval(SC.auditApproved, "Read the recorded audit, then approve it.", "Approve the audit")
                 // ...and a reviewer is whoever carries acme's `reviewer` label (issue #786): the `kdr:reviewer` cfact

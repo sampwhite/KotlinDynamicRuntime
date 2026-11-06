@@ -253,8 +253,8 @@ state can outlive a cfact. Those names join the request's facts when an expressi
 - **Locks.** A `WfLock` is active while the form is engaged with its workflow, the workflow is within its lifetime, and
   the lock's `when` expression matches the form's cfacts together with the workflow's stored cfacts and singletons
   (`TraitLocks.heldFor`). Nothing about a lock is stored, so lifting one writes nothing.
-- **Kept to its owner** (#1433). The framework singleton `kdr:ownerOnly`, emitted like `kdr:needsReview` and
-  `kdr:finished` through a normal workflow's singleton rule, lands in the form's `kdr:cfacts`. While it is there, an
+- **Kept to its owner** (#1433). The framework singleton `kdr:ownerOnly`, emitted like `kdr:finished` through a
+  normal workflow's singleton rule (`kdr:needsReview` is the `review` search keyword's, #1596), lands in the form's `kdr:cfacts`. While it is there, an
   **editor** (see [`client-definition.md`](../client-definition.md#users-clients-and-personas)) may change the form only as
   its owner (`kdr:isOwner`, the person rule of the second-person check, #1595) or as a reviewer of an engaged workflow's current task.
   `OwnerOnlyGuard`, a write guard, refuses every other editor's patch, workflow save and delete under the form's lock,
