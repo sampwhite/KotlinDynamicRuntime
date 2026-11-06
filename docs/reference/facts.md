@@ -150,11 +150,10 @@ knows, its own included, with whether each is present for them now.
 ## About this file
 
 **Everything above this section is generated.** A running server makes its list of facts from the declarations
-themselves, so it cannot disagree with them. Read it on the server's **Documents** page, under **Facts**, where anyone
-may open it without signing in. On the public reference site it is at
-[dynamicruntime.org/wa/docs/facts](https://dynamicruntime.org/wa/docs/facts). `./gradlew :launch:refDocsDump`
-copies it into this file, and the suite fails while the copy is behind the code, so edit the generator (below), never
-the copy.
+themselves, so it cannot disagree with them. Read it on the server's **Documents** page, under **Reference**, then
+**Facts**, where anyone may open it without signing in. On the public reference site it is at
+[dynamicruntime.org/wa/docs/facts](https://dynamicruntime.org/wa/docs/facts). `./gradlew :launch:refDocsDump` copies it
+into this file, and the suite fails while the copy is behind the code, so edit the generator (below), never the copy.
 
 On a running server, a link to this file opens the reference itself.
 

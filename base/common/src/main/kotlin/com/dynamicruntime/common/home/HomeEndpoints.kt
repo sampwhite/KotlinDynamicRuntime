@@ -7,10 +7,9 @@ import com.dynamicruntime.common.gedra.clientConfigurationMarkdown
 import com.dynamicruntime.common.gedra.sandboxParentOf
 import com.dynamicruntime.common.gedra.ClientService
 import com.dynamicruntime.common.gedra.ClientJoin
+import com.dynamicruntime.common.content.DOCORDER
 import com.dynamicruntime.common.content.MDOC
 import com.dynamicruntime.common.content.MarkdownDocDef
-import com.dynamicruntime.common.content.firstDocOrder
-import com.dynamicruntime.common.content.lastDocOrder
 import com.dynamicruntime.common.content.MarkdownDocService
 import com.dynamicruntime.common.content.UIC
 import com.dynamicruntime.common.content.fragmentRefs
@@ -614,26 +613,26 @@ private fun homeLinksFor(cxt: KdrCxt): List<Map<String, Any?>> {
 
 /**
  * The documents `base/common` serves (issue #492): the README plus the repo docs it links to, declared by the common
- * component. Other components declare their own (`docs`, issue #1136). The listing offers "Start here" first (issue
- * #1510), the documentation's map by audience, then the README, the extending
- * guide, the API guide (issue #1493), the API keys and tokens guide (issue #1403), the code guide, the schema dialect reference (generated, issue
- * #1347), and the license; the design documents are served but unlisted, reached from the README's
- * links (issue #1238).
+ * component. Other components declare their own (`docs`, issue #1136). Of these the listing offers four (issue #1632),
+ * each in its [DOCORDER] place among the documents other components list: "Start here", the documentation's map by
+ * audience (issue #1510); the README; the reference index; and the license. The rest are served unlisted: "Start
+ * here" links the guides, the index lists the references, and the README links the design documents (issue #1238).
  */
 fun coreDocs(): List<MarkdownDocDef> = listOf(
     MarkdownDocDef(HDOC.startHere, "Start here", "docs/start-here.md",
         "What to read for what you want to do: use a site, run a client, build on the runtime, or have an AI configure it.",
-        order = firstDocOrder),
+        order = DOCORDER.startHere),
     MarkdownDocDef(HDOC.readme, "Read me", "README.md",
-        "What the runtime is, where it came from, and how to set it up."),
+        "What the runtime is, where it came from, and how to set it up.", order = DOCORDER.readme),
     MarkdownDocDef(HDOC.extending, "Extending", "docs/extending.md",
-        "How a deployment, a component, or a client varies what the runtime does, and the rule behind it."),
+        "How a deployment, a component, or a client varies what the runtime does, and the rule behind it.", listed = false),
     MarkdownDocDef(HDOC.apiGuide, "Using the API", "docs/api-guide.md",
-        "For a program or an AI assistant with a key: the model, the conventions every call shares, and a recipe for each job."),
+        "For a program or an AI assistant with a key: the model, the conventions every call shares, and a recipe for each job.",
+        listed = false),
     MarkdownDocDef(HDOC.apiKeysAndTokens, "API keys and access tokens", "docs/api-keys-and-tokens.md",
-        "How a program calls the API with a key or a token, and how another service checks a token."),
+        "How a program calls the API with a key or a token, and how another service checks a token.", listed = false),
     MarkdownDocDef(HDOC.codeGuide, "Code guide", "docs/development/code-guide.md",
-        "How code here is written, including where it deliberately departs from Kotlin norms."),
+        "How code here is written, including where it deliberately departs from Kotlin norms.", listed = false),
     MarkdownDocDef(HDOC.clientDefinition, "Client definition", "docs/design/client-definition.md",
         "How a client is described, what it owns, and what a deployment does with one.", listed = false),
     MarkdownDocDef(HDOC.deferredWork, "Deferred work", "docs/development/deferred-work.md",
@@ -660,33 +659,36 @@ fun coreDocs(): List<MarkdownDocDef> = listOf(
         "The first workflow design, retired under #533 and kept for its reasoning.", listed = false),
     MarkdownDocDef(HDOC.schemaDialect, "Schema dialect", "docs/reference/schema-dialect.md",
         "Every keyword the runtime reads in a JSON Schema, the ones it refuses, and its own -- made from the parser's tables.",
-        generate = ::schemaDialectMarkdown),
+        listed = false, generate = ::schemaDialectMarkdown),
     MarkdownDocDef(HDOC.validationMessages, "Validation messages", "docs/reference/validation-messages.md",
         "Every code a refused value is reported with, what a message for it may say, and how to write your own -- made from the validator's codes.",
-        generate = ::validationMessagesMarkdown),
+        listed = false, generate = ::validationMessagesMarkdown),
     MarkdownDocDef(HDOC.expressions, "Expressions", "docs/reference/expressions.md",
         "The expression language copy, columns, layouts, and computed values are written in, and its functions -- made from the functions.",
-        generate = ::expressionsMarkdown),
+        listed = false, generate = ::expressionsMarkdown),
     MarkdownDocDef(HDOC.facts, "Facts", "docs/reference/facts.md",
         "The yes-or-no facts that decide who sees a menu entry or a field, who may save, and which forms a workflow takes.",
-        generate = ::factsMarkdown),
+        listed = false, generate = ::factsMarkdown),
     MarkdownDocDef(HDOC.copy, "Copy", "docs/reference/copy.md",
         "The Markdown copy is written in, the roles that set a phrase or an image apart, and the fragment files copy is kept in.",
-        generate = ::copyMarkdown),
+        listed = false, generate = ::copyMarkdown),
     MarkdownDocDef(HDOC.reportPaths, "Report paths", "docs/reference/report-paths.md",
         "How a report column names where its value comes from, and every attribute a path can end in, with its kind.",
-        generate = ::reportPathsMarkdown),
+        listed = false, generate = ::reportPathsMarkdown),
     MarkdownDocDef(HDOC.formLayouts, "Form layouts", "docs/reference/form-layouts.md",
         "What a type's layout may hold: field copy, which fields show and in what order, form wording, and a client's changes.",
-        generate = ::formLayoutsMarkdown),
+        listed = false, generate = ::formLayoutsMarkdown),
     MarkdownDocDef(HDOC.rolesAndAccess, "Roles and access", "docs/reference/roles-and-access.md",
         "What each role grants, who may call each section of the API, whose data a caller reads, and how to ask why not.",
-        generate = ::rolesAndAccessMarkdown),
+        listed = false, generate = ::rolesAndAccessMarkdown),
     MarkdownDocDef(HDOC.clientConfiguration, "Client configuration", "docs/reference/client-configuration.md",
         "Every slot of a client's configuration, what its entries hold, and what a write or an edit of one must send.",
-        generate = ::clientConfigurationMarkdown),
+        listed = false, generate = ::clientConfigurationMarkdown),
+    MarkdownDocDef(HDOC.referenceIndex, "Reference", REFDOC.indexPath,
+        "Every reference generated from the code, with what each covers: the keywords, codes, functions, facts, roles, and endpoints.",
+        order = DOCORDER.reference, generate = ::referenceIndexMarkdown),
     MarkdownDocDef(HDOC.license, "License", "LICENSE",
-        "The MIT license the runtime is released under.", order = lastDocOrder),
+        "The MIT license the runtime is released under.", order = DOCORDER.license),
 )
 
 /**

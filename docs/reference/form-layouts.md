@@ -187,8 +187,8 @@ endpoints is refused when it brings a fault the client did not already have.
 ## About this file
 
 **Everything above this section is generated.** A running server makes it from the vocabulary its layout parser reads,
-so it cannot disagree with the parser. Read it on the server's **Documents** page, under **Form layouts**, where anyone
-may open it without signing in. On the public reference site it is at
+so it cannot disagree with the parser. Read it on the server's **Documents** page, under **Reference**, then **Form
+layouts**, where anyone may open it without signing in. On the public reference site it is at
 [dynamicruntime.org/wa/docs/form-layouts](https://dynamicruntime.org/wa/docs/form-layouts).
 `./gradlew :launch:refDocsDump` copies it into this file, and the suite fails while the copy is behind the code, so edit
 the generator (below), never the copy.

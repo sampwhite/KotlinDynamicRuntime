@@ -621,6 +621,8 @@ object HDOC {
     /** What each role grants, who may call each section, and whose data a caller reads (issue #1610). Generated. */
     const val rolesAndAccess = "roles-and-access"
     const val clientConfiguration = "client-configuration"
+    /** The index of the references (issue #1632), listed as "Reference": every one, with what it covers. Generated. */
+    const val referenceIndex = "reference"
     const val apiKeysAndTokens = "api-keys-and-tokens"
     /** The guide for a program or an AI assistant using a site's API (issue #1493), which the endpoint catalog names. */
     const val apiGuide = "api-guide"

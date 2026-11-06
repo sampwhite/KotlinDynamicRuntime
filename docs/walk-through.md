@@ -1,4 +1,5 @@
-<!-- The walk-through for a person signed in to a reference deployment (issue #1429), linked from their home page.
+<!-- The walk-through for a person signed in to a reference deployment (issue #1429), linked from their home page. It
+     is listed on every site's Documents page too (issue #1632), so its opening says what is different on another site.
      Its tables are what the reader types, and PublicWalkThroughTest (base/kdn) enters each one, through the same
      endpoints the pages use, so a label or a choice the demo renames fails the build. A table is marked on the line
      before it: in part 1, `kdr-walk: workflow=<id>` for a form of that workflow and `kdr-walk: name` for a name on the
@@ -11,8 +12,15 @@
 This page takes you through the site one step at a time. Each step names what to choose and what to type, so you
 can follow along without having to decide anything. The links go to the pages you need, here on this site.
 
-Everything you make here is kept in a temporary database, which is cleared from time to time, so nothing you do can
-break anything for long.
+It is written for the public reference site, [dynamicruntime.org](https://dynamicruntime.org). There, everything you
+make is kept in a temporary database, which is cleared from time to time, so nothing you do can break anything for
+long. On another site, what you make is kept, unless the site runs in memory, as a developer's own server often does:
+then it is lost when the server stops.
+
+Another site may also lack two things this page uses. Part 1 needs the conference demo to be offered for joining,
+which a test site does when it runs with the `reference` deployment flavor. The invitation in Part 2 reaches you only
+if the site sends its mail for real, where a developer's server usually keeps it instead. Everything else works on any
+site you can sign in to.
 
 ## Part 1: The conference demo
 
@@ -380,8 +388,8 @@ your Book Club from its JSON: by hand in the bundle editor, or by having an AI a
 All of it happens in your sandbox. What you save there is a draft, and the forms made to try the workflow are the
 sandbox's, not your client's people's.
 
-Everything here is temporary, like the rest of the site: your key, your client, and the workflow you build all go when
-the site's data is cleared.
+On the reference site, everything here is temporary, like the rest of the site: your key, your client, and the
+workflow you build all go when the site's data is cleared.
 
 ### Make an API key
 

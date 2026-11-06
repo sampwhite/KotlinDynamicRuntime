@@ -9,6 +9,7 @@ import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.endpoint.KdrEndpoint
 import com.dynamicruntime.common.endpoint.endpointIndexMarkdown
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.home.REFDOC
 import com.dynamicruntime.common.home.coreDocs
 import com.dynamicruntime.common.http.request.RequestService
 import com.dynamicruntime.common.operator.envVarCatalogMarkdown
@@ -42,12 +43,6 @@ object GENREF {
     const val beginLine = "$beginPrefix -- copied from its generator by `$dumpCommand`; edit the generator, not this -->"
     const val endLine = "<!-- kdr-generated: end -->"
 
-    /** The environment variables' copy, which no server serves. */
-    const val envVarsPath = "docs/reference/environment-variables.md"
-
-    /** The endpoint index's copy, which no server serves either. */
-    const val endpointsPath = "docs/reference/endpoints.md"
-
     /** What switches the sample component on in a test boot, whose environment (`unit`) leaves it off. */
     const val loadSampleEnvVar = "KDR_LOAD_SAMPLE"
 
@@ -61,8 +56,8 @@ class ReferenceCopy(val sourcePath: String, val generate: () -> String)
 /** Every committed copy: the documents a server generates, then the environment variables and the endpoints. */
 fun referenceCopies(repoRoot: File): List<ReferenceCopy> =
     coreDocs().mapNotNull { doc -> doc.generate?.let { ReferenceCopy(doc.sourcePath, it) } } + listOf(
-        ReferenceCopy(GENREF.envVarsPath) { envVarCatalogMarkdown(declaredEnvVars(repoRoot)) },
-        ReferenceCopy(GENREF.endpointsPath) { endpointIndex(repoRoot) },
+        ReferenceCopy(REFDOC.envVarsPath) { envVarCatalogMarkdown(declaredEnvVars(repoRoot)) },
+        ReferenceCopy(REFDOC.endpointsPath) { endpointIndex(repoRoot) },
     )
 
 /**

@@ -174,10 +174,10 @@ report is simply left out. The report is under `_meta.accessExplained`:
 
 ## About this file
 
-**Everything above this section is generated.** A running server makes it from the role constants and the section
-rules its request gate enforces, so it cannot disagree with the gate. Read it on the server's **Documents** page, under
-**Roles and access**, where anyone may open it without signing in. On the public reference site it is at
-[dynamicruntime.org/wa/docs/roles-and-access](https://dynamicruntime.org/wa/docs/roles-and-access).
+**Everything above this section is generated.** A running server makes it from the role constants and the section rules
+its request gate enforces, so it cannot disagree with the gate. Read it on the server's **Documents** page, under
+**Reference**, then **Roles and access**, where anyone may open it without signing in. On the public reference site it
+is at [dynamicruntime.org/wa/docs/roles-and-access](https://dynamicruntime.org/wa/docs/roles-and-access).
 `./gradlew :launch:refDocsDump` copies it into this file, and the suite fails while the copy is behind the code, so edit
 the generator (below), never the copy.
 

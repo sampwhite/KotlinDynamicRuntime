@@ -55,8 +55,8 @@ A value that is not one of the choices is refused when the form is saved.
 Keywords that start with `g-` are the platform's additions to JSON Schema. Standard JSON Schema keywords such as
 `type`, `title`, and `required` mean what they always mean. A few standard keywords are not supported. The
 [schema dialect reference](../reference/schema-dialect.md) lists every keyword the platform reads, with what each one
-means, and the standard keywords it refuses. A running server shows the whole reference on its Documents page, to
-anyone, signed in or not.
+means, and the standard keywords it refuses. A running server shows the whole reference to anyone, signed in or not:
+on its Documents page, choose Reference.
 
 ## Bounds and their messages
 

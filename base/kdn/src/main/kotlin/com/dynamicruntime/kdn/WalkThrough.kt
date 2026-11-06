@@ -1,14 +1,15 @@
 package com.dynamicruntime.kdn
 
 import com.dynamicruntime.common.content.ComponentImageDef
+import com.dynamicruntime.common.content.DOCORDER
 import com.dynamicruntime.common.content.MarkdownDocDef
 import com.dynamicruntime.common.content.componentImage
 
 /**
  * The walk-through (issue #1429): a page for a person signed in to a reference deployment that takes them through the
- * site one step at a time, with what to choose and what to type -- the conference demo first. Its links go to pages
- * of the app, so it is linked from the signed-in visitor's home page alone (the `reference` flavor's `walkThrough`
- * copy) and not offered on the Documents list. On GitHub it reads as a page like any other.
+ * site one step at a time, with what to choose and what to type -- the conference demo first. Linked from the
+ * signed-in visitor's home page (the `reference` flavor's `walkThrough` copy), and offered second on the Documents
+ * list (issue #1632), as the most approachable way in. On GitHub it reads as a page like any other.
  *
  * The tables of what the reader types are entered by `PublicWalkThroughTest`, through the endpoints the pages use, so
  * the page cannot fall behind the demo without a failing build.
@@ -22,7 +23,7 @@ object WalkThrough {
     val doc = MarkdownDocDef(
         docId, "A walk-through", sourcePath,
         "Try the site one step at a time: the conference demo, as a speaker and as its committee, and then a client of your own.",
-        listed = false,
+        order = DOCORDER.walkThrough,
     )
 
     /** How many parts the page has, each opening with its banner. */

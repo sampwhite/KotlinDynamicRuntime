@@ -102,6 +102,6 @@ first moving it to a bundle of its own.
 The JSON on these pages is what a running instance returns for each bundle. The reference says
 [how to read it](reference.md#reading-the-json-on-these-pages). Every slot, what its entries hold, and what an edit of
 one must send are in [the client configuration reference](../reference/client-configuration.md), which is generated
-by a running server: open **Documents** from the menu, and choose **Client configuration**.
+by a running server: open **Documents** from the menu, choose **Reference**, and then **Client configuration**.
 
 Next: [Client](client.md).
