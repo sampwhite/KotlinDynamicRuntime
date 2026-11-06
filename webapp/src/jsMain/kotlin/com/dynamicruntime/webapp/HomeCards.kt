@@ -17,6 +17,7 @@ import react.dom.html.ReactHTML.a
 import react.dom.html.ReactHTML.div
 import react.dom.html.ReactHTML.nav
 import react.useEffect
+import react.useRef
 import react.useState
 import web.cssom.ClassName
 
@@ -72,19 +73,92 @@ fun homeCardsFrom(raw: Any?): List<HomeCard> = raw.toJsonListOfMaps().mapNotNull
 }
 
 /**
- * The cards Home draws (issues #1637, #1638): all of [cards] but those whose live body has nothing to say yet -- "Waiting
- * on you" while nothing is known to wait, "Unpublished drafts" while no draft is known -- before their read answers,
- * when it cannot be read, or when it found nothing, so neither the card nor a link to it shows empty. Pure, and covered
- * under `jsNodeTest`.
+ * What Home read for the cards whose [HomeCard.kind] draws a live body (issues #1636, #1637, #1638): the workflow
+ * assistant's status, what waits on the caller, and the client's unpublished drafts, each null until its read answers
+ * (or when it cannot be read, or no card asks for it). **A kind is added here alone**: its read in [useHomeLiveReads],
+ * whether it has something to say in [shows], its button's words in [actionLabel], and its body in [drawBody] -- so a
+ * new kind cannot be read and then forgotten by the page that draws it.
  */
-fun visibleHomeCards(cards: List<HomeCard>, waiting: WaitingRead?, drafts: DraftsRead? = null): List<HomeCard> =
-    cards.filter {
-        when (it.kind) {
-            HCARD.kindWaitingOnYou -> (waiting?.total ?: 0) > 0
-            HCARD.kindUnpublishedDrafts -> (drafts?.count ?: 0) > 0
-            else -> true
+class HomeLiveReads(
+    val assistantView: AssistantView?,
+    val waiting: WaitingRead?,
+    /** The client the waiting read was confined to, for a caller who sees across clients; null otherwise. */
+    val waitingClient: String?,
+    val drafts: DraftsRead?,
+) {
+    /**
+     * Whether [card] has something to show: one whose live body has nothing to say yet -- "Waiting on you" while nothing
+     * is known to wait, "Unpublished drafts" while no draft is known -- is left out, so neither it nor a link to it shows
+     * empty. A card of words alone always shows.
+     */
+    fun shows(card: HomeCard): Boolean = when (card.kind) {
+        HCARD.kindWaitingOnYou -> (waiting?.total ?: 0) > 0
+        HCARD.kindUnpublishedDrafts -> (drafts?.count ?: 0) > 0
+        else -> true
+    }
+
+    /** [card]'s primary button's words: the assistant's from its status ([assistantCardActionLabel]), others their own. */
+    fun actionLabel(card: HomeCard): String? = when (card.kind) {
+        ASST.cardKind -> assistantCardActionLabel(card, assistantView)
+        else -> card.actionLabel
+    }
+
+    /** What [card]'s kind draws under its words, into [builder]; nothing for a kind of words alone, or before its read. */
+    fun drawBody(builder: ChildrenBuilder, card: HomeCard) {
+        val waiting = waiting
+        val drafts = drafts
+        with(builder) {
+            when {
+                card.kind == HCARD.kindWaitingOnYou && waiting != null -> waitingCardBody(waiting, waitingClient)
+                card.kind == HCARD.kindUnpublishedDrafts && drafts != null -> draftsCardBody(drafts)
+            }
         }
     }
+}
+
+/**
+ * Everything Home reads for its live cards ([HomeLiveReads]), each read only when a card in [cards] asks for it, and
+ * read once here, by Home, so a card and the link to it under the title agree. [waitingClient] confines what waits on
+ * the caller to their own client, for one who sees across clients.
+ */
+fun useHomeLiveReads(cards: List<HomeCard>, waitingClient: String?): HomeLiveReads = HomeLiveReads(
+    assistantView = useAssistantCardView(cards),
+    waiting = useWaitingOnYou(cards, waitingClient),
+    waitingClient = waitingClient,
+    drafts = useUnpublishedDrafts(cards),
+)
+
+/**
+ * The cards Home draws (issues #1637, #1638): those of [cards] that have something to show ([HomeLiveReads.shows]).
+ * Pure, and covered under `jsNodeTest`.
+ */
+fun visibleHomeCards(cards: List<HomeCard>, reads: HomeLiveReads): List<HomeCard> = cards.filter(reads::shows)
+
+/**
+ * One live card's read (issues #1636, #1637, #1638): [read]'s answer when [wanted], read again on every refresh and
+ * whenever [key] changes, and null when not wanted. A failed read leaves what was there and says so ([what] names it).
+ * **Only the latest read lands**: one overtaken -- by a refresh, a changed [key], or the card going -- is dropped when it
+ * answers, so a slow earlier answer never replaces a newer one.
+ */
+fun <T : Any> useCardRead(wanted: Boolean, key: String?, what: String, read: suspend () -> T?): T? {
+    val generation = useRefreshGeneration()
+    var value by useState<T?>(null)
+    val latest = useRef(0)
+    useEffect(wanted, generation, key) {
+        val token = (latest.current ?: 0) + 1
+        latest.current = token
+        if (!wanted) {
+            value = null
+            return@useEffect
+        }
+        homeCardsScope.launch {
+            val result = apiResult { read() }
+            result.failureOrNull()?.let { console.warn("$errorLogPrefix could not read $what for Home: ${it.message}") }
+            if (latest.current == token) value = result.valueOrNull()
+        }
+    }
+    return value
+}
 
 /** The element id of card [id], so an address can name it. A dot, as the public home's sections have (`HSEC`). */
 fun homeCardElementId(id: String): String = "home.card.$id"
@@ -112,37 +186,17 @@ fun homeCardJumpLinks(cards: List<HomeCard>, assistantView: AssistantView?): Lis
 
 /**
  * What the workflow assistant's status says, for its card and the link to it (issue #1636), or null while it is being
- * read, when it cannot be, or when no card in [cards] is the assistant's -- then nothing is read. Read once per card
- * set and refresh, by Home, so the card's button and the link under the title agree.
+ * read, when it cannot be, or when no card in [cards] is the assistant's -- then nothing is read ([useCardRead]).
  */
-fun useAssistantCardView(cards: List<HomeCard>): AssistantView? {
-    val shown = cards.any { it.kind == ASST.cardKind }
-    val generation = useRefreshGeneration()
-    var view by useState<AssistantView?>(null)
-    useEffect(shown, generation) {
-        if (!shown) {
-            view = null
-            return@useEffect
-        }
-        homeCardsScope.launch {
-            val result = apiResult { AssistantApi.status() }
-            result.failureOrNull()?.let { console.warn("$errorLogPrefix could not read the assistant's status for its home card: ${it.message}") }
-            view = result.valueOrNull()?.let { assistantViewOf(it, failed = false) }
-        }
+fun useAssistantCardView(cards: List<HomeCard>): AssistantView? =
+    useCardRead(cards.any { it.kind == ASST.cardKind }, null, "the assistant's status") {
+        assistantViewOf(AssistantApi.status(), failed = false)
     }
-    return view
-}
 
 external interface HomeCardsProps : Props {
     var cards: List<HomeCard>
-    /** What the assistant's status says, for its card's button ([useAssistantCardView]); null until read. */
-    var assistantView: AssistantView?
-    /** What waits on the caller, for the "Waiting on you" card ([useWaitingOnYou]); null until read. */
-    var waiting: WaitingRead?
-    /** The client the waiting read was confined to, for a caller who sees across clients; null otherwise. */
-    var waitingClient: String?
-    /** The client's unpublished drafts, for the "Unpublished drafts" card ([useUnpublishedDrafts]); null until read. */
-    var drafts: DraftsRead?
+    /** What Home read for the live cards ([useHomeLiveReads]). */
+    var reads: HomeLiveReads
 }
 
 /**
@@ -158,20 +212,8 @@ val HomeCards = FC<HomeCardsProps> { props ->
     div {
         className = ClassName("home-cards")
         for (card in props.cards) {
-            val actionLabel = when (card.kind) {
-                ASST.cardKind -> assistantCardActionLabel(card, props.assistantView)
-                else -> card.actionLabel
-            }
-            val waiting = props.waiting
-            val drafts = props.drafts
-            homeCardPanel(card, copyLinks, actionLabel) {
-                // What the card's kind reads, under its words: the forms waiting on the caller (issue #1637), and the
-                // configurations waiting to be published (issue #1638).
-                when {
-                    card.kind == HCARD.kindWaitingOnYou && waiting != null -> waitingCardBody(waiting, props.waitingClient)
-                    card.kind == HCARD.kindUnpublishedDrafts && drafts != null -> draftsCardBody(drafts)
-                }
-            }
+            // What the card's kind reads, under its words, and its button's words from it.
+            homeCardPanel(card, copyLinks, props.reads.actionLabel(card)) { props.reads.drawBody(this, card) }
         }
     }
 }

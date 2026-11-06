@@ -5,19 +5,13 @@ import com.dynamicruntime.common.gedra.CFEP
 import com.dynamicruntime.common.gedra.sandboxOf
 import com.dynamicruntime.common.home.HCARD
 import com.dynamicruntime.common.home.HMENU
-import com.dynamicruntime.common.util.toJsonListOrEmpty
+import com.dynamicruntime.common.util.toJsonListOfStrings
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
-import kotlinx.coroutines.MainScope
-import kotlinx.coroutines.launch
 import react.ChildrenBuilder
 import react.dom.html.ReactHTML.a
 import react.dom.html.ReactHTML.code
 import react.dom.html.ReactHTML.p
-import react.useEffect
-import react.useState
-
-private val draftsScope = MainScope()
 
 /** "Unpublished drafts"' sizes (issue #1638). */
 @Suppress("ConstPropertyName")
@@ -38,7 +32,7 @@ class DraftsRead(val client: String, val count: Int, val names: List<String>, va
  */
 fun parseDraftsRead(item: Map<String, Any?>): DraftsRead? {
     val client = item[CFEP.client].toOptStr() ?: return null
-    val names = item[CFEP.names].toJsonListOrEmpty().mapNotNull { it.toOptStr() }
+    val names = item[CFEP.names].toJsonListOfStrings()
     return DraftsRead(client, (item[CFEP.count] as? Number)?.toInt() ?: names.size, names, item[CFEP.inSandbox] == true)
 }
 
@@ -54,26 +48,13 @@ fun draftsPublishRoute(read: DraftsRead): List<Pair<String, String>> = listOf(
 
 /**
  * The client's unpublished drafts, for Home's card (issue #1638), or null while they are read, when they cannot be, or
- * when no card in [cards] asks for them -- then nothing is read. Read again on every refresh, so a publish made
- * elsewhere takes the card away.
+ * when no card in [cards] asks for them -- then nothing is read ([useCardRead]). Read again on every refresh, so a
+ * publish made elsewhere takes the card away.
  */
-fun useUnpublishedDrafts(cards: List<HomeCard>): DraftsRead? {
-    val shown = cards.any { it.kind == HCARD.kindUnpublishedDrafts }
-    val generation = useRefreshGeneration()
-    var read by useState<DraftsRead?>(null)
-    useEffect(shown, generation) {
-        if (!shown) {
-            read = null
-            return@useEffect
-        }
-        draftsScope.launch {
-            val result = apiResult { Http.getApi(CFEP.drafts) }
-            result.failureOrNull()?.let { console.warn("$errorLogPrefix could not read the unpublished drafts for Home: ${it.message}") }
-            read = result.valueOrNull()?.let { parseDraftsRead(it[EP.item].toJsonMapOrEmpty()) }
-        }
+fun useUnpublishedDrafts(cards: List<HomeCard>): DraftsRead? =
+    useCardRead(cards.any { it.kind == HCARD.kindUnpublishedDrafts }, null, "the unpublished drafts") {
+        parseDraftsRead(Http.getApi(CFEP.drafts)[EP.item].toJsonMapOrEmpty())
     }
-    return read
-}
 
 /**
  * The sentence the "Unpublished drafts" card opens with (issue #1638): how many configurations have unpublished

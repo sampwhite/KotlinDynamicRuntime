@@ -66,6 +66,7 @@ class UnpublishedDraftsTest : StringSpec({
     "only a client's administrator may ask" {
         TestUser.create(cxt, "member@drafts1638.test").expectError(EXC.notAuthorized, CFEP.drafts)
         // A public administrator administers only their own users, not the client everyone in public shares.
-        TestUser.create(cxt, "public@drafts1638.test", level = ROLE.admin, userClient = CL.public).expectError(EXC.notAuthorized, CFEP.drafts)
+        val publicAdmin = TestUser.create(cxt, "public@drafts1638.test", level = ROLE.admin, userClient = CL.public)
+        publicAdmin.expectError(EXC.notAuthorized, CFEP.drafts)
     }
 })

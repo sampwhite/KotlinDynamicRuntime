@@ -546,13 +546,12 @@ private fun cfgBundlesBody(c: KdrCxt): List<Map<String, Any?>> {
 }
 
 /**
- * The bound client's configurations whose latest revision is not published (issue #1638), [inSandbox] when asked from
- * inside its sandbox. None for a client static here, which takes nothing stored, so has nothing to publish.
+ * The bound client's configurations whose latest revision is not published (issue #1638,
+ * [GedraConfigService.unpublishedConfigs]), [inSandbox] when asked from inside its sandbox.
  */
 private fun cfgDraftsBody(c: KdrCxt, inSandbox: Boolean): Map<String, Any?> {
     AdminRules.requireClientAdministrator(c)
-    val svc = GedraConfigService.get(c)
-    val names = if (svc.isStaticHere(c, c.client)) emptyList() else svc.listConfigs(c).filter { !it.isPublished }.map { it.configId.baseId }
+    val names = GedraConfigService.get(c).unpublishedConfigs(c).map { it.configId.baseId }
     return linkedMapOf(CFEP.client to c.client, CFEP.count to names.size, CFEP.names to names, CFEP.inSandbox to inSandbox)
 }
 

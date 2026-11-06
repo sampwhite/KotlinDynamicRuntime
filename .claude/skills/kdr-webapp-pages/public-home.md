@@ -111,7 +111,10 @@ none of its own.
   (`ASST.cardKind`) uses the assistant's status, read by Home, and while the person may switch it on its button reads the card's
   `offerLabel` ("Switch on the assistant", `assistantCardActionLabel`) -- in the card, so an overlay rewords it with
   the rest; until the read answers, or if it fails, the card's own words stand. A kind the page does not know draws
-  the card's words alone.
+  the card's words alone. **A new kind is added in `HomeLiveReads` alone** (`HomeCards.kt`): its read in
+  `useHomeLiveReads`, whether it has something to say (`shows`, which `visibleHomeCards` applies), its button's words,
+  and its body. Each read goes through `useCardRead`, where only the latest read lands, so a slow answer from before a
+  refresh never replaces a newer one.
 - **A card goes somewhere and never calls**: an action or a link that is not a route is dropped as it is read, and so
   is a link with no words, rather than show a page's internal id (`homeCardsFrom`). Each card's element id is
   `home.card.<id>` (`homeCardElementId`), so an address can name it.

@@ -11,6 +11,9 @@ import kotlin.test.assertNull
 
 /** Home's "Unpublished drafts" (issue #1638): reading the drafts' answer, when the card shows, and where it links. */
 class UnpublishedDraftsTest {
+    /** What Home read, with [drafts] alone answered. */
+    private fun readsOf(drafts: DraftsRead?) = HomeLiveReads(assistantView = null, waiting = null, waitingClient = null, drafts = drafts)
+
     @Test
     fun theAnswerIsReadAsTheClientsDrafts() {
         val read = parseDraftsRead(
@@ -33,11 +36,11 @@ class UnpublishedDraftsTest {
                 mapOf(HFLD.id to HCARD.administer, HCARD.title to "Your client"),
             ),
         )
-        assertEquals(listOf(HCARD.administer), visibleHomeCards(cards, null, null).map { it.id })
-        assertEquals(listOf(HCARD.administer), visibleHomeCards(cards, null, DraftsRead("acme", 0, emptyList(), false)).map { it.id })
+        assertEquals(listOf(HCARD.administer), visibleHomeCards(cards, readsOf(null)).map { it.id })
+        assertEquals(listOf(HCARD.administer), visibleHomeCards(cards, readsOf(DraftsRead("acme", 0, emptyList(), false))).map { it.id })
         assertEquals(
             listOf(HCARD.drafts, HCARD.administer),
-            visibleHomeCards(cards, null, DraftsRead("acme", 1, listOf("acmeForms"), false)).map { it.id },
+            visibleHomeCards(cards, readsOf(DraftsRead("acme", 1, listOf("acmeForms"), false))).map { it.id },
         )
     }
 
