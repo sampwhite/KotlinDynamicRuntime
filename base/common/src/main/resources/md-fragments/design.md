@@ -11,3 +11,7 @@ A workflow can have **its own** copy instead, which only its pages show while ev
 words. Edit it here, and **Reset to shared** goes back to the shared words. To change the words in every workflow,
 edit the shared definition. Wording pulled from a copy file is changed at its key, and so everywhere that key is
 used.
+
+What a type's layout may hold -- each field's copy, which fields a form shows and in what order, and the form's
+wording -- is in [the form layouts reference](/docs/reference/form-layouts.md). The keywords a field's definition is
+written in are in [the schema dialect reference](/docs/reference/schema-dialect.md).

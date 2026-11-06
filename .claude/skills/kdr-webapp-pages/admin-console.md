@@ -233,3 +233,9 @@ server resolves it to one of their users in the caller's reach (their default wh
 only thing that says which of their users that was.
 The bracket is the persona and its suffix (the client first, for an `allClients` administrator) -- always, since
 saying it costs a word where finding out whether the person has other users would cost a lookup.
+
+**The Users page's copy file** (`users.md`, `PFRAG.users`, issue #1633), named by the shell's config as the other page
+files are, holds the explanation the list's heading offers (`userList`): what a row is, and a link to
+[the roles and access reference](../../../docs/reference/roles-and-access.md) by its `/docs/...` path, which the copy's
+link resolver opens in the app. The heading is a level-1 `WhatIsThis` on the list only; the editor's heading has none.
+`HomeUiConfigEndpointTest` holds the link to a served document.
