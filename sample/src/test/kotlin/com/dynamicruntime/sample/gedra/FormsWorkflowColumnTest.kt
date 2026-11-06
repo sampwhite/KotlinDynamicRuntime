@@ -8,7 +8,6 @@ import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.gedra.GEP
 import com.dynamicruntime.common.gedra.workflow.WCOL
 import com.dynamicruntime.common.gedra.workflow.WFD
-import com.dynamicruntime.common.gedra.workflow.WFS
 import com.dynamicruntime.common.gedra.workflow.WVF
 import com.dynamicruntime.common.gedra.workflow.WfColumnCategory
 import com.dynamicruntime.common.gedra.workflow.WfPhase
@@ -114,9 +113,11 @@ class FormsWorkflowColumnTest : StringSpec({
         )
         user.postData(engage, mapOf(GDF.gedraId to ready, GDF.workflowId to SW.auditReview))
         val env = listing(user)
+        // The engaged review's call to action is review work, so the form waits on a review (issue #1596) -- which the
+        // follow-up's eligibility holds it off for.
         cell(env, ready) shouldBe listOf(
             SW.auditReview to WfColumnCategory.engaged,
-            SW.siteFollowUp to WfColumnCategory.eligible,
+            SW.siteFollowUp to WfColumnCategory.ineligible,
         )
         val row = env[EP.items].toJsonListOfMaps().first { it[GDF.gedraId] == ready }
         formWorkflowsOf(row[GDF.states].toJsonListOfMaps()) { WfPhase.engageable }.first().ctaTask.shouldNotBeNull()

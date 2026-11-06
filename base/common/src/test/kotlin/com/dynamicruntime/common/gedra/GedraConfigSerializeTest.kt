@@ -5,6 +5,7 @@ import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.fileref.FREF
 import com.dynamicruntime.common.gedra.workflow.WFD
+import com.dynamicruntime.common.gedra.workflow.WSC
 import com.dynamicruntime.common.gedra.workflow.WfDefBuilder
 import com.dynamicruntime.common.gedra.workflow.WfEntry
 import com.dynamicruntime.common.gedra.workflow.WfSaveKind
@@ -244,5 +245,34 @@ class GedraConfigSerializeTest : StringSpec({
         gedraConfigToEntries(reassembleForWrite(cxt, "acmeConfig", "client.acme", "acme", stored, stored)) shouldBe entries
         // ...but a write that adds windows to what was stored without them is refused.
         shouldThrow<KdrException> { reassembleForWrite(cxt, "acmeConfig", "client.acme", "acme", stored, entries) }
+    }
+
+    // A workflow said Needs Review with its own singleton rule until the `review` search keyword became the one way to
+    // (issue #1596). A definition stored then keeps its workflow and its other rules, loses that rule, and is reported;
+    // a write may carry it unchanged, but not add it.
+    "a stored rule emitting a keyword's status is left out and reported, and a write adding it is refused" {
+        fun withReview(vararg singletons: Pair<String, String>): GedraConfig = gedraConfig(cxt, "acmeConfig", "client.acme", "acme") {
+            workflow("acmeReview", WfEntry.normal) {
+                for ((cfact, whenExpr) in singletons) singleton(cfact, whenExpr)
+                task("look", "Look") { trait("kdr:name"); save("s", "Save", WfSaveKind.edit) }
+                task("approve", "Approve") { approval("acmeApproved", "Approve it?", "Approve") }
+            }
+        }
+        val entries = gedraConfigToEntries(withReview(WSC.finished to "acmeApproved"))
+        val stale = mapOf(WFD.cfact to WSC.needsReview, WFD.kWhen to "~acmeApproved")
+        val stored = entries + (CCT.workflowDef to entries.getValue(CCT.workflowDef).map {
+            val definition = it[CCT.definition].toJsonMapOrEmpty()
+            it + (CCT.definition to (definition + (WFD.singletons to listOf(stale) + definition[WFD.singletons].toJsonListOfMaps())))
+        })
+        val loaded = reassembleGedraConfig(cxt, "acmeConfig", "client.acme", "acme", stored)
+        loaded.workflows.getValue("acmeReview").singletons.map { it.cfact } shouldContainExactly listOf(WSC.finished)
+        loaded.droppedSingletons shouldBe mapOf("acmeReview" to listOf(WSC.needsReview))
+        GedraConfigLoadService().unreadEntryIssues(loaded).single().message shouldContain "search keyword sets now"
+        gedraConfigToEntries(loaded) shouldBe entries
+        // Written back unchanged, it is kept the same way...
+        gedraConfigToEntries(reassembleForWrite(cxt, "acmeConfig", "client.acme", "acme", stored, stored)) shouldBe entries
+        // ...but a write that adds the rule to what was stored without it is refused, saying what to do instead.
+        shouldThrow<KdrException> { reassembleForWrite(cxt, "acmeConfig", "client.acme", "acme", stored, entries) }
+            .fullMessage() shouldContain "Give the task the keyword instead"
     }
 })

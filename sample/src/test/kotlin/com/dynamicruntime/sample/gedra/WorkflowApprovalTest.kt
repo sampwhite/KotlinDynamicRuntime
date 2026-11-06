@@ -296,21 +296,25 @@ class WorkflowApprovalTest : StringSpec({
         chip(owner, gid, WSC.finished).shouldBeEmpty()
     }
 
-    "an approved review reads as Finished, and Needs Review still wins while something waits" {
+    "a form needs review while the review is its call to action, and reads as Finished once approved" {
+        // Waiting on the approval, which carries the `review` keyword (issue #1596): Needs Review.
         val closed = engagedForm()
+        listedAs(FSV.needsReview) shouldContain closed
         reviewer.postData(approve, approveBody(closed))
         listedAs(FSV.finished) shouldContain closed
+        listedAs(FSV.needsReview) shouldNotContain closed
         listedAs(FSV.valid) shouldNotContain closed
         // Finished: the workflow is listed with no current task -- there is nothing left to do.
         val done = chip(owner, closed, WSC.finished).single()
         done[WFD.workflowId] shouldBe SW.auditReview
         done.containsKey(WFS.ctaTask) shouldBe false
 
-        // Findings still open after approval: both singletons at once, and Needs Review is the chip.
+        // What the form's data says does not bring Needs Review back: only a call to action carrying the keyword does,
+        // and an approved review has none. Open findings, approved, read as Finished.
         val open = engagedForm(findings = SC.findingsOpen)
         reviewer.postData(approve, approveBody(open))
-        listedAs(FSV.needsReview) shouldContain open
-        listedAs(FSV.finished) shouldNotContain open
+        listedAs(FSV.finished) shouldContain open
+        listedAs(FSV.needsReview) shouldNotContain open
     }
 
     "Needs Info still trumps a pending review: the chip describes the owner's own work first" {

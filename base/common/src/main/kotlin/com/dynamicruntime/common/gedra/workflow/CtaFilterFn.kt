@@ -3,6 +3,7 @@ package com.dynamicruntime.common.gedra.workflow
 import com.dynamicruntime.common.cfact.CFactParser
 import com.dynamicruntime.common.cfact.CFactRegistry
 import com.dynamicruntime.common.cfact.analyzeCFactOrAlways
+import com.dynamicruntime.common.content.MarkdownFragmentService
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.schema.LogSchema
@@ -92,7 +93,11 @@ fun WfTask.ctaFilterFns(): List<CtaFilterFn> =
  * a listing can evaluate without the form's data or state.
  */
 fun personFactNames(requestNames: Set<String>, task: WfTask): Set<String> =
-    requestNames + RCF.all + task.viewerCfactsFns().flatMap { it.emittedCfacts }
+    buildSet {
+        addAll(requestNames)
+        addAll(RCF.all)
+        task.viewerCfactsFns().flatMapTo(this) { it.emittedCfacts }
+    }
 
 /**
  * Why [filter] cannot be a CTA filter, or null when it can (issue #1594): it parses against [declared], the cfacts its
@@ -108,6 +113,21 @@ fun ctaFilterProblem(declared: Set<String>, personFacts: Set<String>, filter: St
     } else {
         "names ${notAboutThePerson.sorted()}, which are not facts about the person (the request's, what a " +
             "viewerCfacts function on the task emits, or ${RCF.isOwner}), so a listing could not evaluate it without the form"
+    }
+}
+
+/**
+ * Each search keyword's words as [client] says them (issue #1596), [cxt]'s own client unless another is named: its
+ * [CtaKeywordCopy] templates through the backend pass, so a client's overlay of the fragment they pull is what is said.
+ * One map per keyword, in list order, with its name under [CTKF.keyword].
+ */
+fun ctaKeywordWords(cxt: KdrCxt, client: String = cxt.client): List<Map<String, Any?>> {
+    val fragments = MarkdownFragmentService.get(cxt)
+    // The copy a pull resolves is the one the context's client selects, so it is bound to [client] when that differs.
+    val copyCxt = if (client == cxt.client) cxt else cxt.mkSubContext("ctaKeywordWords", client)
+    return CTAK.keywords.map { keyword ->
+        linkedMapOf<String, Any?>(CTKF.keyword to keyword.name) +
+            keyword.copy.byField().mapValues { (_, template) -> fragments.backendPass(copyCxt, template) }
     }
 }
 

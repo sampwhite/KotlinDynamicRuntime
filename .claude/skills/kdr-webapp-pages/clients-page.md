@@ -535,6 +535,10 @@ client one of its own with the same key, which replaces the template's whole.
 - **A save that would newly replace one** is told by its dry run (`replacements` on the patch's dry-run answer: only
   the ones the patch adds, judged by what is replaced, so moving a replacing entry to another bundle is not one), which the save area shows (`replacingText`) and asks to confirm with **Save anyway**, with
   the impact report when there is one too.
+- **Only a marked entry may replace** (issue #1634): an entry over the code's must carry `"overrides": "code"`, or the
+  dry run refuses it, saying what it would replace and where. The editor does not add the mark yet: it is typed into
+  the entry's JSON, and writing it for the person is step 2b of the overlay design, with the merged view per code bundle
+  and "Revert to code". Nothing removes a code entry: a workflow not wanted is turned off instead.
 
 **Deleting a bundle** (issue #1461) is in the Configuration table (`StoredConfigTable`), on the client's page
 and in the bundle editor's Publishing section alike, beside the publishing it depends on. A **Contents** column says

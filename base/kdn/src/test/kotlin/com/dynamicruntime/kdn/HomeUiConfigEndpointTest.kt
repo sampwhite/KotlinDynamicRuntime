@@ -26,6 +26,7 @@ import com.dynamicruntime.common.util.renderMarkdown
 import com.dynamicruntime.common.util.toJsonMap
 import com.dynamicruntime.kdn.confdemo.ConfDemo
 import io.kotest.assertions.throwables.shouldThrow
+import io.kotest.assertions.withClue
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldContainAll
 import io.kotest.matchers.nulls.shouldNotBeNull
@@ -63,7 +64,8 @@ class HomeUiConfigEndpointTest : StringSpec({
     }
 
     "home ui config names the pages' copy files after its own, each carrying its explanations (issue #1337)" {
-        // The Clients page, Reports and Design View have no UI-config of their own, so the shell's names their files.
+        // The Clients page, Reports, Design View, Users, and the endpoint catalog have no UI-config of their own, so the
+        // shell's names their files.
         val cxt = TestInstances.default("uiHome")
         val cfg = results(TestHttpClient(cxt.instanceConfig).sendJsonGetRequest(HEP.homeUiConfig))
         cfg.list(UIC.fragments).map { it!!.toJsonMap()[UIC.fileId] } shouldContainExactly listOf(HFRAG.home) + PFRAG.files
@@ -73,6 +75,8 @@ class HomeUiConfigEndpointTest : StringSpec({
             PFRAG.clients to PFRAG.clientsExplained,
             PFRAG.reports to listOf(PFRAG.viewsNs, PFRAG.newReportNs),
             PFRAG.design to listOf(PFRAG.ownCopyNs),
+            PFRAG.users to listOf(PFRAG.userListNs),
+            PFRAG.catalog to listOf(PFRAG.endpointListNs),
         )
         val fragments = MarkdownFragmentService.get(cxt)
         for ((fileId, namespaces) in explained) {
@@ -80,6 +84,23 @@ class HomeUiConfigEndpointTest : StringSpec({
             for (ns in namespaces) {
                 content[ns]?.get(HFRAG.explanation).orEmpty().isNotBlank() shouldBe true
             }
+        }
+        // Each page links the references about its subject (issue #1633), each by the source path of a document this node
+        // serves, so a reference renamed or withdrawn fails here rather than leaving a link to nothing.
+        val served = cfg.obj(UIC.state).list(HFLD.links).map { it!!.toJsonMap()[HFLD.sourcePath] }.toSet()
+        val pageLinks = listOf(
+            Triple(PFRAG.clients, PFRAG.bundleListNs, "docs/reference/client-configuration.md"),
+            Triple(PFRAG.reports, PFRAG.newReportNs, "docs/reference/report-paths.md"),
+            Triple(PFRAG.design, PFRAG.ownCopyNs, "docs/reference/form-layouts.md"),
+            Triple(PFRAG.design, PFRAG.ownCopyNs, "docs/reference/schema-dialect.md"),
+            Triple(PFRAG.users, PFRAG.userListNs, "docs/reference/roles-and-access.md"),
+            Triple(PFRAG.catalog, PFRAG.endpointListNs, "docs/api-guide.md"),
+            Triple(PFRAG.catalog, PFRAG.endpointListNs, "docs/reference/roles-and-access.md"),
+        )
+        for ((fileId, ns, path) in pageLinks) {
+            withClue(path) { (path in served) shouldBe true }
+            fragments.effectiveFragments(cxt, fileId).shouldNotBeNull().content.getValue(ns).getValue(HFRAG.explanation) shouldContain
+                "](/$path)"
         }
         // The Files explanation shows the image it teaches a client to replace, and its examples are code: they name
         // no image and no file, so a client's edit of it is not refused for a `ref:` the steps only spell out.

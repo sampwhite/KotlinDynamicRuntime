@@ -25,8 +25,8 @@ import web.cssom.ClassName
  * beside the trait chips [activeFilterChips] makes, so a narrowed list never looks like the whole. Pure, and
  * covered under `jsNodeTest`.
  */
-fun formStatusChip(applied: Map<String, Any?>): String? =
-    FormStatus.fromWire(applied[GDF.formStatus]?.toString())?.let { "Status: ${it.label}" }
+fun formStatusChip(applied: Map<String, Any?>, keywords: List<CtaKeywordWords> = emptyList()): String? =
+    FormStatus.fromWire(applied[GDF.formStatus]?.toString())?.let { "Status: ${formStatusLabel(it, keywords)}" }
 
 /**
  * The chip for the "waiting on you" filter (issue #1637), `Waiting on you`, or null when it is not applied -- the
@@ -85,10 +85,10 @@ private fun waitingOptions(): Array<dynamic> = listOf("true" to "Only those").ma
     o
 }.toTypedArray()
 
-/** antd `{label, value}` options for the status filter (issue #695): the three statuses, labelled as the chip labels them. */
-private fun formStatusOptions(): Array<dynamic> = FormStatus.entries.map { s ->
+/** antd `{label, value}` options for the status filter (issue #695): the statuses, labelled as the chip labels them. */
+private fun formStatusOptions(keywords: List<CtaKeywordWords>): Array<dynamic> = FormStatus.entries.map { s ->
     val o: dynamic = js("({})")
-    o.label = s.label
+    o.label = formStatusLabel(s, keywords)
     o.value = s.wire
     o
 }.toTypedArray()
@@ -330,6 +330,9 @@ external interface FormsSearchProps : Props {
     /** The declared search groups, in display order. */
     var groups: List<SearchGroup>
 
+    /** Each search keyword's words (issue #1596): what the status filter calls a status a keyword sets. */
+    var ctaKeywords: List<CtaKeywordWords>?
+
     /** The current value of each parameter, keyed by name; the free-text term is under [EI.q]. */
     var values: Map<String, String>
 
@@ -379,7 +382,8 @@ val FormsSearch = FC<FormsSearchProps> { props ->
     val groups = props.groups
     // The free-text term searches the text fields, so the box is offered only where there is one to search.
     val hasText = groups.any { it.kind == UsageKind.string }
-    val chips = activeFilterChips(groups, props.applied) + listOfNotNull(formStatusChip(props.applied), needsMeChip(props.applied))
+    val chips = activeFilterChips(groups, props.applied) +
+        listOfNotNull(formStatusChip(props.applied, props.ctaKeywords.orEmpty()), needsMeChip(props.applied))
     val termApplied = props.applied[EI.q]?.toString()?.isNotBlank() == true
     div {
         className = ClassName("row forms-toolbar")
@@ -415,7 +419,7 @@ val FormsSearch = FC<FormsSearchProps> { props ->
             filterGroup("Status") {
                 Select {
                     value = props.values[GDF.formStatus]?.ifBlank { null }
-                    options = formStatusOptions()
+                    options = formStatusOptions(props.ctaKeywords.orEmpty())
                     allowClear = true
                     placeholder = "Any"
                     style = js("({ minWidth: 160 })")

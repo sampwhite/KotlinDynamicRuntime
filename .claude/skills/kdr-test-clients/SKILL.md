@@ -165,7 +165,12 @@ later schema rejects" test.
     optional `label = "…"` in the block titles the page over the form (issue #719); like a task's label it is a
     template, so `%{@t("file.ns.key")}` pulls it from a fragment file and the boot checks the pull resolves.
   - **What a task's call to action carries** (issue #1594): `keyword(CTAK.review)` in a task block declares its
-    search keyword, and an approval task carries `review` without it. Who may act on it comes from a `ctaFilter`
+    search keyword, and an approval task carries `review` without it. **`review` is the only way a form needs review**
+    (issue #1596): while an engaged workflow's CTA carries it, the form has `kdr:needsReview` (the Status column's
+    Needs Review) and the workflow `kdr:ctaReview` (`CTAK.reviewCfact`, for display branches); a
+    `singleton(WSC.needsReview, ...)` rule is refused at write, and a stored one is left out at load, reported, and gone
+    after the config's next write. So a test expecting Needs Review engages a form whose next task is an approval or
+    carries the keyword, and one expecting none must not. Who may act on it comes from a `ctaFilter`
     function on the task, `function(ctaFilterByValue { trait = "site"; valuePath = "region"; case("northwest",
     "reviewerNorthwest", "Waiting on a Northwest reviewer"); otherwise("reviewerLead") })`: a value in the form's data
     chooses a filter, and `otherwise` (required) decides when none matches, so a gap never opens the task to everyone
@@ -257,6 +262,22 @@ later schema rejects" test.
 
 Stored config is **added beside** the config declared in code in the same collector, keyed by the client in its
 id — downstream services can't tell a configured client from a code-defined one.
+
+**A stored entry stands over code only when it says so** (issue #1634). An entry whose key matches one of the client's
+**code layer** -- its template's code, its own code, and in a sandbox the sandbox's code -- must carry
+`"overrides": "code"` (`CCT.overrides`; in the DSL, `overridesCode("tplNote", "tplFlow")` in the `gedraConfig` block,
+or `columns = true` for the forms list's columns). Marked, it stands over the code's entry of the same key, whole, by
+the keys `ConfigKeys` states (the rule a client's own configuration already stands over its template's copies by): a
+trait, type, cfact, workflow, report, or file ref by key, a creation or core details workflow by its kind, the columns
+as one set. The load cuts what it stands over out of the code (`CodeOverrides`, `GedraConfigLoadService.cutSource`), so
+a code-defined client such as acme can now be edited through stored configuration. **Unmarked**, a write's trial
+refuses it, saying what it would replace and where ("which template 'tplbase''s 'base' also declares"), and so does a
+patch's dry run; configuration stored before the mark loads as it always did, with an issue saying to mark it. **Marked
+over nothing**, it is refused. **Nothing removes a code entry**: turn off what is not wanted instead (a workflow's
+`enabled`, #1635); a `$removed` is a `$` note, which no stored entry may hold. An override may sit in any stored bundle:
+one named like the code bundle it covers collides with it today (a config's id has no origin), which step 2b settles.
+A test that stores an entry over a template's or a code client's marks it; `CodeOverridesTest.kt` and the sample's
+`AcmeCodeOverrideTest.kt` are the references.
 
 ## The HTTP path (driving it as an admin)
 

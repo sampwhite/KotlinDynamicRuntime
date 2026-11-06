@@ -59,6 +59,17 @@ since each one works on the parts of the form it needs. Where the listing has a 
 form stands in each.
 
 
+# @ctaReview
+/- The `review` search keyword's words (issue #1596): what a call to action asking for a review is called wherever it is
+   shown. A client's overlay rewords them as it rewords other copy. `statusText` is the Status column's chip for a form
+   waiting on a review. -/
+# +verb Review
+# +filterLabel Needs review
+# +columnHeader Review
+# +reportLabel Needs review
+# +statusText Needs Review
+
+
 # @workflowForms
 /- A workflow's own forms listing (issue #1337), opened from the Workflows page. -/
 # +whatIsThis

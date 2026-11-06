@@ -464,6 +464,7 @@ The committee review. Explained on [Committee review](committee-review.md).
           {
             "$comment": "Only a committee member may save this task; the speaker sees it read-only.",
             "id": "recordReview",
+            "keyword": "review",
             "label": "Record the review",
             "saveWhen": "kdr:reviewer",
             "functions": [{"fn": "userHasLabel", "label": "committee", "cfact": "kdr:reviewer"}],

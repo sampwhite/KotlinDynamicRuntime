@@ -3,6 +3,7 @@ package com.dynamicruntime.webapp
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.endpoint.EndpointKind
 import com.dynamicruntime.common.home.HMENU
+import com.dynamicruntime.common.home.PFRAG
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.schema.SchFailure
 import com.dynamicruntime.common.schema.SchOpts
@@ -51,6 +52,9 @@ private val catalogScope = MainScope()
 val EndpointCatalog = FC<Props> {
     // An endpoint's description is Markdown (issue #1476): its links -- to a reference document -- resolve as form copy's.
     val copyLinks = useShellFacts().copyLinkResolver()
+    // The page's copy file (issue #1633): the explanation beside its heading, which links the API guide and the roles
+    // reference.
+    val pageCopy = usePageCopy(PFRAG.catalog)
     var catalog by useState<Catalog?>(null)
     var selected by useState<EndpointInfo?>(null)
     var values by useState<Map<String, Any?>>(emptyMap())
@@ -213,7 +217,11 @@ val EndpointCatalog = FC<Props> {
         // ---- Catalog page: the endpoint table ----
         div {
             className = ClassName("card wide")
-            h1 { +"Endpoint catalog" }
+            WhatIsThis {
+                heading = "Endpoint catalog"
+                headingLevel = 1
+                text = pageCopy.explanation(PFRAG.endpointListNs)
+            }
             p {
                 className = ClassName("subtitle")
                 +"Every registered endpoint, discovered from the runtime's /schema/endpoints catalog. Select one to view and run it."

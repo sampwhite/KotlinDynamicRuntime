@@ -158,6 +158,12 @@ other value. A filter is a fact test that may name only facts about the person l
 `label`, such as "Waiting on a Northwest reviewer", where the step's buttons would be. The demo's workflows do not use
 one.
 
+A task can say what kind of step it is with a **search keyword**, `keyword`. There is one so far, `review`, for a
+step that waits on someone to look the form over, and an approval task carries it without saying so. While a task
+carrying it is its workflow's next step, the forms list shows the form as **Needs Review** (the fact
+`kdr:needsReview`, which another workflow's eligibility test can name), and the workflow has the fact `kdr:ctaReview`
+for its `display` branches. The keyword is the only way a form comes to need review.
+
 Once the button is pressed, a text branch can name who pressed it as `${approvedByName}`. That is the name on the
 approver's profile, or their email when their profile has none. Since the person reading the step may be the form's
 owner, who may not know the approver, a branch can keep an email off the page by testing for its `@`:

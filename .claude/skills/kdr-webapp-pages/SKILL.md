@@ -3,10 +3,10 @@ name: kdr-webapp-pages
 description: >-
   What each page of the KotlinDynamicRuntime front end (webapp) decides and why, one reference file per page -- the
   Clients page (definition editor, panels, web assets and file refs, bundles, sandbox and publishing), the admin
-  console (Users, roles, labels, the editor role), the forms listing, API keys, Customers, Reports, Design View,
-  Simulations, the file store page, a client's web assets and file refs, the workflow assistant, and the public home
-  page (demo clients, self-serve clients, the public test deployment). Read the page's file before changing, reviewing,
-  or verifying that page or its API calls.
+  console (Users, roles, labels, the editor role), the forms listing, API keys, the endpoint catalog, Customers,
+  Reports, Design View, Simulations, the file store page, a client's web assets and file refs, the workflow assistant,
+  and the public home page (demo clients, self-serve clients, the public test deployment). Read the page's file before
+  changing, reviewing, or verifying that page or its API calls.
 ---
 
 # The webapp's pages
@@ -28,6 +28,7 @@ rather than all of them:
 | [`design-view.md`](design-view.md) | Design View: marking a form with the definitions behind it, page-level copy, the `design-demo` simulation |
 | [`client-web-assets.md`](client-web-assets.md) | A client's own web assets, and a client's file refs (the calls behind the Clients page's Files section) |
 | [`api-keys.md`](api-keys.md) | API keys |
+| [`endpoint-catalog.md`](endpoint-catalog.md) | The endpoint catalog page, and its copy file |
 | [`customers-page.md`](customers-page.md) | The Customers page |
 | [`simulations-page.md`](simulations-page.md) | The Simulations page |
 | [`file-store-page.md`](file-store-page.md) | The operator's file store page |

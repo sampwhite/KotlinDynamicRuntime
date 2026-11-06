@@ -165,6 +165,7 @@ Keyed by `traitId`.
 | `appliesTo` | array of one of `userData`, `formDoc`, `wfData`, `fileRef` | yes | The gedra kinds an entry of this trait may be carried on. |
 | `description` | string |  | What the trait is for. |
 | `dataSchema` | a schema | yes | The schema of the trait's own data, validated by parsing it. |
+| `overrides` | one of `code` |  | Set to `code` when this entry stands over the client's code's entry of the same key -- its template's, or its own code's -- which it replaces whole. Without it, an entry matching a code entry is refused. |
 
 ### kdr:usageDef
 
@@ -181,6 +182,7 @@ Keyed by `traitId` and `label`.
 | `substring` | boolean |  | For a string value, whether the search also offers a substring match. |
 | `presentation` | string |  | A string script over the trait's data, with the column's value as `value`, that the cell reads through. |
 | `columnId` | string |  | The column's name in its search parameters and its sort, when it is not the trait id: needed on a second column of the same trait. Letters, digits, and underscores, starting with a letter. |
+| `overrides` | one of `code` |  | Set to `code` when this entry stands over the client's code's entry of the same key -- its template's, or its own code's -- which it replaces whole. Without it, an entry matching a code entry is refused. |
 
 ### kdr:workflowDef
 
@@ -192,6 +194,7 @@ Keyed by `workflowId`.
 |---|---|---|---|
 | `workflowId` | string | yes | The workflow's id within this configuration. |
 | `definition` | [WfDef](#wfdef) | yes | The workflow definition, as the definition schema describes it. |
+| `overrides` | one of `code` |  | Set to `code` when this entry stands over the client's code's entry of the same key -- its template's, or its own code's -- which it replaces whole. Without it, an entry matching a code entry is refused. |
 
 ### kdr:reportDef
 
@@ -203,6 +206,7 @@ Keyed by `reportId`.
 |---|---|---|---|
 | `reportId` | string | yes | The report's id within this configuration. |
 | `definition` | [ReportDef](#reportdef) | yes | The report definition, as the definition schema describes it. |
+| `overrides` | one of `code` |  | Set to `code` when this entry stands over the client's code's entry of the same key -- its template's, or its own code's -- which it replaces whole. Without it, an entry matching a code entry is refused. |
 
 ### kdr:schemaDef
 
@@ -214,6 +218,7 @@ Keyed by `typeName`.
 |---|---|---|---|
 | `typeName` | string | yes | The qualified name of the type being defined. |
 | `schema` | a schema | yes | The type's schema body, validated by parsing it. |
+| `overrides` | one of `code` |  | Set to `code` when this entry stands over the client's code's entry of the same key -- its template's, or its own code's -- which it replaces whole. Without it, an entry matching a code entry is refused. |
 
 ### kdr:fragmentDef
 
@@ -249,6 +254,7 @@ Keyed by `name`.
 | `group` | string | yes | The cfact's group. |
 | `description` | string | yes | What the cfact means. |
 | `toFrontend` | boolean |  | Whether the cfact is delivered to the frontend. |
+| `overrides` | one of `code` |  | Set to `code` when this entry stands over the client's code's entry of the same key -- its template's, or its own code's -- which it replaces whole. Without it, an entry matching a code entry is refused. |
 
 ### kdr:fileRefDef
 
@@ -264,6 +270,7 @@ Keyed by `refId`.
 | `root` | string |  | For a local file: the root it is under, by the name the deployment declared it with. |
 | `path` | string |  | For a local file: its path under the root -- or, for a client's own, under the client's directory there -- in segments of letters, digits, `.`, `_` and `-`, none beginning with a dot. |
 | `description` | string |  | What the file is for, in the administrator's words. |
+| `overrides` | one of `code` |  | Set to `code` when this entry stands over the client's code's entry of the same key -- its template's, or its own code's -- which it replaces whole. Without it, an entry matching a code entry is refused. |
 
 ## The types the slots refer to
 

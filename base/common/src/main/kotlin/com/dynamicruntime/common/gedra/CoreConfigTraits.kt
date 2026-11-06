@@ -88,6 +88,7 @@ fun coreConfigTraits(cxt: KdrCxtBase): GedraConfig = gedraConfig(cxt, CCT.config
     ) {
         primaryKey(CCT.traitId)
         traitDeclarationFields()
+        overridesCodeProperty()
     }
     configTrait(
         "UsageDefEntry", CCT.usageDef, setOf(GedraConfigType.configDoc),
@@ -119,6 +120,7 @@ fun coreConfigTraits(cxt: KdrCxtBase): GedraConfig = gedraConfig(cxt, CCT.config
             "The column's name in its search parameters and its sort, when it is not the trait id: needed on a second " +
                 "column of the same trait. Letters, digits, and underscores, starting with a letter.",
         ) { pattern = columnIdPattern }
+        overridesCodeProperty()
     }
     configTrait(
         "WorkflowDefEntry", CCT.workflowDef, setOf(GedraConfigType.configDoc),
@@ -129,6 +131,7 @@ fun coreConfigTraits(cxt: KdrCxtBase): GedraConfig = gedraConfig(cxt, CCT.config
         property(CCT.definition, "The workflow definition, as the definition schema describes it.", required = true) {
             ref("${WFD.namespace}.${WFD.defType}")
         }
+        overridesCodeProperty()
     }
     configTrait(
         "ReportDefEntry", CCT.reportDef, setOf(GedraConfigType.configDoc),
@@ -139,6 +142,7 @@ fun coreConfigTraits(cxt: KdrCxtBase): GedraConfig = gedraConfig(cxt, CCT.config
         property(CCT.definition, "The report definition, as the definition schema describes it.", required = true) {
             ref("${RDEF.namespace}.${RDEF.defType}")
         }
+        overridesCodeProperty()
     }
     configTrait(
         "SchemaDefEntry", CCT.schemaDef, setOf(GedraConfigType.configDoc),
@@ -147,6 +151,7 @@ fun coreConfigTraits(cxt: KdrCxtBase): GedraConfig = gedraConfig(cxt, CCT.config
         primaryKey(CCT.typeName)
         property(CCT.typeName, "The qualified name of the type being defined.", required = true)
         property(CCT.schema, "The type's schema body, validated by parsing it.", required = true) { schemaDocument() }
+        overridesCodeProperty()
     }
     configTrait(
         "FragmentDefEntry", CCT.fragmentDef, setOf(GedraConfigType.configDoc),
@@ -180,6 +185,7 @@ fun coreConfigTraits(cxt: KdrCxtBase): GedraConfig = gedraConfig(cxt, CCT.config
             type = SCT.boolean
             allowCoerce = false
         }
+        overridesCodeProperty()
     }
     // Declared last, so the slot list a write is held to ends with the newest (issue #1153). What a file *is* --
     // its type, its size, the name it was uploaded under -- is deliberately no field of this: it is the file
@@ -214,7 +220,20 @@ fun coreConfigTraits(cxt: KdrCxtBase): GedraConfig = gedraConfig(cxt, CCT.config
             maxLength = FREF.maxPathLength
         }
         property(CCT.description, "What the file is for, in the administrator's words.") { maxLength = FREF.maxDescriptionLength }
+        overridesCodeProperty()
     }
+}
+
+/**
+ * The mark a keyed slot's stored entry carries to stand over the code's entry of the same key (issue #1634): the
+ * template's copies, the client's own code, a sandbox's code. One value, so anything else is refused at the write.
+ */
+private fun SchTypeBuilder.overridesCodeProperty() {
+    property(
+        CCT.overrides,
+        "Set to `${CCT.overridesCodeValue}` when this entry stands over the client's code's entry of the same key -- its " +
+            "template's, or its own code's -- which it replaces whole. Without it, an entry matching a code entry is refused.",
+    ) { option(CCT.overridesCodeValue, "Stands over the code's entry of the same key") }
 }
 
 /**

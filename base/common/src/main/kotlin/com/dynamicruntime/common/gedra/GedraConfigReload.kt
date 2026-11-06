@@ -117,16 +117,27 @@ object GedraConfigReload {
         } else {
             clientConfigs(cxt, collector, loader, configService, client, reloadIssues)
         }
+        // What the fresh revisions' marked entries stand over of the client's own code (issue #1634), judged before phase
+        // one as every check here is. A sandbox's code is all copies, cut as they were made.
+        val judged = if (sandboxParent != null) CodeOverrides.Judged(fresh, ConfigKeys.none) else {
+            val def = fresh.firstNotNullOfOrNull { c -> c.client?.takeIf { it.clientId == client } }
+                ?: loader.sourceClientsOf(collector)[client]
+            CodeOverrides.judge(cxt, fresh, loader.codeLayerOf(collector, client, def), reloadIssues)
+        }
 
         // --- phase one: swap the collectors, reversibly ---
         // As one change to every other thread (issue #1264): the client's configs withdrawn and the fresh ones added
         // are published together when the batch ends, so a request never sees the client part way through, or gone.
         val previous = loader.loadedFor(client)
+        val previousCuts = loader.sourceCutsFor(client)
+        var cuts = previousCuts
         val taken = mutableListOf<GedraConfig>()
         collector.batch {
             try {
                 previous.forEach { collector.removeGedraConfig(it) }
-                for (config in fresh) {
+                // The client's own code put back as declared, then cut by what the fresh revisions stand over (#1634).
+                cuts = loader.cutSource(collector, client, judged.over, previousCuts)
+                for (config in judged.stored) {
                     if (collector.addGedraConfig(cxt, config)) taken.add(config)
                 }
                 // The client's copy of its template (issue #945), made against what it now holds, so a revision that
@@ -135,12 +146,15 @@ object GedraConfigReload {
                 taken.addAll(loader.addTemplateClones(cxt, collector, client, boot = false))
             } catch (e: Exception) {
                 taken.forEach { collector.removeGedraConfig(it) }
+                // Back as it was, and recorded, so the next reload finds the cuts the collector holds.
+                loader.recordSourceCuts(client, loader.cutSource(collector, client, previousCuts.over, cuts))
                 previous.forEach { collector.addGedraConfig(cxt, it) }
                 throw e
             }
         }
         // Recorded now, so a failure below is repaired by running the reload again over the right prior set.
         loader.recordLoaded(client, taken)
+        loader.recordSourceCuts(client, cuts)
 
         // --- phase two: rebuild and publish, in order ---
         // The client's definition is judged first (issue #819): the schema builds a variant only for a present client,

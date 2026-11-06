@@ -536,19 +536,27 @@ object HFRAG {
 }
 
 /**
- * The fragment files of the pages whose copy is not a widget-group's own (issue #1337): the Clients page, Reports, and
- * Design View. They hold the explanations those pages offer and are the place for the rest of their copy. Having no
- * UI-config of their own, they are named by the shell's ([HFRAG.home]'s config lists them after its own file), so a
- * page reads its file with no request of its own.
+ * The fragment files of the pages whose copy is not a widget-group's own (issue #1337): the Clients page, Reports,
+ * Design View, the Users page, and the endpoint catalog (issue #1633). They hold the explanations those pages offer and
+ * are the place for the rest of their copy. Having no UI-config of their own, they are named by the shell's
+ * ([HFRAG.home]'s config lists them after its own file), so a page reads its file with no request of its own.
  */
 @Suppress("ConstPropertyName")
 object PFRAG {
     const val clients = "clients"
     const val reports = "reports"
     const val design = "design"
+    const val users = "users"
+    const val catalog = "catalog"
 
     /** Every page file, in the order the shell's config names them. */
-    val files: List<String> = listOf(clients, reports, design)
+    val files: List<String> = listOf(clients, reports, design, users, catalog)
+
+    /** The Users page's namespace for its list of users, the page's own heading (issue #1633). */
+    const val userListNs = "userList"
+
+    /** The endpoint catalog's namespace for its table of endpoints, the page's own heading (issue #1633). */
+    const val endpointListNs = "endpointList"
 
     /** The Clients page's namespaces: its Sandbox, Stored configuration, and Files sections. */
     const val sandboxNs = "sandbox"

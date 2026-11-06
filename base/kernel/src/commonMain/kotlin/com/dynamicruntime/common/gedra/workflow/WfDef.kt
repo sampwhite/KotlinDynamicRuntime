@@ -83,7 +83,7 @@ object WFD {
 
     /**
      * A normal workflow's singleton-cfact rules (issue #784): each emits a framework singleton cfact ([cfact],
-     * one of [WSC.all]) about the form when its [kWhen] expression matches the workflow's current cfacts.
+     * one of [WSC.declarable]) about the form when its [kWhen] expression matches the workflow's current cfacts.
      */
     const val singletons = "singletons"
 
@@ -543,10 +543,10 @@ class WfEligibility(val id: String, val test: String, val explanation: String, v
 
 /**
  * One **singleton-cfact rule** of a normal workflow (issue #784): emit the framework singleton [cfact] -- one of
- * [WSC.all], never a name a workflow made up -- about the form while [whenExpr] matches the workflow's current
+ * [WSC.declarable], never a name a workflow made up -- about the form while [whenExpr] matches the workflow's current
  * cfacts (the form's own, plus what the workflow's `cfactCalc` functions conclude). What turns a workflow's
- * private state into the form-level `Needs Review` / `Finished` a listing shows. Only an engaged workflow's
- * rules contribute.
+ * private state into the form-level `Finished` a listing shows (`Needs Review` is the `review` keyword's, issue
+ * #1596). Only an engaged workflow's rules contribute.
  */
 class WfSingleton(val cfact: String, val whenExpr: String)
 
@@ -572,6 +572,7 @@ class WfApproval(
     /** The rule the approve endpoint judges by: [approveWhen], or [defaultApproveWhen]. */
     val effectiveApproveWhen: String get() = approveWhen ?: defaultApproveWhen
 
+    @Suppress("ConstPropertyName")
     companion object {
         /**
          * Who may approve when an approval does not say (issues #787, #1595): a reviewer -- whom the task's
@@ -988,10 +989,18 @@ class WfDef(
         for (r in singletons) {
             // The list is hardwired because each name carries code behavior; a workflow cannot invent one, and a
             // client's own cfacts are not candidates -- nothing would know what to do with them.
-            if (r.cfact !in WSC.all) {
+            // A status the keywords set (issue #1596) is not a workflow's to declare: there is one mechanism for it.
+            CTAK.keywords.firstOrNull { it.statusCfact == r.cfact }?.let { kw ->
+                throw KdrException.mkConv(
+                    "Workflow '$workflowId' emits '${r.cfact}' as a singleton cfact, which the '${kw.name}' search keyword sets: " +
+                        "a workflow whose call to action carries it has it on the form. Give the task the keyword instead " +
+                        "(an approval task carries '${CTAK.review}' already).",
+                )
+            }
+            if (r.cfact !in WSC.declarable) {
                 throw KdrException.mkConv(
                     "Workflow '$workflowId' emits '${r.cfact}' as a singleton cfact; a workflow may emit only the " +
-                        "framework's ${WSC.all.sorted()}, since each carries behavior in code.",
+                        "framework's ${WSC.declarable.sorted()}, since each carries behavior in code.",
                 )
             }
             if (!seenSingletons.add(r.cfact)) {
@@ -1423,7 +1432,7 @@ class WfDefBuilder(private val workflowId: String, private val entry: WfEntry) {
     }
 
     /**
-     * A singleton-cfact rule (issue #784): emit the framework singleton [cfact] (one of [WSC.all]) about the
+     * A singleton-cfact rule (issue #784): emit the framework singleton [cfact] (one of [WSC.declarable]) about the
      * form while [whenExpr] matches the workflow's current cfacts -- contributed only while the form is engaged.
      */
     fun singleton(cfact: String, whenExpr: String) {
