@@ -18,11 +18,14 @@ import com.dynamicruntime.common.gedra.workflow.WFD
 import com.dynamicruntime.common.gedra.workflow.WFP
 import com.dynamicruntime.common.gedra.workflow.WfEntry
 import com.dynamicruntime.common.gedra.workflow.WfParams
+import com.dynamicruntime.common.gedra.workflow.WfParamsBuilder
 import com.dynamicruntime.common.gedra.workflow.WfParamsFrom
 import com.dynamicruntime.common.gedra.workflow.WfSaveKind
 import com.dynamicruntime.common.gedra.workflow.WfWindow
 import com.dynamicruntime.common.gedra.workflow.WfWindows
 import com.dynamicruntime.common.gedra.workflow.WorkflowParamsService
+import com.dynamicruntime.common.gedra.workflow.WorkflowPhases
+import com.dynamicruntime.common.gedra.workflow.WorkflowService
 import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.startup.ComponentDefinition
 import com.dynamicruntime.common.user.TestUser
@@ -33,6 +36,7 @@ import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldHaveSize
+import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 import kotlin.time.Duration.Companion.days
@@ -52,6 +56,9 @@ class SourceParamsComponent : ComponentDefinition {
             )
             workflow("review", WfEntry.normal) { task("record", "Record it") { trait(GT.name); save("go", "Save", WfSaveKind.edit) } }
             workflowParams("review") { lifetime(start = defaultStart, end = defaultEnd) }
+            // Shipped turned off (issue #1635): the client turns it on when it wants it.
+            workflow("pilot", WfEntry.normal) { task("note", "Note it") { trait(GT.name); save("go", "Save", WfSaveKind.edit) } }
+            workflowParams("pilot") { enabled(false) }
         },
     )
 
@@ -142,6 +149,43 @@ class WorkflowParamsSourceTest : StringSpec({
         shown(client)[WFP.history].toJsonListOfMaps() shouldHaveSize 2
         // Unsetting what is not set is nothing to save.
         full.expectError(EXC.badInput, UADEP.clientWorkflowParams, request(client, null)).toString() shouldContain "nothing to save"
+    }
+
+    // Issue #1635: the switch resolves as every parameter does, so code ships a workflow off, and a client turns off one
+    // its code declares, with no override of the code.
+    "code may ship a workflow turned off, and a client turns its code's workflows on and off" {
+        fun exists(scope: String, workflowId: String): Boolean = WorkflowPhases.of(
+            cxt, scope, WorkflowService.get(cxt).forClient(scope).workflow(workflowId).shouldNotBeNull().def,
+        ).exists
+        fun switch(scope: String, workflowId: String, on: Boolean?) = full.postData(
+            UADEP.clientWorkflowParams,
+            buildMap {
+                put(CLD.client, scope)
+                put(WFD.workflowId, workflowId)
+                if (on == null) put(WFP.unset, listOf(WFP.enabled)) else put(WFP.params, mapOf(WFP.enabled to on))
+            },
+        )
+        fun enabledFrom(scope: String, workflowId: String): Any? =
+            full.getItem(UADEP.clientWorkflows, mapOf(CLD.client to scope))[CWF.workflows].toJsonListOfMaps()
+                .single { it[CWF.definition].toJsonMapOrEmpty()[WFD.workflowId] == workflowId }[CWF.params].toJsonMapOrEmpty()[WFP.from]
+                .toJsonMapOrEmpty()[WFP.enabled]
+        // Off as shipped, in the client and its sandbox, and the page says it is the code's default.
+        exists(client, "pilot") shouldBe false
+        exists(sandbox, "pilot") shouldBe false
+        enabledFrom(client, "pilot") shouldBe WfParamsFrom.source.name
+        // The client turns it on; unset, it is off again, as the code ships it.
+        switch(client, "pilot", true)
+        exists(client, "pilot") shouldBe true
+        exists(sandbox, "pilot") shouldBe true
+        switch(client, "pilot", null)
+        exists(client, "pilot") shouldBe false
+        // A workflow its code declares on, the client turns off with no override of the code, and back.
+        switch(client, "review", false)
+        exists(client, "review") shouldBe false
+        switch(client, "review", null)
+        exists(client, "review") shouldBe true
+        // The switch alone is a default, without windows.
+        WfParamsBuilder("pilot").apply { enabled(false) }.build().windows shouldBe null
     }
 
     "only source code declares defaults" {

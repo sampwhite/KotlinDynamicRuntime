@@ -173,6 +173,33 @@ class WfWindowsTest {
     }
 
     @Test
+    fun turnedOffAWorkflowIsOutsideItsLifetimeWhateverItsWindows() {
+        // Issue #1635: the switch resolves as a parameter of its own, and off puts the workflow outside its lifetime.
+        val windows = WfWindows(lifetime = WfWindow(jan, dec))
+        val inside = jun
+        assertEquals(WfPhase.engageable, WfParams(windows).phaseAt(inside))
+        assertEquals(WfPhase.outsideLifetime, WfParams(windows, enabled = false).phaseAt(inside))
+        assertEquals(WfPhase.engageable, WfParams(windows, enabled = true).phaseAt(inside))
+        // Nothing anywhere: on.
+        assertTrue(WfParams.none.enabledInForce)
+        // A sandbox's own "on" wins over its client's "off"; with none of its own, it follows the client's.
+        val layers = WfParamsLayers(WfParams(enabled = true), WfParams(windows, enabled = false))
+        assertTrue(layers.inForce.enabledInForce)
+        assertEquals(mapOf(WFP.windows to WfParamsFrom.parent), layers.from)
+        assertEquals(WfParamsFrom.source, WfParamsLayers(WfParams.none, source = WfParams(enabled = false)).from[WFP.enabled])
+        // An edit of the switch leaves the rest; unset on its own; read and written as true or false, and nothing else.
+        val off = WfParams(windows, enabled = false)
+        assertEquals(WfParams(windows), off.edited(WfParams.none, setOf(WFP.enabled)))
+        assertEquals(WfParams(windows, enabled = true), off.edited(WfParams(enabled = true)))
+        assertEquals(off, WfParams.fromInfo(off.toInfo()))
+        assertEquals(mapOf(WFP.enabled to false), WfParams(enabled = false).toInfo())
+        assertFailsWith<KdrException> { WfParams.fromInfo(mapOf(WFP.enabled to "no")) }
+        assertTrue(WFP.enabled in WfParams.allKeys)
+        // Declared in code alone, with no windows.
+        assertEquals(WfParams(enabled = false), WfParamsBuilder("pilot").apply { enabled(false) }.build())
+    }
+
+    @Test
     fun sourceDefaultsAreBuiltFromMomentsAndMustNest() {
         val built = WfParamsBuilder("review").apply {
             lifetime(start = "2026-01-01T00:00:00Z", end = "2026-12-01T00:00:00Z")

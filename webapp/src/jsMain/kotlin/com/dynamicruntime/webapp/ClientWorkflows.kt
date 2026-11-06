@@ -84,6 +84,18 @@ class WorkflowParamsView(
     /** Whether the scope sets who sees the workflow itself. */
     val ownVisibility: Boolean get() = own?.params?.visibility != null
 
+    /** Whether the workflow is turned on (issue #1635): on, unless somebody turned it off. */
+    val enabled: Boolean get() = layers.inForce.enabledInForce
+
+    /** Where the switch in force comes from when the scope does not set it; null when it does, or nothing does. */
+    val enabledFrom: WfParamsFrom? get() = layers.from[WFP.enabled]
+
+    /** Where the switch would come from if the scope stopped setting its own; null when nothing would set it. */
+    val enabledFallbackFrom: WfParamsFrom? get() = layers.fallbackFrom(WFP.enabled)
+
+    /** Whether the scope turns the workflow on or off itself. */
+    val ownEnabled: Boolean get() = own?.params?.enabled != null
+
     /**
      * The earlier settings that changed parameter [key], newest first: each setting records every parameter the scope
      * set then, so an editor of one parameter leaves out those that changed only another -- the windows editor a
@@ -136,6 +148,12 @@ class ClientWorkflowView(
 
     /** Who sees it here (issue #1384): nobody restricting it means everybody. */
     val visibility: WfVisibility get() = params?.visibility ?: WfVisibility.everyone
+
+    /** Whether the page offers its switch (issue #1635): every normal workflow's, as for its windows. */
+    val enabledOffered: Boolean get() = def.entry == WfEntry.normal
+
+    /** Whether it is turned on here (issue #1635); a workflow that is not normal has no switch, and is always on. */
+    val enabled: Boolean get() = !enabledOffered || params?.enabled != false
 }
 
 /** A trait the client's workflows may collect. */

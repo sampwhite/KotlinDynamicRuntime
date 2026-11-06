@@ -627,6 +627,21 @@ data released (`TraitLocks`) -- and a restricted creation workflow sends them to
 workflow to the raw editor. The `clients` file's `workflows.newWorkflowNote` and the home file's
 `publicHome.createClientNote` ship empty and say how to open a workflow up where the `reference` flavor fills them in.
 
+**On/off** (issue #1635, `WorkflowEnabledEditor.kt`, its pure half in `WorkflowEnabled.kt`, covered by
+`WorkflowEnabledTest`): whether a normal workflow is turned on, a third parameter (`WFP.enabled`, true or false, on
+where nothing sets it). It is how a client stops using a workflow it does not want, one from its code or its template
+included, without deleting it: the code guide's "Disable rather than delete". Each normal workflow's row offers
+**On/off…**, and a workflow turned off reads **Off** in the Now column, before anything its windows say
+(`workflowNowText`: "Off", or "Off: the code's default" / "Off: its client's choice" when it is not the scope's own).
+Turned off, the workflow is as if not configured, since the kernel's `WfParams.phaseAt` puts it outside its lifetime.
+So every phase check the backend makes treats it so (`WorkflowPhases`): its part in forms is hidden and kept, nothing
+engages with it, and its view and the workflow pages leave it out. Turning it on again brings it all back. The editor
+saves as the others do (`enabledSaveRequest`), with where the choice comes from (`enabledSourceText`), the way back to a
+client's choice or the code's default (`enabledFallbackLabel`), and the earlier choices. Turning off a workflow forms
+are engaged with is refused with the impact report (`ImpactKind.workflowHidden`), whose **Turn off anyway**
+acknowledges it. Code may ship a workflow off with `workflowParams(id) { enabled(false) }`. The creation and core
+details workflows have no switch, and the backend refuses one.
+
 **Long text** is the schema's mark (issue #1550): a plain string's `g-longText: true` (`SchType.longText`, refused on
 anything but plain text) makes `SchemaForm` draw antd's `TextArea` (`ControlKind.LongText`) on every form, the
 endpoint catalog included. A layout field entry's `lines` says how tall it starts (`defaultLongTextLines`, 3, when

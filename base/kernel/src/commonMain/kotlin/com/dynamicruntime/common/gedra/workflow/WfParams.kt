@@ -45,6 +45,14 @@ object WFP {
     /** The parameter holding who sees a workflow, of any kind ([WfVisibility], issue #1384). */
     const val visibility = "visibility"
 
+    /**
+     * The parameter saying whether a normal workflow is turned on (issue #1635): true or false, and true where nothing
+     * sets it. Turned off, the workflow is as if not configured ([WfPhase.outsideLifetime]) -- its stored data kept,
+     * nothing showing it -- and turning it on again brings it all back. How a client stops using configuration it does
+     * not want, its code's included, rather than deleting it.
+     */
+    const val enabled = "enabled"
+
     /** In a [visibility]: a [WfVisibilityMode] name. */
     const val mode = "mode"
 
@@ -142,23 +150,25 @@ enum class WfParamsFrom {
 /**
  * A workflow's parameters in one scope (issue #1356): values that are not part of its definition, set on the client's
  * page, in force at once with no draft and no publish, and kept per client -- a sandbox its own. Their keys are the
- * platform's to declare, not a definition's: [windows], a normal workflow's time windows, and [visibility], who sees a
- * workflow of any kind (issue #1384); a form quota to come.
+ * platform's to declare, not a definition's: [windows], a normal workflow's time windows; [visibility], who sees a
+ * workflow of any kind (issue #1384); and [enabled], whether a normal workflow is turned on (issue #1635). A form quota
+ * is to come.
  *
  * **Each parameter resolves on its own** (issue #1386). One these do not set (null) follows the fallback
  * below them -- a sandbox its client's, a client its source defaults -- and one they set is theirs, including
  * deliberately no limits ([WfWindows.none]). So a scope may set one parameter and follow the fallback for another, and
  * what nothing sets anywhere is no limit.
  */
-class WfParams(val windows: WfWindows? = null, val visibility: WfVisibility? = null) {
+class WfParams(val windows: WfWindows? = null, val visibility: WfVisibility? = null, val enabled: Boolean? = null) {
     /** Whether these set no parameter: each follows the fallback. */
-    val isEmpty: Boolean get() = windows == null && visibility == null
+    val isEmpty: Boolean get() = windows == null && visibility == null && enabled == null
 
     /** The keys of the parameters these set. */
     val keys: Set<String>
         get() = buildSet {
             if (windows != null) add(WFP.windows)
             if (visibility != null) add(WFP.visibility)
+            if (enabled != null) add(WFP.enabled)
         }
 
     /** The windows these give a workflow: their own, or no limits when they set none. */
@@ -167,22 +177,35 @@ class WfParams(val windows: WfWindows? = null, val visibility: WfVisibility? = n
     /** Who these let see a workflow: their own visibility, or everybody when they set none (issue #1384). */
     val visibilityInForce: WfVisibility get() = visibility ?: WfVisibility.everyone
 
+    /** Whether these leave a workflow turned on (issue #1635): their own choice, or on when they make none. */
+    val enabledInForce: Boolean get() = enabled ?: true
+
+    /**
+     * Where a normal workflow running with these stands at the moment [at]: outside its lifetime while turned off
+     * ([enabledInForce], issue #1635), as if not configured, and otherwise where its windows put it. The one question
+     * every phase check asks, so the switch and the windows cannot be judged apart.
+     */
+    fun phaseAt(at: Instant): WfPhase = if (!enabledInForce) WfPhase.outsideLifetime else windowsInForce.phaseAt(at)
+
     /** What is wrong with these parameters for [workflowId], or null: windows that do not nest, say. */
     fun problem(workflowId: String): String? = windows?.problem(workflowId)
 
     /** These, with each parameter they do not set taken from [fallback]. */
-    fun over(fallback: WfParams): WfParams = WfParams(windows ?: fallback.windows, visibility ?: fallback.visibility)
+    fun over(fallback: WfParams): WfParams =
+        WfParams(windows ?: fallback.windows, visibility ?: fallback.visibility, enabled ?: fallback.enabled)
 
     /** These, with the parameters [edit] sets replacing theirs, and those named in [unset] no longer set. */
     fun edited(edit: WfParams, unset: Set<String> = emptySet()): WfParams = WfParams(
         if (WFP.windows in unset) null else edit.windows ?: windows,
         if (WFP.visibility in unset) null else edit.visibility ?: visibility,
+        if (WFP.enabled in unset) null else edit.enabled ?: enabled,
     )
 
     /** As stored and sent: each parameter set -- an empty one too, which is no limits -- and nothing for one that is not. */
     fun toInfo(): Map<String, Any?> = buildMap {
         windows?.let { put(WFP.windows, it.toInfo()) }
         visibility?.let { put(WFP.visibility, it.toInfo()) }
+        enabled?.let { put(WFP.enabled, it) }
     }
 
     override fun equals(other: Any?): Boolean = other is WfParams && other.toInfo() == toInfo()
@@ -193,14 +216,21 @@ class WfParams(val windows: WfWindows? = null, val visibility: WfVisibility? = n
         val none = WfParams()
 
         /** The key of every parameter there is. */
-        val allKeys: Set<String> = setOf(WFP.windows, WFP.visibility)
+        val allKeys: Set<String> = setOf(WFP.windows, WFP.visibility, WFP.enabled)
 
-        /** Parameters read off storage or the wire ([toInfo]); a window bound that is no moment, or a mode that is none, is refused. */
+        /**
+         * Parameters read off storage or the wire ([toInfo]); a window bound that is no moment, a mode that is none, or an
+         * `enabled` that is not true or false, is refused.
+         */
         fun fromInfo(raw: Any?): WfParams {
             val map = raw.toJsonMapOrEmpty()
+            val enabled = map[WFP.enabled]?.let {
+                it as? Boolean ?: throw KdrException.mkConv("A workflow's '${WFP.enabled}' is '$it', which is not true or false.")
+            }
             return WfParams(
                 if (map[WFP.windows] != null) WfWindows.fromInfo(map[WFP.windows].toJsonMapOrEmpty()) else null,
                 if (map[WFP.visibility] != null) WfVisibility.fromInfo(map[WFP.visibility]) else null,
+                enabled,
             )
         }
     }
@@ -242,6 +272,7 @@ class WfParamsBuilder(private val workflowId: String) {
     private var lifetime: WfWindow? = null
     private var relevancy: WfWindow? = null
     private var engagement: WfWindow? = null
+    private var enabled: Boolean? = null
 
     /** When the workflow exists at all. */
     fun lifetime(start: String? = null, end: String? = null) {
@@ -265,14 +296,27 @@ class WfParamsBuilder(private val workflowId: String) {
         return WfWindow(moment(start), moment(end))
     }
 
-    /** The parameters declared: the windows, when any was given, which must nest. */
+    /**
+     * Whether the workflow starts turned on (issue #1635): `enabled(false)` ships it off, so a client turns it on when
+     * it wants it.
+     */
+    fun enabled(on: Boolean) {
+        enabled = on
+    }
+
+    /** The parameters declared: the windows, when any was given, which must nest; and whether it is on, when said. */
     fun build(): WfParams {
-        if (lifetime == null && relevancy == null && engagement == null) {
+        val anyWindow = lifetime != null || relevancy != null || engagement != null
+        if (!anyWindow && enabled == null) {
             throw KdrException.mkConv("The default parameters of workflow '$workflowId' declare nothing.")
         }
-        val windows = WfWindows(lifetime ?: WfWindow.always, relevancy ?: WfWindow.always, engagement ?: WfWindow.always)
-        windows.check(workflowId)
-        return WfParams(windows)
+        val windows = if (!anyWindow) {
+            null
+        } else {
+            WfWindows(lifetime ?: WfWindow.always, relevancy ?: WfWindow.always, engagement ?: WfWindow.always)
+                .also { it.check(workflowId) }
+        }
+        return WfParams(windows, enabled = enabled)
     }
 }
 

@@ -42,8 +42,8 @@ internal fun SchModuleBuilder.clientWorkflowsEndpoints() {
         ) { type = SCT.kObject }
         property(
             CWF.params,
-            "Its parameters as the page's client or sandbox runs them (issues #1356, #1384): who sees it, and for a " +
-                "normal workflow its time windows, set here whoever declared the workflow.",
+            "Its parameters as the page's client or sandbox runs them (issues #1356, #1384, #1635): who sees it, and for a " +
+                "normal workflow its time windows and whether it is turned on, set here whoever declared the workflow.",
         ) { ref(CWF.paramsTypeName) }
     }
 
@@ -54,8 +54,9 @@ internal fun SchModuleBuilder.clientWorkflowsEndpoints() {
         property(
             WFP.params,
             "The values the scope set itself: `${WFP.windows}`, a normal workflow's time windows, each a half-open " +
-                "`{start, end}` of moments, either bound optional; and `${WFP.visibility}`, who sees the workflow, " +
-                "`{${WFP.mode}, ${WFP.labels}}`. A parameter absent here was not set by this setting.",
+                "`{start, end}` of moments, either bound optional; `${WFP.visibility}`, who sees the workflow, " +
+                "`{${WFP.mode}, ${WFP.labels}}`; and `${WFP.enabled}`, whether a normal workflow is turned on, true or " +
+                "false. A parameter absent here was not set by this setting.",
             required = true,
         ) { type = SCT.kObject }
         property(WFP.setAt, "When they were set; absent for values nobody has set.") { dateTime() }
@@ -68,7 +69,7 @@ internal fun SchModuleBuilder.clientWorkflowsEndpoints() {
         property(
             WFP.inForce,
             "The parameters in force, each the scope's own, else -- on a sandbox -- its client's, else the default the " +
-                "client's code declares. A parameter set nowhere is absent: no limits, and seen by everybody.",
+                "client's code declares. A parameter set nowhere is absent: no limits, seen by everybody, and turned on.",
             required = true,
         ) { type = SCT.kObject }
         property(
@@ -203,13 +204,16 @@ internal fun SchModuleBuilder.clientWorkflowsEndpoints() {
 
     generalEndpoint(
         UADEP.clientWorkflowParams,
-        "Changes the parameters of one of a client's workflows (issues #1356, #1384, #1386) -- `${WFP.windows}`, a " +
-            "normal workflow's time windows: `${WFD.lifetime}`, `${WFD.relevancy}` and `${WFD.engagement}`, each a " +
-            "half-open `{start, end}` of moments, either bound optional; and `${WFP.visibility}`, who sees a workflow of " +
-            "any kind: `{${WFP.mode}, ${WFP.labels}}` -- in the client or sandbox named, whoever declared the workflow. Each " +
+        "Changes the parameters of one of a client's workflows (issues #1356, #1384, #1386, #1635) -- `${WFP.windows}`, " +
+            "a normal workflow's time windows: `${WFD.lifetime}`, `${WFD.relevancy}` and `${WFD.engagement}`, each a " +
+            "half-open `{start, end}` of moments, either bound optional; `${WFP.visibility}`, who sees a workflow of any " +
+            "kind: `{${WFP.mode}, ${WFP.labels}}`; and `${WFP.enabled}`, whether a normal workflow is turned on: turned " +
+            "off, it is as if not configured, its stored data kept -- in the client or sandbox named, whoever declared the " +
+            "workflow. Each " +
             "parameter in `${WFP.params}` becomes the scope's own, and each named in `${WFP.unset}` follows its fallback " +
             "again; any other is left as it is. In force at once, with no draft and no publish; what they replace is " +
-            "kept among the earlier settings. A change that would, now, freeze or hide forms engaged with the workflow, " +
+            "kept among the earlier settings. A change that would, now, freeze or hide forms engaged with the workflow -- " +
+            "turning it off hides them -- " +
             "or take one out of its owner's sight, is refused with the impact report unless the impact is acknowledged.",
         HttpMethod.POST,
         outputRef = CWF.paramsResultTypeName,

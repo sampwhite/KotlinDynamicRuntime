@@ -86,7 +86,10 @@ class ResolvedWorkflowParams(
 ) {
     val layers: WfParamsLayers = WfParamsLayers(own?.params ?: WfParams.none, parent?.params ?: WfParams.none, source)
 
-    /** The windows the workflow runs with: what every phase check asks. */
+    /** The parameters in force: what every phase check asks ([WfParams.phaseAt]), the switch and the windows together. */
+    val inForce: WfParams get() = layers.inForce
+
+    /** The windows the workflow runs with. */
     val windows: WfWindows get() = layers.inForce.windowsInForce
 
     /** Who sees the workflow (issue #1384): what [WorkflowAudience] asks. */
@@ -94,8 +97,8 @@ class ResolvedWorkflowParams(
 }
 
 /**
- * A workflow's parameters (issue #1356): values that are not part of its definition -- a normal workflow's time windows,
- * and who sees a workflow of any kind (issue #1384) --
+ * A workflow's parameters (issue #1356): values that are not part of its definition -- a normal workflow's time windows
+ * and whether it is turned on (issue #1635), and who sees a workflow of any kind (issue #1384) --
  * held per scope in a table of their own (`WorkflowParams`, one row per client and workflow id) and in force the moment
  * they are saved: no draft, no publish, and a publish never carries them.
  *
@@ -119,8 +122,8 @@ class ResolvedWorkflowParams(
  * **A row outlives its workflow.** Removing a workflow leaves its parameters and their history, as it leaves every
  * other stored trace of it: a workflow made again under the same id runs with the windows the old one had.
  *
- * The caller judges what a save may change -- windows on a normal workflow only, and that nest -- and what it would do to forms
- * engaged with the workflow (`ClientWorkflowEdit.saveParams`); this keeps the values.
+ * The caller judges what a save may change -- windows and the switch on a normal workflow only, and windows that nest
+ * -- and what it would do to forms engaged with the workflow (`ClientWorkflowEdit.saveParams`); this keeps the values.
  */
 class WorkflowParamsService : ServiceInitializer {
     override val serviceName: String = WorkflowParamsService.serviceName
@@ -173,7 +176,13 @@ class WorkflowParamsService : ServiceInitializer {
         return ResolvedWorkflowParams(own?.current, own?.history.orEmpty(), parent?.current, source)
     }
 
-    /** The windows [workflowId] runs with in [client] ([resolve]): what every phase check asks. */
+    /**
+     * The parameters [workflowId] runs with in [client] ([resolve]): what every phase check asks -- whether it is turned
+     * on (issue #1635) and its windows.
+     */
+    fun paramsFor(cxt: KdrCxt, client: String?, workflowId: String): WfParams = resolve(cxt, client, workflowId).inForce
+
+    /** The windows [workflowId] runs with in [client] ([resolve]). */
     fun windowsFor(cxt: KdrCxt, client: String?, workflowId: String): WfWindows = resolve(cxt, client, workflowId).windows
 
     /** Who sees [workflowId] in [client] ([resolve], issue #1384): what [WorkflowAudience] asks. */
