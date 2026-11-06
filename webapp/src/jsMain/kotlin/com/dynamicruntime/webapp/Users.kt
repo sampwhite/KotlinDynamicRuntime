@@ -5,6 +5,7 @@ import com.dynamicruntime.common.context.CL
 import com.dynamicruntime.common.context.UserProfile
 import com.dynamicruntime.common.endpoint.EI
 import com.dynamicruntime.common.home.HMENU
+import com.dynamicruntime.common.home.PFRAG
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.http.request.RoleLadder
 import com.dynamicruntime.common.user.AERR
@@ -66,6 +67,8 @@ private val userIdentity = setOf(HP.user)
  * org within it) rather than showing an error -- so this page needs no branch on who is asking.
  */
 val Users = FC<Props> {
+    // The page's copy file (issue #1633): the explanation beside its heading, which links the roles reference.
+    val pageCopy = usePageCopy(PFRAG.users)
     var config by useState<HomeConfig?>(null)
     var users by useState<List<AdminUser>>(emptyList())
     // The search filters (issue #411), held generically by field name so the panel renders from the shared spec
@@ -1332,7 +1335,11 @@ val Users = FC<Props> {
             }
         } else {
             // ---- find -------------------------------------------------------
-            h1 { +"Users" }
+            WhatIsThis {
+                heading = "Users"
+                headingLevel = 1
+                text = pageCopy.explanation(PFRAG.userListNs)
+            }
             p {
                 className = ClassName("subtitle")
                 +(if (readOnly) {

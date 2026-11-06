@@ -366,6 +366,8 @@ class CommonComponent : ComponentDefinition {
             fragmentFiles(PFRAG.clients, shownOn = "the Clients page") +
             fragmentFiles(PFRAG.reports, shownOn = "the Reports page") +
             fragmentFiles(PFRAG.design, shownOn = "Design View's inspector") +
+            fragmentFiles(PFRAG.users, shownOn = "the Users page") +
+            fragmentFiles(PFRAG.catalog, shownOn = "the endpoint catalog page") +
             fragmentFiles(FRAG.errors, shownOn = "error messages") +
             fragmentFiles(FRAG.sample) +
             // The auth mails (issue #773): private copy, read by `MailCopy` rather than delivered.

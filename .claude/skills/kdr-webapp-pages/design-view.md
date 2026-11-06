@@ -125,3 +125,8 @@ parts of one questionnaire keep each other's answers.
   arranges, so it and the **Event request** core details workflow each save their own part of one request; its last step
   is a reviewer's approval. The report's **reviewer** is an administrator carrying the client's `reviewer` label; the
   designer, without it, sees that step as someone else's ("A reviewer approves the plan").
+
+**Its copy file** (`design.md`, `PFRAG.design`, issue #1337) holds the inspector's explanation of a workflow's own copy
+(`ownCopy`). It links [the form layouts reference](../../../docs/reference/form-layouts.md) and
+[the schema dialect reference](../../../docs/reference/schema-dialect.md) (issue #1633), each by its `/docs/...` path,
+which the copy's link resolver opens in the app. `HomeUiConfigEndpointTest` holds both links to served documents.

@@ -116,3 +116,8 @@ library), and these are the rules it was built to:
   state during render and crashes with React's "too many re-renders". Name such state something else, or write
   `this.loading`. A function *parameter* does the same (`onFocus: (...) -> Unit` beside a `rect { onFocus = ... }`),
   though that one the compiler catches: a parameter cannot be assigned.
+
+**Its copy file** (`reports.md`, `PFRAG.reports`, issue #1337) holds the page's "What is this?" explanations: its views
+(`views`) and **New report** (`newReport`). The New report one links [the report paths
+reference](../../../docs/reference/report-paths.md) (issue #1633), as `/docs/reference/report-paths.md`, which the
+copy's link resolver opens in the app. `HomeUiConfigEndpointTest` holds the link to a served document.

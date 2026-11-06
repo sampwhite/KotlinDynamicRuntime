@@ -29,4 +29,5 @@ several values on one form, so its column says which to show: all of them, how m
 
 The report's id is made from its name and never changes. Once made, a report is not changed here: open the client's
 bundle editor, where it is in the **reports** bundle, to change it. **Remove this report**, under an open report the
-client stores, removes it; its stored snapshots are kept.
+client stores, removes it; its stored snapshots are kept. How a column names where its value comes from, and every
+attribute a column can read, are in [the report paths reference](/docs/reference/report-paths.md).
