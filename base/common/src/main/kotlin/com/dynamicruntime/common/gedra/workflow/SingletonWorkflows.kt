@@ -62,23 +62,17 @@ object SingletonWorkflows {
                 )
                 // A frozen workflow (past its relevancy) still stands behind the chip, but nothing can be done in it
                 // -- its saves and approvals are refused -- so it is listed without an action.
-                val task = data[WFS.ctaTask].toOptStr()?.takeIf { WorkflowPhases.of(cxt, registry.client, def).calculates }?.let { def.task(it) }
+                val task = data[WFS.ctaTask].toOptStr()
+                    ?.takeIf { WorkflowPhases.of(cxt, registry.client, def).calculates }
+                    ?.let { def.task(it) }
                 if (task != null) {
                     val viewerFacts = viewer.forTask(task)
                     // The CTA's filter rule (issue #1595) as the state stores it, evaluated for this caller: this listing
                     // reads state alone, so it shows who the step is for as of the last recompute. Permission (the approve
                     // endpoint, the judge) works the rule out again from the form's data.
                     val passes = passesCtaFilterRule(cfacts, data[WFS.ctaFilterRule].toOptStr(), callerFacts + viewerFacts)
-                    val complete = data[WFS.ctaStatus].toJsonMapOrEmpty()[CDF.complete] == true
                     // The CTA's task facts, from state: available, the CTA, complete as stored, never approved.
-                    val taskFacts = buildSet {
-                        add(WFC.taskAvailable)
-                        add(WFC.isCta)
-                        if (complete) add(WFC.taskComplete)
-                        if (passes) add(WFC.passesCtaFilter)
-                        // The workflow's CTA keyword fact (issue #1596), as the state stores the keyword.
-                        CTAK.of(data[WFS.ctaKeyword].toOptStr())?.let { add(it.workflowCfact) }
-                    }
+                    val taskFacts = stateCtaTaskFacts(data, passes)
                     out[WFS.ctaTask] = task.id
                     // What the action's display branches read: the caller's facts, the task's, and the viewer's for it.
                     val actionFacts = buildSet {

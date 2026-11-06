@@ -2,6 +2,8 @@ package com.dynamicruntime.common.gedra
 
 import com.dynamicruntime.common.endpoint.EI
 import com.dynamicruntime.common.endpoint.EP
+import com.dynamicruntime.common.gedra.workflow.CTAK
+import com.dynamicruntime.common.gedra.workflow.CTKQ
 import com.dynamicruntime.common.gedra.workflow.WAGG
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SCT
@@ -155,6 +157,22 @@ fun searchParamProperties(params: List<GedraSearchParam>): Map<String, Any?> {
     return props
 }
 
+/**
+ * The JSON-Schema `properties` fragment for searching by [keywords] (issue #1597): one parameter per keyword, named for
+ * it, taking [CTKQ.mine] or [CTKQ.any] -- a closed choice, so a misspelled answer is refused rather than matching nothing.
+ * Only the keywords some workflow of the scope uses are given, so a client whose workflows carry none has no parameter.
+ */
+fun keywordSearchProperties(keywords: Collection<String>): Map<String, Any?> =
+    CTAK.all.filter { it in keywords }.associateWith { keyword ->
+        linkedMapOf(
+            SCH.title to keyword,
+            SCH.description to "Only forms with a workflow whose call to action carries '$keyword': ${CTKQ.mine}, one the " +
+                "caller may act on now; ${CTKQ.any}, whoever may act on it.",
+            SCH.emptyIsAbsent to true,
+            SCH.options to listOf(CTKQ.mine, CTKQ.any).map { mapOf(SCH.label to it, SCH.value to it) },
+        )
+    }
+
 /** The short label a search control shows for [param] -- the column label, with the variant said in words. */
 private fun searchLabel(param: GedraSearchParam): String = param.label + param.role.labelSuffix
 
@@ -221,11 +239,14 @@ fun formDocsQueryDefName(): String = qualifyTypeName(GEP.formDocsQuery, GEP.gedr
  * The one list (issue #987): [gedraSearchParams] leaves these names out, [searchParamCollisions] reports the
  * usage that asked for one, and the webapp reads the same set to tell a trait search box from the listing's own
  * controls. A field added to the query type belongs here too, which `FormDocsQueryReservedTest` holds.
+ *
+ * Every search keyword is here too ([CTAK.all], issue #1597), whether or not a client's workflows use it: a client's
+ * parameter for a keyword comes and goes with its workflows, and a trait's search parameter must not take the name.
  */
 val reservedQueryFieldNames: Set<String> = setOf(
     EP.offset, EP.limit, EP.after, EI.user, EI.client, EI.q, EI.includeUsers, GSORT.sort, GSORT.sortDir,
     GDF.withStates, GDF.withWorkflowSummary, GDF.formStatus, GDF.needsMe, WAGG.workflowId, WAGG.workflowState,
-)
+) + CTAK.all
 
 /**
  * The search parameter names [columns] ask for that are a [reservedQueryFieldNames] entry -- the boot check. A
@@ -255,7 +276,8 @@ fun usageColumnClashes(columns: List<UsageColumn>): List<String> {
 
 /**
  * [baseDef] (a JSON-Schema object type -- the listing's stable query type) with the search properties [columns]
- * contribute merged into its `properties` (issue #538). The base is returned untouched when the columns
+ * contribute merged into its `properties` (issue #538), and a parameter for each of the search [keywords] the scope's
+ * workflows use (issue #1597, [keywordSearchProperties]). The base is returned untouched when the columns
  * contribute nothing, so a scope with no usages shares the base rather than a distinct-but-equal copy -- which
  * is what lets the per-client build hand back the global type when a client's search fields do not differ.
  *
@@ -263,9 +285,9 @@ fun usageColumnClashes(columns: List<UsageColumn>): List<String> {
  * arise while every base field is in [reservedQueryFieldNames], which [gedraSearchParams] leaves out; this is
  * the structural backstop for a field added to the type and not to the list.
  */
-fun withSearchProperties(baseDef: Any?, columns: List<UsageColumn>): Map<String, Any?> {
+fun withSearchProperties(baseDef: Any?, columns: List<UsageColumn>, keywords: Collection<String> = emptyList()): Map<String, Any?> {
     val base = baseDef.toJsonMapOrEmpty()
-    val props = searchParamProperties(gedraSearchParams(columns))
+    val props = searchParamProperties(gedraSearchParams(columns)) + keywordSearchProperties(keywords)
     if (props.isEmpty()) return base
     val merged = LinkedHashMap(base[SCH.properties].toJsonMapOrEmpty())
     for ((name, prop) in props) {

@@ -8,6 +8,7 @@ import com.dynamicruntime.common.gedra.GU
 import com.dynamicruntime.common.gedra.formDocsQueryDefName
 import com.dynamicruntime.common.gedra.resolveColumns
 import com.dynamicruntime.common.gedra.withSearchProperties
+import com.dynamicruntime.common.gedra.workflow.searchKeywordsOf
 import com.dynamicruntime.common.gedra.entryEditUnionDefs
 import com.dynamicruntime.common.gedra.entryUnionDefs
 import com.dynamicruntime.common.gedra.GedraConfigIssue
@@ -113,7 +114,10 @@ fun buildClientVariants(
         // none -- the case where it shares the global store; one that alters a type has them resolved again,
         // against its own, once they are parsed below.
         val usages = collected.gedraConfigs.usagesFor(client)
-        val clientQuery = withSearchProperties(queryBase, resolveColumns(usages, global.types))
+        // And a parameter for each search keyword its workflows use (issue #1597), on its own endpoints only: the
+        // shared listing's query type has none, being no one client's.
+        val keywords = searchKeywordsFor(cxt, collected, client)
+        val clientQuery = withSearchProperties(queryBase, resolveColumns(usages, global.types), keywords)
         val queryOverlay = if (clientQuery != global.defs[queryName]) mapOf(queryName to clientQuery) else emptyMap()
         // The unions and the query overlay are applied **after** the authored overlay, and so replace rather
         // than merge. `overlayDefs` is built for an authored alteration, where an unmentioned key means "leave
@@ -173,7 +177,7 @@ fun buildClientVariants(
         }
         // The search fields from the columns as the client's own types resolve them (issue #1508): a field the client
         // narrowed offers only the choices it kept. Only the query type is parsed again, against the rest.
-        val ownQuery = withSearchProperties(queryBase, resolveColumns(usages, types))
+        val ownQuery = withSearchProperties(queryBase, resolveColumns(usages, types), keywords)
         if (queryBase != null && ownQuery != defs[queryName]) {
             defs = defs + (queryName to ownQuery)
             types = types + parseSchemaTypes(mapOf(queryName to ownQuery), types)
@@ -193,6 +197,17 @@ fun buildClientVariants(
         }
     }
     return out
+}
+
+/**
+ * The search keywords [client]'s own workflows use (issue #1597), as [searchKeywordsOf] reads each definition: what its
+ * listing's query type takes a parameter for.
+ */
+private fun searchKeywordsFor(cxt: KdrCxt, collected: SchemaCollector, client: String): Set<String> {
+    val creations = collected.workflowFunctions.associateBy { it.fn }
+    return collected.gedraConfigs.configs.filter { it.gedraId.client == client }
+        .flatMap { it.workflows.values }
+        .flatMapTo(HashSet()) { searchKeywordsOf(cxt, it, creations) }
 }
 
 /**

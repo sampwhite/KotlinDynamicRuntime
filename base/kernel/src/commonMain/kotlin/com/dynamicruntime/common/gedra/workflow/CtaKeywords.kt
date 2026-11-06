@@ -99,3 +99,16 @@ object CTAK {
     /** The form-level status cfacts the keywords set ([CtaKeyword.statusCfact]): never a workflow's to declare. */
     val statusCfacts: Set<String> = keywords.map { it.statusCfact }.toSet()
 }
+
+/**
+ * The values a forms listing's **keyword search parameter** takes (issue #1597): the parameter is named for the keyword
+ * (`review=mine`), and asks one of the two questions every surface asks of a keyword.
+ */
+@Suppress("ConstPropertyName")
+object CTKQ {
+    /** The CTA carries the keyword and the caller may act on it now: what the classification calls their turn. */
+    const val mine = "mine"
+
+    /** The CTA carries the keyword, whoever may act on it: about the work, not the person. */
+    const val any = "any"
+}
