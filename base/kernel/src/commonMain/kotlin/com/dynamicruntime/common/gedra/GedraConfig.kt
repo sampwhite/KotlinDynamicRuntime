@@ -350,9 +350,48 @@ class GedraConfig(
      * case, and always for a client's config, whose namespace is its client's (#949).
      */
     val contributesTo: String? = null,
+    /**
+     * What this stored config's entries marked `"overrides": "code"` hold (issue #1634): the definitions that stand
+     * over the code layer's of the same key -- the template's copies, the client's own code, a sandbox's code -- which
+     * are then cut out of it ([cutBy]). Read off the stored entries as the config is reassembled; none for a config
+     * declared in code, or a stored one that marks nothing.
+     */
+    val overridesCode: ConfigKeys = ConfigKeys.none,
 ) {
     /** Whether this config was read back from the database rather than declared in source code. */
     val isStored: Boolean get() = origin == GedraConfigOrigin.stored
+
+    /**
+     * This config with the fields named changed and every other as it is: for a caller rebuilding a config to change
+     * a few of its parts -- a copy cut to what another stands over ([cutBy]) -- so no field it does not mention is lost.
+     */
+    fun copy(
+        gedraId: GedraId = this.gedraId,
+        traits: Map<String, GedraTrait> = this.traits,
+        stateTraits: Map<String, GedraTrait> = this.stateTraits,
+        configTraits: Map<String, GedraConfigTrait> = this.configTraits,
+        defs: Map<String, Any?> = this.defs,
+        client: ClientDef? = this.client,
+        customers: List<CustomerDef> = this.customers,
+        cfacts: List<CFactDef> = this.cfacts,
+        fragments: List<FragmentSource> = this.fragments,
+        uiBlocks: List<UiBlockSource> = this.uiBlocks,
+        workflows: Map<String, WfDef> = this.workflows,
+        usages: List<ClientTraitUsage> = this.usages,
+        reports: Map<String, ClientReport> = this.reports,
+        workflowParams: Map<String, WfParams> = this.workflowParams,
+        fileRefs: List<FileRefDef> = this.fileRefs,
+        origin: GedraConfigOrigin = this.origin,
+        inheritedFrom: String? = this.inheritedFrom,
+        overridesCode: ConfigKeys = this.overridesCode,
+    ): GedraConfig = GedraConfig(
+        gedraId = gedraId, namespace = namespace, traits = traits, stateTraits = stateTraits, configTraits = configTraits,
+        defs = defs, client = client, customers = customers, cfacts = cfacts, fragments = fragments, uiBlocks = uiBlocks,
+        workflows = workflows, usages = usages, reports = reports, unreadReports = unreadReports,
+        unreadWorkflows = unreadWorkflows, shadowedTypes = shadowedTypes, workflowParams = workflowParams,
+        fileRefs = fileRefs, origin = origin, inheritedFrom = inheritedFrom, contributesTo = contributesTo,
+        overridesCode = overridesCode,
+    )
 
     /**
      * The code-explicit name this config is addressed by, which is also its id's base.
@@ -623,6 +662,38 @@ class GedraConfigBuilder(
      * unchanged; false for anything else, so a write is refused for an overlay it adds or changes.
      */
     var keepUnreadWorkflow: (Map<String, Any?>) -> Boolean = { false }
+
+    /** What [overridesCode] named, read against what the config declares once it is built. */
+    private val overCodeNames = LinkedHashSet<String>()
+    private var overCodeColumns = false
+
+    /**
+     * Marks the definitions named [names] -- each a trait, type, cfact, workflow, report, or file ref, by its id or
+     * name -- and with [columns] the columns of the forms list, as standing over the client's code (issue #1634): what a
+     * stored entry says with `"overrides": "code"`, and what the write stores it as. Only a stored config's mark is
+     * read, and only one naming something its client's code declares: the load says what is wrong with any other.
+     */
+    fun overridesCode(vararg names: String, columns: Boolean = false) {
+        overCodeNames.addAll(names)
+        if (columns) overCodeColumns = true
+    }
+
+    /** What [overridesCode] marks of the config [built], by the keys `ConfigKeys` states. */
+    internal fun overCodeKeys(built: GedraConfig): ConfigKeys {
+        if (overCodeNames.isEmpty() && !overCodeColumns) return ConfigKeys.none
+        val traits = built.traits.filterKeys { it in overCodeNames }
+        val generated = traits.values.flatMap { listOf(it.typeName, qualifyTypeName(traitDataTypeName(it.typeName), built.namespace)) }
+        val named = overCodeNames.map { qualifyTypeName(it, built.namespace) }
+        return ConfigKeys(
+            traits = traits.keys,
+            types = built.defs.keys.filter { it in generated || it in named }.toSet(),
+            cfacts = built.cfacts.map { it.name }.filter { it in overCodeNames }.toSet(),
+            workflows = built.workflows.filterKeys { it in overCodeNames }.mapValues { it.value.entry },
+            usages = overCodeColumns && built.usages.isNotEmpty(),
+            reports = built.reports.keys.filter { it in overCodeNames }.toSet(),
+            fileRefs = built.fileRefs.map { it.refId }.filter { it in overCodeNames }.toSet(),
+        )
+    }
 
     /** The workflows made from templates this stored config holds that do not read; see [keepUnreadWorkflow]. */
     val unreadWorkflows: MutableMap<String, UnreadWorkflow> = LinkedHashMap()
@@ -1012,7 +1083,7 @@ fun gedraConfig(
     builder.shadowedTypes.values.firstOrNull()?.takeIf { origin == GedraConfigOrigin.source }?.let {
         throw KdrException.mkConv("Config '$name' ${it.problem()}")
     }
-    return GedraConfig(
+    val built = GedraConfig(
         // `of` validates the name as it builds the id, so a config called something a base id cannot spell is
         // refused here rather than at whatever later point first tried to address it.
         gedraId = GedraId.of(GedraConfigType.configDoc, client, name),
@@ -1038,6 +1109,9 @@ fun gedraConfig(
         origin = origin,
         contributesTo = contributesTo,
     )
+    // What the block marks to stand over code (issue #1634), read against what it declared.
+    val overCode = builder.overCodeKeys(built)
+    return if (overCode.isEmpty) built else built.copy(overridesCode = overCode)
 }
 
 /**

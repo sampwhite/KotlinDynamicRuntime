@@ -78,6 +78,8 @@ class SelfServeFromTemplateTest : StringSpec({
         val writer = cxt.mkSubContext("selfServeTemplateWrite", client).also { it.userId = 9451L }
         val config = gedraConfig(cxt, CWF.configPrefix + "ownCreate", clientNamespace(client), client) {
             workflow("ownCreate", WfEntry.creation) { task("n", "A note first") { trait("pubNote"); save("c", "Create") } }
+            // It stands over the template's creation workflow (issue #1634), and says so.
+            overridesCode("ownCreate")
         }
         GedraConfigService.get(cxt).writeConfig(writer, config, trial = true)
         GedraConfigReload.reloadClient(cxt, client)

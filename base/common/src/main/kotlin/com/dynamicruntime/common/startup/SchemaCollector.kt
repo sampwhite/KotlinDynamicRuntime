@@ -498,16 +498,32 @@ class SchemaCollector(
             return false
         }
         val client = config.gedraId.client
-        if (client != GID.globalClient) {
-            val remaining = gedraConfigs.configs.filter { it.gedraId.client == client }
-            val overlay = LinkedHashMap<String, Any?>()
-            remaining.forEach { overlay.putAll(it.defs) }
-            if (overlay.isEmpty()) workingOverlays.remove(client) else workingOverlays[client] = overlay
-            val cfacts = remaining.flatMap { it.cfacts }
-            if (cfacts.isEmpty()) workingCFacts.remove(client) else workingCFacts[client] = cfacts.toMutableList()
-            clientMapsChanged()
-        }
+        if (client != GID.globalClient) rebuildClientMaps(client)
         return true
+    }
+
+    /**
+     * Puts [replacement] in a client's config [held]'s place, at its point in contribution order (issue #1634), and
+     * rebuilds the client's types and cfacts from what it then holds: a client's code cut to what its stored entries
+     * stand over, or the original put back. Unchecked -- see `GedraConfigCollector.replace` -- and for a client's config
+     * only. Returns whether [held] was in place.
+     */
+    fun replaceGedraConfig(held: GedraConfig, replacement: GedraConfig): Boolean {
+        val client = held.gedraId.client
+        if (client == GID.globalClient || !gedraConfigs.replace(held, replacement)) return false
+        rebuildClientMaps(client)
+        return true
+    }
+
+    /** [client]'s types and cfacts, rebuilt from the configs it holds, in their order. */
+    private fun rebuildClientMaps(client: String) {
+        val remaining = gedraConfigs.configs.filter { it.gedraId.client == client }
+        val overlay = LinkedHashMap<String, Any?>()
+        remaining.forEach { overlay.putAll(it.defs) }
+        if (overlay.isEmpty()) workingOverlays.remove(client) else workingOverlays[client] = overlay
+        val cfacts = remaining.flatMap { it.cfacts }
+        if (cfacts.isEmpty()) workingCFacts.remove(client) else workingCFacts[client] = cfacts.toMutableList()
+        clientMapsChanged()
     }
 
     /** Adds contributed table definitions (from a `tableModule`) into the collector. */

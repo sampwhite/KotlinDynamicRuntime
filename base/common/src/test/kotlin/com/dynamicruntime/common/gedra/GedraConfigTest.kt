@@ -269,7 +269,7 @@ class GedraConfigTest : StringSpec({
         val traitData = parseSchemaTypes(config.defs, existingTypes = canonical)
             .getValue("kdr.core.TraitDefEntry").properties.getValue(GE.data).valueType
         traitData.properties.keys.toList() shouldContainExactly
-            listOf(CCT.traitId, CCT.typeName, CCT.appliesTo, CCT.description, CCT.dataSchema)
+            listOf(CCT.traitId, CCT.typeName, CCT.appliesTo, CCT.description, CCT.dataSchema, CCT.overrides)
         // `appliesTo` is an array bounded to the data-kind names -- a stored trait cannot apply to a kind that
         // is not one.
         traitData.properties.getValue(CCT.appliesTo).valueType.itemType.shouldNotBeNull()
@@ -291,6 +291,6 @@ class GedraConfigTest : StringSpec({
             .options.shouldNotBeNull().map { it.value } shouldContainExactly UsageKind.entries.map { it.name }
         // Declaration only: name/group/description/toFrontend, and nothing that could author a production.
         slotData("CFactDefEntry").properties.keys.toList() shouldContainExactly
-            listOf(CCT.name, CCT.group, CCT.description, CCT.toFrontend)
+            listOf(CCT.name, CCT.group, CCT.description, CCT.toFrontend, CCT.overrides)
     }
 })

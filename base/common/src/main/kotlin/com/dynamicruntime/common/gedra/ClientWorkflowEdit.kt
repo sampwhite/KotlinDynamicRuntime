@@ -266,7 +266,10 @@ object ClientWorkflowEdit {
             val id = keyFromLabel(slots.label, taken, "workflow")
             made = withTemplateSlots(bound, template, slots, id)
             seenFromTheStart(cxt, owner, id, visibility ?: WfVisibility.adminsOnly, target.draft)
-            val entry = mapOf(CCT.workflowId to id, CCT.definition to workflowTemplateOverlay(template, made))
+            // A creation or core details workflow stands over the one its client's code has (issue #1634), and says so.
+            val entry = CodeOverrides.markedIfOverCode(
+                cxt, owner, CCT.workflowDef, mapOf(CCT.workflowId to id, CCT.definition to workflowTemplateOverlay(template, made)),
+            )
             val config = reassembleForWrite(bound, CWF.configPrefix + id, clientNamespace(owner), owner, mapOf(CCT.workflowDef to listOf(entry)))
             written = svc.writeConfig(bound, config, trial = true, mustBeNew = true)
             // Nothing stored can be engaged with a workflow that did not exist, so there is no impact to judge.

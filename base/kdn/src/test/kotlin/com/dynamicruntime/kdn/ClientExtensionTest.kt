@@ -162,6 +162,8 @@ class ClientExtensionTest : StringSpec({
             trait("DataNoteEntry", "tplNote", setOf(GedraDataType.formDoc), "The client's note.") { property("memo", "A memo.") }
             // The template's `notes` reads `note`, which this redefinition takes away (issue #980), so it is redefined too.
             report("notes", "Memos") { column("memo", "Memo", "form.tplNote.memo") }
+            // Each stands over the template's (issue #1634), and says so.
+            overridesCode("tplNote", "notes")
         }
         // `loaded` counts what the client stores, not the template's copy beside it.
         GedraConfigReload.reloadClient(cxt, client).loaded shouldBe 1
@@ -186,6 +188,7 @@ class ClientExtensionTest : StringSpec({
         store(client, trial = true) {
             trait("TrialScoreEntry", "tplScore", setOf(GedraDataType.formDoc), "The client's score.") { property("grade", "A grade.") }
             report("overview", "Grades") { column("grade", "Grade", "form.tplScore.grade") }
+            overridesCode("tplScore", "overview")
         }
         GedraConfigReload.reloadClient(cxt, client)
         typeOf(client, "tplScore") shouldBe "${clientNamespace(client)}.main.TrialScoreEntry"
@@ -202,6 +205,7 @@ class ClientExtensionTest : StringSpec({
         val message = shouldThrow<KdrException> {
             store(client, trial = true) {
                 trait("BreakScoreEntry", "tplScore", setOf(GedraDataType.formDoc), "Renamed.") { property("points", "Points.") }
+                overridesCode("tplScore")
             }
         }.message.shouldNotBeNull()
         message shouldContain "Report 'overview'"
@@ -212,9 +216,11 @@ class ClientExtensionTest : StringSpec({
         val client = "tpldup"
         store(client) {
             trait("DupOneEntry", "tplNote", setOf(GedraDataType.formDoc), "One.") { property("one", "One.") }
+            overridesCode("tplNote")
         }
         store(client, name = "second", define = false) {
             trait("DupTwoEntry", "tplNote", setOf(GedraDataType.formDoc), "Two.") { property("two", "Two.") }
+            overridesCode("tplNote")
         }
         // Strict in unit tests: the reload refuses, naming both declarations.
         val message = shouldThrow<KdrException> { GedraConfigReload.reloadClient(cxt, client) }.message.shouldNotBeNull()
@@ -333,6 +339,18 @@ class ExtensionTemplateComponent : ComponentDefinition {
             fragmentOverlay("home") { namespace("home") { key("title", "Kid title") } }
             report("overview", "Kid overview") { column("stars", "Stars", "form.tplScore.stars") }
         },
+        // A client of its own code, extending nothing, with a sandbox: what stored entries stand over (issue #1634).
+        gedraConfig(cxt, "own", "client.$ownCode", ownCode) {
+            defineClient(
+                ClientDef(
+                    clientId = ownCode, name = "Own code", usageType = ClientUsageType.dev,
+                    audience = ClientAudience.internal, enabledEnvironments = setOf(ENV.unit, ENV.local),
+                    includedTraits = listOf("ownNote"), sandbox = true,
+                ),
+            )
+            trait("OwnNoteEntry", "ownNote", setOf(GedraDataType.formDoc), "A note.") { property("note", "A note.") }
+            workflow("ownFlow", WfEntry.normal) { task("a", "Code's task") { trait("ownNote"); save("s", "Save", WfSaveKind.edit) } }
+        },
     )
 
     @Suppress("ConstPropertyName")
@@ -344,5 +362,6 @@ class ExtensionTemplateComponent : ComponentDefinition {
         const val creationWorkflow = "pubCreate"
         const val packageId = "tplfix:tplres"
         const val child = "tplkid"
+        const val ownCode = "tplowncode"
     }
 }

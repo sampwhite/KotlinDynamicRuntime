@@ -1,7 +1,6 @@
 package com.dynamicruntime.common.gedra
 
 import com.dynamicruntime.common.content.FragmentSource
-import com.dynamicruntime.common.gedra.workflow.WfEntry
 import com.dynamicruntime.common.uiblock.UiBlockSource
 
 /** Client extension's constants (issue #945). */
@@ -28,7 +27,8 @@ object CEXT {
  * ### The merge rules
  *
  * Whatever the client defines itself replaces the template's definition **of the same id, whole**, so the built
- * client holds each definition once. The redefinition is taken out of the copy rather than layered over it:
+ * client holds each definition once. The redefinition is taken out of the copy rather than layered over it, by the keys
+ * `ConfigKeys` states -- the same rule a stored entry marked to stand over the client's code is cut by (issue #1634):
  *
  * - **Traits** by trait id, **types** by qualified name, **cfacts** by name, **workflows** by workflow id,
  *   **reports** by report id (issue #979).
@@ -70,14 +70,9 @@ object ClientExtension {
         own: List<GedraConfig>,
         origin: GedraConfigOrigin,
     ): List<GedraConfig> {
-        val ownTraits = own.flatMap { it.traits.keys }.toSet()
-        val ownTypes = own.flatMap { it.defs.keys }.toSet()
-        val ownCfacts = own.flatMap { c -> c.cfacts.map { it.name } }.toSet()
-        val ownWorkflows = own.flatMap { it.workflows.values }
-        val ownWorkflowIds = ownWorkflows.map { it.workflowId }.toSet()
-        val ownSingletonKinds = ownWorkflows.map { it.entry }.filter { it in WfEntry.singletons }.toSet()
-        val ownUsages = own.any { it.usages.isNotEmpty() }
-        val ownReports = own.flatMap { it.reports.keys }.toSet()
+        // What the client defines itself, by the keys one definition stands over another's (`ConfigKeys`), the rule a
+        // stored entry marked to stand over code is cut by too (issue #1634).
+        val ownKeys = ConfigKeys.of(own).withoutFileRefs()
         // By what the child declares in **source** only (issue #1170): a stored ref of the same id meets the template's
         // in the registry, where what is stored overrides what is shipped -- so a stored override the load cannot serve
         // (malformed, naming a source this node does not read) reveals the template's ref, as it reveals a client's own
@@ -86,22 +81,20 @@ object ClientExtension {
         val ownFileRefs = own.filter { !it.isStored }.flatMap { c -> c.fileRefs.map { it.refId } }.toSet()
         // A default for a workflow the child declares itself is not the template's to give (issue #1386), and one the
         // child's source declares replaces the template's.
-        val ownParamDefaults = ownWorkflowIds + own.flatMap { it.workflowParams.keys }
+        val ownParamDefaults = ownKeys.workflows.keys + own.flatMap { it.workflowParams.keys }
+        val keys = ownKeys + ConfigKeys(fileRefs = ownFileRefs)
         return templateConfigs.map { config ->
-            GedraConfig(
+            val cut = config.cutBy(keys)
+            // Neither the template's own definition nor state and config traits are cloned (see the class note).
+            cut.copy(
                 gedraId = GedraId.of(config.gedraId.kind, client, cloneName(template, config.name)),
-                namespace = config.namespace,
-                traits = config.traits.filterKeys { it !in ownTraits },
-                defs = config.defs.filterKeys { it !in ownTypes },
-                cfacts = config.cfacts.filter { it.name !in ownCfacts },
+                stateTraits = emptyMap(),
+                configTraits = emptyMap(),
+                client = null,
+                customers = emptyList(),
                 fragments = config.fragments.map { it.inheritedBy(client, template) },
                 uiBlocks = config.uiBlocks.map { it.inheritedBy(client, template) },
-                workflows = config.workflows.filterValues { it.workflowId !in ownWorkflowIds && it.entry !in ownSingletonKinds },
-                usages = if (ownUsages) emptyList() else config.usages,
-                reports = config.reports.filterKeys { it !in ownReports },
-                workflowParams = config.workflowParams.filterKeys { it !in ownParamDefaults },
-                // The template's refs are the child's, less the ones its source names itself (issues #1153, #1170).
-                fileRefs = config.fileRefs.filter { it.refId !in ownFileRefs },
+                workflowParams = cut.workflowParams.filterKeys { it !in ownParamDefaults },
                 origin = origin,
                 inheritedFrom = template,
             )

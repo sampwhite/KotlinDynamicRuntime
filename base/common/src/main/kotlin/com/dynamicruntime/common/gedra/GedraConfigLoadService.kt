@@ -104,6 +104,86 @@ class GedraConfigLoadService : ServiceInitializer {
      */
     private val loadedByClient = HashMap<String, List<GedraConfig>>()
 
+    /**
+     * Each client's own code configs that its stored entries stand over (issue #1634): each as declared, and as the cut
+     * copy the collector holds in its place, beside what the entries stand over. Kept so a reload can put the code back
+     * as declared before cutting it by the revision it loads, and so whatever reads a client's code as declared -- a
+     * sandbox's copy of its parent, an extending client's copy of its template -- reads the originals ([ownSourceOf]).
+     */
+    private val sourceCuts = HashMap<String, SourceCuts>()
+
+    /** [client]'s own code as its stored entries now cut it in the collector; none when nothing is cut. */
+    fun sourceCutsFor(client: String): SourceCuts = synchronized(sourceCuts) { sourceCuts[client] ?: SourceCuts.none }
+
+    /** Records [cuts] as [client]'s own code as the collector now holds it. */
+    fun recordSourceCuts(client: String, cuts: SourceCuts) = synchronized(sourceCuts) {
+        if (cuts.cuts.isEmpty()) sourceCuts.remove(client) else sourceCuts[client] = cuts
+    }
+
+    /**
+     * [client]'s own code configs as code declares them (issue #1634): those in [collector] this service did not load,
+     * each one its stored entries cut given back as declared. What a template's copies are made from, and a sandbox's
+     * copy of its parent.
+     */
+    fun ownSourceOf(collector: SchemaCollector, client: String): List<GedraConfig> {
+        // The client's own loaded configs alone: every config this service loads is recorded under its own client.
+        val loadedIds = loadedFor(client).mapTo(HashSet()) { it.gedraId.fullId }
+        val originals = sourceCutsFor(client).cuts.associate { it.cut.gedraId.fullId to it.original }
+        return collector.gedraConfigs.configs
+            .filter { it.gedraId.client == client && it.inheritedFrom == null && it.gedraId.fullId !in loadedIds }
+            .map { originals[it.gedraId.fullId] ?: it }
+    }
+
+    /**
+     * The code layer [client]'s stored entries are judged against (issue #1634), as declared: the code of the template
+     * its definition [def] extends, then its own code. A sandbox's is made where its configuration is
+     * ([sandboxConfigs]), since all of it is copies.
+     */
+    fun codeLayerOf(collector: SchemaCollector, client: String, def: ClientDef?): List<CodeConfig> =
+        templateLayerOf(collector, def, client) + ownSourceOf(collector, client).map { CodeConfig(it, "its code's '${it.name}'") }
+
+    /**
+     * The code of the template [def] extends, as declared, as the first part of a code layer ([codeLayerOf], and a
+     * sandbox's, [sandboxConfigs]); none when [def] extends nothing, or names [self] -- a client or its parent.
+     */
+    private fun templateLayerOf(collector: SchemaCollector, def: ClientDef?, self: String): List<CodeConfig> {
+        val template = def?.extendsFromClientId?.takeIf { it != self } ?: return emptyList()
+        return ownSourceOf(collector, template).map { CodeConfig(it, "template '$template''s '${it.name}'") }
+    }
+
+    /**
+     * Puts [client]'s own code back as declared in [collector] -- undoing [current], the cuts it holds -- then cuts each
+     * of its code configs [over] stands over, in place ([SchemaCollector.replaceGedraConfig]). Answers the cuts made,
+     * which the caller records for the real collector, and drops for a trial's scratch copy. File refs are not cut: the
+     * registry already serves a stored ref over a shipped one of the same id.
+     */
+    fun cutSource(collector: SchemaCollector, client: String, over: ConfigKeys, current: SourceCuts): SourceCuts {
+        // Back as declared. A config already back is left -- a rollback may put back what a failed cut already did --
+        // and one holding neither is a record out of step with the collector, which nothing here can repair quietly.
+        for (c in current.cuts) {
+            val held = collector.gedraConfigs.configs.firstOrNull { it.gedraId == c.original.gedraId }
+            when {
+                held === c.original -> continue
+                held === c.cut -> collector.replaceGedraConfig(c.cut, c.original)
+                else -> throw KdrException(
+                    "Client '$client''s code config '${c.original.gedraId}' is not the one its cut was made of or into; " +
+                        "the record of what its stored entries stand over is out of step with the collector.",
+                )
+            }
+        }
+        val keys = over.withoutFileRefs()
+        if (keys.isEmpty) return SourceCuts.none
+        val cuts = ownSourceOf(collector, client).mapNotNull { original ->
+            if (keys.over(ConfigKeys.of(original)).isEmpty) return@mapNotNull null
+            val cut = original.cutBy(keys)
+            if (!collector.replaceGedraConfig(original, cut)) {
+                throw KdrException("Client '$client''s code config '${original.gedraId}' could not be cut in place: it is not held.")
+            }
+            SourceCut(original, cut)
+        }
+        return SourceCuts(cuts, over)
+    }
+
     /** The data-loaded configs currently in the collector for [client]. */
     fun loadedFor(client: String): List<GedraConfig> = synchronized(loadedByClient) { loadedByClient[client].orEmpty() }
 
@@ -176,9 +256,8 @@ class GedraConfigLoadService : ServiceInitializer {
         val template = definer.client?.extendsFromClientId ?: return emptyList()
         val base = sourceClientsOf(collector)[template] ?: return emptyList()
         if (template == client || base.extendsFromClientId != null) return emptyList()
-        val loadedIds = allLoadedIds()
-        val templateConfigs = collector.gedraConfigs.configs
-            .filter { it.gedraId.client == template && it.inheritedFrom == null && it.gedraId.fullId !in loadedIds }
+        // The template's code as declared, whatever stored entries of its own stand over (issue #1634).
+        val templateConfigs = ownSourceOf(collector, template)
         val copies = ClientExtension.clones(client, template, templateConfigs, held, definer.origin)
         val taken = mutableListOf<GedraConfig>()
         try {
@@ -241,6 +320,9 @@ class GedraConfigLoadService : ServiceInitializer {
         // The newest date this node actually took per client (issue #618), so the restart announce reflects what
         // the node runs -- not a row it selected but then dropped as malformed or extends-invalid.
         val takenMarkers = HashMap<String, Instant>()
+        // Each row turned back into a config and judged on its own first; then each client's together, against its
+        // code (issue #1634), since what a client's stored entries stand over is cut out of its code before they join it.
+        val readable = mutableListOf<Pair<Map<String, Any?>, GedraConfig>>()
         for (row in rows) {
             var stored: GedraConfigRow?
             val config = try {
@@ -264,18 +346,27 @@ class GedraConfigLoadService : ServiceInitializer {
             }
             unknownSlotsIssue(stored)?.let { reportConfigProblem(cxt, it, issues) }
             unreadEntryIssues(config).forEach { reportConfigProblem(cxt, it, issues) }
-            // Routes through the same checks and degrade behavior a source config gets; a taken config's
-            // fragment/UiBlock overlays are then folded in, gated on the take exactly as the boot loop does.
-            if (collector.addGedraConfig(cxt, config)) {
-                appendOverlays(cxt, config)
-                recordLoaded(config.gedraId.client, loadedFor(config.gedraId.client) + config)
-                val at = row[PF.updatedAt].toOptInstant()
-                if (at != null) {
-                    val takenClient = config.gedraId.client
-                    val existing = takenMarkers[takenClient]
-                    if (existing == null || at > existing) takenMarkers[takenClient] = at
+            readable.add(row to config)
+        }
+        for ((client, held) in readable.groupBy { it.second.gedraId.client }) {
+            val configs = held.map { it.second }
+            val def = configs.firstNotNullOfOrNull { c -> c.client?.takeIf { it.clientId == client } } ?: sourceClients[client]
+            val judged = CodeOverrides.judge(cxt, configs, codeLayerOf(collector, client, def), issues)
+            recordSourceCuts(client, cutSource(collector, client, judged.over, SourceCuts.none))
+            judged.stored.forEachIndexed { i, config ->
+                val row = held[i].first
+                // Routes through the same checks and degrade behavior a source config gets; a taken config's
+                // fragment/UiBlock overlays are then folded in, gated on the take exactly as the boot loop does.
+                if (collector.addGedraConfig(cxt, config)) {
+                    appendOverlays(cxt, config)
+                    recordLoaded(config.gedraId.client, loadedFor(config.gedraId.client) + config)
+                    val at = row[PF.updatedAt].toOptInstant()
+                    if (at != null) {
+                        val existing = takenMarkers[client]
+                        if (existing == null || at > existing) takenMarkers[client] = at
+                    }
+                    loaded++
                 }
-                loaded++
             }
         }
         if (loaded > 0) {
@@ -360,9 +451,9 @@ class GedraConfigLoadService : ServiceInitializer {
         sink: MutableList<GedraConfigIssue>,
     ): SandboxBuild {
         val sandbox = sandboxOf(parent)
-        val loadedIds = allLoadedIds()
-        val parentSource = collector.gedraConfigs.configs
-            .filter { it.gedraId.client == parent && it.gedraId.fullId !in loadedIds }
+        // The parent's code as declared, whatever its own stored entries cut it to (issue #1634): the sandbox runs its
+        // parent's latest revisions, whose marked entries are judged against the code here.
+        val parentSource = ownSourceOf(collector, parent)
         val parentStored = latestRows.mapNotNull { row ->
             val config = try {
                 toConfig(cxt, row)
@@ -397,10 +488,18 @@ class GedraConfigLoadService : ServiceInitializer {
                 sink,
             )
         }
-        return SandboxBuild(
-            SandboxConfigs.configsFor(parentSource, parentStored, sandboxSource),
-            latestRows.mapNotNull { it.updatedAt }.maxOrNull(),
-        )
+        // Its code layer is the parent's code and its own overlays, under the template the derived definition extends
+        // (issue #1634): what the stored revisions' marked entries stand over is cut out of the copies, in place.
+        val built = SandboxConfigs.configsFor(parentSource, parentStored, sandboxSource)
+        val code = built.filter { !it.isStored }
+        val def = built.firstNotNullOfOrNull { it.client }
+        val layer = templateLayerOf(collector, def, parent) +
+            code.map { CodeConfig(it, if (it in sandboxSource) "its sandbox overlay '${it.name}'" else "its parent's code '${it.name}'") }
+        val judged = CodeOverrides.judge(cxt, built.filter { it.isStored }, layer, sink)
+        val keys = judged.over.withoutFileRefs()
+        val stored = judged.stored.iterator()
+        val configs = built.map { if (it.isStored) stored.next() else it.cutBy(keys) }
+        return SandboxBuild(configs, latestRows.mapNotNull { it.updatedAt }.maxOrNull())
     }
 
     /** The clients defined in source code -- those whose defining config this service did not load. */
@@ -651,6 +750,16 @@ class GedraConfigLoadService : ServiceInitializer {
 
 /** A sandbox's configuration as built (issue #928), in layer order, and its marker: the newest stored row it took. */
 class SandboxBuild(val configs: List<GedraConfig>, val marker: Instant?)
+
+/** One of a client's code configs its stored entries stand over (issue #1634): as declared, and as cut in its place. */
+class SourceCut(val original: GedraConfig, val cut: GedraConfig)
+
+/** A client's own code as its stored entries cut it ([cuts]), and what those entries stand over ([over]). */
+class SourceCuts(val cuts: List<SourceCut>, val over: ConfigKeys) {
+    companion object {
+        val none = SourceCuts(emptyList(), ConfigKeys.none)
+    }
+}
 
 /**
  * Why [config] may not be **stored** as it is owned, or null (issues #292, #873, #1107): not by the runtime's

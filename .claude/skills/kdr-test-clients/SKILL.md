@@ -263,6 +263,22 @@ later schema rejects" test.
 Stored config is **added beside** the config declared in code in the same collector, keyed by the client in its
 id — downstream services can't tell a configured client from a code-defined one.
 
+**A stored entry stands over code only when it says so** (issue #1634). An entry whose key matches one of the client's
+**code layer** -- its template's code, its own code, and in a sandbox the sandbox's code -- must carry
+`"overrides": "code"` (`CCT.overrides`; in the DSL, `overridesCode("tplNote", "tplFlow")` in the `gedraConfig` block,
+or `columns = true` for the forms list's columns). Marked, it stands over the code's entry of the same key, whole, by
+the keys `ConfigKeys` states (the rule a client's own configuration already stands over its template's copies by): a
+trait, type, cfact, workflow, report, or file ref by key, a creation or core details workflow by its kind, the columns
+as one set. The load cuts what it stands over out of the code (`CodeOverrides`, `GedraConfigLoadService.cutSource`), so
+a code-defined client such as acme can now be edited through stored configuration. **Unmarked**, a write's trial
+refuses it, saying what it would replace and where ("which template 'tplbase''s 'base' also declares"), and so does a
+patch's dry run; configuration stored before the mark loads as it always did, with an issue saying to mark it. **Marked
+over nothing**, it is refused. **Nothing removes a code entry**: turn off what is not wanted instead (a workflow's
+`enabled`, #1635); a `$removed` is a `$` note, which no stored entry may hold. An override may sit in any stored bundle:
+one named like the code bundle it covers collides with it today (a config's id has no origin), which step 2b settles.
+A test that stores an entry over a template's or a code client's marks it; `CodeOverridesTest.kt` and the sample's
+`AcmeCodeOverrideTest.kt` are the references.
+
 ## The HTTP path (driving it as an admin)
 
 The same capability is exposed under the `clientAdmin` section (a `ROLE.admin` confined to the caller's own

@@ -66,6 +66,15 @@ object TestInstances {
     fun extensionTemplate(cxtName: String): KdrCxt =
         Startup.mkTestBootCxt(cxtName, "kdnSharedExtensionTemplate", emptyMap(), listOf(ExtensionTemplateComponent()))
 
+    /**
+     * [extensionTemplate]'s template, with stored-configuration problems reported rather than refused: for tests of
+     * configuration stored before a rule that now refuses it at write, which still loads (issue #1634).
+     */
+    fun extensionTemplateWarn(cxtName: String): KdrCxt = Startup.mkTestBootCxt(
+        cxtName, "kdnSharedExtensionTemplateWarn", mapOf(GCFG.storedCheckEnvVar.name to BootCheckMode.warn.name),
+        listOf(ExtensionTemplateComponent()),
+    )
+
     /** With [TraitBaseComponent]'s global trait: for tests that narrow or extend one (issue #1119). */
     fun traitBases(cxtName: String): KdrCxt =
         Startup.mkTestBootCxt(cxtName, "kdnSharedTraitBases", emptyMap(), listOf(TraitBaseComponent()))
