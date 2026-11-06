@@ -34,6 +34,13 @@ object HCARD {
      */
     const val offerLabel = "offerLabel"
 
+    /**
+     * The words of a link to the card in the row of links under Home's title (`home.jumpLinks`, issue #1636), for a card
+     * worth finding without scrolling to it; absent for a card the row does not name. While what the card opens is
+     * offered but not yet on, the link reads its [offerLabel] instead, as its button does.
+     */
+    const val jumpLabel = "jumpLabel"
+
     /** A card's further links, each a [linkLabel] and a [UIB.action] (a route), drawn under its text. */
     const val links = "links"
 
@@ -79,6 +86,8 @@ fun UiBlockItemsBuilder.homeCard(
     actionLabel: String? = null,
     /** The button's words while what it opens is offered but not yet on ([HCARD.offerLabel]), for a card whose kind knows. */
     offerLabel: String? = null,
+    /** The words of a link to the card in the row under Home's title ([HCARD.jumpLabel]); absent for none. */
+    jumpLabel: String? = null,
     /** Further links, drawn under the text; replaced whole by an overlay that names them. */
     links: List<HomeCardLink>? = null,
     /** The live body the card draws ([HCARD.kind]). */
@@ -95,6 +104,7 @@ fun UiBlockItemsBuilder.homeCard(
         if (action != null) set(UIB.action, action.toJson())
         if (actionLabel != null) set(HCARD.actionLabel, actionLabel)
         if (offerLabel != null) set(HCARD.offerLabel, offerLabel)
+        if (jumpLabel != null) set(HCARD.jumpLabel, jumpLabel)
         if (links != null) {
             set(HCARD.links, links.map { mapOf(HCARD.linkLabel to it.label, UIB.action to it.action.toJson()) })
         }

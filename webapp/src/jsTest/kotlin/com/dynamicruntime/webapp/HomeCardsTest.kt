@@ -103,4 +103,50 @@ class HomeCardsTest {
     fun aCardsElementIdIsUnderHome() {
         assertEquals("home.card.administer", homeCardElementId(HCARD.administer))
     }
+
+    @Test
+    fun aCardNamedInTheRowUnderTheTitleSaysWhatItsButtonSays() {
+        val cards = homeCardsFrom(
+            listOf(
+                mapOf(
+                    HFLD.id to ASST.homeCard, UIB.action to ASST.page, HCARD.actionLabel to "Open it",
+                    HCARD.offerLabel to "Switch on the assistant", HCARD.jumpLabel to "Workflow assistant",
+                    HCARD.kind to ASST.cardKind,
+                ),
+                // Not named in the row: no jump label.
+                administer,
+            ),
+        )
+        val assistantId = homeCardElementId(ASST.homeCard)
+        assertEquals(listOf("Workflow assistant" to assistantId), homeCardJumpLinks(cards, null))
+        assertEquals(listOf("Workflow assistant" to assistantId), homeCardJumpLinks(cards, AssistantView.on))
+        // Off, and the person may switch it on: the link says so, as the button does.
+        assertEquals(listOf("Switch on the assistant" to assistantId), homeCardJumpLinks(cards, AssistantView.switchOn))
+    }
+
+    @Test
+    fun cardLinksJoinTheCopysRowInItsOwnStyle() {
+        val links = listOf("Workflow assistant" to "home.card.assistant")
+        // After a list, as list items -- the shipped copy, and the reference flavor's "Start here" before it.
+        assertEquals(
+            "- [Start here](/docs/start-here.md)\n- [Workflow assistant](#home.card.assistant)",
+            withCardJumpLinks("- [Start here](/docs/start-here.md)\n", links),
+        )
+        // After a row written on one line, separated as it is.
+        assertEquals(
+            "[Start here](/docs/start-here.md) · [Workflow assistant](#home.card.assistant)",
+            withCardJumpLinks("[Start here](/docs/start-here.md)", links),
+        )
+        // With no copy, the links alone; with no links, the copy as it was.
+        assertEquals("- [Workflow assistant](#home.card.assistant)", withCardJumpLinks(null, links))
+        assertEquals("- [A](#x)", withCardJumpLinks("- [A](#x)", emptyList()))
+        // A label's brackets cannot break the link.
+        assertEquals("- [Odd \\[1\\]](#home.card.x)", withCardJumpLinks(null, listOf("Odd [1]" to "home.card.x")))
+        // And the filter keeps the card's link where the card is drawn, dropping only sections that are not.
+        val shipped = "- [Try a demo](#home.demos)\n- [Your own client](#home.own-client)"
+        assertEquals(
+            "- [Workflow assistant](#home.card.assistant)",
+            jumpLinksFor(withCardJumpLinks(shipped, links), setOf("home.card.assistant")),
+        )
+    }
 }

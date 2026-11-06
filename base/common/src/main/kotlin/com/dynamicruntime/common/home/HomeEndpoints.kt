@@ -131,6 +131,10 @@ fun homeSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.home") {
             HCARD.offerLabel,
             "The primary button's words while what the card opens is offered but not yet on, for a card whose kind knows.",
         )
+        property(
+            HCARD.jumpLabel,
+            "The words of a link to the card in the row of links under Home's title; absent for a card the row does not name.",
+        )
         property(HCARD.links, "Further links, drawn under the card's text.") {
             type = SCT.array
             items { ref(HTYPE.homeCardLink) }

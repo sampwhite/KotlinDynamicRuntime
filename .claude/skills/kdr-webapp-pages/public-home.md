@@ -94,13 +94,20 @@ none of its own.
   the assistant to self-serve clients. The create card asks whether that card was sent (`ownClientAssistantOffered`)
   and then says the page moves to the assistant once the client is made.
 - **A card with a `kind`** reads what it needs when it is drawn, never in the polled shell config. The assistant's
-  (`ASST.cardKind`) reads the assistant's status, and while the person may switch it on its button reads the card's
+  (`ASST.cardKind`) uses the assistant's status, read by Home, and while the person may switch it on its button reads the card's
   `offerLabel` ("Switch on the assistant", `assistantCardActionLabel`) -- in the card, so an overlay rewords it with
   the rest; until the read answers, or if it fails, the card's own words stand. A kind the page does not know draws
   the card's words alone.
 - **A card goes somewhere and never calls**: an action or a link that is not a route is dropped as it is read, and so
   is a link with no words, rather than show a page's internal id (`homeCardsFrom`). Each card's element id is
   `home.card.<id>` (`homeCardElementId`), so an address can name it.
+- **A card may be named in the row of links under the title** (`HCARD.jumpLabel`), beside the copy's own jump links
+  ("Start here", on the `reference` flavor): Home adds a link to each such card (`homeCardJumpLinks`), written in the
+  copy's own style -- list items after a list, `·` after a row on one line (`withCardJumpLinks`) -- and counts the
+  cards' element ids among what is drawn, so `jumpLinksFor` keeps them. The assistant's card is one, since it may sit
+  below a long introduction; its link reads the card's `offerLabel` while the person may switch it on, as its button
+  does. Home reads the assistant's status once (`useAssistantCardView`) for both. A client's copy that blanks
+  `home.jumpLinks` still leaves the cards' links; an overlay removes a card's by clearing its `jumpLabel`.
 - **The shell config resolves the menu and the cards together** (`UiBlockService.resolveAll`), so the caller's cfacts
   are assembled once per read of the polled config, not once per block.
 - The cards sit side by side where the page is wide enough (`.home-cards`).

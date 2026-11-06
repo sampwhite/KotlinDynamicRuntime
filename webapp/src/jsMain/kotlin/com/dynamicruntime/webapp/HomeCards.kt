@@ -39,6 +39,8 @@ class HomeCard(
     val actionLabel: String?,
     /** The button's words while what it opens is offered but not yet on ([HCARD.offerLabel]); null for none. */
     val offerLabel: String?,
+    /** The words of a link to the card in the row under Home's title ([HCARD.jumpLabel]); null for none. */
+    val jumpLabel: String? = null,
     val links: List<HomeCardLinkView>,
     /** The live body the card draws ([HCARD.kind]); null for a card of words alone. */
     val kind: String?,
@@ -59,6 +61,7 @@ fun homeCardsFrom(raw: Any?): List<HomeCard> = raw.toJsonListOfMaps().mapNotNull
         actionPage = action?.page,
         actionLabel = (card[HCARD.actionLabel] as? String)?.ifBlank { null },
         offerLabel = (card[HCARD.offerLabel] as? String)?.ifBlank { null },
+        jumpLabel = (card[HCARD.jumpLabel] as? String)?.ifBlank { null },
         links = card[HCARD.links].toJsonListOfMaps().mapNotNull { link ->
             val page = (parseUiAction(link[UIB.action]) as? UiRoute)?.page ?: return@mapNotNull null
             val label = (link[HCARD.linkLabel] as? String)?.ifBlank { null } ?: return@mapNotNull null
@@ -80,14 +83,51 @@ fun homeCardElementId(id: String): String = "home.card.$id"
 fun assistantCardActionLabel(card: HomeCard, view: AssistantView?): String? =
     if (view == AssistantView.switchOn) card.offerLabel ?: card.actionLabel else card.actionLabel
 
+/**
+ * The links to cards in the row under Home's title (issue #1636), as each label to the card's element id: one for each
+ * card that names a [HomeCard.jumpLabel], in the cards' order. The assistant's reads its offer label while the person
+ * may switch it on ([assistantView]), as its button does. Pure, and covered under `jsNodeTest`.
+ */
+fun homeCardJumpLinks(cards: List<HomeCard>, assistantView: AssistantView?): List<Pair<String, String>> =
+    cards.mapNotNull { card ->
+        val label = card.jumpLabel ?: return@mapNotNull null
+        val shown = if (card.kind == ASST.cardKind && assistantView == AssistantView.switchOn) card.offerLabel ?: label else label
+        shown to homeCardElementId(card.id)
+    }
+
+/**
+ * What the workflow assistant's status says, for its card and the link to it (issue #1636), or null while it is being
+ * read, when it cannot be, or when no card in [cards] is the assistant's -- then nothing is read. Read once per card
+ * set and refresh, by Home, so the card's button and the link under the title agree.
+ */
+fun useAssistantCardView(cards: List<HomeCard>): AssistantView? {
+    val shown = cards.any { it.kind == ASST.cardKind }
+    val generation = useRefreshGeneration()
+    var view by useState<AssistantView?>(null)
+    useEffect(shown, generation) {
+        if (!shown) {
+            view = null
+            return@useEffect
+        }
+        homeCardsScope.launch {
+            val result = apiResult { AssistantApi.status() }
+            result.failureOrNull()?.let { console.warn("$errorLogPrefix could not read the assistant's status for its home card: ${it.message}") }
+            view = result.valueOrNull()?.let { assistantViewOf(it, failed = false) }
+        }
+    }
+    return view
+}
+
 external interface HomeCardsProps : Props {
     var cards: List<HomeCard>
+    /** What the assistant's status says, for its card's button ([useAssistantCardView]); null until read. */
+    var assistantView: AssistantView?
 }
 
 /**
  * The home cards (issue #1636), under the home page's copy: a panel each, with its words, its links, and its primary
- * button. A card of a [HomeCard.kind] the page knows reads what it needs as it is drawn -- never in the polled shell
- * config -- and may change its button or draw more; one the page does not know is drawn from its words alone.
+ * button. A card of a [HomeCard.kind] the page knows may change its button from what Home read for it -- never from the
+ * polled shell config; one the page does not know is drawn from its words alone.
  */
 val HomeCards = FC<HomeCardsProps> { props ->
     // The copy's links, as the home page's intro resolves them: a document, a page, or a section of this page. Read
@@ -97,13 +137,11 @@ val HomeCards = FC<HomeCardsProps> { props ->
     div {
         className = ClassName("home-cards")
         for (card in props.cards) {
-            when (card.kind) {
-                ASST.cardKind -> AssistantHomeCard {
-                    key = card.id.unsafeCast<Key>()
-                    this.card = card
-                }
-                else -> homeCardPanel(card, copyLinks, card.actionLabel)
+            val actionLabel = when (card.kind) {
+                ASST.cardKind -> assistantCardActionLabel(card, props.assistantView)
+                else -> card.actionLabel
             }
+            homeCardPanel(card, copyLinks, actionLabel)
         }
     }
 }
@@ -138,26 +176,4 @@ private fun ChildrenBuilder.homeCardPanel(card: HomeCard, copyLinks: (String) ->
             }
         }
     }
-}
-
-private external interface AssistantHomeCardProps : Props {
-    var card: HomeCard
-}
-
-/**
- * The workflow assistant's card (issue #1636): its words, and a button whose words follow the assistant's status --
- * the card's offer label while it is off and the person may switch it on. Read once as the card is drawn; until it
- * answers, or if it cannot be read, the card's own words stand.
- */
-private val AssistantHomeCard = FC<AssistantHomeCardProps> { props ->
-    val copyLinks = useShellFacts().copyLinkResolver()
-    var view by useState<AssistantView?>(null)
-    useEffect(props.card.id) {
-        homeCardsScope.launch {
-            val result = apiResult { AssistantApi.status() }
-            result.failureOrNull()?.let { console.warn("$errorLogPrefix could not read the assistant's status for its home card: ${it.message}") }
-            view = assistantViewOf(result.valueOrNull(), failed = result.failureOrNull() != null)
-        }
-    }
-    homeCardPanel(props.card, copyLinks, assistantCardActionLabel(props.card, view))
 }

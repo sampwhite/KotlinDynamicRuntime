@@ -115,6 +115,9 @@ class AssistantComponent : ComponentDefinition {
                     action = UiRoute(ASST.page), actionLabel = "Open the workflow assistant",
                     // While it is off and the person may switch it on: the page opens on that panel.
                     offerLabel = "Switch on the assistant",
+                    // Named in the row under Home's title too, beside "Start here": the card may sit below a long
+                    // introduction, and an assistant not yet switched on is easy to miss there.
+                    jumpLabel = "Workflow assistant",
                     kind = ASST.cardKind,
                     cfactExpression = "${CFACTS.administersClient},${ASST.usableCFact},${CFACTS.app}",
                     displayOrder = UIB.orderStep / 2,
