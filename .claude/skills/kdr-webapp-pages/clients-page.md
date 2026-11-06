@@ -302,7 +302,7 @@ editor must show and be able to take back, and by what a template fills in, whic
 client's own). The fields are drawn under the kernel's sections (`ClientPresentationFields.bySection`: About, How it
 behaves, Platform), declared beside each field rather than here. The two numbers (`Kind.number`) ride as text, and a
 blank one takes the platform's, which the retrieve's `platformDefaults` gives and each field's placeholder says
-(`platformDefaultText`); the summary rows show each as the value in force (`inForceText`: "30 days (platform
+(`unsetValueText`); the summary rows show each as the value in force (`inForceText`: "30 days (platform
 default)"). Save posts
 `/clientAdmin/client/definition/set` (`ClientsApi.setDefinition`) with **only the fields that changed**
 (`definitionEditRequest`; a cleared field goes as blank, which the backend clears, and Save is disabled while
@@ -310,6 +310,14 @@ nothing differs), the same write-trial-publish-reload path as a copy edit, a dra
 sandbox (`savedNote` says which). Every field the caller does not edit there stays in the read-only rows, saying who
 sets it (`whoSetsNote`): "(set by the platform)" to a client's administrator, and to an administrator who sees every
 client "(set in its configuration)" for the customer and the template, or "(set in code)" for the static lock.
+**What a template fills in** (issue #1621): for a client built on one, the retrieve's `templateFills` names what
+`ClientExtension.mergeDef` supplies, recorded by `ClientCheck` at the merge and judged against what the checks left
+(`ClientCheckResult.templateFills`): the web resources, session lifetime, and refresh interval the client leaves unset,
+and the template's included traits and user labels it does not name itself. Each summary row it covers says so after
+its value (`templateFillNote`: "1 day (from template starterkit)", "vip, own (from template starterkit: vip)"), and a
+blank number's placeholder says the template's value rather than the platform's ("From template starterkit: 1 day",
+then the limit, which holds either way). The editor stays seeded from `storedDefinition`, so a save never writes the
+template's value as the client's own.
 The endpoint refuses a platform field from a client's administrator (403). A domain prefix or custom domain another client declares is
 refused by the stored write itself (`GedraConfigService`), whatever write carries it. When the configuration
 holding the definition (the retrieve's `storedDefinitionConfig`) has unpublished changes and the definition does not
@@ -345,10 +353,20 @@ take away a trait the client's forms hold is refused with the impact report (`im
 backend's words. The read-only "Traits" summary row above still lists what the client supports. Wire names: `CIT`
 and `CCT`, in the kernel.
 
+**What the template includes** (issue #1621). For a client built on a template, the catalog names it (`template`) and
+what it includes (`templateIncluded`: under `#allGlobal`, each global trait by id after it, so the page marks traits by
+id alone), which the load merges into what the client runs whatever the client stores. So
+each such trait (`TraitChoiceView.includedBy`), and the switch when the template includes `#allGlobal`
+(`allGlobalShownOn`), is drawn ticked and locked, naming the template (`includedByTemplateText`). A save never adds
+one (`includedTraitsAfter`'s `byTemplate`), and keeps a duplicate the client already stores as it is, so nothing
+changes unseen. A trait the client customizes, and the switch, otherwise lock as before.
+
 **Its own traits** (issue #1118, `TraitDesignEditor.kt`, its pure half in `TraitDesigner.kt`, covered by
 `TraitDesignerTest`): under the picker, the client's own traits from the same catalog read (`ownTraits`) -- each
 configured one with its design, or why it cannot be edited here (a field not of the editor's kinds, or declared in
-code) -- with **Edit**, then **New trait**. The editor designs a trait from a fixed set of field kinds (`TraitFieldKind`:
+code) -- with **Edit**, then **New trait**. The traits copied from the client's template come last (issue #1621,
+`fromTemplate`), read-only, "Defined in" naming the template (`ownTraitDefinedIn`), each saying that a trait of the
+client's own with the same id replaces it whole; one the client has replaced is listed once, as the client's. The editor designs a trait from a fixed set of field kinds (`TraitFieldKind`:
 text, long text, number, whole number, yes/no, date, choice, several choices): a name and description, then per field
 a label, a kind, **Required** (in the data -- every entry, whoever writes it; a form's own requirement is Design
 View's) and a choice field's choices. The model is the kernel's `TraitDesign`, so the **live preview** is `SchemaForm`

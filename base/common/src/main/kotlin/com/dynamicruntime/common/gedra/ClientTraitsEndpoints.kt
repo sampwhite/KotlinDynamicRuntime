@@ -92,7 +92,17 @@ object ClientTraitsEdit {
             put(SCH.dDefs, defs)
             // Their copy resolved as every delivered layout's is, so a preview reads words, not fragment pulls.
             put(CIT.layouts, resolveDeliveredLayouts(cxt.mkSubContext("traitLayouts", owner), schema.schemaStore.layoutsFor(defs)))
-            ClientService.get(cxt).known(owner)?.let(::groupsRefusal)?.let { put(CIT.groupsRefused, it) }
+            val clients = ClientService.get(cxt)
+            val ownerDef = clients.known(owner)
+            ownerDef?.let(::groupsRefusal)?.let { put(CIT.groupsRefused, it) }
+            // What its template includes is the client's too (issue #1621), whatever the client stores: its entries,
+            // and under a group every global trait listed here by id, so the page need not know what the group holds.
+            ownerDef?.extendsFromClientId?.let { template ->
+                val included = clients.known(template)?.includedTraits.orEmpty()
+                val byGroup = if (CLD.allGlobal in included) globalTraits.map { it.traitId } else emptyList()
+                put(CIT.template, template)
+                put(CIT.templateIncluded, (included + byGroup).distinct())
+            }
             // The client's own traits, for the traits editor (issue #1118), and the plan's limits it is held to.
             put(CIT.ownTraits, ClientTraitDesignEdit.ownTraits(cxt, owner))
             ClientTraitDesignEdit.quotas(cxt, owner)?.let { put(CIT.quotas, it) }
@@ -228,6 +238,7 @@ internal fun SchModuleBuilder.clientTraitsEndpoints() {
         property(CIT.configName, "The stored configuration holding it; absent for one declared in code.")
         property(CIT.design, "The trait as the editor designs it; absent when it cannot.") { ref(CIT.designTypeName) }
         property(CIT.notEditable, "Why the editor cannot edit it; absent when it can.")
+        property(CIT.fromTemplate, "The template it is copied from (issue #1621); absent for the client's own.")
     }
 
     type(CIT.quotasTypeName) {
@@ -251,6 +262,15 @@ internal fun SchModuleBuilder.clientTraitsEndpoints() {
             type = SCT.kObject
         }
         property(CIT.groupsRefused, "Why the client may not include a group such as ${CLD.allGlobal}; absent when it may.")
+        property(CIT.template, "The template the client is built on (issue #1621); absent for none.")
+        property(
+            CIT.templateIncluded,
+            "With template: the traits the template includes, which the client includes too whatever it stores -- trait ids, " +
+                "and a group such as ${CLD.allGlobal}, followed by each global trait it holds.",
+        ) {
+            type = SCT.array
+            items { type = SCT.string }
+        }
         property(CIT.layouts, $$"The global layouts of the types in $defs, by type name, so a preview is labeled.") {
             type = SCT.kObject
         }

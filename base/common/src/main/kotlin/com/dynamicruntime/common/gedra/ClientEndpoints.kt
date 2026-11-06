@@ -125,6 +125,26 @@ fun clientCatalogSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CLD.catalogN
         ) { ref(CLD.infoTypeName) }
         property(CLD.storedDefinitionConfig, "With storedDefinition: the name of the stored configuration holding it.")
         property(
+            CLD.templateFills,
+            "On the scoped retrieve (issue #1621): what the client's template supplies of the definition it runs, by key -- " +
+                "the ${CLD.webResourcesId}, ${CLD.sessionHours} and ${CLD.refreshIntervalSeconds} the client leaves unset, " +
+                "and the template's ${CLD.includedTraits} and ${CLD.userLabels} the client does not name itself. Absent " +
+                "for a client built on no template.",
+        ) {
+            type = SCT.kObject
+            property(CLD.webResourcesId, "The template's web resources package, which the client presents.")
+            property(CLD.sessionHours, "The template's session lifetime, in hours.") { type = SCT.integer }
+            property(CLD.refreshIntervalSeconds, "The template's refresh interval, in seconds.") { type = SCT.integer }
+            property(CLD.includedTraits, "The traits the template includes that the client does not name.") {
+                type = SCT.array
+                items { type = SCT.string }
+            }
+            property(CLD.userLabels, "The template's user labels that the client does not name.") {
+                type = SCT.array
+                items { type = SCT.string }
+            }
+        }
+        property(
             CLD.platformDefaults,
             "On the scoped retrieve (issue #1308): the deployment's values of the fields a client may leave unset to take " +
                 "them, so a page can say what an unset one means.",
@@ -282,6 +302,8 @@ private fun clientDefinitionOf(cxt: KdrCxt, def: ClientDef, withStored: Boolean)
                     CLD.refreshIntervalSeconds to maxOf(1, (IdleRefresh.deploymentMillis(cxt) + 500) / 1000),
                 ),
             )
+            // What its template supplies of what it runs (issue #1621), so the page can say which values are the template's.
+            ClientService.get(cxt).templateFills(def.clientId).takeIf { it.isNotEmpty() }?.let { put(CLD.templateFills, it) }
         }
         put(CLD.present, true)
         put(CLD.issues, ClientConfigIssues.get(cxt).issuesFor(def.clientId).map { it.toWireMap() })
@@ -359,6 +381,7 @@ internal class AbsentClient(val clientId: String, val name: String, val status: 
  * both list, so an administrator asking why a client is not working sees the client, not its absence. Costs one
  * query for the stored clients.
  */
+@Suppress("DestructuringDeclaration")
 internal fun absentClients(cxt: KdrCxt): List<AbsentClient> {
     val service = ClientService.get(cxt)
     val present = service.presentClients.map { it.clientId }.toSet()

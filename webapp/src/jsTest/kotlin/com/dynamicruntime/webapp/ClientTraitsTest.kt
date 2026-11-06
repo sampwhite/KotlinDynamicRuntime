@@ -101,6 +101,86 @@ class ClientTraitsTest {
         assertNull(allGlobalLockedReason(TraitCatalogView("acme", traits, emptyMap(), null), TraitsDraft(emptySet(), false)))
     }
 
+    private fun templateCatalog(included: List<String>, own: List<Map<String, Any?>> = emptyList()) = parseTraitCatalog(
+        mapOf(
+            CLD.client to "free_x",
+            CIT.traits to traits.map { mapOf(CCT.traitId to it.traitId, CCT.appliesTo to listOf("formDoc")) },
+            CIT.template to "starterkit",
+            CIT.templateIncluded to included,
+            CIT.ownTraits to own,
+        ),
+    )
+
+    @Test
+    fun aTraitTheTemplateIncludesIsDrawnIncludedAndLockedNamingIt() {
+        // Issue #1621: the client has it whatever it stores, so its box is ticked and cannot be changed.
+        val catalog = templateCatalog(listOf("kdr:name", "sample:questionnaire"))
+        assertEquals("starterkit", catalog.template)
+        val (name, address) = catalog.traits
+        assertEquals("starterkit", name.includedBy)
+        assertNull(address.includedBy)
+        val none = TraitsDraft(emptySet(), allGlobal = false)
+        assertTrue(traitShownIncluded(name, none))
+        assertEquals("Included by its template, starterkit: a client built on it always has it.", traitLockedReason(name, none))
+        assertFalse(traitShownIncluded(address, none))
+        assertNull(traitLockedReason(address, none))
+        // Only the picker's own traits count: one the catalog does not show is the template's business.
+        assertEquals(setOf("kdr:name"), catalog.byTemplate)
+        assertFalse(catalog.templateIncludesAllGlobal)
+        // A template field without a template is not one.
+        val stray = parseTraitCatalog(
+            mapOf(CLD.client to "acme", CIT.traits to listOf(mapOf(CCT.traitId to "kdr:name")), CIT.templateIncluded to listOf("kdr:name")),
+        )
+        assertNull(stray.template)
+        assertNull(stray.traits.single().includedBy)
+    }
+
+    @Test
+    fun aSaveNeverStoresWhatTheTemplateIncludes() {
+        val catalog = templateCatalog(listOf("kdr:name"))
+        // Chosen alongside the template's (a draft seeded from a stored duplicate holds it): only the client's own is added.
+        val draft = TraitsDraft(setOf("kdr:name", "kdr:phone"), allGlobal = false)
+        assertEquals(listOf("kdr:phone"), includedTraitsAfter(emptyList(), draft, catalog.traits, catalog.byTemplate))
+        // A duplicate the client already stores is kept as it is, so nothing changes unseen.
+        val stored = listOf("kdr:name")
+        assertEquals(stored, includedTraitsAfter(stored, traitsDraftOf(stored), catalog.traits, catalog.byTemplate))
+        assertEquals(stored, includedTraitsAfter(stored, TraitsDraft(emptySet(), allGlobal = false), catalog.traits, catalog.byTemplate))
+    }
+
+    @Test
+    fun aTemplateIncludingEveryGlobalTraitLocksTheSwitchOn() {
+        // The catalog follows the group with each global trait it holds, by id.
+        val catalog = templateCatalog(listOf(CLD.allGlobal) + traits.map { it.traitId })
+        val none = TraitsDraft(emptySet(), allGlobal = false)
+        assertTrue(catalog.templateIncludesAllGlobal)
+        assertTrue(allGlobalShownOn(catalog, none))
+        assertEquals(
+            "Included by its template, starterkit: a client built on it always has every global trait.",
+            allGlobalLockedReason(catalog, none),
+        )
+        assertTrue(catalog.traits.all { it.includedBy == "starterkit" })
+        // The group alone marks no trait: which traits it holds is the server's to say.
+        assertTrue(templateCatalog(listOf(CLD.allGlobal)).traits.all { it.includedBy == null })
+        // The group is never stored for it either.
+        assertEquals(emptyList(), includedTraitsAfter(emptyList(), none.copy(allGlobal = true), catalog.traits, catalog.byTemplate))
+        assertFalse(allGlobalShownOn(templateCatalog(emptyList()), none))
+    }
+
+    @Test
+    fun anOwnTraitFromTheTemplateSaysSo() {
+        val catalog = templateCatalog(
+            emptyList(),
+            own = listOf(
+                mapOf(CIT.traitId to "mine", CIT.configName to "trait_mine"),
+                mapOf(CIT.traitId to "coded", CIT.notEditable to "It is declared in code, where it is edited."),
+                mapOf(CIT.traitId to "pubNote", CIT.fromTemplate to "starterkit", CIT.notEditable to "From its template, starterkit."),
+            ),
+        )
+        assertEquals(listOf("trait_mine", "code", "template starterkit"), catalog.own.map(::ownTraitDefinedIn))
+        assertEquals("starterkit", catalog.own.last().fromTemplate)
+        assertNull(catalog.own.first().fromTemplate)
+    }
+
     @Test
     fun theRequestSaysHowItTakesEffectAndWhetherTheImpactIsSeen() {
         val request = traitsEditRequest("acme", listOf("kdr:name"), EDM.draft, acknowledge = false)

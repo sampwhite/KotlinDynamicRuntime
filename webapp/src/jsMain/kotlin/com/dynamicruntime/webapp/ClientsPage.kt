@@ -415,6 +415,8 @@ private fun ChildrenBuilder.clientDetail(
                             this.savesDraft = savesDraft
                             platform = acrossClients
                             platformDefaults = def.platformDefaults
+                            template = def.template
+                            templateFills = def.templateFills
                             this.onChanged = onChanged
                         }
                     }
@@ -696,6 +698,13 @@ external interface DefinitionEditorProps : Props {
     var platform: Boolean
     /** The deployment's values of the fields a client may leave blank (issue #1308), said as each one's placeholder. */
     var platformDefaults: Map<String, Int>
+    /**
+     * The template the client is built on, and what it supplies (issue #1621): an unset field's placeholder says the
+     * template's value rather than the platform's. The draft stays seeded from [baseline], so a save never writes the
+     * template's value as the client's own.
+     */
+    var template: String?
+    var templateFills: Map<String, Any?>?
     var onChanged: () -> Unit
 }
 
@@ -820,7 +829,8 @@ private val DefinitionEditor = FC<DefinitionEditorProps> { props ->
                         }
                     }
                     ClientPresentationFields.Kind.number -> textField(
-                        label, draft[name].orEmpty(), disabled = busy, placeholder = platformDefaultText(name, props.platformDefaults),
+                        label, draft[name].orEmpty(), disabled = busy,
+                        placeholder = unsetValueText(name, props.platformDefaults, props.template, props.templateFills.orEmpty()),
                     ) { v -> set(v) }
                     else -> textField(label, draft[name].orEmpty(), disabled = busy) { v -> set(v) }
                 }

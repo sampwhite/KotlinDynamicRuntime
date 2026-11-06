@@ -490,6 +490,14 @@ object CLD {
     /** In [platformDefaults]: the most a client's [sessionHours] may be, in hours (issue #1308). */
     const val maxSessionHours = "maxSessionHours"
 
+    /**
+     * On the definition retrieve (issue #1621): what the client's template ([extendsFromClientId]) supplies of the
+     * definition it runs, by key -- the [webResourcesId], [sessionHours] and [refreshIntervalSeconds] the client
+     * leaves unset, and the template's [includedTraits] and [userLabels] the client does not name itself -- so a page
+     * can say which values in force are the template's. Absent for a client built on none.
+     */
+    const val templateFills = "templateFills"
+
     /** Schema type name for the input of a client's creation by a customer's root administrator (issue #1112). */
     const val delegatedCreateTypeName = "ClientDelegatedCreate"
 

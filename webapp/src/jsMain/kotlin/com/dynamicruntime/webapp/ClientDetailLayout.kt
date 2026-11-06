@@ -52,6 +52,8 @@ fun clientSummaryGroups(
     // Said whose it is when this caller does not edit it here.
     fun marked(key: String, value: String): String =
         whoSetsNote(key, canSeeAllClients)?.takeIf { value != "—" }?.let { "$value $it" } ?: value
+    // Said when the value in force is the template's, or partly (issue #1621).
+    fun fromTemplate(key: String, value: String): String = templateFillNote(key, def)?.let { "$value $it" } ?: value
     val name = row?.name?.ifBlank { null } ?: info[CLD.name].toOptStr().orEmpty()
     val about = buildList {
         add("Client id" to clientId)
@@ -61,15 +63,17 @@ fun clientSummaryGroups(
     val behavior = buildList {
         if (def == null) return@buildList
         add("Time zone" to timeZoneText(info[CLD.timeZone].toOptStr(), Clock.System.now()))
-        add("User labels" to list(info[CLD.userLabels].toJsonListOfStrings()))
-        // The value in force (issue #1308): the client's, else the platform's, said as such.
-        add(humanizeFieldName(CLD.sessionHours) to inForceText(CLD.sessionHours, info, def.platformDefaults))
+        add("User labels" to fromTemplate(CLD.userLabels, list(info[CLD.userLabels].toJsonListOfStrings())))
+        // The value in force (issue #1308): the client's, its template's, else the platform's, said as such.
+        val session = inForceText(CLD.sessionHours, info, def.platformDefaults)
+        add(humanizeFieldName(CLD.sessionHours) to fromTemplate(CLD.sessionHours, session))
         val refresh = inForceText(CLD.refreshIntervalSeconds, info, def.platformDefaults)
-        add(humanizeFieldName(CLD.refreshIntervalSeconds) to if (info[CLD.refreshIntervalSeconds] != null) marked(CLD.refreshIntervalSeconds, refresh) else refresh)
+        val refreshMarked = if (info[CLD.refreshIntervalSeconds] != null) marked(CLD.refreshIntervalSeconds, refresh) else refresh
+        add(humanizeFieldName(CLD.refreshIntervalSeconds) to fromTemplate(CLD.refreshIntervalSeconds, refreshMarked))
         // Each listed only where its section is not drawn below (issue #1491).
         if (!traitsShownBelow) {
             add("Listing columns" to list(def.usageLabels))
-            add("Traits" to list(def.traitIds))
+            add("Traits" to fromTemplate(CLD.includedTraits, list(def.traitIds)))
         }
     }
     val platform = buildList {
@@ -78,7 +82,7 @@ fun clientSummaryGroups(
         for (key in listOf(CLD.audience, CLD.usageType, CLD.customerId)) add(humanizeFieldName(key) to marked(key, text(key)))
         add("Extends" to marked(CLD.extendsFromClientId, text(CLD.extendsFromClientId)))
         add("Domain" to marked(CLD.domainPrefix, info[CLD.customDomain].toOptStr() ?: info[CLD.domainPrefix].toOptStr()?.let { "$it (prefix)" } ?: "—"))
-        add("Web resources" to marked(CLD.webResourcesId, text(CLD.webResourcesId)))
+        add("Web resources" to fromTemplate(CLD.webResourcesId, marked(CLD.webResourcesId, text(CLD.webResourcesId))))
     }
     val runs = buildList {
         row?.let { add("Definition" to clientOriginText(it.origin, it.storedConfigs)) }

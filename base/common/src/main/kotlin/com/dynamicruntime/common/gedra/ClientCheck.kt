@@ -21,6 +21,12 @@ class ClientCheckResult(
     val issues: List<GedraConfigIssue>,
     /** The customers that survived (issue #1107), keyed by [CustomerDef.customerId]; see `checkCustomers`. */
     val customers: Map<String, KeptCustomer> = emptyMap(),
+    /**
+     * What each surviving client's template supplies of the definition it runs (issue #1621), keyed by client id and
+     * then by [CLD] key ([ClientExtension.templateFills]): recorded at the merge, judged against what the checks left.
+     * Absent for a client the template supplies nothing.
+     */
+    val templateFills: Map<String, Map<String, Any?>> = emptyMap(),
 )
 
 /**
@@ -75,12 +81,16 @@ fun checkClientDefs(
     // not extending another -- so a base `relatedProblem` refuses is reported as itself, not as a fault the merge
     // brought in. A base the checks refuse for anything else drops the client too.
     val firstDecl = raw.distinctBy { it.second.clientId }.associateBy { it.second.clientId }
+    // Each merged declaration's own definition and its base (issue #1621), by the config holding it, so what the template
+    // supplied is told from what the client set -- after the stored package is taken away, as the merge saw it.
+    val merges = IdentityHashMap<GedraConfig, Pair<ClientDef, ClientDef>>()
     val declared = raw.map { (config, def) ->
         val base = def.extendsFromClientId?.let { firstDecl[it] }
             ?.takeIf { (baseConfig, baseDef) ->
                 baseDef.clientId != def.clientId && baseDef.extendsFromClientId == null && !baseConfig.isStored &&
                     !isSandboxClient(baseDef.clientId)
             }?.second
+        base?.let { merges[config] = def to it }
         config to (base?.let { ClientExtension.mergeDef(def, it) } ?: def)
     }
 
@@ -244,7 +254,12 @@ fun checkClientDefs(
         }
     }
     val clients = if (stripTestFeatures) kept.mapValuesTo(LinkedHashMap()) { effective(it.value) } else kept
-    return ClientCheckResult(clients, issues, customers)
+    // Against the config that holds each survivor -- the one whose definition it runs -- and what the checks left of it.
+    val templateFills = clients.mapNotNull { (id, running) ->
+        val (own, base) = holders[id]?.let { merges[it] } ?: return@mapNotNull null
+        ClientExtension.templateFills(own, base, running).ifEmpty { null }?.let { id to it }
+    }.toMap()
+    return ClientCheckResult(clients, issues, customers, templateFills)
 }
 
 /**

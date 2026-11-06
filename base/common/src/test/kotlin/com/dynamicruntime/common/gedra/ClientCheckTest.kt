@@ -6,6 +6,9 @@ import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.startup.BootCheckMode
 import com.dynamicruntime.common.context.KdrInstanceConfig
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.webasset.DeclaredWebResources
+import com.dynamicruntime.common.webasset.WRES
+import com.dynamicruntime.common.webasset.webResources
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldBeEmpty
@@ -315,6 +318,51 @@ class ClientCheckTest : StringSpec({
             collectorOf(clientConfig("base"), clientConfig("leaf", extendsFrom = "base")),
         )
         result.clients.getValue("leaf").extendsFromClientId shouldBe "base"
+    }
+
+    // Issue #1621: what a template supplies is recorded at the merge, against what the checks left of it, so the page
+    // says which values are the template's exactly as the client runs them.
+    "what a template supplies is recorded at the merge, for a stored client and a code one, and only what runs" {
+        fun config(cxt: KdrCxt, def: ClientDef, origin: GedraConfigOrigin = GedraConfigOrigin.source): GedraConfig =
+            gedraConfig(cxt, "${def.clientId}Client", clientNamespace(def.clientId), def.clientId, origin) { defineClient(def) }
+        fun def(id: String, extends: String? = null) = ClientDef(
+            clientId = id, name = id, usageType = ClientUsageType.dev, audience = ClientAudience.internal,
+            enabledEnvironments = setOf(ENV.unit, ENV.local), extendsFromClientId = extends,
+        )
+        val withPackage = cxtIn(ENV.local).also {
+            it.instanceConfig.put(WRES.registryKey, listOf(DeclaredWebResources(webResources("kdr:pkg", favicon = "f.png"), "core", "kdr")))
+        }
+        val base = def("base").copy(webResourcesId = "kdr:pkg", sessionHours = 12, userLabels = listOf("vip"))
+        val result = checkClientDefs(
+            withPackage,
+            GedraConfigCollector().apply {
+                add(withPackage, config(withPackage, base))
+                // Defined in code, setting nothing: everything is the template's.
+                add(withPackage, config(withPackage, def("coded", "base")))
+                // Stored, naming a package only code may name: the load takes it away, so it runs the template's.
+                add(withPackage, config(withPackage, def("stored", "base").copy(webResourcesId = "kdr:mine"), GedraConfigOrigin.stored))
+                // Sets its own session lifetime and a label of its own.
+                add(withPackage, config(withPackage, def("own", "base").copy(sessionHours = 4, userLabels = listOf("mine"))))
+            },
+        )
+        val all = mapOf(CLD.webResourcesId to "kdr:pkg", CLD.sessionHours to 12, CLD.userLabels to listOf("vip"))
+        result.templateFills.getValue("coded") shouldBe all
+        result.clients.getValue("stored").webResourcesId shouldBe "kdr:pkg"
+        result.templateFills.getValue("stored") shouldBe all
+        result.templateFills.getValue("own") shouldBe mapOf(CLD.webResourcesId to "kdr:pkg", CLD.userLabels to listOf("vip"))
+        result.templateFills.containsKey("base") shouldBe false
+
+        // A value the checks drop from what the client runs is not the template's to show: forgiven in production, a
+        // session lifetime past the limit goes, from the template and from the client built on it.
+        val long = checkClientDefs(
+            prodCxt,
+            GedraConfigCollector().apply {
+                add(prodCxt, config(prodCxt, def("base").copy(sessionHours = 1_000_000, userLabels = listOf("vip"))))
+                add(prodCxt, config(prodCxt, def("leaf", "base")))
+            },
+        )
+        long.clients.getValue("leaf").sessionHours shouldBe null
+        long.templateFills.getValue("leaf") shouldBe mapOf(CLD.userLabels to listOf("vip"))
     }
 
     // A client sees its own traits and global's and nobody else's, so this catches a typo, a trait that was
