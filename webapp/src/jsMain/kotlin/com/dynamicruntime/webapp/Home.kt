@@ -68,6 +68,10 @@ val Home = FC<Props> {
     }
     val current = config
     val layout = current?.layout
+    // What the workflow assistant's status says, when a card is the assistant's (issue #1636): read here, once, so its
+    // card's button and its link under the title say the same thing.
+    val cards = current?.cards.orEmpty()
+    val assistantView = useAssistantCardView(cards)
 
     // An address naming a section (`/wa#home.own-client`, after a jump link and a reload, say) scrolls to it once the
     // page is drawn (issue #1576): the browser looks for it as the page loads, before Home has fetched what it draws.
@@ -137,8 +141,13 @@ val Home = FC<Props> {
                         copy.opt(HFRAG.homeNs, HFRAG.title)?.let { h1 { +it } }
                         // Jump links to what this page offers further down (issue #1576), from the copy, keeping only
                         // those whose section is drawn for this caller -- none outside the public home page.
-                        val drawn = if (isPublicHome(current.user)) publicHomeSections(current) else emptySet()
-                        jumpLinksFor(copy.opt(HFRAG.homeNs, HFRAG.jumpLinks), drawn)?.let {
+                        // And to the cards that ask to be named there (issue #1636): the assistant's, which may sit below
+                        // a long introduction, beside "Start here".
+                        val drawn = (if (isPublicHome(current.user)) publicHomeSections(current) else emptySet()) +
+                            cards.map { homeCardElementId(it.id) }
+                        // Named apart from the Markdown components' `source` below, which a local `source` would shadow.
+                        val jumpSource = withCardJumpLinks(copy.opt(HFRAG.homeNs, HFRAG.jumpLinks), homeCardJumpLinks(cards, assistantView))
+                        jumpLinksFor(jumpSource, drawn)?.let {
                             nav {
                                 className = ClassName("home-jump-links")
                                 asDynamic()["aria-label"] = "On this page"
@@ -153,6 +162,11 @@ val Home = FC<Props> {
                                 className = ClassName("home-note")
                                 Markdown { source = it; linkResolver = copyLinks }
                             }
+                        }
+                        // The home cards (issue #1636): what this caller can do next, as the backend decided for them.
+                        HomeCards {
+                            this.cards = cards
+                            this.assistantView = assistantView
                         }
                         // The public home page (issue #1324): for someone signed in to `public` -- never a visitor who
                         // has not signed in, though they act in `public` too -- what they can do next.

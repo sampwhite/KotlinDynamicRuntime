@@ -95,3 +95,23 @@ private fun withoutHiddenLinks(body: String, drawn: Set<String>): String {
     if (!isSeparator(pending)) out.append(pending)
     return out.toString()
 }
+
+/**
+ * The copy's jump links ([source]) with links to cards added (issue #1636), each `label` to the card's element id,
+ * written in the copy's own style: as list items after a list, or after a row written on one line, separated as `·`.
+ * With no copy, the links alone, as a list. A label's brackets are escaped, so a card's words cannot break the link.
+ * The result goes through [jumpLinksFor] like the copy's own, with the cards' ids among what is drawn. Pure, covered
+ * under `jsNodeTest`.
+ */
+fun withCardJumpLinks(source: String?, links: List<Pair<String, String>>): String? {
+    if (links.isEmpty()) return source
+    fun link(label: String, id: String) = "[" + label.replace("[", "\\[").replace("]", "\\]") + "](#$id)"
+    val asItems = links.joinToString("\n") { (label, id) -> "- " + link(label, id) }
+    if (source.isNullOrBlank()) return asItems
+    val lines = source.trimEnd().lines()
+    return if (listItemStart.containsMatchIn(lines.last())) {
+        lines.joinToString("\n") + "\n" + asItems
+    } else {
+        lines.joinToString("\n") + links.joinToString("") { (label, id) -> " · " + link(label, id) }
+    }
+}

@@ -1,5 +1,6 @@
 package com.dynamicruntime.webapp
 
+import com.dynamicruntime.common.home.HSEC
 import com.dynamicruntime.common.context.CL
 import com.dynamicruntime.common.context.UserProfile
 import com.dynamicruntime.common.user.UserChoice
@@ -24,19 +25,6 @@ private val publicHomeScope = MainScope()
 
 /** Where a switch asked from "Your other accounts" reports its failure; a demo card's is its client id. */
 private const val accountsSection = "#" + HSEC.accounts
-
-/**
- * The ids of the public home page's sections (issue #1576): what the home copy's jump links (`home.jumpLinks`) point
- * at, as `#home.demos`. Fixed here rather than taken from a heading's text, since the headings are copy and are
- * reworded. Each has a dot, which the id Markdown gives a heading never has (`headingSlug`), so a heading in the copy
- * above -- an intro's "Demos", say -- cannot take a section's id.
- */
-@Suppress("ConstPropertyName")
-object HSEC {
-    const val demos = "home.demos"
-    const val accounts = "home.accounts"
-    const val ownClient = "home.own-client"
-}
 
 /**
  * Whether Home is the public home page (issue #1324): for a caller **signed in** to `public`. A visitor who has not
@@ -219,6 +207,7 @@ val PublicHome = FC<PublicHomeProps> { props ->
                 madeName = config.users.firstOrNull { it.client == config.selfServeClient }?.clientName
                 workflowsNote = copy.opt("publicHome", "createClientNote")
                 templates = config.selfServeTemplates
+                assistantOffered = ownClientAssistantOffered(config.cards)
             }
         }
     }

@@ -1084,3 +1084,16 @@ limit is the spend limit on the deployment's Anthropic organization, outside the
   tokens, on all clients' use together: checked where a client's budget is, at a turn's start and before every model
   call, and shown in the operator's listing beside the month's total. Worth it once several clients are on, or one
   operator's mistyped budget could cost more than the deployment means to spend.
+
+## When a client wants to change its home cards without writing configuration
+
+Home's cards are a registered UiBlock (`homeCardsBlock`, issue #1636), so a client hides or rewords one with an overlay
+in its configuration (`kdr:uiBlockDef`), but the Clients page offers no editor for them, as it does for the menu
+(`ClientMenuEdit`, which is written for the menu's one array and its audiences).
+
+- **A cards editor on the Clients page** *(from #1636).* Hide, show, and reword a card, as the menu editor renames and
+  hides an item, generalizing `ClientMenuEdit` over a block's keyed array rather than copying it. Worth it once a
+  client asks to change what its Home offers and has no one to write configuration.
+- **Card words as fragment copy** *(from #1636).* A card's title and text are literal, as the menu's labels are. They
+  move to the `home` fragment file when a UiBlock can name a fragment key (`ui-block.md`'s open item), so a client's
+  copy overlay rewords them with the rest of its copy.

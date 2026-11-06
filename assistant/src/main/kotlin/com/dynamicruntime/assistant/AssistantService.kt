@@ -160,13 +160,19 @@ class AssistantService : ServiceInitializer {
     }
 
     /**
+     * Whether this deployment offers the assistant to self-serve clients at all (issue #1636): this node has a model,
+     * and [AENV.selfServe] is on. What a public administrator's home card asks, before they have made a client.
+     */
+    fun offersSelfServe(): Boolean = model != null && settings.selfServe
+
+    /**
      * Whether [client]'s administrator may switch the assistant on themselves (issue #1568): this node has a model, the
      * deployment offers it to self-serve clients ([AENV.selfServe]), [client] is one, and nobody has set it yet -- so an
      * operator's choice, off as much as on, stands. Never inside a sandbox: a client is switched on from itself. Read
      * from the switch's cache first, so only a self-serve client that is off asks SQL whether it was ever set.
      */
     fun offeredTo(cxt: KdrCxt, client: String): Boolean {
-        if (model == null || !settings.selfServe || isSandboxClient(client) || !isSelfServeClient(client)) return false
+        if (!offersSelfServe() || isSandboxClient(client) || !isSelfServeClient(client)) return false
         if (ClientService.getOrNull(cxt)?.isPresent(client) != true || isOn(cxt, client)) return false
         return !isSet(cxt, client)
     }

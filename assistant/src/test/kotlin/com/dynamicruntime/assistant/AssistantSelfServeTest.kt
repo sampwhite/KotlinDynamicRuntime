@@ -13,6 +13,7 @@ import com.dynamicruntime.common.gedra.CLD
 import com.dynamicruntime.common.gedra.CUST
 import com.dynamicruntime.common.gedra.ClientAudience
 import com.dynamicruntime.common.gedra.ClientUsageType
+import com.dynamicruntime.common.home.HCARD
 import com.dynamicruntime.common.home.HEP
 import com.dynamicruntime.common.home.HFLD
 import com.dynamicruntime.common.http.request.ROLE
@@ -65,6 +66,21 @@ class AssistantSelfServeTest : StringSpec({
 
     fun menuIds(user: TestUser): List<Any?> =
         user.getData(HEP.homeUiConfig)[UIC.state].toJsonMapOrEmpty()[HFLD.menu].toJsonListOfMaps().map { it[HFLD.id] }
+
+    fun cardIds(user: TestUser): List<Any?> =
+        user.getData(HEP.homeUiConfig)[UIC.state].toJsonMapOrEmpty()[HCARD.cards].toJsonListOfMaps().map { it[HFLD.id] }
+
+    "Home shows the assistant: to a public visitor as the reason to make a client, then to its administrator (issue #1636)" {
+        val person = TestUser.create(cxt, "cards@asst1636.test")
+        // Signed in to public, on a deployment that offers it to self-serve clients: the card that says so.
+        cardIds(person) shouldBe listOf(ASST.createHomeCard)
+        person.postData(AEP.createOwnClient, mapOf(CLD.name to "Cards"))[CLD.client].toOptStr().shouldNotBeNull()
+        // In the client made: the assistant's card, ahead of core's for administering it, offered as its menu entry is.
+        cardIds(person) shouldBe listOf(ASST.homeCard, HCARD.administer)
+        menuIds(person) shouldContain ASST.menuItem
+        // An ordinary member of a client is offered neither.
+        cardIds(TestUser.create(cxt, "member@asst1636.test", userClient = CL.hub)) shouldBe emptyList()
+    }
 
     "a self-serve client's administrator switches the assistant on, acknowledging the data notice, at the self-serve budget" {
         val (client, admin) = ownClient(cxt, "maker@asst1568.test")
@@ -166,6 +182,9 @@ class AssistantSelfServeTest : StringSpec({
         AssistantService.get(plain).offeredTo(plain, client) shouldBe false
         admin.getData(ACNV.statusPath)[ACNV.offered] shouldBe false
         menuIds(admin) shouldNotContain ASST.menuItem
+        // Nor is Home: no reason given in public to make a client for it, and no card in the client made (issue #1636).
+        cardIds(TestUser.create(plain, "visitor@asst1636.test")) shouldBe emptyList()
+        cardIds(admin) shouldBe listOf(HCARD.administer)
     }
 
     "a node with no model offers it to nobody" {

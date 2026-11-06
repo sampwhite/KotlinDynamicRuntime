@@ -1,7 +1,11 @@
 package com.dynamicruntime.common.cfact
 
 import com.dynamicruntime.common.context.BOOT
+import com.dynamicruntime.common.context.CL
+import com.dynamicruntime.common.gedra.ClientService
 import com.dynamicruntime.common.gedra.CustomerAccess
+import com.dynamicruntime.common.gedra.isSelfServeClient
+import com.dynamicruntime.common.gedra.sandboxParentOf
 import com.dynamicruntime.common.gedra.workflow.addCoreDetailsCFacts
 import com.dynamicruntime.common.gedra.workflow.addWorkflowCFacts
 import com.dynamicruntime.common.gedra.workflow.addWorkflowSingletonCFacts
@@ -11,6 +15,7 @@ import com.dynamicruntime.common.http.request.RoleLadder
 import com.dynamicruntime.common.http.request.SECT
 import com.dynamicruntime.common.startup.SchemaCollector
 import com.dynamicruntime.common.user.AdminRules
+import com.dynamicruntime.common.user.SandboxAccess
 
 /** The friendly labels the built-in cfacts group under. Metadata: they affect nothing but presentation. */
 @Suppress("ConstPropertyName")
@@ -92,6 +97,24 @@ object CFACTS {
      * what it lists.
      */
     const val seesClientForms = "kdr:seesClientForms"
+
+    /**
+     * The caller is **signed in to `public`** (issue #1636): a visitor who registered, acting in the placeholder client,
+     * where they may create a client of their own. Not a visitor who has not signed in, though they act in `public` too.
+     */
+    const val publicMember = "kdr:publicMember"
+
+    /**
+     * The caller's client is a **self-serve** one (issue #1636): created by a person from the public home page, its id
+     * under the self-serve prefix -- or that client's sandbox. A statement about the client, read off its id.
+     */
+    const val selfServeClient = "kdr:selfServeClient"
+
+    /**
+     * The caller's client **has a sandbox** (issue #1636), or the caller is in it: a client whose configuration changes
+     * are drafts until published. A statement about the client, not about whether the caller may open it.
+     */
+    const val clientHasSandbox = "kdr:clientHasSandbox"
 
     /** The session is in ENV DEBUG (issue #517): env auth effective, and debug behaviors on. */
     const val hasEnvAuth = "kdr:hasEnvAuth"
@@ -290,6 +313,30 @@ fun addCoreCFacts(collector: SchemaCollector) {
                 "for whose forms it shows -- \"Forms\" against \"My forms\" -- asks it.",
         ),
     ) { AdminRules.isClientAdministrator(it) || AdminRules.editsClient(it) }
+    // Three cheap facts about where the caller is (issue #1636), read off the context and the loaded clients, so the
+    // home cards can be offered by them: each is asked on every read of the shell config, which is polled.
+    collector.addCFact(
+        CFactDef(
+            CFACTS.publicMember, CFGRP.caller,
+            "True when the caller is signed in to the `public` placeholder client: a visitor who registered, who may " +
+                "create a client of their own there. A visitor who has not signed in acts in `public` too, and is not one.",
+        ),
+    ) { it.userProfile.isLoggedIn && it.client == CL.public }
+    collector.addCFact(
+        CFactDef(
+            CFACTS.selfServeClient, CFGRP.caller,
+            "True when the caller's client is a self-serve one -- created by a person from the public home page, its " +
+                "id under the self-serve prefix -- or that client's sandbox.",
+        ),
+    ) { isSelfServeClient(sandboxParentOf(it.client) ?: it.client) }
+    collector.addCFact(
+        CFactDef(
+            CFACTS.clientHasSandbox, CFGRP.caller,
+            "True when the caller's client has a sandbox, so its configuration changes are drafts until published -- " +
+                "or the caller is in that sandbox. Whether the caller may open it is a separate question.",
+        ),
+        // An edge carries no clients, and so no sandboxes.
+    ) { ClientService.getOrNull(it) != null && SandboxAccess.hasSandbox(it, sandboxParentOf(it.client) ?: it.client) }
     collector.addCFact(
         CFactDef(
             CFACTS.hasAdminLevel, CFGRP.caller,

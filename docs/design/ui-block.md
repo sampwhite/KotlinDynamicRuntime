@@ -10,8 +10,9 @@ is still ahead says so where it appears: fragment references inside a block, and
 
 A **UiBlock** is a registered piece of **declared presentation structure**: JSON describing part of a user
 interface, contributed by a component, varied by a client, and merged from layers the way a Markdown fragment
-is. The home menu is a UiBlock (`homeMenuBlock`). A workflow task's `display` is not a registered block, but it is
-resolved by the same walk.
+is. The home menu is a UiBlock (`homeMenuBlock`), and so are the home cards (`homeCardsBlock`, issue #1636), what Home
+shows each caller beyond the copy everyone in their client reads. A workflow task's `display` is not a registered block,
+but it is resolved by the same walk.
 
 It is the counterpart to the two things that already exist:
 
@@ -78,6 +79,11 @@ client's stored configuration, trial-checked, published, and reloaded in one cal
 [sandbox](sandboxes.md), it is saved as a draft that the sandbox shows instead, and goes live when the draft is
 published (issue #930). Either way it changes what is offered, not what anyone may reach: the section gate still
 decides.
+
+The home cards have no editor yet: a client hides one with `#never` or rewords it with an overlay in its configuration,
+as it could the menu before the menu's editor existed. A card's condition decides only from cheap facts, since the shell
+config is polled; a card whose words depend on data names a `kind`, and the webapp reads that data when it draws the
+card.
 
 ## Not "blob"
 
