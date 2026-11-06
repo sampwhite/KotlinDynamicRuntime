@@ -408,7 +408,7 @@ private fun ChildrenBuilder.mergedBundleView(code: CodeBundle, ed: EditContext) 
                         } else {
                             codeSlot?.entries?.forEachIndexed { i, entry -> codeEntryView(code, stored, slot, entry, i, ed) }
                         }
-                        storedSlot?.entries?.forEachIndexed { i, entry -> entryView(stored, slot, entry, i, ed) }
+                        storedSlot?.entries?.forEachIndexed { i, entry -> entryView(stored, slot, entry, i, ed, merged = true) }
                         if (ed.editable) newEntries(stored.name, slot, ed)
                     }
                 }
@@ -647,6 +647,8 @@ private fun ChildrenBuilder.entryView(
     entry: EditorEntry,
     at: Int,
     ed: EditContext,
+    /** Drawn in a code bundle's merged view (issue #1646), where an entry over no code entry is the client's, added here. */
+    merged: Boolean = false,
 ) {
     val data = entry.latest
     val key = ed.view.slotKeys[slot].orEmpty()
@@ -661,7 +663,10 @@ private fun ChildrenBuilder.entryView(
         className = ClassName("bundle-editor-entry")
         Disclosure {
             summaryText = listOfNotNull(
-                entry.label, entryChangeText(entry.change), replaced?.let { replacesText(it, bundle.name) }, draftMark(draft, check),
+                entry.label, entryChangeText(entry.change),
+                // The columns are the client's own set, which replaces the code's as a whole (`columnsSetView`).
+                replaced?.let { replacesText(it, bundle.name) } ?: "added here".takeIf { merged && !editedAsSet(slot) },
+                draftMark(draft, check),
             ).joinToString(" — ")
             val before = entry.published
             val publishedHeading = "Published (version ${bundle.published?.version})"
