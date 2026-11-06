@@ -70,8 +70,14 @@ val Home = FC<Props> {
     val layout = current?.layout
     // What the workflow assistant's status says, when a card is the assistant's (issue #1636): read here, once, so its
     // card's button and its link under the title say the same thing.
-    val cards = current?.cards.orEmpty()
-    val assistantView = useAssistantCardView(cards)
+    val allCards = current?.cards.orEmpty()
+    val assistantView = useAssistantCardView(allCards)
+    // What waits on the caller (issue #1637): read here too, since its card -- and the link to it -- shows only when
+    // something does.
+    // Confined to the caller's own client when they see across clients, so Home never reads the whole deployment.
+    val waitingClient = current?.takeIf { it.canSeeAllClients }?.user?.client
+    val waiting = useWaitingOnYou(allCards, waitingClient)
+    val cards = visibleHomeCards(allCards, waiting)
 
     // An address naming a section (`/wa#home.own-client`, after a jump link and a reload, say) scrolls to it once the
     // page is drawn (issue #1576): the browser looks for it as the page loads, before Home has fetched what it draws.
@@ -167,6 +173,8 @@ val Home = FC<Props> {
                         HomeCards {
                             this.cards = cards
                             this.assistantView = assistantView
+                            this.waiting = waiting
+                            this.waitingClient = waitingClient
                         }
                         // The public home page (issue #1324): for someone signed in to `public` -- never a visitor who
                         // has not signed in, though they act in `public` too -- what they can do next.

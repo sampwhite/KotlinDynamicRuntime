@@ -68,6 +68,11 @@ class HomeConfig(
      *  status filter. */
     val hasCoreDetails: Boolean,
     /**
+     * Whether the caller's client has a workflow whose step can wait on somebody (issue #1637) -- drives the forms
+     * list's "Waiting on you" filter, offered where Home's card is.
+     */
+    val hasWaitingWorkflows: Boolean = false,
+    /**
      * The source repository's blob base (`.../blob/<branch>`) for rewriting a document's interior links, or
      * null when the deployment configured none -- then a non-document interior link is left as written (#492).
      */
@@ -196,6 +201,7 @@ fun homeConfigFrom(config: UiConfig): HomeConfig {
         canManageUsers = config.features[HFEAT.canManageUsers] == true,
         canSeeAllClients = config.features[HFEAT.canSeeAllClients] == true,
         hasCoreDetails = config.features[HFEAT.hasCoreDetails] == true,
+        hasWaitingWorkflows = config.features[HFEAT.hasWaitingWorkflows] == true,
         sourceRepoBase = config.state[HFLD.sourceRepoBase] as? String,
         canOpenSandbox = config.features[HFEAT.canOpenSandbox] == true,
         administersClient = config.features[HFEAT.administersClient] == true,

@@ -53,7 +53,18 @@ class HomeCardsTest : StringSpec({
 
     fun idsOf(user: TestUser) = cardsOf(user).map { it[HFLD.id] }
 
+    /** "Waiting on you" as a signed-in caller is sent it where a step can wait (issue #1637): its kind's body says what waits. */
+    val waitingCard = mapOf(
+        HFLD.id to HCARD.waiting,
+        HCARD.title to "Waiting on you",
+        HCARD.text to "Forms with a step that is yours to take.",
+        HCARD.jumpLabel to "Waiting on you",
+        HCARD.kind to HCARD.kindWaitingOnYou,
+    )
+
     "each kind of caller gets the cards for what they do, and nobody else's" {
+        // `public` and `hub` declare no workflow whose step can wait, so nobody here is sent "Waiting on you" (issue
+        // #1637); a client that does is below.
         idsOf(TestUser.create(cxt, "cards-member@example.com")) shouldBe emptyList()
         idsOf(TestUser.create(cxt, "cards-public@example.com", level = ROLE.admin, userClient = CL.public)) shouldBe emptyList()
         idsOf(TestUser.create(cxt, "cards-admin@example.com", level = ROLE.admin)) shouldBe listOf(HCARD.administer)
@@ -104,8 +115,12 @@ class HomeCardsTest : StringSpec({
         }
         factsIn(CL.hub) shouldNotContain CFACTS.selfServeClient
         factsIn(CL.hub) shouldNotContain CFACTS.clientHasSandbox
-        // Its administrator is offered the card for administering one client.
-        idsOf(person) shouldBe listOf(HCARD.administer)
+        // Its administrator is offered the card for administering one client -- and, since it starts with a core
+        // details workflow, whose step can wait, "Waiting on you" first (issue #1637).
+        factsIn(made) shouldContain CFACTS.clientHasWaitingWorkflows
+        factsIn(CL.hub) shouldNotContain CFACTS.clientHasWaitingWorkflows
+        cardsOf(person).first() shouldBe waitingCard
+        idsOf(person) shouldBe listOf(HCARD.waiting, HCARD.administer)
     }
 
     "resolving several blocks at once gives each as resolving it alone does" {

@@ -1,5 +1,8 @@
 package com.dynamicruntime.common.gedra
 
+import com.dynamicruntime.common.gedra.workflow.WFS
+import com.dynamicruntime.common.gedra.workflow.WFD
+import com.dynamicruntime.common.gedra.workflow.SWF
 import com.dynamicruntime.common.endpoint.EI
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.workflow.WfRef
@@ -217,6 +220,19 @@ class GedraDataRow(
                     property(GDF.states, "The gedra's state entries, present when 'withStates' is requested (issue #600).") {
                         type = SCT.array
                         items { ref("${GCFG.globalNamespace}.${GU.stateUnionName}") }
+                        derived = true
+                    }
+                    // What waits on the caller in the form (issue #1637), on a row listed with `needsMe`: output only,
+                    // as the states are.
+                    property(GDF.waitingSteps, "The steps waiting on you, present when 'needsMe' is requested (issue #1637).") {
+                        type = SCT.array
+                        items {
+                            type = SCT.kObject
+                            property(WFD.workflowId, "The workflow.", required = true)
+                            property(WFD.label, "The workflow's name.", required = true)
+                            property(WFS.ctaTask, "The task waiting on you: the workflow's current one.", required = true)
+                            property(SWF.actionText, "What the task asks of you, in words.", required = true)
+                        }
                         derived = true
                     }
                 }

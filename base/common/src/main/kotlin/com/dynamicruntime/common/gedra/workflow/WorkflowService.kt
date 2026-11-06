@@ -168,5 +168,8 @@ class WorkflowService : ServiceInitializer {
 
         fun get(cxt: KdrCxt): WorkflowService = cxt.instanceConfig.get(serviceName) as? WorkflowService
             ?: throw KdrException("The $serviceName is not available on this node.")
+
+        /** The service, or null on a node that carries none. */
+        fun getOrNull(cxt: KdrCxt): WorkflowService? = cxt.instanceConfig.get(serviceName) as? WorkflowService
     }
 }

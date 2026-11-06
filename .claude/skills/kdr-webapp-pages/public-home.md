@@ -86,7 +86,14 @@ from cfacts, as it decides the menu: the cards are a registered UiBlock (`homeCa
 with an overlay and a client hides or rewords one in its configuration. The page draws the list it is handed and adds
 none of its own.
 
-- **Core's cards** are shortcuts: **Your client** for an administrator of one client (My client, Users, Reports),
+- **Waiting on you** (`HCARD.waiting`, issue #1637), first, for anyone signed in to a client with a workflow whose
+  step can wait (`kdr:clientHasWaitingWorkflows`: a normal or core details workflow), since its read is a pass over
+  the forms the caller may see: the forms with a step that is the caller's to take, each linked to that step
+  (`workflowPageRoute`, in edit mode) with what it asks beside it, and "See all N" to the forms listing narrowed to them
+  (`forms-listing.md`'s "Waiting on you"). Home reads it (`useWaitingOnYou`, the listing with `needsMe` and a limit of
+  five) -- confined to the caller's own client for one who sees across clients, never the whole deployment -- and
+  draws the card, and its link under the title, only once something waits (`visibleHomeCards`).
+- **Core's other cards** are shortcuts: **Your client** for an administrator of one client (My client, Users, Reports),
   **Clients and customers** for every client's administrator, **Your client's forms** for an editor, and
   **Operating this deployment** for a deployment operator.
 - **The assistant module's cards** (`ASST.homeCard`, `ASST.createHomeCard`): the workflow assistant, for whoever its

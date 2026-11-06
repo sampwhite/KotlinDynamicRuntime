@@ -224,7 +224,7 @@ fun formDocsQueryDefName(): String = qualifyTypeName(GEP.formDocsQuery, GEP.gedr
  */
 val reservedQueryFieldNames: Set<String> = setOf(
     EP.offset, EP.limit, EP.after, EI.user, EI.client, EI.q, EI.includeUsers, GSORT.sort, GSORT.sortDir,
-    GDF.withStates, GDF.withWorkflowSummary, GDF.formStatus, WAGG.workflowId, WAGG.workflowState,
+    GDF.withStates, GDF.withWorkflowSummary, GDF.formStatus, GDF.needsMe, WAGG.workflowId, WAGG.workflowState,
 )
 
 /**

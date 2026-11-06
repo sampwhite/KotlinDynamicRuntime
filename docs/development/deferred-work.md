@@ -1097,3 +1097,14 @@ in its configuration (`kdr:uiBlockDef`), but the Clients page offers no editor f
 - **Card words as fragment copy** *(from #1636).* A card's title and text are literal, as the menu's labels are. They
   move to the `home` fragment file when a UiBlock can name a fragment key (`ui-block.md`'s open item), so a client's
   copy overlay rewords them with the rest of its copy.
+
+## When a reviewer is neither an administrator nor an editor
+
+The forms listing's "waiting on you" (`needsMe`, issue #1637) judges the forms the caller may already list, so a
+reviewer who reads only their own forms -- a member given the `reviewer` label -- is never shown the reviews that wait
+on them, and cannot open those forms either.
+
+- **A read that admits a form for its current step** *(from #1637).* Widen what such a caller may read -- the listing's
+  `needsMe` and the form's workflow page -- to forms whose stored current task names them (an approval they may give,
+  a save naming them). Worth it once a client gives reviewing to people it does not make editors.
+

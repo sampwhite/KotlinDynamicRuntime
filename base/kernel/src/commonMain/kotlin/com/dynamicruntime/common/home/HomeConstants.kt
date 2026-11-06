@@ -80,6 +80,13 @@ object HFEAT {
      * moment a filter matched nothing could never be cleared.
      */
     const val hasCoreDetails = "hasCoreDetails"
+
+    /**
+     * Whether the caller's client has a workflow whose step can wait on somebody (issue #1637): a normal or a core
+     * details workflow -- the rule the `kdr:clientHasWaitingWorkflows` cfact asks, so the forms list offers its
+     * "Waiting on you" filter exactly where Home offers the card.
+     */
+    const val hasWaitingWorkflows = "hasWaitingWorkflows"
 }
 
 /** Home UI-config response field (JSON key) names, under the shared `state` envelope entry. */

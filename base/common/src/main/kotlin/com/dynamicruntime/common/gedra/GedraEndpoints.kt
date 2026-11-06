@@ -16,6 +16,7 @@ import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.workflow.FSV
 import com.dynamicruntime.common.gedra.workflow.WSF
 import com.dynamicruntime.common.gedra.workflow.WVF
+import com.dynamicruntime.common.gedra.workflow.WaitingSteps
 import com.dynamicruntime.common.gedra.workflow.formStatusOf
 import com.dynamicruntime.common.gedra.workflow.PFO
 import com.dynamicruntime.common.gedra.workflow.WFS
@@ -292,6 +293,14 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
             option(FSV.needsReview, "Needs Review")
             option(FSV.finished, "Finished")
         }
+        // Only forms with a step waiting on the caller (issue #1637): an engaged workflow whose current task is theirs
+        // to take, by the rule the save and approve gates apply, judged from each form's stored state before paging.
+        // Not admin-gated: a caller narrows the forms they can already see.
+        property(GDF.needsMe, "Only forms with a step waiting on you: a current workflow task that is yours to take. Defaults to false.") {
+            type = SCT.boolean
+            emptyIsAbsent = true
+            allowCoerce = true
+        }
         // The workflow pages' drill-down (issue #792): only forms whose workflow cell has this workflow -- of the
         // listing's client (the chosen one, else the caller's) -- in the given state. The same kernel rule the
         // aggregate counts by, so a count and the rows it opens cannot disagree.
@@ -459,11 +468,16 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
         // schema has already settled the value: a blank is absent (`emptyIsAbsent`), anything but the three
         // options was refused, so what arrives is one of them or nothing.
         val statusWanted = request[GDF.formStatus] as? String
-        val statusFilter: GedraStateFilter? = statusWanted?.let { wanted -> { _, states -> formStatusOf(states) == wanted } }
+        val statusFilter: GedraStateFilter? = statusWanted?.let { wanted -> { _, _, states -> formStatusOf(states) == wanted } }
         val workflowFilter = workflowDrillFilter(c, request)
-        val stateFilter: GedraStateFilter? = when {
-            statusFilter != null && workflowFilter != null -> { id, states -> statusFilter(id, states) && workflowFilter(id, states) }
-            else -> statusFilter ?: workflowFilter
+        // Only forms with a step waiting on the caller (issue #1637), judged from each form's state and owner.
+        val waiting = if (request.getOptBool(GDF.needsMe) == true) WaitingSteps(c) else null
+        val needsMeFilter: GedraStateFilter? = waiting?.let { w -> { id, owner, states -> w.of(id, owner, states).isNotEmpty() } }
+        val filters = listOfNotNull(statusFilter, workflowFilter, needsMeFilter)
+        val stateFilter: GedraStateFilter? = when (filters.size) {
+            0 -> null
+            1 -> filters.single()
+            else -> { id, owner, states -> filters.all { it(id, owner, states) } }
         }
         val svc = GedraDataService.get(c)
         val page = svc.listGedras(c, formDoc, scope, limit, offset, filter, sort, stateFilter)
@@ -490,7 +504,10 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
                 val display = computeDisplayValues(c, row, columns, c.client)
                 row.toJsonMap() + (GDF.displayValues to display) + (GDF.traitNames to rowTraitNames(row, traitNames)) +
                     ownerFields(owners[row.userId]) +
-                    if (withStates) mapOf(GDF.states to statesByGedra[row.gedraId.fullId].orEmpty()) else emptyMap()
+                    (if (withStates) mapOf(GDF.states to statesByGedra[row.gedraId.fullId].orEmpty()) else emptyMap()) +
+                    // What waits on the caller in each form listed for it (issue #1637): what the filter found, which
+                    // every row on the page passed through.
+                    (waiting?.let { w -> mapOf(GDF.waitingSteps to w.remembered(row.gedraId.fullId).orEmpty()) } ?: emptyMap())
             },
             page.numAvailable,
             hasMore = offset + page.rows.size < page.numAvailable,
@@ -1252,7 +1269,7 @@ private fun workflowDrillFilter(c: KdrCxt, request: Map<String, Any?>): GedraSta
             ?.takeIf { it.entry == WfEntry.normal && WorkflowAudience.of(c).sees(client, workflowId) }
             ?.let { WorkflowPhases.phaseAt(c, client, it, now) }?.takeIf { it.exists }
     }
-    return { gedraId, states ->
+    return { gedraId, _, states ->
         val phase = phaseIn(gedraId.client)
         phase != null && formWorkflowsOf(states) { id -> if (id == workflowId) phase else null }
             .any { wanted == null || it.category == wanted }

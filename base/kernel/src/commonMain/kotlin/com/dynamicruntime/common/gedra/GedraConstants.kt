@@ -325,6 +325,20 @@ object GDF {
     const val formStatus = "formStatus"
 
     /**
+     * List param (issue #1637): only forms with a step **waiting on the caller** -- an engaged workflow whose current
+     * task is theirs to take: an approval they may give, a save the task's own rule names them for, or, on a task that
+     * names nobody, their own form's. Judged from each form's stored state by the rule the save and approve gates
+     * apply, within the caller's read scope. With it, each row carries its [waitingSteps].
+     */
+    const val needsMe = "needsMe"
+
+    /**
+     * On a row listed with [needsMe] (issue #1637): the steps waiting on the caller, each its workflow's id and
+     * label, the task's id, and what it asks of them in words (`SWF.actionText`), in the form's state order.
+     */
+    const val waitingSteps = "waitingSteps"
+
+    /**
      * In a listing's `summary` (issue #1095): **the user the listing is confined to**, when the request named one
      * (`user`) -- who the server resolved that to. The request may name the user by id or by address, and an address
      * names a *person*, whom the server resolves to their default user; without this a caller is shown one of that

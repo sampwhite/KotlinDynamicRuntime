@@ -197,6 +197,11 @@ fun homeSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.home") {
             property(HFEAT.canOpenSandbox, "Whether the caller may open their own client's sandbox (issue #931).", required = true) {
                 type = SCT.boolean
             }
+            property(
+                HFEAT.hasWaitingWorkflows,
+                "Whether the caller's client has a workflow whose step can wait on somebody (issue #1637).",
+                required = true,
+            ) { type = SCT.boolean }
         }
         property(UIC.state, "Dynamic state for constructing the home page.", required = true) {
             type = SCT.kObject
@@ -327,6 +332,8 @@ fun homeSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.home") {
                 // The caller's own client's registry (issue #695): a cross-client admin working in another
                 // client's surface reads that client's rows, but the filter keys on where the caller belongs.
                 HFEAT.hasCoreDetails to (WorkflowService.get(c).forClient(c.client).coreDetails != null),
+                // Where a step can wait (issue #1637): the forms list's "Waiting on you" filter, as Home's card is offered.
+                HFEAT.hasWaitingWorkflows to WorkflowService.get(c).forClient(c.client).hasWaitingWorkflows,
                 // The rule the open endpoint enforces (issue #931), so the shell offers only what it would admit.
                 // An edge has no clients to have sandboxes.
                 HFEAT.canOpenSandbox to (ClientService.getOrNull(c) != null && c.userProfile.isLoggedIn &&
