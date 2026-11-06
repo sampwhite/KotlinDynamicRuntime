@@ -93,6 +93,13 @@ none of its own.
   (`forms-listing.md`'s "Waiting on you"). Home reads it (`useWaitingOnYou`, the listing with `needsMe` and a limit of
   five) -- confined to the caller's own client for one who sees across clients, never the whole deployment -- and
   draws the card, and its link under the title, only once something waits (`visibleHomeCards`).
+- **Unpublished drafts** (`HCARD.drafts`, issue #1638), next, for an administrator of a client with a sandbox
+  (`kdr:clientHasSandbox`), where an edit is a draft until published: how many configurations have unpublished
+  changes, worded as the Clients page's banner is (`draftsCountText`), the first three by name, and **Review and
+  publish** to the client's publishing panel -- the sandbox's own page from inside the sandbox (`draftsPublishRoute`),
+  as the assistant's drafts link. Home reads `/clientAdmin/config/drafts` (`useUnpublishedDrafts`), which answers for
+  the sandbox's parent from inside it and skips the bundle listing's per-row checks, and draws the card only once a
+  draft is known (`visibleHomeCards`).
 - **Core's other cards** are shortcuts: **Your client** for an administrator of one client (My client, Users, Reports),
   **Clients and customers** for every client's administrator, **Your client's forms** for an editor, and
   **Operating this deployment** for a deployment operator.

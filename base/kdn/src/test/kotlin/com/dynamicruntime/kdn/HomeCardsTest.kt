@@ -62,6 +62,15 @@ class HomeCardsTest : StringSpec({
         HCARD.kind to HCARD.kindWaitingOnYou,
     )
 
+    /** "Unpublished drafts" as a client's administrator is sent it where the client has a sandbox (issue #1638). */
+    val draftsCard = mapOf(
+        HFLD.id to HCARD.drafts,
+        HCARD.title to "Unpublished drafts",
+        HCARD.text to "Changes to your client's configuration are tried in its sandbox, and reach the client once published.",
+        HCARD.jumpLabel to "Unpublished drafts",
+        HCARD.kind to HCARD.kindUnpublishedDrafts,
+    )
+
     "each kind of caller gets the cards for what they do, and nobody else's" {
         // `public` and `hub` declare no workflow whose step can wait, so nobody here is sent "Waiting on you" (issue
         // #1637); a client that does is below.
@@ -116,11 +125,13 @@ class HomeCardsTest : StringSpec({
         factsIn(CL.hub) shouldNotContain CFACTS.selfServeClient
         factsIn(CL.hub) shouldNotContain CFACTS.clientHasSandbox
         // Its administrator is offered the card for administering one client -- and, since it starts with a core
-        // details workflow, whose step can wait, "Waiting on you" first (issue #1637).
+        // details workflow, whose step can wait, "Waiting on you" first (issue #1637); and, since it has a sandbox,
+        // "Unpublished drafts" next (issue #1638). Each of those two draws only when its read finds something.
         factsIn(made) shouldContain CFACTS.clientHasWaitingWorkflows
         factsIn(CL.hub) shouldNotContain CFACTS.clientHasWaitingWorkflows
         cardsOf(person).first() shouldBe waitingCard
-        idsOf(person) shouldBe listOf(HCARD.waiting, HCARD.administer)
+        cardsOf(person)[1] shouldBe draftsCard
+        idsOf(person) shouldBe listOf(HCARD.waiting, HCARD.drafts, HCARD.administer)
     }
 
     "resolving several blocks at once gives each as resolving it alone does" {

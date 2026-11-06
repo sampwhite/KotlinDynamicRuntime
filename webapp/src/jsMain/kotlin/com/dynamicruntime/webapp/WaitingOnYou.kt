@@ -76,14 +76,6 @@ fun waitingListingRoute(client: String? = null): List<Pair<String, String>> =
     listOf(HP.page to HMENU.pageForms, GDF.needsMe to "true") + listOfNotNull(client?.let { EI.client to it })
 
 /**
- * The cards Home draws (issue #1637): all of [cards] but "Waiting on you" while nothing is known to wait -- before its
- * read answers, when it cannot be read, or when it found nothing -- so neither the card nor a link to it shows empty.
- * Pure, and covered under `jsNodeTest`.
- */
-fun visibleHomeCards(cards: List<HomeCard>, waiting: WaitingRead?): List<HomeCard> =
-    cards.filter { it.kind != HCARD.kindWaitingOnYou || (waiting?.total ?: 0) > 0 }
-
-/**
  * What waits on the caller, for Home's card (issue #1637), or null while it is read, when it cannot be, or when no card
  * in [cards] asks for it -- then nothing is read. Read again on every refresh, so a step taken elsewhere leaves it.
  * [client], for a caller who sees across clients, confines the read to their own client: Home asks about where they

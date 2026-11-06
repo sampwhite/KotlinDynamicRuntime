@@ -71,6 +71,21 @@ fun homeCardsFrom(raw: Any?): List<HomeCard> = raw.toJsonListOfMaps().mapNotNull
     )
 }
 
+/**
+ * The cards Home draws (issues #1637, #1638): all of [cards] but those whose live body has nothing to say yet -- "Waiting
+ * on you" while nothing is known to wait, "Unpublished drafts" while no draft is known -- before their read answers,
+ * when it cannot be read, or when it found nothing, so neither the card nor a link to it shows empty. Pure, and covered
+ * under `jsNodeTest`.
+ */
+fun visibleHomeCards(cards: List<HomeCard>, waiting: WaitingRead?, drafts: DraftsRead? = null): List<HomeCard> =
+    cards.filter {
+        when (it.kind) {
+            HCARD.kindWaitingOnYou -> (waiting?.total ?: 0) > 0
+            HCARD.kindUnpublishedDrafts -> (drafts?.count ?: 0) > 0
+            else -> true
+        }
+    }
+
 /** The element id of card [id], so an address can name it. A dot, as the public home's sections have (`HSEC`). */
 fun homeCardElementId(id: String): String = "home.card.$id"
 
@@ -126,6 +141,8 @@ external interface HomeCardsProps : Props {
     var waiting: WaitingRead?
     /** The client the waiting read was confined to, for a caller who sees across clients; null otherwise. */
     var waitingClient: String?
+    /** The client's unpublished drafts, for the "Unpublished drafts" card ([useUnpublishedDrafts]); null until read. */
+    var drafts: DraftsRead?
 }
 
 /**
@@ -146,9 +163,14 @@ val HomeCards = FC<HomeCardsProps> { props ->
                 else -> card.actionLabel
             }
             val waiting = props.waiting
+            val drafts = props.drafts
             homeCardPanel(card, copyLinks, actionLabel) {
-                // The forms waiting on the caller (issue #1637), under the card's words.
-                if (card.kind == HCARD.kindWaitingOnYou && waiting != null) waitingCardBody(waiting, props.waitingClient)
+                // What the card's kind reads, under its words: the forms waiting on the caller (issue #1637), and the
+                // configurations waiting to be published (issue #1638).
+                when {
+                    card.kind == HCARD.kindWaitingOnYou && waiting != null -> waitingCardBody(waiting, props.waitingClient)
+                    card.kind == HCARD.kindUnpublishedDrafts && drafts != null -> draftsCardBody(drafts)
+                }
             }
         }
     }

@@ -77,7 +77,9 @@ val Home = FC<Props> {
     // Confined to the caller's own client when they see across clients, so Home never reads the whole deployment.
     val waitingClient = current?.takeIf { it.canSeeAllClients }?.user?.client
     val waiting = useWaitingOnYou(allCards, waitingClient)
-    val cards = visibleHomeCards(allCards, waiting)
+    // The client's unpublished drafts (issue #1638), likewise: its card shows only when there is one.
+    val drafts = useUnpublishedDrafts(allCards)
+    val cards = visibleHomeCards(allCards, waiting, drafts)
 
     // An address naming a section (`/wa#home.own-client`, after a jump link and a reload, say) scrolls to it once the
     // page is drawn (issue #1576): the browser looks for it as the page loads, before Home has fetched what it draws.
@@ -175,6 +177,7 @@ val Home = FC<Props> {
                             this.assistantView = assistantView
                             this.waiting = waiting
                             this.waitingClient = waitingClient
+                            this.drafts = drafts
                         }
                         // The public home page (issue #1324): for someone signed in to `public` -- never a visitor who
                         // has not signed in, though they act in `public` too -- what they can do next.
