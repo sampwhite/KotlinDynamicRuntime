@@ -161,6 +161,8 @@ val FormsPage = FC<FormsPageProps> { props ->
     // status filter. A fact about the client, not the rows, so the control stays while a filter matches
     // nothing.
     var hasCoreDetails by useState(false)
+    // Whether the caller's client has a workflow whose step can wait (issue #1637): the "Waiting on you" filter.
+    var hasWaitingWorkflows by useState(false)
     // The clients to offer in the filter-by-client control (issue #668), fetched only for a cross-client caller.
     var clientChoices by useState<List<ClientChoice>>(emptyList())
     // The row to flash on arrival (issue #592): the form just saved on the edit page, read from the address once
@@ -450,6 +452,7 @@ val FormsPage = FC<FormsPageProps> { props ->
             val seeAllClients = homeConfig?.canSeeAllClients == true
             canSeeAllClients = seeAllClients
             hasCoreDetails = homeConfig?.hasCoreDetails == true
+            hasWaitingWorkflows = homeConfig?.hasWaitingWorkflows == true
             // The workflow column's empty-cell copy (issue #791) and the explanations (issue #1337), from the home
             // fragment file a client overlays. Copy only decorates the page, so a failure to fetch it leaves the dash
             // and no explanation rather than failing the list.
@@ -963,14 +966,18 @@ val FormsPage = FC<FormsPageProps> { props ->
                 // shell. A client not (yet) in the choices reads as offering none.
                 val coreDetailsFilterOffered =
                     chosenClient?.let { id -> clientChoices.firstOrNull { it.clientId == id }?.hasCoreDetails == true } ?: hasCoreDetails
+                // "Waiting on you" (issue #1637): where the caller's client has a workflow whose step can wait, across
+                // clients (any of which may), or while it is applied, so it can be seen and cleared.
+                val waitingFilterOffered = canSeeAllClients || hasWaitingWorkflows || appliedSearch[GDF.needsMe]?.toString() == "true"
                 // The panel is also worth drawing with no trait fields at all when the status filter is
                 // on offer: that one is every form's, not a trait's.
-                if (groups.isNotEmpty() || coreDetailsFilterOffered) {
+                if (groups.isNotEmpty() || coreDetailsFilterOffered || waitingFilterOffered) {
                     FormsSearch {
                         this.groups = groups
                         values = searchDraft
                         applied = appliedSearch
                         showCoreDetailsStatus = coreDetailsFilterOffered
+                        showWaitingFilter = waitingFilterOffered
                         // What each column's field offers (issue #1500), for its box to suggest.
                         choices = listingColumns.filter { it.choices.isNotEmpty() }.associate { it.columnId to it.choices }
                         panelOpen = filtersOpen

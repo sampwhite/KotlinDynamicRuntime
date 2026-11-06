@@ -357,6 +357,8 @@ external interface FormsSearchProps : Props {
      * screen -- a control that vanished the moment a filter matched nothing could never be cleared. Unset means no.
      */
     var showCoreDetailsStatus: Boolean?
+    /** Whether the "Waiting on you" filter is on offer (issue #1637): where a step can wait, or it is applied. */
+    var showWaitingFilter: Boolean?
 
     /**
      * Fetches distinct value suggestions for a text trait (issue #581): given the trait id and a typed prefix,
@@ -421,8 +423,8 @@ val FormsSearch = FC<FormsSearchProps> { props ->
                 }
             }
         }
-        // Only forms with a step waiting on the caller (issue #1637): every caller's, since each has their own.
-        filterGroup("Waiting on you") {
+        // Only forms with a step waiting on the caller (issue #1637): where a step can wait at all.
+        if (props.showWaitingFilter == true) filterGroup("Waiting on you") {
             Select {
                 value = props.values[GDF.needsMe]?.ifBlank { null }
                 options = waitingOptions()

@@ -446,7 +446,7 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
         val workflowFilter = workflowDrillFilter(c, request)
         // Only forms with a step waiting on the caller (issue #1637), judged from each form's state and owner.
         val waiting = if (request.getOptBool(GDF.needsMe) == true) WaitingSteps(c) else null
-        val needsMeFilter: GedraStateFilter? = waiting?.let { w -> { id, owner, states -> w.of(id.client, owner, states).isNotEmpty() } }
+        val needsMeFilter: GedraStateFilter? = waiting?.let { w -> { id, owner, states -> w.of(id, owner, states).isNotEmpty() } }
         val filters = listOfNotNull(statusFilter, workflowFilter, needsMeFilter)
         val stateFilter: GedraStateFilter? = when (filters.size) {
             0 -> null
@@ -462,9 +462,6 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
         val withStates = request.getOptBool(GDF.withStates) == true
         // As a caller is shown them (issue #1354): no deleted or past-lifetime workflow's entries.
         val statesByGedra = if (withStates) svc.readShownStates(c, page.rows.map { it.gedraId }, scope) else emptyMap()
-        // The states the needsMe filter judged, for the page's rows: read as the filter read them, so a row's steps are
-        // the ones that admitted it.
-        val waitingStates = if (waiting != null) svc.readStates(c, page.rows.map { it.gedraId }, scope) else emptyMap()
         // Who owns each row, for a caller who asked for it and may see other users' documents (issues #562,
         // #591): the name and email the User column shows. Attached only when `includeUsers` is set AND the
         // caller may see past their own rows -- an ordinary caller's rows are all their own, so there is nobody
@@ -482,8 +479,9 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
                 row.toJsonMap() + (GDF.displayValues to display) + (GDF.traitNames to rowTraitNames(row, traitNames)) +
                     ownerFields(owners[row.userId]) +
                     (if (withStates) mapOf(GDF.states to statesByGedra[row.gedraId.fullId].orEmpty()) else emptyMap()) +
-                    // What waits on the caller in each form listed for it (issue #1637), from the state the filter read.
-                    (waiting?.let { w -> mapOf(GDF.waitingSteps to w.of(row.client, row.userId, waitingStates[row.gedraId.fullId].orEmpty())) } ?: emptyMap())
+                    // What waits on the caller in each form listed for it (issue #1637): what the filter found, which
+                    // every row on the page passed through.
+                    (waiting?.let { w -> mapOf(GDF.waitingSteps to w.remembered(row.gedraId.fullId).orEmpty()) } ?: emptyMap())
             },
             page.numAvailable,
             hasMore = offset + page.rows.size < page.numAvailable,

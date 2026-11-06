@@ -145,8 +145,13 @@ approve gates apply, narrowed to the person the step names:
 
 Each row listed with it carries its `waitingSteps` (the workflow, the task, and what it asks of the caller in words).
 The filter well's **Waiting on you** select (`Only those`, cleared for any) sets it, its chip says `Waiting on you`
-(`needsMeChip`), and Clear removes it. It is drawn for every caller, since each has their own. Home's "Waiting on
-you" card links to this listing (`waitingListingRoute`).
+(`needsMeChip`), and Clear removes it. It is offered where a step can wait -- the caller's client has a normal or core
+details workflow (the shell's `hasWaitingWorkflows`, the rule Home's card is offered by) -- to a caller who sees across
+clients, and whenever it is applied, so it can be cleared. Home's "Waiting on you" card links to this listing
+(`waitingListingRoute`).
+
+The backend judges each form once per request (`WaitingSteps.remembered`), so a row's steps are the answer that let it
+through the filter, and asks whether the caller owns a form only once a workflow of it has a step to judge.
 
 Within the caller's read scope, like every listing: a reviewer who is neither an administrator nor an editor cannot
 list other people's forms, so their reviews do not show here (`deferred-work.md`).

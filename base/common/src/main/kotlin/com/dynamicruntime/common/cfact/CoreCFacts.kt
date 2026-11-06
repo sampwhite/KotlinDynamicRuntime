@@ -6,6 +6,7 @@ import com.dynamicruntime.common.gedra.ClientService
 import com.dynamicruntime.common.gedra.CustomerAccess
 import com.dynamicruntime.common.gedra.isSelfServeClient
 import com.dynamicruntime.common.gedra.sandboxParentOf
+import com.dynamicruntime.common.gedra.workflow.WorkflowService
 import com.dynamicruntime.common.gedra.workflow.addCoreDetailsCFacts
 import com.dynamicruntime.common.gedra.workflow.addWorkflowCFacts
 import com.dynamicruntime.common.gedra.workflow.addWorkflowSingletonCFacts
@@ -115,6 +116,12 @@ object CFACTS {
      * are drafts until published. A statement about the client, not about whether the caller may open it.
      */
     const val clientHasSandbox = "kdr:clientHasSandbox"
+
+    /**
+     * The caller's client **has a workflow whose step can wait on somebody** (issue #1637): a normal or a core details
+     * workflow. What "Waiting on you" is offered by, so a client with none never asks a listing the question.
+     */
+    const val clientHasWaitingWorkflows = "kdr:clientHasWaitingWorkflows"
 
     /** The session is in ENV DEBUG (issue #517): env auth effective, and debug behaviors on. */
     const val hasEnvAuth = "kdr:hasEnvAuth"
@@ -337,6 +344,13 @@ fun addCoreCFacts(collector: SchemaCollector) {
         ),
         // An edge carries no clients, and so no sandboxes.
     ) { ClientService.getOrNull(it) != null && SandboxAccess.hasSandbox(it, sandboxParentOf(it.client) ?: it.client) }
+    collector.addCFact(
+        CFactDef(
+            CFACTS.clientHasWaitingWorkflows, CFGRP.caller,
+            "True when the caller's client has a workflow whose step can wait on somebody: a normal or a core details " +
+                "workflow, whose current task stays to be taken after a form is made.",
+        ),
+    ) { WorkflowService.getOrNull(it)?.forClient(it.client)?.hasWaitingWorkflows == true }
     collector.addCFact(
         CFactDef(
             CFACTS.hasAdminLevel, CFGRP.caller,

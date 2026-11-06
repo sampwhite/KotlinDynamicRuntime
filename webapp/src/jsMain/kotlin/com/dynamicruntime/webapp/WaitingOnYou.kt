@@ -1,5 +1,6 @@
 package com.dynamicruntime.webapp
 
+import com.dynamicruntime.common.endpoint.EI
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.gedra.GDF
 import com.dynamicruntime.common.gedra.GEP
@@ -27,8 +28,12 @@ import web.cssom.ClassName
 
 private val waitingScope = MainScope()
 
-/** How many forms the "Waiting on you" card lists before it links to the rest (issue #1637). */
-const val waitingShownForms = 5
+/** "Waiting on you"'s sizes (issue #1637). */
+@Suppress("ConstPropertyName")
+object WAIT {
+    /** How many forms the card lists before it links to the rest. */
+    const val shownForms = 5
+}
 
 /** One step waiting on the caller in a form (issue #1637): its workflow, its task, and what it asks of them in words. */
 class WaitingStep(val workflowId: String, val workflowLabel: String, val taskId: String, val actionText: String)
@@ -63,8 +68,12 @@ fun parseWaitingRead(resp: Map<String, Any?>, env: ScriptEnv): WaitingRead {
     return WaitingRead((resp[EP.numAvailable] as? Number)?.toInt() ?: forms.size, forms)
 }
 
-/** The forms listing narrowed to what waits on the caller (issue #1637): the card's "see them all". */
-fun waitingListingRoute(): List<Pair<String, String>> = listOf(HP.page to HMENU.pageForms, GDF.needsMe to "true")
+/**
+ * The forms listing narrowed to what waits on the caller (issue #1637): the card's "see them all" -- confined to
+ * [client] when given, as the card's read was for a caller who sees across clients.
+ */
+fun waitingListingRoute(client: String? = null): List<Pair<String, String>> =
+    listOf(HP.page to HMENU.pageForms, GDF.needsMe to "true") + listOfNotNull(client?.let { EI.client to it })
 
 /**
  * The cards Home draws (issue #1637): all of [cards] but "Waiting on you" while nothing is known to wait -- before its
@@ -77,19 +86,22 @@ fun visibleHomeCards(cards: List<HomeCard>, waiting: WaitingRead?): List<HomeCar
 /**
  * What waits on the caller, for Home's card (issue #1637), or null while it is read, when it cannot be, or when no card
  * in [cards] asks for it -- then nothing is read. Read again on every refresh, so a step taken elsewhere leaves it.
+ * [client], for a caller who sees across clients, confines the read to their own client: Home asks about where they
+ * are, never every form of the deployment.
  */
-fun useWaitingOnYou(cards: List<HomeCard>): WaitingRead? {
+fun useWaitingOnYou(cards: List<HomeCard>, client: String?): WaitingRead? {
     val shown = cards.any { it.kind == HCARD.kindWaitingOnYou }
     val generation = useRefreshGeneration()
     var read by useState<WaitingRead?>(null)
-    useEffect(shown, generation) {
+    useEffect(shown, generation, client) {
         if (!shown) {
             read = null
             return@useEffect
         }
         waitingScope.launch {
             val result = apiResult {
-                Http.getApi(GEP.formDocs + queryString(mapOf(GDF.needsMe to true, EP.limit to waitingShownForms)))
+                val query = mapOf(GDF.needsMe to true, EP.limit to WAIT.shownForms) + listOfNotNull(client?.let { EI.client to it })
+                Http.getApi(GEP.formDocs + queryString(query))
             }
             result.failureOrNull()?.let { console.warn("$errorLogPrefix could not read what waits on you for Home: ${it.message}") }
             read = result.valueOrNull()?.let { parseWaitingRead(it, DisplayZone.scriptEnv()) }
@@ -98,8 +110,11 @@ fun useWaitingOnYou(cards: List<HomeCard>): WaitingRead? {
     return read
 }
 
-/** The "Waiting on you" card's body (issue #1637): each form, linked to its step, then a link to all of them. */
-fun ChildrenBuilder.waitingCardBody(read: WaitingRead) {
+/**
+ * The "Waiting on you" card's body (issue #1637): each form, linked to its step, then a link to all of them -- in
+ * [client], when the read was confined to it.
+ */
+fun ChildrenBuilder.waitingCardBody(read: WaitingRead, client: String?) {
     ul {
         className = ClassName("home-waiting")
         for (form in read.forms) {
@@ -120,7 +135,7 @@ fun ChildrenBuilder.waitingCardBody(read: WaitingRead) {
     }
     if (read.total > read.forms.size) {
         a {
-            href = routeHref(waitingListingRoute())
+            href = routeHref(waitingListingRoute(client))
             +"See all ${read.total}"
         }
     }

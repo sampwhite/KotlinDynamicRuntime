@@ -13,6 +13,7 @@ import com.dynamicruntime.common.gedra.GedraConfigService
 import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.gedra.workflow.SWF
+import com.dynamicruntime.common.gedra.workflow.WFC
 import com.dynamicruntime.common.gedra.workflow.WFD
 import com.dynamicruntime.common.gedra.workflow.WFS
 import com.dynamicruntime.common.gedra.workflow.WfEntry
@@ -51,6 +52,18 @@ class WaitingStepsTest : StringSpec({
         trait("SiteEntry", "site", setOf(GedraDataType.formDoc), "The site visited.") { property("region", "Its region.") }
         trait("NotesEntry", "notes", setOf(GedraDataType.formDoc), "What was seen.") { property("text", "The notes.") }
         trait("FollowUpEntry", "followUp", setOf(GedraDataType.formDoc), "What happens next.") { property("plan", "The plan.") }
+        trait("CheckEntry", "check", setOf(GedraDataType.formDoc), "A reviewer's check.") { property("result", "What it found.") }
+        // A save that names someone: the check waits on a reviewer, whoever owns the form.
+        workflow("siteCheck", WfEntry.normal) {
+            label = "Site check"
+            task("check", "Check the site") {
+                trait("check")
+                save("saveCheck", "Save", WfSaveKind.edit)
+                saveWhen(WFC.reviewer)
+                function(userHasLabel { label = "reviewer" })
+            }
+            lock("check", writableVia = "check")
+        }
         workflow("siteReview", WfEntry.normal) {
             label = "Site review"
             task("describe", "Describe the visit") {
@@ -136,6 +149,20 @@ class WaitingStepsTest : StringSpec({
         // The follow-up is the owner's again, and nothing waits on the reviewer.
         waitingFor(owner)[gid] shouldBe listOf("followUp" to "Plan the follow-up")
         waitingFor(northwest).containsKey(gid) shouldBe false
+    }
+
+    "a save that names someone waits on them, not on the form's owner" {
+        val owner = TestUser.create(cxt, "checked@$client.test", userClient = client)
+        val gid = owner.postItem(
+            GEP.formDocCreate, mapOf(GDF.entries to listOf(mapOf(GE.traitId to "site", GE.data to mapOf("region" to "south")))),
+        )[GDF.gedraId].toOptStr()!!
+        owner.postData(GEP.workflowEngage, mapOf(GDF.gedraId to gid, WFD.workflowId to "siteCheck"))
+        // Both reviewers, whatever their region -- the check names no region -- and neither the owner nor an
+        // administrator who is no reviewer.
+        waitingFor(northwest)[gid] shouldBe listOf("check" to "Check the site")
+        waitingFor(south)[gid] shouldBe listOf("check" to "Check the site")
+        waitingFor(owner).containsKey(gid) shouldBe false
+        waitingFor(admin).containsKey(gid) shouldBe false
     }
 
     "a form in no workflow waits on nobody, and the count is of the forms waiting" {

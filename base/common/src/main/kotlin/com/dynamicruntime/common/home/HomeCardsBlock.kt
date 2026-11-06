@@ -29,14 +29,16 @@ fun homeCardsBlock(): UiBlockSource = uiBlock(
     arrayKeys = mapOf(HCARD.cards to HFLD.id),
 ) {
     items(HCARD.cards) {
-        // What waits on the caller (issue #1637), for anyone signed in: drawn only when something does, ahead of every
+        // What waits on the caller (issue #1637), for anyone signed in to a client with a workflow whose step can wait:
+        // drawn only when something does, ahead of every
         // other card -- the assistant's included -- since it is what to do next.
         homeCard(
             HCARD.waiting, "Waiting on you",
             "Forms with a step that is yours to take.",
             jumpLabel = "Waiting on you",
             kind = HCARD.kindWaitingOnYou,
-            cfactExpression = "${CFACTS.loggedIn},${CFACTS.app}",
+            // Only where a step can wait at all: the card's read is a pass over the forms the caller may see.
+            cfactExpression = "${CFACTS.loggedIn},${CFACTS.clientHasWaitingWorkflows},${CFACTS.app}",
             displayOrder = UIB.orderStep / 10,
         )
         // An administrator of one client -- the caller "My client" is offered to; every client's administrator gets

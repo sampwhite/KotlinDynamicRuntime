@@ -62,6 +62,13 @@ class WorkflowRegistry(
     /** The core details workflow of this scope, or null when it has none. At most one, by check (issue #656). */
     val coreDetails: WfDeclared? = workflows.values.firstOrNull { it.def.entry == WfEntry.coreDetails }
 
+    /**
+     * Whether a step of this scope's workflows can wait on somebody (issue #1637): it has a normal or a core details
+     * workflow, whose current task stays to be taken after a form is made. A creation workflow's is taken as it is
+     * made. What decides whether "Waiting on you" is worth asking about at all.
+     */
+    val hasWaitingWorkflows: Boolean = workflows.values.any { it.def.entry == WfEntry.normal || it.def.entry == WfEntry.coreDetails }
+
     /** The workflow named, or null. */
     fun workflow(id: String): WfDeclared? = workflows[id]
 

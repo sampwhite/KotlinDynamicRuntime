@@ -1,5 +1,6 @@
 package com.dynamicruntime.webapp
 
+import com.dynamicruntime.common.endpoint.EI
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.gedra.GDF
 import com.dynamicruntime.common.gedra.workflow.SWF
@@ -59,5 +60,10 @@ class WaitingOnYouTest {
         assertEquals("Waiting on you", needsMeChip(mapOf(GDF.needsMe to "true")))
         assertNull(needsMeChip(emptyMap()))
         assertEquals(listOf(HP.page to HMENU.pageForms, GDF.needsMe to "true"), waitingListingRoute())
+        // Confined to a client, for a caller who sees across clients, as the card's read was.
+        assertEquals(
+            listOf(HP.page to HMENU.pageForms, GDF.needsMe to "true", EI.client to "acme"),
+            waitingListingRoute("acme"),
+        )
     }
 }

@@ -124,6 +124,8 @@ external interface HomeCardsProps : Props {
     var assistantView: AssistantView?
     /** What waits on the caller, for the "Waiting on you" card ([useWaitingOnYou]); null until read. */
     var waiting: WaitingRead?
+    /** The client the waiting read was confined to, for a caller who sees across clients; null otherwise. */
+    var waitingClient: String?
 }
 
 /**
@@ -146,7 +148,7 @@ val HomeCards = FC<HomeCardsProps> { props ->
             val waiting = props.waiting
             homeCardPanel(card, copyLinks, actionLabel) {
                 // The forms waiting on the caller (issue #1637), under the card's words.
-                if (card.kind == HCARD.kindWaitingOnYou && waiting != null) waitingCardBody(waiting)
+                if (card.kind == HCARD.kindWaitingOnYou && waiting != null) waitingCardBody(waiting, props.waitingClient)
             }
         }
     }

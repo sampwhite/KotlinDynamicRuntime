@@ -4,6 +4,7 @@ import com.dynamicruntime.common.cfact.CFactRegistry
 import com.dynamicruntime.common.content.MarkdownFragmentService
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.gedra.GE
+import com.dynamicruntime.common.gedra.GedraId
 import com.dynamicruntime.common.startup.SchemaService
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
@@ -32,13 +33,15 @@ import com.dynamicruntime.common.util.toOptStr
  * filter on it before paging, over the states cache. The gates work the filter rule out again from the form's data
  * when the person acts, so a step shown here as theirs is checked again at the moment it is taken.
  *
- * One instance per request and caller: the request's facts and viewer facts are worked out once per client, and
- * whether the caller owns a form once per owner.
+ * One instance per request and caller: the request's facts and viewer facts are worked out once per client, whether
+ * the caller owns a form once per owner -- and only for a form with a step to judge -- and each form's answer once, so a
+ * listing that filtered on it reads a row's steps back without judging it again ([remembered]).
  */
 class WaitingSteps(private val cxt: KdrCxt) {
     private val fragments = MarkdownFragmentService.get(cxt)
     private val perClient = HashMap<String, ClientRules>()
     private val owns = HashMap<Long, Boolean>()
+    private val byForm = HashMap<String, List<Map<String, Any?>>>()
 
     /** What is worked out once per client: its workflows, its cfacts, the caller's request and viewer facts there. */
     private inner class ClientRules(val client: String) {
@@ -57,27 +60,36 @@ class WaitingSteps(private val cxt: KdrCxt) {
     }
 
     /**
-     * The steps of a form of [client], owned by [ownerUserId], with state entries [states], that wait on the caller: each
+     * The steps of form [gedraId], owned by [ownerUserId], with state entries [states], that wait on the caller: each
      * its workflow's id and label, the task's id, and what it asks of them in words ([SWF.actionText]), in the state's
-     * order. Empty when none does.
+     * order. Empty when none does. Remembered by the form's id ([remembered]).
      */
-    fun of(client: String, ownerUserId: Long?, states: List<Map<String, Any?>>): List<Map<String, Any?>> {
-        val rules = perClient.getOrPut(client) { ClientRules(client) }
-        val callerFacts = rules.requestFacts + rowFacts(ownerUserId)
-        return states
+    fun of(gedraId: GedraId, ownerUserId: Long?, states: List<Map<String, Any?>>): List<Map<String, Any?>> {
+        val rules = perClient.getOrPut(gedraId.client) { ClientRules(gedraId.client) }
+        // The caller's relation to the form, asked only once a workflow has a step to judge: most forms have none.
+        val callerFacts by lazy { rules.requestFacts + rowFacts(ownerUserId) }
+        val steps = states
             .filter { it[GE.traitId].toOptStr() == WFS.workflowState }
             .map { it[GE.data].toJsonMapOrEmpty() }
-            .mapNotNull { data -> waitingStep(rules, callerFacts, data) }
+            .mapNotNull { data -> waitingStep(rules, { callerFacts }, data) }
+        byForm[gedraId.fullId] = steps
+        return steps
     }
 
+    /** What [of] answered for the form with full id [gedraFullId] in this request, or null when it was not asked. */
+    fun remembered(gedraFullId: String): List<Map<String, Any?>>? = byForm[gedraFullId]
+
     /** One workflow's state [data] as a step waiting on the caller, or null when its current task is not theirs. */
-    private fun waitingStep(rules: ClientRules, callerFacts: Set<String>, data: Map<String, Any?>): Map<String, Any?>? {
+    private fun waitingStep(rules: ClientRules, callerFactsOf: () -> Set<String>, data: Map<String, Any?>): Map<String, Any?>? {
         if (data[WFS.tasksDone] == true) return null
         val workflowId = data[WFD.workflowId].toOptStr() ?: return null
         // Live, seen by the caller, and still calculating (issue #790): a frozen workflow's saves are refused.
         val def = WorkflowPhases.liveFor(cxt, rules.registry, workflowId)?.def ?: return null
         if (!WorkflowPhases.of(cxt, rules.client, def).calculates) return null
         val task = data[WFS.ctaTask].toOptStr()?.let { def.task(it) } ?: return null
+        // Neither an approval nor a save: nothing for anyone to take.
+        if (task.approval == null && task.saves.isEmpty()) return null
+        val callerFacts = callerFactsOf()
 
         val viewerFacts = rules.viewer.forTask(task)
         val passes = passesCtaFilterRule(rules.cfacts, data[WFS.ctaFilterRule].toOptStr(), callerFacts + viewerFacts)

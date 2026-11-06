@@ -74,7 +74,9 @@ val Home = FC<Props> {
     val assistantView = useAssistantCardView(allCards)
     // What waits on the caller (issue #1637): read here too, since its card -- and the link to it -- shows only when
     // something does.
-    val waiting = useWaitingOnYou(allCards)
+    // Confined to the caller's own client when they see across clients, so Home never reads the whole deployment.
+    val waitingClient = current?.takeIf { it.canSeeAllClients }?.user?.client
+    val waiting = useWaitingOnYou(allCards, waitingClient)
     val cards = visibleHomeCards(allCards, waiting)
 
     // An address naming a section (`/wa#home.own-client`, after a jump link and a reload, say) scrolls to it once the
@@ -172,6 +174,7 @@ val Home = FC<Props> {
                             this.cards = cards
                             this.assistantView = assistantView
                             this.waiting = waiting
+                            this.waitingClient = waitingClient
                         }
                         // The public home page (issue #1324): for someone signed in to `public` -- never a visitor who
                         // has not signed in, though they act in `public` too -- what they can do next.
