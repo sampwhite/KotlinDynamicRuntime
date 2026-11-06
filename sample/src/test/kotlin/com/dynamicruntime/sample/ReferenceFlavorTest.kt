@@ -7,6 +7,7 @@ import com.dynamicruntime.common.flavor.FLV
 import com.dynamicruntime.common.gedra.ClientService
 import com.dynamicruntime.common.gedra.GEP
 import com.dynamicruntime.common.gedra.workflow.WVF
+import com.dynamicruntime.common.home.HCARD
 import com.dynamicruntime.common.home.HFRAG
 import com.dynamicruntime.common.home.PFRAG
 import com.dynamicruntime.common.http.request.TestHttpClient
@@ -20,6 +21,7 @@ import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
+import io.kotest.matchers.string.shouldNotContain
 import java.nio.file.Files
 
 /**
@@ -51,6 +53,21 @@ class ReferenceFlavorTest : StringSpec({
         copy(reference, AFRAG.auth, "login")["intro"].orEmpty() shouldContain "your account included"
         copy(plain, HFRAG.home, "home")["title"] shouldBe "Welcome"
         copy(plain, AFRAG.auth, "login")["intro"] shouldBe ""
+    }
+
+    "core says in the Register card, not the intro, why to register and what the address is for (issue #1652)" {
+        val (ns, key) = HCARD.registerCopy.split('.')
+        val card = copy(reference, HFRAG.home, ns)[key].orEmpty()
+        card shouldContain "register a user of your own"
+        card shouldContain "not used for marketing"
+        // The intro, which a signed-in visitor reads too, no longer tells them to register.
+        val intro = copy(reference, HFRAG.home, "home")["intro"].orEmpty()
+        intro shouldNotContain "register a user of your own"
+        intro shouldContain "most useful once you are signed in"
+        // The card leads the row of links under the title, ahead of "Start here".
+        copy(reference, HFRAG.home, "home")["jumpLinks"].orEmpty().lines().first() shouldContain "(#home.card.register)"
+        // Anywhere else, the card says core's own words.
+        copy(plain, HFRAG.home, ns)[key].orEmpty() shouldContain "If you have registered before, log in instead."
     }
 
     "core says on the profile page that the bar switches between a person's users too (issue #1330)" {

@@ -1,6 +1,7 @@
 package com.dynamicruntime.kdn
 
 import com.dynamicruntime.common.cfact.CFACTS
+import com.dynamicruntime.common.content.MarkdownFragmentService
 import com.dynamicruntime.common.content.UIC
 import com.dynamicruntime.common.context.CL
 import com.dynamicruntime.common.context.ENV
@@ -17,6 +18,7 @@ import com.dynamicruntime.common.gedra.sandboxOf
 import com.dynamicruntime.common.home.HCARD
 import com.dynamicruntime.common.home.HEP
 import com.dynamicruntime.common.home.HFLD
+import com.dynamicruntime.common.home.HFRAG
 import com.dynamicruntime.common.home.HMENU
 import com.dynamicruntime.common.home.homeCard
 import com.dynamicruntime.common.http.request.ROLE
@@ -73,9 +75,25 @@ class HomeCardsTest : StringSpec({
         idsOf(TestUser.createOperator(cxt, "cards-ops@example.com")) shouldBe listOf(HCARD.operate)
         // Every client's administrator oversees them all, and operates the deployment too; "My client" is not theirs.
         idsOf(TestUser.createFullAdmin(cxt, "cards-root@example.com")) shouldBe listOf(HCARD.oversee, HCARD.operate)
-        // A visitor who has not signed in gets none.
-        cardsIn(TestHttpClient(cxt.instanceConfig).sendJsonGetRequest(HEP.homeUiConfig)[EP.results].toJsonMapOrEmpty()) shouldBe
-            emptyList()
+        // A visitor who has not signed in gets the invitation to register (issue #1652), and nothing else: on a node that
+        // is not a public test deployment anyone may sign in. Where only some may, and where none may, is
+        // `PublicTestDeploymentTest`'s.
+        cardsIn(TestHttpClient(cxt.instanceConfig).sendJsonGetRequest(HEP.homeUiConfig)[EP.results].toJsonMapOrEmpty())
+            .map { it[HFLD.id] } shouldBe listOf(HCARD.register)
+    }
+
+    "the Register card's words are copy in the home file, and its button and link go to Register and Log in" {
+        val card = cardsIn(TestHttpClient(cxt.instanceConfig).sendJsonGetRequest(HEP.homeUiConfig)[EP.results].toJsonMapOrEmpty())
+            .single { it[HFLD.id] == HCARD.register }
+        card[HCARD.textCopy] shouldBe HCARD.registerCopy
+        card[HCARD.text] shouldBe null
+        // A route is written as its page.
+        card[UIB.action] shouldBe HMENU.pageRegister
+        card[HCARD.links].toJsonListOfMaps().map { it[UIB.action] } shouldBe listOf(HMENU.pageLogin)
+        // The copy it names is there, and says something, so the card is not drawn bare.
+        val (ns, key) = HCARD.registerCopy.split('.')
+        MarkdownFragmentService.get(cxt).effectiveFragments(cxt, HFRAG.home).shouldNotBeNull().content[ns]?.get(key)
+            .orEmpty().isNotBlank() shouldBe true
     }
 
     "a card is sent whole, its condition and order left behind" {

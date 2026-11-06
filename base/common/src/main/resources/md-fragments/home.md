@@ -43,6 +43,14 @@ The users you have in other clients. Choose one to switch to it; the account men
    made later is opened to people. -/
 # +createClientNote
 
+# @registerCard
+/- The Register card's body (issue #1652): a home card for a visitor who has not signed in, wherever anyone may sign in
+   (`HCARD.register`). Its title, button, and Log in link are the card's own; this is its text, here so a deployment or
+   a flavor rewords it as it does the intro. Empty draws the card with no text. -/
+# +text
+Register a user of your own with your email address. Most of this site, the walk-through in its documents included,
+starts from being signed in. If you have registered before, log in instead.
+
 # @forms
 /- What a forms-listing row with no workflows shows in the workflow column (issue #791). A client overlays it:
    "Coming Soon...", a link to the workflow pages, "No workflows available." -/

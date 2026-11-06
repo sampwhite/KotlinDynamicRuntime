@@ -93,12 +93,30 @@ object PublicTestDeployment {
      * [PublicSignIn.realMail] is chosen, and -- under [envAuthFromAdminLogin] -- an address on the admin domain,
      * since signing in is how such a person comes to be env-authed and, before it, everyone is without.
      */
-    fun signInOpenTo(cxt: KdrCxt, address: String): Boolean {
+    fun signInOpenTo(cxt: KdrCxt, address: String): Boolean =
+        signInOpenToEveryone(cxt) || envAuthFromAdminLogin(cxt.instanceConfig) && AddressRules.isAdminDomain(cxt, address)
+
+    /**
+     * Whether the caller of [cxt] may sign in or register **whatever their address** (issue #1652): [signInOpenTo]'s
+     * answer for every address at once. What an invitation to the public to register is offered on -- the home page's
+     * Register card -- since its reader could be anyone. Asked of a caller who has typed no address yet, it is the part
+     * of [signInOpenTo] that needs none, so the two cannot disagree.
+     *
+     * Theme: #ENVAT.
+     */
+    fun signInOpenToEveryone(cxt: KdrCxt): Boolean {
         val config = cxt.instanceConfig
-        if (!isOn(config) || cxt.isEnvAuthEffective) return true
-        if (publicSignIn(config) == PublicSignIn.realMail) return true
-        return envAuthFromAdminLogin(config) && AddressRules.isAdminDomain(cxt, address)
+        return !isOn(config) || cxt.isEnvAuthEffective || publicSignIn(config) == PublicSignIn.realMail
     }
+
+    /**
+     * Whether the caller of [cxt] may sign in or register with **some** address (issue #1652): [signInOpenToEveryone],
+     * or an administrator's login carrying env auth ([envAuthFromAdminLogin]), where an address on the admin domain
+     * still may. What the menu's Register and Log in entries are offered on: they must stay where an administrator signs
+     * in, and a code login creates no user, so a new one registers first. False only where nobody without env auth may
+     * sign in at all.
+     */
+    fun signInOpenToSome(cxt: KdrCxt): Boolean = signInOpenToEveryone(cxt) || envAuthFromAdminLogin(cxt.instanceConfig)
 
     /** Refuses the sign-in flow for [address] unless [signInOpenTo] allows it, saying this is a test deployment. */
     fun requireSignInOpen(cxt: KdrCxt, address: String) {
