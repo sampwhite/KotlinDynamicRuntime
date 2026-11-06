@@ -14,6 +14,7 @@ import io.kotest.matchers.collections.shouldNotBeEmpty
 import io.kotest.matchers.collections.shouldNotContain
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
+import java.io.File
 
 /**
  * The generated schema for schema (issue #1056): one statement of each keyword's shape -- its table entry -- read
@@ -82,7 +83,8 @@ class SchMetaSchemaTest : StringSpec({
 
     "every keyword of both tables has a meaning, and every meaning is of a keyword the table holds" {
         // A keyword added without a meaning would publish a blank on the schema dialect reference (issue #1347).
-        SchStdKeywords.meanings.keys shouldBe SchStdKeywords.entries.keys
+        SchStdKeywords.meanings.keys shouldBe SchStdKeywords.entries.keys + SchStdKeywords.closeReads.keys
+        (SchStdKeywords.entries.keys intersect SchStdKeywords.closeReads.keys).shouldBeEmpty()
         SchGKeywords.meanings.keys shouldBe SchGKeywords.entries.keys
         // And each of ours has a place, which the reference lists it under.
         SchGKeywords.places.keys shouldBe SchGKeywords.entries.keys
@@ -93,9 +95,25 @@ class SchMetaSchemaTest : StringSpec({
             "${SchStdKeywords.meanings.getValue(SCH.minimum)} Must be a number."
     }
 
+    "every keyword the parser reads off a schema node has a meaning" {
+        // Read from the source (issue #1606), so a keyword the parser starts reading without a meaning fails here, rather
+        // than going unlisted on the reference, where a reader concludes it is not supported. The parser reads a node's
+        // keywords as `map[SCH.<name>]`; the bounds, read by a computed name, are all in the shape table.
+        val schemaDir = "../kernel/src/commonMain/kotlin/com/dynamicruntime/common/schema"
+        val schBody = File("$schemaDir/SchemaConstants.kt").readText().substringAfter("object SCH {").substringBefore("\n}\n")
+        val keywordOf = Regex("""const val (\w+) = (?:\$\$)?"([^"]*)"""").findAll(schBody)
+            .associate { it.groupValues[1] to it.groupValues[2] }
+        val read = Regex("""map\[SCH\.(\w+)]""").findAll(File("$schemaDir/SchParser.kt").readText())
+            .map { keywordOf.getValue(it.groupValues[1]) }.toSet()
+        read shouldContain SCH.pattern
+        read shouldContain SCH.discriminator
+        (read - SchStdKeywords.meanings.keys - SchGKeywords.meanings.keys).shouldBeEmpty()
+    }
+
     "the reference page lists every keyword, every refused keyword, and what a shape does not decide" {
         val page = schemaDialectMarkdown()
-        for (keyword in SchStdKeywords.entries.keys + SchGKeywords.entries.keys + refusedKeywords.keys) {
+        val listed = SchStdKeywords.entries.keys + SchStdKeywords.closeReads.keys + SchGKeywords.entries.keys + refusedKeywords.keys
+        for (keyword in listed) {
             withClue(keyword) { page shouldContain "| `$keyword` |" }
         }
         for (line in SchMetaSchema.notChecked) page shouldContain line
@@ -154,9 +172,10 @@ class SchMetaSchemaTest : StringSpec({
                 if (keyword != null) keywordsOf(rule) shouldContain keyword else keywordsOf(rule) shouldNotContain fault.at
             }
         }
-        // Every kind of rule the document leaves out has a fixture that breaks it, bar the one the walk does not enforce.
+        // Every kind of rule the document leaves out has a fixture that breaks it, bar the two the walk does not enforce:
+        // a null entry, which it allows, and a keyword read closely, which the parser judges.
         faults.mapNotNull { it.unstated?.first }.toSet() shouldBe
-            (SchMetaSchema.notStated.map { it[MSCH.rule] }.toSet() - MSCH.unsetEntry)
+            (SchMetaSchema.notStated.map { it[MSCH.rule] }.toSet() - MSCH.unsetEntry - MSCH.closeRead)
         // Each kind of rule is there, generated from the same tables.
         val rules = SchMetaSchema.notStated.groupBy { it[MSCH.rule] }
         rules.getValue(MSCH.closedPrefix).single()[MSCH.keywords] shouldBe SchGKeywords.keywords.sorted()
@@ -164,6 +183,7 @@ class SchMetaSchemaTest : StringSpec({
         rules.getValue(MSCH.eitherOf).map { (it[MSCH.keywords] as List<*>).single() } shouldBe listOf(SCH.additionalProperties, SCH.derived)
         rules.getValue(MSCH.placement).single()[MSCH.keywords] shouldBe SchGKeywords.directives.sorted()
         rules.getValue(MSCH.unsetEntry).single()[MSCH.keywords] shouldBe listOf(SCH.properties)
+        rules.getValue(MSCH.closeRead).map { (it[MSCH.keywords] as List<*>).single() } shouldBe SchStdKeywords.closeReads.keys.toList()
     }
 
     "a property set to null is the one thing the document refuses and the walk does not, and it is listed" {
@@ -182,7 +202,7 @@ class SchMetaSchemaTest : StringSpec({
             mapOf(SCH.type to SCT.kObject, SCH.additionalProperties to mapOf(SCH.type to SCT.integer)),
             mapOf(SCH.type to SCT.string, SCH.derived to mapOf("from" to "elsewhere")),
             // A keyword this layer does not read stays the document's own -- a stock validator's must still pass.
-            mapOf(SCH.type to SCT.string, "examples" to listOf("a"), "\$comment" to "kept", "x-vendor" to mapOf(SCH.type to 5L)),
+            mapOf(SCH.type to SCT.string, "examples" to listOf("a"), $$"$comment" to "kept", "x-vendor" to mapOf(SCH.type to 5L)),
             mapOf(SCH.type to SCT.array, SCH.items to obj("k" to text), SCH.minItems to 1L),
         )
         for (body in accepted) withClue(body.toString()) {
@@ -226,7 +246,7 @@ class SchMetaSchemaTest : StringSpec({
         validate(holder, twoFaults, SchOpts(schemaDocumentsUnparsed = true)).map { it.path } shouldBe
             listOf("schema.properties.a.type", "schema.properties.b.title")
         // No fault of shape: the parse runs as it did, and its one refusal is of the whole value.
-        val unknownRef = mapOf("schema" to obj("a" to mapOf(SCH.dRef to "#/\$defs/t.Nowhere")))
+        val unknownRef = mapOf("schema" to obj("a" to mapOf(SCH.dRef to $$"#/$defs/t.Nowhere")))
         validate(holder, unknownRef).single().let {
             it.path shouldBe "schema"
             it.message shouldContain "not a valid schema definition"

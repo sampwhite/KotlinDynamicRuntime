@@ -62,7 +62,7 @@ class ConfigSlotGateTest : StringSpec({
     fun codes(slot: String, vararg entries: Map<String, Any?>): Map<String, SchFailCode> =
         configSlotFailures(cxt, mapOf(slot to entries.toList())).associate { it.path to it.code }
 
-    fun usage(trait: String = "a", display: Any? = "\${name}") =
+    fun usage(trait: String = "a", display: Any? = $$"${name}") =
         mapOf(CCT.traitId to trait, CCT.label to "A", CCT.display to display, CCT.kind to UsageKind.string.name, CCT.substring to false)
 
     fun cfact(name: String = "ready", group: Any? = "grp") =
@@ -80,7 +80,7 @@ class ConfigSlotGateTest : StringSpec({
         codes(CCT.usageDef, usage() + ("lable" to "A")) shouldBe
             mapOf("${CCT.usageDef}[a,A].lable" to SchFailCode.additionalProperty)
         // A template that does not parse blanks its column for every row and says nothing; here it is said.
-        val malformed = configSlotFailures(cxt, mapOf(CCT.usageDef to listOf(usage(display = "\${name"))))
+        val malformed = configSlotFailures(cxt, mapOf(CCT.usageDef to listOf(usage(display = $$"${name"))))
         malformed.single().path shouldBe "${CCT.usageDef}[a,A].${CCT.display}"
         malformed.single().code shouldBe SchFailCode.badValue
         malformed.single().message shouldContain "not a template that parses"
@@ -198,7 +198,7 @@ class ConfigSlotGateTest : StringSpec({
         codes(CCT.traitDef, trait(CCT.dataSchema to "an object")).keys shouldBe setOf("${CCT.traitDef}[note].${CCT.dataSchema}")
         // A body naming a type of the same client, or one that would not compile, is the trial's to judge: it
         // compiles the client's whole document, which the gate does not have.
-        val sibling = mapOf(SCH.type to SCT.kObject, SCH.properties to mapOf("who" to mapOf(SCH.dRef to "#/\$defs/client.x.Person")))
+        val sibling = mapOf(SCH.type to SCT.kObject, SCH.properties to mapOf("who" to mapOf(SCH.dRef to $$"#/$defs/client.x.Person")))
         codes(CCT.traitDef, trait(CCT.dataSchema to sibling)).shouldBeEmpty()
 
         fun type(schema: Any?) = mapOf(CCT.typeName to "client.x.Person", CCT.schema to schema)
@@ -325,7 +325,7 @@ class ConfigSlotGateTest : StringSpec({
             bundle(
                 "listing",
                 mapOf(
-                    CCT.usageDef to listOf(usage(GT.name, display = "\${name"), usage(GT.name) + (CCT.kind to "text")),
+                    CCT.usageDef to listOf(usage(GT.name, display = $$"${name"), usage(GT.name) + (CCT.kind to "text")),
                     CCT.cfactDef to listOf(mapOf(CCT.name to "ready", CCT.toFrontend to "yes")),
                 ),
             ),
@@ -414,7 +414,7 @@ class ConfigSlotGateTest : StringSpec({
         val types = parseSchemaTypes(served[SCH.dDefs].toJsonMapOrEmpty())
         types.getValue(MSCH.nodeTypeName).properties.keys shouldBe SchMetaSchema.nodeType.properties.keys
         served[MSCH.notStated].toJsonListOfMaps().map { it[MSCH.rule] }.toSet() shouldBe
-            setOf(MSCH.closedPrefix, MSCH.refusedKeyword, MSCH.eitherOf, MSCH.unsetEntry, MSCH.placement)
+            setOf(MSCH.closedPrefix, MSCH.refusedKeyword, MSCH.eitherOf, MSCH.unsetEntry, MSCH.closeRead, MSCH.placement)
         (served[MSCH.notChecked] as List<*>).shouldNotBeEmpty()
     }
 
@@ -424,7 +424,7 @@ class ConfigSlotGateTest : StringSpec({
         // looks: a usage rule whose display does not parse.
         val bound = cxt.mkSubContext("slotGateSeed", client).also { it.userId = 10520L }
         GedraConfigService.get(cxt).writeConfig(
-            bound, gedraConfig(cxt, "legacy", ns, client) { traitUsage(GT.name, "Name", "\${name") },
+            bound, gedraConfig(cxt, "legacy", ns, client) { traitUsage(GT.name, "Name", $$"${name") },
         )
         GedraConfigReload.reloadClient(cxt, client)
 
@@ -457,9 +457,9 @@ class ConfigSlotGateTest : StringSpec({
             ACEP.bundlePatch,
             patch(
                 "legacy", CCT.usageDef, GedraEditAction.addOrMerge,
-                mapOf(CCT.traitId to GT.name, CCT.label to "Name", CCT.display to "\${name}"),
+                mapOf(CCT.traitId to GT.name, CCT.label to "Name", CCT.display to $$"${name}"),
             ),
-        ))[CFEP.slots].toJsonMapOrEmpty()[CCT.usageDef].toJsonListOfMaps().single()[CCT.display] shouldBe "\${name}"
+        ))[CFEP.slots].toJsonMapOrEmpty()[CCT.usageDef].toJsonListOfMaps().single()[CCT.display] shouldBe $$"${name}"
     }
 })
 

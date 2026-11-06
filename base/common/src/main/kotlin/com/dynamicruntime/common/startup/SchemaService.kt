@@ -1486,6 +1486,7 @@ class SchemaService : ServiceInitializer, ClientSchemaSource {
                     option(MSCH.eitherOf, "A value of one shape or another, left untyped")
                     option(MSCH.unsetEntry, "Entries may be null, which the document refuses")
                     option(MSCH.placement, "Read only at the top of a declared type")
+                    option(MSCH.closeRead, "A standard keyword read more closely than a shape, which the parser judges")
                 }
                 property(MSCH.keywords, "The keywords the rule is about.", required = true) {
                     type = SCT.array
@@ -1530,7 +1531,7 @@ class SchemaService : ServiceInitializer, ClientSchemaSource {
                 mapOf(
                     MSCH.nodeType to MSCH.nodeTypeName,
                     // The functions `g-onWrite` lists, typed by the registered kinds (issue #1501).
-                    SCH.dDefs to withTypedWriteFunctions(c, SchMetaSchema.defs, SchemaService.get(c).schemaFunctions().values.toList()),
+                    SCH.dDefs to withTypedWriteFunctions(c, SchMetaSchema.defs, get(c).schemaFunctions().values.toList()),
                     MSCH.notStated to SchMetaSchema.notStated,
                     MSCH.notChecked to SchMetaSchema.notChecked,
                 )

@@ -25,7 +25,7 @@ These keep their JSON Schema meaning, within the limits each one states.
 | `properties` | An object of schema objects | An object's properties, each a schema by name. |
 | `items` | A schema object | The schema every item of an array takes. |
 | `additionalProperties` | True, false or a schema object | On a record, whether properties it does not declare are allowed; as a schema, the object is a map whose every value takes that schema. |
-| `oneOf` | A list of schema objects | Branches of which the value takes exactly one, told apart by a discriminator. |
+| `oneOf` | A list of schema objects | Branches of which the value takes exactly one, told apart by a 'discriminator', which it must have. |
 | `minimum` | A number | The smallest number allowed, inclusive. |
 | `maximum` | A number | The largest number allowed, inclusive. |
 | `minLength` | A number | The fewest characters a string may have. |
@@ -34,6 +34,25 @@ These keep their JSON Schema meaning, within the limits each one states.
 | `maxItems` | A number | The most items an array may have. |
 | `minProperties` | A number | The fewest properties an object may have. |
 | `maxProperties` | A number | The most properties an object may have. |
+
+## Standard keywords read more closely
+
+The runtime reads these too, and holds each to more than the shape of its value: what one accepts turns on the type it
+sits on, or on the keywords beside it. The parser checks each as it reads the schema, and says what is wrong in its
+own words.
+
+| Keyword | Value | Meaning |
+|---|---|---|
+| `pattern` | Text, a regular expression | A regular expression a plain string must match. The match is unanchored, as JSON Schema has it, so '[0-9]' accepts any value holding a digit; write '^...$' to match the whole value. Only the part of ECMA-262's syntax that the server and the browser read alike is accepted: a construct they read differently, such as an inline flag, is refused, and there are no flags. Refused on any type but a plain string, and on a date or binary format. |
+| `const` | Any value | The one value allowed. Most often on a union branch's discriminator property, saying which branch it is. Refused on a date or binary format, which is never compared against it. |
+| `default` | Any value | The value a required property takes when it is missing, so a missing one passes. A null is no default. |
+| `uniqueItems` | True or false | On an array, whether no two items may be equal, compared as JSON values: 1 equals 1.0, and two objects are equal whatever the order of their keys. |
+| `exclusiveMinimum` | A number | On a number, the bound a value must be above, not equal to. The bound itself, as JSON Schema 2020-12 has it: draft 4's true or false beside 'minimum' is refused. Beside 'minimum', the stricter of the two applies. Read on a number or an integer only. |
+| `exclusiveMaximum` | A number | On a number, the bound a value must be below, not equal to. The bound itself, as JSON Schema 2020-12 has it: draft 4's true or false beside 'maximum' is refused. Beside 'maximum', the stricter of the two applies. Read on a number or an integer only. |
+| `if` | A schema object testing one property with a 'const' | Makes 'then' or 'else' apply by one property's value: '{"properties": {"kind": {"const": "talk"}}}'. Only that shape is read, one property compared with a 'const'; anything more general is refused rather than half-applied. |
+| `then` | An object holding 'required', 'not', or both | What applies when the 'if' holds: 'required' names properties that must be present, and 'not': {'required': [...]} names properties that must be absent. Nothing else may be in it. 'then' and 'else' are the only places 'not' is read. |
+| `else` | An object holding 'required', 'not', or both | What applies when the 'if' does not hold, written as 'then' is. |
+| `discriminator` | An object holding 'propertyName', and 'defaultMapping' if wanted | Beside a 'oneOf', which must have one: 'propertyName' names the property whose value says which branch a value takes, and every branch declares that property with a 'const' of its own. 'defaultMapping', a '$ref' to a branch, takes a value naming no branch; without it, such a value is a failure. |
 
 ## The runtime's own keywords
 
@@ -94,7 +113,7 @@ These are valid JSON Schema, and a schema that uses one is refused, with what to
 | `enum` | Declare the choices with 'g-options' (the builder's option(...)); they export as 'enum'. |
 | `allOf` | Compose by extending a type, or declare the properties on the type itself. |
 | `anyOf` | Use a discriminated 'oneOf', whose branches say which one they are. |
-| `not` | Constrain what is accepted directly; a negated schema is not supported. |
+| `not` | Constrain what is accepted directly; a negated schema is not supported. Inside a 'then' or 'else' clause, 'not': {'required': [...]} forbids properties. |
 | `dependentSchemas` | Use 'if'/'then'/'else' to require or forbid properties by another's value. |
 
 ## Rules the shapes do not state
@@ -114,7 +133,7 @@ trial load, check these as well:
 
 - Whether a '$ref' names a type that exists, and whose namespace a type may be declared in.
 - Whether a keyword applies to the type it sits on, and what it means there: a 'pattern' on an integer, a 'oneOf' with no 'discriminator', a bound below its partner.
-- The keywords read more closely than a shape: 'pattern', 'const', 'default', 'uniqueItems', the exclusive bounds, 'if'/'then'/'else', 'discriminator'.
+- What the keywords read more closely than a shape accept: 'pattern', 'const', 'default', 'uniqueItems', 'exclusiveMinimum', 'exclusiveMaximum', 'if', 'then', 'else', 'discriminator'.
 - Whether 'required' names properties the type declares.
 - What a client's alteration of a global type may change: it may narrow, never widen.
 - The content of 'g-errors', 'g-layout' and 'g-options', each with a vocabulary of its own.

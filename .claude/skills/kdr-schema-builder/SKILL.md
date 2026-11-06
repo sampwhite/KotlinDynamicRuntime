@@ -149,19 +149,18 @@ type("Order") {
 }
 ```
 
-- **`pattern`** (a plain string only; refused elsewhere, date and binary formats included) fails as
-  `patternMismatch`, after edge whitespace is handled, like the other string checks. It is **unanchored**, as JSON
-  Schema has it -- `^…$` to constrain the whole value. The dialect is ECMA-262 restricted to what the JVM and the
-  browser read alike (`SchPattern`): `$` is the end of the value (not before a trailing newline, as Java's is),
-  `.` and `\s` mean what they do in JavaScript, and Java-only or ambiguous syntax -- possessive quantifiers,
-  atomic groups, inline flags like `(?i)`, `\A`/`\Z`, class union/intersection, a non-quantifier `{`, `\p{…}` with
-  anything but a general category -- is refused by name at parse. There are no flags; write `[Aa]`. The default
-  message quotes the pattern, so say what it is *for* in `g-errors`.
-- **`exclusiveMinimum` / `exclusiveMaximum`** (numbers only) refuse the bound itself; they share
-  `belowMinimum` / `aboveMaximum` with the inclusive pair ("This must be more than 0."). With both kinds on one
-  side the stricter wins. Draft 4's boolean form (`exclusiveMinimum: true`) is refused.
-- **`uniqueItems`** fails as `duplicateItem` ("Item 3 repeats item 1…"), comparing elements as validated JSON
-  values: `1` equals `1.0`, `"5"` coerced to an integer equals `5`, and object key order does not matter.
+What each of these accepts, and where it may sit -- with `const`, `default`, `if`/`then`/`else`, and `discriminator`,
+the other standard keywords read more closely than a shape -- is in the schema dialect reference's
+[table of them](../../../docs/reference/schema-dialect.md#standard-keywords-read-more-closely). What it leaves to you:
+
+- **`pattern`** fails as `patternMismatch`, after edge whitespace is handled, like the other string checks. Anchor it
+  with `^…$`, since a pattern matches anywhere. There are no flags; write `[Aa]`. The default message quotes the
+  pattern, so say what it is *for* in `g-errors`. `SchPattern` translates it for the JVM and the browser alike, and
+  its KDoc lists each construct refused and why.
+- **`exclusiveMinimum` / `exclusiveMaximum`** share `belowMinimum` / `aboveMaximum` with the inclusive pair ("This
+  must be more than 0.").
+- **`uniqueItems`** fails as `duplicateItem` ("Item 3 repeats item 1…"), comparing elements as validated values, so
+  `"5"` coerced to an integer equals `5`.
 
 **Held to its shape** (`SchStdKeywords`, issue #1053). Every standard keyword this layer reads must have a value
 of the shape the reference lists for it, or the parse fails naming the keyword and the type or property (a bound may
@@ -171,7 +170,7 @@ value. Some refusals are of legal JSON Schema this layer does not read (a tuple 
 schema), and their messages say so.
 
 **Refused by name** at parse -- on a type, a property, or beside a `$ref`: the keywords the reference lists as
-refused (`not` stays legal inside an `if`/`then`/`else` clause), and, as before, `oneOf` without a `discriminator`.
+refused (`not` stays legal inside a `then`/`else` clause), and, as before, `oneOf` without a `discriminator`.
 A **denylist**: any other keyword this layer does not read stays allowed, so a document may carry its own. A client's
 alteration of a type may not change any of these (they take part in validation); it extends instead.
 
