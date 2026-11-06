@@ -297,7 +297,7 @@ object WorkflowStateDeriver : GedraStateDeriver {
             buildSet {
                 addAll(runCfactCalc(cxt, w.def, state.row.entries, state.row.client))
                 addAll(WorkflowApprovals.cfacts(w.def, approvals.getValue(id)))
-                addAll(listOfNotNull(keywordOf(id)?.workflowCfact))
+                keywordOf(id)?.let { add(it.workflowCfact) }
             }
         }
         // The singletons an engaged workflow contributes: what its rules emit over its current cfacts, and the status its

@@ -363,12 +363,12 @@ class WorkflowTaskJudge(
      */
     fun taskFacts(task: WfTask): Set<String> {
         val own = WfTaskFacts.of(task, entriesByTask[task.id] ?: emptyList(), isCta = task.id == ctaTaskId, approved = task.id in approvals)
-        val facts = buildSet {
+        return buildSet {
             addAll(own)
-            addAll(this@WorkflowTaskJudge.viewer.forTask(task))
-            addAll(this@WorkflowTaskJudge.keywordFacts)
+            addAll(viewer.forTask(task))
+            addAll(keywordFacts)
+            if (passesFilter(task)) add(WFC.passesCtaFilter)
         }
-        return if (passesFilter(task)) facts + WFC.passesCtaFilter else facts
     }
 
     /**
