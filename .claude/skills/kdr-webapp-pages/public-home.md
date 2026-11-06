@@ -86,13 +86,21 @@ from cfacts, as it decides the menu: the cards are a registered UiBlock (`homeCa
 with an overlay and a client hides or rewords one in its configuration. The page draws the list it is handed and adds
 none of its own.
 
-- **Waiting on you** (`HCARD.waiting`, issue #1637), first, for anyone signed in to a client with a workflow whose
-  step can wait (`kdr:clientHasWaitingWorkflows`: a normal or core details workflow), since its read is a pass over
-  the forms the caller may see: the forms with a step that is the caller's to take, each linked to that step
-  (`workflowPageRoute`, in edit mode) with what it asks beside it, and "See all N" to the forms listing narrowed to them
-  (`forms-listing.md`'s "Waiting on you"). Home reads it (`useWaitingOnYou`, the listing with `needsMe` and a limit of
-  five) -- confined to the caller's own client for one who sees across clients, never the whole deployment -- and
-  draws the card, and its link under the title, only once something waits (`visibleHomeCards`).
+- **Register** (`HCARD.register`, issue #1652), for a visitor who has not signed in, wherever every address may sign in
+  (`kdr:signInOpenToEveryone`): anywhere but a public test deployment that refuses the public. Its button goes to
+  Register and its link to Log in. Its body is copy, the `home` file's `registerCard.text`, named by the card's
+  `textCopy` (`homeCardBody`), so a deployment rewords it as it does the intro: the `reference` flavor's says what
+  registering there is for and what the address is used for, which its intro said to everyone until then. The menu's
+  Register and Log in are offered more widely (`kdr:signInOpenToSome`), since an administrator on the admin domain
+  still signs in, and registers first, on a public test deployment whose login carries env auth. Both facts are
+  `PublicTestDeployment`'s, asked of the rule the sign-in flows refuse by, and tested against it.
+- **Waiting on you** (`HCARD.waiting`, issue #1637), first among a signed-in caller's, for anyone signed in to a client
+  with a workflow whose step can wait (`kdr:clientHasWaitingWorkflows`: a normal or core details workflow), since its
+  read is a pass over the forms the caller may see: the forms with a step that is the caller's to take, each linked to
+  that step (`workflowPageRoute`, in edit mode) with what it asks beside it, and "See all N" to the forms listing
+  narrowed to them (`forms-listing.md`'s "Waiting on you"). Home reads it (`useWaitingOnYou`, the listing with `needsMe`
+  and a limit of five) -- confined to the caller's own client for one who sees across clients, never the whole
+  deployment -- and draws the card, and its link under the title, only once something waits (`visibleHomeCards`).
 - **Core's other cards** are shortcuts: **Your client** for an administrator of one client (My client, Users, Reports),
   **Clients and customers** for every client's administrator, **Your client's forms** for an editor, and
   **Operating this deployment** for a deployment operator.
@@ -105,11 +113,15 @@ none of its own.
   `offerLabel` ("Switch on the assistant", `assistantCardActionLabel`) -- in the card, so an overlay rewords it with
   the rest; until the read answers, or if it fails, the card's own words stand. A kind the page does not know draws
   the card's words alone.
+- **A card's body may be copy** (`HCARD.textCopy`, issue #1652): `namespace.key` of the shell's `home` file, drawn in
+  place of its literal `text`. A blank value draws no body, as blank copy removes anything else. It is how a card's words
+  are reworded by a deployment flavor, which can reword copy but cannot overlay a block.
 - **A card goes somewhere and never calls**: an action or a link that is not a route is dropped as it is read, and so
   is a link with no words, rather than show a page's internal id (`homeCardsFrom`). Each card's element id is
   `home.card.<id>` (`homeCardElementId`), so an address can name it.
 - **A card may be named in the row of links under the title** (`HCARD.jumpLabel`), beside the copy's own jump links
-  ("Start here", on the `reference` flavor): Home adds a link to each such card (`homeCardJumpLinks`), written in the
+  ("Start here", on the `reference` flavor): Home adds a link to each such card the copy does not link to already
+  (`homeCardJumpLinks`; the `reference` flavor's row leads with Register's, issue #1652), written in the
   copy's own style -- list items after a list, `·` after a row on one line (`withCardJumpLinks`) -- and counts the
   cards' element ids among what is drawn, so `jumpLinksFor` keeps them. Core's cards all are, so an administrator,
   an editor, or an operator sees at the top what the page offers further down, as the public home page's sections are

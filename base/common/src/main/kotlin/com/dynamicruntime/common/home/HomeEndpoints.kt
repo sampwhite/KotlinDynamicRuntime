@@ -124,6 +124,10 @@ fun homeSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.home") {
         property(HFLD.id, "Stable id for this card (see HCARD); what an overlay names to change it.", required = true)
         property(HCARD.title, "The card's heading.")
         property(HCARD.text, "The card's body, as Markdown.")
+        property(
+            HCARD.textCopy,
+            "The card's body as copy (issue #1652): 'namespace.key' of the home fragment file, drawn in place of the text.",
+        )
         property(UIB.action, "The frontend page id the card's primary button opens (a route).") { anyValue() }
         property(HCARD.actionLabel, "The words on the card's primary button.")
         property(
@@ -459,18 +463,20 @@ fun homeMenuBlock(): UiBlockSource = uiBlock(
     items(HFLD.menu) {
         // The Account group leads the menu (issue #540): the signed-in user's account menu belongs at the
         // top, the way a user menu sits top-right in a conventional shell. The parent is gated on the app
-        // boot role alone, so it shows to any app caller -- logged in or anonymous -- and always has at least
-        // one surviving child (a caller is one or the other), so it never renders bare. The children keep
-        // their own loggedIn/anonymous gates, so the group shows Profile+Log out or Log in+Register.
+        // boot role alone, so it shows to any app caller -- logged in or anonymous. The children keep their own
+        // loggedIn/anonymous gates, so the group shows Profile+Log out or Log in+Register; and an anonymous caller
+        // is offered Log in and Register only where some address may sign in (issue #1652), so a public test
+        // deployment that refuses everyone without env auth offers neither. The group then has no child left, and
+        // the app bar draws no header whose children were all filtered out (`menuTree`).
         menuItem(HMENU.account, "Account", cfactExpression = CFACTS.app)
         menuItem(HMENU.profile, "Profile", UiRoute(HMENU.pageProfile),
             cfactExpression = "${CFACTS.loggedIn},${CFACTS.app}", parentId = HMENU.account)
         menuItem(HMENU.logout, "Log out", UiCall(HACT.logout),
             cfactExpression = "${CFACTS.loggedIn},${CFACTS.app}", parentId = HMENU.account)
         menuItem(HMENU.login, "Log in", UiRoute(HMENU.pageLogin),
-            cfactExpression = "${CFACTS.anonymous},${CFACTS.app}", parentId = HMENU.account)
+            cfactExpression = "${CFACTS.anonymous},${CFACTS.signInOpenToSome},${CFACTS.app}", parentId = HMENU.account)
         menuItem(HMENU.register, "Register", UiRoute(HMENU.pageRegister),
-            cfactExpression = "${CFACTS.anonymous},${CFACTS.app}", parentId = HMENU.account)
+            cfactExpression = "${CFACTS.anonymous},${CFACTS.signInOpenToSome},${CFACTS.app}", parentId = HMENU.account)
         // Becoming someone (issue #1183) -- the first thing anyone wants on a test instance -- for a caller with test
         // access, signed in or not: the fixture they call exists for nobody else (issue #1149).
         menuItem(HMENU.becomeDeploymentAdmin, "Become deployment admin", UiCall(HACT.becomeDeploymentAdmin),

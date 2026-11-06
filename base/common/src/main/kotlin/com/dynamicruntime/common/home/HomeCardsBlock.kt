@@ -29,6 +29,20 @@ fun homeCardsBlock(): UiBlockSource = uiBlock(
     arrayKeys = mapOf(HCARD.cards to HFLD.id),
 ) {
     items(HCARD.cards) {
+        // An invitation to register (issue #1652), for a visitor who has not signed in, wherever anyone may: the
+        // walk-through, the demos, and a client of one's own all start from a user. Its words are copy, the `home`
+        // file's, so a deployment rewords them as it does the home page's intro. Only where sign-in is open to every
+        // address -- it invites whoever reads it; the menu's Register also serves an administrator's admin domain.
+        homeCard(
+            HCARD.register, "Register",
+            textCopy = HCARD.registerCopy,
+            action = UiRoute(HMENU.pageRegister),
+            actionLabel = "Register",
+            jumpLabel = "Register",
+            links = listOf(HomeCardLink("Log in", UiRoute(HMENU.pageLogin))),
+            cfactExpression = "${CFACTS.anonymous},${CFACTS.signInOpenToEveryone},${CFACTS.app}",
+            displayOrder = UIB.orderStep / 20,
+        )
         // What waits on the caller (issue #1637), for anyone signed in to a client with a workflow whose step can wait:
         // drawn only when something does, ahead of every
         // other card -- the assistant's included -- since it is what to do next.

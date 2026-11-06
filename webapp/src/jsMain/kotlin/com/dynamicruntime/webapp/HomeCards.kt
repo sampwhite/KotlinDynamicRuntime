@@ -44,7 +44,21 @@ class HomeCard(
     val links: List<HomeCardLinkView>,
     /** The live body the card draws ([HCARD.kind]); null for a card of words alone. */
     val kind: String?,
+    /** The body as `home` copy, `namespace.key` ([HCARD.textCopy]), drawn in place of [text]; null for none. */
+    val textCopy: String? = null,
 )
+
+/**
+ * What [card]'s body says (issue #1652): the `home` copy its [HomeCard.textCopy] names, read from [copy] -- blank, and so
+ * no body, until that copy arrives or where a deployment emptied it -- else its own [HomeCard.text]. Pure, and covered
+ * under `jsNodeTest`.
+ */
+fun homeCardBody(card: HomeCard, copy: Copy): String {
+    val named = card.textCopy ?: return card.text
+    val ns = named.substringBefore('.', "")
+    val key = named.substringAfter('.', "")
+    return if (ns.isEmpty() || key.isEmpty()) "" else copy.opt(ns, key).orEmpty()
+}
 
 /**
  * The cards in a home config's `state.cards` (issue #1636). A card with no id is dropped, and so is an action or a link
@@ -68,6 +82,7 @@ fun homeCardsFrom(raw: Any?): List<HomeCard> = raw.toJsonListOfMaps().mapNotNull
             HomeCardLinkView(label, page)
         },
         kind = (card[HCARD.kind] as? String)?.ifBlank { null },
+        textCopy = (card[HCARD.textCopy] as? String)?.ifBlank { null },
     )
 }
 
@@ -126,6 +141,8 @@ external interface HomeCardsProps : Props {
     var waiting: WaitingRead?
     /** The client the waiting read was confined to, for a caller who sees across clients; null otherwise. */
     var waitingClient: String?
+    /** The `home` copy, for a card whose body is copy ([homeCardBody]). */
+    var copy: Copy
 }
 
 /**
@@ -146,7 +163,7 @@ val HomeCards = FC<HomeCardsProps> { props ->
                 else -> card.actionLabel
             }
             val waiting = props.waiting
-            homeCardPanel(card, copyLinks, actionLabel) {
+            homeCardPanel(card, homeCardBody(card, props.copy), copyLinks, actionLabel) {
                 // The forms waiting on the caller (issue #1637), under the card's words.
                 if (card.kind == HCARD.kindWaitingOnYou && waiting != null) waitingCardBody(waiting, props.waitingClient)
             }
@@ -154,15 +171,19 @@ val HomeCards = FC<HomeCardsProps> { props ->
     }
 }
 
-/** One card's panel: [card]'s words, what its kind draws ([live]), its links, and its primary button reading [actionLabel]. */
+/**
+ * One card's panel: [card]'s title, its [body] ([homeCardBody]), what its kind draws ([live]), its links, and its primary
+ * button reading [actionLabel].
+ */
 private fun ChildrenBuilder.homeCardPanel(
     card: HomeCard,
+    body: String,
     copyLinks: (String) -> String,
     actionLabel: String?,
     live: ChildrenBuilder.() -> Unit = {},
 ) {
     panel(homeCardElementId(card.id), card.title) {
-        if (card.text.isNotBlank()) Markdown { source = card.text; linkResolver = copyLinks }
+        if (body.isNotBlank()) Markdown { source = body; linkResolver = copyLinks }
         live()
         if (card.links.isNotEmpty()) {
             nav {

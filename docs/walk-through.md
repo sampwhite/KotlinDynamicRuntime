@@ -22,6 +22,13 @@ which a test site does when it runs with the `reference` deployment flavor. The 
 if the site sends its mail for real, where a developer's server usually keeps it instead. Everything else works on any
 site you can sign in to.
 
+## Before you start
+
+Every part starts from a user of your own. Open **Register** from the menu, under **Account**, give your email
+address, and enter the code the site mails to it. If you have registered on this site before, choose **Log in**
+instead. Either way you are signed in as your user in the site's **Public** client: the one you start each part from,
+and the one Part 2 asks you to choose in the bar.
+
 ## Part 1: The conference demo
 
 ![Part 1: join, submit a talk, core details, abstract, committee, review, and result](images/walk-part1.svg)

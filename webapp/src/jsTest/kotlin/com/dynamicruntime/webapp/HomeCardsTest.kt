@@ -148,5 +148,22 @@ class HomeCardsTest {
             "- [Workflow assistant](#home.card.assistant)",
             jumpLinksFor(withCardJumpLinks(shipped, links), setOf("home.card.assistant")),
         )
+        // A card the copy already links to is not added again (issue #1652), so the copy can put it first.
+        val registerFirst = "- [Register](#home.card.register)\n- [Start here](/docs/start-here.md)"
+        assertEquals(registerFirst, withCardJumpLinks(registerFirst, listOf("Register" to "home.card.register")))
+    }
+
+    @Test
+    fun aCardNamingCopyDrawsTheCopyInPlaceOfItsText() {
+        val (ns, key) = HCARD.registerCopy.split('.')
+        val copy = Copy(mapOf(ns to mapOf(key to "Register *here*.")))
+        val raw = mapOf(HFLD.id to HCARD.register, HCARD.text to "Literal.", HCARD.textCopy to HCARD.registerCopy)
+        val card = homeCardsFrom(listOf(raw)).single()
+        assertEquals("Register *here*.", homeCardBody(card, copy))
+        // Before the copy arrives, or where a deployment emptied it, no body -- never the literal words in its place.
+        assertEquals("", homeCardBody(card, Copy.empty))
+        assertEquals("", homeCardBody(card, Copy(mapOf(ns to mapOf(key to "")))))
+        // A card naming no copy draws its own words.
+        assertEquals("Literal.", homeCardBody(homeCardsFrom(listOf(raw - HCARD.textCopy)).single(), copy))
     }
 }

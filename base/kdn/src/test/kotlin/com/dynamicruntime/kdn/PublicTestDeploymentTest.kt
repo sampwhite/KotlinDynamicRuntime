@@ -9,6 +9,10 @@ import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.endpoint.HttpMethod
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.home.HCARD
+import com.dynamicruntime.common.home.HEP
+import com.dynamicruntime.common.home.HFLD
+import com.dynamicruntime.common.home.HMENU
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.http.request.TestHttpClient
 import com.dynamicruntime.common.mail.MAIL
@@ -22,8 +26,10 @@ import com.dynamicruntime.common.user.AFLD
 import com.dynamicruntime.common.user.ENVA
 import com.dynamicruntime.common.user.PTD
 import com.dynamicruntime.common.user.PublicSignIn
+import com.dynamicruntime.common.user.PublicTestDeployment
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.user.UserService
+import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.node.NodeUtil
 import io.kotest.assertions.throwables.shouldThrow
@@ -131,6 +137,43 @@ class PublicTestDeploymentTest : StringSpec({
         features[APP.hasTestAccess] shouldBe false
         // A node that is not a public test deployment draws no band.
         features(TestHttpClient(TestInstances.default("ptdNoBand").instanceConfig))[APP.publicTestDeployment] shouldBe false
+    }
+
+    // Issue #1652: the home page offers sign-in and registration exactly where the flow would take the caller. The rule
+    // turns on the address, so the menu (Register, Log in) is offered where some address may sign in, and the Register
+    // card, which invites anyone, where every address may.
+    "an offer to sign in or register is made where the sign-in flow would take the caller" {
+        /** What an anonymous caller of [cxt]'s home config is offered: the Account entries, and the cards. */
+        fun offered(cxt: KdrCxt): Pair<List<Any?>, List<Any?>> {
+            val state = TestHttpClient(cxt.instanceConfig).sendJsonGetRequest(HEP.homeUiConfig)[EP.results].toJsonMapOrEmpty()[UIC.state]
+                .toJsonMapOrEmpty()
+            val menu = state[HFLD.menu].toJsonListOfMaps().map { it[HFLD.id] }.filter { it == HMENU.login || it == HMENU.register }
+            return menu to state[HCARD.cards].toJsonListOfMaps().map { it[HFLD.id] }
+        }
+
+        /** The two facts agree with the rule the flows refuse by, for an address of the public's and the admin domain's. */
+        fun factsAgree(cxt: KdrCxt) {
+            val anonymous = cxt.mkSubContext("anonymous")
+            val open = listOf("visitor@public.test", "ops@$adminDomain").map { PublicTestDeployment.signInOpenTo(anonymous, it) }
+            PublicTestDeployment.signInOpenToEveryone(anonymous) shouldBe open.all { it }
+            PublicTestDeployment.signInOpenToSome(anonymous) shouldBe open.any { it }
+        }
+
+        // Blocked, the default: nobody without env auth may sign in, so neither entry nor the card is offered.
+        val blocked = boot("ptdOffersBlocked")
+        factsAgree(blocked)
+        offered(blocked) shouldBe (emptyList<Any?>() to emptyList())
+
+        // Blocked, but an administrator's login carries env auth: the admin domain still signs in, and registers first,
+        // so the menu offers both; the card, which invites the public, is not offered.
+        val adminLogin = boot("ptdOffersAdminLogin", mapOf(PTD.envAuthFromAdminLoginEnvVar.name to "true"))
+        factsAgree(adminLogin)
+        offered(adminLogin) shouldBe (listOf<Any?>(HMENU.login, HMENU.register) to emptyList())
+
+        // Real mail: anyone may sign in, so the menu and the card both offer it.
+        val realMail = boot("ptdOffersRealMail", mapOf(PTD.publicSignInEnvVar.name to PublicSignIn.realMail.name))
+        factsAgree(realMail)
+        offered(realMail) shouldBe (listOf<Any?>(HMENU.login, HMENU.register) to listOf<Any?>(HCARD.register))
     }
 
     "mail follows the caller: captured for an env-authed one, for real and never captured for the public" {
