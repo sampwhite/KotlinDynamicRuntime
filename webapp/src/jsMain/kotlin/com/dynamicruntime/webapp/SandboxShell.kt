@@ -77,6 +77,8 @@ fun sandboxChipLabel(of: SandboxOf): String = "${of.name} Sandbox"
  * and the way out there is: back, or another of their users, when [hasWayOut]; signing out when not, which the
  * popover then offers itself. The reasons are several -- the user it was opened from gone, a capability lost, the
  * sandbox user itself disabled -- and the person needs none of them to know what to do.
+ *
+ * Theme: #SBXAU.
  */
 fun sandboxInfoText(of: SandboxOf, hasWayOut: Boolean = true): String =
     if (of.stranded) {

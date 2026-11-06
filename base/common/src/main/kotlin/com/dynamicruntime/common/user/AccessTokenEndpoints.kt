@@ -21,6 +21,8 @@ import com.dynamicruntime.common.schema.SCT
  * The first two answer as their standards do, the result as the whole body
  * ([bareResponse][com.dynamicruntime.common.endpoint.KdrEndpoint.bareResponse]), since a client library or a gateway
  * reads them and expects nothing around it.
+ *
+ * Theme: #APIKR.
  */
 fun accessTokenSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.accessToken") {
     type(ATSCH.answer) {

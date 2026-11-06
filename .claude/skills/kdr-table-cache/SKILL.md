@@ -10,6 +10,7 @@ A table small enough to fit in memory can be held there and kept current *increm
 user's row; `AuthIdentityCache`, `GedraDataCache`, `GedraConfigCache` and `GedraStatesCache` are the others.
 
 ## First: should this table be cached at all?
+<!-- Theme: #RDSCP -->
 
 Three questions, in order. A "no" to any of them means do not cache it.
 

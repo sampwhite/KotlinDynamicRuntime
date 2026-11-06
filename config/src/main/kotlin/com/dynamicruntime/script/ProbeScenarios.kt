@@ -38,6 +38,8 @@ private const val catalogLimit = 500
  * a section nobody has claimed yet, and neither is visible from one caller's listing. When the instance offers
  * the `explainAccess` debug tag (a test instance, issue #215) each caller's withheld sections are printed with
  * the role they want, so a surprising count comes with its own explanation instead of an inference.
+ *
+ * Theme: #SECGT.
  */
 fun catalogDiff(cxt: ProbeContext) {
     println("Catalog visibility at ${cxt.baseUrl}")

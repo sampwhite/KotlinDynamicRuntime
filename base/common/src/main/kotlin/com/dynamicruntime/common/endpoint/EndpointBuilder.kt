@@ -120,6 +120,8 @@ class KdrEndpoint(
      *
      * Declared **after** `handler` so that a call ending in a trailing lambda still binds that lambda to the
      * handler, which is how every builder here constructs one.
+     *
+     * Theme: #CLCPY.
      */
     val client: String? = null,
     /**
@@ -164,6 +166,8 @@ class KdrEndpoint(
      * **It says the answer differs, not that the caller is confined.** A gedra copy also refuses a target
      * belonging to another client; there is nothing to refuse in a listing of what a client declared, and the
      * section gate is what decides who may read it either way.
+     *
+     * Theme: #CLCPY.
      */
     val clientShaped: Boolean = false,
     /**
@@ -200,6 +204,8 @@ class KdrEndpoint(
      * leaked key cannot mint or extend more), sign in, switch users or clients, open or leave a sandbox, log out, or
      * change a credential. Those act on a session, which a keyed request does not have, or extend a key's reach past
      * what its maker gave it.
+     *
+     * Theme: #APIKR.
      */
     val sessionOnly: Boolean = false,
     /**
@@ -214,6 +220,8 @@ class KdrEndpoint(
      * #1403). It is the one post a read-only key may make, since asking for a token changes nothing, and refused to a
      * request sent with a token, since it is the key that is exchanged. See
      * [ApiKeyAccess.refusal][com.dynamicruntime.common.user.ApiKeyAccess.refusal].
+     *
+     * Theme: #APIKR.
      */
     val keyExchange: Boolean = false,
     /**
@@ -288,6 +296,8 @@ class KdrEndpoint(
      * where it is never registered -- the dispatcher answers 404 and the catalog leaves it out, so a caller
      * without env auth sees a test instance as a real one. One statement, asked by both, so the catalog cannot
      * list an endpoint the dispatcher would not serve.
+     *
+     * Theme: #ENVAT.
      */
     fun existsFor(cxt: KdrCxt): Boolean = !forTestingOnly || cxt.hasTestAccess
 
@@ -295,6 +305,8 @@ class KdrEndpoint(
      * Why the API key [cxt]'s request carries may not call this endpoint, or null when it may or there is no key (issue
      * #1402): a read-only key and anything but a GET, or any key and a [sessionOnly] endpoint. Asked by the dispatcher,
      * which refuses with it, and by the catalog, which leaves the endpoint out.
+     *
+     * Theme: #APIKR.
      */
     fun keyRefusal(cxt: KdrCxt): String? = cxt.apiKey?.refusal(method.name, sessionOnly, path, keyExchange)
 

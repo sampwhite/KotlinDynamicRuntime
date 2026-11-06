@@ -28,6 +28,8 @@ fun GedraConfigIssue.toWireMap(): Map<String, Any?> = linkedMapOf<String, Any?>(
  * that client's list first ([replace]) and restores it if the reload fails, so the list is always what the
  * client's *current* configuration produced. A finding re-reported while other clients are re-checked is taken
  * once ([record] ignores an issue it already holds), so whole-node rechecks do not repeat a client's list.
+ *
+ * Theme: #CFGFG.
  */
 class ClientConfigIssues {
     private val byClient = LinkedHashMap<String, List<GedraConfigIssue>>()

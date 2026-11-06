@@ -27,6 +27,8 @@ class CodeConfig(val config: GedraConfig, val where: String)
  * **Where an override lives** is the writer's to choose. The editor files one in the stored bundle named like the code
  * bundle it covers (step 2b), but a marked entry in a bundle of another name stands over the code just the same, and
  * earns no issue: nothing about what runs differs.
+ *
+ * Theme: #CFGFG.
  */
 object CodeOverrides {
     /**

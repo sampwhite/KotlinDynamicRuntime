@@ -14,6 +14,8 @@ import com.dynamicruntime.common.http.request.ROLE
  * How far a caller's user administration reaches (issue #225) -- the *scope* half of an administrator's
  * authority, the level being the other half. An enum rather than string constants because this is a closed
  * operational set the code exhausts in a `when`, not a model value a deployment extends.
+ *
+ * Theme: #RDSCP.
  */
 @Suppress("EnumEntryName")
 enum class AdminScope {
@@ -140,6 +142,8 @@ object AdminRules {
      * widening direction, and silently: a deployment that grows a second client would have every existing
      * administrator quietly able to see it. This way a mistake shows up as "I cannot see that user", which
      * someone reports.
+     *
+     * Theme: #RDSCP.
      */
     fun adminScope(cxt: KdrCxt): AdminScope {
         val roles = cxt.userProfile.roles

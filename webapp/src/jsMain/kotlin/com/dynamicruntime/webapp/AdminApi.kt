@@ -150,6 +150,8 @@ fun rolesWithCapability(roles: List<String>, capability: String, granted: Boolea
  *
  * Asked through [RoleLadder] rather than by comparing to `admin` directly, so it stays true if the level the
  * capability qualifies ever moves. Pure, and covered under `jsNodeTest`.
+ *
+ * Theme: #SECGT.
  */
 fun isAllClientsDormant(level: String, granted: Boolean): Boolean =
     granted && !RoleLadder.satisfies(setOf(level), ROLE.admin)

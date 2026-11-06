@@ -14,6 +14,8 @@ import com.dynamicruntime.common.user.toActingProfile
  *
  * Safe because of #929's rule: whoever acts as an administrator in a sandbox is, by construction, an administrator in
  * the parent (or an `allClients` one), so nothing reaches the parent that the parent's own administrators could not.
+ *
+ * Theme: #SBXAU.
  */
 object SandboxEdits {
     /**

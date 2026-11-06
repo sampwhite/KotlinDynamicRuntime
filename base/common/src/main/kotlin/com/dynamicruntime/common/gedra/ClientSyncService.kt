@@ -32,6 +32,8 @@ import kotlin.time.Instant
  * Off exactly when the boot load is off ([GedraConfigLoadService.loadEnabled]): a node that does not load stored
  * configuration has nothing to sync -- which includes an in-memory node by default, since nothing it stores
  * outlives the JVM, and a test whose boots do share a database (`KDR_DB_NAME`) opts into the load explicitly.
+ *
+ * Theme: #RELSY.
  */
 class ClientSyncService : ServiceInitializer {
     override val serviceName: String = ClientSyncService.serviceName
@@ -68,6 +70,8 @@ class ClientSyncService : ServiceInitializer {
      * (#616) and its marker recorded, so the next check leaves it alone. Never throws: a sync failure is logged
      * and retried on the next window, exactly as the cache's publish is best-effort -- a request must not fail
      * because a peer's change could not be pulled.
+     *
+     * Theme: #RELSY.
      */
     fun checkSync(cxt: KdrCxt) {
         if (!enabled) return
@@ -121,6 +125,8 @@ class ClientSyncService : ServiceInitializer {
      * (issue #928). A sandbox runs its parent's *latest* configuration, so an edit a published-only parent does not
      * consume still moves the sandbox's marker, and peers catch up on the sandbox by it. What every caller of a reload
      * announces with.
+     *
+     * Theme: #RELSY.
      */
     fun announceReload(cxt: KdrCxt, result: ConfigReloadResult) {
         for (r in result.all) announceAndMark(cxt, r.client, r.marker)

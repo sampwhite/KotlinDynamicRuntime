@@ -133,6 +133,8 @@ fun interface WfFragmentLookup {
  * forgiven, the workflow is **dropped from that scope** and the node carries on -- proportionate, because a
  * workflow that is not there is a state the design already defines (the client's people see no such workflow),
  * where a half-checked one would run.
+ *
+ * Theme: #TPLPS.
  */
 fun buildWorkflowRegistries(
     cxt: KdrCxt,

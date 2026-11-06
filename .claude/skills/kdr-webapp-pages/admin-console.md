@@ -1,4 +1,5 @@
 ## The admin console: editing someone's identity and authority (issue #225)
+<!-- Themes: #SBXAU, #SECGT -->
 
 **The editor's layout** (issue #1478) follows the page structure of #1477 (`Panels.kt`; the pure half is
 `UserEditorLayout.kt`, covered by `UserEditorLayoutTest`). A header -- the back link, the user's name or address, its

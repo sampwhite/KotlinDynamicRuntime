@@ -233,6 +233,8 @@ class UserService : ServiceInitializer {
      * retired client lands on another of their users rather than being turned away, and only one with no other
      * reaches the retired one -- where the login says the client was retired. A sandbox user nobody stands behind
      * any more (issue #1194) is passed over the same way, as a disabled one is.
+     *
+     * Theme: #SBXAU.
      */
     fun defaultUserOf(cxt: KdrCxt, identity: AuthIdentityRow): AuthUserRow? {
         val users = usersOfIdentity(cxt, identity.identityId)
@@ -566,6 +568,8 @@ class UserService : ServiceInitializer {
      * Out of scope reads as *absent* rather than *forbidden*, and that is the point: a 403 would confirm that
      * the id belongs to a real user in some other client, which is exactly what a scoped administrator must
      * not be able to probe for. The caller turns null into its own 404.
+     *
+     * Theme: #RDSCP.
      */
     fun queryAdministrableUser(cxt: KdrCxt, userId: Long, scope: ReadScope): AuthUserRow? {
         val row = queryByUserId(cxt, userId) ?: return null
@@ -678,6 +682,8 @@ class UserService : ServiceInitializer {
      * argument returned every row and compiled, ran, and looked correct. A caller that genuinely wants the
      * whole table now has to write [ReadScope.unrestricted] and be seen doing it; everything else should be
      * passing `ReadScopeRules.forCaller`.
+     *
+     * Theme: #RDSCP.
      */
     fun listUsers(
         cxt: KdrCxt,

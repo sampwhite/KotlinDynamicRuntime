@@ -98,6 +98,7 @@ Every JSON output also carries `requestUri` (String) and `duration` (number, ms)
 - **`fileUploadEndpoint`** / **`fileDownloadEndpoint`** → see *Files* below.
 
 ## Input is FLAT
+<!-- Theme: #CLCPY -->
 
 An endpoint's input is a flat set of top-level fields, so the flat HTTP input — query params and/or the body —
 validates directly with no re-grouping. Declared one of two mutually exclusive ways, or neither for a

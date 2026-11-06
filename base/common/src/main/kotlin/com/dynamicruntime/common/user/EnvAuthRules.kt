@@ -109,6 +109,8 @@ object ENVA {
  * Everything reads the answer through here rather than touching [ENVA.header] directly. That is what lets the
  * mechanism become a **signed assertion** later -- the edge encrypting the address with a key shared through the
  * `node` topic's auth-config table -- without a single consumer changing.
+ *
+ * Theme: #ENVAT.
  */
 object EnvAuthRules {
     /**
@@ -129,6 +131,8 @@ object EnvAuthRules {
      * recorded for `showErrorDetail`/`allowDebugPages`). That fence is audited: a node claiming to be a test
      * instance outside `local`/`unit` refuses to start, so the default cannot reach a real environment. The
      * config option and env var override it in **either** direction, so a test can exercise the untrusted path.
+     *
+     * Theme: #ENVAT.
      */
     fun isTrusted(config: KdrInstanceConfig): Boolean =
         (config.get(ACFG.trustEnvAuthHeader) as? Boolean)
@@ -161,6 +165,8 @@ object EnvAuthRules {
      * The fence is `isTestInstance`, which refuses to boot outside `local`/`unit`. The forwarded-for check does
      * a different job: telling "I am testing through the edge" apart from "I am hitting the box directly" on a
      * machine where both happen.
+     *
+     * Theme: #ENVAT.
      */
     fun assumesEnvAuth(config: KdrInstanceConfig): Boolean =
         (config.get(ACFG.assumeEnvAuth) as? Boolean)
@@ -237,6 +243,8 @@ object EnvAuthRules {
      * cookies [resolve] read apply as they do to an edge's env auth. Keyed on the acting user, not the person: a
      * session that signs in as another of their users, or as anyone else, has no env auth until it signs in again as
      * the administrator.
+     *
+     * Theme: #ENVAT.
      */
     fun fromAdminLogin(cxt: KdrCxt) {
         if (cxt.envAuthEmail != null || !PublicTestDeployment.envAuthFromAdminLogin(cxt.instanceConfig)) return

@@ -141,6 +141,7 @@ offered to the client (#1568), so the menu shows the page to switch it on from. 
 the status, the conversations, and cancel answer either way, with nothing to show while it is off.
 
 ## Conversations and turns
+<!-- Themes: #APIKR, #SBXAU -->
 
 **Who the tools act as.** The administrator's own user in the client's sandbox -- their enabled one when it was opened
 from the user they are now; otherwise one claimed in their own signed-in request (`claimOwnSandboxUser`), as opening

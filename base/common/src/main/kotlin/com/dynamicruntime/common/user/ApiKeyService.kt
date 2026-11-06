@@ -33,6 +33,8 @@ import java.util.concurrent.ConcurrentHashMap
  * Named by [label] in a refusal. A list, never a pattern: a caller acting for a person -- an assistant -- is given
  * exactly the calls its work needs, and a pattern would admit what it did not name, such as a client's own copy of an
  * endpoint (`/gedra/<client>/...`).
+ *
+ * Theme: #APIKR.
  */
 class InProcessScope private constructor(val label: String, private val allowed: Set<Pair<String, String>>) {
     /** Whether the scope lists [method] [path]. */
@@ -50,6 +52,8 @@ class InProcessScope private constructor(val label: String, private val allowed:
  *
  * A call made in this process for a user (issue #1524, `InProcessCaller`) carries one too: a key with no row, named
  * for the call, whose [inProcess] scope narrows it further. It is everything a key is held to and less.
+ *
+ * Theme: #APIKR.
  */
 class ApiKeyAccess(
     val keyId: String,
@@ -77,6 +81,8 @@ class ApiKeyAccess(
      *
      * A call made in this process (issue #1524) reaches only the endpoints its [inProcess] scope admits -- never a page
      * no endpoint answers ([contentPage]), and never the token exchange, since it has no key to exchange.
+     *
+     * Theme: #APIKR.
      */
     fun refusal(
         method: String,
@@ -410,6 +416,8 @@ class ApiKeyService : ServiceInitializer {
      * of [client] with [scope]. The key must still work and still be that user's, and the owner must still be enabled,
      * as for the key itself: so revoking a key, or disabling its owner, ends its tokens here at once, though a service
      * verifying a token with the published keys alone honors it until it expires. [refuse] says why it is not.
+     *
+     * Theme: #APIKR.
      */
     fun authenticateToken(cxt: KdrCxt, keyId: String, userId: Long, client: String, scope: String, refuse: (String) -> Nothing) {
         val row = queryKeyBounded(cxt, keyId) ?: refuse("no key $keyId")
@@ -445,6 +453,8 @@ class ApiKeyService : ServiceInitializer {
      * Binds the owner of the key [row] to [cxt] and records the key on it, once the key is found to work and its owner
      * to be enabled and in a client this node carries; [refuse] otherwise. A token's [scope] can only narrow the key's
      * access, never widen it, so a key made read-only since its token was issued is read-only through the token too.
+     *
+     * Theme: #APIKR.
      */
     private fun bindKey(cxt: KdrCxt, row: Map<String, Any?>, scope: String?, viaToken: Boolean, refuse: (String) -> Nothing) {
         val info = infoOf(row)

@@ -332,6 +332,8 @@ private fun storedDefinitionOf(cxt: KdrCxt, clientId: String): Pair<String, Map<
  * or one declared but not enabled here -- is a 404, the house contract for a retrieve of a missing resource (see
  * GedraEndpoints' formDoc get) rather than a null item, which would fail output validation. A client whose whole
  * configuration was refused has no declared definition to show; its 404 carries the issues in its message.
+ *
+ * Theme: #CFGFG.
  */
 private fun droppedClientDefinitionOf(cxt: KdrCxt, clientId: String): Map<String, Any?> {
     val issues = ClientConfigIssues.get(cxt).issuesFor(clientId)

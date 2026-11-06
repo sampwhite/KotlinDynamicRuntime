@@ -12,6 +12,8 @@ package com.dynamicruntime.common.http.request
  *
  * Three of them form the built-in privilege ladder -- see [RoleLadder], which is what gives "or lower" a
  * meaning.
+ *
+ * Theme: #SECGT.
  */
 @Suppress("ConstPropertyName")
 object ROLE {
@@ -77,6 +79,8 @@ object ROLE {
  * sections (`health`, `gedra`, ...) appear once, in `RequestService`, and their endpoint paths are ordinary
  * literals, so a constant would buy them nothing. The names match their values, as the code guide asks of a
  * key constant.
+ *
+ * Theme: #SECGT.
  */
 @Suppress("ConstPropertyName")
 object SECT {
@@ -128,6 +132,8 @@ object SECT {
  *
  * This is the enforcement rule the dispatcher applies. `AdminRules.canManageUsers` remains the separate seam
  * for *shaping the UI*, and is deliberately not expressed in terms of rank.
+ *
+ * Theme: #SECGT.
  */
 object RoleLadder {
     /** The ladder, least privileged first. Membership here is what makes a role a *level* rather than a capability. */

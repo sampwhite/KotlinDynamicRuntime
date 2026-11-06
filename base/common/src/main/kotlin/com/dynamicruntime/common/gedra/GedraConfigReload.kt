@@ -12,7 +12,11 @@ import com.dynamicruntime.common.startup.SchemaCollector
 import com.dynamicruntime.common.startup.SchemaService
 import com.dynamicruntime.common.uiblock.UiBlockService
 
-/** What a reload did: how many stored configs the node now runs for the client, and any it had to drop. */
+/**
+ * What a reload did: how many stored configs the node now runs for the client, and any it had to drop.
+ *
+ * Theme: #RELSY.
+ */
 class ConfigReloadResult(
     val client: String,
     /** The stored configs the collector took -- what the node now runs for this client. */
@@ -70,6 +74,8 @@ class ConfigReloadResult(
  * carries both; a sandbox may also be reloaded alone -- a peer catching up on the sandbox's own marker does that --
  * and is then rebuilt from its parent as it stands. When the parent no longer asks for a sandbox, the sandbox's
  * reload withdraws everything it held, and the client checks drop it.
+ *
+ * Theme: #RELSY.
  */
 object GedraConfigReload {
     private val lock = Any()
@@ -198,6 +204,8 @@ object GedraConfigReload {
     /**
      * The stored configs [client] now consumes, reassembled and judged, with its marker: the ordinary client's half
      * of phase one's input (issues #616, #617).
+     *
+     * Theme: #CFGFG.
      */
     private fun clientConfigs(
         cxt: KdrCxt,
@@ -252,6 +260,8 @@ object GedraConfigReload {
      * **latest** stored revisions, whatever its tier, rebound -- or nothing, when the parent no longer asks for a
      * sandbox, so the swap withdraws it. Nothing stored when the parent is static here, which takes none. The marker
      * is the newest of those revisions: a sandbox has no tier, so no tier date is folded in.
+     *
+     * Theme: #RELSY.
      */
     private fun sandboxConfigs(
         cxt: KdrCxt,

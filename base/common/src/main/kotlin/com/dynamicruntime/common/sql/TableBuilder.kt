@@ -112,6 +112,8 @@ class TableBuilder(
      * (`SqlScopeUtil.scopeConditions`), neither of which the table's own code has to arrange. Unlike the other
      * ownership columns the result is **nullable**: null means "the client's, not any organization's", which
      * is what every row of a client that never adopts organizations looks like.
+     *
+     * Theme: #RDSCP.
      */
     fun forOrg() {
         features.add(TableFeature.org)

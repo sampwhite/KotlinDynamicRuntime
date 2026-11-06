@@ -69,6 +69,8 @@ class ReportService : ServiceInitializer {
      * The client's typed report endpoints are regenerated from the rebuilt registry ([publishTyped]). Returns their
      * collation keys before and after, whose cached types the caller must drop: a report redefined keeps its paths,
      * and a type cached for the old definition would refuse every row of the new.
+     *
+     * Theme: #RELSY.
      */
     fun reloadClient(cxt: KdrCxt, client: String): Set<String> {
         val collector = SchemaCollector.get(cxt)

@@ -90,6 +90,7 @@ privately, it is sent as an attachment named `<refId>.<ext>` rather than under t
 it to preview another client's refs, and offers to insert a ref's image into the copy.
 
 ## Refs into the file store
+<!-- Theme: #CFGFG -->
 
 `kdr:fileRefDef` is the first slot whose entries name something that is not in the configuration: a
 client's **file ref** is a named file, and its entry says where the bytes are by its `source`. Most are in the

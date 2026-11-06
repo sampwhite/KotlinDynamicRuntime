@@ -42,6 +42,8 @@ import com.dynamicruntime.common.util.toOptStr
  * now rejected -- but it also means data *omitting* it is accepted, where the global type rejected exactly
  * that. Such an entry then fails validation for everybody who is not this client, which is the cross-client
  * breakage the whole rule exists to prevent. Drop the requirement globally, or extend.
+ *
+ * Theme: #NARRW.
  */
 fun narrowingProblems(typeName: String, base: Map<String, Any?>, overlay: Map<String, Any?>): List<Problem> {
     val problems = mutableListOf<Problem>()
@@ -88,6 +90,8 @@ fun isLayoutProblem(typeName: String, problem: Problem): Boolean {
 /**
  * How a client's alteration fails to narrow a type (issue #909): the codes of [narrowingProblems]. Each problem is
  * located at the keyword in the type, as a schema path (`acme.Q.properties.topic.options`).
+ *
+ * Theme: #NARRW.
  */
 @Suppress("EnumEntryName")
 enum class NarrowingError : ProblemCode {
@@ -125,6 +129,8 @@ private fun narrowed(code: NarrowingError, at: String, message: String) =
  * An allowlist rather than a list of forbidden ones, because the failure directions are not symmetric. A
  * keyword nobody thought about is refused and somebody asks why; the other way round it is silently permitted
  * to widen a type, and nothing says so until data written under it is read by another client.
+ *
+ * Theme: #NARRW.
  */
 private val presentationKeys = setOf(
     SCH.title, SCH.description, SCH.examples, SCH.deprecated, SCH.errors, SCH.dComment,
@@ -152,7 +158,11 @@ private val presentationKeys = setOf(
     SCH.layout,
 )
 
-/** The keys that may differ by narrowing; every other validating key must match the base exactly. */
+/**
+ * The keys that may differ by narrowing; every other validating key must match the base exactly.
+ *
+ * Theme: #NARRW.
+ */
 private val narrowingKeys = setOf(SCH.properties, SCH.options, SCH.required, SCH.openOptions)
 
 /**
@@ -228,6 +238,8 @@ private fun show(value: Any?): String = if (value == null) "absent" else "'$valu
  * that adds an **open** list to it accepts exactly what the base did (any value) -- that is not opening a
  * closed list but applying suggestions where there were none, which narrows no less than applying a closed
  * list would (rule 2). So this fires only when the base carries a list this variant flips open.
+ *
+ * Theme: #NARRW.
  */
 private fun checkOpenOptions(
     path: String,

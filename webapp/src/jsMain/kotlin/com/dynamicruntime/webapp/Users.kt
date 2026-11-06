@@ -1746,6 +1746,8 @@ private val accessLevelLabels = RoleLadder.ordered.associateWith { PERSONA.acces
  * remove (the same rule the All-clients checkbox already follows). It is still offered when the edited user
  * *already* holds it, so a scoped administrator editing an operator sees the true value and may keep it (the
  * anti-escalation check is on adding, not on the resulting set). Pure, and covered under `jsNodeTest`.
+ *
+ * Theme: #SECGT.
  */
 fun offeredAccessLevels(operatorSelectable: Boolean): List<String> =
     RoleLadder.ordered.filter { it != ROLE.operator || operatorSelectable }

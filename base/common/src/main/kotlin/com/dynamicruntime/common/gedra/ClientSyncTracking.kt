@@ -23,6 +23,8 @@ import kotlin.time.Instant
  *
  * Free functions over the topic's [SqlCxt], because the producers (a reload, a restart) and the consumer (the
  * periodic check) reach the row from different services and must merge it the same way.
+ *
+ * Theme: #RELSY.
  */
 object ClientSyncTracking {
     /** The markers as they stand: client id -> newest-config date. */

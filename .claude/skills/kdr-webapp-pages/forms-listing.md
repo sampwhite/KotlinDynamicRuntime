@@ -1,4 +1,5 @@
 ## The forms listing is named for whose forms it shows (issue #1091)
+<!-- Theme: #RDSCP -->
 
 "My forms" for a caller who lists only their own; "Forms" for one who administers a client, whose listing is every
 form in it. Three places say it and all three agree: the **menu entry**, the **page heading** and the **back link**
@@ -50,13 +51,15 @@ the client's words instead; **View raw** shows everything. Listing the workflow 
 `deferred-work.md`, under someone wanting a form's whole data in one place.
 
 ## The forms listing across clients (issues #668, #714)
+<!-- Theme: #CLCPY -->
 
 An `allClients` admin's forms listing starts as the **cross-client view**: every client's rows, a Client ID column
 (headed as an id, since that is what it shows and sorts by, issue #1438), and the admin's *own* client's columns and
 filters. Choosing a client in the `Client:` selector changes the **whole surface**, not just the rows: `loadForClient`
 re-fetches the catalog with `client=X`, so the list, get, patch, delete and values endpoints become X's `/gedra/X/…`
-copies, the columns and filter fields come from X's `formDocs`, and `client=X` still rides as the row filter (a client
-path alone does not narrow an unrestricted scope). The rules that follow from that:
+copies, the columns and filter fields come from X's `formDocs`, and `client=X` still rides as the row filter. The path
+alone also confines the rows to X: on a client's own copy, an `allClients` caller reads that client's rows
+(`ReadScopeRules.forCaller` and `KdrCxt.clientFromPath`, issue #1575). The rules that follow from that:
 
 - **A form's client comes from its gedra id, never from the selector.** The raw editor and the core details page read
   it with `formClientOf(id)` and ask the backend for the endpoint on *that* client's surface

@@ -334,6 +334,7 @@ Strictness is applied **at write** instead, where the mistake can be named:
 So leniency is still what a caller opts into, per write, and a mistake in the strict direction reports itself.
 
 ## What is checked, and what a failure does
+<!-- Theme: #CFGFG -->
 
 Configuration is checked as it is collected at startup. What a problem *does* depends on where the node is
 running:

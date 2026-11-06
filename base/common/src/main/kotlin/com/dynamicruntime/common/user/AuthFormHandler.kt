@@ -867,6 +867,8 @@ class AuthFormHandler(
      * detached user goes no further here than at the gate, and the user it lands on is one of the identity's own,
      * registered and enabled. Where it lands, what it acts with is decided afresh at the next request, as after
      * any switch.
+     *
+     * Theme: #SBXAU.
      */
     fun leaveSandbox(cxt: KdrCxt, userId: Long): Map<String, Any?> {
         // The live profile, as a gated request would have it: this section refreshes nothing on its own, and the
@@ -897,6 +899,8 @@ class AuthFormHandler(
      * ([SandboxAccess]) -- so no role is kept in step afterwards and none needs to be. The levels a new one is
      * created with are a record, and a capability is not written at all. Refused for a client without the
      * `sandbox` flag, and from inside a sandbox, which has none of its own.
+     *
+     * Theme: #SBXAU.
      */
     fun openSandbox(cxt: KdrCxt, named: String?): Map<String, Any?> =
         completeLogin(cxt, claimOwnSandboxUser(cxt, named), byCode = false, sessionChange = true)

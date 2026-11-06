@@ -8,6 +8,8 @@ package com.dynamicruntime.common.http.request
  * and so does anything asking about an endpoint it is *not* currently serving -- the catalog, deciding what a
  * caller may see (issue #211). Two spellings of "which section is this" is precisely how a catalog comes to
  * advertise what the dispatcher then refuses.
+ *
+ * Theme: #SECGT.
  */
 fun sectionOf(appPath: String): String = appPath.removePrefix("/").substringBefore('/')
 
@@ -29,6 +31,8 @@ fun sectionOf(appPath: String): String = appPath.removePrefix("/").substringBefo
  * -- the `clientDirectory` section requires it -- and which `RoleLadder.impliedBy` lets `admin` satisfy. That is
  * different from naming a capability there, which makes holding the capability sufficient on its own (the #237 trap):
  * a capability qualifies a level, while `editor` is meant to admit its holders, and an administrator, and nobody else.
+ *
+ * Theme: #SECGT.
  */
 class SectionRules(
     val section: String,
@@ -92,6 +96,8 @@ class SectionRules(
  * is created, and refuses to start when an endpoint declares a section none of these lists names, since that section
  * would be served to anyone. A code constant, moved here from `RequestService` (issue #1610), so the roles and access
  * reference is made from the rules the gate enforces.
+ *
+ * Theme: #SECGT.
  */
 object SectionAccess {
     // `home`/`logout` are listed here to record what they already were: each had no entry and was therefore
@@ -157,6 +163,8 @@ object SectionAccess {
      * [clientOperatorSections]. The bare `operator`/`admin` are the unmarked -- and *more* privileged -- half of
      * each scope pair; if that reads backwards now that `clientOperator` is real, the fix is to mark both ends
      * (`deploymentOperator`/`deploymentAdmin`), deferred because those are the two paths used most.
+     *
+     * Theme: #SECGT.
      */
     val operatorSections: List<String> = listOf(SECT.operator)
 
@@ -184,6 +192,8 @@ object SectionAccess {
      *
      * Since #211 the same comparison has driven the endpoint catalog, so these are also *invisible* to a caller
      * who cannot call them -- "see" and "use" are one answer.
+     *
+     * Theme: #SECGT.
      */
     val adminSections: List<String> = listOf(SECT.node, SECT.admin)
 

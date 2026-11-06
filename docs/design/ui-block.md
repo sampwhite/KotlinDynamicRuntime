@@ -98,6 +98,7 @@ The `SDUI` qualifier is dropped too: it describes *why* the mechanism exists rat
 Casing is **`UiBlock`**, matching `UiConfig`, and its constants object is `UIB`, as `UiConfig`'s is `UIC`.
 
 ## What a UiBlock carries, and where each part resolves
+<!-- Theme: #TPLPS -->
 
 A UiBlock holds **cfact expressions** (whether to show something) and is designed to hold **fragment references**
 (the copy to show). Only the first is built: the menu's labels are literal text, and nothing in a block refers to

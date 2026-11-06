@@ -210,6 +210,8 @@ class RequestService : ServiceInitializer {
      * once per request. Filtering on a session cookie's roles instead would hide endpoints from the very
      * people a role grant just admitted -- and keep hiding them for the cookie's whole life, since the grant
      * deliberately does not require a re-login.
+     *
+     * Theme: #SECGT.
      */
     fun canAccess(cxt: KdrCxt, appPath: String, method: HttpMethod): Boolean =
         sectionAdmits(cxt.userProfile, sectionOf(appPath), isDirectRead(cxt, method.name))
@@ -241,6 +243,8 @@ class RequestService : ServiceInitializer {
      * statement of that, for the boot's check of every declared endpoint and for the admission of generated ones
      * (issue #1087). Empty rules -- before this service is created -- make every section unruled, so a caller that
      * asks too early is refused rather than waved through.
+     *
+     * Theme: #SECGT.
      */
     fun unruledSections(endpoints: Collection<KdrEndpoint>): List<String> =
         endpoints.map { sectionOf(it.path) }.distinct().sorted().filter { it !in sectionRulesMap }
@@ -262,6 +266,8 @@ class RequestService : ServiceInitializer {
      * placement is what lets the content servers stop forcing this service to initialize: `onCreate` runs
      * across every service of the tier before any `checkInit` does, so a service registering itself in its own
      * `checkInit` finds the dispatcher already configured, by the lifecycle rather than by asking.
+     *
+     * Theme: #SECGT.
      */
     override fun onCreate(cxt: KdrCxt) {
         if (isInit) {
@@ -455,7 +461,11 @@ class RequestService : ServiceInitializer {
         }
     }
 
-    /** The body of [handleRequest], once the context root has been recognized: auth, the section gate, dispatch. */
+    /**
+     * The body of [handleRequest], once the context root has been recognized: auth, the section gate, dispatch.
+     *
+     * Themes: #APIKR, #CLCPY, #SECGT.
+     */
     @KdrPrivate
     fun dispatch(cxt: KdrCxt, handler: RequestHandler, focus: ContextFocus) {
         val appPath = handler.appPath
@@ -924,6 +934,8 @@ class RequestService : ServiceInitializer {
      * So does a session whose client this node does not carry (issue #1111): a client retired since the session
      * began, or not enabled here. Everything its user would reach is scoped by that client, so the session is
      * honored only where the client is. A node carrying no clients (an edge) asks nothing.
+     *
+     * Theme: #APIKR.
      */
     fun extractSessionAuth(cxt: KdrCxt, handler: RequestHandler) {
         val authorization = handler.getRequestHeader(AKEY.authorizationHeader)

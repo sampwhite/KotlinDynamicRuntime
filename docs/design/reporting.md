@@ -126,6 +126,7 @@ reports listing returns), and the rest of the configuration stands. A stored def
 kept verbatim, so editing anything else in the config does not delete it.
 
 ## Running a report
+<!-- Theme: #RDSCP -->
 
 Two endpoints, in the `clientAdmin` section: a client's administrator sees their own client, an `allClients`
 administrator may name any with `client`, and a `public` self-administrator is refused. A run reads what the caller

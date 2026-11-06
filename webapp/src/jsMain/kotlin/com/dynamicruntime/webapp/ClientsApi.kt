@@ -640,6 +640,8 @@ fun copyFileLabel(choice: CopyFileChoice): String = choice.shownOn?.let { "${cho
  * `${...}` placeholders are filled as the page renders, and a server-side `%{...}` is refused there; a backend file
  * is resolved on the server -- `${...}` from what sends it, `%{@t(...)}` pulling in other copy. Said before a save,
  * so the backend's refusal is not the first a writer hears of it. Pure, and covered under `jsNodeTest`.
+ *
+ * Theme: #TPLPS.
  */
 fun copySyntaxHint(audience: String): String = when (audience) {
     FragmentAudience.frontend.name ->

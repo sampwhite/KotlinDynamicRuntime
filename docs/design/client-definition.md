@@ -746,6 +746,7 @@ populations rather than one, `InstanceRegistry.register` plus a load flag is the
 sample module already does.
 
 ## Users, clients and personas
+<!-- Themes: #RDSCP, #SECGT -->
 
 A **persona** says what relationship a user has to the application -- `member` (the default: the person
 belongs to the client), `editor`, or `admin`, with `reviewer` and `advisor` sketched -- and is a **registry**
@@ -934,6 +935,7 @@ that meeting an unknown trait is ordinary. Support governs what a client may *ed
 which is what makes an allowlist tolerable to change at all.
 
 ## Endpoints, and what path separation buys
+<!-- Theme: #CLCPY -->
 
 A client's own endpoints carry the **`clientId` in the path**, in a recognizable pattern, so two clients never
 define the same path with different behavior. `RequestService` had to become client-aware -- it resolves a
@@ -1005,6 +1007,7 @@ creating and patching entries" true without pulling per-client generated endpoin
 (issue #387), and are where a client gets *typed input* rather than merely validated storage.
 
 ## Inheritance between clients
+<!-- Theme: #NARRW -->
 
 **`extendsFromClientId` does not need to support chains.** One level: a client extends a template, and that is
 all.
@@ -1059,6 +1062,7 @@ caller controls, where everything else derives it from an authenticated profile;
 registration default it never widens what is readable, which stays `ReadScopeRules`' business, from the profile.
 
 ## `public` is not a client in the ordinary sense
+<!-- Theme: #RDSCP -->
 
 Every user in `public` is effectively their own client, able to create form entries for themselves alone (a
 later capability). **No normal user holds admin privilege over `public`**, so there is no client-scoped
@@ -1078,6 +1082,7 @@ demo conveniences — relaxed security, bulk delete — within reach of the clie
 user. Those conveniences are administrative, and `public` grants no administrator, so the reach does not exist.
 
 ## The per-client schema
+<!-- Theme: #RELSY -->
 
 Fetching the current schema is a **method on the context** (issue #946): `cxt.getClientSchema()` returns the store of
 the client bound to the context -- its variant, or the global store when it varies nothing -- and

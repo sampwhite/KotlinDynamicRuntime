@@ -19,6 +19,8 @@ package com.dynamicruntime.common.endpoint
  *
  * In the kernel so that a frontend builds the path with the same rule the backend serves it under, rather
  * than concatenating one at each call site -- which is the form that rots when the shape changes.
+ *
+ * Theme: #CLCPY.
  */
 fun clientPath(path: String, client: String): String {
     val trimmed = path.removePrefix("/")

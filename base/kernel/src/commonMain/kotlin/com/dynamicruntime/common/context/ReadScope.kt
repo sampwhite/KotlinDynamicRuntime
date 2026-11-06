@@ -29,6 +29,8 @@ package com.dynamicruntime.common.context
  *    narrowing a user list to an organization can only be done after the query -- which is why
  *    `UserService.listUsers` has to name that dimension as one it filters itself, and why [client] is the last
  *    predicate keeping `limit` an exact cap on that one table.
+ *
+ * Theme: #RDSCP.
  */
 class ReadScope(
     /** Confine to this client, or null for any client. */
@@ -65,6 +67,8 @@ class ReadScope(
      * The cost is that an organization narrows a view without ever sealing it, so it is not a confidentiality
      * boundary: see docs/development/deferred-work.md#when-an-organization-has-to-hide-content-not-just-narrow-it
      * before anybody relies on one to keep content apart.
+     *
+     * Theme: #RDSCP.
      */
     fun admitsOrg(rowOrg: String?): Boolean = org == null || rowOrg == null || rowOrg == org
 
@@ -77,6 +81,8 @@ class ReadScope(
      * the caching skill's "a by-id read may check scope per row" rule was written for: unlike content, a user
      * carries no `org` column, so [org] cannot be an SQL predicate anyway (see the class doc) -- the scope is
      * only ever checked a row at a time.
+     *
+     * Theme: #RDSCP.
      */
     fun admitsUserRow(rowClient: String, rowOrg: String?, rowUserId: Long, rowIdentityId: String): Boolean {
         if (client != null && rowClient != client) return false

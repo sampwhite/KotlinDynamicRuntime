@@ -416,6 +416,8 @@ object ADF {
      * when the caller could know of that user anyway: it is the parent's, which a sandbox administrator is
      * trusted in by construction, or one the caller administers. Withheld otherwise, as the person view
      * withholds a user the caller cannot see.
+     *
+     * Theme: #SBXAU.
      */
     const val openedBy = "openedBy"
 

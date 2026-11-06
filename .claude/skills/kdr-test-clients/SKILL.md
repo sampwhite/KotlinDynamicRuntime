@@ -59,6 +59,7 @@ That reload → create-user chain is the whole technique: after `reloadClient`, 
 confined to `scenarioA`.
 
 ## Why a new client is a clean namespace (the isolation)
+<!-- Themes: #CFGFG, #CLCPY, #RDSCP -->
 
 Every gedra's id is `<storage>.<kind>.<client>.<baseId>` (`GedraId`), and each data row carries a read-only
 `client` column. Reads are confined by `ReadScope` → SQL (`SqlScopeUtil.scopeConditions`), resolved per request
@@ -123,6 +124,7 @@ ever there to survive the rebuild). Prefer this to the persistent-H2 two-build p
 later schema rejects" test.
 
 ## The building blocks
+<!-- Themes: #RELSY, #SBXAU -->
 
 - **`gedraConfig(cxt, name, namespace, client) { … }`** (`base/kernel/.../gedra/GedraConfig.kt`) builds one
   config **bundle** for one client. A client's **namespace** is `clientNamespace(client)` -- `client.<clientId>`,
@@ -280,6 +282,7 @@ A test that stores an entry over a template's or a code client's marks it; `Code
 `AcmeCodeOverrideTest.kt` are the references.
 
 ## The HTTP path (driving it as an admin)
+<!-- Themes: #CFGFG, #RELSY -->
 
 The same capability is exposed under the `clientAdmin` section (a `ROLE.admin` confined to the caller's own
 client), issue #627 — the config id is always built from `cxt.client`, so a caller can only touch their own:
@@ -358,6 +361,7 @@ unless asked (`impact = ImpactGate.refuse`). `ConfigImpactTest.kt` is the refere
 the app in production -- writes refused, stored config ignored -- and leaves it an ordinary client everywhere else.
 
 ## How config reaches a node
+<!-- Theme: #RELSY -->
 
 - **On a running node:** `reloadClient` (above) — per client, live, and targets **only the node it runs on**.
 - **At boot:** `GedraConfigLoadService` (a startup service ahead of `ClientService`/`SchemaService`) reads the

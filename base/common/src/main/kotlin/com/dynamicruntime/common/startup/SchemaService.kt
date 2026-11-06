@@ -1074,6 +1074,8 @@ class SchemaService : ServiceInitializer, ClientSchemaSource {
      * every store know not to judge the global document twice.
      *
      * Refuses a generated endpoint at a declared endpoint's address or a client copy's, whichever arrived second.
+     *
+     * Theme: #CLCPY.
      */
     private fun assemble(
         cxt: KdrCxt,
@@ -1125,6 +1127,8 @@ class SchemaService : ServiceInitializer, ClientSchemaSource {
      * Returns the collation keys of [client]'s endpoint copies before and after, which is exactly the set of
      * path-keyed type-cache entries the caller must evict: the copies' paths name the client, so their cached
      * types are the ones a changed variant invalidates and no shared entry is touched.
+     *
+     * Theme: #RELSY.
      */
     fun reloadClient(cxt: KdrCxt, client: String, def: ClientDef?): Set<String> = synchronized(reloadLock) {
         val collected = collector ?: throw KdrException("$serviceName.reloadClient ran before onCreate.")
@@ -1206,6 +1210,8 @@ class SchemaService : ServiceInitializer, ClientSchemaSource {
      * Returns the collation keys of the named clients' generated endpoints **before and after**: the path-keyed
      * type-cache entries the caller must evict (`RequestService.evictTypes`), since a regenerated endpoint keeps its
      * path while its types change.
+     *
+     * Theme: #SECGT.
      */
     fun publishGenerated(cxt: KdrCxt, surfaces: Map<String, GeneratedSurface?>): Set<String> = synchronized(reloadLock) {
         val before = surfaces.keys.flatMap { generated[it]?.endpoints.orEmpty() }.map { it.collationKey }.toSet()
@@ -1794,6 +1800,8 @@ class SchemaService : ServiceInitializer, ClientSchemaSource {
          * are looking at rather than having it inferred from what they happened to ask for.
          *
          * Naming your own client is always allowed, since it is what you would have been shown anyway.
+         *
+         * Theme: #CLCPY.
          */
         @KdrPrivate
         fun catalogClient(cxt: KdrCxt, requested: String?): String? {
@@ -1844,6 +1852,8 @@ class SchemaService : ServiceInitializer, ClientSchemaSource {
          * another client's copy is as absent as a client that does not exist: the dispatcher answers it as a missing
          * path, and the catalog's lookup as no match, so neither says which clients have endpoints of their own (and
          * the lookup does not hand out another client's schema).
+         *
+         * Theme: #CLCPY.
          */
         fun clientEndpointOpenTo(cxt: KdrCxt, endpoint: KdrEndpoint): Boolean {
             val client = endpoint.client ?: return true
@@ -1873,6 +1883,8 @@ class SchemaService : ServiceInitializer, ClientSchemaSource {
          * Replacing rather than adding, in that last case, is what keeps one `$defs` bag honest. Showing both
          * would need `gedra.FormDoc` to mean the global type for one endpoint and the client's for another, in
          * one map, and whichever way it were filled one of the two would be advertised wrongly.
+         *
+         * Theme: #CLCPY.
          */
         @KdrPrivate
         fun surfaceOf(
@@ -2027,6 +2039,8 @@ class SchemaService : ServiceInitializer, ClientSchemaSource {
          * Handler for `/schema/endpoint`: look up the single endpoint with the given method + path (by its
          * `path:method` collation key) and return it in the same shape as [endpointCatalog] -- a one-element
          * (or empty, when unmatched) `endpoints` list plus the shared `$defs`.
+         *
+         * Theme: #CLCPY.
          */
         @KdrPrivate
         fun endpointLookup(cxt: KdrCxt, request: Map<String, Any?>): Map<String, Any?> {
@@ -2145,6 +2159,8 @@ class SchemaService : ServiceInitializer, ClientSchemaSource {
          * [withheld] is what privilege removed, and is deliberately *not* narrowed by the request's
          * namespace/method/regex filters. The question being answered is "what is being kept from me", which is
          * a property of the caller; what a query excluded is already evident from the query.
+         *
+         * Theme: #SECGT.
          */
         @KdrPrivate
         fun explainAccess(cxt: KdrCxt, withheld: List<KdrEndpoint>) {
@@ -2213,6 +2229,8 @@ class SchemaService : ServiceInitializer, ClientSchemaSource {
          *
          * Visible when the request service is absent, which happens only outside a running dispatcher (a unit
          * test building a store by hand). Nothing is being served there, so there is nothing to protect.
+         *
+         * Theme: #SECGT.
          */
         @KdrPrivate
         fun isVisibleTo(cxt: KdrCxt, endpoint: KdrEndpoint): Boolean =
@@ -2353,6 +2371,7 @@ object SS {
 
     // The debug tag that reports what the catalog's access filter withheld (issue #215), the "_meta" key it is
     // reported under, and that report's own fields. Test instances only -- see `explainAccess`.
+    // Theme: #ENVAT.
     val explainAccess = DebugTagDef(
         "explainAccess",
         "The endpoint catalog reports the roles it compared and every endpoint it withheld, with why, under _meta.",

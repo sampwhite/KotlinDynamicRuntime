@@ -23,6 +23,8 @@ import com.dynamicruntime.common.startup.SS
  *
  * The page is one Markdown literal, as `validationMessagesMarkdown` is: each table made by a function, and every name
  * the code owns substituted with `$${…}`.
+ *
+ * Themes: #CLCPY, #RDSCP, #SBXAU, #SECGT.
  */
 fun rolesAndAccessMarkdown(): String =
     // language=Markdown

@@ -38,6 +38,8 @@ import com.dynamicruntime.common.uiblock.UiBlockService
  * the evaluation carries on past it. The checks run over a scratch copy of the schema collector
  * (`SchemaCollector.trialCopy`) with the client's loaded configs withdrawn and the trial's set added, and each
  * service evaluates its part with a `trialClient` that builds what a reload would build and keeps nothing.
+ *
+ * Theme: #CFGFG.
  */
 object GedraConfigTrial {
 
@@ -63,6 +65,8 @@ object GedraConfigTrial {
      * stood (null for one new), and what the stored set had then is part of the baseline: the same trial, of the
      * stored set as it was ([unrunBaseline]). Run only when the write's own trial finds something the other
      * baselines do not account for, so a clean write pays one trial, as ever.
+     *
+     * Theme: #CFGFG.
      */
     fun requireClean(
         cxt: KdrCxt,

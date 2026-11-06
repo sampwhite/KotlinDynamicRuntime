@@ -150,6 +150,8 @@ class UiBlockService : ServiceInitializer {
      * parsed against the client's cfact **names**, and a reload can change that vocabulary, so a predicate kept
      * across it could name a cfact the client no longer declares. Shared entries and other clients' are
      * untouched. Called under the reload lock.
+     *
+     * Theme: #RELSY.
      */
     fun reloadClient(cxt: KdrCxt, client: String, removed: List<UiBlockSource>, added: List<UiBlockSource>) {
         val kept = registeredUiBlocks(cxt).filter { held -> removed.none { it === held } }

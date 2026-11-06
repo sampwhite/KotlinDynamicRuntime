@@ -128,6 +128,7 @@ private fun withDisplayValues(cxt: KdrCxt, row: GedraDataRow): Map<String, Any?>
  */
 private const val fieldValueScanCap = 2000
 
+// Theme: #CLCPY.
 fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) {
     val formDoc = GedraDataType.formDoc
     val docType = GU.gedraName(formDoc)

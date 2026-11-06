@@ -56,6 +56,10 @@ change.
   Gradle's own exit code, not the exit code of the last command in a pipeline.
 - **Prose follows the code guide too**: US spelling and the serial comma, in comments, KDoc, and Markdown (see
   [its section on prose](docs/development/code-guide.md#prose-in-comments-and-documents)).
+- **Grep the theme tags of each file you changed.** A theme tag, an invented token such as `SBXAU` written as a hashtag
+  after `Theme:`, marks every place that implements or describes one cross-cutting idea. Review the other places it
+  marks, since a change to the idea may make them wrong, and tag a new place you add. The tags, and when to use one,
+  are in [`theme-tags.md`](docs/development/theme-tags.md) (issue #1630).
 
 ## What not to build
 

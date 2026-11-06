@@ -70,6 +70,8 @@ fun cfactSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.cfact") {
  * was only coincidentally right while this lived under `clientAdmin` (where every caller was an admin); moving
  * to `clientOperator` (issue #488) made the difference bite. The section gate has already established the
  * caller is at least an operator, so "holds `allClients`" is the whole of the cross-client condition here.
+ *
+ * Theme: #CLCPY.
  */
 private fun checkPathClient(cxt: KdrCxt) {
     val named = cxt.clientFromPath ?: return

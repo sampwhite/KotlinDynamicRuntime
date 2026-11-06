@@ -171,6 +171,8 @@ class GedraDataService : ServiceInitializer {
      * It reads the protocol columns exactly as [GedraDataRow.extract] does (`client`/`userId` coerced, an
      * empty `org` normalized to null), so testing the raw row here and the extracted row there is the same
      * test -- which is what lets the by-id path move its check ahead of the extraction.
+     *
+     * Theme: #RDSCP.
      */
     private fun admitsRow(scope: ReadScope, row: Map<String, Any?>): Boolean {
         if (scope.client != null && row[PF.client].toOptStr() != scope.client) return false
@@ -1353,6 +1355,8 @@ class GedraDataService : ServiceInitializer {
      * addressed, and the two stop agreeing precisely for the caller whose scope is wide enough not to be
      * stopped. Refused as bad input rather than as "not found", because the request contradicts itself: the
      * path said one client and the id says another, and either half could be the mistake.
+     *
+     * Theme: #CLCPY.
      */
     private fun checkPathClient(cxt: KdrCxt, gedraId: GedraId) {
         val confined = cxt.clientFromPath ?: return

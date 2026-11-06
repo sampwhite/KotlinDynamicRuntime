@@ -86,6 +86,7 @@ A sandbox is on its parent's plan, with its forms and users counted apart from t
 parent's customer but is not listed as one of the customer's clients.
 
 ## What a sandbox runs
+<!-- Theme: #RELSY -->
 
 **Three layers, in order** (`SandboxConfigs.configsFor`):
 
@@ -127,6 +128,7 @@ retired on its own. Retiring a client with a sandbox is published at once, since
 draft.
 
 ## Users and data
+<!-- Theme: #SBXAU -->
 
 **A sandbox's data is its own.** Its forms, users, and stored gedras carry `acme:sandbox` in their ids, and are kept
 apart from the parent's by the same client boundary that keeps any two clients apart. Removing a sandbox keeps its
@@ -177,6 +179,7 @@ Some things are deliberately not drafted:
   can be seen.
 
 ## Publishing is judged against the client
+<!-- Theme: #CFGFG -->
 
 A write is judged with the latest revisions, which is what the sandbox runs, so the sandbox's existing problems are
 the drafts' existing problems and do not refuse an unrelated write. A **publish** changes what the client's own people

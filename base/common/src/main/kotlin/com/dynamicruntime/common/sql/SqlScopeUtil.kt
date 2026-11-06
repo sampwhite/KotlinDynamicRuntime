@@ -14,6 +14,8 @@ import com.dynamicruntime.common.exception.SRC
  * The alternative -- each query composing its own conditions -- is how a scoped read quietly stops being
  * scoped: the omission is invisible at the call site, and the query keeps working. Here a caller that fails to
  * account for a constrained dimension gets an exception instead of a wider answer.
+ *
+ * Theme: #RDSCP.
  */
 object SqlScopeUtil {
     /**
@@ -35,6 +37,8 @@ object SqlScopeUtil {
      * belongs to the client as a whole and stays visible, so it matches `org is null or org = ?`. Strict
      * equality would make every row a client wrote before adopting organizations vanish the moment somebody
      * was given one.
+     *
+     * Theme: #RDSCP.
      */
     fun scopeConditions(
         scope: ReadScope,

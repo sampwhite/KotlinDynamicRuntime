@@ -150,7 +150,11 @@ object SchMetaSchema {
         }
     }
 
-    /** What no shape decides, in words: why a body that passes is not thereby a valid schema. */
+    /**
+     * What no shape decides, in words: why a body that passes is not thereby a valid schema.
+     *
+     * Theme: #NARRW.
+     */
     val notChecked: List<String> = listOf(
         "Whether a '${SCH.dRef}' names a type that exists, and whose namespace a type may be declared in.",
         "Whether a keyword applies to the type it sits on, and what it means there: a '${SCH.pattern}' on an " +

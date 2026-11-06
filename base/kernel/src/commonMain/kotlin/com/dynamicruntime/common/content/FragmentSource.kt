@@ -21,6 +21,8 @@ import com.dynamicruntime.common.exception.KdrException
  * The distinction matters because a delivered file is cached forever against its content: a value resolved per
  * request could not be delivered without breaking that cache, so anything request-resolved has to live in a
  * file that is pulled rather than served. Audience draws that line where it can be declared and checked.
+ *
+ * Theme: #TPLPS.
  */
 @Suppress("EnumEntryName")
 enum class FragmentAudience {

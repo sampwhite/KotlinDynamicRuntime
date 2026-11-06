@@ -279,6 +279,8 @@ object SCH {
      * narrowing rule 2 wearing this keyword, and a client may do it. Turning it *on* -- opening a list the base
      * closes -- widens, and `SchNarrowing` refuses that direction. (Adding an open list to a field the base
      * left optionless is not opening anything: it accepts what the base did, so it is allowed too.)
+     *
+     * Theme: #NARRW.
      */
     const val openOptions = "g-openOptions"
 

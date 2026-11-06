@@ -383,6 +383,8 @@ class MarkdownFragmentService : ServiceInitializer, ContentServer {
      * `%{...}` reaches the browser as literal text -- and because a `%{@t(...)}` is exactly how an author would
      * *intend* a cross-file pull, this is the one that is written by mistake. Caught per entry with the block
      * count from a `%`-prefix parse, which counts a real block and ignores a lone or doubled `%`.
+     *
+     * Theme: #TPLPS.
      */
     private fun frontendVariantFindings(
         content: Map<String, Map<String, String>>,
@@ -423,6 +425,8 @@ class MarkdownFragmentService : ServiceInitializer, ContentServer {
      * What is still *not* here: resolving the three-part pull's own `ns.key` against the registry (the target
      * file might lack it). That is the backend-pass reference validation, and it stays a follow-up -- this
      * checks the pull's *audience*, which is the half that has a silent-misresolution failure mode.
+     *
+     * Theme: #TPLPS.
      */
     private fun backendVariantFindings(
         cxt: KdrCxt,
@@ -652,6 +656,8 @@ class MarkdownFragmentService : ServiceInitializer, ContentServer {
      * the build id is a content hash, so a versioned URL minted from the old merge must stop answering rather
      * than keep serving the copy the reload replaced. Shared merges and other clients' are untouched. Called
      * under the reload lock, so the read-modify-write of the registry is not raced by another reload.
+     *
+     * Theme: #RELSY.
      */
     fun reloadClient(cxt: KdrCxt, client: String, removed: List<FragmentSource>, added: List<FragmentSource>) {
         val kept = registeredFragmentSources(cxt).filter { held -> removed.none { it === held } }
@@ -732,6 +738,8 @@ class MarkdownFragmentService : ServiceInitializer, ContentServer {
      * `fileId` selects a file's merged map, and the remaining `namespace.key` resolves through the same kernel
      * [resolveFragment][com.dynamicruntime.common.util.resolveFragment] the frontend uses. Anything but a
      * well-formed three-part key names nothing and returns null.
+     *
+     * Theme: #TPLPS.
      */
     fun backendResolver(cxt: KdrCxt): FragmentResolver = FragmentResolver { key ->
         val dot = key.indexOf('.')
@@ -780,6 +788,8 @@ class MarkdownFragmentService : ServiceInitializer, ContentServer {
      * The trap to know: pulling something like `sample.email.body` (which reads `${code}`) into an element that
      * supplies no `code` does not fail here -- it ships a `${code}` for the frontend to fail on. Prefer pulling
      * text that is plain or whose `${...}` the carrying element genuinely supplies.
+     *
+     * Theme: #TPLPS.
      */
     fun backendPass(cxt: KdrCxt, text: String, data: Map<String, Any?> = emptyMap()): String =
         text.evalTemplate(data, prefix = backendPassPrefix, resolver = backendResolver(cxt))
@@ -800,6 +810,8 @@ class MarkdownFragmentService : ServiceInitializer, ContentServer {
      * only layout-specific part is composing the block's default file onto a two-part key before the shared
      * [backendResolver] runs. Throws on an unresolvable literal pull, like [backendPass] -- the delivery site
      * degrades gracefully rather than letting it fault the whole response.
+     *
+     * Theme: #TPLPS.
      */
     fun layoutBackendPass(cxt: KdrCxt, text: String, defaultFileId: String?): String =
         text.evalTemplate(emptyMap(), prefix = backendPassPrefix, resolver = layoutResolver(cxt, defaultFileId))
@@ -833,6 +845,8 @@ class MarkdownFragmentService : ServiceInitializer, ContentServer {
          * to live with both: a **doubled `%%` is the escape**, so it collapses to a single `%` (`"100%% off"`
          * renders `"100% off"` -- write `%%%` for a literal `%%`), and a stray **`%{` throws** as an
          * unterminated block rather than passing through. A lone `%` is untouched, which is the common case.
+         *
+         * Theme: #TPLPS.
          */
         const val backendPassPrefix = '%'
 

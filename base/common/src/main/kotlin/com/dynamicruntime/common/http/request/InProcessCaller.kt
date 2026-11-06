@@ -63,6 +63,8 @@ class InProcessResult(
  *
  * **Call it from a thread of its own**, as a background worker is: never from inside a database transaction, whose
  * connection and table-cache bracket the call's own request would sit beside rather than share.
+ *
+ * Theme: #APIKR.
  */
 @Suppress("ConstPropertyName")
 object InProcessCaller {
@@ -123,6 +125,8 @@ object InProcessCaller {
      * came straight to it -- and a call made in this process came through no channel. A node that assumes env auth of a
      * request with no forwarding header would otherwise assume it of every in-process call, and with it test access and
      * the `_debug` tags, which the person need not hold.
+     *
+     * Themes: #ENVAT, #SBXAU.
      */
     fun bind(cxt: KdrCxt, principal: InProcessPrincipal) {
         cxt.envAuthEmail = null

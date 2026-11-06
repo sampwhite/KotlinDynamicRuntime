@@ -26,6 +26,8 @@ object APP {
      * instead of inventing a second notion of "a development build". One rule, already audited, and one that a
      * real deployment cannot turn on by accident: an instance claiming to be a test instance outside
      * `local`/`unit` refuses to start.
+     *
+     * Theme: #ENVAT.
      */
     const val showErrorDetail = "showErrorDetail"
 
@@ -48,6 +50,8 @@ object APP {
      * fixture* (the fragment-pull tool), and the Simulations page is nothing but test-only endpoints. Those are
      * offered only where this is true, so nobody is handed a tool that can only fail. Was `isTestInstance`, which
      * a caller without env auth on a test instance would read as true and then be refused by every fixture.
+     *
+     * Theme: #ENVAT.
      */
     const val hasTestAccess = "hasTestAccess"
 
@@ -93,6 +97,8 @@ object APP {
      * let the caller in -- and suppressing it is not offered, because there is nothing to preview and
      * `EnvAuthRules.suppressionOffered` therefore refuses the cookie. A name saying "available" would have had
      * to be false on an edge while being true, which is how a field starts lying.
+     *
+     * Theme: #ENVAT.
      */
     const val envAuthSuppressible = "envAuthSuppressible"
 

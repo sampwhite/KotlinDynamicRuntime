@@ -100,6 +100,8 @@ fun overlayTypeOutcome(typeName: String, base: Map<String, Any?>, overlay: Map<S
  * global's, which still has an entry for that field -- and that entry is the sanctioned outcome of the narrowing,
  * exactly as it is for a layout the alteration does not touch (pruned on delivery), not a fault of the client's. An
  * entry the alteration wrote itself is kept, so a client naming a field its type lacks is still told.
+ *
+ * Theme: #NARRW.
  */
 internal fun withoutStrandedLayoutEntries(merged: Map<String, Any?>, overlay: Map<String, Any?>): Map<String, Any?> {
     val layout = merged[SCH.layout] as? Map<*, *> ?: return merged

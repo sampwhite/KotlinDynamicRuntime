@@ -28,10 +28,18 @@ object AKEY {
     /** Characters in a key's public id: 9 random bytes, base64url. */
     const val keyIdLength = 12
 
-    /** A key that may only read: GET requests, and nothing else. */
+    /**
+     * A key that may only read: GET requests, and nothing else.
+     *
+     * Theme: #APIKR.
+     */
     const val read = "read"
 
-    /** A key that may do whatever its owner may, short of the endpoints only a signed-in session reaches. */
+    /**
+     * A key that may do whatever its owner may, short of the endpoints only a signed-in session reaches.
+     *
+     * Theme: #APIKR.
+     */
     const val full = "full"
 
     /** The access a key may have, in the order a choice lists them. */

@@ -89,6 +89,8 @@ private fun requireUsableForLogin(user: AuthUserRow, identity: AuthIdentityRow) 
  *
  * Returns whether it bound the live profile of a user that still acts for the session ([actsForSession]): what a
  * session renewal asks before reissuing the cookie (issue #1372). False when there was no row to read.
+ *
+ * Theme: #SECGT.
  */
 fun refreshActingRoles(cxt: KdrCxt): Boolean {
     val profile = cxt.userProfile

@@ -118,6 +118,10 @@ object SingletonWorkflows {
         return if (needsFormData(text)) own() else text
     }
 
-    /** Whether [text] still holds a frontend `${…}` block after the backend pass. */
+    /**
+     * Whether [text] still holds a frontend `${…}` block after the backend pass.
+     *
+     * Theme: #TPLPS.
+     */
     fun needsFormData(text: String): Boolean = $$"${" in text
 }

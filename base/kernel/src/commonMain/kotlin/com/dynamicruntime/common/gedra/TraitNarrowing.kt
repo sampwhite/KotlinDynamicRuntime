@@ -38,6 +38,8 @@ import com.dynamicruntime.common.util.toOptStr
  *
  * A stored alteration that does more than these moves -- drops a field from the data, restates the properties, changes
  * a field some other way -- is not editable here ([traitNarrowingOf] says why); it was written by hand.
+ *
+ * Theme: #NARRW.
  */
 class TraitNarrowing(
     val traitId: String,

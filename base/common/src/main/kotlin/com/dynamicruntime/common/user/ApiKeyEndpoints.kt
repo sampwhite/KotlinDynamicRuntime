@@ -29,6 +29,8 @@ import com.dynamicruntime.common.util.toOptLong
  *
  * Every one is [session-only][com.dynamicruntime.common.endpoint.KdrEndpoint.sessionOnly]: a key cannot make, extend or
  * revoke keys, so one that leaks reaches no further, and lasts no longer, than its maker gave it.
+ *
+ * Theme: #APIKR.
  */
 fun apiKeySchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.apiKey") {
     ApiKeyInfo.defineInfoTypes(this)

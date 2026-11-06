@@ -177,6 +177,8 @@ class FileRefService : ServiceInitializer, ContentServer {
      * for it (`GedraConfigTrial.fileRefBaseline`) and is stored by now: refusing here, where problems are strict,
      * would fail every later save of the client after it was committed. A ref the reload *brings* is held as
      * strictly as ever.
+     *
+     * Themes: #CFGFG, #RELSY.
      */
     fun reloadClient(cxt: KdrCxt, client: String) {
         val collector = SchemaCollector.get(cxt) ?: throw KdrException("$serviceName.reloadClient ran with no schema collector.")
