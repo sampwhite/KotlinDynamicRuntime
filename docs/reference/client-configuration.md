@@ -438,11 +438,11 @@ Each is a type the server declares, named as the endpoint catalog names it. A fi
 ## About this file
 
 **Everything above this section is generated.** A running server makes it from the slot shapes a configuration write is
-held to, so it cannot disagree with what the server accepts. Read it on the server's **Documents** page, under **Client
-configuration**, where anyone may open it without signing in. On the public reference site it is at
-[dynamicruntime.org/wa/docs/client-configuration](https://dynamicruntime.org/wa/docs/client-configuration). `./gradlew
-:launch:refDocsDump` copies it into this file, and the suite fails while the copy is behind the code, so edit the
-generator (below), never the copy.
+held to, so it cannot disagree with what the server accepts. Read it on the server's **Documents** page, under
+**Reference**, then **Client configuration**, where anyone may open it without signing in. On the public reference site
+it is at [dynamicruntime.org/wa/docs/client-configuration](https://dynamicruntime.org/wa/docs/client-configuration).
+`./gradlew :launch:refDocsDump` copies it into this file, and the suite fails while the copy is behind the code, so edit
+the generator (below), never the copy.
 
 On a running server, a link to this file opens the reference itself.
 

@@ -1,5 +1,6 @@
 package com.dynamicruntime.kdn.confdemo
 
+import com.dynamicruntime.common.content.DOCORDER
 import com.dynamicruntime.common.content.MarkdownDocDef
 import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.KdrCxt
@@ -188,9 +189,9 @@ object ConfDemo {
 }
 
 /**
- * The demo's documentation (issue #1136): the opening page is listed on the home page's Documents list; the pages it
- * leads to are linked from it and not listed. The build copies `docs/demo-client/<name>.md` onto the classpath as
- * `demo-client-<name>.md`, so the ids here follow the file names.
+ * The demo's documentation (issue #1136): the opening page is listed on the home page's Documents list, in its
+ * [DOCORDER] place (issue #1632); the pages it leads to are linked from it and not listed. The build copies
+ * `docs/demo-client/<name>.md` onto the classpath as `demo-client-<name>.md`, so the ids here follow the file names.
  */
 fun confDemoDocs(): List<MarkdownDocDef> = listOf(
     confDemoDoc("README", "Conference demo", "A worked example of a client built from configuration: its JSON, piece by piece.", listed = true),
@@ -208,7 +209,10 @@ fun confDemoDocs(): List<MarkdownDocDef> = listOf(
 )
 
 private fun confDemoDoc(name: String, label: String, description: String, listed: Boolean = false) =
-    MarkdownDocDef(ConfDemo.docIdPrefix + name, label, "${ConfDemo.docsDir}/$name.md", description, listed)
+    MarkdownDocDef(
+        ConfDemo.docIdPrefix + name, label, "${ConfDemo.docsDir}/$name.md", description, listed,
+        order = if (listed) DOCORDER.confDemo else 0,
+    )
 
 /**
  * The `base` bundle: the client itself, and the shared trait its forms are named by. [client] is [ConfDemo.client],

@@ -113,8 +113,8 @@ may be left out.
 ## About this file
 
 **Everything above this section is generated.** A running server makes its list of functions from the functions
-themselves, so it cannot disagree with them. Read it on the server's **Documents** page, under **Expressions**, where
-anyone may open it without signing in. On the public reference site it is at
+themselves, so it cannot disagree with them. Read it on the server's **Documents** page, under **Reference**, then
+**Expressions**, where anyone may open it without signing in. On the public reference site it is at
 [dynamicruntime.org/wa/docs/expressions](https://dynamicruntime.org/wa/docs/expressions). `./gradlew
 :launch:refDocsDump` copies it into this file, and the suite fails while the copy is behind the code, so edit the
 generator (below), never the copy.

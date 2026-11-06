@@ -88,8 +88,8 @@ rather than blank.
 ## About this file
 
 **Everything above this section is generated.** A running server makes it from the validator's own list of codes, so it
-cannot disagree with the validator. Read it on the server's **Documents** page, under **Validation messages**, where
-anyone may open it without signing in. On the public reference site it is at
+cannot disagree with the validator. Read it on the server's **Documents** page, under **Reference**, then **Validation
+messages**, where anyone may open it without signing in. On the public reference site it is at
 [dynamicruntime.org/wa/docs/validation-messages](https://dynamicruntime.org/wa/docs/validation-messages). `./gradlew
 :launch:refDocsDump` copies it into this file, and the suite fails while the copy is behind the code, so edit the
 generator (below), never the copy.

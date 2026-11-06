@@ -165,8 +165,8 @@ See the demo's [Reports](../demo-client/reports.md) page for two reports worked 
 ## About this file
 
 **Everything above this section is generated.** A running server makes its lists from the names the path parser reads,
-so they cannot disagree with it. Read it on the server's **Documents** page, under **Report paths**, where anyone may
-open it without signing in. On the public reference site it is at
+so they cannot disagree with it. Read it on the server's **Documents** page, under **Reference**, then **Report paths**,
+where anyone may open it without signing in. On the public reference site it is at
 [dynamicruntime.org/wa/docs/report-paths](https://dynamicruntime.org/wa/docs/report-paths). `./gradlew
 :launch:refDocsDump` copies it into this file, and the suite fails while the copy is behind the code, so edit the
 generator (below), never the copy.

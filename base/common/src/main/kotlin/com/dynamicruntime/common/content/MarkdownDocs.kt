@@ -27,8 +27,9 @@ class MarkdownDocDef(
     val listed: Boolean = true,
     /**
      * Where the document sorts in the listing (issue #1238): documents are listed by rising [order], and within one
-     * order as declared, component by component. Most leave it at 0; "Start here" is declared first and the license
-     * last, so that each keeps its place whichever components contribute documents beside the one declaring it.
+     * order as declared, component by component. Each listed document takes its place from [DOCORDER] (issue #1632),
+     * so that it keeps it whichever components contribute documents beside the one declaring it; an unlisted one
+     * leaves it at 0.
      */
     val order: Int = 0,
     /**
@@ -47,11 +48,25 @@ class MarkdownDocDef(
     val generatedText: String? by lazy { generate?.invoke() }
 }
 
-/** The [MarkdownDocDef.order] of a document that reads first: "Start here" (issue #1510). */
-const val firstDocOrder = -100
-
-/** The [MarkdownDocDef.order] of a document that reads last: the license. */
-const val lastDocOrder = 100
+/**
+ * The [MarkdownDocDef.order] of each document the Documents list offers (issue #1632), in the order it offers them.
+ * The list is kept short -- the documentation's map, the ways in, and the reference index -- since "Start here" maps
+ * the rest by audience; a guide or a reference is served unlisted and reached from them. The walk-through and the
+ * conference demo are declared by `kdn`, after this module's documents, so each place is set here rather than left to
+ * declaration order.
+ */
+@Suppress("ConstPropertyName")
+object DOCORDER {
+    /** "Start here", the documentation's map by audience (issue #1510): it reads first. */
+    const val startHere = -100
+    const val walkThrough = -90
+    const val readme = -80
+    const val confDemo = -70
+    /** The index of the references generated from the code. */
+    const val reference = -60
+    /** The license reads last. */
+    const val license = 100
+}
 
 /** Where the components' declared documents are kept in the instance config, in listing order ([checkedMarkdownDocs]). */
 @Suppress("ConstPropertyName")

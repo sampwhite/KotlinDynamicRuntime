@@ -86,6 +86,8 @@ For a program, or an AI assistant, given a site's address and an API key.
     a form shows and in what order, the form's wording, and how a client's layout changes the shared one.
 11. **[Roles and access](reference/roles-and-access.md),** for what each role grants, who may call each part of the
     API, whose data a caller reads, and how to ask a site why a call is refused.
+12. **[The reference index](reference/README.md),** for every reference in one place, with the two a site does not
+    serve: the environment variables, and every endpoint with who may call it.
 
 Most of this documentation was written by an AI and reviewed by people;
 [the README says why](../README.md#how-this-was-made).
