@@ -549,22 +549,23 @@ class GedraConfigCollector {
      * is swapped out. Returns whether the config was held.
      */
     fun remove(config: GedraConfig): Boolean {
-        if (configsById.remove(config.gedraId.fullId) == null) {
+        if (configsById.remove(config.configKey) == null) {
             return false
         }
         for (traitId in config.traits.keys) {
             val key = TraitKey(config.gedraId.client, traitId)
-            if (traitConfigs[key]?.gedraId == config.gedraId) {
+            // By the config itself: a stored bundle and a code bundle of one name share an id (issue #1646).
+            if (traitConfigs[key] === config) {
                 traitOwners.remove(key); traitConfigs.remove(key)
             }
         }
         for (traitId in keptStateTraits(config).keys) {
-            if (stateTraitConfigs[traitId]?.gedraId == config.gedraId) {
+            if (stateTraitConfigs[traitId] === config) {
                 stateTraitOwners.remove(traitId); stateTraitConfigs.remove(traitId)
             }
         }
         for (traitId in keptConfigTraits(config).keys) {
-            if (configTraitConfigs[traitId]?.gedraId == config.gedraId) {
+            if (configTraitConfigs[traitId] === config) {
                 configTraitOwners.remove(traitId); configTraitConfigs.remove(traitId)
             }
         }
@@ -585,10 +586,10 @@ class GedraConfigCollector {
      * holds is new. Returns whether [held] was the config kept under its id.
      */
     fun replace(held: GedraConfig, replacement: GedraConfig): Boolean {
-        if (configsById[held.gedraId.fullId] !== held || replacement.gedraId.fullId != held.gedraId.fullId) return false
+        if (configsById[held.configKey] !== held || replacement.configKey != held.configKey) return false
         for (traitId in held.traits.keys) {
             val key = TraitKey(held.gedraId.client, traitId)
-            if (traitConfigs[key]?.gedraId == held.gedraId) {
+            if (traitConfigs[key] === held) {
                 traitOwners.remove(key); traitConfigs.remove(key)
             }
         }
@@ -598,7 +599,7 @@ class GedraConfigCollector {
     }
 
     private fun keep(config: GedraConfig) {
-        configsById[config.gedraId.fullId] = config
+        configsById[config.configKey] = config
         namespaceOwners.putIfAbsent(config.namespace, config.namespaceClaimant)
         for ((traitId, trait) in config.traits) {
             val key = TraitKey(config.gedraId.client, traitId)
@@ -660,7 +661,7 @@ class GedraConfigCollector {
         val stateTraits = keptStateTraits(config)
         val configTraits = keptConfigTraits(config)
         val traitCount = config.traits.size + stateTraits.size + configTraits.size
-        configsById[config.gedraId.fullId]?.let {
+        configsById[config.configKey]?.let {
             return config.issue(
                 "Gedra config '${config.gedraId}' is contributed twice.",
                 "Keeping the first; the second is dropped, along with its $traitCount trait(s).",

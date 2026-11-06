@@ -131,11 +131,11 @@ class GedraConfigLoadService : ServiceInitializer {
      */
     fun ownSourceOf(collector: SchemaCollector, client: String): List<GedraConfig> {
         // The client's own loaded configs alone: every config this service loads is recorded under its own client.
-        val loadedIds = loadedFor(client).mapTo(HashSet()) { it.gedraId.fullId }
-        val originals = sourceCutsFor(client).cuts.associate { it.cut.gedraId.fullId to it.original }
+        val loaded = loadedFor(client).mapTo(HashSet()) { it.configKey }
+        val originals = sourceCutsFor(client).cuts.associate { it.cut.configKey to it.original }
         return collector.gedraConfigs.configs
-            .filter { it.gedraId.client == client && it.inheritedFrom == null && it.gedraId.fullId !in loadedIds }
-            .map { originals[it.gedraId.fullId] ?: it }
+            .filter { it.gedraId.client == client && it.inheritedFrom == null && it.configKey !in loaded }
+            .map { originals[it.configKey] ?: it }
     }
 
     /**
@@ -508,8 +508,8 @@ class GedraConfigLoadService : ServiceInitializer {
 
     /** The clients defined in source code -- those whose defining config this service did not load. */
     fun sourceClientsOf(collector: SchemaCollector): Map<String, ClientDef> {
-        val loadedIds = allLoadedIds()
-        return collector.gedraConfigs.configs.filter { it.gedraId.fullId !in loadedIds }
+        val loaded = allLoadedKeys()
+        return collector.gedraConfigs.configs.filter { it.configKey !in loaded }
             .mapNotNull { it.client }.associateBy { it.clientId }
     }
 
@@ -642,9 +642,9 @@ class GedraConfigLoadService : ServiceInitializer {
         return extendsProblem(config, sourceClients)
     }
 
-    /** The ids of every data-loaded config now in the collector, across clients. */
-    fun allLoadedIds(): Set<String> = synchronized(loadedByClient) {
-        loadedByClient.values.flatten().map { it.gedraId.fullId }.toSet()
+    /** The keys ([GedraConfig.configKey]) of every data-loaded config now in the collector, across clients. */
+    fun allLoadedKeys(): Set<String> = synchronized(loadedByClient) {
+        loadedByClient.values.flatten().map { it.configKey }.toSet()
     }
 
     /**

@@ -32,10 +32,12 @@ class AcmeCodeOverrideTest : StringSpec({
         additionalComponents = listOf(SampleComponent()),
     )
     val writer = cxt.mkSubContext("acmeOverrideWrite", SC.acme).also { it.userId = 16341L }
+    val codeBundle = "${SC.acme}Client"
 
     fun write(marked: Boolean) = GedraConfigService.get(cxt).writeConfig(
         writer,
-        gedraConfig(cxt, "over", "${clientNamespace(SC.acme)}.over", SC.acme) {
+        // In the stored bundle named like Acme's code bundle (issue #1646), which sits beside it.
+        gedraConfig(cxt, codeBundle, "${clientNamespace(SC.acme)}.$codeBundle", SC.acme) {
             trait("StoredFollowUpEntry", SC.siteFollowUpTrait, setOf(GedraDataType.formDoc), "A follow-up, as stored.") {
                 property(SC.followUpBy, "Who made the follow-up visit.", required = true)
                 property("revisitOn", "When to go back.")
@@ -51,10 +53,10 @@ class AcmeCodeOverrideTest : StringSpec({
 
         write(marked = true)
         // Acme has a sandbox, so it runs what it has published.
-        GedraConfigService.get(cxt).publish(writer, listOf(GedraId.of(GedraConfigType.configDoc, SC.acme, "over")))
+        GedraConfigService.get(cxt).publish(writer, listOf(GedraId.of(GedraConfigType.configDoc, SC.acme, codeBundle)))
         GedraConfigReload.reloadClient(cxt, SC.acme).issues.shouldBeEmpty()
         val trait = SchemaService.get(cxt).gedraTraitsFor(SC.acme).single { it.traitId == SC.siteFollowUpTrait }
-        trait.typeName shouldBe "${clientNamespace(SC.acme)}.over.StoredFollowUpEntry"
+        trait.typeName shouldBe "${clientNamespace(SC.acme)}.$codeBundle.StoredFollowUpEntry"
         // The code's workflow that collects the trait runs with it, as before.
         WorkflowService.get(cxt).forClient(SC.acme).workflow(SW.siteFollowUp).shouldNotBeNull()
         ClientConfigIssues.get(cxt).issuesFor(SC.acme).shouldBeEmpty()

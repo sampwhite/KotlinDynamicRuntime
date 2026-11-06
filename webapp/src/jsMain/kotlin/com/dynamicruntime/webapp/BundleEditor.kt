@@ -50,15 +50,19 @@ class BundleEditorView(
     val slotKeys: Map<String, List<String>>,
     val slotTypes: Map<String, String> = emptyMap(),
     val defs: Map<String, Any?> = emptyMap(),
-    /** The client's code layer, read-only (issue #1616): its own code's configurations, then its template's copies. */
+    /**
+     * The client's code layer, as declared (issues #1616, #1646): its own code's configurations, then its template's
+     * copies, each shown merged with the stored bundle of its name.
+     */
     val codeConfigs: List<CodeBundle> = emptyList(),
-    /** Each of the client's entries that replaces one of its template's, whole (issue #1616). */
-    val replacements: List<TemplateReplacementView> = emptyList(),
+    /** Each of the client's entries that replaces one of its code's, whole (issues #1616, #1646). */
+    val replacements: List<CodeReplacementView> = emptyList(),
 )
 
 /**
- * One configuration of a client's code layer (issue #1616): declared by the client's own code, or -- [template] set --
- * a copy of its template's code, cut to what the client does not define itself. Never edited on the page.
+ * One configuration of a client's code layer (issues #1616, #1646): declared by the client's own code, or -- [template]
+ * set -- a copy of its template's code, whole as declared. Never edited itself: changing an entry of it writes an
+ * override, an entry marked `"overrides": "code"` in the stored bundle of the same name.
  */
 class CodeBundle(val name: String, val template: String?, val namespace: String, val slots: Map<String, List<Map<String, Any?>>>) {
     /** The bundle as the page's slot listing reads one: a single revision, nothing beside it. */
@@ -66,27 +70,30 @@ class CodeBundle(val name: String, val template: String?, val namespace: String,
 }
 
 /**
- * An entry of the client's that replaces one of its template's whole (issue #1616): in configuration [name], slot
- * [slot], with key fields [key] (empty for the columns of the forms list, which replace as one set). What it replaces
- * is [templateEntries], declared in [template]'s configuration [templateName].
+ * An entry of the client's that replaces one of its code's whole (issues #1616, #1646): in configuration [name], slot
+ * [slot], with key fields [key] (empty for the columns of the forms list, which replace as one set). What it replaces is
+ * [codeEntries], in the code bundle [codeName] -- the client's own code's, or a copy of its [template]'s. [marked] says
+ * the entry carries `"overrides": "code"`: a stored one without it is refused at a write.
  */
-class TemplateReplacementView(
+class CodeReplacementView(
     val name: String,
     val slot: String,
     val key: Map<String, Any?>,
-    val template: String,
-    val templateName: String,
-    val templateEntries: List<Map<String, Any?>>,
+    val codeName: String,
+    val template: String?,
+    val codeEntries: List<Map<String, Any?>>,
+    val marked: Boolean,
 )
 
 /** One replacement as the editor read, or a patch's dry run, answers it. */
-fun parseReplacement(raw: Map<String, Any?>): TemplateReplacementView = TemplateReplacementView(
+fun parseReplacement(raw: Map<String, Any?>): CodeReplacementView = CodeReplacementView(
     name = raw[CFEP.name].toOptStr().orEmpty(),
     slot = raw[CFEP.slot].toOptStr().orEmpty(),
     key = raw[CFEP.key].toJsonMapOrEmpty(),
-    template = raw[CFEP.template].toOptStr().orEmpty(),
-    templateName = raw[CFEP.templateName].toOptStr().orEmpty(),
-    templateEntries = raw[CFEP.templateEntries].toJsonListOfMaps(),
+    codeName = raw[CFEP.codeName].toOptStr().orEmpty(),
+    template = raw[CFEP.template].toOptStr()?.takeIf { raw[CFEP.origin] == CFEP.originTemplate },
+    codeEntries = raw[CFEP.codeEntries].toJsonListOfMaps(),
+    marked = raw[CFEP.marked] == true,
 )
 
 /** The editor read's answer as the page draws it. */
@@ -125,34 +132,76 @@ fun parseBundleEditor(item: Map<String, Any?>): BundleEditorView {
     )
 }
 
-/** What a code bundle's line says: where it comes from, that it is read-only, and what it holds. */
-fun codeBundleLineText(bundle: CodeBundle): String {
-    val from = bundle.template?.let { "a copy of template $it's code" } ?: "from the client's code"
+/** Where a code bundle's entries come from, in a phrase: "from code", or "from template starterKit". */
+fun codeFromText(bundle: CodeBundle): String = bundle.template?.let { "from template $it" } ?: "from code"
+
+/**
+ * What a code bundle's line says (issue #1646): where it comes from, what it holds, and how many of its entries the
+ * client changes in the stored bundle of its name.
+ */
+fun codeBundleLineText(bundle: CodeBundle, replacements: List<CodeReplacementView>): String {
     val entries = bundle.slots.values.sumOf { it.size }
     val held = "${bundle.slots.size} slot${if (bundle.slots.size == 1) "" else "s"}, $entries entr${if (entries == 1) "y" else "ies"}"
-    return "${bundle.name} — $from, read-only · $held"
+    val changed = replacements.count { it.codeName == bundle.name && it.name == bundle.name }
+    return "${bundle.name} — ${codeFromText(bundle)} · $held" + if (changed == 0) "" else " · $changed changed here"
 }
 
-/** What the page says of a code bundle when it is opened: where a change to it goes. */
-fun codeBundleNoteText(bundle: CodeBundle): String = if (bundle.template != null) {
-    "These are what the client runs of template ${bundle.template}'s code, less what the client defines itself. To change " +
-        "one, give the client an entry of its own with the same key, in a stored bundle: it replaces the template's whole, " +
-        "so restate all of it that you want to keep."
-} else {
-    "These are declared in the client's code, and run as written. They are changed in the code, not here."
+/** What the page says of a code bundle when it is opened: what Edit does, and how a change is undone. */
+fun codeBundleNoteText(bundle: CodeBundle): String =
+    "These are ${bundle.template?.let { "template $it's code, as this client runs it" } ?: "declared in this client's code"}. " +
+        "Edit one to change it for this client: the change is stored in a bundle of the same name, marked to stand over " +
+        "the code's entry, which it replaces whole. Revert to code removes the change, and the code's comes back. An " +
+        "entry of the code's is never removed; a workflow the client does not want is turned off on its page instead."
+
+/**
+ * The replacement standing over [entry], an entry of the code bundle [codeName] in [slot] (issue #1646), or null when
+ * nothing does. The columns of the forms list replace as a set: see [slotReplacement].
+ */
+fun codeReplacementOf(
+    replacements: List<CodeReplacementView>,
+    codeName: String,
+    slot: String,
+    entry: Map<String, Any?>,
+): CodeReplacementView? =
+    replacements.firstOrNull { it.codeName == codeName && it.slot == slot && it.key.isNotEmpty() && entry in it.codeEntries }
+
+/**
+ * [entry], an entry of a code bundle, as the stored entry that changes it starts (issue #1646): the code's own, marked
+ * to stand over it.
+ */
+fun overrideOf(entry: Map<String, Any?>): Map<String, Any?> = entry + (CCT.overrides to CCT.overridesCodeValue)
+
+/**
+ * Whether [data] -- a new entry's, as parsed -- is a change of [codeEntry], keyed by [keyFields] (issue #1646): the same
+ * key, so the code's entry is shown as being changed rather than beside it.
+ */
+fun changesCodeEntry(keyFields: List<String>, data: Map<String, Any?>?, codeEntry: Map<String, Any?>): Boolean =
+    data != null && keyFields.isNotEmpty() && addressesEntry(keyFields, keyFields.associateWith { codeEntry[it] }, data)
+
+/**
+ * What a stored entry's line adds for the code it stands over (issue #1646): changed here, in the bundle named like the
+ * code's; a replacement of it, in another; and that it needs the mark, when it has none.
+ */
+fun replacesText(r: CodeReplacementView, bundle: String): String = when {
+    !r.marked -> "matches ${r.codeFrom}'s entry, without the mark"
+    bundle == r.codeName -> "changed here"
+    else -> "replaces ${r.codeFrom}'s, in ${r.codeName}"
 }
+
+/** Whose code [this] replaces, in a phrase: "the code", or "template starterKit". */
+private val CodeReplacementView.codeFrom: String get() = template?.let { "template $it" } ?: "the code"
 
 /**
  * The replacement [entry] is, in [bundle] and [slot], keyed by [keyFields]; null when it replaces nothing. The columns of
  * the forms list replace as a set, so none of theirs is matched here: see [slotReplacement].
  */
 fun replacementOf(
-    replacements: List<TemplateReplacementView>,
+    replacements: List<CodeReplacementView>,
     bundle: String,
     slot: String,
     keyFields: List<String>,
     entry: Map<String, Any?>,
-): TemplateReplacementView? {
+): CodeReplacementView? {
     if (keyFields.isEmpty()) return null
     return replacements.firstOrNull {
         it.name == bundle && it.slot == slot && it.key.isNotEmpty() && addressesEntry(keyFields, it.key, entry)
@@ -160,28 +209,28 @@ fun replacementOf(
 }
 
 /** The replacement a whole [slot] of [bundle] is -- the columns of the forms list -- or null. */
-fun slotReplacement(replacements: List<TemplateReplacementView>, bundle: String, slot: String): TemplateReplacementView? =
+fun slotReplacement(replacements: List<CodeReplacementView>, bundle: String, slot: String): CodeReplacementView? =
     replacements.firstOrNull { it.name == bundle && it.slot == slot && it.key.isEmpty() }
 
-/** The heading over the template's version of what [r] replaces. */
-fun replacedHeadingText(r: TemplateReplacementView): String =
-    "Template ${r.template}'s, in its ${r.templateName} bundle, which this entry replaces"
+/** The heading over the code's version of what [r] replaces. */
+fun replacedHeadingText(r: CodeReplacementView): String =
+    "${r.codeFrom.replaceFirstChar { it.uppercase() }}'s, in its ${r.codeName} bundle, which this entry replaces"
 
-/** What a slot that replaces the template's as a set says: the columns of the forms list. */
-fun slotReplacementText(r: TemplateReplacementView): String {
-    val n = r.templateEntries.size
-    return "These replace all of template ${r.template}'s ${editorSlotLabel(r.slot).lowercase()} " +
-        "($n, in its ${r.templateName} bundle): a client that declares any declares the whole set."
+/** What a slot that replaces the code's as a set says: the columns of the forms list. */
+fun slotReplacementText(r: CodeReplacementView): String {
+    val n = r.codeEntries.size
+    return "These replace all of ${r.codeFrom}'s ${editorSlotLabel(r.slot).lowercase()} " +
+        "($n, in its ${r.codeName} bundle): a client that declares any declares the whole set."
 }
 
 /**
- * What a save's dry run says of [replacing], the template entries the edits would newly replace (issue #1616), each by
- * its slot and key, so the save asks with that in view.
+ * What a save's dry run says of [replacing], the code entries the edits would newly replace (issues #1616, #1646), each
+ * by its slot and key, so the save asks with that in view.
  */
-fun replacingText(replacing: List<TemplateReplacementView>): List<String> = replacing.map { r ->
-    val what = if (r.key.isEmpty()) "all of the template's ${editorSlotLabel(r.slot).lowercase()}"
+fun replacingText(replacing: List<CodeReplacementView>): List<String> = replacing.map { r ->
+    val what = if (r.key.isEmpty()) "all of ${r.codeFrom}'s ${editorSlotLabel(r.slot).lowercase()}"
     else "${editorSlotLabel(r.slot)} ${r.key.values.joinToString(" · ")}"
-    "$what, from template ${r.template}'s ${r.templateName} bundle, in ${r.name}"
+    "$what, from ${r.codeFrom}'s ${r.codeName} bundle, in ${r.name}"
 }
 
 /**
