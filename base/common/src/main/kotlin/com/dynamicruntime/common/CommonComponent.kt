@@ -364,6 +364,7 @@ class CommonComponent : ComponentDefinition {
             addAll(fragmentFiles(AFRAG.auth, shownOn = "the sign-in, register and claim pages"))
             addAll(fragmentFiles(AFRAG.profile, shownOn = "the profile page"))
             addAll(fragmentFiles(HFRAG.home, shownOn = "the app bar and home page, the forms listing and the Documents page, and every \"What is this?\" link"))
+            // The pages with no UI-config of their own (issue #1337), named by the home config after its own file.
             addAll(fragmentFiles(PFRAG.clients, shownOn = "the Clients page"))
             addAll(fragmentFiles(PFRAG.reports, shownOn = "the Reports page"))
             addAll(fragmentFiles(PFRAG.design, shownOn = "Design View's inspector"))
@@ -371,6 +372,7 @@ class CommonComponent : ComponentDefinition {
             addAll(fragmentFiles(PFRAG.catalog, shownOn = "the endpoint catalog page"))
             addAll(fragmentFiles(FRAG.errors, shownOn = "error messages"))
             addAll(fragmentFiles(FRAG.sample))
+            // The auth mails (issue #773): private copy, read by `MailCopy` rather than delivered.
             addAll(backendFragmentFiles(AFRAG.mail, shownOn = "the mails the sign-in and invitation flows send"))
         }
 
