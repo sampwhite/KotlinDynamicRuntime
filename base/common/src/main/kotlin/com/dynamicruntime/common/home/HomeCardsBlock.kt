@@ -1,6 +1,7 @@
 package com.dynamicruntime.common.home
 
 import com.dynamicruntime.common.cfact.CFACTS
+import com.dynamicruntime.common.uiblock.UIB
 import com.dynamicruntime.common.uiblock.UiBlockSource
 import com.dynamicruntime.common.uiblock.UiRoute
 import com.dynamicruntime.common.uiblock.uiBlock
@@ -28,6 +29,16 @@ fun homeCardsBlock(): UiBlockSource = uiBlock(
     arrayKeys = mapOf(HCARD.cards to HFLD.id),
 ) {
     items(HCARD.cards) {
+        // What waits on the caller (issue #1637), for anyone signed in: drawn only when something does, ahead of every
+        // other card -- the assistant's included -- since it is what to do next.
+        homeCard(
+            HCARD.waiting, "Waiting on you",
+            "Forms with a step that is yours to take.",
+            jumpLabel = "Waiting on you",
+            kind = HCARD.kindWaitingOnYou,
+            cfactExpression = "${CFACTS.loggedIn},${CFACTS.app}",
+            displayOrder = UIB.orderStep / 10,
+        )
         // An administrator of one client -- the caller "My client" is offered to; every client's administrator gets
         // the oversee card instead.
         homeCard(

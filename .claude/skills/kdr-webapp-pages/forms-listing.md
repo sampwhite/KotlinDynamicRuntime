@@ -132,3 +132,22 @@ the query schema says the same.
 - **A date column's range is two day pickers** (`dayBoundInput`), writing the `yyyy-mm-dd` the bound takes; the
   backend reads a day as the upper bound as the whole day. A bound that does not read as a date (an old link) gets
   the text box instead, so it can be seen and cleared. The number range keeps its text boxes.
+
+## Waiting on you (issue #1637)
+
+The listing's `needsMe` keeps the forms with a step **waiting on the caller**: an engaged workflow whose current task
+is theirs to take. The backend judges it (`WaitingSteps`), from each form's stored state, by the rule the save and
+approve gates apply, narrowed to the person the step names:
+
+- an approval waits on whoever may approve it (by default a reviewer who does not own the form), and its CTA filter;
+- a save whose task names someone (`saveWhen`) waits on whoever that admits, and the filter;
+- a save that names nobody waits on the form's **owner**, not on every administrator its gate would admit.
+
+Each row listed with it carries its `waitingSteps` (the workflow, the task, and what it asks of the caller in words).
+The filter well's **Waiting on you** select (`Only those`, cleared for any) sets it, its chip says `Waiting on you`
+(`needsMeChip`), and Clear removes it. It is drawn for every caller, since each has their own. Home's "Waiting on
+you" card links to this listing (`waitingListingRoute`).
+
+Within the caller's read scope, like every listing: a reviewer who is neither an administrator nor an editor cannot
+list other people's forms, so their reviews do not show here (`deferred-work.md`).
+

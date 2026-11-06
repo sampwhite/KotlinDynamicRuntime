@@ -28,6 +28,13 @@ import web.cssom.ClassName
 fun formStatusChip(applied: Map<String, Any?>): String? =
     FormStatus.fromWire(applied[GDF.formStatus]?.toString())?.let { "Status: ${it.label}" }
 
+/**
+ * The chip for the "waiting on you" filter (issue #1637), `Waiting on you`, or null when it is not applied -- the
+ * listing Home's card links to, which otherwise looks like every form. Pure, and covered under `jsNodeTest`.
+ */
+fun needsMeChip(applied: Map<String, Any?>): String? =
+    "Waiting on you".takeIf { applied[GDF.needsMe]?.toString() == "true" }
+
 /** How long a type-ahead waits after a keystroke before it fetches, so a fast typist makes one call not many. */
 private const val suggestDebounceMs = 200
 
@@ -64,6 +71,14 @@ private fun userPickOptions(picks: List<UserPick>): Array<dynamic> = picks.map {
 
 /** antd `{label, value}` options for a yes-or-no filter (issue #1508): Yes and No, as the column's cells read. */
 private fun yesNoOptions(): Array<dynamic> = listOf("true" to "Yes", "false" to "No").map { (value, label) ->
+    val o: dynamic = js("({})")
+    o.label = label
+    o.value = value
+    o
+}.toTypedArray()
+
+/** antd `{label, value}` options for the "waiting on you" filter (issue #1637): only those, or any (cleared). */
+private fun waitingOptions(): Array<dynamic> = listOf("true" to "Only those").map { (value, label) ->
     val o: dynamic = js("({})")
     o.label = label
     o.value = value
@@ -362,7 +377,7 @@ val FormsSearch = FC<FormsSearchProps> { props ->
     val groups = props.groups
     // The free-text term searches the text fields, so the box is offered only where there is one to search.
     val hasText = groups.any { it.kind == UsageKind.string }
-    val chips = activeFilterChips(groups, props.applied) + listOfNotNull(formStatusChip(props.applied))
+    val chips = activeFilterChips(groups, props.applied) + listOfNotNull(formStatusChip(props.applied), needsMeChip(props.applied))
     val termApplied = props.applied[EI.q]?.toString()?.isNotBlank() == true
     div {
         className = ClassName("row forms-toolbar")
@@ -404,6 +419,17 @@ val FormsSearch = FC<FormsSearchProps> { props ->
                     style = js("({ minWidth: 160 })")
                     onChange = { v -> props.onChange(GDF.formStatus, (v as? String) ?: "") }
                 }
+            }
+        }
+        // Only forms with a step waiting on the caller (issue #1637): every caller's, since each has their own.
+        filterGroup("Waiting on you") {
+            Select {
+                value = props.values[GDF.needsMe]?.ifBlank { null }
+                options = waitingOptions()
+                allowClear = true
+                placeholder = "Any"
+                style = js("({ minWidth: 120 })")
+                onChange = { v -> props.onChange(GDF.needsMe, (v as? String) ?: "") }
             }
         }
         groups.forEach { group ->

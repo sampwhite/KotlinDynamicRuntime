@@ -53,15 +53,26 @@ class HomeCardsTest : StringSpec({
 
     fun idsOf(user: TestUser) = cardsOf(user).map { it[HFLD.id] }
 
+    /** "Waiting on you" as every signed-in caller is sent it (issue #1637): its kind's body says what waits. */
+    val waitingCard = mapOf(
+        HFLD.id to HCARD.waiting,
+        HCARD.title to "Waiting on you",
+        HCARD.text to "Forms with a step that is yours to take.",
+        HCARD.jumpLabel to "Waiting on you",
+        HCARD.kind to HCARD.kindWaitingOnYou,
+    )
+
     "each kind of caller gets the cards for what they do, and nobody else's" {
-        idsOf(TestUser.create(cxt, "cards-member@example.com")) shouldBe emptyList()
-        idsOf(TestUser.create(cxt, "cards-public@example.com", level = ROLE.admin, userClient = CL.public)) shouldBe emptyList()
-        idsOf(TestUser.create(cxt, "cards-admin@example.com", level = ROLE.admin)) shouldBe listOf(HCARD.administer)
+        // Everyone signed in is sent "Waiting on you" first (issue #1637), which Home draws only when something waits.
+        idsOf(TestUser.create(cxt, "cards-member@example.com")) shouldBe listOf(HCARD.waiting)
+        idsOf(TestUser.create(cxt, "cards-public@example.com", level = ROLE.admin, userClient = CL.public)) shouldBe
+            listOf(HCARD.waiting)
+        idsOf(TestUser.create(cxt, "cards-admin@example.com", level = ROLE.admin)) shouldBe listOf(HCARD.waiting, HCARD.administer)
         idsOf(TestUser.create(cxt, "cards-editor@example.com", capabilities = listOf(ROLE.editor), userClient = CL.hub)) shouldBe
-            listOf(HCARD.edit)
-        idsOf(TestUser.createOperator(cxt, "cards-ops@example.com")) shouldBe listOf(HCARD.operate)
+            listOf(HCARD.waiting, HCARD.edit)
+        idsOf(TestUser.createOperator(cxt, "cards-ops@example.com")) shouldBe listOf(HCARD.waiting, HCARD.operate)
         // Every client's administrator oversees them all, and operates the deployment too; "My client" is not theirs.
-        idsOf(TestUser.createFullAdmin(cxt, "cards-root@example.com")) shouldBe listOf(HCARD.oversee, HCARD.operate)
+        idsOf(TestUser.createFullAdmin(cxt, "cards-root@example.com")) shouldBe listOf(HCARD.waiting, HCARD.oversee, HCARD.operate)
         // A visitor who has not signed in gets none.
         cardsIn(TestHttpClient(cxt.instanceConfig).sendJsonGetRequest(HEP.homeUiConfig)[EP.results].toJsonMapOrEmpty()) shouldBe
             emptyList()
@@ -69,6 +80,7 @@ class HomeCardsTest : StringSpec({
 
     "a card is sent whole, its condition and order left behind" {
         cardsOf(TestUser.create(cxt, "cards-shape@example.com", level = ROLE.admin)) shouldBe listOf(
+            waitingCard,
             mapOf(
                 HFLD.id to HCARD.administer,
                 HCARD.title to "Your client",
@@ -105,7 +117,7 @@ class HomeCardsTest : StringSpec({
         factsIn(CL.hub) shouldNotContain CFACTS.selfServeClient
         factsIn(CL.hub) shouldNotContain CFACTS.clientHasSandbox
         // Its administrator is offered the card for administering one client.
-        idsOf(person) shouldBe listOf(HCARD.administer)
+        idsOf(person) shouldBe listOf(HCARD.waiting, HCARD.administer)
     }
 
     "resolving several blocks at once gives each as resolving it alone does" {
@@ -142,9 +154,10 @@ class HomeCardsTest : StringSpec({
 
         val admin = TestUser.create(cxt, "admin@cards1636.test", level = ROLE.admin, userClient = client)
         cardsOf(admin) shouldBe listOf(
+            waitingCard,
             mapOf(HFLD.id to "welcome1636", HCARD.title to "Welcome", HCARD.text to "Start with [the documents](/docs/start-here.md)."),
         )
         // Another client's administrator is unaffected.
-        idsOf(TestUser.create(cxt, "cards-other@example.com", level = ROLE.admin)) shouldBe listOf(HCARD.administer)
+        idsOf(TestUser.create(cxt, "cards-other@example.com", level = ROLE.admin)) shouldBe listOf(HCARD.waiting, HCARD.administer)
     }
 })

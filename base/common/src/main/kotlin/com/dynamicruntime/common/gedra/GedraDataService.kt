@@ -1953,7 +1953,7 @@ class GedraDataService : ServiceInitializer {
         if (rows.isEmpty()) return rows
         val ids = rows.map { gedraService.readId(it[GD.gedraId].toOptStr() ?: "") }
         val states = readStates(cxt, ids, scope)
-        return rows.filterIndexed { i, _ -> test(ids[i], states[ids[i].fullId].orEmpty()) }
+        return rows.filterIndexed { i, row -> test(ids[i], row[PF.userId].toOptLong(), states[ids[i].fullId].orEmpty()) }
     }
 
     /**
@@ -2140,9 +2140,10 @@ class GedraImportResult(val imported: List<GedraImportedDoc>, val discarded: Lis
 
 /**
  * A listing's filter over each row's **state** (issues #695, #792): given the row's id -- whose client says which
- * client's configuration its state is read against -- and its state entries, whether the row stays.
+ * client's configuration its state is read against -- its owner's user id (issue #1637, for a filter that asks whether
+ * the caller is the owner; null when the row carries none), and its state entries, whether the row stays.
  */
-typealias GedraStateFilter = (gedraId: GedraId, states: List<Map<String, Any?>>) -> Boolean
+typealias GedraStateFilter = (gedraId: GedraId, ownerUserId: Long?, states: List<Map<String, Any?>>) -> Boolean
 
 /** One write's `g-visibleWhen` rule over trait data (issue #830); see `GedraDataService.gatedWrite`. */
 interface GatedWrite {

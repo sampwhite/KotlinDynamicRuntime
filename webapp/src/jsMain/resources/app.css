@@ -1542,6 +1542,9 @@ textarea.json-edit.json-field { min-height: 4.5rem; }
     align-items: start;
 }
 .home-card-links { display: flex; flex-wrap: wrap; gap: 4px 16px; }
+/* "Waiting on you" (issue #1637): each form linked to its step, with what the step asks beside it. */
+.home-waiting { margin: 0; padding-left: 18px; }
+.home-waiting li + li { margin-top: 4px; }
 .public-accounts { list-style: none; padding: 0; margin: 8px 0 0; }
 .public-accounts li { display: flex; gap: 12px; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--border); }
 .public-accounts li span { flex: 1; }

@@ -122,6 +122,8 @@ external interface HomeCardsProps : Props {
     var cards: List<HomeCard>
     /** What the assistant's status says, for its card's button ([useAssistantCardView]); null until read. */
     var assistantView: AssistantView?
+    /** What waits on the caller, for the "Waiting on you" card ([useWaitingOnYou]); null until read. */
+    var waiting: WaitingRead?
 }
 
 /**
@@ -141,15 +143,25 @@ val HomeCards = FC<HomeCardsProps> { props ->
                 ASST.cardKind -> assistantCardActionLabel(card, props.assistantView)
                 else -> card.actionLabel
             }
-            homeCardPanel(card, copyLinks, actionLabel)
+            val waiting = props.waiting
+            homeCardPanel(card, copyLinks, actionLabel) {
+                // The forms waiting on the caller (issue #1637), under the card's words.
+                if (card.kind == HCARD.kindWaitingOnYou && waiting != null) waitingCardBody(waiting)
+            }
         }
     }
 }
 
-/** One card's panel: [card]'s words and links, and its primary button reading [actionLabel]. */
-private fun ChildrenBuilder.homeCardPanel(card: HomeCard, copyLinks: (String) -> String, actionLabel: String?) {
+/** One card's panel: [card]'s words, what its kind draws ([live]), its links, and its primary button reading [actionLabel]. */
+private fun ChildrenBuilder.homeCardPanel(
+    card: HomeCard,
+    copyLinks: (String) -> String,
+    actionLabel: String?,
+    live: ChildrenBuilder.() -> Unit = {},
+) {
     panel(homeCardElementId(card.id), card.title) {
         if (card.text.isNotBlank()) Markdown { source = card.text; linkResolver = copyLinks }
+        live()
         if (card.links.isNotEmpty()) {
             nav {
                 className = ClassName("home-card-links")

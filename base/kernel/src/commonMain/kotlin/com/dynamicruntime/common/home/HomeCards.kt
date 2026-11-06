@@ -54,7 +54,16 @@ object HCARD {
      */
     const val kind = "kind"
 
+    /**
+     * The live body of [waiting] (issue #1637): the forms with a step waiting on the caller, read from the forms
+     * listing's `needsMe`, and the card drawn only when there is one.
+     */
+    const val kindWaitingOnYou = "waitingOnYou"
+
     // Core's card ids.
+    /** The forms with a step waiting on the caller (issue #1637), first, since it is what to do next. */
+    const val waiting = "waiting"
+
     /** Administering one client: its page, its users, its reports. */
     const val administer = "administer"
 
