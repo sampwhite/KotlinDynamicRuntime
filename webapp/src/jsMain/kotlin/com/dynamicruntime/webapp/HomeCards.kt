@@ -37,6 +37,8 @@ class HomeCard(
     /** The page the primary button opens, with [actionLabel] its words; null for a card with no button. */
     val actionPage: String?,
     val actionLabel: String?,
+    /** The button's words while what it opens is offered but not yet on ([HCARD.offerLabel]); null for none. */
+    val offerLabel: String?,
     val links: List<HomeCardLinkView>,
     /** The live body the card draws ([HCARD.kind]); null for a card of words alone. */
     val kind: String?,
@@ -44,8 +46,8 @@ class HomeCard(
 
 /**
  * The cards in a home config's `state.cards` (issue #1636). A card with no id is dropped, and so is an action or a link
- * that is not a route, since a card offers somewhere to go; anything else missing reads as empty. Pure, and covered
- * under `jsNodeTest`.
+ * that is not a route, since a card offers somewhere to go, and a link with no words, which would show a page's
+ * internal id; anything else missing reads as empty. Pure, and covered under `jsNodeTest`.
  */
 fun homeCardsFrom(raw: Any?): List<HomeCard> = raw.toJsonListOfMaps().mapNotNull { card ->
     val id = (card[HFLD.id] as? String)?.ifBlank { null } ?: return@mapNotNull null
@@ -56,9 +58,11 @@ fun homeCardsFrom(raw: Any?): List<HomeCard> = raw.toJsonListOfMaps().mapNotNull
         text = card[HCARD.text] as? String ?: "",
         actionPage = action?.page,
         actionLabel = (card[HCARD.actionLabel] as? String)?.ifBlank { null },
+        offerLabel = (card[HCARD.offerLabel] as? String)?.ifBlank { null },
         links = card[HCARD.links].toJsonListOfMaps().mapNotNull { link ->
             val page = (parseUiAction(link[UIB.action]) as? UiRoute)?.page ?: return@mapNotNull null
-            HomeCardLinkView(link[HCARD.linkLabel] as? String ?: page, page)
+            val label = (link[HCARD.linkLabel] as? String)?.ifBlank { null } ?: return@mapNotNull null
+            HomeCardLinkView(label, page)
         },
         kind = (card[HCARD.kind] as? String)?.ifBlank { null },
     )
@@ -68,14 +72,13 @@ fun homeCardsFrom(raw: Any?): List<HomeCard> = raw.toJsonListOfMaps().mapNotNull
 fun homeCardElementId(id: String): String = "home.card.$id"
 
 /**
- * The primary button's words for the assistant's card (issue #1636), from what the assistant's status says: while it
- * is off and the person may switch it on, the button says so -- it still opens the page, whose panel does it. Null
- * keeps the card's own words. Pure, and covered under `jsNodeTest`.
+ * The primary button's words for the assistant's [card] (issue #1636), from what the assistant's status says ([view],
+ * null until read): while it is off and the person may switch it on, the card's [HomeCard.offerLabel] -- the button
+ * still opens the page, whose panel switches it on -- and otherwise the card's own words. Pure, and covered under
+ * `jsNodeTest`.
  */
-fun assistantCardActionLabel(view: AssistantView): String? = when (view) {
-    AssistantView.switchOn -> "Switch on the assistant"
-    else -> null
-}
+fun assistantCardActionLabel(card: HomeCard, view: AssistantView?): String? =
+    if (view == AssistantView.switchOn) card.offerLabel ?: card.actionLabel else card.actionLabel
 
 external interface HomeCardsProps : Props {
     var cards: List<HomeCard>
@@ -87,9 +90,10 @@ external interface HomeCardsProps : Props {
  * config -- and may change its button or draw more; one the page does not know is drawn from its words alone.
  */
 val HomeCards = FC<HomeCardsProps> { props ->
-    if (props.cards.isEmpty()) return@FC
-    // The copy's links, as the home page's intro resolves them: a document, a page, or a section of this page.
+    // The copy's links, as the home page's intro resolves them: a document, a page, or a section of this page. Read
+    // before anything returns, so the hooks this calls are the same however many cards there are.
     val copyLinks = useShellFacts().copyLinkResolver()
+    if (props.cards.isEmpty()) return@FC
     div {
         className = ClassName("home-cards")
         for (card in props.cards) {
@@ -111,10 +115,11 @@ private fun ChildrenBuilder.homeCardPanel(card: HomeCard, copyLinks: (String) ->
         if (card.links.isNotEmpty()) {
             nav {
                 className = ClassName("home-card-links")
-                for (link in card.links) {
+                // Keyed by place: two links may open the same page, and the list is only ever replaced whole.
+                for ((index, link) in card.links.withIndex()) {
                     // An in-app link: a plain click is followed without a reload, a ctrl-click opens a tab.
                     a {
-                        key = link.page.unsafeCast<Key>()
+                        key = index.toString().unsafeCast<Key>()
                         href = routeHref(listOf(HP.page to link.page))
                         +link.label
                     }
@@ -141,7 +146,7 @@ private external interface AssistantHomeCardProps : Props {
 
 /**
  * The workflow assistant's card (issue #1636): its words, and a button whose words follow the assistant's status --
- * "Switch on the assistant" while it is off and the person may switch it on. Read once as the card is drawn; until it
+ * the card's offer label while it is off and the person may switch it on. Read once as the card is drawn; until it
  * answers, or if it cannot be read, the card's own words stand.
  */
 private val AssistantHomeCard = FC<AssistantHomeCardProps> { props ->
@@ -154,5 +159,5 @@ private val AssistantHomeCard = FC<AssistantHomeCardProps> { props ->
             view = assistantViewOf(result.valueOrNull(), failed = result.failureOrNull() != null)
         }
     }
-    homeCardPanel(props.card, copyLinks, view?.let { assistantCardActionLabel(it) } ?: props.card.actionLabel)
+    homeCardPanel(props.card, copyLinks, assistantCardActionLabel(props.card, view))
 }

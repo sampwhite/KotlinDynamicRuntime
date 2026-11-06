@@ -113,6 +113,8 @@ class AssistantComponent : ComponentDefinition {
                     "Describe the forms and workflows you want in your own words, and the assistant drafts them in your " +
                         "client's sandbox, for you to try there and publish when they are right.",
                     action = UiRoute(ASST.page), actionLabel = "Open the workflow assistant",
+                    // While it is off and the person may switch it on: the page opens on that panel.
+                    offerLabel = "Switch on the assistant",
                     kind = ASST.cardKind,
                     cfactExpression = "${CFACTS.administersClient},${ASST.usableCFact},${CFACTS.app}",
                     displayOrder = UIB.orderStep / 2,

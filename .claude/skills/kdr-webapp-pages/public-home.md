@@ -94,11 +94,15 @@ none of its own.
   the assistant to self-serve clients. The create card asks whether that card was sent (`ownClientAssistantOffered`)
   and then says the page moves to the assistant once the client is made.
 - **A card with a `kind`** reads what it needs when it is drawn, never in the polled shell config. The assistant's
-  (`ASST.cardKind`) reads the assistant's status, and its button says "Switch on the assistant" while the person may
-  switch it on (`assistantCardActionLabel`); until the read answers, or if it fails, the card's own words stand. A kind
-  the page does not know draws the card's words alone.
-- **A card goes somewhere and never calls**: an action or a link that is not a route is dropped as it is read
-  (`homeCardsFrom`). Each card's element id is `home.card.<id>` (`homeCardElementId`), so an address can name it.
+  (`ASST.cardKind`) reads the assistant's status, and while the person may switch it on its button reads the card's
+  `offerLabel` ("Switch on the assistant", `assistantCardActionLabel`) -- in the card, so an overlay rewords it with
+  the rest; until the read answers, or if it fails, the card's own words stand. A kind the page does not know draws
+  the card's words alone.
+- **A card goes somewhere and never calls**: an action or a link that is not a route is dropped as it is read, and so
+  is a link with no words, rather than show a page's internal id (`homeCardsFrom`). Each card's element id is
+  `home.card.<id>` (`homeCardElementId`), so an address can name it.
+- **The shell config resolves the menu and the cards together** (`UiBlockService.resolveAll`), so the caller's cfacts
+  are assembled once per read of the polled config, not once per block.
 - The cards sit side by side where the page is wide enough (`.home-cards`).
 
 ## The public home page (issue #1324)

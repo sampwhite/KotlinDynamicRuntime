@@ -127,6 +127,10 @@ fun homeSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.home") {
         property(HCARD.text, "The card's body, as Markdown.")
         property(UIB.action, "The frontend page id the card's primary button opens (a route).") { anyValue() }
         property(HCARD.actionLabel, "The words on the card's primary button.")
+        property(
+            HCARD.offerLabel,
+            "The primary button's words while what the card opens is offered but not yet on, for a card whose kind knows.",
+        )
         property(HCARD.links, "Further links, drawn under the card's text.") {
             type = SCT.array
             items { ref(HTYPE.homeCardLink) }
@@ -327,8 +331,10 @@ fun homeSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.home") {
             ),
             UIC.state to buildMap {
                 put(HFLD.links, homeLinksFor(c))
-                put(HFLD.menu, resolvedMenu(c))
-                put(HCARD.cards, resolvedHomeCards(c))
+                // The menu and the cards together, so the caller's cfacts are assembled once for both (issue #1636).
+                val blocks = UiBlockService.get(c).resolveAll(c, listOf(HMENU.block, HCARD.block))
+                put(HFLD.menu, blocks[HMENU.block]?.get(HFLD.menu) as? List<*> ?: emptyList<Any?>())
+                put(HCARD.cards, blocks[HCARD.block]?.get(HCARD.cards) as? List<*> ?: emptyList<Any?>())
                 put(HFLD.userInfo, c.userProfile.toUserInfo())
                 // The switcher's list rides the shell config (issue #749), which the bar already re-reads on
                 // every refresh generation -- a sign-in, a switch -- so it needs no fetch of its own. An edge
@@ -588,10 +594,6 @@ fun homeMenuBlock(): UiBlockSource = uiBlock(
             cfactExpression = "${CFACTS.isEnvDebug},${CFACTS.app}", parentId = HMENU.debug)
     }
 }
-
-/** [HMENU.block] resolved for this caller: the items their cfacts satisfy, in display order. */
-private fun resolvedMenu(cxt: KdrCxt): List<Any?> =
-    (UiBlockService.get(cxt).resolve(cxt, HMENU.block)?.get(HFLD.menu) as? List<*>) ?: emptyList()
 
 /** A layout toggle from the deployment's instance config, or [default] when it is not configured. */
 private fun KdrCxt.layoutFlag(key: String, default: Boolean): Boolean =

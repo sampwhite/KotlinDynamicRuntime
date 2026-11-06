@@ -109,16 +109,25 @@ class UiBlockService : ServiceInitializer {
      * [blockId] as this caller should see it: merged for their client, with everything their cfacts do not
      * satisfy removed. Null when nothing registers the block.
      */
-    fun resolve(cxt: KdrCxt, blockId: String, targetFacts: Set<String> = emptySet()): Map<String, Any?>? {
-        val merged = merged(cxt, blockId, cxt.client)
-        if (!merged.found) {
-            return null
-        }
-        val client = merged.client
-        val registry = SchemaService.get(cxt).cfactsFor(client)
-        val present = registry.assemble(cxt, targetFacts)
-        return filterByCFacts(merged.content, present) { expression ->
-            predicateCache.getOrPut("${client ?: ""}|$expression") { parseCFactOrAlways(expression, registry.names) }
+    fun resolve(cxt: KdrCxt, blockId: String, targetFacts: Set<String> = emptySet()): Map<String, Any?>? =
+        resolveAll(cxt, listOf(blockId), targetFacts)[blockId]
+
+    /**
+     * Each of [blockIds] as this caller should see it, as [resolve] gives one (issue #1636) -- the caller's cfacts
+     * assembled once for every block merged for the same client, rather than once per block. What a response carrying
+     * several blocks reads them through: the shell config, which is polled, carries the menu and the home cards.
+     */
+    fun resolveAll(cxt: KdrCxt, blockIds: List<String>, targetFacts: Set<String> = emptySet()): Map<String, Map<String, Any?>?> {
+        val presentByClient = mutableMapOf<String?, Set<String>>()
+        return blockIds.associateWith { blockId ->
+            val merged = merged(cxt, blockId, cxt.client)
+            if (!merged.found) return@associateWith null
+            val client = merged.client
+            val registry = SchemaService.get(cxt).cfactsFor(client)
+            val present = presentByClient.getOrPut(client) { registry.assemble(cxt, targetFacts) }
+            filterByCFacts(merged.content, present) { expression ->
+                predicateCache.getOrPut("${client ?: ""}|$expression") { parseCFactOrAlways(expression, registry.names) }
+            }
         }
     }
 

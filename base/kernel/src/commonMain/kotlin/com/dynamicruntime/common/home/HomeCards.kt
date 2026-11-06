@@ -27,6 +27,13 @@ object HCARD {
     /** The words on a card's primary button, beside its [UIB.action] (a route). */
     const val actionLabel = "actionLabel"
 
+    /**
+     * The words on a card's primary button while what it opens is offered but not yet on -- the workflow assistant's
+     * "Switch on the assistant" -- read by a card whose [kind] knows that state. In the card, beside [actionLabel], so a
+     * client's overlay rewords it with the rest of the card.
+     */
+    const val offerLabel = "offerLabel"
+
     /** A card's further links, each a [linkLabel] and a [UIB.action] (a route), drawn under its text. */
     const val links = "links"
 
@@ -70,6 +77,8 @@ fun UiBlockItemsBuilder.homeCard(
     /** The page the card's primary button opens; [actionLabel] says what it reads. */
     action: UiRoute? = null,
     actionLabel: String? = null,
+    /** The button's words while what it opens is offered but not yet on ([HCARD.offerLabel]), for a card whose kind knows. */
+    offerLabel: String? = null,
     /** Further links, drawn under the text; replaced whole by an overlay that names them. */
     links: List<HomeCardLink>? = null,
     /** The live body the card draws ([HCARD.kind]). */
@@ -85,6 +94,7 @@ fun UiBlockItemsBuilder.homeCard(
         if (text != null) set(HCARD.text, text)
         if (action != null) set(UIB.action, action.toJson())
         if (actionLabel != null) set(HCARD.actionLabel, actionLabel)
+        if (offerLabel != null) set(HCARD.offerLabel, offerLabel)
         if (links != null) {
             set(HCARD.links, links.map { mapOf(HCARD.linkLabel to it.label, UIB.action to it.action.toJson()) })
         }

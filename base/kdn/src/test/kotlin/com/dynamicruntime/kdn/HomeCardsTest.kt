@@ -24,6 +24,7 @@ import com.dynamicruntime.common.http.request.TestHttpClient
 import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.startup.SchemaService
 import com.dynamicruntime.common.uiblock.UIB
+import com.dynamicruntime.common.uiblock.UiBlockService
 import com.dynamicruntime.common.user.AEP
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.util.toJsonListOfMaps
@@ -104,6 +105,16 @@ class HomeCardsTest : StringSpec({
         factsIn(CL.hub) shouldNotContain CFACTS.clientHasSandbox
         // Its administrator is offered the card for administering one client.
         idsOf(person) shouldBe listOf(HCARD.administer)
+    }
+
+    "resolving several blocks at once gives each as resolving it alone does" {
+        val admin = cxt.mkSubContext("cardsResolve", CL.hub)
+        admin.userProfile = UserProfile(authId = "someone", roles = setOf(ROLE.user, ROLE.admin), client = CL.hub)
+        val service = UiBlockService.get(cxt)
+        val both = service.resolveAll(admin, listOf(HMENU.block, HCARD.block, "noSuchBlock1636"))
+        both[HMENU.block] shouldBe service.resolve(admin, HMENU.block)
+        both[HCARD.block] shouldBe service.resolve(admin, HCARD.block)
+        both["noSuchBlock1636"] shouldBe null
     }
 
     "a client hides a card and adds one of its own, as it changes its menu" {

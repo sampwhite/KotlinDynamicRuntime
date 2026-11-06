@@ -56,11 +56,39 @@ class HomeCardsTest {
     }
 
     @Test
-    fun theAssistantsButtonSaysSwitchOnOnlyWhileThePersonMaySwitchItOn() {
-        assertEquals("Switch on the assistant", assistantCardActionLabel(AssistantView.switchOn))
-        for (view in AssistantView.entries.filter { it != AssistantView.switchOn }) {
-            assertNull(assistantCardActionLabel(view), "$view keeps the card's own words")
+    fun theAssistantsButtonSaysTheCardsOfferOnlyWhileThePersonMaySwitchItOn() {
+        val card = homeCardsFrom(
+            listOf(
+                mapOf(
+                    HFLD.id to ASST.homeCard, UIB.action to ASST.page, HCARD.actionLabel to "Open it",
+                    HCARD.offerLabel to "Switch it on", HCARD.kind to ASST.cardKind,
+                ),
+            ),
+        ).single()
+        assertEquals("Switch it on", assistantCardActionLabel(card, AssistantView.switchOn))
+        for (view in AssistantView.entries.filter { it != AssistantView.switchOn } + null) {
+            assertEquals("Open it", assistantCardActionLabel(card, view), "$view keeps the card's own words")
         }
+        // A card an overlay left without an offer keeps its own words throughout.
+        val plain = homeCardsFrom(listOf(mapOf(HFLD.id to ASST.homeCard, UIB.action to ASST.page, HCARD.actionLabel to "Open it"))).single()
+        assertEquals("Open it", assistantCardActionLabel(plain, AssistantView.switchOn))
+    }
+
+    @Test
+    fun aLinkWithNoWordsIsLeftOffRatherThanShowingAPageId() {
+        val card = homeCardsFrom(
+            listOf(
+                mapOf(
+                    HFLD.id to "c",
+                    HCARD.links to listOf(
+                        mapOf(UIB.action to HMENU.pageBootChecks),
+                        mapOf(HCARD.linkLabel to " ", UIB.action to HMENU.pageEnv),
+                        mapOf(HCARD.linkLabel to "Users", UIB.action to HMENU.pageUsers),
+                    ),
+                ),
+            ),
+        ).single()
+        assertEquals(listOf("Users"), card.links.map { it.label })
     }
 
     @Test

@@ -1,8 +1,6 @@
 package com.dynamicruntime.common.home
 
 import com.dynamicruntime.common.cfact.CFACTS
-import com.dynamicruntime.common.context.KdrCxt
-import com.dynamicruntime.common.uiblock.UiBlockService
 import com.dynamicruntime.common.uiblock.UiBlockSource
 import com.dynamicruntime.common.uiblock.UiRoute
 import com.dynamicruntime.common.uiblock.uiBlock
@@ -71,7 +69,3 @@ fun homeCardsBlock(): UiBlockSource = uiBlock(
         )
     }
 }
-
-/** [HCARD.block] resolved for this caller: the cards their cfacts satisfy, in display order. */
-fun resolvedHomeCards(cxt: KdrCxt): List<Any?> =
-    (UiBlockService.get(cxt).resolve(cxt, HCARD.block)?.get(HCARD.cards) as? List<*>) ?: emptyList()
