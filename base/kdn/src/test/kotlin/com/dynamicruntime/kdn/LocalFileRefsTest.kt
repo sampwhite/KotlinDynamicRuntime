@@ -1185,7 +1185,10 @@ class LocalFileRefsTest : StringSpec({
         // restore or an older release could leave it.
         svc.writeConfig(
             writerOf(client),
-            gedraConfig(cxt, "over", clientNamespace(client), client, GedraConfigOrigin.stored) { fileRef("crest", "abc") },
+            gedraConfig(cxt, "over", clientNamespace(client), client, GedraConfigOrigin.stored) {
+                fileRef("crest", "abc")
+                overridesCode("crest")
+            },
             trial = false,
         )
         svc.publish(writerOf(client), listOf(GedraId.of(GedraConfigType.configDoc, client, "over")))

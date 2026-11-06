@@ -44,6 +44,19 @@ object CCT {
     /** One file ref -- a named file of the client's, by where its bytes are -- keyed by its ref id (issues #1153, #1154). */
     const val fileRefDef = "kdr:fileRefDef"
 
+    // --- what a stored entry says of the code it stands over (issue #1634) ---
+
+    /**
+     * On a stored entry of a keyed slot: that it stands over the code layer's entry with the same key -- the template's
+     * copies, the client's own code, a sandbox's code -- the one value being [overridesCodeValue]. Without it, a stored
+     * entry whose key matches a code entry is refused at write, and loads as it always has, with an issue saying to
+     * mark it. A plain field rather than a `$` note, which a request drops and a stored entry may not hold.
+     */
+    const val overrides = "overrides"
+
+    /** The one value [overrides] takes: the entry stands over the code's. */
+    const val overridesCodeValue = "code"
+
     // --- field names inside the slots' data (each matches its value) ---
 
     const val traitId = "traitId"

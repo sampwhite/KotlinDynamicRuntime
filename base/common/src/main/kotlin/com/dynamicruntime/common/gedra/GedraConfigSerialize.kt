@@ -104,8 +104,24 @@ fun gedraConfigToEntries(config: GedraConfig, shownAsRun: Boolean = false): Map<
     // One entry an id: a slot holds one entry per key, and a row edited by hand to hold an id twice would otherwise
     // be unwritable until one was removed. The first is the one a load keeps, so it is the one written back.
     out[CCT.fileRefDef] = config.fileRefs.distinctBy { it.refId }.map { it.toEntry() }
+    // Each entry the config marks to stand over code (issue #1634) carries the mark, as the stored entry says it.
+    if (!config.overridesCode.isEmpty) markOverCode(out, config.overridesCode)
     // Drop empty slots so a row holds only the pieces the config actually has.
     return out.filterValues { it.isNotEmpty() }
+}
+
+/** Marks each entry of [out] that [keys] hold, by its slot's key, `"overrides": "code"` (issue #1634). */
+private fun markOverCode(out: MutableMap<String, List<Map<String, Any?>>>, keys: ConfigKeys) {
+    fun marked(slot: String, holds: (Map<String, Any?>) -> Boolean) {
+        out[slot]?.let { entries -> out[slot] = entries.map { if (holds(it)) it + (CCT.overrides to CCT.overridesCodeValue) else it } }
+    }
+    marked(CCT.traitDef) { it[CCT.traitId] in keys.traits }
+    marked(CCT.schemaDef) { it[CCT.typeName] in keys.types }
+    marked(CCT.cfactDef) { it[CCT.name] in keys.cfacts }
+    marked(CCT.workflowDef) { it[CCT.workflowId] in keys.workflows }
+    marked(CCT.reportDef) { it[CCT.reportId] in keys.reports }
+    marked(CCT.fileRefDef) { it[CCT.refId] in keys.fileRefs }
+    if (keys.usages) marked(CCT.usageDef) { true }
 }
 
 /**
@@ -247,6 +263,11 @@ fun reassembleGedraConfig(
     }
     // Forgiving, as a report is: a ref that is no good costs only itself, and it is the load that says so.
     entriesBySlot[CCT.fileRefDef]?.forEach { fileRefFromMap(it) }
+}.let { config ->
+    // What its entries mark to stand over code (issue #1634): read here, so a write stores the marks it was given and a
+    // load reads them back.
+    val marked = CodeOverrides.markedKeys(config, entriesBySlot)
+    if (marked.isEmpty) config else config.copy(overridesCode = marked)
 }
 
 /** The qualified names of every type a config's traits **generate** -- the entry types, and the inline data types. */

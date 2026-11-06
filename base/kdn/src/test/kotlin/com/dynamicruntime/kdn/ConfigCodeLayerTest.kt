@@ -1,19 +1,20 @@
 package com.dynamicruntime.kdn
 
 import com.dynamicruntime.common.context.ENV
+import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.gedra.CCT
 import com.dynamicruntime.common.gedra.CFEP
 import com.dynamicruntime.common.gedra.ClientAudience
 import com.dynamicruntime.common.gedra.ClientDef
 import com.dynamicruntime.common.gedra.ClientUsageType
+import com.dynamicruntime.common.gedra.ConfigCodeLayer
 import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.gedra.GED
+import com.dynamicruntime.common.gedra.GT
 import com.dynamicruntime.common.gedra.GedraConfigBuilder
 import com.dynamicruntime.common.gedra.GedraConfigReload
 import com.dynamicruntime.common.gedra.GedraConfigService
 import com.dynamicruntime.common.gedra.GedraDataType
-import com.dynamicruntime.common.gedra.GT
-import com.dynamicruntime.common.gedra.ConfigCodeLayer
 import com.dynamicruntime.common.gedra.GedraEditAction
 import com.dynamicruntime.common.gedra.TemplateReplacement
 import com.dynamicruntime.common.gedra.gedraConfig
@@ -31,6 +32,7 @@ import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldContain
 
 /**
  * The bundle editor's code layer (issue #1616): a client's own code bundles and its template's copies on the editor's
@@ -98,6 +100,7 @@ class ConfigCodeLayerTest : StringSpec({
         store(client) {
             trait("DataNoteEntry", "tplNote", setOf(GedraDataType.formDoc), "The client's note.") { property("memo", "A memo.") }
             report("notes", "Memos") { column("memo", "Memo", "form.tplNote.memo") }
+            overridesCode("tplNote", "notes")
         }
         val editor = admin(client).getItem(CFEP.editor)
         // A stored client has no code of its own: only the template's copy, cut to what the client stores.
@@ -114,6 +117,7 @@ class ConfigCodeLayerTest : StringSpec({
         val client = "codelayerkind"
         store(client, template = ExtensionTemplateComponent.publicTemplate) {
             workflow("myCreate", WfEntry.creation) { task("n", "Name it") { trait(GT.name); save("c", "Create") } }
+            overridesCode("myCreate")
         }
         val found = admin(client).getItem(CFEP.editor)[CFEP.replacements].toJsonListOfMaps().single()
         "${found[CFEP.name]}/${found[CFEP.slot]}/${found[CFEP.key]}" shouldBe "main/${CCT.workflowDef}/{workflowId=myCreate}"
@@ -137,14 +141,36 @@ class ConfigCodeLayerTest : StringSpec({
             ),
         )[CFEP.replacements].toJsonListOfMaps()
 
-        fun flowEntry(id: String) = gedraConfigToEntries(
+        fun flowEntry(id: String, overCode: Boolean = false) = gedraConfigToEntries(
             gedraConfig(cxt, "flows", "${clientNamespace(client)}.flows", client) {
                 workflow(id, WfEntry.normal) { task("a", "Only A") { trait("tplNote"); save("s", "Save", WfSaveKind.edit) } }
+                if (overCode) overridesCode(id)
             },
         ).getValue(CCT.workflowDef).single()
 
-        // The template's workflow, restated under its id: the patch would replace the template's whole.
-        val found = dryRun(CCT.workflowDef, flowEntry("tplFlow"))
+        // Unmarked, the template's workflow restated under its id is refused (issue #1634), saying where the code's is.
+        val refused = chief.expectError(
+            EXC.badInput, CFEP.bundlePatch,
+            mapOf(
+                CFEP.configs to listOf(
+                    mapOf(
+                        CFEP.name to "flows",
+                        CFEP.edits to listOf(
+                            mapOf(
+                                CFEP.slot to CCT.workflowDef, GED.action to GedraEditAction.addOrReplace.name,
+                                GE.data to flowEntry("tplFlow"),
+                            ),
+                        ),
+                    ),
+                ),
+                CFEP.dryRun to true,
+            ),
+        ).toString()
+        refused shouldContain "holds workflow 'tplFlow', which template '$tpl''s 'base' also declares"
+        refused shouldContain "\"${CCT.overrides}\": \"${CCT.overridesCodeValue}\""
+
+        // Marked, the patch would replace the template's whole, and the dry run says so.
+        val found = dryRun(CCT.workflowDef, flowEntry("tplFlow", overCode = true))
         found.map { "${it[CFEP.name]}/${it[CFEP.slot]}/${it[CFEP.key]}" } shouldContainExactly
             listOf("flows/${CCT.workflowDef}/{workflowId=tplFlow}")
         found.single()[CFEP.templateEntries].toJsonListOfMaps().single()[CCT.workflowId] shouldBe "tplFlow"
@@ -158,6 +184,7 @@ class ConfigCodeLayerTest : StringSpec({
         // The field keeps the template's name, so the template's `notes` report still reads it.
         store(client) {
             trait("MoveNoteEntry", "tplNote", setOf(GedraDataType.formDoc), "The client's note.") { property("note", "A note.") }
+            overridesCode("tplNote")
         }
         val chief = admin(client)
         val note = chief.getItem(CFEP.bundle, mapOf(CFEP.name to "main"))[CFEP.slots].toJsonMapOrEmpty()[CCT.traitDef]

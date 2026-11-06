@@ -206,6 +206,7 @@ object GedraConfigTrial {
         previous.forEach { scratch.removeGedraConfig(it) }
         val taken = mutableListOf<GedraConfig>()
         val ignored = mutableListOf<GedraConfigIssue>()
+        val readable = mutableListOf<GedraConfig>()
         for (row in rows) {
             val config = try {
                 loader.toConfig(tcxt, row)
@@ -223,6 +224,15 @@ object GedraConfigTrial {
             // none -- so a row that holds one carried it from a newer release, and refusing the write for that
             // would make every edit on an older node fail until the release reached it.
             loader.unreadEntryIssues(config).forEach { reportConfigProblem(tcxt, it, ignored) }
+            readable.add(config)
+        }
+        // Judged against the client's code, and the code cut by what the revisions stand over, as the reload does (issue
+        // #1634): an unmarked entry matching a code entry, or a marked one with nothing under it, is a problem the write
+        // brings, so it is refused. The scratch copy's cuts are dropped with it.
+        val definition = readable.firstNotNullOfOrNull { c -> c.client?.takeIf { it.clientId == client } } ?: sourceClients[client]
+        val judged = CodeOverrides.judge(tcxt, readable, loader.codeLayerOf(scratch, client, definition), ignored)
+        if (!isSandboxClient(client)) loader.cutSource(scratch, client, judged.over, loader.sourceCutsFor(client))
+        for (config in judged.stored) {
             if (scratch.addGedraConfig(tcxt, config)) taken.add(config)
         }
         // The template's copy, remade as the reload remakes it (issue #945): a trial keeping the copy the client runs

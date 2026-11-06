@@ -93,6 +93,8 @@ object SandboxConfigs {
             fileRefs = config.fileRefs,
             origin = config.origin,
             inheritedFrom = config.inheritedFrom,
+            // What its marked entries stand over (issue #1634), judged against the sandbox's code as it is built.
+            overridesCode = config.overridesCode,
         )
     }
 

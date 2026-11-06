@@ -568,6 +568,25 @@ class GedraConfigCollector {
         return true
     }
 
+    /**
+     * Puts [replacement] in [held]'s place (issue #1634): the same config id, at the same point in contribution order,
+     * so "first declaration wins" reads as it did. Unchecked, and only for a replacement that is [held] with definitions
+     * taken out -- a client's code cut to what its stored entries stand over -- or the original put back, so nothing it
+     * holds is new. Returns whether [held] was the config kept under its id.
+     */
+    fun replace(held: GedraConfig, replacement: GedraConfig): Boolean {
+        if (configsById[held.gedraId.fullId] !== held || replacement.gedraId.fullId != held.gedraId.fullId) return false
+        for (traitId in held.traits.keys) {
+            val key = TraitKey(held.gedraId.client, traitId)
+            if (traitConfigs[key]?.gedraId == held.gedraId) {
+                traitOwners.remove(key); traitConfigs.remove(key)
+            }
+        }
+        // The id stays in the map, so `keep` writes over it where it stands.
+        keep(replacement)
+        return true
+    }
+
     private fun keep(config: GedraConfig) {
         configsById[config.gedraId.fullId] = config
         namespaceOwners.putIfAbsent(config.namespace, config.namespaceClaimant)

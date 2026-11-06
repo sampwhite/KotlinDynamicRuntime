@@ -139,6 +139,7 @@ class ClientTemplateInheritanceTest : StringSpec({
                     ),
                 )
                 trait("OwnNoteEntry", "pubNote", setOf(GedraDataType.formDoc), "The client's own note.") { property("memo", "A memo.") }
+                overridesCode("pubNote")
             },
         )
         svc.publish(setup, listOf(GedraId.of(GedraConfigType.configDoc, client, "main")))

@@ -5,6 +5,7 @@ import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.filestore.FileStoreService
 import com.dynamicruntime.common.gedra.CCT
+import com.dynamicruntime.common.gedra.CodeOverrides
 import com.dynamicruntime.common.gedra.ClientStoredEdit
 import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.gedra.GedraConfigRow
@@ -434,7 +435,9 @@ object ClientFileRefEdit {
         val out = LinkedHashMap<String, List<Map<String, Any?>>>(current)
         val entries = current[CCT.fileRefDef].orEmpty().toMutableList()
         val at = entries.indexOfFirst { it[CCT.refId].toOptStr() == refId }
-        ClientStoredEdit.storeEntry(out, CCT.fileRefDef, entries, at, entry.orEmpty(), emptied = entry == null)
+        // A ref over one the client was shipped with stands over the code's (issue #1634), and says so.
+        val marked = entry?.let { CodeOverrides.markedIfOverCode(bound, row.client, CCT.fileRefDef, it) }
+        ClientStoredEdit.storeEntry(out, CCT.fileRefDef, entries, at, marked.orEmpty(), emptied = entry == null)
         out
     } }.single()
 
