@@ -572,6 +572,7 @@ class WfApproval(
     /** The rule the approve endpoint judges by: [approveWhen], or [defaultApproveWhen]. */
     val effectiveApproveWhen: String get() = approveWhen ?: defaultApproveWhen
 
+    @Suppress("ConstPropertyName")
     companion object {
         /**
          * Who may approve when an approval does not say (issues #787, #1595): a reviewer -- whom the task's

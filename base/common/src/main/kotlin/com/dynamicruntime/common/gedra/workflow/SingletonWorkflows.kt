@@ -80,7 +80,11 @@ object SingletonWorkflows {
                         CTAK.of(data[WFS.ctaKeyword].toOptStr())?.let { add(it.workflowCfact) }
                     }
                     out[WFS.ctaTask] = task.id
-                    out[SWF.actionText] = actionText(task, callerFacts + taskFacts + viewerFacts, cfacts::parse, ::label)
+                    out[SWF.actionText] = actionText(task, buildSet {
+                        addAll(callerFacts)
+                        addAll(taskFacts)
+                        addAll(viewerFacts)
+                    }, cfacts::parse, ::label)
                     // A reviewer of the current work, as the owner-only rule asks it: the functions' reviewer, and the rule.
                     out[SWF.isReviewer] = WFC.reviewer in viewerFacts && passes
                 }

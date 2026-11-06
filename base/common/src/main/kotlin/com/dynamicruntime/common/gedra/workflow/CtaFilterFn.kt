@@ -93,7 +93,11 @@ fun WfTask.ctaFilterFns(): List<CtaFilterFn> =
  * a listing can evaluate without the form's data or state.
  */
 fun personFactNames(requestNames: Set<String>, task: WfTask): Set<String> =
-    requestNames + RCF.all + task.viewerCfactsFns().flatMap { it.emittedCfacts }
+    buildSet {
+        addAll(requestNames)
+        addAll(RCF.all)
+        task.viewerCfactsFns().flatMapTo(this) { it.emittedCfacts }
+    }
 
 /**
  * Why [filter] cannot be a CTA filter, or null when it can (issue #1594): it parses against [declared], the cfacts its

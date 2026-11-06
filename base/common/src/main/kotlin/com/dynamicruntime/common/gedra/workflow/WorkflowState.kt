@@ -294,9 +294,11 @@ object WorkflowStateDeriver : GedraStateDeriver {
         fun keywordOf(workflowId: String): CtaKeyword? = CTAK.of(ctas[workflowId]?.third?.keyword)
         // Each declared workflow's own cfacts: its functions', its approvals', and its CTA keyword's (`kdr:ctaReview`).
         val own = declared.mapValues { (id, w) ->
-            runCfactCalc(cxt, w.def, state.row.entries, state.row.client) +
-                WorkflowApprovals.cfacts(w.def, approvals.getValue(id)) +
-                listOfNotNull(keywordOf(id)?.workflowCfact)
+            buildSet {
+                addAll(runCfactCalc(cxt, w.def, state.row.entries, state.row.client))
+                addAll(WorkflowApprovals.cfacts(w.def, approvals.getValue(id)))
+                addAll(listOfNotNull(keywordOf(id)?.workflowCfact))
+            }
         }
         // The singletons an engaged workflow contributes: what its rules emit over its current cfacts, and the status its
         // CTA keyword sets (`review` sets Needs Review) -- the one way a form comes to need review. A frozen workflow

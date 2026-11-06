@@ -1,7 +1,6 @@
 package com.dynamicruntime.sample.gedra
 
 import com.dynamicruntime.common.content.UIC
-import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.endpoint.clientPath
 import com.dynamicruntime.common.gedra.GDF
 import com.dynamicruntime.common.gedra.GE
