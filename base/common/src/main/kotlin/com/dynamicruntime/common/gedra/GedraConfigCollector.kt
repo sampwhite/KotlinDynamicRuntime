@@ -710,7 +710,11 @@ class GedraConfigCollector {
         // its namespace is under -- whoever owns `abc` owns every `abc:` name of every kind. Judged before the
         // uniqueness check below, which is what keeps that check's cross-owner arm unreachable.
         if (config.gedraId.client == GID.globalClient) {
-            globalNamesProblem(config, config.traits.keys + stateTraits.keys + configTraits.keys)?.let { why ->
+            globalNamesProblem(config, buildSet {
+                addAll(config.traits.keys)
+                addAll(stateTraits.keys)
+                addAll(configTraits.keys)
+            })?.let { why ->
                 return config.issue(
                     "Gedra config '${config.gedraId}' declares a global name it may not. $why",
                     "Dropping '${config.gedraId}' and its $traitCount trait(s).",
@@ -723,7 +727,11 @@ class GedraConfigCollector {
         // a client's is bare and a global one rooted, both judged above. So a stored entry's trait id resolves
         // unambiguously against the client of the gedra that holds it, and no release adding a global trait can take
         // an id some client already uses.
-        for (traitId in config.traits.keys + stateTraits.keys + configTraits.keys) {
+        for (traitId in buildSet {
+            addAll(config.traits.keys)
+            addAll(stateTraits.keys)
+            addAll(configTraits.keys)
+        }) {
             val held = traitHolder(config, traitId) ?: continue
             if (held.gedraId.client != config.gedraId.client) {
                 // The two owners' name rules make this impossible; reaching it means one of them was bypassed.
@@ -776,11 +784,13 @@ class GedraConfigCollector {
      * a cfact costs only itself (issue #841), so the cfact registry build drops just that declaration (#952).
      */
     private fun clientNamesProblem(config: GedraConfig): String? {
-        val names = config.traits.keys.map { OwnedNameKind.trait to it } +
-            config.workflows.values.flatMap { wf ->
+        val names = buildList {
+            config.traits.keys.mapTo(this) { OwnedNameKind.trait to it }
+            config.workflows.values.flatMapTo(this) { wf ->
                 listOf(OwnedNameKind.workflow to wf.workflowId) + wf.tasks.map { OwnedNameKind.task to it.id }
-            } +
-            config.reports.keys.map { OwnedNameKind.report to it }
+            }
+            config.reports.keys.mapTo(this) { OwnedNameKind.report to it }
+        }
         return names.firstNotNullOfOrNull { (kind, name) -> clientNameProblem(kind, name) }
     }
 
@@ -802,9 +812,12 @@ class GedraConfigCollector {
                 }
             }
         }
-        val names = traitIds.map { OwnedNameKind.trait to it } + config.cfacts.map { OwnedNameKind.cfact to it.name } +
-            config.workflows.values.map { OwnedNameKind.workflow to it.workflowId } +
-            config.reports.keys.map { OwnedNameKind.report to it }
+        val names = buildList {
+            traitIds.mapTo(this) { OwnedNameKind.trait to it }
+            config.cfacts.mapTo(this) { OwnedNameKind.cfact to it.name }
+            config.workflows.values.mapTo(this) { OwnedNameKind.workflow to it.workflowId }
+            config.reports.keys.mapTo(this) { OwnedNameKind.report to it }
+        }
         for ((kind, name) in names) {
             rootedNameProblem(kind, name)?.let { return it }
             val nameRoot = name.substringBefore(OWNR.rootSep)

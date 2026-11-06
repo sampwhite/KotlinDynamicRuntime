@@ -600,33 +600,38 @@ class GedraConfigLoadService : ServiceInitializer {
      * (issue #1542): each is left out and the rest of the config loads. Reported where [unknownSlotsIssue] is -- the
      * boot load, a reload, a trial -- and judged, like it, as stored config.
      */
-    fun unreadEntryIssues(config: GedraConfig): List<GedraConfigIssue> = config.unreadReports.values.map { unread ->
-        config.issue(
-            "Stored config '${config.gedraId}' holds the report '${unread.slotKey}', which cannot be read: ${unread.why}.",
-            "Leaving the report out, kept as stored; the rest of the config loads.",
-            GCEL.report, unread.slotKey,
-        )
-    } + config.unreadWorkflows.values.map { unread ->
-        config.issue(
-            "Stored config '${config.gedraId}' holds the workflow '${unread.workflowId}', which cannot be read: ${unread.why}",
-            "Leaving the workflow out, kept as stored; the rest of the config loads.",
-            GCEL.workflow, unread.workflowId,
-        )
-    } + config.droppedSingletons.map { (workflowId, cfacts) ->
-        config.issue(
-            "Stored config '${config.gedraId}' holds the workflow '$workflowId', whose singleton rules emit $cfacts, which a " +
-                "search keyword sets now (issue #1596): a workflow whose call to action carries it has it on the form.",
-            "Leaving the rules out; the workflow loads without them, and the next write of the config removes them. " +
-                "Give the task that waits on a review the keyword instead (an approval task carries '${CTAK.review}' " +
-                "already); a workflow with neither no longer sets its forms' status.",
-            GCEL.workflow, workflowId,
-        )
-    } + config.shadowedTypes.values.map { shadowed ->
-        config.issue(
-            "Stored config '${config.gedraId}' ${shadowed.problem()}",
-            "Leaving the declared type out, kept as stored; the trait's type stands and the rest of the config loads.",
-            GCEL.type, shadowed.typeName,
-        )
+    fun unreadEntryIssues(config: GedraConfig): List<GedraConfigIssue> = buildList {
+        config.unreadReports.values.mapTo(this) { unread ->
+            config.issue(
+                "Stored config '${config.gedraId}' holds the report '${unread.slotKey}', which cannot be read: ${unread.why}.",
+                "Leaving the report out, kept as stored; the rest of the config loads.",
+                GCEL.report, unread.slotKey,
+            )
+        }
+        config.unreadWorkflows.values.mapTo(this) { unread ->
+            config.issue(
+                "Stored config '${config.gedraId}' holds the workflow '${unread.workflowId}', which cannot be read: ${unread.why}",
+                "Leaving the workflow out, kept as stored; the rest of the config loads.",
+                GCEL.workflow, unread.workflowId,
+            )
+        }
+        config.droppedSingletons.mapTo(this) { (workflowId, cfacts) ->
+            config.issue(
+                "Stored config '${config.gedraId}' holds the workflow '$workflowId', whose singleton rules emit $cfacts, which a " +
+                    "search keyword sets now (issue #1596): a workflow whose call to action carries it has it on the form.",
+                "Leaving the rules out; the workflow loads without them, and the next write of the config removes them. " +
+                    "Give the task that waits on a review the keyword instead (an approval task carries '${CTAK.review}' " +
+                    "already); a workflow with neither no longer sets its forms' status.",
+                GCEL.workflow, workflowId,
+            )
+        }
+        config.shadowedTypes.values.mapTo(this) { shadowed ->
+            config.issue(
+                "Stored config '${config.gedraId}' ${shadowed.problem()}",
+                "Leaving the declared type out, kept as stored; the trait's type stands and the rest of the config loads.",
+                GCEL.type, shadowed.typeName,
+            )
+        }
     }
 
     /**

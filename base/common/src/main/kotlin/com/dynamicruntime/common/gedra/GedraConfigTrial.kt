@@ -77,7 +77,11 @@ object GedraConfigTrial {
         before: Map<String, GedraConfigRow?>? = null,
     ) {
         val drafts = if (published) emptyList() else draftBaseline(cxt, client)
-        val baseline = ClientConfigIssues.get(cxt).issuesFor(client) + drafts + fileRefBaseline(cxt, client, withSandbox = !published)
+        val baseline = buildList {
+            addAll(ClientConfigIssues.get(cxt).issuesFor(client))
+            addAll(drafts)
+            addAll(fileRefBaseline(cxt, client, withSandbox = !published))
+        }
         val candidate = candidate(cxt, client, replacing, published) ?: return
         var found = candidate.issues.filterNot { issue -> baseline.any { it.sameAs(issue) } }
         if (found.isNotEmpty() && !published && before != null) {
