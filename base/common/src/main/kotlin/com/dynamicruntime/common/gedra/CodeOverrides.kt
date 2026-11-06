@@ -147,19 +147,4 @@ object CodeOverrides {
     private fun generatedTypesOf(config: GedraConfig): (String) -> Set<String> = { id ->
         config.traits[id]?.let { setOfNotNull(it.typeName, inlineDataTypeName(config, it)) }.orEmpty()
     }
-
-    /** A stored entry as a person names it: its kind and key ("trait 'note'"), or its slot when it has no key. */
-    private fun entryName(slot: String, entry: Map<String, Any?>): String {
-        val (kind, field) = when (slot) {
-            CCT.traitDef -> "trait" to CCT.traitId
-            CCT.schemaDef -> "type" to CCT.typeName
-            CCT.cfactDef -> "cfact" to CCT.name
-            CCT.workflowDef -> "workflow" to CCT.workflowId
-            CCT.reportDef -> "report" to CCT.reportId
-            CCT.fileRefDef -> "file ref" to CCT.refId
-            CCT.usageDef -> return "a column of the forms list"
-            else -> return "an entry of '$slot'"
-        }
-        return "$kind '${entry[field].toOptStr().orEmpty()}'"
-    }
 }
