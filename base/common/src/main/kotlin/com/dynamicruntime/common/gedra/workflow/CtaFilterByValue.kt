@@ -115,6 +115,10 @@ object CtaFilterByValueCreation : WfFunctionCreation {
         )
     }
 
+    // Read off the usage as written: a keyword not on the list is refused when the usage is created, and lists nothing then.
+    override fun searchKeywords(usage: WfFunctionUsage): Set<String> =
+        setOfNotNull(usage.initData[CFV.keyword].toOptStr()?.takeIf { it in CTAK.all })
+
     private fun choiceOf(value: String?, m: Map<String, Any?>) =
         CtaFilterChoice(value, m[CFV.filter].toOptStr() ?: "", m[CFV.label].toOptStr())
 

@@ -132,6 +132,42 @@ fun ctaKeywordWords(cxt: KdrCxt, client: String = cxt.client): List<Map<String, 
 }
 
 /**
+ * The search keywords [def]'s calls to action may carry (issue #1597): each task's own ([WfTask.ctaKeyword], so an
+ * approval task's `review`), and what its `ctaFilter` functions may set ([WfFunctionCreation.searchKeywords], by the
+ * function kinds in [creations]) -- a usage its kind cannot build from its settings sets nothing, since the resolution
+ * pass drops it. Read off the definition before its functions are resolved, since the listing's query type it feeds is
+ * built first; a usage the resolution pass refuses for another reason (a filter naming what is not about the person) is
+ * a reported fault of the configuration, which refuses the write and, outside production, the boot.
+ *
+ * A keyword is in use by the **configuration**, whatever the clock says: a workflow's lifetime and its on/off switch are
+ * its parameters, which change without the query type being built again, and a lifetime ends with no event at all. So a
+ * search for a keyword whose only workflow is outside its lifetime is accepted, and matches nothing, as the
+ * classification gives such a workflow no weight. Only a normal workflow has a call to action, so any other has none.
+ */
+fun searchKeywordsOf(cxt: KdrCxt, def: WfDef, creations: Map<String, WfFunctionCreation>): Set<String> {
+    if (def.entry != WfEntry.normal) {
+        return emptySet()
+    }
+    return buildSet {
+        def.tasks.mapNotNullTo(this) { it.ctaKeyword }
+        for (usage in def.tasks.flatMap { it.functionUsages }) {
+            val creation = creations[usage.fn]?.takeIf { it.event == WfEventType.ctaFilter } ?: continue
+            val keywords = creation.searchKeywords(usage)
+            if (keywords.isNotEmpty() && buildsFrom(cxt, creation, usage)) addAll(keywords)
+        }
+    }
+}
+
+/** Whether [creation] builds a function from [usage]'s settings, as the resolution pass will ask it to. */
+private fun buildsFrom(cxt: KdrCxt, creation: WfFunctionCreation, usage: WfFunctionUsage): Boolean =
+    try {
+        creation.create(cxt, usage)
+        true
+    } catch (_: KdrException) {
+        false
+    }
+
+/**
  * What a workflow's CTA carries (issue #1594): its search [keyword], and who may act on it -- [filterRule], with its
  * [filterLabel]. The filter is a **rule**, a cfact expression the deriver stores and each caller's check evaluates
  * against that caller's facts ([passesCtaFilterRule]); nothing here says whether anyone passes it.

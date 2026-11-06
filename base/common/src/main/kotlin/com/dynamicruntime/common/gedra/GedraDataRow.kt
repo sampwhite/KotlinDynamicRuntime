@@ -205,7 +205,10 @@ class GedraDataRow(
                 // email, and a display name when it adds one. Attached to a *listed* row for a caller who may
                 // see other users' documents; absent for an ordinary caller and on a single read. Open, since
                 // more user-block fields are coming and only the ones a caller may see are ever present.
-                property(GDF.owner, "The owning user (email, and a display name when it is not the email), when the caller may see other users' documents.") {
+                property(
+                    GDF.owner,
+                    "The owning user (email, and a display name when it is not the email), when the caller may see other users' documents.",
+                ) {
                     type = SCT.kObject
                     derived = true
                     userBlockProperties()
@@ -222,9 +225,13 @@ class GedraDataRow(
                         items { ref("${GCFG.globalNamespace}.${GU.stateUnionName}") }
                         derived = true
                     }
-                    // What waits on the caller in the form (issue #1637), on a row listed with `needsMe`: output only,
-                    // as the states are.
-                    property(GDF.waitingSteps, "The steps waiting on you, present when 'needsMe' is requested (issue #1637).") {
+                    // What waits on the caller in the form (issues #1637, #1597), on a row listed with `needsMe` or
+                    // `withStates`: output only, as the states are. With the states it is also what the classification
+                    // (`formWorkflowWeights`) cannot read from them, whose turn each workflow is.
+                    property(
+                        GDF.waitingSteps,
+                        "The steps waiting on you, present when 'needsMe' or 'withStates' is requested (issues #1637, #1597).",
+                    ) {
                         type = SCT.array
                         items {
                             type = SCT.kObject

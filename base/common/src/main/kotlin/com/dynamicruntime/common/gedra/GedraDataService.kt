@@ -1945,7 +1945,8 @@ class GedraDataService : ServiceInitializer {
      * batch [readStates] over the rows, read with the same [scope] that admitted them: outside a transaction the
      * states cache is whole and trusted, so this is a map lookup per row, and a row with no state row gets an
      * empty list -- which a status filter matches nothing against. The predicate is generic over the entries, so
-     * a second form-singleton status composes with this one.
+     * a second form-singleton status composes with this one. The filter is handed every row first
+     * ([GedraStateFilter.prepare]), so what it needs about their owners is read once for them all.
      */
     private fun applyStateFilter(
         cxt: KdrCxt,
@@ -1955,9 +1956,10 @@ class GedraDataService : ServiceInitializer {
     ): List<Map<String, Any?>> {
         val test = stateFilter ?: return rows
         if (rows.isEmpty()) return rows
-        val ids = rows.map { gedraService.readId(it[GD.gedraId].toOptStr() ?: "") }
-        val states = readStates(cxt, ids, scope)
-        return rows.filterIndexed { i, row -> test(ids[i], row[PF.userId].toOptLong(), states[ids[i].fullId].orEmpty()) }
+        val stateRows = rows.map { GedraStateRow(gedraService.readId(it[GD.gedraId].toOptStr() ?: ""), it[PF.userId].toOptLong()) }
+        val states = readStates(cxt, stateRows.map { it.gedraId }, scope)
+        test.prepare(stateRows)
+        return rows.filterIndexed { i, _ -> test.keeps(stateRows[i], states[stateRows[i].gedraId.fullId].orEmpty()) }
     }
 
     /**
@@ -2142,12 +2144,35 @@ class GedraImportResult(val imported: List<GedraImportedDoc>, val discarded: Lis
     )
 }
 
+/** One stored row as a listing's state filter is handed it (issue #1597): its id, and the user who owns it (null when it names none). */
+class GedraStateRow(val gedraId: GedraId, val ownerUserId: Long?)
+
 /**
- * A listing's filter over each row's **state** (issues #695, #792): given the row's id -- whose client says which
- * client's configuration its state is read against -- its owner's user id (issue #1637, for a filter that asks whether
- * the caller is the owner; null when the row carries none), and its state entries, whether the row stays.
+ * A listing's filter over each row's **state** (issues #695, #792): given the row -- its id, whose client says which
+ * client's configuration its state is read against, and its owner (issue #1637, for a filter that asks whether the
+ * caller is the owner) -- and its state entries, whether the row stays.
  */
-typealias GedraStateFilter = (gedraId: GedraId, ownerUserId: Long?, states: List<Map<String, Any?>>) -> Boolean
+fun interface GedraStateFilter {
+    /** Whether [row], whose state entries are [states], stays. */
+    fun keeps(row: GedraStateRow, states: List<Map<String, Any?>>): Boolean
+
+    /**
+     * Handed every row about to be judged, before [keeps] is asked of any (issue #1597), so a filter that needs
+     * something about the rows -- their owners' identities, for `kdr:isOwner` -- reads it for them all in one batch.
+     */
+    fun prepare(rows: List<GedraStateRow>) {}
+}
+
+/** A filter keeping a row that every one of [filters] keeps, or null when there are none. */
+fun allOfStateFilters(filters: List<GedraStateFilter>): GedraStateFilter? = when (filters.size) {
+    0 -> null
+    1 -> filters.single()
+    else -> object : GedraStateFilter {
+        override fun keeps(row: GedraStateRow, states: List<Map<String, Any?>>): Boolean = filters.all { it.keeps(row, states) }
+
+        override fun prepare(rows: List<GedraStateRow>) = filters.forEach { it.prepare(rows) }
+    }
+}
 
 /** One write's `g-visibleWhen` rule over trait data (issue #830); see `GedraDataService.gatedWrite`. */
 interface GatedWrite {

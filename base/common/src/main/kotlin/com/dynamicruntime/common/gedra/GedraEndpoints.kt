@@ -24,6 +24,8 @@ import com.dynamicruntime.common.gedra.workflow.WfDeclared
 import com.dynamicruntime.common.gedra.workflow.CTKF
 import com.dynamicruntime.common.gedra.workflow.WfApproval
 import com.dynamicruntime.common.gedra.workflow.ctaKeywordWords
+import com.dynamicruntime.common.gedra.workflow.CTAK
+import com.dynamicruntime.common.gedra.workflow.matchesKeywordSearch
 import com.dynamicruntime.common.gedra.workflow.WfTask
 import com.dynamicruntime.common.gedra.workflow.WfEntry
 import com.dynamicruntime.common.gedra.workflow.WFD
@@ -469,17 +471,15 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
         // schema has already settled the value: a blank is absent (`emptyIsAbsent`), anything but the three
         // options was refused, so what arrives is one of them or nothing.
         val statusWanted = request[GDF.formStatus] as? String
-        val statusFilter: GedraStateFilter? = statusWanted?.let { wanted -> { _, _, states -> formStatusOf(states) == wanted } }
-        val workflowFilter = workflowDrillFilter(c, request)
-        // Only forms with a step waiting on the caller (issue #1637), judged from each form's state and owner.
-        val waiting = if (request.getOptBool(GDF.needsMe) == true) WaitingSteps(c) else null
-        val needsMeFilter: GedraStateFilter? = waiting?.let { w -> { id, owner, states -> w.of(id, owner, states).isNotEmpty() } }
-        val filters = listOfNotNull(statusFilter, workflowFilter, needsMeFilter)
-        val stateFilter: GedraStateFilter? = when (filters.size) {
-            0 -> null
-            1 -> filters.single()
-            else -> { id, owner, states -> filters.all { it(id, owner, states) } }
-        }
+        val statusFilter = statusWanted?.let { wanted -> GedraStateFilter { _, states -> formStatusOf(states) == wanted } }
+        // What waits on the caller in each form (issues #1637, #1597), worked out once for the listing: `needsMe` keeps
+        // the forms with a step waiting on them, a keyword search those whose waiting step carries the keyword, and the
+        // page's rows say which steps those are.
+        val needsMe = request.getOptBool(GDF.needsMe) == true
+        val waiting = WaitingSteps(c)
+        val stateFilter = allOfStateFilters(
+            listOfNotNull(statusFilter, workflowDrillFilter(c, request), needsMeFilter(needsMe, waiting), keywordFilter(request, waiting)),
+        )
         val svc = GedraDataService.get(c)
         val page = svc.listGedras(c, formDoc, scope, limit, offset, filter, sort, stateFilter)
         // Attach each form's state (issue #600) only when asked. One batch read over the page's ids -- cache-
@@ -489,6 +489,9 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
         val withStates = request.getOptBool(GDF.withStates) == true
         // As a caller is shown them (issue #1354): no deleted or past-lifetime workflow's entries.
         val statesByGedra = if (withStates) svc.readShownStates(c, page.rows.map { it.gedraId }, scope) else emptyMap()
+        // Whose turn each row's workflows are (issue #1597), with the page's owners read in one batch -- none again for
+        // the owners a keyword search already read.
+        if (withStates) waiting.readOwners(page.rows.map { it.userId })
         // Who owns each row, for a caller who asked for it and may see other users' documents (issues #562,
         // #591): the name and email the User column shows. Attached only when `includeUsers` is set AND the
         // caller may see past their own rows -- an ordinary caller's rows are all their own, so there is nobody
@@ -503,12 +506,15 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
         ListPage(
             page.rows.map { row ->
                 val display = computeDisplayValues(c, row, columns, c.client)
+                val states = statesByGedra[row.gedraId.fullId].orEmpty()
+                // What waits on the caller in each form (issues #1637, #1597): with `needsMe`, what the filter found, which
+                // every row on the page passed through; with the states, the classification's half that state cannot
+                // give, the page's owners having been read in one batch above.
+                val waitingSteps = if (needsMe || withStates) waiting.of(row.gedraId, row.userId, states) else null
                 row.toJsonMap() + (GDF.displayValues to display) + (GDF.traitNames to rowTraitNames(row, traitNames)) +
                     ownerFields(owners[row.userId]) +
-                    (if (withStates) mapOf(GDF.states to statesByGedra[row.gedraId.fullId].orEmpty()) else emptyMap()) +
-                    // What waits on the caller in each form listed for it (issue #1637): what the filter found, which
-                    // every row on the page passed through.
-                    (waiting?.let { w -> mapOf(GDF.waitingSteps to w.remembered(row.gedraId.fullId).orEmpty()) } ?: emptyMap())
+                    (if (withStates) mapOf(GDF.states to states) else emptyMap()) +
+                    (waitingSteps?.let { mapOf(GDF.waitingSteps to it) } ?: emptyMap())
             },
             page.numAvailable,
             hasMore = offset + page.rows.size < page.numAvailable,
@@ -1270,10 +1276,49 @@ private fun workflowDrillFilter(c: KdrCxt, request: Map<String, Any?>): GedraSta
             ?.takeIf { it.entry == WfEntry.normal && WorkflowAudience.of(c).sees(client, workflowId) }
             ?.let { WorkflowPhases.phaseAt(c, client, it, now) }?.takeIf { it.exists }
     }
-    return { gedraId, _, states ->
-        val phase = phaseIn(gedraId.client)
+    return GedraStateFilter { row, states ->
+        val phase = phaseIn(row.gedraId.client)
         phase != null && formWorkflowsOf(states) { id -> if (id == workflowId) phase else null }
             .any { wanted == null || it.category == wanted }
+    }
+}
+
+/**
+ * Only forms with a step waiting on the caller (issue #1637), when [needsMe] asks: [waiting] judges each from its state
+ * and owner, and is handed every row first, so their owners are read in one batch.
+ */
+private fun needsMeFilter(needsMe: Boolean, waiting: WaitingSteps): GedraStateFilter? {
+    if (!needsMe) {
+        return null
+    }
+    return object : GedraStateFilter {
+        override fun prepare(rows: List<GedraStateRow>) = waiting.readOwners(rows.map { it.ownerUserId })
+
+        override fun keeps(row: GedraStateRow, states: List<Map<String, Any?>>): Boolean =
+            waiting.of(row.gedraId, row.ownerUserId, states).isNotEmpty()
+    }
+}
+
+/**
+ * The keyword search (issue #1597): only forms with a workflow whose call to action carries a keyword the request names
+ * a parameter for, asking `mine` (one the caller may act on now) or `any` (whoever may act) -- [matchesKeywordSearch]
+ * over the classification [waiting] gives each row, so a row found is one the page draws as the caller's turn. Several
+ * keywords asked must all match. A client's own endpoint offers a parameter only for the keywords its workflows use;
+ * the shared endpoint offers none. Applied over the states cache before paging, as the status filter is, so
+ * `numAvailable` counts what matched; and handed every row first, so their owners are read in one batch.
+ */
+private fun keywordFilter(request: Map<String, Any?>, waiting: WaitingSteps): GedraStateFilter? {
+    val asked = CTAK.all.mapNotNull { keyword -> request[keyword].toOptStr()?.let { keyword to it } }
+    if (asked.isEmpty()) {
+        return null
+    }
+    return object : GedraStateFilter {
+        override fun prepare(rows: List<GedraStateRow>) = waiting.readOwners(rows.map { it.ownerUserId })
+
+        override fun keeps(row: GedraStateRow, states: List<Map<String, Any?>>): Boolean {
+            val weights = waiting.weights(row.gedraId, row.ownerUserId, states)
+            return asked.all { (keyword, question) -> matchesKeywordSearch(weights, keyword, question) }
+        }
     }
 }
 

@@ -5,6 +5,7 @@ import com.dynamicruntime.common.gedra.GID
 import com.dynamicruntime.common.gedra.formDocsQueryDefName
 import com.dynamicruntime.common.gedra.gedraSearchParams
 import com.dynamicruntime.common.gedra.reservedQueryFieldNames
+import com.dynamicruntime.common.gedra.workflow.CTAK
 import com.dynamicruntime.common.startup.SchemaService
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
@@ -16,12 +17,13 @@ import io.kotest.matchers.shouldBe
  * without being told, and the webapp would draw it as a trait search box.
  */
 class FormDocsQueryReservedTest : StringSpec({
-    "the listing's query type declares exactly the reserved names the framework does not append" {
+    "the listing's query type declares exactly the reserved names the framework and the keywords do not append" {
         val cxt = TestInstances.default("formDocsReserved")
         val schema = SchemaService.get(cxt)
         // The type as served carries the global usage rules' search fields too; what is left is its own.
         val searchFields = gedraSearchParams(schema.listingColumnsFor(GID.globalClient)).map { it.name }.toSet()
         val declared = schema.storeFor(null).types.getValue(formDocsQueryDefName()).properties.keys - searchFields
-        declared shouldBe reservedQueryFieldNames - setOf(EP.limit, EP.after)
+        // A search keyword's parameter is reserved too, and generated only on a client's own listing (issue #1597).
+        declared shouldBe reservedQueryFieldNames - setOf(EP.limit, EP.after) - CTAK.all.toSet()
     }
 })

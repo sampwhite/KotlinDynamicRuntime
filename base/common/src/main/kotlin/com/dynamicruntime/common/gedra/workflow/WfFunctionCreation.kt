@@ -59,6 +59,13 @@ interface WfFunctionCreation {
      * never carry it, and the function would silently never fire.
      */
     fun referencedUserLabels(usage: WfFunctionUsage): Set<String> = emptySet()
+
+    /**
+     * The search keywords ([CTAK]) [usage] may set on a call to action (issue #1597), for the forms listing's keyword
+     * parameters, which a client has only for the keywords its workflows use. Empty for a kind that sets none; a kind
+     * that sets one must list it here, or a client whose only use of a keyword is this function has no parameter for it.
+     */
+    fun searchKeywords(usage: WfFunctionUsage): Set<String> = emptySet()
 }
 
 /**
