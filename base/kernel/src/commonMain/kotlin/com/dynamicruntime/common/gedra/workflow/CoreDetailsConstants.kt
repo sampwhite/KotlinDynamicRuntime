@@ -104,8 +104,9 @@ fun coreDetailsStatusOf(states: List<Map<String, Any?>>): String? {
 /**
  * The status a form's chip shows and its filter matches (issue #789): the core details workflow's
  * ([coreDetailsStatusOf]), except that where the core details workflow would read **Valid** the form's merged cfacts
- * may say more -- [FSV.needsReview] when some engaged workflow is waiting on a review, else [FSV.finished] when some
- * has finished. Only Valid gives way: Needs Info and Invalid still describe work the owner has to do, which trumps a
+ * may say more -- [FSV.needsReview] when some engaged workflow is waiting on a review (its call to action carries the
+ * `review` keyword, the one thing that sets [WSC.needsReview], issue #1596), else [FSV.finished] when some has
+ * finished. Only Valid gives way: Needs Info and Invalid still describe work the owner has to do, which trumps a
  * review or a finish. Needs Review beats Finished, since it is something waiting on someone. Null when the form has no
  * core details status, as [coreDetailsStatusOf] is.
  *

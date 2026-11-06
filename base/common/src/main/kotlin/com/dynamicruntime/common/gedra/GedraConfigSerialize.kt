@@ -5,12 +5,14 @@ import com.dynamicruntime.common.context.KdrCxtBase
 import com.dynamicruntime.common.exception.ACT
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.gedra.workflow.CTAK
 import com.dynamicruntime.common.gedra.workflow.WFD
 import com.dynamicruntime.common.gedra.workflow.WorkflowTemplates
 import com.dynamicruntime.common.gedra.workflow.toJsonMap
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.qualifyTypeName
 import com.dynamicruntime.common.schema.refTargetName
+import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonListOfStrings
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
@@ -156,10 +158,30 @@ fun reassembleForWrite(
  * windows, which are now set on the client's page. A write that adds or changes windows is not kept so: a definition
  * naming them is refused there.
  */
-private fun withoutStoredWindows(definition: Map<String, Any?>, keepAsStored: (Map<String, Any?>) -> Boolean): Map<String, Any?> {
+private fun withoutStoredWindows(definition: Map<String, Any?>, keepAsStored: Boolean): Map<String, Any?> {
     val windowKeys = setOf(WFD.lifetime, WFD.relevancy, WFD.engagement)
-    if (definition.keys.none { it in windowKeys } || !keepAsStored(definition)) return definition
+    if (definition.keys.none { it in windowKeys } || !keepAsStored) return definition
     return definition.filterKeys { it !in windowKeys }
+}
+
+/**
+ * [definition] without the singleton-cfact rules it was stored with for a status a search keyword sets (issue #1596),
+ * when it is kept as stored, as [withoutStoredWindows] takes out windows; the cfacts taken out go to [dropped]. A
+ * workflow said Needs Review with such a rule until the `review` keyword became the one way to. Like windows, the rule
+ * is gone for good: a write carrying the definition unchanged stores it without the rule. The keyword stands in for it
+ * only where a task carries it -- an approval task does already, and a data task can be given it. A write that adds or
+ * changes such a rule is not kept so: the workflow's own check refuses it there, saying to give the task the keyword.
+ */
+private fun withoutKeywordStatusSingletons(
+    definition: Map<String, Any?>,
+    keepAsStored: Boolean,
+    dropped: (cfacts: List<String>) -> Unit,
+): Map<String, Any?> {
+    if (!keepAsStored) return definition
+    val (stale, kept) = definition[WFD.singletons].toJsonListOfMaps().partition { it[WFD.cfact].toOptStr() in CTAK.statusCfacts }
+    if (stale.isEmpty()) return definition
+    dropped(stale.mapNotNull { it[WFD.cfact].toOptStr() })
+    return if (kept.isEmpty()) definition - WFD.singletons else definition + (WFD.singletons to kept)
 }
 
 /**
@@ -197,7 +219,14 @@ fun reassembleGedraConfig(
         val usage = usageFromRuleMap(e)
         traitUsage(usage.traitId, usage.label, usage.display, usage.kind, usage.substring, usage.presentation, usage.columnId)
     }
-    entriesBySlot[CCT.workflowDef]?.forEach { workflowFromMap(withoutStoredWindows(it[CCT.definition].toJsonMapOrEmpty(), keepUnreadWorkflow)) }
+    entriesBySlot[CCT.workflowDef]?.forEach { e ->
+        val stored = e[CCT.definition].toJsonMapOrEmpty()
+        val keepAsStored = keepUnreadWorkflow(stored)
+        val definition = withoutKeywordStatusSingletons(withoutStoredWindows(stored, keepAsStored), keepAsStored) { cfacts ->
+            droppedSingletons[stored[WFD.workflowId].toOptStr() ?: "?"] = cfacts
+        }
+        workflowFromMap(definition)
+    }
     // Forgiving, unlike the other slots: a report that no longer reads costs only itself (`GedraConfig.unreadReports`).
     entriesBySlot[CCT.reportDef]?.forEach {
         storedReportFromMap(it[CCT.definition].toJsonMapOrEmpty(), it[CCT.reportId].toOptStr())

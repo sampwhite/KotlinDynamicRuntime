@@ -202,10 +202,13 @@ class WorkflowWindowsTest : StringSpec({
     "in the engagement window a form engages, and the workflow is shown and saved" {
         moveTo(35)
         view(otherForm)[WVF.phase] shouldBe WfPhase.engageable.name
-        entry(engage(engagedForm)[GDF.states].toJsonListOfMaps()).shouldNotBeNull()[WFS.singletonCfacts] shouldBe emptyList<String>()
+        // The visit is already recorded, so the call to action is the approval, which carries `review` (issue #1596):
+        // the form waits on a review from the moment it engages.
+        entry(engage(engagedForm)[GDF.states].toJsonListOfMaps()).shouldNotBeNull()[WFS.singletonCfacts] shouldBe
+            listOf(WSC.needsReview)
         user.postData(GEP.workflowSave, saveBody(engagedForm))
         val states = recompute(engagedForm)
-        entry(states).shouldNotBeNull()[WFS.singletonCfacts] shouldBe listOf(WSC.finished)
+        entry(states).shouldNotBeNull()[WFS.singletonCfacts] shouldBe listOf(WSC.finished, WSC.needsReview)
         formFacts(states) shouldContain WSC.finished
         // Live: the popover names the current task and what it asks.
         behindFinished(engagedForm).single()[WFS.ctaTask] shouldBe "approve"
@@ -225,7 +228,7 @@ class WorkflowWindowsTest : StringSpec({
     "past relevancy an engaged form's state is frozen and read-only, and an unengaged one's is gone" {
         moveTo(60)
         val before = entry(recompute(engagedForm)).shouldNotBeNull()
-        before[WFS.singletonCfacts] shouldBe listOf(WSC.finished)
+        before[WFS.singletonCfacts] shouldBe listOf(WSC.finished, WSC.needsReview)
         moveTo(90)
         // The notes no longer say "done": a recalculation would drop Finished, and the frozen entry must not.
         patchNotes(engagedForm, "reopened")

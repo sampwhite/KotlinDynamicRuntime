@@ -85,6 +85,7 @@ object SandboxConfigs {
             unreadReports = config.unreadReports,
             unreadWorkflows = config.unreadWorkflows,
             shadowedTypes = config.shadowedTypes,
+            droppedSingletons = config.droppedSingletons,
             // The parent's source defaults (issue #1386), which the sandbox falls back to below its client's own values.
             workflowParams = config.workflowParams,
             // As they are (issue #1153): a ref names bytes by their hash, kept under the parent, and the sandbox

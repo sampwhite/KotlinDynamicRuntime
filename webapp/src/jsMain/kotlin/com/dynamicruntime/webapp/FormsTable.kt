@@ -49,6 +49,12 @@ external interface FormsTableProps : Props {
     /** Each form's id paired with its summary, in display order. */
     var forms: List<Pair<String, FormSummary>>
 
+    /** Each search keyword's words (issue #1596): what a status a keyword sets reads as. Unset reads as none. */
+    var ctaKeywords: List<CtaKeywordWords>?
+
+    /** The same words as each other client on the page says them, by client id: a row of one reads in its own. */
+    var ctaKeywordsByClient: Map<String, List<CtaKeywordWords>>?
+
     /** Opens the raw read-only view of a form: the row click where the client has no core details workflow (issue #726). */
     var onView: (String) -> Unit
 
@@ -281,7 +287,9 @@ val FormsTable = FC<FormsTableProps> { props ->
             // The core details status for the fixed Status column (issue #694): its chip label + colour class, and
             // whether it warrants the CTA (anything but Valid). Absent on a row with no core details state.
             summary.formStatus?.let {
-                row.svyLabel = it.label
+                // In the row's own client's words (issue #1596): another client's in the cross-client view.
+                val words = props.ctaKeywordsByClient?.get(summary.client) ?: props.ctaKeywords.orEmpty()
+                row.svyLabel = formStatusLabel(it, words)
                 row.svyPstat = it.pstat
                 // The unfinished chip links straight into the core details workflow's edit mode; a workflow's Needs
                 // Review or Finished chip (issue #789) opens the workflows behind it instead; Valid is a plain chip.

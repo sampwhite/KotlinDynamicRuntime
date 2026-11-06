@@ -307,6 +307,15 @@ class GedraConfig(
      */
     val shadowedTypes: Map<String, ShadowedType> = emptyMap(),
     /**
+     * The singleton-cfact rules a **stored** workflow declares for a status a search keyword now sets, by workflow id
+     * (issue #1596): the cfacts, `kdr:needsReview` so far. A workflow said Needs Review that way until the `review`
+     * keyword became the one way to; such a workflow loads without the rule, and the loader reports it. The rule is not
+     * kept: the next write of the config leaves it out. A form needs review again only where a task carries the
+     * keyword -- an approval task does without saying so; a workflow with neither no longer sets the status. Always
+     * empty for a source config, whose rule refuses the build.
+     */
+    val droppedSingletons: Map<String, List<String>> = emptyMap(),
+    /**
      * The default parameters this config declares for its client's workflows, by workflow id (issue #1386): what a
      * workflow runs with -- its time windows, for now -- until the client, or a sandbox of it, sets its own on the
      * client's page. **Source code only**: a scope's values in the database are its own, in force at once and never
@@ -746,6 +755,9 @@ class GedraConfigBuilder(
     @Suppress("MemberVisibilityCanBePrivate")
     val shadowedTypes: MutableMap<String, ShadowedType> = LinkedHashMap()
 
+    /** The keyword statuses dropped from stored workflows' singleton rules (issue #1596); see `GedraConfig.droppedSingletons`. */
+    val droppedSingletons: MutableMap<String, List<String>> = LinkedHashMap()
+
     /** Each type a trait generated, as generated -- for [replacedGeneratedTypes] to tell one a later `type` replaced. */
     private val generatedTypes: MutableMap<String, Any?> = LinkedHashMap()
 
@@ -1019,6 +1031,7 @@ fun gedraConfig(
         reports = builder.reports.toMap(),
         unreadReports = builder.unreadReports.toMap(),
         shadowedTypes = builder.shadowedTypes.toMap(),
+        droppedSingletons = builder.droppedSingletons.toMap(),
         unreadWorkflows = builder.unreadWorkflows.toMap(),
         workflowParams = builder.workflowParams.toMap(),
         fileRefs = builder.fileRefs.toList(),

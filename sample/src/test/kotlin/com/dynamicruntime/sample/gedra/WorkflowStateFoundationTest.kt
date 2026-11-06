@@ -11,6 +11,7 @@ import com.dynamicruntime.common.gedra.workflow.CDF
 import com.dynamicruntime.common.gedra.workflow.WFC
 import com.dynamicruntime.common.gedra.workflow.WFD
 import com.dynamicruntime.common.gedra.workflow.WFS
+import com.dynamicruntime.common.gedra.workflow.CTAK
 import com.dynamicruntime.common.gedra.workflow.WSC
 import com.dynamicruntime.common.gedra.workflow.WVF
 import com.dynamicruntime.common.gedra.workflow.WorkflowEngagement
@@ -278,13 +279,17 @@ class WorkflowStateFoundationTest : StringSpec({
         state(again, SW.auditReview)[WFS.eligible] shouldBe true
     }
 
-    "a workflow's own cfacts follow the form's data, so an engaged workflow need not emit anything" {
+    "a workflow's own cfacts follow the form's data and its call to action's keyword, and Needs Review the keyword alone" {
         val user = TestUser.create(cxt, "wfs-quiet@acme.test", userClient = SC.acme)
         val gid = newForm(user)   // findings "seen": the audit is closed, so no acmeUnderAudit
         val states = statesOf(user.postData(engage, mapOf(GDF.gedraId to gid, GDF.workflowId to SW.auditReview)))
-        auditState(states)[WFS.cfacts].toJsonListOrEmpty().shouldBeEmpty()
-        auditState(states)[WFS.singletonCfacts].toJsonListOrEmpty().shouldBeEmpty()
-        entriesOf(states, GT.cfacts).single()[GT.facts].toJsonListOrEmpty().map { it.toOptStr() } shouldNotContain
+        // No fact from the data; the review keyword's own (issue #1596), since recording the audit is review work.
+        auditState(states)[WFS.cfacts].toJsonListOrEmpty().map { it.toOptStr() } shouldContainExactly listOf(CTAK.reviewCfact)
+        auditState(states)[WFS.ctaKeyword] shouldBe CTAK.review
+        // And the form needs review because of it, whatever the data says.
+        auditState(states)[WFS.singletonCfacts].toJsonListOrEmpty().map { it.toOptStr() } shouldContainExactly
+            listOf(WSC.needsReview)
+        entriesOf(states, GT.cfacts).single()[GT.facts].toJsonListOrEmpty().map { it.toOptStr() } shouldContain
             WSC.needsReview
     }
 

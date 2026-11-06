@@ -76,9 +76,17 @@ object SingletonWorkflows {
                         add(WFC.isCta)
                         if (complete) add(WFC.taskComplete)
                         if (passes) add(WFC.passesCtaFilter)
+                        // The workflow's CTA keyword fact (issue #1596), as the state stores the keyword.
+                        CTAK.of(data[WFS.ctaKeyword].toOptStr())?.let { add(it.workflowCfact) }
                     }
                     out[WFS.ctaTask] = task.id
-                    out[SWF.actionText] = actionText(task, callerFacts + taskFacts + viewerFacts, cfacts::parse, ::label)
+                    // What the action's display branches read: the caller's facts, the task's, and the viewer's for it.
+                    val actionFacts = buildSet {
+                        addAll(callerFacts)
+                        addAll(taskFacts)
+                        addAll(viewerFacts)
+                    }
+                    out[SWF.actionText] = actionText(task, actionFacts, cfacts::parse, ::label)
                     // A reviewer of the current work, as the owner-only rule asks it: the functions' reviewer, and the rule.
                     out[SWF.isReviewer] = WFC.reviewer in viewerFacts && passes
                 }

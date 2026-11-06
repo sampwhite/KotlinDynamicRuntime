@@ -351,11 +351,24 @@ class WorkflowTaskJudge(
     private fun passesFilter(task: WfTask): Boolean =
         task.id != ctaTaskId || passesCtaFilterRule(cfacts, cta?.filterRule, callerFacts + viewer.forTask(task))
 
-    /** [task]'s own facts, the caller's viewer facts for it, and [WFC.passesCtaFilter] when the caller passes its CTA filter rule. */
+    /**
+     * The workflow's fact for its CTA's search keyword (issue #1596): `kdr:ctaReview` while the CTA carries `review`, on
+     * every task, since it is about the workflow -- what the state's deriver stores in its own cfacts.
+     */
+    private val keywordFacts: Set<String> by lazy { setOfNotNull(CTAK.of(cta?.keyword)?.workflowCfact) }
+
+    /**
+     * [task]'s own facts, the caller's viewer facts for it, the workflow's CTA keyword fact, and [WFC.passesCtaFilter]
+     * when the caller passes its CTA filter rule.
+     */
     fun taskFacts(task: WfTask): Set<String> {
         val own = WfTaskFacts.of(task, entriesByTask[task.id] ?: emptyList(), isCta = task.id == ctaTaskId, approved = task.id in approvals)
-        val facts = own + viewer.forTask(task)
-        return if (passesFilter(task)) facts + WFC.passesCtaFilter else facts
+        return buildSet {
+            addAll(own)
+            addAll(viewer.forTask(task))
+            addAll(keywordFacts)
+            if (passesFilter(task)) add(WFC.passesCtaFilter)
+        }
     }
 
     /**

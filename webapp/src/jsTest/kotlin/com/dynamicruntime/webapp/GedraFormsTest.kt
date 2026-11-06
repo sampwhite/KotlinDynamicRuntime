@@ -31,6 +31,8 @@ import com.dynamicruntime.common.gedra.workflow.WSC
 import com.dynamicruntime.common.gedra.workflow.WFD
 import com.dynamicruntime.common.gedra.workflow.SWF
 import com.dynamicruntime.common.gedra.workflow.FSV
+import com.dynamicruntime.common.gedra.workflow.CTAK
+import com.dynamicruntime.common.gedra.workflow.CTKF
 import com.dynamicruntime.common.schema.SL
 import com.dynamicruntime.common.schema.parseSchLayout
 import com.dynamicruntime.common.schema.SCH
@@ -1030,6 +1032,37 @@ class GedraFormsTest {
      * A workflow's Needs Review / Finished (issue #789) takes the place of Valid, and only Valid; the chip carries
      * the singleton cfact its click asks about, and a core details status carries none (its chip links to the core details workflow).
      */
+    /**
+     * A status a search keyword sets reads in the client's words (issue #1596): Needs Review is the `review` keyword's
+     * status text when the listing's summary says one, and the enum's label otherwise; a status no keyword sets keeps
+     * its own.
+     */
+    @Test
+    fun aKeywordsStatusReadsInTheClientsWords() {
+        val words = CtaKeywordWords.listFrom(
+            listOf(
+                mapOf(
+                    CTKF.keyword to CTAK.review, CTKF.verb to "Vet", CTKF.filterLabel to "To vet", CTKF.columnHeader to "Vetting",
+                    CTKF.reportLabel to "To vet", CTKF.statusText to "Awaiting vetting",
+                ),
+                mapOf(CTKF.verb to "No keyword, so skipped"),
+            ),
+        )
+        assertEquals(listOf(CTAK.review), words.map { it.keyword })
+        assertEquals("Vet", words.single().verb)
+        assertEquals("Awaiting vetting", formStatusLabel(FormStatus.needsReview, words))
+        assertEquals("Needs Review", formStatusLabel(FormStatus.needsReview, emptyList()))
+        assertEquals("Finished", formStatusLabel(FormStatus.finished, words))
+        assertEquals("Valid", formStatusLabel(FormStatus.valid, words))
+        assertEquals("Status: Awaiting vetting", formStatusChip(mapOf(GDF.formStatus to FSV.needsReview), words))
+        // Another client's words, for its rows in the cross-client view: each client's list read as one is.
+        val byClient = CtaKeywordWords.byClientFrom(
+            mapOf("globex" to listOf(mapOf(CTKF.keyword to CTAK.review, CTKF.statusText to "Pending audit"))),
+        )
+        assertEquals("Pending audit", formStatusLabel(FormStatus.needsReview, byClient.getValue("globex")))
+        assertEquals(emptyMap(), CtaKeywordWords.byClientFrom(null))
+    }
+
     @Test
     fun aWorkflowSingletonTakesThePlaceOfValid() {
         fun withFacts(complete: Boolean, valid: Boolean, vararg facts: String) = coreDetailsStates(complete, valid) +

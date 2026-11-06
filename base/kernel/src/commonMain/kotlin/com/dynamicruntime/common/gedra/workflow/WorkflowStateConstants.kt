@@ -207,17 +207,21 @@ object WFS {
 }
 
 /**
- * The **framework singleton cfacts** a workflow may emit about a form (issue #784): a hardwired list, because
- * each carries code behavior -- a status chip, a listing, a search. A workflow maps its own cfacts onto these
- * (`WfDef.singletons`) and may emit nothing else; a client's cfact extensions are ignored for this purpose, since
- * no code would know what one meant.
+ * The **framework singleton cfacts** about a form (issue #784): a hardwired list, because each carries code behavior --
+ * a status chip, a listing, a search. Most a workflow maps its own cfacts onto ([declarable], `WfDef.singletons`), and
+ * it may emit nothing else; a client's cfact extensions are ignored for this purpose, since no code would know what one
+ * meant. A **status** one is set by a search keyword instead ([CtaKeyword.statusCfact], issue #1596): [needsReview] is
+ * set while an engaged workflow's call to action carries `review`, and no workflow declares it.
  *
  * Emitted by an **engaged** workflow, merged into the form's single `cfacts` state set, and attributed on the
  * workflow's own state entry ([WFS.singletonCfacts]). In `base:kernel` so the frontend names them identically.
  */
 @Suppress("ConstPropertyName")
 object WSC {
-    /** Some workflow the form is engaged with is waiting on a review. Drives the `Needs Review` chip (#789). */
+    /**
+     * Some workflow the form is engaged with is waiting on a review: its call to action carries the `review` keyword
+     * ([CTAK.review], issue #1596). Drives the `Needs Review` chip (#789). Set by the keyword, never by a workflow's rule.
+     */
     const val needsReview = "kdr:needsReview"
 
     /** Some workflow the form is engaged with has finished. Drives the `Finished` chip (#789). */
@@ -234,8 +238,11 @@ object WSC {
     /** The friendly group these present under in the cfact catalog. */
     const val group = "Workflow"
 
-    /** The whole list: what `WfDef.singletons` is checked against. */
+    /** The whole list. */
     val all: Set<String> = setOf(needsReview, finished, ownerOnly)
+
+    /** What a workflow's rule may emit (`WfDef.singletons`): all but the status cfacts the keywords set ([CTAK.statusCfacts]). */
+    val declarable: Set<String> = all - CTAK.statusCfacts
 }
 
 /**

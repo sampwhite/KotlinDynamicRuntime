@@ -8,6 +8,7 @@ import com.dynamicruntime.common.context.ENVGRP
 import com.dynamicruntime.common.context.EnvVarDef
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.gedra.workflow.CTAK
 import com.dynamicruntime.common.logging.LogStartup
 import com.dynamicruntime.common.sql.KdrTable
 import com.dynamicruntime.common.sql.PF
@@ -505,6 +506,15 @@ class GedraConfigLoadService : ServiceInitializer {
             "Stored config '${config.gedraId}' holds the workflow '${unread.workflowId}', which cannot be read: ${unread.why}",
             "Leaving the workflow out, kept as stored; the rest of the config loads.",
             GCEL.workflow, unread.workflowId,
+        )
+    } + config.droppedSingletons.map { (workflowId, cfacts) ->
+        config.issue(
+            "Stored config '${config.gedraId}' holds the workflow '$workflowId', whose singleton rules emit $cfacts, which a " +
+                "search keyword sets now (issue #1596): a workflow whose call to action carries it has it on the form.",
+            "Leaving the rules out; the workflow loads without them, and the next write of the config removes them. " +
+                "Give the task that waits on a review the keyword instead (an approval task carries '${CTAK.review}' " +
+                "already); a workflow with neither no longer sets its forms' status.",
+            GCEL.workflow, workflowId,
         )
     } + config.shadowedTypes.values.map { shadowed ->
         config.issue(

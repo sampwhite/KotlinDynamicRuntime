@@ -165,7 +165,12 @@ later schema rejects" test.
     optional `label = "…"` in the block titles the page over the form (issue #719); like a task's label it is a
     template, so `%{@t("file.ns.key")}` pulls it from a fragment file and the boot checks the pull resolves.
   - **What a task's call to action carries** (issue #1594): `keyword(CTAK.review)` in a task block declares its
-    search keyword, and an approval task carries `review` without it. Who may act on it comes from a `ctaFilter`
+    search keyword, and an approval task carries `review` without it. **`review` is the only way a form needs review**
+    (issue #1596): while an engaged workflow's CTA carries it, the form has `kdr:needsReview` (the Status column's
+    Needs Review) and the workflow `kdr:ctaReview` (`CTAK.reviewCfact`, for display branches); a
+    `singleton(WSC.needsReview, ...)` rule is refused at write, and a stored one is left out at load, reported, and gone
+    after the config's next write. So a test expecting Needs Review engages a form whose next task is an approval or
+    carries the keyword, and one expecting none must not. Who may act on it comes from a `ctaFilter`
     function on the task, `function(ctaFilterByValue { trait = "site"; valuePath = "region"; case("northwest",
     "reviewerNorthwest", "Waiting on a Northwest reviewer"); otherwise("reviewerLead") })`: a value in the form's data
     chooses a filter, and `otherwise` (required) decides when none matches, so a gap never opens the task to everyone

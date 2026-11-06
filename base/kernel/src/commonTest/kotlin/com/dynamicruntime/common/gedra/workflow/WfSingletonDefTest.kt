@@ -26,11 +26,11 @@ class WfSingletonDefTest {
         val def = parseWfDef(
             cxt,
             normal {
-                singleton(WSC.needsReview, "awaitingApproval")
+                singleton(WSC.ownerOnly, "awaitingApproval")
                 singleton(WSC.finished, "approved")
             },
         )
-        assertEquals(listOf(WSC.needsReview, WSC.finished), def.singletons.map { it.cfact })
+        assertEquals(listOf(WSC.ownerOnly, WSC.finished), def.singletons.map { it.cfact })
         val again = parseWfDef(cxt, def.toJsonMap())
         assertEquals(def.singletons.map { it.cfact to it.whenExpr }, again.singletons.map { it.cfact to it.whenExpr })
     }
@@ -39,6 +39,13 @@ class WfSingletonDefTest {
     fun onlyAFrameworkSingletonMayBeEmitted() {
         val e = assertFailsWith<KdrException> { parseWfDef(cxt, normal { singleton("madeUp", "a") }) }
         assertTrue(e.message.orEmpty().contains("'madeUp'"))
+    }
+
+    /** Needs Review is the `review` keyword's to set (issue #1596): a workflow's rule may not, and is told what to do instead. */
+    @Test
+    fun aKeywordsStatusIsNotAWorkflowsToDeclare() {
+        val e = assertFailsWith<KdrException> { parseWfDef(cxt, normal { singleton(WSC.needsReview, "a") }) }
+        assertTrue(e.message.orEmpty().contains("which the '${CTAK.review}' search keyword sets"), e.message)
     }
 
     @Test
