@@ -8,12 +8,16 @@ import com.dynamicruntime.common.gedra.ClientAudience
 import com.dynamicruntime.common.gedra.ClientConfigIssues
 import com.dynamicruntime.common.gedra.ClientDef
 import com.dynamicruntime.common.gedra.ClientUsageType
+import com.dynamicruntime.common.gedra.ConfigKeys
 import com.dynamicruntime.common.gedra.GedraConfigBuilder
+import com.dynamicruntime.common.gedra.GedraConfigLoadService
 import com.dynamicruntime.common.gedra.GedraConfigReload
 import com.dynamicruntime.common.gedra.GedraConfigService
 import com.dynamicruntime.common.gedra.GedraConfigType
 import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.GedraId
+import com.dynamicruntime.common.gedra.SourceCut
+import com.dynamicruntime.common.gedra.SourceCuts
 import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.gedra.gedraConfigToEntries
 import com.dynamicruntime.common.gedra.reassembleGedraConfig
@@ -22,12 +26,14 @@ import com.dynamicruntime.common.gedra.workflow.WfEntry
 import com.dynamicruntime.common.gedra.workflow.WfSaveKind
 import com.dynamicruntime.common.gedra.workflow.WorkflowService
 import com.dynamicruntime.common.naming.clientNamespace
+import com.dynamicruntime.common.startup.SchemaCollector
 import com.dynamicruntime.common.startup.SchemaService
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
+import io.kotest.matchers.types.shouldBeSameInstanceAs
 
 /**
  * A client's stored configuration standing over its code (issue #1634): an entry marked `"overrides": "code"` stands over
@@ -148,6 +154,46 @@ class CodeOverridesTest : StringSpec({
         val entries = gedraConfigToEntries(built)
         entries.getValue(CCT.traitDef).single()[CCT.overrides] shouldBe CCT.overridesCodeValue
         reassembleGedraConfig(cxt, "over", built.namespace, own, entries).overridesCode shouldBe built.overridesCode
+    }
+
+    "the code is cut in place and put back as declared; a cut record out of step with the collector is refused" {
+        val loader = GedraConfigLoadService.get(cxt)
+        // A scratch copy holds the very configs the node does, so it is cut as the node's would be, and nothing changes.
+        val scratch = SchemaCollector.get(cxt).shouldNotBeNull().trialCopy()
+        fun held() = scratch.gedraConfigs.configs.single { it.gedraId.client == own && it.name == "own" }
+        val declared = held()
+        val position = scratch.gedraConfigs.configs.indexOf(declared)
+        val cuts = loader.cutSource(scratch, own, ConfigKeys(traits = setOf("ownNote")), SourceCuts.none)
+        cuts.cuts.single().original shouldBeSameInstanceAs declared
+        held().traits.keys.contains("ownNote") shouldBe false
+        // Cut where it stood, so "first declaration wins" reads as it did.
+        scratch.gedraConfigs.configs.indexOf(held()) shouldBe position
+        // Put back as declared; again, as a rollback might, is nothing.
+        loader.cutSource(scratch, own, ConfigKeys.none, cuts)
+        held() shouldBeSameInstanceAs declared
+        loader.cutSource(scratch, own, ConfigKeys.none, cuts)
+        held() shouldBeSameInstanceAs declared
+        // A record naming a cut the collector never held, of a config it does not hold either, is said, not ignored.
+        val stray = SourceCuts(listOf(SourceCut(declared.copy(), declared.copy())), ConfigKeys(traits = setOf("ownNote")))
+        shouldThrow<KdrException> { loader.cutSource(scratch, own, ConfigKeys.none, stray) }.message.shouldNotBeNull() shouldContain
+            "out of step"
+    }
+
+    "a mark over nothing is left out at load, with an issue, and the rest of the config loads" {
+        val warn = TestInstances.extensionTemplateWarn("codeOverridesNothing1634")
+        val client = "ovrnothing1634"
+        // Stored past the write's trial, as a hand edit or an older release could leave it.
+        store(warn, client, template = tpl, trial = false) {
+            note("LoneEntry", "lone")
+            note("KeptEntry", "kept")
+            overridesCode("lone")
+        }
+        GedraConfigReload.reloadClient(warn, client)
+        val traits = SchemaService.get(warn).gedraTraitsFor(client).map { it.traitId }
+        traits.contains("lone") shouldBe false
+        traits.contains("kept") shouldBe true
+        ClientConfigIssues.get(warn).issuesFor(client).map { it.message }
+            .any { "marks trait 'lone' to stand over code" in it } shouldBe true
     }
 
     "configuration stored before the mark still loads as it did, with an issue saying to mark it" {

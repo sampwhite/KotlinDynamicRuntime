@@ -126,7 +126,8 @@ class GedraConfigLoadService : ServiceInitializer {
      * copy of its parent.
      */
     fun ownSourceOf(collector: SchemaCollector, client: String): List<GedraConfig> {
-        val loadedIds = allLoadedIds()
+        // The client's own loaded configs alone: every config this service loads is recorded under its own client.
+        val loadedIds = loadedFor(client).mapTo(HashSet()) { it.gedraId.fullId }
         val originals = sourceCutsFor(client).cuts.associate { it.cut.gedraId.fullId to it.original }
         return collector.gedraConfigs.configs
             .filter { it.gedraId.client == client && it.inheritedFrom == null && it.gedraId.fullId !in loadedIds }
@@ -138,10 +139,16 @@ class GedraConfigLoadService : ServiceInitializer {
      * its definition [def] extends, then its own code. A sandbox's is made where its configuration is
      * ([sandboxConfigs]), since all of it is copies.
      */
-    fun codeLayerOf(collector: SchemaCollector, client: String, def: ClientDef?): List<CodeConfig> {
-        val template = def?.extendsFromClientId?.takeIf { it != client }
-        val fromTemplate = template?.let { t -> ownSourceOf(collector, t).map { CodeConfig(it, "template '$t''s '${it.name}'") } }.orEmpty()
-        return fromTemplate + ownSourceOf(collector, client).map { CodeConfig(it, "its code's '${it.name}'") }
+    fun codeLayerOf(collector: SchemaCollector, client: String, def: ClientDef?): List<CodeConfig> =
+        templateLayerOf(collector, def, client) + ownSourceOf(collector, client).map { CodeConfig(it, "its code's '${it.name}'") }
+
+    /**
+     * The code of the template [def] extends, as declared, as the first part of a code layer ([codeLayerOf], and a
+     * sandbox's, [sandboxConfigs]); none when [def] extends nothing, or names [self] -- a client or its parent.
+     */
+    private fun templateLayerOf(collector: SchemaCollector, def: ClientDef?, self: String): List<CodeConfig> {
+        val template = def?.extendsFromClientId?.takeIf { it != self } ?: return emptyList()
+        return ownSourceOf(collector, template).map { CodeConfig(it, "template '$template''s '${it.name}'") }
     }
 
     /**
@@ -151,13 +158,28 @@ class GedraConfigLoadService : ServiceInitializer {
      * registry already serves a stored ref over a shipped one of the same id.
      */
     fun cutSource(collector: SchemaCollector, client: String, over: ConfigKeys, current: SourceCuts): SourceCuts {
-        for (c in current.cuts) collector.replaceGedraConfig(c.cut, c.original)
+        // Back as declared. A config already back is left -- a rollback may put back what a failed cut already did --
+        // and one holding neither is a record out of step with the collector, which nothing here can repair quietly.
+        for (c in current.cuts) {
+            val held = collector.gedraConfigs.configs.firstOrNull { it.gedraId == c.original.gedraId }
+            when {
+                held === c.original -> continue
+                held === c.cut -> collector.replaceGedraConfig(c.cut, c.original)
+                else -> throw KdrException(
+                    "Client '$client''s code config '${c.original.gedraId}' is not the one its cut was made of or into; " +
+                        "the record of what its stored entries stand over is out of step with the collector.",
+                )
+            }
+        }
         val keys = over.withoutFileRefs()
         if (keys.isEmpty) return SourceCuts.none
         val cuts = ownSourceOf(collector, client).mapNotNull { original ->
             if (keys.over(ConfigKeys.of(original)).isEmpty) return@mapNotNull null
             val cut = original.cutBy(keys)
-            if (collector.replaceGedraConfig(original, cut)) SourceCut(original, cut) else null
+            if (!collector.replaceGedraConfig(original, cut)) {
+                throw KdrException("Client '$client''s code config '${original.gedraId}' could not be cut in place: it is not held.")
+            }
+            SourceCut(original, cut)
         }
         return SourceCuts(cuts, over)
     }
@@ -471,8 +493,7 @@ class GedraConfigLoadService : ServiceInitializer {
         val built = SandboxConfigs.configsFor(parentSource, parentStored, sandboxSource)
         val code = built.filter { !it.isStored }
         val def = built.firstNotNullOfOrNull { it.client }
-        val template = def?.extendsFromClientId?.takeIf { it != parent }
-        val layer = template?.let { t -> ownSourceOf(collector, t).map { CodeConfig(it, "template '$t''s '${it.name}'") } }.orEmpty() +
+        val layer = templateLayerOf(collector, def, parent) +
             code.map { CodeConfig(it, if (it in sandboxSource) "its sandbox overlay '${it.name}'" else "its parent's code '${it.name}'") }
         val judged = CodeOverrides.judge(cxt, built.filter { it.isStored }, layer, sink)
         val keys = judged.over.withoutFileRefs()
