@@ -17,7 +17,9 @@ import com.dynamicruntime.common.uiblock.uiBlock
  * card -- never here.
  *
  * Core's own cards are shortcuts to the pages a caller who does more than fill in forms works from. Each says where it
- * goes in a line, rather than only repeating the menu: Home is where a person starts.
+ * goes in a line, rather than only repeating the menu: Home is where a person starts. Each is named in the row of links
+ * under Home's title too ([HCARD.jumpLabel]), as the public home page's sections are, so an administrator sees at the
+ * top what the page offers further down.
  */
 fun homeCardsBlock(): UiBlockSource = uiBlock(
     HCARD.block,
@@ -31,6 +33,7 @@ fun homeCardsBlock(): UiBlockSource = uiBlock(
         homeCard(
             HCARD.administer, "Your client",
             "Set up your client and its home page, add the people who use it, and run its reports.",
+            jumpLabel = "Your client",
             links = listOf(
                 HomeCardLink("My client", UiRoute(HMENU.pageClients)),
                 HomeCardLink("Users", UiRoute(HMENU.pageUsers)),
@@ -41,6 +44,7 @@ fun homeCardsBlock(): UiBlockSource = uiBlock(
         homeCard(
             HCARD.oversee, "Clients and customers",
             "Every client and customer on this deployment, and the people in them.",
+            jumpLabel = "Clients and customers",
             links = listOf(
                 HomeCardLink("Clients", UiRoute(HMENU.pageClients)),
                 HomeCardLink("Customers", UiRoute(HMENU.pageCustomers)),
@@ -51,6 +55,7 @@ fun homeCardsBlock(): UiBlockSource = uiBlock(
         homeCard(
             HCARD.edit, "Your client's forms",
             "As an editor you see and edit every form in your client, and see who its people are.",
+            jumpLabel = "Your client's forms",
             links = listOf(
                 HomeCardLink("Forms", UiRoute(HMENU.pageForms)),
                 HomeCardLink("Users", UiRoute(HMENU.pageUsers)),
@@ -60,6 +65,7 @@ fun homeCardsBlock(): UiBlockSource = uiBlock(
         homeCard(
             HCARD.operate, "Operating this deployment",
             "How the deployment is set up and running: its settings, its boot checks, and the rest of the operator pages.",
+            jumpLabel = "Operating this deployment",
             links = listOf(
                 HomeCardLink("Operator overview", UiRoute(HMENU.pageOperator)),
                 HomeCardLink("Boot checks", UiRoute(HMENU.pageBootChecks)),

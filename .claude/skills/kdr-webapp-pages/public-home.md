@@ -104,8 +104,9 @@ none of its own.
 - **A card may be named in the row of links under the title** (`HCARD.jumpLabel`), beside the copy's own jump links
   ("Start here", on the `reference` flavor): Home adds a link to each such card (`homeCardJumpLinks`), written in the
   copy's own style -- list items after a list, `·` after a row on one line (`withCardJumpLinks`) -- and counts the
-  cards' element ids among what is drawn, so `jumpLinksFor` keeps them. The assistant's card is one, since it may sit
-  below a long introduction; its link reads the card's `offerLabel` while the person may switch it on, as its button
+  cards' element ids among what is drawn, so `jumpLinksFor` keeps them. Core's cards all are, so an administrator,
+  an editor, or an operator sees at the top what the page offers further down, as the public home page's sections are
+  named there. The assistant's card is one too, since it may sit below a long introduction; its link reads the card's `offerLabel` while the person may switch it on, as its button
   does. Home reads the assistant's status once (`useAssistantCardView`) for both. A client's copy that blanks
   `home.jumpLinks` still leaves the cards' links; an overlay removes a card's by clearing its `jumpLabel`.
 - **The shell config resolves the menu and the cards together** (`UiBlockService.resolveAll`), so the caller's cfacts

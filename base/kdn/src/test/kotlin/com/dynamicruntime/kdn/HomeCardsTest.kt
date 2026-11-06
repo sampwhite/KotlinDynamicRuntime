@@ -73,6 +73,7 @@ class HomeCardsTest : StringSpec({
                 HFLD.id to HCARD.administer,
                 HCARD.title to "Your client",
                 HCARD.text to "Set up your client and its home page, add the people who use it, and run its reports.",
+                HCARD.jumpLabel to "Your client",
                 HCARD.links to listOf(
                     mapOf(HCARD.linkLabel to "My client", UIB.action to HMENU.pageClients),
                     mapOf(HCARD.linkLabel to "Users", UIB.action to HMENU.pageUsers),
