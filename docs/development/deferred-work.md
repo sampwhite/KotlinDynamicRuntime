@@ -1102,3 +1102,16 @@ The forms listing's "waiting on you" (`needsMe`, issue #1637) and a keyword sear
   approval they may give, a save naming them). Worth it once a client gives reviewing to people it does not make
   editors.
 
+
+## When a client wants its forms list's workflows drawn another way
+
+The forms list draws each row's workflows in one of two layouts (`workflowLayout`, issue #1599): `combined`, one
+Workflows cell, or `split`, a Your turn column beside it. The setting is the client's `kdr:listingDef`, an enum so that
+another layout needs no rename. Whatever is added changes the drawing, never the classification of what is the
+caller's turn.
+
+- **One column per workflow** *(from #1599).* A third layout: a spreadsheet of where each form stands in each workflow.
+  Worth it once a client with a handful of workflows wants to see them side by side rather than as links.
+- **Other display options** *(from #1599).* Each its own `listingDef` field, admitted when a client asks for it: the
+  Your turn column's words beyond its keyword's header, whether the Workflows cell folds its finished and not-eligible
+  links, a column per search keyword.

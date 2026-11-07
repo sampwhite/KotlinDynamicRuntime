@@ -611,6 +611,12 @@ object HFRAG {
     /** In [workflowCellNs]: that dialog's text when the workflow gives no reasons of its own. */
     const val wcNoReasons = "noReasons"
 
+    /** In [workflowCellNs]: a keyword filter's choice of the forms that are the viewer's turn (`mine`, issue #1599). */
+    const val wcKeywordMine = "keywordMine"
+
+    /** In [workflowCellNs]: a keyword filter's choice of the forms awaiting it, whoever acts (`any`, issue #1599). */
+    const val wcKeywordAny = "keywordAny"
+
     /**
      * The key of a "What is this?" explanation (issue #1337), in the namespace of the copy it explains -- in this
      * file and in a page's own ([PFRAG]), as the profile file's `users.whatIsThis` is. Empty, the link is not offered.

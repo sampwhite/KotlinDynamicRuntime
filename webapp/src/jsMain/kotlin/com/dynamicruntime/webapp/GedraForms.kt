@@ -22,6 +22,7 @@ import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.endpoint.HttpMethod
 import com.dynamicruntime.common.gedra.DUF
 import com.dynamicruntime.common.gedra.GDF
+import com.dynamicruntime.common.gedra.WorkflowLayout
 import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.gedra.GED
 import com.dynamicruntime.common.gedra.GEP
@@ -38,6 +39,7 @@ import com.dynamicruntime.common.util.ScriptEnv
 import com.dynamicruntime.common.util.parseDateOrNull
 import com.dynamicruntime.common.gedra.workflow.FSV
 import com.dynamicruntime.common.gedra.workflow.CTAK
+import com.dynamicruntime.common.gedra.workflow.CTKQ
 import com.dynamicruntime.common.gedra.workflow.CTKF
 import com.dynamicruntime.common.gedra.workflow.SWF
 import com.dynamicruntime.common.gedra.workflow.WFD
@@ -174,6 +176,13 @@ class FormsListPage(
     val ctaKeywords: List<CtaKeywordWords> = emptyList(),
     /** The same words as each other client with a row on the page says them, by client id (issue #1596). */
     val ctaKeywordsByClient: Map<String, List<CtaKeywordWords>> = emptyMap(),
+    /** How the listing's client draws each row's workflows (issue #1599), its listing setting; `split` unless it says. */
+    val workflowLayout: WorkflowLayout = WorkflowLayout.split,
+    /**
+     * How many of the listing's forms are the caller's turn (issue #1599), for the Your turn column's header -- with
+     * [workflowSummary], and null when the fetch did not ask for it, so the page keeps the count it has.
+     */
+    val yourTurnCount: Int? = null,
 )
 
 /**
@@ -1108,6 +1117,8 @@ class WorkflowCellWords(
     val notAvailableTip: String = "Not available: see why",
     val whyNotAvailable: String = $$"Why ${label} is not available",
     val noReasons: String = "This form does not meet the workflow's conditions.",
+    val keywordMine: String = "Yours",
+    val keywordAny: String = "Anyone's",
 ) {
     /** The heading over [kind]'s links in a popover, which is also the name of that kind. */
     fun group(kind: WorkflowCellKind): String = groups[kind] ?: kind.group
@@ -1144,6 +1155,8 @@ class WorkflowCellWords(
                 notAvailableTip = t(HFRAG.wcNotAvailableTip, shipped.notAvailableTip),
                 whyNotAvailable = t(HFRAG.wcWhyNotAvailable, shipped.whyNotAvailable),
                 noReasons = t(HFRAG.wcNoReasons, shipped.noReasons),
+                keywordMine = t(HFRAG.wcKeywordMine, shipped.keywordMine),
+                keywordAny = t(HFRAG.wcKeywordAny, shipped.keywordAny),
             )
         }
     }
@@ -1356,23 +1369,65 @@ fun workflowCellCounts(items: List<WorkflowCellItem>, words: WorkflowCellWords =
         .sortedBy { it.key.ordinal }
         .joinToString(" \u00b7 ") { words.count(it.key, it.value.size) }
 
-/** How many links a cell draws before it folds the rest (issue #1598): up to this many, it draws them all. */
-const val workflowCellFoldPast = 4
+/**
+ * When a Workflows cell folds (issues #1598, #1599): up to [foldPast] links it draws them all; past that it draws
+ * [drawn] and folds the rest, so a fold hides at least two.
+ */
+class WorkflowCellFoldAt(val foldPast: Int, val drawn: Int) {
+    companion object {
+        /** The `combined` layout's cell (issue #1598), which holds the viewer's turn too. */
+        val combined = WorkflowCellFoldAt(foldPast = 4, drawn = 3)
 
-/** How many links a cell that folds still draws (issue #1598), unless more of them are the viewer's turn. */
-const val workflowCellDrawn = 3
+        /** The `split` layout's (issue #1599), whose Your turn column holds the strong links, leaving the cell the rest. */
+        val split = WorkflowCellFoldAt(foldPast = 3, drawn = 2)
+    }
+}
 
 /**
- * A cell's links, in cell order, split into those drawn and those folded behind a "+N" (issue #1598). A cell of up to
- * [workflowCellFoldPast] links draws them all; past that it draws [workflowCellDrawn] and folds the rest, so a fold
- * hides at least two unless the viewer's turn alone fills the cell. The viewer's turn never folds: those links come
- * first, are all drawn whatever their number, and count toward the links drawn -- two of them and four others draw one
- * more. Pure, under `jsNodeTest`.
+ * A cell's links, in cell order, split into those drawn and those folded behind a "+N" (issues #1598, #1599), as
+ * [at] says. The viewer's turn never folds: those links come first, are all drawn whatever their number, and count
+ * toward the links drawn -- in a combined cell, two of them and four others draw one more -- so a fold hides at least
+ * two unless the viewer's turn alone fills the cell. Pure, under `jsNodeTest`.
  */
-fun workflowCellFold(items: List<WorkflowCellItem>): Pair<List<WorkflowCellItem>, List<WorkflowCellItem>> {
-    if (items.size <= workflowCellFoldPast) return items to emptyList()
-    val drawn = maxOf(workflowCellDrawn, items.count { it.weight == WfWeight.yourTurn })
+fun workflowCellFold(
+    items: List<WorkflowCellItem>,
+    at: WorkflowCellFoldAt = WorkflowCellFoldAt.combined,
+): Pair<List<WorkflowCellItem>, List<WorkflowCellItem>> {
+    if (items.size <= at.foldPast) return items to emptyList()
+    val drawn = maxOf(at.drawn, items.count { it.weight == WfWeight.yourTurn })
     return items.take(drawn) to items.drop(drawn)
 }
+
+/**
+ * The Your turn column's header (issue #1599): the one search keyword in use's own header ("To review"), else -- none
+ * in use, or more than one -- the cell's "Your turn" ([WorkflowCellWords.group]); with [count], how many forms are the
+ * viewer's turn, "To review (4)". [keywordsInUse] are the keywords the listing's client's workflows use, in its words.
+ * Pure, under `jsNodeTest`.
+ */
+fun yourTurnHeader(keywordsInUse: List<CtaKeywordWords>, words: WorkflowCellWords, count: Int?): String {
+    val header = keywordsInUse.singleOrNull()?.columnHeader?.ifBlank { null } ?: words.group(WorkflowCellKind.yourTurn)
+    return if (count == null) header else "$header ($count)"
+}
+
+/**
+ * The search keywords a listing offers a filter for (issue #1599): those [keywords] whose parameter the listing's
+ * endpoint declares in [searchKeys] -- the keywords its client's workflows use, on a client's own listing; none on the
+ * shared one. In [keywords]' order. Pure, under `jsNodeTest`.
+ */
+fun keywordsInUse(keywords: List<CtaKeywordWords>, searchKeys: Set<String>): List<CtaKeywordWords> =
+    keywords.filter { it.keyword in searchKeys }
+
+/**
+ * The chips of the keyword filters applied (issue #1599), one per keyword with a question in [applied]: its filter
+ * label and the choice, "Needs review: Yours". Pure, under `jsNodeTest`.
+ */
+fun keywordFilterChips(applied: Map<String, Any?>, keywords: List<CtaKeywordWords>, words: WorkflowCellWords): List<String> =
+    keywords.mapNotNull { kw ->
+        when (applied[kw.keyword]?.toString()) {
+            CTKQ.mine -> "${kw.filterLabel}: ${words.keywordMine}"
+            CTKQ.any -> "${kw.filterLabel}: ${words.keywordAny}"
+            else -> null
+        }
+    }
 
 // `formatTimestamp`, which shows a wire timestamp in the client's zone, is in `DisplayZone.kt` (issue #1115).

@@ -44,6 +44,9 @@ object CCT {
     /** One file ref -- a named file of the client's, by where its bytes are -- keyed by its ref id (issues #1153, #1154). */
     const val fileRefDef = "kdr:fileRefDef"
 
+    /** The client's listing-wide settings (issue #1599); single-instance, as [clientDef] is. See `ListingDef`. */
+    const val listingDef = "kdr:listingDef"
+
     // --- what a stored entry says of the code it stands over (issue #1634) ---
 
     /**
@@ -99,4 +102,6 @@ object CCT {
     const val hash = "hash"
     const val root = "root"
     const val path = "path"
+
+    const val workflowLayout = "workflowLayout"
 }

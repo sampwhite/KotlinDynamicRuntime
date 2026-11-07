@@ -187,7 +187,7 @@ fun coreConfigTraits(cxt: KdrCxtBase): GedraConfig = gedraConfig(cxt, CCT.config
         }
         overridesCodeProperty()
     }
-    // Declared last, so the slot list a write is held to ends with the newest (issue #1153). What a file *is* --
+    // What a file *is* --
     // its type, its size, the name it was uploaded under -- is deliberately no field of this: it is the file
     // store's record, written by the upload that checked the bytes, or what a local file is found to be when it
     // is read (issue #1154) -- and nothing an entry could be typed to claim.
@@ -221,6 +221,18 @@ fun coreConfigTraits(cxt: KdrCxtBase): GedraConfig = gedraConfig(cxt, CCT.config
         }
         property(CCT.description, "What the file is for, in the administrator's words.") { maxLength = FREF.maxDescriptionLength }
         overridesCodeProperty()
+    }
+    // Declared last, so the slot list a write is held to ends with the newest (issues #1153, #1599). One entry, as the
+    // client definition is: no key, and no `overrides` mark, since a stored one stands over the code's by itself.
+    configTrait(
+        "ListingDefEntry", CCT.listingDef, setOf(GedraConfigType.configDoc),
+        "The client's listing-wide settings: how its forms listing is drawn as a whole. A stored entry stands over the " +
+            "one its code or template declares.",
+    ) {
+        property(CCT.workflowLayout, "How each row's workflows are drawn: `split` (the default) or `combined`.") {
+            option(WorkflowLayout.split.name, "A Your turn column beside the Workflows cell")
+            option(WorkflowLayout.combined.name, "One Workflows cell holding every link")
+        }
     }
 }
 

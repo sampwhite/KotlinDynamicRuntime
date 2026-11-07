@@ -11,6 +11,7 @@ import com.dynamicruntime.common.gedra.workflow.WfPhase
 import com.dynamicruntime.common.gedra.workflow.WfWaitsOn
 import com.dynamicruntime.common.gedra.workflow.WfWeight
 import com.dynamicruntime.common.gedra.workflow.CTAK
+import com.dynamicruntime.common.gedra.workflow.CTKQ
 import com.dynamicruntime.common.gedra.workflow.FormWorkflow
 import com.dynamicruntime.common.gedra.workflow.SWF
 import com.dynamicruntime.common.home.HFRAG
@@ -260,6 +261,37 @@ class WorkflowColumnViewTest {
         assertEquals("3 others", reworded.moreText(3))
         assertEquals("More workflows", reworded.moreTitle)
     }
+
+    @Test
+    fun theSplitLayoutsCellFoldsPastThreeAndItsColumnIsHeadedByTheKeywordInUse() {
+        val entry = summary.first()
+        fun item(weight: WfWeight, category: WfColumnCategory = WfColumnCategory.engaged) =
+            WorkflowCellItem(entry, FormWorkflow("x", category, null, emptyList()), weight)
+        val available = item(WfWeight.available, WfColumnCategory.eligible)
+        val ineligible = item(WfWeight.settled, WfColumnCategory.ineligible)
+        fun fold(vararg items: WorkflowCellItem) =
+            workflowCellFold(items.toList(), WorkflowCellFoldAt.split).let { (d, f) -> d.size to f.size }
+        // Beside the Your turn column (issue #1599) the cell holds the rest: three drawn, four fold to two and "+2".
+        assertEquals(3 to 0, fold(available, available, ineligible))
+        assertEquals(2 to 2, fold(available, available, ineligible, ineligible))
+        // The column's header: the one keyword in use's, else "Your turn", with the count when there is one.
+        val words = WorkflowCellWords()
+        assertEquals("To review (4)", yourTurnHeader(listOf(reviewWords.single().withHeader("To review")), words, 4))
+        assertEquals("Your turn", yourTurnHeader(emptyList(), words, null))
+        val second = CtaKeywordWords("approve", "Approve", "Needs approval", "To approve", "Needs approval", "Needs Approval")
+        assertEquals("Your turn (2)", yourTurnHeader(reviewWords + second, words, 2))
+        // The keywords in use are those the listing's endpoint takes a parameter for: none on the shared listing.
+        assertEquals(listOf(CTAK.review), keywordsInUse(reviewWords + second, setOf(CTAK.review, "q")).map { it.keyword })
+        assertTrue(keywordsInUse(reviewWords, setOf("q")).isEmpty())
+        // A keyword filter applied says its label and choice, in the client's words.
+        assertEquals(listOf("Needs review: Yours"), keywordFilterChips(mapOf(CTAK.review to CTKQ.mine), reviewWords, words))
+        val reworded = WorkflowCellWords.of(Copy(mapOf(HFRAG.workflowCellNs to mapOf(HFRAG.wcKeywordAny to "Everyone's"))))
+        assertEquals(listOf("Needs review: Everyone's"), keywordFilterChips(mapOf(CTAK.review to CTKQ.any), reviewWords, reworded))
+        assertTrue(keywordFilterChips(emptyMap(), reviewWords, words).isEmpty())
+    }
+
+    private fun CtaKeywordWords.withHeader(header: String) =
+        CtaKeywordWords(keyword, verb, filterLabel, header, reportLabel, statusText)
 
     @Test
     fun theWorkflowPageSaysWhyItsTasksAreReadOnly() {

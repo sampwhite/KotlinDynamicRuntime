@@ -5,6 +5,7 @@ import com.dynamicruntime.common.home.HFRAG
 import com.dynamicruntime.common.endpoint.EI
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.gedra.GDF
+import com.dynamicruntime.common.gedra.WorkflowLayout
 import com.dynamicruntime.common.gedra.ListingColumn
 import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.gedra.UF
@@ -16,6 +17,7 @@ import com.dynamicruntime.common.schema.SchType
 import com.dynamicruntime.common.util.toJsonListOrEmpty
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptLong
+import com.dynamicruntime.common.util.toOptEnum
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.launch
 import react.ChildrenBuilder
@@ -129,6 +131,10 @@ val FormsPage = FC<FormsPageProps> { props ->
     var ctaKeywords by useState<List<CtaKeywordWords>>(emptyList())
     // And as each other client on the page says them (issue #1596), for its rows in the cross-client view.
     var ctaKeywordsByClient by useState<Map<String, List<CtaKeywordWords>>>(emptyMap())
+    // How the listing's client draws each row's workflows (issue #1599), from every page's summary, and how many forms
+    // are the caller's turn, from the pages that carry the workflow summary.
+    var workflowLayout by useState(WorkflowLayout.split)
+    var yourTurnCount by useState<Int?>(null)
     // The home file's copy, which the forms pages read (issue #791): what a row with no workflows shows, and the
     // listings' "What is this?" explanations (issue #1337). Empty until read, and if it cannot be.
     var homeCopy by useState(Copy.empty)
@@ -257,6 +263,8 @@ val FormsPage = FC<FormsPageProps> { props ->
             ListingColumn.listFrom(resp[EP.summary].toJsonMapOrEmpty()[GDF.columns]),
             CtaKeywordWords.listFrom(resp[EP.summary].toJsonMapOrEmpty()[GDF.ctaKeywords]),
             CtaKeywordWords.byClientFrom(resp[EP.summary].toJsonMapOrEmpty()[GDF.ctaKeywordsByClient]),
+            resp[EP.summary].toJsonMapOrEmpty()[GDF.workflowLayout].toOptEnum<WorkflowLayout>() ?: WorkflowLayout.split,
+            if (withSummary) (resp[EP.summary].toJsonMapOrEmpty()[GDF.yourTurnCount] as? Number)?.toInt() else null,
         )
     }
 
@@ -306,6 +314,8 @@ val FormsPage = FC<FormsPageProps> { props ->
                 listingColumns = page.columns
                 ctaKeywords = page.ctaKeywords
                 ctaKeywordsByClient = page.ctaKeywordsByClient
+                workflowLayout = page.workflowLayout
+                page.yourTurnCount?.let { yourTurnCount = it }
                 searchError = null
             } catch (e: Throwable) {
                 searchError = userFacingError(e)
@@ -408,6 +418,8 @@ val FormsPage = FC<FormsPageProps> { props ->
                     listingColumns = page.columns
                     ctaKeywords = page.ctaKeywords
                     ctaKeywordsByClient = page.ctaKeywordsByClient
+                    workflowLayout = page.workflowLayout
+                    page.yourTurnCount?.let { yourTurnCount = it }
                 }
                 error = null
                 searchError = null
@@ -989,6 +1001,9 @@ val FormsPage = FC<FormsPageProps> { props ->
                         showCoreDetailsStatus = coreDetailsFilterOffered
                         showWaitingFilter = waitingFilterOffered
                         this.ctaKeywords = ctaKeywords
+                        // A filter per search keyword the client's workflows use (issue #1599), on its own listing.
+                        keywordFilters = keywordsInUse(ctaKeywords, formsSearchKeys(ep.inputSchema))
+                        workflowWords = WorkflowCellWords.of(homeCopy)
                         // What each column's field offers (issue #1500), for its box to suggest.
                         choices = listingColumns.filter { it.choices.isNotEmpty() }.associate { it.columnId to it.choices }
                         panelOpen = filtersOpen
@@ -1087,6 +1102,12 @@ val FormsPage = FC<FormsPageProps> { props ->
                     this.ctaKeywordsByClient = ctaKeywordsByClient
                     noWorkflowsCopy = emptyWorkflowsCopy
                     workflowWords = WorkflowCellWords.of(homeCopy)
+                    // The split layout's Your turn column (issue #1599): its header from the keywords in use, with the
+                    // count of forms that are the caller's turn.
+                    this.workflowLayout = workflowLayout
+                    yourTurnHeaderText = yourTurnHeader(
+                        keywordsInUse(ctaKeywords, formsSearchKeys(ep.inputSchema)), WorkflowCellWords.of(homeCopy), yourTurnCount,
+                    )
                     workflowHref = { id, wf, task, edit ->
                         routeHref(workflowPageRoute(id, wf, task, edit, listingPage) + listingContext)
                     }

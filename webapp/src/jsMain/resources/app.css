@@ -819,6 +819,10 @@ h4 { margin: 16px 0 4px; font-size: var(--h4-size); font-weight: 600; color: var
 /* The per-row action buttons in the forms list (issue #417): kept on one line and tightly spaced, since a
    table cell is narrow and the confirm ("Delete? Yes Cancel") must read as one group. */
 .row-actions { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+/* The forms list's row actions stacked, one link a line (issue #1599), so its Actions column needs half the width.
+   Each link loses its side padding, which side by side kept the links apart and here only widens the column. */
+.row-actions-stacked { flex-direction: column; align-items: flex-start; gap: 2px; }
+.row-actions-stacked .ant-btn-link { padding-inline: 0; height: auto; }
 /* Under a growing listing (issue #1315): its count line and the links that show more of it. */
 .show-more { margin: 10px 0 4px; gap: 4px 12px; }
 .show-more .ant-btn-link { padding-inline: 0; }
@@ -1031,16 +1035,26 @@ button.wf-cell-link:disabled { opacity: .5; cursor: default; text-decoration: no
 }
 .wf-link:focus-visible, button.wf-cell-more:focus-visible { outline: 2px solid var(--accent-bright); outline-offset: 1px; }
 .wf-verb { font-weight: 600; margin-right: 6px; }
+/* The two button-like links are rounded toward a pill and raised a little -- a lighter top edge and a small shadow
+   under -- so they read as buttons to press; pressed, they sink by a pixel. Kept slight: the cell has little room. */
 .wf-link.wf-w-yourTurn {
-    display: inline-block; padding: 1px 8px; border-radius: 4px; background: var(--accent); color: #fff;
+    display: inline-block; padding: 1px 9px; border-radius: 7px; color: #fff;
+    background: linear-gradient(to bottom, color-mix(in srgb, var(--accent) 74%, white), color-mix(in srgb, var(--accent) 88%, black));
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .18), 0 1px 2px rgba(0, 0, 0, .45);
 }
-.wf-link.wf-w-yourTurn:hover { box-shadow: 0 0 0 1px var(--accent-brighter); }
+.wf-link.wf-w-yourTurn:hover {
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .18), 0 1px 2px rgba(0, 0, 0, .45), 0 0 0 1px var(--accent-brighter);
+}
+.wf-link.wf-w-yourTurn:active { transform: translateY(1px); box-shadow: inset 0 1px 2px rgba(0, 0, 0, .3); }
 .wf-link.wf-w-waiting { color: var(--text-muted); }
 .wf-link.wf-w-waiting:hover { color: var(--text-dim); text-decoration: underline; }
 .wf-reason { color: var(--text-muted); font-size: .78rem; font-style: italic; }
 .wf-link.wf-w-available {
-    display: inline-block; padding: 0 7px; border: 1px solid var(--accent-bright); border-radius: 4px; color: var(--accent-bright);
+    display: inline-block; padding: 0 8px; border: 1px solid var(--accent-bright); border-radius: 7px; color: var(--accent-bright);
+    background: linear-gradient(to bottom, rgba(255, 255, 255, .12), rgba(0, 0, 0, .1));
+    box-shadow: 0 1px 2px rgba(0, 0, 0, .4);
 }
+.wf-link.wf-w-available:active { transform: translateY(1px); box-shadow: none; }
 .wf-link.wf-w-available:hover { border-color: var(--accent-brighter); color: var(--accent-brighter); }
 .wf-link.wf-w-settled { color: var(--text-muted); font-size: .8rem; }
 .wf-link.wf-w-settled:hover { color: var(--text-dim); text-decoration: underline; }

@@ -2,6 +2,7 @@ package com.dynamicruntime.webapp
 
 import com.dynamicruntime.common.endpoint.EI
 import com.dynamicruntime.common.gedra.GDF
+import com.dynamicruntime.common.gedra.workflow.CTKQ
 import com.dynamicruntime.common.gedra.SearchRole
 import com.dynamicruntime.common.gedra.UsageKind
 import com.dynamicruntime.common.gedra.choiceLabel
@@ -84,6 +85,15 @@ private fun waitingOptions(): Array<dynamic> = listOf("true" to "Only those").ma
     o.value = value
     o
 }.toTypedArray()
+
+/** antd `{label, value}` options for a keyword's filter (issue #1599): the caller's turn, or anyone's. */
+private fun keywordOptions(words: WorkflowCellWords): Array<dynamic> =
+    listOf(CTKQ.mine to words.keywordMine, CTKQ.any to words.keywordAny).map { (value, label) ->
+        val o: dynamic = js("({})")
+        o.label = label
+        o.value = value
+        o
+    }.toTypedArray()
 
 /** antd `{label, value}` options for the status filter (issue #695): the statuses, labelled as the chip labels them. */
 private fun formStatusOptions(keywords: List<CtaKeywordWords>): Array<dynamic> = FormStatus.entries.map { s ->
@@ -364,6 +374,15 @@ external interface FormsSearchProps : Props {
     var showWaitingFilter: Boolean?
 
     /**
+     * The search keywords offered a filter (issue #1599), each choosing the forms that are the caller's turn for it
+     * (`mine`) or awaiting it whoever acts (`any`): those the client's workflows use, on its own listing. Unset is none.
+     */
+    var keywordFilters: List<CtaKeywordWords>?
+
+    /** The words of those filters' choices (issue #1599). Unset reads as shipped. */
+    var workflowWords: WorkflowCellWords?
+
+    /**
      * Fetches distinct value suggestions for a text trait (issue #581): given the trait id and a typed prefix,
      * calls back with the values. Null when the caller's surface carries no values endpoint (an older node),
      * and then the text boxes stay plain inputs. A failure calls back empty, leaving the box usable as text.
@@ -382,8 +401,11 @@ val FormsSearch = FC<FormsSearchProps> { props ->
     val groups = props.groups
     // The free-text term searches the text fields, so the box is offered only where there is one to search.
     val hasText = groups.any { it.kind == UsageKind.string }
+    val words = props.workflowWords ?: WorkflowCellWords()
+    val keywordFilters = props.keywordFilters.orEmpty()
     val chips = activeFilterChips(groups, props.applied) +
-        listOfNotNull(formStatusChip(props.applied, props.ctaKeywords.orEmpty()), needsMeChip(props.applied))
+        listOfNotNull(formStatusChip(props.applied, props.ctaKeywords.orEmpty()), needsMeChip(props.applied)) +
+        keywordFilterChips(props.applied, keywordFilters, words)
     val termApplied = props.applied[EI.q]?.toString()?.isNotBlank() == true
     div {
         className = ClassName("row forms-toolbar")
@@ -436,6 +458,20 @@ val FormsSearch = FC<FormsSearchProps> { props ->
                 placeholder = "Any"
                 style = js("({ minWidth: 120 })")
                 onChange = { v -> props.onChange(GDF.needsMe, (v as? String) ?: "") }
+            }
+        }
+        // A quick filter per search keyword in use (issue #1599): the forms that are the caller's turn for it, or
+        // awaiting it whoever acts, for someone overseeing the work. Cleared means any form.
+        keywordFilters.forEach { kw ->
+            filterGroup(kw.filterLabel) {
+                Select {
+                    value = props.values[kw.keyword]?.ifBlank { null }
+                    options = keywordOptions(words)
+                    allowClear = true
+                    placeholder = "Any"
+                    style = js("({ minWidth: 120 })")
+                    onChange = { v -> props.onChange(kw.keyword, (v as? String) ?: "") }
+                }
             }
         }
         groups.forEach { group ->

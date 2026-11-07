@@ -106,6 +106,7 @@ fun gedraConfigToEntries(config: GedraConfig, shownAsRun: Boolean = false): Map<
     // One entry an id: a slot holds one entry per key, and a row edited by hand to hold an id twice would otherwise
     // be unwritable until one was removed. The first is the one a load keeps, so it is the one written back.
     out[CCT.fileRefDef] = config.fileRefs.distinctBy { it.refId }.map { it.toEntry() }
+    config.listing?.let { out[CCT.listingDef] = listOf(it.toEntry()) }
     // Each entry the config marks to stand over code (issue #1634) carries the mark, as the stored entry says it.
     if (!config.overridesCode.isEmpty) markOverCode(out, config.overridesCode)
     // And each overlay of the code as stored, marked as it was (issue #1657), whether or not it read over the code.
@@ -277,6 +278,8 @@ fun reassembleGedraConfig(
     }
     // Forgiving, as a report is: a ref that is no good costs only itself, and it is the load that says so.
     entriesBySlot[CCT.fileRefDef]?.forEach { fileRefFromMap(it) }
+    // One entry (issue #1599), read leniently: a value this release does not know is the default.
+    entriesBySlot[CCT.listingDef]?.firstOrNull()?.let { listing(ListingDef.fromEntry(it)) }
 }.let { config ->
     // What its entries mark to stand over code (issue #1634): read here, so a write stores the marks it was given and a
     // load reads them back.

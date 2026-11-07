@@ -142,7 +142,8 @@ The backend half of the call-to-action cell, which the Workflows cell draws (#15
 
 ## The Workflows cell draws what each workflow asks of the caller (issue #1598)
 
-The cell is the classification drawn, the `combined` layout (#1599 adds `split`, with a Your turn column). The page
+The cell is the classification drawn: all of it in the `combined` layout, and the rest beside a Your turn column in
+`split` (#1599, below). The page
 decides nothing about what is actionable: `workflowCellOf` runs `formWorkflowWeights` with the row's `waitingSteps` as
 its `mayAct`, joins each workflow to the summary, and gives each link its words. `FormsTable` only draws.
 
@@ -174,11 +175,39 @@ into its two kinds, since "settled" is not a word for anyone to read.
   rest behind "+N more", so a fold hides at least two. **The caller's turn never folds**: those links come first, are
   all drawn however many there are, and count toward the three -- two of them, two to start, and two not eligible draw
   the two and one to start, and fold three. The fold opens a popover, "More workflows", with each kind under its own
-  heading. Once #1599 gives the caller's turn its own column, this cell can go back to two.
+  heading. In the `split` layout the cell holds no turn of the caller's, so it folds sooner: up to three drawn, past
+  that two and "+N more" (`WorkflowCellFoldAt.split`).
 - **A narrow screen folds the whole cell to its counts** ("1 your turn · 2 available", `workflowCellCounts`), a button
   opening all the links, grouped the same way. `app.css` chooses which shows (below 640 px), so the cell draws both.
 - **Only the caller's turn opens in edit mode** (`linkEdits`): a waiting link opens its task to be looked at, which the
   drilled listing's double-click follows too.
+
+## The split layout: a Your turn column, and the keyword filters (issue #1599)
+
+How the cell is drawn is the client's **listing setting**, `workflowLayout` (`combined` or `split`, default `split`), in
+the `kdr:listingDef` slot: one entry per client, holding what applies to its listing as a whole. A stored entry stands
+over its code's or template's, which stands over the default (`GedraConfigCollector.listingFor`). The listing's summary
+always carries it (`GDF.workflowLayout`); the page reads it and decides nothing, and the setting changes the drawing,
+never the classification.
+
+- **The Your turn column** (`split` only, before the Workflows cell): the strong links alone, never folded, beside the
+  rest. It sorts on the backend by how many of a form's steps wait on the caller (`GSORT.yourTurn`, worked out over
+  the whole matched set before paging, as `needsMe` is), most first on the first click, so the caller's work comes to
+  the top. A row whose every link is the caller's turn leaves the Workflows cell empty rather than a dash.
+- **Its header** (`yourTurnHeader`): the one keyword in use's `columnHeader` ("To review", the client's words), else
+  -- none in use, or several -- "Your turn" (`workflowCell.yourTurnGroup`), with the count of forms that are the
+  caller's turn, "To review (4)". The count (`GDF.yourTurnCount`) comes with the workflow summary: what `needsMe`
+  would list over the client's scope, whatever the search, so it does not change as the reader filters. The keywords
+  in use are those whose parameter the listing's endpoint declares (`keywordsInUse`), so the shared listing has none.
+  One keyword in use heads the column even when some of its links carry no keyword (a save, say).
+- **The keyword filters**: one filter-well group per keyword in use, headed by its `filterLabel`, choosing **Yours**
+  (`review=mine`) or **Anyone's** (`review=any`, for someone overseeing the work), with a chip, "Needs review: Yours"
+  (`keywordFilterChips`). The choices' words are `workflowCell.keywordMine` and `keywordAny`.
+- **On a narrow screen** only the Your turn column has to survive: the Workflows cell folds to its counts as ever.
+- **The Clients page sets it** (`clients-page.md`).
+- **The listing is short of width, not of height**, so with the Your turn column the others gave some back: the Actions
+  links stack one a line (`row-actions-stacked`), halving the column (115 px, 165 in a drilled listing); `Contains` is
+  guaranteed 160 px rather than 200; and each display column is 144 px rather than 160.
 
 ## A column's filter and cells follow its field (issues #1500, #1508)
 

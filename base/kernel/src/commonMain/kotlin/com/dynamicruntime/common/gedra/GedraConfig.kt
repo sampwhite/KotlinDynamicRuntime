@@ -329,6 +329,12 @@ class GedraConfig(
      */
     val fileRefs: List<FileRefDef> = emptyList(),
     /**
+     * The listing-wide settings this config declares for its client (issue #1599), when it declares them: how its
+     * forms listing draws each row's workflows, for now. At most one, as [client] is. What the client runs with is
+     * resolved across its configs, stored over code (`GedraConfigCollector.listingFor`).
+     */
+    val listing: ListingDef? = null,
+    /**
      * Where this config came from (issue #839): declared in source code, or read back from the database. A
      * problem found in a stored config is judged under its own, forgiving check mode, since a boot refused over
      * stored data leaves nothing with which to repair it.
@@ -402,6 +408,7 @@ class GedraConfig(
         reports: Map<String, ClientReport> = this.reports,
         workflowParams: Map<String, WfParams> = this.workflowParams,
         fileRefs: List<FileRefDef> = this.fileRefs,
+        listing: ListingDef? = this.listing,
         origin: GedraConfigOrigin = this.origin,
         inheritedFrom: String? = this.inheritedFrom,
         overridesCode: ConfigKeys = this.overridesCode,
@@ -410,7 +417,7 @@ class GedraConfig(
         defs = defs, client = client, customers = customers, cfacts = cfacts, fragments = fragments, uiBlocks = uiBlocks,
         workflows = workflows, usages = usages, reports = reports, unreadReports = unreadReports,
         unreadWorkflows = unreadWorkflows, shadowedTypes = shadowedTypes, workflowParams = workflowParams,
-        fileRefs = fileRefs, origin = origin, inheritedFrom = inheritedFrom, contributesTo = contributesTo,
+        fileRefs = fileRefs, listing = listing, origin = origin, inheritedFrom = inheritedFrom, contributesTo = contributesTo,
         overridesCode = overridesCode, codeOverlays = codeOverlays,
     )
 
@@ -846,6 +853,21 @@ class GedraConfigBuilder(
         clientDef = def
     }
 
+    /** The listing-wide settings this config declares, if it declared them; see [listing]. */
+    var listingDef: ListingDef? = null
+        private set
+
+    /**
+     * Declares the client's listing-wide settings (issue #1599): how its forms listing draws each row's workflows, for
+     * now. At most one per config, as a client definition is, so a second throws.
+     */
+    fun listing(def: ListingDef) {
+        if (listingDef != null) {
+            throw KdrException.mkConv("This config already declares its listing settings, and a config holds them once.")
+        }
+        listingDef = def
+    }
+
     /**
      * The types a trait's generated type replaced (issue #1542); see `GedraConfig.shadowedTypes`. Recorded by
      * [generatingTypes] rather than refused, so a stored config costs only the declared type.
@@ -1133,6 +1155,7 @@ fun gedraConfig(
         unreadWorkflows = builder.unreadWorkflows.toMap(),
         workflowParams = builder.workflowParams.toMap(),
         fileRefs = builder.fileRefs.toList(),
+        listing = builder.listingDef,
         origin = origin,
         contributesTo = contributesTo,
         codeOverlays = builder.codeOverlays.toList(),

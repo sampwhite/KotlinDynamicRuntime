@@ -410,6 +410,12 @@ object GSORT {
      *  who does not see across clients has only their own client's rows, so there is nothing to order by. */
     const val client = "client"
 
+    /**
+     * Sort by the caller's turn (the Your turn column, issue #1599): by how many of a form's steps wait on the caller,
+     * so, descending, their work comes to the top. Worked out over the whole matched set before paging, as `needsMe` is.
+     */
+    const val yourTurn = "yourTurn"
+
     const val asc = "asc"
     const val desc = "desc"
 

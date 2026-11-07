@@ -1446,6 +1446,15 @@ object ClientsApi {
             it[CIT.configName].toOptStr().orEmpty() to it[CPY.mode].toOptStr().orEmpty()
         }
 
+    /**
+     * Sets how a client's forms listing draws each row's workflows (issue #1599) -- [request] from [usageLayoutRequest].
+     * Answers the configuration it was stored in, and how it took effect.
+     */
+    suspend fun setUsageLayout(request: Map<String, Any?>): Pair<String, String> =
+        Http.sendApi("POST", UADEP.clientUsageLayout, request)[EP.results].toJsonMapOrEmpty().let {
+            it[CIT.configName].toOptStr().orEmpty() to it[CPY.mode].toOptStr().orEmpty()
+        }
+
     /** Every key an administrator may override for a client, with the client's value (issue #918). */
     suspend fun copyKeys(clientId: String): List<CopyKeyView> =
         parseCopyKeys(Http.getApi(CPY.keysPath + queryString(mapOf(COV.client to clientId)))[EP.items].toJsonListOfMaps())

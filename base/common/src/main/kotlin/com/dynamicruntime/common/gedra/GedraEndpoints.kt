@@ -323,8 +323,8 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
         property(
             GSORT.sort,
             "Order by this column: a display column, `${GSORT.displayColumnPrefix}<column>`, or `${GSORT.updated}` / " +
-                "`${GSORT.created}` / `${GSORT.contains}` / `${GSORT.owner}` (admin-only) / `${GSORT.client}` (allClients-only). " +
-                "Defaults to most recently written.",
+                "`${GSORT.created}` / `${GSORT.contains}` / `${GSORT.owner}` (admin-only) / `${GSORT.client}` (allClients-only) / " +
+                "`${GSORT.yourTurn}` (how many of a form's steps wait on the caller). Defaults to most recently written.",
         ) {
             emptyIsAbsent = true
         }
@@ -424,6 +424,14 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
                 items { ref(CTKF.wordsType) }
             }
         }
+        property(GDF.workflowLayout, "How the client draws each row's workflows: its listing setting (issue #1599).", required = true) {
+            options(WorkflowLayout.entries)
+        }
+        property(
+            GDF.yourTurnCount,
+            "How many forms of the listing's scope have a step waiting on the caller, whatever the search (issue #1599). " +
+                "Present when the workflows are.",
+        ) { type = SCT.integer }
     }
 
     listEndpoint(
@@ -469,22 +477,23 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
         // a column over a choice field matches a choice's label too and sorts in their order (issue #1500).
         val columns = SchemaService.get(c).listingColumnsFor(c.client)
         val filter = searchFilter(c, request, columns)
-        val sort = gedraSortFor(c, request, columns, scope)
+        // What waits on the caller in each form (issues #1637, #1597, #1599), worked out once for the listing: its sort
+        // by the caller's turn, `needsMe`, a keyword search, and the page's rows all read it.
+        val waiting = WaitingSteps(c)
+        val svc = GedraDataService.get(c)
+        val sort = gedraSortFor(c, request, columns, scope, waiting, svc)
         // The status filter (issue #695): a predicate over a row's state entries, through the same rule
         // the status column reads them by, applied by `listGedras` over the states cache before paging. The
         // schema has already settled the value: a blank is absent (`emptyIsAbsent`), anything but the three
         // options was refused, so what arrives is one of them or nothing.
         val statusWanted = request[GDF.formStatus] as? String
         val statusFilter = statusWanted?.let { wanted -> GedraStateFilter { _, states -> formStatusOf(states) == wanted } }
-        // What waits on the caller in each form (issues #1637, #1597), worked out once for the listing: `needsMe` keeps
-        // the forms with a step waiting on them, a keyword search those whose waiting step carries the keyword, and the
-        // page's rows say which steps those are.
+        // `needsMe` keeps the forms with a step waiting on the caller, a keyword search those whose waiting step carries
+        // the keyword, and the page's rows say which steps those are (issues #1637, #1597).
         val needsMe = request.getOptBool(GDF.needsMe) == true
-        val waiting = WaitingSteps(c)
         val stateFilter = allOfStateFilters(
             listOfNotNull(statusFilter, workflowDrillFilter(c, request), needsMeFilter(needsMe, waiting), keywordFilter(request, waiting)),
         )
-        val svc = GedraDataService.get(c)
         val page = svc.listGedras(c, formDoc, scope, limit, offset, filter, sort, stateFilter)
         // Attach each form's state (issue #600) only when asked. One batch read over the page's ids -- cache-
         // first off the resident states cache, the misses (a form with no state, or a cache-absent node) sharing
@@ -548,8 +557,13 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
                 page.rows.map { it.client }.distinct().filter { it != c.client }.takeIf { it.isNotEmpty() }?.let { others ->
                     put(GDF.ctaKeywordsByClient, others.associateWith { ctaKeywordWords(c, it) })
                 }
+                // How the client draws each row's workflows (issue #1599): its listing setting, which the page reads.
+                put(GDF.workflowLayout, SchemaService.get(c).listingDefFor(c.client).workflowLayout.name)
                 if (withStates && request.getOptBool(GDF.withWorkflowSummary) == true) {
                     putAll(FormWorkflowSummary.of(c, svc.statesInScope(c, formDoc, callerScope)))
+                    // And how many of the listing's forms are the caller's turn (issue #1599), whatever the search: what
+                    // `needsMe` would list, for the Your turn column's header. The client's scope, not one user's.
+                    put(GDF.yourTurnCount, svc.listGedras(c, formDoc, baseScope, 0, 0, stateFilter = needsMeFilter(true, waiting)).numAvailable)
                 }
                 target?.let { put(GDF.scopeUser, scopeUserBlock(it)) }
             }.ifEmpty { null },
@@ -1595,6 +1609,8 @@ private fun gedraSortFor(
     request: Map<String, Any?>,
     columns: List<UsageColumn>,
     scope: ReadScope,
+    waiting: WaitingSteps,
+    svc: GedraDataService,
 ): GedraDataService.GedraSort? {
     val column = request[GSORT.sort].toOptStr()?.ifBlank { null } ?: return null
     val descending = request[GSORT.sortDir].toOptStr()?.equals(GSORT.desc, ignoreCase = true) == true
@@ -1630,6 +1646,24 @@ private fun gedraSortFor(
         GSORT.client ->
             if (!AdminRules.canSeeAllClients(cxt)) null
             else GedraDataService.GedraSort(UsageKind.string, descending) { it.client }
+        // The caller's turn (the Your turn column, issue #1599): how many of a form's steps wait on them, by the rule
+        // `needsMe` applies. The matched set's states and owners are read in one batch each in the `prepare` hook, so
+        // ordering costs what `needsMe` does; a form whose steps wait on no one is 0.
+        GSORT.yourTurn -> {
+            val turns = HashMap<String, Int>()
+            GedraDataService.GedraSort(
+                UsageKind.number,
+                descending,
+                prepare = { rows ->
+                    val states = svc.readShownStates(cxt, rows.map { it.gedraId }, scope)
+                    waiting.readOwners(rows.map { it.userId })
+                    for (row in rows) {
+                        val id = row.gedraId.fullId
+                        turns[id] = waiting.of(row.gedraId, row.userId, states[id].orEmpty()).size
+                    }
+                },
+            ) { row -> (turns[row.gedraId.fullId] ?: 0).toString() }
+        }
         else -> {
             val key = GSORT.displayColumnKey(column) ?: return null
             val sortColumn = columns.firstOrNull { it.columnKey == key } ?: return null

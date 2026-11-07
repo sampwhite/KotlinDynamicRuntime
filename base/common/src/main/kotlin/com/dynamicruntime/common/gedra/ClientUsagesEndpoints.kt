@@ -6,6 +6,8 @@ import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.user.UADEP
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
+import com.dynamicruntime.common.util.toOptEnum
+import com.dynamicruntime.common.exception.KdrException
 
 /** The client page's listing columns (issue #1491): the catalog, the save, and the removal. See [ClientUsageEdit]. */
 internal fun SchModuleBuilder.clientUsagesEndpoints() {
@@ -67,6 +69,13 @@ internal fun SchModuleBuilder.clientUsagesEndpoints() {
             type = SCT.array
             items { ref(CUS.traitTypeName) }
         }
+        property(
+            CUS.workflowLayout,
+            "How the client's forms listing draws each row's workflows, as it runs (issue #1599): `split`, a Your turn " +
+                "column beside the Workflows cell, or `combined`, one cell.",
+            required = true,
+        ) { options(WorkflowLayout.entries) }
+        property(CUS.layoutConfigName, "The stored configuration holding the client's listing settings; absent when none does.")
     }
 
     itemEndpoint(
@@ -151,5 +160,37 @@ internal fun SchModuleBuilder.clientUsagesEndpoints() {
         val label = request[CCT.label].toOptStr().orEmpty()
         val result = ClientUsageEdit.remove(c, client, request[CCT.traitId].toOptStr().orEmpty(), label, expectedModeOf(request))
         editorSaveResult(client, result.configName, CCT.label to label, result.mode, result.issues, null)
+    }
+
+    type(CUS.layoutResultTypeName) {
+        type = SCT.kObject
+        description = "What setting a client's workflow layout did (issue #1599)."
+        property(CLD.client, "The client.", required = true)
+        property(CIT.configName, "The stored configuration holding the client's listing settings.", required = true)
+        property(CUS.workflowLayout, "The layout as stored.", required = true) { options(WorkflowLayout.entries) }
+        saveOutcomeFields()
+    }
+
+    generalEndpoint(
+        UADEP.clientUsageLayout,
+        "Sets how a client's forms listing draws each row's workflows (issue #1599): `split`, a Your turn column beside the " +
+            "Workflows cell, or `combined`, one cell. Stored in the configuration already holding the client's listing " +
+            "settings, else the editors' own, where copy and menu edits land; a stored setting stands over one the " +
+            "client's code declares. Then as every editor's save: published and reloaded, or a draft for a client with a " +
+            "Shadow Sandbox.",
+        HttpMethod.POST,
+        outputRef = CUS.layoutResultTypeName,
+        needsClientConfig = true,
+        inputFields = {
+            overseenClientField(CLD.client)
+            field(CUS.workflowLayout, "The layout.", required = true) { options(WorkflowLayout.entries) }
+            expectedModeField()
+        },
+    ) { c, request ->
+        val client = overseenClient(c, request[CLD.client].toOptStr())
+        val layout = request[CUS.workflowLayout].toOptEnum<WorkflowLayout>()
+            ?: throw KdrException.mkInput("'${request[CUS.workflowLayout]}' is not a workflow layout.")
+        val result = ClientListingEdit.setLayout(c, client, layout, expectedModeOf(request))
+        editorSaveResult(client, result.configName, CUS.workflowLayout to result.layout.name, result.mode, result.issues, null)
     }
 }

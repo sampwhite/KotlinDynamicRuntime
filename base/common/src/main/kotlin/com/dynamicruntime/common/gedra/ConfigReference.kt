@@ -119,8 +119,9 @@ private class ConfigReferenceWriter(private val shapes: ServedSlotShapes, privat
             "**Within a bundle, entries are sorted into slots,** one slot for each kind of thing: `${CCT.traitDef}` " +
                 "holds traits, `${CCT.workflowDef}` holds workflows, and so on. A slot is an array of entries of its one " +
                 "kind, each named by its **key**: a trait by its id, a workflow by its id. Most slots hold as many " +
-                "entries as you like. [`${CCT.clientDef}`](#${anchor(CCT.clientDef)}), which holds the client's " +
-                "definition, holds at most one, since a client has one definition.",
+                "entries as you like. Two hold at most one: [`${CCT.clientDef}`](#${anchor(CCT.clientDef)}), the " +
+                "client's definition, since a client has one definition, and [`${CCT.listingDef}`](#${anchor(CCT.listingDef)}), " +
+                "its listing-wide settings.",
         )
         line()
         line(
