@@ -204,7 +204,10 @@ never the classification.
   (`review=mine`) or **Anyone's** (`review=any`, for someone overseeing the work), with a chip, "Needs review: Yours"
   (`keywordFilterChips`). The choices' words are `workflowCell.keywordMine` and `keywordAny`.
 - **On a narrow screen** only the Your turn column has to survive: the Workflows cell folds to its counts as ever.
-- **The Clients page sets it**, in the listing columns panel (`clients-page.md`).
+- **The Clients page sets it** (`clients-page.md`).
+- **The listing is short of width, not of height**, so with the Your turn column the others gave some back: the Actions
+  links stack one a line (`row-actions-stacked`), halving the column (115 px, 165 in a drilled listing); `Contains` is
+  guaranteed 160 px rather than 200; and each display column is 144 px rather than 160.
 
 ## A column's filter and cells follow its field (issues #1500, #1508)
 

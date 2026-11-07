@@ -230,7 +230,7 @@ val FormsTable = FC<FormsTableProps> { props ->
             // endpoint is the column's dataIndex -- namespaced for a display column, `updated`/`created` for a date.
             displayCols.forEach {
                 // Drawn as a time column is (issue #1323): the presented text, with the value behind it on hover.
-                add(timeColumn(sortableColumn(it.label, displayColKey(it.columnId), 160, props.sortColumn, props.sortDescending)))
+                add(timeColumn(sortableColumn(it.label, displayColKey(it.columnId), displayColumnWidth, props.sortColumn, props.sortDescending)))
             }
             add(sortableColumn("Contains", GSORT.contains, null, props.sortColumn, props.sortDescending))
             if (props.showOwner) add(ownerColumn(props.sortColumn, props.sortDescending))
@@ -375,8 +375,9 @@ private fun actionsColumn(
     showCoreDetails: Boolean,
     onViewWorkflow: ((String, List<WorkflowCellItem>) -> Unit)? = null,
 ): dynamic {
-    // Wider in a drilled listing (issue #792), which adds View Workflow to each row.
-    val c = column("Actions", "actions", if (onViewWorkflow != null) 330 else 230)
+    // Its links stacked, one a line (issue #1599), so the column takes half the width it did side by side -- wider in a
+    // drilled listing (issue #792), whose View Workflow is the longest.
+    val c = column("Actions", "actions", if (onViewWorkflow != null) 165 else 115)
     // Any click inside the actions cell is for an action, not for opening the row -- keep it from reaching the
     // row's onClick.
     c.onCell = {
@@ -562,7 +563,8 @@ private external interface FormRowActionsProps : Props {
 
 private val FormRowActions = FC<FormRowActionsProps> { props ->
     span {
-        className = ClassName("row-actions")
+        // Stacked, one link a line (issue #1599): the forms list is short of width, not of height.
+        className = ClassName("row-actions row-actions-stacked")
         // The drilled workflow on this form (issue #792), first: it is what the listing was opened to reach.
         props.onViewWorkflow?.let { view ->
             Button {
@@ -608,8 +610,14 @@ private val FormRowActions = FC<FormRowActionsProps> { props ->
     }
 }
 
-/** What the width-less `Contains` column is guaranteed under the fixed layout, in px -- see [minTableWidth]. */
-private const val containsMinWidth = 200
+/**
+ * What the width-less `Contains` column is guaranteed under the fixed layout, in px -- see [minTableWidth]. Trimmed from
+ * 200 (issue #1599): its trait names wrap, and the listing is short of width.
+ */
+private const val containsMinWidth = 160
+
+/** A display column's width, in px: trimmed from 160 (issue #1599), as the listing gained its Your turn column. */
+private const val displayColumnWidth = 144
 
 /**
  * The table's minimum width as an antd `scroll` config: every declared column width plus [containsMinWidth]
