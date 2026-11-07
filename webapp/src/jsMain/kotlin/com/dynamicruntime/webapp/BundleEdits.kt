@@ -9,6 +9,13 @@ import com.dynamicruntime.common.gedra.GedraEditAction
 import com.dynamicruntime.common.gedra.PORT
 import com.dynamicruntime.common.gedra.addressesEntry
 import com.dynamicruntime.common.gedra.canonicalKey
+import com.dynamicruntime.common.gedra.codeOverlayBodyField
+import com.dynamicruntime.common.gedra.codeOverlaySlots
+import com.dynamicruntime.common.gedra.codeOverlayShown
+import com.dynamicruntime.common.gedra.codeOverlayStale
+import com.dynamicruntime.common.gedra.codeOverlayStored
+import com.dynamicruntime.common.gedra.isCodeOverlay
+import com.dynamicruntime.common.gedra.restatedCodeLists
 import com.dynamicruntime.common.gedra.fromPortable
 import com.dynamicruntime.common.gedra.sandboxOf
 import com.dynamicruntime.common.gedra.sandboxParentOf
@@ -57,6 +64,9 @@ fun bundleEditGate(row: ClientOverview?): BundleEditGate = when {
  * One entry the page holds an edit of: where it is ([bundle], [slot]), what it was when read ([original], null for a
  * new entry, and [stamp], its `updatedAt`), the JSON as it now stands ([text]), and whether it is to be [removed].
  * The text is in the form the page shows -- [portable] or as stored -- for [client], the configuration's owner.
+ *
+ * [code] is the code's entry an overlay of it changes (issue #1657), for a workflow or type edited over the code: the
+ * text is then the whole entry, merged over the code's, and a save stores only what differs ([checkEntry]).
  */
 class EntryDraft(
     val bundle: String,
@@ -67,15 +77,23 @@ class EntryDraft(
     val removed: Boolean = false,
     val client: String = "",
     val portable: Boolean = false,
+    val code: Map<String, Any?>? = null,
 ) {
     /**
      * Whether saving would change anything: a removal, a new entry, or text other than the entry as read, shown in the
-     * same form -- so opening an entry in portable form is no edit.
+     * same form -- so opening an entry in portable form is no edit, nor is opening an overlay of the code, which is
+     * shown merged.
      */
-    val isEdit: Boolean get() = removed || original == null || text != entryText(entryShown(original, slot, client, portable))
+    val isEdit: Boolean get() = removed || original == null || text != entryText(entryShown(originalShown(), slot, client, portable))
 
-    fun withText(text: String) = EntryDraft(bundle, slot, original, stamp, text, removed, client, portable)
-    fun withRemoved(removed: Boolean) = EntryDraft(bundle, slot, original, stamp, text, removed, client, portable)
+    /** [original] as the page shows it: an overlay of the code merged over [code] (issue #1657), anything else as read. */
+    fun originalShown(): Map<String, Any?> {
+        val read = original.orEmpty()
+        return if (code != null && read.isCodeOverlay) codeOverlayShown(slot, code, read) else read
+    }
+
+    fun withText(text: String) = EntryDraft(bundle, slot, original, stamp, text, removed, client, portable, code)
+    fun withRemoved(removed: Boolean) = EntryDraft(bundle, slot, original, stamp, text, removed, client, portable, code)
 }
 
 /**
@@ -97,12 +115,20 @@ class BundleEdits(
     fun without(id: String) = BundleEdits(drafts - id, newBundles, nextNew)
 
     /**
-     * With a new entry of [slot] in [bundle], its text [text] in the page's form ([portable]) for [client]; returns the
-     * edits and the new entry's id.
+     * With a new entry of [slot] in [bundle], its text [text] in the page's form ([portable]) for [client] -- an overlay of
+     * [code], the code's entry, when given; returns the edits and the new entry's id.
      */
-    fun adding(bundle: String, slot: String, text: String, client: String = "", portable: Boolean = false): Pair<BundleEdits, String> {
+    fun adding(
+        bundle: String,
+        slot: String,
+        text: String,
+        client: String = "",
+        portable: Boolean = false,
+        code: Map<String, Any?>? = null,
+    ): Pair<BundleEdits, String> {
         val id = "new#$nextNew"
-        return BundleEdits(drafts + (id to EntryDraft(bundle, slot, null, null, text, client = client, portable = portable)), newBundles, nextNew + 1) to id
+        val draft = EntryDraft(bundle, slot, null, null, text, client = client, portable = portable, code = code)
+        return BundleEdits(drafts + (id to draft), newBundles, nextNew + 1) to id
     }
 
     fun addingBundle(name: String) = BundleEdits(drafts, newBundles + name, nextNew)
@@ -127,7 +153,7 @@ class BundleEdits(
                 d.removed -> d.text
                 else -> return null
             }
-            EntryDraft(d.bundle, d.slot, d.original, d.stamp, text, d.removed, d.client, portable)
+            EntryDraft(d.bundle, d.slot, d.original, d.stamp, text, d.removed, d.client, portable, d.code)
         },
         newBundles,
         nextNew,
@@ -203,7 +229,12 @@ fun slotDataTypes(view: BundleEditorView): Map<String, SchType> {
 }
 
 /** An entry's draft checked: its data, when its text parses to an object, and what is wrong with it, in words. */
-class EntryCheck(val data: Map<String, Any?>?, val problems: List<String>) {
+class EntryCheck(
+    val data: Map<String, Any?>?,
+    val problems: List<String>,
+    /** What the page says of the entry without refusing it: the lists an overlay of the code restates (issue #1657). */
+    val notes: List<String> = emptyList(),
+) {
     val ok: Boolean get() = problems.isEmpty()
 }
 
@@ -218,6 +249,11 @@ private val unparsedBodies = SchOpts(schemaDocumentsUnparsed = true)
  *  - an existing entry's key fields may not change, and a new entry's key may not be one the slot holds -- in its
  *    bundle or another, unless it is being removed from another (a move) -- or another new entry's.
  * A removal is not checked: what it removes was read.
+ *
+ * An entry marked as an overlay of the code (issue #1657) is checked whole, as typed, and its data is then the overlay a
+ * save stores: only what differs from the code's entry. A change no overlay can state -- a task added, removed, or
+ * moved -- is a problem whose way out is to detach the entry from the code, and each list without keys the overlay
+ * restates is a note.
  */
 fun checkEntry(id: String, view: BundleEditorView, edits: BundleEdits, dataTypes: Map<String, SchType>): EntryCheck {
     val draft = edits.drafts[id] ?: return EntryCheck(null, emptyList())
@@ -236,12 +272,57 @@ fun checkEntry(id: String, view: BundleEditorView, edits: BundleEdits, dataTypes
             .forEach { problems.add(if (it.path.isEmpty()) it.message else "${it.path}: ${it.message}") }
     }
     problems.addAll(keyProblems(id, draft, data, key, view, edits))
-    return EntryCheck(data, problems)
+    if (!data.isCodeOverlay) return EntryCheck(data, problems)
+    return overlayCheck(draft, data, key, view, problems)
+}
+
+/**
+ * [data], typed whole and marked as an overlay of the code, as what a save stores (issue #1657): the overlay of the code's
+ * entry of its key, with [problems] and what no overlay can state, and a note for each list without keys it restates.
+ */
+private fun overlayCheck(
+    draft: EntryDraft,
+    data: Map<String, Any?>,
+    key: List<String>,
+    view: BundleEditorView,
+    problems: List<String>,
+): EntryCheck {
+    if (draft.slot !in codeOverlaySlots) {
+        val only = "Only a workflow or a type is kept as a change to the code; mark it \"${CCT.overridesCodeValue}\" to " +
+            "replace the code's whole."
+        return EntryCheck(data, problems + only)
+    }
+    val code = draft.code ?: codeEntryOf(view, draft.slot, key, data)
+        ?: return EntryCheck(data, problems + "The code has no ${editorSlotLabel(draft.slot).lowercase()} entry with this key to change.")
+    val stored = codeOverlayStored(draft.slot, code, data)
+    val unstated = stored.problems.map { p ->
+        val where = p.location?.path?.takeIf { it.isNotEmpty() }?.let { "$it: " }.orEmpty()
+        "$where${p.message} Detach from code to keep the whole entry instead."
+    }
+    // Parts the stored change holds that the code has since lost: shown merged, they are not there, so a save drops them.
+    val stale = draft.original?.takeIf { it.isCodeOverlay }?.let { codeOverlayStale(draft.slot, code, it) }.orEmpty().map {
+        "Saving drops this part of the stored change, which the code no longer has a place for: $it"
+    }
+    val notes = stale + restatedCodeLists(draft.slot, stored.overlay[codeOverlayBodyField(draft.slot)].toJsonMapOrEmpty()).map {
+        "This restates $it, which has no keys to change it by, so a change the code makes to it no longer reaches this client."
+    }
+    if (draft.original != null && stored.overlay == draft.original) return EntryCheck(stored.overlay, emptyList())
+    return EntryCheck(stored.overlay, problems + unstated, notes)
+}
+
+/**
+ * The code's entry of [slot] that [data] changes (issue #1657), by its [key] fields: the first of the client's code
+ * bundles to hold one -- its own code's before its template's, which its own code stands over.
+ */
+fun codeEntryOf(view: BundleEditorView, slot: String, key: List<String>, data: Map<String, Any?>): Map<String, Any?>? {
+    if (key.isEmpty()) return null
+    return view.codeConfigs.firstNotNullOfOrNull { bundle -> bundle.slots[slot].orEmpty().firstOrNull { addressesEntry(key, it, data) } }
 }
 
 /** Whether a failure at [path] is the trial's to judge, as the backend's gate decides it (`ConfigSlotGate`). */
 private fun leftToTheTrial(slot: String, data: Map<String, Any?>, path: String): Boolean {
     val inDefinition = path.startsWith("${CCT.definition}.") || path.startsWith("${CCT.definition}[")
+    // An overlay of a code workflow (issue #1657) is checked as the whole entry it is typed as, so it is not here.
     val overlay = slot == CCT.workflowDef && data[CCT.definition].toJsonMapOrEmpty()[WFD.fromTemplate] != null
     return inDefinition && (slot == CCT.reportDef || overlay)
 }

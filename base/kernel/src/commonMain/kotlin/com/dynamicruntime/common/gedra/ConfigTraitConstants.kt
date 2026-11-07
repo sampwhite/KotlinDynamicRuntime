@@ -57,8 +57,15 @@ object CCT {
      */
     const val overrides = "overrides"
 
-    /** The one value [overrides] takes: the entry stands over the code's. */
+    /** The value of [overrides] for an entry that stands over the code's, whole. */
     const val overridesCodeValue = "code"
+
+    /**
+     * The value of [overrides] for an entry that holds only what it changes of the code's (issue #1657): an overlay,
+     * merged over the code's entry as it is now on every read. Only a workflow or a schema type takes one
+     * (`codeOverlaySlots`).
+     */
+    const val overridesCodeOverlayValue = "codeOverlay"
 
     // --- field names inside the slots' data (each matches its value) ---
 

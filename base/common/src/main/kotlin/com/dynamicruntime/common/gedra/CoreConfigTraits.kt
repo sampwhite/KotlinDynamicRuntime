@@ -131,7 +131,7 @@ fun coreConfigTraits(cxt: KdrCxtBase): GedraConfig = gedraConfig(cxt, CCT.config
         property(CCT.definition, "The workflow definition, as the definition schema describes it.", required = true) {
             ref("${WFD.namespace}.${WFD.defType}")
         }
-        overridesCodeProperty()
+        overridesCodeProperty(overlay = true)
     }
     configTrait(
         "ReportDefEntry", CCT.reportDef, setOf(GedraConfigType.configDoc),
@@ -151,7 +151,7 @@ fun coreConfigTraits(cxt: KdrCxtBase): GedraConfig = gedraConfig(cxt, CCT.config
         primaryKey(CCT.typeName)
         property(CCT.typeName, "The qualified name of the type being defined.", required = true)
         property(CCT.schema, "The type's schema body, validated by parsing it.", required = true) { schemaDocument() }
-        overridesCodeProperty()
+        overridesCodeProperty(overlay = true)
     }
     configTrait(
         "FragmentDefEntry", CCT.fragmentDef, setOf(GedraConfigType.configDoc),
@@ -238,14 +238,22 @@ fun coreConfigTraits(cxt: KdrCxtBase): GedraConfig = gedraConfig(cxt, CCT.config
 
 /**
  * The mark a keyed slot's stored entry carries to stand over the code's entry of the same key (issue #1634): the
- * template's copies, the client's own code, a sandbox's code. One value, so anything else is refused at the write.
+ * template's copies, the client's own code, a sandbox's code. Its values are a closed list, so anything else is refused
+ * at the write: `code` on every keyed slot, and with [overlay] -- a workflow's and a schema type's, the slots with merge
+ * rules -- `codeOverlay` too, for an entry holding only what it changes (issue #1657).
  */
-private fun SchTypeBuilder.overridesCodeProperty() {
+private fun SchTypeBuilder.overridesCodeProperty(overlay: Boolean = false) {
+    val whole = "Set to `${CCT.overridesCodeValue}` when this entry stands over the client's code's entry of the same key -- its " +
+        "template's, or its own code's -- which it replaces whole."
+    val asOverlay = " Set to `${CCT.overridesCodeOverlayValue}` when it holds only what it changes of the code's entry, which " +
+        "every read merges it over, so a later change to the code reaches the parts it leaves alone."
     property(
         CCT.overrides,
-        "Set to `${CCT.overridesCodeValue}` when this entry stands over the client's code's entry of the same key -- its " +
-            "template's, or its own code's -- which it replaces whole. Without it, an entry matching a code entry is refused.",
-    ) { option(CCT.overridesCodeValue, "Stands over the code's entry of the same key") }
+        whole + (if (overlay) asOverlay else "") + " Without it, an entry matching a code entry is refused.",
+    ) {
+        option(CCT.overridesCodeValue, "Stands over the code's entry of the same key")
+        if (overlay) option(CCT.overridesCodeOverlayValue, "Changes the code's entry of the same key, merged over it")
+    }
 }
 
 /**

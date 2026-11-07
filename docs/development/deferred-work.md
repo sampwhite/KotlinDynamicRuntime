@@ -603,7 +603,9 @@ full rationale live in the fragment design doc, `kdr-design/thoughts-on-fragment
 A workflow made from a template (#1120) stores an overlay that may change labels, which traits each step collects, and
 layouts. Every other change is refused, adding a step included. A client wanting a step the template lacks writes the
 workflow whole, without `fromTemplate`, through the bundle editor or a patch. It then gives up later fixes to the
-template. With few templates and few clients, that and a programmatic patch across similar workflows (the bundle patch
+template. An overlay of a client's code (#1657) has the same edge: a task can be changed but not added, removed, or
+moved, and the editor offers to detach the workflow from the code, storing it whole. With few templates and few
+clients, that and a programmatic patch across similar workflows (the bundle patch
 endpoint with a dry run) are enough. Overlays that place a new entry earn their machinery only when two owners'
 changes have to keep meeting.
 
@@ -621,30 +623,17 @@ changes have to keep meeting.
   Nothing stored has to change to add it: the workflow's lists already carry stable keys (tasks, saves, eligibility
   tests, trait references, locks, and singletons). The design discussion is in Sam's private design notes.
 
-## When a client declared in source needs its definitions changed as data
+## When a public template wants a part of its workflows its clients cannot change
 
-A real client, not a sample, whose configuration is declared in **source** and which needs a workflow's copy,
-requirements or choices changed -- or another part of a source-declared definition overridden -- as stored data,
-without a code change. A client defined in data already gets all of it: workflow variants from Design View
-(#984), with form requirements and restated choices in the layout (#1022, #1048). Today the sample's `acme` is the
-only client this would serve.
+An overlay of a client's code (#1657) is open: it may change any part of a code workflow or type, since the client's own
+code makes no promise to anyone else, and a template's copies are the client's code too. A template meant for public
+use, such as the starter kit, may one day want to fix a part -- a save's kind, an approval -- so a fix it ships is not
+undone by a client's change. Nothing needs it yet.
 
-- **Targeted overlays of source-declared definitions** *(#1011, parked 2026-10-05, deferred here 2026-10-07).*
-  Let a client's stored configuration alter what its own source declares, without cloning it:
-  - **A workflow variant for a source-declared workflow.** A stored config declaring the same workflow id is a
-    collision today and is dropped, so Design View refuses to edit such a form. The first step would admit only
-    a workflow's `types` with layout, which since #1022 and #1048 carries requirements and restated choices as
-    well as copy.
-  - **A stored alteration of a type the client's source declares**, merged by #985's merger rather than
-    replacing it whole. #990's `g-extends` partly eases this: an extension follows its source base without
-    drifting, but under a new name that traits must point to.
-
-  Deferred on complexity: it adds a new concept for authors, an overlay entry in stored configuration, and today
-  it would mainly serve a sample. The design constraints in #1011 stand for when it resumes:
-  - an overlay is explicit, names its target, and is never a redeclaration;
-  - what may be overlaid is declared per part by a `MergeSpec`;
-  - addressing tasks, saves, eligibility and labels stays deferred, in a shape that does not foreclose a keyed
-    merge on task ids.
+- **Fixed by declaration** *(the grants note's "open by default, fixed by declaration", deferred in #1657,
+  2026-11-07).* The code workflow names the parts it fixes, and the overlay's merge and diff treat them as
+  `MergeRule.Fixed`: restated as they are, refused when changed, at write and in the editor. A global template keeps its
+  own, stricter rules (`templateOverlayProblems`).
 
 ## When a deployment wants self-serve clients to start from a template it ships
 

@@ -472,7 +472,7 @@ class PublicWalkThroughTest : StringSpec({
         val formId = createForm(founder, "sandboxForm")
 
         // The page's bundle, by the name it has the reader type, and the button the page names, from the JSON.
-        page shouldContain "type `$reviewBundle` in **New bundle's name**"
+        page shouldContain "type `$reviewBundle` where it says **Name a new bundle**"
         page shouldContain "**${reviewSave[WFD.label]}**"
         // Its save: one patch, each entry new as the editor sends one (it read none), in the portable form pasted.
         pageTrait[CCT.typeName].toOptStr().shouldNotBeNull() shouldContain "client.@self."

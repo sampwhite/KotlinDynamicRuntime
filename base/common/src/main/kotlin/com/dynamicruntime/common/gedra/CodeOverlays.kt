@@ -1,0 +1,162 @@
+package com.dynamicruntime.common.gedra
+
+import com.dynamicruntime.common.context.KdrCxt
+import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.gedra.workflow.toJsonMap
+import com.dynamicruntime.common.startup.SchemaCollector
+import com.dynamicruntime.common.schema.qualifyTypeName
+import com.dynamicruntime.common.util.toJsonMapOrEmpty
+import com.dynamicruntime.common.util.toOptStr
+
+/**
+ * The code a client's stored overlays are read over (issue #1657): each workflow and directly declared schema type of
+ * its code layer -- its template's copies, then its own code, as declared -- by key, as definitions. [layer] is read
+ * once, on the first overlay looked up, so a client whose stored configuration holds none never builds it. Where two
+ * code configurations declare one key, the later wins, as the client's own code stands over its template's copies.
+ */
+class CodeEntries(layer: () -> List<CodeConfig>) {
+    private val index: Map<Pair<String, String>, Map<String, Any?>> by lazy {
+        buildMap {
+            for (config in layer().map { it.config }) {
+                config.workflows.values.forEach { put(CCT.workflowDef to it.workflowId, it.toJsonMap()) }
+                val generated = generatedTypes(config)
+                config.defs.filterKeys { it !in generated }.forEach { (name, body) -> put(CCT.schemaDef to name, body.toJsonMapOrEmpty()) }
+            }
+        }
+    }
+
+    /** The types [layer]'s traits generate, by qualified name, to the trait each is for. */
+    private val generatedByTrait: Map<String, String> by lazy {
+        buildMap { for (config in layer().map { it.config }) generatedTypes(config).forEach { (type, trait) -> put(type, trait) } }
+    }
+
+    /** The code's definition of [key] in [slot]: a workflow by id, a schema type by qualified name; null when none. */
+    fun definition(slot: String, key: String): Map<String, Any?>? = index[slot to key]
+
+    /** The trait whose generated type [typeName] is, when it is one: such a type changes only with its trait. */
+    fun traitGenerating(typeName: String): String? = generatedByTrait[typeName]
+
+    private fun generatedTypes(config: GedraConfig): Map<String, String> = buildMap {
+        for (trait in config.traits.values) {
+            put(trait.typeName, trait.traitId)
+            inlineDataTypeName(config, trait)?.let { put(it, trait.traitId) }
+        }
+    }
+}
+
+/**
+ * Reads [entry], a stored entry of [slot] marked `"overrides": "codeOverlay"`, over [code] (issue #1657): merged over the
+ * code's definition of its key and declared as that, so it stands in the config as any definition does; the parts the
+ * merge refused are left out, and said on the [CodeOverlay] recorded for it. When it does not read -- no code to read it
+ * over, a key the code does not declare, a result that is not a definition -- the code's runs, and the overlay is kept
+ * as stored. With no [code] at all (a write's reassembly, which the trial then reads again over the code) it is only
+ * kept, with nothing said.
+ *
+ * Theme: #CFGFG.
+ */
+internal fun GedraConfigBuilder.codeOverlay(slot: String, entry: Map<String, Any?>, code: CodeEntries?) {
+    val workflow = slot == CCT.workflowDef
+    val raw = entry[if (workflow) CCT.workflowId else CCT.typeName].toOptStr().orEmpty()
+    val key = if (workflow) raw else qualifyTypeName(raw, namespace)
+    fun keep(problems: List<String>) {
+        codeOverlays.add(CodeOverlay(slot, key, entry, applied = false, problems = problems))
+    }
+    if (code == null) return keep(emptyList())
+    val what = if (workflow) "workflow '$key'" else "type '$key'"
+    val base = code.definition(slot, key) ?: return keep(
+        listOf(
+            code.traitGenerating(key)?.let { "$what is the one trait '$it' generates, which changes only with its trait." }
+                ?: "The client's code declares no $what for it to change.",
+        ),
+    )
+    val merged = mergeCodeOverlay(slot, base, entry[if (workflow) CCT.definition else CCT.schema].toJsonMapOrEmpty())
+    val problems = overlayProblemTexts(merged.problems)
+    try {
+        if (workflow) workflowFromMap(merged.value) else type(key) { data.putAll(merged.value) }
+    } catch (e: KdrException) {
+        return keep(problems + (e.message ?: "It does not read as a definition once merged."))
+    }
+    codeOverlays.add(CodeOverlay(slot, key, entry, applied = true, problems = problems))
+}
+
+/**
+ * The issues for [config]'s overlays of its code that did not apply whole (issue #1657): one that applied without some
+ * part the code no longer has a place for, and one that did not apply at all, so the code's entry runs. Reported where
+ * the other entries a load leaves out are (`unreadEntryIssues`), and judged, like them, as stored config: forgiven at a
+ * load, and refused by a write's trial when the write brings it.
+ */
+fun codeOverlayIssues(config: GedraConfig): List<GedraConfigIssue> = config.codeOverlays.filter { it.problems.isNotEmpty() }.map { o ->
+    val workflow = o.slot == CCT.workflowDef
+    val what = if (workflow) "workflow '${o.key}'" else "type '${o.key}'"
+    val kind = if (workflow) GCEL.workflow else GCEL.type
+    if (o.applied) {
+        config.issue(
+            "Stored config '${config.gedraId}' changes the code's $what with parts the code no longer has a place for: " +
+                o.problems.joinToString(" "),
+            "Leaving those parts out; the rest of the change applies, and it is kept as stored.",
+            kind, o.key,
+        )
+    } else {
+        config.issue(
+            "Stored config '${config.gedraId}' holds a change to the code's $what that cannot be read over the code: " +
+                o.problems.joinToString(" "),
+            "Running the code's $what as it is; the change is kept as stored.",
+            kind, o.key,
+        )
+    }
+}
+
+/**
+ * A stored definition as an editor that rewrites it whole sees it (issue #1657): [body], the whole definition, and --
+ * for an entry that is an overlay of the code -- [code], the code's definition it is merged over, so a rewrite is stored
+ * as the difference again ([stored]) rather than as the whole, which would restate every part and stop following the
+ * code. Design View's edits of a workflow and of a type's layout and choices are made this way.
+ */
+class StoredWhole(val slot: String, val key: String, val body: Map<String, Any?>, val code: Map<String, Any?>?) {
+    /** [edited], the rewritten whole, as the entry stores it: as it is, or for an overlay only what differs from the code's. */
+    fun stored(edited: Map<String, Any?>): Map<String, Any?> {
+        val code = code ?: return edited
+        val diff = diffCodeOverlay(slot, code, edited)
+        if (diff.problems.isNotEmpty()) {
+            throw KdrException.mkInput(
+                "${what(slot, key)} is kept as a change to the code, which cannot state this: " +
+                    overlayProblemTexts(diff.problems).joinToString(" ") + " Detach it from the code in the bundle editor first.",
+            )
+        }
+        return diff.overlay
+    }
+
+    companion object {
+        /**
+         * [entry], a stored entry of [slot] keyed by [key] that [client] holds, as a whole definition: merged over the
+         * client's code as declared when it is an overlay of the code, and as stored otherwise. An overlay with nothing
+         * under it, or holding parts the code no longer has a place for, is refused: a rewrite of it would drop them
+         * unseen, so it is fixed in the bundle editor, which says what is dropped.
+         */
+        fun of(cxt: KdrCxt, client: String, slot: String, key: String, entry: Map<String, Any?>): StoredWhole {
+            val field = codeOverlayBodyField(slot)
+            val body = entry[field].toJsonMapOrEmpty()
+            if (!entry.isCodeOverlay) return StoredWhole(slot, key, body, null)
+            val code = codeDefinition(cxt, client, slot, key)
+                ?: throw KdrException.mkInput("${what(slot, key)} is a change to the code's, and the client's code no longer declares it.")
+            val merged = mergeCodeOverlay(slot, code, body)
+            if (merged.problems.isNotEmpty()) {
+                throw KdrException.mkInput(
+                    "${what(slot, key)} is a change to the code's that holds parts the code no longer has a place for: " +
+                        overlayProblemTexts(merged.problems).joinToString(" ") + " Fix or remove them in the bundle editor first.",
+                )
+            }
+            return StoredWhole(slot, key, merged.value, code)
+        }
+
+        /** [client]'s code's definition of [key] in [slot], as declared: what its overlay of it is merged over. */
+        private fun codeDefinition(cxt: KdrCxt, client: String, slot: String, key: String): Map<String, Any?>? {
+            val owner = sandboxParentOf(client) ?: client
+            val collector = SchemaCollector.get(cxt) ?: return null
+            val loader = GedraConfigLoadService.get(cxt)
+            return CodeEntries { loader.codeLayerOf(collector, owner, ClientService.get(cxt).known(owner)) }.definition(slot, key)
+        }
+
+        private fun what(slot: String, key: String) = if (slot == CCT.workflowDef) "Workflow '$key'" else "Type '$key'"
+    }
+}

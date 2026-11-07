@@ -67,7 +67,9 @@ fun gedraConfigToEntries(config: GedraConfig, shownAsRun: Boolean = false): Map<
     out[CCT.customerDef] = config.customers.map { it.toInfo() }
     out[CCT.traitDef] = config.traits.values.map { traitToEntry(config, it) }
     out[CCT.usageDef] = config.usages.map { usageToEntry(it) }
-    out[CCT.workflowDef] = config.workflows.values.map {
+    // An overlay of the code is stored as written (issue #1657), never as the definition it merged into.
+    val overlaid = config.codeOverlays.filter { it.applied }.map { it.slot to it.key }.toSet()
+    out[CCT.workflowDef] = config.workflows.values.filter { (CCT.workflowDef to it.workflowId) !in overlaid }.map {
         // One made from a template is stored as its overlay of the template (issue #1120), never as what it expands to:
         // read back, an expanded definition naming its template would be taken for an overlay, and refused.
         val stored = when {
@@ -90,7 +92,7 @@ fun gedraConfigToEntries(config: GedraConfig, shownAsRun: Boolean = false): Map<
         // Written back as stored, so an edit of anything else in the config does not delete it (issue #979).
         linkedMapOf(CCT.reportId to it.slotKey, CCT.definition to it.definition)
     }
-    out[CCT.schemaDef] = config.defs.filterKeys { it !in generated }.map { (name, body) ->
+    out[CCT.schemaDef] = config.defs.filterKeys { it !in generated && (CCT.schemaDef to it) !in overlaid }.map { (name, body) ->
         linkedMapOf(CCT.typeName to name, CCT.schema to body)
     } + config.shadowedTypes.values.map {
         // Written back as stored, so an edit of anything else in the config does not delete it (issue #1542).
@@ -107,6 +109,8 @@ fun gedraConfigToEntries(config: GedraConfig, shownAsRun: Boolean = false): Map<
     config.listing?.let { out[CCT.listingDef] = listOf(it.toEntry()) }
     // Each entry the config marks to stand over code (issue #1634) carries the mark, as the stored entry says it.
     if (!config.overridesCode.isEmpty) markOverCode(out, config.overridesCode)
+    // And each overlay of the code as stored, marked as it was (issue #1657), whether or not it read over the code.
+    for (overlay in config.codeOverlays) out[overlay.slot] = out[overlay.slot].orEmpty() + overlay.entry
     // Drop empty slots so a row holds only the pieces the config actually has.
     return out.filterValues { it.isNotEmpty() }
 }
@@ -157,7 +161,7 @@ fun reassembleForWrite(
     // refused when the write adds or changes it (issue #1120).
     val storedWorkflows = stored?.get(CCT.workflowDef).orEmpty().map { it[CCT.definition] }
     return try {
-        reassembleGedraConfig(cxt, name, namespace, client, entriesBySlot) { raw -> raw in storedWorkflows }
+        reassembleGedraConfig(cxt, name, namespace, client, entriesBySlot, code = null) { raw -> raw in storedWorkflows }
     } catch (e: KdrException) {
         if (e.code != EXC.internalError || e.activity != ACT.conversion) throw e
         // The fault says what is wrong; this says whose it is. A reader of the error takes both from
@@ -217,6 +221,12 @@ fun reassembleGedraConfig(
     client: String,
     entriesBySlot: Map<String, List<Map<String, Any?>>>,
     /**
+     * The client's code, which its entries marked `"overrides": "codeOverlay"` are read over (issue #1657): what a load
+     * passes. Null for a write's reassembly, which keeps each overlay as written; the write's trial reads them over the
+     * code, as the load will.
+     */
+    code: CodeEntries? = null,
+    /**
      * Whether a workflow made from a template that does not read is kept as unread, given its stored definition (issue
      * #1120): all of them for a load; for a write, only what it carries unchanged ([reassembleForWrite]).
      */
@@ -229,6 +239,8 @@ fun reassembleGedraConfig(
     entriesBySlot[CCT.customerDef]?.forEach { defineCustomer(CustomerDef.fromInfo(it)) }
     // Directly-declared types first, so a trait's shared `$ref` has its target present when the config compiles.
     entriesBySlot[CCT.schemaDef]?.forEach { e ->
+        // An overlay of a code type (issue #1657) is read over the code's.
+        if (e.isCodeOverlay) return@forEach codeOverlay(CCT.schemaDef, e, code)
         type(e[CCT.typeName].toOptStr().orEmpty()) { data.putAll(e[CCT.schema].toJsonMapOrEmpty()) }
     }
     entriesBySlot[CCT.traitDef]?.forEach { reassembleTrait(it) }
@@ -237,6 +249,8 @@ fun reassembleGedraConfig(
         traitUsage(usage.traitId, usage.label, usage.display, usage.kind, usage.substring, usage.presentation, usage.columnId)
     }
     entriesBySlot[CCT.workflowDef]?.forEach { e ->
+        // An overlay of a code workflow (issue #1657) is read over the code's.
+        if (e.isCodeOverlay) return@forEach codeOverlay(CCT.workflowDef, e, code)
         val stored = e[CCT.definition].toJsonMapOrEmpty()
         val keepAsStored = keepUnreadWorkflow(stored)
         val definition = withoutKeywordStatusSingletons(withoutStoredWindows(stored, keepAsStored), keepAsStored) { cfacts ->

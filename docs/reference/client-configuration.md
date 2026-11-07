@@ -195,7 +195,7 @@ Keyed by `workflowId`.
 |---|---|---|---|
 | `workflowId` | string | yes | The workflow's id within this configuration. |
 | `definition` | [WfDef](#wfdef) | yes | The workflow definition, as the definition schema describes it. |
-| `overrides` | one of `code` |  | Set to `code` when this entry stands over the client's code's entry of the same key -- its template's, or its own code's -- which it replaces whole. Without it, an entry matching a code entry is refused. |
+| `overrides` | one of `code`, `codeOverlay` |  | Set to `code` when this entry stands over the client's code's entry of the same key -- its template's, or its own code's -- which it replaces whole. Set to `codeOverlay` when it holds only what it changes of the code's entry, which every read merges it over, so a later change to the code reaches the parts it leaves alone. Without it, an entry matching a code entry is refused. |
 
 ### kdr:reportDef
 
@@ -219,7 +219,7 @@ Keyed by `typeName`.
 |---|---|---|---|
 | `typeName` | string | yes | The qualified name of the type being defined. |
 | `schema` | a schema | yes | The type's schema body, validated by parsing it. |
-| `overrides` | one of `code` |  | Set to `code` when this entry stands over the client's code's entry of the same key -- its template's, or its own code's -- which it replaces whole. Without it, an entry matching a code entry is refused. |
+| `overrides` | one of `code`, `codeOverlay` |  | Set to `code` when this entry stands over the client's code's entry of the same key -- its template's, or its own code's -- which it replaces whole. Set to `codeOverlay` when it holds only what it changes of the code's entry, which every read merges it over, so a later change to the code reaches the parts it leaves alone. Without it, an entry matching a code entry is refused. |
 
 ### kdr:fragmentDef
 

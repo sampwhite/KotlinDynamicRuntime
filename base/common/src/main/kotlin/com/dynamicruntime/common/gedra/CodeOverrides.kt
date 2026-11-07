@@ -15,9 +15,11 @@ class CodeConfig(val config: GedraConfig, val where: String)
  * **The code layer** is everything a client runs that no row stores: its template's code (`ClientExtension`), its own
  * code, and on a sandbox the sandbox's own code. A stored entry marked `"overrides": "code"` ([CCT.overrides]) stands
  * over the code layer's entry of the same key, by the keys [ConfigKeys] states -- the rule a client's own configuration
- * already stands over its template's copies by -- and what it stands over is cut out of the code, whole. Nothing is
- * merged inside an entry (that is step 3), and nothing removes a code entry: a client turns off what it does not want
- * instead (#1635), and a `$removed` is a `$` note, which no stored entry may hold.
+ * already stands over its template's copies by -- and what it stands over is cut out of the code, whole. An entry
+ * marked `"overrides": "codeOverlay"` holds only its change of a code workflow or type, and is merged over the code's as
+ * the config is read (issue #1657, `CodeOverlays`), so here it is a whole definition like any other. Nothing removes a
+ * code entry: a client turns off what it does not want instead (#1635), and a `$removed` is a `$` note, which no stored
+ * entry may hold.
  *
  * **Explicit, not by key alone.** A stored entry whose key matches a code entry without the marker loads as it always
  * has -- replacing a template's copy, colliding with the client's own code -- with an issue saying to mark it, and a
@@ -37,13 +39,15 @@ object CodeOverrides {
      * the forms list when any column is marked.
      */
     fun markedKeys(config: GedraConfig, entries: Map<String, List<Map<String, Any?>>>): ConfigKeys {
-        fun marked(slot: String) = entries[slot].orEmpty().filter { it[CCT.overrides] == CCT.overridesCodeValue }
+        // Whole or as an overlay of the code's (issue #1657): an overlay that read over the code stands over it as its
+        // merged definition, and one that did not is in the config as nothing, so its key is not here.
+        fun marked(slot: String) = entries[slot].orEmpty().filter { it[CCT.overrides] in markValues }
         fun keysOf(slot: String, field: String) = marked(slot).mapNotNull { it[field].toOptStr() }
         val traits = keysOf(CCT.traitDef, CCT.traitId).filter { it in config.traits }.toSet()
         val generated = traits.flatMap { id ->
             config.traits.getValue(id).let { listOfNotNull(it.typeName, inlineDataTypeName(config, it)) }
         }
-        val types = keysOf(CCT.schemaDef, CCT.typeName).map { qualifyTypeName(it, config.namespace) }
+        val types = keysOf(CCT.schemaDef, CCT.typeName).map { qualifyTypeName(it, config.namespace) }.filter { it in config.defs }
         return ConfigKeys(
             traits = traits,
             types = (generated + types).toSet(),
@@ -144,6 +148,9 @@ object CodeOverrides {
         }
         return if (over) entry + (CCT.overrides to CCT.overridesCodeValue) else entry
     }
+
+    /** The values of [CCT.overrides]: an entry that stands over the code's whole, or as an overlay of it (issue #1657). */
+    private val markValues = setOf(CCT.overridesCodeValue, CCT.overridesCodeOverlayValue)
 
     /** The types each of [config]'s traits generates, so a trait is named without them. */
     private fun generatedTypesOf(config: GedraConfig): (String) -> Set<String> = { id ->

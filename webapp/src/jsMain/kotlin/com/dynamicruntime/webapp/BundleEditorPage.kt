@@ -4,6 +4,10 @@ import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.gedra.CCT
 import com.dynamicruntime.common.gedra.CFEP
 import com.dynamicruntime.common.gedra.PORT
+import com.dynamicruntime.common.gedra.codeOverlayShown
+import com.dynamicruntime.common.gedra.codeOverlayStale
+import com.dynamicruntime.common.gedra.codeOverlaySlots
+import com.dynamicruntime.common.gedra.isCodeOverlay
 import com.dynamicruntime.common.home.PFRAG
 import com.dynamicruntime.common.util.jsonMapResult
 import com.dynamicruntime.common.util.toJsonListOfMaps
@@ -308,6 +312,8 @@ val BundleEditorPage = FC<Props> {
             // A stored bundle named like a code bundle holds the client's changes to it (issue #1646), drawn with it below.
             val codeNames = shown.codeConfigs.map { it.name }.toSet()
             val bundles = (editorBundlesInOrder(shown.configs) + edits.newBundles.map { newBundle(it) }).filter { it.name !in codeNames }
+            // Said here, so every bundle the client stores is accounted for where the bundles are listed (issue #1657).
+            codeNamedBundlesText(shown.configs, shown.codeConfigs)?.let { p { className = ClassName("type-hint"); +it } }
             for (bundle in bundles) {
                 div {
                     key = bundle.name.unsafeCast<Key>()
@@ -345,7 +351,8 @@ val BundleEditorPage = FC<Props> {
                     className = ClassName("bundle-editor-add")
                     Input {
                         value = newBundleName
-                        placeholder = "New bundle's name"
+                        // Says what to do, so the empty field does not read as one more disabled control beside the button.
+                        placeholder = "Name a new bundle"
                         onChange = { e -> newBundleName = e.target.value }
                     }
                     Button {
@@ -379,7 +386,8 @@ private fun newBundle(name: String): EditorBundle = EditorBundle(name, EditorRev
  * holds the client's changes to it. Each code entry is listed as the code declares it, marked where the client changes it
  * in another bundle; one changed here is shown as the stored entry, with the code's beside it and **Revert to code**; and
  * the stored bundle's other entries are the client's own, added here. **Edit** on a code entry starts the change: a new
- * entry of the stored bundle, the code's own marked `"overrides": "code"`.
+ * entry of the stored bundle, the code's own marked `"overrides": "code"` -- or, for a workflow or a type, marked
+ * `"overrides": "codeOverlay"`, which a save stores as only what differs from the code's (issue #1657).
  */
 private fun ChildrenBuilder.mergedBundleView(code: CodeBundle, ed: EditContext) {
     val codeBundle = code.asEditorBundle()
@@ -400,7 +408,8 @@ private fun ChildrenBuilder.mergedBundleView(code: CodeBundle, ed: EditContext) 
                     key = slot.unsafeCast<Key>()
                     className = ClassName("bundle-editor-slot")
                     Disclosure {
-                        summaryText = codeSlot?.let { slotSummaryText(it) } ?: storedSlot?.let { slotSummaryText(it) }.orEmpty()
+                        val line = codeSlot?.let { slotSummaryText(it) } ?: storedSlot?.let { slotSummaryText(it) }.orEmpty()
+                        summaryText = codeSlotLineText(line, ed.view.replacements, code.name, slot)
                         val storedSet = slotReplacement(ed.view.replacements, stored.name, slot)
                         storedSet?.let { replacedSet(it, ed) }
                         if (codeSlot != null && editedAsSet(slot)) {
@@ -535,8 +544,11 @@ private fun ChildrenBuilder.codeEntryView(
                             // The stored bundle of its name, made on the page when the client has none yet.
                             val unwritten = ed.view.configs.none { it.name == stored.name } && stored.name !in next.newBundles
                             if (unwritten) next = next.addingBundle(stored.name)
-                            val text = entryText(ed.shownData(overrideOf(data), slot))
-                            ed.change(next.adding(stored.name, slot, text, ed.view.client, ed.portable).first)
+                            // A workflow or a type is kept as a change to the code's (issue #1657); anything else, whole.
+                            val overlay = slot in codeOverlaySlots
+                            val text = entryText(ed.shownData(if (overlay) overlayOf(data) else overrideOf(data), slot))
+                            val code = data.takeIf { overlay }
+                            ed.change(next.adding(stored.name, slot, text, ed.view.client, ed.portable, code).first)
                         }
                         +"Edit"
                     }
@@ -617,9 +629,14 @@ private class EditContext(
     /** [data], an entry of [slot] as stored, in the form the page shows. */
     fun shownData(data: Map<String, Any?>, slot: String): Map<String, Any?> = entryShown(data, slot, view.client, portable)
 
-    /** A new draft of [data], an entry of [slot] in [bundle] as read with [stamp], its text in the page's form. */
-    fun draftOf(bundle: String, slot: String, data: Map<String, Any?>, stamp: Any?) =
-        EntryDraft(bundle, slot, data, stamp, entryText(shownData(data, slot)), client = view.client, portable = portable)
+    /**
+     * A new draft of [data], an entry of [slot] in [bundle] as read with [stamp], its text in the page's form -- an
+     * overlay of [code], the code's entry, shown merged over it (issue #1657).
+     */
+    fun draftOf(bundle: String, slot: String, data: Map<String, Any?>, stamp: Any?, code: Map<String, Any?>? = null): EntryDraft {
+        val draft = EntryDraft(bundle, slot, data, stamp, "", client = view.client, portable = portable, code = code)
+        return draft.withText(entryText(shownData(draft.originalShown(), slot)))
+    }
 }
 
 /** Where the bundle editor remembers whether entries are shown in portable form. */
@@ -658,6 +675,10 @@ private fun ChildrenBuilder.entryView(
     val check = id?.let { ed.checks[it] }
     // An entry of the client's that replaces one of its code's (issues #1616, #1646), judged on the latest revision.
     val replaced = data?.let { replacementOf(ed.view.replacements, bundle.name, slot, key, it) }
+    // An overlay of the code's entry (issue #1657) is shown as the whole entry it makes, merged over the code's.
+    val code = replaced?.codeEntries?.singleOrNull()?.takeIf { data?.isCodeOverlay == true && slot in codeOverlaySlots }
+    fun shown(raw: Map<String, Any?>) = if (code != null && raw.isCodeOverlay) codeOverlayShown(slot, code, raw) else raw
+    fun draftOf(raw: Map<String, Any?>) = ed.draftOf(bundle.name, slot, raw, bundle.stamps[slot]?.getOrNull(at), code)
     div {
         this.key = "${entry.label}#$at".unsafeCast<Key>()
         className = ClassName("bundle-editor-entry")
@@ -680,19 +701,31 @@ private fun ChildrenBuilder.entryView(
                         columnHeading("Editing", slot, ed, withSwitch = true, copyText = draft.text)
                         entryEditor(id, draft, check, ed)
                     }
-                    if (before != null) jsonColumn(publishedHeading, slot, before, ed)
+                    if (before != null) jsonColumn(publishedHeading, slot, shown(before), ed)
                 }
             } else if (data != null && before != null && entry.change == EntryChange.changed) {
                 // Side by side: what the draft holds, and what is published.
                 div {
                     className = ClassName("bundle-editor-compare")
-                    jsonColumn("Draft (version ${bundle.latest.version})", slot, data, ed, withSwitch = true)
-                    jsonColumn(publishedHeading, slot, before, ed)
+                    jsonColumn("Draft (version ${bundle.latest.version})", slot, shown(data), ed, withSwitch = true)
+                    jsonColumn(publishedHeading, slot, shown(before), ed)
                 }
             } else if (data != null) {
-                jsonColumn("Version ${bundle.latest.version}", slot, data, ed, withSwitch = true)
+                jsonColumn("Version ${bundle.latest.version}", slot, shown(data), ed, withSwitch = true)
             } else if (before != null) {
-                jsonColumn(publishedHeading, slot, before, ed, withSwitch = true)
+                jsonColumn(publishedHeading, slot, shown(before), ed, withSwitch = true)
+            }
+            // What is stored of an overlay: only its change (issue #1657), and any part of it the code has since lost.
+            if (code != null && data != null) {
+                val stale = codeOverlayStale(slot, code, data)
+                if (stale.isNotEmpty()) {
+                    p { className = ClassName("type-hint"); +staleOverlayText }
+                    ul {
+                        className = ClassName("bundle-editor-problems")
+                        stale.forEachIndexed { i, text -> li { this.key = i.toString().unsafeCast<Key>(); +text } }
+                    }
+                }
+                storedOverlay(data, slot, ed)
             }
             replaced?.let { replacedVersion(it, slot, ed) }
             // An entry has an id only when the latest revision holds it, so `data` is there too.
@@ -708,10 +741,20 @@ private fun ChildrenBuilder.entryView(
                             Button { size = "small"; onClick = { ed.change(ed.edits.without(id)) }; +"Keep it" }
                         }
                         draft != null -> Button { size = "small"; onClick = { ed.change(ed.edits.without(id)) }; +"Undo edits" }
-                        else -> Button {
-                            size = "small"
-                            onClick = { ed.change(ed.edits.with(id, ed.draftOf(bundle.name, slot, data, bundle.stamps[slot]?.getOrNull(at)))) }
-                            +"Edit"
+                        else -> {
+                            Button { size = "small"; onClick = { ed.change(ed.edits.with(id, draftOf(data))) }; +"Edit" }
+                            // An overlay stops following the code by choice (issue #1657): stored whole, from now on.
+                            if (code != null) {
+                                Button {
+                                    size = "small"
+                                    onClick = {
+                                        val base = draftOf(data)
+                                        ed.change(ed.edits.with(id, base.withText(entryText(ed.shownData(detached(shown(data)), slot)))))
+                                    }
+                                    asDynamic()["title"] = detachTitle
+                                    +"Detach from code"
+                                }
+                            }
                         }
                     }
                     // The client's definition is never removed: a client has one.
@@ -720,7 +763,7 @@ private fun ChildrenBuilder.entryView(
                             size = "small"
                             danger = true
                             onClick = {
-                                val base = draft ?: ed.draftOf(bundle.name, slot, data, bundle.stamps[slot]?.getOrNull(at))
+                                val base = draft ?: draftOf(data)
                                 ed.change(ed.edits.with(id, base.withRemoved(true)))
                             }
                             // An entry over the code's goes back to it (issue #1646): the code's is never removed.
@@ -742,8 +785,9 @@ private fun ChildrenBuilder.newEntries(bundle: String, slot: String, ed: EditCon
             className = ClassName("bundle-editor-entry bundle-editor-new")
             div {
                 className = ClassName("bundle-editor-json")
-                // A change of a code entry (issue #1646) says so; any other is the client's own, new.
-                val changesCode = ed.checks[id]?.data?.get(CCT.overrides) == CCT.overridesCodeValue
+                // A change of a code entry (issues #1646, #1657) says so; any other is the client's own, new.
+                val mark = ed.checks[id]?.data?.get(CCT.overrides)
+                val changesCode = mark == CCT.overridesCodeValue || mark == CCT.overridesCodeOverlayValue
                 val what = if (changesCode) "Changing the code's entry" else "New entry"
                 val heading = "$what${draftMark(draft, ed.checks[id])?.let { " — $it" } ?: ""}"
                 columnHeading(heading, slot, ed, withSwitch = true, copyText = draft.text)
@@ -785,11 +829,74 @@ private fun ChildrenBuilder.entryEditor(id: String, draft: EntryDraft, check: En
             }
         }
     }
+    if (parsed != null) overlayForm(draft, parsed, ed) { ed.change(ed.edits.with(id, draft.withText(it))) }
     val problems = check?.problems.orEmpty()
     if (problems.isNotEmpty()) {
         ul {
             className = ClassName("bundle-editor-problems")
             problems.forEachIndexed { i, text -> li { key = i.toString().unsafeCast<Key>(); +text } }
+        }
+    }
+    val notes = check?.notes.orEmpty()
+    if (notes.isNotEmpty()) {
+        ul {
+            className = ClassName("type-hint")
+            notes.forEachIndexed { i, text -> li { key = i.toString().unsafeCast<Key>(); +text } }
+        }
+    }
+}
+
+/** What a stored overlay with parts the code no longer has a place for says of them (issue #1657). */
+private const val staleOverlayText =
+    "Parts of this change no longer fit the code, which has changed. They are left out of what runs, and a save of the " +
+        "entry drops them:"
+
+/** What **Detach from code** says it does (issue #1657). */
+private const val detachTitle =
+    "Store the whole entry rather than only its change, so it stops following the code: a later change to the code no longer reaches it."
+
+/**
+ * How an entry being edited over the code is kept (issue #1657), for a workflow or a type: as a change to the code's,
+ * with **Detach from code** to store it whole instead; or whole, with **Follow the code** to keep only its change again.
+ * [onText] takes the draft's text rewritten with the other mark.
+ */
+private fun ChildrenBuilder.overlayForm(draft: EntryDraft, parsed: Map<String, Any?>, ed: EditContext, onText: (String) -> Unit) {
+    if (draft.slot !in codeOverlaySlots) return
+    val whole = parsed[CCT.overrides] == CCT.overridesCodeValue
+    val code = draft.code ?: codeEntryOf(ed.view, draft.slot, ed.view.slotKeys[draft.slot].orEmpty(), parsed)
+    if (!parsed.isCodeOverlay && !(whole && code != null)) return
+    div {
+        className = ClassName("bundle-editor-fixup")
+        if (parsed.isCodeOverlay) {
+            span {
+                +("Kept as a change to the code: only what differs from the code's entry is stored, so a later change to the " +
+                    "code reaches the rest.")
+            }
+            Button {
+                size = "small"
+                onClick = { onText(entryText(detached(parsed))) }
+                asDynamic()["title"] = detachTitle
+                +"Detach from code"
+            }
+        } else {
+            span { +"Stored whole, so a later change to the code does not reach it." }
+            Button {
+                size = "small"
+                onClick = { onText(entryText(overlayOf(parsed))) }
+                asDynamic()["title"] = "Store only what differs from the code's entry, so a later change to the code reaches the rest."
+                +"Follow the code"
+            }
+        }
+    }
+}
+
+/** What is stored of an overlay of the code (issue #1657), closed to start: only its change. */
+private fun ChildrenBuilder.storedOverlay(data: Map<String, Any?>, slot: String, ed: EditContext) {
+    div {
+        className = ClassName("bundle-editor-replaced")
+        Disclosure {
+            summaryText = "What is stored: only the change, merged over the code's entry on every read"
+            jsonColumn("Stored", slot, data, ed)
         }
     }
 }
@@ -878,13 +985,9 @@ private fun ChildrenBuilder.saveBar(
     state.replacing?.let { replacing ->
         div {
             className = ClassName("bundle-editor-notice")
-            p { +"Saving these edits replaces these of the code's, whole:" }
+            p { +"Saving these edits changes these of the code's, for this client:" }
             ul { replacingText(replacing).forEachIndexed { i, line -> li { key = i.toString().unsafeCast<Key>(); +line } } }
-            p {
-                className = ClassName("type-hint")
-                +"The client then runs its own instead, and whatever the code's had that the edits do not restate is gone. "
-                +"Revert to code later and the code's runs again."
-            }
+            p { className = ClassName("type-hint"); +replacingNoteText(replacing) }
             // With an effect on the forms too, the impact report below asks once for both.
             if (state.impact == null) {
                 Button { type = "primary"; danger = true; this.loading = state.saving; onClick = { onConfirm() }; +"Save anyway" }
