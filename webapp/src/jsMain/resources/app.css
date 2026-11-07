@@ -1058,6 +1058,9 @@ button.wf-cell-folded { display: none; }
    two short links read as a pair only side by side. */
 .user-links { white-space: nowrap; }
 .wf-cell-all { max-width: 320px; }
+/* A kind's heading in a popover of a cell's links (issue #1598): small, dim, and spaced from the kind above it. */
+.wf-cell-group { color: var(--text-dim); font-size: .75rem; text-transform: uppercase; letter-spacing: .04em; margin: 6px 0 2px; }
+.wf-cell-group:first-child { margin-top: 0; }
 .wf-reasons { margin: 0; padding-left: 18px; }
 /* A workflow's help under its title, and the home page's note under its intro (issue #1221): copy, read as such. */
 .wf-help { color: var(--text-muted); margin: 4px 0 8px; }

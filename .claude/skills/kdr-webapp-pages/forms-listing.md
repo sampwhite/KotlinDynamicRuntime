@@ -146,12 +146,16 @@ The cell is the classification drawn, the `combined` layout (#1599 adds `split`,
 decides nothing about what is actionable: `workflowCellOf` runs `formWorkflowWeights` with the row's `waitingSteps` as
 its `mayAct`, joins each workflow to the summary, and gives each link its words. `FormsTable` only draws.
 
-| Weight | Looks | Says |
+The page draws five kinds of link (`WorkflowCellKind`), in this order. The classification's `settled` weight is split
+into its two kinds, since "settled" is not a word for anyone to read.
+
+| Kind | Looks | Says |
 | --- | --- | --- |
 | Your turn | a filled accent pill, opening the task ready to edit | a verb and the workflow: the CTA keyword's verb ("Review", the client's words), else the step's `actionText`, else "Continue" |
-| Waiting | a muted link, opening the task to look at, with its reason under it | why, from the row's `waitingReasons` or the summary |
 | Available | an accent outline, opening the workflow to engage | "Start" and the workflow |
-| Settled | the smallest: a check for finished; faint for not eligible, opening the reasons | the workflow |
+| Waiting | a muted link, opening the task to look at, with its reason under it | why, from the row's `waitingReasons` or the summary |
+| Finished | small, with a check, opening its last task | the workflow |
+| Not available | small and faint, opening a dialog with the reasons | the workflow |
 
 - **A muted link always says why.** The backend gives each row `waitingReasons` (with `withStates`): for each step
   waiting on someone else, whom (`WfWaitsOn`: `filter`, `approval`, `owner`, or `others`) and, when the CTA filter is
@@ -159,14 +163,20 @@ its `mayAct`, joins each workflow to the summary, and gives each link its words.
   frozen outside its relevancy window has none; the summary's entry for it carries `opensAt` or `closedAt`, and the
   link says "Opens in 3d" or "Closed 2026-10-30", the moment as the table writes one. A step the row gives no reason
   for (a call to action not computed yet) says "Waiting". `waitingReasonOf` picks the words.
-- **The words are copy**: the `home` file's `workflowCell` namespace (`WorkflowCellWords`), which a client overlays.
-  `opens` and `closed` are templates over `${at}`. Until the copy arrives the shipped words show.
-- **A fixed order**: by weight, then the workflows' declared order (the summary's), never the order the state entries
-  arrive in. So as people act, a link moves only when its weight changes, and the rest keep their places.
-- **Settled links fold** behind a "+N" once there are two or more (`workflowCellFold`); a cell of settled links alone
-  shows their count instead. The fold opens a popover of them.
-- **A narrow screen folds the whole cell to its counts** ("1 your turn · 2 waiting", `workflowCellCounts`), a button
-  opening all the links. `app.css` chooses which shows (below 640 px), so the cell draws both.
+- **Every word is copy**: the `home` file's `workflowCell` namespace (`WorkflowCellWords`), which a client overlays --
+  the verbs and reasons, each kind's heading (`...Group`) and count (`...Count`, over `${n}`), the fold's button
+  (`more`) and its popovers' titles, the tooltips, and the reasons dialog. `opens` and `closed` are templates over
+  `${at}`. Until the copy arrives the shipped words show.
+- **A fixed order**: by kind as in the table, then the workflows' declared order (the summary's), never the order the
+  state entries arrive in. So as people act, a link moves only when its kind changes, and the rest keep their places.
+  It is the page's order, not `WfWeight`'s, which puts waiting ahead of available.
+- **A crowded cell folds** (`workflowCellFold`): up to four links are all drawn; past four it draws three and folds the
+  rest behind "+N more", so a fold hides at least two. **The caller's turn never folds**: those links come first, are
+  all drawn however many there are, and count toward the three -- two of them, two to start, and two not eligible draw
+  the two and one to start, and fold three. The fold opens a popover, "More workflows", with each kind under its own
+  heading. Once #1599 gives the caller's turn its own column, this cell can go back to two.
+- **A narrow screen folds the whole cell to its counts** ("1 your turn · 2 available", `workflowCellCounts`), a button
+  opening all the links, grouped the same way. `app.css` chooses which shows (below 640 px), so the cell draws both.
 - **Only the caller's turn opens in edit mode** (`linkEdits`): a waiting link opens its task to be looked at, which the
   drilled listing's double-click follows too.
 

@@ -558,6 +558,60 @@ object HFRAG {
     const val wcClosedUndated = "closedUndated"
 
     /**
+     * In [workflowCellNs]: the heading over the links of the viewer's turn in a popover of the cell's links -- and, as
+     * each `...Group` key is, the name of that kind of link.
+     */
+    const val wcYourTurnGroup = "yourTurnGroup"
+
+    /** In [workflowCellNs]: the heading over the workflows the viewer could start. */
+    const val wcAvailableGroup = "availableGroup"
+
+    /** In [workflowCellNs]: the heading over the workflows waiting on someone else. */
+    const val wcWaitingGroup = "waitingGroup"
+
+    /** In [workflowCellNs]: the heading over the finished workflows, and a finished link's tooltip. */
+    const val wcFinishedGroup = "finishedGroup"
+
+    /** In [workflowCellNs]: the heading over the workflows the form is not eligible for. */
+    const val wcNotAvailableGroup = "notAvailableGroup"
+
+    /**
+     * In [workflowCellNs]: a template over `n` -- how many links are the viewer's turn, in the counts a narrow screen
+     * folds the cell to ("1 your turn · 2 available"), as each `...Count` key counts its kind.
+     */
+    const val wcYourTurnCount = "yourTurnCount"
+
+    /** In [workflowCellNs]: a template over `n` -- how many workflows the viewer could start. */
+    const val wcAvailableCount = "availableCount"
+
+    /** In [workflowCellNs]: a template over `n` -- how many workflows wait on someone else. */
+    const val wcWaitingCount = "waitingCount"
+
+    /** In [workflowCellNs]: a template over `n` -- how many workflows are finished. */
+    const val wcFinishedCount = "finishedCount"
+
+    /** In [workflowCellNs]: a template over `n` -- how many workflows the form is not eligible for. */
+    const val wcNotAvailableCount = "notAvailableCount"
+
+    /** In [workflowCellNs]: a template over `n` -- the button for the links a crowded cell folds. */
+    const val wcMore = "more"
+
+    /** In [workflowCellNs]: the title of the popover holding the links a crowded cell folds. */
+    const val wcMoreTitle = "moreTitle"
+
+    /** In [workflowCellNs]: the title of the popover holding all of a cell a narrow screen folds. */
+    const val wcAllTitle = "allTitle"
+
+    /** In [workflowCellNs]: the tooltip on a link to a workflow the form is not eligible for, which opens why. */
+    const val wcNotAvailableTip = "notAvailableTip"
+
+    /** In [workflowCellNs]: a template over `label` -- the title of the dialog saying why a workflow is not available. */
+    const val wcWhyNotAvailable = "whyNotAvailable"
+
+    /** In [workflowCellNs]: that dialog's text when the workflow gives no reasons of its own. */
+    const val wcNoReasons = "noReasons"
+
+    /**
      * The key of a "What is this?" explanation (issue #1337), in the namespace of the copy it explains -- in this
      * file and in a page's own ([PFRAG]), as the profile file's `users.whatIsThis` is. Empty, the link is not offered.
      */

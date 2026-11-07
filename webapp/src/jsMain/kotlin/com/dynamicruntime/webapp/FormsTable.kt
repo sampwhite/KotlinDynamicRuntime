@@ -24,7 +24,6 @@ import web.cssom.ClassName
 import com.dynamicruntime.common.gedra.GSORT
 import com.dynamicruntime.common.gedra.ListingColumn
 import com.dynamicruntime.common.gedra.workflow.WfColumnCategory
-import com.dynamicruntime.common.gedra.workflow.WfWeight
 import com.dynamicruntime.common.schema.PSTAT
 import com.dynamicruntime.common.user.personaTag
 import com.dynamicruntime.common.user.userKeyLabel
@@ -757,6 +756,7 @@ private fun workflowColumn(props: FormsTableProps): dynamic {
             gedraId = record.key as String
             items = record.wfItems.unsafeCast<List<WorkflowCellItem>>()
             noWorkflowsCopy = props.noWorkflowsCopy
+            words = props.workflowWords ?: WorkflowCellWords()
             workflowHref = props.workflowHref
         }
     }
@@ -767,23 +767,26 @@ private external interface WorkflowCellProps : Props {
     var gedraId: String
     var items: List<WorkflowCellItem>
     var noWorkflowsCopy: String?
+    var words: WorkflowCellWords
     var workflowHref: (String, String, String?, Boolean) -> String
 }
 
-/** Which of a cell's popovers is open (issue #1598): its folded settled links, or the whole cell a narrow screen folds. */
-private enum class CellPopover { settled, all }
+/** Which of a cell's popovers is open (issue #1598): its folded links, or the whole cell a narrow screen folds. */
+private enum class CellPopover { more, all }
 
 /**
- * One row's workflow cell (issues #791, #1598), each link drawn by its weight: the viewer's turn strong, with its verb;
- * a waiting one muted, saying why; one they could start outlined, with "Start"; a settled one smallest -- a check for a
- * finished one, grayed for one not eligible, whose link opens a dialog with the reasons since there is nowhere to go.
- * Two or more settled links fold behind a "+N" ([workflowCellFold]); on a narrow screen the whole cell folds to its counts
- * (`app.css` chooses which shows). A row with nothing to show draws the client's copy for that.
+ * One row's workflow cell (issues #791, #1598), each link drawn by its kind: the viewer's turn strong, with its verb;
+ * one they could start outlined, with "Start"; a waiting one muted, saying why; a finished one small, with a check; one
+ * not eligible small and faint, its link opening a dialog with the reasons since there is nowhere to go. A crowded cell
+ * folds its last links behind a "+N" ([workflowCellFold]), never the viewer's turn; on a narrow screen the whole cell
+ * folds to its counts (`app.css` chooses which shows). A popover of links heads each kind. Every word is the client's
+ * copy ([WorkflowCellWords]). A row with nothing to show draws the client's copy for that.
  */
 private val WorkflowCell = FC<WorkflowCellProps> { props ->
     var reasonsFor by useState<WorkflowCellItem?>(null)
     var popover by useState<CellPopover?>(null)
     val items = props.items
+    val words = props.words
 
     fun ChildrenBuilder.link(it: WorkflowCellItem, look: String, tip: String? = null, content: ChildrenBuilder.() -> Unit) {
         if (it.workflow.category == WfColumnCategory.ineligible) {
@@ -810,23 +813,22 @@ private val WorkflowCell = FC<WorkflowCellProps> { props ->
     fun ChildrenBuilder.item(it: WorkflowCellItem) {
         div {
             className = ClassName("wf-cell-item")
-            when (it.weight) {
-                WfWeight.yourTurn, WfWeight.available -> link(it, "wf-w-${it.weight.name}") {
+            when (it.kind) {
+                WorkflowCellKind.yourTurn, WorkflowCellKind.available -> link(it, "wf-w-${it.weight.name}") {
                     span { className = ClassName("wf-verb"); +it.verb.orEmpty() }
                     +it.entry.label
                 }
-                WfWeight.waiting -> {
+                WorkflowCellKind.waiting -> {
                     // The reason is drawn under the link, so it is not repeated as a tooltip a screen reader reads twice.
                     link(it, "wf-w-waiting") { +it.entry.label }
                     it.reason?.let { reason -> div { className = ClassName("wf-reason"); +reason } }
                 }
-                WfWeight.settled -> if (it.workflow.category == WfColumnCategory.finished) {
-                    link(it, "wf-w-settled", tip = "Finished") {
-                        span { className = ClassName("wf-check"); +"\u2713" }
-                        +it.entry.label
-                    }
-                } else {
-                    link(it, "wf-w-settled wf-w-ineligible", tip = "Not available: see why") { +it.entry.label }
+                WorkflowCellKind.finished -> link(it, "wf-w-settled", tip = words.group(WorkflowCellKind.finished)) {
+                    span { className = ClassName("wf-check"); +"\u2713" }
+                    +it.entry.label
+                }
+                WorkflowCellKind.notAvailable -> link(it, "wf-w-settled wf-w-ineligible", tip = words.notAvailableTip) {
+                    +it.entry.label
                 }
             }
         }
@@ -837,10 +839,11 @@ private val WorkflowCell = FC<WorkflowCellProps> { props ->
             open = popover == which
             trigger = "click"
             placement = "bottomLeft"
-            title = if (which == CellPopover.all) "All workflows" else "Settled"
+            title = if (which == CellPopover.all) words.allTitle else words.moreTitle
             onOpenChange = { isOpen -> popover = if (isOpen) which else null }
             content = WorkflowCellAll.create {
                 this.items = shown
+                groupTitle = words::group
                 renderItem = { builder, it -> with(builder) { item(it) } }
             }
             button {
@@ -860,19 +863,17 @@ private val WorkflowCell = FC<WorkflowCellProps> { props ->
     div {
         className = ClassName("wf-cell-full")
         drawn.forEach { item(it) }
-        if (folded.isNotEmpty()) {
-            more(CellPopover.settled, if (drawn.isEmpty()) workflowCellCounts(folded) else "+${folded.size}", folded, "")
-        }
+        if (folded.isNotEmpty()) more(CellPopover.more, words.moreText(folded.size), folded, "")
     }
-    more(CellPopover.all, workflowCellCounts(items) + " \u2026", items, "wf-cell-folded")
+    more(CellPopover.all, workflowCellCounts(items, words) + " \u2026", items, "wf-cell-folded")
     Modal {
         open = reasonsFor != null
-        title = reasonsFor?.let { "Why ${it.entry.label} is not available" }
+        title = reasonsFor?.let { words.whyNotAvailableText(it.entry.label) }
         onCancel = { reasonsFor = null }
         footer = null
         val reasons = reasonsFor?.reasons.orEmpty()
         if (reasons.isEmpty()) {
-            p { +"This form does not meet the workflow's conditions." }
+            p { +words.noReasons }
         } else {
             ul {
                 className = ClassName("wf-reasons")
@@ -889,14 +890,21 @@ private val WorkflowCell = FC<WorkflowCellProps> { props ->
 
 private external interface WorkflowCellAllProps : Props {
     var items: List<WorkflowCellItem>
+    var groupTitle: (WorkflowCellKind) -> String
     var renderItem: (ChildrenBuilder, WorkflowCellItem) -> Unit
 }
 
-/** A cell's links behind a count (issues #791, #1598), in cell order. */
+/**
+ * A cell's links behind a count (issues #791, #1598), in cell order, each kind under its own heading -- so a popover of
+ * links the form is not eligible for says "Not available", not a word for the classification's weight.
+ */
 private val WorkflowCellAll = FC<WorkflowCellAllProps> { props ->
     div {
         className = ClassName("wf-cell-all")
-        props.items.forEach { props.renderItem(this, it) }
+        props.items.groupBy { it.kind }.forEach { (kind, links) ->
+            div { className = ClassName("wf-cell-group"); +props.groupTitle(kind) }
+            links.forEach { props.renderItem(this, it) }
+        }
     }
 }
 

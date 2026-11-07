@@ -72,7 +72,9 @@ form stands in each.
    the call to action's keyword's (`ctaReview.verb`), else what its step asks in words, else `continue`. One you could
    start says `start`. One waiting on someone else is muted and says why: the call to action's filter label when the
    filter keeps you out, else one of the `waiting...` lines; a workflow frozen outside its relevancy window says when
-   it `opens` or `closed`, `${at}` being the moment as the table writes one ("in 3d", "2026-10-30"). -/
+   it `opens` or `closed`, `${at}` being the moment as the table writes one ("in 3d", "2026-10-30"). A cell of more
+   than four links draws three -- every link of your turn always -- and folds the rest behind `more`; a popover of
+   links heads each kind with its `...Group` line, and a narrow screen folds the cell to its `...Count` lines. -/
 # +start Start
 # +continue Continue
 # +waiting Waiting
@@ -82,6 +84,22 @@ form stands in each.
 # +opens Opens ${at}
 # +closed Closed ${at}
 # +closedUndated Closed
+# +yourTurnGroup Your turn
+# +availableGroup Available
+# +waitingGroup Waiting
+# +finishedGroup Finished
+# +notAvailableGroup Not available
+# +yourTurnCount ${n} your turn
+# +availableCount ${n} available
+# +waitingCount ${n} waiting
+# +finishedCount ${n} finished
+# +notAvailableCount ${n} not available
+# +more +${n} more
+# +moreTitle More workflows
+# +allTitle All workflows
+# +notAvailableTip Not available: see why
+# +whyNotAvailable Why ${label} is not available
+# +noReasons This form does not meet the workflow's conditions.
 
 # @ctaReview
 /- The `review` search keyword's words (issue #1596): what a call to action asking for a review is called wherever it is
