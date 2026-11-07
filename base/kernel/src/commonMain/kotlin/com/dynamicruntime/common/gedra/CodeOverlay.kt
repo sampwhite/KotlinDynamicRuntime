@@ -166,6 +166,16 @@ fun codeOverlayShown(slot: String, code: Map<String, Any?>, overlay: Map<String,
 }
 
 /**
+ * The parts of [overlay], a stored entry of [slot] holding an overlay of [code], the code's entry, that the code no longer
+ * has a place for (issue #1657), each led by where it is: what a load leaves out and reports, and what a save of the
+ * entry as it is shown, merged, would drop. Empty when the overlay fits the code.
+ */
+fun codeOverlayStale(slot: String, code: Map<String, Any?>, overlay: Map<String, Any?>): List<String> {
+    val field = codeOverlayBodyField(slot)
+    return overlayProblemTexts(mergeCodeOverlay(slot, code[field].toJsonMapOrEmpty(), overlay[field].toJsonMapOrEmpty()).problems)
+}
+
+/**
  * [edited], a whole entry of [slot] marked as an overlay of [code], the code's entry, as the overlay a save stores (issue
  * #1657): its definition only what differs from the code's. What no overlay can state is in [DiffOutcome.problems].
  */

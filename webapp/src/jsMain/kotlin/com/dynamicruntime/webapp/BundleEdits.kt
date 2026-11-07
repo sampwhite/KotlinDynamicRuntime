@@ -12,6 +12,7 @@ import com.dynamicruntime.common.gedra.canonicalKey
 import com.dynamicruntime.common.gedra.codeOverlayBodyField
 import com.dynamicruntime.common.gedra.codeOverlaySlots
 import com.dynamicruntime.common.gedra.codeOverlayShown
+import com.dynamicruntime.common.gedra.codeOverlayStale
 import com.dynamicruntime.common.gedra.codeOverlayStored
 import com.dynamicruntime.common.gedra.isCodeOverlay
 import com.dynamicruntime.common.gedra.restatedCodeLists
@@ -298,7 +299,11 @@ private fun overlayCheck(
         val where = p.location?.path?.takeIf { it.isNotEmpty() }?.let { "$it: " }.orEmpty()
         "$where${p.message} Detach from code to keep the whole entry instead."
     }
-    val notes = restatedCodeLists(draft.slot, stored.overlay[codeOverlayBodyField(draft.slot)].toJsonMapOrEmpty()).map {
+    // Parts the stored change holds that the code has since lost: shown merged, they are not there, so a save drops them.
+    val stale = draft.original?.takeIf { it.isCodeOverlay }?.let { codeOverlayStale(draft.slot, code, it) }.orEmpty().map {
+        "Saving drops this part of the stored change, which the code no longer has a place for: $it"
+    }
+    val notes = stale + restatedCodeLists(draft.slot, stored.overlay[codeOverlayBodyField(draft.slot)].toJsonMapOrEmpty()).map {
         "This restates $it, which has no keys to change it by, so a change the code makes to it no longer reaches this client."
     }
     if (draft.original != null && stored.overlay == draft.original) return EntryCheck(stored.overlay, emptyList())

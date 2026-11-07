@@ -5,6 +5,7 @@ import com.dynamicruntime.common.gedra.CCT
 import com.dynamicruntime.common.gedra.CFEP
 import com.dynamicruntime.common.gedra.PORT
 import com.dynamicruntime.common.gedra.codeOverlayShown
+import com.dynamicruntime.common.gedra.codeOverlayStale
 import com.dynamicruntime.common.gedra.codeOverlaySlots
 import com.dynamicruntime.common.gedra.isCodeOverlay
 import com.dynamicruntime.common.home.PFRAG
@@ -710,8 +711,18 @@ private fun ChildrenBuilder.entryView(
             } else if (before != null) {
                 jsonColumn(publishedHeading, slot, shown(before), ed, withSwitch = true)
             }
-            // What is stored of an overlay: only its change (issue #1657).
-            if (code != null && data != null) storedOverlay(data, slot, ed)
+            // What is stored of an overlay: only its change (issue #1657), and any part of it the code has since lost.
+            if (code != null && data != null) {
+                val stale = codeOverlayStale(slot, code, data)
+                if (stale.isNotEmpty()) {
+                    p { className = ClassName("type-hint"); +staleOverlayText }
+                    ul {
+                        className = ClassName("bundle-editor-problems")
+                        stale.forEachIndexed { i, text -> li { this.key = i.toString().unsafeCast<Key>(); +text } }
+                    }
+                }
+                storedOverlay(data, slot, ed)
+            }
             replaced?.let { replacedVersion(it, slot, ed) }
             // An entry has an id only when the latest revision holds it, so `data` is there too.
             if (ed.editable && id != null && data != null) {
@@ -830,6 +841,11 @@ private fun ChildrenBuilder.entryEditor(id: String, draft: EntryDraft, check: En
         }
     }
 }
+
+/** What a stored overlay with parts the code no longer has a place for says of them (issue #1657). */
+private const val staleOverlayText =
+    "Parts of this change no longer fit the code, which has changed. They are left out of what runs, and a save of the " +
+        "entry drops them:"
 
 /** What **Detach from code** says it does (issue #1657). */
 private const val detachTitle =

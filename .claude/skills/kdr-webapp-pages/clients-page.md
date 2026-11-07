@@ -543,7 +543,8 @@ files. The page lists them after the stored bundles under **From code** (its "Wh
   can state (a task added, removed, or moved), pointing to **Detach from code**. A list without keys the change
   restates is a note under the editor (`EntryCheck.notes`). A stored overlay is shown merged over the code's
   (`codeOverlayShown`, `EntryDraft.originalShown`, so opening one is no edit), with what is stored beneath it
-  (`storedOverlay`). **Detach from code** (on the entry, and in the editor, `overlayForm`) stores the entry whole as an
+  (`storedOverlay`). Parts of a stored overlay the code no longer has a place for (`codeOverlayStale`) are listed on the
+  entry, and a draft of it notes that saving drops them. **Detach from code** (on the entry, and in the editor, `overlayForm`) stores the entry whole as an
   override, so it stops following the code; **Follow the code** turns a whole override of a workflow or type back into
   an overlay. Anything else -- a trait, a report, the columns -- is still replaced whole.
 - **Revert to code.** A stored entry over the code's offers **Revert to code** in place of Remove: removing it, when

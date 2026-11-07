@@ -10,6 +10,8 @@ import com.dynamicruntime.common.gedra.ClientAudience
 import com.dynamicruntime.common.gedra.ClientConfigIssues
 import com.dynamicruntime.common.gedra.ClientDef
 import com.dynamicruntime.common.gedra.ClientUsageType
+import com.dynamicruntime.common.gedra.DSV
+import com.dynamicruntime.common.gedra.DesignSharedEdit
 import com.dynamicruntime.common.gedra.GCFG
 import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.gedra.GED
@@ -27,9 +29,11 @@ import com.dynamicruntime.common.gedra.workflow.WfDefBuilder
 import com.dynamicruntime.common.gedra.workflow.WfEntry
 import com.dynamicruntime.common.gedra.workflow.WfSaveKind
 import com.dynamicruntime.common.gedra.workflow.WorkflowService
+import com.dynamicruntime.common.gedra.workflow.workflowDefStamp
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.schema.SCH
+import com.dynamicruntime.common.schema.SL
 import com.dynamicruntime.common.startup.BCHK
 import com.dynamicruntime.common.startup.BootCheckMode
 import com.dynamicruntime.common.startup.BootCheckRegistry
@@ -92,6 +96,10 @@ class CodeOverlaysTest : StringSpec({
         entries.forEach { (slot, added) -> slots[slot] = slots[slot].orEmpty() + added }
         GedraConfigService.get(on).writeConfig(writer(on, client), reassembleGedraConfig(on, name, namespace, client, slots), trial = trial)
     }
+
+    /** Publishes [client]'s config [name]: Design View saves only into a configuration with nothing unpublished. */
+    fun publish(on: KdrCxt, client: String, name: String = "main") =
+        GedraConfigService.get(on).publish(writer(on, client), listOf(GedraId.of(GedraConfigType.configDoc, client, name)))
 
     fun flow(on: KdrCxt, client: String, id: String) = WorkflowService.get(on).forClient(client).workflow(id).shouldNotBeNull().def
 
@@ -205,6 +213,57 @@ class CodeOverlaysTest : StringSpec({
         refused shouldContain "kdr:cfactDef[tplFlag].overrides"
     }
 
+    "an overlay of a template's type changes it for the client, and Design View keeps only the change" {
+        val client = "ovltype1657"
+        val typeName = "client.$tpl.Shared"
+        val overlay = mapOf(
+            CCT.typeName to typeName, CCT.overrides to CCT.overridesCodeOverlayValue,
+            CCT.schema to mapOf(SCH.properties to mapOf("extra" to mapOf(SCH.description to "Something extra."))),
+        )
+        store(cxt, client, mapOf(CCT.schemaDef to listOf(overlay)), template = tpl)
+        publish(cxt, client)
+        GedraConfigReload.reloadClient(cxt, client).issues shouldBe emptyList()
+        SchemaService.get(cxt).storeFor(client).types.getValue(typeName).properties.keys.toList() shouldContainExactly
+            listOf("code", "extra")
+        // The template keeps its own.
+        SchemaService.get(cxt).storeFor(tpl).types.getValue(typeName).properties.keys.toList() shouldContainExactly listOf("code")
+
+        // A heading set in Design View is edited on the whole type and stored as part of the change.
+        val chief = TestUser.create(cxt, "chief@$client.test", level = ROLE.admin, userClient = client)
+        chief.postData(
+            DSV.sharedHeadingEdit,
+            mapOf(DSV.typeName to typeName, DSV.label to "Shared things", DSV.sharedBasedOn to DesignSharedEdit.stampOf(overlay)),
+        )
+        storedEntries(cxt, client, CCT.schemaDef).single()[CCT.schema] shouldBe mapOf(
+            SCH.properties to mapOf("extra" to mapOf(SCH.description to "Something extra.")),
+            SCH.layout to mapOf(SL.label to "Shared things"),
+        )
+    }
+
+    "Design View edits an overlay of a code workflow as it runs, and keeps only the change" {
+        val client = "ovldesign1657"
+        store(cxt, client, mapOf(CCT.workflowDef to listOf(flowOverlay("tplFlow", relabel("a", "The client's A")))), template = tpl)
+        publish(cxt, client)
+        GedraConfigReload.reloadClient(cxt, client)
+        val chief = TestUser.create(cxt, "chief@$client.test", level = ROLE.admin, userClient = client)
+        chief.postData(
+            DSV.labelEdit,
+            mapOf(
+                DSV.workflowId to "tplFlow", DSV.taskId to "a", DSV.saveId to "s", DSV.label to "Keep it",
+                DSV.basedOn to workflowDefStamp(flow(cxt, client, "tplFlow")),
+            ),
+        )
+        val task = flow(cxt, client, "tplFlow").tasks.single()
+        task.label shouldBe "The client's A"
+        task.saves.single().label shouldBe "Keep it"
+        storedEntries(cxt, client, CCT.workflowDef).single()[CCT.definition] shouldBe mapOf(
+            WFD.workflowId to "tplFlow",
+            WFD.tasks to listOf(
+                mapOf(WFD.id to "a", WFD.label to "The client's A", WFD.saves to listOf(mapOf(WFD.id to "s", WFD.label to "Keep it"))),
+            ),
+        )
+    }
+
     // Its own instance, since it changes the template's code as a deploy would.
     "a change to the code reaches an overlay of it; a part the code no longer has is dropped and reported" {
         val changing = Startup.mkTestBootCxt(
@@ -267,5 +326,15 @@ class CodeOverlaysTest : StringSpec({
         // Kept as stored, so the client's change is there to fix or remove.
         storedEntries(changing, client, CCT.workflowDef).single()[CCT.definition].toJsonMapOrEmpty()[WFD.tasks] shouldBe
             listOf(mapOf(WFD.id to "a", WFD.label to "The client's A"))
+        // Design View, which edits it whole, refuses rather than drop that part unseen, and points to the bundle editor.
+        publish(changing, client)
+        val chief = TestUser.create(changing, "chief@$client.test", level = ROLE.admin, userClient = client)
+        chief.expectError(
+            EXC.badInput, DSV.labelEdit,
+            mapOf(
+                DSV.workflowId to "tplFlow", DSV.taskId to "b", DSV.label to "B, mine",
+                DSV.basedOn to workflowDefStamp(flow(changing, client, "tplFlow")),
+            ),
+        ).toString() shouldContain "Fix or remove them in the bundle editor first"
     }
 })

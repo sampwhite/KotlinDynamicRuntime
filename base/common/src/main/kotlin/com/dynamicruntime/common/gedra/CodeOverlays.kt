@@ -1,7 +1,9 @@
 package com.dynamicruntime.common.gedra
 
+import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.workflow.toJsonMap
+import com.dynamicruntime.common.startup.SchemaCollector
 import com.dynamicruntime.common.schema.qualifyTypeName
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
@@ -101,5 +103,60 @@ fun codeOverlayIssues(config: GedraConfig): List<GedraConfigIssue> = config.code
             "Running the code's $what as it is; the change is kept as stored.",
             kind, o.key,
         )
+    }
+}
+
+/**
+ * A stored definition as an editor that rewrites it whole sees it (issue #1657): [body], the whole definition, and --
+ * for an entry that is an overlay of the code -- [code], the code's definition it is merged over, so a rewrite is stored
+ * as the difference again ([stored]) rather than as the whole, which would restate every part and stop following the
+ * code. Design View's edits of a workflow and of a type's layout and choices are made this way.
+ */
+class StoredWhole(val slot: String, val key: String, val body: Map<String, Any?>, val code: Map<String, Any?>?) {
+    /** [edited], the rewritten whole, as the entry stores it: as it is, or for an overlay only what differs from the code's. */
+    fun stored(edited: Map<String, Any?>): Map<String, Any?> {
+        val code = code ?: return edited
+        val diff = diffCodeOverlay(slot, code, edited)
+        if (diff.problems.isNotEmpty()) {
+            throw KdrException.mkInput(
+                "${what(slot, key)} is kept as a change to the code, which cannot state this: " +
+                    overlayProblemTexts(diff.problems).joinToString(" ") + " Detach it from the code in the bundle editor first.",
+            )
+        }
+        return diff.overlay
+    }
+
+    companion object {
+        /**
+         * [entry], a stored entry of [slot] keyed by [key] that [client] holds, as a whole definition: merged over the
+         * client's code as declared when it is an overlay of the code, and as stored otherwise. An overlay with nothing
+         * under it, or holding parts the code no longer has a place for, is refused: a rewrite of it would drop them
+         * unseen, so it is fixed in the bundle editor, which says what is dropped.
+         */
+        fun of(cxt: KdrCxt, client: String, slot: String, key: String, entry: Map<String, Any?>): StoredWhole {
+            val field = codeOverlayBodyField(slot)
+            val body = entry[field].toJsonMapOrEmpty()
+            if (!entry.isCodeOverlay) return StoredWhole(slot, key, body, null)
+            val code = codeDefinition(cxt, client, slot, key)
+                ?: throw KdrException.mkInput("${what(slot, key)} is a change to the code's, and the client's code no longer declares it.")
+            val merged = mergeCodeOverlay(slot, code, body)
+            if (merged.problems.isNotEmpty()) {
+                throw KdrException.mkInput(
+                    "${what(slot, key)} is a change to the code's that holds parts the code no longer has a place for: " +
+                        overlayProblemTexts(merged.problems).joinToString(" ") + " Fix or remove them in the bundle editor first.",
+                )
+            }
+            return StoredWhole(slot, key, merged.value, code)
+        }
+
+        /** [client]'s code's definition of [key] in [slot], as declared: what its overlay of it is merged over. */
+        private fun codeDefinition(cxt: KdrCxt, client: String, slot: String, key: String): Map<String, Any?>? {
+            val owner = sandboxParentOf(client) ?: client
+            val collector = SchemaCollector.get(cxt) ?: return null
+            val loader = GedraConfigLoadService.get(cxt)
+            return CodeEntries { loader.codeLayerOf(collector, owner, ClientService.get(cxt).known(owner)) }.definition(slot, key)
+        }
+
+        private fun what(slot: String, key: String) = if (slot == CCT.workflowDef) "Workflow '$key'" else "Type '$key'"
     }
 }

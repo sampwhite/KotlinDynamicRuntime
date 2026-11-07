@@ -3,6 +3,7 @@ package com.dynamicruntime.webapp
 import com.dynamicruntime.common.gedra.CCT
 import com.dynamicruntime.common.gedra.CFEP
 import com.dynamicruntime.common.gedra.GE
+import com.dynamicruntime.common.gedra.codeOverlayStale
 import com.dynamicruntime.common.gedra.workflow.WFD
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
@@ -104,6 +105,23 @@ class CodeOverlayEditTest {
         )
         assertEquals("Revert to code later and the code's runs again.", replacingNoteText(listOf(overlay)))
         assertEquals("The code's, in its flows bundle, which this entry changes", replacedHeadingText(overlay))
+    }
+
+    @Test
+    fun aSaveSaysWhichStalePartsOfTheStoredChangeItDrops() {
+        // Stored when the code had a task `gone`, which it has since lost.
+        val stored = mapOf(
+            CCT.workflowId to "review", CCT.overrides to CCT.overridesCodeOverlayValue,
+            CCT.definition to mapOf(WFD.workflowId to "review", WFD.tasks to listOf(mapOf(WFD.id to "gone", WFD.label to "Orphan"))),
+        )
+        assertEquals(1, codeOverlayStale(CCT.workflowDef, codeFlow, stored).size)
+        val id = "flows/${CCT.workflowDef}/review"
+        val opened = EntryDraft("flows", CCT.workflowDef, stored, null, "", client = "acme", code = codeFlow)
+        val edited = opened.withText(entryText(opened.originalShown() + (CCT.definition to
+            opened.originalShown()[CCT.definition].toJsonMapOrEmpty() + (WFD.label to "Review, ours"))))
+        val check = checkEntry(id, view, BundleEdits().with(id, edited), emptyMap())
+        assertTrue(check.ok, check.problems.toString())
+        assertTrue(check.notes.any { "Saving drops this part" in it && "gone" in it }, check.notes.toString())
     }
 
     @Test

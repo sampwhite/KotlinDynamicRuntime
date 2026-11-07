@@ -321,6 +321,11 @@ val overlay = mapOf(
 - **At a load**, after the code changed under it, an overlay is forgiven part by part: the part with nothing left to
   target is dropped, the rest applies, and the client's issues and the boot checks say what was dropped
   (`codeOverlayIssues`). One that does not read at all leaves the code's entry running, kept as stored.
+- **Editors that rewrite an entry whole** -- Design View's workflow and shared-type edits -- read an overlay merged
+  over the code and store the rewrite as the difference again (`StoredWhole`). One holding parts the code no longer has
+  is refused there, pointing to the bundle editor, which says what a save of it drops.
+- **A template's type** may be overlaid, or overridden whole, under the template's name: a type a stored config stands
+  over code with keeps the code's name, so the rule that a client's new types live in its own namespace does not apply.
 - **What an overlay does not fix:** it is configuration. When the code changes the shape of a trait that has stored
   data, the data still needs a migration or a reset.
 
