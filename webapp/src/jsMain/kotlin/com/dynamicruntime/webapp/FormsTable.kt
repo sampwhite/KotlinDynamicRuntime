@@ -816,7 +816,8 @@ private val WorkflowCell = FC<WorkflowCellProps> { props ->
                     +it.entry.label
                 }
                 WfWeight.waiting -> {
-                    link(it, "wf-w-waiting", tip = it.reason) { +it.entry.label }
+                    // The reason is drawn under the link, so it is not repeated as a tooltip a screen reader reads twice.
+                    link(it, "wf-w-waiting") { +it.entry.label }
                     it.reason?.let { reason -> div { className = ClassName("wf-reason"); +reason } }
                 }
                 WfWeight.settled -> if (it.workflow.category == WfColumnCategory.finished) {

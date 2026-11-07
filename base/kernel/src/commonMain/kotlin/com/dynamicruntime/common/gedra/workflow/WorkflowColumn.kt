@@ -39,9 +39,6 @@ object WCOL {
     /** On a workflow frozen after its relevancy window closed (issue #1598): when it closed, as [opensAt] says when one opens. */
     const val closedAt = "closedAt"
 
-    /** One entry of a row's `waitingReasons` (issue #1598): a workflow id, its [WfWaitsOn], and its filter's label. */
-    const val waitingReasonType = "WorkflowWaitingReason"
-
     /** In a `waitingReasons` entry: whom the step waits on, a [WfWaitsOn] name. */
     const val waitsOn = "waitsOn"
 }

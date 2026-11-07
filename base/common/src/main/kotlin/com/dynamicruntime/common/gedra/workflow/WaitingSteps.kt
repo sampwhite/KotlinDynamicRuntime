@@ -62,6 +62,7 @@ class WaitingSteps(
     private val perClient = HashMap<String, ClientRules>()
     private val identities = HashMap<Long, String?>()
     private val byForm = HashMap<String, List<Map<String, Any?>>>()
+    private val formFacts = HashMap<String, FormFacts>()
     private val weighed = HashMap<String, List<FormWorkflowWeight>>()
 
     /** What is worked out once per client: its workflows, its cfacts, the caller's request and viewer facts there. */
@@ -129,7 +130,7 @@ class WaitingSteps(
      */
     fun of(gedraId: GedraId, ownerUserId: Long?, states: List<Map<String, Any?>>): List<Map<String, Any?>> =
         byForm.getOrPut(gedraId.fullId) {
-            val form = FormFacts(rules(gedraId.client), ownerUserId, states)
+            val form = factsOf(gedraId, ownerUserId, states)
             form.datas.mapNotNull { data -> waitingStep(form, data) }
         }
 
@@ -144,7 +145,7 @@ class WaitingSteps(
      */
     fun reasons(gedraId: GedraId, ownerUserId: Long?, states: List<Map<String, Any?>>): List<Map<String, Any?>> {
         val theirs = of(gedraId, ownerUserId, states).mapNotNullTo(HashSet()) { it[WFD.workflowId].toOptStr() }
-        val form = FormFacts(rules(gedraId.client), ownerUserId, states)
+        val form = factsOf(gedraId, ownerUserId, states)
         return form.datas.mapNotNull { data ->
             val workflowId = data[WFD.workflowId].toOptStr()?.takeIf { it !in theirs } ?: return@mapNotNull null
             val task = currentTask(form.rules, data)?.takeIf { it.approval != null || it.saves.isNotEmpty() } ?: return@mapNotNull null
@@ -163,6 +164,10 @@ class WaitingSteps(
             }
         }
     }
+
+    /** Form [gedraId]'s [FormFacts], worked out once per form and shared by [of] and [reasons], as [of]'s answer is. */
+    private fun factsOf(gedraId: GedraId, ownerUserId: Long?, states: List<Map<String, Any?>>): FormFacts =
+        formFacts.getOrPut(gedraId.fullId) { FormFacts(rules(gedraId.client), ownerUserId, states) }
 
     /**
      * What is worked out once for a form (owned by [ownerUserId], with state entries [states]) and shared by its steps:
