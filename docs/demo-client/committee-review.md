@@ -69,6 +69,7 @@ Here is the whole `review` bundle:
         "entry": "normal",
         "$comment": "The committee reviews a talk once its core details are complete, then accepts it.",
         "label": "Committee review",
+        "highlightStart": true,
         "eligibility": [
           {
             "id": "coreDetailsDone",
@@ -124,13 +125,19 @@ Here is the whole `review` bundle:
 }
 ```
 
-Five things are new. The reference explains each in general under
+Six things are new. The reference explains each in general under
 [Facts and eligibility](reference.md#facts-and-eligibility) and
 [Who may work on a task](reference.md#who-may-work-on-a-task); here is what they do for the review.
 
 **An eligibility test.** The `eligibility` list has one test: the form must have the fact `kdr:coreDetailsComplete`,
 which the core details workflow gives it once every trait the workflow requires has an entry. A talk whose core details
 are not done cannot enter the review, and the forms list shows the `explanation` instead of offering it.
+
+**A highlighted Start.** Its `highlightStart: true` asks the forms list to point the right people at the review
+before it starts. While a talk may enter the review and has not, its first task (`recordReview`) stands in for its next
+step: a person who could save that task sees **Start** highlighted, as their turn, and one click puts the talk into the
+review and opens the task. Everyone else sees the ordinary **Start**. It only points people at the talk. Who may
+enter it is still decided by the eligibility test alone.
 
 **A task only a committee member may save.** The `recordReview` task runs a `userHasLabel` function, which asserts
 the fact `kdr:reviewer` for a person whose user has the `committee` label. Its `saveWhen` then allows the save for
@@ -162,8 +169,9 @@ its owner, its reviewers, and administrators. **Needs Review** is not one of the
 
 ## What the speaker sees
 
-In the forms list, a talk whose core details are done shows **Committee review available**; one whose core details are
-not done shows the explanation instead. The speaker can open the workflow and read it, and the page says *Someone else
+In the forms list, a talk whose core details are done shows **Start** and **Committee review** in its **Workflows**
+column, an outlined link; one whose core details are not done shows the workflow greyed, with the explanation when
+clicked. The speaker can open the workflow and read it, and the page says *Someone else
 completes this step; you can see it here.* Once the review is recorded, the speaker sees the score and the notes.
 
 ## What a committee member sees
@@ -174,9 +182,10 @@ is **Forms**, with every speaker's talks. An editor is not at an administrator's
 abstract to edit it, the form leaves off the note for the organizers, as the speaker's does (see
 [Abstract](abstract.md)).
 
-On a talk whose core details are done, the member opens **Committee review** and presses **Engage**, as the speaker did
-for the abstract. The talk's status in the forms list is then **Needs Review**. The **Record the review** step is
-editable: a **Score** and **Notes for the speaker**, and a **Save the review** button. Once saved, the **Accept the
+On a talk whose core details are done, the member's forms list shows **Start** and **Committee review** highlighted in
+its **To review** column, which sorts the talks waiting on them to the top. One click puts the talk into the review and
+opens the **Record the review** step, with no **Engage** to press. The talk's status in the forms list is then **Needs
+Review**. The step is editable: a **Score** and **Notes for the speaker**, and a **Save the review** button. Once saved, the **Accept the
 talk** step offers its button. After it is pressed, the step reads *Accepted by* and who accepted it, and the talk's
 status in the forms list is **Finished**.
 

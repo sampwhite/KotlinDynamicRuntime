@@ -164,7 +164,7 @@ val InspectorResizeHandle = FC<Props> {
         }
         onKeyDown = { e ->
             // The edge is on the panel's left, so Left widens it and Right narrows it.
-            val step = when (e.key.toString()) {
+            val step = when (e.key) {
                 "ArrowLeft" -> DVI.keyStep
                 "ArrowRight" -> -DVI.keyStep
                 else -> 0

@@ -1051,6 +1051,8 @@ class WorkflowCellItem(
     val verb: String? = null,
     /** Why a [WfWeight.waiting] link waits ("Waiting on a regional reviewer", "Closed 2026-10-30"); null on any other. */
     val reason: String? = null,
+    /** For a Start that is the viewer's turn (issue #1662), the workflow's first task, which its link opens. */
+    val startTask: String? = null,
 ) {
     /**
      * The task a link opens (issue #791): the current task of an engaged workflow, the last task of a finished
@@ -1059,8 +1061,16 @@ class WorkflowCellItem(
     val linkTask: String? get() = when (workflow.category) {
         WfColumnCategory.engaged -> workflow.ctaTask
         WfColumnCategory.finished -> entry.lastTask.ifBlank { null }
+        // A Start that is the viewer's turn (issue #1662) opens on the first task, once its link has engaged the form.
+        WfColumnCategory.eligible -> startTask
         else -> null
     }
+
+    /**
+     * Whether the link engages the form on the way (issue #1662): a Start that is the viewer's turn -- eligible, with the
+     * workflow's first task theirs -- so one click puts the form in and opens that task ready to edit.
+     */
+    val linkEngages: Boolean get() = workflow.category == WfColumnCategory.eligible && weight == WfWeight.yourTurn
 
     /** The reasons an ineligible workflow is not offered, in its tests' order; empty otherwise. */
     val reasons: List<String> get() = workflow.failureIds.map { entry.explanations[it] ?: it }
@@ -1188,14 +1198,17 @@ fun workflowCellOf(
         .mapNotNull { weighed ->
             val id = weighed.workflow.workflowId
             val entry = declared[id]?.value ?: return@mapNotNull null
+            val starts = weighed.workflow.category == WfColumnCategory.eligible
             val verb = when (weighed.weight) {
-                WfWeight.yourTurn -> keywords.firstOrNull { it.keyword == weighed.keyword }?.verb?.ifBlank { null }
-                    ?: steps[id]?.get(SWF.actionText).toOptStr()?.ifBlank { null } ?: words.continueVerb
+                // A Start that is the viewer's turn (issue #1662) says "Start", as any eligible one does.
+                WfWeight.yourTurn -> if (starts) words.start else keywords.firstOrNull { it.keyword == weighed.keyword }?.verb
+                    ?.ifBlank { null } ?: steps[id]?.get(SWF.actionText).toOptStr()?.ifBlank { null } ?: words.continueVerb
                 WfWeight.available -> words.start
                 else -> null
             }
             val reason = if (weighed.weight == WfWeight.waiting) waitingReasonOf(entry, reasons[id], words, now) else null
-            WorkflowCellItem(entry, weighed.workflow, weighed.weight, verb, reason)
+            val startTask = if (starts && weighed.weight == WfWeight.yourTurn) steps[id]?.get(WFS.ctaTask).toOptStr() else null
+            WorkflowCellItem(entry, weighed.workflow, weighed.weight, verb, reason, startTask)
         }
         .sortedWith(compareBy({ it.kind.ordinal }, { declared[it.workflow.workflowId]?.index ?: Int.MAX_VALUE }))
 }
@@ -1235,6 +1248,8 @@ fun workflowPageRoute(
     task: String?,
     edit: Boolean,
     from: String = HMENU.pageForms,
+    /** Engage the form on arrival (issue #1662): a highlighted Start's link. */
+    engage: Boolean = false,
 ): List<Pair<String, String>> =
     buildList {
         add(HP.page to pageCoreDetailsEdit)
@@ -1243,6 +1258,7 @@ fun workflowPageRoute(
         add(HP.workflow to workflowId)
         task?.let { add(HP.task to it) }
         if (edit && task != null) add(HP.edit to "1")
+        if (engage) add(HP.engage to "1")
     }
 
 /**

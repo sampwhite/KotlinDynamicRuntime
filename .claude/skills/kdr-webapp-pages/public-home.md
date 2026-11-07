@@ -97,7 +97,8 @@ none of its own.
 - **Waiting on you** (`HCARD.waiting`, issue #1637), first among a signed-in caller's, for anyone signed in to a client
   with a workflow whose step can wait (`kdr:clientHasWaitingWorkflows`: a normal or core details workflow), since its
   read is a pass over the forms the caller may see: the forms with a step that is the caller's to take, each linked to
-  that step (`workflowPageRoute`, in edit mode) with what it asks beside it, and "See all N" to the forms listing
+  that step (`workflowPageRoute`, in edit mode; for a highlighted Start, issue #1662, engaging the form on arrival) with
+  what it asks beside it, and "See all N" to the forms listing
   narrowed to them (`forms-listing.md`'s "Waiting on you"). Home reads it (`useWaitingOnYou`, the listing with `needsMe`
   and a limit of five) -- confined to the caller's own client for one who sees across clients, never the whole
   deployment -- and draws the card, and its link under the title, only once something waits (`visibleHomeCards`).

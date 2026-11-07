@@ -148,7 +148,10 @@ fun formWorkflowsOf(states: List<Map<String, Any?>>, phaseOf: (String) -> WfPhas
  */
 @Suppress("EnumEntryName")
 enum class WfWeight {
-    /** The viewer can act now: engaged, and its call to action is one they may save or approve. */
+    /**
+     * The viewer can act now: engaged, and its call to action is one they may save or approve -- or eligible, with a Start
+     * that waits on them (issue #1662).
+     */
     yourTurn,
 
     /**
@@ -206,8 +209,9 @@ class FormWorkflowWeight(
  * answers it from the viewer's facts (the request's, `kdr:isOwner`, and the task's viewer facts); the page from the
  * workflows the listing says the caller may act on.
  *
- * An eligible workflow is [WfWeight.available] whoever looks: a keyword asking the viewer to engage (a `start` keyword)
- * would make it their turn, and none is on the list yet.
+ * An eligible workflow is [WfWeight.available], unless [mayAct] says its **Start** waits on the viewer (issue #1662): a
+ * workflow that highlights it, whose first task the viewer could act on. Then it is their turn, its link engaging the
+ * form. [mayAct] is asked of an eligible workflow too, and answers yes only for such a Start.
  */
 fun formWorkflowWeights(
     states: List<Map<String, Any?>>,
@@ -228,7 +232,7 @@ fun formWorkflowWeights(
                 } else {
                     WfWeight.waiting
                 }
-            WfColumnCategory.eligible -> WfWeight.available
+            WfColumnCategory.eligible -> if (mayAct(workflow, state)) WfWeight.yourTurn else WfWeight.available
             WfColumnCategory.finished, WfColumnCategory.ineligible -> WfWeight.settled
         }
         FormWorkflowWeight(workflow, weight, keyword = state[WFS.ctaKeyword].toOptStr()?.takeIf { engaged })

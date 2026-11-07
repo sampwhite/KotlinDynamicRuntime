@@ -261,6 +261,13 @@ object SWF {
      */
     const val actionText = "actionText"
 
+    /**
+     * On a step waiting on the caller (issue #1662): `true` when the step is a workflow's Start -- the first task of one
+     * that highlights it, on a form eligible for it and not yet in it -- so taking it engages the form first. Absent
+     * on the current task of an engaged workflow.
+     */
+    const val startsWorkflow = "startsWorkflow"
+
     /** On a workflow: whether the caller is a reviewer of its current task (`WFC.reviewer` from its functions). */
     const val isReviewer = "isReviewer"
 }

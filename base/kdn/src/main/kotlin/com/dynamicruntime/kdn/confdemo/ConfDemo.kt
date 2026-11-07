@@ -500,6 +500,8 @@ fun confDemoReview(cxt: KdrCxtBase = LiteCxt(), client: String = ConfDemo.client
         workflow(ConfDemo.reviewWorkflow, WfEntry.normal) {
             comment = "The committee reviews a talk once its core details are complete, then accepts it."
             label = "Committee review"
+            // Its Start is highlighted for a committee member (issue #1662), who may act on its first task.
+            highlightStart = true
             eligibility("coreDetailsDone", CDF.coreDetailsComplete, "The talk's core details have to be complete before the " +
                 "committee reviews it.", comment = "Reviewers need the track.")
             task(ConfDemo.recordReviewTask, "Record the review") {

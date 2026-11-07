@@ -990,7 +990,7 @@ val FormsPage = FC<FormsPageProps> { props ->
                     chosenClient?.let { id -> clientChoices.firstOrNull { it.clientId == id }?.hasCoreDetails == true } ?: hasCoreDetails
                 // "Waiting on you" (issue #1637): where the caller's client has a workflow whose step can wait, across
                 // clients (any of which may), or while it is applied, so it can be seen and cleared.
-                val waitingFilterOffered = canSeeAllClients || hasWaitingWorkflows || appliedSearch[GDF.needsMe]?.toString() == "true"
+                val waitingFilterOffered = canSeeAllClients || hasWaitingWorkflows || appliedSearch[GDF.needsMe] == "true"
                 // The panel is also worth drawing with no trait fields at all when the status filter is
                 // on offer: that one is every form's, not a trait's.
                 if (groups.isNotEmpty() || coreDetailsFilterOffered || waitingFilterOffered) {
@@ -1108,13 +1108,13 @@ val FormsPage = FC<FormsPageProps> { props ->
                     yourTurnHeaderText = yourTurnHeader(
                         keywordsInUse(ctaKeywords, formsSearchKeys(ep.inputSchema)), WorkflowCellWords.of(homeCopy), yourTurnCount,
                     )
-                    workflowHref = { id, wf, task, edit ->
-                        routeHref(workflowPageRoute(id, wf, task, edit, listingPage) + listingContext)
+                    workflowHref = { id, wf, task, edit, engage ->
+                        routeHref(workflowPageRoute(id, wf, task, edit, listingPage, engage) + listingContext)
                     }
                     // Drilled in from the workflow pages (issue #792): View Workflow and a row double-click open it.
                     drillWorkflowId = drill?.first
-                    onOpenWorkflow = { id, wf, task, edit ->
-                        navigate(workflowPageRoute(id, wf, task, edit, listingPage) + listingContext)
+                    onOpenWorkflow = { id, wf, task, edit, engage ->
+                        navigate(workflowPageRoute(id, wf, task, edit, listingPage, engage) + listingContext)
                     }
                     confirmingDeleteId = rowConfirmDeleteId
                     deletingId = rowDeletingId

@@ -88,6 +88,14 @@ object HP {
      */
     const val edit = "edit"
 
+    /**
+     * Core details edit page, on a normal workflow (issue #1662): present (`engage=1`) to put the form into the workflow
+     * on arrival, as its Engage button does, then open the task named in edit mode -- where a highlighted Start links.
+     * Taken out of the address once acted on, so a reload or Back does not engage again; a form no longer eligible
+     * shows the refusal's reasons as Engage's does.
+     */
+    const val engage = "engage"
+
     /** Core details edit page: the task the rail shows (issue #700); absent opens the earliest task needing action. */
     const val task = "task"
 
