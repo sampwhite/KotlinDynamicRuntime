@@ -505,7 +505,7 @@ would already be taken.
 This way needs no key. Still in the sandbox, open **My client**, and under **Publishing**, choose **Open every
 bundle**. The page lists your client's bundles, and what you save on it is a draft that your sandbox runs.
 
-1. Under **Bundles**, type `reviewTheBook` in **New bundle's name**, and choose **Add bundle**.
+1. Under **Bundles**, type `reviewTheBook` where it says **Name a new bundle**, and choose **Add bundle**.
 2. In the new bundle, choose **Traits (kdr:traitDef)** from **Add a slot…**. A new entry opens, with the field its
    key needs.
 3. Check **Portable** beside it, so that the page reads `client.@self` as your client. Replace the entry's text with

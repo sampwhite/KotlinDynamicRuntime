@@ -351,7 +351,8 @@ val BundleEditorPage = FC<Props> {
                     className = ClassName("bundle-editor-add")
                     Input {
                         value = newBundleName
-                        placeholder = "New bundle's name"
+                        // Says what to do, so the empty field does not read as one more disabled control beside the button.
+                        placeholder = "Name a new bundle"
                         onChange = { e -> newBundleName = e.target.value }
                     }
                     Button {
