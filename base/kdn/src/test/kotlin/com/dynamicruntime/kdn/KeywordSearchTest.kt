@@ -25,11 +25,14 @@ import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.gedra.workflow.CTAK
 import com.dynamicruntime.common.gedra.workflow.CTKQ
 import com.dynamicruntime.common.gedra.workflow.RCF
+import com.dynamicruntime.common.gedra.workflow.WCOL
 import com.dynamicruntime.common.gedra.workflow.WFD
+import com.dynamicruntime.common.gedra.workflow.WFS
 import com.dynamicruntime.common.gedra.workflow.WSC
 import com.dynamicruntime.common.gedra.workflow.WaitingSteps
 import com.dynamicruntime.common.gedra.workflow.WfEntry
 import com.dynamicruntime.common.gedra.workflow.WfSaveKind
+import com.dynamicruntime.common.gedra.workflow.WfWaitsOn
 import com.dynamicruntime.common.gedra.workflow.ctaFilterByValue
 import com.dynamicruntime.common.gedra.workflow.userHasLabel
 import com.dynamicruntime.common.http.request.ROLE
@@ -159,6 +162,14 @@ class KeywordSearchTest : StringSpec({
         workflow("notice", WfEntry.normal) {
             task("read", "Read the memo") { trait("memo") }
         }
+        // A save that names nobody, which waits on the form's owner (issue #1598).
+        trait("JotEntry", "jot", setOf(GedraDataType.formDoc), "A jot.") { property("text", "The jot.") }
+        workflow("jot", WfEntry.normal) {
+            task("write", "Write a jot") {
+                trait("jot")
+                save("saveJot", "Save", WfSaveKind.edit)
+            }
+        }
     }
 
     val admin = TestUser.create(cxt, "admin@$client.test", level = ROLE.admin, userClient = client)
@@ -255,6 +266,42 @@ class KeywordSearchTest : StringSpec({
             it[alone] shouldBe emptyList()
             it[signed] shouldContainExactlyInAnyOrder listOf("kept", "sign")
         }
+    }
+
+    "each step not waiting on the caller says whom it waits on, its filter's label when the filter keeps the caller out" {
+        fun reasons(user: TestUser, listedClient: String = client): Map<String, Map<String, Pair<String?, String?>>> =
+            user.client.sendJsonGetRequest(clientPath(GEP.formDocs, listedClient), mapOf(GDF.withStates to true))[EP.items]
+                .toJsonListOfMaps().associate { row ->
+                    row[GDF.gedraId].toOptStr()!! to row[GDF.waitingReasons].toJsonListOfMaps().associate {
+                        it[WFD.workflowId].toOptStr()!! to (it[WCOL.waitsOn].toOptStr() to it[WFS.ctaFilterLabel].toOptStr())
+                    }
+                }
+        val filter = WfWaitsOn.filter.name
+        // The reviewer's own turn has no reason; the legal review's filter keeps them out, and says who it waits on.
+        reasons(reviewer).let {
+            it[both] shouldBe mapOf("legal" to (filter to "Waiting on a legal reviewer"))
+            it[south] shouldBe mapOf("regional" to (filter to "Waiting on a South reviewer"))
+            // A save its rule gives someone else.
+            it[intakeOnly] shouldBe mapOf("intake" to (WfWaitsOn.others.name to null))
+        }
+        // The owner passes no filter; their own intake waits on them, so it has no reason.
+        reasons(owner).let {
+            it[both] shouldBe mapOf(
+                "regional" to (filter to "Waiting on a Northwest reviewer"),
+                "legal" to (filter to "Waiting on a legal reviewer"),
+            )
+            it[intakeOnly] shouldBe emptyMap()
+        }
+        // An approval the viewer may not give, a save that names nobody (the owner's), and a step with nothing to take.
+        val keptOwner = TestUser.create(cxt, "owner2@$kept.test", userClient = kept)
+        val keptAdmin = TestUser.create(cxt, "admin2@$kept.test", level = ROLE.admin, userClient = kept)
+        val gid = keptOwner.postItem(GEP.formDocCreate, mapOf(GDF.entries to emptyList<Any>()))[GDF.gedraId].toOptStr()!!
+        for (workflow in listOf("sign", "jot", "notice")) {
+            keptOwner.postData(GEP.workflowEngage, mapOf(GDF.gedraId to gid, WFD.workflowId to workflow))
+        }
+        reasons(keptOwner, kept)[gid] shouldBe mapOf("sign" to (WfWaitsOn.approval.name to null))
+        // An administrator may sign it off, but the jot is the owner's to write.
+        reasons(keptAdmin, kept)[gid] shouldBe mapOf("jot" to (WfWaitsOn.owner.name to null))
     }
 
     "a sandbox has the keyword parameters its parent's workflows give it" {

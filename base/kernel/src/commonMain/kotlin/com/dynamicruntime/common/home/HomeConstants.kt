@@ -525,6 +525,39 @@ object HFRAG {
     const val noWorkflows = "noWorkflows"
 
     /**
+     * The home file's namespace for the words of the forms listing's workflow cell (issue #1598): the verbs on its links
+     * and the reasons its muted links give. A client rewords them as it does other copy.
+     */
+    const val workflowCellNs = "workflowCell"
+
+    /** In [workflowCellNs]: the verb on a workflow the viewer could start. */
+    const val wcStart = "start"
+
+    /** In [workflowCellNs]: the verb on the viewer's turn when neither its keyword nor its step gives one. */
+    const val wcContinue = "continue"
+
+    /** In [workflowCellNs]: why a step waits when the listing does not say whom on. */
+    const val wcWaiting = "waiting"
+
+    /** In [workflowCellNs]: a step waiting on the form's owner, who is not the viewer. */
+    const val wcWaitingOnOwner = "waitingOnOwner"
+
+    /** In [workflowCellNs]: a step waiting on someone the viewer is not, with no filter label to say who. */
+    const val wcWaitingOnOthers = "waitingOnOthers"
+
+    /** In [workflowCellNs]: an approval the viewer may not give. */
+    const val wcWaitingForApproval = "waitingForApproval"
+
+    /** In [workflowCellNs]: a template over `at` -- a workflow frozen until its relevancy window opens. */
+    const val wcOpens = "opens"
+
+    /** In [workflowCellNs]: a template over `at` -- a workflow frozen since its relevancy window closed. */
+    const val wcClosed = "closed"
+
+    /** In [workflowCellNs]: a frozen workflow whose window has no date to give. */
+    const val wcClosedUndated = "closedUndated"
+
+    /**
      * The key of a "What is this?" explanation (issue #1337), in the namespace of the copy it explains -- in this
      * file and in a page's own ([PFRAG]), as the profile file's `users.whatIsThis` is. Empty, the link is not offered.
      */

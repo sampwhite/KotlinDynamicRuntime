@@ -24,6 +24,7 @@ import web.cssom.ClassName
 import com.dynamicruntime.common.gedra.GSORT
 import com.dynamicruntime.common.gedra.ListingColumn
 import com.dynamicruntime.common.gedra.workflow.WfColumnCategory
+import com.dynamicruntime.common.gedra.workflow.WfWeight
 import com.dynamicruntime.common.schema.PSTAT
 import com.dynamicruntime.common.user.personaTag
 import com.dynamicruntime.common.user.userKeyLabel
@@ -101,6 +102,9 @@ external interface FormsTableProps : Props {
 
     /** What a row with no workflows shows (issue #791): the client's Markdown copy, or null for a dash. */
     var noWorkflowsCopy: String?
+
+    /** The workflow cell's words (issue #1598): its verbs and its muted links' reasons. Unset reads as shipped. */
+    var workflowWords: WorkflowCellWords?
 
     /**
      * The `href` that opens normal workflow `workflowId` against form `gedraId` (issue #791), on `task` when given
@@ -278,8 +282,12 @@ val FormsTable = FC<FormsTableProps> { props ->
             row.ownerClient = summary.client
             // The Client column reads this under its `GSORT.client` dataIndex (issue #668).
             row[GSORT.client] = summary.client.ifBlank { "—" }
-            // The workflow cell's items (issue #791), joined to the summary here so the cell only draws.
-            row.wfItems = workflowCellOf(summary.states, summary.client, props.workflowSummary)
+            // The workflow cell's items (issues #791, #1598), weighed and joined to the summary here so the cell only
+            // draws -- its verbs in the row's own client's words.
+            row.wfItems = workflowCellOf(
+                summary, props.workflowSummary, props.ctaKeywordsByClient?.get(summary.client) ?: props.ctaKeywords.orEmpty(),
+                props.workflowWords ?: WorkflowCellWords(), now,
+            )
             // Whose form it is (issue #1432), so the actions cell asks who may delete it without searching the rows.
             row.ownerId = summary.ownerId
             // And its state, so the same cell asks whether it is in a workflow (issue #1452).
@@ -734,12 +742,11 @@ private val SingletonChipBody = FC<SingletonChipBodyProps> { props ->
 private val chipScope = MainScope()
 
 /**
- * The workflow column (issue #791): each row's workflows in cell order -- in progress, available, finished, not
- * available -- the first two as links and the rest behind a count. Like [statusColumn], `onCell` stops a click in
- * the cell from also opening the row.
+ * The workflow column (issues #791, #1598): each row's workflows weighed by what they ask of the viewer, strongest first.
+ * Like [statusColumn], `onCell` stops a click in the cell from also opening the row.
  */
 private fun workflowColumn(props: FormsTableProps): dynamic {
-    val c = column("Workflows", "workflows", 230)
+    val c = column("Workflows", "workflows", 240)
     c.onCell = {
         val cellProps: dynamic = js("({})")
         cellProps.onClick = { event: dynamic -> event.stopPropagation() }
@@ -763,42 +770,82 @@ private external interface WorkflowCellProps : Props {
     var workflowHref: (String, String, String?, Boolean) -> String
 }
 
-/** How many workflows a cell shows before the rest go behind its count (issue #791). */
-private const val workflowCellShown = 2
+/** Which of a cell's popovers is open (issue #1598): its folded settled links, or the whole cell a narrow screen folds. */
+private enum class CellPopover { settled, all }
 
 /**
- * One row's workflow cell (issue #791). An ineligible workflow's link opens a dialog with the reasons, since there
- * is nowhere to go; every other link opens the workflow on the form. A row with nothing to show draws the client's
- * copy for that.
+ * One row's workflow cell (issues #791, #1598), each link drawn by its weight: the viewer's turn strong, with its verb;
+ * a waiting one muted, saying why; one they could start outlined, with "Start"; a settled one smallest -- a check for a
+ * finished one, grayed for one not eligible, whose link opens a dialog with the reasons since there is nowhere to go.
+ * Two or more settled links fold behind a "+N" ([workflowCellFold]); on a narrow screen the whole cell folds to its counts
+ * (`app.css` chooses which shows). A row with nothing to show draws the client's copy for that.
  */
 private val WorkflowCell = FC<WorkflowCellProps> { props ->
     var reasonsFor by useState<WorkflowCellItem?>(null)
-    var allOpen by useState(false)
+    var popover by useState<CellPopover?>(null)
     val items = props.items
+
+    fun ChildrenBuilder.link(it: WorkflowCellItem, look: String, tip: String? = null, content: ChildrenBuilder.() -> Unit) {
+        if (it.workflow.category == WfColumnCategory.ineligible) {
+            button {
+                className = ClassName("wf-link $look")
+                asDynamic()["type"] = "button"
+                onClick = { _ -> popover = null; reasonsFor = it }
+                tip?.let { t -> title = t }
+                content()
+            }
+        } else {
+            a {
+                className = ClassName("wf-link $look")
+                href = props.workflowHref(props.gedraId, it.entry.workflowId, it.linkTask, it.linkEdits)
+                tip?.let { t -> title = t }
+                // Followed in the app by the link itself: in a popover, a portal, the cell's stopPropagation keeps the
+                // click from the router's listeners (see `installRouting`).
+                onClick = { e -> followAppLink(e.nativeEvent) }
+                content()
+            }
+        }
+    }
 
     fun ChildrenBuilder.item(it: WorkflowCellItem) {
         div {
             className = ClassName("wf-cell-item")
-            if (it.workflow.category == WfColumnCategory.ineligible) {
-                button {
-                    className = ClassName("wf-cell-link")
-                    asDynamic()["type"] = "button"
-                    onClick = { _ -> allOpen = false; reasonsFor = it }
+            when (it.weight) {
+                WfWeight.yourTurn, WfWeight.available -> link(it, "wf-w-${it.weight.name}") {
+                    span { className = ClassName("wf-verb"); +it.verb.orEmpty() }
                     +it.entry.label
                 }
-            } else {
-                a {
-                    className = ClassName("wf-cell-link")
-                    href = props.workflowHref(props.gedraId, it.entry.workflowId, it.linkTask, it.linkEdits)
-                    // Followed in the app by the link itself: in the "N available …" popover, a portal, the cell's
-                    // stopPropagation keeps the click from the router's listeners (see `installRouting`).
-                    onClick = { e -> followAppLink(e.nativeEvent) }
-                    +it.entry.label
+                WfWeight.waiting -> {
+                    link(it, "wf-w-waiting", tip = it.reason) { +it.entry.label }
+                    it.reason?.let { reason -> div { className = ClassName("wf-reason"); +reason } }
+                }
+                WfWeight.settled -> if (it.workflow.category == WfColumnCategory.finished) {
+                    link(it, "wf-w-settled", tip = "Finished") {
+                        span { className = ClassName("wf-check"); +"\u2713" }
+                        +it.entry.label
+                    }
+                } else {
+                    link(it, "wf-w-settled wf-w-ineligible", tip = "Not available: see why") { +it.entry.label }
                 }
             }
-            span {
-                className = ClassName("wf-cell-cat wf-cat-" + it.workflow.category.name)
-                +(" " + workflowCategoryText(it.workflow.category))
+        }
+    }
+
+    fun ChildrenBuilder.more(which: CellPopover, label: String, shown: List<WorkflowCellItem>, extraClass: String) {
+        Popover {
+            open = popover == which
+            trigger = "click"
+            placement = "bottomLeft"
+            title = if (which == CellPopover.all) "All workflows" else "Settled"
+            onOpenChange = { isOpen -> popover = if (isOpen) which else null }
+            content = WorkflowCellAll.create {
+                this.items = shown
+                renderItem = { builder, it -> with(builder) { item(it) } }
+            }
+            button {
+                className = ClassName("wf-cell-more $extraClass".trim())
+                asDynamic()["type"] = "button"
+                +label
             }
         }
     }
@@ -808,25 +855,15 @@ private val WorkflowCell = FC<WorkflowCellProps> { props ->
         if (copy == null) span { +"\u2014" } else MarkdownInline { source = copy }
         return@FC
     }
-    items.take(workflowCellShown).forEach { item(it) }
-    if (items.size > workflowCellShown) {
-        Popover {
-            open = allOpen
-            trigger = "click"
-            placement = "bottomLeft"
-            title = "All workflows"
-            onOpenChange = { allOpen = it }
-            content = WorkflowCellAll.create {
-                this.items = items
-                renderItem = { builder, it -> with(builder) { item(it) } }
-            }
-            button {
-                className = ClassName("wf-cell-more")
-                asDynamic()["type"] = "button"
-                +(workflowCellCounts(items).ifBlank { "${items.size - workflowCellShown} more" } + " \u2026")
-            }
+    val (drawn, folded) = workflowCellFold(items)
+    div {
+        className = ClassName("wf-cell-full")
+        drawn.forEach { item(it) }
+        if (folded.isNotEmpty()) {
+            more(CellPopover.settled, if (drawn.isEmpty()) workflowCellCounts(folded) else "+${folded.size}", folded, "")
         }
     }
+    more(CellPopover.all, workflowCellCounts(items) + " \u2026", items, "wf-cell-folded")
     Modal {
         open = reasonsFor != null
         title = reasonsFor?.let { "Why ${it.entry.label} is not available" }
@@ -854,7 +891,7 @@ private external interface WorkflowCellAllProps : Props {
     var renderItem: (ChildrenBuilder, WorkflowCellItem) -> Unit
 }
 
-/** The full list behind a crowded cell's count (issue #791), in cell order. */
+/** A cell's links behind a count (issues #791, #1598), in cell order. */
 private val WorkflowCellAll = FC<WorkflowCellAllProps> { props ->
     div {
         className = ClassName("wf-cell-all")

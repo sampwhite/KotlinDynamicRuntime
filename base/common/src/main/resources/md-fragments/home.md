@@ -67,6 +67,22 @@ since each one works on the parts of the form it needs. Where the listing has a 
 form stands in each.
 
 
+# @workflowCell
+/- The words of the forms listing's workflow cell (issue #1598). A link to a workflow that is your turn says its verb:
+   the call to action's keyword's (`ctaReview.verb`), else what its step asks in words, else `continue`. One you could
+   start says `start`. One waiting on someone else is muted and says why: the call to action's filter label when the
+   filter keeps you out, else one of the `waiting...` lines; a workflow frozen outside its relevancy window says when
+   it `opens` or `closed`, `${at}` being the moment as the table writes one ("in 3d", "2026-10-30"). -/
+# +start Start
+# +continue Continue
+# +waiting Waiting
+# +waitingOnOwner Waiting on the owner
+# +waitingOnOthers Waiting on someone else
+# +waitingForApproval Waiting for approval
+# +opens Opens ${at}
+# +closed Closed ${at}
+# +closedUndated Closed
+
 # @ctaReview
 /- The `review` search keyword's words (issue #1596): what a call to action asking for a review is called wherever it is
    shown. A client's overlay rewords them as it rewords other copy. `statusText` is the Status column's chip for a form

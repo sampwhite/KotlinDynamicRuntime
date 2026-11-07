@@ -58,6 +58,7 @@ import com.dynamicruntime.common.gedra.workflow.noWorkflowView
 import com.dynamicruntime.common.gedra.workflow.resolveWorkflowView
 import com.dynamicruntime.common.gedra.workflow.saveWorkflow
 import com.dynamicruntime.common.schema.SCT
+import com.dynamicruntime.common.schema.SFMT
 import com.dynamicruntime.common.schema.SchTypeBuilder
 import com.dynamicruntime.common.startup.SchemaService
 import com.dynamicruntime.common.user.AdminRules
@@ -345,6 +346,9 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
             additionalProperties = true
         }
         property(WCOL.lastTask, "The workflow's last task, where a finished workflow's link lands.", required = true)
+        // Why an engaged form's link to a frozen workflow waits (issue #1598).
+        property(WCOL.opensAt, "When a workflow frozen before its relevancy window opens does.") { format = SFMT.dateTime }
+        property(WCOL.closedAt, "When a workflow frozen after its relevancy window closed did.") { format = SFMT.dateTime }
     }
     // Which user a listing is confined to (issue #1095), as the listing's summary says them.
     type(GEP.scopeUserType) {
@@ -513,7 +517,12 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
                 val waitingSteps = if (needsMe || withStates) waiting.of(row.gedraId, row.userId, states) else null
                 row.toJsonMap() + (GDF.displayValues to display) + (GDF.traitNames to rowTraitNames(row, traitNames)) +
                     ownerFields(owners[row.userId]) +
-                    (if (withStates) mapOf(GDF.states to states) else emptyMap()) +
+                    // And why each other step waits (issue #1598), which the workflow cell's muted links say.
+                    (if (withStates) {
+                        mapOf(GDF.states to states, GDF.waitingReasons to waiting.reasons(row.gedraId, row.userId, states))
+                    } else {
+                        emptyMap()
+                    }) +
                     (waitingSteps?.let { mapOf(GDF.waitingSteps to it) } ?: emptyMap())
             },
             page.numAvailable,

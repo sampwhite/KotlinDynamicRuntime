@@ -342,6 +342,16 @@ object GDF {
     const val waitingSteps = "waitingSteps"
 
     /**
+     * On a row listed with [withStates] (issue #1598): why each of the form's steps that waits on someone else does, so
+     * a muted link in the workflow cell can say so. One entry per engaged workflow whose current task, still
+     * calculating, is not the caller's to take: its workflow id, whom it waits on (`WfWaitsOn`), and the CTA filter's
+     * label resolved for the row's client (`WFS.ctaFilterLabel`) when the filter keeps the caller out and has one. A
+     * workflow frozen outside its relevancy window, or whose call to action is not computed, has none: the listing's
+     * summary says when a frozen one closed or opens.
+     */
+    const val waitingReasons = "waitingReasons"
+
+    /**
      * In a listing's `summary` (issue #1095): **the user the listing is confined to**, when the request named one
      * (`user`) -- who the server resolved that to. The request may name the user by id or by address, and an address
      * names a *person*, whom the server resolves to their default user; without this a caller is shown one of that

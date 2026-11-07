@@ -2,6 +2,7 @@ package com.dynamicruntime.kdn
 
 import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.KdrCxt
+import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.gedra.ClientAudience
 import com.dynamicruntime.common.gedra.ClientDef
@@ -35,6 +36,7 @@ import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonListOrEmpty
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
+import com.dynamicruntime.common.util.toOptInstant
 import com.dynamicruntime.common.util.toOptStr
 import com.dynamicruntime.common.gedra.workflow.WfParams
 import com.dynamicruntime.common.gedra.workflow.WfWindow
@@ -248,6 +250,12 @@ class WorkflowWindowsTest : StringSpec({
         // Past relevancy it is no longer calculated, but it still stands behind its engaged form, so it stays listed.
         aggregate().shouldNotBeNull()[WCOL.phase] shouldBe WfPhase.lifetimeOnly.name
         countsOf(aggregate()) shouldBe listOf(0L, 0L, 1L)
+        // The forms listing's summary says when it closed, the reason the engaged form's link to it waits (issue #1598),
+        // and the row gives no reason of its own for a step nobody can take.
+        val listing = user.client.sendJsonGetRequest(GEP.formDocs, mapOf(GDF.withStates to true, GDF.withWorkflowSummary to true))
+        listing[EP.summary].toJsonMapOrEmpty()[WCOL.workflows].toJsonListOfMaps().single { it[WFD.workflowId] == "inspection" }
+            .let { it[WCOL.closedAt].toOptInstant() shouldBe t0 + 80.minutes; it[WCOL.opensAt].shouldBeNull() }
+        listing[EP.items].toJsonListOfMaps().single { it[GDF.gedraId] == engagedForm }[GDF.waitingReasons] shouldBe emptyList<Any>()
         user.expectError(EXC.conflict, GEP.workflowSave, saveBody(engagedForm))["errorMessage"].toOptStr()
             .orEmpty() shouldContain "closed at ${at(80)}"
         user.expectError(

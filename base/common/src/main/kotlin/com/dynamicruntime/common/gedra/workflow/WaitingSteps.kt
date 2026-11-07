@@ -35,6 +35,9 @@ import com.dynamicruntime.common.util.toOptStr
  * owner, who is neither its owner nor a reviewer of its current work -- since its gate would refuse them. An approval
  * is not a change to the form, so the rule never keeps anyone from one.
  *
+ * The steps waiting on **someone else** are the other half (issue #1598): [reasons] says whom each waits on, by the same
+ * rule, so the forms list's muted links can say why.
+ *
  * ### From stored state alone
  *
  * As [SingletonWorkflows] does, this reads each workflow's stored entry -- its current task, whether that task is
@@ -67,6 +70,9 @@ class WaitingSteps(
         val cfacts: CFactRegistry = SchemaService.get(cxt).cfactsFor(client)
         val requestFacts: Set<String> = cfacts.assemble(cxt)
         val viewer = ViewerCfacts(cxt, client)
+
+        /** Resolves the client's copy -- a label, a filter's label -- as its own users read it ([copyResolver]). */
+        val resolve: (String) -> String by lazy { copyResolver(cxt, client) }
         private val phases = HashMap<String, WfPhase?>()
 
         /** Where workflow [id] stands, when it is a normal workflow the caller sees and within its lifetime; else null. */
@@ -123,17 +129,57 @@ class WaitingSteps(
      */
     fun of(gedraId: GedraId, ownerUserId: Long?, states: List<Map<String, Any?>>): List<Map<String, Any?>> =
         byForm.getOrPut(gedraId.fullId) {
-            val rules = rules(gedraId.client)
-            // The caller's relation to the form, asked only once a workflow has a step to judge: most forms have none.
-            val callerFacts by lazy { rules.requestFacts + rowFacts(ownerUserId) }
-            val datas = states.filter { it[GE.traitId].toOptStr() == WFS.workflowState }.map { it[GE.data].toJsonMapOrEmpty() }
-            // The owner-only rule (issue #1433), asked only of an editor, on a form carrying the fact, who does not own it.
-            val keptToOwner by lazy {
-                AdminRules.editsClient(cxt) && OwnerOnly.isOn(states) && RCF.isOwner !in callerFacts &&
-                    datas.none { data -> currentTask(rules, data)?.let { reviewsCurrentWork(rules, callerFacts, it, data) } == true }
-            }
-            datas.mapNotNull { data -> waitingStep(rules, { callerFacts }, { keptToOwner }, data) }
+            val form = FormFacts(rules(gedraId.client), ownerUserId, states)
+            form.datas.mapNotNull { data -> waitingStep(form, data) }
         }
+
+    /**
+     * Why each step of form [gedraId] that waits on someone else does (issue #1598), for the workflow cell's muted links:
+     * one entry per engaged workflow whose current task, still calculating, has a save or an approval the caller may not
+     * take -- its workflow id, whom it waits on ([WCOL.waitsOn], a [WfWaitsOn]), and its CTA filter's label resolved in
+     * the form's client ([WFS.ctaFilterLabel]) when that filter is what keeps the caller out -- dropped when it still needs
+     * the form's data, which a listing does not have. In the state's order; the steps [of] answers are not among them.
+     *
+     * Theme: #TPLPS.
+     */
+    fun reasons(gedraId: GedraId, ownerUserId: Long?, states: List<Map<String, Any?>>): List<Map<String, Any?>> {
+        val theirs = of(gedraId, ownerUserId, states).mapNotNullTo(HashSet()) { it[WFD.workflowId].toOptStr() }
+        val form = FormFacts(rules(gedraId.client), ownerUserId, states)
+        return form.datas.mapNotNull { data ->
+            val workflowId = data[WFD.workflowId].toOptStr()?.takeIf { it !in theirs } ?: return@mapNotNull null
+            val task = currentTask(form.rules, data)?.takeIf { it.approval != null || it.saves.isNotEmpty() } ?: return@mapNotNull null
+            val keptByFilter = !passesFilter(form.rules, form.callerFacts, task, data)
+            val waitsOn = when {
+                keptByFilter -> WfWaitsOn.filter
+                task.approval != null -> WfWaitsOn.approval
+                task.saveWhen == null -> WfWaitsOn.owner
+                else -> WfWaitsOn.others
+            }
+            // The label as the form's client words it; one still needing the form's data is not one a listing can give.
+            val label = data[WFS.ctaFilterLabel].toOptStr()?.takeIf { keptByFilter }?.let(form.rules.resolve)
+                ?.takeIf { it.isNotBlank() && !SingletonWorkflows.needsFormData(it) }
+            linkedMapOf<String, Any?>(WFD.workflowId to workflowId, WCOL.waitsOn to waitsOn.name).apply {
+                label?.let { put(WFS.ctaFilterLabel, it) }
+            }
+        }
+    }
+
+    /**
+     * What is worked out once for a form (owned by [ownerUserId], with state entries [states]) and shared by its steps:
+     * its workflows' stored state, the caller's facts there, and whether the owner-only rule keeps the caller out.
+     */
+    private inner class FormFacts(val rules: ClientRules, ownerUserId: Long?, states: List<Map<String, Any?>>) {
+        val datas = states.filter { it[GE.traitId].toOptStr() == WFS.workflowState }.map { it[GE.data].toJsonMapOrEmpty() }
+
+        // The caller's relation to the form, asked only once a workflow has a step to judge: most forms have none.
+        val callerFacts by lazy { rules.requestFacts + rowFacts(ownerUserId) }
+
+        // The owner-only rule (issue #1433), asked only of an editor, on a form carrying the fact, who does not own it.
+        val keptToOwner by lazy {
+            AdminRules.editsClient(cxt) && OwnerOnly.isOn(states) && RCF.isOwner !in callerFacts &&
+                datas.none { data -> currentTask(rules, data)?.let { reviewsCurrentWork(rules, callerFacts, it, data) } == true }
+        }
+    }
 
     /**
      * The workflows of form [gedraId] weighed by what each asks of the caller ([formWorkflowWeights]): its turn exactly
@@ -163,16 +209,12 @@ class WaitingSteps(
         WFC.reviewer in rules.viewer.forTask(task) && passesFilter(rules, callerFacts, task, data)
 
     /** One workflow's state [data] as a step waiting on the caller, or null when its current task is not theirs. */
-    private fun waitingStep(
-        rules: ClientRules,
-        callerFactsOf: () -> Set<String>,
-        keptToOwnerOf: () -> Boolean,
-        data: Map<String, Any?>,
-    ): Map<String, Any?>? {
+    private fun waitingStep(form: FormFacts, data: Map<String, Any?>): Map<String, Any?>? {
+        val rules = form.rules
         val task = currentTask(rules, data) ?: return null
         // Neither an approval nor a save: nothing for anyone to take.
         if (task.approval == null && task.saves.isEmpty()) return null
-        val callerFacts = callerFactsOf()
+        val callerFacts = form.callerFacts
         if (!passesFilter(rules, callerFacts, task, data)) return null
         // The CTA's task facts from state, as the singleton chips build them, passing its filter.
         val facts = buildSet {
@@ -185,7 +227,7 @@ class WaitingSteps(
         val theirs = when {
             approval != null -> rules.cfacts.parse(approval.effectiveApproveWhen).matches(facts)
             // A save the owner-only rule refuses them.
-            keptToOwnerOf() -> false
+            form.keptToOwner -> false
             saveWhen != null -> rules.cfacts.parse(saveWhen).matches(facts)
             // A save that names nobody: the owner's step, not every reader's.
             else -> RCF.isOwner in callerFacts

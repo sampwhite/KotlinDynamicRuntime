@@ -3,6 +3,8 @@ package com.dynamicruntime.common.gedra
 import com.dynamicruntime.common.gedra.workflow.WFS
 import com.dynamicruntime.common.gedra.workflow.WFD
 import com.dynamicruntime.common.gedra.workflow.SWF
+import com.dynamicruntime.common.gedra.workflow.WCOL
+import com.dynamicruntime.common.gedra.workflow.WfWaitsOn
 import com.dynamicruntime.common.endpoint.EI
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.workflow.WfRef
@@ -239,6 +241,20 @@ class GedraDataRow(
                             property(WFD.label, "The workflow's name.", required = true)
                             property(WFS.ctaTask, "The task waiting on you: the workflow's current one.", required = true)
                             property(SWF.actionText, "What the task asks of you, in words.", required = true)
+                        }
+                        derived = true
+                    }
+                    // Why each step not waiting on the caller waits (issue #1598), so the workflow cell's muted links say.
+                    property(
+                        GDF.waitingReasons,
+                        "Whom each step not waiting on you waits on, present when 'withStates' is requested (issue #1598).",
+                    ) {
+                        type = SCT.array
+                        items {
+                            type = SCT.kObject
+                            property(WFD.workflowId, "The workflow.", required = true)
+                            property(WCOL.waitsOn, "Whom its current task waits on.", required = true) { options(WfWaitsOn.entries) }
+                            property(WFS.ctaFilterLabel, "Who passes the call to action's filter, which you do not, when it says.")
                         }
                         derived = true
                     }

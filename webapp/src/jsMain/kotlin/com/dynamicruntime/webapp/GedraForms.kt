@@ -8,7 +8,14 @@ import com.dynamicruntime.common.gedra.workflow.WCOL
 import com.dynamicruntime.common.gedra.workflow.WfPhase
 import com.dynamicruntime.common.gedra.workflow.WfColumnCategory
 import com.dynamicruntime.common.gedra.workflow.FormWorkflow
-import com.dynamicruntime.common.gedra.workflow.formWorkflowsOf
+import com.dynamicruntime.common.gedra.workflow.WFS
+import com.dynamicruntime.common.gedra.workflow.WfWaitsOn
+import com.dynamicruntime.common.home.HFRAG
+import com.dynamicruntime.common.util.evalTemplate
+import kotlin.time.Clock
+import kotlin.time.Instant
+import com.dynamicruntime.common.gedra.workflow.WfWeight
+import com.dynamicruntime.common.gedra.workflow.formWorkflowWeights
 import com.dynamicruntime.common.endpoint.EI
 import com.dynamicruntime.common.endpoint.clientPath
 import com.dynamicruntime.common.endpoint.EP
@@ -918,6 +925,10 @@ class FormSummary(
     val formStatus: FormStatus? = null,
     /** The form's state entries as the row carried them (`withStates`) -- what its workflow cell is drawn from (issue #791). */
     val states: List<Map<String, Any?>> = emptyList(),
+    /** The steps waiting on the caller ([GDF.waitingSteps], issue #1597): which of its workflows are the caller's turn. */
+    val waitingSteps: List<Map<String, Any?>> = emptyList(),
+    /** Why each other step waits ([GDF.waitingReasons], issue #1598): what the cell's muted links say. */
+    val waitingReasons: List<Map<String, Any?>> = emptyList(),
 )
 
 /**
@@ -980,13 +991,16 @@ fun summarizeForm(item: Map<String, Any?>, entriesUnion: SchType?, layouts: Map<
         // for a client with no core details workflow, in which case the list draws no status for the row.
         formStatus = formStatusFrom(item[GDF.states].toJsonListOfMaps()),
         states = item[GDF.states].toJsonListOfMaps(),
+        waitingSteps = item[GDF.waitingSteps].toJsonListOfMaps(),
+        waitingReasons = item[GDF.waitingReasons].toJsonListOfMaps(),
     )
 }
 
 /**
  * One workflow the forms listing's workflow column may show (issue #791), as the listing's summary names it: its
  * [client] and [workflowId] (together the key a row's entry is joined on), its resolved [label], its [phase], the
- * resolved [explanations] of its eligibility tests by id, and its [lastTask].
+ * resolved [explanations] of its eligibility tests by id, and its [lastTask] -- and, frozen outside its relevancy window,
+ * when that window opens ([opensAt]) or closed ([closedAt]), as the wire has them (issue #1598).
  */
 class WorkflowSummaryEntry(
     val client: String,
@@ -995,6 +1009,8 @@ class WorkflowSummaryEntry(
     val phase: WfPhase,
     val explanations: Map<String, String>,
     val lastTask: String,
+    val opensAt: String? = null,
+    val closedAt: String? = null,
 )
 
 /** The listing envelope's `summary` (issue #791) as its entries; empty when there is none. Pure, and covered under `jsNodeTest`. */
@@ -1008,11 +1024,25 @@ fun parseWorkflowSummary(summary: Any?): List<WorkflowSummaryEntry> =
             phase = phase,
             explanations = w[WCOL.explanations].toJsonMapOrEmpty().mapValues { it.value.toOptStr().orEmpty() },
             lastTask = w[WCOL.lastTask].toOptStr().orEmpty(),
+            opensAt = w[WCOL.opensAt].toOptStr(),
+            closedAt = w[WCOL.closedAt].toOptStr(),
         )
     }
 
-/** One workflow in a row's cell: the form's own [workflow] joined to the summary's [entry] for it. */
-class WorkflowCellItem(val entry: WorkflowSummaryEntry, val workflow: FormWorkflow) {
+/**
+ * One workflow in a row's cell: the form's own [workflow] joined to the summary's [entry] for it, with what it asks of
+ * the viewer (issue #1598): its [weight] from the classification, the [verb] on a link that asks something of them, and
+ * the [reason] a muted link gives.
+ */
+class WorkflowCellItem(
+    val entry: WorkflowSummaryEntry,
+    val workflow: FormWorkflow,
+    val weight: WfWeight,
+    /** "Review", "Start": on a link of [WfWeight.yourTurn] or [WfWeight.available]; null on any other. */
+    val verb: String? = null,
+    /** Why a [WfWeight.waiting] link waits ("Waiting on a regional reviewer", "Closed 2026-10-30"); null on any other. */
+    val reason: String? = null,
+) {
     /**
      * The task a link opens (issue #791): the current task of an engaged workflow, the last task of a finished
      * one (having no current task), and none for an eligible one, which opens on the workflow to engage.
@@ -1028,13 +1058,98 @@ class WorkflowCellItem(val entry: WorkflowSummaryEntry, val workflow: FormWorkfl
 }
 
 /**
- * The workflow cell of a form of [client] with [states] (issue #791): its workflows in cell order, each joined to
- * [summary] -- through the kernel's [formWorkflowsOf], so the page and the backend's summary apply one rule about
- * which workflows show. Pure, and covered under `jsNodeTest`.
+ * The words the workflow cell says (issue #1598), from the home file's [HFRAG.workflowCellNs] -- as shipped until the
+ * copy is read. [opens] and [closed] are templates over `at`, the moment as the table says one ("in 3h", "2026-10-30").
  */
-fun workflowCellOf(states: List<Map<String, Any?>>, client: String, summary: List<WorkflowSummaryEntry>): List<WorkflowCellItem> {
-    val byId = summary.filter { it.client == client }.associateBy { it.workflowId }
-    return formWorkflowsOf(states) { byId[it]?.phase }.mapNotNull { wf -> byId[wf.workflowId]?.let { WorkflowCellItem(it, wf) } }
+class WorkflowCellWords(
+    val start: String = "Start",
+    val continueVerb: String = "Continue",
+    val waiting: String = "Waiting",
+    val waitingOnOwner: String = "Waiting on the owner",
+    val waitingOnOthers: String = "Waiting on someone else",
+    val waitingForApproval: String = "Waiting for approval",
+    val opens: String = $$"Opens ${at}",
+    val closed: String = $$"Closed ${at}",
+    val closedUndated: String = "Closed",
+) {
+    companion object {
+        /** The words [copy] gives, each one it does not falling back to the shipped one. Pure, under `jsNodeTest`. */
+        fun of(copy: Copy): WorkflowCellWords {
+            val shipped = WorkflowCellWords()
+            fun t(key: String, dflt: String) = copy.t(HFRAG.workflowCellNs, key, dflt)
+            return WorkflowCellWords(
+                start = t(HFRAG.wcStart, shipped.start),
+                continueVerb = t(HFRAG.wcContinue, shipped.continueVerb),
+                waiting = t(HFRAG.wcWaiting, shipped.waiting),
+                waitingOnOwner = t(HFRAG.wcWaitingOnOwner, shipped.waitingOnOwner),
+                waitingOnOthers = t(HFRAG.wcWaitingOnOthers, shipped.waitingOnOthers),
+                waitingForApproval = t(HFRAG.wcWaitingForApproval, shipped.waitingForApproval),
+                opens = t(HFRAG.wcOpens, shipped.opens),
+                closed = t(HFRAG.wcClosed, shipped.closed),
+                closedUndated = t(HFRAG.wcClosedUndated, shipped.closedUndated),
+            )
+        }
+    }
+}
+
+/**
+ * The workflow cell of [form] (issues #791, #1598): its workflows weighed by the kernel's classification
+ * ([formWorkflowWeights]) -- the caller's turn exactly where the row's [FormSummary.waitingSteps] name a step, the one
+ * thing state cannot say -- each joined to [summary] for the form's client, so the page decides nothing about what is
+ * actionable. In a fixed order: by weight, then the workflows' declared order (the summary's), never by the order the
+ * state entries arrive in or by recency, so a row's links hold their places as people act on the form.
+ *
+ * A link the viewer acts on takes its verb from the CTA's keyword ([keywords], in the form's client's words), else from
+ * what its step asks in words, else [words]' "Continue"; one they could start says "Start"; a waiting one says why, from
+ * [FormSummary.waitingReasons] or, frozen, from its window, read against [now]. Pure, and covered under `jsNodeTest`.
+ */
+fun workflowCellOf(
+    form: FormSummary,
+    summary: List<WorkflowSummaryEntry>,
+    keywords: List<CtaKeywordWords> = emptyList(),
+    words: WorkflowCellWords = WorkflowCellWords(),
+    now: Instant = Clock.System.now(),
+): List<WorkflowCellItem> {
+    val declared = summary.filter { it.client == form.client }.withIndex().associateBy { it.value.workflowId }
+    val steps = form.waitingSteps.associateBy { it[WFD.workflowId].toOptStr() }
+    val reasons = form.waitingReasons.associateBy { it[WFD.workflowId].toOptStr() }
+    return formWorkflowWeights(form.states, { declared[it]?.value?.phase }) { workflow, _ -> workflow.workflowId in steps }
+        .sortedWith(compareBy({ it.weight.ordinal }, { declared[it.workflow.workflowId]?.index ?: Int.MAX_VALUE }))
+        .mapNotNull { weighed ->
+            val id = weighed.workflow.workflowId
+            val entry = declared[id]?.value ?: return@mapNotNull null
+            val verb = when (weighed.weight) {
+                WfWeight.yourTurn -> keywords.firstOrNull { it.keyword == weighed.keyword }?.verb?.ifBlank { null }
+                    ?: steps[id]?.get(SWF.actionText).toOptStr()?.ifBlank { null } ?: words.continueVerb
+                WfWeight.available -> words.start
+                else -> null
+            }
+            val reason = if (weighed.weight == WfWeight.waiting) waitingReasonOf(entry, reasons[id], words, now) else null
+            WorkflowCellItem(entry, weighed.workflow, weighed.weight, verb, reason)
+        }
+}
+
+/**
+ * Why a waiting link waits (issue #1598): a workflow frozen outside its relevancy window ([entry]'s phase does not
+ * calculate) says when it opens or closed; any other says whom its step waits on ([reason], a row's
+ * [GDF.waitingReasons] entry) -- the CTA filter's own label when the filter is what keeps the viewer out -- and one the
+ * row gives none for (a call to action not computed yet, or a step with nothing to save or approve) just waits. The
+ * window's words are the page's pass over the copy (`${at}`); the filter's label arrives resolved by the server's.
+ *
+ * Theme: #TPLPS.
+ */
+fun waitingReasonOf(entry: WorkflowSummaryEntry, reason: Map<String, Any?>?, words: WorkflowCellWords, now: Instant): String {
+    fun at(template: String, iso: String) = template.evalTemplate(mapOf("at" to formatRelativeTime(iso, now)))
+    if (!entry.phase.calculates) {
+        return entry.opensAt?.let { at(words.opens, it) } ?: entry.closedAt?.let { at(words.closed, it) } ?: words.closedUndated
+    }
+    return when (WfWaitsOn.entries.firstOrNull { it.name == reason?.get(WCOL.waitsOn) }) {
+        WfWaitsOn.filter -> reason?.get(WFS.ctaFilterLabel).toOptStr()?.ifBlank { null } ?: words.waitingOnOthers
+        WfWaitsOn.approval -> words.waitingForApproval
+        WfWaitsOn.owner -> words.waitingOnOwner
+        WfWaitsOn.others -> words.waitingOnOthers
+        null -> words.waiting
+    }
 }
 
 /**
@@ -1059,8 +1174,11 @@ fun workflowPageRoute(
         if (edit && task != null) add(HP.edit to "1")
     }
 
-/** Whether a cell item's link opens its task ready to edit (issue #791): only an engaged workflow's current task. */
-val WorkflowCellItem.linkEdits: Boolean get() = workflow.category == WfColumnCategory.engaged
+/**
+ * Whether a cell item's link opens its task ready to edit (issues #791, #1598): only the current task of a workflow that
+ * is the viewer's turn. A waiting one opens to be looked at, since its step is someone else's.
+ */
+val WorkflowCellItem.linkEdits: Boolean get() = weight == WfWeight.yourTurn
 
 /**
  * The search keys that say **which workflow's forms** a listing shows (issue #792): the workflow and the state. On
@@ -1171,23 +1289,30 @@ fun workflowPhaseText(phase: WfPhase?): String = when (phase) {
     else -> ""
 }
 
-/** How a workflow's category reads beside its name in a cell (issue #791). */
-fun workflowCategoryText(category: WfColumnCategory): String = when (category) {
-    WfColumnCategory.engaged -> "in progress"
-    WfColumnCategory.eligible -> "available"
-    WfColumnCategory.finished -> "finished"
-    WfColumnCategory.ineligible -> "not available"
+/** How a weight reads in a cell's counts (issue #1598): `your turn`, `waiting`, `available`, `settled`. */
+fun workflowWeightText(weight: WfWeight): String = when (weight) {
+    WfWeight.yourTurn -> "your turn"
+    WfWeight.waiting -> "waiting"
+    WfWeight.available -> "available"
+    WfWeight.settled -> "settled"
 }
 
 /**
- * The counts a crowded cell shows under its first two workflows (issue #791): each category holding more than one,
- * in cell order -- `2 in progress · 3 available`. Empty when no category has more than one. Pure, and covered under
- * `jsNodeTest`.
+ * A cell folded to its counts (issues #791, #1598) -- what a narrow screen shows, and the settled links' fold: each weight
+ * the [items] hold, strongest first, `1 your turn · 2 waiting`. Empty for none. Pure, and covered under `jsNodeTest`.
  */
 fun workflowCellCounts(items: List<WorkflowCellItem>): String =
-    items.groupBy { it.workflow.category }.entries
-        .filter { it.value.size > 1 }
+    items.groupBy { it.weight }.entries
         .sortedBy { it.key.ordinal }
-        .joinToString(" \u00b7 ") { "${it.value.size} ${workflowCategoryText(it.key)}" }
+        .joinToString(" \u00b7 ") { "${it.value.size} ${workflowWeightText(it.key)}" }
+
+/**
+ * A cell's links split into those drawn and the settled ones folded behind a "+N" (issue #1598): the settled links fold
+ * once there are two or more, so finished and closed-out workflows never crowd out the work. Pure, under `jsNodeTest`.
+ */
+fun workflowCellFold(items: List<WorkflowCellItem>): Pair<List<WorkflowCellItem>, List<WorkflowCellItem>> {
+    val (settled, rest) = items.partition { it.weight == WfWeight.settled }
+    return if (settled.size >= 2) rest to settled else items to emptyList()
+}
 
 // `formatTimestamp`, which shows a wire timestamp in the client's zone, is in `DisplayZone.kt` (issue #1115).
