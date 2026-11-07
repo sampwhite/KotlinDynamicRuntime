@@ -230,6 +230,11 @@ fun gedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CFEP.namespace
         property(CFEP.marked, "Whether the entry says it stands over the code (`\"overrides\": \"code\"`).", required = true) {
             type = SCT.boolean
         }
+        property(
+            CFEP.overlay,
+            "Whether the entry holds only its change of the code's (`\"overrides\": \"codeOverlay\"`), so the rest of the " +
+                "code's entry still runs.",
+        ) { type = SCT.boolean }
     }
     type(CFEP.editorType) {
         type = SCT.kObject

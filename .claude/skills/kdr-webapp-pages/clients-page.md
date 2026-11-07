@@ -536,6 +536,16 @@ files. The page lists them after the stored bundles under **From code** (its "Wh
   bundle if it has none -- holding the code's own entry marked `"overrides": "code"` (`overrideOf`); the code entry
   gives way to it while it is edited (`changesCodeEntry`), headed "Changing the code's entry". A code bundle's name is
   not a new bundle's to take (`newBundleNameProblem`).
+- **A workflow or a type is kept as a change to the code** (issue #1657; covered by `CodeOverlayEditTest`). Its
+  **Edit** marks the entry `"overrides": "codeOverlay"` instead (`overlayOf`), and the draft carries the code's entry
+  (`EntryDraft.code`). The person edits the whole entry; the draft's check (`checkEntry`'s `overlayCheck`) turns it
+  into what a save stores, only what differs from the code's (`codeOverlayStored`), and refuses a change no overlay
+  can state (a task added, removed, or moved), pointing to **Detach from code**. A list without keys the change
+  restates is a note under the editor (`EntryCheck.notes`). A stored overlay is shown merged over the code's
+  (`codeOverlayShown`, `EntryDraft.originalShown`, so opening one is no edit), with what is stored beneath it
+  (`storedOverlay`). **Detach from code** (on the entry, and in the editor, `overlayForm`) stores the entry whole as an
+  override, so it stops following the code; **Follow the code** turns a whole override of a workflow or type back into
+  an overlay. Anything else -- a trait, a report, the columns -- is still replaced whole.
 - **Revert to code.** A stored entry over the code's offers **Revert to code** in place of Remove: removing it, when
   saved ("Reverts to the code's when saved."), brings the code's version back. A code entry is never removed: a
   workflow's says the client turns it off on its page instead.
@@ -556,7 +566,8 @@ files. The page lists them after the stored bundles under **From code** (its "Wh
 - **A save that would newly replace one** is told by its dry run (`replacements` on the patch's dry-run answer: only
   the ones the patch adds, judged by what is replaced, so moving a replacing entry to another bundle is not one), which
   the save area shows (`replacingText`) and asks to confirm with **Save anyway**, with the impact report when there is
-  one too.
+  one too. Each line says whether the entry is replaced whole or, for an overlay (`overlay`, issue #1657), only what
+  is changed, with the rest following the code (`replacingNoteText` says what is lost only when something is whole).
 
 **Deleting a bundle** (issue #1461) is in the Configuration table (`StoredConfigTable`), on the client's page
 and in the bundle editor's Publishing section alike, beside the publishing it depends on. A **Contents** column says

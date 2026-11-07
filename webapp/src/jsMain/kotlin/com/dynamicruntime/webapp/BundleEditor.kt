@@ -83,6 +83,8 @@ class CodeReplacementView(
     val template: String?,
     val codeEntries: List<Map<String, Any?>>,
     val marked: Boolean,
+    /** Whether the entry holds only its change of the code's, an overlay (issue #1657). */
+    val overlay: Boolean = false,
 )
 
 /** One replacement as the editor read, or a patch's dry run, answers it. */
@@ -94,6 +96,7 @@ fun parseReplacement(raw: Map<String, Any?>): CodeReplacementView = CodeReplacem
     template = raw[CFEP.template].toOptStr()?.takeIf { raw[CFEP.origin] == CFEP.originTemplate },
     codeEntries = raw[CFEP.codeEntries].toJsonListOfMaps(),
     marked = raw[CFEP.marked] == true,
+    overlay = raw[CFEP.overlay] == true,
 )
 
 /** The editor read's answer as the page draws it. */
@@ -150,8 +153,10 @@ fun codeBundleLineText(bundle: CodeBundle, replacements: List<CodeReplacementVie
 fun codeBundleNoteText(bundle: CodeBundle): String =
     "These are ${bundle.template?.let { "template $it's code, as this client runs it" } ?: "declared in this client's code"}. " +
         "Edit one to change it for this client: the change is stored in a bundle of the same name, marked to stand over " +
-        "the code's entry, which it replaces whole. Revert to code removes the change, and the code's comes back. An " +
-        "entry of the code's is never removed; a workflow the client does not want is turned off on its page instead."
+        "the code's entry. A workflow or a type keeps only what you change, so a later change to the code reaches the " +
+        "rest, unless you detach it from the code; anything else replaces the code's entry whole. Revert to code removes " +
+        "the change, and the code's comes back. An entry of the code's is never removed; a workflow the client does not " +
+        "want is turned off on its page instead."
 
 /**
  * The replacement standing over [entry], an entry of the code bundle [codeName] in [slot] keyed by [keyFields] (issue
@@ -200,6 +205,15 @@ fun codeColumnsListed(storedSet: CodeReplacementView?, drafting: Boolean): Boole
 fun overrideOf(entry: Map<String, Any?>): Map<String, Any?> = entry + (CCT.overrides to CCT.overridesCodeValue)
 
 /**
+ * [entry], a workflow or type of a code bundle -- or such an entry being edited -- as an overlay of the code's (issue
+ * #1657): the whole entry, marked so that a save stores only what differs from the code's.
+ */
+fun overlayOf(entry: Map<String, Any?>): Map<String, Any?> = entry + (CCT.overrides to CCT.overridesCodeOverlayValue)
+
+/** [entry], an overlay of the code being edited, detached from it (issue #1657): stored whole, as an override. */
+fun detached(entry: Map<String, Any?>): Map<String, Any?> = entry + (CCT.overrides to CCT.overridesCodeValue)
+
+/**
  * Whether [data] -- a new entry's, as parsed -- is a change of [codeEntry], keyed by [keyFields] (issue #1646): the same
  * key, so the code's entry is shown as being changed rather than beside it.
  */
@@ -242,8 +256,12 @@ fun slotReplacement(replacements: List<CodeReplacementView>, bundle: String, slo
 
 /** The heading over the code's version of what [r] replaces: one entry's, or a whole set's (the columns). */
 fun replacedHeadingText(r: CodeReplacementView): String =
-    "${r.codeFrom.replaceFirstChar { it.uppercase() }}'s, in its ${r.codeName} bundle, which " +
-        if (r.key.isEmpty()) "these replace" else "this entry replaces"
+    "${r.codeFrom.replaceFirstChar { it.uppercase() }}'s, in its ${r.codeName} bundle, which " + when {
+        r.key.isEmpty() -> "these replace"
+        // An overlay (issue #1657) changes the code's entry rather than replacing it.
+        r.overlay -> "this entry changes"
+        else -> "this entry replaces"
+    }
 
 /** What a slot that replaces the code's as a set says: the columns of the forms list. */
 fun slotReplacementText(r: CodeReplacementView): String {
@@ -259,7 +277,18 @@ fun slotReplacementText(r: CodeReplacementView): String {
 fun replacingText(replacing: List<CodeReplacementView>): List<String> = replacing.map { r ->
     val what = if (r.key.isEmpty()) "all of ${r.codeFrom}'s ${editorSlotLabel(r.slot).lowercase()}"
     else "${editorSlotLabel(r.slot)} ${r.key.values.joinToString(" · ")}"
-    "$what, from ${r.codeFrom}'s ${r.codeName} bundle, in ${r.name}"
+    // An overlay (issue #1657) changes only what it says, and the rest of the code's still runs.
+    val how = if (r.overlay) "only what is changed; the rest follows the code" else "replaced whole"
+    "$what, from ${r.codeFrom}'s ${r.codeName} bundle, in ${r.name} — $how"
+}
+
+/**
+ * What a save's dry run says beneath [replacing], the code entries the edits would newly stand over (issues #1646, #1657):
+ * what happens to the code's parts the edits leave alone, for any replaced whole, and how to undo it.
+ */
+fun replacingNoteText(replacing: List<CodeReplacementView>): String {
+    val whole = "An entry replaced whole runs as the client's own, and whatever the code's had that it does not restate is gone. "
+    return (if (replacing.any { !it.overlay }) whole else "") + "Revert to code later and the code's runs again."
 }
 
 /**

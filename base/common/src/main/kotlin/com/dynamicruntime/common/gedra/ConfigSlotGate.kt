@@ -211,13 +211,13 @@ private val unparsedBodies = SchOpts(schemaDocumentsUnparsed = true)
 
 /**
  * Whether [failure] is what the gate leaves to the trial reload (see [configSlotFailures]): anything *inside* a
- * report's definition, or inside the definition of a workflow made from a template (issue #1120) -- an overlay, which
- * says only what it changes, so it is judged by what it makes of the template. That the definition is there, and is an
- * object, stays the gate's.
+ * report's definition, or inside the definition of a workflow made from a template (issue #1120) or of an overlay of a
+ * code workflow (issue #1657) -- an overlay, which says only what it changes, so it is judged by what it makes of what
+ * it is merged over. That the definition is there, and is an object, stays the gate's.
  */
 private fun leftToTheTrial(slot: String, entry: Map<String, Any?>, failure: SchFailure): Boolean {
     val inDefinition = failure.path.startsWith("${CCT.definition}.") || failure.path.startsWith("${CCT.definition}[")
-    val overlay = slot == CCT.workflowDef && entry[CCT.definition].toJsonMapOrEmpty()[WFD.fromTemplate] != null
+    val overlay = slot == CCT.workflowDef && (entry[CCT.definition].toJsonMapOrEmpty()[WFD.fromTemplate] != null || entry.isCodeOverlay)
     return inDefinition && (slot == CCT.reportDef || overlay)
 }
 

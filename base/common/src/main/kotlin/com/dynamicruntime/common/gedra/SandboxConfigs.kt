@@ -95,6 +95,8 @@ object SandboxConfigs {
             inheritedFrom = config.inheritedFrom,
             // What its marked entries stand over (issue #1634), judged against the sandbox's code as it is built.
             overridesCode = config.overridesCode,
+            // Read over the parent's code as its stored revisions are (issue #1657), and reported with them.
+            codeOverlays = config.codeOverlays,
         )
     }
 

@@ -192,6 +192,12 @@ object CFEP {
      */
     const val marked = "marked"
 
+    /**
+     * On a replacement: whether the client's entry is an overlay of the code's (`"overrides": "codeOverlay"`, issue
+     * #1657), holding only its change, so the rest of the code's entry still runs.
+     */
+    const val overlay = "overlay"
+
     /** The `errorCode` of a patch refused because entries changed since its caller read them (issue #1434). */
     const val staleCode = "staleEntries"
 

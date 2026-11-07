@@ -357,6 +357,13 @@ class GedraConfig(
      * declared in code, or a stored one that marks nothing.
      */
     val overridesCode: ConfigKeys = ConfigKeys.none,
+    /**
+     * The entries this stored config holds as overlays of its code (issue #1657), each as stored ([CodeOverlay]): an
+     * applied one's merged definition is in [workflows] or [defs] and marked in [overridesCode], as a whole override's
+     * is; one that could not be read over the code is in neither, and the code's runs. A write stores each as it is
+     * here, never what it merged into. None for a config declared in code.
+     */
+    val codeOverlays: List<CodeOverlay> = emptyList(),
 ) {
     /** Whether this config was read back from the database rather than declared in source code. */
     val isStored: Boolean get() = origin == GedraConfigOrigin.stored
@@ -404,7 +411,7 @@ class GedraConfig(
         workflows = workflows, usages = usages, reports = reports, unreadReports = unreadReports,
         unreadWorkflows = unreadWorkflows, shadowedTypes = shadowedTypes, workflowParams = workflowParams,
         fileRefs = fileRefs, origin = origin, inheritedFrom = inheritedFrom, contributesTo = contributesTo,
-        overridesCode = overridesCode,
+        overridesCode = overridesCode, codeOverlays = codeOverlays,
     )
 
     /**
@@ -711,6 +718,9 @@ class GedraConfigBuilder(
             fileRefs = built.fileRefs.map { it.refId }.filter { it in overCodeNames }.toSet(),
         )
     }
+
+    /** The entries this stored config holds as overlays of its code, as stored (issue #1657); see [GedraConfig.codeOverlays]. */
+    val codeOverlays: MutableList<CodeOverlay> = mutableListOf()
 
     /** The workflows made from templates this stored config holds that do not read; see [keepUnreadWorkflow]. */
     val unreadWorkflows: MutableMap<String, UnreadWorkflow> = LinkedHashMap()
@@ -1125,6 +1135,7 @@ fun gedraConfig(
         fileRefs = builder.fileRefs.toList(),
         origin = origin,
         contributesTo = contributesTo,
+        codeOverlays = builder.codeOverlays.toList(),
     )
     // What the block marks to stand over code (issue #1634), read against what it declared.
     val overCode = builder.overCodeKeys(built)
