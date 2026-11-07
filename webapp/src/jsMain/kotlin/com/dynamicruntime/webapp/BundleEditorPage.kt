@@ -312,6 +312,8 @@ val BundleEditorPage = FC<Props> {
             // A stored bundle named like a code bundle holds the client's changes to it (issue #1646), drawn with it below.
             val codeNames = shown.codeConfigs.map { it.name }.toSet()
             val bundles = (editorBundlesInOrder(shown.configs) + edits.newBundles.map { newBundle(it) }).filter { it.name !in codeNames }
+            // Said here, so every bundle the client stores is accounted for where the bundles are listed (issue #1657).
+            codeNamedBundlesText(shown.configs, shown.codeConfigs)?.let { p { className = ClassName("type-hint"); +it } }
             for (bundle in bundles) {
                 div {
                     key = bundle.name.unsafeCast<Key>()
@@ -405,7 +407,8 @@ private fun ChildrenBuilder.mergedBundleView(code: CodeBundle, ed: EditContext) 
                     key = slot.unsafeCast<Key>()
                     className = ClassName("bundle-editor-slot")
                     Disclosure {
-                        summaryText = codeSlot?.let { slotSummaryText(it) } ?: storedSlot?.let { slotSummaryText(it) }.orEmpty()
+                        val line = codeSlot?.let { slotSummaryText(it) } ?: storedSlot?.let { slotSummaryText(it) }.orEmpty()
+                        summaryText = codeSlotLineText(line, ed.view.replacements, code.name, slot)
                         val storedSet = slotReplacement(ed.view.replacements, stored.name, slot)
                         storedSet?.let { replacedSet(it, ed) }
                         if (codeSlot != null && editedAsSet(slot)) {

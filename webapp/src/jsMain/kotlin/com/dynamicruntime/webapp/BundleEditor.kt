@@ -149,6 +149,30 @@ fun codeBundleLineText(bundle: CodeBundle, replacements: List<CodeReplacementVie
     return "${bundle.name} — ${codeFromText(bundle)} · $held" + if (changed == 0) "" else " · $changed changed here"
 }
 
+/**
+ * What a code bundle's slot line says (issue #1657): the slot's own line ([slotLine]), and how many of its entries the
+ * client changes in the stored bundle of the code bundle's name, as the code bundle's line counts them.
+ */
+fun codeSlotLineText(slotLine: String, replacements: List<CodeReplacementView>, bundle: String, slot: String): String {
+    val changed = replacements.count { it.codeName == bundle && it.name == bundle && it.slot == slot }
+    return if (changed == 0) slotLine else "$slotLine · $changed changed here"
+}
+
+/**
+ * What the Bundles section says of the client's stored bundles named like a code bundle (issue #1657): they hold its
+ * changes to that code bundle (issue #1646), so they are drawn with it under From code rather than listed with the rest.
+ * Null when it has none.
+ */
+fun codeNamedBundlesText(configs: List<EditorBundle>, codeConfigs: List<CodeBundle>): String? {
+    val names = codeConfigs.map { it.name }.toSet()
+    val held = configs.filter { it.name in names }.ifEmpty { return null }
+    val listed = held.joinToString(", ") { b ->
+        val n = b.latest.slots.values.sumOf { it.size }
+        "${b.name} ($n entr${if (n == 1) "y" else "ies"})"
+    }
+    return "Changes to code bundles are stored in bundles of the same name, shown with them under From code: $listed."
+}
+
 /** What the page says of a code bundle when it is opened: what Edit does, and how a change is undone. */
 fun codeBundleNoteText(bundle: CodeBundle): String =
     "These are ${bundle.template?.let { "template $it's code, as this client runs it" } ?: "declared in this client's code"}. " +

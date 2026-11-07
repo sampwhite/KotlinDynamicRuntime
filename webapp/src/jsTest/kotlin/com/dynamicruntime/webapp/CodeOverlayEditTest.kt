@@ -125,6 +125,27 @@ class CodeOverlayEditTest {
     }
 
     @Test
+    fun theSlotLineCountsWhatIsChangedHereAndBundlesNameTheBundlesShownWithTheirCode() {
+        val changed = CodeReplacementView(
+            "flows", CCT.workflowDef, mapOf(CCT.workflowId to "review"), "flows", null, listOf(codeFlow), marked = true, overlay = true,
+        )
+        assertEquals(
+            "Workflows — 1 entry · 1 changed here",
+            codeSlotLineText("Workflows — 1 entry", listOf(changed), "flows", CCT.workflowDef),
+        )
+        assertEquals("Traits — 2 entries", codeSlotLineText("Traits — 2 entries", listOf(changed), "flows", CCT.traitDef))
+
+        val storedSlots = mapOf(CCT.workflowDef to listOf(mapOf<String, Any?>(CCT.workflowId to "review")))
+        val stored = EditorBundle("flows", EditorRevision(1, true, storedSlots, 0), null)
+        val own = EditorBundle("main", EditorRevision(1, true, emptyMap(), 0), null)
+        assertEquals(
+            "Changes to code bundles are stored in bundles of the same name, shown with them under From code: flows (1 entry).",
+            codeNamedBundlesText(listOf(own, stored), view.codeConfigs),
+        )
+        assertEquals(null, codeNamedBundlesText(listOf(own), view.codeConfigs))
+    }
+
+    @Test
     fun aStoredOverlayIsShownMergedAndOpeningItIsNoEdit() {
         val stored = mapOf(
             CCT.workflowId to "review", CCT.overrides to CCT.overridesCodeOverlayValue,

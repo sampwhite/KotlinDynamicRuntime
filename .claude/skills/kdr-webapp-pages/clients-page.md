@@ -84,7 +84,8 @@ The page has a header, and then panels: each a keyed `section` (the shared `pane
   3. **Copy**.
   4. **Images**: Web assets, then Files.
   5. **Sandbox and publishing**: Sandbox, then Configuration. Drafts made in the panels above are published here.
-     Under the table, **Open every bundle** leads to the bundle editor (below).
+     Under the table, **Open every bundle** leads to the bundle editor (below). It is offered when the client stores
+     nothing too (issue #1657), since a client of code changes its code's bundles there.
   6. **Menu**: closed (`Disclosure`), its editor read only once opened. By default it lists only the items a client's people may be offered (`menuItemsForPeople`). It hides those shipped for the deployment's own people, which the items listing marks `deploymentOnly` from `MenuAudience.deployment`.
   7. **Retirement**: last, as a danger zone.
 - **What is not repeated.** The definition does not repeat what the page shows elsewhere: the counts are links in the header, the load is a chip, and the workflows have a panel. The traits and the listing columns are listed in the definition only where their sections are not drawn.
@@ -527,7 +528,9 @@ files. The page lists them after the stored bundles under **From code** (its "Wh
 - **One bundle per code bundle, merged** (`mergedBundleView`). Each code bundle is drawn with the stored bundle of its
   name, which holds the client's changes to it -- a stored and a code bundle of one name sit side by side, since a
   config's key adds that it is stored (`GedraConfig.configKey`) -- and that stored bundle is not listed again above.
-  The line counts what is changed here (`codeBundleLineText`). Each code entry is shown as the code declares it,
+  The line counts what is changed here (`codeBundleLineText`), as does each slot's (`codeSlotLineText`, issue #1657).
+  The Bundles section names the stored bundles it draws here instead, so every stored bundle is accounted for there
+  (`codeNamedBundlesText`). Each code entry is shown as the code declares it,
   headed **From code** or **From template X** (`codeFromText`), and marked **changed in X** where a bundle of another
   name stands over it; one the stored bundle of its name changes is shown as that stored entry instead, its line
   **changed here** (`replacesText`), with the code's version beside it (`replacedVersion`). The stored bundle's other
