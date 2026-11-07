@@ -13,9 +13,10 @@ import com.dynamicruntime.common.util.toOptStr
  * ([CFEP.originTemplate], named `from_<template>_<name>`). An entry replaces by its key, a creation or core details
  * workflow by its kind, and the columns of the forms list as one set ([key] empty, every code column listed).
  *
- * A stored entry replaces only when it is [marked] `"overrides": "code"` (issue #1634); one that is not is a write's
- * refusal and an issue at load, and is listed here so the page can say so. The client's own code over its template's
- * needs no mark, and is [marked] as standing over it.
+ * A stored entry replaces only when it is [marked] `"overrides": "code"` (issue #1634), or `"codeOverlay"`, holding only
+ * its change of the code's entry (issue #1657); one that is not is a write's refusal and an issue at load, and is listed
+ * here so the page can say so. The client's own code over its template's needs no mark, and is [marked] as standing over
+ * it.
  */
 class CodeReplacement(
     val name: String,
@@ -26,6 +27,8 @@ class CodeReplacement(
     val template: String?,
     val codeEntries: List<Map<String, Any?>>,
     val marked: Boolean,
+    /** Whether the client's entry is an overlay of the code's, holding only its change (issue #1657). */
+    val overlay: Boolean = false,
 ) {
     fun toMap(): Map<String, Any?> = buildMap {
         put(CFEP.name, name)
@@ -36,6 +39,7 @@ class CodeReplacement(
         template?.let { put(CFEP.template, it) }
         put(CFEP.codeEntries, codeEntries)
         put(CFEP.marked, marked)
+        put(CFEP.overlay, overlay)
     }
 
     /**
@@ -155,7 +159,9 @@ object ConfigCodeLayer {
         kindOf: (Map<String, Any?>) -> WfEntry?,
     ): List<CodeReplacement> {
         val out = mutableListOf<CodeReplacement>()
-        fun marked(side: OverSide, entry: Map<String, Any?>) = !side.stored || entry[CCT.overrides] == CCT.overridesCodeValue
+        // Whole, or as an overlay of the code's entry (issue #1657).
+        fun marked(side: OverSide, entry: Map<String, Any?>) =
+            !side.stored || entry[CCT.overrides] == CCT.overridesCodeValue || entry.isCodeOverlay
         for (slot in keyedSlots) {
             val keyFields = keys[slot].orEmpty().ifEmpty { continue }
             val theirs = code.flatMap { side -> side.slots[slot].orEmpty().map { side to it } }
@@ -171,7 +177,7 @@ object ConfigCodeLayer {
                     val (codeSide, replaced) = byKey ?: byKind ?: continue
                     out += CodeReplacement(
                         side.name, slot, keyFields.associateWith { entry[it] }, codeSide.name, codeSide.origin, codeSide.template,
-                        listOf(replaced), marked(side, entry),
+                        listOf(replaced), marked(side, entry), overlay = side.stored && entry.isCodeOverlay,
                     )
                 }
             }

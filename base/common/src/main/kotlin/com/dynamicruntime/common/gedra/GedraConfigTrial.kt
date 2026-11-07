@@ -215,9 +215,11 @@ object GedraConfigTrial {
         val taken = mutableListOf<GedraConfig>()
         val ignored = mutableListOf<GedraConfigIssue>()
         val readable = mutableListOf<GedraConfig>()
+        // The client's code as declared, which the rows' overlays are read over (issue #1657), as the reload reads them.
+        val code = loader.codeEntriesFor(scratch, client, rows, sourceClients[sandboxParentOf(client) ?: client])
         for (row in rows) {
             val config = try {
-                loader.toConfig(tcxt, row)
+                loader.toConfig(tcxt, row, code)
             } catch (e: KdrException) {
                 reportConfigProblem(tcxt, loader.unloadableIssue(row.configId.fullId, row.client, e), ignored)
                 continue

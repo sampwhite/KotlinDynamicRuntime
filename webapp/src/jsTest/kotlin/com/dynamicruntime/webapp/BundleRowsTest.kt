@@ -160,6 +160,16 @@ class BundleRowsTest {
         assertEquals("Empty", bundleContentsText(gone))
         val one = ConfigSummaryView("one", 1, false, null, null, 0, slotCount = 1, entryCount = 1)
         assertEquals("1 slot, 1 entry", bundleContentsText(one))
+        // Named like a code bundle, it holds the client's changes to that code (issue #1657), which it says first.
+        val ownCode = ConfigSummaryView("acmeClient", 1, true, null, null, 0, slotCount = 1, entryCount = 1, changesCode = true)
+        assertEquals("Changes to its code · 1 slot, 1 entry", bundleContentsText(ownCode))
+        val templateCode = ConfigSummaryView(
+            "from_kit_base", 2, false, null, null, 0, publishedVersion = 1, slotCount = 1, entryCount = 2,
+            publishedSlotCount = 1, publishedEntryCount = 1, changesCode = true, codeTemplate = "kit",
+        )
+        assertEquals("Changes to template kit's code · 1 slot, 2 entries; v1: 1 slot, 1 entry", bundleContentsText(templateCode))
+        val summarized = parseConfigSummaries(listOf(mapOf(CFEP.name to "from_kit_base", CFEP.changesCode to true, CFEP.template to "kit")))
+        assertEquals(true to "kit", summarized.single().changesCode to summarized.single().codeTemplate)
         val parsed = parseConfigSummaries(
             listOf(
                 mapOf(CFEP.name to "old", CFEP.slotCount to 0, CFEP.entryCount to 0, CFEP.publishedSlotCount to 1, CFEP.publishedEntryCount to 3),

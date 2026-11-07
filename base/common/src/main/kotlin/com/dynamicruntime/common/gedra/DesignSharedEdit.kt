@@ -191,9 +191,15 @@ object DesignSharedEdit {
 
     /** Where a shared edit of a type lands: the [config] declaring it, and its entry there by [slot] and [key]. */
     private class SharedTarget(val config: GedraConfig, val slot: String, val key: String) {
-        /** The type's authored body as stored -- in a sandbox's parent, where its rows are (issue #930). */
-        fun storedBody(cxt: KdrCxt): Map<String, Any?> =
-            storedEntry(SandboxEdits.parentCxt(cxt, cxt.client) ?: cxt, config, slot, key)?.get(bodyField(slot)).toJsonMapOrEmpty()
+        /**
+         * The type's authored body as stored -- in a sandbox's parent, where its rows are (issue #930) -- whole: an
+         * overlay of the code's type merged over it (issue #1657).
+         */
+        fun storedBody(cxt: KdrCxt): Map<String, Any?> {
+            val entry = storedEntry(SandboxEdits.parentCxt(cxt, cxt.client) ?: cxt, config, slot, key) ?: return emptyMap()
+            if (slot == CCT.schemaDef) return StoredWhole.of(cxt, cxt.client, slot, key, entry).body
+            return entry[bodyField(slot)].toJsonMapOrEmpty()
+        }
     }
 
     /**
@@ -228,7 +234,9 @@ object DesignSharedEdit {
             val entries = slots[slot].orEmpty()
             val at = entries.indexOfFirst { it[keyField(slot)] == key }
             if (at < 0) throw KdrException("No $slot entry '$key' in '${config.name}'.", code = EXC.notFound)
-            val body = entries[at][bodyField(slot)].toJsonMapOrEmpty()
+            // An overlay of the code's type is edited whole, and kept as its change (issue #1657).
+            val whole = if (slot == CCT.schemaDef) StoredWhole.of(cxt, cxt.client, slot, key, entries[at]) else null
+            val body = whole?.body ?: entries[at][bodyField(slot)].toJsonMapOrEmpty()
             // Before the stamp: drawing the page again would not make an extension editable here.
             extensionRefusal(body)?.let { throw KdrException.mkInput(it.message) }
             if (stampOf(entries[at]) != basedOn) {
@@ -237,7 +245,8 @@ object DesignSharedEdit {
                     code = EXC.conflict,
                 )
             }
-            slots + (slot to entries.mapIndexed { i, e -> if (i == at) e + (bodyField(slot) to rewrite(body)) else e })
+            val rewritten = rewrite(body).let { whole?.stored(it) ?: it }
+            slots + (slot to entries.mapIndexed { i, e -> if (i == at) e + (bodyField(slot) to rewritten) else e })
         }
         val readCxt = SandboxEdits.parentCxt(cxt, cxt.client) ?: cxt
         return storedEntry(readCxt, config, slot, key)?.let { stampOf(it) } ?: ""

@@ -98,6 +98,12 @@ fun gedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CFEP.namespace
             "How many entries the latest published revision holds; absent when none is. Unless none, the configuration is " +
                 "not deleted until an emptied revision is published.",
         ) { type = SCT.integer }
+        property(
+            CFEP.changesCode,
+            "Whether the configuration is named like one of the client's code bundles, so it holds the client's changes to " +
+                "that code (issue #1657); absent when it is not.",
+        ) { type = SCT.boolean }
+        property(CFEP.template, "For a configuration holding changes to a template's code: the template's client id.")
         property(CFEP.createdAt, "When this revision was created.") { dateTime() }
         property(CFEP.updatedAt, "When this revision was last written.") { dateTime() }
         configIssuesProperty()
@@ -230,6 +236,11 @@ fun gedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CFEP.namespace
         property(CFEP.marked, "Whether the entry says it stands over the code (`\"overrides\": \"code\"`).", required = true) {
             type = SCT.boolean
         }
+        property(
+            CFEP.overlay,
+            "Whether the entry holds only its change of the code's (`\"overrides\": \"codeOverlay\"`), so the rest of the " +
+                "code's entry still runs.",
+        ) { type = SCT.boolean }
     }
     type(CFEP.editorType) {
         type = SCT.kObject
@@ -546,7 +557,8 @@ fun gedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CFEP.namespace
 private fun cfgBundlesBody(c: KdrCxt): List<Map<String, Any?>> {
     AdminRules.requireClientAdministrator(c)
     val published = publishedRevisionsOf(c, c.client)
-    return GedraConfigService.get(c).listConfigs(c).map { summaryOf(c, it, published) }
+    val codeBundles = codeBundleNamesOf(c)
+    return GedraConfigService.get(c).listConfigs(c).map { summaryOf(c, it, published, codeBundles) }
 }
 
 /**
@@ -625,6 +637,21 @@ private fun codeLayerOf(c: KdrCxt): CodeLayer? {
     val template = ClientService.getOrNull(c)?.known(c.client)?.extendsFromClientId
     val templateCode = template?.let { loader.ownSourceOf(collector, it) }.orEmpty()
     return ConfigCodeLayer.read(collector, c.client, loader.ownSourceOf(collector, c.client), template, templateCode)
+}
+
+/**
+ * The names of the code bundles the caller's client -- or, in a sandbox, its parent -- may hold changes to in a stored
+ * bundle of the same name (issues #1646, #1657): its own code's, each to null, and its template's copies, each to the
+ * template. Names only, so nothing is loaded to make them; none with no collector to read them from.
+ */
+private fun codeBundleNamesOf(c: KdrCxt): Map<String, String?> {
+    val collector = SchemaCollector.get(c) ?: return emptyMap()
+    val loader = GedraConfigLoadService.get(c)
+    val owner = sandboxParentOf(c.client) ?: c.client
+    val template = ClientService.getOrNull(c)?.known(owner)?.extendsFromClientId?.takeIf { it != owner }
+    val own: Map<String, String?> = loader.ownSourceOf(collector, owner).associate { it.name to null }
+    val copies = template?.let { t -> loader.ownSourceOf(collector, t).associate { ClientExtension.cloneName(t, it.name) to t } }
+    return own + copies.orEmpty()
 }
 
 /** Each of [rows] -- configurations' latest revisions -- by name, with its slots. */
@@ -1334,6 +1361,7 @@ private fun summaryOf(
     cxt: KdrCxt,
     row: GedraConfigRow,
     publishedRevisions: Map<String, GedraConfigRow> = publishedRevisionsOf(cxt, row.client),
+    codeBundles: Map<String, String?> = codeBundleNamesOf(cxt),
 ): Map<String, Any?> = dropNulls(
     linkedMapOf(
         CFEP.name to row.configId.baseId,
@@ -1346,6 +1374,8 @@ private fun summaryOf(
         CFEP.entryCount to row.entries.size,
         CFEP.publishedSlotCount to publishedRevisions[row.configId.baseId]?.entriesBySlot()?.size,
         CFEP.publishedEntryCount to publishedRevisions[row.configId.baseId]?.entries?.size,
+        CFEP.changesCode to (row.configId.baseId in codeBundles).takeIf { it },
+        CFEP.template to codeBundles[row.configId.baseId],
         CFEP.createdAt to row.createdAt,
         CFEP.updatedAt to row.updatedAt,
         CFEP.issues to configIssuesOf(cxt, row),

@@ -235,9 +235,11 @@ object GedraConfigReload {
         // A row that will not reassemble, or a config breaking the extends rule, costs only that config (issue
         // #841) -- judged as stored config, as the boot load judges it -- rather than refusing the whole reload.
         // Reported before phase one, so a strict refusal changes nothing.
+        // The client's code, which the rows' overlays are read over (issue #1657).
+        val code = loader.codeEntriesFor(collector, client, currentRows, sourceClients[client])
         val fresh = currentRows.mapNotNull { row ->
             val config = try {
-                loader.toConfig(cxt, row)
+                loader.toConfig(cxt, row, code)
             } catch (e: KdrException) {
                 reportConfigProblem(cxt, loader.unloadableIssue(row.configId.fullId, row.client, e), reloadIssues)
                 return@mapNotNull null

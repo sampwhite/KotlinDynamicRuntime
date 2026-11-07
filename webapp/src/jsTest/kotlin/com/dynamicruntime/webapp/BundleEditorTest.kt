@@ -235,12 +235,13 @@ class BundleEditorTest {
         )
         assertEquals(
             listOf(
-                "Traits note, from template tpl's from_tpl_base bundle, in main",
-                "Traits memo, from the code's kid bundle, in kid",
-                "all of template tpl's listing columns, from template tpl's from_tpl_base bundle, in main",
+                "Traits note, from template tpl's from_tpl_base bundle, in main — replaced whole",
+                "Traits memo, from the code's kid bundle, in kid — replaced whole",
+                "all of template tpl's listing columns, from template tpl's from_tpl_base bundle, in main — replaced whole",
             ),
             replacingText(codeView.replacements),
         )
+        assertTrue(replacingNoteText(codeView.replacements).startsWith("An entry replaced whole"))
     }
 
     private fun <T : Any> assertNotNullOf(value: T?): T = kotlin.test.assertNotNull(value)

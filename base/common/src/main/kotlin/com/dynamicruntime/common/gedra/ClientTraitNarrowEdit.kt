@@ -75,6 +75,8 @@ object ClientTraitNarrowEdit {
     private fun storedAlterations(bound: KdrCxt, typeNames: Set<String>): Map<String, StoredAlteration> = buildMap {
         for (row in GedraConfigService.get(bound).listConfigs(bound)) {
             for (entry in row.entriesBySlot()[CCT.schemaDef].orEmpty()) {
+                // An overlay of the client's code (issue #1657) changes a type of its own code, never a global one.
+                if (entry.isCodeOverlay) continue
                 val name = entry[CCT.typeName].toOptStr() ?: continue
                 if (name in typeNames) put(name, StoredAlteration(row, entry))
             }
