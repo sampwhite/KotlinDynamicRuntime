@@ -327,8 +327,11 @@ object GDF {
     /**
      * List param (issue #1637): only forms with a step **waiting on the caller** -- an engaged workflow whose current
      * task is theirs to take: an approval they may give, a save the task's own rule names them for, or, on a task that
-     * names nobody, their own form's. Judged from each form's stored state by the rule the save and approve gates
-     * apply, within the caller's read scope. With it, each row carries its [waitingSteps].
+     * names nobody, their own form's. A save waits on nobody the owner-only rule (issue #1433) keeps out -- an editor,
+     * on a form kept to its owner, who neither owns it nor reviews its current work -- while an approval is never kept
+     * from anyone. Judged from each form's stored state by the rule the save and approve gates apply, within the
+     * caller's read scope; the same rule makes a workflow the caller's turn in the classification (issue #1597). With
+     * it, each row carries its [waitingSteps].
      */
     const val needsMe = "needsMe"
 

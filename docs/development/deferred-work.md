@@ -1102,12 +1102,14 @@ in its configuration (`kdr:uiBlockDef`), but the Clients page offers no editor f
   copy overlay rewords them with the rest of its copy.
 
 ## When a reviewer is neither an administrator nor an editor
+<!-- Theme: #RDSCP -->
 
-The forms listing's "waiting on you" (`needsMe`, issue #1637) judges the forms the caller may already list, so a
-reviewer who reads only their own forms -- a member given the `reviewer` label -- is never shown the reviews that wait
-on them, and cannot open those forms either.
+The forms listing's "waiting on you" (`needsMe`, issue #1637) and a keyword search's `mine` (`review=mine`, issue
+#1597) judge the forms the caller may already list, so a reviewer who reads only their own forms -- a member given the
+`reviewer` label -- is never shown the reviews that wait on them, and cannot open those forms either.
 
 - **A read that admits a form for its current step** *(from #1637).* Widen what such a caller may read -- the listing's
-  `needsMe` and the form's workflow page -- to forms whose stored current task names them (an approval they may give,
-  a save naming them). Worth it once a client gives reviewing to people it does not make editors.
+  `needsMe` and `review=mine`, and the form's workflow page -- to forms whose stored current task names them (an
+  approval they may give, a save naming them). Worth it once a client gives reviewing to people it does not make
+  editors.
 
