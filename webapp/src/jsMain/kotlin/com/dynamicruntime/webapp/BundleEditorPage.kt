@@ -676,7 +676,7 @@ private fun ChildrenBuilder.entryView(
     // An entry of the client's that replaces one of its code's (issues #1616, #1646), judged on the latest revision.
     val replaced = data?.let { replacementOf(ed.view.replacements, bundle.name, slot, key, it) }
     // An overlay of the code's entry (issue #1657) is shown as the whole entry it makes, merged over the code's.
-    val code = replaced?.codeEntries?.singleOrNull()?.takeIf { data?.isCodeOverlay == true && slot in codeOverlaySlots }
+    val code = replaced?.codeEntries?.singleOrNull()?.takeIf { data.isCodeOverlay && slot in codeOverlaySlots }
     fun shown(raw: Map<String, Any?>) = if (code != null && raw.isCodeOverlay) codeOverlayShown(slot, code, raw) else raw
     fun draftOf(raw: Map<String, Any?>) = ed.draftOf(bundle.name, slot, raw, bundle.stamps[slot]?.getOrNull(at), code)
     div {
@@ -716,7 +716,8 @@ private fun ChildrenBuilder.entryView(
                 jsonColumn(publishedHeading, slot, shown(before), ed, withSwitch = true)
             }
             // What is stored of an overlay: only its change (issue #1657), and any part of it the code has since lost.
-            if (code != null && data != null) {
+            // An overlay is found only on an entry the latest revision holds, so `data` is there too.
+            if (code != null) {
                 val stale = codeOverlayStale(slot, code, data)
                 if (stale.isNotEmpty()) {
                     p { className = ClassName("type-hint"); +staleOverlayText }
@@ -729,7 +730,7 @@ private fun ChildrenBuilder.entryView(
             }
             replaced?.let { replacedVersion(it, slot, ed) }
             // An entry has an id only when the latest revision holds it, so `data` is there too.
-            if (ed.editable && id != null && data != null) {
+            if (ed.editable && id != null) {
                 div {
                     className = ClassName("bundle-editor-actions")
                     when {
