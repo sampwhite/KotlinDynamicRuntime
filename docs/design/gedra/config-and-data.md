@@ -427,11 +427,13 @@ fields of a file ref's entry this release does not read (`FileRefDef.extra`).
 - **No write of a node can remove a slot it does not read.** A slot a later release retires stays in its rows until
   that release's own migration takes it out.
 
-**Two things the gate leaves to the trial reload**, which judges them in the document they belong to: a **schema
+**Three things the gate leaves to the trial reload**, which judges them in the document they belong to: a **schema
 body** (`kdr:schemaDef.schema`, `kdr:traitDef.dataSchema`) need only be an object here, since parsed on its own it
-would be refused for naming a sibling type or for being an alteration of a global one; and what is **inside a
-report's definition**, since one that does not read is kept as stored and reported, so a configuration may already
-hold one. The trial refuses a new one of either.
+would be refused for naming a sibling type or for being an alteration of a global one; what is **inside a report's
+definition**, since one that does not read is kept as stored and reported, so a configuration may already hold one;
+and what is **inside a workflow's definition that is an overlay** -- of a template (#1120) or of the client's code
+(`"overrides": "codeOverlay"`, #1657) -- which says only what it changes, so it is judged by what it makes once merged.
+The trial refuses a new one of any of them.
 
 A conversion fault the reassembly itself finds in a written body -- a client id holding a colon -- is a 400 for the
 same reason, with the fault kept as its cause and its extra data (a parser's code and position) carried up; a fault
