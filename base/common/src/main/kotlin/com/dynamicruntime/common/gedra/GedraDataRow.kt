@@ -239,8 +239,16 @@ class GedraDataRow(
                             type = SCT.kObject
                             property(WFD.workflowId, "The workflow.", required = true)
                             property(WFD.label, "The workflow's name.", required = true)
-                            property(WFS.ctaTask, "The task waiting on you: the workflow's current one.", required = true)
+                            property(
+                                WFS.ctaTask,
+                                "The task waiting on you: the workflow's current one, or the first of a workflow whose Start it is.",
+                                required = true,
+                            )
                             property(SWF.actionText, "What the task asks of you, in words.", required = true)
+                            property(
+                                SWF.startsWorkflow,
+                                "True when the step is a workflow's Start (issue #1662): taking it puts the form into the workflow first.",
+                            ) { type = SCT.boolean }
                         }
                         derived = true
                     }

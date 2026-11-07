@@ -119,7 +119,7 @@ external interface FormsTableProps : Props {
      * The `href` that opens normal workflow `workflowId` against form `gedraId` (issue #791), on `task` when given
      * (the current task of an engaged workflow, the last of a finished one).
      */
-    var workflowHref: (gedraId: String, workflowId: String, task: String?, edit: Boolean) -> String
+    var workflowHref: (gedraId: String, workflowId: String, task: String?, edit: Boolean, engage: Boolean) -> String
 
     /**
      * The workflow the listing is drilled into from the workflow pages (issue #792), or null. Then each row offers
@@ -128,7 +128,7 @@ external interface FormsTableProps : Props {
     var drillWorkflowId: String?
 
     /** Opens normal workflow `workflowId` on form `gedraId` (issue #792) -- on `task`, in edit mode when `edit`. */
-    var onOpenWorkflow: (gedraId: String, workflowId: String, task: String?, edit: Boolean) -> Unit
+    var onOpenWorkflow: (gedraId: String, workflowId: String, task: String?, edit: Boolean, engage: Boolean) -> Unit
 
     /** The form whose Delete is armed (showing the inline confirm), or null when none is. */
     var confirmingDeleteId: String?
@@ -187,7 +187,7 @@ val FormsTable = FC<FormsTableProps> { props ->
     fun openWorkflow(id: String, items: List<WorkflowCellItem>) {
         val wf = drill ?: return
         val item = items.firstOrNull { it.entry.workflowId == wf }
-        props.onOpenWorkflow(id, wf, item?.linkTask, item?.linkEdits == true)
+        props.onOpenWorkflow(id, wf, item?.linkTask, item?.linkEdits == true, item?.linkEngages == true)
     }
     // A pending single-click open (issue #792): in a drilled listing a double-click opens the workflow, so the row's
     // own click waits out a double-click's window rather than navigating away underneath it.
@@ -815,7 +815,7 @@ private external interface WorkflowCellProps : Props {
     var part: WorkflowCellPart
     var noWorkflowsCopy: String?
     var words: WorkflowCellWords
-    var workflowHref: (String, String, String?, Boolean) -> String
+    var workflowHref: (String, String, String?, Boolean, Boolean) -> String
 }
 
 /** Which of a cell's popovers is open (issue #1598): its folded links, or the whole cell a narrow screen folds. */
@@ -853,7 +853,7 @@ private val WorkflowCell = FC<WorkflowCellProps> { props ->
         } else {
             a {
                 className = ClassName("wf-link $look")
-                href = props.workflowHref(props.gedraId, it.entry.workflowId, it.linkTask, it.linkEdits)
+                href = props.workflowHref(props.gedraId, it.entry.workflowId, it.linkTask, it.linkEdits, it.linkEngages)
                 tip?.let { t -> title = t }
                 // Followed in the app by the link itself: in a popover, a portal, the cell's stopPropagation keeps the
                 // click from the router's listeners (see `installRouting`).

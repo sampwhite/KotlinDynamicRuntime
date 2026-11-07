@@ -100,6 +100,10 @@ alone also confines the rows to X: on a client's own copy, an `allClients` calle
   the address (`engagedRoute`, replaced rather than pushed) before the view is read again, so the page lands where
   the Workflows column's link to a workflow that is the caller's turn opens (`workflowPageRoute(..., edit = true)`). The remount
   still asks `offersEdit` of the task shown, so a workflow whose open step is someone else's lands read-only.
+- **A highlighted Start engages on arrival** (#1662). Its link carries `engage=1` (`HP.engage`, `workflowPageRoute(...,
+  engage = true)`) beside the first task and `edit=1`; the workflow page engages as its Engage button would, then takes
+  the flag out of the address, so a reload or Back never engages twice. A form that can no longer engage (already in,
+  or not eligible now) drops the flag, the refusal shown as Engage's is.
 - **A workflow's listing is its own page** (`page=workflowForms`, issue #792): where a count on the Workflows
   page leads. `FormsPage` draws it in workflow mode -- the workflow as heading, a state switch, `← Workflows` --
   with the workflow and state riding the address as search keys (`formsDrillKeys`) so showing more, sorting and a client
@@ -152,7 +156,7 @@ into its two kinds, since "settled" is not a word for anyone to read.
 
 | Kind | Looks | Says |
 | --- | --- | --- |
-| Your turn | a filled accent pill, opening the task ready to edit | a verb and the workflow: the CTA keyword's verb ("Review", the client's words), else the step's `actionText`, else "Continue" |
+| Your turn | a filled accent pill, opening the task ready to edit | a verb and the workflow: the CTA keyword's verb ("Review", the client's words), else the step's `actionText`, else "Continue" -- or, for a highlighted Start (#1662), "Start", its link engaging the form and opening the first task |
 | Available | an accent outline, opening the workflow to engage | "Start" and the workflow |
 | Waiting | a muted link, opening the task to look at, with its reason under it | why, from the row's `waitingReasons` or the summary |
 | Finished | small, with a check, opening its last task | the workflow |
@@ -240,7 +244,11 @@ approve gates apply, narrowed to the person the step names:
 - an approval waits on whoever may approve it (by default a reviewer who does not own the form), and its CTA filter;
 - a save whose task names someone (`saveWhen`) waits on whoever that admits, and the filter;
 - a save that names nobody waits on the form's **owner**, not on every administrator its gate would admit;
-- a task with neither a save nor an approval waits on nobody.
+- a task with neither a save nor an approval waits on nobody;
+- a workflow's **Start** (issue #1662) waits on whoever could act on its first task, by the same rules, when the
+  workflow highlights it (`highlightStart`) and the form is eligible for it, not yet in it, and open to new forms. Such
+  a step carries `startsWorkflow`, so its link (here, and on Home's card) engages the form first. It only routes: who
+  may engage is the eligibility tests' alone, and no CTA filter applies before the form is in.
 
 And a save waits on nobody the owner-only rule (issue #1433) keeps out: an editor, on a form kept to its owner, who is
 neither its owner nor a reviewer of its current work. An approval is not a change to the form, so that rule never keeps

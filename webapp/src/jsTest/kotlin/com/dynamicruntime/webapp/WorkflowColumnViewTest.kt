@@ -162,6 +162,35 @@ class WorkflowColumnViewTest {
     }
 
     @Test
+    fun aHighlightedStartThatWaitsOnTheViewerIsTheirTurnAndItsLinkEngages() {
+        // Issue #1662: the row's waiting steps name the eligible workflow's first task, as a Start.
+        val states = listOf(state("survey", WFS.eligible to true), state("legal", WFS.eligible to true))
+        val row = form("acme", states).let {
+            FormSummary(
+                gedraId = it.gedraId, displayValues = emptyList(), traitLabels = emptyList(), createdAt = null, client = "acme",
+                states = states,
+                waitingSteps = listOf(mapOf(WFD.workflowId to "survey", WFS.ctaTask to "ask", SWF.actionText to "Ask", SWF.startsWorkflow to true)),
+            )
+        }
+        val cell = workflowCellOf(row, five, now = now)
+        val start = cell.first()
+        assertEquals("survey" to WfWeight.yourTurn, start.entry.workflowId to start.weight)
+        // It says "Start", opens its first task ready to edit, and engages the form on the way.
+        assertEquals("Start", start.verb)
+        assertEquals("ask", start.linkTask)
+        assertTrue(start.linkEdits && start.linkEngages)
+        assertEquals(
+            listOf(HP.page to pageCoreDetailsEdit, HP.from to "forms", HP.gedra to "g1", HP.workflow to "survey",
+                HP.task to "ask", HP.edit to "1", HP.engage to "1"),
+            workflowPageRoute("g1", "survey", start.linkTask, start.linkEdits, engage = start.linkEngages),
+        )
+        // The other eligible workflow is only available, and engages nothing on the way.
+        val other = cell.single { it.entry.workflowId == "legal" }
+        assertEquals(WfWeight.available, other.weight)
+        assertTrue(!other.linkEngages)
+    }
+
+    @Test
     fun aRowsLinksKeepTheirOrderAsOtherPeopleActOnTheForm() {
         fun cellAfter(vararg mine: String, shuffled: Boolean) = workflowCellOf(
             form(

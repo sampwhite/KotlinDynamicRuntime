@@ -442,6 +442,7 @@ The committee review. Explained on [Committee review](committee-review.md).
         "$comment": "The committee reviews a talk once its core details are complete, then accepts it.",
         "entry": "normal",
         "label": "Committee review",
+        "highlightStart": true,
         "workflowId": "review",
         "eligibility": [
           {

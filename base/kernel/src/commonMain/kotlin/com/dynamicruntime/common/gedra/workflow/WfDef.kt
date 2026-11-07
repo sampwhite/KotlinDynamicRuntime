@@ -57,6 +57,13 @@ object WFD {
 
     const val id = "id"
     const val label = "label"
+
+    /**
+     * On a normal workflow's definition (issue #1662): whether its **Start** is highlighted -- the caller's turn -- for
+     * whoever could act on its first task, while a form is eligible for it and not yet in it. The first task is then the
+     * workflow's implicit call to action. It routes and never gates: eligibility alone says who may engage.
+     */
+    const val highlightStart = "highlightStart"
     const val traits = "traits"
     const val saves = "saves"
     const val layout = "layout"
@@ -757,6 +764,11 @@ class WfDef(
     /** The template the workflow was made from (issue #1120), its rooted id; null for one written whole. */
     val fromTemplate: String? = null,
     /**
+     * Whether a form eligible for this normal workflow, and not yet in it, highlights its Start for whoever could act on
+     * its first task (issue #1662); see [WFD.highlightStart].
+     */
+    val highlightStart: Boolean = false,
+    /**
      * For a workflow made from a template, what is stored of it ([WFD.fromTemplate]): its overlay of the template, as
      * read. Not part of [toJsonMap], which is the workflow as it runs; a store writes this instead.
      */
@@ -871,6 +883,11 @@ class WfDef(
             // Deliberately no task ceiling (unlike a core details workflow) and no save-per-task rule (unlike a core details workflow): a
             // normal workflow is a multi-stage process, and a task can legitimately offer no save -- an approval
             // task advances through its own endpoint rather than by persisting collected entries (issue #787).
+        }
+        if (highlightStart && entry != WfEntry.normal) {
+            throw KdrException.mkConv(
+                "Workflow '$workflowId' highlights its Start, which only a normal workflow has: a form engages only with one.",
+            )
         }
         if (eligibility.isNotEmpty() && entry != WfEntry.normal) {
             throw KdrException.mkConv(
@@ -1191,6 +1208,14 @@ object WfDefSchema {
                 type = SCT.kObject
             }
             property(WFD.fromTemplate, "The global workflow this one was made from, by its rooted id. Stored, such a workflow is an overlay of the template's current definition.")
+            property(
+                WFD.highlightStart,
+                "A normal workflow's: whether its Start is highlighted, as their turn, for whoever could act on its first " +
+                    "task, while a form is eligible for it and not yet in it. It never decides who may engage.",
+            ) {
+                type = SCT.boolean
+                allowCoerce = false
+            }
         }
     }
 
@@ -1220,6 +1245,7 @@ fun WfDef.toJsonMap(): Map<String, Any?> = buildMap {
     fromTemplate?.let { put(WFD.fromTemplate, it) }
     // Emitted when set, as the builder does -- a stored definition that dropped it would lose its page title.
     if (label.isNotEmpty()) put(WFD.label, label)
+    if (highlightStart) put(WFD.highlightStart, true)
     put(
         WFD.tasks,
         tasks.map { task ->
@@ -1280,6 +1306,7 @@ fun parseWfDef(cxt: KdrCxtBase, raw: Map<String, Any?>, templateOverlay: Map<Str
         entry = enumNamed(WfEntry.entries, m[WFD.entry]),
         label = m[WFD.label].toOptStr() ?: "",
         comment = m[SCH.dComment].toOptStr(),
+        highlightStart = m[WFD.highlightStart] == true,
         tasks = m[WFD.tasks].toJsonListOfMaps().map { t ->
             WfTask(
                 id = t[WFD.id].toOptStr() ?: "",
@@ -1402,6 +1429,12 @@ class WfDefBuilder(private val workflowId: String, private val entry: WfEntry) {
     var comment: String? = null
 
     /**
+     * Highlight the workflow's Start for whoever could act on its first task, while a form is eligible for it and not yet
+     * in it (issue #1662); see [WFD.highlightStart]. A normal workflow's only.
+     */
+    var highlightStart: Boolean = false
+
+    /**
      * Alters the type [typeName] for this workflow's pages (issue #984): [alteration] in the shape a client's
      * alteration takes -- for now a `g-layout` only, merged with the client's layout by field.
      */
@@ -1455,6 +1488,7 @@ class WfDefBuilder(private val workflowId: String, private val entry: WfEntry) {
         put(WFD.entry, entry.name)
         comment?.let { put(SCH.dComment, it) }
         label?.let { put(WFD.label, it) }
+        if (highlightStart) put(WFD.highlightStart, true)
         put(WFD.tasks, tasks.toList())
         if (functions.isNotEmpty()) put(WFD.functions, functions.toList())
         if (eligibility.isNotEmpty()) put(WFD.eligibility, eligibility.toList())

@@ -35,6 +35,12 @@ import com.dynamicruntime.common.util.toOptStr
  * owner, who is neither its owner nor a reviewer of its current work -- since its gate would refuse them. An approval
  * is not a change to the form, so the rule never keeps anyone from one.
  *
+ * **A workflow's Start** waits on the caller too (issue #1662): one that highlights it ([WfDef.highlightStart]), on a form
+ * eligible for it, not yet in it, and open to new forms, has its first task as its implicit call to action, judged by
+ * the same rule -- a step that engages the form first ([SWF.startsWorkflow]). It only routes: who may engage is the
+ * eligibility tests' alone, whoever the Start waits on. No CTA filter applies to it, since the state computes one only for
+ * an engaged workflow.
+ *
  * The steps waiting on **someone else** are the other half (issue #1598): [reasons] says whom each waits on, by the same
  * rule, so the forms list's muted links can say why.
  *
@@ -179,6 +185,12 @@ class WaitingSteps(
         // The caller's relation to the form, asked only once a workflow has a step to judge: most forms have none.
         val callerFacts by lazy { rules.requestFacts + rowFacts(ownerUserId) }
 
+        // The workflows the form is engaged with, which a Start (issue #1662) is not.
+        val engagedIds: Set<String> by lazy {
+            states.filter { it[GE.traitId].toOptStr() == WFS.workflowEngagement }.map { it[GE.data].toJsonMapOrEmpty() }
+                .filter { it[WFS.engaged] == true }.mapNotNullTo(HashSet()) { it[WFD.workflowId].toOptStr() }
+        }
+
         // The owner-only rule (issue #1433), asked only of an editor, on a form carrying the fact, who does not own it.
         val keptToOwner by lazy {
             AdminRules.editsClient(cxt) && OwnerOnly.isOn(states) && RCF.isOwner !in callerFacts &&
@@ -205,6 +217,17 @@ class WaitingSteps(
         return data[WFS.ctaTask].toOptStr()?.let { rules.registry.workflow(workflowId)?.def?.task(it) }
     }
 
+    /**
+     * The first task of [data]'s workflow when it is a **Start** (issue #1662): the workflow highlights it, and the form is
+     * eligible for it, not yet in it, and may engage now (its phase [WfPhase.engageable]). Null otherwise.
+     */
+    private fun startTask(form: FormFacts, data: Map<String, Any?>): WfTask? {
+        if (data[WFS.eligible] != true) return null
+        val workflowId = data[WFD.workflowId].toOptStr() ?: return null
+        if (workflowId in form.engagedIds || form.rules.phaseOf(workflowId) != WfPhase.engageable) return null
+        return form.rules.registry.workflow(workflowId)?.def?.takeIf { it.highlightStart }?.tasks?.firstOrNull()
+    }
+
     /** Whether the caller passes [task]'s CTA filter rule as [data] stores it. */
     private fun passesFilter(rules: ClientRules, callerFacts: Set<String>, task: WfTask, data: Map<String, Any?>): Boolean =
         passesCtaFilterRule(rules.cfacts, data[WFS.ctaFilterRule].toOptStr(), callerFacts + rules.viewer.forTask(task))
@@ -213,10 +236,14 @@ class WaitingSteps(
     private fun reviewsCurrentWork(rules: ClientRules, callerFacts: Set<String>, task: WfTask, data: Map<String, Any?>): Boolean =
         WFC.reviewer in rules.viewer.forTask(task) && passesFilter(rules, callerFacts, task, data)
 
-    /** One workflow's state [data] as a step waiting on the caller, or null when its current task is not theirs. */
+    /**
+     * One workflow's state [data] as a step waiting on the caller, or null when its current task -- or, for a Start, its
+     * first task (issue #1662) -- is not theirs.
+     */
     private fun waitingStep(form: FormFacts, data: Map<String, Any?>): Map<String, Any?>? {
         val rules = form.rules
-        val task = currentTask(rules, data) ?: return null
+        val current = currentTask(rules, data)
+        val task = current ?: startTask(form, data) ?: return null
         // Neither an approval nor a save: nothing for anyone to take.
         if (task.approval == null && task.saves.isEmpty()) return null
         val callerFacts = form.callerFacts
@@ -240,12 +267,12 @@ class WaitingSteps(
         if (!theirs) return null
         val workflowId = data[WFD.workflowId].toOptStr() ?: return null
         val def = rules.registry.workflow(workflowId)?.def ?: return null
-        return linkedMapOf(
+        return linkedMapOf<String, Any?>(
             WFD.workflowId to workflowId,
             WFD.label to (def.label.takeIf { it.isNotBlank() }?.let { label(it) } ?: workflowId),
             WFS.ctaTask to task.id,
             SWF.actionText to SingletonWorkflows.actionText(task, facts, rules.cfacts::parse, ::label),
-        )
+        ).apply { if (current == null) put(SWF.startsWorkflow, true) }
     }
 
     companion object {

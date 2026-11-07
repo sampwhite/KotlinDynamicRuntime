@@ -1108,13 +1108,13 @@ val FormsPage = FC<FormsPageProps> { props ->
                     yourTurnHeaderText = yourTurnHeader(
                         keywordsInUse(ctaKeywords, formsSearchKeys(ep.inputSchema)), WorkflowCellWords.of(homeCopy), yourTurnCount,
                     )
-                    workflowHref = { id, wf, task, edit ->
-                        routeHref(workflowPageRoute(id, wf, task, edit, listingPage) + listingContext)
+                    workflowHref = { id, wf, task, edit, engage ->
+                        routeHref(workflowPageRoute(id, wf, task, edit, listingPage, engage) + listingContext)
                     }
                     // Drilled in from the workflow pages (issue #792): View Workflow and a row double-click open it.
                     drillWorkflowId = drill?.first
-                    onOpenWorkflow = { id, wf, task, edit ->
-                        navigate(workflowPageRoute(id, wf, task, edit, listingPage) + listingContext)
+                    onOpenWorkflow = { id, wf, task, edit, engage ->
+                        navigate(workflowPageRoute(id, wf, task, edit, listingPage, engage) + listingContext)
                     }
                     confirmingDeleteId = rowConfirmDeleteId
                     deletingId = rowDeletingId

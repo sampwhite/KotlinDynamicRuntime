@@ -335,6 +335,7 @@ Each is a type the server declares, named as the endpoint catalog names it. A fi
 | `types` | object |  | The workflow's alterations of types, by qualified type name: each the shape a client's alteration takes, for this workflow's pages only. For now each holds a field layout (g-layout) and nothing else. |
 | `typeBasis` | object |  | For each altered layout entry, the inherited entry it replaced when it was made, by type name and then field -- what a page compares to say the shared copy has changed since. |
 | `fromTemplate` | string |  | The global workflow this one was made from, by its rooted id. Stored, such a workflow is an overlay of the template's current definition. |
+| `highlightStart` | boolean |  | A normal workflow's: whether its Start is highlighted, as their turn, for whoever could act on its first task, while a form is eligible for it and not yet in it. It never decides who may engage. |
 
 ### WfTask
 

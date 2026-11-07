@@ -99,6 +99,39 @@ val CoreDetailsEditPage = FC<Props> {
         }
     }
 
+    // A highlighted Start's link (issue #1662): `engage=1` puts the form into the workflow on arrival, as Engage does, then
+    // reopens it in edit mode on the task the link named. The flag leaves the address either way, so a reload or Back does
+    // not engage again; one the form can no longer take -- already in, or not eligible now -- is dropped, the refusal shown.
+    useEffect(view) {
+        val v = view ?: return@useEffect
+        val wfId = workflowId ?: return@useEffect
+        val form = gedraId
+        val h = routeParams()
+        if (h[HP.engage] != "1" || h[HP.page] != pageCoreDetailsEdit || h[HP.gedra] != form || h[HP.workflow] != wfId) {
+            return@useEffect
+        }
+        fun withoutFlag() = routeParams().filterKeys { it != HP.engage }
+        if (!v.canEngage) {
+            replaceRoute(withoutFlag().toList())
+            return@useEffect
+        }
+        val client = workflowClient
+        coreDetailsEditScope.launch {
+            try {
+                WorkflowApi.engage(form, wfId, client)
+                // Only while the page still shows this form and workflow (the #758 rule).
+                val now = routeParams()
+                if (now[HP.page] == pageCoreDetailsEdit && now[HP.gedra] == form && now[HP.workflow] == wfId) {
+                    replaceRoute(engagedRoute(withoutFlag()))
+                }
+                reloads += 1
+            } catch (e: Throwable) {
+                replaceRoute(withoutFlag().toList())
+                engageError = userFacingError(e)
+            }
+        }
+    }
+
     // Resolve the core details workflow against the named form, re-running whenever the id changes; drop the previous load's
     // result first so none of it bleeds across.
     useEffect(gedraId, workflowId, reloads) {

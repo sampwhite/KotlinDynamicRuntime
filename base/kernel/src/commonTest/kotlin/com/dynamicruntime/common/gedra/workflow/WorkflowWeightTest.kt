@@ -35,8 +35,9 @@ class WorkflowWeightTest {
         )
         val phases = listOf("closedOut", "done", "open", "theirs", "mine", "uncomputed").associateWith { WfPhase.engageable } +
             ("frozen" to WfPhase.lifetimeOnly)
-        // The viewer may act on every one of them; only an engaged workflow with a CTA it can still act in asks it.
-        val all = phases.keys
+        // The viewer may act on every engaged one; only an engaged workflow with a CTA it can still act in asks it. The
+        // eligible one has no Start waiting on them (issue #1662), so it is only theirs to start.
+        val all = phases.keys - "open"
         assertEquals(
             listOf(
                 "theirs" to WfWeight.yourTurn,
@@ -54,6 +55,8 @@ class WorkflowWeightTest {
         val theirs = weights(states, phases, all - "theirs").first { it.workflow.workflowId == "theirs" }
         assertEquals(WfWeight.waiting, theirs.weight)
         assertEquals(CTAK.review, theirs.keyword)
+        // An eligible workflow whose Start waits on the viewer (issue #1662) is their turn.
+        assertEquals(WfWeight.yourTurn, weights(states, phases, all + "open").first { it.workflow.workflowId == "open" }.weight)
     }
 
     @Test
@@ -80,7 +83,7 @@ class WorkflowWeightTest {
     }
 
     @Test
-    fun aKeywordIsTheEngagedCallToActionsOnlyAndMayActIsNotAskedWhereNothingCanBeDone() {
+    fun aKeywordIsTheEngagedCallToActionsOnlyAndMayActIsNotAskedOfAFrozenWorkflow() {
         val asked = mutableListOf<String>()
         val states = listOf(
             // A keyword lingering on a workflow no longer engaged is not its call to action's.
@@ -90,14 +93,15 @@ class WorkflowWeightTest {
         )
         val weights = formWorkflowWeights(states, { if (it == "frozen") WfPhase.lifetimeOnly else WfPhase.engageable }) { workflow, _ ->
             asked.add(workflow.workflowId)
-            true
+            false
         }
         assertEquals(
             listOf("frozen" to WfWeight.waiting, "lingering" to WfWeight.available),
             weights.map { it.workflow.workflowId to it.weight },
         )
         assertEquals(listOf(CTAK.review, null), weights.map { it.keyword })
-        assertEquals(emptyList(), asked)
+        // A frozen workflow is never asked; an eligible one is, for its Start (issue #1662).
+        assertEquals(listOf("lingering"), asked)
         // A frozen review is still awaiting review, but is nobody's turn.
         assertTrue(matchesKeywordSearch(weights, CTAK.review, CTKQ.any))
         assertFalse(matchesKeywordSearch(weights, CTAK.review, CTKQ.mine))

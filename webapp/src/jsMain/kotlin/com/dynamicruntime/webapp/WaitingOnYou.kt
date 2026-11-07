@@ -30,7 +30,14 @@ object WAIT {
 }
 
 /** One step waiting on the caller in a form (issue #1637): its workflow, its task, and what it asks of them in words. */
-class WaitingStep(val workflowId: String, val workflowLabel: String, val taskId: String, val actionText: String)
+class WaitingStep(
+    val workflowId: String,
+    val workflowLabel: String,
+    val taskId: String,
+    val actionText: String,
+    /** A workflow's Start (issue #1662): taking it engages the form first. */
+    val starts: Boolean = false,
+)
 
 /** One form with steps waiting on the caller: its id, what it is called, and the steps. */
 class WaitingForm(val gedraId: String, val heading: String, val steps: List<WaitingStep>)
@@ -53,6 +60,7 @@ fun parseWaitingRead(resp: Map<String, Any?>, env: ScriptEnv): WaitingRead {
             WaitingStep(
                 workflowId, step[WFD.label].toOptStr() ?: workflowId, taskId,
                 step[SWF.actionText].toOptStr() ?: "",
+                starts = step[SWF.startsWorkflow] == true,
             )
         }
         if (steps.isEmpty()) return@mapNotNull null
@@ -94,7 +102,7 @@ fun ChildrenBuilder.waitingCardBody(read: WaitingRead, client: String?) {
                 key = form.gedraId.unsafeCast<Key>()
                 // The form's current step, ready to take, as the forms listing's workflow cell opens it.
                 a {
-                    href = routeHref(workflowPageRoute(form.gedraId, step.workflowId, step.taskId, edit = true))
+                    href = routeHref(workflowPageRoute(form.gedraId, step.workflowId, step.taskId, edit = true, engage = step.starts))
                     +form.heading
                 }
                 span {
