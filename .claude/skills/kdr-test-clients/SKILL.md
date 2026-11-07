@@ -291,6 +291,46 @@ stored (`GedraConfig.configKey`); the collector and the loader's records go by t
 A test that stores an entry over a template's or a code client's marks it; `CodeOverridesTest.kt` and the sample's
 `AcmeCodeOverrideTest.kt` are the references.
 
+**A workflow or a type may instead hold only what it changes** (issue #1657): marked `"overrides": "codeOverlay"`
+(`CCT.overridesCodeOverlayValue`), the stored entry is an **overlay**, merged over the code's entry of its key as the
+code is now on every read (`mergeCodeOverlay`, by `codeWorkflowMergeSpec` or `codeTypeMergeSpec`), so a later change to
+the code reaches every part the client left alone. Only those two slots take the value (`codeOverlaySlots`); on any
+other the write refuses it. The merged definition then stands over the code's as a whole override does, so nothing past
+the read knows the difference, and a write stores the overlay **as written**, never what it merged into
+(`GedraConfig.codeOverlays`). The DSL has no overlay: a test writes the entry itself, beside a config built in the DSL,
+through `reassembleGedraConfig` (which keeps an overlay as written when it is given no code) and `writeConfig`:
+
+```kotlin
+val overlay = mapOf(
+    CCT.workflowId to "tplFlow", CCT.overrides to CCT.overridesCodeOverlayValue,
+    CCT.definition to mapOf(WFD.workflowId to "tplFlow", WFD.tasks to listOf(mapOf(WFD.id to "a", WFD.label to "Mine"))),
+)
+```
+
+- **The rules are open over a client's own code**, unlike a workflow made from a global template: an overlay may
+  change any part. A workflow's tasks and saves are targeted by id and keep the code's order, so an overlay can neither
+  add, remove, nor move one; its eligibility tests, singleton rules, and locks may be added to; its id and kind are the
+  code's. A type's properties **merge** (a named body replaces the code's, `null` removes it), unlike an alteration's,
+  which restates the set. A change no rule can state is the editor's to refuse, pointing to **Detach from code**: the
+  entry stored whole, as an override, which stops following the code by choice. There are no tombstones: what a
+  client does not want, it turns off (#1635).
+- **A list without keys** (a task's `functions`, a type's `required`) is restated by an overlay that mentions it, and
+  stops following the code; `restatedCodeLists` says where, and the editor shows it.
+- **At a write**, an overlay that does not merge over the code as it is -- naming a task the code does not have, a
+  workflow the code does not declare -- is refused by the trial, and by a patch's dry run.
+- **At a load**, after the code changed under it, an overlay is forgiven part by part: the part with nothing left to
+  target is dropped, the rest applies, and the client's issues and the boot checks say what was dropped
+  (`codeOverlayIssues`). One that does not read at all leaves the code's entry running, kept as stored.
+- **Editors that rewrite an entry whole** -- Design View's workflow and shared-type edits -- read an overlay merged
+  over the code and store the rewrite as the difference again (`StoredWhole`). One holding parts the code no longer has
+  is refused there, pointing to the bundle editor, which says what a save of it drops.
+- **A template's type** may be overlaid, or overridden whole, under the template's name: a type a stored config stands
+  over code with keeps the code's name, so the rule that a client's new types live in its own namespace does not apply.
+- **What an overlay does not fix:** it is configuration. When the code changes the shape of a trait that has stored
+  data, the data still needs a migration or a reset.
+
+`CodeOverlaysTest.kt` is the reference, its last case changing a template's code under an overlay as a deploy would.
+
 ## The HTTP path (driving it as an admin)
 <!-- Themes: #CFGFG, #RELSY -->
 

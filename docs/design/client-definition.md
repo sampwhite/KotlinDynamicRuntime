@@ -1051,6 +1051,25 @@ overlay accepts no more than the one it sits on, then by induction it accepts no
 the immediate parent is therefore both sufficient and cheaper**, since nothing has to carry a reference to the
 base.
 
+## Changing a client defined in code, without leaving the code behind
+<!-- Theme: #CFGFG -->
+
+A client's definition evolves in source code: each release brings new workflows, new features, and fixes to what is
+there. At the same time, the people who run the client want small changes of their own — a task's label, a field's
+wording, a choice added to a list — made in the configuration editor, without waiting for a release. Both happen to the
+same definitions, and neither can be given up. If a client's change were stored as a whole copy of what it changed, the
+copy would stop following the code, and every later release would skip it without saying so. If each release reset the
+client's configuration, the client's changes would be lost. The conference demo on the reference deployment met this
+first, but any live client built on a template, or defined in code, meets it as soon as its developers and its people
+are both making changes.
+
+So a stored change of a workflow or a type holds only what it changes (`"overrides": "codeOverlay"`, issue #1657), and
+every load merges it over the code as it is now: a release reaches every part the client left alone. The price is the
+case where the code moves out from under a change, such as a renamed task. That change is refused when it is written and
+forgiven part by part, with an issue, when it is loaded. A client that would rather stop following the code stores the
+whole entry instead ("Detach from code", `"overrides": "code"`, issue #1634), and every other kind of definition is
+stored whole that way.
+
 ## Domains, and what they may decide
 
 `domainPrefix` and `customDomain` matter to exactly two things: the **anonymous** state of the application —

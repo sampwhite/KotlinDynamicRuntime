@@ -274,8 +274,12 @@ private fun keepWhatNarrows(
         // is taken as written -- right for a reference, wrong for a declaration -- so this is where one that would
         // land in another owner's namespace is caught. An alteration keeps the global name it alters.
         // Judged for the config that contributed the type: a template's copy (issue #945) carries the template's.
-        val owner = collected.gedraConfigs.contributorOf(client, name)?.inheritedFrom ?: client
-        if (name !in globalDefs && !isClientNamespace(name.substringBeforeLast(OWNR.namespaceSep, ""), owner)) {
+        val contributor = collected.gedraConfigs.contributorOf(client, name)
+        val owner = contributor?.inheritedFrom ?: client
+        // A stored type standing over the code's of its name (issues #1634, #1657) keeps that name, a template's
+        // included: it is the code's type, changed for the client, not a new one.
+        val overCode = contributor != null && name in contributor.overridesCode.types
+        if (name !in globalDefs && !overCode && !isClientNamespace(name.substringBeforeLast(OWNR.namespaceSep, ""), owner)) {
             reportConfigProblem(
                 cxt,
                 alterationIssue(

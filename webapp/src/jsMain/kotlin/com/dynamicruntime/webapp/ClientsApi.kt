@@ -929,6 +929,9 @@ class ConfigSummaryView(
     /** How many slots, and entries in all, the latest published revision holds; null when none is. */
     val publishedSlotCount: Int? = null,
     val publishedEntryCount: Int? = null,
+    /** Whether it holds the client's changes to a code bundle of its name (issue #1657), and the template's, when it is one's. */
+    val changesCode: Boolean = false,
+    val codeTemplate: String? = null,
 )
 
 /** The issues of a definition or a stored configuration, as the wire carries them. */
@@ -965,6 +968,8 @@ fun parseConfigSummaries(items: List<Map<String, Any?>>): List<ConfigSummaryView
         entryCount = (row[CFEP.entryCount] as? Number)?.toInt() ?: 0,
         publishedSlotCount = (row[CFEP.publishedSlotCount] as? Number)?.toInt(),
         publishedEntryCount = (row[CFEP.publishedEntryCount] as? Number)?.toInt(),
+        changesCode = row[CFEP.changesCode] == true,
+        codeTemplate = row[CFEP.template].toOptStr(),
     )
 }
 
@@ -1744,17 +1749,23 @@ fun selectedBundles(selected: Set<String>, selectable: List<String>): List<Strin
 /**
  * What a bundle holds (issue #1461): its latest revision's slots and entries -- "Empty" for none -- and, when a
  * published revision under it holds something else, that too, by its version (`Empty; v2: 1 slot, 3 entries`). So the
- * table shows at a glance which bundles are no longer used, and which must publish their emptying first. Pure.
+ * table shows at a glance which bundles are no longer used, and which must publish their emptying first. A bundle that
+ * holds the client's changes to its code says so first (issue #1657): "Changes to its code · 1 slot, 1 entry". Pure.
  */
 fun bundleContentsText(bundle: ConfigSummaryView): String {
     fun text(slots: Int, entries: Int) =
         if (entries == 0) "Empty" else "$slots slot${if (slots == 1) "" else "s"}, $entries entr${if (entries == 1) "y" else "ies"}"
     val latest = text(bundle.slotCount, bundle.entryCount)
+    val lead = when {
+        !bundle.changesCode -> ""
+        bundle.codeTemplate != null -> "Changes to template ${bundle.codeTemplate}'s code · "
+        else -> "Changes to its code · "
+    }
     val publishedEntries = bundle.publishedEntryCount
     val publishedVersion = bundle.publishedVersion
-    if (bundle.published || publishedEntries == null || publishedVersion == null) return latest
+    if (bundle.published || publishedEntries == null || publishedVersion == null) return lead + latest
     val published = text(bundle.publishedSlotCount ?: 0, publishedEntries)
-    return if (published == latest) latest else "$latest; v$publishedVersion: $published"
+    return lead + if (published == latest) latest else "$latest; v$publishedVersion: $published"
 }
 
 /**

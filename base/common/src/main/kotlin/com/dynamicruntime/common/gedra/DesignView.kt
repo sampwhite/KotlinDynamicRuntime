@@ -373,16 +373,17 @@ object DesignView {
             val workflows = slots[CCT.workflowDef].orEmpty()
             val at = workflows.indexOfFirst { it[CCT.workflowId] == workflowId }
             if (at < 0) throw KdrException("No workflow '$workflowId' in '${declared.bundle.name}'.", code = EXC.notFound)
-            val stored = (workflows[at][CCT.definition] as? Map<*, *>)?.toJsonMap().orEmpty()
+            // An overlay of the code's workflow is edited whole, as it runs, and kept as its change (issue #1657).
+            val whole = StoredWhole.of(cxt, cxt.client, CCT.workflowDef, workflowId, workflows[at])
             // A workflow made from a template is edited as what it expands to, and kept as its overlay (issue #1120).
-            val current = WorkflowTemplates.readStored(cxt, stored)
+            val current = WorkflowTemplates.readStored(cxt, whole.body)
             if (workflowDefStamp(current) != basedOn) {
                 throw KdrException(
                     "Workflow '$workflowId' has changed since this page was drawn; reload it and make the change again.",
                     code = EXC.conflict,
                 )
             }
-            val rewritten = WorkflowTemplates.storedForm(cxt, parseWfDef(cxt, rewrite(current.toJsonMap())))
+            val rewritten = whole.stored(WorkflowTemplates.storedForm(cxt, parseWfDef(cxt, rewrite(current.toJsonMap()))))
             slots + (CCT.workflowDef to workflows.mapIndexed { i, e -> if (i == at) e + (CCT.definition to rewritten) else e })
         }
         val reloaded = WorkflowService.get(cxt).forClient(cxt.client).workflow(workflowId)

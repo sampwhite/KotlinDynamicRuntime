@@ -327,12 +327,26 @@ class GedraConfigLoadService : ServiceInitializer {
         // Each row turned back into a config and judged on its own first; then each client's together, against its
         // code (issue #1634), since what a client's stored entries stand over is cut out of its code before they join it.
         val readable = mutableListOf<Pair<Map<String, Any?>, GedraConfig>>()
+        // Each client's code, which its rows' overlays are read over (issue #1657), found by all of its rows.
+        val rowsByClient by lazy {
+            rows.mapNotNull { row ->
+                try {
+                    GedraConfigRow.extract(row) { GedraId.parse(it) }
+                } catch (_: KdrException) {
+                    null
+                }
+            }.groupBy { it.client }
+        }
+        val codeByClient = HashMap<String, CodeEntries>()
+        fun codeFor(client: String) = codeByClient.getOrPut(client) {
+            codeEntriesFor(collector, client, rowsByClient[client].orEmpty(), sourceClients[client])
+        }
         for (row in rows) {
             var stored: GedraConfigRow?
             val config = try {
                 // Parse the id rather than intern it: GedraService is a regular service and does not exist yet.
                 stored = GedraConfigRow.extract(row) { GedraId.parse(it) }
-                toConfig(cxt, stored)
+                toConfig(cxt, stored, codeFor(stored.client))
             } catch (e: KdrException) {
                 // A row that cannot be turned back into a config is the "bad row" case: judged as stored config
                 // (issue #839) -- forgiven everywhere but unit tests, since it is data nobody can fix from a
@@ -458,9 +472,10 @@ class GedraConfigLoadService : ServiceInitializer {
         // The parent's code as declared, whatever its own stored entries cut it to (issue #1634): the sandbox runs its
         // parent's latest revisions, whose marked entries are judged against the code here.
         val parentSource = ownSourceOf(collector, parent)
+        val parentCode = codeEntriesFor(collector, parent, latestRows, sourceClients[parent])
         val parentStored = latestRows.mapNotNull { row ->
             val config = try {
-                toConfig(cxt, row)
+                toConfig(cxt, row, parentCode)
             } catch (e: KdrException) {
                 reportConfigProblem(cxt, unloadableIssue(row.configId.fullId, sandbox, e), sink)
                 return@mapNotNull null
@@ -569,10 +584,35 @@ class GedraConfigLoadService : ServiceInitializer {
     private fun collector(): SchemaCollector = schemaCollector
         ?: throw KdrException("$serviceName used its collector before onCreate.")
 
-    /** Turns one stored row into a [GedraConfig] via [reassembleGedraConfig], recovering the namespace it needs. */
-    /** A stored [row] as the [GedraConfig] it holds -- the one reassembly the boot load and a reload (#616) share. */
-    fun toConfig(cxt: KdrCxt, row: GedraConfigRow): GedraConfig =
-        reassembleGedraConfig(cxt, row.configId.baseId, row.resolvedNamespace(), row.client, row.entriesBySlot())
+    /**
+     * A stored [row] as the [GedraConfig] it holds -- the one reassembly the boot load, a reload (#616), and a trial
+     * share -- its overlays of the code read over [code] (issue #1657; [codeEntriesFor]).
+     */
+    fun toConfig(cxt: KdrCxt, row: GedraConfigRow, code: CodeEntries?): GedraConfig =
+        reassembleGedraConfig(cxt, row.configId.baseId, row.resolvedNamespace(), row.client, row.entriesBySlot(), code)
+
+    /**
+     * The code [client]'s stored [rows] read their overlays over (issue #1657): its code layer as declared ([codeLayerOf]),
+     * on the template named by the definition one of [rows] holds or, for a client defined in code, by [sourceDef]. A
+     * sandbox's rows are its parent's, read over its parent's code. Built only when a row holds an overlay.
+     */
+    fun codeEntriesFor(collector: SchemaCollector, client: String, rows: List<GedraConfigRow>, sourceDef: ClientDef?): CodeEntries {
+        val owner = sandboxParentOf(client) ?: client
+        return CodeEntries {
+            val def = rows.firstNotNullOfOrNull { storedDefOf(it, owner) } ?: sourceDef
+            codeLayerOf(collector, owner, def)
+        }
+    }
+
+    /** The definition of [client] that a stored [row] holds, or null when it holds none, or one that does not read. */
+    private fun storedDefOf(row: GedraConfigRow, client: String): ClientDef? {
+        val info = row.entriesBySlot()[CCT.clientDef]?.firstOrNull() ?: return null
+        return try {
+            ClientDef.fromInfo(info).takeIf { it.clientId == client }
+        } catch (_: KdrException) {
+            null
+        }
+    }
 
     /**
      * The issue for a stored [row] holding slots this node does not read, or null (issue #873). Reassembly reads
@@ -596,8 +636,9 @@ class GedraConfigLoadService : ServiceInitializer {
 
     /**
      * The issues for the reports (issue #979) and the workflows made from templates (issue #1120) a stored [config] holds
-     * that could not be read, one each, and for each type it declares that one of its traits' generated types replaces
-     * (issue #1542): each is left out and the rest of the config loads. Reported where [unknownSlotsIssue] is -- the
+     * that could not be read, one each, for each type it declares that one of its traits' generated types replaces
+     * (issue #1542), and for each of its overlays of the code that did not apply whole (issue #1657): each is left out,
+     * or the part of it that does not fit, and the rest of the config loads. Reported where [unknownSlotsIssue] is -- the
      * boot load, a reload, a trial -- and judged, like it, as stored config.
      */
     fun unreadEntryIssues(config: GedraConfig): List<GedraConfigIssue> = buildList {
@@ -625,6 +666,8 @@ class GedraConfigLoadService : ServiceInitializer {
                 GCEL.workflow, workflowId,
             )
         }
+        // Each overlay of the code that did not apply whole (issue #1657).
+        addAll(codeOverlayIssues(config))
         config.shadowedTypes.values.mapTo(this) { shadowed ->
             config.issue(
                 "Stored config '${config.gedraId}' ${shadowed.problem()}",

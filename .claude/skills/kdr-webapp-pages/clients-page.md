@@ -84,7 +84,8 @@ The page has a header, and then panels: each a keyed `section` (the shared `pane
   3. **Copy**.
   4. **Images**: Web assets, then Files.
   5. **Sandbox and publishing**: Sandbox, then Configuration. Drafts made in the panels above are published here.
-     Under the table, **Open every bundle** leads to the bundle editor (below).
+     Under the table, **Open every bundle** leads to the bundle editor (below). It is offered when the client stores
+     nothing too (issue #1657), since a client of code changes its code's bundles there.
   6. **Menu**: closed (`Disclosure`), its editor read only once opened. By default it lists only the items a client's people may be offered (`menuItemsForPeople`). It hides those shipped for the deployment's own people, which the items listing marks `deploymentOnly` from `MenuAudience.deployment`.
   7. **Retirement**: last, as a danger zone.
 - **What is not repeated.** The definition does not repeat what the page shows elsewhere: the counts are links in the header, the load is a chip, and the workflows have a panel. The traits and the listing columns are listed in the definition only where their sections are not drawn.
@@ -527,7 +528,9 @@ files. The page lists them after the stored bundles under **From code** (its "Wh
 - **One bundle per code bundle, merged** (`mergedBundleView`). Each code bundle is drawn with the stored bundle of its
   name, which holds the client's changes to it -- a stored and a code bundle of one name sit side by side, since a
   config's key adds that it is stored (`GedraConfig.configKey`) -- and that stored bundle is not listed again above.
-  The line counts what is changed here (`codeBundleLineText`). Each code entry is shown as the code declares it,
+  The line counts what is changed here (`codeBundleLineText`), as does each slot's (`codeSlotLineText`, issue #1657).
+  The Bundles section names the stored bundles it draws here instead, so every stored bundle is accounted for there
+  (`codeNamedBundlesText`). Each code entry is shown as the code declares it,
   headed **From code** or **From template X** (`codeFromText`), and marked **changed in X** where a bundle of another
   name stands over it; one the stored bundle of its name changes is shown as that stored entry instead, its line
   **changed here** (`replacesText`), with the code's version beside it (`replacedVersion`). The stored bundle's other
@@ -536,6 +539,17 @@ files. The page lists them after the stored bundles under **From code** (its "Wh
   bundle if it has none -- holding the code's own entry marked `"overrides": "code"` (`overrideOf`); the code entry
   gives way to it while it is edited (`changesCodeEntry`), headed "Changing the code's entry". A code bundle's name is
   not a new bundle's to take (`newBundleNameProblem`).
+- **A workflow or a type is kept as a change to the code** (issue #1657; covered by `CodeOverlayEditTest`). Its
+  **Edit** marks the entry `"overrides": "codeOverlay"` instead (`overlayOf`), and the draft carries the code's entry
+  (`EntryDraft.code`). The person edits the whole entry; the draft's check (`checkEntry`'s `overlayCheck`) turns it
+  into what a save stores, only what differs from the code's (`codeOverlayStored`), and refuses a change no overlay
+  can state (a task added, removed, or moved), pointing to **Detach from code**. A list without keys the change
+  restates is a note under the editor (`EntryCheck.notes`). A stored overlay is shown merged over the code's
+  (`codeOverlayShown`, `EntryDraft.originalShown`, so opening one is no edit), with what is stored beneath it
+  (`storedOverlay`). Parts of a stored overlay the code no longer has a place for (`codeOverlayStale`) are listed on the
+  entry, and a draft of it notes that saving drops them. **Detach from code** (on the entry, and in the editor, `overlayForm`) stores the entry whole as an
+  override, so it stops following the code; **Follow the code** turns a whole override of a workflow or type back into
+  an overlay. Anything else -- a trait, a report, the columns -- is still replaced whole.
 - **Revert to code.** A stored entry over the code's offers **Revert to code** in place of Remove: removing it, when
   saved ("Reverts to the code's when saved."), brings the code's version back. A code entry is never removed: a
   workflow's says the client turns it off on its page instead.
@@ -556,13 +570,17 @@ files. The page lists them after the stored bundles under **From code** (its "Wh
 - **A save that would newly replace one** is told by its dry run (`replacements` on the patch's dry-run answer: only
   the ones the patch adds, judged by what is replaced, so moving a replacing entry to another bundle is not one), which
   the save area shows (`replacingText`) and asks to confirm with **Save anyway**, with the impact report when there is
-  one too.
+  one too. Each line says whether the entry is replaced whole or, for an overlay (`overlay`, issue #1657), only what
+  is changed, with the rest following the code (`replacingNoteText` says what is lost only when something is whole).
 
 **Deleting a bundle** (issue #1461) is in the Configuration table (`StoredConfigTable`), on the client's page
 and in the bundle editor's Publishing section alike, beside the publishing it depends on. A **Contents** column says
 what each bundle holds (`bundleContentsText`: "2 slots, 5 entries", "Empty", or "Empty; v2: 1 slot, 3 entries" while
 the published revision under a draft holds something else), from the listing summary's `slotCount`/`entryCount` and
-`publishedSlotCount`/`publishedEntryCount`. A bundle whose latest revision and latest published one hold no entries
+`publishedSlotCount`/`publishedEntryCount`. A bundle named like one of the client's code bundles leads with "Changes to
+its code" or "Changes to template X's code" (issue #1657), from the summary's `changesCode` and `template`, which the
+server reads off the code bundles' names (`codeBundleNamesOf`). The first column is headed **Bundle**.
+A bundle whose latest revision and latest published one hold no entries
 offers **Delete** on its row (`deletableBundles`), behind a confirmation naming whose configuration it is -- where the
 page publishes (`deletesBundlesHere`): a client without a sandbox, and a sandbox's page for its parent's; not a client
 with a sandbox, nor one static here. So a bundle no longer used is emptied in the editor, the emptying published, and

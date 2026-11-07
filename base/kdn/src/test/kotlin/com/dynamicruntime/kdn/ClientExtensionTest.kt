@@ -350,6 +350,12 @@ class ExtensionTemplateComponent : ComponentDefinition {
             )
             trait("OwnNoteEntry", "ownNote", setOf(GedraDataType.formDoc), "A note.") { property("note", "A note.") }
             workflow("ownFlow", WfEntry.normal) { task("a", "Code's task") { trait("ownNote"); save("s", "Save", WfSaveKind.edit) } }
+            // A type declared directly, which a stored overlay changes (issue #1657).
+            type("OwnShared") {
+                type = SCT.kObject
+                property("code", "A code.")
+                property("size", "A size.") { type = SCT.integer }
+            }
         },
         // Another, so the bundle editor's tests of its code layer (issue #1646) have one of their own.
         gedraConfig(cxt, "own", "client.$ownLayer", ownLayer) {

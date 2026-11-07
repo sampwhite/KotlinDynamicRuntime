@@ -597,9 +597,21 @@ private fun ChildrenBuilder.clientDetail(
                     className = ClassName("subtitle")
                     +"Loading…"
                 }
-                configs.isEmpty() -> p {
-                    className = ClassName("subtitle")
-                    +"This node holds no configuration made in the app for this client."
+                configs.isEmpty() -> {
+                    p {
+                        className = ClassName("subtitle")
+                        +"This node holds no configuration made in the app for this client."
+                    }
+                    // A client of code changes its code's bundles there (issues #1646, #1657), so the way in is offered.
+                    p {
+                        className = ClassName("subtitle")
+                        a {
+                            className = ClassName("wf-cell-link")
+                            href = bundleEditorHref(clientId)
+                            +"Open every bundle"
+                        }
+                        +": the bundles its code declares, which can be changed for this client there."
+                    }
                 }
                 else -> {
                     StoredConfigTable {
@@ -1055,7 +1067,7 @@ val StoredConfigTable = FC<StoredConfigTableProps> { props ->
             thead {
                 tr {
                     th { className = ClassName("op-select"); +"" }
-                    th { +"Name" }
+                    th { +"Bundle" }
                     th { +"Contents" }
                     th { className = ClassName("op-num"); +"Version" }
                     th { +"Published" }

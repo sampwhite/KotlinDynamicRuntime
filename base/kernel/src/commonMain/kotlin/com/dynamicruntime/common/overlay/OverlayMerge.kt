@@ -379,6 +379,36 @@ private fun mergeKeyed(
     return out
 }
 
+/**
+ * Where [overlay] states a list that [spec] has no keys for (issue #1657), as paths in the resource: a list a
+ * [MergeRule.Replace] part holds, which the overlay's value replaces whole. Walks into what the spec merges as resources
+ * of their own -- a keyed list's elements, a part, a map's entries -- so a list nested in one of them is found too.
+ */
+fun restatedLists(spec: MergeSpec, overlay: Map<String, Any?>, path: String = ""): List<String> = buildList {
+    val chosen = spec.chosenRules(overlay, path, mutableListOf())
+    for ((key, value) in overlay) {
+        if (key == spec.directiveKey) continue
+        val at = childPath(path, key)
+        when (val rule = chosen[key] ?: spec.ruleFor(key)) {
+            MergeRule.Replace -> if (value is List<*>) add(at)
+            is MergeRule.Keyed -> rule.elementSpec?.let { elementSpec ->
+                for (element in (value as? List<*>).orEmpty()) {
+                    val e = (element as? Map<*, *>)?.toJsonMapOrEmpty() ?: continue
+                    addAll(restatedLists(elementSpec(emptyMap(), e), e, "$at[${e[rule.key]}]"))
+                }
+            }
+            is MergeRule.Resource -> (value as? Map<*, *>)?.toJsonMapOrEmpty()?.let {
+                addAll(restatedLists(rule.spec(emptyMap(), it), it, at))
+            }
+            is MergeRule.Resources -> for ((name, entry) in (value as? Map<*, *>)?.toJsonMapOrEmpty().orEmpty()) {
+                val e = (entry as? Map<*, *>)?.toJsonMapOrEmpty() ?: continue
+                addAll(restatedLists(rule.spec(emptyMap(), e), e, childPath(at, name)))
+            }
+            else -> Unit
+        }
+    }
+}
+
 /** A diff's result: the overlay, and the changes it could not state (each located at its path in the resource). */
 class DiffOutcome(val overlay: Map<String, Any?>, val problems: List<Problem>)
 
