@@ -54,10 +54,25 @@ object FormWorkflowSummary {
                     WCOL.phase to phase.name,
                     WCOL.explanations to declared.def.eligibility.associate { it.id to resolve(it.explanation) },
                     WCOL.lastTask to declared.def.tasks.last().id,
-                )
+                ).apply { putAll(frozenWindow(cxt, client, declared.def, phase)) }
             }
         }
         return mapOf(WCOL.workflows to workflows)
+    }
+}
+
+/**
+ * When a workflow frozen outside its relevancy window ([WfPhase.lifetimeOnly]) opens or closed (issue #1598) --
+ * [WCOL.opensAt] while the window is still to come, else [WCOL.closedAt] -- for the reason an engaged form's link to it
+ * waits. Empty for a workflow that is not frozen, or whose window has no such bound.
+ */
+private fun frozenWindow(cxt: KdrCxt, client: String, def: WfDef, phase: WfPhase): Map<String, Any?> {
+    if (phase != WfPhase.lifetimeOnly) return emptyMap()
+    val relevancy = WorkflowPhases.windowsOf(cxt, client, def).effectiveRelevancy
+    val start = relevancy.start
+    return when {
+        start != null && cxt.instanceNow() < start -> mapOf(WCOL.opensAt to start)
+        else -> relevancy.end?.let { mapOf(WCOL.closedAt to it) }.orEmpty()
     }
 }
 

@@ -29,6 +29,18 @@ object WCOL {
 
     /** The workflow's last task -- where a finished workflow's link lands, having no current task. */
     const val lastTask = "lastTask"
+
+    /**
+     * On a workflow frozen before its relevancy window opens ([WfPhase.lifetimeOnly], issue #1598): when it opens, the
+     * reason a form's engaged link to it waits.
+     */
+    const val opensAt = "opensAt"
+
+    /** On a workflow frozen after its relevancy window closed (issue #1598): when it closed, as [opensAt] says when one opens. */
+    const val closedAt = "closedAt"
+
+    /** In a `waitingReasons` entry: whom the step waits on, a [WfWaitsOn] name. */
+    const val waitsOn = "waitsOn"
 }
 
 /**
@@ -151,6 +163,25 @@ enum class WfWeight {
 
     /** Nothing more here: finished, or not eligible. */
     settled,
+}
+
+/**
+ * Whom a step waiting on someone other than the viewer waits on (issue #1598), as the backend works it out from the
+ * step's task and the viewer's facts: what a muted link in the forms list's workflow cell gives as its reason.
+ */
+@Suppress("EnumEntryName")
+enum class WfWaitsOn {
+    /** Whoever passes the call to action's filter, which the viewer does not: its label says who, when it has one. */
+    filter,
+
+    /** Whoever may approve it: an approval task the viewer may not approve. */
+    approval,
+
+    /** The form's owner: a save that names nobody, which waits on the owner, and the viewer is not the owner. */
+    owner,
+
+    /** Whoever the task's save names (`saveWhen`), which is not the viewer. */
+    others,
 }
 
 /**

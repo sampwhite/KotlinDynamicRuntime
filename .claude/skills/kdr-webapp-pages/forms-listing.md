@@ -98,7 +98,7 @@ alone also confines the rows to X: on a client's own copy, an `allClients` calle
   (`TraitLockCopy.keptToOwner`, the server's refusal word for word).
 - **Engaging opens the form for editing** (#1496). A workflow page's **Engage**, once it succeeds, puts `edit=1` in
   the address (`engagedRoute`, replaced rather than pushed) before the view is read again, so the page lands where
-  the Workflows column's link to an engaged workflow opens (`workflowPageRoute(..., edit = true)`). The remount
+  the Workflows column's link to a workflow that is the caller's turn opens (`workflowPageRoute(..., edit = true)`). The remount
   still asks `offersEdit` of the task shown, so a workflow whose open step is someone else's lands read-only.
 - **A workflow's listing is its own page** (`page=workflowForms`, issue #792): where a count on the Workflows
   page leads. `FormsPage` draws it in workflow mode -- the workflow as heading, a state switch, `← Workflows` --
@@ -123,11 +123,11 @@ Needs Review is `review`'s -- through `formStatusLabel`, falling back to `FormSt
 In the cross-client view a row's chip reads in **its own** client's words, as its trait names do: the summary adds
 `ctaKeywordsByClient`, the same words for each other client with a row on the page, and the table picks the row's
 (`CtaKeywordWords.byClientFrom`). The filter and its chip stay in the caller's client's words.
-The other words wait for the pages that show them (#1598, #1600).
+The verb is on the Workflows cell's links (#1598, below); the other words wait for the pages that show them (#1599, #1600).
 
 ## What each workflow asks of the caller, and the keyword search (issue #1597)
 
-The backend half of the call-to-action cell, which the page does not draw yet (#1598 moves the Workflows cell onto it):
+The backend half of the call-to-action cell, which the Workflows cell draws (#1598, below):
 
 - **The classification** is `formWorkflowWeights` in the kernel: each workflow of a row's cell, from its states, weighed
   `yourTurn`, `waiting`, `available`, or `settled`. It replaces `WfColumnCategory` for the cell, which stays the
@@ -139,6 +139,46 @@ The backend half of the call-to-action cell, which the page does not draw yet (#
   its workflows use: `review=mine` (the caller's turn for a review) or `review=any` (awaiting review, whoever acts). The
   shared listing has none, so the page offers the quick filters only where it lists one client. Applied before paging,
   so `numAvailable` counts the matches.
+
+## The Workflows cell draws what each workflow asks of the caller (issue #1598)
+
+The cell is the classification drawn, the `combined` layout (#1599 adds `split`, with a Your turn column). The page
+decides nothing about what is actionable: `workflowCellOf` runs `formWorkflowWeights` with the row's `waitingSteps` as
+its `mayAct`, joins each workflow to the summary, and gives each link its words. `FormsTable` only draws.
+
+The page draws five kinds of link (`WorkflowCellKind`), in this order. The classification's `settled` weight is split
+into its two kinds, since "settled" is not a word for anyone to read.
+
+| Kind | Looks | Says |
+| --- | --- | --- |
+| Your turn | a filled accent pill, opening the task ready to edit | a verb and the workflow: the CTA keyword's verb ("Review", the client's words), else the step's `actionText`, else "Continue" |
+| Available | an accent outline, opening the workflow to engage | "Start" and the workflow |
+| Waiting | a muted link, opening the task to look at, with its reason under it | why, from the row's `waitingReasons` or the summary |
+| Finished | small, with a check, opening its last task | the workflow |
+| Not available | small and faint, opening a dialog with the reasons | the workflow |
+
+- **A muted link always says why.** The backend gives each row `waitingReasons` (with `withStates`): for each step
+  waiting on someone else, whom (`WfWaitsOn`: `filter`, `approval`, `owner`, or `others`) and, when the CTA filter is
+  what keeps the caller out, its label resolved in the row's client ("Waiting on a regional reviewer"). A workflow
+  frozen outside its relevancy window has none; the summary's entry for it carries `opensAt` or `closedAt`, and the
+  link says "Opens in 3d" or "Closed 2026-10-30", the moment as the table writes one. A step the row gives no reason
+  for (a call to action not computed yet) says "Waiting". `waitingReasonOf` picks the words.
+- **Every word is copy**: the `home` file's `workflowCell` namespace (`WorkflowCellWords`), which a client overlays --
+  the verbs and reasons, each kind's heading (`...Group`) and count (`...Count`, over `${n}`), the fold's button
+  (`more`) and its popovers' titles, the tooltips, and the reasons dialog. `opens` and `closed` are templates over
+  `${at}`. Until the copy arrives the shipped words show.
+- **A fixed order**: by kind as in the table, then the workflows' declared order (the summary's), never the order the
+  state entries arrive in. So as people act, a link moves only when its kind changes, and the rest keep their places.
+  It is the page's order, not `WfWeight`'s, which puts waiting ahead of available.
+- **A crowded cell folds** (`workflowCellFold`): up to four links are all drawn; past four it draws three and folds the
+  rest behind "+N more", so a fold hides at least two. **The caller's turn never folds**: those links come first, are
+  all drawn however many there are, and count toward the three -- two of them, two to start, and two not eligible draw
+  the two and one to start, and fold three. The fold opens a popover, "More workflows", with each kind under its own
+  heading. Once #1599 gives the caller's turn its own column, this cell can go back to two.
+- **A narrow screen folds the whole cell to its counts** ("1 your turn · 2 available", `workflowCellCounts`), a button
+  opening all the links, grouped the same way. `app.css` chooses which shows (below 640 px), so the cell draws both.
+- **Only the caller's turn opens in edit mode** (`linkEdits`): a waiting link opens its task to be looked at, which the
+  drilled listing's double-click follows too.
 
 ## A column's filter and cells follow its field (issues #1500, #1508)
 

@@ -1086,6 +1086,7 @@ val FormsPage = FC<FormsPageProps> { props ->
                     this.ctaKeywords = ctaKeywords
                     this.ctaKeywordsByClient = ctaKeywordsByClient
                     noWorkflowsCopy = emptyWorkflowsCopy
+                    workflowWords = WorkflowCellWords.of(homeCopy)
                     workflowHref = { id, wf, task, edit ->
                         routeHref(workflowPageRoute(id, wf, task, edit, listingPage) + listingContext)
                     }

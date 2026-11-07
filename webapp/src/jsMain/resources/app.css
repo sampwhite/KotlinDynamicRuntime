@@ -1011,22 +1011,56 @@ button.op-status:focus-visible { outline: 2px solid var(--accent-bright); outlin
 .chip-workflows { margin: 0; padding-left: 18px; max-width: 360px; }
 .chip-workflows li { margin: 2px 0; }
 
-/* The forms list's workflow column (issue #791): one workflow per line, its name as a link and its category dim
-   beside it; an ineligible one's name is a button opening its reasons, styled as the same link. */
-.wf-cell-item { line-height: 1.35; margin: 1px 0; }
-.wf-cell-link, button.wf-cell-link, button.wf-cell-more {
+/* The forms list's workflow column (issues #791, #1598): one workflow per line, drawn by what it asks of the viewer.
+   Their turn is a filled accent pill with its verb; waiting is a muted link with its reason under it; one they could
+   start is an accent outline with "Start"; settled is smallest -- a check for finished, faint for not eligible (a button
+   opening its reasons, styled as the same link). Hover moves each away from the slate behind it. */
+.wf-cell-item { line-height: 1.35; margin: 2px 0; }
+/* A plain link-styled button, first the cell's and now borrowed by other pages (Reports, Clients). */
+.wf-cell-link, button.wf-cell-link {
     background: none; border: none; padding: 0; font: inherit; cursor: pointer;
     color: var(--accent-bright); text-decoration: none;
 }
-.wf-cell-link:hover, button.wf-cell-more:hover { color: var(--accent-brighter); text-decoration: underline; }
-.wf-cell-link:focus-visible, button.wf-cell-more:focus-visible { outline: 2px solid var(--accent-bright); outline-offset: 1px; }
+.wf-cell-link:hover { color: var(--accent-brighter); text-decoration: underline; }
+.wf-cell-link:focus-visible { outline: 2px solid var(--accent-bright); outline-offset: 1px; }
 button.wf-cell-link:disabled { opacity: .5; cursor: default; text-decoration: none; }
+/* A dim note beside a workflow's name (the Workflows page's phase). */
 .wf-cell-cat { color: var(--text-dim); font-size: .8rem; }
+.wf-link, button.wf-link, button.wf-cell-more {
+    background: none; border: none; padding: 0; font: inherit; cursor: pointer; text-decoration: none;
+}
+.wf-link:focus-visible, button.wf-cell-more:focus-visible { outline: 2px solid var(--accent-bright); outline-offset: 1px; }
+.wf-verb { font-weight: 600; margin-right: 6px; }
+.wf-link.wf-w-yourTurn {
+    display: inline-block; padding: 1px 8px; border-radius: 4px; background: var(--accent); color: #fff;
+}
+.wf-link.wf-w-yourTurn:hover { box-shadow: 0 0 0 1px var(--accent-brighter); }
+.wf-link.wf-w-waiting { color: var(--text-muted); }
+.wf-link.wf-w-waiting:hover { color: var(--text-dim); text-decoration: underline; }
+.wf-reason { color: var(--text-muted); font-size: .78rem; font-style: italic; }
+.wf-link.wf-w-available {
+    display: inline-block; padding: 0 7px; border: 1px solid var(--accent-bright); border-radius: 4px; color: var(--accent-bright);
+}
+.wf-link.wf-w-available:hover { border-color: var(--accent-brighter); color: var(--accent-brighter); }
+.wf-link.wf-w-settled { color: var(--text-muted); font-size: .8rem; }
+.wf-link.wf-w-settled:hover { color: var(--text-dim); text-decoration: underline; }
+.wf-link.wf-w-ineligible { color: var(--text-faint); }
+.wf-check { color: var(--success); margin-right: 4px; }
+button.wf-cell-more { color: var(--accent-bright); font-size: .8rem; margin-top: 2px; }
+button.wf-cell-more:hover { color: var(--accent-brighter); text-decoration: underline; }
+/* A narrow screen folds the whole cell to its counts, the links behind them. */
+button.wf-cell-folded { display: none; }
+@media (max-width: 640px) {
+    .wf-cell-full { display: none; }
+    button.wf-cell-folded { display: inline; }
+}
 /* A user's forms and client (issue #1081), on a row of the Users list and in the editor: one line, never wrapped --
    two short links read as a pair only side by side. */
 .user-links { white-space: nowrap; }
-button.wf-cell-more { font-size: .8rem; margin-top: 2px; }
 .wf-cell-all { max-width: 320px; }
+/* A kind's heading in a popover of a cell's links (issue #1598): small, dim, and spaced from the kind above it. */
+.wf-cell-group { color: var(--text-dim); font-size: .75rem; text-transform: uppercase; letter-spacing: .04em; margin: 6px 0 2px; }
+.wf-cell-group:first-child { margin-top: 0; }
 .wf-reasons { margin: 0; padding-left: 18px; }
 /* A workflow's help under its title, and the home page's note under its intro (issue #1221): copy, read as such. */
 .wf-help { color: var(--text-muted); margin: 4px 0 8px; }
