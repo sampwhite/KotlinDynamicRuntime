@@ -42,7 +42,6 @@ import com.dynamicruntime.common.user.ADF
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.user.UADEP
 import com.dynamicruntime.common.util.toJsonListOfMaps
-import com.dynamicruntime.common.util.toJsonListOfStrings
 import com.dynamicruntime.common.util.toOptStr
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldContain
@@ -331,7 +330,7 @@ class KeywordSearchTest : StringSpec({
     "a listing hands its state filter every row at once, and owners' identities are read once for them all" {
         // The listing's half: one prepare, with every row in scope, before any is judged.
         val prepared = mutableListOf<Int>()
-        var judged = 0
+        @Suppress("CanBeVal") var judged = 0
         val counting = object : GedraStateFilter {
             override fun prepare(rows: List<GedraStateRow>) {
                 prepared.add(rows.size)
