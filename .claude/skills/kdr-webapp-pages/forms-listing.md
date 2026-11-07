@@ -210,18 +210,29 @@ approve gates apply, narrowed to the person the step names:
 
 - an approval waits on whoever may approve it (by default a reviewer who does not own the form), and its CTA filter;
 - a save whose task names someone (`saveWhen`) waits on whoever that admits, and the filter;
-- a save that names nobody waits on the form's **owner**, not on every administrator its gate would admit.
+- a save that names nobody waits on the form's **owner**, not on every administrator its gate would admit;
+- a task with neither a save nor an approval waits on nobody.
 
-Each row listed with it carries its `waitingSteps` (the workflow, the task, and what it asks of the caller in words).
+And a save waits on nobody the owner-only rule (issue #1433) keeps out: an editor, on a form kept to its owner, who is
+neither its owner nor a reviewer of its current work. An approval is not a change to the form, so that rule never keeps
+anyone from one.
+
+Since #1597 this is also the classification's one input it cannot read from state: a workflow is the caller's turn
+exactly when its step waits on them, so the Workflows cell's strong links and a keyword search's `mine` (`review=mine`)
+follow the same rule.
+
+Each row listed with it, or with `withStates`, carries its `waitingSteps` (the workflow, the task, and what it asks of
+the caller in words); a `withStates` row also carries `waitingReasons`, whom each other step waits on (issue #1598).
 The filter well's **Waiting on you** select (`Only those`, cleared for any) sets it, its chip says `Waiting on you`
 (`needsMeChip`), and Clear removes it. It is offered where a step can wait -- the caller's client has a normal or core
 details workflow (the shell's `hasWaitingWorkflows`, the rule Home's card is offered by) -- to a caller who sees across
 clients, and whenever it is applied, so it can be cleared. Home's "Waiting on you" card links to this listing
 (`waitingListingRoute`).
 
-The backend judges each form once per request (`WaitingSteps.remembered`), so a row's steps are the answer that let it
-through the filter, and asks whether the caller owns a form only once a workflow of it has a step to judge.
+The backend judges each form once per request (`WaitingSteps.of` keeps each form's answer), so a row's steps are the
+answer that let it through the filter. It asks whether the caller owns a form only once a workflow of it has a step to
+judge, and in production reads the owners' identities for all of a listing's rows in one batch (`readOwners`).
 
-Within the caller's read scope, like every listing: a reviewer who is neither an administrator nor an editor cannot
-list other people's forms, so their reviews do not show here (`deferred-work.md`).
+Within the caller's read scope, like every listing, and `review=mine` too: a reviewer who is neither an administrator
+nor an editor cannot list other people's forms, so their reviews do not show here (`deferred-work.md`).
 
