@@ -2,7 +2,7 @@ package com.dynamicruntime.common.gedra
 
 /**
  * A new client's checklist (issue #1639): the few steps that make a self-serve client useful, each checked off from the
- * client's state, which Home's "Set up your client" card lists. The read is `UADEP.clientChecklist`; its steps' ids are
+ * client's state, which Home's "Getting started" card lists. The read is `UADEP.clientChecklist`; its steps' ids are
  * here so the webapp names each step by the id the backend answers with, and adds its own ([assistant]) beside them.
  */
 @Suppress("ConstPropertyName")

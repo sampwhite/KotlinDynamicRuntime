@@ -4,7 +4,6 @@ import com.dynamicruntime.common.assistant.ASST
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.gedra.CHKL
 import com.dynamicruntime.common.gedra.CLD
-import com.dynamicruntime.common.home.HCARD
 import com.dynamicruntime.common.home.HMENU
 import com.dynamicruntime.common.user.UADEP
 import com.dynamicruntime.common.util.toJsonListOfMaps
@@ -63,10 +62,12 @@ fun checklistStepOf(id: String, done: Boolean, client: String): ChecklistStep? {
 /**
  * The steps the card lists (issue #1639): the backend's ([read]), led by switching on the workflow assistant when the
  * menu offers it ([assistantOffered]) and its status ([assistantView]) says it is on, or off and the person may switch it
- * on -- since it helps with the steps after it. Left out while the status is unread, and where only an operator switches
- * it on, which the person cannot do. Pure, and covered under `jsNodeTest`.
+ * on -- since it helps with the steps after it. Left out where only an operator switches it on, which the person cannot
+ * do, or its status could not be read. **None at all while an offered assistant's status is unread**, so the list never
+ * grows a step after it is drawn, and never looks done before it is. Pure, and covered under `jsNodeTest`.
  */
 fun checklistSteps(read: ChecklistRead, assistantOffered: Boolean, assistantView: AssistantView?): List<ChecklistStep> {
+    if (assistantOffered && (assistantView == null || assistantView == AssistantView.loading)) return emptyList()
     val assistant = if (assistantOffered && (assistantView == AssistantView.on || assistantView == AssistantView.switchOn)) {
         ChecklistStep(CHKL.assistant, "Switch on the workflow assistant", assistantView == AssistantView.on, listOf(HP.page to ASST.page))
     } else {
@@ -82,16 +83,19 @@ fun checklistHiddenKey(client: String): String = CHKV.hiddenKeyPrefix + client
 fun checklistHiddenHere(client: String): Boolean = localStorageGet(checklistHiddenKey(client), "the checklist's hide choice") == "true"
 
 /**
- * The new client's checklist, for Home's card (issue #1639), or null while it is read, when it cannot be, or when no card
- * in [cards] asks for it -- then nothing is read ([useCardRead]). Read again on every refresh, so a step done elsewhere
- * is checked off.
+ * The new client's checklist, for Home's card (issue #1639), or null while it is read, when it cannot be, or when not
+ * [wanted] -- no card asks for it, or this browser put it away -- and then nothing is read ([useCardRead]). Read again on
+ * every refresh, so a step done elsewhere is checked off.
  */
-fun useClientChecklist(cards: List<HomeCard>): ChecklistRead? =
-    useCardRead(cards.any { it.kind == HCARD.kindNewClientChecklist }, null, "the client's checklist") {
+fun useClientChecklist(wanted: Boolean): ChecklistRead? =
+    useCardRead(wanted, null, "the client's checklist") {
         parseChecklistRead(Http.getApi(UADEP.clientChecklist)[EP.item].toJsonMapOrEmpty())
     }
 
-/** The checklist card's body (issue #1639): each step, checked when done and linked when not, then "Hide this checklist". */
+/**
+ * The checklist card's body (issue #1639): each step, checked when done and linked when not, then "Hide this checklist".
+ * The mark is drawn for the eye alone; a screen reader hears "Done" or "To do" before the step instead.
+ */
 fun ChildrenBuilder.checklistCardBody(steps: List<ChecklistStep>, onHide: () -> Unit) {
     ul {
         className = ClassName("home-checklist")
@@ -101,7 +105,12 @@ fun ChildrenBuilder.checklistCardBody(steps: List<ChecklistStep>, onHide: () -> 
                 className = ClassName(if (step.done) "done" else "todo")
                 span {
                     className = ClassName("home-checklist-mark")
+                    ariaHidden = true
                     +(if (step.done) "✓" else "○")
+                }
+                span {
+                    className = ClassName("visually-hidden")
+                    +(if (step.done) "Done: " else "To do: ")
                 }
                 if (step.done) {
                     span { +step.label }

@@ -82,7 +82,7 @@ class ClientChecklistTest : StringSpec({
         // Which is not its New form.
         checklistOf(founder)[CHKL.newForm] shouldBe false
 
-        // Its New form changed since the starter: a later revision of the configuration holding it.
+        // Its New form changed from the starter.
         val configName = creation[CWF.configName].toOptStr().shouldNotBeNull()
         val bundle = founder.getItem(CFEP.bundle, mapOf(CFEP.name to configName))
         val slots = bundle[CFEP.slots].toJsonMapOrEmpty().mapValues { (slot, entries) ->
@@ -93,11 +93,24 @@ class ClientChecklistTest : StringSpec({
         }
         founder.postData(
             CFEP.bundleWrite,
-            mapOf(CFEP.name to configName, CFEP.namespaceField to bundle[CFEP.namespaceField], CFEP.slots to slots),
+            mapOf(
+                CFEP.name to configName, CFEP.namespaceField to bundle[CFEP.namespaceField], CFEP.slots to slots,
+                CFEP.reloadField to true,
+            ),
         )
         checklistOf(founder) shouldBe linkedMapOf(
             CHKL.newForm to true, CHKL.workflow to true, CHKL.invite to true, CHKL.firstForm to true,
         )
+
+        // Changed back, it is the starter again, however many revisions it took.
+        founder.postData(
+            CFEP.bundleWrite,
+            mapOf(
+                CFEP.name to configName, CFEP.namespaceField to bundle[CFEP.namespaceField], CFEP.slots to bundle[CFEP.slots],
+                CFEP.reloadField to true,
+            ),
+        )
+        checklistOf(founder)[CHKL.newForm] shouldBe false
     }
 
     "from inside the sandbox it is the client's, and Home leaves it to the client" {

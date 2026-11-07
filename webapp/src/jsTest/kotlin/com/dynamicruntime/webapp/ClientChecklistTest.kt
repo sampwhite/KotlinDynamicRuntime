@@ -48,10 +48,15 @@ class ClientChecklistTest {
         assertEquals(listOf(HP.page to ASST.page), off.first().route)
         // On: done.
         assertEquals(true, checklistSteps(read, assistantOffered = true, assistantView = AssistantView.on).first().done)
-        // Not offered, not yet read, or only an operator's to switch on: no step for it.
-        for ((offered, view) in listOf(false to AssistantView.switchOn, true to null, true to AssistantView.off)) {
+        // Not offered, only an operator's to switch on, or its status unreadable: no step for it.
+        for ((offered, view) in listOf(false to AssistantView.switchOn, true to AssistantView.off, true to AssistantView.failed)) {
             assertEquals(CHKL.newForm, checklistSteps(read, offered, view).first().id)
         }
+        // Offered and its status not yet read: no steps at all, rather than a list that grows one, or one that looks done.
+        val done = ChecklistRead("free_acme", read.steps.map { it.first to true })
+        assertEquals(emptyList(), checklistSteps(done, assistantOffered = true, assistantView = null))
+        // Not offered: the backend's steps, without waiting.
+        assertEquals(4, checklistSteps(done, assistantOffered = false, assistantView = null).size)
     }
 
     @Test
@@ -69,7 +74,7 @@ class ClientChecklistTest {
     fun theCardShowsWhileAStepIsLeftAndUntilItIsHidden() {
         val cards = homeCardsFrom(
             listOf(
-                mapOf(HFLD.id to HCARD.checklist, HCARD.title to "Set up your client", HCARD.kind to HCARD.kindNewClientChecklist),
+                mapOf(HFLD.id to HCARD.checklist, HCARD.title to "Getting started", HCARD.kind to HCARD.kindNewClientChecklist),
                 mapOf(HFLD.id to HCARD.administer, HCARD.title to "Your client"),
             ),
         )

@@ -2,6 +2,7 @@ package com.dynamicruntime.kdn
 
 import com.dynamicruntime.common.content.UIC
 import com.dynamicruntime.common.context.CL
+import com.dynamicruntime.common.gedra.CHKL
 import com.dynamicruntime.common.gedra.CLD
 import com.dynamicruntime.common.gedra.CWF
 import com.dynamicruntime.common.gedra.ClientCreate
@@ -18,6 +19,7 @@ import com.dynamicruntime.common.home.HFLD
 import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.user.AEP
 import com.dynamicruntime.common.user.TestUser
+import com.dynamicruntime.common.user.UADEP
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
@@ -75,6 +77,10 @@ class SelfServeFromTemplateTest : StringSpec({
         val person = TestUser.create(cxt, "own@selftpl.test")
         val client = person.postData(AEP.createOwnClient, mapOf(CLD.name to "Own", CLD.extendsFromClientId to tpl))[CLD.client]
             .toOptStr().shouldNotBeNull()
+        // Its checklist's New form step (issue #1639): it starts with the template's, so is not done until it has its own.
+        fun newFormDone() = person.getItem(UADEP.clientChecklist)[CHKL.steps].toJsonListOfMaps()
+            .single { it[CHKL.id] == CHKL.newForm }[CHKL.done]
+        newFormDone() shouldBe false
         val writer = cxt.mkSubContext("selfServeTemplateWrite", client).also { it.userId = 9451L }
         val config = gedraConfig(cxt, CWF.configPrefix + "ownCreate", clientNamespace(client), client) {
             workflow("ownCreate", WfEntry.creation) { task("n", "A note first") { trait("pubNote"); save("c", "Create") } }
@@ -84,6 +90,8 @@ class SelfServeFromTemplateTest : StringSpec({
         GedraConfigService.get(cxt).writeConfig(writer, config, trial = true)
         GedraConfigReload.reloadClient(cxt, client)
         WorkflowService.get(cxt).forClient(sandboxOf(client)).creation.shouldNotBeNull().def.workflowId shouldBe "ownCreate"
+        // A draft is done too: publishing it is the drafts card's to say.
+        newFormDone() shouldBe true
         // Unpublished, so the client itself still makes forms with the template's.
         WorkflowService.get(cxt).forClient(client).creation.shouldNotBeNull().def.workflowId shouldBe
             ExtensionTemplateComponent.creationWorkflow

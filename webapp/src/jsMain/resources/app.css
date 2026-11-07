@@ -1551,6 +1551,11 @@ textarea.json-edit.json-field { min-height: 4.5rem; }
 .home-checklist li.done { color: var(--text-dim); }
 .home-checklist-mark { width: 1em; text-align: center; }
 .home-checklist li.done .home-checklist-mark { color: var(--accent); }
+/* Words for a screen reader alone, such as a checklist step's state, which the eye reads from its mark. */
+.visually-hidden {
+    position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+    overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+}
 .public-accounts { list-style: none; padding: 0; margin: 8px 0 0; }
 .public-accounts li { display: flex; gap: 12px; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--border); }
 .public-accounts li span { flex: 1; }

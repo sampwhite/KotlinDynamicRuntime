@@ -217,7 +217,7 @@ object UADEP {
 
     /**
      * The caller's client's checklist (issue #1639): the steps that make a new client useful, each `{id, done}`
-     * (`CHKL`), from cheap reads -- what Home's "Set up your client" card lists. From inside a sandbox, its parent's.
+     * (`CHKL`), from cheap reads -- what Home's "Getting started" card lists. From inside a sandbox, its parent's.
      */
     const val clientChecklist = "/${SECT.clientAdmin}/client/checklist"
 

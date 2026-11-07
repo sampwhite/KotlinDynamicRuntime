@@ -79,6 +79,7 @@ val Home = FC<Props> {
         waitingClient = current?.takeIf { it.canSeeAllClients }?.user?.client,
         // The checklist's step for the workflow assistant (issue #1639), only where the menu offers it.
         assistantOffered = current?.menu.orEmpty().any { it.id == ASST.menuItem },
+        ownClient = current?.user?.client,
     )
     val cards = visibleHomeCards(allCards, reads)
 

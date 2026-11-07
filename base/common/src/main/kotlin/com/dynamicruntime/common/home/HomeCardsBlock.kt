@@ -70,9 +70,9 @@ fun homeCardsBlock(): UiBlockSource = uiBlock(
         // useful, checked off from its state. Not inside its sandbox, which has users and forms of its own: the client is
         // set up from the client. Drawn only while a step is left, after the drafts, which finish work already begun.
         homeCard(
-            HCARD.checklist, "Set up your client",
+            HCARD.checklist, "Getting started",
             "A few steps make your client ready for the people who will use it. Each is checked off once it is done.",
-            jumpLabel = "Set up your client",
+            jumpLabel = "Getting started",
             kind = HCARD.kindNewClientChecklist,
             cfactExpression = "${CFACTS.administersClient},${CFACTS.selfServeClient},~${CFACTS.inSandbox},${CFACTS.app}",
             displayOrder = UIB.orderStep * 3 / 10,
