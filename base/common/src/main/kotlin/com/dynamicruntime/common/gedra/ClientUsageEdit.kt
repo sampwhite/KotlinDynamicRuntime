@@ -114,6 +114,9 @@ object ClientUsageEdit {
             put(CUS.defaults, defaults)
             ClientStoredEdit.definitionHolder(bound)?.let { put(CUS.newColumnsIn, it.configId.baseId) }
             put(CUS.traits, formTraits(cxt, view).map { traitInfo(schema, store, it) })
+            // The listing as a whole (issue #1599): how it draws the workflows, as the edited view runs it, and where stored.
+            put(CUS.workflowLayout, schema.listingDefFor(view).workflowLayout.name)
+            ClientListingEdit.holder(bound)?.let { put(CUS.layoutConfigName, it.configId.baseId) }
         }
     }
 

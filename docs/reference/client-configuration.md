@@ -11,7 +11,7 @@ A client's configuration is stored in pieces called **bundles**, each with a nam
 
 **The app often chooses the bundle for you.** Design View edits a workflow in whichever bundle declares it, and a workflow made on a client's page is given a new bundle of its own. The bundle editor and the endpoints below work on bundles directly.
 
-**Within a bundle, entries are sorted into slots,** one slot for each kind of thing: `kdr:traitDef` holds traits, `kdr:workflowDef` holds workflows, and so on. A slot is an array of entries of its one kind, each named by its **key**: a trait by its id, a workflow by its id. Most slots hold as many entries as you like. [`kdr:clientDef`](#kdrclientdef), which holds the client's definition, holds at most one, since a client has one definition.
+**Within a bundle, entries are sorted into slots,** one slot for each kind of thing: `kdr:traitDef` holds traits, `kdr:workflowDef` holds workflows, and so on. A slot is an array of entries of its one kind, each named by its **key**: a trait by its id, a workflow by its id. Most slots hold as many entries as you like. Two hold at most one: [`kdr:clientDef`](#kdrclientdef), the client's definition, since a client has one definition, and [`kdr:listingDef`](#kdrlistingdef), its listing-wide settings.
 
 **A key names one thing in the whole client, not only in its bundle.** A second trait, workflow, report, or type under a key that is already used, in the same bundle or another, is refused. Overlays are the exception: two `kdr:fragmentDef` entries for one fragment file, or two `kdr:uiBlockDef` entries for one block, are two layers, and both apply.
 
@@ -129,6 +129,7 @@ The merge says what its caller read, so it is refused if `accepted` changed afte
 | [`kdr:uiBlockDef`](#kdruiblockdef) | `blockId` | One UiBlock overlay this client contributes, keyed by the block id. |
 | [`kdr:cfactDef`](#kdrcfactdef) | `name` | One cfact name this configuration declares exists (declaration only), keyed by name. |
 | [`kdr:fileRefDef`](#kdrfilerefdef) | `refId` | One file ref of this client -- a named file, by where its bytes are -- keyed by its ref id. The file store's are named by their `hash`; a local file's by a `root` and a `path` under it, and by no hash. |
+| [`kdr:listingDef`](#kdrlistingdef) | one entry | The client's listing-wide settings: how its forms listing is drawn as a whole. A stored entry stands over the one its code or template declares. |
 
 ### kdr:clientDef
 
@@ -271,6 +272,16 @@ Keyed by `refId`.
 | `path` | string |  | For a local file: its path under the root -- or, for a client's own, under the client's directory there -- in segments of letters, digits, `.`, `_` and `-`, none beginning with a dot. |
 | `description` | string |  | What the file is for, in the administrator's words. |
 | `overrides` | one of `code` |  | Set to `code` when this entry stands over the client's code's entry of the same key -- its template's, or its own code's -- which it replaces whole. Without it, an entry matching a code entry is refused. |
+
+### kdr:listingDef
+
+The client's listing-wide settings: how its forms listing is drawn as a whole. A stored entry stands over the one its code or template declares.
+
+A bundle holds one entry in this slot.
+
+| Field | Type | Required | What it is |
+|---|---|---|---|
+| `workflowLayout` | one of `split`, `combined` |  | How each row's workflows are drawn: `split` (the default) or `combined`. |
 
 ## The types the slots refer to
 

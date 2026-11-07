@@ -355,6 +355,19 @@ object GDF {
     const val waitingReasons = "waitingReasons"
 
     /**
+     * In a listing's `summary` (issue #1599): how the listing's client draws each row's workflows, a `WorkflowLayout`
+     * name -- the client's listing setting, which the page reads rather than deciding. Always present.
+     */
+    const val workflowLayout = "workflowLayout"
+
+    /**
+     * In a listing's `summary`, with [withWorkflowSummary] (issue #1599): how many forms of the listing's scope have a
+     * step waiting on the caller -- what [needsMe] would list, whatever the search -- the count the Your turn column's
+     * header gives ("To review (4)").
+     */
+    const val yourTurnCount = "yourTurnCount"
+
+    /**
      * In a listing's `summary` (issue #1095): **the user the listing is confined to**, when the request named one
      * (`user`) -- who the server resolved that to. The request may name the user by id or by address, and an address
      * names a *person*, whom the server resolves to their default user; without this a caller is shown one of that

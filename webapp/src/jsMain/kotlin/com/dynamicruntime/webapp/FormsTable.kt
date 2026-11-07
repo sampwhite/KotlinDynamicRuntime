@@ -22,6 +22,7 @@ import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.launch
 import web.cssom.ClassName
 import com.dynamicruntime.common.gedra.GSORT
+import com.dynamicruntime.common.gedra.WorkflowLayout
 import com.dynamicruntime.common.gedra.ListingColumn
 import com.dynamicruntime.common.gedra.workflow.WfColumnCategory
 import com.dynamicruntime.common.schema.PSTAT
@@ -104,6 +105,15 @@ external interface FormsTableProps : Props {
 
     /** The workflow cell's words (issue #1598): its verbs and its muted links' reasons. Unset reads as shipped. */
     var workflowWords: WorkflowCellWords?
+
+    /**
+     * How the client draws each row's workflows (issue #1599): `split` adds a Your turn column beside the Workflows cell,
+     * which then holds the rest. Unset reads as `split`, the default.
+     */
+    var workflowLayout: WorkflowLayout?
+
+    /** The Your turn column's header (issue #1599), "To review (4)", worked out by `yourTurnHeader`. */
+    var yourTurnHeaderText: String?
 
     /**
      * The `href` that opens normal workflow `workflowId` against form `gedraId` (issue #791), on `task` when given
@@ -234,7 +244,13 @@ val FormsTable = FC<FormsTableProps> { props ->
             if (anyFormStatus) add(statusColumn(props))
             // The workflow column (issue #791): drawn when the summary names any workflow -- decided over every form
             // the caller may see, not this page, so it does not come and go as a search narrows.
-            if (props.workflowSummary.isNotEmpty()) add(workflowColumn(props))
+            if (props.workflowSummary.isNotEmpty()) {
+                // In the split layout (issue #1599), the caller's turn has a column of its own, sortable so their work
+                // comes to the top, and the Workflows cell holds the rest.
+                val split = (props.workflowLayout ?: WorkflowLayout.split) == WorkflowLayout.split
+                if (split) add(yourTurnColumn(props))
+                add(workflowColumn(props, if (split) WorkflowCellPart.rest else WorkflowCellPart.all))
+            }
             // Relative times (issue #1141), with the exact one on hover: `23h 59m ago` at the widest (86px).
             add(timeColumn(sortableColumn("Updated", GSORT.updated, 110, props.sortColumn, props.sortDescending)))
             add(timeColumn(sortableColumn("Created", GSORT.created, 110, props.sortColumn, props.sortDescending)))
@@ -741,11 +757,32 @@ private val SingletonChipBody = FC<SingletonChipBodyProps> { props ->
 private val chipScope = MainScope()
 
 /**
- * The workflow column (issues #791, #1598): each row's workflows weighed by what they ask of the viewer, strongest first.
- * Like [statusColumn], `onCell` stops a click in the cell from also opening the row.
+ * Which of a row's workflow links a cell draws (issue #1599): [all] of them (the `combined` layout), only the caller's
+ * turn (the `split` layout's Your turn column), or the [rest] beside it.
  */
-private fun workflowColumn(props: FormsTableProps): dynamic {
-    val c = column("Workflows", "workflows", 240)
+private enum class WorkflowCellPart { all, yourTurn, rest }
+
+/**
+ * The workflow column (issues #791, #1598, #1599): each row's workflows weighed by what they ask of the viewer,
+ * strongest first -- all of them, or in the split layout the rest beside the Your turn column. Like [statusColumn],
+ * `onCell` stops a click in the cell from also opening the row.
+ */
+private fun workflowColumn(props: FormsTableProps, part: WorkflowCellPart): dynamic =
+    workflowCellColumn(column("Workflows", "workflows", 240), props, part)
+
+/**
+ * The split layout's Your turn column (issue #1599): only the links that are the caller's turn, never folded. Sorts on
+ * the backend by how many of a form's steps wait on the caller ([GSORT.yourTurn]), most first on the first click, so
+ * their work comes to the top. Headed by the keyword in use, with the count ([yourTurnHeader]).
+ */
+private fun yourTurnColumn(props: FormsTableProps): dynamic {
+    val c = sortableColumn(props.yourTurnHeaderText ?: "Your turn", GSORT.yourTurn, 200, props.sortColumn, props.sortDescending)
+    c.sortDirections = arrayOf("descend", "ascend")
+    return workflowCellColumn(c, props, WorkflowCellPart.yourTurn)
+}
+
+/** [c], drawn as a workflow cell of [part]; a click in it does not also open the row. */
+private fun workflowCellColumn(c: dynamic, props: FormsTableProps, part: WorkflowCellPart): dynamic {
     c.onCell = {
         val cellProps: dynamic = js("({})")
         cellProps.onClick = { event: dynamic -> event.stopPropagation() }
@@ -755,6 +792,7 @@ private fun workflowColumn(props: FormsTableProps): dynamic {
         return WorkflowCell.create {
             gedraId = record.key as String
             items = record.wfItems.unsafeCast<List<WorkflowCellItem>>()
+            this.part = part
             noWorkflowsCopy = props.noWorkflowsCopy
             words = props.workflowWords ?: WorkflowCellWords()
             workflowHref = props.workflowHref
@@ -766,6 +804,7 @@ private fun workflowColumn(props: FormsTableProps): dynamic {
 private external interface WorkflowCellProps : Props {
     var gedraId: String
     var items: List<WorkflowCellItem>
+    var part: WorkflowCellPart
     var noWorkflowsCopy: String?
     var words: WorkflowCellWords
     var workflowHref: (String, String, String?, Boolean) -> String
@@ -785,8 +824,14 @@ private enum class CellPopover { more, all }
 private val WorkflowCell = FC<WorkflowCellProps> { props ->
     var reasonsFor by useState<WorkflowCellItem?>(null)
     var popover by useState<CellPopover?>(null)
-    val items = props.items
+    val all = props.items
     val words = props.words
+    // The links this cell draws (issue #1599): the split layout gives the caller's turn a column of its own.
+    val items = when (props.part) {
+        WorkflowCellPart.all -> all
+        WorkflowCellPart.yourTurn -> all.filter { it.kind == WorkflowCellKind.yourTurn }
+        WorkflowCellPart.rest -> all.filter { it.kind != WorkflowCellKind.yourTurn }
+    }
 
     fun ChildrenBuilder.link(it: WorkflowCellItem, look: String, tip: String? = null, content: ChildrenBuilder.() -> Unit) {
         if (it.workflow.category == WfColumnCategory.ineligible) {
@@ -854,12 +899,20 @@ private val WorkflowCell = FC<WorkflowCellProps> { props ->
         }
     }
 
+    // The Your turn column draws only its strong links, never folded: they are what the column is for.
+    if (props.part == WorkflowCellPart.yourTurn) {
+        items.forEach { item(it) }
+        return@FC
+    }
     if (items.isEmpty()) {
+        // A row whose every link is in the Your turn column has nothing more to say here.
+        if (all.isNotEmpty()) return@FC
         val copy = props.noWorkflowsCopy
         if (copy == null) span { +"\u2014" } else MarkdownInline { source = copy }
         return@FC
     }
-    val (drawn, folded) = workflowCellFold(items)
+    val (drawn, folded) =
+        workflowCellFold(items, if (props.part == WorkflowCellPart.rest) WorkflowCellFoldAt.split else WorkflowCellFoldAt.combined)
     div {
         className = ClassName("wf-cell-full")
         drawn.forEach { item(it) }

@@ -7,6 +7,7 @@ import com.dynamicruntime.common.gedra.CPY
 import com.dynamicruntime.common.gedra.CUS
 import com.dynamicruntime.common.gedra.ClientTraitUsage
 import com.dynamicruntime.common.gedra.UsageKind
+import com.dynamicruntime.common.gedra.WorkflowLayout
 import com.dynamicruntime.common.gedra.sandboxParentOf
 import com.dynamicruntime.common.gedra.toRuleMap
 import com.dynamicruntime.common.gedra.usageFromRuleMap
@@ -15,6 +16,7 @@ import com.dynamicruntime.common.util.loneFieldPath
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
+import com.dynamicruntime.common.util.toOptEnum
 
 /**
  * A client's listing columns, on its page (issue #1491; `ClientUsagesSection`): the catalog read, the editor's draft --
@@ -56,6 +58,10 @@ class UsageCatalogView(
     /** The stored configuration a new column goes into: the one holding the client's definition. */
     val newColumnsIn: String?,
     val traits: List<UsageTraitView>,
+    /** How the client's forms listing draws each row's workflows, as it runs (issue #1599). */
+    val workflowLayout: WorkflowLayout = WorkflowLayout.split,
+    /** The stored configuration holding the client's listing settings; null when none does, and the code's (or the default) holds. */
+    val layoutConfigName: String? = null,
 ) {
     fun trait(traitId: String): UsageTraitView? = traits.firstOrNull { it.traitId == traitId }
 
@@ -74,6 +80,8 @@ fun parseUsageCatalog(raw: Map<String, Any?>): UsageCatalogView = UsageCatalogVi
     },
     defaults = raw[CUS.defaults] == true,
     newColumnsIn = raw[CUS.newColumnsIn].toOptStr(),
+    workflowLayout = raw[CUS.workflowLayout].toOptEnum<WorkflowLayout>() ?: WorkflowLayout.split,
+    layoutConfigName = raw[CUS.layoutConfigName].toOptStr(),
     traits = raw[CUS.traits].toJsonListOfMaps().map { t ->
         UsageTraitView(
             t[CCT.traitId].toOptStr().orEmpty(),
@@ -263,6 +271,19 @@ fun usageRemoveRequest(clientId: String, column: UsageColumnView, expected: Stri
     CCT.label to column.usage.label,
     CPY.mode to expected,
 )
+
+/** The request that sets [clientId]'s workflow [layout] (issue #1599), saying how its caller told its user it takes effect. */
+fun usageLayoutRequest(clientId: String, layout: WorkflowLayout, expected: String): Map<String, Any?> = mapOf(
+    CLD.client to clientId,
+    CUS.workflowLayout to layout.name,
+    CPY.mode to expected,
+)
+
+/** How a workflow layout reads in the Clients page's choice of it (issue #1599). */
+fun workflowLayoutLabel(layout: WorkflowLayout): String = when (layout) {
+    WorkflowLayout.split -> "Your turn column, then the rest"
+    WorkflowLayout.combined -> "One Workflows column"
+}
 
 /** What the section says above the table: where new columns go, and -- for a client showing them -- that the defaults become its own. */
 fun usageSectionNote(catalog: UsageCatalogView): String = buildString {

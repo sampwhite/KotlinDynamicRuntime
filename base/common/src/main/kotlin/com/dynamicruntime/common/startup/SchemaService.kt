@@ -34,6 +34,7 @@ import com.dynamicruntime.common.gedra.GU
 import com.dynamicruntime.common.gedra.ClientDef
 import com.dynamicruntime.common.gedra.ClientService
 import com.dynamicruntime.common.gedra.ClientTraitUsage
+import com.dynamicruntime.common.gedra.ListingDef
 import com.dynamicruntime.common.gedra.supportedTraits
 import com.dynamicruntime.common.gedra.GedraPrepForSaveFn
 import com.dynamicruntime.common.gedra.GedraStateDeriver
@@ -1024,6 +1025,9 @@ class SchemaService : ServiceInitializer, ClientSchemaSource {
 
     /** The registered write guards (issue #857); see [GedraWriteGuard]. */
     fun writeGuards(): List<GedraWriteGuard> = collector?.writeGuards ?: emptyList()
+
+    /** [client]'s listing-wide settings (issue #1599): how its forms listing is drawn as a whole. */
+    fun listingDefFor(client: String): ListingDef = collector?.gedraConfigs?.listingFor(client) ?: ListingDef.defaults
 
     /** The trait-usage rules [client] applies (issue #537) -- what a listing's columns are computed from. */
     fun traitUsagesFor(client: String): List<ClientTraitUsage> =

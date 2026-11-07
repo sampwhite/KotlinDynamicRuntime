@@ -494,6 +494,15 @@ private fun ChildrenBuilder.clientDetail(
                         this.savesDraft = savesDraft
                         this.onChanged = onChanged
                     }
+                } else {
+                    h3 { +"Forms listing" }
+                }
+                // How the listing draws each row's workflows (issue #1599): for every client, one defined in code included,
+                // since a stored listing setting stands over the code's -- beside the columns where those are editable.
+                ClientListingLayout {
+                    this.clientId = clientId
+                    this.savesDraft = savesDraft
+                    this.onChanged = onChanged
                 }
                 // Its workflows made from templates (issue #1120), offered where the traits are, for the same reason.
                 h3 { +"Workflows" }

@@ -246,6 +246,12 @@ object UADEP {
     const val clientUsageRemove = "/${SECT.clientAdmin}/client/usages/remove"
 
     /**
+     * Sets how a client's forms listing draws each row's workflows (issue #1599), in its stored listing settings. Scoped
+     * as [clientDefinition] is.
+     */
+    const val clientUsageLayout = "/${SECT.clientAdmin}/client/usages/layout"
+
+    /**
      * Narrows a global trait for a client (issue #1119): hides fields in its layout, requires fields, and restricts
      * choices, written as the client's alteration of the trait's data type. Scoped as [clientDefinition] is.
      */

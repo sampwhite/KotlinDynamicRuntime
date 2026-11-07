@@ -441,6 +441,15 @@ removal, so adding a column keeps the Name column it had; removing its last colu
 last default cannot be removed (`usageRemoveBlocked`). Saves take effect as the definition's do, live or a draft. The
 section's "What is this?" is the `clients` file's `listingColumns` namespace (`PFRAG.listingColumnsNs`).
 
+**The workflow layout** (issue #1599, `ClientListingLayout.kt`), under the listing columns -- or, for a client defined in
+code, which has no Listing columns section, under a **Forms listing** heading of its own: **Workflows in the forms
+list**, a choice of "Your turn column, then the rest" (`split`, the default) or "One Workflows column" (`combined`) that
+saves at once (`usageLayoutRequest`, `POST /clientAdmin/client/usages/layout`), live or a draft as the page's other
+saves, with where it is stored beside it. It reads the listing columns' catalog. The catalog says what the client runs (`CUS.workflowLayout`) and the configuration
+holding its listing settings (`CUS.layoutConfigName`); a first setting goes into the editors' own configuration
+(`ClientListingEdit`), where copy and menu edits land, and a stored one stands over the code's -- so a client defined in
+code may set it here.
+
 **Form states** (issue #1412, `FormStatesSection.kt`, its pure half in `FormStates.kt`, covered by `FormStatesTest`):
 under Workflows, **Recalculate form states** brings the stored state of the client's forms up to date with its
 configuration now, rather than at the nightly recalculation, through `POST /clientAdmin/client/formStates/recalculate`

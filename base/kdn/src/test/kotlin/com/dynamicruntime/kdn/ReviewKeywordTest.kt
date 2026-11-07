@@ -128,7 +128,7 @@ class ReviewKeywordTest : StringSpec({
         words[CTKF.statusText] shouldBe "Awaiting vetting"
         // What the overlay leaves alone is the platform's.
         words[CTKF.filterLabel] shouldBe "Needs review"
-        words[CTKF.columnHeader] shouldBe "Review"
+        words[CTKF.columnHeader] shouldBe "To review"
     }
 
     "the cross-client view says a row's words as its own client says them" {

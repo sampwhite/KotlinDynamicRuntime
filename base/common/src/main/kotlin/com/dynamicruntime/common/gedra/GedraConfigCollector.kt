@@ -439,6 +439,17 @@ class GedraConfigCollector {
     }
 
     /**
+     * The listing-wide settings [client] runs with (issue #1599): the one its configs declare, **stored over code** --
+     * an entry in its own stored configuration first, then one stored and inherited, then its own code's, then its
+     * template's -- else the defaults. Among configs of one standing, the first in contribution order. Never another
+     * client's, nor global's: a listing setting is the client's own choice.
+     */
+    fun listingFor(client: String): ListingDef = read().configsById.values
+        .filter { it.gedraId.client == client && it.listing != null }
+        .minByOrNull { (if (it.isStored) 0 else 2) + (if (it.inheritedFrom == null) 0 else 1) }
+        ?.listing ?: ListingDef.defaults
+
+    /**
      * Every scope's own usage rules (issue #1508), by client, global's under the global client: what [usagesFor] picks
      * from, taken whole so a published schema can hold the rules it was built with. A scope that declared none is
      * absent.

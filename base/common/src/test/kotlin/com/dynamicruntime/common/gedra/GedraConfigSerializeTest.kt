@@ -59,6 +59,7 @@ class GedraConfigSerializeTest : StringSpec({
         fileRef("logo", "ab".repeat(32), "The logo.")
         fileRef("banner", "cd".repeat(32))
         fileRef("crest", "The crest.") { local("brand", "marks/crest.svg") }
+        listing(ListingDef(WorkflowLayout.combined))
     }
 
     "a full config round-trips through its stored entries" {
@@ -66,8 +67,9 @@ class GedraConfigSerializeTest : StringSpec({
         val entries = gedraConfigToEntries(source)
         entries.keys shouldContainExactlyInAnyOrder listOf(
             CCT.clientDef, CCT.traitDef, CCT.usageDef, CCT.workflowDef,
-            CCT.schemaDef, CCT.fragmentDef, CCT.uiBlockDef, CCT.cfactDef, CCT.fileRefDef,
+            CCT.schemaDef, CCT.fragmentDef, CCT.uiBlockDef, CCT.cfactDef, CCT.fileRefDef, CCT.listingDef,
         )
+        entries.getValue(CCT.listingDef) shouldBe listOf(mapOf(CCT.workflowLayout to WorkflowLayout.combined.name))
         // A file ref's entry is what was authored, and none of the stamp that says where it came from (issue #1153).
         entries.getValue(CCT.fileRefDef) shouldBe listOf(
             mapOf(CCT.refId to "logo", CCT.source to FREF.sourceStore, CCT.hash to "ab".repeat(32), CCT.description to "The logo."),
@@ -88,6 +90,10 @@ class GedraConfigSerializeTest : StringSpec({
         reassembled.fileRefs.map { it.refId } shouldBe listOf("logo", "banner", "crest")
         reassembled.fileRefs.last().pointer shouldBe "local:brand/marks/crest.svg"
         reassembled.fileRefs.first().configName shouldBe "acmeConfig"
+        reassembled.listing?.workflowLayout shouldBe WorkflowLayout.combined
+        // A stored layout this release does not know reads as the default (issue #1599), not as a broken config.
+        reassembleGedraConfig(cxt, "later", "client.acme", "acme", mapOf(CCT.listingDef to listOf(mapOf(CCT.workflowLayout to "perWorkflow"))))
+            .listing?.workflowLayout shouldBe WorkflowLayout.split
     }
 
     // Issue #1153: a file ref is restored as it was stored, good or not -- it is the load that judges one, so that

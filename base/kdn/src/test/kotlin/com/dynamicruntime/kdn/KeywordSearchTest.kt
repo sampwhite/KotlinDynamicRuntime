@@ -12,6 +12,10 @@ import com.dynamicruntime.common.gedra.ClientUsageType
 import com.dynamicruntime.common.gedra.GDF
 import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.gedra.GEP
+import com.dynamicruntime.common.gedra.GSORT
+import com.dynamicruntime.common.gedra.CUS
+import com.dynamicruntime.common.gedra.CPY
+import com.dynamicruntime.common.gedra.WorkflowLayout
 import com.dynamicruntime.common.gedra.GedraConfigBuilder
 import com.dynamicruntime.common.gedra.GedraConfigReload
 import com.dynamicruntime.common.gedra.GedraConfigService
@@ -42,6 +46,7 @@ import com.dynamicruntime.common.user.ADF
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.user.UADEP
 import com.dynamicruntime.common.util.toJsonListOfMaps
+import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldContain
@@ -301,6 +306,43 @@ class KeywordSearchTest : StringSpec({
         reasons(keptOwner, kept)[gid] shouldBe mapOf("sign" to (WfWaitsOn.approval.name to null))
         // An administrator may sign it off, but the jot is the owner's to write.
         reasons(keptAdmin, kept)[gid] shouldBe mapOf("jot" to (WfWaitsOn.owner.name to null))
+    }
+
+    // Issue #1599: the split layout's Your turn column sorts by the caller's turn and is headed by its count; the layout is
+    // the client's listing setting, which its page sets.
+    "sorting by the caller's turn brings their work to the top, the summary counts it, and the layout is the client's" {
+        fun listed(user: TestUser, vararg params: Pair<String, Any?>): Map<String, Any?> =
+            user.client.sendJsonGetRequest(clientPath(GEP.formDocs, client), mapOf(*params))
+        fun rows(user: TestUser, dir: String) =
+            listed(user, GSORT.sort to GSORT.yourTurn, GSORT.sortDir to dir, GDF.withStates to true)[EP.items].toJsonListOfMaps()
+        // Most turns first: the reviewer's review, the owner's intake; ascending, a form that is nobody's turn of theirs.
+        for (user in listOf(reviewer, owner)) {
+            rows(user, GSORT.desc).first().let { turnsOf(it).isNotEmpty() shouldBe true }
+            rows(user, GSORT.asc).first().let { turnsOf(it) shouldBe emptyList() }
+        }
+        rows(reviewer, GSORT.desc).first()[GDF.gedraId] shouldBe both
+        // The count is what "waiting on you" lists, whatever the search.
+        fun summary(user: TestUser, vararg params: Pair<String, Any?>) =
+            listed(user, GDF.withStates to true, GDF.withWorkflowSummary to true, *params)[EP.summary].toJsonMapOrEmpty()
+        for (user in listOf(reviewer, owner)) {
+            val waitingOnThem = search(user, GDF.needsMe to true).second
+            (summary(user)[GDF.yourTurnCount] as Number).toInt() shouldBe waitingOnThem
+            (summary(user, CTAK.review to CTKQ.any)[GDF.yourTurnCount] as Number).toInt() shouldBe waitingOnThem
+        }
+        // Split unless the client says otherwise; its administrator sets it, stored in the editors' own configuration.
+        summary(reviewer)[GDF.workflowLayout] shouldBe WorkflowLayout.split.name
+        fun catalog() = admin.client.sendJsonGetRequest(UADEP.clientUsages, emptyMap())[EP.item].toJsonMapOrEmpty()
+        catalog()[CUS.layoutConfigName] shouldBe null
+        admin.postData(UADEP.clientUsageLayout, mapOf(CUS.workflowLayout to WorkflowLayout.combined.name))
+        summary(reviewer)[GDF.workflowLayout] shouldBe WorkflowLayout.combined.name
+        catalog().let {
+            it[CUS.workflowLayout] shouldBe WorkflowLayout.combined.name
+            it[CUS.layoutConfigName] shouldBe CPY.copyConfigName
+        }
+        // A layout the release does not know is refused.
+        admin.expectError(EXC.badInput, UADEP.clientUsageLayout, mapOf(CUS.workflowLayout to "perWorkflow"))
+        admin.postData(UADEP.clientUsageLayout, mapOf(CUS.workflowLayout to WorkflowLayout.split.name))
+        summary(reviewer)[GDF.workflowLayout] shouldBe WorkflowLayout.split.name
     }
 
     "a sandbox has the keyword parameters its parent's workflows give it" {

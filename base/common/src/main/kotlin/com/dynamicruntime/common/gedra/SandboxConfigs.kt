@@ -91,6 +91,8 @@ object SandboxConfigs {
             // As they are (issue #1153): a ref names bytes by their hash, kept under the parent, and the sandbox
             // serves the parent's -- which is how it previews a ref its parent has only drafted.
             fileRefs = config.fileRefs,
+            // As they are (issue #1599): the sandbox draws its listing as its parent's latest configuration says.
+            listing = config.listing,
             origin = config.origin,
             inheritedFrom = config.inheritedFrom,
             // What its marked entries stand over (issue #1634), judged against the sandbox's code as it is built.

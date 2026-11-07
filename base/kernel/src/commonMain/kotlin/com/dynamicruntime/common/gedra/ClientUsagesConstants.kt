@@ -13,6 +13,16 @@ object CUS {
     const val fieldTypeName = "ClientUsageField"
     const val saveResultTypeName = "ClientUsageSaveResult"
     const val removeResultTypeName = "ClientUsageRemoveResult"
+    const val layoutResultTypeName = "ClientUsageLayoutResult"
+
+    /**
+     * On the catalog, and a layout save (issue #1599): how the client's forms listing draws each row's workflows, a
+     * `WorkflowLayout` name -- what the client (for one with a sandbox, its sandbox) runs.
+     */
+    const val workflowLayout = "workflowLayout"
+
+    /** On the catalog (issue #1599): the stored configuration holding the client's listing settings; absent when none does. */
+    const val layoutConfigName = "layoutConfigName"
 
     /** On the catalog: the client's columns, in the order the listing shows them. */
     const val columns = "columns"

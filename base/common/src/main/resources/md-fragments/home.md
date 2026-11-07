@@ -74,7 +74,10 @@ form stands in each.
    filter keeps you out, else one of the `waiting...` lines; a workflow frozen outside its relevancy window says when
    it `opens` or `closed`, `${at}` being the moment as the table writes one ("in 3d", "2026-10-30"). A cell of more
    than four links draws three -- every link of your turn always -- and folds the rest behind `more`; a popover of
-   links heads each kind with its `...Group` line, and a narrow screen folds the cell to its `...Count` lines. -/
+   links heads each kind with its `...Group` line, and a narrow screen folds the cell to its `...Count` lines. In the
+   split layout (issue #1599) your turn has a column of its own, headed by the one keyword in use (its
+   `columnHeader`) or by `yourTurnGroup`, and the Workflows cell beside it draws two links of the rest once there are
+   more than three. A keyword's filter offers `keywordMine` and `keywordAny`. -/
 # +start Start
 # +continue Continue
 # +waiting Waiting
@@ -100,6 +103,8 @@ form stands in each.
 # +notAvailableTip Not available: see why
 # +whyNotAvailable Why ${label} is not available
 # +noReasons This form does not meet the workflow's conditions.
+# +keywordMine Yours
+# +keywordAny Anyone's
 
 # @ctaReview
 /- The `review` search keyword's words (issue #1596): what a call to action asking for a review is called wherever it is
@@ -107,7 +112,7 @@ form stands in each.
    waiting on a review. -/
 # +verb Review
 # +filterLabel Needs review
-# +columnHeader Review
+# +columnHeader To review
 # +reportLabel Needs review
 # +statusText Needs Review
 
