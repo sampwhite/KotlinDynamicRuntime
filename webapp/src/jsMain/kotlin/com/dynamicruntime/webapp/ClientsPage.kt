@@ -1067,7 +1067,7 @@ val StoredConfigTable = FC<StoredConfigTableProps> { props ->
             thead {
                 tr {
                     th { className = ClassName("op-select"); +"" }
-                    th { +"Name" }
+                    th { +"Bundle" }
                     th { +"Contents" }
                     th { className = ClassName("op-num"); +"Version" }
                     th { +"Published" }

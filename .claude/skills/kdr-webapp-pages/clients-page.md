@@ -577,7 +577,10 @@ files. The page lists them after the stored bundles under **From code** (its "Wh
 and in the bundle editor's Publishing section alike, beside the publishing it depends on. A **Contents** column says
 what each bundle holds (`bundleContentsText`: "2 slots, 5 entries", "Empty", or "Empty; v2: 1 slot, 3 entries" while
 the published revision under a draft holds something else), from the listing summary's `slotCount`/`entryCount` and
-`publishedSlotCount`/`publishedEntryCount`. A bundle whose latest revision and latest published one hold no entries
+`publishedSlotCount`/`publishedEntryCount`. A bundle named like one of the client's code bundles leads with "Changes to
+its code" or "Changes to template X's code" (issue #1657), from the summary's `changesCode` and `template`, which the
+server reads off the code bundles' names (`codeBundleNamesOf`). The first column is headed **Bundle**.
+A bundle whose latest revision and latest published one hold no entries
 offers **Delete** on its row (`deletableBundles`), behind a confirmation naming whose configuration it is -- where the
 page publishes (`deletesBundlesHere`): a client without a sandbox, and a sandbox's page for its parent's; not a client
 with a sandbox, nor one static here. So a bundle no longer used is emptied in the editor, the emptying published, and

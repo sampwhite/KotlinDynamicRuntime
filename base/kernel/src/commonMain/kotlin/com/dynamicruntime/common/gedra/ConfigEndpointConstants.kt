@@ -98,6 +98,12 @@ object CFEP {
     const val entryCount = "entryCount"
     const val publishedSlotCount = "publishedSlotCount"
     const val publishedEntryCount = "publishedEntryCount"
+
+    /**
+     * On a listed configuration: that it is named like one of the client's code bundles, so it holds the client's changes
+     * to that code (issues #1646, #1657); with [template] naming the template when the code is a template's copy.
+     */
+    const val changesCode = "changesCode"
     const val slots = "slots"
     const val impliedDelete = "impliedDelete"
 

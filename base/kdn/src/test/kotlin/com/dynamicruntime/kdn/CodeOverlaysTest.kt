@@ -220,21 +220,31 @@ class CodeOverlaysTest : StringSpec({
             CCT.typeName to typeName, CCT.overrides to CCT.overridesCodeOverlayValue,
             CCT.schema to mapOf(SCH.properties to mapOf("extra" to mapOf(SCH.description to "Something extra."))),
         )
-        store(cxt, client, mapOf(CCT.schemaDef to listOf(overlay)), template = tpl)
+        // In the stored bundle named like the template's copy, as the bundle editor files it.
+        store(cxt, client, emptyMap(), template = tpl)
+        store(cxt, client, mapOf(CCT.schemaDef to listOf(overlay)), name = "from_${tpl}_base")
         publish(cxt, client)
+        publish(cxt, client, "from_${tpl}_base")
         GedraConfigReload.reloadClient(cxt, client).issues shouldBe emptyList()
         SchemaService.get(cxt).storeFor(client).types.getValue(typeName).properties.keys.toList() shouldContainExactly
             listOf("code", "extra")
         // The template keeps its own.
         SchemaService.get(cxt).storeFor(tpl).types.getValue(typeName).properties.keys.toList() shouldContainExactly listOf("code")
 
-        // A heading set in Design View is edited on the whole type and stored as part of the change.
         val chief = TestUser.create(cxt, "chief@$client.test", level = ROLE.admin, userClient = client)
+        // The listing says which bundle holds changes to which code, so the Publishing table can.
+        val listed = chief.getItems(CFEP.bundles).associateBy { it[CFEP.name] }
+        listed.getValue("main")[CFEP.changesCode] shouldBe null
+        val copy = listed.getValue("from_${tpl}_base")
+        copy[CFEP.changesCode] shouldBe true
+        copy[CFEP.template] shouldBe tpl
+
+        // A heading set in Design View is edited on the whole type and stored as part of the change.
         chief.postData(
             DSV.sharedHeadingEdit,
             mapOf(DSV.typeName to typeName, DSV.label to "Shared things", DSV.sharedBasedOn to DesignSharedEdit.stampOf(overlay)),
         )
-        storedEntries(cxt, client, CCT.schemaDef).single()[CCT.schema] shouldBe mapOf(
+        storedEntries(cxt, client, CCT.schemaDef, "from_${tpl}_base").single()[CCT.schema] shouldBe mapOf(
             SCH.properties to mapOf("extra" to mapOf(SCH.description to "Something extra.")),
             SCH.layout to mapOf(SL.label to "Shared things"),
         )
