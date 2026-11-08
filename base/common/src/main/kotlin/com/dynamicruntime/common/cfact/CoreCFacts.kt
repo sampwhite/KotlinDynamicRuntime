@@ -5,6 +5,7 @@ import com.dynamicruntime.common.context.CL
 import com.dynamicruntime.common.gedra.ClientService
 import com.dynamicruntime.common.gedra.CustomerAccess
 import com.dynamicruntime.common.gedra.isSelfServeClient
+import com.dynamicruntime.common.gedra.isSandboxClient
 import com.dynamicruntime.common.gedra.sandboxParentOf
 import com.dynamicruntime.common.gedra.workflow.WorkflowService
 import com.dynamicruntime.common.gedra.workflow.addCoreDetailsCFacts
@@ -129,6 +130,13 @@ object CFACTS {
      * are drafts until published. A statement about the client, not about whether the caller may open it.
      */
     const val clientHasSandbox = "kdr:clientHasSandbox"
+
+    /**
+     * The caller **is in a sandbox** (issue #1639): their client is some client's sandbox, which runs that client's
+     * latest configuration over users and data of its own. What a card about the client itself is kept from, since
+     * the client is set up from the client, not from its sandbox.
+     */
+    const val inSandbox = "kdr:inSandbox"
 
     /**
      * The caller's client **has a workflow whose step can wait on somebody** (issue #1637): a normal or a core details
@@ -357,6 +365,13 @@ fun addCoreCFacts(collector: SchemaCollector) {
         ),
         // An edge carries no clients, and so no sandboxes.
     ) { ClientService.getOrNull(it) != null && SandboxAccess.hasSandbox(it, sandboxParentOf(it.client) ?: it.client) }
+    collector.addCFact(
+        CFactDef(
+            CFACTS.inSandbox, CFGRP.caller,
+            "True when the caller's client is a sandbox: another client's, running its latest configuration over users " +
+                "and data of its own.",
+        ),
+    ) { isSandboxClient(it.client) }
     collector.addCFact(
         CFactDef(
             CFACTS.clientHasWaitingWorkflows, CFGRP.caller,

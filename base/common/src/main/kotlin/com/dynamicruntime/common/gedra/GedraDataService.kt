@@ -2029,6 +2029,19 @@ class GedraDataService : ServiceInitializer {
     fun countLiveGedras(cxt: KdrCxt, kind: GedraDataType, client: String): Int = liveGedraIds(cxt, kind, client).size
 
     /**
+     * Whether [client] holds any live gedra of [kind] (issue #1639) -- a new client's checklist's "a first form". From the
+     * cache's client-and-kind index without reading out a single id, else as [liveGedraIds] reads them.
+     */
+    fun hasLiveGedras(cxt: KdrCxt, kind: GedraDataType, client: String): Boolean {
+        val cache = dataCache
+        if (cache != null && !cxt.hasDebugDiagnostic(GDBG.dataFromSql)) {
+            cache.checkRefresh(cxt)
+            return GedraDataCache.rowsForClientKind(cache, client, kind.name).isNotEmpty()
+        }
+        return liveGedraIds(cxt, kind, client).isNotEmpty()
+    }
+
+    /**
      * The full ids of the live gedras of [kind] that [scope] admits (issue #981) -- [liveGedraIds] for a scope narrower
      * than a whole client, such as an administrator confined to their organization.
      */
