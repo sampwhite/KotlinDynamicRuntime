@@ -29,7 +29,8 @@ object INVITE {
             "from the request's own scheme and host -- right for a node reached directly, wrong behind a proxy " +
             "that rewrites them, which is when this must be set. No trailing slash. Its host is also the one every " +
             "mail names in its closing \"Sent from\" line (issue #1276); unset, only a test instance names the " +
-            "request's host there, and a real deployment names none.",
+            "request's host there, and a real deployment names none. It also makes the web app's link-preview tags " +
+            "absolute (issue #1688): unset, the preview image is addressed by its path and the page names no og:url.",
     )
 
 

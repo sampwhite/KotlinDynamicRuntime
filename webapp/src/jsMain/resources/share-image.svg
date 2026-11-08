@@ -1,0 +1,35 @@
+<!--
+  The source of share-image.png (issue #1688): the image a link preview (LinkedIn, Slack, a messenger) shows for the
+  site, named by the shell's og:image. Previews take a raster, not SVG, so this is rendered to the PNG, which is what
+  is served and what a deployment overrides through its branding directory; this file is not embedded. To change it,
+  edit this file and render it again, from this directory:
+
+      rsvg-convert -w 1200 -h 630 share-image.svg -o share-image.png
+
+  1200x630 is the size the previews ask for. Its own ground (the app's page color), since a preview may be drawn on a
+  light page or a dark one. The mark is brand-mark.svg's paths, verbatim, scaled; the words are generic, not any one
+  deployment's, so a deployment that wants its own name in the picture supplies its own PNG.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630" role="img">
+  <title>KotlinDynamicRuntime: forms and workflows, set up as configuration and changed while they run</title>
+  <!-- The ground: the app's page (its surface-page color), with a raised panel (surface-raised) edged in its border color. -->
+  <rect width="1200" height="630" fill="#0F172A"/>
+  <rect x="48" y="48" width="1104" height="534" rx="28" fill="#1E293B" stroke="#334155" stroke-width="2"/>
+  <!-- The brand mark, brand-mark.svg's own paths and colors, at 240 px. -->
+  <g transform="translate(110 195) scale(3.75)">
+    <g fill="none" stroke="#7F77DD" stroke-width="4" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M23 8 C18 8 17 11 17 16 V24 C17 28.5 15.5 30.5 12 32 C15.5 33.5 17 35.5 17 40 V48 C17 53 18 56 23 56"/>
+      <path d="M41 8 C46 8 47 11 47 16 V24 C47 28.5 48.5 30.5 52 32 C48.5 33.5 47 35.5 47 40 V48 C47 53 46 56 41 56"/>
+    </g>
+    <rect x="22.5" y="36" width="5" height="10" rx="1.5" fill="#1D9E75"/>
+    <rect x="29.5" y="29" width="5" height="17" rx="1.5" fill="#1D9E75"/>
+    <rect x="36.5" y="22" width="5" height="24" rx="1.5" fill="#D85A30"/>
+  </g>
+  <g font-family="system-ui, -apple-system, Segoe UI, Helvetica, Arial, sans-serif">
+    <!-- The name (the app's text color), what it does (text-dim), and a last word (text-muted). -->
+    <text x="400" y="268" font-size="58" font-weight="700" fill="#E2E8F0">KotlinDynamicRuntime</text>
+    <text x="400" y="338" font-size="32" fill="#CBD5E1">Forms and workflows, set up as</text>
+    <text x="400" y="382" font-size="32" fill="#CBD5E1">configuration and changed while they run.</text>
+    <text x="400" y="456" font-size="26" fill="#94A3B8">Open source, in Kotlin.</text>
+  </g>
+</svg>

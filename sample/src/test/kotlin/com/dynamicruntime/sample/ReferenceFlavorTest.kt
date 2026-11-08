@@ -51,6 +51,9 @@ class ReferenceFlavorTest : StringSpec({
     "core says on the home page what a reference deployment is, and on the sign-in page that an account is temporary" {
         copy(reference, HFRAG.home, "home")["title"] shouldBe "Try KotlinDynamicRuntime"
         copy(reference, AFRAG.auth, "login")["intro"].orEmpty() shouldContain "your account included"
+        // And what a link to the site shows in its preview (issue #1688).
+        copy(reference, HFRAG.home, HFRAG.siteNs)[HFRAG.title] shouldBe "Try KotlinDynamicRuntime"
+        copy(plain, HFRAG.home, HFRAG.siteNs)[HFRAG.title] shouldBe "KotlinDynamicRuntime"
         copy(plain, HFRAG.home, "home")["title"] shouldBe "Welcome"
         copy(plain, AFRAG.auth, "login")["intro"] shouldBe ""
     }

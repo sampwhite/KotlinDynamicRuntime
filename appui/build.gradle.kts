@@ -53,7 +53,7 @@ val webappDistDir = if (useDevWebapp) "dist/js/developmentExecutable" else "dist
 // rasters are binary, so AppUiService serves them as bytes; a copy moves them unchanged (verified: md5 matches the
 // branding source through the webpack distribution). Named once, for the embedded bundle and the tests' (below).
 val webappAuthoredAssets = listOf(
-    "app.css", "favicon.svg", "brand-mark.svg", "favicon.ico", "favicon-32.png", "apple-touch-icon.png",
+    "app.css", "favicon.svg", "brand-mark.svg", "favicon.ico", "favicon-32.png", "apple-touch-icon.png", "share-image.png",
 )
 
 val embedWebapp = tasks.register<Sync>("embedWebapp") {

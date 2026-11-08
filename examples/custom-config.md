@@ -152,6 +152,7 @@ customConfig/
         ├── brand-mark.svg       # the app bar logo and home hero
         ├── favicon-32.png       # tab-icon fallback
         ├── apple-touch-icon.png # 180×180, opaque — iOS home screen
+        ├── share-image.png      # 1200×630 — what a link preview shows (LinkedIn, Slack)
         └── favicon.ico          # legacy
 ```
 
@@ -168,6 +169,10 @@ Notes:
   (the app serves its built-in set and appears fine).
 - **Production only.** The webpack dev server serves `:webapp`'s own resources, so it always shows the built-in
   set. Only the deployed app (`appui`) is branded.
+- **A link preview's words are copy, not files.** The page's title and the title and description a link preview shows
+  are the `home` file's `site` copy (issue #1688), which a deployment rewords as it rewords any copy; the preview's
+  image is `share-image.png`. A preview needs the image's absolute address, which the shell gives only where
+  `KDR_PUBLIC_URL` is set.
 - **The stylesheet is not brandable.** Replacing `app.css` wholesale would fork it and re-create the drift a
   single sheet exists to prevent; theming wants CSS variables instead.
 - **This is the deployment's branding, not a client's.** A client defined in source code can bring its own favicon

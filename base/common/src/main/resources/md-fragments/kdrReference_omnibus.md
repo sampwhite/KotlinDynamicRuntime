@@ -2,7 +2,8 @@
    home page, on its sign-in page that an account here is temporary, on the profile page that the bar switches
    between a person's users too (issue #1330), and where a client or a workflow is made that a new workflow is seen
    by administrators only until it is opened up (issue #1384). The home page's Register card says, to a visitor who
-   has not signed in, why to register and what the address is used for (issue #1652). The sign-in line holds whichever
+   has not signed in, why to register and what the address is used for (issue #1652), and a link to the site says what
+   it is in its preview (issue #1688). The sign-in line holds whichever
    `KDR_PUBLIC_SIGN_IN` the deployment chose: under `blocked`, the refusal itself says why. A deployment rewords any of it with
    `<flavor dir>/reference.md`, in this same format, naming only the keys it changes. -/
 
@@ -59,6 +60,14 @@ the other side. Everyone who joins a demo shares it, and it is cleared with the 
 The two starter workflows are open to your client's people from the start. A workflow you make later from a template
 is seen **only by your client's administrators** until you change who sees it: on **My client**, under **Workflows**,
 choose **Visibility…** on its row, and add a label to try it with a few people, or choose **Everyone**.
+
+
+/- What a link to the site shows (issue #1688): the tab's title, and the title and description a link preview draws. -/
+# @site
+# +title Try KotlinDynamicRuntime
+# +description
+Forms, reviews, and approvals, set up as configuration and changed while they run, with no code to deploy. Join a demo
+as one of its people or as the person who runs it, or build forms and workflows of your own.
 
 # !profile
 # @users
