@@ -95,11 +95,12 @@ class SharedWordingTest : StringSpec({
         labels[DSV.workflow].toJsonMapOrEmpty()[DSV.mixed] shouldBe false
         // acme has a sandbox, so its wording is changed from there -- said once for every pulled slot on the read.
         read[DSV.sharedWordingRefusalCode] shouldBe DesignRefusal.publishedOnly.name
-        // The labels themselves are the workflow's, declared in source: not this client's to rewrite here.
+        // The labels themselves are the workflow's, declared in acme's own code: changed by an overlay of it (issue #1670),
+        // from acme's sandbox, as every change of acme's is.
         admin.expectError(
             400, DSV.labelEdit,
             mapOf(DSV.workflowId to SW.createForm, DSV.label to "Start a form", DSV.basedOn to "any", DSV.client to SC.acme),
-        ).toString() shouldContain "declared in code"
+        ).toString() shouldContain "previews changes in its sandbox: edit it from there"
     }
 
     "the definition read names the key a type's heading pulls" {

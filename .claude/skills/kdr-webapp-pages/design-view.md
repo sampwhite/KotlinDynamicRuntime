@@ -18,9 +18,15 @@ leave the form 480px; the arrow keys move it while focused, a double-click resto
 remembered per browser. Its JSON blocks are read-only text areas, starting at their lines up to sixteen
 (`jsonBlockRowsFor`), that drag taller. A field's copy -- label, description, hint -- can be edited there as **this workflow's
 own** (issue #984, `WorkflowCopyEditor`): the edit is written into the workflow's stored definition as an alteration
-of the field's type, shows on that workflow's pages only, and **Reset to shared** removes it. It is offered only
-where the workflow is the client's own configured definition; elsewhere the inspector says why, from the block's
-`editRefusal`. **A Design View save is made as the Clients page's editors make theirs** (`ClientStoredEdit`, issue
+of the field's type, shows on that workflow's pages only, and **Reset to shared** removes it. It is offered where
+the workflow is the client's own: configured, or declared in its own code (its code, its template's copies, a sandbox's
+copies, `DesignView.isOwnCode`), whose first edit stores an **overlay** of it in the stored bundle named like the code
+bundle, holding only what changed, as the bundle editor's Edit does (issues #1657, #1670); each later edit rewrites that
+overlay (`StoredWhole`). A shared type edit of a type declared in the client's code does the same (`codeEntry`, whose
+stamp the definition read gives). A trait declared in code is not edited here, since a trait changes only whole, and
+an overlay holding parts the code no longer has is refused, pointing to the bundle editor. Elsewhere -- another
+client's definition, a global one -- the inspector says why, from the block's `editRefusal`.
+**A Design View save is made as the Clients page's editors make theirs** (`ClientStoredEdit`, issue
 #1026): published and live at once for a client without a sandbox -- so it is refused while the config carries
 somebody's unpublished changes (`unpublishedChanges`) -- and a draft of the parent's config, shown by the sandbox, for
 one with a sandbox, whose own page points to the sandbox instead (`publishedOnly`). The two kinds of editor therefore

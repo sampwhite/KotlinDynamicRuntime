@@ -227,7 +227,9 @@ object DesignView {
      */
     fun editRefusal(cxt: KdrCxt, declared: WfDeclared): EditRefusal? {
         val bundle = declared.bundle
-        if (!bundle.isStored || bundle.gedraId.client != cxt.client) {
+        // The client's own code -- its code, its template's copies, a sandbox's copies -- is changed by storing an overlay
+        // of it (issue #1670), as the bundle editor does; only another client's, or a global template's, is refused.
+        if (bundle.gedraId.client != cxt.client) {
             val where = if (bundle.isStored) "in another client's configuration" else "in code"
             return EditRefusal(
                 DesignRefusal.declaredInSource,
@@ -290,8 +292,8 @@ object DesignView {
         val target = ClientStoredEdit.target(cxt, cxt.client, "designEdit")
         val svc = GedraConfigService.get(target.bound)
         val configId = GedraId.of(GedraConfigType.configDoc, target.client, configName)
+        // None yet when the save is the first change to a code bundle (issue #1670): the patch makes it.
         val holder = svc.readLatest(target.bound, configId)
-            ?: throw KdrException("No configuration '$configName' for client '${target.client}'.", code = EXC.notFound)
         var before: Map<String, List<Map<String, Any?>>> = emptyMap()
         val written = svc.patchConfigs(target.bound, trial = true) { edit(configId) { slots ->
             before = slots
@@ -300,10 +302,17 @@ object DesignView {
         ClientStoredEdit.takeEffect(
             cxt, target, written,
             undo = { svc.patchConfigs(target.bound) { edit(configId) { before } }.single() },
-            restorePublished = holder.isPublished,
+            restorePublished = holder?.isPublished == true,
             impact = impact,
         )
     }
+
+    /**
+     * Whether [bundle] is the client's own code -- its code, a copy of its template's, or a sandbox's copy of its parent's
+     * -- which a Design View save changes by storing an overlay of an entry in the stored bundle of its name (issue
+     * #1670), rather than in place.
+     */
+    internal fun isOwnCode(cxt: KdrCxt, bundle: GedraConfig): Boolean = !bundle.isStoredHere && bundle.gedraId.client == cxt.client
 
     /**
      * Sets [field]'s layout entry for [typeName] in workflow [workflowId] to [entry], or removes it when [entry] is
@@ -371,12 +380,18 @@ object DesignView {
         val declared = WorkflowService.get(cxt).forClient(cxt.client).workflow(workflowId)
             ?: throw KdrException("No workflow '$workflowId' for client '${cxt.client}'.", code = EXC.notFound)
         editRefusal(cxt, declared)?.let { throw KdrException.mkInput(it.message) }
+        val fromCode = isOwnCode(cxt, declared.bundle)
         saveEdit(cxt, declared.bundle.name) { slots ->
             val workflows = slots[CCT.workflowDef].orEmpty()
             val at = workflows.indexOfFirst { it[CCT.workflowId] == workflowId }
-            if (at < 0) throw KdrException("No workflow '$workflowId' in '${declared.bundle.name}'.", code = EXC.notFound)
-            // An overlay of the code's workflow is edited whole, as it runs, and kept as its change (issue #1657).
-            val whole = StoredWhole.of(cxt, cxt.client, CCT.workflowDef, workflowId, workflows[at])
+            if (at < 0 && !fromCode) throw KdrException("No workflow '$workflowId' in '${declared.bundle.name}'.", code = EXC.notFound)
+            // An overlay of the code's workflow is edited whole, as it runs, and kept as its change (issue #1657); the first
+            // change of a code workflow starts one, over the code's definition as it runs now (issue #1670).
+            val whole = if (at >= 0) {
+                StoredWhole.of(cxt, cxt.client, CCT.workflowDef, workflowId, workflows[at])
+            } else {
+                declared.def.toJsonMap().let { StoredWhole(CCT.workflowDef, workflowId, it, it) }
+            }
             // A workflow made from a template is edited as what it expands to, and kept as its overlay (issue #1120).
             val current = WorkflowTemplates.readStored(cxt, whole.body)
             if (workflowDefStamp(current) != basedOn) {
@@ -386,7 +401,12 @@ object DesignView {
                 )
             }
             val rewritten = whole.stored(WorkflowTemplates.storedForm(cxt, parseWfDef(cxt, rewrite(current.toJsonMap()))))
-            slots + (CCT.workflowDef to workflows.mapIndexed { i, e -> if (i == at) e + (CCT.definition to rewritten) else e })
+            val written = if (at >= 0) {
+                workflows.mapIndexed { i, e -> if (i == at) e + (CCT.definition to rewritten) else e }
+            } else {
+                workflows + codeOverlayEntry(CCT.workflowId, workflowId, CCT.definition, rewritten)
+            }
+            slots + (CCT.workflowDef to written)
         }
         val reloaded = WorkflowService.get(cxt).forClient(cxt.client).workflow(workflowId)
         return reloaded?.def?.let { workflowDefStamp(it) } ?: ""
@@ -788,3 +808,10 @@ private fun designCxt(c: KdrCxt, request: Map<String, Any?>): KdrCxt {
     val client = overseenClient(c, named)
     return if (client == c.client) c else c.mkSubContext("design", client)
 }
+
+/**
+ * A new stored entry holding an overlay of the code's entry keyed by [key] in [keyField] (issue #1670): [body], only what
+ * differs from the code's, in [bodyField], marked `"overrides": "codeOverlay"`.
+ */
+internal fun codeOverlayEntry(keyField: String, key: String, bodyField: String, body: Map<String, Any?>): Map<String, Any?> =
+    linkedMapOf(keyField to key, CCT.overrides to CCT.overridesCodeOverlayValue, bodyField to body)

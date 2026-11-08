@@ -274,6 +274,67 @@ class CodeOverlaysTest : StringSpec({
         )
     }
 
+    // Issue #1670: Design View changes the client's own code by storing an overlay of it, in the bundle named like the code
+    // bundle, as the bundle editor does.
+    "Design View's first edit of a code workflow stores an overlay of it, and its next edit rewrites that overlay" {
+        val client = "dvflow1670"
+        store(cxt, client, emptyMap(), template = tpl)
+        publish(cxt, client)
+        GedraConfigReload.reloadClient(cxt, client)
+        val chief = TestUser.create(cxt, "chief@$client.test", level = ROLE.admin, userClient = client)
+        fun relabel(taskId: String, saveId: String?, label: String) = chief.postData(
+            DSV.labelEdit,
+            buildMap {
+                put(DSV.workflowId, "tplFlow"); put(DSV.taskId, taskId); saveId?.let { put(DSV.saveId, it) }; put(DSV.label, label)
+                put(DSV.basedOn, workflowDefStamp(flow(cxt, client, "tplFlow")))
+            },
+        )
+        relabel("a", "s", "Keep it")
+        val copy = "from_${tpl}_base"
+        storedEntries(cxt, client, CCT.workflowDef, copy).single() shouldBe mapOf(
+            CCT.workflowId to "tplFlow", CCT.overrides to CCT.overridesCodeOverlayValue,
+            CCT.definition to mapOf(
+                WFD.workflowId to "tplFlow",
+                WFD.tasks to listOf(mapOf(WFD.id to "a", WFD.saves to listOf(mapOf(WFD.id to "s", WFD.label to "Keep it")))),
+            ),
+        )
+        relabel("a", null, "A, ours")
+        val task = flow(cxt, client, "tplFlow").tasks.single()
+        task.label shouldBe "A, ours"
+        task.saves.single().label shouldBe "Keep it"
+        storedEntries(cxt, client, CCT.workflowDef, copy).single()[CCT.definition] shouldBe mapOf(
+            WFD.workflowId to "tplFlow",
+            WFD.tasks to listOf(
+                mapOf(WFD.id to "a", WFD.label to "A, ours", WFD.saves to listOf(mapOf(WFD.id to "s", WFD.label to "Keep it"))),
+            ),
+        )
+    }
+
+    "Design View's first edit of a code type stores an overlay of it; a trait declared in code stays whole-only" {
+        val client = "dvtype1670"
+        val typeName = "client.$tpl.Shared"
+        store(cxt, client, emptyMap(), template = tpl)
+        publish(cxt, client)
+        GedraConfigReload.reloadClient(cxt, client)
+        val chief = TestUser.create(cxt, "chief@$client.test", level = ROLE.admin, userClient = client)
+        val read = chief.getItem(DSV.definition, mapOf(DSV.slot to CCT.schemaDef, DSV.key to typeName))
+        read[DSV.canEditShared] shouldBe true
+        chief.postData(
+            DSV.sharedHeadingEdit,
+            mapOf(DSV.typeName to typeName, DSV.label to "Shared things", DSV.sharedBasedOn to read[DSV.sharedBasedOn]),
+        )
+        storedEntries(cxt, client, CCT.schemaDef, "from_${tpl}_base").single() shouldBe mapOf(
+            CCT.typeName to typeName, CCT.overrides to CCT.overridesCodeOverlayValue,
+            CCT.schema to mapOf(SCH.layout to mapOf(SL.label to "Shared things")),
+        )
+        // The code's type, with the heading, is what the client runs.
+        SchemaService.get(cxt).storeFor(client).types.getValue(typeName).properties.keys.toList() shouldContainExactly listOf("code")
+
+        // A trait's data type declared in code is not edited here: a trait changes only whole.
+        val trait = chief.getItem(DSV.definition, mapOf(DSV.slot to CCT.traitDef, DSV.key to "tplNote"))
+        trait[DSV.canEditShared] shouldBe false
+    }
+
     // Its own instance, since it changes the template's code as a deploy would.
     "a change to the code reaches an overlay of it; a part the code no longer has is dropped and reported" {
         val changing = Startup.mkTestBootCxt(

@@ -38,6 +38,7 @@ import com.dynamicruntime.common.util.toOptStr
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.shouldNotBe
 import io.kotest.matchers.string.shouldContain
 
 /**
@@ -347,7 +348,7 @@ class DesignEditTest : StringSpec({
         }.fullMessage() shouldContain "may alter only a type's 'g-layout'"
     }
 
-    "a workflow declared in source, or a global one, cannot be edited here, and the reason says where its copy can change" {
+    "a workflow declared in another client's code, or a global one, cannot be edited here; one in the client's own can" {
         fun declaredIn(owner: String, namespace: String): WfDeclared {
             val bundle = gedraConfig(LiteCxt(), "inCode984", namespace, owner) {
                 workflow("inCode", WfEntry.creation) {
@@ -360,11 +361,13 @@ class DesignEditTest : StringSpec({
             return WfDeclared(bundle, bundle.workflows.getValue("inCode"))
         }
         val clientCxt = cxt.mkSubContext("setup", client)
-        for (declared in listOf(declaredIn(client, clientNamespace(client)), declaredIn("global", "kdr.inCode984"))) {
+        for (declared in listOf(declaredIn("otherClient984", clientNamespace("otherClient984")), declaredIn("global", "kdr.inCode984"))) {
             val refusal = DesignView.editRefusal(clientCxt, declared)
             refusal?.code shouldBe DesignRefusal.declaredInSource
             refusal?.message.orEmpty() shouldContain "shared wording"
         }
+        // The client's own code is edited by storing an overlay of it (issue #1670), so it is not refused for that.
+        DesignView.editRefusal(clientCxt, declaredIn(client, clientNamespace(client)))?.code shouldNotBe DesignRefusal.declaredInSource
     }
 
     "a client with a sandbox is sent to it to edit" {
