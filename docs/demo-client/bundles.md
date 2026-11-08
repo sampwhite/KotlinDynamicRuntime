@@ -23,7 +23,7 @@ review](committee-review.md), and [workshop logistics](workshop-logistics.md) pa
     {
       "audience": "internal",
       "clientId": "confdemo",
-      "description": "A demo client: a conference's call for talks. Documented in docs/demo-client.",
+      "description": "A small conference's call for talks: speakers submit talks, and a committee reviews them and accepts them for the program.",
       "name": "Conference demo",
       "preload": false,
       "staticConfig": false,

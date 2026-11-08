@@ -11,7 +11,7 @@ workflow](talk-core-details.md), which is the first thing to use them, explains 
 {
   "clientId": "confdemo",
   "name": "Conference demo",
-  "description": "A demo client: a conference's call for talks. Documented in docs/demo-client.",
+  "description": "A small conference's call for talks: speakers submit talks, and a committee reviews them and accepts them for the program.",
   "usageType": "demo",
   "audience": "internal",
   "enabledEnvironments": ["unit", "local", "dev"],
@@ -48,7 +48,7 @@ workflow](talk-core-details.md), which is the first thing to use them, explains 
 | --- | --- |
 | `clientId` | The client's id. Every form and every user that belongs to the client has this id stored on it, so there is never any doubt about which client something belongs to. |
 | `name` | The name people see. |
-| `description` | A note for whoever maintains the client. Its users never see it. |
+| `description` | A note about the client, for whoever maintains it. A demo's is shown to visitors too, on its card on the home page and on its Join page, so the demo's says what it is. |
 | `usageType` | What the client is for. The value `demo` marks a client that exists to show the product. |
 | `audience` | Whose client it is. The value `internal` means it belongs to the platform, not to a customer. |
 | `enabledEnvironments` | Where the client runs. Every client runs in `unit` and `local`, so that tests and local development can reach it. |

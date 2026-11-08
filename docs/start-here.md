@@ -5,15 +5,16 @@
 
 # Start here
 
-KotlinDynamicRuntime runs applications built around forms. People enter information, others review and approve it,
-and it ends up in reports or another system: a call for talks, a grant program, a vendor's onboarding. Each such
-application is a **client**: one organization's forms, workflows, people, and wording, all kept as configuration that
-can change while the site runs.
+KotlinDynamicRuntime runs applications built around forms. People fill in forms, others review and approve them, and
+the results end up in reports or another system: a call for talks, a grant program, a vendor's onboarding. Each such
+application is a **client**: one organization's forms, workflows, people, and wording. All of it is configuration,
+which the client's administrators change while the site runs, with no code to write or deploy.
 
 The easiest way to see it is to try it. [dynamicruntime.org](https://dynamicruntime.org) is a public reference site,
-where you can register, join a demo, and make a client of your own. Its database is cleared from time to time, so
-nothing you do there can break anything for long. Register a user of your own first: the walk-through, and the demos
-it takes you through, start from being signed in.
+where you can register with your email address, join a demo as one of its people or as the person who runs it, and
+make a client of your own. Its database is cleared from time to time, so nothing you do there lasts, and nothing can
+break anything for long. Register first: [the walk-through](walk-through.md), and the demos it takes you through,
+start from being signed in.
 
 The rest of this page says what to read for what you want to do.
 
@@ -31,7 +32,10 @@ For a person who fills in forms, reviews them, or approves them.
 1. **[The walk-through, part 1](walk-through.md#part-1-the-conference-demo).** On a reference site, you join the
    conference demo as a speaker, submit a talk, and answer its questions. Then you join its committee and review the
    talk you submitted. Each step says what to choose and what to type.
-2. **"What is this?"** Beside the heading of many pages in the app, this link opens a short explanation of the page:
+2. **Your home page.** In a client, your home page lists the forms **waiting on you**, each with the step that is
+   yours to take, and the forms list marks a step you can take now with a highlighted button, so you do not have to
+   know where to look.
+3. **"What is this?"** Beside the heading of many pages in the app, this link opens a short explanation of the page:
    what a form is, which workflows it may be in, and what the sandbox is.
 
 ## Run a client
@@ -40,11 +44,13 @@ For a person who sets up a client and looks after it: its forms and workflows, i
 
 1. **[The walk-through, part 2](walk-through.md#part-2-a-client-of-your-own).** On a reference site, you create a
    client of your own and open its sandbox, where changes are tried before anyone else sees them. Then you change its
-   words, design the information a form collects, make a workflow, try it, and publish it. Last, you invite somebody,
-   choose who sees the workflow, and read its report.
-2. **The Clients page's "What is this?" links.** Each panel of the page explains itself: the sandbox and publishing,
+   words, design the information a form collects, make a workflow, try it, change its form in Design View, and publish
+   it. Last, you invite somebody, choose who sees the workflow, and read its report.
+2. **The Getting started checklist,** on a new client's home page, which lists the first things a client needs before
+   its people use it, and checks each one off once it is done.
+3. **The Clients page's "What is this?" links.** Each panel of the page explains itself: the sandbox and publishing,
    the workflows, the menu, the words and images a client shows, and the rest.
-3. **[The client configuration reference](reference/client-configuration.md),** for the bundle editor, which shows a
+4. **[The client configuration reference](reference/client-configuration.md),** for the bundle editor, which shows a
    client's whole configuration as JSON. It lists every part of the configuration and what each holds.
 
 ## Build on it

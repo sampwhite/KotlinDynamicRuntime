@@ -49,7 +49,7 @@ class ReferenceFlavorTest : StringSpec({
     val plain = boot("referenceOff1221", mapOf("KDR_LOAD_SAMPLE" to "true"))
 
     "core says on the home page what a reference deployment is, and on the sign-in page that an account is temporary" {
-        copy(reference, HFRAG.home, "home")["title"] shouldBe "A reference deployment"
+        copy(reference, HFRAG.home, "home")["title"] shouldBe "Try KotlinDynamicRuntime"
         copy(reference, AFRAG.auth, "login")["intro"].orEmpty() shouldContain "your account included"
         copy(plain, HFRAG.home, "home")["title"] shouldBe "Welcome"
         copy(plain, AFRAG.auth, "login")["intro"] shouldBe ""
@@ -63,7 +63,9 @@ class ReferenceFlavorTest : StringSpec({
         // The intro, which a signed-in visitor reads too, no longer tells them to register.
         val intro = copy(reference, HFRAG.home, "home")["intro"].orEmpty()
         intro shouldNotContain "register a user of your own"
-        intro shouldContain "most useful once you are signed in"
+        // It says what the product does, and points at Start here (issue #1686).
+        intro shouldContain "runs applications built around forms"
+        intro shouldContain "(/docs/start-here.md)"
         // The card leads the row of links under the title, ahead of "Start here".
         copy(reference, HFRAG.home, "home")["jumpLinks"].orEmpty().lines().first() shouldContain "(#home.card.register)"
         // Anywhere else, the card says core's own words.
@@ -112,6 +114,6 @@ class ReferenceFlavorTest : StringSpec({
         MarkdownFragmentService.get(withoutSample).effectiveFragmentsFor(withoutSample, SF.content, null).shouldBeNull()
         // The sample's note goes with it; core's copy stays.
         copy(withoutSample, HFRAG.home, "home")["note"] shouldBe ""
-        copy(withoutSample, HFRAG.home, "home")["title"] shouldBe "A reference deployment"
+        copy(withoutSample, HFRAG.home, "home")["title"] shouldBe "Try KotlinDynamicRuntime"
     }
 })

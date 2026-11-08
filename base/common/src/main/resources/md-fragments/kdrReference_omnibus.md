@@ -8,23 +8,28 @@
 
 # !home
 # @home
-# +title A reference deployment
+/- The title and intro are read by every visitor, signed in or not, and on the home page of every client that has not
+   reworded them, the demos' included (issue #1686): they say what the product does before what this site is, and
+   leave registering to the Register card. -/
+# +title Try KotlinDynamicRuntime
 # +intro
-This is a **reference deployment** of the KotlinDynamicRuntime: a working instance you can look around, built
-from the same code and configuration as any other. Its data is kept in a temporary database that is cleared from
-time to time, so anything you add here will not last.
+**KotlinDynamicRuntime** runs applications built around forms. People fill in forms, others review and approve them,
+and the results end up in reports: a call for talks, a grant program, a vendor's onboarding. Each application's
+forms, steps, people, and wording are configuration, which its administrators change while it runs, with no code to
+write or deploy. It is open source.
 
-To read how it is put together, [start here](/docs/start-here.md): it is first under **Documents**, in the menu's
-Reference section, and says what to read for what you want to do, from trying a demo to having an AI assistant
-configure a client. Its walk-through starts from a user of your own, so it is most useful once you are signed in.
+This site runs it for you to try out. Its data is kept in a temporary database that is cleared from time to time, so
+nothing you add here lasts, and nothing you do can break anything for long. To find your way around,
+[start here](/docs/start-here.md).
 
 /- The Register card's body (issue #1652), shown only to a visitor who has not signed in: what registering here is for,
    and what the address is used for, which once sat in the intro and so was read by the signed-in too. -/
 # @registerCard
 # +text
-The suggested next step is to register a user of your own with your email address. Once you are signed in, the home
-page lists the demo clients you can join, the conference demo among them, so you can try each one as an administrator
-or as one of its people, and [the walk-through](/docs/walk-through.md) takes you through them a step at a time.
+To try it, register a user of your own with your email address. Once you are signed in, your home page offers demo
+clients to join, a conference's call for talks among them, as one of their people or as the person who runs them, and
+a client of your own to build forms and workflows in. [The walk-through](/docs/walk-through.md) takes you through
+both, a step at a time.
 
 Your email address is used only to sign you in and for mail about your account here, such as a verification code.
 It is not shared with anyone outside this site, and it is not used for marketing or to contact you about anything
@@ -47,9 +52,9 @@ If you registered here before, log in instead. An account lasts only until the s
 
 # @publicHome
 # +demosIntro
-This is a teaching site: join a demo client to see one from the inside, as an administrator or as one of its people,
-with a user of your own email. Each demo is shared with everyone who joins it, and cleared with the rest of the site's
-data.
+Each demo is a small organization already set up, with forms and workflows of its own. Join one as one of its people
+or as the person who runs it, with a user of your own email, and join again in another role to see the same form from
+the other side. Everyone who joins a demo shares it, and it is cleared with the rest of the site's data.
 # +createClientNote
 The two starter workflows are open to your client's people from the start. A workflow you make later from a template
 is seen **only by your client's administrators** until you change who sees it: on **My client**, under **Workflows**,
@@ -68,5 +73,5 @@ here. When it is ready, choose **Visibility…** on its row and **Everyone** to 
 # !auth
 # @login
 # +intro
-This is a reference deployment for trying KotlinDynamicRuntime out. Anything you create here, your account included,
-is deleted whenever its data is cleared.
+This site is for trying KotlinDynamicRuntime out. Anything you create here, your account included, is deleted whenever
+its data is cleared.

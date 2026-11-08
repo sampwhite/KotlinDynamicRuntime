@@ -1,9 +1,9 @@
 /- The `reference` deployment flavor's copy from the sample (issue #1221): beneath core's intro, what the sample
-   clients on a reference deployment demonstrate. -/
+   client a visitor may join shows them (issue #1686). -/
 
 # !home
 # @home
 # +note
-The **sample clients** are here too. **Acme** narrows the shared traits it takes and adds an audit trait of its
-own, in its own namespace; **Globex** takes everything offered and builds beside it. Each signs the mail its
-people are sent as itself, by overlaying one key of the shared mail copy.
+The demos you can join include **Acme**, a sample company you join as its administrator, to see a client from the
+side of the person who runs it: its users, its words and menu, its forms and reports, and its sandbox, where a change
+is tried before its people see it.

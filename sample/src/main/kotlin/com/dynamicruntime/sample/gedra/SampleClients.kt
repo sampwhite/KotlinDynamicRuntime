@@ -302,7 +302,10 @@ private fun acmeClient(cxt: KdrCxt): GedraConfig =
             ClientDef(
                 clientId = SC.acme,
                 name = "Acme",
-                description = "Narrows what it took, and has one trait of its own.",
+                // Shown to visitors on a reference deployment's demo card and Join page (issue #1686), so it says what Acme is to
+                // them; what it demonstrates to a developer is in this file's KDoc.
+                description = "A sample company, set up as a business customer would be, with its own forms, reports, and a " +
+                    "sandbox for trying changes.",
                 usageType = ClientUsageType.dev,
                 audience = ClientAudience.customer,
                 enabledEnvironments = setOf(ENV.unit, ENV.local, ENV.dev),

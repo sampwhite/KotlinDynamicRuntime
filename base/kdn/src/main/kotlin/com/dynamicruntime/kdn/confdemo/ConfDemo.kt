@@ -250,7 +250,9 @@ fun confDemoBase(cxt: KdrCxtBase = LiteCxt(), client: String = ConfDemo.client, 
             ClientDef(
                 clientId = client,
                 name = "Conference demo",
-                description = "A demo client: a conference's call for talks. Documented in docs/demo-client.",
+                // Shown to visitors on the home page's demo card and the Join page (issue #1686), so it says what the demo is.
+                description = "A small conference's call for talks: speakers submit talks, and a committee reviews them and " +
+                    "accepts them for the program.",
                 usageType = ClientUsageType.demo,
                 audience = ClientAudience.internal,
                 enabledEnvironments = setOf(ENV.unit, ENV.local, ENV.dev),
