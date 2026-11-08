@@ -61,7 +61,9 @@ object DesignView {
      */
     fun originOf(config: GedraConfig?): DesignOrigin = when {
         config == null || config.gedraId.client == GID.globalClient -> DesignOrigin.global
-        config.isStored -> DesignOrigin.stored
+        // The client's own stored configuration; a copy of its template's code, which a data-defined client files with a
+        // stored origin, is code (issue #1670).
+        config.isStoredHere -> DesignOrigin.stored
         else -> DesignOrigin.source
     }
 
@@ -70,6 +72,8 @@ object DesignView {
         val out = linkedMapOf<String, Any?>(DSV.slot to slot, DSV.key to key)
         path?.let { out[DSV.path] = it }
         out.putAll(layer(config))
+        // Its stored entry only changes the code's (issue #1670): said, so the page does not call it the client's own whole.
+        if (config?.codeOverlays?.any { it.applied && it.slot == slot && it.key == key } == true) out[DSV.changesCode] = true
         return out
     }
 
@@ -559,6 +563,10 @@ fun designViewSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, DSV.namespace) 
         property(DSV.path, "Where within the entry the addressed definition sits, when it is not the whole entry.")
         property(DSV.origin, "Where the definition was declared.", required = true) { options(DesignOrigin.entries) }
         property(DSV.config, "The configuration that declares it; absent for one declared in a component's code.")
+        property(
+            DSV.changesCode,
+            "Whether the client's stored entry is an overlay of its code's (issue #1670): only what it changed, the rest the code's.",
+        ) { type = SCT.boolean }
         property(
             DSV.alteredBy,
             "The client's own configuration altering this shared definition, when one does: its origin, config, the type it alters and that alteration's authored entry.",

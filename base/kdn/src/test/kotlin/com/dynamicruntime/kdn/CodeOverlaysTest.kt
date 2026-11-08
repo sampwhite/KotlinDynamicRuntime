@@ -298,6 +298,8 @@ class CodeOverlaysTest : StringSpec({
                 WFD.tasks to listOf(mapOf(WFD.id to "a", WFD.saves to listOf(mapOf(WFD.id to "s", WFD.label to "Keep it")))),
             ),
         )
+        // The definition read says the stored entry only changes the code's.
+        chief.getItem(DSV.definition, mapOf(DSV.slot to CCT.workflowDef, DSV.key to "tplFlow"))[DSV.changesCode] shouldBe true
         relabel("a", null, "A, ours")
         val task = flow(cxt, client, "tplFlow").tasks.single()
         task.label shouldBe "A, ours"

@@ -142,6 +142,11 @@ class DesignViewTest {
             DesignAddress(CCT.schemaDef, "x.Thing", null, origin.name, config, alteredBy)
         assertEquals("This client's own, declared in its configuration (designDemo).", provenanceText(at(DesignOrigin.stored, "designDemo")))
         assertEquals("This client's own, declared in code (acmeClient).", provenanceText(at(DesignOrigin.source, "acmeClient")))
+        // An overlay of the code's (issue #1670): the client's change, not its own whole.
+        assertEquals(
+            "This client's change to its code, stored in its configuration (createTalk).",
+            provenanceText(DesignAddress(CCT.workflowDef, "createTalk", null, DesignOrigin.stored.name, "createTalk", changesCode = true)),
+        )
         assertEquals("Shared by every client, from coreTraits.", provenanceText(at(DesignOrigin.global, "coreTraits")))
         assertEquals("Shared by every client, from the platform.", provenanceText(at(DesignOrigin.global, null)))
         assertEquals(

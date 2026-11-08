@@ -22,7 +22,8 @@ of the field's type, shows on that workflow's pages only, and **Reset to shared*
 the workflow is the client's own: configured, or declared in its own code (its code, its template's copies, a sandbox's
 copies, `DesignView.isOwnCode`), whose first edit stores an **overlay** of it in the stored bundle named like the code
 bundle, holding only what changed, as the bundle editor's Edit does (issues #1657, #1670); each later edit rewrites that
-overlay (`StoredWhole`). A shared type edit of a type declared in the client's code does the same (`codeEntry`, whose
+overlay (`StoredWhole`), and the inspector's provenance line says "This client's change to its code" from the address's
+`changesCode`. A shared type edit of a type declared in the client's code does the same (`codeEntry`, whose
 stamp the definition read gives). A trait declared in code is not edited here, since a trait changes only whole, and
 an overlay holding parts the code no longer has is refused, pointing to the bundle editor. Elsewhere -- another
 client's definition, a global one -- the inspector says why, from the block's `editRefusal`.

@@ -54,6 +54,12 @@ object DSV {
      */
     const val alteredBy = "alteredBy"
 
+    /**
+     * On an address, when the client's stored entry for the definition is an overlay of its code's (issue #1670): it
+     * holds only what the client changed, and the rest follows the code. Absent otherwise.
+     */
+    const val changesCode = "changesCode"
+
     // --- the definition read ---
 
     /** Reads one definition by address: its authored entry and where it was declared. Client-scoped admin. */
