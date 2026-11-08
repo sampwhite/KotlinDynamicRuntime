@@ -191,6 +191,27 @@ class WorkflowColumnViewTest {
     }
 
     @Test
+    fun aHighlightedStartThatWaitsOnSomeoneElseIsDrawnWaitingWithItsReason() {
+        // Issue #1690: the summary says the workflow highlights its Start; the row has no step of it for the viewer, and
+        // a reason saying whom its first task waits on.
+        val highlighted = parseWorkflowSummary(
+            mapOf(WCOL.workflows to listOf(summaryEntry("acme", "review") + (WCOL.highlightStart to true), summaryEntry("acme", "plain"))),
+        )
+        assertTrue(highlighted.first().highlightStart)
+        val states = listOf(state("review", WFS.eligible to true), state("plain", WFS.eligible to true))
+        val cell = workflowCellOf(form("acme", states, reasons = listOf(reason("review", WfWaitsOn.others))), highlighted, now = now)
+        val review = cell.single { it.entry.workflowId == "review" }
+        // Muted with its reason, as a step of an engaged workflow waiting on someone else; no verb, and its link opens
+        // the workflow's page without engaging the form.
+        assertEquals(WorkflowCellKind.waiting, review.kind)
+        assertEquals(WorkflowCellWords().waitingOnOthers, review.reason)
+        assertEquals(null, review.verb)
+        assertTrue(!review.linkEngages && review.linkTask == null)
+        // A workflow that does not highlight its Start stays available.
+        assertEquals(WfWeight.available, cell.single { it.entry.workflowId == "plain" }.weight)
+    }
+
+    @Test
     fun aRowsLinksKeepTheirOrderAsOtherPeopleActOnTheForm() {
         fun cellAfter(vararg mine: String, shuffled: Boolean) = workflowCellOf(
             form(

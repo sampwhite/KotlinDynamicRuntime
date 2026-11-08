@@ -54,7 +54,11 @@ object FormWorkflowSummary {
                     WCOL.phase to phase.name,
                     WCOL.explanations to declared.def.eligibility.associate { it.id to resolve(it.explanation) },
                     WCOL.lastTask to declared.def.tasks.last().id,
-                ).apply { putAll(frozenWindow(cxt, client, declared.def, phase)) }
+                ).apply {
+                    putAll(frozenWindow(cxt, client, declared.def, phase))
+                    // So the page draws a Start that waits on someone else as waiting, as the backend does (issue #1690).
+                    if (declared.def.highlightStart) put(WCOL.highlightStart, true)
+                }
             }
         }
         return mapOf(WCOL.workflows to workflows)

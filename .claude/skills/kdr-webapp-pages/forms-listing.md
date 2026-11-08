@@ -169,7 +169,7 @@ into its two kinds, since "settled" is not a word for anyone to read.
 | --- | --- | --- |
 | Your turn | a filled accent pill, opening the task ready to edit | a verb and the workflow: the CTA keyword's verb ("Review", the client's words), else the step's `actionText`, else "Continue" -- or, for a highlighted Start (#1662), "Start", its link engaging the form and opening the first task |
 | Available | an accent outline, opening the workflow to engage | "Start" and the workflow |
-| Waiting | a muted link, opening the task to look at, with its reason under it | why, from the row's `waitingReasons` or the summary |
+| Waiting | a muted link, opening the task to look at, with its reason under it | why, from the row's `waitingReasons` or the summary -- also a highlighted Start that waits on someone else (#1690), opening the workflow without engaging |
 | Finished | small, with a check, opening its last task | the workflow |
 | Not available | small and faint, opening a dialog with the reasons | the workflow |
 
@@ -264,7 +264,10 @@ approve gates apply, narrowed to the person the step names:
 - a workflow's **Start** (issue #1662) waits on whoever could act on its first task, by the same rules, when the
   workflow highlights it (`highlightStart`) and the form is eligible for it, not yet in it, and open to new forms. Such
   a step carries `startsWorkflow`, so its link (here, and on Home's card) engages the form first. It only routes: who
-  may engage is the eligibility tests' alone, and no CTA filter applies before the form is in.
+  may engage is the eligibility tests' alone, and no CTA filter applies before the form is in. To anyone the first task
+  does not ask, such a Start is **waiting** rather than available (issue #1690): the summary says the workflow
+  highlights its Start (`highlightStart`), and `waitingReasons` gives the first task's reason, so nobody is invited to
+  begin another person's work.
 
 And a save waits on nobody the owner-only rule (issue #1433) keeps out: an editor, on a form kept to its owner, who is
 neither its owner nor a reviewer of its current work. An approval is not a change to the form, so that rule never keeps

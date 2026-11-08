@@ -57,6 +57,12 @@ class WorkflowWeightTest {
         assertEquals(CTAK.review, theirs.keyword)
         // An eligible workflow whose Start waits on the viewer (issue #1662) is their turn.
         assertEquals(WfWeight.yourTurn, weights(states, phases, all + "open").first { it.workflow.workflowId == "open" }.weight)
+        // One that highlights its Start, which waits on someone else, is waiting (issue #1690); unhighlighted, available.
+        fun open(highlights: Boolean) =
+            formWorkflowWeights(states, { phases[it] }, { highlights && it == "open" }) { _, _ -> false }
+                .first { it.workflow.workflowId == "open" }.weight
+        assertEquals(WfWeight.waiting, open(highlights = true))
+        assertEquals(WfWeight.available, open(highlights = false))
     }
 
     @Test

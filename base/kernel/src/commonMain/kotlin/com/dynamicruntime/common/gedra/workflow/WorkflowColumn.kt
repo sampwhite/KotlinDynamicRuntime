@@ -31,6 +31,12 @@ object WCOL {
     const val lastTask = "lastTask"
 
     /**
+     * Whether the workflow highlights its Start ([WfDef.highlightStart], issue #1690): what the page's classification
+     * needs to draw a Start that waits on someone else as waiting. Present only when it does.
+     */
+    const val highlightStart = "highlightStart"
+
+    /**
      * On a workflow frozen before its relevancy window opens ([WfPhase.lifetimeOnly], issue #1598): when it opens, the
      * reason a form's engaged link to it waits.
      */
@@ -192,11 +198,12 @@ enum class WfWeight {
     /**
      * The viewer can look, not act: engaged, with a call to action they may not act on (its CTA filter, `saveWhen`, or
      * approval rule is someone else's), or with none anyone can act on now -- a workflow outside its relevancy window,
-     * frozen until a date (or past it, with its work unfinished), or one whose call to action has not been computed.
+     * frozen until a date (or past it, with its work unfinished), or one whose call to action has not been computed. Or
+     * eligible, with a highlighted Start that waits on someone else (issue #1690): its first task asks another person.
      */
     waiting,
 
-    /** The viewer could start it: eligible, and not engaged. */
+    /** The viewer could start it: eligible, not engaged, and not a highlighted Start that waits on someone else. */
     available,
 
     /** Nothing more here: finished, or not eligible. */
@@ -246,11 +253,16 @@ class FormWorkflowWeight(
  *
  * An eligible workflow is [WfWeight.available], unless [mayAct] says its **Start** waits on the viewer (issue #1662): a
  * workflow that highlights it, whose first task the viewer could act on. Then it is their turn, its link engaging the
- * form. [mayAct] is asked of an eligible workflow too, and answers yes only for such a Start.
+ * form. [mayAct] is asked of an eligible workflow too, and answers yes only for such a Start. A workflow that
+ * [highlightsStart] whose Start does not wait on the viewer is [WfWeight.waiting] instead (issue #1690): the Start asks
+ * someone else, so the viewer is not invited to begin another person's work. Who may engage is unchanged -- that is the
+ * eligibility tests' alone, and the classification decides nothing about it.
  */
 fun formWorkflowWeights(
     states: List<Map<String, Any?>>,
     phaseOf: (String) -> WfPhase?,
+    /** Whether the workflow with this `id` highlights its Start ([WfDef.highlightStart]); none does unless said. */
+    highlightsStart: (id: String) -> Boolean = { false },
     mayAct: (workflow: FormWorkflow, state: Map<String, Any?>) -> Boolean,
 ): List<FormWorkflowWeight> {
     val stateById = states
@@ -267,7 +279,11 @@ fun formWorkflowWeights(
                 } else {
                     WfWeight.waiting
                 }
-            WfColumnCategory.eligible -> if (mayAct(workflow, state)) WfWeight.yourTurn else WfWeight.available
+            WfColumnCategory.eligible -> when {
+                mayAct(workflow, state) -> WfWeight.yourTurn
+                highlightsStart(workflow.workflowId) -> WfWeight.waiting
+                else -> WfWeight.available
+            }
             WfColumnCategory.finished, WfColumnCategory.ineligible -> WfWeight.settled
         }
         FormWorkflowWeight(workflow, weight, keyword = state[WFS.ctaKeyword].toOptStr()?.takeIf { engaged })

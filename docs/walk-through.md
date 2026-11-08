@@ -74,7 +74,8 @@ Choose **Needs Info** on your talk's row. The form that opens is **About your ta
 | Is this your first conference talk? | Yes |
 
 Choose **Save**, and then **My forms** to go back to the list. The talk's status is now **Valid**, so **Committee
-review**, which waits for complete core details, is open to the committee.
+review**, which waits for complete core details, is open to the committee. Your **Workflows** column shows it muted,
+waiting on someone else: it is the committee's to start.
 
 ### Write the abstract
 

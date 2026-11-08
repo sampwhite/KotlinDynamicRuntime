@@ -1020,6 +1020,8 @@ class WorkflowSummaryEntry(
     val lastTask: String,
     val opensAt: String? = null,
     val closedAt: String? = null,
+    /** Whether the workflow highlights its Start (issue #1690): one that waits on someone else is then drawn waiting. */
+    val highlightStart: Boolean = false,
 )
 
 /** The listing envelope's `summary` (issue #791) as its entries; empty when there is none. Pure, and covered under `jsNodeTest`. */
@@ -1035,6 +1037,7 @@ fun parseWorkflowSummary(summary: Any?): List<WorkflowSummaryEntry> =
             lastTask = w[WCOL.lastTask].toOptStr().orEmpty(),
             opensAt = w[WCOL.opensAt].toOptStr(),
             closedAt = w[WCOL.closedAt].toOptStr(),
+            highlightStart = w[WCOL.highlightStart] == true,
         )
     }
 
@@ -1194,7 +1197,8 @@ fun workflowCellOf(
     val declared = summary.filter { it.client == form.client }.withIndex().associateBy { it.value.workflowId }
     val steps = form.waitingSteps.associateBy { it[WFD.workflowId].toOptStr() }
     val reasons = form.waitingReasons.associateBy { it[WFD.workflowId].toOptStr() }
-    return formWorkflowWeights(form.states, { declared[it]?.value?.phase }) { workflow, _ -> workflow.workflowId in steps }
+    val highlights = { id: String -> declared[id]?.value?.highlightStart == true }
+    return formWorkflowWeights(form.states, { declared[it]?.value?.phase }, highlights) { workflow, _ -> workflow.workflowId in steps }
         .mapNotNull { weighed ->
             val id = weighed.workflow.workflowId
             val entry = declared[id]?.value ?: return@mapNotNull null

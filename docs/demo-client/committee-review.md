@@ -137,8 +137,9 @@ are not done cannot enter the review, and the forms list shows the `explanation`
 **A highlighted Start.** Its `highlightStart: true` asks the forms list to point the right people at the review
 before it starts. While a talk may enter the review and has not, its first task (`recordReview`) stands in for its next
 step: a person who could save that task sees **Start** highlighted, as their turn, and one click puts the talk into the
-review and opens the task. Everyone else sees the ordinary **Start**. It only points people at the talk. Who may
-enter it is still decided by the eligibility test alone.
+review and opens the task. Everyone else sees the review waiting, muted, with the reason under it: the task is
+someone else's to do. It only points people at the talk. Who may enter it is still decided by the eligibility test
+alone.
 
 **A task only a committee member may save.** The `recordReview` task runs a `userHasLabel` function, which asserts
 the fact `kdr:reviewer` for a person whose user has the `committee` label. Its `saveWhen` then allows the save for
@@ -170,10 +171,11 @@ its owner, its reviewers, and administrators. **Needs Review** is not one of the
 
 ## What the speaker sees
 
-In the forms list, a talk whose core details are done shows **Start** and **Committee review** in its **Workflows**
-column, an outlined link; one whose core details are not done shows the workflow greyed, with the explanation when
-clicked. The speaker can open the workflow and read it, and the page says *Someone else
-completes this step; you can see it here.* Once the review is recorded, the speaker sees the score and the notes.
+In the forms list, a talk whose core details are done shows **Committee review** in its **Workflows** column muted, with
+*Waiting on someone else* under it, since the review is the committee's to start. A talk whose core details are not done
+shows the workflow greyed, with the explanation when clicked. The speaker can open the workflow and read it, and the
+page says *Someone else completes this step; you can see it here.* Once the review is recorded, the speaker sees the
+score and the notes.
 
 ## What a committee member sees
 

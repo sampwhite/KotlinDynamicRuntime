@@ -16,6 +16,8 @@ import com.dynamicruntime.common.gedra.workflow.SWF
 import com.dynamicruntime.common.gedra.workflow.WFC
 import com.dynamicruntime.common.gedra.workflow.WFD
 import com.dynamicruntime.common.gedra.workflow.WFS
+import com.dynamicruntime.common.gedra.workflow.WfWaitsOn
+import com.dynamicruntime.common.gedra.workflow.WCOL
 import com.dynamicruntime.common.gedra.workflow.WfEntry
 import com.dynamicruntime.common.gedra.workflow.WfSaveKind
 import com.dynamicruntime.common.gedra.workflow.userHasLabel
@@ -92,5 +94,24 @@ class HighlightedStartTest : StringSpec({
         // A workflow that does not highlight its Start waits on the reviewer only once the form is in.
         owner.postData(GEP.workflowEngage, mapOf(GDF.gedraId to gid, WFD.workflowId to "plain"))
         steps(reviewer, gid) shouldBe mapOf("check" to ("checkTask" to false), "plain" to ("plainTask" to false))
+    }
+
+    /** Why each of form [gid]'s steps waits on someone other than [user], by workflow: whom it waits on. */
+    fun reasons(user: TestUser, gid: String): Map<String, String?> =
+        user.client.sendJsonGetRequest(clientPath(GEP.formDocs, client), mapOf(GDF.withStates to true))[EP.items]
+            .toJsonListOfMaps().first { it[GDF.gedraId] == gid }[GDF.waitingReasons].toJsonListOfMaps()
+            .associate { it[WFD.workflowId].toOptStr()!! to it[WCOL.waitsOn].toOptStr() }
+
+    "a highlighted Start that waits on someone else is waiting, with the reason its first task gives, to everyone else" {
+        val gid = owner.postItem(GEP.formDocCreate, mapOf(GDF.entries to emptyList<Any>()))[GDF.gedraId].toOptStr()!!
+        // The owner may not save the first task, so the highlighted Start waits on others -- the reason the page gives
+        // when it draws the link waiting (issue #1690). The plain workflow's Start invites nobody, so it has none.
+        reasons(owner, gid) shouldBe mapOf("check" to WfWaitsOn.others.name)
+        // The reviewer's Start is their step, not a reason.
+        reasons(reviewer, gid) shouldBe emptyMap()
+        // Who may engage is unchanged: the owner still engages it, and its first task is then the current one, still
+        // waiting on the reviewer.
+        owner.postData(GEP.workflowEngage, mapOf(GDF.gedraId to gid, WFD.workflowId to "check"))
+        reasons(owner, gid) shouldBe mapOf("check" to WfWaitsOn.others.name)
     }
 })
