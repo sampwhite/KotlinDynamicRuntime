@@ -768,12 +768,13 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
                             +"Edit"
                         }
                     }
-                    // A normal workflow the form is not in yet (issue #791): Engage first, then its tasks open.
+                    // A normal workflow the form is not in yet (issue #791): Start first, then its tasks open. "Start" in the
+                    // workflow cell's words, as the forms list's link says it (issue #1691); the endpoint still engages.
                     props.onEngage?.takeIf { wf.canEngage }?.let { engage ->
                         Button {
                             type = "primary"
                             onClick = { engage() }
-                            +"Engage"
+                            +shellFacts.workflowWords.start
                         }
                     }
                     // The raw read-only view (issue #726): every trait, including the ones the core details workflow does
@@ -825,7 +826,7 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
             }
         }
         // Why a normal workflow's tasks cannot be worked on here (issue #791), when they cannot.
-        workflowNote(wf)?.let { note ->
+        workflowNote(wf, shellFacts.workflowWords)?.let { note ->
             p {
                 className = ClassName("subtitle")
                 +note
@@ -913,11 +914,12 @@ private fun ChildrenBuilder.designFramed(
  * a creation or core details workflow) -- or, for any view, that the form is kept to its owner from this caller (issue #1433). Pure,
  * and covered under `jsNodeTest`.
  */
-fun workflowNote(wf: WorkflowView): String? = when {
+fun workflowNote(wf: WorkflowView, words: WorkflowCellWords = WorkflowCellWords()): String? = when {
     // Kept to its owner (issue #1433): said once for the whole form, whatever kind of workflow draws it.
     wf.keptToOwner -> TraitLockCopy.keptToOwner
     !wf.isNormal || wf.canWork -> null
-    wf.canEngage -> "This form is not in this workflow yet. Engage it to start."
+    // In the workflow cell's words (issue #1691), beside the page's Start.
+    wf.canEngage -> words.notStarted
     wf.engaged == false && wf.eligible == false -> "This form cannot be put into this workflow yet:"
     wf.phase == WfPhase.lifetimeOnly.name -> "This workflow has closed. What it recorded stands, and it can no longer be changed."
     // Engaged and open, but no step here is this caller's to save (issue #856): each step says so for itself.

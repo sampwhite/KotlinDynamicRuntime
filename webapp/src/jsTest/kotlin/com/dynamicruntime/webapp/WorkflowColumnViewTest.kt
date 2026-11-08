@@ -357,7 +357,10 @@ class WorkflowColumnViewTest {
         assertNull(coreDetailsNote(WorkflowView(workflowId = "details", entry = WfEntry.coreDetails.name, showTaskList = true,
             tasks = emptyList(), cfacts = emptyMap(), help = "What we ask every applicant.")))
         assertNull(workflowNote(view(WfPhase.relevant, true)))
-        assertTrue(workflowNote(view(WfPhase.engageable, false, eligible = true)).orEmpty().contains("Engage"))
+        // A form that may start the workflow is told so in the cell's words, "Start", not "Engage" (issue #1691).
+        val mayStart = view(WfPhase.engageable, false, eligible = true)
+        assertEquals("This form has not started this workflow. Start it to work on it.", workflowNote(mayStart))
+        assertEquals("Not begun.", workflowNote(mayStart, WorkflowCellWords(notStarted = "Not begun.")))
         assertTrue(workflowNote(view(WfPhase.lifetimeOnly, true)).orEmpty().contains("closed"))
         assertTrue(view(WfPhase.engageable, false, eligible = true).canEngage)
         assertTrue(!view(WfPhase.lifetimeOnly, true).canWork)
