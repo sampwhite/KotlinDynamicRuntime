@@ -391,6 +391,12 @@ conference demo dropped a column (#1612) because the table had grown wide, which
 - **Columns a user chooses** *(#1612, deferred here 2026-11-04).* Each user picks which of the client's columns they
   see, and in what order, remembered per user. The client's list stays the set to choose from and the default. Left
   out because a client can still keep its own list short, and no client yet has more columns than fit.
+- **A minimum and a preferred width per column** *(from #1682).* The list runs a fixed table layout, where antd's
+  column `minWidth` does nothing, so each column has one width and only Contains gives way. Measure the table and fit
+  each column between its minimum and its preferred width, scrolling only below the minimums -- at 1100 pixels the
+  display columns, To review, Workflows, and Status would then all be in view. The same model resizable columns
+  (#1666) needs: a dragged width is the preferred, the minimum the floor. Worth it once the reordered list has been
+  tried in a demo and Status still out of view is felt.
 
 ## When a customer wants choices or a picker on a computed column
 

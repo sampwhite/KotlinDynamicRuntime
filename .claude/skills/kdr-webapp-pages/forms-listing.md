@@ -223,6 +223,10 @@ never the classification.
 - **The listing is short of width, not of height**, so with the Your turn column the others gave some back: the Actions
   links stack one a line (`row-actions-stacked`), halving the column (115 px, 165 in a drilled listing); `Contains` is
   guaranteed 160 px rather than 200; and each display column is 144 px rather than 160.
+- **The columns a reader acts in come first** after the client's display columns: Your turn, Workflows, then Status;
+  then Contains, the owner, Client ID, the two dates, and Actions. So on a demo screen about 1100 pixels wide what
+  asks something of the reader is in view without scrolling sideways. With no display column, Contains stays first,
+  since the first column is pinned left as the row's identity.
 
 ## A column's filter and cells follow its field (issues #1500, #1508)
 

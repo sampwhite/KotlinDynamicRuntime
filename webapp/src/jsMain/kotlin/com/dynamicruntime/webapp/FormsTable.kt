@@ -232,16 +232,12 @@ val FormsTable = FC<FormsTableProps> { props ->
                 // Drawn as a time column is (issue #1323): the presented text, with the value behind it on hover.
                 add(timeColumn(sortableColumn(it.label, displayColKey(it.columnId), displayColumnWidth, props.sortColumn, props.sortDescending)))
             }
-            add(sortableColumn("Contains", GSORT.contains, null, props.sortColumn, props.sortDescending))
-            if (props.showOwner) add(ownerColumn(props.sortColumn, props.sortDescending))
-            // The Client ID column (issue #668), for a cross-client (`allClients`) caller, reading each row's own
-            // `client`. Sortable by the row's client protocol field (`allClients`-only on the backend, as the
-            // column is), keyed on `GSORT.client` -- both the row-data key and the endpoint's sort key. Headed as an id,
-            // since an id is what it shows and sorts by (issue #1438).
-            if (props.showClient) add(sortableColumn("Client ID", GSORT.client, 140, props.sortColumn, props.sortDescending))
-            // The global status column (issue #694): a fixed, non-sortable column (its sort/filter is
-            // deferred to #695), rendering a status chip and a CTA on the unfinished rows.
-            if (anyFormStatus) add(statusColumn(props))
+            // What lists the form's parts. With no display column it is the row's identity, so it comes first, as the
+            // column pinned left; otherwise it follows the columns a reader acts in.
+            val contains = sortableColumn("Contains", GSORT.contains, null, props.sortColumn, props.sortDescending)
+            if (displayCols.isEmpty()) add(contains)
+            // The columns a reader acts in come first after the client's own: the workflows, then the status. On a demo
+            // screen about 1100 pixels wide they are then in view without scrolling sideways.
             // The workflow column (issue #791): drawn when the summary names any workflow -- decided over every form
             // the caller may see, not this page, so it does not come and go as a search narrows.
             if (props.workflowSummary.isNotEmpty()) {
@@ -251,6 +247,16 @@ val FormsTable = FC<FormsTableProps> { props ->
                 if (split) add(yourTurnColumn(props))
                 add(workflowColumn(props, if (split) WorkflowCellPart.rest else WorkflowCellPart.all))
             }
+            // The global status column (issue #694): a fixed, non-sortable column (its sort/filter is
+            // deferred to #695), rendering a status chip and a CTA on the unfinished rows.
+            if (anyFormStatus) add(statusColumn(props))
+            if (displayCols.isNotEmpty()) add(contains)
+            if (props.showOwner) add(ownerColumn(props.sortColumn, props.sortDescending))
+            // The Client ID column (issue #668), for a cross-client (`allClients`) caller, reading each row's own
+            // `client`. Sortable by the row's client protocol field (`allClients`-only on the backend, as the
+            // column is), keyed on `GSORT.client` -- both the row-data key and the endpoint's sort key. Headed as an id,
+            // since an id is what it shows and sorts by (issue #1438).
+            if (props.showClient) add(sortableColumn("Client ID", GSORT.client, 140, props.sortColumn, props.sortDescending))
             // Relative times (issue #1141), with the exact one on hover: `23h 59m ago` at the widest (86px).
             add(timeColumn(sortableColumn("Updated", GSORT.updated, 110, props.sortColumn, props.sortDescending)))
             add(timeColumn(sortableColumn("Created", GSORT.created, 110, props.sortColumn, props.sortDescending)))
