@@ -11,7 +11,8 @@ import com.dynamicruntime.common.home.HFLD
 import com.dynamicruntime.common.home.HMENU
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertNull
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 /** Home's "Waiting on you" (issue #1637): reading the listing's answer, when the card shows, and its filter's chip. */
 class WaitingOnYouTest {
@@ -63,8 +64,19 @@ class WaitingOnYouTest {
 
     @Test
     fun theFormsListingSaysWhenItIsNarrowedToWhatWaits() {
-        assertEquals("Waiting on you", needsMeChip(mapOf(GDF.needsMe to "true")))
-        assertNull(needsMeChip(emptyMap()))
+        // The toolbar's toggle says it is on, so the filter takes no chip; its count is Home's card's, whatever is applied.
+        waitingToggle(mapOf(GDF.needsMe to "true", "track" to "kotlin"), 3, "Waiting on you").let {
+            assertEquals("Waiting on you (3)", it.label)
+            assertTrue(it.pressed && it.enabled)
+        }
+        waitingToggle(emptyMap(), 3, "Waiting on you").let { assertFalse(it.pressed); assertTrue(it.enabled) }
+        // At zero it stays, dimmed, unless it is on and must be turned off; and while the count is unknown it has none.
+        assertFalse(waitingToggle(emptyMap(), 0, "Waiting on you").enabled)
+        assertTrue(waitingToggle(mapOf(GDF.needsMe to "true"), 0, "Waiting on you").enabled)
+        assertEquals("Mine to do", waitingToggle(emptyMap(), null, "Mine to do").label)
+        // One click flips it, keeping every other filter.
+        assertEquals(mapOf("track" to "kotlin", GDF.needsMe to "true"), withWaitingToggled(mapOf("track" to "kotlin")))
+        assertEquals(mapOf("track" to "kotlin"), withWaitingToggled(mapOf("track" to "kotlin", GDF.needsMe to "true")))
         assertEquals(listOf(HP.page to HMENU.pageForms, GDF.needsMe to "true"), waitingListingRoute())
         // Confined to a client, for a caller who sees across clients, as the card's read was.
         assertEquals(

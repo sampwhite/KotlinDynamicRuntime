@@ -524,6 +524,12 @@ object HFRAG {
     const val noWorkflows = "noWorkflows"
 
     /**
+     * The forms listing's one-click filter onto what Home's "Waiting on you" card lists (issue #1637), in [formsNs]:
+     * plain text, the count added after it.
+     */
+    const val waitingToggle = "waitingToggle"
+
+    /**
      * The home file's namespace for the words of the forms listing's workflow cell (issue #1598): the verbs on its links
      * and the reasons its muted links give. A client rewords them as it does other copy.
      */

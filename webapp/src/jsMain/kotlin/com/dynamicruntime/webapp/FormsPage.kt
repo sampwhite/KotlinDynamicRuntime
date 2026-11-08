@@ -1010,6 +1010,16 @@ val FormsPage = FC<FormsPageProps> { props ->
                         applied = appliedSearch
                         showCoreDetailsStatus = coreDetailsFilterOffered
                         showWaitingFilter = waitingFilterOffered
+                        // The same filter as one click (issue #1637), counted as Home's card counts it.
+                        waitingToggle = waitingToggle(
+                            appliedSearch, yourTurnCount, homeCopy.t(HFRAG.formsNs, HFRAG.waitingToggle, "Waiting on you"),
+                        )
+                        onToggleWaiting = {
+                            // Applied at once, over what is applied: a draft typed and not applied stays a draft.
+                            val next = withWaitingToggled(appliedSearch)
+                            searchDraft = if (GDF.needsMe in next) searchDraft + (GDF.needsMe to "true") else searchDraft - GDF.needsMe
+                            applySearch(ep, next)
+                        }
                         this.ctaKeywords = ctaKeywords
                         // A filter per search keyword the client's workflows use (issue #1599), on its own listing.
                         keywordFilters = keywordsInUse(ctaKeywords, formsSearchKeys(ep.inputSchema))

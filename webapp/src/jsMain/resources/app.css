@@ -1056,6 +1056,24 @@ button.wf-cell-link:disabled { opacity: .5; cursor: default; text-decoration: no
 }
 .wf-link.wf-w-available:active { transform: translateY(1px); box-shadow: none; }
 .wf-link.wf-w-available:hover { border-color: var(--accent-brighter); color: var(--accent-brighter); }
+/* The forms list's one-click "Waiting on you" (issue #1637's filter, as a toggle): off, the outline of a workflow the
+   reader could start; on, the filled pill of their turn, which is what it lists. Sized to sit beside antd's buttons. */
+.waiting-toggle {
+    height: 32px; padding: 0 12px; border-radius: 7px; font: inherit; cursor: pointer;
+    border: 1px solid var(--accent-bright); color: var(--accent-bright);
+    background: linear-gradient(to bottom, rgba(255, 255, 255, .12), rgba(0, 0, 0, .1));
+    box-shadow: 0 1px 2px rgba(0, 0, 0, .4);
+}
+.waiting-toggle:hover:not(:disabled) { border-color: var(--accent-brighter); color: var(--accent-brighter); }
+.waiting-toggle.is-on {
+    border-color: transparent; color: #fff;
+    background: linear-gradient(to bottom, color-mix(in srgb, var(--accent) 74%, white), color-mix(in srgb, var(--accent) 88%, black));
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .18), 0 1px 2px rgba(0, 0, 0, .45);
+}
+.waiting-toggle.is-on:hover { color: #fff; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .18), 0 0 0 1px var(--accent-brighter); }
+.waiting-toggle:active:not(:disabled) { transform: translateY(1px); }
+.waiting-toggle:focus-visible { outline: 2px solid var(--accent-bright); outline-offset: 2px; }
+.waiting-toggle:disabled { opacity: .45; cursor: default; box-shadow: none; }
 .wf-link.wf-w-settled { color: var(--text-muted); font-size: .8rem; }
 .wf-link.wf-w-settled:hover { color: var(--text-dim); text-decoration: underline; }
 .wf-link.wf-w-ineligible { color: var(--text-faint); }
