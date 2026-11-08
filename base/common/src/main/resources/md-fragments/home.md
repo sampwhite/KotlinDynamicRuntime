@@ -51,6 +51,9 @@ starts from being signed in. If you have registered before, log in instead.
 /- What a forms-listing row with no workflows shows in the workflow column (issue #791). A client overlays it:
    "Coming Soon...", a link to the workflow pages, "No workflows available." -/
 # +noWorkflows —
+/- The forms listing's one-click filter onto the forms waiting on you, which Home's card lists. Plain text: the count is
+   added after it, "Waiting on you (3)". -/
+# +waitingToggle Waiting on you
 /- The forms listing's "What is this?" (issue #1337): what a form is, and the workflows it may be in. -/
 # +whatIsThis
 A **form** is one document: what was entered for one request, report or case, kept together. Its parts are

@@ -14,6 +14,7 @@ import com.dynamicruntime.common.schema.SchOption
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import react.FC
 import react.Props
+import react.dom.html.ReactHTML.button
 import react.dom.html.ReactHTML.div
 import react.dom.html.ReactHTML.span
 import react.useEffect
@@ -30,11 +31,26 @@ fun formStatusChip(applied: Map<String, Any?>, keywords: List<CtaKeywordWords> =
     FormStatus.fromWire(applied[GDF.formStatus]?.toString())?.let { "Status: ${formStatusLabel(it, keywords)}" }
 
 /**
- * The chip for the "waiting on you" filter (issue #1637), `Waiting on you`, or null when it is not applied -- the
- * listing Home's card links to, which otherwise looks like every form. Pure, and covered under `jsNodeTest`.
+ * The forms list's one-click "Waiting on you" (`needsMe`, issue #1637): the toolbar's toggle onto the forms Home's card
+ * lists. [pressed] while the filter is applied, which the toggle itself shows, so the filter takes no chip; [label] the
+ * client's words with the count Home's card shows, "Waiting on you (3)" -- every form waiting on the caller, whatever
+ * else is filtered, so it does not move as a search narrows. Pressable while applied, or with something to show; at a
+ * known zero it stays in place, dimmed, so a reader learns where it lives.
  */
-fun needsMeChip(applied: Map<String, Any?>): String? =
-    "Waiting on you".takeIf { applied[GDF.needsMe]?.toString() == "true" }
+class WaitingToggle(val label: String, val pressed: Boolean, val enabled: Boolean)
+
+/**
+ * The toggle for a listing filtered by [applied], with [count] forms waiting on the caller (null while unknown), in
+ * [word], the client's name for it. Pure, and covered under `jsNodeTest`.
+ */
+fun waitingToggle(applied: Map<String, Any?>, count: Int?, word: String): WaitingToggle {
+    val pressed = applied[GDF.needsMe]?.toString() == "true"
+    return WaitingToggle(if (count == null) word else "$word ($count)", pressed, enabled = pressed || count != 0)
+}
+
+/** [search] with the "Waiting on you" filter flipped: removed while applied, else applied. Pure, under `jsNodeTest`. */
+fun withWaitingToggled(search: Map<String, String>): Map<String, String> =
+    if (search[GDF.needsMe] == "true") search - GDF.needsMe else search + (GDF.needsMe to "true")
 
 /** How long a type-ahead waits after a keystroke before it fetches, so a fast typist makes one call not many. */
 private const val suggestDebounceMs = 200
@@ -373,6 +389,12 @@ external interface FormsSearchProps : Props {
     /** Whether the "Waiting on you" filter is on offer (issue #1637): where a step can wait, or it is applied. */
     var showWaitingFilter: Boolean?
 
+    /** The toolbar's one-click "Waiting on you" ([waitingToggle]), drawn where the filter is on offer. */
+    var waitingToggle: WaitingToggle?
+
+    /** Flips the "Waiting on you" filter and applies it at once. */
+    var onToggleWaiting: (() -> Unit)?
+
     /**
      * The search keywords offered a filter (issue #1599), each choosing the forms that are the caller's turn for it
      * (`mine`) or awaiting it whoever acts (`any`): those the client's workflows use, on its own listing. Unset is none.
@@ -404,7 +426,7 @@ val FormsSearch = FC<FormsSearchProps> { props ->
     val words = props.workflowWords ?: WorkflowCellWords()
     val keywordFilters = props.keywordFilters.orEmpty()
     val chips = activeFilterChips(groups, props.applied) +
-        listOfNotNull(formStatusChip(props.applied, props.ctaKeywords.orEmpty()), needsMeChip(props.applied)) +
+        listOfNotNull(formStatusChip(props.applied, props.ctaKeywords.orEmpty())) +
         keywordFilterChips(props.applied, keywordFilters, words)
     val termApplied = props.applied[EI.q]?.toString()?.isNotBlank() == true
     div {
@@ -425,6 +447,18 @@ val FormsSearch = FC<FormsSearchProps> { props ->
             }
         }
         filterToggle(props.panelOpen, chips.size, formsFiltersWellId) { props.onTogglePanel() }
+        // One click onto what Home's card lists: the filter well's "Waiting on you", as a toggle that shows it is on.
+        val waiting = props.waitingToggle
+        if (props.showWaitingFilter == true && waiting != null) {
+            button {
+                className = ClassName(if (waiting.pressed) "waiting-toggle is-on" else "waiting-toggle")
+                asDynamic()["type"] = "button"
+                asDynamic()["aria-pressed"] = waiting.pressed
+                disabled = !waiting.enabled
+                onClick = { props.onToggleWaiting?.invoke() }
+                +waiting.label
+            }
+        }
         if (termApplied || chips.isNotEmpty()) {
             Button {
                 type = "link"

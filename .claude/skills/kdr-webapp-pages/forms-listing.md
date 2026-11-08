@@ -271,11 +271,17 @@ follow the same rule.
 
 Each row listed with it, or with `withStates`, carries its `waitingSteps` (the workflow, the task, and what it asks of
 the caller in words); a `withStates` row also carries `waitingReasons`, whom each other step waits on (issue #1598).
-The filter well's **Waiting on you** select (`Only those`, cleared for any) sets it, its chip says `Waiting on you`
-(`needsMeChip`), and Clear removes it. It is offered where a step can wait -- the caller's client has a normal or core
-details workflow (the shell's `hasWaitingWorkflows`, the rule Home's card is offered by) -- to a caller who sees across
-clients, and whenever it is applied, so it can be cleared. Home's "Waiting on you" card links to this listing
-(`waitingListingRoute`).
+Two controls set it, and Clear removes it. The **toolbar toggle**, beside Filters, is the one-click way to the forms
+Home's card lists (`waitingToggle`, `withWaitingToggled`): "Waiting on you (3)" in the `forms.waitingToggle` copy, an
+accent outline off and the filled your-turn pill on, applied at once over the applied search (a draft not applied
+stays a draft). Its count is the summary's `yourTurnCount`, every form waiting on the caller whatever else is
+filtered, so it does not move as a search narrows; at zero it stays, dimmed, and while on it can always be turned
+off. Since the pressed toggle says the filter is on, the filter takes no chip. The filter well's **Waiting on you**
+select (`Only those`, cleared for any) is the other, beside the rest of the filters. Both are offered where a step can
+wait -- the caller's client has a normal or core details workflow (the shell's `hasWaitingWorkflows`, the rule Home's
+card is offered by) -- to a caller who sees across clients, and whenever it is applied, so it can be cleared. It
+combines with every other filter and the search, and rides the address like them. Home's "Waiting on you" card links
+to this listing (`waitingListingRoute`), where the toggle then shows pressed.
 
 The backend judges each form once per request (`WaitingSteps.of` keeps each form's answer), so a row's steps are the
 answer that let it through the filter. It asks whether the caller owns a form only once a workflow of it has a step to
