@@ -88,13 +88,13 @@ class SandboxManageTest : StringSpec({
         sandboxRow[CLD.storedConfigs] shouldBe 1
     }
 
-    "a sandbox, a source-defined client, and a definition with unpublished changes are refused" {
+    // A client defined in code takes the switch too (issue #1677), as an overlay of its definition: `CodeClientSandboxTest`.
+    "a sandbox, and a definition with unpublished changes, are refused" {
         val client = "sbxrefused"
         defineClient(client)
         val full = TestUser.createFullAdmin(cxt, "full@$client.test")
         full.postData(UADEP.clientSandbox, mapOf(CLD.client to client, CLD.sandbox to true))
         full.expectError(EXC.badInput, UADEP.clientSandbox, mapOf(CLD.client to sandboxOf(client), CLD.sandbox to true))
-        full.expectError(EXC.badInput, UADEP.clientSandbox, mapOf(CLD.client to full.selfClient(), CLD.sandbox to true))
 
         // An unpublished change to the definition's configuration would go live with the flag: refused.
         val other = "sbxdraft932"

@@ -17,6 +17,7 @@ who may enter it and with what authority, and how it changes the way edits and p
 | Managing a client's sandbox from the Clients page | #932 |
 | The impact report a publish is judged by | #935 |
 | Overlays in code for a sandbox | #940 |
+| The sandbox switch for a client defined in code; visitors kept off a demo client's | #1677 |
 
 Later work tightened the access rules (#1194, #1196, #1197, #1199, #1200), made a session change without a page reload
 (#1015), and made being in a sandbox unmistakable (#1049). What is not built is listed at the end.
@@ -47,6 +48,16 @@ A client asks for a sandbox through the `sandbox` field of its definition (`Clie
   [`client-definition.md`](client-definition.md), issues #1112 and #1113).
 - **Afterward, through the sandbox's own management.** The client's administrator adds or removes the sandbox from the
   Clients page (`POST /clientAdmin/client/sandbox`). An administrator of every client may set it on any client.
+- **For a client defined in code, by an overlay of its definition.** Its definition is in code, which a stored one
+  cannot override, so the same switch stores an overlay of it (`"overrides": "codeOverlay"`, holding only `sandbox`) in
+  the stored bundle named like the code bundle that declares the client. The sandbox is on if the code or the overlay
+  says so, and one the code turns on is removed only there. Since code reaches the client and its sandbox together,
+  such a sandbox previews the client's stored changes to its code: its overlays, the bundles it adds, and Design View's
+  edits (#1657, #1670).
+- **Not by a visitor.** A visitor who joined a demo client may not add or remove its sandbox, whatever the deployment
+  lets visitors change. Every visitor shares a demo client, and a sandbox would make each one's edits drafts that any
+  other Organizer may publish or discard, so whether it has one is the deployment's to set. A visitor still opens and
+  publishes from a sandbox that is there, where visitors may change the configuration.
 - **Changing it publishes, never drafts.** A change to whether a sandbox exists cannot wait in the sandbox it creates
   or removes. It is refused while the client has unpublished changes, so that nothing is published by accident.
 
@@ -219,6 +230,7 @@ The behavior above is pinned by these specs, in `base/kdn`:
 | `SandboxAccessTest` | who may open, and what a sandbox user acts with |
 | `SandboxEditsTest` | edits from inside as the parent's drafts |
 | `SandboxManageTest` | adding and removing a sandbox |
+| `CodeClientSandboxTest` | adding and removing one for a client defined in code |
 | `SandboxOverlayTest` | overlays in code |
 
 The `kdr-test-clients` skill shows how a test gives its own client a sandbox and acts inside it.

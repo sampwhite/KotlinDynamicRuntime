@@ -710,8 +710,10 @@ private fun cfgPatchBody(c: KdrCxt, request: Map<String, Any?>): Map<String, Any
             edit(configId(c, name), staleness = { latest -> staleEdits(name, edits, pk, latest) }) { current ->
                 applyConfigSlotEdits(current, edits, pk).also { patched ->
                     // Read strictly (issue #1051). A definition the edits left malformed reads as none, and is not
-                    // judged here: `patchConfigs` gates the edited slots next, and refuses it as what it is.
-                    requireOperatorFieldsKept(c, patched[CCT.clientDef]?.firstOrNull()?.let { readClientDef(c, it).def })
+                    // judged here: `patchConfigs` gates the edited slots next, and refuses it as what it is. An overlay
+                    // of a definition in code (issue #1677) is not a definition, and sets no operator field.
+                    val def = patched[CCT.clientDef]?.firstOrNull { !it.isCodeOverlay }
+                    requireOperatorFieldsKept(c, def?.let { readClientDef(c, it).def })
                     requireCustomersKept(c, patched[CCT.customerDef], current[CCT.customerDef])
                 }
             }

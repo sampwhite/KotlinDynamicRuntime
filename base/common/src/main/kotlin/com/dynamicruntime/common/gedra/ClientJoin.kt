@@ -145,6 +145,30 @@ object ClientJoin {
      */
     fun configEditRefusal(cxt: KdrCxt, client: String): String? {
         if (cxt.instanceConfig.get(JOIN.visitorsEditConfigKey) == true) return null
+        val demo = joinedDemoName(cxt, client) ?: return null
+        return "You joined $demo as a visitor, and this deployment does not let visitors change a demo client's configuration."
+    }
+
+    /**
+     * Why the caller may not add or remove [client]'s sandbox -- or null when they may (issue #1677): they are a visitor
+     * who joined it, as [configEditRefusal] tells one, **whatever** [JOIN.visitorsEditConfigKey] says. A demo client is
+     * shared by every visitor, and a sandbox changes how it works for all of them -- each one's edit becomes a draft any
+     * Organizer may publish or discard -- so whether it has one is the deployment's to set. A visitor still uses a
+     * sandbox that is there, wherever the deployment lets them change the configuration.
+     *
+     * Theme: #SBXAU.
+     */
+    fun sandboxSwitchRefusal(cxt: KdrCxt, client: String): String? {
+        val demo = joinedDemoName(cxt, client) ?: return null
+        return "You joined $demo as a visitor. Every visitor shares a demo client, so whether it has a sandbox is set by " +
+            "the deployment, not by a visitor."
+    }
+
+    /**
+     * The name of the demo client [client] is -- or whose sandbox it is -- when the caller is a visitor who joined it
+     * ([AuthUserRow.joinedAs]); null for anyone else. A user opened in a sandbox is judged as the user it acts as.
+     */
+    private fun joinedDemoName(cxt: KdrCxt, client: String): String? {
         val owner = sandboxParentOf(client) ?: client
         val def = ClientService.getOrNull(cxt)?.known(owner)?.takeIf { it.joinRoles.isNotEmpty() } ?: return null
         val profile = cxt.userProfile
@@ -153,8 +177,7 @@ object ClientJoin {
         val caller = users.queryByUserId(cxt, profile.userId) ?: return null
         val acting = caller.openedBy?.takeIf { caller.isOpenedSandboxUser }?.let { users.queryByUserId(cxt, it) } ?: caller
         if (acting.client != owner || acting.joinedAs == null) return null
-        return "You joined ${def.name.ifEmpty { owner }} as a visitor, and this deployment does not let visitors change a " +
-            "demo client's configuration."
+        return def.name.ifEmpty { owner }
     }
 
     /** Refuses [what], a change to [client]'s configuration, when [configEditRefusal] gives a reason. */

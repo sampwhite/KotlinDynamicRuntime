@@ -18,6 +18,9 @@ class CodeEntries(layer: () -> List<CodeConfig>) {
     private val index: Map<Pair<String, String>, Map<String, Any?>> by lazy {
         buildMap {
             for (config in layer().map { it.config }) {
+                // The client's own definition, which an overlay may turn the sandbox on for (issue #1677); never a
+                // template's copy, which defines no client.
+                config.client?.takeIf { config.inheritedFrom == null }?.let { put(CCT.clientDef to it.clientId, it.toInfo()) }
                 config.workflows.values.forEach { put(CCT.workflowDef to it.workflowId, it.toJsonMap()) }
                 val generated = generatedTypes(config)
                 config.defs.filterKeys { it !in generated }.forEach { (name, body) -> put(CCT.schemaDef to name, body.toJsonMapOrEmpty()) }
@@ -30,7 +33,10 @@ class CodeEntries(layer: () -> List<CodeConfig>) {
         buildMap { for (config in layer().map { it.config }) generatedTypes(config).forEach { (type, trait) -> put(type, trait) } }
     }
 
-    /** The code's definition of [key] in [slot]: a workflow by id, a schema type by qualified name; null when none. */
+    /**
+ * The code's definition of [key] in [slot]: a workflow by id, a schema type by qualified name, the client's definition by
+ * client id; null when none.
+ */
     fun definition(slot: String, key: String): Map<String, Any?>? = index[slot to key]
 
     /** The trait whose generated type [typeName] is, when it is one: such a type changes only with its trait. */
@@ -55,6 +61,7 @@ class CodeEntries(layer: () -> List<CodeConfig>) {
  * Theme: #CFGFG.
  */
 internal fun GedraConfigBuilder.codeOverlay(slot: String, entry: Map<String, Any?>, code: CodeEntries?) {
+    if (slot == CCT.clientDef) return clientDefOverlay(entry, code)
     val workflow = slot == CCT.workflowDef
     val raw = entry[if (workflow) CCT.workflowId else CCT.typeName].toOptStr().orEmpty()
     val key = if (workflow) raw else qualifyTypeName(raw, namespace)
@@ -80,19 +87,59 @@ internal fun GedraConfigBuilder.codeOverlay(slot: String, entry: Map<String, Any
 }
 
 /**
+ * Reads [entry], a stored client definition marked `"overrides": "codeOverlay"`, over [code] (issue #1677): it changes
+ * the client's definition in code, and for now only says whether the client has a sandbox ([clientDefOverlayKeys]). It
+ * defines no client -- the code's definition stands -- and applies when the code declares the client it names, turning
+ * the sandbox on where it sets `sandbox` ([GedraConfig.overlayAsksForSandbox]). Any other key is left out and said, as a
+ * part of a workflow's overlay the code has no place for is; one naming a client the code does not declare is kept as
+ * stored, applying nothing. With no [code] (a write's reassembly) it is only kept.
+ */
+private fun GedraConfigBuilder.clientDefOverlay(entry: Map<String, Any?>, code: CodeEntries?) {
+    val key = entry[CLD.clientId].toOptStr().orEmpty()
+    fun record(applied: Boolean, problems: List<String>) {
+        codeOverlays.add(CodeOverlay(CCT.clientDef, key, entry, applied, problems))
+    }
+    if (code == null) return record(false, emptyList())
+    if (code.definition(CCT.clientDef, key) == null) {
+        return record(false, listOf("The client's code declares no definition of client '$key' for it to change."))
+    }
+    record(true, clientDefOverlayFaults(entry))
+}
+
+/**
+ * What is wrong with [entry], an overlay of a client's definition in code (issue #1677), one line a fault: a key it may
+ * not hold ([clientDefOverlayKeys]), and a `sandbox` that is not true or false. What a write refuses, and what a load
+ * leaves out and reports.
+ */
+fun clientDefOverlayFaults(entry: Map<String, Any?>): List<String> = buildList {
+    for (key in entry.keys.filter { it !in clientDefOverlayKeys }) {
+        add("$key: a change to a client's definition in code may set only whether it has a sandbox.")
+    }
+    entry[CLD.sandbox]?.takeIf { it !is Boolean }?.let { add("${CLD.sandbox}: is true or false, not '$it'.") }
+}
+
+/**
  * The issues for [config]'s overlays of its code that did not apply whole (issue #1657): one that applied without some
  * part the code no longer has a place for, and one that did not apply at all, so the code's entry runs. Reported where
  * the other entries a load leaves out are (`unreadEntryIssues`), and judged, like them, as stored config: forgiven at a
  * load, and refused by a write's trial when the write brings it.
  */
 fun codeOverlayIssues(config: GedraConfig): List<GedraConfigIssue> = config.codeOverlays.filter { it.problems.isNotEmpty() }.map { o ->
-    val workflow = o.slot == CCT.workflowDef
-    val what = if (workflow) "workflow '${o.key}'" else "type '${o.key}'"
-    val kind = if (workflow) GCEL.workflow else GCEL.type
+    val what = when (o.slot) {
+        CCT.workflowDef -> "workflow '${o.key}'"
+        CCT.clientDef -> "definition of client '${o.key}'"
+        else -> "type '${o.key}'"
+    }
+    val kind = when (o.slot) {
+        CCT.workflowDef -> GCEL.workflow
+        CCT.clientDef -> GCEL.client
+        else -> GCEL.type
+    }
     if (o.applied) {
+        // A client's definition is not merged: what it leaves out is what such a change may not hold (issue #1677).
+        val parts = if (o.slot == CCT.clientDef) "parts such a change may not hold" else "parts the code no longer has a place for"
         config.issue(
-            "Stored config '${config.gedraId}' changes the code's $what with parts the code no longer has a place for: " +
-                o.problems.joinToString(" "),
+            "Stored config '${config.gedraId}' changes the code's $what with $parts: " + o.problems.joinToString(" "),
             "Leaving those parts out; the rest of the change applies, and it is kept as stored.",
             kind, o.key,
         )

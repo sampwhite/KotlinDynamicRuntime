@@ -115,18 +115,29 @@ object SandboxConfigs {
 
     /**
      * Whether [parent] has a sandbox by the definition it runs -- the one in [configs] its own configuration
-     * declares. A client with no definition there (retired, or never defined) has none.
+     * declares, or, for one declared in code, that and a stored overlay of it turning the sandbox on (issue #1677,
+     * [overlayTurnsOn]). A client with no definition there (retired, or never defined) has none.
      */
-    fun hasSandbox(configs: GedraConfigCollector, parent: String): Boolean =
-        configs.configs.firstOrNull { it.gedraId.client == parent && it.client != null }?.client?.sandbox == true
+    fun hasSandbox(configs: GedraConfigCollector, parent: String): Boolean {
+        val def = configs.configs.firstOrNull { it.gedraId.client == parent && it.client != null }?.client ?: return false
+        return def.sandbox || overlayTurnsOn(configs, parent)
+    }
 
     /**
-     * The parents in [configs] that have a sandbox by the definition they run. A sandbox itself never has one: its
-     * definition is derived with the flag off.
+     * The parents in [configs] that have a sandbox by the definition they run ([hasSandbox]). A sandbox itself never has
+     * one: its definition is derived with the flag off.
      */
     fun parentsWithSandboxes(configs: GedraConfigCollector): List<String> =
-        configs.configs.mapNotNull { it.client }.filter { it.sandbox && !isSandboxClient(it.clientId) }
-            .map { it.clientId }.distinct()
+        configs.configs.mapNotNull { it.client }.map { it.clientId }.distinct()
+            .filter { !isSandboxClient(it) && hasSandbox(configs, it) }
+
+    /**
+     * Whether [client]'s stored configuration in [configs] turns its sandbox on by an overlay of its definition in code
+     * (issue #1677, [GedraConfig.overlayAsksForSandbox]): the Clients page's switch, for a client whose code leaves the
+     * sandbox off. A sandbox's copies of those configs say nothing of the sandbox's own: it has none.
+     */
+    fun overlayTurnsOn(configs: GedraConfigCollector, client: String): Boolean =
+        !isSandboxClient(client) && configs.configs.any { it.gedraId.client == client && it.isStoredHere && it.overlayAsksForSandbox }
 
     /**
      * What [overlay] repeats of the parent's source configuration [parentSource] (issue #940), each named as a person

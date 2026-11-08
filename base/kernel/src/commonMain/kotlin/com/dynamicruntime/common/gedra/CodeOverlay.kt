@@ -28,17 +28,26 @@ import com.dynamicruntime.common.util.toJsonMapOrEmpty
  * (`"overrides": "code"`) does, so nothing past the read knows the difference.
  *
  * Only the kinds with merge rules take one ([codeOverlaySlots]): workflows ([codeWorkflowMergeSpec]) and schema types
- * ([codeTypeMergeSpec]). The rules are **open**: a client's own code makes no promise to anyone else, so an overlay of it
- * may change any part, unlike a workflow made from a global template, which keeps its template's structure
- * (`templateOverlayProblems`). What no rule can state is the edge: a task removed, inserted, or moved has no place in an
- * overlay -- there are no tombstones, by the rule that a client disables what it does not want rather than deleting it
- * (#1635) -- and an editor offers to detach the entry from the code instead, storing it whole.
+ * ([codeTypeMergeSpec]). A client's definition takes a narrow one with no merge, which says only whether the client has
+ * a sandbox ([clientDefOverlayKeys], issue #1677). The rules are **open**: a client's own code makes no promise to
+ * anyone else, so an overlay of it may change any part, unlike a workflow made from a global template, which keeps its
+ * template's structure (`templateOverlayProblems`). What no rule can state is the edge: a task removed, inserted, or
+ * moved has no place in an overlay -- there are no tombstones, by the rule that a client disables what it does not want
+ * rather than deleting it (#1635) -- and an editor offers to detach the entry from the code instead, storing it whole.
  *
  * Theme: #CFGFG.
  */
 
 /** The slots whose entries may be stored as an overlay of the code's (issue #1657): workflows and schema types. */
 val codeOverlaySlots: Set<String> = setOf(CCT.workflowDef, CCT.schemaDef)
+
+/**
+ * The keys an overlay of a client's definition in code may hold (issue #1677): the client it changes, its mark, and its
+ * `sandbox` flag -- what the Clients page's sandbox switch stores for a client defined in code, and nothing else for
+ * now. It is flat, as a stored client definition is, and is not merged by a spec: the flag turns the sandbox on when the
+ * code leaves it off, and never off when the code sets it.
+ */
+val clientDefOverlayKeys: Set<String> = setOf(CLD.clientId, CCT.overrides, CLD.sandbox)
 
 /** What a refusal to state a change of a code entry's keyed list adds: the way out. */
 private const val detachHint =

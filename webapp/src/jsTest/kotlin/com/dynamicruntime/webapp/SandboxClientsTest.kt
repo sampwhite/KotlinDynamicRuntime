@@ -17,11 +17,15 @@ class SandboxClientsTest {
         hasSandbox: Boolean = false,
         origin: GedraConfigOrigin = GedraConfigOrigin.stored,
         status: ClientStatus = ClientStatus.present,
+        sandboxInCode: Boolean = false,
+        sandboxLocked: String? = null,
     ) = parseClientOverview(
         listOf(
             buildMap {
                 put(CLD.clientId, id); put(CLD.name, id); put(CLD.status, status.name); put(CLD.origin, origin.name)
                 put(CLD.hasSandbox, hasSandbox)
+                if (sandboxInCode) put(CLD.sandboxInCode, true)
+                sandboxLocked?.let { put(CLD.sandboxLocked, it) }
                 sandboxOf?.let { put(CLD.sandboxOf, it) }
                 sandboxOfName?.let { put(CLD.sandboxOfName, it) }
             },
@@ -55,8 +59,18 @@ class SandboxClientsTest {
         val sandbox = sandboxControl(row("acme:sandbox", "acme"))
         assertNull(sandbox.add)
         assertTrue(sandbox.text.startsWith("This is the sandbox of acme"))
-        assertNull(sandboxControl(row("hub", origin = GedraConfigOrigin.source)).add)
-        assertTrue("Defined in code" in sandboxControl(row("hub", origin = GedraConfigOrigin.source)).text)
+        // A client defined in code (issue #1677): its own sandbox is added and removed here, unless its code sets it.
+        val code = sandboxControl(row("hub", origin = GedraConfigOrigin.source))
+        assertEquals(true, code.add)
+        assertTrue("changes to its code" in code.text)
+        assertEquals(false, sandboxControl(row("hub", origin = GedraConfigOrigin.source, hasSandbox = true)).add)
+        val inCode = sandboxControl(row("acme", origin = GedraConfigOrigin.source, hasSandbox = true, sandboxInCode = true))
+        assertNull(inCode.add)
+        assertTrue("set in its code" in inCode.text)
+        // A visitor of a demo client is told why, and offered nothing.
+        val locked = sandboxControl(row("confdemo", origin = GedraConfigOrigin.source, sandboxLocked = "You joined it as a visitor."))
+        assertNull(locked.add)
+        assertTrue(locked.text.endsWith("You joined it as a visitor."))
         assertNull(sandboxControl(row("gone", status = ClientStatus.notEnabled)).add)
     }
 

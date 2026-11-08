@@ -235,12 +235,12 @@ class AssistantTranscriptTest {
     fun theWireIsReadAsThePageNeedsIt() {
         val status = parseAssistantStatus(
             mapOf(
-                ASST.client to "acme", ACNV.on to true, ACNV.hasSandbox to false, ACNV.sandboxInSource to true, ACNV.inSandbox to false,
+                ASST.client to "acme", ACNV.on to true, ACNV.hasSandbox to false, ACNV.definedInCode to true, ACNV.inSandbox to false,
                 ACNV.usedShare to 0.5, ACNV.spent to false, ACNV.resetsAt to "2026-12-01T00:00:00.000Z", ASST.dataNotice to "Sent.",
             ),
         )
         assertEquals("acme", status.client)
-        assertTrue(status.on && status.sandboxInSource && !status.hasSandbox)
+        assertTrue(status.on && status.definedInCode && !status.hasSandbox)
         assertEquals(0.5, status.allowance.usedShare)
         // Offered to switch on only when the status says so (issue #1568), and known by its name where it has one.
         assertTrue(!status.offered)

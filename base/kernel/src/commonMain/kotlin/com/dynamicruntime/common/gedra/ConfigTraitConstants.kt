@@ -62,8 +62,9 @@ object CCT {
 
     /**
      * The value of [overrides] for an entry that holds only what it changes of the code's (issue #1657): an overlay,
-     * merged over the code's entry as it is now on every read. Only a workflow or a schema type takes one
-     * (`codeOverlaySlots`).
+     * merged over the code's entry as it is now on every read. A workflow or a schema type takes one
+     * (`codeOverlaySlots`), and a client's definition takes one that sets only its sandbox (`clientDefOverlayKeys`, issue
+     * #1677).
      */
     const val overridesCodeOverlayValue = "codeOverlay"
 

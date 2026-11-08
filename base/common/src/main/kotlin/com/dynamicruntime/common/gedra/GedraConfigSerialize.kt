@@ -235,7 +235,10 @@ fun reassembleGedraConfig(
     // A workflow made from a template is read over the deployment's template (issue #1120).
     workflowTemplates = WorkflowTemplates.lookup(cxt)
     this.keepUnreadWorkflow = keepUnreadWorkflow
-    entriesBySlot[CCT.clientDef]?.firstOrNull()?.let { defineClient(ClientDef.fromInfo(it)) }
+    entriesBySlot[CCT.clientDef]?.firstOrNull()?.let { e ->
+        // An overlay of the client's definition in code (issue #1677) defines no client: it is read over the code's.
+        if (e.isCodeOverlay) codeOverlay(CCT.clientDef, e, code) else defineClient(ClientDef.fromInfo(e))
+    }
     entriesBySlot[CCT.customerDef]?.forEach { defineCustomer(CustomerDef.fromInfo(it)) }
     // Directly-declared types first, so a trait's shared `$ref` has its target present when the config compiles.
     entriesBySlot[CCT.schemaDef]?.forEach { e ->

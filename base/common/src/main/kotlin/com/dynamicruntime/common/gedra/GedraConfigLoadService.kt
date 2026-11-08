@@ -604,9 +604,12 @@ class GedraConfigLoadService : ServiceInitializer {
         }
     }
 
-    /** The definition of [client] that a stored [row] holds, or null when it holds none, or one that does not read. */
+    /**
+     * The definition of [client] that a stored [row] holds, or null when it holds none, or one that does not read. An
+     * overlay of a definition in code (issue #1677) is none: it changes the code's.
+     */
     private fun storedDefOf(row: GedraConfigRow, client: String): ClientDef? {
-        val info = row.entriesBySlot()[CCT.clientDef]?.firstOrNull() ?: return null
+        val info = row.entriesBySlot()[CCT.clientDef]?.firstOrNull { !it.isCodeOverlay } ?: return null
         return try {
             ClientDef.fromInfo(info).takeIf { it.clientId == client }
         } catch (_: KdrException) {

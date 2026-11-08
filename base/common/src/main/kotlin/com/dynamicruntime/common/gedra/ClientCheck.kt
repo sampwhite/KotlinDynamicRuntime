@@ -66,7 +66,13 @@ fun checkClientDefs(
     // Reported once, for the client that holds it: a sandbox carries its parent's definition, reported there.
     val storedPackages = IdentityHashMap<GedraConfig, String>()
     val raw = configs.configs.mapNotNull { config ->
-        config.client?.let { def ->
+        config.client?.let { declared ->
+            // A definition in code whose sandbox the client's stored configuration turns on (issue #1677) runs with it on.
+            val def = if (!config.isStored && !declared.sandbox && SandboxConfigs.overlayTurnsOn(configs, declared.clientId)) {
+                declared.copy(sandbox = true)
+            } else {
+                declared
+            }
             val named = def.webResourcesId
             if (named != null && config.isStored) {
                 if (!isSandboxClient(def.clientId)) storedPackages[config] = named

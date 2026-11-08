@@ -363,8 +363,8 @@ val AssistantPage = FC<Props> {
                     ),
                 )
                 if (!current.hasSandbox) {
-                    // Live while it can be turned on here; a client defined in code has it turned on there.
-                    panel(panelSandbox, "Sandbox", kind = if (current.sandboxInSource) PanelKind.view else PanelKind.live) {
+                    // Turned on here for a client defined in code too (issue #1677), as an overlay of its definition.
+                    panel(panelSandbox, "Sandbox", kind = PanelKind.live) {
                         p {
                             +(
                                 "The assistant drafts in ${current.clientName}'s sandbox, which ${current.clientName} has not got yet. " +
@@ -373,23 +373,16 @@ val AssistantPage = FC<Props> {
                                     "else sees it."
                             )
                         }
-                        if (current.sandboxInSource) {
-                            p {
-                                className = ClassName("type-hint")
-                                +"${current.clientName} is defined in code, so its sandbox is turned on there, in its definition."
-                            }
-                        } else {
-                            Popconfirm {
-                                title = "Turn on ${current.clientName}'s sandbox?"
-                                description = "From now on ${current.clientName} runs only published configuration."
-                                okText = "Turn on sandbox"
-                                cancelText = "Cancel"
-                                onConfirm = { turnOnSandbox(current.client) }
-                                Button {
-                                    type = "primary"
-                                    loading = sandboxBusy
-                                    +"Turn on sandbox"
-                                }
+                        Popconfirm {
+                            title = "Turn on ${current.clientName}'s sandbox?"
+                            description = "From now on ${current.clientName} runs only published configuration."
+                            okText = "Turn on sandbox"
+                            cancelText = "Cancel"
+                            onConfirm = { turnOnSandbox(current.client) }
+                            Button {
+                                type = "primary"
+                                loading = sandboxBusy
+                                +"Turn on sandbox"
                             }
                         }
                         panelNote(sandboxError, null, "Couldn't turn on the sandbox.")
@@ -397,7 +390,7 @@ val AssistantPage = FC<Props> {
                 }
                 panel(panelConversation, "Conversation", kind = PanelKind.live) {
                     // What its New form asks for is the code's for a client defined there (issue #1569).
-                    if (current.sandboxInSource) {
+                    if (current.definedInCode) {
                         p {
                             className = ClassName("type-hint")
                             +(
@@ -442,7 +435,7 @@ val AssistantPage = FC<Props> {
                             role = AriaRole.group
                             ariaLabel = "Example messages"
                             span { className = ClassName("type-hint"); +"For example: " }
-                            for (example in assistantExamples(definedInCode = current.sandboxInSource)) {
+                            for (example in assistantExamples(definedInCode = current.definedInCode)) {
                                 Button {
                                     size = "small"
                                     onClick = {

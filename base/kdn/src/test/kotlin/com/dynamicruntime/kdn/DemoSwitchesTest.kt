@@ -15,13 +15,16 @@ import com.dynamicruntime.common.gedra.GedraConfigLoadService
 import com.dynamicruntime.common.gedra.GedraConfigService
 import com.dynamicruntime.common.gedra.GedraEditAction
 import com.dynamicruntime.common.gedra.JOIN
+import com.dynamicruntime.common.gedra.sandboxOf
 import com.dynamicruntime.common.gedra.workflow.WFD
 import com.dynamicruntime.common.gedra.workflow.WorkflowService
 import com.dynamicruntime.common.gedra.workflow.workflowDefStamp
 import com.dynamicruntime.common.startup.SchemaCollector
+import com.dynamicruntime.common.startup.SchemaService
 import com.dynamicruntime.common.user.AEP
 import com.dynamicruntime.common.user.AFLD
 import com.dynamicruntime.common.user.TestUser
+import com.dynamicruntime.common.user.UADEP
 import com.dynamicruntime.common.user.UserService
 import com.dynamicruntime.common.util.toOptLong
 import com.dynamicruntime.common.util.toOptStr
@@ -43,7 +46,7 @@ import io.kotest.matchers.string.shouldContain
  *   declared in code and provisioning makes only its users.
  * - [JOIN.visitorsEditConfigKey]: off, a visitor -- a user stamped with the role they joined a demo client as -- may not
  *   change that client's configuration, though the client's own users may, and the visitor may change a client they
- *   made for themselves; on, they may.
+ *   made for themselves; on, they may. Either way a visitor may not add or remove the client's sandbox (issue #1677).
  *
  * Instances of their own, since each is a deployment's configuration.
  */
@@ -135,5 +138,38 @@ class DemoSwitchesTest : StringSpec({
             .single { it.configId.baseId == ConfDemo.createTalkConfig }.entriesBySlot()[CCT.workflowDef].orEmpty().single()
         stored[CCT.overrides] shouldBe CCT.overridesCodeOverlayValue
         stored[CCT.definition] shouldBe mapOf(WFD.workflowId to ConfDemo.createTalkWorkflow, WFD.label to "Submit a talk")
+    }
+
+    // Issue #1677: a demo client is shared by every visitor, so whether it has a sandbox is the deployment's to set.
+    "a visitor may not add or remove a demo client's sandbox, whether or not the deployment lets them edit it" {
+        for ((on, email) in listOf(joinable to "nosandbox@switches1677.test", reference to "nosandbox@reference1677.test")) {
+            val visitor = TestUser.create(on, email)
+            join(visitor, ConfDemo.organizerRole)
+            visitor.expectError(EXC.notAuthorized, UADEP.clientSandbox, mapOf(CLD.sandbox to true)).toString() shouldContain
+                "whether it has a sandbox is set by the deployment"
+            ClientService.get(on).isPresent(sandboxOf(ConfDemo.client)) shouldBe false
+        }
+    }
+
+    "a visitor uses a demo client's sandbox the deployment added, where visitors may change its configuration" {
+        // Its own instance: a sandbox on the demo changes it for every visitor.
+        val sandboxed = Startup.mkTestBootCxt(
+            "demoSwitchesSandbox", "kdnDemoSwitchesSandbox1677",
+            mapOf(JOIN.offeredKey to true, ConfDemo.fromCodeKey to true, JOIN.visitorsEditConfigKey to true),
+        )
+        provisionConfDemo(sandboxed)
+        // The demo's own organizer, who did not join it, adds the sandbox to the demo declared in code.
+        TestUser.create(sandboxed, "organizer@${ConfDemo.client}.example", userClient = ConfDemo.client)
+            .postData(UADEP.clientSandbox, mapOf(CLD.sandbox to true))[CLD.sandbox] shouldBe true
+
+        val visitor = TestUser.create(sandboxed, "sandboxed@switches1677.test")
+        join(visitor, ConfDemo.organizerRole)
+        visitor.postData(AEP.openSandbox, emptyMap())
+        visitor.postData(CFEP.bundlePatch, change - CFEP.dryRun)
+        val facts = SchemaService.get(sandboxed)
+        ("visitorTried" in facts.cfactsFor(sandboxOf(ConfDemo.client)).names) shouldBe true
+        ("visitorTried" in facts.cfactsFor(ConfDemo.client).names) shouldBe false
+        visitor.postData(CFEP.bundlePublish, mapOf(CFEP.names to listOf("visitorTry")))
+        ("visitorTried" in facts.cfactsFor(ConfDemo.client).names) shouldBe true
     }
 })

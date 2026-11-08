@@ -189,7 +189,7 @@ object ACNV {
     /** The client's display name, which a person who named a self-serve client knows it by (issue #1568). */
     const val clientName = "clientName"
     const val hasSandbox = "hasSandbox"
-    const val sandboxInSource = "sandboxInSource"
+    const val definedInCode = "definedInCode"
     const val inSandbox = "inSandbox"
     const val usedShare = "usedShare"
     const val spent = "spent"

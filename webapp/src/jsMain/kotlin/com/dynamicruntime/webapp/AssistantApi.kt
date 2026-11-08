@@ -23,8 +23,8 @@ class AssistantStatus(
      */
     val offered: Boolean,
     val hasSandbox: Boolean,
-    /** Whether the client is defined in source code, where its sandbox is turned on -- not from this page. */
-    val sandboxInSource: Boolean,
+    /** Whether the client is defined in code, where what its New form asks for is changed (issue #1569). */
+    val definedInCode: Boolean,
     val inSandbox: Boolean,
     val allowance: AllowanceView,
     val dataNotice: String,
@@ -76,7 +76,7 @@ fun parseAssistantStatus(results: Map<String, Any?>): AssistantStatus = Assistan
     on = results[ACNV.on] == true,
     offered = results[ACNV.offered] == true,
     hasSandbox = results[ACNV.hasSandbox] == true,
-    sandboxInSource = results[ACNV.sandboxInSource] == true,
+    definedInCode = results[ACNV.definedInCode] == true,
     inSandbox = results[ACNV.inSandbox] == true,
     allowance = AllowanceView(
         results[ACNV.usedShare].toOptDoubleOrNull() ?: 0.0, results[ACNV.spent] == true, results.getOptStr(ACNV.resetsAt).orEmpty(),
