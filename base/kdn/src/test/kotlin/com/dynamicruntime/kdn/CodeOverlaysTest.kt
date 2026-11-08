@@ -32,6 +32,7 @@ import com.dynamicruntime.common.gedra.workflow.WfDefBuilder
 import com.dynamicruntime.common.gedra.workflow.WfEntry
 import com.dynamicruntime.common.gedra.workflow.WfSaveKind
 import com.dynamicruntime.common.gedra.workflow.WorkflowService
+import com.dynamicruntime.common.gedra.workflow.toJsonMap
 import com.dynamicruntime.common.gedra.workflow.workflowDefStamp
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.naming.clientNamespace
@@ -321,6 +322,22 @@ class CodeOverlaysTest : StringSpec({
                 mapOf(WFD.id to "a", WFD.label to "A, ours", WFD.saves to listOf(mapOf(WFD.id to "s", WFD.label to "Keep it"))),
             ),
         )
+        // A layout change goes into the same overlay, beside the labels, and runs.
+        chief.postData(
+            DSV.layoutEntryEdit,
+            mapOf(
+                DSV.workflowId to "tplFlow", DSV.typeName to "client.$tpl.TplNoteData", DSV.field to "note",
+                DSV.entry to mapOf(SL.label to "Your note"), DSV.basedOn to workflowDefStamp(flow(cxt, client, "tplFlow")),
+            ),
+        )
+        val withLayout = storedEntries(cxt, client, CCT.workflowDef, copy).single()
+        withLayout[CCT.overrides] shouldBe CCT.overridesCodeOverlayValue
+        val stored = withLayout[CCT.definition].toJsonMapOrEmpty()
+        stored[WFD.tasks] shouldBe listOf(
+            mapOf(WFD.id to "a", WFD.label to "A, ours", WFD.saves to listOf(mapOf(WFD.id to "s", WFD.label to "Keep it"))),
+        )
+        stored.toString() shouldContain "Your note"
+        flow(cxt, client, "tplFlow").toJsonMap().toString() shouldContain "Your note"
     }
 
     "Design View's first edit of a code type stores an overlay of it; a trait declared in code stays whole-only" {
