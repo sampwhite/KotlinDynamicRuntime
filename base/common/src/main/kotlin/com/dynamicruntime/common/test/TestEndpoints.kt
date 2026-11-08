@@ -4,6 +4,7 @@ import com.dynamicruntime.common.app.APP
 import com.dynamicruntime.common.content.FRAG
 import com.dynamicruntime.common.content.MarkdownFragmentService
 import com.dynamicruntime.common.content.UIC
+import com.dynamicruntime.common.context.CL
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.UserProfile
 import com.dynamicruntime.common.endpoint.HttpMethod
@@ -104,7 +105,9 @@ fun testSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.test") {
                 "The user's persona (issue #747). A freshly created user starts with its default roles (issue #1647) -- " +
                     "`${ROLE.editor}` for `${PERSONA.editor}`, `${ROLE.admin}` for `${PERSONA.admin}` -- with `level` " +
                     "setting the rung over them when given. Absent, the one the level and capabilities imply " +
-                    "(`${PERSONA.admin}` for an admin, `${PERSONA.editor}` for an editor, else `${PERSONA.member}`).",
+                    "(`${PERSONA.admin}` for an admin, `${PERSONA.editor}` for an editor, else `${PERSONA.member}`). " +
+                    "With no `client` named, an admin or an editor lands in `${CL.hub}`, since `${CL.public}` has " +
+                    "no client administrators or editors.",
             ) {
                 for (def in PERSONA.defs) option(def.name, def.label)
             }

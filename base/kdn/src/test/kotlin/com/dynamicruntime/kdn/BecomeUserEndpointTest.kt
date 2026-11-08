@@ -86,10 +86,13 @@ class BecomeUserEndpointTest : StringSpec({
         val editor = TestUser.create(cxt, "become-editor@example.com", persona = PERSONA.editor)
         editor.userInfo[UPF.persona] shouldBe PERSONA.editor
         TestUser.rolesOf(editor.userInfo).toSet() shouldBe setOf(ROLE.user, ROLE.editor)
+        // With no client named, the roles choose it: `public` has no editors, so an editor is the hub's.
+        editor.userInfo[UPF.client] shouldBe CL.hub
 
-        // No level: the persona's own rung.
+        // No level: the persona's own rung, and an administrator is the hub's too.
         val admin = TestUser.create(cxt, "become-persona-admin@example.com", persona = PERSONA.admin)
         TestUser.rolesOf(admin.userInfo).toSet() shouldBe setOf(ROLE.user, ROLE.admin)
+        admin.userInfo[UPF.client] shouldBe CL.hub
 
         // A given level still sets the rung, keeping the persona's editor, and capabilities are still added.
         val operator = TestUser.create(
@@ -99,6 +102,9 @@ class BecomeUserEndpointTest : StringSpec({
         TestUser.rolesOf(operator.userInfo).toSet() shouldBe setOf(ROLE.user, ROLE.operator, ROLE.editor, ROLE.allClients)
         val demoted = TestUser.create(cxt, "become-admin-user@example.com", level = ROLE.user, persona = PERSONA.admin)
         TestUser.rolesOf(demoted.userInfo).toSet() shouldBe setOf(ROLE.user)
+        // A demoted user's state, persona and roles disagreeing, which a test may want; with no client role it is `public`'s.
+        demoted.userInfo[UPF.persona] shouldBe PERSONA.admin
+        demoted.userInfo[UPF.client] shouldBe CL.public
 
         // Finding the user again is unchanged: you become whoever is there, whatever the level asks.
         val again = TestUser.create(cxt, "become-editor@example.com", level = ROLE.admin, persona = PERSONA.editor)
