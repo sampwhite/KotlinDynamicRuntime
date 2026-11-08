@@ -4,6 +4,7 @@ import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.ReadScope
 import com.dynamicruntime.common.endpoint.CursorKeyCodec
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.gedra.workflow.copyResolver
 import com.dynamicruntime.common.sql.PF
 import com.dynamicruntime.common.sql.SqlStmtUtil
 import com.dynamicruntime.common.sql.SqlTopicService
@@ -235,7 +236,9 @@ object ReportHistoryWriter {
         val rows = run.groups.take(maxGroups).map { aggregateRowMap(groupBy, it) }
         val data = buildMap {
             put(RRUN.groupBy, groupBy.map { it.columnId })
-            put(RRUN.columns, bound.columns.map { it.describe() })
+            // The client's copy (issue #1600): a keyword's report label is stored as the History view shows it.
+            val copy = copyResolver(clientCxt, client)
+            put(RRUN.columns, bound.columns.map { it.describe(copy) })
             put(RHIS.rows, rows)
             if (run.groups.size > maxGroups) put(RHIS.truncated, true)
         }

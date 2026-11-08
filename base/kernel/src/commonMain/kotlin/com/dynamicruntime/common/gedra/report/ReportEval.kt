@@ -5,6 +5,7 @@ import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.gedra.GT
 import com.dynamicruntime.common.gedra.canonicalKey
 import com.dynamicruntime.common.gedra.entryKeyValuesOrNull
+import com.dynamicruntime.common.gedra.workflow.CTAK
 import com.dynamicruntime.common.gedra.workflow.FormWorkflow
 import com.dynamicruntime.common.gedra.workflow.WFS
 import com.dynamicruntime.common.gedra.workflow.WfColumnCategory
@@ -12,6 +13,7 @@ import com.dynamicruntime.common.gedra.workflow.WfPhase
 import com.dynamicruntime.common.gedra.workflow.currentApprovals
 import com.dynamicruntime.common.gedra.workflow.engagementDataOf
 import com.dynamicruntime.common.gedra.workflow.formStatusOf
+import com.dynamicruntime.common.gedra.workflow.formWorkflowWeights
 import com.dynamicruntime.common.gedra.workflow.formWorkflowsOf
 import com.dynamicruntime.common.gedra.workflow.coreDetailsStatusOf
 import com.dynamicruntime.common.gedra.workflow.workflowStateDataOf
@@ -97,11 +99,26 @@ class ReportSubject(
     val states: List<Map<String, Any?>>,
     /** The owner's account, keyed by `RUSR`; null when the owner is unknown or outside what the caller may see. */
     val owner: Map<String, Any?>?,
+    /**
+     * Copy as the form's client words it (issue #1600): a template, such as a CTA filter's label, through the backend's
+     * pass. As written, by default: a test, or a reader with no copy to resolve against.
+     */
+    val copy: (String) -> String = { it },
     /** A workflow's phase now, or null for one this client does not have -- as `formWorkflowsOf` takes it. */
     val phaseOf: (workflowId: String) -> WfPhase?,
 ) {
     /** The form's workflows as its listing cell shows them, by id; computed once however many columns ask. */
     val workflows: Map<String, FormWorkflow> by lazy { formWorkflowsOf(states, phaseOf).associateBy { it.workflowId } }
+
+    /**
+     * The search keyword each workflow's call to action carries (issue #1600), by id, as the forms list's keyword search
+     * reads it ([formWorkflowWeights]): a workflow under way, whoever may act -- a report is about the work, never about
+     * the person running it. A workflow carrying none is absent.
+     */
+    val keywords: Map<String, String> by lazy {
+        formWorkflowWeights(states, phaseOf) { _, _ -> false }
+            .mapNotNull { w -> w.keyword?.let { w.workflow.workflowId to it } }.toMap()
+    }
 }
 
 /**
@@ -242,6 +259,8 @@ private fun workflowValue(path: WorkflowPath, subject: ReportSubject): Any? {
         RWF.category -> shown?.category?.name
         RWF.finished -> shown?.category == WfColumnCategory.finished
         RWF.ctaTask -> shown?.ctaTask
+        RWF.ctaKeyword -> subject.keywords[id]
+        RWF.ctaFilterLabel -> if (shown?.category == WfColumnCategory.engaged) ctaFilterLabelOf(subject, id) else null
         RWF.engaged -> engaged
         RWF.lastEngagedAt -> engagement?.get(WFS.lastEngagedAt)
         RWF.eligible -> workflowStateDataOf(subject.states, id)?.get(WFS.eligible) as? Boolean
@@ -249,6 +268,16 @@ private fun workflowValue(path: WorkflowPath, subject: ReportSubject): Any? {
         else -> throw unreadAttribute(path)
     }
 }
+
+/**
+ * Who workflow [id]'s call to action waits on, as the form's client words it: the label stored with its CTA filter,
+ * through [ReportSubject.copy]. Null when it has none, or when the label still needs the form's data, which a stored
+ * label is never resolved against -- the forms list drops such a label too. *
+ * Theme: #TPLPS.
+ */
+private fun ctaFilterLabelOf(subject: ReportSubject, id: String): String? =
+    workflowStateDataOf(subject.states, id)?.get(WFS.ctaFilterLabel).toOptStr()
+        ?.let(subject.copy)?.takeIf { it.isNotBlank() && $$"${" !in it }
 
 private fun unreadAttribute(path: ReportPath): KdrException =
     KdrException("The report path '$path' names an attribute the evaluator has no reading for.")
@@ -258,6 +287,8 @@ private fun metaValue(attr: String, subject: ReportSubject): Any? = when (attr) 
     RMETA.coreDetailsStatus -> coreDetailsStatusOf(subject.states)
     RMETA.cfacts -> subject.states.filter { it[GE.traitId].toOptStr() == GT.cfacts }
         .flatMap { it[GE.data].toJsonMapOrEmpty()[GT.facts].toJsonListOrEmpty() }
+    // In the keywords' own order, each once, whichever workflows carry it.
+    RMETA.ctaKeywords -> subject.keywords.values.toSet().let { carried -> CTAK.all.filter { it in carried } }
     else -> subject.meta[attr]
 }
 

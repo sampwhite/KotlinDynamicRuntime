@@ -111,6 +111,17 @@ alone also confines the rows to X: on a client's own copy, an `allClients` calle
   reads the listing off `from` (`formsListingOf`, honouring only the two forms listings), so a form opened
   there returns there; a `page=forms` address naming a workflow is routed to the workflow's listing, so old links
   still open where they did.
+- **A keyword count on the Workflows page** (issue #1600): for each search keyword some listed workflow's calls to
+  action may carry, the aggregate's `keywords` count the forms whose call to action in that workflow carries it --
+  **Anyone's** (`any`) and **Yours** (`mine`) -- under the keyword's `columnHeader` ("To review"), a blank pair for a
+  workflow that carries none. The words are the aggregate summary's `ctaKeywords` (across clients, a count's tooltip
+  takes its own client's from `ctaKeywordsByClient`; the header stays the caller's) and the `home` file's
+  `workflowCell.keywordAny`/`keywordMine`. A count leads to the workflow's **engaged** listing narrowed by
+  `workflowKeyword`/`workflowKeywordWhose` (`workflowKeywordDrillRoute`), a drill-down pair of its own declared on every
+  listing endpoint: the keyword's search parameter (`review=mine`) asks of every workflow and only a client's own listing
+  takes it, while a cross-client caller's drill goes to the shared one. The line under the heading adds the chip's words,
+  "-- Needs review: Yours" (`keywordCountWords`), and choosing a state, Engaged included, drops the pair. Backend and page
+  count by one rule (`matchesWorkflowKeyword`), so a count and its forms cannot disagree.
 - **Choosing a client drops the `user` scope** (`formsSearchForClient`): a user belongs to one client. A shared
   `client=X` link opened by a caller without `allClients` drops the selector from the search too
   (`formsInitialSearch`), since no control would let them clear it.

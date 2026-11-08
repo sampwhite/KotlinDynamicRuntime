@@ -1272,7 +1272,7 @@ val WorkflowCellItem.linkEdits: Boolean get() = weight == WfWeight.yourTurn
  * the workflow's listing they are its identity rather than a filter -- kept by Clear, part of what a history entry
  * is -- though they ride the query like any other search key, so paging, sorting and a client switch carry them.
  */
-val formsDrillKeys: Set<String> = setOf(WAGG.workflowId, WAGG.workflowState)
+val formsDrillKeys: Set<String> = setOf(WAGG.workflowId, WAGG.workflowState, WAGG.keyword, WAGG.keywordWhose)
 
 /**
  * The search keys the listing's **Clear** keeps: the scope controls outside the filter panel -- whose forms
@@ -1292,6 +1292,27 @@ fun workflowDrillOf(applied: Map<String, Any?>): Pair<String, WfColumnCategory?>
 }
 
 /**
+ * The keyword drill-down a forms search carries (issue #1600): the keyword and whose ([CTKQ.mine] or [CTKQ.any], the
+ * latter when unsaid), or null when the listing is not drilled onto a keyword count. Pure, and covered under `jsNodeTest`.
+ */
+fun workflowKeywordDrillOf(applied: Map<String, Any?>): Pair<String, String>? {
+    if (workflowDrillOf(applied) == null) return null
+    val keyword = applied[WAGG.keyword]?.toString()?.ifBlank { null } ?: return null
+    val whose = applied[WAGG.keywordWhose]?.toString()?.takeIf { it == CTKQ.mine } ?: CTKQ.any
+    return keyword to whose
+}
+
+/**
+ * A keyword count's words (issue #1600), "Needs review: Yours" -- the keyword's filter label and whose, as the forms
+ * list's keyword filter chip says them ([keywordFilterChips]) -- or the keyword itself when [keywords] does not word it.
+ * Pure, and covered under `jsNodeTest`.
+ */
+fun keywordCountWords(keyword: String, whose: String, keywords: List<CtaKeywordWords>, words: WorkflowCellWords): String {
+    val label = keywords.firstOrNull { it.keyword == keyword }?.filterLabel?.ifBlank { null } ?: keyword
+    return "$label: ${if (whose == CTKQ.mine) words.keywordMine else words.keywordAny}"
+}
+
+/**
  * What the workflow's listing is headed (issue #792): the workflow's label from the listing's [summary] when it names
  * the workflow -- under the listing's client, across clients -- else its id. Null when the search names no workflow.
  * Pure, and covered under `jsNodeTest`.
@@ -1306,8 +1327,11 @@ fun workflowDrillLabel(applied: Map<String, Any?>, summary: List<WorkflowSummary
  * The line under the workflow's listing's heading (issue #792): which forms these are, `The forms engaged with
  * this workflow.` -- or every form it knows when the search names no state. Pure, and covered under `jsNodeTest`.
  */
-fun workflowDrillNote(state: WfColumnCategory?): String =
-    state?.let { "The forms ${workflowDrillForms(it)}." } ?: "Every form this workflow applies to."
+fun workflowDrillNote(state: WfColumnCategory?, keywordWords: String? = null): String = when {
+    // A keyword count (issue #1600): the engaged forms its words narrow, "... under way — Needs review: Yours."
+    keywordWords != null -> "The forms ${workflowDrillForms(state ?: WfColumnCategory.engaged)} — $keywordWords."
+    else -> state?.let { "The forms ${workflowDrillForms(it)}." } ?: "Every form this workflow applies to."
+}
 
 /** Which forms a workflow's listing in [state] shows, after "the forms": its heading's line and the saved note's. */
 fun workflowDrillForms(state: WfColumnCategory): String = when (state) {
@@ -1329,7 +1353,22 @@ class WorkflowAggregateEntry(
     val eligible: Int,
     val engaged: Int,
     val finished: Int,
+    /** Each search keyword the workflow's calls to action may carry, with its counts (issue #1600); empty for none. */
+    val keywords: List<WorkflowKeywordCount> = emptyList(),
 )
+
+/**
+ * One search keyword on the workflow pages (issue #1600): how many forms' calls to action in the workflow carry it
+ * ([any]), and how many of those the caller may act on now ([mine]).
+ */
+class WorkflowKeywordCount(val keyword: String, val any: Int, val mine: Int)
+
+/**
+ * The search keywords the workflow pages head a column for (issue #1600): every keyword some entry of [entries] counts,
+ * in the order the entries first name them. Pure, and covered under `jsNodeTest`.
+ */
+fun aggregateKeywords(entries: List<WorkflowAggregateEntry>): List<String> =
+    entries.flatMap { e -> e.keywords.map { it.keyword } }.distinct()
 
 /** The aggregate endpoint's items as entries (issue #792). Pure, and covered under `jsNodeTest`. */
 fun parseWorkflowAggregate(items: List<Map<String, Any?>>): List<WorkflowAggregateEntry> = items.mapNotNull { w ->
@@ -1341,6 +1380,13 @@ fun parseWorkflowAggregate(items: List<Map<String, Any?>>): List<WorkflowAggrega
         eligible = (w[WAGG.eligible] as? Number)?.toInt() ?: 0,
         engaged = (w[WAGG.engaged] as? Number)?.toInt() ?: 0,
         finished = (w[WAGG.finished] as? Number)?.toInt() ?: 0,
+        keywords = w[WAGG.keywords].toJsonListOfMaps().mapNotNull { k ->
+            WorkflowKeywordCount(
+                keyword = k[CTKF.keyword].toOptStr() ?: return@mapNotNull null,
+                any = (k[CTKQ.any] as? Number)?.toInt() ?: 0,
+                mine = (k[CTKQ.mine] as? Number)?.toInt() ?: 0,
+            )
+        },
     )
 }
 
@@ -1354,6 +1400,14 @@ fun parseWorkflowAggregate(items: List<Map<String, Any?>>): List<WorkflowAggrega
 fun workflowDrillRoute(workflowId: String, state: WfColumnCategory, client: String?): List<Pair<String, String>> =
     listOf(HP.page to pageWorkflowForms, WAGG.workflowId to workflowId, WAGG.workflowState to state.name) +
         listOfNotNull(client?.let { EI.client to it })
+
+/**
+ * Where a keyword count on the workflow pages leads (issue #1600): the workflow's listing of its engaged forms, narrowed
+ * to those whose call to action carries [keyword], asked [whose] -- [workflowDrillRoute] with the keyword's pair, so the
+ * listing's Engaged state is the one lit. Pure, and covered under `jsNodeTest`.
+ */
+fun workflowKeywordDrillRoute(workflowId: String, keyword: String, whose: String, client: String?): List<Pair<String, String>> =
+    workflowDrillRoute(workflowId, WfColumnCategory.engaged, client) + listOf(WAGG.keyword to keyword, WAGG.keywordWhose to whose)
 
 /**
  * A drill-down state as the workflow pages head its count -- Eligible, Engaged, Finished (issue #792) -- in lower
@@ -1439,11 +1493,8 @@ fun keywordsInUse(keywords: List<CtaKeywordWords>, searchKeys: Set<String>): Lis
  */
 fun keywordFilterChips(applied: Map<String, Any?>, keywords: List<CtaKeywordWords>, words: WorkflowCellWords): List<String> =
     keywords.mapNotNull { kw ->
-        when (applied[kw.keyword]?.toString()) {
-            CTKQ.mine -> "${kw.filterLabel}: ${words.keywordMine}"
-            CTKQ.any -> "${kw.filterLabel}: ${words.keywordAny}"
-            else -> null
-        }
+        applied[kw.keyword]?.toString()?.takeIf { it == CTKQ.mine || it == CTKQ.any }
+            ?.let { whose -> keywordCountWords(kw.keyword, whose, keywords, words) }
     }
 
 // `formatTimestamp`, which shows a wire timestamp in the client's zone, is in `DisplayZone.kt` (issue #1115).

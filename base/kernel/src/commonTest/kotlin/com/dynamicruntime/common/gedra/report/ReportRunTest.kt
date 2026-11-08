@@ -187,11 +187,11 @@ class ReportRunTest {
 
     @Test
     fun aColumnDescribesHowItWasBound() {
-        val described = years.describe()
+        val described = years.describe { it }
         assertEquals(ReportKind.number.name, described[RRUN.kind])
         assertEquals(ReportCombine.list.name, described[RRUN.combine])
         assertEquals(ReportCombine.count.name, described[RRUN.rollup])
         assertEquals(true, described[RRUN.multiValued])
-        assertFalse(auditor.describe().containsKey(RRUN.rollup))
+        assertFalse(auditor.describe { it }.containsKey(RRUN.rollup))
     }
 }

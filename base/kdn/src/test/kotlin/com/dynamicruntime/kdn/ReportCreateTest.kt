@@ -117,7 +117,8 @@ class ReportCreateTest : StringSpec({
         // Each trait named as every page names it (issue #1520): by its heading's first line, else its id in words.
         groups.map { it[RRUN.label] } shouldBe listOf("The form", "Talk details", "Yearly", "Review")
         fun paths(i: Int) = groups[i][RCR.paths].toJsonListOfMaps().associateBy { it[RRUN.path] }
-        paths(0).keys shouldBe setOf("meta.createdAt", "meta.updatedAt", "meta.formStatus", "user.email", "user.name")
+        // The review's approval carries the `review` keyword, so the form's calls to action are offered (issue #1600).
+        paths(0).keys shouldBe setOf("meta.createdAt", "meta.updatedAt", "meta.formStatus", "meta.ctaKeywords", "user.email", "user.name")
         // A nested object's fields are offered by their own paths, labeled under it.
         val talk = paths(1)
         talk.keys shouldBe setOf("form.talk.level", "form.talk.minutes", "form.talk.heldOn", "form.talk.room.building")
@@ -133,6 +134,9 @@ class ReportCreateTest : StringSpec({
         note[RCR.keyFields].toJsonListOfMaps().single().let { it[RCR.field] to it[RRUN.kind] } shouldBe ("year" to "number")
         paths(3).mapValues { it.value[RRUN.label] } shouldBe mapOf(
             "workflow.review.category" to "Where it stands",
+            // And its next task and that task's keyword; it sets no CTA filter, so whom it waits on is not offered.
+            "workflow.review.ctaTask" to "Next task",
+            "workflow.review.ctaKeyword" to "Call to action",
             "workflow.review.approval[approve].approved" to "Approve the talk: approved",
             "workflow.review.approval[approve].approvedAt" to "Approve the talk: approved on",
         )

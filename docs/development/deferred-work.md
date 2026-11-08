@@ -1093,14 +1093,15 @@ in its configuration (`kdr:uiBlockDef`), but the Clients page offers no editor f
 ## When a reviewer is neither an administrator nor an editor
 <!-- Theme: #RDSCP -->
 
-The forms listing's "waiting on you" (`needsMe`, issue #1637) and a keyword search's `mine` (`review=mine`, issue
-#1597) judge the forms the caller may already list, so a reviewer who reads only their own forms -- a member given the
-`reviewer` label -- is never shown the reviews that wait on them, and cannot open those forms either.
+The forms listing's "waiting on you" (`needsMe`, issue #1637), a keyword search's `mine` (`review=mine`, issue #1597),
+and the Workflows page's Yours counts (issue #1600) judge the forms the caller may already list, so a reviewer who reads
+only their own forms -- a member given the `reviewer` label -- is never shown the reviews that wait on them, and cannot
+open those forms either.
 
 - **A read that admits a form for its current step** *(from #1637).* Widen what such a caller may read -- the listing's
-  `needsMe` and `review=mine`, and the form's workflow page -- to forms whose stored current task names them (an
-  approval they may give, a save naming them). Worth it once a client gives reviewing to people it does not make
-  editors.
+  `needsMe` and `review=mine`, the Workflows page's counts, and the form's workflow page -- to forms whose stored current
+  task names them (an approval they may give, a save naming them). Worth it once a client gives reviewing to people it
+  does not make editors.
 
 
 ## When a client wants its forms list's workflows drawn another way
@@ -1115,3 +1116,15 @@ caller's turn.
 - **Other display options** *(from #1599).* Each its own `listingDef` field, admitted when a client asks for it: the
   Your turn column's words beyond its keyword's header, whether the Workflows cell folds its finished and not-eligible
   links, a column per search keyword.
+
+
+## When someone asks how long reviews take
+
+A report reads where each form's call to action stands now -- its search keyword (`workflow.<id>.ctaKeyword`), its task,
+and whom it waits on (issue #1600) -- and the Workflows page counts the forms awaiting each keyword. Neither can say how
+long a form has waited, because a form's state keeps its current call to action and not when it became the current one.
+
+- **When the call to action became the current one** *(from #1600).* Stamp the state's call to action with the moment it
+  last changed -- its task, its keyword, or whom it waits on -- carried forward while it stays the same, and read it as a
+  report path (`workflow.<id>.ctaSince`, a date) whose age a column can show. Time in review is then a report grouped by
+  workflow with an average of that age. Worth it once a client asks how long reviews take, or which have waited longest.

@@ -601,6 +601,7 @@ The two reports. Explained on [Reports](reports.md).
           {"columnId": "speaker", "label": "Speaker", "path": "user.name"},
           {"columnId": "status", "label": "Status", "path": "meta.formStatus"},
           {"columnId": "review", "label": "Review", "path": "workflow.review.category"},
+          {"columnId": "callToAction", "label": "Call to action", "path": "workflow.review.ctaKeyword"},
           {
             "columnId": "minutes",
             "label": "Minutes",

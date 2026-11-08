@@ -169,8 +169,15 @@ fun reportWireValue(value: Any?, depth: Int = 0): Any? = when (value) {
     else -> value
 }
 
-/** A column as a listing or a run's summary describes it (issue #981): what it reads, and how it was bound. */
-fun BoundColumn.describe(): Map<String, Any?> = buildMap {
+/**
+ * A column as a listing or a run's summary describes it (issue #981): what it reads, and how it was bound. Each choice's
+ * label goes through [copy] (issue #1600), since a search keyword's report label is a template pulling the client's
+ * copy; a field's label is plain text, which the backend's pass leaves as it is. [copy] has no default, so every caller
+ * decides: the client's copy for anything a page or a snapshot shows, the identity only where the text is a key.
+ *
+ * Theme: #TPLPS.
+ */
+fun BoundColumn.describe(copy: (String) -> String): Map<String, Any?> = buildMap {
     put(RRUN.columnId, columnId)
     put(RRUN.label, column.label)
     put(RRUN.path, column.path)
@@ -180,6 +187,6 @@ fun BoundColumn.describe(): Map<String, Any?> = buildMap {
     put(RRUN.multiValued, path.multiValued)
     // Only while the column's value is still the field's text: a count or a sum is not a choice.
     if (kind == ReportKind.string && path.choices.isNotEmpty()) {
-        put(RRUN.choices, path.choices.map { mapOf(RRUN.value to it.value, RRUN.label to it.label) })
+        put(RRUN.choices, path.choices.map { mapOf(RRUN.value to it.value, RRUN.label to copy(it.label)) })
     }
 }

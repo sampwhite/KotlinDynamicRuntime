@@ -1513,6 +1513,11 @@ textarea.json-edit.json-field { min-height: 4.5rem; }
 /* The workflow pages (issue #792): counts right-aligned under their headings, so the columns read as numbers. */
 .wf-aggregate .wf-count { text-align: right; width: 90px; }
 .wf-aggregate th.wf-count { text-align: right; }
+/* A search keyword's pair of counts (issue #1600): its header centered over Anyone's and Yours, a divider before them. */
+.wf-aggregate .wf-count-group { border-left: 1px solid var(--border); }
+.wf-aggregate th.wf-keyword-head { text-align: center; }
+/* A header spanning both rows sits on the second's line, beside Anyone's and Yours. */
+.wf-aggregate thead th { vertical-align: bottom; }
 
 /* The raw editor's trait-lock notice (issue #857): which traits are locked for you and by what, with the override
    control beneath it for someone a lock allows. Set apart so it reads before the form it constrains. */

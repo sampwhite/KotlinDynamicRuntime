@@ -29,7 +29,8 @@ is. The pure half -- parsers, the run's query, the table's columns, a cell's tex
   (`reportCellText`), with the stored value as the cell's tooltip (`reportCellTip`). The run's values and the CSV keep
   the stored ones, since a spreadsheet wants the value. A path ending in one of the vocabulary's closed sets -- a
   form's status, a workflow's category -- takes its labels from the page (`vocabularyChoices`): the listing chip's
-  words and the Workflows page's, which are the app's, not a schema's.
+  words and the Workflows page's, which are the app's, not a schema's. A search keyword (`workflow.<id>.ctaKeyword`,
+  `meta.ctaKeywords`, issue #1600) is a choice the backend supplies: each keyword's report label, in the client's copy.
 - **A cell stays on one line** (`nowrap`), so a report's many narrow columns keep one line per row, except one whose
   text runs over several lines, as long text may (`g-longText`, issue #1591): it keeps its lines, wrapping within a
   bounded width (`reportTextHasLines`, `.report-lines`). A list holding any multi-line text is split by blank lines

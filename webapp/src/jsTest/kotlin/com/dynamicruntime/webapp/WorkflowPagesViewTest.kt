@@ -2,6 +2,9 @@ package com.dynamicruntime.webapp
 
 import com.dynamicruntime.common.endpoint.EI
 import com.dynamicruntime.common.gedra.GDF
+import com.dynamicruntime.common.gedra.workflow.CTAK
+import com.dynamicruntime.common.gedra.workflow.CTKF
+import com.dynamicruntime.common.gedra.workflow.CTKQ
 import com.dynamicruntime.common.gedra.workflow.WAGG
 import com.dynamicruntime.common.gedra.workflow.WCOL
 import com.dynamicruntime.common.gedra.workflow.WFD
@@ -79,6 +82,52 @@ class WorkflowPagesViewTest {
         assertEquals("Every form this workflow applies to.", workflowDrillNote(null))
         // The workflow and state are the listing's own, kept by Clear beside the scope controls.
         assertTrue(formsDrillKeys.all { it in formsScopeKeys } && EI.user in formsScopeKeys && EI.client in formsScopeKeys)
+    }
+
+    @Test
+    fun aKeywordCountParsesAndLeadsToTheWorkflowsEngagedFormsItCounts() {
+        val entries = parseWorkflowAggregate(
+            listOf(
+                mapOf(
+                    WCOL.client to "acme", WFD.workflowId to "audit", WFD.label to "Audit review",
+                    WAGG.keywords to listOf(mapOf(CTKF.keyword to CTAK.review, CTKQ.any to 4, CTKQ.mine to 2), mapOf(CTKQ.any to 9)),
+                ),
+                mapOf(WCOL.client to "acme", WFD.workflowId to "intake", WFD.label to "Intake"),
+            ),
+        )
+        // Only an entry naming its keyword counts, and a workflow carrying none has no counts at all.
+        assertEquals(listOf(Triple(CTAK.review, 4, 2)), entries[0].keywords.map { Triple(it.keyword, it.any, it.mine) })
+        assertEquals(emptyList(), entries[1].keywords)
+        // The page heads a pair of counts for each keyword some workflow counts.
+        assertEquals(listOf(CTAK.review), aggregateKeywords(entries))
+        assertEquals(emptyList(), aggregateKeywords(entries.drop(1)))
+
+        // A count leads to the workflow's engaged forms, narrowed to the keyword and whose.
+        val route = workflowKeywordDrillRoute("audit", CTAK.review, CTKQ.mine, client = null)
+        assertEquals(
+            mapOf(WAGG.workflowId to "audit", WAGG.workflowState to "engaged", WAGG.keyword to CTAK.review, WAGG.keywordWhose to CTKQ.mine),
+            formsSearchFromRoute(route.toMap()),
+        )
+        assertEquals("acme", workflowKeywordDrillRoute("audit", CTAK.review, CTKQ.any, "acme").toMap()[EI.client])
+        val applied = formsSearchFromRoute(route.toMap())
+        assertEquals(CTAK.review to CTKQ.mine, workflowKeywordDrillOf(applied))
+        // Unsaid is anyone's, and a keyword with no workflow drilled into is no drill at all.
+        assertEquals(CTAK.review to CTKQ.any, workflowKeywordDrillOf(applied - WAGG.keywordWhose))
+        assertNull(workflowKeywordDrillOf(applied - WAGG.workflowId))
+        assertNull(workflowKeywordDrillOf(applied - WAGG.keyword))
+        // The keyword's pair is the listing's own too, kept by Clear.
+        assertTrue(WAGG.keyword in formsScopeKeys && WAGG.keywordWhose in formsScopeKeys)
+
+        // Worded as the forms list's keyword filter chip says it, from the client's copy.
+        val keywords = listOf(CtaKeywordWords(CTAK.review, "Review", "Needs review", "To review", "Needs review", "Needs Review"))
+        val words = WorkflowCellWords(keywordMine = "Mine", keywordAny = "Everyone's")
+        assertEquals("Needs review: Mine", keywordCountWords(CTAK.review, CTKQ.mine, keywords, words))
+        assertEquals("Needs review: Everyone's", keywordCountWords(CTAK.review, CTKQ.any, keywords, words))
+        assertEquals("sign: Mine", keywordCountWords("sign", CTKQ.mine, keywords, words))
+        assertEquals(
+            "The forms engaged with this workflow, with work under way — Needs review: Mine.",
+            workflowDrillNote(WfColumnCategory.engaged, "Needs review: Mine"),
+        )
     }
 
     /**

@@ -23,6 +23,8 @@ import com.dynamicruntime.common.gedra.sandboxOf
 import com.dynamicruntime.common.gedra.sandboxParentOf
 import com.dynamicruntime.common.gedra.workflow.WfDef
 import com.dynamicruntime.common.gedra.workflow.WfEntry
+import com.dynamicruntime.common.gedra.workflow.searchKeywordsOf
+import com.dynamicruntime.common.gedra.workflow.labelsCtaFilter
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.SchLayout
 import com.dynamicruntime.common.schema.SchProperty
@@ -85,15 +87,18 @@ object ReportEdit {
         val view = ClientStoredEdit.editedView(cxt, client)
         val scope = ReportService.get(cxt).scopeFor(cxt, view)
         val store = SchemaService.get(cxt).storeFor(view)
+        // The search keywords each normal workflow's calls to action may carry (issue #1600): what its paths offer, and
+        // whether the form's own "calls to action" are worth offering at all.
+        val keywords = scope.workflows.values.filter { it.entry == WfEntry.normal }.associate { it.workflowId to searchKeywordsOf(cxt, it) }
         val groups = buildList {
-            add(group(ReportPathGroupKind.form, null, "The form", formPaths(scope)))
+            add(group(ReportPathGroupKind.form, null, "The form", formPaths(scope, keywords.values.any { it.isNotEmpty() })))
             for (trait in scope.formTraits.values) {
                 val paths = traitPaths(scope, store, trait)
                 // Named as every page names a trait (issue #1520): its heading, its title, its id.
                 if (paths.isNotEmpty()) add(group(ReportPathGroupKind.trait, trait.traitId, formTraitName(cxt, view, trait.traitId), paths))
             }
             for (wf in scope.workflows.values.filter { it.entry == WfEntry.normal }) {
-                val paths = workflowPaths(scope, wf)
+                val paths = workflowPaths(scope, wf, keywords[wf.workflowId].orEmpty().isNotEmpty())
                 val label = plainLabel(wf.label, wf.workflowId)
                 if (paths.isNotEmpty()) add(group(ReportPathGroupKind.workflow, wf.workflowId, label, paths))
             }
@@ -126,11 +131,15 @@ object ReportEdit {
         }
     }
 
-    /** The form's own facts: when it was made and changed, its status, and its owner. */
-    private fun formPaths(scope: ReportScope): List<Map<String, Any?>> = listOfNotNull(
+    /**
+     * The form's own facts: when it was made and changed, its status, and its owner -- and, when the client's workflows'
+     * calls to action carry search keywords ([withKeywords], issue #1600), which ones the form's do.
+     */
+    private fun formPaths(scope: ReportScope, withKeywords: Boolean): List<Map<String, Any?>> = listOfNotNull(
         offered(scope, MetaPath(RMETA.createdAt).canonicalText, "Created"),
         offered(scope, MetaPath(RMETA.updatedAt).canonicalText, "Updated"),
         offered(scope, MetaPath(RMETA.formStatus).canonicalText, "Status"),
+        if (withKeywords) offered(scope, MetaPath(RMETA.ctaKeywords).canonicalText, "Calls to action") else null,
         offered(scope, UserPath(RUSR.email).canonicalText, "Owner's email"),
         offered(scope, UserPath(RUSR.name).canonicalText, "Owner's name"),
     )
@@ -189,9 +198,20 @@ object ReportEdit {
         return out
     }
 
-    /** What a report says about [wf] on a form: where the form stands, and each approval task's approval. */
-    private fun workflowPaths(scope: ReportScope, wf: WfDef): List<Map<String, Any?>> = buildList {
+    /**
+     * What a report says about [wf] on a form: where the form stands, and each approval task's approval -- and, for a
+     * workflow whose calls to action carry search keywords ([withKeywords], issue #1600), its next task and that task's
+     * keyword, and whom it waits on when one of its CTA filters may say ([labelsCtaFilter]).
+     */
+    private fun workflowPaths(scope: ReportScope, wf: WfDef, withKeywords: Boolean): List<Map<String, Any?>> = buildList {
         offered(scope, WorkflowPath(wf.workflowId, RWF.category).canonicalText, "Where it stands")?.let { add(it) }
+        if (withKeywords) {
+            offered(scope, WorkflowPath(wf.workflowId, RWF.ctaTask).canonicalText, "Next task")?.let { add(it) }
+            offered(scope, WorkflowPath(wf.workflowId, RWF.ctaKeyword).canonicalText, "Call to action")?.let { add(it) }
+        }
+        if (labelsCtaFilter(wf)) {
+            offered(scope, WorkflowPath(wf.workflowId, RWF.ctaFilterLabel).canonicalText, "Waiting on")?.let { add(it) }
+        }
         for (task in wf.tasks.filter { it.approval != null }) {
             val taskLabel = plainLabel(task.label, task.id)
             offered(scope, WorkflowPath(wf.workflowId, RWF.approved, task.id).canonicalText, "$taskLabel: approved")?.let { add(it) }

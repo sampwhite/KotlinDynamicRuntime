@@ -22,10 +22,12 @@ import com.dynamicruntime.common.gedra.workflow.PFO
 import com.dynamicruntime.common.gedra.workflow.WFS
 import com.dynamicruntime.common.gedra.workflow.WfDeclared
 import com.dynamicruntime.common.gedra.workflow.CTKF
+import com.dynamicruntime.common.gedra.workflow.CTKQ
 import com.dynamicruntime.common.gedra.workflow.WfApproval
 import com.dynamicruntime.common.gedra.workflow.ctaKeywordWords
 import com.dynamicruntime.common.gedra.workflow.CTAK
 import com.dynamicruntime.common.gedra.workflow.matchesKeywordSearch
+import com.dynamicruntime.common.gedra.workflow.matchesWorkflowKeyword
 import com.dynamicruntime.common.gedra.workflow.WfTask
 import com.dynamicruntime.common.gedra.workflow.WfEntry
 import com.dynamicruntime.common.gedra.workflow.WFD
@@ -315,6 +317,17 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
             emptyIsAbsent = true
             WAGG.drillStates.forEach { option(it.name) }
         }
+        // And onto a keyword count (issue #1600): the workflow's own call to action carries the keyword. Its own pair,
+        // not the keyword's search parameter, which asks of every workflow and is only on a client's own listing.
+        property(WAGG.keyword, "With workflowId: only forms whose call to action in that workflow carries this search keyword.") {
+            emptyIsAbsent = true
+            CTAK.all.forEach { option(it) }
+        }
+        property(WAGG.keywordWhose, "With workflowKeyword: `mine`, one you may act on now, or `any`, whoever may. Defaults to any.") {
+            emptyIsAbsent = true
+            option(CTKQ.mine)
+            option(CTKQ.any)
+        }
         // The sort (issue #666): a column to order by -- a display column, or a fixed one -- and a
         // direction. Absent means the default (most recently written first). Not admin-gated: any caller may
         // order the rows they can already see (`${GSORT.owner}` and `${GSORT.client}` are admin/allClients-only,
@@ -492,7 +505,9 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
         // the keyword, and the page's rows say which steps those are (issues #1637, #1597).
         val needsMe = request.getOptBool(GDF.needsMe) == true
         val stateFilter = allOfStateFilters(
-            listOfNotNull(statusFilter, workflowDrillFilter(c, request), needsMeFilter(needsMe, waiting), keywordFilter(request, waiting)),
+            listOfNotNull(
+                statusFilter, workflowDrillFilter(c, request, waiting), needsMeFilter(needsMe, waiting), keywordFilter(request, waiting),
+            ),
         )
         val page = svc.listGedras(c, formDoc, scope, limit, offset, filter, sort, stateFilter)
         // Attach each form's state (issue #600) only when asked. One batch read over the page's ids -- cache-
@@ -933,6 +948,40 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
         property(WAGG.eligible, "Forms eligible for it and not in it, while it takes new forms.", required = true) { type = SCT.integer }
         property(WAGG.engaged, "Forms engaged with it, with work under way.", required = true) { type = SCT.integer }
         property(WAGG.finished, "Forms engaged with it and finished.", required = true) { type = SCT.integer }
+        property(
+            WAGG.keywords,
+            "Each search keyword its calls to action may carry (issue #1600), with how many forms' carry it now; empty for none.",
+            required = true,
+        ) {
+            type = SCT.array
+            items { ref(WAGG.keywordCountType) }
+        }
+    }
+    type(WAGG.keywordCountType) {
+        type = SCT.kObject
+        description = "A search keyword the workflow's calls to action may carry, with how many forms' carry it now."
+        property(CTKF.keyword, "The keyword.", required = true) { CTAK.all.forEach { option(it) } }
+        property(CTKQ.any, "Forms whose call to action in the workflow carries it, whoever may act.", required = true) {
+            type = SCT.integer
+        }
+        property(CTKQ.mine, "Those of them whose call to action you may act on now.", required = true) { type = SCT.integer }
+    }
+    type(WAGG.summaryType) {
+        type = SCT.kObject
+        description = "What is true of the workflow pages' whole answer."
+        property(GDF.ctaKeywords, "Each search keyword's words, in the caller's client's wording (issue #1600).", required = true) {
+            type = SCT.array
+            items { ref(CTKF.wordsType) }
+        }
+        property(
+            GDF.ctaKeywordsByClient,
+            "The same words in each other client's wording, by client id, for that client's workflows in the answer.",
+        ) {
+            mapOfValues {
+                type = SCT.array
+                items { ref(CTKF.wordsType) }
+            }
+        }
     }
 
     // Every normal workflow the caller should see on the workflow pages, over every form they may see -- the
@@ -940,13 +989,23 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
     listEndpoint(
         GEP.workflowAggregate,
         "Lists the normal workflows the caller may work with -- those being calculated, and any appearing on a form " +
-            "they may see -- each with how many of those forms are eligible, engaged and finished.",
+            "they may see -- each with how many of those forms are eligible, engaged and finished, and how many forms' " +
+            "calls to action carry each search keyword it uses, for anyone and for the caller.",
         outputRef = WAGG.entryType,
         noLimit = true,
         publicApi = true,
         needsClientConfig = true,
+        // The keywords' words (issue #1600), which head the keyword counts.
+        summaryRef = WAGG.summaryType,
     ) { c, _ ->
-        WorkflowAggregate.of(c, GedraDataService.get(c).statesInScope(c, formDoc, ReadScopeRules.forCaller(c)))
+        val items = WorkflowAggregate.of(c, GedraDataService.get(c).stateRowsInScope(c, formDoc, ReadScopeRules.forCaller(c)))
+        val summary = buildMap {
+            put(GDF.ctaKeywords, ctaKeywordWords(c))
+            // And as each other client says them, for its workflows' counts in the cross-client view.
+            items.mapNotNull { it[WCOL.client].toOptStr() }.distinct().filter { it != c.client }.takeIf { it.isNotEmpty() }
+                ?.let { others -> put(GDF.ctaKeywordsByClient, others.associateWith { ctaKeywordWords(c, it) }) }
+        }
+        ListPage(items, items.size, hasMore = false, summary = summary)
     }
 
     // --- per-workflow state: engage, and recompute (issue #794) -------------------------------------------
@@ -1288,10 +1347,16 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
  * whose client does not have it (or has it outside its lifetime, or the caller does not see it, issue #1384) simply
  * does not match, as an unknown value does.
  * Each client's phase is taken once, at one moment, for the whole listing.
+ *
+ * With a keyword ([WAGG.keyword], issue #1600), also only forms whose call to action in that workflow carries it, asked
+ * [WAGG.keywordWhose] -- [matchesWorkflowKeyword] over the classification [waiting] gives each row, as the workflow
+ * pages' keyword counts are made; handed every row first, so their owners are read in one batch.
  */
-private fun workflowDrillFilter(c: KdrCxt, request: Map<String, Any?>): GedraStateFilter? {
+private fun workflowDrillFilter(c: KdrCxt, request: Map<String, Any?>, waiting: WaitingSteps): GedraStateFilter? {
     val workflowId = request[WAGG.workflowId].toOptStr() ?: return null
     val wanted = request[WAGG.workflowState].toOptStr()?.let { name -> WfColumnCategory.entries.firstOrNull { it.name == name } }
+    val keyword = request[WAGG.keyword].toOptStr()
+    val whose = request[WAGG.keywordWhose].toOptStr() ?: CTKQ.any
     val now = c.instanceNow()
     val phases = HashMap<String, WfPhase?>()
     fun phaseIn(client: String): WfPhase? = phases.getOrPut(client) {
@@ -1299,10 +1364,19 @@ private fun workflowDrillFilter(c: KdrCxt, request: Map<String, Any?>): GedraSta
             ?.takeIf { it.entry == WfEntry.normal && WorkflowAudience.of(c).sees(client, workflowId) }
             ?.let { WorkflowPhases.phaseAt(c, client, it, now) }?.takeIf { it.exists }
     }
-    return GedraStateFilter { row, states ->
+    fun shows(row: GedraStateRow, states: List<Map<String, Any?>>): Boolean {
         val phase = phaseIn(row.gedraId.client)
-        phase != null && formWorkflowsOf(states) { id -> if (id == workflowId) phase else null }
+        return phase != null && formWorkflowsOf(states) { id -> if (id == workflowId) phase else null }
             .any { wanted == null || it.category == wanted }
+    }
+    if (keyword == null) {
+        return GedraStateFilter(::shows)
+    }
+    return object : GedraStateFilter {
+        override fun prepare(rows: List<GedraStateRow>) = waiting.readOwners(rows.map { it.ownerUserId })
+
+        override fun keeps(row: GedraStateRow, states: List<Map<String, Any?>>): Boolean =
+            shows(row, states) && matchesWorkflowKeyword(waiting.weights(row.gedraId, row.ownerUserId, states), workflowId, keyword, whose)
     }
 }
 

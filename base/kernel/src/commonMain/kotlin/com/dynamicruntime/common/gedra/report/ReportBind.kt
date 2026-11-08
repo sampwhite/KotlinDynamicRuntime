@@ -4,6 +4,8 @@ import com.dynamicruntime.common.exception.KdrException
 
 import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.gedra.GedraTrait
+import com.dynamicruntime.common.gedra.workflow.CTAK
+import com.dynamicruntime.common.gedra.workflow.CtaKeywordCopy
 import com.dynamicruntime.common.gedra.workflow.WfDef
 import com.dynamicruntime.common.gedra.workflow.WfEntry
 import com.dynamicruntime.common.schema.SCT
@@ -225,7 +227,8 @@ fun bindReportPath(text: String, scope: ReportScope): Parsed<BoundPath> {
         is WorkflowPath -> bindWorkflowPath(path, scope)
         is UserPath, is MetaPath -> {
             val attr = path.attr ?: return Parsed.failed(ReportPathProblem.unknownAttribute, "'$path' names no attribute.")
-            Parsed.Ok(BoundPath(path, emptyList(), attr.kind, attr.multiValued))
+            val choices = if (path is MetaPath && path.attrName == RMETA.ctaKeywords) ctaKeywordChoices else emptyList()
+            Parsed.Ok(BoundPath(path, emptyList(), attr.kind, attr.multiValued, choices = choices))
         }
     }
 }
@@ -334,8 +337,15 @@ private fun bindWorkflowPath(path: WorkflowPath, scope: ReportScope): Parsed<Bou
             )
         }
     }
-    return Parsed.Ok(BoundPath(path, emptyList(), attr.kind, attr.multiValued))
+    val choices = if (taskId == null && path.attrName == RWF.ctaKeyword) ctaKeywordChoices else emptyList()
+    return Parsed.Ok(BoundPath(path, emptyList(), attr.kind, attr.multiValued, choices = choices))
 }
+
+/**
+ * A search keyword as a report's table shows it (issue #1600): each keyword's [CtaKeywordCopy.reportLabel], a template
+ * the backend resolves in the client's copy when it describes the column, as `describe` says.
+ */
+private val ctaKeywordChoices: List<SchOption> = CTAK.keywords.map { SchOption(it.name, it.copy.reportLabel) }
 
 /**
  * Where a field walk ended (issue #980): the [kind] of the value there, and whether an array on the way makes it

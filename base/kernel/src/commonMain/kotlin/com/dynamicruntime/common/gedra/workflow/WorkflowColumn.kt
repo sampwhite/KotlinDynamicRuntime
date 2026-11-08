@@ -73,6 +73,34 @@ object WAGG {
 
     /** The states a drill-down may ask for: the three the aggregate counts. */
     val drillStates: List<WfColumnCategory> = listOf(WfColumnCategory.eligible, WfColumnCategory.engaged, WfColumnCategory.finished)
+
+    /**
+     * The search keywords the workflow's calls to action may carry (issue #1600), each with how many forms it counts --
+     * a list of [keywordCountType], in [CTAK] order; empty for a workflow whose calls to action carry none.
+     */
+    const val keywords = "keywords"
+
+    /**
+     * One keyword's counts, under the gedra namespace: its [CTKF.keyword]; [CTKQ.any], the forms whose call to action
+     * in the workflow carries it; and [CTKQ.mine], those of them the caller may act on now.
+     */
+    const val keywordCountType = "WorkflowKeywordCount"
+
+    /** The aggregate's summary type, under the gedra namespace: what is true of the whole answer (issue #1600). */
+    const val summaryType = "WorkflowAggregateSummary"
+
+    /**
+     * The forms listing's drill-down onto a keyword count (issue #1600): with [workflowId], only forms whose call to
+     * action **in that workflow** carries this keyword ([CTAK]), asked as [keywordWhose] says. A filter of its own, not
+     * the keyword's search parameter (`review=mine`), which asks of every workflow and which only a client's own
+     * listing takes -- a cross-client caller's drill-down goes to the shared one.
+     *
+     * Theme: #CLCPY.
+     */
+    const val keyword = "workflowKeyword"
+
+    /** With [keyword]: [CTKQ.mine] (the caller may act on it) or [CTKQ.any] (whoever may); absent means [CTKQ.any]. */
+    const val keywordWhose = "workflowKeywordWhose"
 }
 
 /**
@@ -249,3 +277,10 @@ fun matchesKeywordSearch(weights: List<FormWorkflowWeight>, keyword: String, que
     CTKQ.any -> weights.any { it.keyword == keyword }
     else -> false
 }
+
+/**
+ * [matchesKeywordSearch] asked of one workflow (issue #1600): whether [workflowId]'s own call to action carries
+ * [keyword], asking [question]. What a keyword count on the workflow pages counts, and the listing it drills to keeps.
+ */
+fun matchesWorkflowKeyword(weights: List<FormWorkflowWeight>, workflowId: String, keyword: String, question: String): Boolean =
+    matchesKeywordSearch(weights.filter { it.workflow.workflowId == workflowId }, keyword, question)
