@@ -121,8 +121,8 @@ Other visitors' talks may be there too, so find yours by its title, and choose i
 ready to fill in.
 
 The menu's forms page says the same. As an editor, you see every talk in the demo, not just your own, so it is
-**Forms** rather than **My forms**, and its **To review** column marks each talk waiting for a committee member with a
-highlighted **Start**.
+**Forms** rather than **My forms**. Its **Waiting on you** button, beside **Filters**, narrows the list to the talks
+waiting for you, and in each one's **Workflows** column the review is marked with a highlighted **Start**.
 
 The review has two steps, listed beside the form: **Record the review**, and **Accept the talk**. The first one asks
 for:

@@ -70,7 +70,7 @@ the demo's workflows show several, each where the workflow that collects it is i
 ## What the bundle holds
 
 The pages that follow add to the `base` bundle as they go: the client's name for a platform trait, its own traits,
-its columns in the forms list, a shared type, its facts, and a menu entry. Each is shown on the page where it first matters. This table is the
+its columns in the forms list and how the list shows workflows, a shared type, its facts, and a menu entry. Each is shown on the page where it first matters. This table is the
 bundle as a whole, kept current as the pages add to it.
 
 | Slot | What it holds | Explained on |
@@ -81,5 +81,6 @@ bundle as a whole, kept current as the pages add to it.
 | `kdr:schemaDef` | The demo's name for the platform's `kdr:name` trait, and the shared `Speaker` type. | [Creating a talk](create-talk.md#the-traits-name), [Abstract](abstract.md#a-shared-type) |
 | `kdr:cfactDef` | The client's two facts, `isWorkshop` and `talkAccepted`. | [Workshop logistics](workshop-logistics.md#a-computed-fact) |
 | `kdr:uiBlockDef` | The menu entry that turns the Workflows page on. | [Abstract](abstract.md#what-the-speaker-sees) |
+| `kdr:listingDef` | How the forms list shows each form's workflows: all in one column. | [Talk core details](talk-core-details.md#workflows-in-one-column) |
 
 Next: [Creating a talk](create-talk.md).

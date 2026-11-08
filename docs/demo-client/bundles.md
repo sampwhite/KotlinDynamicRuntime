@@ -12,9 +12,9 @@ The JSON is what a running instance returns for each bundle, as the reference de
 
 ## base
 
-The client, its traits, its columns in the forms list, its shared type, its facts, and its menu entry. Explained on the
-[client](client.md), [talk core details](talk-core-details.md), [abstract](abstract.md), [committee
-review](committee-review.md), and [workshop logistics](workshop-logistics.md) pages.
+The client, its traits, its columns in the forms list and how the list shows workflows, its shared type, its facts,
+and its menu entry. Explained on the [client](client.md), [talk core details](talk-core-details.md),
+[abstract](abstract.md), [committee review](committee-review.md), and [workshop logistics](workshop-logistics.md) pages.
 
 <!-- kdr-doc: bundle=base -->
 ```json
@@ -305,6 +305,9 @@ review](committee-review.md), and [workshop logistics](workshop-logistics.md) pa
       "description": "True once the committee has accepted the talk.",
       "toFrontend": false
     }
+  ],
+  "kdr:listingDef": [
+    {"workflowLayout": "combined"}
   ]
 }
 ```
