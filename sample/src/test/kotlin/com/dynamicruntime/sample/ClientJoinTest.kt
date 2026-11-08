@@ -11,8 +11,10 @@ import com.dynamicruntime.common.simulation.DesignDemo
 import com.dynamicruntime.kdn.Startup
 import com.dynamicruntime.common.user.ADEP
 import com.dynamicruntime.common.user.AEP
+import com.dynamicruntime.common.user.AFLD
 import com.dynamicruntime.common.user.PERSONA
 import com.dynamicruntime.common.user.TestUser
+import com.dynamicruntime.common.user.UCF
 import com.dynamicruntime.common.user.UserService
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonListOfStrings
@@ -190,6 +192,24 @@ class ClientJoinTest : StringSpec({
         val again = TestUser.create(reference, "returning@join1410.test", userClient = CL.public)
         joined(again, ConfDemo.client) shouldBe true
         joinUnacknowledged(again, ConfDemo.client, ConfDemo.committeeRole)[JOIN.userId].toOptLong().shouldNotBeNull()
+    }
+
+    "a joined user takes the person's name, and the switcher names it by its role (issue #1689)" {
+        val visitor = TestUser.create(reference, "pat@join1689.test", userClient = CL.public, name = "Pat Visitor")
+        val publicUser = visitor.userId
+        val speaker = join(visitor, ConfDemo.client, ConfDemo.speakerRole)[JOIN.userId].toOptLong().shouldNotBeNull()
+        visitor.getData(AEP.selfInfo)[UPF.name] shouldBe "Pat Visitor"
+        visitor.postData(AEP.switchUser, mapOf(AFLD.userId to publicUser))
+        val committee = join(visitor, ConfDemo.client, ConfDemo.committeeRole)[JOIN.userId].toOptLong().shouldNotBeNull()
+        // The role each was joined as, by its label; none for the public user, who joined nothing.
+        val roles = visitor.getData(AEP.selfUsers)[AFLD.users].toJsonListOfMaps().associate { it[UCF.userId] to it[UCF.roleLabel] }
+        roles shouldBe mapOf(publicUser to null, speaker to "Speaker", committee to "Committee member")
+
+        // A name the joined user already has stays: a rename on the profile survives joining again.
+        visitor.postData(AEP.profileSetName, mapOf(AFLD.name to "Pat (committee)"))
+        visitor.postData(AEP.switchUser, mapOf(AFLD.userId to publicUser))
+        join(visitor, ConfDemo.client, ConfDemo.committeeRole)[JOIN.userId] shouldBe committee
+        visitor.getData(AEP.selfInfo)[UPF.name] shouldBe "Pat (committee)"
     }
 
     "a join is refused without the acknowledgment, and for what is not offered" {

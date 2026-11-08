@@ -198,8 +198,9 @@ Current UI-config endpoints:
   The shell config (`/home/ui/config`) carries the same list as `state.users`, so the app
   bar needs no fetch of its own: for a person with more than one user the **identity badge** says which one this
   is in brackets (`Demo Person [hub · Member B]`, only what tells it from the others -- `UserChoice.qualifierWithin`)
-  and becomes the menu that switches; with one user it is the plain label it always was. The default persona
-  is `member` (shown `Member`); `editor` and `admin` are the others. Given the session's roles, the current user's
+  and becomes the menu that switches; with one user it is the plain label it always was. A user joined as a demo's
+  role is told apart by the role instead of its persona (`Pat [Conference demo · Speaker]`, issue #1689). The default
+  persona is `member` (shown `Member`); `editor` and `admin` are the others. Given the session's roles, the current user's
   persona says the access it has when that differs from the persona's (`Member (Administrator access)`, issue
   #1450) -- in the badge, its tooltip, its own menu row, and the Profile page's active row and help, never on
   another user's, since the list carries nobody's roles.

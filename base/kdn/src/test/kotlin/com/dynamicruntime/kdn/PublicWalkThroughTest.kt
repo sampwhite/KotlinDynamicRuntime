@@ -61,6 +61,7 @@ import com.dynamicruntime.common.user.AEP
 import com.dynamicruntime.common.user.AFLD
 import com.dynamicruntime.common.user.AKEY
 import com.dynamicruntime.common.user.TestUser
+import com.dynamicruntime.common.user.UCF
 import com.dynamicruntime.common.user.UADEP
 import com.dynamicruntime.common.util.jsonMap
 import com.dynamicruntime.common.util.toJsonListOfMaps
@@ -84,12 +85,12 @@ import java.io.File
  * reader would, so the page cannot fall behind the product without a failing build.
  *
  * The page's tables are what the reader enters, each marked on the line before it with the form it is for (`<!--
- * kdr-walk: workflow=review -->`) or `<!-- kdr-walk: name -->` for the name on the profile. This reads each table,
+ * kdr-walk: workflow=review -->`). This reads each table,
  * finds each **label** among the fields of the traits that workflow's form shows -- a field's `title`, or its key with
  * a capital where it has none, as the form labels it -- and turns each **value** into what the form would send: a
  * choice by its label, yes or no, a number, or text. Then it walks the page's steps through the endpoints the pages
  * use: join as a speaker, create the talk, answer the core details workflow, write the abstract, join the committee,
- * name that user, and review and accept the talk. A field or a choice the demo renames, a step the demo no longer
+ * and review and accept the talk. A field or a choice the demo renames, a step the demo no longer
  * allows, and a role the page names that the demo does not offer each fail here.
  *
  * Part 2, the reader's own client, is followed the same way, but its forms are read off the workflow view -- each
@@ -209,7 +210,7 @@ class PublicWalkThroughTest : StringSpec({
             .toJsonListOfMaps().single { it[WFD.id] == task }
 
     "the page has a table for every form it has the reader fill in, and for each step of the reader's own client" {
-        tables.keys shouldBe traitsByForm.keys.map { walkWorkflowKey(it) }.toSet() + walkNameKey + ownClientKeys
+        tables.keys shouldBe traitsByForm.keys.map { walkWorkflowKey(it) }.toSet() + ownClientKeys
     }
 
     "each part opens with its banner, which the app serves from the path the page names, and closes with a rule" {
@@ -240,7 +241,8 @@ class PublicWalkThroughTest : StringSpec({
 
     "the walk-through, followed through the endpoints its pages use, ends with the talk accepted" {
         val email = "walker@walk1429.test"
-        val visitor = TestUser.create(cxt, email)
+        // Registered with a name, as the page's reader is.
+        val visitor = TestUser.create(cxt, email, name = firstName)
         visitor.selfClient() shouldBe CL.public
         val publicUser = visitor.getData(AEP.selfInfo)[UPF.userId].toOptLong().shouldNotBeNull()
 
@@ -251,13 +253,15 @@ class PublicWalkThroughTest : StringSpec({
         visitor.postData(GEP.workflowEngage, mapOf(GDF.gedraId to gid, WFD.workflowId to ConfDemo.abstractWorkflow))
         save(visitor, ConfDemo.abstractWorkflow, ConfDemo.writeTask, ConfDemo.saveAbstract, gid)
 
-        // Back to the public user, and in again as the committee, with a name of its own.
+        // Back to the public user, and in again as the committee.
         visitor.postData(AEP.switchUser, mapOf(AFLD.userId to publicUser))
         val committee = join(visitor, ConfDemo.committeeRole)
         // An editor (issue #1455), and no administrator.
         visitor.getData(AEP.selfInfo)[UPF.roles].toJsonListOfStrings() shouldBe listOf(ROLE.user, ROLE.editor)
-        val name = tables.getValue(walkNameKey).single()[1].replace(placeholder, firstName)
-        visitor.postData(AEP.profileSetName, mapOf(AFLD.name to name))[UPF.name] shouldBe name
+        // The visitor's name, from registering, and the bar telling the two demo users apart by their roles (issue #1689).
+        visitor.getData(AEP.selfInfo)[UPF.name] shouldBe firstName
+        val roles = visitor.getData(AEP.selfUsers)[AFLD.users].toJsonListOfMaps().associate { it[UCF.userId] to it[UCF.roleLabel] }
+        roles shouldBe mapOf(publicUser to null, speaker to "Speaker", committee to "Committee member")
 
         // The committee member finds the talk by its name among everyone's, and reviews and accepts it.
         val title = entriesOf(visitor, ConfDemo.createTalkWorkflow, null).single()[GE.data].toJsonMapOrEmpty()[GT.nameField]
@@ -271,11 +275,11 @@ class PublicWalkThroughTest : StringSpec({
             mapOf(GDF.gedraId to gid, GDF.workflowId to ConfDemo.reviewWorkflow, GDF.taskId to ConfDemo.acceptTask),
         )
 
-        // As the speaker again: the talk is accepted, and its name stays the speaker's own.
+        // As the speaker again: the talk is accepted, and the speaker has the visitor's name too.
         visitor.postData(AEP.switchUser, mapOf(AFLD.userId to speaker))
         val accepted = reviewTask(visitor, gid, ConfDemo.acceptTask)[WVF.approval].toJsonMapOrEmpty()
         accepted[WVF.approved] shouldBe true
-        visitor.getData(AEP.selfInfo)[UPF.name] shouldBe null
+        visitor.getData(AEP.selfInfo)[UPF.name] shouldBe firstName
         committee shouldNotBe speaker
     }
 
@@ -561,7 +565,6 @@ class PublicWalkThroughTest : StringSpec({
 
 /** The page's placeholder for the reader's first name. */
 private const val placeholder = "*your first name*"
-private const val walkNameKey = "name"
 private const val defsRefPrefix = $$"#/$defs/"
 private fun walkWorkflowKey(workflow: String) = "workflow=$workflow"
 

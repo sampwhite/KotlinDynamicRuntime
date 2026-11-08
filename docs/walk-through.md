@@ -2,9 +2,8 @@
      is listed on every site's Documents page too (issue #1632), so its opening says what is different on another site.
      Its tables are what the reader types, and PublicWalkThroughTest (base/kdn) enters each one, through the same
      endpoints the pages use, so a label or a choice the demo renames fails the build. A table is marked on the line
-     before it: in part 1, `kdr-walk: workflow=<id>` for a form of that workflow and `kdr-walk: name` for a name on the
-     profile; in parts 2 and 3, a name for each step (`kdr-walk: copy`, `kdr-walk: apiKey`, and so on), which the test
-     lists. Part 3's `/kda/...` paths are the ones the test calls with an API key.
+     before it: in part 1, `kdr-walk: workflow=<id>` for a form of that workflow; in parts 2 and 3, a name for each step
+     (`kdr-walk: copy`, `kdr-walk: apiKey`, and so on), which the test lists. Part 3's `/kda/...` paths are the ones the test calls with an API key.
      `*your first name*` and `*an address of yours*` are placeholders the test fills in. -->
 
 # A walk-through
@@ -46,9 +45,9 @@ The demo is shared with everyone who joins it. Other visitors see the talks you 
 2. Read **Before you join**, and check the box that says you understand.
 3. Choose **Join as Speaker**.
 
-Joining gives you a new user of your own, as a speaker in the conference demo, and switches you to it. The bar at the
-top of every page shows which user you are acting as, and the client it is in, and the menu and your home page are
-now the conference demo's.
+Joining gives you a new user of your own, as a speaker in the conference demo, with your name, and switches you to
+it. The bar at the top of every page shows which user you are acting as: your name, then **[Conference demo ·
+Speaker]**. The menu and your home page are now the conference demo's.
 
 ### Submit a talk
 
@@ -104,15 +103,8 @@ acknowledged that the demo is shared when you joined as a speaker, so you are no
 
 That gives you a second user in the conference demo, an editor with the committee's label, so it may review talks.
 An editor sees and edits everyone's forms in the demo, but administers nothing. Both of your demo users have your
-email address. To tell them apart in the bar, give this one a name of its own: open your [profile](/wa/profile), and
-under **Your name**, type
-
-<!-- kdr-walk: name -->
-| Field | What to type |
-| --- | --- |
-| Name | *your first name* (committee) |
-
-and choose **Save name**. The name belongs to this user alone. Your speaker user keeps its own.
+email address and your name, and the bar tells them apart by the role you joined as: it now says **[Conference demo ·
+Committee member]**.
 
 ### Review your talk
 
