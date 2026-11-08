@@ -30,6 +30,7 @@ The `review` trait is small: a score and a note for the speaker.
   "appliesTo": ["formDoc"],
   "dataSchema": {
     "type": "object",
+    "title": "Committee review",
     "properties": {
       "score": {
         "type": "integer",

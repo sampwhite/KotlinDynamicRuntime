@@ -51,6 +51,7 @@ review](committee-review.md), and [workshop logistics](workshop-logistics.md) pa
       "typeName": "client.confdemo.SessionEntry",
       "appliesTo": ["formDoc"],
       "dataSchema": {
+        "title": "Session",
         "properties": {
           "track": {
             "description": "The part of the program the talk belongs to.",
@@ -74,6 +75,7 @@ review](committee-review.md), and [workshop logistics](workshop-logistics.md) pa
       "typeName": "client.confdemo.QuestionnaireEntry",
       "appliesTo": ["formDoc"],
       "dataSchema": {
+        "title": "Questionnaire",
         "properties": {
           "firstTalk": {
             "description": "Whether this is the speaker's first talk at a conference.",
@@ -117,6 +119,7 @@ review](committee-review.md), and [workshop logistics](workshop-logistics.md) pa
       "typeName": "client.confdemo.AbstractEntry",
       "appliesTo": ["formDoc"],
       "dataSchema": {
+        "title": "Abstract",
         "properties": {
           "summary": {
             "description": "The abstract the program will print.",
@@ -185,6 +188,7 @@ review](committee-review.md), and [workshop logistics](workshop-logistics.md) pa
       "typeName": "client.confdemo.ReviewEntry",
       "appliesTo": ["formDoc"],
       "dataSchema": {
+        "title": "Committee review",
         "properties": {
           "score": {
             "description": "The committee's score, from 1 to 5.",
@@ -209,6 +213,7 @@ review](committee-review.md), and [workshop logistics](workshop-logistics.md) pa
       "typeName": "client.confdemo.LogisticsEntry",
       "appliesTo": ["formDoc"],
       "dataSchema": {
+        "title": "Workshop logistics",
         "properties": {
           "room": {
             "description": "The room the session is in.",

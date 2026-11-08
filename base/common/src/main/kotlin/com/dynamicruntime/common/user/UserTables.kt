@@ -217,6 +217,13 @@ object AD {
      * were recorded.
      */
     const val openedBy = "openedBy"
+
+    /**
+     * On a user a visitor got by joining a demo client (issue #1668): the name of the role they joined it as. What
+     * says the user is a visitor's, since persona and suffix cannot -- a demo client's own administrator and a
+     * visitor who joined as one share both. Absent on every other user.
+     */
+    const val joinedAs = "joinedAs"
 }
 
 /**

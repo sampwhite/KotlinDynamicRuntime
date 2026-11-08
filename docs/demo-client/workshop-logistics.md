@@ -79,6 +79,7 @@ do, what to install.
   "appliesTo": ["formDoc"],
   "dataSchema": {
     "type": "object",
+    "title": "Workshop logistics",
     "properties": {
       "room": {
         "type": "string",

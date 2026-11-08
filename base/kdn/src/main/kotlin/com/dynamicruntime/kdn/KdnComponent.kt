@@ -1,9 +1,9 @@
 package com.dynamicruntime.kdn
 
 import com.dynamicruntime.common.content.ComponentImageDef
+import com.dynamicruntime.common.content.FragmentAudience
 import com.dynamicruntime.common.content.FragmentSource
 import com.dynamicruntime.common.content.MarkdownDocDef
-import com.dynamicruntime.common.content.FragmentAudience
 import com.dynamicruntime.common.content.fragmentFiles
 import com.dynamicruntime.common.content.fragmentInline
 import com.dynamicruntime.common.context.KdrCxt
@@ -11,6 +11,7 @@ import com.dynamicruntime.common.endpoint.schemaModule
 import com.dynamicruntime.common.flavor.FLV
 import com.dynamicruntime.common.flavor.FlavorContribution
 import com.dynamicruntime.common.flavor.flavor
+import com.dynamicruntime.common.gedra.GedraConfig
 import com.dynamicruntime.common.gedra.workflow.WVF
 import com.dynamicruntime.common.naming.OWNR
 import com.dynamicruntime.common.schema.SCT
@@ -20,6 +21,7 @@ import com.dynamicruntime.common.startup.ServiceEntry
 import com.dynamicruntime.common.startup.service
 import com.dynamicruntime.kdn.confdemo.ConfDemo
 import com.dynamicruntime.kdn.confdemo.ConfDemoBootService
+import com.dynamicruntime.kdn.confdemo.confDemoConfigs
 import com.dynamicruntime.kdn.confdemo.confDemoDocs
 import com.dynamicruntime.kdn.confdemo.confDemoSimulationSchema
 
@@ -77,12 +79,19 @@ class KdnComponent : ComponentDefinition {
             }
 
     /**
-     * What kdn changes under a reference deployment (issue #1221): the conference demo is provisioned as the node
-     * starts, each of its workflow pages links to the walkthrough page that explains it, and a signed-in visitor's
-     * home page links to the walk-through (issue #1429).
+     * The conference demo's bundles, declared in code where the deployment says so (issue #1668, [ConfDemo.fromCodeKey]);
+     * none otherwise, when the demo is a data-only client its provisioning writes.
+     */
+    override fun gedraConfigs(cxt: KdrCxt): List<GedraConfig> = if (ConfDemo.fromCode(cxt)) confDemoConfigs(cxt) else emptyList()
+
+    /**
+     * What kdn changes under a reference deployment (issue #1221): the conference demo is declared in code (issue #1668)
+     * and its users provisioned as the node starts, each of its workflow pages links to the walkthrough page that explains
+     * it, and a signed-in visitor's home page links to the walk-through (issue #1429).
      */
     override fun flavors(cxt: KdrCxt): List<FlavorContribution> = listOf(
         flavor(FLV.reference) {
+            set(ConfDemo.fromCodeKey, true)
             set(ConfDemo.provisionAtBootKey, true)
             omnibusOverlay("kdrConfDemoReference")
         },

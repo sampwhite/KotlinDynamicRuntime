@@ -577,6 +577,13 @@ object CLD {
      */
     const val staticHere = "staticHere"
 
+    /**
+     * On a client's overview row: why the caller may not change the client's configuration, when they may not (issue
+     * #1668) -- a visitor of a demo client on a deployment that keeps visitors out of its configuration. Absent
+     * otherwise. Per caller, unlike the rest of the row, so the page shows the client's configuration read-only.
+     */
+    const val configLocked = "configLocked"
+
     /** Schema type name for the sandbox edit's result (issue #932). */
     const val sandboxResultTypeName = "ClientSandboxResult"
     /** Schema type name for the definition edit's result (issue #1026). */

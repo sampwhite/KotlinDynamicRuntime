@@ -153,6 +153,16 @@ class AuthUserRow(
         }
 
     /**
+     * For a user a visitor got by joining a demo client (issue #1668), the role they joined it as ([AD.joinedAs]); null
+     * for every other user. Read and written through [authUserData], as [openedBy] is.
+     */
+    var joinedAs: String?
+        get() = authUserData[AD.joinedAs].toOptStr()
+        set(value) {
+            if (value != null) authUserData[AD.joinedAs] = value else authUserData.remove(AD.joinedAs)
+        }
+
+    /**
      * Whether this is a sandbox user somebody opened (issues #929, #1198): one that acts as the user outside it was
      * opened from, with no roles or organization of its own to set.
      */

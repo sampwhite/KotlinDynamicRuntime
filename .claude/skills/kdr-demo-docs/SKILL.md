@@ -113,7 +113,9 @@ Every ```` ```json ```` block has a marker on the line directly before its fence
 cleanly fails there -- then, for every `.md` in `docs/demo-client/`:
 
 - **every marked block equals what it names**, compared as values, so layout is free. A mismatch prints the block
-  as it should read, to paste in. An unmarked JSON block is a failure.
+  as it should read, to paste in. An unmarked JSON block is a failure. It is checked twice, against the demo in both
+  forms a deployment may give it (issue #1668): data-only, each bundle read back as stored, and declared in code, as
+  the `reference` flavor has it (`ConfDemo.fromCodeKey`), each bundle as the bundle editor serves a code bundle.
 - **every backticked `g-...` is a keyword the schema layer knows** (`SchGKeywords`).
 - **the pages and `confDemoDocs()` agree**: a page without a declaration, or the reverse, fails.
 

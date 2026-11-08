@@ -277,6 +277,12 @@ enum class DesignRefusal {
      * through its configuration, not field by field here.
      */
     extendsType,
+
+    /**
+     * The caller is a visitor of a demo client on a deployment that keeps visitors out of its configuration (issue
+     * #1668): what Design View shows is read, not changed.
+     */
+    visitor,
 }
 
 /**

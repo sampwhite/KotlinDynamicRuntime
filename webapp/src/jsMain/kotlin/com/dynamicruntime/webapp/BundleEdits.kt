@@ -57,6 +57,8 @@ fun bundleEditGate(row: ClientOverview?): BundleEditGate = when {
         false, "This client takes no configuration made in the app on this server, so there is nothing to edit here.",
     )
     row.hasSandbox && row.sandboxOf == null -> BundleEditGate(false, null, sandboxOf(row.clientId))
+    // A visitor kept out of a demo client's configuration (issue #1668) reads it here, and changes nothing.
+    row.configLocked != null -> BundleEditGate(false, row.configLocked)
     else -> BundleEditGate(true, null)
 }
 

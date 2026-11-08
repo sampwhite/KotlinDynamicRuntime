@@ -2,6 +2,7 @@ package com.dynamicruntime.common.gedra.workflow
 
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.gedra.ClientJoin
 import com.dynamicruntime.common.gedra.GedraConfigService
 import com.dynamicruntime.common.gedra.LogGedra
 import com.dynamicruntime.common.gedra.gedraConfigTopic
@@ -195,8 +196,11 @@ class WorkflowParamsService : ServiceInitializer {
      * the first time gets a row of its own, whatever its client's say. The row is read and written under the client's
      * configuration lock, on its transaction's connection.
      */
-    fun save(cxt: KdrCxt, client: String, workflowId: String, edit: WfParams, unset: Set<String> = emptySet()): Boolean =
-        GedraConfigService.get(cxt).withClientLock(cxt, client, WPT.tranSave) { sqlCxt ->
+    fun save(cxt: KdrCxt, client: String, workflowId: String, edit: WfParams, unset: Set<String> = emptySet()): Boolean {
+        // What a client runs, as its configuration is (issue #1668): a visitor a deployment keeps out of a demo client's
+        // configuration is kept out of its workflows' parameters too.
+        ClientJoin.requireMayEditConfig(cxt, client, "changing workflow '$workflowId''s parameters")
+        return GedraConfigService.get(cxt).withClientLock(cxt, client, WPT.tranSave) { sqlCxt ->
             // The transaction's own context: its session holds the connection, and it acts as the caller does.
             val tcxt = sqlCxt.cxt
             val table = table(tcxt)
@@ -221,6 +225,7 @@ class WorkflowParamsService : ServiceInitializer {
             }
             true
         }
+    }
 
     @Suppress("ConstPropertyName")
     companion object {

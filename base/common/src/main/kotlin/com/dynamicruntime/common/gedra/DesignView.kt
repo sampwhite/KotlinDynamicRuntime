@@ -251,6 +251,8 @@ object DesignView {
      *   live too.
      */
     internal fun saveRefusal(cxt: KdrCxt, configName: String): EditRefusal? {
+        // First, and in a sandbox too (issue #1668): a visitor kept out of a demo client's configuration.
+        ClientJoin.configEditRefusal(cxt, cxt.client)?.let { return EditRefusal(DesignRefusal.visitor, it) }
         if (isSandboxClient(cxt.client)) return null
         val configs = GedraConfigService.get(cxt)
         if (configs.publishedOnly(cxt, cxt.client) && configs.asksForSandbox(cxt, cxt.client)) {

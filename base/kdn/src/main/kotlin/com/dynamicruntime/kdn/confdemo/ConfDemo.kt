@@ -59,9 +59,12 @@ import com.dynamicruntime.common.user.PERSONA
  * fails that test until the page is changed with it. Write the page first, then the definition that produces it: the
  * JSON is shaped for a reader.
  *
- * It is defined in data, as a customer's client is: written as stored bundles by whatever provisions it -- the
- * `conf-demo` simulation on a test instance, or a test in-process -- rather than compiled into a component, so what a
- * reader reads back from a running node is what the pages show.
+ * Where it comes from is a deployment's choice (issue #1668, [ConfDemo.fromCodeKey]). By default it is defined in data,
+ * as a customer's client is: written as stored bundles by whatever provisions it -- the `conf-demo` simulation on a test
+ * instance, or a test in-process. With the switch on, as the `reference` flavor sets it, the same bundles are declared
+ * in code by the `kdn` component, so a change to them ships with a release and reaches a running deployment without a
+ * reset, and what its people change is stored over the code (issue #1657). Either way, what a reader reads back from a
+ * running node is what the pages show.
  *
  * This is also the fullest worked example of a client definition in the DSL; the `kdr-test-clients` skill points here.
  */
@@ -185,6 +188,17 @@ object ConfDemo {
      */
     const val provisionAtBootKey = "confDemoProvisionAtBoot"
 
+    /**
+     * The instance-config key that has the demo declared in code (issue #1668): the `kdn` component contributes its
+     * bundles ([confDemoConfigs]) as code configurations, and provisioning makes only its users. Off by default, when
+     * the demo is a data-only client its provisioning writes. The `reference` deployment flavor sets it. No environment
+     * variable: a deployment flavor sets it, so the choice can be changed back.
+     */
+    const val fromCodeKey = "confDemoFromCode"
+
+    /** Whether this deployment declares the demo in code ([fromCodeKey]). */
+    fun fromCode(cxt: KdrCxtBase): Boolean = (cxt as? KdrCxt)?.instanceConfig?.get(fromCodeKey) == true
+
     /** The demo's workflows, the ones a workflow page shows help for (issue #1221). */
     val workflows = listOf(createTalkWorkflow, talkCoreDetailsWorkflow, abstractWorkflow, reviewWorkflow, logisticsWorkflow)
 }
@@ -290,8 +304,10 @@ fun confDemoBase(cxt: KdrCxtBase = LiteCxt(), client: String = ConfDemo.client):
         }
 
         // The client's own traits (issue #1138). Each workflow page shows the traits that workflow introduces, so a
-        // trait is appended here, never inserted: the pages address each by its place in the bundle.
+        // trait is appended here, never inserted: the pages address each by its place in the bundle. Each data type has a
+        // title, the name the app shows for the trait (issue #1520's rule, held to the demo once it is in code, #1668).
         trait(ConfDemo.sessionEntry, ConfDemo.session, setOf(GedraDataType.formDoc), "Where a talk fits in the program.") {
+            title = "Session"
             property(ConfDemo.track, "The part of the program the talk belongs to.", required = true) {
                 title = "Track"
                 option("kotlin", "Kotlin")
@@ -301,6 +317,7 @@ fun confDemoBase(cxt: KdrCxtBase = LiteCxt(), client: String = ConfDemo.client):
             }
         }
         trait(ConfDemo.questionnaireEntry, ConfDemo.questionnaire, setOf(GedraDataType.formDoc), "Five questions every speaker answers.") {
+            title = "Questionnaire"
             // Optional in the data: each workflow that asks a question decides whether its own form requires it.
             property(ConfDemo.firstTalk, "Whether this is the speaker's first talk at a conference.") {
                 title = "Is this your first conference talk?"
@@ -327,6 +344,7 @@ fun confDemoBase(cxt: KdrCxtBase = LiteCxt(), client: String = ConfDemo.client):
         }
 
         trait(ConfDemo.abstractEntry, ConfDemo.abstract, setOf(GedraDataType.formDoc), "What the talk is about.") {
+            title = "Abstract"
             property(ConfDemo.summary, "The abstract the program will print.", required = true) {
                 title = "Summary"
                 longText = true
@@ -377,6 +395,7 @@ fun confDemoBase(cxt: KdrCxtBase = LiteCxt(), client: String = ConfDemo.client):
             }
         }
         trait(ConfDemo.reviewEntry, ConfDemo.review, setOf(GedraDataType.formDoc), "The committee's review of the talk.") {
+            title = "Committee review"
             property(ConfDemo.score, "The committee's score, from 1 to 5.") {
                 title = "Score"
                 type = SCT.integer
@@ -389,6 +408,7 @@ fun confDemoBase(cxt: KdrCxtBase = LiteCxt(), client: String = ConfDemo.client):
             }
         }
         trait(ConfDemo.logisticsEntry, ConfDemo.logistics, setOf(GedraDataType.formDoc), "What a workshop needs on the day.") {
+            title = "Workshop logistics"
             property(ConfDemo.room, "The room the session is in.") {
                 title = "Room"
                 option("hall", "Main hall")
@@ -609,10 +629,14 @@ fun confDemoConfigs(cxt: KdrCxtBase = LiteCxt(), client: String = ConfDemo.clien
 /**
  * Provisions the demo (issue #1137): each bundle written, published, and made live on every node, then an organizer, a
  * speaker, and a committee member to sign in as. [suffix] makes a fresh copy, `confdemo<suffix>` (see [SIM.suffix]).
+ * Where the demo is declared in code ([ConfDemo.fromCode], issue #1668), the demo itself has its bundles already, so
+ * only its users are made; a fresh copy is still data, and written.
  */
 fun provisionConfDemo(cxt: KdrCxt, suffix: String? = null): SimulationReport {
     val client = ConfDemo.client + Simulations.checkedSuffix(suffix)
-    for (config in confDemoConfigs(cxt, client)) Simulations.provisionConfig(cxt, config)
+    if (client != ConfDemo.client || !ConfDemo.fromCode(cxt)) {
+        for (config in confDemoConfigs(cxt, client)) Simulations.provisionConfig(cxt, config)
+    }
     val organizer = Simulations.provisionUser(cxt, "organizer@$client.example", client, ROLE.admin, name = "Olive Organizer")
     val speaker = Simulations.provisionUser(cxt, "speaker@$client.example", client, ROLE.user, name = "Pat Speaker")
     // Reviews talks (issue #1139): an editor (issue #1455) carrying the client's `committee` label. A user found from an

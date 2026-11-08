@@ -29,6 +29,11 @@ external interface FileRefsSectionProps : Props {
     var hasSandbox: Boolean
     /** Whether the client takes nothing stored on this node: its files are listed, and none is changed here. */
     var staticHere: Boolean
+    /**
+     * Why the caller may not change the client's configuration, when they may not (issue #1668): its files are listed,
+     * and none is changed here.
+     */
+    var configLocked: String?
     /** What a change calls once it has taken effect: the page re-reads. */
     var onChanged: () -> Unit
 }
@@ -189,7 +194,7 @@ val FileRefsSection = FC<FileRefsSectionProps> { props ->
 
     val listed = refs
     val taking = takes
-    val editable = !props.staticHere
+    val editable = !props.staticHere && props.configLocked == null
 
     p {
         className = ClassName("subtitle")

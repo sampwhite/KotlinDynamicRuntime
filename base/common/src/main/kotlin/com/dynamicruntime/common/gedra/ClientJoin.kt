@@ -124,11 +124,42 @@ object ClientJoin {
             users.usersOfIdentity(cxt, identity.identityId).firstOrNull { it.holds(client, role) && it.isActive } ?: throw e
         }
         val missing = role.userLabels.filterNot { it in row.labels }
-        if (missing.isNotEmpty()) {
+        // Stamped as a visitor's (issue #1668), so a deployment can tell them from the client's own users.
+        val stamp = row.joinedAs != role.name
+        if (missing.isNotEmpty() || stamp) {
             row.labels += missing
+            row.joinedAs = role.name
             users.updateUser(cxt.mkSubContext("clientJoin", client), row)
         }
         return row
+    }
+
+    /**
+     * Why the caller may not change [client]'s configuration -- or null when they may (issue #1668): they are a visitor
+     * who joined it ([AuthUserRow.joinedAs]), it is a demo client (one declaring join roles), and this deployment does not
+     * let visitors change a demo client's configuration ([JOIN.visitorsEditConfigKey]). A sandbox's is its parent's, and
+     * a user opened in a sandbox is judged as the user it acts as. Anyone else -- the client's own users, a caller who sees
+     * every client, a visitor in a client they made themselves, the system -- is never refused here.
+     *
+     * Theme: #SBXAU.
+     */
+    fun configEditRefusal(cxt: KdrCxt, client: String): String? {
+        if (cxt.instanceConfig.get(JOIN.visitorsEditConfigKey) == true) return null
+        val owner = sandboxParentOf(client) ?: client
+        val def = ClientService.getOrNull(cxt)?.known(owner)?.takeIf { it.joinRoles.isNotEmpty() } ?: return null
+        val profile = cxt.userProfile
+        if (!profile.isRowBacked || !profile.isLoggedIn) return null
+        val users = UserService.getOrNull(cxt) ?: return null
+        val caller = users.queryByUserId(cxt, profile.userId) ?: return null
+        val acting = caller.openedBy?.takeIf { caller.isOpenedSandboxUser }?.let { users.queryByUserId(cxt, it) } ?: caller
+        if (acting.client != owner || acting.joinedAs == null) return null
+        return "You joined ${def.name.ifEmpty { owner }} as a visitor, and this deployment does not let visitors change a " +
+            "demo client's configuration."
+    }
+
+    /** Refuses [what], a change to [client]'s configuration, when [configEditRefusal] gives a reason. */
+    fun requireMayEditConfig(cxt: KdrCxt, client: String, what: String) {
+        configEditRefusal(cxt, client)?.let { throw KdrException("$it So $what is refused.", code = EXC.notAuthorized) }
     }
 
     /** The caller's identity, when joining is offered to them; refused as absent when it is not. */

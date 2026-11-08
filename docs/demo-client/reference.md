@@ -7,8 +7,10 @@ here the first time it uses one of them.
 
 ## Reading the JSON on these pages
 
-The JSON on each page is a bundle's `slots`, as a running instance returns it from
-`GET /clientAdmin/config/bundle?name=<bundle>`. A page shows a whole bundle, or one entry out of it.
+The JSON on each page is a bundle's `slots`. On a test instance that ran the conf-demo simulation, a running instance
+returns it from `GET /clientAdmin/config/bundle?name=<bundle>`. Where the demo is declared in code, as on a reference
+deployment, the bundle editor shows the same JSON under **From code**. A page shows a whole bundle, or one entry out of
+it.
 
 The instance may list the keys in a different order from the page. The values are the same.
 
