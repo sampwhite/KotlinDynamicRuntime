@@ -209,6 +209,14 @@ reaches the same account even if their Google address later changes. An address 
 Google sign-in follows `KDR_PUBLIC_SIGN_IN` as the emailed code does. It does not replace the mail provider: the
 sign-in page still offers the emailed code.
 
+**Optional: the workflow assistant.** The assistant answers through the Anthropic API, so it needs a key: put it in
+`~/kdr/private/secrets.properties` as `anthropicApiKey`, beside the mail key (see "Mail and sign-in" below). Without it
+the assistant is unavailable. An operator switches it on per client. To let visitors try it in clients of their own,
+set `KDR_ASSISTANT_SELF_SERVE=true`: the administrator of a self-serve client (one a visitor made) may then switch it
+on, acknowledging the data notice, with a monthly budget of `KDR_ASSISTANT_SELF_SERVE_BUDGET`, about $5 a client
+unless you set another. Anyone may sign up for such a client, so the spending grows with the number that switch it
+on. A client a visitor joins, such as the conference demo, has the assistant only where an operator switched it on.
+
 A test instance refuses to start in `dev` unless it is a public test deployment. A public test deployment refuses to
 start unless `KDR_TRUST_ENV_AUTH_HEADER` is set, and refuses `KDR_ASSUME_ENV_AUTH` unless `KDR_BIND_ADDRESS` is a
 loopback address. So a mistake in these settings stops the start, with a log line saying why, rather than leaving a
