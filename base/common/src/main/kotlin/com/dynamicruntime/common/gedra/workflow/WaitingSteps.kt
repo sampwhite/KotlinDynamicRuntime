@@ -13,8 +13,8 @@ import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
 
 /**
- * Which steps of a form are **waiting on the caller** (issue #1637): the engaged workflows whose current task is theirs
- * to take. What the forms listing's `needsMe` keeps, what Home's "Waiting on you" card lists, and the one answer the
+ * Which steps of a form are **waiting on the caller** (issue #1637): the engaged workflows, not done ([workflowDoneIn], as
+ * the cell judges finished), whose current task is theirs to take. What the forms listing's `needsMe` keeps, what Home's "Waiting on you" card lists, and the one answer the
  * classification of a form's workflows ([formWorkflowWeights], issue #1597) cannot read from state -- so a workflow is
  * the caller's turn exactly when its step is waiting on them, and a keyword search's `mine` reads the same rule.
  *
@@ -208,9 +208,13 @@ class WaitingSteps(
             formWorkflowWeights(states, rules(gedraId.client)::phaseOf) { workflow, _ -> workflow.workflowId in waiting }
         }
 
-    /** The task [data]'s workflow waits on now: live, seen by the caller, still calculating, and not done. */
+    /**
+     * The task [data]'s workflow waits on now: live, seen by the caller, still calculating, and not done -- neither every
+     * task complete nor the finished fact asserted ([workflowDoneIn]), so a workflow the cell draws as finished never has
+     * a step waiting on anyone.
+     */
     private fun currentTask(rules: ClientRules, data: Map<String, Any?>): WfTask? {
-        if (data[WFS.tasksDone] == true) return null
+        if (workflowDoneIn(data)) return null
         val workflowId = data[WFD.workflowId].toOptStr() ?: return null
         // Live, seen by the caller, and still calculating (issue #790): a frozen workflow's saves are refused.
         if (rules.phaseOf(workflowId)?.calculates != true) return null

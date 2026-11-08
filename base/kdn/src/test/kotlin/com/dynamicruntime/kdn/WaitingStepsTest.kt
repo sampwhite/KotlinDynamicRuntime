@@ -16,6 +16,7 @@ import com.dynamicruntime.common.gedra.workflow.SWF
 import com.dynamicruntime.common.gedra.workflow.WFC
 import com.dynamicruntime.common.gedra.workflow.WFD
 import com.dynamicruntime.common.gedra.workflow.WFS
+import com.dynamicruntime.common.gedra.workflow.WSC
 import com.dynamicruntime.common.gedra.workflow.WfEntry
 import com.dynamicruntime.common.gedra.workflow.WfSaveKind
 import com.dynamicruntime.common.gedra.workflow.ctaFilterByValue
@@ -26,6 +27,7 @@ import com.dynamicruntime.common.user.ADF
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.user.UADEP
 import com.dynamicruntime.common.util.toJsonListOfMaps
+import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
@@ -53,6 +55,15 @@ class WaitingStepsTest : StringSpec({
         trait("NotesEntry", "notes", setOf(GedraDataType.formDoc), "What was seen.") { property("text", "The notes.") }
         trait("FollowUpEntry", "followUp", setOf(GedraDataType.formDoc), "What happens next.") { property("plan", "The plan.") }
         trait("CheckEntry", "check", setOf(GedraDataType.formDoc), "A reviewer's check.") { property("result", "What it found.") }
+        trait("JotEntry", "jot", setOf(GedraDataType.formDoc), "A jot.") { property("text", "The jot.") }
+        // Finished from the start, with its one task still to do: its cell draws it finished, so it waits on nobody.
+        workflow("earlyDone", WfEntry.normal) {
+            singleton(WSC.finished, "#always")
+            task("jot", "Write a jot") {
+                trait("jot")
+                save("saveJot", "Save", WfSaveKind.edit)
+            }
+        }
         // A save that names someone: the check waits on a reviewer, whoever owns the form.
         workflow("siteCheck", WfEntry.normal) {
             label = "Site check"
@@ -119,6 +130,21 @@ class WaitingStepsTest : StringSpec({
         )[GDF.gedraId].toOptStr()!!
         owner.postData(GEP.workflowEngage, mapOf(GDF.gedraId to gid, WFD.workflowId to "siteReview"))
         return gid
+    }
+
+    "a workflow that has declared itself finished waits on nobody, though a task of it remains, as its cell draws it finished" {
+        val owner = TestUser.create(cxt, "early@$client.test", userClient = client)
+        val site = mapOf(GE.traitId to "site", GE.data to mapOf("region" to "northwest"))
+        val gid = owner.postItem(GEP.formDocCreate, mapOf(GDF.entries to listOf(site)))[GDF.gedraId].toOptStr()!!
+        owner.postData(GEP.workflowEngage, mapOf(GDF.gedraId to gid, WFD.workflowId to "earlyDone"))
+        // The jot is the owner's save, and still to do; without the finished fact it would wait on them.
+        val row = owner.getItems(GEP.formDocs, mapOf(GDF.withStates to true)).single { it[GDF.gedraId] == gid }
+        val state = row[GDF.states].toJsonListOfMaps().filter { it[GE.traitId] == WFS.workflowState }
+            .map { it[GE.data].toJsonMapOrEmpty() }.single { it[WFD.workflowId] == "earlyDone" }
+        state[WFS.tasksDone] shouldBe false
+        state[WFS.ctaTask] shouldBe "jot"
+        waitingFor(owner).containsKey(gid) shouldBe false
+        row[GDF.waitingSteps].toJsonListOfMaps() shouldBe emptyList()
     }
 
     "a step waits on the person it is for: the owner's own save, then the region's reviewer, then the owner again" {
