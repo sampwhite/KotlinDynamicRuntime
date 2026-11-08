@@ -430,11 +430,13 @@ class WorkflowModelTest {
         assertTrue(taskUnsaved(wf.tasks[0], emptyMap(), stored))
     }
 
-    /** The tooltip / screen-reader wording: one line per thing to know, friendly trait names, else "Complete". */
+    /** The tooltip / screen-reader wording: one line per thing to know, friendly trait names, else that it needs nothing more. */
     @Test
     fun explainsARailMarkInWords() {
         val done = parseWorkflowView(coreDetailsView(status(true, true), null, null))!!.tasks[0].status
-        assertEquals("Complete", railExplanation(done, unsaved = false))
+        // Never "Complete" (issue #1694): the step can still be changed, so it says the step asks nothing more.
+        assertEquals("Nothing more is needed on this step.", railExplanation(done, unsaved = false))
+        assertEquals("All set.", railExplanation(done, unsaved = false, satisfied = "All set."))
         assertEquals("Unsaved changes", railExplanation(done, unsaved = true))
         val needs = parseWorkflowView(coreDetailsView(status(false, true, listOf("expenseReport")), null, null))!!.tasks[0].status
         assertEquals("Needs information: Expense report", railExplanation(needs, unsaved = false))
@@ -579,5 +581,34 @@ class WorkflowModelTest {
         assertNull(sectionLabel("##"))
         assertNull(sectionLabel("## **"))
         assertNull(sectionLabel(null))
+    }
+
+    @Test
+    fun aCompleteTaskOffersTheNextOneWhenThereIsOneAvailable() {
+        // Issue #1694: Next opens the task after the one shown, once the shown one is complete.
+        fun task(id: String, disabled: Boolean = false) = WfTaskView(
+            id, "Label of $id", traits = emptyList(), saves = emptyList(),
+            display = if (disabled) WfTaskDisplay("text", "Not yet.", disabled = true) else null,
+        )
+        val tasks = listOf(task("record"), task("accept"), task("thank"))
+        assertEquals("accept", nextTaskAfter(tasks, "record", RailMark.complete)?.id)
+        // Whether the viewer may act on the next task is not asked: it opens as the rail opens it. So a workflow whose
+        // tasks are all complete steps forward one at a time.
+        assertEquals("thank", nextTaskAfter(tasks, "accept", RailMark.complete)?.id)
+        // None after the last task, none while the shown task is incomplete or complete with problems, none for a task
+        // the view does not have.
+        assertNull(nextTaskAfter(tasks, "thank", RailMark.complete))
+        assertNull(nextTaskAfter(tasks, "record", RailMark.incomplete))
+        assertNull(nextTaskAfter(tasks, "record", RailMark.invalid))
+        assertNull(nextTaskAfter(tasks, "gone", RailMark.complete))
+        // The step says it asks nothing more only when its rail marks it complete and nothing in it is unsaved.
+        assertTrue(stepSatisfied(RailMark.complete, unsaved = false))
+        assertFalse(stepSatisfied(RailMark.complete, unsaved = true))
+        assertFalse(stepSatisfied(RailMark.invalid, unsaved = false))
+        assertFalse(stepSatisfied(RailMark.incomplete, unsaved = false))
+        // Next says where it goes, in the copy's words.
+        assertEquals("Next: Accept the talk →", WorkflowCellWords().nextStepText("Accept the talk"))
+        // A next task its display greys until something is done is not available, as its rail entry is inert.
+        assertNull(nextTaskAfter(listOf(task("record"), task("accept", disabled = true)), "record", RailMark.complete))
     }
 }

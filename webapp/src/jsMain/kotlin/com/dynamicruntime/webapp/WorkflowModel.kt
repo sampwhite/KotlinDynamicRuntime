@@ -437,12 +437,40 @@ fun railMark(status: WfTaskStatus?): RailMark = when {
 }
 
 /**
+ * Whether the shown step says it asks nothing more of anyone (issue #1694): its rail entry draws the green check
+ * ([shownMark]) and nothing in it is unsaved -- while there is, Save is what to do, and the line would claim more than
+ * the stored data says. Never "complete": the step can still be changed. Pure, and covered under `jsNodeTest`.
+ */
+fun stepSatisfied(shownMark: RailMark, unsaved: Boolean): Boolean = shownMark == RailMark.complete && !unsaved
+
+/**
+ * The task a **Next** link opens (issue #1694), or null when there is none to offer: the task after [shownId] in
+ * [tasks], when the shown task is complete ([shownMark], as its rail entry marks it) and that next task is available.
+ * Next asks nothing about whether the viewer may act on it -- it opens as choosing it in the rail does, editable or
+ * read-only for them -- so on a workflow whose tasks are all complete it steps forward one at a time. A disabled task
+ * ([WfTaskView.isDisabled]: its display greys it until something is done) is not available, as its rail entry is inert;
+ * when tasks gain an availability of their own (a date before which one cannot be opened), it belongs here too. Pure,
+ * and covered under `jsNodeTest`.
+ */
+fun nextTaskAfter(tasks: List<WfTaskView>, shownId: String?, shownMark: RailMark): WfTaskView? {
+    if (shownMark != RailMark.complete) return null
+    val index = tasks.indexOfFirst { it.id == shownId }.takeIf { it >= 0 } ?: return null
+    return tasks.getOrNull(index + 1)?.takeIf { !it.isDisabled }
+}
+
+/**
  * What a rail mark means, in words, for the entry's tooltip and screen-reader label (issue #700): unsaved edits,
  * the required traits still missing (named by [nameOf] -- the rail passes the same heading the panel uses, so
  * the two agree; the default humanizes the id), each friendly problem, or -- when nothing else applies --
- * "Complete". One line each, in that order.
+ * [satisfied], that the step asks nothing more (issue #1694: never "Complete", since it can still be changed). One line
+ * each, in that order.
  */
-fun railExplanation(status: WfTaskStatus?, unsaved: Boolean, nameOf: (String) -> String = ::humanizeFieldName): String {
+fun railExplanation(
+    status: WfTaskStatus?,
+    unsaved: Boolean,
+    satisfied: String = WorkflowCellWords().stepSatisfied,
+    nameOf: (String) -> String = ::humanizeFieldName,
+): String {
     val lines = buildList {
         if (unsaved) add("Unsaved changes")
         if (status == null || !status.complete) {
@@ -450,7 +478,7 @@ fun railExplanation(status: WfTaskStatus?, unsaved: Boolean, nameOf: (String) ->
             add(if (missing.isEmpty()) "Not started" else "Needs information: " + missing.joinToString(", ") { nameOf(it) })
         }
         status?.problems?.forEach { add(it.message) }
-        if (isEmpty()) add("Complete")
+        if (isEmpty()) add(satisfied)
     }
     return lines.joinToString("\n")
 }

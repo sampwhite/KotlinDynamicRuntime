@@ -975,6 +975,9 @@ input:where(:not([type=checkbox]):not([type=radio])) {
 .wf-mark-complete { color: var(--success); }
 .wf-mark-invalid { color: var(--border-admin); }
 .wf-mark-incomplete { color: var(--text-faint); }
+/* A workflow page's line saying the step asks nothing more (issue #1694), beside its Save and Next: muted text with the
+   rail's green check, so the panel and the rail agree. */
+.wf-step-satisfied { display: inline-flex; align-items: center; gap: 4px; color: var(--text-muted); }
 /* Unsaved edits: an overlay badge beside the mark -- a task can be both incomplete and unsaved. */
 .wf-unsaved { flex: 0 0 auto; color: var(--border-admin); font-size: .7rem; }
 

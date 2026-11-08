@@ -106,7 +106,17 @@ alone also confines the rows to X: on a client's own copy, an `allClients` calle
 - **A highlighted Start engages on arrival** (#1662). Its link carries `engage=1` (`HP.engage`, `workflowPageRoute(...,
   engage = true)`) beside the first task and `edit=1`; the workflow page engages as its Start button would, then takes
   the flag out of the address, so a reload or Back never engages twice. A form that can no longer engage (already in,
-  or not eligible now) drops the flag, the refusal shown as Engage's is.
+  or not eligible now) drops the flag, the refusal shown as Start's is.
+- **A satisfied step says so, and offers Next** (issue #1694). On a workflow page that shows one task at a time beside
+  the rail, a step whose rail entry draws the green check, with nothing unsaved (`stepSatisfied`), says *Nothing more
+  is needed on this step* beside its Save, with the rail's check: what the step asks of anyone is there and valid.
+  Never "complete", since the step can still be changed; the rail's tooltip says the same (`railExplanation`). Both
+  are the `workflowCell` copy's `stepSatisfied`. When the workflow has a next task (`nextTaskAfter`), a link-styled
+  **Next: <step> →** (`nextStep`) opens it as choosing it in the rail does -- the task being left gets its whole
+  check, its working values stay -- and asks nothing about whether the caller may act on it, so on a finished workflow
+  it steps forward one task at a time. It shows while the step is complete with unsaved edits too, and is not offered
+  for a next task its display disables, as its rail entry is inert; a task's own availability, when tasks gain one,
+  belongs in the same rule.
 - **A workflow's listing is its own page** (`page=workflowForms`, issue #792): where a count on the Workflows
   page leads. `FormsPage` draws it in workflow mode -- the workflow as heading, a state switch, `← Workflows` --
   with the workflow and state riding the address as search keys (`formsDrillKeys`) so showing more, sorting and a client

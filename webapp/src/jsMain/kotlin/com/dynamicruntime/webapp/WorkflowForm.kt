@@ -533,7 +533,35 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
     // One task's body -- the "TaskPanel" (issue #700): its label (when something else does not already name the
     // task, issue #719), each trait's form, and its Save while editing. In rail mode one of these shows at a
     // time; in single-panel mode each task's shows in turn.
-    fun ChildrenBuilder.taskPanel(task: WfTaskView, showLabel: Boolean = true) {
+    // A complete task's way on (issue #1694): the next task, as choosing it in the rail opens it -- the task being left
+    // gets its whole check first, and its working values stay. Link-styled, beside the task's Save or alone: it goes
+    // somewhere without changing anything, which the form surfaces draw as a link (webapp/CLAUDE.md, "Buttons and links").
+    fun ChildrenBuilder.nextButton(task: WfTaskView, next: WfTaskView) {
+        Button {
+            type = "link"
+            onClick = {
+                if (editing) checkWholeTask(task)
+                props.onSelectTask?.invoke(next.id)
+            }
+            // Says where it goes: "Next: Accept the talk →".
+            +shellFacts.workflowWords.nextStepText(next.label)
+        }
+    }
+
+    // That the step asks nothing more of anyone (issue #1694), with the rail's own check: never "complete", since it can
+    // still be changed.
+    fun ChildrenBuilder.satisfiedLine() {
+        span {
+            className = ClassName("wf-step-satisfied")
+            span {
+                className = ClassName("wf-mark wf-mark-complete")
+                +"✓"
+            }
+            +shellFacts.workflowWords.stepSatisfied
+        }
+    }
+
+    fun ChildrenBuilder.taskPanel(task: WfTaskView, showLabel: Boolean = true, next: WfTaskView? = null, satisfied: Boolean = false) {
         div {
             // A disabled display (issue #788) greys the whole step; nothing in it acts (see `isEditable`).
             className = ClassName(if (task.isDisabled) "wf-task wf-task-disabled" else "wf-task")
@@ -657,7 +685,15 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
             // A task that offers no save -- a normal workflow's approval step (issues #787, #791) -- draws none:
             // there is nothing here to save, and asking for its save would find none.
             val save = saveFor(task)
-            if (editing && wf.isEditable(task, isEdit) && save != null) {
+            val savesHere = editing && wf.isEditable(task, isEdit) && save != null
+            if (!savesHere && (satisfied || next != null)) {
+                div {
+                    className = ClassName("row")
+                    if (satisfied) satisfiedLine()
+                    next?.let { nextButton(task, it) }
+                }
+            }
+            if (savesHere) {
                 // When defaults are the only thing left to do, say so above the Save (issue #710): the count is
                 // the task's still-pending defaults, and it disappears as they are accepted, edited, or saved.
                 val pendingDefaults =
@@ -680,6 +716,8 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
                             +save.label
                         }
                     }
+                    if (satisfied) satisfiedLine()
+                    next?.let { nextButton(task, it) }
                 }
             }
         }
@@ -694,7 +732,7 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
         val status = statusFor(task, unsaved)
         val mark = railMark(status)
         // Name a missing trait by its name (issue #1520), so the tooltip and the panel's heading agree.
-        val explanation = railExplanation(status, unsaved) { id ->
+        val explanation = railExplanation(status, unsaved, shellFacts.workflowWords.stepSatisfied) { id ->
             task.traits.firstOrNull { it.traitId == id }?.let(::traitName) ?: humanizeFieldName(id)
         }
         button {
@@ -869,7 +907,14 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
                     className = ClassName("wf-panel")
                     // The rail entry the user just clicked is the task's label; the panel does not repeat it
                     // (issue #719) and opens on the trait heading.
-                    taskPanel(shownTask ?: wf.tasks.first(), showLabel = false)
+                    val shown = shownTask ?: wf.tasks.first()
+                    // A satisfied task says so and offers the next one (issue #1694), by the mark its rail entry draws.
+                    val shownUnsaved = taskUnsaved(shown, valuesByTrait, stored)
+                    val shownMark = railMark(statusFor(shown, shownUnsaved))
+                    taskPanel(
+                        shown, showLabel = false, next = nextTaskAfter(wf.tasks, shown.id, shownMark),
+                        satisfied = stepSatisfied(shownMark, shownUnsaved),
+                    )
                 }
             }
         } else {
