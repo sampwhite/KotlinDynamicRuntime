@@ -271,7 +271,7 @@ class SharedEditTest : StringSpec({
         name[DSV.sharedRefusalCode] shouldBe DesignRefusal.declaredGlobally.name
         val setup = cxt.mkSubContext("setup", client)
         val elsewhere = gedraConfig(LiteCxt(), "inCode1029", clientNamespace("other1029"), "other1029", GedraConfigOrigin.source) {}
-        DesignSharedEdit.refusal(setup, elsewhere)?.code shouldBe DesignRefusal.declaredInSource
+        DesignSharedEdit.refusal(setup, elsewhere, CCT.schemaDef)?.code shouldBe DesignRefusal.declaredInSource
         // The client's own code: a type of it is edited by storing an overlay (issue #1670); a trait of it is not, since a
         // trait changes only whole.
         val own = gedraConfig(LiteCxt(), "inCode1029", clientNamespace(client), client, GedraConfigOrigin.source) {}

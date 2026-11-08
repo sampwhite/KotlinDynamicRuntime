@@ -54,7 +54,8 @@ object DesignSharedEdit {
             try {
                 wholeOf(cxt, slot, key, e, fromCode = code != null).body
             } catch (ex: KdrException) {
-                refusal = EditRefusal(DesignRefusal.declaredInSource, ex.message.orEmpty())
+                // A stored overlay the code has moved out from under (issue #1670): fixed in the bundle editor.
+                refusal = EditRefusal(DesignRefusal.staleOverlay, ex.message.orEmpty())
                 null
             }
         }.orEmpty()
@@ -73,11 +74,12 @@ object DesignSharedEdit {
     }
 
     /**
-     * Why this caller may not edit the definition [declaredBy] declares, or null when they may: it must be declared in
-     * the client's own stored configuration, and then the rules every Design View save shares with the Clients page's
-     * editors ([DesignView.saveRefusal]).
+     * Why this caller may not edit the definition [declaredBy] declares, in [slot], or null when they may: it must be
+     * declared in the client's own stored configuration or its own code -- a type of whose is changed by an overlay, and
+     * a trait of whose is not (issue #1670), which is why [slot] is asked -- and then the rules every Design View save
+     * shares with the Clients page's editors ([DesignView.saveRefusal]).
      */
-    fun refusal(cxt: KdrCxt, declaredBy: GedraConfig?, slot: String = CCT.schemaDef): EditRefusal? {
+    fun refusal(cxt: KdrCxt, declaredBy: GedraConfig?, slot: String): EditRefusal? {
         if (declaredBy == null || declaredBy.gedraId.client == GID.globalClient) {
             val where = declaredBy?.let { " (${it.name})" }.orEmpty()
             return EditRefusal(

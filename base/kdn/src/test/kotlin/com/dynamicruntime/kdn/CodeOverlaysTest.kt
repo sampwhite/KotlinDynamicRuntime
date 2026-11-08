@@ -9,8 +9,11 @@ import com.dynamicruntime.common.gedra.CFEP
 import com.dynamicruntime.common.gedra.ClientAudience
 import com.dynamicruntime.common.gedra.ClientConfigIssues
 import com.dynamicruntime.common.gedra.ClientDef
+import com.dynamicruntime.common.gedra.ClientStoredEdit
 import com.dynamicruntime.common.gedra.ClientUsageType
 import com.dynamicruntime.common.gedra.DSV
+import com.dynamicruntime.common.gedra.DesignOrigin
+import com.dynamicruntime.common.gedra.DesignRefusal
 import com.dynamicruntime.common.gedra.DesignSharedEdit
 import com.dynamicruntime.common.gedra.GCFG
 import com.dynamicruntime.common.gedra.GE
@@ -34,6 +37,7 @@ import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SL
+import com.dynamicruntime.common.schema.SLM
 import com.dynamicruntime.common.startup.BCHK
 import com.dynamicruntime.common.startup.BootCheckMode
 import com.dynamicruntime.common.startup.BootCheckRegistry
@@ -41,12 +45,14 @@ import com.dynamicruntime.common.startup.SchemaCollector
 import com.dynamicruntime.common.startup.SchemaService
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
+import com.dynamicruntime.common.util.toOptStr
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * A client's stored overlay of its code (issue #1657): an entry marked `"overrides": "codeOverlay"` holds only what it
@@ -282,6 +288,11 @@ class CodeOverlaysTest : StringSpec({
         publish(cxt, client)
         GedraConfigReload.reloadClient(cxt, client)
         val chief = TestUser.create(cxt, "chief@$client.test", level = ROLE.admin, userClient = client)
+        // Before any change, the workflow reads as the template's code, though a data-defined client files its copy with a
+        // stored origin.
+        val before = chief.getItem(DSV.definition, mapOf(DSV.slot to CCT.workflowDef, DSV.key to "tplFlow"))
+        before[DSV.origin] shouldBe DesignOrigin.source.name
+        before[DSV.config] shouldBe "from_${tpl}_base"
         fun relabel(taskId: String, saveId: String?, label: String) = chief.postData(
             DSV.labelEdit,
             buildMap {
@@ -335,6 +346,74 @@ class CodeOverlaysTest : StringSpec({
         // A trait's data type declared in code is not edited here: a trait changes only whole.
         val trait = chief.getItem(DSV.definition, mapOf(DSV.slot to CCT.traitDef, DSV.key to "tplNote"))
         trait[DSV.canEditShared] shouldBe false
+    }
+
+    // Its own instance (issue #1670 review), since it refuses publishing for some clients and changes the template's code.
+    "Design View: a refused first save leaves no bundle behind, and a stale overlay is refused as stale" {
+        val refusing: MutableSet<String> = ConcurrentHashMap.newKeySet()
+        val design = Startup.mkTestBootCxt(
+            "codeOverlayDesign", "kdnCodeOverlayDesign1670",
+            mapOf(
+                GCFG.storedCheckEnvVar.name to BootCheckMode.warn.name,
+                ClientStoredEdit.publishCheckConfigKey to ClientStoredEdit.PublishCheck { _, client, _ ->
+                    if (client in refusing) throw KdrException.mkInput("Publishing is refused for this test.")
+                },
+            ),
+            listOf(ExtensionTemplateComponent()),
+        )
+        val copy = "from_${tpl}_base"
+        fun bundles(client: String) =
+            GedraConfigService.get(design).listConfigs(writer(design, client)).map { it.configId.baseId }
+
+        // A first label edit whose publish is refused: the bundle it made is gone again, not left empty.
+        val refused = "dvundo1670"
+        store(design, refused, emptyMap(), template = tpl)
+        publish(design, refused)
+        GedraConfigReload.reloadClient(design, refused)
+        refusing.add(refused)
+        val chief = TestUser.create(design, "chief@$refused.test", level = ROLE.admin, userClient = refused)
+        chief.expectError(
+            EXC.badInput, DSV.labelEdit,
+            mapOf(
+                DSV.workflowId to "tplFlow", DSV.taskId to "a", DSV.label to "Refused",
+                DSV.basedOn to workflowDefStamp(flow(design, refused, "tplFlow")),
+            ),
+        ).toString() shouldContain "Publishing is refused for this test."
+        bundles(refused) shouldBe listOf("main")
+        flow(design, refused, "tplFlow").tasks.single().label shouldBe "A"
+
+        // A type overlay the code moves out from under: the shared editor says it is stale, by a code of its own.
+        val collector = SchemaCollector.get(design).shouldNotBeNull()
+        val typeName = "client.$tpl.Shared"
+        fun deployShared(field: String) {
+            val held = collector.gedraConfigs.configs.single { it.gedraId.client == tpl && it.name == "base" }
+            val body = mapOf(
+                SCH.type to "object",
+                SCH.properties to mapOf(field to mapOf(SCH.description to "A code.")),
+                SCH.layout to mapOf(SL.mode to SLM.authoritative, SL.schemaFields to listOf(mapOf(SL.field to field))),
+            )
+            collector.replaceGedraConfig(held, held.copy(defs = held.defs + (typeName to body))) shouldBe true
+        }
+        deployShared("code")
+        val stale = "dvstale1670"
+        val overlay = mapOf(
+            CCT.typeName to typeName, CCT.overrides to CCT.overridesCodeOverlayValue,
+            CCT.schema to mapOf(SCH.layout to mapOf(SL.schemaFields to listOf(mapOf(SL.field to "code", SL.label to "Code, ours")))),
+        )
+        store(design, stale, emptyMap(), template = tpl)
+        store(design, stale, mapOf(CCT.schemaDef to listOf(overlay)), name = copy)
+        publish(design, stale)
+        publish(design, stale, copy)
+        GedraConfigReload.reloadClient(design, stale)
+        val admin = TestUser.create(design, "chief@$stale.test", level = ROLE.admin, userClient = stale)
+        fun read() = admin.getItem(DSV.definition, mapOf(DSV.slot to CCT.schemaDef, DSV.key to typeName))
+        read()[DSV.canEditShared] shouldBe true
+        deployShared("kode")
+        GedraConfigReload.reloadClient(design, stale)
+        val after = read()
+        after[DSV.canEditShared] shouldBe false
+        after[DSV.sharedRefusalCode] shouldBe DesignRefusal.staleOverlay.name
+        after[DSV.sharedRefusal].toOptStr().shouldNotBeNull() shouldContain "Fix or remove them in the bundle editor first"
     }
 
     // Its own instance, since it changes the template's code as a deploy would.

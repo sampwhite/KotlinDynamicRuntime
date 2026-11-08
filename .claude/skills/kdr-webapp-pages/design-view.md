@@ -25,7 +25,8 @@ bundle, holding only what changed, as the bundle editor's Edit does (issues #165
 overlay (`StoredWhole`), and the inspector's provenance line says "This client's change to its code" from the address's
 `changesCode`. A shared type edit of a type declared in the client's code does the same (`codeEntry`, whose
 stamp the definition read gives). A trait declared in code is not edited here, since a trait changes only whole, and
-an overlay holding parts the code no longer has is refused, pointing to the bundle editor. Elsewhere -- another
+an overlay holding parts the code no longer has is refused (`staleOverlay`), pointing to the bundle editor. A first
+save whose publish is refused takes away the bundle it made. Elsewhere -- another
 client's definition, a global one -- the inspector says why, from the block's `editRefusal`.
 **A Design View save is made as the Clients page's editors make theirs** (`ClientStoredEdit`, issue
 #1026): published and live at once for a client without a sandbox -- so it is refused while the config carries

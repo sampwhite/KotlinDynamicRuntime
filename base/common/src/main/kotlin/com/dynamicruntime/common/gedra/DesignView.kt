@@ -305,7 +305,12 @@ object DesignView {
         } }.single()
         ClientStoredEdit.takeEffect(
             cxt, target, written,
-            undo = { svc.patchConfigs(target.bound) { edit(configId) { before } }.single() },
+            undo = {
+                val undone = svc.patchConfigs(target.bound) { edit(configId) { before } }.single()
+                // A configuration this save made (issue #1670) goes again: emptied, then deleted, which only an empty one
+                // with nothing published may be -- so a refused first change of a code bundle leaves no bundle behind.
+                if (holder == null) undone.updatedAt?.let { svc.deleteConfig(target.bound, configId, it) }
+            },
             restorePublished = holder?.isPublished == true,
             impact = impact,
         )
