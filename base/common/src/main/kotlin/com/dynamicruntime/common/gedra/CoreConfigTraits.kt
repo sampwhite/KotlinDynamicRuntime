@@ -71,7 +71,9 @@ fun coreConfigTraits(cxt: KdrCxtBase): GedraConfig = gedraConfig(cxt, CCT.config
     configTrait(
         "ClientDefEntry", CCT.clientDef, setOf(GedraConfigType.configDoc),
         dataType = CLD.writtenInfoTypeQualified,
-        description = "The client this configuration defines, as a stored entry.",
+        description = "The client this configuration defines, as a stored entry. For a client defined in code it is instead " +
+            "a change to that definition (issue #1677), which may say only whether the client has a sandbox: " +
+            "`clientId`, `\"overrides\": \"codeOverlay\"`, and `sandbox`.",
     )
     // Only `hub`'s stored configuration holds customers (issue #1107), and only the platform writes them.
     // Inline, as a keyed slot's data must be, from the one declaration of its fields.

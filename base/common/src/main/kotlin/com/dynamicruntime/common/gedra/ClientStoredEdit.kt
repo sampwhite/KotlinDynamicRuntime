@@ -118,9 +118,14 @@ object ClientStoredEdit {
     fun draftImpact(target: EditTarget, written: GedraConfigRow): ImpactReport? =
         if (!target.draft) null else ConfigImpact.reportFor(target.bound, target.client, listOf(written), anyTier = true).takeIf { it.blocks }
 
-    /** The stored config of the bound client's that holds its definition (`clientDef`), or null when none does. */
+    /**
+     * The stored config of the bound client's that holds its definition (`clientDef`), or null when none does. An overlay
+     * of a definition in code (issue #1677) is not one: a client defined in code has none stored.
+     */
     fun definitionHolder(bound: KdrCxt): GedraConfigRow? =
-        GedraConfigService.get(bound).listConfigs(bound).firstOrNull { it.entriesBySlot()[CCT.clientDef]?.isNotEmpty() == true }
+        GedraConfigService.get(bound).listConfigs(bound).firstOrNull { row ->
+            row.entriesBySlot()[CCT.clientDef].orEmpty().any { !it.isCodeOverlay }
+        }
 
     /**
      * Patches [row]'s client definition entry as [edit] leaves it -- inside `patchConfigs`, over the revision as it

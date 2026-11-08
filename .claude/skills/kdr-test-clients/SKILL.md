@@ -294,11 +294,13 @@ A test that stores an entry over a template's or a code client's marks it; `Code
 **A workflow or a type may instead hold only what it changes** (issue #1657): marked `"overrides": "codeOverlay"`
 (`CCT.overridesCodeOverlayValue`), the stored entry is an **overlay**, merged over the code's entry of its key as the
 code is now on every read (`mergeCodeOverlay`, by `codeWorkflowMergeSpec` or `codeTypeMergeSpec`), so a later change to
-the code reaches every part the client left alone. Only those two slots take the value (`codeOverlaySlots`); on any
-other the write refuses it. The merged definition then stands over the code's as a whole override does, so nothing past
-the read knows the difference, and a write stores the overlay **as written**, never what it merged into
-(`GedraConfig.codeOverlays`). The DSL has no overlay: a test writes the entry itself, beside a config built in the DSL,
-through `reassembleGedraConfig` (which keeps an overlay as written when it is given no code) and `writeConfig`:
+the code reaches every part the client left alone. Only those two slots take the value (`codeOverlaySlots`), and the
+client's definition takes a narrow one that says only whether it has a sandbox (`clientDefOverlayKeys`, issue #1677,
+which the Clients page's sandbox switch writes for a client defined in code); on any other slot the write refuses it.
+The merged definition then stands over the code's as a whole override does, so nothing past the read knows the
+difference, and a write stores the overlay **as written**, never what it merged into (`GedraConfig.codeOverlays`). The
+DSL has no overlay: a test writes the entry itself, beside a config built in the DSL, through `reassembleGedraConfig`
+(which keeps an overlay as written when it is given no code) and `writeConfig`:
 
 ```kotlin
 val overlay = mapOf(

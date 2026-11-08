@@ -584,6 +584,18 @@ object CLD {
      */
     const val configLocked = "configLocked"
 
+    /**
+     * On a client's overview row (issue #1677): whether the client's code sets its sandbox, so the sandbox cannot be
+     * removed from the page. Absent otherwise, as it is for a client whose sandbox is turned on in stored configuration.
+     */
+    const val sandboxInCode = "sandboxInCode"
+
+    /**
+     * On a client's overview row (issue #1677): why the caller may not add or remove the client's sandbox, when they may
+     * not -- a visitor of a demo client, whose sandbox is the deployment's to set. Absent otherwise. Per caller.
+     */
+    const val sandboxLocked = "sandboxLocked"
+
     /** Schema type name for the sandbox edit's result (issue #932). */
     const val sandboxResultTypeName = "ClientSandboxResult"
     /** Schema type name for the definition edit's result (issue #1026). */

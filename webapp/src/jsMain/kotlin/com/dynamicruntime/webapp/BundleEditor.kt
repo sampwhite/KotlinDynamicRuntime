@@ -4,6 +4,7 @@ import com.dynamicruntime.common.gedra.ACEP
 import com.dynamicruntime.common.gedra.CCT
 import com.dynamicruntime.common.gedra.CFEP
 import com.dynamicruntime.common.gedra.addressesEntry
+import com.dynamicruntime.common.gedra.isCodeOverlay
 import com.dynamicruntime.common.gedra.sandboxParentOf
 import com.dynamicruntime.common.gedra.slotsToPortable
 import com.dynamicruntime.common.gedra.toPortable
@@ -331,12 +332,18 @@ fun publishingSummaryText(configs: List<ConfigSummaryView>): String {
 }
 
 /**
- * [configs] in the order the page lists them: the one holding the client's definition first, then the rest by name.
+ * [configs] in the order the page lists them: the one holding the client's definition first, then the rest by name. A
+ * change to a definition in code (issue #1677) holds none, so its bundle is not put first.
  * Stable while a person works through the page -- the read answers them most recently written first, so a publish or
  * a save would otherwise move what was just touched to the top.
  */
 fun editorBundlesInOrder(configs: List<EditorBundle>): List<EditorBundle> =
-    configs.sortedWith(compareBy<EditorBundle> { CCT.clientDef !in it.latest.slots }.thenBy { it.name })
+    configs.sortedWith(
+        compareBy<EditorBundle> { b ->
+            val defs = b.latest.slots[CCT.clientDef]
+            defs == null || (defs.isNotEmpty() && defs.all { it.isCodeOverlay })
+        }.thenBy { it.name },
+    )
 
 /** The slots in the order a page lists them: the client first, then what it declares, then what it says. */
 val editorSlotOrder: List<String> = listOf(

@@ -381,6 +381,13 @@ class GedraConfig(
     val isStoredHere: Boolean get() = isStored && inheritedFrom == null
 
     /**
+     * Whether this stored config turns its client's sandbox on by an overlay of the client's definition in code (issue
+     * #1677): one that read over the code, setting `sandbox`. The code's own flag is on the definition, as ever.
+     */
+    val overlayAsksForSandbox: Boolean
+        get() = codeOverlays.any { it.slot == CCT.clientDef && it.applied && it.entry[CLD.sandbox] == true }
+
+    /**
      * What tells this config apart from every other a node holds (issue #1646): its id, and for one [isStoredHere] that it
      * is stored. A config's id has no origin in it, so a stored bundle named like a code bundle -- `base` over the code's
      * `base`, `from_starterKit_base` over that copy, the bundle an override of their entries lives in -- shares the code's

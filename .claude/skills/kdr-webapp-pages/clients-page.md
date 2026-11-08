@@ -96,8 +96,16 @@ The page has a header, and then panels: each a keyed `section` (the shared `pane
 Sandbox and offers **Add a sandbox** / **Remove the sandbox** (`sandboxControl`), posting
 `/clientAdmin/client/sandbox {client, sandbox}` (`ClientsApi.setSandbox`), which sets the flag in the client's
 configured definition, **publishes** it and reloads -- the published definition decides both the sandbox and the tier,
-so a draft would change nothing -- and is refused for a code-defined client (its flag is set in code), for a
-sandbox, and while that config has unpublished changes. A client with a sandbox runs only published configuration.
+so a draft would change nothing -- and is refused for a sandbox, and while that config has unpublished changes. A
+client with a sandbox runs only published configuration. **A client defined in code** (issue #1677) takes the switch
+too: it stores an overlay of the client's definition (`"overrides": "codeOverlay"`, holding only `sandbox`) in the
+stored bundle named like the code bundle that declares the client, and removing it drops the overlay, and the bundle
+when nothing else is in it. The sandbox is on if the code or the overlay says so, so one the code sets is removed only
+there: the row's `sandboxInCode` says so, and the section offers no button. Such a sandbox previews the client's stored
+changes to its code, since the code reaches the client and the sandbox together. **A visitor** who joined a demo client
+is offered no switch, whatever the deployment lets visitors change: the row's `sandboxLocked` says why
+(`ClientJoin.sandboxSwitchRefusal`), since every visitor shares the demo and a sandbox would make each one's edits
+drafts. A visitor still opens and publishes from a sandbox that is there, where visitors may change the configuration.
 A sandbox's own detail says whose it is. It also offers the way back (issue #1422), in the same panel as the publishing
 bar's "Publish from its sandbox" and whatever is published (`sandboxWayBackTarget`): **Back to <client>**, which in a
 sandbox session leaves it as the app bar's **Back to** does (`ShellFacts.sandboxWayBackUserId`, the same user) and
@@ -543,7 +551,9 @@ files. The page lists them after the stored bundles under **From code** (its "Wh
   headed **From code** or **From template X** (`codeFromText`), and marked **changed in X** where a bundle of another
   name stands over it; one the stored bundle of its name changes is shown as that stored entry instead, its line
   **changed here** (`replacesText`), with the code's version beside it (`replacedVersion`). The stored bundle's other
-  entries are the client's own, added here.
+  entries are the client's own, added here, except an overlay of the client's definition (issue #1677), which the
+  sandbox switch writes: its line says **changed here: whether it has a sandbox**, matched by its mark since that slot
+  has no key. Its **Edit** is checked by what such an overlay may hold (`clientDefOverlayFaults`), not as a definition.
 - **Edit writes the override.** **Edit** on a code entry starts a new entry of the stored bundle of its name -- a new
   bundle if it has none -- holding the code's own entry marked `"overrides": "code"` (`overrideOf`); the code entry
   gives way to it while it is edited (`changesCodeEntry`), headed "Changing the code's entry". A code bundle's name is

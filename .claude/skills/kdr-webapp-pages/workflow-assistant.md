@@ -42,17 +42,15 @@ box and puts the focus back in it. Filling the box hides them, until it is clear
 a way to start, not a menu. The list of conversations is read again as soon as a first message makes one, so a new
 conversation begun while that turn runs does not offer them again. The one about what a new form asks for is left out
 for a client defined in code. For such a client the panel also
-says, under its heading, that what its New form asks for is changed in code (the status's `sandboxInSource`, which is
-whether the client is defined in code).
+says, under its heading, that what its New form asks for is changed in code (the status's `definedInCode`).
 
 Panels, by the rules of "Page structure" in `webapp/CLAUDE.md`:
 
 1. **Sandbox** (live), only while the client has none: what a sandbox does, and **Turn on sandbox**, behind a
    `Popconfirm` saying the client then runs only published configuration. It calls the Clients page's own
    `ClientsApi.setSandbox`, then bumps the refresh, so the app bar offers the sandbox too. A client defined in code
-   (the status's `sandboxInSource`) has its sandbox turned on there, so the panel says so instead, by the client's
-   name ("<client> is defined in code, so its sandbox is turned on there, in its definition."), and offers no button:
-   the switch would only refuse.
+   takes the same switch (issue #1677), which stores the flag as an overlay of its definition; one whose code turns its
+   sandbox on already has it, so the panel is not drawn.
 2. **Conversation** (live): the conversation picker (the person's conversations, and "New conversation"), the
    transcript, the text box, **Send**, and **Stop** while a turn runs. Ctrl or Cmd+Enter sends. The send is blocked,
    saying why, when the conversation is read-only, the month's allowance is used up, or there is no sandbox. "What is

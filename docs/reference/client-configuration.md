@@ -118,7 +118,7 @@ The merge says what its caller read, so it is refused if `accepted` changed afte
 
 | Slot | Keyed by | What an entry is |
 |---|---|---|
-| [`kdr:clientDef`](#kdrclientdef) | one entry | The client this configuration defines, as a stored entry. |
+| [`kdr:clientDef`](#kdrclientdef) | one entry | The client this configuration defines, as a stored entry. For a client defined in code it is instead a change to that definition (issue #1677), which may say only whether the client has a sandbox: `clientId`, `"overrides": "codeOverlay"`, and `sandbox`. |
 | [`kdr:customerDef`](#kdrcustomerdef) | `customerId` | One customer the platform declares, keyed by its customer id. |
 | [`kdr:traitDef`](#kdrtraitdef) | `traitId` | One data-trait declaration this configuration contributes, keyed by trait id. |
 | [`kdr:usageDef`](#kdrusagedef) | `traitId`, `label` | One column of this client's forms listing, reading a trait, keyed by the trait and the column's label. |
@@ -133,7 +133,7 @@ The merge says what its caller read, so it is refused if `accepted` changed afte
 
 ### kdr:clientDef
 
-The client this configuration defines, as a stored entry.
+The client this configuration defines, as a stored entry. For a client defined in code it is instead a change to that definition (issue #1677), which may say only whether the client has a sandbox: `clientId`, `"overrides": "codeOverlay"`, and `sandbox`.
 
 A bundle holds one entry in this slot.
 

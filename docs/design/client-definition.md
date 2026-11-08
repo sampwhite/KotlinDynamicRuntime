@@ -1068,7 +1068,8 @@ every load merges it over the code as it is now: a release reaches every part th
 case where the code moves out from under a change, such as a renamed task. That change is refused when it is written and
 forgiven part by part, with an issue, when it is loaded. A client that would rather stop following the code stores the
 whole entry instead ("Detach from code", `"overrides": "code"`, issue #1634), and every other kind of definition is
-stored whole that way.
+stored whole that way, save one: a client's definition in code takes an overlay that says only whether it has a sandbox,
+which is how the Clients page's switch gives a client defined in code its sandbox (issue #1677).
 
 ## Domains, and what they may decide
 

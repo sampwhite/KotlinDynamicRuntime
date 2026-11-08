@@ -63,6 +63,15 @@ fun clientOverviewSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CLD.overvie
         property(CLD.sandboxOfName, "Beside sandboxOf, that client's display name; its id when it has none (issue #1438).")
         property(CLD.hasSandbox, "Whether the client has a live sandbox (issue #932).", required = true) { type = SCT.boolean }
         property(
+            CLD.sandboxInCode,
+            "Present and true when the client's code sets its sandbox (issue #1677), which is then removed only there.",
+        ) { type = SCT.boolean }
+        property(
+            CLD.sandboxLocked,
+            "Why the caller may not add or remove the client's sandbox, when they may not (issue #1677): a visitor of a " +
+                "demo client, whose sandbox the deployment sets. Absent otherwise.",
+        )
+        property(
             CLD.rootOf,
             "The customer whose root client this is (issue #1182), which is retired only once another root is named; " +
                 "absent otherwise.",
@@ -256,9 +265,12 @@ fun clientOverviewSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CLD.overvie
         UADEP.clientSandbox,
         "Adds or removes a client's sandbox (issue #932): sets the sandbox flag of the client's stored definition, " +
             "publishes it and reloads, so the sandbox is loaded or withdrawn at once. A client with a sandbox runs " +
-            "only its published configuration; the sandbox runs the latest, for previewing it. Refused for a client " +
-            "defined in code (its flag is set there), for a sandbox, and while the definition's configuration " +
-            "has unpublished changes, which this would publish. Removing a sandbox keeps its users and data.",
+            "only its published configuration; the sandbox runs the latest, for previewing it. For a client defined " +
+            "in code (issue #1677) the flag is stored as an overlay of its definition, in the stored configuration " +
+            "named like the code's that declares it; a sandbox the code sets is removed only there. Refused for a " +
+            "sandbox, for a visitor who joined a demo client (whose sandbox the deployment sets), and while the " +
+            "configuration holding the flag has unpublished changes, which this would publish. Removing a sandbox " +
+            "keeps its users and data.",
         HttpMethod.POST,
         outputRef = CLD.sandboxResultTypeName,
         needsClientConfig = true,
@@ -647,6 +659,8 @@ fun overviewRow(
             put(CLD.sandboxOfName, ClientService.get(cxt).known(parent)?.name.orEmpty().ifEmpty { parent })
         }
         put(CLD.hasSandbox, !isSandboxClient(clientId) && ClientService.get(cxt).isPresent(sandboxOf(clientId)))
+        // Whether the switch may take it away (issue #1677).
+        if (!isSandboxClient(clientId) && ClientSandboxEdit.codeSetsSandbox(cxt, clientId)) put(CLD.sandboxInCode, true)
         // A customer's root may not be retired (issue #1182): said, so the page offers no action that could only fail.
         ClientService.get(cxt).customers.values.firstOrNull { it.def.rootClientId == clientId }?.let { put(CLD.rootOf, it.def.customerId) }
         // The tier decides whether an unpublished revision is live (issue #1001); a sandbox runs its parent's latest.
@@ -655,8 +669,12 @@ fun overviewRow(
         // Of the client whose configuration it is: a sandbox's own derived definition is never static, and what is
         // changed from a sandbox is its parent's.
         put(CLD.staticHere, configs.isStaticHere(cxt, configOwnerOf(clientId)))
-        // For this caller alone (issue #1668): a visitor a deployment keeps out of a demo client's configuration.
-        ClientJoin.configEditRefusal(cxt, clientId)?.let { put(CLD.configLocked, it) }
+        // For this caller alone: a visitor a deployment keeps out of a demo client's configuration (issue #1668), and
+        // off its sandbox switch whatever it lets them change (issue #1677) -- the visitor asked about once for both.
+        ClientJoin.joinedDemoName(cxt, clientId)?.let { demo ->
+            if (!ClientJoin.visitorsMayEditConfig(cxt)) put(CLD.configLocked, ClientJoin.configEditRefusalOf(demo))
+            put(CLD.sandboxLocked, ClientJoin.sandboxSwitchRefusalOf(demo))
+        }
         // What its plan allows, and how much of it the client holds (issue #1109); a client on none has no row.
         PlanLimits.usageOf(cxt, clientId, forms, users.total)?.let { put(CLD.planUsage, it.toInfo()) }
     }

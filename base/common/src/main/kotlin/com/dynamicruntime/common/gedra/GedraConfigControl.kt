@@ -43,15 +43,26 @@ object GedraConfigControl {
     fun sourceAsksForSandbox(configs: List<GedraConfig>, client: String): Boolean =
         configs.any { !it.isStored && it.gedraId.client == client && it.client?.sandbox == true }
 
+    /** Whether source [configs] define [client]: one whose stored overlay of that definition can apply (issue #1677). */
+    fun sourceDefines(configs: List<GedraConfig>, client: String): Boolean =
+        configs.any { !it.isStored && it.client?.clientId == client }
+
     /**
      * Whether one client's stored config rows, grouped by config class ([classRows]), hold a **published** definition
      * asking for a Shadow Sandbox (issue #930). The published one decides, not the latest -- see
      * `GedraConfigService.asksForSandbox`.
+     *
+     * For [client] defined in code ([inCode]) what asks is a published overlay of that definition naming it (issue #1677),
+     * the one a load applies and so the one that loads the sandbox (`SandboxConfigs.hasSandbox`): an overlay that would
+     * not apply turns nothing on, so the tier never says published-only for a client that gets no sandbox to publish from.
      */
-    fun publishedAsksForSandbox(classRows: Collection<List<Map<String, Any?>>>): Boolean = classRows.any { rows ->
-        val published = latestPublishedRow(rows) ?: return@any false
-        GedraConfigRow.extract(published) { GedraId.parse(it) }.entriesBySlot()[CCT.clientDef]?.firstOrNull()?.get(CLD.sandbox) == true
-    }
+    fun publishedAsksForSandbox(classRows: Collection<List<Map<String, Any?>>>, client: String, inCode: Boolean): Boolean =
+        classRows.any { rows ->
+            val published = latestPublishedRow(rows) ?: return@any false
+            val def = GedraConfigRow.extract(published) { GedraId.parse(it) }.entriesBySlot()[CCT.clientDef]?.firstOrNull()
+                ?: return@any false
+            def[CLD.sandbox] == true && (!def.isCodeOverlay || (inCode && def[CLD.clientId] == client))
+        }
 
     /**
      * The clients that consume published-only in [env] by their **toggled state** alone (issue #617) -- one row

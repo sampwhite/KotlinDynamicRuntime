@@ -70,6 +70,13 @@ class ClientOverview(
     val sandboxOfName: String? = null,
     /** Whether the client has a live sandbox (issue #932). */
     val hasSandbox: Boolean = false,
+    /** Whether the client's code sets its sandbox (issue #1677), which is then removed only there. */
+    val sandboxInCode: Boolean = false,
+    /**
+     * Why the caller may not add or remove the client's sandbox, when they may not (issue #1677): a visitor of a demo
+     * client, whose sandbox the deployment sets.
+     */
+    val sandboxLocked: String? = null,
     /** Whether the client runs only its published configuration (issue #1001): every client with a sandbox does. */
     val publishedOnly: Boolean = false,
     /** Whether the client takes nothing stored on this node -- static in production (issue #1001). */
@@ -113,6 +120,8 @@ fun parseClientOverview(items: List<Map<String, Any?>>): List<ClientOverview> = 
         sandboxOf = row[CLD.sandboxOf].toOptStr(),
         sandboxOfName = row[CLD.sandboxOfName].toOptStr(),
         hasSandbox = row[CLD.hasSandbox] == true,
+        sandboxInCode = row[CLD.sandboxInCode] == true,
+        sandboxLocked = row[CLD.sandboxLocked].toOptStr(),
         publishedOnly = row[CLD.publishedOnly] == true,
         staticHere = row[CLD.staticHere] == true,
         configLocked = row[CLD.configLocked].toOptStr(),
@@ -172,33 +181,29 @@ fun sandboxWayBackTarget(row: ClientOverview?, acrossClients: Boolean, inSandbox
 }
 
 /**
- * The detail's Sandbox section for [row] (issue #932). A sandbox says whose it is; a client defined in code
- * says its flag is set there; a configured, present client offers adding or removing one, saying what follows. Pure,
- * and covered under `jsNodeTest`.
+ * The detail's Sandbox section for [row] (issue #932). A sandbox says whose it is; a sandbox a client's code sets says
+ * so, and is removed only there; a present client -- defined in code or stored (issue #1677) -- offers adding or
+ * removing one, saying what follows, except to a visitor of a demo client, whose sandbox the deployment sets. Pure, and
+ * covered under `jsNodeTest`.
  */
 fun sandboxControl(row: ClientOverview): SandboxControl {
     row.sandboxParentName?.let {
         return SandboxControl("This is the sandbox of $it: it runs $it's latest configuration, published or not, with users and data of its own.", null)
     }
-    if (row.origin == GedraConfigOrigin.source.name) {
-        return SandboxControl(
-            if (row.hasSandbox) "Has a sandbox, set in its code." else "Defined in code; a sandbox is turned on there.",
-            null,
-        )
-    }
+    if (row.sandboxInCode) return SandboxControl("Has a sandbox, set in its code, where it is removed.", null)
     if (row.status != ClientStatus.present.name) return SandboxControl("Not loaded on this node, so its sandbox cannot be changed here.", null)
-    return if (row.hasSandbox) {
-        SandboxControl(
-            "Has a sandbox, which runs this client's unpublished configuration; the client itself runs only what is " +
-                "published. Removing it keeps the sandbox's users and data for if it is added again.",
-            false,
-        )
+    // What a code client's sandbox previews (issue #1677): its code reaches the client and the sandbox together.
+    val previews = if (row.origin == GedraConfigOrigin.source.name) "the changes to its code stored here" else "unpublished configuration"
+    val state = if (row.hasSandbox) {
+        "Has a sandbox, which runs this client's unpublished configuration; the client itself runs only what is published."
     } else {
-        SandboxControl(
-            "No sandbox. Adding one gives a place to preview unpublished configuration, and makes the client run only " +
-                "what is published.",
-            true,
-        )
+        "No sandbox. Adding one gives a place to preview $previews, and makes the client run only what is published."
+    }
+    row.sandboxLocked?.let { return SandboxControl("$state $it", null) }
+    return if (row.hasSandbox) {
+        SandboxControl("$state Removing it keeps the sandbox's users and data for if it is added again.", false)
+    } else {
+        SandboxControl(state, true)
     }
 }
 

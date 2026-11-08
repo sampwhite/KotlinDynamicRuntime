@@ -101,8 +101,8 @@ fun assistantChatSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "${ASST.root
             type = SCT.boolean
         }
         property(
-            ACNV.sandboxInSource,
-            "Whether the client is defined in code, where its sandbox is turned on, rather than from the Clients page.",
+            ACNV.definedInCode,
+            "Whether the client is defined in code, where what its New form asks for is changed (issue #1569).",
             required = true,
         ) { type = SCT.boolean }
         property(ACNV.inSandbox, "Whether the caller is signed in to the sandbox rather than the client.", required = true) {
@@ -289,7 +289,7 @@ fun clientStatus(cxt: KdrCxt, service: AssistantService, person: AssistantPerson
         ACNV.offered to service.offeredTo(cxt, client),
         ACNV.clientName to (ClientService.get(cxt).known(client)?.name ?: client),
         ACNV.hasSandbox to SandboxAccess.hasSandbox(cxt, client),
-        ACNV.sandboxInSource to (ClientService.get(cxt).originOf(client) == GedraConfigOrigin.source),
+        ACNV.definedInCode to (ClientService.get(cxt).originOf(client) == GedraConfigOrigin.source),
         ACNV.inSandbox to (person.sandboxUser != null),
         ACNV.usedShare to if (budget > 0) used.toDouble() / budget else 1.0,
         ACNV.spent to (used >= budget),

@@ -190,12 +190,20 @@ private fun slotFailures(
     return out
 }
 
+/**
+ * What is wrong with [entry], an overlay of a client's definition in code (issue #1677), by key ([clientDefOverlayFaults]).
+ * Whether the code declares that client is the trial's, which reads it over the code.
+ */
+private fun clientDefOverlayFailures(entry: Map<String, Any?>): List<SchFailure> = clientDefOverlayFaults(entry).map { (key, fault) ->
+    SchFailure(key, if (key == CLD.clientId) SchFailCode.missingRequired else SchFailCode.badValue, fault)
+}
+
 /** This failure as seen from [parent]: its path beneath it, or [parent] itself for a failure of the whole entry. */
 private fun SchFailure.under(parent: String): SchFailure = copy(path = if (path.isEmpty()) parent else childPath(parent, path))
 
 /** What is wrong with one [entry] of [slot], by path within it. */
 private fun entryFailures(cxt: KdrCxtBase, slot: String, type: SchType, entry: Map<String, Any?>): List<SchFailure> {
-    if (slot == CCT.clientDef) return readClientDef(cxt, entry).failures
+    if (slot == CCT.clientDef) return if (entry.isCodeOverlay) clientDefOverlayFailures(entry) else readClientDef(cxt, entry).failures
     val shape = validate(type, entry, unparsedBodies).filterNot { leftToTheTrial(slot, entry, it) }
     val beyond = when (slot) {
         CCT.usageDef -> templateFailures(CCT.display, entry[CCT.display]) + templateFailures(CCT.presentation, entry[CCT.presentation])

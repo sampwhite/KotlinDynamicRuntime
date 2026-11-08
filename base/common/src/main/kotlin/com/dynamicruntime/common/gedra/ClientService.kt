@@ -63,6 +63,10 @@ class ClientService : ServiceInitializer {
     @Volatile
     private var fills: Map<String, Map<String, Any?>> = emptyMap()
 
+    /** The clients defined in code whose sandbox their stored configuration turned on (issue #1677); see `ClientCheckResult`. */
+    var sandboxTurnedOnByStored: Set<String> = emptySet()
+        private set
+
     /** Client definitions that did not hold up. Empty unless a production node degraded; see [checkClientDefs]. */
     var issues: List<GedraConfigIssue> = emptyList()
         private set
@@ -248,6 +252,7 @@ class ClientService : ServiceInitializer {
         clients = result.clients
         customers = result.customers
         fills = result.templateFills
+        sandboxTurnedOnByStored = result.sandboxTurnedOnByStored
         issues = result.issues
         val present = presentClients.map { it.clientId }
         LogStartup.info(
@@ -295,6 +300,7 @@ class ClientService : ServiceInitializer {
         clients = result.clients
         customers = result.customers
         fills = result.templateFills
+        sandboxTurnedOnByStored = result.sandboxTurnedOnByStored
         issues = issues.filter { it.client != client } + result.issues
     }
 
