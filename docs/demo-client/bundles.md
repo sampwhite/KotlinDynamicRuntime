@@ -30,6 +30,7 @@ review](committee-review.md), and [workshop logistics](workshop-logistics.md) pa
       "usageType": "demo",
       "enabledEnvironments": ["unit", "local", "dev"],
       "includedTraits": ["kdr:name"],
+      "webResourcesId": "kdr:confdemo",
       "userLabels": ["committee"],
       "joinRoles": [
         {"name": "speaker", "label": "Speaker", "persona": "member", "summary": "Submit a talk, and follow it through the committee's review."},

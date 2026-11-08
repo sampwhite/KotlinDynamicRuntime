@@ -1,5 +1,7 @@
 package com.dynamicruntime.kdn
 
+import com.dynamicruntime.common.gedra.CLD
+import com.dynamicruntime.common.gedra.ClientService
 import com.dynamicruntime.common.gedra.ConfigCodeLayer
 import com.dynamicruntime.common.gedra.GedraConfigLoadService
 import com.dynamicruntime.common.gedra.GedraConfigService
@@ -9,6 +11,8 @@ import com.dynamicruntime.common.schema.SchGKeywords
 import com.dynamicruntime.common.startup.SchemaCollector
 import com.dynamicruntime.common.util.jsonMap
 import com.dynamicruntime.common.util.toJsonStr
+import com.dynamicruntime.common.webasset.WAS
+import com.dynamicruntime.common.webasset.WRES
 import com.dynamicruntime.kdn.confdemo.ConfDemo
 import com.dynamicruntime.kdn.confdemo.confDemoConfigs
 import com.dynamicruntime.kdn.confdemo.confDemoDocs
@@ -24,7 +28,8 @@ import java.io.File
  * demo's bundles and walk through it; this holds every page to the demo in both forms a deployment may give it (issue
  * #1668): declared in code, as the `reference` flavor has it -- each bundle as the bundle editor serves a code bundle --
  * and data-only, provisioned as the simulation does, which fails on a configuration that does not load cleanly, each
- * bundle read back as stored:
+ * bundle read back as stored. The pages show the demo as code declares it; the stored form is compared without the one
+ * key only code may write, the client's `webResourcesId`:
  *
  * - **Every JSON block is marked**, on the line before its fence, with what it shows: `<!-- kdr-doc: bundle=base -->`
  *   for a bundle's whole `slots`, `<!-- kdr-doc: bundle=createTalk pointer=/kdr:workflowDef/0/definition -->` for a
@@ -74,10 +79,18 @@ class ConfDemoDocsTest : StringSpec({
         GedraConfigService.get(reference).listConfigs(reference.mkSubContext("confDemoDocs", ConfDemo.client)).shouldBeEmpty()
     }
 
-    for ((form, slotsOf) in listOf<Pair<String, (String) -> Any?>>("as stored" to ::storedSlotsOf, "declared in code" to ::codeSlotsOf)) {
-        "every JSON block shows what the demo holds, $form" {
-            checkBlocks(pages, slotsOf).shouldBeEmpty()
-        }
+    "every JSON block shows what the demo holds, declared in code" {
+        checkBlocks(pages, ::codeSlotsOf).shouldBeEmpty()
+    }
+
+    "every JSON block shows what the demo holds, as stored, but for the web resources only code may name" {
+        checkBlocks(pages, ::storedSlotsOf, ignoring = setOf(CLD.webResourcesId)).shouldBeEmpty()
+    }
+
+    "declared in code, the demo presents its brand mark, and leaves the tab icon the deployment's" {
+        val pkg = WRES.declared(reference).single { it.def.id == ConfDemo.webResources }.def
+        pkg.files shouldBe mapOf(WAS.brandMark to ConfDemo.brandMarkFile)
+        ClientService.get(reference).present(ConfDemo.client).shouldNotBeNull().webResourcesId shouldBe ConfDemo.webResources
     }
 
     "every g- keyword named is one the schema layer knows" {
@@ -90,8 +103,11 @@ class ConfDemoDocsTest : StringSpec({
     }
 })
 
-/** What is wrong with [pages]' JSON blocks against the demo's bundles as [slotsOf] reads them, one line each. */
-private fun checkBlocks(pages: List<File>, slotsOf: (String) -> Any?): List<String> {
+/**
+ * What is wrong with [pages]' JSON blocks against the demo's bundles as [slotsOf] reads them, one line each, with the keys
+ * [ignoring] left out of both sides.
+ */
+private fun checkBlocks(pages: List<File>, slotsOf: (String) -> Any?, ignoring: Set<String> = emptySet()): List<String> {
     val problems = mutableListOf<String>()
     for (page in pages) {
         for (block in jsonBlocks(page)) {
@@ -109,8 +125,8 @@ private fun checkBlocks(pages: List<File>, slotsOf: (String) -> Any?): List<Stri
                 problems.add("$where: '${target.pointer}' names nothing in bundle '${target.bundle}'.")
                 null
             } ?: continue
-            val shown = runCatching { normalized(block.text) }.getOrNull()
-            if (shown == null || shown != normalized(expected.toJsonStr(compact = true))) {
+            val shown = runCatching { without(normalized(block.text), ignoring) }.getOrNull()
+            if (shown == null || shown != without(normalized(expected.toJsonStr(compact = true)), ignoring)) {
                 val at = if (target.pointer.isEmpty()) "" else " at ${target.pointer}"
                 problems.add(
                     "$where: the block for bundle '${target.bundle}'$at does not match what the demo writes. " +
@@ -170,6 +186,13 @@ private fun valueAt(root: Any?, pointer: String): Any? {
         }
     }
     return at
+}
+
+/** [value] with every key in [keys] left out, at any depth. */
+private fun without(value: Any?, keys: Set<String>): Any? = if (keys.isEmpty()) value else when (value) {
+    is Map<*, *> -> value.filterKeys { it !in keys }.mapValues { without(it.value, keys) }
+    is List<*> -> value.map { without(it, keys) }
+    else -> value
 }
 
 /** [json] parsed, so two texts of one value compare equal however they are laid out. */

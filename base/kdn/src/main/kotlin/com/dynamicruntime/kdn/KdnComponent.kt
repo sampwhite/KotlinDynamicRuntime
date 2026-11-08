@@ -19,6 +19,8 @@ import com.dynamicruntime.common.startup.ComponentDefinition
 import com.dynamicruntime.common.startup.SchemaCollector
 import com.dynamicruntime.common.startup.ServiceEntry
 import com.dynamicruntime.common.startup.service
+import com.dynamicruntime.common.webasset.WebResourcesDef
+import com.dynamicruntime.common.webasset.webResources
 import com.dynamicruntime.kdn.confdemo.ConfDemo
 import com.dynamicruntime.kdn.confdemo.ConfDemoBootService
 import com.dynamicruntime.kdn.confdemo.confDemoConfigs
@@ -82,7 +84,15 @@ class KdnComponent : ComponentDefinition {
      * The conference demo's bundles, declared in code where the deployment says so (issue #1668, [ConfDemo.fromCodeKey]);
      * none otherwise, when the demo is a data-only client its provisioning writes.
      */
-    override fun gedraConfigs(cxt: KdrCxt): List<GedraConfig> = if (ConfDemo.fromCode(cxt)) confDemoConfigs(cxt) else emptyList()
+    override fun gedraConfigs(cxt: KdrCxt): List<GedraConfig> =
+        if (ConfDemo.fromCode(cxt)) confDemoConfigs(cxt, inCode = true) else emptyList()
+
+    /**
+     * The conference demo's brand mark (issue #1668), which the demo names where it is declared in code. No favicon, so
+     * its tab keeps the deployment's.
+     */
+    override fun webResources(cxt: KdrCxt): List<WebResourcesDef> =
+        listOf(webResources(ConfDemo.webResources, brandMark = ConfDemo.brandMarkFile))
 
     /**
      * What kdn changes under a reference deployment (issue #1221): the conference demo is declared in code (issue #1668)

@@ -196,6 +196,16 @@ object ConfDemo {
      */
     const val fromCodeKey = "confDemoFromCode"
 
+    /**
+     * The web resources package the demo presents itself with where it is declared in code (issue #1668): its brand mark,
+     * and no favicon of its own, so the tab keeps the deployment's. A stored definition cannot name a package, so the
+     * data-only demo has none.
+     */
+    const val webResources = "kdr:confdemo"
+
+    /** Where the package's brand mark is, under `web-resources/`. */
+    const val brandMarkFile = "confdemo/brand-mark.svg"
+
     /** Whether this deployment declares the demo in code ([fromCodeKey]). */
     fun fromCode(cxt: KdrCxtBase): Boolean = (cxt as? KdrCxt)?.instanceConfig?.get(fromCodeKey) == true
 
@@ -231,9 +241,10 @@ private fun confDemoDoc(name: String, label: String, description: String, listed
 
 /**
  * The `base` bundle: the client itself, and the shared trait its forms are named by. [client] is [ConfDemo.client],
- * or that plus a suffix for a fresh copy; the documentation shows the unsuffixed one.
+ * or that plus a suffix for a fresh copy; the documentation shows the unsuffixed one. [inCode] when the bundle is
+ * declared in code (issue #1668), which alone may name the demo's web resources package.
  */
-fun confDemoBase(cxt: KdrCxtBase = LiteCxt(), client: String = ConfDemo.client): GedraConfig =
+fun confDemoBase(cxt: KdrCxtBase = LiteCxt(), client: String = ConfDemo.client, inCode: Boolean = false): GedraConfig =
     gedraConfig(cxt, ConfDemo.baseConfig, clientNamespace(client), client) {
         defineClient(
             ClientDef(
@@ -244,6 +255,8 @@ fun confDemoBase(cxt: KdrCxtBase = LiteCxt(), client: String = ConfDemo.client):
                 audience = ClientAudience.internal,
                 enabledEnvironments = setOf(ENV.unit, ENV.local, ENV.dev),
                 includedTraits = listOf(GT.name),
+                // Its brand mark, where it is declared in code (issue #1668): only code may name a package.
+                webResourcesId = ConfDemo.webResources.takeIf { inCode },
                 // Whoever carries it reviews talks (issue #1139).
                 userLabels = listOf(ConfDemo.committeeLabel),
                 // The demo's three roles, which a visitor to a reference deployment may join as (issue #1248) -- the
@@ -619,9 +632,9 @@ fun confDemoReports(cxt: KdrCxtBase = LiteCxt(), client: String = ConfDemo.clien
         }
     }
 
-fun confDemoConfigs(cxt: KdrCxtBase = LiteCxt(), client: String = ConfDemo.client): List<GedraConfig> =
+fun confDemoConfigs(cxt: KdrCxtBase = LiteCxt(), client: String = ConfDemo.client, inCode: Boolean = false): List<GedraConfig> =
     listOf(
-        confDemoBase(cxt, client), confDemoCreateTalk(cxt, client), confDemoTalkCoreDetails(cxt, client),
+        confDemoBase(cxt, client, inCode), confDemoCreateTalk(cxt, client), confDemoTalkCoreDetails(cxt, client),
         confDemoAbstract(cxt, client), confDemoReview(cxt, client), confDemoLogistics(cxt, client),
         confDemoReports(cxt, client),
     )
