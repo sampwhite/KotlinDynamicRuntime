@@ -145,7 +145,9 @@ class WaitingSteps(
      * one entry per engaged workflow whose current task, still calculating, has a save or an approval the caller may not
      * take -- its workflow id, whom it waits on ([WCOL.waitsOn], a [WfWaitsOn]), and its CTA filter's label resolved in
      * the form's client ([WFS.ctaFilterLabel]) when that filter is what keeps the caller out -- dropped when it still needs
-     * the form's data, which a listing does not have. In the state's order; the steps [of] answers are not among them.
+     * the form's data, which a listing does not have. A highlighted Start (issue #1690) that waits on someone else is
+     * among them, by its first task: no CTA filter applies before the form is in, so it waits on whoever that task's
+     * approval or save names. In the state's order; the steps [of] answers are not among them.
      *
      * Theme: #TPLPS.
      */
@@ -154,7 +156,9 @@ class WaitingSteps(
         val form = factsOf(gedraId, ownerUserId, states)
         return form.datas.mapNotNull { data ->
             val workflowId = data[WFD.workflowId].toOptStr()?.takeIf { it !in theirs } ?: return@mapNotNull null
-            val task = currentTask(form.rules, data)?.takeIf { it.approval != null || it.saves.isNotEmpty() } ?: return@mapNotNull null
+            // A highlighted Start waiting on someone else (issue #1690) gives its first task's reason, as a current task does.
+            val task = (currentTask(form.rules, data) ?: startTask(form, data))
+                ?.takeIf { it.approval != null || it.saves.isNotEmpty() } ?: return@mapNotNull null
             val keptByFilter = !passesFilter(form.rules, form.callerFacts, task, data)
             val waitsOn = when {
                 keptByFilter -> WfWaitsOn.filter
@@ -200,12 +204,15 @@ class WaitingSteps(
 
     /**
      * The workflows of form [gedraId] weighed by what each asks of the caller ([formWorkflowWeights]): its turn exactly
-     * where a step of it [of] says waits on them. Worked out once per form, as [of] is.
+     * where a step of it [of] says waits on them, and a highlighted Start that does not is waiting on someone else (issue
+     * #1690). Worked out once per form, as [of] is.
      */
     fun weights(gedraId: GedraId, ownerUserId: Long?, states: List<Map<String, Any?>>): List<FormWorkflowWeight> =
         weighed.getOrPut(gedraId.fullId) {
             val waiting = of(gedraId, ownerUserId, states).mapNotNullTo(HashSet()) { it[WFD.workflowId].toOptStr() }
-            formWorkflowWeights(states, rules(gedraId.client)::phaseOf) { workflow, _ -> workflow.workflowId in waiting }
+            val rules = rules(gedraId.client)
+            val highlights = { id: String -> rules.registry.workflow(id)?.def?.highlightStart == true }
+            formWorkflowWeights(states, rules::phaseOf, highlights) { workflow, _ -> workflow.workflowId in waiting }
         }
 
     /**

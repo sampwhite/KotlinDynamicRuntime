@@ -359,6 +359,8 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
             additionalProperties = true
         }
         property(WCOL.lastTask, "The workflow's last task, where a finished workflow's link lands.", required = true)
+        // A highlighted Start (issue #1690), for the page's classification.
+        property(WCOL.highlightStart, "Whether the workflow highlights its Start; present only when it does.") { type = SCT.boolean }
         // Why an engaged form's link to a frozen workflow waits (issue #1598).
         property(WCOL.opensAt, "When a workflow frozen before its relevancy window opens does.") { format = SFMT.dateTime }
         property(WCOL.closedAt, "When a workflow frozen after its relevancy window closed did.") { format = SFMT.dateTime }
