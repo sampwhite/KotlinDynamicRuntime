@@ -56,14 +56,17 @@ selector := [*] | [v1,v2,...] | [name=v,...]
   anything else; it is kept as **text** and matched against the stored key (`2024`, `2024.0` and `"2024"` are one
   year, but the zip `02134` is never `2134`).
 - **`workflow`** reads what the forms listing shows about one workflow on the form: `category` (eligible, engaged,
-  finished, ineligible), `engaged`, `eligible`, `finished`, `tasksDone`, `ctaTask`, `lastEngagedAt`, and an approval
-  task's `approved`, `approvedAt`, `approvedBy`. Never raw state. A workflow the client no longer has, one outside
-  its lifetime, and one closed to new forms that this form never engaged with show blank, whatever state is left
-  behind.
+  finished, ineligible), `engaged`, `eligible`, `finished`, `tasksDone`, `ctaTask`, `ctaKeyword` (the search keyword
+  its call to action carries, shown by the keyword's report label), `ctaFilterLabel` (whom it waits on, in the
+  client's words), `lastEngagedAt`, and an approval task's `approved`, `approvedAt`, `approvedBy`. Never raw state. A
+  workflow the client no longer has, one outside its lifetime, and one closed to new forms that this form never engaged
+  with show blank, whatever state is left behind. A keyword is always about the work, whoever may act: a report is
+  stored and exported apart from any one viewer (issue #1600).
 - **`user`** reads the form owner's account: `userId`, `name`, `publicName`, `email`, `persona`, `org`, `labels`
   (several), `isEntity`, `enabled`.
 - **`meta`** reads the form itself: `gedraId`, `client`, `org`, `ownerId`, `createdAt`, `updatedAt`, `formStatus`,
-  `coreDetailsStatus`, `cfacts` (several).
+  `coreDetailsStatus`, `cfacts` (several), `ctaKeywords` (several: the search keywords its workflows' calls to action
+  carry).
 
 Trait, workflow and task ids are owned names, bare or `root:local` — which is why a path can hold a colon, and why
 the separator between a trait and its key is a bracket.

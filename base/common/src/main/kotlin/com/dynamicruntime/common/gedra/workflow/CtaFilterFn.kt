@@ -7,6 +7,7 @@ import com.dynamicruntime.common.content.MarkdownFragmentService
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.schema.LogSchema
+import com.dynamicruntime.common.startup.SchemaService
 
 /**
  * The **execution** interface of the `ctaFilter` event (issue #1594): a resolved [WfFunction] that concludes, from the
@@ -44,6 +45,12 @@ interface CtaFilterFn : WfFunction {
      * the form, not only the task's own, since what routes a CTA (a region, say) is usually collected earlier.
      */
     val readTraits: Set<String>
+
+    /**
+     * Whether a filter this function sets may come with a label saying whom it waits on (issue #1600): what a report's
+     * "Waiting on" column shows. True unless the function knows ahead that it never sets one.
+     */
+    val mayLabel: Boolean get() = true
 
     companion object {
         /**
@@ -157,6 +164,27 @@ fun searchKeywordsOf(cxt: KdrCxt, def: WfDef, creations: Map<String, WfFunctionC
         }
     }
 }
+
+/**
+ * [searchKeywordsOf] with the function kinds this node declares (issue #1600), for a surface reading a live workflow: the
+ * workflow pages' keyword counts, and the report paths a client is offered.
+ */
+fun searchKeywordsOf(cxt: KdrCxt, def: WfDef): Set<String> =
+    searchKeywordsOf(cxt, def, SchemaService.get(cxt).workflowFunctionKinds().associateBy { it.fn })
+
+/**
+ * [searchKeywordsOf] for a loaded workflow, worked out once and kept with it (issue #1600): what the workflow pages ask
+ * of every listed workflow on every read. A reload makes a new [WfDeclared], so a changed definition is read afresh.
+ */
+fun WfDeclared.searchKeywords(cxt: KdrCxt): Set<String> =
+    keywordsCache ?: searchKeywordsOf(cxt, def).also { keywordsCache = it }
+
+/**
+ * Whether some task of the live workflow [def] may say whom its call to action waits on: it runs a `ctaFilter` function
+ * that may set a label ([CtaFilterFn.mayLabel]).
+ */
+fun labelsCtaFilter(def: WfDef): Boolean =
+    def.entry == WfEntry.normal && def.tasks.any { task -> task.ctaFilterFns().any { it.mayLabel } }
 
 /** Whether [creation] builds a function from [usage]'s settings, as the resolution pass will ask it to. */
 private fun buildsFrom(cxt: KdrCxt, creation: WfFunctionCreation, usage: WfFunctionUsage): Boolean =

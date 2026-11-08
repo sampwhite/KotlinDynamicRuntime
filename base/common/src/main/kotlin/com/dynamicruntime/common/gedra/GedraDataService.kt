@@ -2017,6 +2017,16 @@ class GedraDataService : ServiceInitializer {
         return readStates(cxt, ids.values.toList(), scope).mapKeys { (fullId, _) -> ids.getValue(fullId) }
     }
 
+    /**
+     * [statesInScope] with each gedra's owner (issue #1600): what a pass asking whether the caller is a form's owner --
+     * the workflow pages' "mine" counts -- reads. In no particular order; a gedra with no state entries is left out.
+     */
+    fun stateRowsInScope(cxt: KdrCxt, kind: GedraDataType, scope: ReadScope): List<Pair<GedraStateRow, List<Map<String, Any?>>>> {
+        val rows = liveRowsInScope(cxt, kind, scope).map { (id, owner) -> GedraStateRow(GedraId.parse(id), owner) }
+        val states = readStates(cxt, rows.map { it.gedraId }, scope)
+        return rows.mapNotNull { row -> states[row.gedraId.fullId]?.let { row to it } }
+    }
+
     /** The full ids of [client]'s live gedras of [kind], from the cache: what a batch job walks (issue #793). */
     fun liveGedraIds(cxt: KdrCxt, kind: GedraDataType, client: String): List<String> =
         liveIdsInScope(cxt, kind, ReadScope.ofClient(client))
@@ -2048,7 +2058,11 @@ class GedraDataService : ServiceInitializer {
     fun liveGedraIdsInScope(cxt: KdrCxt, kind: GedraDataType, scope: ReadScope): List<String> = liveIdsInScope(cxt, kind, scope)
 
     /** The full ids of the live gedras of [kind] that [scope] admits, from the cache when it can key on the scope. */
-    private fun liveIdsInScope(cxt: KdrCxt, kind: GedraDataType, scope: ReadScope): List<String> {
+    private fun liveIdsInScope(cxt: KdrCxt, kind: GedraDataType, scope: ReadScope): List<String> =
+        liveRowsInScope(cxt, kind, scope).map { it.first }
+
+    /** [liveIdsInScope], each id with its owner's user id. */
+    private fun liveRowsInScope(cxt: KdrCxt, kind: GedraDataType, scope: ReadScope): List<Pair<String, Long?>> {
         val cache = dataCache
         val client = scope.client
         if (cache != null && client != null && !cxt.hasDebugDiagnostic(GDBG.dataFromSql)) {
@@ -2056,7 +2070,7 @@ class GedraDataService : ServiceInitializer {
             return GedraDataCache.rowsForClientKind(cache, client, kind.name)
                 .map { it.value }
                 .filter { admitsRow(scope, it) }
-                .mapNotNull { it[GD.gedraId].toOptStr() }
+                .mapNotNull { row -> row[GD.gedraId].toOptStr()?.let { it to row[PF.userId].toOptLong() } }
         }
         if (!cxt.hasDebugDiagnostic(GDBG.dataFromSql)) dataCache?.guardFallback(cxt)
         val sqlCxt = SqlTopicService.mkSqlCxt(cxt, gedraDataTopic)
@@ -2066,14 +2080,14 @@ class GedraDataService : ServiceInitializer {
         conditions.addAll(SqlScopeUtil.scopeConditions(scope, table, data))
         conditions.add("c:${PF.enabled} = true")
         val stmt = SqlStmtUtil.prepareSql(
-            sqlCxt, "qGedraIds${GU.gedraName(kind)}${scope.shapeKey}", table.columns,
-            "select c:${GD.gedraId} from t:${GDT.gedraData} where ${conditions.joinToString(" and ")}",
+            sqlCxt, "qGedraIdOwners${GU.gedraName(kind)}${scope.shapeKey}", table.columns,
+            "select c:${GD.gedraId}, c:${PF.userId} from t:${GDT.gedraData} where ${conditions.joinToString(" and ")}",
         )
         var rows: List<Map<String, Any?>> = emptyList()
         sqlCxt.sqlDb.withSession(cxt) {
             rows = sqlCxt.sqlDb.queryStatement(cxt, stmt, data)
         }
-        return rows.mapNotNull { it[GD.gedraId].toOptStr() }
+        return rows.mapNotNull { row -> row[GD.gedraId].toOptStr()?.let { it to row[PF.userId].toOptLong() } }
     }
 
     /**

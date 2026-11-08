@@ -3,6 +3,7 @@ package com.dynamicruntime.common.gedra.report
 import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.gedra.GT
 import com.dynamicruntime.common.gedra.workflow.CDF
+import com.dynamicruntime.common.gedra.workflow.CTAK
 import com.dynamicruntime.common.gedra.workflow.FSV
 import com.dynamicruntime.common.gedra.workflow.WFD
 import com.dynamicruntime.common.gedra.workflow.WFS
@@ -61,7 +62,10 @@ class ReportEvalTest {
         state(WFS.workflowEngagement, mapOf(WFD.workflowId to "auditReview", WFS.engaged to engaged, WFS.lastEngagedAt to engagedAt)),
         state(
             WFS.workflowState,
-            mapOf(WFD.workflowId to "auditReview", WFS.eligible to true, WFS.ctaTask to "approveAudit", WFS.tasksDone to tasksDone),
+            mapOf(
+                WFD.workflowId to "auditReview", WFS.eligible to true, WFS.ctaTask to "approveAudit", WFS.tasksDone to tasksDone,
+                WFS.ctaKeyword to CTAK.review, WFS.ctaFilterLabel to "%{reviewer}",
+            ),
         ),
         state(WFS.workflowState, mapOf(WFD.workflowId to "other", WFS.eligible to false)),
         state(WFS.workflowApproval, mapOf(WFD.workflowId to "auditReview", WFS.taskId to "approveAudit", WFS.approvedAt to approvedAt, WFS.approvedBy to 12L)),
@@ -80,7 +84,7 @@ class ReportEvalTest {
         states: List<Map<String, Any?>> = states(),
         owner: Map<String, Any?>? = this.owner,
         phaseOf: (String) -> WfPhase? = { if (it == "retired") null else WfPhase.engageable },
-    ) = ReportSubject(meta, entries, states, owner, phaseOf)
+    ) = ReportSubject(meta, entries, states, owner, phaseOf = phaseOf)
 
     /** A path bound the way the registry will bind it: the kind and key given by hand. */
     private fun bound(text: String, kind: ReportKind? = null, pk: List<String> = emptyList(), multi: Boolean = false): BoundPath {
@@ -242,6 +246,26 @@ class ReportEvalTest {
         val idleOpen = subject(states(engaged = false))
         assertEquals(true, value("workflow.auditReview.eligible", s = idleOpen))
         assertEquals(false, value("workflow.auditReview.engaged", s = idleOpen))
+    }
+
+    @Test
+    fun aWorkflowsKeywordAndWhomItWaitsOnAreReadWhileItIsUnderWay() {
+        // The filter's label is copy, resolved in the client's words (issue #1600); a test's subject leaves it as written.
+        val worded = ReportSubject(meta, entries, states(), owner, copy = { if (it == "%{reviewer}") "Waiting on a reviewer" else it }) {
+            WfPhase.engageable
+        }
+        assertEquals(CTAK.review, value("workflow.auditReview.${RWF.ctaKeyword}", s = worded))
+        assertEquals("Waiting on a reviewer", value("workflow.auditReview.${RWF.ctaFilterLabel}", s = worded))
+        assertEquals(listOf(CTAK.review), value("meta.${RMETA.ctaKeywords}", s = worded))
+        // Not engaged: no call to action, so neither, whatever the state still holds.
+        val idle = subject(states(engaged = false))
+        assertNull(value("workflow.auditReview.${RWF.ctaKeyword}", s = idle))
+        assertNull(value("workflow.auditReview.${RWF.ctaFilterLabel}", s = idle))
+        assertNull(value("meta.${RMETA.ctaKeywords}", s = idle))
+        // A label still needing the form's data is not one a stored label can give, so it is blank, as the forms list
+        // drops it.
+        val needsData = ReportSubject(meta, entries, states(), owner, copy = { $$"Waiting on ${site.region}" }) { WfPhase.engageable }
+        assertNull(value("workflow.auditReview.${RWF.ctaFilterLabel}", s = needsData))
     }
 
     @Test

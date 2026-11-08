@@ -3,6 +3,7 @@ package com.dynamicruntime.common.gedra.report
 import com.dynamicruntime.common.context.LiteCxt
 import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.gedraConfig
+import com.dynamicruntime.common.gedra.workflow.CTAK
 import com.dynamicruntime.common.gedra.workflow.WfEntry
 import com.dynamicruntime.common.gedra.workflow.WfSaveKind
 import com.dynamicruntime.common.schema.SCH
@@ -123,6 +124,16 @@ class ReportBindTest {
 
     private fun bound(path: String): BoundPath = assertIs<Parsed.Ok<BoundPath>>(bindReportPath(path, scope)).value
 
+    @Test
+    fun aKeywordPathOffersEachKeywordByItsReportLabel() {
+        // Shown by its report label (issue #1600), a template the backend resolves in the client's copy.
+        for (path in listOf("workflow.review.${RWF.ctaKeyword}", "meta.${RMETA.ctaKeywords}")) {
+            assertEquals(CTAK.keywords.map { it.name to it.copy.reportLabel }, bound(path).choices.map { it.value to it.label }, path)
+        }
+        assertEquals(emptyList(), bound("workflow.review.${RWF.ctaTask}").choices)
+        assertEquals(emptyList(), bound("meta.${RMETA.cfacts}").choices)
+    }
+
     /** The one problem binding [path] reports: its code, and that its message names [mentions]. */
     private fun refusal(path: String, code: ProblemCode, mentions: String) {
         val problem = assertIs<Parsed.Failed>(bindReportPath(path, scope)).problems.single()
@@ -181,9 +192,9 @@ class ReportBindTest {
         assertTrue(bound("form.audit.auditor").choices.isEmpty())
         val columns = assertIs<Parsed.Ok<BoundReport>>(bindReport(report(col("grade", "form.audit.grade"), col("auditor", "form.audit.auditor")), scope))
             .value.columns
-        val described = columns.first().describe()[RRUN.choices].toJsonListOfMaps()
+        val described = columns.first().describe { it }[RRUN.choices].toJsonListOfMaps()
         assertEquals(listOf(mapOf(RRUN.value to "pass", RRUN.label to "Passed"), mapOf(RRUN.value to "fail", RRUN.label to "Failed")), described)
-        assertFalse(columns.last().describe().containsKey(RRUN.choices))
+        assertFalse(columns.last().describe { it }.containsKey(RRUN.choices))
     }
 
     // Which form a date takes where a path reads it (issue #1086): what a typed run brings each value to.

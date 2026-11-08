@@ -80,6 +80,8 @@ class CtaFilterByValueFn(
 
     override val readTraits: Set<String> = setOf(trait)
 
+    override val mayLabel: Boolean = (cases + otherwise).any { it.label != null }
+
     override fun computeCtaFilter(cxt: KdrCxt, params: CtaFilterParams) {
         keyword?.let { params.setKeyword(it) }
         val entry = params.entries.firstOrNull { it[GE.traitId].toOptStr() == trait }

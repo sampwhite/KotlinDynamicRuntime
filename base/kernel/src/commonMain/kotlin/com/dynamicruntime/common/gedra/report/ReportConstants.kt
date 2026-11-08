@@ -87,6 +87,12 @@ object RWF {
 
     /** The task the form's people are asked to do next, while the workflow is engaged. */
     const val ctaTask = "ctaTask"
+
+    /** The search keyword its call to action carries, while the workflow is under way (issue #1600). */
+    const val ctaKeyword = "ctaKeyword"
+
+    /** Who its call to action waits on, in the client's words (issue #1600): the CTA filter's label. */
+    const val ctaFilterLabel = "ctaFilterLabel"
     const val lastEngagedAt = "lastEngagedAt"
 
     /** Not an attribute but a step: `approval[<taskId>]`, then one of [approvalAttrs]. */
@@ -107,6 +113,16 @@ object RWF {
         ReportAttr(tasksDone, ReportKind.boolean, "Whether every task of the workflow is complete and valid for the form, so none is left to do."),
         ReportAttr(
             ctaTask, ReportKind.string, "The id of the task the form's people are asked to do next, while the workflow is under way.",
+        ),
+        ReportAttr(
+            ctaKeyword, ReportKind.string,
+            "The search keyword of the task the form's people are asked to do next, such as `review`, while the workflow " +
+                "is under way. A report's table shows the keyword's report label.",
+        ),
+        ReportAttr(
+            ctaFilterLabel, ReportKind.string,
+            "Whom the task the form's people are asked to do next waits on, in the client's words, such as \"Waiting on " +
+                "a Northwest reviewer\", while the workflow is under way and its call to action says.",
         ),
         ReportAttr(lastEngagedAt, ReportKind.date, "When the form last entered the workflow."),
     ).associateBy { it.name }
@@ -164,6 +180,9 @@ object RMETA {
     const val coreDetailsStatus = "coreDetailsStatus"
     const val cfacts = "cfacts"
 
+    /** The search keywords the form's workflows' calls to action carry (issue #1600), whichever workflow. */
+    const val ctaKeywords = "ctaKeywords"
+
     val attrs: Map<String, ReportAttr> = listOf(
         ReportAttr(gedraId, ReportKind.string, "The form's id."),
         ReportAttr(client, ReportKind.string, "The client the form belongs to."),
@@ -182,6 +201,12 @@ object RMETA {
                 "`invalid` when entered data fails its checks. Empty for a client with no core details workflow.",
         ),
         ReportAttr(cfacts, ReportKind.string, "The facts the form has, such as `kdr:finished`.", multiValued = true),
+        ReportAttr(
+            ctaKeywords, ReportKind.string,
+            "The search keywords, such as `review`, that the calls to action of the workflows under way on the form carry, " +
+                "each once. A report's table shows each keyword's report label.",
+            multiValued = true,
+        ),
     ).associateBy { it.name }
 }
 

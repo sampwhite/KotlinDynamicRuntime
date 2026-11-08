@@ -36,6 +36,7 @@ Here is the whole `reports` bundle:
           {"columnId": "speaker", "label": "Speaker", "path": "user.name"},
           {"columnId": "status", "label": "Status", "path": "meta.formStatus"},
           {"columnId": "review", "label": "Review", "path": "workflow.review.category"},
+          {"columnId": "callToAction", "label": "Call to action", "path": "workflow.review.ctaKeyword"},
           {
             "columnId": "minutes",
             "label": "Minutes",
@@ -107,8 +108,11 @@ one of the talk's traits, written as the trait's id and then the field: `form.se
 `kdr:name` trait the client includes is addressed the same way, with its full id: `form.kdr:name.name`. The other
 three sources are fixed lists. The value `user.name` is the name of the speaker who owns the talk,
 `meta.formStatus` is the talk's status, `valid` or `finished` for instance, and `workflow.review.category` is where the talk
-stands with the committee review: eligible, engaged, finished, or ineligible. The reference lists the names each
-source allows.
+stands with the committee review: eligible, engaged, finished, or ineligible. The value `workflow.review.ctaKeyword`
+is the search keyword of the task the committee review asks for next. Both of its tasks carry the keyword `review`
+(see [Committee review](committee-review.md#workflow)), so the column says a talk needs review from the moment it enters
+the review until it is accepted. The value is always about the talk, never about who runs the report, so an organizer
+sees the same column a committee member would. The reference lists the names each source allows.
 
 **A rollup says what a column shows for a group.** Grouped by track, the submissions report has one row per
 track. The row counts the talks in the track, and the Minutes column, whose `rollup` is `sum`, adds their
@@ -138,9 +142,11 @@ yet* and offers a **Snapshot now** button instead.
 Grouped, **Submissions by track** is a table of **Track**, **Forms**, and **Minutes (sum)**: one row per track, how
 many talks it has, and their durations added up. A rolled-up column's heading says its rollup. Under the table a
 line says how many groups there are and how many forms were read. Run per form, the table has a row per talk,
-starting with an **Open** link to it, then **Track**, **Talk**, **Speaker**, **Status**, **Review**, and **Minutes**.
-A talk with no abstract yet shows a dash for its minutes. A track shows as the form labels it, *Kotlin*, with its
-stored value, `kotlin`, when you hover over the cell. The downloaded file holds the stored values.
+starting with an **Open** link to it, then **Track**, **Talk**, **Speaker**, **Status**, **Review**, **Call to
+action**, and **Minutes**. A talk with no abstract yet shows a dash for its minutes. A track shows as the form labels
+it, *Kotlin*, with its stored value, `kotlin`, when you hover over the cell. The downloaded file holds the stored
+values. The **Call to action** column works the same way: a talk in the committee review and not yet accepted
+shows *Needs review*, with `review` when you hover, and every other talk shows a dash.
 
 Grouped, **Questionnaire summary** is **Audience**, **May be recorded**, **Forms**, **Takeaway (list)**, and
 **Needs for the day (count)**. A yes or no answer shows as *Yes* or *No*. The line under the table also says how many

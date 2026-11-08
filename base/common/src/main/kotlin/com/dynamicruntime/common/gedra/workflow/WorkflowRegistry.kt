@@ -34,6 +34,10 @@ class WfDeclared(val bundle: GedraConfig, val def: WfDef) {
     @Volatile
     internal var storeCache: Pair<KdrSchemaStore, KdrSchemaStore>? = null
 
+    /** The search keywords its calls to action may carry, read once per load ([searchKeywords], issue #1600). */
+    @Volatile
+    internal var keywordsCache: Set<String>? = null
+
     override fun toString(): String = ref.text
 }
 

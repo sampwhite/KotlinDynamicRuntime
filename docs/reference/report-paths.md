@@ -83,6 +83,8 @@ closed to new forms that this form never entered.
 | `finished` | Yes or no | Whether the workflow has finished for the form. |
 | `tasksDone` | Yes or no | Whether every task of the workflow is complete and valid for the form, so none is left to do. |
 | `ctaTask` | Text | The id of the task the form's people are asked to do next, while the workflow is under way. |
+| `ctaKeyword` | Text | The search keyword of the task the form's people are asked to do next, such as `review`, while the workflow is under way. A report's table shows the keyword's report label. |
+| `ctaFilterLabel` | Text | Whom the task the form's people are asked to do next waits on, in the client's words, such as "Waiting on a Northwest reviewer", while the workflow is under way and its call to action says. |
 | `lastEngagedAt` | Date | When the form last entered the workflow. |
 
 ### An approval
@@ -126,6 +128,7 @@ running the report may not see.
 | `formStatus` | Text | The status the forms list shows: the core details status, except that a valid form reads `needsReview` while a workflow waits on a review, and `finished` once one has finished. |
 | `coreDetailsStatus` | Text | Whether the form's core details are done: `valid`, `needsInfo` when a required trait is missing, or `invalid` when entered data fails its checks. Empty for a client with no core details workflow. |
 | `cfacts` | Text, several | The facts the form has, such as `kdr:finished`. |
+| `ctaKeywords` | Text, several | The search keywords, such as `review`, that the calls to action of the workflows under way on the form carry, each once. A report's table shows each keyword's report label. |
 
 ## Several values
 

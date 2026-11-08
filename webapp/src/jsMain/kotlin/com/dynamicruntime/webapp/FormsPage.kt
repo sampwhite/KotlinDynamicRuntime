@@ -611,6 +611,8 @@ val FormsPage = FC<FormsPageProps> { props ->
         val ep = listEndpoint
         // The workflow drilled into (issue #792) -- the page's identity in workflow mode, null on My forms.
         val drill = workflowDrillOf(appliedSearch)
+        // And the keyword count it was opened on, when it was (issue #1600).
+        val keywordDrill = workflowKeywordDrillOf(appliedSearch)
         if (workflowMode) {
             // The workflow's listing heads itself with the workflow (its label, as the Workflows page shows it) and
             // a way back to Workflows, and switches state in place: the same three counts the Workflows page
@@ -639,11 +641,14 @@ val FormsPage = FC<FormsPageProps> { props ->
                             Button {
                                 type = if (state == drill?.second) "primary" else "default"
                                 onClick = {
-                                    if (state != drill?.second) {
+                                    // A keyword count (issue #1600) is a narrowing of Engaged: choosing a state, Engaged
+                                    // included, lists the whole state.
+                                    if (state != drill?.second || keywordDrill != null) {
                                         // The state is one of the listing's search keys, so it rides the query like
                                         // the rest; the draft follows so a later Apply does not undo the switch.
-                                        val next = appliedSearch + (WAGG.workflowState to state.name)
-                                        searchDraft = searchDraft + (WAGG.workflowState to state.name)
+                                        val dropped = setOf(WAGG.keyword, WAGG.keywordWhose)
+                                        val next = appliedSearch - dropped + (WAGG.workflowState to state.name)
+                                        searchDraft = searchDraft - dropped + (WAGG.workflowState to state.name)
                                         applySearch(ep, next)
                                     }
                                 }
@@ -656,7 +661,12 @@ val FormsPage = FC<FormsPageProps> { props ->
             if (viewingId == null) {
                 p {
                     className = ClassName("subtitle")
-                    +workflowDrillNote(drill?.second)
+                    +workflowDrillNote(
+                        drill?.second,
+                        keywordDrill?.let { (keyword, whose) ->
+                            keywordCountWords(keyword, whose, ctaKeywords, WorkflowCellWords.of(homeCopy))
+                        },
+                    )
                 }
             }
         } else {

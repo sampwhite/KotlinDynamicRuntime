@@ -80,6 +80,12 @@ class WorkflowWeightTest {
         val neither = formWorkflowWeights(states, { phases[it] }) { _, _ -> false }
         assertFalse(matchesKeywordSearch(neither, CTAK.review, CTKQ.mine))
         assertTrue(matchesKeywordSearch(neither, CTAK.review, CTKQ.any))
+        // Asked of one workflow (issue #1600), as the workflow pages count: the regional review is theirs, the legal one
+        // is not, though the row is theirs to review.
+        assertTrue(matchesWorkflowKeyword(weights, "regional", CTAK.review, CTKQ.mine))
+        assertFalse(matchesWorkflowKeyword(weights, "legal", CTAK.review, CTKQ.mine))
+        assertTrue(matchesWorkflowKeyword(weights, "legal", CTAK.review, CTKQ.any))
+        assertFalse(matchesWorkflowKeyword(weights, "other", CTAK.review, CTKQ.any))
     }
 
     @Test

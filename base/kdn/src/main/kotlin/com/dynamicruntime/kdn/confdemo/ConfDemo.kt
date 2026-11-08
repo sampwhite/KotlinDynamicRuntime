@@ -615,6 +615,7 @@ fun confDemoReports(cxt: KdrCxtBase = LiteCxt(), client: String = ConfDemo.clien
             column("speaker", "Speaker", "${ReportSource.user.name}.${RUSR.name}")
             column("status", "Status", "${ReportSource.meta.name}.${RMETA.formStatus}")
             column("review", "Review", "${ReportSource.workflow.name}.${ConfDemo.reviewWorkflow}.${RWF.category}")
+            column("callToAction", "Call to action", "${ReportSource.workflow.name}.${ConfDemo.reviewWorkflow}.${RWF.ctaKeyword}")
             column(ConfDemo.minutesColumn, "Minutes", "$form.${ConfDemo.abstract}.${ConfDemo.durationMinutes}", rollup = ReportCombine.sum)
             groupBy = listOf(ConfDemo.trackColumn)
         }

@@ -26,6 +26,7 @@ import com.dynamicruntime.common.gedra.overseenClient
 import com.dynamicruntime.common.gedra.overseenClientField
 import com.dynamicruntime.common.gedra.toWireMap
 import com.dynamicruntime.common.gedra.workflow.WfEntry
+import com.dynamicruntime.common.gedra.workflow.copyResolver
 import com.dynamicruntime.common.gedra.workflow.WfPhase
 import com.dynamicruntime.common.gedra.workflow.WorkflowPhases
 import com.dynamicruntime.common.gedra.workflow.WorkflowService
@@ -197,7 +198,8 @@ fun reportSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, REP.namespace) {
         needsClientConfig = true,
     ) { c, request ->
         val client = overseenClient(c, request[RRUN.client].toOptStr())
-        val items = ReportService.get(c).forClient(client).reports.values.map { describeReport(it) }
+        val copy = copyResolver(c, client)
+        val items = ReportService.get(c).forClient(client).reports.values.map { describeReport(it, copy) }
         val issues = ClientConfigIssues.get(c).let { reg ->
             reg.issuesFor(client) + if (client == GID.globalClient) emptyList() else reg.issuesFor(GID.globalClient)
         }.filter { it.elementKind == GCEL.report }
@@ -384,14 +386,14 @@ private fun SchTypesBuilder.columnInfoType() {
     }
 }
 
-/** A report as the listing describes it. */
-private fun describeReport(declared: ReportDeclared): Map<String, Any?> {
+/** A report as the listing describes it, its choices' labels through [copy], the client's. */
+private fun describeReport(declared: ReportDeclared, copy: (String) -> String): Map<String, Any?> {
     val report = declared.bound.report
     return buildMap {
         put(RRUN.reportId, report.reportId)
         put(RRUN.label, report.label)
         report.description?.let { put(RRUN.description, it) }
-        put(RRUN.columns, declared.bound.columns.map { it.describe() })
+        put(RRUN.columns, declared.bound.columns.map { it.describe(copy) })
         put(RRUN.groupBy, report.groupBy)
         put(RRUN.excludeEmpty, report.excludeEmpty)
         put(RRUN.configName, declared.bundle.name)
@@ -460,6 +462,8 @@ fun runBoundReport(
     val reportId = bound.reportId
     val aggregate = mode == ReportMode.aggregate
     val scope = reportScope(c, client)
+    // The client's copy (issue #1600): a keyword's report label, and a CTA filter's label read as a value.
+    val copy = copyResolver(c, client)
     val zone = ClientService.get(c).timeZoneOf(client)
     val queryId = reportQueryId(client, bound, mode, groupBy, exactDates, zone)
     fun summary(scanned: Int, excluded: Int) = mapOf(
@@ -469,7 +473,7 @@ fun runBoundReport(
         RRUN.mode to mode.name,
         RRUN.groupBy to groupBy.map { it.columnId },
         RRUN.excludeEmpty to excludeEmpty.map { it.columnId },
-        RRUN.columns to bound.columns.map { it.describe() },
+        RRUN.columns to bound.columns.map { it.describe(copy) },
         RRUN.scanned to scanned,
         RRUN.excluded to excluded,
     )
@@ -598,7 +602,8 @@ fun reportQueryId(
 ): String =
     listOfNotNull(
         "report", client, bound.reportId, mode.name, groupBy.joinToString(",") { it.columnId },
-        bound.columns.map { it.describe() }.toJsonStr(compact = true),
+        // As bound, labels unresolved: the query's identity, which a rewording of the copy does not change.
+        bound.columns.map { col -> col.describe { it } }.toJsonStr(compact = true),
         "exactDates@${zone.id}".takeIf { exactDates },
     ).joinToString("|")
 
@@ -642,6 +647,9 @@ private class SubjectReader(val c: KdrCxt, val client: String, val scope: ReadSc
     private val workflows by lazy { WorkflowService.get(c).forClient(client) }
     private val phases = HashMap<String, WfPhase?>()
 
+    // The client's copy, for a CTA filter's label read as a value (issue #1600); resolved only when a column asks.
+    private val copy: (String) -> String by lazy { copyResolver(c, client) }
+
     private fun phaseOf(id: String): WfPhase? = phases.getOrPut(id) {
         workflows.workflow(id)?.def?.takeIf { it.entry == WfEntry.normal }?.let { WorkflowPhases.phaseAt(c, client, it, now) }
             ?.takeIf { it.exists }
@@ -664,6 +672,7 @@ private class SubjectReader(val c: KdrCxt, val client: String, val scope: ReadSc
                 entries = if (needEntries) row.entries else emptyList(),
                 states = states[id].orEmpty(),
                 owner = owners[row.userId]?.let(::ownerOf),
+                copy = { text -> copy(text) },
                 phaseOf = ::phaseOf,
             )
         }
@@ -692,6 +701,6 @@ private class SubjectReader(val c: KdrCxt, val client: String, val scope: ReadSc
 
     companion object {
         /** The `meta` attributes read from the form's states rather than its row. */
-        val stateMetaAttrs = setOf(RMETA.formStatus, RMETA.coreDetailsStatus, RMETA.cfacts)
+        val stateMetaAttrs = setOf(RMETA.formStatus, RMETA.coreDetailsStatus, RMETA.cfacts, RMETA.ctaKeywords)
     }
 }
