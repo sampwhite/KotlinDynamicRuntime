@@ -55,6 +55,11 @@ data class ShellFacts(
     val timeZoneLabel: String? = null,
     val whatIsThisLink: String? = null,
     val whatIsThisHide: String? = null,
+    /**
+     * The workflow cell's words (issue #1691), from the shell's copy as the forms list reads them: what a workflow's page
+     * says to start a form in it, so the page and the list's link say it alike. As shipped until the copy arrives.
+     */
+    val workflowWords: WorkflowCellWords = WorkflowCellWords(),
 ) {
     /** Whether these are [userId]'s facts, told by the shell: not before it has been, nor another user's (issue #1479). */
     fun describes(userId: Long): Boolean = this.userId == userId
@@ -107,6 +112,7 @@ fun shellFactsOf(config: HomeConfig, shellCopy: Copy? = null): ShellFacts = Shel
     timeZoneLabel = config.timeZoneLabel,
     whatIsThisLink = shellCopy?.opt(HFRAG.whatIsThisNs, HFRAG.whatIsThisLink)?.ifBlank { null },
     whatIsThisHide = shellCopy?.opt(HFRAG.whatIsThisNs, HFRAG.whatIsThisHide)?.ifBlank { null },
+    workflowWords = shellCopy?.let { WorkflowCellWords.of(it) } ?: WorkflowCellWords(),
 )
 
 /**

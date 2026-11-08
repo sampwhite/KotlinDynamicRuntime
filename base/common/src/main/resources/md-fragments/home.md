@@ -104,6 +104,9 @@ form stands in each.
 # +noReasons This form does not meet the workflow's conditions.
 # +keywordMine Yours
 # +keywordAny Anyone's
+/- A workflow's page, for a form not in the workflow yet that may start it (issue #1691): the line under its title, and
+   the button that starts it says `start`, as the forms list's link does. -/
+# +notStarted This form has not started this workflow. Start it to work on it.
 
 # @ctaReview
 /- The `review` search keyword's words (issue #1596): what a call to action asking for a review is called wherever it is

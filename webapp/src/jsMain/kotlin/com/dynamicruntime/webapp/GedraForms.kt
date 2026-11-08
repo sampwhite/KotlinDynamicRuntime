@@ -1112,7 +1112,7 @@ enum class WorkflowCellKind(val groupKey: String, val group: String, val countKe
  *
  * Theme: #TPLPS.
  */
-class WorkflowCellWords(
+data class WorkflowCellWords(
     val start: String = "Start",
     val continueVerb: String = "Continue",
     val waiting: String = "Waiting",
@@ -1132,6 +1132,8 @@ class WorkflowCellWords(
     val noReasons: String = "This form does not meet the workflow's conditions.",
     val keywordMine: String = "Yours",
     val keywordAny: String = "Anyone's",
+    /** A workflow's page, for a form that may start the workflow and has not (issue #1691): the line under its title. */
+    val notStarted: String = "This form has not started this workflow. Start it to work on it.",
 ) {
     /** The heading over [kind]'s links in a popover, which is also the name of that kind. */
     fun group(kind: WorkflowCellKind): String = groups[kind] ?: kind.group
@@ -1170,6 +1172,7 @@ class WorkflowCellWords(
                 noReasons = t(HFRAG.wcNoReasons, shipped.noReasons),
                 keywordMine = t(HFRAG.wcKeywordMine, shipped.keywordMine),
                 keywordAny = t(HFRAG.wcKeywordAny, shipped.keywordAny),
+                notStarted = t(HFRAG.wcNotStarted, shipped.notStarted),
             )
         }
     }

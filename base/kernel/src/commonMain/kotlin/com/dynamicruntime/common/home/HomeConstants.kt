@@ -623,6 +623,12 @@ object HFRAG {
     const val wcKeywordAny = "keywordAny"
 
     /**
+     * In [workflowCellNs]: a workflow's page, for a form not in the workflow yet that may start it (issue #1691), the
+     * line under its title. Its button says [wcStart], as the forms list's link does.
+     */
+    const val wcNotStarted = "notStarted"
+
+    /**
      * The key of a "What is this?" explanation (issue #1337), in the namespace of the copy it explains -- in this
      * file and in a page's own ([PFRAG]), as the profile file's `users.whatIsThis` is. Empty, the link is not offered.
      */

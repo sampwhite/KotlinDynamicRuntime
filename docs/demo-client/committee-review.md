@@ -186,10 +186,10 @@ abstract to edit it, the form leaves off the note for the organizers, as the spe
 [Abstract](abstract.md)).
 
 On a talk whose core details are done, the member's forms list shows **Start** and **Committee review** highlighted in
-its **Workflows** column, and its **Waiting on you** button narrows the list to the talks waiting on them. One click puts the talk into the review and
-opens the **Record the review** step, with no **Engage** to press. The talk's status in the forms list is then **Needs
-Review**. The step is editable: a **Score** and **Notes for the speaker**, and a **Save the review** button. Once saved, the **Accept the
-talk** step offers its button. After it is pressed, the step reads *Accepted by* and who accepted it, and the talk's
-status in the forms list is **Finished**.
+its **Workflows** column, and its **Waiting on you** button narrows the list to the talks waiting on them. One click
+puts the talk into the review and opens the **Record the review** step, with no second **Start** to press. The talk's
+status in the forms list is then **Needs Review**. The step is editable: a **Score** and **Notes for the speaker**, and
+a **Save the review** button. Once saved, the **Accept the talk** step offers its button. After it is pressed, the step
+reads *Accepted by* and who accepted it, and the talk's status in the forms list is **Finished**.
 
 Next: [Workshop logistics](workshop-logistics.md).

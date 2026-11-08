@@ -94,14 +94,17 @@ alone also confines the rows to X: on a client's own copy, an `allClients` calle
   (`FormUserPicker`) to whoever `createsFormsForOthers` admits: an administrator or an editor (#1433).
 - **A form kept to its owner** (`kdr:ownerOnly`, #1433) is read-only for an editor who is neither its owner
   nor a reviewer of its current work: the locks answer and the workflow view say `keptToOwner`, the raw editor
-  draws the form uneditable, and the workflow pages offer no Save or Engage, each saying why once
+  draws the form uneditable, and the workflow pages offer no Save or Start, each saying why once
   (`TraitLockCopy.keptToOwner`, the server's refusal word for word).
-- **Engaging opens the form for editing** (#1496). A workflow page's **Engage**, once it succeeds, puts `edit=1` in
+- **Engaging opens the form for editing** (#1496). A workflow page's **Start** (issue #1691: the button says **Start**
+  and its line *This form has not started this workflow...*, both the `workflowCell` copy's `start` and `notStarted`
+  through `ShellFacts.workflowWords`, as the list's link says it; the endpoint and the code keep "engage"), once it
+  succeeds, puts `edit=1` in
   the address (`engagedRoute`, replaced rather than pushed) before the view is read again, so the page lands where
   the Workflows column's link to a workflow that is the caller's turn opens (`workflowPageRoute(..., edit = true)`). The remount
   still asks `offersEdit` of the task shown, so a workflow whose open step is someone else's lands read-only.
 - **A highlighted Start engages on arrival** (#1662). Its link carries `engage=1` (`HP.engage`, `workflowPageRoute(...,
-  engage = true)`) beside the first task and `edit=1`; the workflow page engages as its Engage button would, then takes
+  engage = true)`) beside the first task and `edit=1`; the workflow page engages as its Start button would, then takes
   the flag out of the address, so a reload or Back never engages twice. A form that can no longer engage (already in,
   or not eligible now) drops the flag, the refusal shown as Engage's is.
 - **A workflow's listing is its own page** (`page=workflowForms`, issue #792): where a count on the Workflows
