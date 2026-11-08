@@ -63,7 +63,7 @@ class CodeClientSandboxTest : StringSpec({
     "the switch gives a code client a sandbox by an overlay of its definition, and takes it away again" {
         val chief = TestUser.create(cxt, "chief@$off.test", level = ROLE.admin, userClient = off)
         hasSandbox(off) shouldBe false
-        ClientSandboxEdit.setInCode(cxt, off) shouldBe false
+        ClientSandboxEdit.codeSetsSandbox(cxt, off) shouldBe false
 
         val on = chief.postData(UADEP.clientSandbox, mapOf(CLD.sandbox to true))
         on[CLD.sandbox] shouldBe true
@@ -104,7 +104,7 @@ class CodeClientSandboxTest : StringSpec({
 
     "a sandbox the code sets is removed only there" {
         val chief = TestUser.create(cxt, "chief@$inCode.test", level = ROLE.admin, userClient = inCode)
-        ClientSandboxEdit.setInCode(cxt, inCode) shouldBe true
+        ClientSandboxEdit.codeSetsSandbox(cxt, inCode) shouldBe true
         hasSandbox(inCode) shouldBe true
         chief.expectError(400, UADEP.clientSandbox, mapOf(CLD.sandbox to false)).toString() shouldContain "set in its code"
         // Asking for what the code already gives changes nothing, and stores nothing.

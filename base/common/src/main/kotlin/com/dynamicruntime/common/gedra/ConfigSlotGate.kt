@@ -191,20 +191,11 @@ private fun slotFailures(
 }
 
 /**
- * What is wrong with [entry], an overlay of a client's definition in code (issue #1677), by key: it names the client, and
- * holds nothing but whether it has a sandbox ([clientDefOverlayKeys]). Whether the code declares that client is the
- * trial's, which reads it over the code.
+ * What is wrong with [entry], an overlay of a client's definition in code (issue #1677), by key ([clientDefOverlayFaults]).
+ * Whether the code declares that client is the trial's, which reads it over the code.
  */
-private fun clientDefOverlayFailures(entry: Map<String, Any?>): List<SchFailure> = buildList {
-    if (entry[CLD.clientId].toOptStr().isNullOrEmpty()) {
-        add(SchFailure(CLD.clientId, SchFailCode.missingRequired, "A change to a client's definition in code names the client."))
-    }
-    for (key in entry.keys.filter { it !in clientDefOverlayKeys }) {
-        add(SchFailure(key, SchFailCode.badValue, "A change to a client's definition in code may set only whether it has a sandbox."))
-    }
-    entry[CLD.sandbox]?.takeIf { it !is Boolean }?.let {
-        add(SchFailure(CLD.sandbox, SchFailCode.badValue, "Whether the client has a sandbox is true or false."))
-    }
+private fun clientDefOverlayFailures(entry: Map<String, Any?>): List<SchFailure> = clientDefOverlayFaults(entry).map { (key, fault) ->
+    SchFailure(key, if (key == CLD.clientId) SchFailCode.missingRequired else SchFailCode.badValue, fault)
 }
 
 /** This failure as seen from [parent]: its path beneath it, or [parent] itself for a failure of the whole entry. */

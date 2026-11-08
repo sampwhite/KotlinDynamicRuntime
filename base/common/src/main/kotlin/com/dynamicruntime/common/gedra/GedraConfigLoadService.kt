@@ -569,7 +569,12 @@ class GedraConfigLoadService : ServiceInitializer {
         val publishedOnly = toggled + classes.groupBy { it.first()[PF.client].toOptStr().orEmpty() }
             .filter { (client, classRows) ->
                 client.isNotEmpty() &&
-                    (GedraConfigControl.sourceAsksForSandbox(sourceConfigs, client) || GedraConfigControl.publishedAsksForSandbox(classRows))
+                    (
+                        GedraConfigControl.sourceAsksForSandbox(sourceConfigs, client) ||
+                            GedraConfigControl.publishedAsksForSandbox(
+                                classRows, client, GedraConfigControl.sourceDefines(sourceConfigs, client),
+                            )
+                        )
             }.keys
         val consumed = classes.mapNotNull { classRows ->
             val client = classRows.first()[PF.client].toOptStr()

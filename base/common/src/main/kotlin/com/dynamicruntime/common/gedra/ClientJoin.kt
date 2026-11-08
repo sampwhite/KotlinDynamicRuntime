@@ -144,10 +144,16 @@ object ClientJoin {
      * Theme: #SBXAU.
      */
     fun configEditRefusal(cxt: KdrCxt, client: String): String? {
-        if (cxt.instanceConfig.get(JOIN.visitorsEditConfigKey) == true) return null
-        val demo = joinedDemoName(cxt, client) ?: return null
-        return "You joined $demo as a visitor, and this deployment does not let visitors change a demo client's configuration."
+        if (visitorsMayEditConfig(cxt)) return null
+        return joinedDemoName(cxt, client)?.let { configEditRefusalOf(it) }
     }
+
+    /** Whether this deployment lets visitors change a demo client's configuration ([JOIN.visitorsEditConfigKey]). */
+    fun visitorsMayEditConfig(cxt: KdrCxt): Boolean = cxt.instanceConfig.get(JOIN.visitorsEditConfigKey) == true
+
+    /** [configEditRefusal]'s words for a visitor of [demo], the demo client's name ([joinedDemoName]). */
+    fun configEditRefusalOf(demo: String): String =
+        "You joined $demo as a visitor, and this deployment does not let visitors change a demo client's configuration."
 
     /**
      * Why the caller may not add or remove [client]'s sandbox -- or null when they may (issue #1677): they are a visitor
@@ -158,17 +164,19 @@ object ClientJoin {
      *
      * Theme: #SBXAU.
      */
-    fun sandboxSwitchRefusal(cxt: KdrCxt, client: String): String? {
-        val demo = joinedDemoName(cxt, client) ?: return null
-        return "You joined $demo as a visitor. Every visitor shares a demo client, so whether it has a sandbox is set by " +
-            "the deployment, not by a visitor."
-    }
+    fun sandboxSwitchRefusal(cxt: KdrCxt, client: String): String? = joinedDemoName(cxt, client)?.let { sandboxSwitchRefusalOf(it) }
+
+    /** [sandboxSwitchRefusal]'s words for a visitor of [demo], the demo client's name ([joinedDemoName]). */
+    fun sandboxSwitchRefusalOf(demo: String): String =
+        "You joined $demo as a visitor. Every visitor shares a demo client, so whether it has a sandbox is set by the " +
+            "deployment, not by a visitor."
 
     /**
      * The name of the demo client [client] is -- or whose sandbox it is -- when the caller is a visitor who joined it
-     * ([AuthUserRow.joinedAs]); null for anyone else. A user opened in a sandbox is judged as the user it acts as.
+     * ([AuthUserRow.joinedAs]); null for anyone else. A user opened in a sandbox is judged as the user it acts as. What
+     * both refusals ask, once, for a page that shows both (the Clients overview row).
      */
-    private fun joinedDemoName(cxt: KdrCxt, client: String): String? {
+    fun joinedDemoName(cxt: KdrCxt, client: String): String? {
         val owner = sandboxParentOf(client) ?: client
         val def = ClientService.getOrNull(cxt)?.known(owner)?.takeIf { it.joinRoles.isNotEmpty() } ?: return null
         val profile = cxt.userProfile

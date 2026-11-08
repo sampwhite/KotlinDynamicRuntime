@@ -865,9 +865,13 @@ class GedraConfigService : ServiceInitializer {
      * published -- a client with nothing published has nothing to protect, and reading the draft would leave it
      * published-only with no published revision, absent altogether.
      */
-    fun asksForSandbox(cxt: KdrCxt, client: String): Boolean =
-        GedraConfigControl.sourceAsksForSandbox(SchemaCollector.get(cxt)?.gedraConfigs?.configs.orEmpty(), client) ||
-            GedraConfigControl.publishedAsksForSandbox(listRevisionRows(cxt, client))
+    fun asksForSandbox(cxt: KdrCxt, client: String): Boolean {
+        val configs = SchemaCollector.get(cxt)?.gedraConfigs?.configs.orEmpty()
+        return GedraConfigControl.sourceAsksForSandbox(configs, client) ||
+            GedraConfigControl.publishedAsksForSandbox(
+                listRevisionRows(cxt, client), client, GedraConfigControl.sourceDefines(configs, client),
+            )
+    }
 
     /**
      * When [client]'s protection tier last changed in this node's environment (issue #618), or null if it has

@@ -49,6 +49,22 @@ val codeOverlaySlots: Set<String> = setOf(CCT.workflowDef, CCT.schemaDef)
  */
 val clientDefOverlayKeys: Set<String> = setOf(CLD.clientId, CCT.overrides, CLD.sandbox)
 
+/**
+ * What is wrong with [entry], an overlay of a client's definition in code (issue #1677), each as the key it is at and
+ * what is wrong there: it names the client, holds nothing but whether it has a sandbox ([clientDefOverlayKeys]), and
+ * says that as true or false. The write's gate refuses these, a load leaves them out and says so, and the bundle editor
+ * shows them as it is typed, so all three judge the entry alike.
+ */
+fun clientDefOverlayFaults(entry: Map<String, Any?>): List<Pair<String, String>> = buildList {
+    if ((entry[CLD.clientId] as? String).isNullOrEmpty()) {
+        add(CLD.clientId to "A change to a client's definition in code names the client.")
+    }
+    for (key in entry.keys.filter { it !in clientDefOverlayKeys }) {
+        add(key to "A change to a client's definition in code may set only whether it has a sandbox.")
+    }
+    entry[CLD.sandbox]?.takeIf { it !is Boolean }?.let { add(CLD.sandbox to "Whether the client has a sandbox is true or false.") }
+}
+
 /** What a refusal to state a change of a code entry's keyed list adds: the way out. */
 private const val detachHint =
     "An overlay of the code keeps the code's entries here, in the code's order; detach the entry from the code to change them."

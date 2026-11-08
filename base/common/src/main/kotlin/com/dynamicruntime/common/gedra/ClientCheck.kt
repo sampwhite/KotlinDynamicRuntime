@@ -27,6 +27,11 @@ class ClientCheckResult(
      * Absent for a client the template supplies nothing.
      */
     val templateFills: Map<String, Map<String, Any?>> = emptyMap(),
+    /**
+     * The clients defined in code whose sandbox their stored configuration turned on (issue #1677), and their code did
+     * not: so a client's sandbox can be told apart as the code's, which only the code removes.
+     */
+    val sandboxTurnedOnByStored: Set<String> = emptySet(),
 )
 
 /**
@@ -65,10 +70,13 @@ fun checkClientDefs(
     // the write, and one already stored loses it here -- the client stands, presenting its template's package, if any.
     // Reported once, for the client that holds it: a sandbox carries its parent's definition, reported there.
     val storedPackages = IdentityHashMap<GedraConfig, String>()
+    // A definition in code whose sandbox the client's stored configuration turns on (issue #1677) runs with it on.
+    val turnedOn = SandboxConfigs.turnedOnByStored(configs)
+    val sandboxTurnedOnByStored = HashSet<String>()
     val raw = configs.configs.mapNotNull { config ->
         config.client?.let { declared ->
-            // A definition in code whose sandbox the client's stored configuration turns on (issue #1677) runs with it on.
-            val def = if (!config.isStored && !declared.sandbox && SandboxConfigs.overlayTurnsOn(configs, declared.clientId)) {
+            val def = if (!config.isStored && !declared.sandbox && declared.clientId in turnedOn) {
+                sandboxTurnedOnByStored.add(declared.clientId)
                 declared.copy(sandbox = true)
             } else {
                 declared
@@ -267,7 +275,7 @@ fun checkClientDefs(
         val (own, base) = holders[id]?.let { merges[it] } ?: return@mapNotNull null
         ClientExtension.templateFills(own, base, running).ifEmpty { null }?.let { id to it }
     }.toMap()
-    return ClientCheckResult(clients, issues, customers, templateFills)
+    return ClientCheckResult(clients, issues, customers, templateFills, sandboxTurnedOnByStored)
 }
 
 /**

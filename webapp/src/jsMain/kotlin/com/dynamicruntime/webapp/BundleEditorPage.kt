@@ -686,7 +686,11 @@ private fun ChildrenBuilder.entryView(
             summaryText = listOfNotNull(
                 entry.label, entryChangeText(entry.change),
                 // The columns are the client's own set, which replaces the code's as a whole (`columnsSetView`).
-                replaced?.let { replacesText(it, bundle.name) } ?: "added here".takeIf { merged && !editedAsSet(slot) },
+                replaced?.let { replacesText(it, bundle.name) } ?: when {
+                    // A change to the code's definition (issue #1677) is matched by its mark, the slot having no key.
+                    merged && slot == CCT.clientDef && data?.isCodeOverlay == true -> "changed here: whether it has a sandbox"
+                    else -> "added here".takeIf { merged && !editedAsSet(slot) }
+                },
                 draftMark(draft, check),
             ).joinToString(" — ")
             val before = entry.published

@@ -90,9 +90,9 @@ internal fun GedraConfigBuilder.codeOverlay(slot: String, entry: Map<String, Any
  * Reads [entry], a stored client definition marked `"overrides": "codeOverlay"`, over [code] (issue #1677): it changes
  * the client's definition in code, and for now only says whether the client has a sandbox ([clientDefOverlayKeys]). It
  * defines no client -- the code's definition stands -- and applies when the code declares the client it names, turning
- * the sandbox on where it sets `sandbox` ([GedraConfig.overlayAsksForSandbox]). Any other key is left out and said, as a
- * part of a workflow's overlay the code has no place for is; one naming a client the code does not declare is kept as
- * stored, applying nothing. With no [code] (a write's reassembly) it is only kept.
+ * the sandbox on where it sets `sandbox` ([GedraConfig.overlayAsksForSandbox]). Any other key is left out and said
+ * ([clientDefOverlayFaults]), as a part of a workflow's overlay the code has no place for is; one naming a client the
+ * code does not declare is kept as stored, applying nothing. With no [code] (a write's reassembly) it is only kept.
  */
 private fun GedraConfigBuilder.clientDefOverlay(entry: Map<String, Any?>, code: CodeEntries?) {
     val key = entry[CLD.clientId].toOptStr().orEmpty()
@@ -103,19 +103,7 @@ private fun GedraConfigBuilder.clientDefOverlay(entry: Map<String, Any?>, code: 
     if (code.definition(CCT.clientDef, key) == null) {
         return record(false, listOf("The client's code declares no definition of client '$key' for it to change."))
     }
-    record(true, clientDefOverlayFaults(entry))
-}
-
-/**
- * What is wrong with [entry], an overlay of a client's definition in code (issue #1677), one line a fault: a key it may
- * not hold ([clientDefOverlayKeys]), and a `sandbox` that is not true or false. What a write refuses, and what a load
- * leaves out and reports.
- */
-fun clientDefOverlayFaults(entry: Map<String, Any?>): List<String> = buildList {
-    for (key in entry.keys.filter { it !in clientDefOverlayKeys }) {
-        add("$key: a change to a client's definition in code may set only whether it has a sandbox.")
-    }
-    entry[CLD.sandbox]?.takeIf { it !is Boolean }?.let { add("${CLD.sandbox}: is true or false, not '$it'.") }
+    record(true, clientDefOverlayFaults(entry).map { (key, fault) -> "$key: $fault" })
 }
 
 /**

@@ -127,9 +127,11 @@ object SandboxConfigs {
      * The parents in [configs] that have a sandbox by the definition they run ([hasSandbox]). A sandbox itself never has
      * one: its definition is derived with the flag off.
      */
-    fun parentsWithSandboxes(configs: GedraConfigCollector): List<String> =
-        configs.configs.mapNotNull { it.client }.map { it.clientId }.distinct()
-            .filter { !isSandboxClient(it) && hasSandbox(configs, it) }
+    fun parentsWithSandboxes(configs: GedraConfigCollector): List<String> {
+        val turnedOn = turnedOnByStored(configs)
+        return configs.configs.mapNotNull { it.client }.distinctBy { it.clientId }
+            .filter { !isSandboxClient(it.clientId) && (it.sandbox || it.clientId in turnedOn) }.map { it.clientId }
+    }
 
     /**
      * Whether [client]'s stored configuration in [configs] turns its sandbox on by an overlay of its definition in code
@@ -138,6 +140,11 @@ object SandboxConfigs {
      */
     fun overlayTurnsOn(configs: GedraConfigCollector, client: String): Boolean =
         !isSandboxClient(client) && configs.configs.any { it.gedraId.client == client && it.isStoredHere && it.overlayAsksForSandbox }
+
+    /** Every client [overlayTurnsOn] answers true for, in one pass: what a whole check asks of every client at once. */
+    fun turnedOnByStored(configs: GedraConfigCollector): Set<String> =
+        configs.configs.filter { it.isStoredHere && it.overlayAsksForSandbox && !isSandboxClient(it.gedraId.client) }
+            .mapTo(HashSet()) { it.gedraId.client }
 
     /**
      * What [overlay] repeats of the parent's source configuration [parentSource] (issue #940), each named as a person

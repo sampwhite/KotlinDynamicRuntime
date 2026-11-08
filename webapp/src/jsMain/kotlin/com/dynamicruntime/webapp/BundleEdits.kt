@@ -10,6 +10,7 @@ import com.dynamicruntime.common.gedra.PORT
 import com.dynamicruntime.common.gedra.addressesEntry
 import com.dynamicruntime.common.gedra.canonicalKey
 import com.dynamicruntime.common.gedra.codeOverlayBodyField
+import com.dynamicruntime.common.gedra.clientDefOverlayFaults
 import com.dynamicruntime.common.gedra.codeOverlaySlots
 import com.dynamicruntime.common.gedra.codeOverlayShown
 import com.dynamicruntime.common.gedra.codeOverlayStale
@@ -255,7 +256,8 @@ private val unparsedBodies = SchOpts(schemaDocumentsUnparsed = true)
  * An entry marked as an overlay of the code (issue #1657) is checked whole, as typed, and its data is then the overlay a
  * save stores: only what differs from the code's entry. A change no overlay can state -- a task added, removed, or
  * moved -- is a problem whose way out is to detach the entry from the code, and each list without keys the overlay
- * restates is a note.
+ * restates is a note. An overlay of the client's definition in code is checked by what it may hold
+ * (`clientDefOverlayFaults`), not as a definition.
  */
 fun checkEntry(id: String, view: BundleEditorView, edits: BundleEdits, dataTypes: Map<String, SchType>): EntryCheck {
     val draft = edits.drafts[id] ?: return EntryCheck(null, emptyList())
@@ -267,6 +269,10 @@ fun checkEntry(id: String, view: BundleEditorView, edits: BundleEdits, dataTypes
             ?: return EntryCheck(null, listOf("An entry is a JSON object, not null."))
     }
     if (draft.original != null && data == draft.original) return EntryCheck(data, emptyList())
+    // An overlay of the client's definition in code (issue #1677) says only whether it has a sandbox: it is no definition.
+    if (draft.slot == CCT.clientDef && data.isCodeOverlay) {
+        return EntryCheck(data, clientDefOverlayFaults(data).map { (key, fault) -> "$key: $fault" })
+    }
     val key = view.slotKeys[draft.slot].orEmpty()
     val problems = mutableListOf<String>()
     dataTypes[draft.slot]?.let { type ->

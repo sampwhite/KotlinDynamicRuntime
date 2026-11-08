@@ -51,8 +51,16 @@ object ClientSandboxEdit {
         )
     }
 
-    /** Whether the code sets [client]'s sandbox (issue #1677): one it sets is removed there, never from the page. */
-    fun setInCode(cxt: KdrCxt, client: String): Boolean = codeDefiner(cxt, client)?.client?.sandbox == true
+    /**
+     * Whether [client]'s code sets its sandbox (issue #1677): one it sets is removed there, never from the page. Read off
+     * the definition the client runs, less a sandbox its stored configuration turned on, so a listing asks it of every
+     * row without looking through the configuration.
+     */
+    fun codeSetsSandbox(cxt: KdrCxt, client: String): Boolean {
+        val clients = ClientService.get(cxt)
+        return clients.known(client)?.sandbox == true && client !in clients.sandboxTurnedOnByStored &&
+            clients.originOf(client) == GedraConfigOrigin.source
+    }
 
     /** The code configuration that defines [client], or null for a client defined in stored configuration. */
     private fun codeDefiner(cxt: KdrCxt, client: String): GedraConfig? =
@@ -104,10 +112,24 @@ object ClientSandboxEdit {
             },
             restorePublished = holder?.isPublished == true,
         )
-        // A bundle the overlay was all of goes with it, now that its empty revision is published and changes nothing.
-        if (!sandbox) {
-            svc.readLatest(bound, configId)?.takeIf { it.entriesBySlot().values.all { e -> e.isEmpty() } }?.updatedAt?.let {
-                svc.deleteConfig(bound, configId, it)
+        if (!sandbox) deleteIfEmpty(cxt, bound, client, configId)
+    }
+
+    /**
+     * Deletes [configId] when the removal left it empty: a bundle the overlay was all of goes with it, now that its empty
+     * revision is published and changes nothing. Tidying only -- the sandbox is already gone -- so a delete that fails
+     * (someone wrote to the bundle a moment ago) leaves the empty bundle, said in the log, rather than failing the
+     * removal it follows.
+     */
+    private fun deleteIfEmpty(cxt: KdrCxt, bound: KdrCxt, client: String, configId: GedraId) {
+        val svc = GedraConfigService.get(bound)
+        val emptied = svc.readLatest(bound, configId)?.takeIf { it.entriesBySlot().values.all { e -> e.isEmpty() } } ?: return
+        val at = emptied.updatedAt ?: return
+        try {
+            svc.deleteConfig(bound, configId, at)
+        } catch (e: KdrException) {
+            LogGedra.warn(cxt) {
+                "Removed the sandbox of client '$client' but left its emptied configuration '${configId.baseId}': ${e.message}"
             }
         }
     }

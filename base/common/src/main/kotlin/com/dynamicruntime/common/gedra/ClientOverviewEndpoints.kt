@@ -659,9 +659,8 @@ fun overviewRow(
             put(CLD.sandboxOfName, ClientService.get(cxt).known(parent)?.name.orEmpty().ifEmpty { parent })
         }
         put(CLD.hasSandbox, !isSandboxClient(clientId) && ClientService.get(cxt).isPresent(sandboxOf(clientId)))
-        // Whether the switch may take it away (issue #1677), and whether this caller may use the switch at all.
-        if (!isSandboxClient(clientId) && ClientSandboxEdit.setInCode(cxt, clientId)) put(CLD.sandboxInCode, true)
-        ClientJoin.sandboxSwitchRefusal(cxt, clientId)?.let { put(CLD.sandboxLocked, it) }
+        // Whether the switch may take it away (issue #1677).
+        if (!isSandboxClient(clientId) && ClientSandboxEdit.codeSetsSandbox(cxt, clientId)) put(CLD.sandboxInCode, true)
         // A customer's root may not be retired (issue #1182): said, so the page offers no action that could only fail.
         ClientService.get(cxt).customers.values.firstOrNull { it.def.rootClientId == clientId }?.let { put(CLD.rootOf, it.def.customerId) }
         // The tier decides whether an unpublished revision is live (issue #1001); a sandbox runs its parent's latest.
@@ -670,8 +669,12 @@ fun overviewRow(
         // Of the client whose configuration it is: a sandbox's own derived definition is never static, and what is
         // changed from a sandbox is its parent's.
         put(CLD.staticHere, configs.isStaticHere(cxt, configOwnerOf(clientId)))
-        // For this caller alone (issue #1668): a visitor a deployment keeps out of a demo client's configuration.
-        ClientJoin.configEditRefusal(cxt, clientId)?.let { put(CLD.configLocked, it) }
+        // For this caller alone: a visitor a deployment keeps out of a demo client's configuration (issue #1668), and
+        // off its sandbox switch whatever it lets them change (issue #1677) -- the visitor asked about once for both.
+        ClientJoin.joinedDemoName(cxt, clientId)?.let { demo ->
+            if (!ClientJoin.visitorsMayEditConfig(cxt)) put(CLD.configLocked, ClientJoin.configEditRefusalOf(demo))
+            put(CLD.sandboxLocked, ClientJoin.sandboxSwitchRefusalOf(demo))
+        }
         // What its plan allows, and how much of it the client holds (issue #1109); a client on none has no row.
         PlanLimits.usageOf(cxt, clientId, forms, users.total)?.let { put(CLD.planUsage, it.toInfo()) }
     }

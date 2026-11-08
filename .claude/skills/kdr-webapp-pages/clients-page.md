@@ -551,7 +551,9 @@ files. The page lists them after the stored bundles under **From code** (its "Wh
   headed **From code** or **From template X** (`codeFromText`), and marked **changed in X** where a bundle of another
   name stands over it; one the stored bundle of its name changes is shown as that stored entry instead, its line
   **changed here** (`replacesText`), with the code's version beside it (`replacedVersion`). The stored bundle's other
-  entries are the client's own, added here.
+  entries are the client's own, added here, except an overlay of the client's definition (issue #1677), which the
+  sandbox switch writes: its line says **changed here: whether it has a sandbox**, matched by its mark since that slot
+  has no key. Its **Edit** is checked by what such an overlay may hold (`clientDefOverlayFaults`), not as a definition.
 - **Edit writes the override.** **Edit** on a code entry starts a new entry of the stored bundle of its name -- a new
   bundle if it has none -- holding the code's own entry marked `"overrides": "code"` (`overrideOf`); the code entry
   gives way to it while it is edited (`changesCodeEntry`), headed "Changing the code's entry". A code bundle's name is
