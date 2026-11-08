@@ -21,17 +21,6 @@ class PublicHomeTest {
     }
 
     @Test
-    fun otherAccountsLeaveOutTheUserTheSessionActsAs() {
-        val users = listOf(
-            UserChoice(1, CL.public, PERSONA.member, isCurrent = true),
-            UserChoice(2, "acme", PERSONA.admin, clientName = "Acme"),
-            UserChoice(3, "confdemo", PERSONA.editor),
-        )
-        assertEquals(listOf(2L, 3L), otherAccounts(users).map { it.userId })
-        assertTrue(otherAccounts(listOf(users[0])).isEmpty())
-    }
-
-    @Test
     fun aDemoOffersToOpenWhatWasJoinedAndToJoinWhatRemains() {
         fun role(name: String, userId: Long? = null, removed: Boolean = false) = JoinRoleView(name, name, PERSONA.admin, "", userId, removed)
         val none = JoinableView("acme", "Acme", null, listOf(role("admin")))
@@ -69,9 +58,10 @@ class PublicHomeTest {
         )
         val me = UserChoice(1, CL.public, PERSONA.member, isCurrent = true)
         val other = UserChoice(2, "acme", PERSONA.admin, clientName = "Acme")
-        assertEquals(setOf(HSEC.demos, HSEC.accounts, HSEC.ownClient), publicHomeSections(config(true, listOf(me, other))))
-        // No joining offered: no demos. No other accounts: no accounts list. Your own client is always there.
-        assertEquals(setOf(HSEC.accounts, HSEC.ownClient), publicHomeSections(config(false, listOf(me, other))))
+        assertEquals(setOf(HSEC.demos, HSEC.ownClient), publicHomeSections(config(true, listOf(me, other))))
+        // No joining offered: no demos. Your own client is always there. Other users add no section: the account
+        // menu lists them (issue #1672).
+        assertEquals(setOf(HSEC.ownClient), publicHomeSections(config(false, listOf(me, other))))
         assertEquals(setOf(HSEC.demos, HSEC.ownClient), publicHomeSections(config(true, listOf(me))))
         assertEquals(setOf(HSEC.ownClient), publicHomeSections(config(false, emptyList())))
     }
