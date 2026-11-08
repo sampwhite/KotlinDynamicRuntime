@@ -7,6 +7,7 @@ import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.gedra.GSRC
 import com.dynamicruntime.common.gedra.workflow.CDF
 import com.dynamicruntime.common.gedra.workflow.WFD
+import com.dynamicruntime.common.gedra.workflow.WfEntry
 import com.dynamicruntime.common.gedra.workflow.WSF
 import com.dynamicruntime.common.gedra.workflow.WVF
 import com.dynamicruntime.common.gedra.workflow.WfEngine
@@ -610,5 +611,32 @@ class WorkflowModelTest {
         assertEquals("Next: Accept the talk →", WorkflowCellWords().nextStepText("Accept the talk"))
         // A next task its display greys until something is done is not available, as its rail entry is inert.
         assertNull(nextTaskAfter(listOf(task("record"), task("accept", disabled = true)), "record", RailMark.complete))
+    }
+
+    @Test
+    fun anApprovalShowsTheTraitsOfTheTasksItApproves() {
+        // Issue #1695: the backend resolves which tasks an approval shows; the page draws their traits, read-only.
+        val type = parseSchemaTypes(mapOf("t.Note" to mapOf("type" to "object"))).getValue("t.Note")
+        fun trait(id: String) = WfTraitView(id, false, type, "t.Note", null)
+        val approval = parseApproval(
+            mapOf(WFD.prompt to "Read it, then accept.", WFD.button to "Accept", WVF.approved to false, WFD.showTasks to listOf("record")),
+        )!!
+        assertEquals(listOf("record"), approval.showTasks)
+        val record = WfTaskView("record", "Record the review", traits = listOf(trait("review")), saves = emptyList())
+        val accept = WfTaskView("accept", "Accept the talk", traits = emptyList(), saves = emptyList(), approval = approval)
+        val view = WorkflowView(
+            workflowId = "review", entry = WfEntry.normal.name, showTaskList = true, tasks = listOf(record, accept),
+            cfacts = emptyMap(),
+        )
+        assertEquals(listOf("review"), approvalShownTraits(view, accept).map { it.traitId })
+        // A task that is no approval shows nothing more; nor does an approval its display greys until something is done.
+        assertEquals(emptyList(), approvalShownTraits(view, record))
+        val greyed = WfTaskView(
+            "accept", "Accept the talk", traits = emptyList(), saves = emptyList(), approval = approval,
+            display = WfTaskDisplay("text", "Record the review first.", disabled = true),
+        )
+        assertEquals(emptyList(), approvalShownTraits(view, greyed))
+        // An approval delivered without the list (an older node) shows nothing more.
+        assertEquals(emptyList(), parseApproval(mapOf(WFD.prompt to "p", WFD.button to "b"))!!.showTasks)
     }
 }

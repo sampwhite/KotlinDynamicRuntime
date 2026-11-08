@@ -561,6 +561,84 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
         }
     }
 
+    // One trait of a task, as its panel draws it (issue #1695 made it its own, so an approval draws the traits of the
+    // task it approves the same way, read-only: an approval task saves nothing, so nothing in it is editable).
+    fun ChildrenBuilder.traitSection(task: WfTaskView, trait: WfTraitView) {
+        designFramed(designSession, DesignTarget.Trait(trait), trait.traitId) {
+        div {
+            className = ClassName("wf-trait")
+            // Its name as the section's heading, and its introduction under it as a muted caption (issue #1534):
+            // the layout's `label` -- inline Markdown, one line -- else the trait's name by the rule
+            // ([traitSectionLabel]), then its `description`. One block, so the caption sits directly under the
+            // heading (issue #1327's look).
+            val label = traitSectionLabel(trait)
+            val intro = trait.fieldLayout?.description?.takeIf { it.isNotBlank() }
+            if (label == null && intro == null) {
+                h2 { +traitName(trait) }
+            } else {
+                val heading = label ?: traitName(trait).escapeMarkdown()
+                Markdown {
+                    source = "## $heading" + (intro?.let { "\n\n$it" } ?: "")
+                    inlineUi = true
+                    linkResolver = copyLinks
+                }
+            }
+            // Locked for this caller (issue #857): shown as stored, and said why -- but only on a task they
+            // could otherwise save. On the locking workflow's own task the lock exempts exactly that task's
+            // savers, so the step is already read-only for them and said to be someone else's above.
+            wf.lockedTraits[trait.traitId]?.takeIf { task.canSave }?.let { held ->
+                p {
+                    className = ClassName("subtitle")
+                    +"Locked by ${held.joinToString(" and ") { it.label }}; it can't be changed here."
+                }
+            }
+            if (trait.traitId in unmetTraits) {
+                p {
+                    className = ClassName("error-text")
+                    +"This is required — please fill it in."
+                }
+            }
+            // Design View marks this trait's fields (issue #972); outside it the provider carries null.
+            DesignViewContext.Provider {
+                value = designSession?.forTrait(trait)
+                SchemaForm {
+                    type = trait.type
+                    this.values = valuesOf(trait.traitId)
+                    // A step this caller may not save (issue #856) or that has no save of this page's kind (issue
+                    // #817), or a trait locked for them (issue #857), stays read-only while the rest is edited.
+                    editable = editing && wf.isEditable(task, isEdit) && trait.traitId !in wf.lockedTraits
+                    friendly = true
+                    // In the read-only "View Info" view, show a trait's derived data values (issue #712) --
+                    // an expense report's total, computed by the backend -- rather than hiding them; the flag is
+                    // inert while editing, where a derived field has no control to draw. This form's root is
+                    // one trait's data type, so every derived-with-value field is content, not envelope.
+                    showDerivedValues = true
+                    derivedRootIsTraitData = true
+                    this.cfacts = wf.cfacts
+                    this.fieldLayouts = wf.fieldLayouts
+                    this.failures = shownFailures(
+                        failuresByTrait[trait.traitId].orEmpty(), committedByTrait[trait.traitId].orEmpty(),
+                        trait.traitId in wholeChecked,
+                    )
+                    this.prefill = prefillFor(trait.traitId)
+                    onChange = { valuesByTrait = valuesByTrait + (trait.traitId to it) }
+                    onFieldEdit = { field ->
+                        if (trait.traitId in unmetTraits) unmetTraits = unmetTraits - trait.traitId
+                        // First touch of a suggested default makes it the user's (issue #710); a reset can
+                        // bring it back. A nested field's path never matches a root default's name, so only
+                        // the top-level default it belongs to is un-suggested.
+                        val suggested = suggestedByTrait[trait.traitId]
+                        if (suggested != null && field in suggested) {
+                            suggestedByTrait = suggestedByTrait + (trait.traitId to (suggested - field))
+                        }
+                    }
+                    onFieldCommit = { path -> onFieldCommit(trait, path) }
+                }
+            }
+        }
+        }
+    }
+
     fun ChildrenBuilder.taskPanel(task: WfTaskView, showLabel: Boolean = true, next: WfTaskView? = null, satisfied: Boolean = false) {
         div {
             // A disabled display (issue #788) greys the whole step; nothing in it acts (see `isEditable`).
@@ -568,6 +646,9 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
             if (showLabel && wf.showTaskList && task.label.isNotBlank()) {
                 designFramed(designSession, DesignTarget.Task(task), task.id) { Markdown { source = task.label; inlineUi = true; linkResolver = copyLinks } }
             }
+            // What an approval approves (issue #1695): the traits of the task it follows (or those it names), read-only
+            // and above its prompt -- or above a display's text -- so the reviewer approves what is in front of them.
+            approvalShownTraits(wf, task).forEach { traitSection(task, it) }
             // A text display (issue #788) stands in for the task's whole rendering -- fields, saves, an approval's
             // button -- with its placeholders filled from the task's own data.
             displayTextOf(task)?.let { text ->
@@ -600,81 +681,7 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
                     +"There is nothing to fill in for this step here."
                 }
             }
-            task.traits.forEach { trait ->
-                designFramed(designSession, DesignTarget.Trait(trait), trait.traitId) {
-                div {
-                    className = ClassName("wf-trait")
-                    // Its name as the section's heading, and its introduction under it as a muted caption (issue #1534):
-                    // the layout's `label` -- inline Markdown, one line -- else the trait's name by the rule
-                    // ([traitSectionLabel]), then its `description`. One block, so the caption sits directly under the
-                    // heading (issue #1327's look).
-                    val label = traitSectionLabel(trait)
-                    val intro = trait.fieldLayout?.description?.takeIf { it.isNotBlank() }
-                    if (label == null && intro == null) {
-                        h2 { +traitName(trait) }
-                    } else {
-                        val heading = label ?: traitName(trait).escapeMarkdown()
-                        Markdown {
-                            source = "## $heading" + (intro?.let { "\n\n$it" } ?: "")
-                            inlineUi = true
-                            linkResolver = copyLinks
-                        }
-                    }
-                    // Locked for this caller (issue #857): shown as stored, and said why -- but only on a task they
-                    // could otherwise save. On the locking workflow's own task the lock exempts exactly that task's
-                    // savers, so the step is already read-only for them and said to be someone else's above.
-                    wf.lockedTraits[trait.traitId]?.takeIf { task.canSave }?.let { held ->
-                        p {
-                            className = ClassName("subtitle")
-                            +"Locked by ${held.joinToString(" and ") { it.label }}; it can't be changed here."
-                        }
-                    }
-                    if (trait.traitId in unmetTraits) {
-                        p {
-                            className = ClassName("error-text")
-                            +"This is required — please fill it in."
-                        }
-                    }
-                    // Design View marks this trait's fields (issue #972); outside it the provider carries null.
-                    DesignViewContext.Provider {
-                        value = designSession?.forTrait(trait)
-                        SchemaForm {
-                            type = trait.type
-                            this.values = valuesOf(trait.traitId)
-                            // A step this caller may not save (issue #856) or that has no save of this page's kind (issue
-                            // #817), or a trait locked for them (issue #857), stays read-only while the rest is edited.
-                            editable = editing && wf.isEditable(task, isEdit) && trait.traitId !in wf.lockedTraits
-                            friendly = true
-                            // In the read-only "View Info" view, show a trait's derived data values (issue #712) --
-                            // an expense report's total, computed by the backend -- rather than hiding them; the flag is
-                            // inert while editing, where a derived field has no control to draw. This form's root is
-                            // one trait's data type, so every derived-with-value field is content, not envelope.
-                            showDerivedValues = true
-                            derivedRootIsTraitData = true
-                            this.cfacts = wf.cfacts
-                            this.fieldLayouts = wf.fieldLayouts
-                            this.failures = shownFailures(
-                                failuresByTrait[trait.traitId].orEmpty(), committedByTrait[trait.traitId].orEmpty(),
-                                trait.traitId in wholeChecked,
-                            )
-                            this.prefill = prefillFor(trait.traitId)
-                            onChange = { valuesByTrait = valuesByTrait + (trait.traitId to it) }
-                            onFieldEdit = { field ->
-                                if (trait.traitId in unmetTraits) unmetTraits = unmetTraits - trait.traitId
-                                // First touch of a suggested default makes it the user's (issue #710); a reset can
-                                // bring it back. A nested field's path never matches a root default's name, so only
-                                // the top-level default it belongs to is un-suggested.
-                                val suggested = suggestedByTrait[trait.traitId]
-                                if (suggested != null && field in suggested) {
-                                    suggestedByTrait = suggestedByTrait + (trait.traitId to (suggested - field))
-                                }
-                            }
-                            onFieldCommit = { path -> onFieldCommit(trait, path) }
-                        }
-                    }
-                }
-                }
-            }
+            task.traits.forEach { traitSection(task, it) }
             // The save is per task (each task's own entries), shown only while editing. Disabled while there is
             // nothing to save (issue #717) -- the working values match the stored snapshot, the same comparison
             // that drives the rail's unsaved badge, so a prefilled task the user never touched offers no Save

@@ -162,6 +162,11 @@ it records who accepted the talk and when, and asserts the fact `talkAccepted`, 
 accepted it; before the review is recorded, a note that it comes first, greyed out; for a committee member, the
 button; for anyone else, a line saying a committee member accepts the talk.
 
+**What the approval shows.** Above its prompt, an approval task shows the review it is accepting: the traits of the
+task before it, read-only, so a committee member reads the score and the notes before pressing the button. That is the
+default, which is why the `accept` task says nothing about it. An approval that should show other tasks names them in
+its approval's `showTasks`, such as `"showTasks": ["recordReview"]`, and an empty list shows none.
+
 **A singleton.** The `singletons` list turns the workflow's own fact into one about the whole form: once
 `talkAccepted` holds, the form has `kdr:finished`, and the forms list shows the talk as **Finished**. That is a
 different thing from the workflow finishing, which it does when its tasks are complete, as any workflow does. The

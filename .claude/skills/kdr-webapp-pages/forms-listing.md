@@ -117,6 +117,11 @@ alone also confines the rows to X: on a client's own copy, an `allClients` calle
   it steps forward one task at a time. It shows while the step is complete with unsaved edits too, and is not offered
   for a next task its display disables, as its rail entry is inert; a task's own availability, when tasks gain one,
   belongs in the same rule.
+- **An approval shows what it approves** (issue #1695). Above its prompt -- or above its display's text -- an approval
+  task draws the traits of the tasks its approval shows (`showTasks` on the view's approval, which the backend
+  resolves: those the approval names, else the nearest earlier task that collects traits; `approvalShownTraits`),
+  through the same `traitSection` as their own task, read-only since an approval saves nothing. None on a step its
+  display disables.
 - **A workflow's listing is its own page** (`page=workflowForms`, issue #792): where a count on the Workflows
   page leads. `FormsPage` draws it in workflow mode -- the workflow as heading, a state switch, `← Workflows` --
   with the workflow and state riding the address as search keys (`formsDrillKeys`) so showing more, sorting and a client
