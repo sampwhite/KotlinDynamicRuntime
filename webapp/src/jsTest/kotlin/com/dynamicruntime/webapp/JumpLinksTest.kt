@@ -9,17 +9,12 @@ import kotlin.test.assertNull
 class JumpLinksTest {
     private val shipped = """
         - [Try a demo](#home.demos)
-        - [Your other accounts](#home.accounts)
         - [Your own client](#home.own-client)
     """.trimIndent()
 
     @Test
     fun aLinkToASectionIsKeptOnlyWhileTheSectionIsDrawn() {
-        assertEquals(shipped, jumpLinksFor(shipped, setOf(HSEC.demos, HSEC.accounts, HSEC.ownClient)))
-        assertEquals(
-            "- [Try a demo](#home.demos)\n- [Your own client](#home.own-client)",
-            jumpLinksFor(shipped, setOf(HSEC.demos, HSEC.ownClient)),
-        )
+        assertEquals(shipped, jumpLinksFor(shipped, setOf(HSEC.demos, HSEC.ownClient)))
         assertEquals("- [Your own client](#home.own-client)", jumpLinksFor(shipped, setOf(HSEC.ownClient)))
     }
 
@@ -50,15 +45,20 @@ class JumpLinksTest {
 
     @Test
     fun aRowOnOneLineLosesTheHiddenLinkAndItsSeparator() {
-        val row = "[Try a demo](#home.demos) · [Your other accounts](#home.accounts) · [Your own client](#home.own-client)"
-        assertEquals(row, jumpLinksFor(row, setOf(HSEC.demos, HSEC.accounts, HSEC.ownClient)))
-        assertEquals("[Your own client](#home.own-client)", jumpLinksFor(row, setOf(HSEC.ownClient)))
+        val row = "[Try a demo](#home.demos) · [Start here](/docs/start-here.md) · [Your own client](#home.own-client)"
+        assertEquals(row, jumpLinksFor(row, setOf(HSEC.demos, HSEC.ownClient)))
         assertEquals(
-            "[Try a demo](#home.demos) · [Your own client](#home.own-client)",
-            jumpLinksFor(row, setOf(HSEC.demos, HSEC.ownClient)),
+            "[Start here](/docs/start-here.md) · [Your own client](#home.own-client)",
+            jumpLinksFor(row, setOf(HSEC.ownClient)),
         )
-        assertEquals("[Try a demo](#home.demos)", jumpLinksFor(row, setOf(HSEC.demos)))
-        assertNull(jumpLinksFor(row, emptySet()))
+        assertEquals(
+            "[Try a demo](#home.demos) · [Start here](/docs/start-here.md)",
+            jumpLinksFor(row, setOf(HSEC.demos)),
+        )
+        assertEquals("[Start here](/docs/start-here.md)", jumpLinksFor(row, emptySet()))
+        val sectionsOnly = "[Try a demo](#home.demos) · [Your own client](#home.own-client)"
+        assertEquals("[Try a demo](#home.demos)", jumpLinksFor(sectionsOnly, setOf(HSEC.demos)))
+        assertNull(jumpLinksFor(sectionsOnly, emptySet()))
         // A lead-in stays; the separator after a removed first link goes with it.
         assertEquals(
             "Jump to: [Your own client](#home.own-client).",
@@ -89,7 +89,7 @@ class JumpLinksTest {
 
               More about demos.
             + [Your own client](#home.own-client)
-            1. [Your other accounts](#home.accounts)
+            1. [Demos again](#home.demos)
         """.trimIndent()
         assertEquals(
             "Jump to:\n\n\n+ [Your own client](#home.own-client)",

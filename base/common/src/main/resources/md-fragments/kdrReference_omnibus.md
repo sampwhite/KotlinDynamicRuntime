@@ -42,7 +42,6 @@ If you registered here before, log in instead. An account lasts only until the s
 - [Register](#home.card.register)
 - [Start here](/docs/start-here.md)
 - [Try a demo](#home.demos)
-- [Your other accounts](#home.accounts)
 - [Your own client](#home.own-client)
 
 

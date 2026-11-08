@@ -3,7 +3,6 @@ package com.dynamicruntime.webapp
 import com.dynamicruntime.common.home.HSEC
 import com.dynamicruntime.common.context.CL
 import com.dynamicruntime.common.context.UserProfile
-import com.dynamicruntime.common.user.UserChoice
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.launch
 import react.FC
@@ -14,7 +13,6 @@ import react.dom.html.ReactHTML.h2
 import react.dom.html.ReactHTML.h3
 import react.dom.html.ReactHTML.li
 import react.dom.html.ReactHTML.p
-import react.dom.html.ReactHTML.span
 import react.dom.html.ReactHTML.ul
 import react.useEffect
 import react.useState
@@ -23,26 +21,19 @@ import web.dom.ElementId
 
 private val publicHomeScope = MainScope()
 
-/** Where a switch asked from "Your other accounts" reports its failure; a demo card's is its client id. */
-private const val accountsSection = "#" + HSEC.accounts
-
 /**
  * Whether Home is the public home page (issue #1324): for a caller **signed in** to `public`. A visitor who has not
  * signed in acts in `public` too, and keeps the ordinary Home with its sign-in. Pure, and covered under `jsNodeTest`.
  */
 fun isPublicHome(user: UserProfile): Boolean = user.isLoggedIn && user.client == CL.public
 
-/** The person's users other than the one the session acts as: what "Your other accounts" lists. Pure. */
-fun otherAccounts(users: List<UserChoice>): List<UserChoice> = users.filterNot { it.isCurrent }
-
 /**
  * The sections the public home page draws for [config] (issue #1576), by their [HSEC] ids: Try a demo where joining is
- * offered, Your other accounts where the person has any, and Your own client always. The page draws by it, and the
- * jump links are kept by it ([jumpLinksFor]), so a link and its section cannot disagree. Pure.
+ * offered, and Your own client always. The page draws by it, and the jump links are kept by it ([jumpLinksFor]), so a
+ * link and its section cannot disagree. Pure.
  */
 fun publicHomeSections(config: HomeConfig): Set<String> = buildSet {
     if (config.joinOffered) add(HSEC.demos)
-    if (otherAccounts(config.users).isNotEmpty()) add(HSEC.accounts)
     add(HSEC.ownClient)
 }
 
@@ -62,14 +53,13 @@ external interface PublicHomeProps : Props {
 
 /**
  * The public home page (issue #1324), under Home's hero and intro, for a person signed in to `public`: what they can
- * do next on a teaching site, in three parts, under the deployment's word on where to begin when it has one
+ * do next on a teaching site, in two parts, under the deployment's word on where to begin when it has one
  * (`walkThrough`, issue #1429).
  *
  * 1. **Try a demo**, where the deployment offers joining ([HomeConfig.joinOffered], issue #1248): a card per demo
  *    client, its roles, and for each role joined an **Open as** switch; **Join…** leads to the Join page, which says
  *    what a shared space means before anyone joins. Absent, not empty, where joining is not offered.
- * 2. **Your other accounts**: the person's users in other clients, each a switch, as the account menu offers them.
- * 3. **Your own client**: the self-serve create (issue #1228), or a way to open the one made.
+ * 2. **Your own client**: the self-serve create (issue #1228), or a way to open the one made.
  */
 val PublicHome = FC<PublicHomeProps> { props ->
     val config = props.config
@@ -77,7 +67,7 @@ val PublicHome = FC<PublicHomeProps> { props ->
     var demos by useState<List<JoinableView>?>(null)
     var demosError by useState<DisplayError?>(null)
     var busy by useState(false)
-    // A failed switch, and where it was asked for -- a demo's client id, or the accounts list -- so it is said there.
+    // A failed switch, and the demo's client id it was asked from, so it is said on that demo's card.
     var switchError by useState<Pair<String, DisplayError>?>(null)
     val generation = useRefreshGeneration()
     val bump = useRefreshBump()
@@ -168,33 +158,6 @@ val PublicHome = FC<PublicHomeProps> { props ->
                         switchError?.takeIf { it.first == demo.client }?.let { errorText("Couldn't open ${demo.name}.", it.second) }
                     }
                 }
-            }
-        }
-
-        if (HSEC.accounts in sections) {
-            val others = otherAccounts(config.users)
-            div {
-                className = ClassName("public-home-section")
-                id = ElementId(HSEC.accounts)
-                copy.opt("publicHome", "accountsTitle")?.let { h2 { +it } }
-                copy.opt("publicHome", "accountsIntro")?.let { Markdown { source = it; linkResolver = copyLinks } }
-                ul {
-                    className = ClassName("public-accounts")
-                    for (user in others) {
-                        val shown = user.qualifierWithin(config.users).ifEmpty { user.label() }
-                        li {
-                            span { +shown }
-                            Button {
-                                size = "small"
-                                disabled = busy
-                                asDynamic()["aria-label"] = "Switch to $shown"
-                                onClick = { switchTo(accountsSection) { AuthApi.switchUser(user.userId) } }
-                                +"Switch"
-                            }
-                        }
-                    }
-                }
-                switchError?.takeIf { it.first == accountsSection }?.let { errorText("Couldn't switch.", it.second) }
             }
         }
 

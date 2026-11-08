@@ -166,19 +166,21 @@ none of its own.
 ## The public home page (issue #1324)
 
 For a caller **signed in** to `public` (`isPublicHome`), Home draws `PublicHome` under its hero and intro: what a
-person can do next on a teaching site, in three sections, each worded by `home.md`'s `@publicHome` keys (the
+person can do next on a teaching site, in two sections, each worded by `home.md`'s `@publicHome` keys (the
 `reference` flavor rewords `demosIntro` for its teaching site).
 
 1. **Try a demo**, only where the shell config says joining is offered (`state.joinOffered`) -- absent rather than
    empty elsewhere, and the page never asks: a card per client `GET /user/self/joinable` lists, its roles, an
    **Open as** switch for each role joined (`joinedRoles`), and **Join…** to the Join page while a role remains
    (`hasRoleToJoin`; one an administrator disabled is neither).
-2. **Your other accounts**: the shell config's `users` without the current one (`otherAccounts`), each labeled as the
-   bar labels it and a **Switch**.
-3. **Your own client**: `CreateOwnClientCard`.
+2. **Your own client**: `CreateOwnClientCard`.
 
-Which of the three are drawn is `publicHomeSections(config)`, and the page draws by it. Each section's container has a
-fixed id from `HSEC` (`home.demos`, `home.accounts`, `home.own-client`), never one taken from its heading, since the
+There is no list of the person's other users (issue #1672): the account menu switches between them, and a demo's card
+opens each role joined. It was a third section, drawn between these two once a person had a second user, and was
+removed because it offered only switches the page and the menu already had.
+
+Which of the two are drawn is `publicHomeSections(config)`, and the page draws by it. Each section's container has a
+fixed id from `HSEC` (`home.demos`, `home.own-client`), never one taken from its heading, since the
 heading is copy. The dot is deliberate: the id Markdown gives a heading (`headingSlug`) never has one, so a heading in
 the copy above (an intro's "Demos", say) cannot take a section's id.
 
@@ -193,8 +195,7 @@ Copy cannot say who sees what, so `jumpLinksFor(source, drawn)` (`JumpLinks.kt`)
 `publicHomeSections`:
 
 - A list item whose every link is an anchor (`#id`) for a section not drawn is dropped, with its continuation lines
-  and any items nested under it. So there is no "Try a demo" where joining is not offered, and no "Your other
-  accounts" for a person with none.
+  and any items nested under it. So there is no "Try a demo" where joining is not offered.
 - Anywhere else (a row written on one line, `[A](#home.demos) · [B](#home.own-client)`, or an item that also links
   elsewhere), such a link is removed with the separator after it when a separator or the line's end follows it, and
   is otherwise left as its words with no link, so a sentence still reads.
@@ -204,8 +205,8 @@ Copy cannot say who sees what, so `jumpLinksFor(source, drawn)` (`JumpLinks.kt`)
 
 Outside the public home page (a visitor who has not signed in, or any other client's Home), the drawn set is empty, so
 only links to something other than a section would show; the shipped list shows nothing there. The `reference` flavor
-puts **Start here** (`/docs/start-here.md`) before the shipped links, so its visitors who have not signed in see that
-one link.
+puts **Register** (`#home.card.register`, the Register card, issue #1652) and **Start here** (`/docs/start-here.md`)
+before the shipped links, so its visitors who have not signed in see those two.
 
 The anchors need no routing: a Markdown anchor is the browser's to follow (#1125), `scroll-padding-top` stops it below
 the app bar, and Back returns from it. An address that names a section on arrival (a reload after a jump) is scrolled

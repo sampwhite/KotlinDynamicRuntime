@@ -253,7 +253,6 @@ object HFLD {
 @Suppress("ConstPropertyName")
 object HSEC {
     const val demos = "home.demos"
-    const val accounts = "home.accounts"
     const val ownClient = "home.own-client"
 }
 

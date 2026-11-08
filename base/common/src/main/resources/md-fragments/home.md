@@ -7,13 +7,12 @@
 /- The wordmark shown beside the brand mark in the home page's hero. Absent = no hero. -/
 # +brand KDR
 # +title Welcome
-/- Under the title (issue #1576): links to the page's sections further down, by their ids -- `#home.demos`,
-   `#home.accounts`, `#home.own-client` (the public home page's; a heading's id never has a dot, so none can clash). A
-   link to a section not drawn for the caller is left out, and with no link left the row is not drawn, so empty removes
-   it. A link to anything else (`/docs/...`, `/wa/...`) is always kept. -/
+/- Under the title (issue #1576): links to the page's sections further down, by their ids -- `#home.demos` and
+   `#home.own-client` (the public home page's; a heading's id never has a dot, so none can clash). A link to a section
+   not drawn for the caller is left out, and with no link left the row is not drawn, so empty removes it. A link to
+   anything else (`/docs/...`, `/wa/...`) is always kept. -/
 # +jumpLinks
 - [Try a demo](#home.demos)
-- [Your other accounts](#home.accounts)
 - [Your own client](#home.own-client)
 
 # +intro
@@ -30,15 +29,12 @@ section, and says what to read for what you want to do.
 
 # @publicHome
 /- The public home page (issue #1324): for a person signed in to `public`, under the intro, what they can do next --
-   try a demo, open one of their other accounts, or make a client of their own. -/
+   try a demo, or make a client of their own. Their other users are in the account menu (issue #1672). -/
 /- Above the sections (issue #1429). Empty as shipped; the `reference` flavor links its walk-through here. -/
 # +walkThrough
 # +demosTitle Try a demo
 # +demosIntro
 Join a demo client with a user of your own email. Each one is shared with everyone who joins it.
-# +accountsTitle Your other accounts
-# +accountsIntro
-The users you have in other clients. Choose one to switch to it; the account menu does the same.
 /- Under the create card's starter workflows (issue #1384). Empty as shipped; the `reference` flavor says how a workflow
    made later is opened to people. -/
 # +createClientNote
