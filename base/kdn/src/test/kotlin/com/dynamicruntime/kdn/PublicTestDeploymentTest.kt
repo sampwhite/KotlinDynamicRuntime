@@ -77,6 +77,8 @@ class PublicTestDeploymentTest : StringSpec({
 
     fun features(client: TestHttpClient): Map<String, Any?> =
         client.sendJsonGetRequest(APP.uiConfig)[EP.results].toJsonMapOrEmpty()[UIC.features].toJsonMapOrEmpty()
+    fun settings(client: TestHttpClient): Map<String, Any?> =
+        client.sendJsonGetRequest(APP.uiConfig)[EP.results].toJsonMapOrEmpty()[UIC.settings].toJsonMapOrEmpty()
 
     "a test instance outside local and unit starts only as a public test deployment in dev" {
         refusal("ptdNotOptedIn", emptyMap(), publicDeployment = false) shouldContain PTD.publicTestDeploymentEnvVar.name
@@ -135,8 +137,12 @@ class PublicTestDeploymentTest : StringSpec({
         val features = features(plain)
         features[APP.publicTestDeployment] shouldBe true
         features[APP.hasTestAccess] shouldBe false
-        // A node that is not a public test deployment draws no band.
-        features(TestHttpClient(TestInstances.default("ptdNoBand").instanceConfig))[APP.publicTestDeployment] shouldBe false
+        // Its words, the home copy's, served with the flag (issue #1697): core's, with no flavor rewording them.
+        settings(plain)[APP.testDeploymentBand] shouldBe APP.defaultTestDeploymentBand
+        // A node that is not a public test deployment draws no band, and is sent no words for one.
+        val noBand = TestHttpClient(TestInstances.default("ptdNoBand").instanceConfig)
+        features(noBand)[APP.publicTestDeployment] shouldBe false
+        settings(noBand).containsKey(APP.testDeploymentBand) shouldBe false
     }
 
     // Issue #1652: the home page offers sign-in and registration exactly where the flow would take the caller. The rule

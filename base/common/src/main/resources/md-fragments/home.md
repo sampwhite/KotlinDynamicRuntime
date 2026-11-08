@@ -35,6 +35,12 @@ section, and says what to read for what you want to do.
 # +description Applications built around forms, set up as configuration and changed while they run.
 
 
+/- What a public test deployment's band says on every page (issue #1697), drawn only on such a deployment
+   (`KDR_PUBLIC_TEST_DEPLOYMENT`). Plain words: Markdown is reduced to its text. Empty says the words below. -/
+# @testDeployment
+# +band For testing and development only — data here may be reset at any time.
+
+
 # @publicHome
 /- The public home page (issue #1324): for a person signed in to `public`, under the intro, what they can do next --
    try a demo, or make a client of their own. Their other users are in the account menu (issue #1672). -/

@@ -2,10 +2,11 @@
    home page, on its sign-in page that an account here is temporary, on the profile page that the bar switches
    between a person's users too (issue #1330), and where a client or a workflow is made that a new workflow is seen
    by administrators only until it is opened up (issue #1384). The home page's Register card says, to a visitor who
-   has not signed in, why to register and what the address is used for (issue #1652), and a link to the site says what
-   it is in its preview (issue #1688). The sign-in line holds whichever
-   `KDR_PUBLIC_SIGN_IN` the deployment chose: under `blocked`, the refusal itself says why. A deployment rewords any of it with
-   `<flavor dir>/reference.md`, in this same format, naming only the keys it changes. -/
+   has not signed in, why to register and what the address is used for (issue #1652), a link to the site says what
+   it is in its preview (issue #1688), and the band a public test deployment draws says it calmly (issue #1697). The
+   sign-in line holds whichever `KDR_PUBLIC_SIGN_IN` the deployment chose: under `blocked`, the refusal itself says
+   why. A deployment rewords any of it with `<flavor dir>/reference.md`, in this same format, naming only the keys it
+   changes. -/
 
 # !home
 # @home
@@ -68,6 +69,11 @@ choose **Visibility…** on its row, and add a label to try it with a few people
 # +description
 Forms, reviews, and approvals, set up as configuration and changed while they run, with no code to deploy. Join a demo
 as one of its people or as the person who runs it, or build forms and workflows of your own.
+
+
+/- The band a public test deployment draws on every page (issue #1697), in words for a site that invites visitors. -/
+# @testDeployment
+# +band A demonstration site: what you add here is cleared from time to time.
 
 # !profile
 # @users
