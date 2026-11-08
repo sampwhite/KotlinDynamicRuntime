@@ -125,6 +125,35 @@ class HomeCardsTest {
     }
 
     @Test
+    fun theCallToActionLeadsTheRowAsAButtonAndNotAsALink() {
+        // Issue #1698: the Register card is the page's call to action, so the row draws a button doing what its button
+        // does -- opening Register -- not a link to the card, which on a window showing the whole page would do nothing.
+        val cards = homeCardsFrom(
+            listOf(
+                mapOf(
+                    HFLD.id to HCARD.register, UIB.action to HMENU.pageRegister, HCARD.actionLabel to "Register",
+                    HCARD.jumpLabel to "Register", HCARD.actionFirst to true,
+                ),
+                mapOf(HFLD.id to ASST.homeCard, HCARD.jumpLabel to "Workflow assistant", HCARD.kind to ASST.cardKind),
+                administer,
+            ),
+        )
+        assertEquals(listOf(true, false, false), cards.map { it.actionFirst })
+        assertEquals(listOf("Register" to HMENU.pageRegister), homeCardJumpButtons(cards))
+        // A call to action with nowhere to go keeps its link: a button must do something.
+        val noAction = homeCardsFrom(listOf(mapOf(HFLD.id to "nowhere", HCARD.jumpLabel to "Nowhere", HCARD.actionFirst to true)))
+        assertEquals(emptyList(), homeCardJumpButtons(noAction))
+        assertEquals(listOf("Nowhere" to homeCardElementId("nowhere")), homeCardJumpLinks(noAction, null))
+        assertEquals(listOf("Workflow assistant" to homeCardElementId(ASST.homeCard)), homeCardJumpLinks(cards, null))
+        // And the copy's own link to the card is dropped for the button, its card being left out of what is drawn.
+        val drawn = cards.filterNot { it.leadsJumpRow }.map { homeCardElementId(it.id) }.toSet()
+        assertEquals(
+            "- [Start here](/docs/start-here.md)",
+            jumpLinksFor("- [Register](#home.card.register)\n- [Start here](/docs/start-here.md)", drawn),
+        )
+    }
+
+    @Test
     fun cardLinksJoinTheCopysRowInItsOwnStyle() {
         val links = listOf("Workflow assistant" to "home.card.assistant")
         // After a list, as list items -- the shipped copy, and the reference flavor's "Start here" before it.

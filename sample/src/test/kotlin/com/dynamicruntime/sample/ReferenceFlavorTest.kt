@@ -75,6 +75,10 @@ class ReferenceFlavorTest : StringSpec({
         intro shouldContain "(/docs/start-here.md)"
         // The card leads the row of links under the title, ahead of "Start here".
         copy(reference, HFRAG.home, "home")["jumpLinks"].orEmpty().lines().first() shouldContain "(#home.card.register)"
+        // And the Register page says it again where the address is typed (issue #1698), since the home page's buttons
+        // go straight there; core's says nothing.
+        copy(reference, AFRAG.auth, "register")["intro"].orEmpty() shouldContain "not used for marketing"
+        copy(plain, AFRAG.auth, "register")["intro"] shouldBe ""
         // Anywhere else, the card says core's own words.
         copy(plain, HFRAG.home, ns)[key].orEmpty() shouldContain "If you have registered before, log in instead."
     }

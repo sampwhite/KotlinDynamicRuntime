@@ -1102,7 +1102,9 @@ button.wf-cell-folded { display: none; }
 .wf-help p, .home-note p { margin: 4px 0; }
 .home-note { margin-top: 12px; }
 /* The home page's jump links (issue #1576): a recessive row of links under the title, wrapping on a phone. */
-.home-jump-links { margin: 6px 0 16px; }
+/* A call to action leads the row as a button (issue #1698), the copy's links beside it, so a phone has it on its first
+   screen. */
+.home-jump-links { margin: 6px 0 16px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px; }
 .home-jump-links ul { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 4px 18px; }
 .home-jump-links li { margin: 0; font-size: 0.95rem; }
 .home-jump-links p { margin: 0; }
@@ -1616,6 +1618,8 @@ textarea.json-edit.json-field { min-height: 4.5rem; }
     align-items: start;
 }
 .home-card-links { display: flex; flex-wrap: wrap; gap: 4px 16px; }
+/* A call to action's card (issue #1698): its button and links lead, before its words. */
+.home-card-lead { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin: 4px 0 12px; }
 /* "Waiting on you" (issue #1637): each form linked to its step, with what the step asks beside it. */
 .home-waiting { margin: 0; padding-left: 18px; }
 .home-waiting li + li { margin-top: 4px; }

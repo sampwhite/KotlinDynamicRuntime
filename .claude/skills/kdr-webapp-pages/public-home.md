@@ -112,6 +112,17 @@ none of its own.
   Register and Log in are offered more widely (`kdr:signInOpenToSome`), since an administrator on the admin domain
   still signs in, and registers first, on a public test deployment whose login carries env auth. Both facts are
   `PublicTestDeployment`'s, asked of the rule the sign-in flows refuse by, and tested against it.
+- **Register is the page's call to action** (`HCARD.actionFirst`, issue #1698), since on a phone its button sat
+  several screens down, under the intro and its own three paragraphs. Such a card draws its button and links first, in
+  one row (`home-card-lead`), then its words; and the row under the title draws, in place of a link to it, a primary
+  button that does what the card's button does (`homeCardJumpButtons`, `HomeCard.leadsJumpRow`): Register opens the
+  Register page. Not a scroll to the card: on a window that shows the whole page, a scroll moves nothing, and a button
+  that does nothing reads as broken. The card is left out of what the row's links count as drawn, so a link the copy
+  writes to it (the `reference` flavor's `[Register](#home.card.register)`) is dropped by `jumpLinksFor`, and
+  `homeCardJumpLinks` adds none. A card with the flag but no page keeps its link; one without the flag draws as before.
+- **The Register page says what the address is for, where it is typed** (issue #1698): the auth file's `register.intro`,
+  empty in core, drawn above the form as the Log in page draws `login.intro`. The `reference` flavor repeats the card's
+  promise there, since both Register buttons on the home page come straight to the form.
 - **Waiting on you** (`HCARD.waiting`, issue #1637), first among a signed-in caller's, for anyone signed in to a client
   with a workflow whose step can wait (`kdr:clientHasWaitingWorkflows`: a normal or core details workflow), since its
   read is a pass over the forms the caller may see: the forms with a step that is the caller's to take, each linked to
@@ -216,7 +227,8 @@ Copy cannot say who sees what, so `jumpLinksFor(source, drawn)` (`JumpLinks.kt`)
 Outside the public home page (a visitor who has not signed in, or any other client's Home), the drawn set is empty, so
 only links to something other than a section would show; the shipped list shows nothing there. The `reference` flavor
 puts **Register** (`#home.card.register`, the Register card, issue #1652) and **Start here** (`/docs/start-here.md`)
-before the shipped links, so its visitors who have not signed in see those two.
+before the shipped links, so its visitors who have not signed in see those two -- Register as a button opening the
+Register page (issue #1698).
 
 The anchors need no routing: a Markdown anchor is the browser's to follow (#1125), `scroll-padding-top` stops it below
 the app bar, and Back returns from it. An address that names a section on arrival (a reload after a jump) is scrolled

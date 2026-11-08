@@ -8,6 +8,7 @@ import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.launch
 import react.ChildrenBuilder
 import react.FC
+import react.Key
 import react.Props
 import react.dom.html.ReactHTML.aside
 import react.dom.html.ReactHTML.div
@@ -153,16 +154,28 @@ val Home = FC<Props> {
                         // those whose section is drawn for this caller -- none outside the public home page.
                         // And to the cards that ask to be named there (issue #1636): the assistant's, which may sit below
                         // a long introduction, beside "Start here".
+                        // A card that is the page's call to action leads the row as its own button (issue #1698), and is
+                        // left out of what the links count as drawn, so a link the copy writes to it gives way to the button.
+                        val jumpButtons = homeCardJumpButtons(cards)
                         val drawn = (if (isPublicHome(current.user)) publicHomeSections(current) else emptySet()) +
-                            cards.map { homeCardElementId(it.id) }
+                            cards.filterNot { it.leadsJumpRow }.map { homeCardElementId(it.id) }
                         // Named apart from the Markdown components' `source` below, which a local `source` would shadow.
                         val jumpSource =
                             withCardJumpLinks(copy.opt(HFRAG.homeNs, HFRAG.jumpLinks), homeCardJumpLinks(cards, reads.assistantView))
-                        jumpLinksFor(jumpSource, drawn)?.let {
+                        val jumpLinks = jumpLinksFor(jumpSource, drawn)
+                        if (jumpButtons.isNotEmpty() || jumpLinks != null) {
                             nav {
                                 className = ClassName("home-jump-links")
                                 asDynamic()["aria-label"] = "On this page"
-                                Markdown { source = it; linkResolver = copyLinks }
+                                for ((label, page) in jumpButtons) {
+                                    Button {
+                                        key = page.unsafeCast<Key>()
+                                        type = "primary"
+                                        onClick = { navigate(listOf(HP.page to page)) }
+                                        +label
+                                    }
+                                }
+                                jumpLinks?.let { Markdown { source = it; linkResolver = copyLinks } }
                             }
                         }
                         copy.opt(HFRAG.homeNs, HFRAG.intro)?.let { Markdown { source = it; linkResolver = copyLinks } }
