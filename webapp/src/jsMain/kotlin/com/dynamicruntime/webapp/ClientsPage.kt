@@ -510,6 +510,7 @@ private fun ChildrenBuilder.clientDetail(
                     this.clientId = clientId
                     this.savesDraft = savesDraft
                     this.configEditable = configEditable
+                    paramsEditable = row?.configLocked == null
                     formsOpenable = impactFormsOpenable(acrossClients, onSandboxPage = row?.sandboxOf != null)
                     this.onChanged = onChanged
                 }
@@ -547,6 +548,7 @@ private fun ChildrenBuilder.clientDetail(
                             this.inPlace = inPlace
                             this.overrides = overrides.copy
                             this.savesDraft = savesDraft
+                            readOnly = row?.configLocked != null
                             this.onChanged = onChanged
                         }
                     }
@@ -574,6 +576,7 @@ private fun ChildrenBuilder.clientDetail(
                     sandboxOf = row.sandboxOf
                     hasSandbox = row.hasSandbox
                     staticHere = row.staticHere
+                    configLocked = row.configLocked
                     this.onChanged = onChanged
                 }
             }
@@ -664,6 +667,7 @@ private fun ChildrenBuilder.clientDetail(
                                 this.clientId = clientId
                                 this.savesDraft = savesDraft
                                 this.setBy = setBy
+                                readOnly = row?.configLocked != null
                                 this.onChanged = onChanged
                             }
                             if (otherBlocks.isNotEmpty()) {
@@ -1426,6 +1430,8 @@ external interface MenuEditorProps : Props {
     var setBy: Map<String, String>
     /** Whether a change is a draft, as the page last read the client ([savesAsDraft]): said under the table, and sent with each. */
     var savesDraft: Boolean
+    /** Whether the caller may only read the menu (issue #1668): a visitor kept out of a demo client's configuration. */
+    var readOnly: Boolean
     var onChanged: () -> Unit
 }
 
@@ -1601,6 +1607,8 @@ private val MenuEditor = FC<MenuEditorProps> { props ->
                                 td { +(props.setBy[item.itemId] ?: "\u2014") }
                                 td {
                                     when {
+                                        // Read, not changed (issue #1668): the page says why, above.
+                                        props.readOnly -> span { className = ClassName("subtitle"); +"\u2014" }
                                         // The client's own item (issue #1094): every action here changes a shipped
                                         // item, and the backend refuses one the shipped menu does not hold.
                                         item.added -> span {

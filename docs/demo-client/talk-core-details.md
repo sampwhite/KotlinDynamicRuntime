@@ -34,6 +34,7 @@ The `session` trait says where a talk fits in the program. For now it has one fi
   "appliesTo": ["formDoc"],
   "dataSchema": {
     "type": "object",
+    "title": "Session",
     "properties": {
       "track": {
         "type": "string",
@@ -64,6 +65,10 @@ The schema is standard JSON Schema with a few additions. The track is a string, 
 choices (see [Choices](reference.md#choices)). Because the `required` list includes `track`, data for a `session` is
 not valid until it has a track.
 
+The schema's own `title`, Session, is the name the app shows for the trait: the heading over its fields on a form, and
+the trait's name in the forms list and the editors. Every trait the demo defines has one, so none is shown by a name
+made from its id.
+
 ### Questionnaire
 
 The `questionnaire` trait holds five questions that every speaker answers. The core details workflow asks the first; the abstract
@@ -78,6 +83,7 @@ workflow, on a later page, asks the other four.
   "appliesTo": ["formDoc"],
   "dataSchema": {
     "type": "object",
+    "title": "Questionnaire",
     "properties": {
       "firstTalk": {
         "type": "boolean",

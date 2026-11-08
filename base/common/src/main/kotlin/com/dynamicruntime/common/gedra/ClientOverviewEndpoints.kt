@@ -79,6 +79,11 @@ fun clientOverviewSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CLD.overvie
                 "configuration changes nothing it runs (issue #1001).",
             required = true,
         ) { type = SCT.boolean }
+        property(
+            CLD.configLocked,
+            "Why the caller may not change the client's configuration, when they may not (issue #1668): a visitor of a demo " +
+                "client on a deployment that keeps visitors out of its configuration. Absent otherwise.",
+        )
         property(CLD.forms, "How many live form documents the client holds.", required = true) { type = SCT.integer }
         property(
             FSR.count,
@@ -650,6 +655,8 @@ fun overviewRow(
         // Of the client whose configuration it is: a sandbox's own derived definition is never static, and what is
         // changed from a sandbox is its parent's.
         put(CLD.staticHere, configs.isStaticHere(cxt, configOwnerOf(clientId)))
+        // For this caller alone (issue #1668): a visitor a deployment keeps out of a demo client's configuration.
+        ClientJoin.configEditRefusal(cxt, clientId)?.let { put(CLD.configLocked, it) }
         // What its plan allows, and how much of it the client holds (issue #1109); a client on none has no row.
         PlanLimits.usageOf(cxt, clientId, forms, users.total)?.let { put(CLD.planUsage, it.toInfo()) }
     }

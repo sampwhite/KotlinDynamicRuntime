@@ -46,6 +46,11 @@ external interface ClientWorkflowsSectionProps : Props {
      */
     var configEditable: Boolean
     /**
+     * Whether the caller may change the workflows' parameters -- the switch, who sees them, their time windows. False
+     * for a visitor a deployment keeps out of a demo client's configuration (issue #1668), who sees them listed alone.
+     */
+    var paramsEditable: Boolean
+    /**
      * The client copy's note for a new workflow's maker (`clients` file, `workflows.newWorkflowNote`, issue #1384): how a
      * workflow made restricted is opened to people. Empty as shipped; a deployment flavor says it.
      */
@@ -298,7 +303,7 @@ val ClientWorkflowsSection = FC<ClientWorkflowsSectionProps> { props ->
                                             }
                                         }
                                     }
-                                    if (w.enabledOffered) {
+                                    if (w.enabledOffered && props.paramsEditable) {
                                         Button {
                                             type = "link"
                                             size = "small"
@@ -307,14 +312,16 @@ val ClientWorkflowsSection = FC<ClientWorkflowsSectionProps> { props ->
                                             +"On/off…"
                                         }
                                     }
-                                    Button {
-                                        type = "link"
-                                        size = "small"
-                                        disabled = open != null
-                                        onClick = { open = visibilityKey(w.def.workflowId); note = null }
-                                        +"Visibility…"
+                                    if (props.paramsEditable) {
+                                        Button {
+                                            type = "link"
+                                            size = "small"
+                                            disabled = open != null
+                                            onClick = { open = visibilityKey(w.def.workflowId); note = null }
+                                            +"Visibility…"
+                                        }
                                     }
-                                    if (w.windowsOffered) {
+                                    if (w.windowsOffered && props.paramsEditable) {
                                         Button {
                                             type = "link"
                                             size = "small"

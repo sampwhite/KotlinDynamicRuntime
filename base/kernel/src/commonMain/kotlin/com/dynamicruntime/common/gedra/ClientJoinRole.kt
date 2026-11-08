@@ -31,6 +31,15 @@ object JOIN {
      */
     const val offeredKey = "publicJoinOffered"
 
+    /**
+     * The instance-config key that lets a visitor -- a user who joined a demo client ([offeredKey]) -- change that
+     * client's configuration (issue #1668): its bundles, its copy and menu, its workflows' parameters, through any
+     * editor or endpoint. Off by default, so a visitor administers a demo client's users and data but not what it runs
+     * for everyone; the `reference` flavor turns it on. No environment variable: a deployment flavor sets it. A client
+     * a visitor makes for themselves is theirs, and not touched by it.
+     */
+    const val visitorsEditConfigKey = "joinVisitorsEditConfig"
+
     // Wire names.
     const val client = "client"
     const val clientName = "clientName"

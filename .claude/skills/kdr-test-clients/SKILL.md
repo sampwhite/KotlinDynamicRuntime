@@ -475,7 +475,9 @@ There is a real clock abstraction (issue #160), but read the scope carefully for
 - `base/kdn/src/test/.../GedraConfigTierTest.kt` — the latest and published-only tiers, and `staticConfig`.
 - `base/kdn/src/main/.../confdemo/ConfDemo.kt` — **the full worked example of a client definition** (issue #1137): the
   conference demo, a client split into a `base` bundle and a bundle per workflow, built with the DSL and provisioned
-  by the `conf-demo` simulation. `docs/demo-client/` walks through its JSON for a reader, and `ConfDemoDocsTest` holds
+  by the `conf-demo` simulation -- or, where a deployment says so (`ConfDemo.fromCodeKey`, set by the `reference`
+  flavor, issue #1668), declared in code by the `kdn` component.
+  `docs/demo-client/` walks through its JSON for a reader, and `ConfDemoDocsTest` holds
   the two together. Read it for how the pieces fit; keep this skill's own examples short and test-shaped.
 - `base/common/.../gedra/GedraConfigService.kt` / `GedraConfigReload.kt` / `GedraConfigControl.kt` — the runtime.
 - Design docs (under `docs/design/`, also served in-app): `docs/design/gedra/config-and-data.md` (the model) and

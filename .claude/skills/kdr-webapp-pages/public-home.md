@@ -28,6 +28,14 @@ production client).
 - **Where joining is not offered**, or for a caller outside `public`, both endpoints answer 404, and the page shows
   that refusal. The demo clients `designdemo` and `confdemo` are provisioned at boot on a reference deployment
   (test instances only), so there is always one to join. The public home page (#1324) is where visitors meet it.
+- **A joined user is stamped a visitor's** (issue #1668): `ClientJoin.join` records the role in the user's data
+  (`AuthUserRow.joinedAs`), since persona and suffix cannot tell a visitor from the client's own administrator.
+- **Whether a visitor may change the demo client's configuration** is the deployment's (`JOIN.visitorsEditConfigKey`,
+  off by default, on in the `reference` flavor; `ClientJoin.configEditRefusal`). Off, every configuration write --
+  bundles, copy and menu, file refs, workflows' parameters, Design View -- refuses a visitor of a demo client (403),
+  and the overview row's `configLocked` says why, so the Clients page, the bundle editor, and Design View show it
+  read-only. A client the visitor made for themselves is theirs, untouched by it. Web assets are not configuration,
+  and are not covered.
 
 ## Creating your own client from the home page (issue #1228)
 

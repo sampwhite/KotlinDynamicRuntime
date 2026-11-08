@@ -74,6 +74,11 @@ class ClientOverview(
     val publishedOnly: Boolean = false,
     /** Whether the client takes nothing stored on this node -- static in production (issue #1001). */
     val staticHere: Boolean = false,
+    /**
+     * Why the caller may not change the client's configuration, when they may not (issue #1668): a visitor of a demo
+     * client on a deployment that keeps visitors out of its configuration. The page then shows it read-only.
+     */
+    val configLocked: String? = null,
     /** The client's plan and its usage against it (issue #1109); null for a client on none. */
     val planUsage: PlanUsage? = null,
     /** The customer whose root the client is (issue #1182), which may not be retired; null for any other client. */
@@ -110,6 +115,7 @@ fun parseClientOverview(items: List<Map<String, Any?>>): List<ClientOverview> = 
         hasSandbox = row[CLD.hasSandbox] == true,
         publishedOnly = row[CLD.publishedOnly] == true,
         staticHere = row[CLD.staticHere] == true,
+        configLocked = row[CLD.configLocked].toOptStr(),
         planUsage = PlanUsage.fromInfo(row[CLD.planUsage].toJsonMapOrEmpty().ifEmpty { null }),
         rootOf = row[CLD.rootOf].toOptStr(),
         formStatesRecalcLimit = int(FSR.limit),
@@ -1182,14 +1188,15 @@ fun definitionEditChanges(request: Map<String, Any?>): Boolean = ClientPresentat
 /**
  * Whether the detail offers the definition editor -- and the Traits and Workflows sections beside it -- for the client
  * [row] describes (issue #1026): one this node carries, defined in **stored** configuration (a source definition is
- * edited in source), and not static here (a static client takes nothing stored). A **sandbox** is offered them too
+ * edited in source), not static here (a static client takes nothing stored), and not locked for the caller (issue
+ * #1668: a visitor of a demo client a deployment keeps out of its configuration). A **sandbox** is offered them too
  * (issue #1358): it holds no configuration, so a save from its page is a draft of its parent's, which it runs -- and
  * whether that is stored is said by the parent's stored definition, which the page is handed for it. The backend
  * refuses each of these in its own words; this only spares showing an editor that cannot save. Pure, and covered
  * under `jsNodeTest`.
  */
 fun definitionEditable(row: ClientOverview?): Boolean =
-    row != null && row.status == ClientStatus.present.name && !row.staticHere &&
+    row != null && row.status == ClientStatus.present.name && !row.staticHere && row.configLocked == null &&
         (row.origin == GedraConfigOrigin.stored.name || row.sandboxOf != null)
 
 /** What the detail offers for editing the definition (issue #1026): the [editor], a [note] in its place, or neither yet. */
@@ -1716,6 +1723,8 @@ fun bundleAction(row: ClientOverview?, bundle: ConfigSummaryView): BundleAction 
     bundle.published -> BundleAction(false, null)
     row == null -> BundleAction(false, null)
     row.staticHere -> BundleAction(false, "This client takes no configuration made in the app on this node, so publishing changes nothing.")
+    // A visitor kept out of a demo client's configuration (issue #1668) publishes none of it either.
+    row.configLocked != null -> BundleAction(false, row.configLocked)
     row.hasSandbox -> BundleAction(
         false, "Publish from its sandbox, after previewing it there.", sandboxClient = sandboxOf(row.clientId), checkImpact = true,
     )
@@ -1782,7 +1791,7 @@ fun bundleContentsText(bundle: ConfigSummaryView): String {
  * sandbox, and a sandbox's page for its parent's -- since a bundle is deleted only once its emptying is published. Not
  * a client static here, which takes nothing stored. Pure.
  */
-fun deletesBundlesHere(row: ClientOverview?): Boolean = row != null && !row.staticHere && !row.hasSandbox
+fun deletesBundlesHere(row: ClientOverview?): Boolean = row != null && !row.staticHere && !row.hasSandbox && row.configLocked == null
 
 /**
  * The bundles a row offers **Delete** for (issue #1461): those whose latest revision and latest published revision

@@ -59,6 +59,17 @@ in `base/kdn` (`talk-icon.svg`, `ConfDemo.images`), and the document images in `
 Copy every client shares that names an `img:` no component ships is a boot problem too, and a client's copy naming
 one is refused when its configuration is written.
 
+### A client's tab icon and brand mark
+
+What a client presents itself with -- its tab icon and its brand mark, the logo in the app bar and on its home page --
+is not a component image but a **web resources package** (issue #1301): `webResources(id, favicon, brandMark)` in the
+component's `webResources`, each file a path under the module's `src/main/resources/web-resources/`, which a client
+**declared in code** names as its `webResourcesId` (a stored definition cannot). A slot the package leaves empty is the
+deployment's. Acme's is `sample:acme` (`acme/favicon.svg`, `acme/brand-mark.svg`); the conference demo's is
+`kdr:confdemo`, a brand mark alone, named where the demo is declared in code (issue #1668). Draw one for the app's dark
+bar, transparent, with no lettering, since the app sets the client's name beside it. A comment in an SVG may not hold
+`--`, so name a color token in words there, not by its CSS name.
+
 ## The house look
 
 **SVG by default.** It is text, small, diffable, and sharp at any width. PNG only for what is not drawn: a screenshot

@@ -59,6 +59,7 @@ and a list of objects.
   "appliesTo": ["formDoc"],
   "dataSchema": {
     "type": "object",
+    "title": "Abstract",
     "properties": {
       "summary": {
         "type": "string",

@@ -6,11 +6,12 @@ import com.dynamicruntime.common.startup.ServiceInitializer
 
 /**
  * Provisions the conference demo as the node starts (issue #1221), where [ConfDemo.provisionAtBootKey] says to -- the
- * `reference` deployment flavor sets it. The demo is written as stored bundles by the `conf-demo` simulation, which
- * only a caller with test access can run, and a reference deployment's database is temporary -- cleared from time to
- * time and recreated empty: without this, a visitor to a fresh one would find no demo. On a database that already
- * holds it, provisioning again rewrites the demo's configuration and keeps its users and forms, as a rerun of the
- * simulation does, so it is safe on every start.
+ * `reference` deployment flavor sets it. Where the demo is data-only, it is written as stored bundles by the `conf-demo`
+ * simulation, which only a caller with test access can run, and a reference deployment's database is temporary --
+ * cleared from time to time and recreated empty: without this, a visitor to a fresh one would find no demo. Where it is
+ * declared in code ([ConfDemo.fromCodeKey], which the `reference` flavor also sets, issue #1668), provisioning makes only
+ * its users. On a database that already holds it, provisioning again rewrites the demo's configuration (when it stores
+ * one) and keeps its users and forms, as a rerun of the simulation does, so it is safe on every start.
  *
  * The same provisioning the simulation runs, so the demo a visitor finds is the one the documentation describes,
  * with its speaker, organizer and committee member. On a test instance only, as the simulation is: it makes users at

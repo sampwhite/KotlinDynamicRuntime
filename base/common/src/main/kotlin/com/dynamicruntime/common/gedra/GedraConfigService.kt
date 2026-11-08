@@ -178,7 +178,7 @@ class GedraConfigService : ServiceInitializer {
             }
             checkWritableConfig(cxt, write.config)
         }
-        requireNotStaticHere(cxt, client, "writing its stored configuration")
+        requireChangeable(cxt, client, "writing its stored configuration")
         val twice = writes.groupBy { it.config.gedraId.revisionClass().fullId }.filterValues { it.size > 1 }.keys
         if (twice.isNotEmpty()) {
             throw KdrException.mkInput("Configs ${twice.sorted()} are each written more than once.")
@@ -305,7 +305,7 @@ class GedraConfigService : ServiceInitializer {
             ?: throw KdrException.mkInput("A config patch edits one client's configurations; it names ${ids.map { it.client }.distinct().sorted()}.")
         val twice = ids.groupBy { it.fullId }.filterValues { it.size > 1 }.keys
         if (twice.isNotEmpty()) throw KdrException.mkInput("Configs ${twice.sorted()} are each edited more than once in one patch.")
-        requireNotStaticHere(cxt, client, "patching its stored configuration")
+        requireChangeable(cxt, client, "patching its stored configuration")
         val wcxt = boundToClient(cxt, client)
         return underClientLock(wcxt, tranWrite) { sqlCxt, table ->
             val before = LinkedHashMap<String, GedraConfigRow?>()
@@ -562,7 +562,7 @@ class GedraConfigService : ServiceInitializer {
             ?: throw KdrException.mkInput("A publish names one client's configurations; it names ${ids.map { it.client }.distinct().sorted()}.")
         val twice = ids.groupBy { it.fullId }.filterValues { it.size > 1 }.keys
         if (twice.isNotEmpty()) throw KdrException.mkInput("Configs ${twice.sorted()} are each named more than once in one publish.")
-        requireNotStaticHere(cxt, client, "publishing its stored configuration")
+        requireChangeable(cxt, client, "publishing its stored configuration")
         val wcxt = boundToClient(cxt, client)
         val now = wcxt.instanceNow()
         return underClientLock(wcxt, tranPublish) { sqlCxt, table ->
@@ -611,7 +611,7 @@ class GedraConfigService : ServiceInitializer {
      */
     fun revertToEditable(cxt: KdrCxt, configClassId: GedraId): GedraConfigRow {
         val configId = configClassId.revisionClass()
-        requireNotStaticHere(cxt, configId.client, "reopening its stored configuration")
+        requireChangeable(cxt, configId.client, "reopening its stored configuration")
         if (publishedOnly(cxt, configId.client)) {
             throw KdrException.mkInput(
                 "Client '${configId.client}' consumes only its published configuration, so config " +
@@ -655,7 +655,7 @@ class GedraConfigService : ServiceInitializer {
     fun deleteConfig(cxt: KdrCxt, configClassId: GedraId, expectUpdatedAt: Instant): GedraConfigRow {
         val configId = configClassId.revisionClass()
         val name = configId.baseId
-        requireNotStaticHere(cxt, configId.client, "deleting its stored configuration")
+        requireChangeable(cxt, configId.client, "deleting its stored configuration")
         val wcxt = boundToClient(cxt, configId.client)
         return underClientLock(wcxt, tranDelete) { sqlCxt, table ->
             val latest = readLatestUnderLock(wcxt, sqlCxt, table, configId)
@@ -889,8 +889,13 @@ class GedraConfigService : ServiceInitializer {
     fun isStaticHere(cxt: KdrCxt, client: String): Boolean =
         cxt.instanceConfig.env == ENV.prod && client in staticClients(cxt)
 
-    /** Refuses [what] -- a change to [client]'s stored configuration -- when the client is [isStaticHere]. */
-    private fun requireNotStaticHere(cxt: KdrCxt, client: String, what: String) {
+    /**
+     * Refuses [what] -- a change to [client]'s stored configuration -- when the client is [isStaticHere], or the caller
+     * is a visitor this deployment does not let change a demo client's configuration (issue #1668,
+     * `ClientJoin.configEditRefusal`).
+     */
+    private fun requireChangeable(cxt: KdrCxt, client: String, what: String) {
+        ClientJoin.requireMayEditConfig(cxt, client, what)
         if (isStaticHere(cxt, client)) {
             throw KdrException.mkInput(
                 "Client '$client' is statically configured: in production its configuration comes from code " +
@@ -917,7 +922,7 @@ class GedraConfigService : ServiceInitializer {
      * a problem it does not already have.
      */
     fun setPublishedOnly(cxt: KdrCxt, client: String, value: Boolean, trial: Boolean = false): Boolean {
-        requireNotStaticHere(cxt, client, "toggling its published-only tier")
+        requireChangeable(cxt, client, "toggling its published-only tier")
         val wcxt = boundToClient(cxt, client)
         underClientLock(wcxt, tranWrite) { sqlCxt, _ ->
             val env = wcxt.instanceConfig.env

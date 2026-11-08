@@ -401,13 +401,16 @@ class CommonComponent : ComponentDefinition {
     /**
      * What core changes under a reference deployment (issue #1221): its home page, and a word on its sign-in page;
      * the site root opening on the web application rather than the endpoint portal (issue #1268); and visitors
-     * joining its demo clients, with `designdemo` provisioned at boot so there is one to join (issue #1248).
+     * joining its demo clients, with `designdemo` provisioned at boot so there is one to join (issue #1248), and free to
+     * change their configuration (issue #1668).
      */
     override fun flavors(cxt: KdrCxt): List<FlavorContribution> = listOf(
         flavor(FLV.reference) {
             omnibusOverlay("kdrReference")
             set(ACFG.landingFocus, ContextFocus.app.name)
             set(JOIN.offeredKey, true)
+            // Visitors may change the demo clients they join, the shared demo being theirs to try (issue #1668).
+            set(JOIN.visitorsEditConfigKey, true)
             set(DesignDemo.provisionAtBootKey, true)
         },
     )

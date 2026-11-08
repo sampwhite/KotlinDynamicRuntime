@@ -151,6 +151,8 @@ fun clientStatusChips(row: ClientOverview?, issueCount: Int): List<String> {
  */
 fun clientSaveEffectLine(row: ClientOverview?, savesDraft: Boolean): String? = when {
     row?.staticHere == true -> null
+    // A visitor kept out of a demo client's configuration (issue #1668): why the page changes nothing for them.
+    row?.configLocked != null -> "${row.configLocked} Its configuration is shown here, and not changed."
     row?.sandboxOf != null -> "Changes made here are drafts of ${row.sandboxOf}'s configuration, which this sandbox shows until they are published."
     savesDraft -> "Changes made here are drafts, shown in the client's sandbox until they are published."
     else -> "Changes made here are live for the client's people at once."

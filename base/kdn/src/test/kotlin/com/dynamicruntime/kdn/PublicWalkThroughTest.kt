@@ -8,6 +8,7 @@ import com.dynamicruntime.common.endpoint.EI
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.endpoint.HttpMethod
 import com.dynamicruntime.common.gedra.CCT
+import com.dynamicruntime.common.gedra.ConfigCodeLayer
 import com.dynamicruntime.common.gedra.CFEP
 import com.dynamicruntime.common.gedra.CIT
 import com.dynamicruntime.common.gedra.CLD
@@ -24,8 +25,7 @@ import com.dynamicruntime.common.gedra.GED
 import com.dynamicruntime.common.gedra.GEP
 import com.dynamicruntime.common.gedra.GID
 import com.dynamicruntime.common.gedra.GT
-import com.dynamicruntime.common.gedra.GedraConfigService
-import com.dynamicruntime.common.gedra.GedraConfigType
+import com.dynamicruntime.common.gedra.GedraConfigLoadService
 import com.dynamicruntime.common.gedra.GedraEditAction
 import com.dynamicruntime.common.gedra.GedraId
 import com.dynamicruntime.common.gedra.JOIN
@@ -133,16 +133,17 @@ class PublicWalkThroughTest : StringSpec({
         ConfDemo.abstractWorkflow to listOf(ConfDemo.abstract, ConfDemo.questionnaire),
         ConfDemo.reviewWorkflow to listOf(ConfDemo.review),
     )
-    // Each trait's data schema: the demo's own traits as its stored `base` bundle defines them, and the global ones --
-    // the core `name` trait -- as their `$ref` names a type the components declared.
+    // Each trait's data schema: the demo's own traits as its `base` bundle defines them -- in code, on a reference
+    // deployment (issue #1668) -- and the global ones, the core `name` trait, as their `$ref` names a type the components
+    // declared.
     val collector = SchemaCollector.get(cxt).shouldNotBeNull()
     val globalSchemas = collector.gedraConfigs.traitsFor(GID.globalClient).associate { trait ->
         val ref = trait.dataSchema[SCH.dRef].toOptStr()?.removePrefix(defsRefPrefix)
         trait.traitId to (ref?.let { collector.defs[it].toJsonMapOrEmpty() } ?: trait.dataSchema)
     }
-    val bound = cxt.mkSubContext("publicWalkThrough", ConfDemo.client)
-    val base = GedraConfigService.get(cxt).readLatest(bound, GedraId.of(GedraConfigType.configDoc, ConfDemo.client, ConfDemo.baseConfig))
-        .shouldNotBeNull().slotsForEmission(cxt.instanceConfig.isTestInstance).toJsonMapOrEmpty()
+    val base = ConfigCodeLayer.slotsOf(
+        GedraConfigLoadService.get(cxt).ownSourceOf(collector, ConfDemo.client).single { it.name == ConfDemo.baseConfig },
+    )
     val traitSchemas = globalSchemas + base[CCT.traitDef].toJsonListOfMaps()
         .associate { it[CCT.traitId].toOptStr()!! to it[CCT.dataSchema].toJsonMapOrEmpty() }
 

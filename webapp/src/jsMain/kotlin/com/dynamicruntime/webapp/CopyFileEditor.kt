@@ -32,6 +32,8 @@ external interface CopyFileEditorProps : Props {
     var overrides: List<CopyOverrideView>
     /** Whether a save is a draft, as the page last read the client (`savesAsDraft`): said under the bar, and sent with it. */
     var savesDraft: Boolean
+    /** Whether the caller may only read the copy (issue #1668): a visitor kept out of a demo client's configuration. */
+    var readOnly: Boolean
     /** What a save calls once it has taken effect: the page re-reads, and so does the shell. */
     var onChanged: () -> Unit
 }
@@ -283,6 +285,7 @@ val CopyFileEditor = FC<CopyFileEditorProps> { props ->
                             isRaw = row.address in raw,
                             isRefused = row.address in refused,
                             busy = saving,
+                            readOnly = props.readOnly,
                             onEdit = {
                                 editing = editing + row.address
                                 // The key's file becomes the chosen one, so clearing Find returns to the changes.
@@ -355,6 +358,7 @@ private fun ChildrenBuilder.copyKeyItem(
     isRaw: Boolean,
     isRefused: Boolean,
     busy: Boolean,
+    readOnly: Boolean,
     onEdit: () -> Unit,
     onClose: () -> Unit,
     onDraft: (String) -> Unit,
@@ -392,7 +396,7 @@ private fun ChildrenBuilder.copyKeyItem(
             span {
                 className = ClassName("copy-key-actions")
                 // An orphan has no shipped key to set, so a save of it would only be refused: reset is what works there.
-                if (!row.orphan && !isEditing && change?.reset != true) {
+                if (!readOnly && !row.orphan && !isEditing && change?.reset != true) {
                     span {
                         // Said on the wrapper: a disabled button takes no pointer events, so its own title would never show.
                         if (!editable) title = "Save or discard the changes to ${pendingCopyFile(pending)} first: a save is of one file."
@@ -405,7 +409,7 @@ private fun ChildrenBuilder.copyKeyItem(
                         }
                     }
                 }
-                if (copyRowOffersReset(row, pending)) {
+                if (!readOnly && copyRowOffersReset(row, pending)) {
                     Button {
                         type = "link"
                         size = "small"

@@ -89,6 +89,12 @@ The demo keeps the client in one bundle, and each workflow in a bundle of its ow
 bundle is published as a whole, so two workflows in one bundle are published together, and publishing one alone means
 first moving it to a bundle of its own.
 
+Where the bundles come from depends on the deployment. On a reference deployment, the demo is declared in code, so its
+bundles arrive with each release, and the bundle editor lists them under **From code**. A change you make to one of
+them there is stored as a change to the code's bundle, and a later release still reaches whatever you did not change.
+On a test instance of your own, the conf-demo simulation writes the same bundles as stored configuration. The bundles
+hold the same JSON either way.
+
 | Bundle | What it holds |
 | --- | --- |
 | `base` | The client, its own traits, and the columns of the forms list |

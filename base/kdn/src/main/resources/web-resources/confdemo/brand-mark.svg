@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <title>Conference demo brand mark</title>
+  <!-- The conference demo's brand mark (issue #1668): a talk's speech bubble, in the app's indigo accent
+       (the accent-bright token), with three dots in its text color (the text token) for someone speaking. Drawn by hand. Transparent,
+       for the app's dark bar; no lettering, since the app sets the client's name beside it. Shown in the app bar and on
+       the home page of the demo where it is declared in code. -->
+  <path fill="#818CF8" d="M12 8 H52 A8 8 0 0 1 60 16 V38 A8 8 0 0 1 52 46 H30 L16 57 V46 H12 A8 8 0 0 1 4 38 V16 A8 8 0 0 1 12 8 Z"/>
+  <circle fill="#E2E8F0" cx="19" cy="27" r="4.5"/>
+  <circle fill="#E2E8F0" cx="32" cy="27" r="4.5"/>
+  <circle fill="#E2E8F0" cx="45" cy="27" r="4.5"/>
+</svg>
