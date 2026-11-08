@@ -377,11 +377,14 @@ class UserService : ServiceInitializer {
         // default sign-in passes over is not the one marked.
         val signsInAs = defaultUserOf(cxt, identity)?.userId
         return registeredUsersOf(cxt, identity).filter { clients?.isPresent(it.client) != false }.map {
+            val def = clients?.known(it.client)
             UserChoice(
                 it.userId, it.client, it.persona, it.personaSuffix, it.name,
                 isCurrent = it.userId == profile.userId, isDefault = it.userId == identity.defaultUserId,
-                clientName = clients?.known(it.client)?.name?.ifBlank { null },
+                clientName = def?.name?.ifBlank { null },
                 signsInAs = it.userId == signsInAs,
+                // A user joined as a demo's role is named by the role (issue #1689), while its client still offers it.
+                roleLabel = it.joinedAs?.let { joined -> def?.joinRoles?.firstOrNull { role -> role.name == joined }?.label },
             )
         }
     }

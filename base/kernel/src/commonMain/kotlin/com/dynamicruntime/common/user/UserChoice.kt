@@ -18,6 +18,7 @@ object UCF {
     const val isDefault = "isDefault"
     const val signsInAs = "signsInAs"
     const val clientName = "clientName"
+    const val roleLabel = "roleLabel"
 }
 
 /**
@@ -47,6 +48,12 @@ data class UserChoice(
      * when a chosen default is disabled, unclaimed, or in a client not carried here, and sign-in passes it over.
      */
     val signsInAs: Boolean = false,
+    /**
+     * For a user the person got by joining a demo client, the label of the role they joined it as (issue #1689),
+     * `Speaker` or `Committee member`: the word they chose it by, which [qualifierWithin] says in place of the
+     * persona. Null for any other user, and for a role its client no longer offers.
+     */
+    val roleLabel: String? = null,
 ) {
     /**
      * The full label: the client and persona, the personaSuffix when there is one, and the name when there is one --
@@ -63,17 +70,25 @@ data class UserChoice(
      * with ` · `. Never empty for a list of two or more, since the key is unique across a person's users; empty
      * for a person with one user, who has nothing to tell apart. Given the user's [roles], a persona that is shown
      * says the access the user has when that differs from the persona's ([PERSONA.withActing], issue #1450): `Member
-     * (Administrator access)`. Pure, covered under `jsNodeTest`.
+     * (Administrator access)`.
+     *
+     * A user joined as a demo's role is told apart by the role's [roleLabel] in place of its persona term, and always,
+     * since the role is what the person chose it by (issue #1689): `Conference demo · Speaker` beside `Conference demo
+     * · Committee member`, where the personas would say `Member` and `Editor`. The persona stays in the full [label].
+     * Pure, covered under `jsNodeTest`.
      */
     fun qualifierWithin(siblings: List<UserChoice>, roles: Collection<String>? = null): String {
         if (siblings.size < 2) return ""
         val personaShown = siblings.any { it.persona != persona } || siblings.any { it.personaSuffix.isNotEmpty() }
-        // The persona and the personaSuffix read as one term (`Member 2`), as they do in the full label.
-        val personaPart = listOfNotNull(if (personaShown) PERSONA.label(persona) else null, personaSuffix.ifEmpty { null })
+        // The persona and the personaSuffix read as one term (`Member 2`), as they do in the full label; a joined role's
+        // label stands for both.
+        val personaPart = roleLabel?.trim()?.ifEmpty { null }?.let { listOf(it) }
+            ?: listOfNotNull(if (personaShown) PERSONA.label(persona) else null, personaSuffix.ifEmpty { null })
         val parts = buildList {
             // By its name when it has one (issue #1110): `Acme East`, not `acme_east`. The id is the tooltip's.
             if (siblings.any { it.client != client }) add(clientName?.ifBlank { null } ?: client)
-            // A suffix of its own makes the persona shown, so a persona part is always the persona's.
+            // A suffix of its own makes the persona shown, so a persona part is always the persona's, or the joined role's
+            // that stands for it; either says the access the user has beyond it.
             if (personaPart.isNotEmpty()) add(PERSONA.withActing(personaPart.joinToString(" "), persona, roles))
         }
         return parts.joinToString(" · ")
@@ -89,6 +104,7 @@ data class UserChoice(
         if (isDefault) put(UCF.isDefault, true)
         if (clientName != null) put(UCF.clientName, clientName)
         if (signsInAs) put(UCF.signsInAs, true)
+        if (roleLabel != null) put(UCF.roleLabel, roleLabel)
     }
 
     @Suppress("ConstPropertyName")
@@ -107,6 +123,7 @@ data class UserChoice(
             isDefault = info[UCF.isDefault] == true,
             clientName = info.getOptStr(UCF.clientName),
             signsInAs = info[UCF.signsInAs] == true,
+            roleLabel = info.getOptStr(UCF.roleLabel),
         )
 
         /** Defines the [infoTypeName] schema type (the shape of [toInfo]) on [builder], kept beside the serialization. */
@@ -122,6 +139,7 @@ data class UserChoice(
                 property(UCF.isDefault, "Whether this is the identity's chosen default user.") { type = SCT.boolean }
                 property(UCF.clientName, "The name of the user's client, when it has one.")
                 property(UCF.signsInAs, "Whether a sign-in by the person's address lands on this user.") { type = SCT.boolean }
+                property(UCF.roleLabel, "For a user joined as a demo client's role, that role's label.")
             }
         }
     }

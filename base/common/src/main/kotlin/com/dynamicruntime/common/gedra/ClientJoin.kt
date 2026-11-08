@@ -11,6 +11,7 @@ import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.user.AuthIdentityRow
 import com.dynamicruntime.common.user.AuthUserRow
 import com.dynamicruntime.common.user.PERSONA
+import com.dynamicruntime.common.user.UserChoice
 import com.dynamicruntime.common.user.UserService
 import com.dynamicruntime.common.user.authHandler
 import com.dynamicruntime.common.util.toOptStr
@@ -32,6 +33,9 @@ import com.dynamicruntime.common.util.toOptStr
  *   other visitors, are other visitors'. A join must carry the acknowledgment the Join page asks for, or it is refused
  *   -- unless the visitor has joined the client before ([Joinable.joined]), and so acknowledged it then: the disclosure
  *   is the client's, the same whichever role is chosen (issue #1410).
+ * - **The same person, by name and role.** A joined user with no name takes the name of the user the person joined
+ *   from, and the switcher names it by the role it was joined as ([UserChoice.roleLabel], issue #1689), so the bar
+ *   reads `Pat Visitor [Conference demo · Speaker]` rather than an address.
  */
 object ClientJoin {
     /** Whether this deployment offers joining a demo client (issue #1248). */
@@ -126,9 +130,18 @@ object ClientJoin {
         val missing = role.userLabels.filterNot { it in row.labels }
         // Stamped as a visitor's (issue #1668), so a deployment can tell them from the client's own users.
         val stamp = row.joinedAs != role.name
-        if (missing.isNotEmpty() || stamp) {
+        // The person's name, from the user they joined from, for a user that has none (issue #1689): a joined user is
+        // the same person, and without one the bar shows only their address. A name the user already has stays.
+        val joinedFrom = cxt.userProfile.userId
+        val name = if (row.name.isNullOrBlank() && row.userId != joinedFrom) {
+            users.queryByUserId(cxt, joinedFrom)?.name?.trim()?.ifEmpty { null }
+        } else {
+            null
+        }
+        if (missing.isNotEmpty() || stamp || name != null) {
             row.labels += missing
             row.joinedAs = role.name
+            if (name != null) row.name = name
             users.updateUser(cxt.mkSubContext("clientJoin", client), row)
         }
         return row

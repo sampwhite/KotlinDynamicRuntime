@@ -30,6 +30,10 @@ production client).
   (test instances only), so there is always one to join. The public home page (#1324) is where visitors meet it.
 - **A joined user is stamped a visitor's** (issue #1668): `ClientJoin.join` records the role in the user's data
   (`AuthUserRow.joinedAs`), since persona and suffix cannot tell a visitor from the client's own administrator.
+- **A joined user is the same person, by name and role** (issue #1689): a join gives a user with no name the name of
+  the user the person joined from, and the switch list carries the role's label (`UserChoice.roleLabel`, from the
+  client's `joinRoles` by `joinedAs`), which the bar's bracket says in place of the persona: `Pat [Conference demo ·
+  Speaker]`, `[Conference demo · Committee member]`. A role the client no longer offers falls back to the persona.
 - **Whether a visitor may change the demo client's configuration** is the deployment's (`JOIN.visitorsEditConfigKey`,
   off by default, on in the `reference` flavor; `ClientJoin.configEditRefusal`). Off, every configuration write --
   bundles, copy and menu, file refs, workflows' parameters, Design View -- refuses a visitor of a demo client (403),

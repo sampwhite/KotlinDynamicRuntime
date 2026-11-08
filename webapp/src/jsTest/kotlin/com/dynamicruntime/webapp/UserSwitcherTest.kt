@@ -73,6 +73,26 @@ class UserSwitcherTest {
     }
 
     @Test
+    fun aJoinedUserIsToldApartByItsRole() {
+        // Issue #1689: a user joined as a demo's role says the role, in place of its persona, even where the persona
+        // would not be shown -- the speaker and the public user are both members.
+        val public = UserChoice(7L, "public", "member", name = "Pat", clientName = "Public")
+        val speaker = UserChoice(8L, "confdemo", "member", name = "Pat", clientName = "Conference demo", roleLabel = "Speaker")
+        val committee = UserChoice(9L, "confdemo", "editor", name = "Pat", clientName = "Conference demo", roleLabel = "Committee member")
+        val all = listOf(public, speaker, committee)
+        assertEquals("Conference demo · Speaker", speaker.qualifierWithin(all))
+        assertEquals("Conference demo · Committee member", committee.qualifierWithin(all))
+        assertEquals("Public · Member", public.qualifierWithin(all))
+        assertEquals("Conference demo · Speaker", speaker.qualifierWithin(listOf(public, speaker)))
+        // A role's user acting beyond its persona says so, as a persona does.
+        assertEquals("Conference demo · Speaker (Administrator access)", speaker.qualifierWithin(all, listOf(ROLE.user, ROLE.admin)))
+        // The tooltip's full label keeps the persona, and the role rides the wire.
+        assertEquals("Conference demo (confdemo) / Member -- Pat", speaker.label())
+        assertEquals(speaker, UserChoice.fromInfo(speaker.toInfo()))
+        assertEquals("Speaker", speaker.toInfo()[UCF.roleLabel])
+    }
+
+    @Test
     fun theBadgeAppendsTheQualifierInBrackets() {
         val member = UserChoice(8L, "acme", "member")
         assertEquals("Ada [Admin]", identityBadgeText("Ada", listOf(ada, member)))
