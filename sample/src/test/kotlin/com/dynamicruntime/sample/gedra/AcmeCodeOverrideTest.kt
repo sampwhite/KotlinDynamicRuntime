@@ -3,6 +3,7 @@ package com.dynamicruntime.sample.gedra
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.CCT
 import com.dynamicruntime.common.gedra.ClientConfigIssues
+import com.dynamicruntime.common.gedra.DSV
 import com.dynamicruntime.common.gedra.GedraConfigReload
 import com.dynamicruntime.common.gedra.GedraConfigService
 import com.dynamicruntime.common.gedra.GedraConfigType
@@ -10,10 +11,13 @@ import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.GedraId
 import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.gedra.reassembleGedraConfig
+import com.dynamicruntime.common.gedra.sandboxOf
 import com.dynamicruntime.common.gedra.workflow.WFD
 import com.dynamicruntime.common.gedra.workflow.WorkflowService
+import com.dynamicruntime.common.gedra.workflow.workflowDefStamp
 import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.startup.SchemaService
+import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.kdn.Startup
 import com.dynamicruntime.sample.SampleComponent
 import io.kotest.assertions.throwables.shouldThrow
@@ -87,5 +91,28 @@ class AcmeCodeOverrideTest : StringSpec({
         def.tasks.first().saves.map { it.id } shouldBe listOf(SW.saveContact)
         def.tasks.size shouldBe 2
         def.eligibility.map { it.id } shouldBe listOf(SW.noOpenReview)
+    }
+
+    // Issue #1670: Design View changes acme's own code from its sandbox, as a draft of acme's configuration.
+    "Design View in acme's sandbox stores a change to its code as a draft overlay, which only the sandbox runs" {
+        val admin = TestUser.createFullAdmin(cxt, "design-admin@acme1670.test")
+        val sandbox = sandboxOf(SC.acme)
+        fun label(client: String) = WorkflowService.get(cxt).forClient(client).workflow(SW.auditReview).shouldNotBeNull().def.label
+        admin.postData(
+            DSV.labelEdit,
+            mapOf(
+                DSV.workflowId to SW.auditReview, DSV.label to "Site audit review", DSV.client to sandbox,
+                DSV.basedOn to workflowDefStamp(WorkflowService.get(cxt).forClient(sandbox).workflow(SW.auditReview).shouldNotBeNull().def),
+            ),
+        )
+        val row = GedraConfigService.get(cxt).readLatest(writer, GedraId.of(GedraConfigType.configDoc, SC.acme, codeBundle))
+            .shouldNotBeNull()
+        row.isPublished shouldBe false
+        row.entriesBySlot()[CCT.workflowDef].orEmpty().single { it[CCT.workflowId] == SW.auditReview } shouldBe mapOf(
+            CCT.workflowId to SW.auditReview, CCT.overrides to CCT.overridesCodeOverlayValue,
+            CCT.definition to mapOf(WFD.workflowId to SW.auditReview, WFD.label to "Site audit review"),
+        )
+        label(sandbox) shouldBe "Site audit review"
+        label(SC.acme) shouldBe "Audit review"
     }
 })

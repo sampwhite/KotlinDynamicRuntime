@@ -54,6 +54,12 @@ object DSV {
      */
     const val alteredBy = "alteredBy"
 
+    /**
+     * On an address, when the client's stored entry for the definition is an overlay of its code's (issue #1670): it
+     * holds only what the client changed, and the rest follows the code. Absent otherwise.
+     */
+    const val changesCode = "changesCode"
+
     // --- the definition read ---
 
     /** Reads one definition by address: its authored entry and where it was declared. Client-scoped admin. */
@@ -283,6 +289,12 @@ enum class DesignRefusal {
      * #1668): what Design View shows is read, not changed.
      */
     visitor,
+
+    /**
+     * The client's stored overlay of its code's definition holds parts the code no longer has a place for (issue #1670):
+     * an edit here would drop them unseen, so they are fixed or removed in the bundle editor, which says what is dropped.
+     */
+    staleOverlay,
 }
 
 /**

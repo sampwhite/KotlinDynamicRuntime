@@ -8,12 +8,16 @@ import com.dynamicruntime.common.gedra.CCT
 import com.dynamicruntime.common.gedra.CFEP
 import com.dynamicruntime.common.gedra.CLD
 import com.dynamicruntime.common.gedra.ClientService
+import com.dynamicruntime.common.gedra.DSV
 import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.gedra.GED
 import com.dynamicruntime.common.gedra.GedraConfigLoadService
 import com.dynamicruntime.common.gedra.GedraConfigService
 import com.dynamicruntime.common.gedra.GedraEditAction
 import com.dynamicruntime.common.gedra.JOIN
+import com.dynamicruntime.common.gedra.workflow.WFD
+import com.dynamicruntime.common.gedra.workflow.WorkflowService
+import com.dynamicruntime.common.gedra.workflow.workflowDefStamp
 import com.dynamicruntime.common.startup.SchemaCollector
 import com.dynamicruntime.common.user.AEP
 import com.dynamicruntime.common.user.AFLD
@@ -120,5 +124,16 @@ class DemoSwitchesTest : StringSpec({
         visitor.selfClient() shouldBe CL.public
         join(visitor, ConfDemo.organizerRole)
         visitor.postData(CFEP.bundlePatch, change)
+
+        // And in Design View (issue #1670): a change to the demo's code workflow is stored as an overlay of it.
+        val flow = WorkflowService.get(reference).forClient(ConfDemo.client).workflow(ConfDemo.createTalkWorkflow).shouldNotBeNull().def
+        visitor.postData(
+            DSV.labelEdit,
+            mapOf(DSV.workflowId to ConfDemo.createTalkWorkflow, DSV.label to "Submit a talk", DSV.basedOn to workflowDefStamp(flow)),
+        )
+        val stored = GedraConfigService.get(reference).listConfigs(reference.mkSubContext("demoSwitches", ConfDemo.client))
+            .single { it.configId.baseId == ConfDemo.createTalkConfig }.entriesBySlot()[CCT.workflowDef].orEmpty().single()
+        stored[CCT.overrides] shouldBe CCT.overridesCodeOverlayValue
+        stored[CCT.definition] shouldBe mapOf(WFD.workflowId to ConfDemo.createTalkWorkflow, WFD.label to "Submit a talk")
     }
 })

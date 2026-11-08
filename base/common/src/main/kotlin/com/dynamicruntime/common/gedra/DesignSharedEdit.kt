@@ -41,18 +41,31 @@ object DesignSharedEdit {
             DSV.usedBy to whereUsed(cxt, typeNames),
             DSV.variantFields to variantFields(cxt, typeNames),
         )
-        var refusal = refusal(cxt, declaredBy)
+        var refusal = refusal(cxt, declaredBy, slot)
         // Read where the configuration lives: a sandbox's rows are its parent's (issue #930).
         val readCxt = SandboxEdits.parentCxt(cxt, cxt.client) ?: cxt
-        val stored = if (refusal == null) storedEntry(readCxt, declaredBy!!, slot, key) else null
-        val body = stored?.get(bodyField(slot)).toJsonMapOrEmpty()
+        // The entry an edit is based on: the stored one, or for a type of the client's own code with none, the code's
+        // (issue #1670), whose first edit stores an overlay of it.
+        val stored = if (refusal != null) null else storedEntry(readCxt, declaredBy!!, slot, key)
+        val code = if (refusal != null || stored != null) null else codeEntry(cxt, declaredBy!!, slot, key)
+        val entry = stored ?: code
+        // What the page shows and checks: an overlay merged over the code's, the whole type.
+        val body = entry?.let { e ->
+            try {
+                wholeOf(cxt, slot, key, e, fromCode = code != null).body
+            } catch (ex: KdrException) {
+                // A stored overlay the code has moved out from under (issue #1670): fixed in the bundle editor.
+                refusal = EditRefusal(DesignRefusal.staleOverlay, ex.message.orEmpty())
+                null
+            }
+        }.orEmpty()
         refusal = refusal ?: extensionRefusal(body)
         out[DSV.canEditShared] = refusal == null
         if (refusal != null) {
             out[DSV.sharedRefusal] = refusal.message
             out[DSV.sharedRefusalCode] = refusal.code.name
-        } else if (stored != null) {
-            out[DSV.sharedBasedOn] = stampOf(stored)
+        } else if (entry != null) {
+            out[DSV.sharedBasedOn] = stampOf(entry)
             // Said before Save rather than after it (issue #1039).
             out[DSV.sharedCopyRefusals] = body[SCH.properties].toJsonMapOrEmpty().keys
                 .mapNotNull { field -> sharedCopyRefusal(body, field)?.let { field to it } }.toMap()
@@ -61,11 +74,12 @@ object DesignSharedEdit {
     }
 
     /**
-     * Why this caller may not edit the definition [declaredBy] declares, or null when they may: it must be declared in
-     * the client's own stored configuration, and then the rules every Design View save shares with the Clients page's
-     * editors ([DesignView.saveRefusal]).
+     * Why this caller may not edit the definition [declaredBy] declares, in [slot], or null when they may: it must be
+     * declared in the client's own stored configuration or its own code -- a type of whose is changed by an overlay, and
+     * a trait of whose is not (issue #1670), which is why [slot] is asked -- and then the rules every Design View save
+     * shares with the Clients page's editors ([DesignView.saveRefusal]).
      */
-    fun refusal(cxt: KdrCxt, declaredBy: GedraConfig?): EditRefusal? {
+    fun refusal(cxt: KdrCxt, declaredBy: GedraConfig?, slot: String): EditRefusal? {
         if (declaredBy == null || declaredBy.gedraId.client == GID.globalClient) {
             val where = declaredBy?.let { " (${it.name})" }.orEmpty()
             return EditRefusal(
@@ -73,7 +87,16 @@ object DesignSharedEdit {
                 "This definition is declared globally$where, for every client, so it is not this client's to edit here.",
             )
         }
-        if (!declaredBy.isStored || declaredBy.gedraId.client != cxt.client) {
+        // The client's own code: a type of it is changed by storing an overlay of it (issue #1670), as the bundle editor
+        // does. A trait's type is not: a trait declared in code is replaced whole, which the bundle editor does.
+        if (DesignView.isOwnCode(cxt, declaredBy) && slot == CCT.traitDef) {
+            return EditRefusal(
+                DesignRefusal.declaredInSource,
+                "This trait is declared in code (${declaredBy.name}). A trait changes only whole: replace it for this client " +
+                    "in the bundle editor.",
+            )
+        }
+        if (declaredBy.gedraId.client != cxt.client) {
             val where = if (declaredBy.isStored) "in another client's configuration" else "in code"
             return EditRefusal(
                 DesignRefusal.declaredInSource,
@@ -138,6 +161,29 @@ object DesignSharedEdit {
     /** A stamp of a stored slot entry: what a shared edit is based on, compared under the write lock. */
     fun stampOf(entry: Map<String, Any?>): String = entry.toJsonStr(compact = true).crc32Hex()
 
+    /**
+     * The entry a first edit of [key] -- a type of the client's own code, declared by [config] -- is based on (issue
+     * #1670): the code's, as a stored one would read, so its stamp is the page's to send back. Null for anything else.
+     */
+    private fun codeEntry(cxt: KdrCxt, config: GedraConfig, slot: String, key: String): Map<String, Any?>? {
+        if (slot != CCT.schemaDef || !DesignView.isOwnCode(cxt, config)) return null
+        val body = config.defs[key].toJsonMapOrEmpty().ifEmpty { return null }
+        return linkedMapOf(CCT.typeName to key, CCT.schema to body)
+    }
+
+    /**
+     * [entry] as the whole definition an edit rewrites: the code's own ([fromCode], [codeEntry]) as the base of an overlay
+     * not stored yet, a stored overlay merged over the code's, anything else as it is.
+     */
+    private fun wholeOf(cxt: KdrCxt, slot: String, key: String, entry: Map<String, Any?>, fromCode: Boolean): StoredWhole {
+        val body = entry[bodyField(slot)].toJsonMapOrEmpty()
+        return when {
+            fromCode -> StoredWhole(slot, key, body, body)
+            slot != CCT.schemaDef -> StoredWhole(slot, key, body, null)
+            else -> StoredWhole.of(cxt, cxt.client, slot, key, entry)
+        }
+    }
+
     /** The stored entry for [key] in [slot] of [config]'s latest revision, or null. */
     private fun storedEntry(cxt: KdrCxt, config: GedraConfig, slot: String, key: String): Map<String, Any?>? {
         val row = GedraConfigService.get(cxt).readLatest(cxt, GedraId.of(GedraConfigType.configDoc, cxt.client, config.name))
@@ -196,9 +242,10 @@ object DesignSharedEdit {
          * overlay of the code's type merged over it (issue #1657).
          */
         fun storedBody(cxt: KdrCxt): Map<String, Any?> {
-            val entry = storedEntry(SandboxEdits.parentCxt(cxt, cxt.client) ?: cxt, config, slot, key) ?: return emptyMap()
-            if (slot == CCT.schemaDef) return StoredWhole.of(cxt, cxt.client, slot, key, entry).body
-            return entry[bodyField(slot)].toJsonMapOrEmpty()
+            val stored = storedEntry(SandboxEdits.parentCxt(cxt, cxt.client) ?: cxt, config, slot, key)
+            // A type of the client's own code with nothing stored yet is the code's (issue #1670).
+            val entry = stored ?: codeEntry(cxt, config, slot, key) ?: return emptyMap()
+            return wholeOf(cxt, slot, key, entry, fromCode = stored == null).body
         }
     }
 
@@ -208,13 +255,14 @@ object DesignSharedEdit {
      */
     private fun sharedTarget(cxt: KdrCxt, typeName: String): SharedTarget {
         val config = DesignView.typeLayers(cxt, cxt.client, typeName).declaredBy
-        refusal(cxt, config)?.let { throw KdrException.mkInput(it.message) }
+        val trait = config?.let { DesignView.traitGenerating(it, typeName) }
+        val slot = if (trait != null) CCT.traitDef else CCT.schemaDef
+        refusal(cxt, config, slot)?.let { throw KdrException.mkInput(it.message) }
         config!!
-        val trait = DesignView.traitGenerating(config, typeName)
         if (trait != null && trait.typeName == typeName) {
             throw KdrException.mkInput("'$typeName' is a trait's entry type; its data fields are on the trait's data type.")
         }
-        return SharedTarget(config, if (trait != null) CCT.traitDef else CCT.schemaDef, trait?.traitId ?: typeName)
+        return SharedTarget(config, slot, trait?.traitId ?: typeName)
     }
 
     /**
@@ -233,20 +281,27 @@ object DesignSharedEdit {
         DesignView.saveEdit(cxt, config.name, impact) { slots ->
             val entries = slots[slot].orEmpty()
             val at = entries.indexOfFirst { it[keyField(slot)] == key }
-            if (at < 0) throw KdrException("No $slot entry '$key' in '${config.name}'.", code = EXC.notFound)
+            // A type of the client's own code with nothing stored yet: its first edit stores an overlay of it (issue #1670).
+            val code = if (at < 0) codeEntry(cxt, config, slot, key) else null
+            val entry = if (at >= 0) entries[at] else code
+                ?: throw KdrException("No $slot entry '$key' in '${config.name}'.", code = EXC.notFound)
             // An overlay of the code's type is edited whole, and kept as its change (issue #1657).
-            val whole = if (slot == CCT.schemaDef) StoredWhole.of(cxt, cxt.client, slot, key, entries[at]) else null
-            val body = whole?.body ?: entries[at][bodyField(slot)].toJsonMapOrEmpty()
+            val whole = wholeOf(cxt, slot, key, entry, fromCode = code != null)
             // Before the stamp: drawing the page again would not make an extension editable here.
-            extensionRefusal(body)?.let { throw KdrException.mkInput(it.message) }
-            if (stampOf(entries[at]) != basedOn) {
+            extensionRefusal(whole.body)?.let { throw KdrException.mkInput(it.message) }
+            if (stampOf(entry) != basedOn) {
                 throw KdrException(
                     "'$key' has changed since this page was drawn; reload it and make the change again.",
                     code = EXC.conflict,
                 )
             }
-            val rewritten = rewrite(body).let { whole?.stored(it) ?: it }
-            slots + (slot to entries.mapIndexed { i, e -> if (i == at) e + (bodyField(slot) to rewritten) else e })
+            val rewritten = whole.stored(rewrite(whole.body))
+            val written = if (at >= 0) {
+                entries.mapIndexed { i, e -> if (i == at) e + (bodyField(slot) to rewritten) else e }
+            } else {
+                entries + codeOverlayEntry(keyField(slot), key, bodyField(slot), rewritten)
+            }
+            slots + (slot to written)
         }
         val readCxt = SandboxEdits.parentCxt(cxt, cxt.client) ?: cxt
         return storedEntry(readCxt, config, slot, key)?.let { stampOf(it) } ?: ""

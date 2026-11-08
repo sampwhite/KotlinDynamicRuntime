@@ -134,10 +134,13 @@ class DesignAddress(
     val origin: String,
     val config: String?,
     val alteredBy: DesignLayer? = null,
+    /** Whether the client's stored entry is an overlay of its code's (issue #1670), holding only what it changed. */
+    val changesCode: Boolean = false,
 ) {
     /** This address with [more] appended to its path -- a field inside the definition's body. */
-    fun below(more: List<String>): DesignAddress =
-        if (more.isEmpty()) this else DesignAddress(slot, key, (listOfNotNull(path) + more).joinToString("."), origin, config, alteredBy)
+    fun below(more: List<String>): DesignAddress = if (more.isEmpty()) this else {
+        DesignAddress(slot, key, (listOfNotNull(path) + more).joinToString("."), origin, config, alteredBy, changesCode)
+    }
 }
 
 /** One layer behind a definition (issue #1013): where it is held -- the [origin] (a [DesignOrigin] name) and [config]. */
@@ -193,6 +196,7 @@ fun parseDesignAddress(raw: Any?): DesignAddress? {
     return DesignAddress(
         slot, key, m[DSV.path].toOptStr(), m[DSV.origin].toOptStr() ?: DesignOrigin.global.name,
         m[DSV.config].toOptStr(), (m[DSV.alteredBy] as? Map<*, *>)?.toJsonMapOrEmpty()?.let(::parseDesignLayer),
+        changesCode = m[DSV.changesCode] == true,
     )
 }
 
@@ -338,8 +342,10 @@ fun fieldOwner(rootName: String, rootType: SchType, dataPath: String): FieldOwne
  * two things -- what every client shares, and what is this client's own.
  */
 fun provenanceText(address: DesignAddress): String {
-    val declared = when (address.origin) {
-        DesignOrigin.stored.name, DesignOrigin.source.name ->
+    val declared = when {
+        // An overlay of the code's (issue #1670): the client's change, stored, over what the code declares.
+        address.changesCode -> "This client's change to its code, stored in " + layerText(DesignLayer(address.origin, address.config))
+        address.origin == DesignOrigin.stored.name || address.origin == DesignOrigin.source.name ->
             "This client's own, declared in " + layerText(DesignLayer(address.origin, address.config))
         else -> "Shared by every client, from " + (address.config ?: "the platform")
     }

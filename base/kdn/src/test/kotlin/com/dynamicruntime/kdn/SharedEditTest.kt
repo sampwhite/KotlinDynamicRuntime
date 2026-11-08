@@ -265,12 +265,18 @@ class SharedEditTest : StringSpec({
         label(reviewView(), contactType, DesignDemo.contactEmail) shouldBe "Email the organizers"
     }
 
-    "a definition declared globally or in source is not this client's to edit, and says which" {
+    "a definition declared globally, or in another client's code, is not this client's to edit, and says which" {
         val name = definition(CCT.traitDef, GT.name)
         name[DSV.canEditShared] shouldBe false
         name[DSV.sharedRefusalCode] shouldBe DesignRefusal.declaredGlobally.name
-        val inSource = gedraConfig(LiteCxt(), "inCode1029", clientNamespace(client), client, GedraConfigOrigin.source) {}
-        DesignSharedEdit.refusal(cxt.mkSubContext("setup", client), inSource)?.code shouldBe DesignRefusal.declaredInSource
+        val setup = cxt.mkSubContext("setup", client)
+        val elsewhere = gedraConfig(LiteCxt(), "inCode1029", clientNamespace("other1029"), "other1029", GedraConfigOrigin.source) {}
+        DesignSharedEdit.refusal(setup, elsewhere, CCT.schemaDef)?.code shouldBe DesignRefusal.declaredInSource
+        // The client's own code: a type of it is edited by storing an overlay (issue #1670); a trait of it is not, since a
+        // trait changes only whole.
+        val own = gedraConfig(LiteCxt(), "inCode1029", clientNamespace(client), client, GedraConfigOrigin.source) {}
+        DesignSharedEdit.refusal(setup, own, CCT.schemaDef)?.code shouldNotBe DesignRefusal.declaredInSource
+        DesignSharedEdit.refusal(setup, own, CCT.traitDef)?.code shouldBe DesignRefusal.declaredInSource
     }
 
     "a configuration carrying somebody's unpublished changes is refused; published, editing returns" {
