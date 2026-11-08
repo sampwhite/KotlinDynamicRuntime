@@ -248,8 +248,9 @@ the query schema says the same.
 
 ## Waiting on you (issue #1637)
 
-The listing's `needsMe` keeps the forms with a step **waiting on the caller**: an engaged workflow whose current task
-is theirs to take. The backend judges it (`WaitingSteps`), from each form's stored state, by the rule the save and
+The listing's `needsMe` keeps the forms with a step **waiting on the caller**: an engaged workflow, not done, whose
+current task is theirs to take. Done is the cell's finished (`workflowDoneIn`): every task complete, or the workflow has
+asserted `kdr:finished`, which it may do before its last task -- so a workflow the cell draws finished waits on nobody. The backend judges it (`WaitingSteps`), from each form's stored state, by the rule the save and
 approve gates apply, narrowed to the person the step names:
 
 - an approval waits on whoever may approve it (by default a reviewer who does not own the form), and its CTA filter;

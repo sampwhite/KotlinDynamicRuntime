@@ -157,8 +157,7 @@ fun formWorkflowsOf(states: List<Map<String, Any?>>, phaseOf: (String) -> WfPhas
             val failures = data[WFS.eligibilityFailures].toJsonListOrEmpty()
                 .mapNotNull { it.toJsonMapOrEmpty()[WFD.id].toOptStr() }
             val category = when {
-                isEngaged && (WSC.finished in data[WFS.singletonCfacts].toJsonListOrEmpty().map { it.toOptStr() } ||
-                    data[WFS.tasksDone] == true) -> WfColumnCategory.finished
+                isEngaged && workflowDoneIn(data) -> WfColumnCategory.finished
                 isEngaged -> WfColumnCategory.engaged
                 data[WFS.eligible] == true -> WfColumnCategory.eligible
                 else -> WfColumnCategory.ineligible
@@ -167,6 +166,14 @@ fun formWorkflowsOf(states: List<Map<String, Any?>>, phaseOf: (String) -> WfPhas
         }
         .sortedBy { it.category.ordinal }
 }
+
+/**
+ * Whether a workflow's stored state entry [data] says it is done: every task complete and valid, or the workflow has
+ * asserted the framework's finished fact ([WSC.finished]), which a workflow may do before its last task. What the cell
+ * calls finished, and what the backend's "waiting on you" asks first, so a finished workflow waits on nobody.
+ */
+fun workflowDoneIn(data: Map<String, Any?>): Boolean =
+    data[WFS.tasksDone] == true || WSC.finished in data[WFS.singletonCfacts].toJsonListOrEmpty().map { it.toOptStr() }
 
 /**
  * What a workflow asks of the person looking at a form (issue #1597), the forms list's **weight**: in the order a cell
