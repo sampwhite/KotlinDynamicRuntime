@@ -27,6 +27,14 @@ section, and says what to read for what you want to do.
 # +note
 
 
+/- What the site says of itself where it is linked from elsewhere (issue #1688): the browser tab's title, and the title
+   and description a link preview (LinkedIn, Slack, a messenger) shows. The production shell reads them as it serves
+   the page, for the caller's client, as plain words: Markdown is reduced to its text. -/
+# @site
+# +title KotlinDynamicRuntime
+# +description Applications built around forms, set up as configuration and changed while they run.
+
+
 # @publicHome
 /- The public home page (issue #1324): for a person signed in to `public`, under the intro, what they can do next --
    try a demo, or make a client of their own. Their other users are in the account menu (issue #1672). -/

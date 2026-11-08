@@ -3,7 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Kotlin React Webapp</title>
+    <!-- The dev shell's title is fixed. The production shell (AppUiPage) takes it, a description, and the link-preview
+         tags from the `home` file's `site` copy (issue #1688), which a dev server has no way to read. -->
+    <title>KotlinDynamicRuntime</title>
     <!-- The stylesheet and the icons are served straight from jsMain/resources by the dev server, from the
          origin root -- linked absolute, so a page at a deep path (issue #1370) still finds them. AppUiPage declares the same set for the production shell, where `appui` embeds them and
          serves them under the app context root. The CSS lives in app.css, NOT inline here: both shells link

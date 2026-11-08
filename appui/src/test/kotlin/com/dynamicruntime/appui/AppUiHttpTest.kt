@@ -205,6 +205,44 @@ class AppUiHttpTest : StringSpec({
             resourceBytes("/webapp/apple-touch-icon.png").toList()
     }
 
+    "GET /wa/share-image.png serves the link-preview image byte-for-byte (issue #1688)" {
+        val resp = client("appShareImage").sendGetRequestRaw("/wa/share-image.png")
+        resp.rptStatusCode shouldBe 200
+        resp.rptResponseMimeType shouldBe "image/png"
+        resp.rptResponseBytes.shouldNotBeNull().toList() shouldBe resourceBytes("/webapp/share-image.png").toList()
+    }
+
+    "the shell's title and link-preview tags come from the site copy, its addresses relative with no public URL (issue #1688)" {
+        val body = client("appPreview").sendGetRequestRaw("/wa/docs/start-here").rptResponseData!!
+        // Core's own `site` copy, as a deployment with no flavor has it.
+        body shouldContain "<title>KotlinDynamicRuntime</title>"
+        body shouldContain "<meta property=\"og:title\" content=\"KotlinDynamicRuntime\">"
+        body shouldContain "<meta name=\"description\" content=\"Applications built around forms,"
+        body shouldContain "<meta property=\"og:description\" content=\"Applications built around forms,"
+        body shouldContain "<meta name=\"twitter:card\" content=\"summary_large_image\">"
+        // No KDR_PUBLIC_URL: the image by the app root's path, at its hashed name, and no og:url, since only that
+        // setting gives an address no request can choose.
+        body shouldContain "<meta property=\"og:image\" content=\"/wa/share-image.png:"
+        body shouldNotContain "og:url"
+    }
+
+    "with a public URL the preview's addresses are absolute, the page's being the app root's (issue #1688)" {
+        val cxt = Startup.mkTestBootCxt(
+            "appPreviewPublic", "appUiHttpTestPublicUrl", mapOf("KDR_PUBLIC_URL" to "https://site.example/"),
+            additionalComponents = listOf(AppUiComponent()),
+        )
+        val body = TestHttpClient(cxt.instanceConfig).sendGetRequestRaw("/wa/docs/start-here").rptResponseData!!
+        body shouldContain "<meta property=\"og:url\" content=\"https://site.example/wa\">"
+        body shouldContain "<meta property=\"og:image\" content=\"https://site.example/wa/share-image.png:"
+    }
+
+    "the shell escapes what the copy says (issue #1688)" {
+        val meta = ShellMeta("Tom & Jerry's <site>", "Say \"hi\"", "/wa/share-image.png", null)
+        val html = AppUiPage.render("{}", "wa", { it }, meta)
+        html shouldContain "<title>Tom &amp; Jerry&#39;s &lt;site&gt;</title>"
+        html shouldContain "<meta property=\"og:description\" content=\"Say &quot;hi&quot;\">"
+    }
+
     "GET /wa/favicon.ico serves the ICO byte-for-byte" {
         val resp = client("appIco").sendGetRequestRaw("/wa/favicon.ico")
         resp.rptStatusCode shouldBe 200

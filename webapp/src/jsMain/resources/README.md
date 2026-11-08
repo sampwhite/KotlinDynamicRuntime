@@ -16,6 +16,8 @@ place of the bundle, so they need no webapp build.
 | `favicon.ico` | Legacy tab icon (16+32+48 embedded). See the caveat below. |
 | `favicon-32.png` | Tab-icon fallback for browsers that don't take the SVG. |
 | `apple-touch-icon.png` | 180×180, opaque background — iOS home screen. |
+| `share-image.png` | 1200×630 — the image a link preview (LinkedIn, Slack, a messenger) shows, named by the production shell's `og:image` (issue #1688). Rendered from `share-image.svg`. |
+| `share-image.svg` | The share image's source, **not embedded**: edit it and render the PNG again (`rsvg-convert -w 1200 -h 630 share-image.svg -o share-image.png`, as its comment says). |
 
 ## These are the *defaults* — a deployment can override them
 
@@ -32,8 +34,9 @@ Every icon is copied **verbatim** from the branding set (`~/Downloads/branding`,
 That set is the source of truth and holds more than this: the master mark, a `currentColor` mono variant, and
 `favicon-16/48` plus `icon-192/512`. Regenerate there, then re-copy — do not hand-edit these files.
 
-The SVGs carry their own header comments explaining their roles. The rasters cannot, which is why this file
-exists.
+The share image is the exception: it is not in the branding set, but drawn here around the master mark, whose paths
+it copies verbatim, with the app's colors and the product's name. The SVGs carry their own header comments explaining
+their roles. The rasters cannot, which is why this file exists.
 
 ## What is deliberately not here, and why
 

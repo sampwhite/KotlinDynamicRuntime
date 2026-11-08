@@ -23,18 +23,20 @@ package com.dynamicruntime.appui
  * `<style>` block here.
  *
  * Written as a multi-dollar (`$$`) string so a bare `$` is literal; the injected values are the bootstrap
- * config (`cfgJson`), the app context root (`appRoot`), and `versioned`, which maps an asset filename to its
+ * config (`cfgJson`), the app context root (`appRoot`), `versioned`, which maps an asset filename to its
  * content-hashed form (`webapp.js:1a2b3c`) so the browser can cache it forever and still see a new build --
- * [AppUiService] supplies the hashing and strips the suffix on the way back in (issue #137).
+ * [AppUiService] supplies the hashing and strips the suffix on the way back in (issue #137) -- and the [ShellMeta],
+ * what the page says of the site where it is linked from elsewhere (issue #1688).
  */
 object AppUiPage {
-    fun render(cfgJson: String, appRoot: String, versioned: (String) -> String): String = $$"""
+    fun render(cfgJson: String, appRoot: String, versioned: (String) -> String, meta: ShellMeta): String = $$"""
 <!doctype html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Kotlin React Webapp</title>
+<title>$${escape(meta.title)}</title>
+$${previewTags(meta)}
 <link rel="icon" type="image/svg+xml" href="/$${appRoot}/$${versioned("favicon.svg")}">
 <link rel="icon" type="image/png" sizes="32x32" href="/$${appRoot}/$${versioned("favicon-32.png")}">
 <link rel="apple-touch-icon" href="/$${appRoot}/$${versioned("apple-touch-icon.png")}">
@@ -47,4 +49,53 @@ object AppUiPage {
 </body>
 </html>
 """
+
+    /**
+     * The tags a link preview reads (issue #1688). LinkedIn, Slack, and the messengers read them from the page as
+     * served and run none of its JavaScript: the description, Open Graph's type, title, description, and image, and
+     * the large-image card those previews prefer. `og:url` only when the site's public address is known
+     * ([ShellMeta.url]); a preview without it keeps the address it was given.
+     */
+    private fun previewTags(meta: ShellMeta): String = buildList {
+        add(metaTag("name", "description", meta.description))
+        add(metaTag("property", "og:type", "website"))
+        add(metaTag("property", "og:title", meta.title))
+        add(metaTag("property", "og:description", meta.description))
+        meta.url?.let { add(metaTag("property", "og:url", it)) }
+        add(metaTag("property", "og:image", meta.imageUrl))
+        add(metaTag("property", "og:image:width", ShellMeta.imageWidth.toString()))
+        add(metaTag("property", "og:image:height", ShellMeta.imageHeight.toString()))
+        add(metaTag("name", "twitter:card", "summary_large_image"))
+    }.joinToString("\n")
+
+    private fun metaTag(attribute: String, name: String, content: String): String =
+        "<meta $attribute=\"$name\" content=\"${escape(content)}\">"
+
+    /** [value] made safe as element text or an attribute value: a title or description is a client's copy. */
+    private fun escape(value: String): String = buildString(value.length) {
+        for (c in value) {
+            when (c) {
+                '&' -> append("&amp;")
+                '<' -> append("&lt;")
+                '>' -> append("&gt;")
+                '"' -> append("&quot;")
+                '\'' -> append("&#39;")
+                else -> append(c)
+            }
+        }
+    }
+}
+
+/**
+ * What the shell says of the site where it is linked from elsewhere (issue #1688): the page's [title], its
+ * [description], the address of the image a link preview shows ([imageUrl]), and the site's own address ([url]) when
+ * it is known. Plain text, which [AppUiPage] escapes.
+ */
+class ShellMeta(val title: String, val description: String, val imageUrl: String, val url: String?) {
+    @Suppress("ConstPropertyName")
+    companion object {
+        /** The size `share-image.png` is drawn at, which a deployment's own must match. */
+        const val imageWidth = 1200
+        const val imageHeight = 630
+    }
 }

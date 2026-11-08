@@ -151,7 +151,7 @@ Makes this test instance a **public test deployment** (issue #1150): one the gen
 
 **Default when unset:** unset (derived from the request)
 
-The URL a browser reaches this deployment at, e.g. 'https://app.example.com', used to build the links that mailed invitations carry (issue #751). Unset (the default), a link is built from the request's own scheme and host -- right for a node reached directly, wrong behind a proxy that rewrites them, which is when this must be set. No trailing slash. Its host is also the one every mail names in its closing "Sent from" line (issue #1276); unset, only a test instance names the request's host there, and a real deployment names none.
+The URL a browser reaches this deployment at, e.g. 'https://app.example.com', used to build the links that mailed invitations carry (issue #751). Unset (the default), a link is built from the request's own scheme and host -- right for a node reached directly, wrong behind a proxy that rewrites them, which is when this must be set. No trailing slash. Its host is also the one every mail names in its closing "Sent from" line (issue #1276); unset, only a test instance names the request's host there, and a real deployment names none. It also makes the web app's link-preview tags absolute (issue #1688): unset, the preview image is addressed by its path and the page names no og:url.
 
 ### `KDR_SESSION_HOURS`
 

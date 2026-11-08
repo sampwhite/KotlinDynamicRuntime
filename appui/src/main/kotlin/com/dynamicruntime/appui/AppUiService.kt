@@ -1,9 +1,11 @@
 package com.dynamicruntime.appui
 
 import com.dynamicruntime.common.content.ContentResources
+import com.dynamicruntime.common.content.MarkdownFragmentService
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.home.HFRAG
 import com.dynamicruntime.common.http.request.ContentServer
 import com.dynamicruntime.common.http.request.ContextFocus
 import com.dynamicruntime.common.http.request.LogRequest
@@ -11,8 +13,10 @@ import com.dynamicruntime.common.http.request.RequestHandler
 import com.dynamicruntime.common.http.request.RequestService
 import com.dynamicruntime.common.logging.LogStartup
 import com.dynamicruntime.common.startup.ServiceInitializer
+import com.dynamicruntime.common.user.INVITE
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.util.crc32Hex
+import com.dynamicruntime.common.util.renderMarkdownText
 import com.dynamicruntime.common.util.toJsonStr
 
 /**
@@ -88,6 +92,16 @@ object AUI {
     const val appleTouchIconFile = "apple-touch-icon.png"
 
     /**
+     * The image a link preview shows for the site (issue #1688): 1200×630, on its own ground, named by the shell's
+     * `og:image`. A raster, because the previews (LinkedIn, Slack, messengers) take no SVG; its source,
+     * `share-image.svg` in the webapp's resources, is not embedded.
+     */
+    const val shareImageFile = "share-image.png"
+
+    /** The page's title where no copy gives one: the `home` file's `site` namespace is missing or its title empty. */
+    const val defaultSiteTitle = "KotlinDynamicRuntime"
+
+    /**
      * The legacy ICO tab icon. Served for completeness, but note browsers request `/favicon.ico` by convention
      * **at the origin root**, which is not this app's root — the runtime 404s an unknown context root — so
      * nothing asks for it here unless a deployment fronts the app at the origin root. The SVG and PNG links
@@ -126,6 +140,7 @@ object AUI {
         BrandingAsset(brandMarkFile, svgMimeType, binary = false),
         BrandingAsset(faviconPngFile, pngMimeType, binary = true),
         BrandingAsset(appleTouchIconFile, pngMimeType, binary = true),
+        BrandingAsset(shareImageFile, pngMimeType, binary = true),
         BrandingAsset(faviconIcoFile, icoMimeType, binary = true),
     )
 }
@@ -271,7 +286,7 @@ class AppUiService : ServiceInitializer, ContentServer {
             // hashed asset URLs after a deploy (never no-store -- it may be stored, just not used stale). Its asset
             // URLs are absolute (`/<appRoot>/...`), so it renders the same at any depth.
             handler.setResponseHeader("Cache-Control", AUI.shellCacheControl)
-            val html = AppUiPage.render(bootstrapJson(cxt), handler.contextRoot, ::versionedName)
+            val html = AppUiPage.render(bootstrapJson(cxt), handler.contextRoot, ::versionedName, shellMeta(cxt, handler.contextRoot))
             handler.sendStringResponse(html, EXC.ok, AUI.htmlMimeType)
             return true
         }
@@ -413,6 +428,31 @@ class AppUiService : ServiceInitializer, ContentServer {
             if (markName != AUI.brandMarkFile) put(EP.brandMarkName, markName)
         }
         return cfg.toJsonStr()
+    }
+
+    /**
+     * What the shell says of the site where it is linked from elsewhere (issue #1688). The title and description are
+     * the `home` file's `site` copy for the caller's client (anonymous, as a preview's crawler is, that is the default
+     * client's), so a deployment or a flavor words them as it words the home page, reduced to plain text. The image is
+     * the share image at its hashed name.
+     *
+     * The addresses are absolute only where the deployment says what its public URL is (`KDR_PUBLIC_URL`): a preview
+     * needs an absolute image address, and only that setting gives one that no request can choose -- a `Host` header
+     * is the caller's to send. Without it the image's address is the app root's path, which some previews resolve,
+     * and there is no `og:url`.
+     */
+    private fun shellMeta(cxt: KdrCxt, appRoot: String): ShellMeta {
+        val fragments = MarkdownFragmentService.get(cxt)
+        fun copy(key: String): String? =
+            fragments.resolveFragment(cxt, HFRAG.home, HFRAG.siteNs, key)?.renderMarkdownText()?.trim()?.ifEmpty { null }
+        val publicUrl = INVITE.configuredPublicUrl(cxt)
+        val appUrl = "${publicUrl.orEmpty()}/$appRoot"
+        return ShellMeta(
+            title = copy(HFRAG.title) ?: AUI.defaultSiteTitle,
+            description = copy(HFRAG.siteDescription).orEmpty(),
+            imageUrl = "$appUrl/${versionedName(AUI.shareImageFile)}",
+            url = publicUrl?.let { appUrl },
+        )
     }
 
     @Suppress("ConstPropertyName")

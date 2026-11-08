@@ -506,6 +506,14 @@ object HFRAG {
      */
     const val jumpLinks = "jumpLinks"
 
+    /**
+     * The home file's namespace for what the site says of itself where it is linked from elsewhere (issue #1688): its
+     * [title] and [siteDescription], which the production shell puts in the page's `<title>` and its link-preview
+     * tags. Plain words: Markdown is reduced to its text.
+     */
+    const val siteNs = "site"
+    const val siteDescription = "description"
+
     /** The home file's namespace for the forms listing's copy (issue #791). */
     const val formsNs = "forms"
 

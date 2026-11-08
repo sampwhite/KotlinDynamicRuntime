@@ -27,7 +27,9 @@ same root and absent from the catalog for the same reason:
   first paint is the deployment's: the shell's `<head>` is written before anybody is known. **The swap is a
   Chromium and Firefox behaviour**: Safari reads a page's icon links once, at load, and draws no SVG favicon at
   all, so there a client's tab icon appears on the next full load and only when it is a raster image. The
-  `apple-touch-icon` (an iOS home-screen icon) is left as the deployment's: there is no slot for one.
+  `apple-touch-icon` (an iOS home-screen icon) and the link-preview `share-image.png` (issue #1688) are left as the
+  deployment's: there is no slot for either. The shell's title and preview words follow the caller's client's `site`
+  copy, which a crawler, being anonymous, reads in the default client.
 
 ## A client's file refs (issues #1153, #1154)
 
