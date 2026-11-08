@@ -667,9 +667,11 @@ environment) resolution pattern, and `KdrInstanceConfigTest` for the same shape 
 `TestUser` (in `base/common`, `user` package) is an authenticated `TestHttpClient` plus the `cxt` it was built
 from. `TestUser.create(cxt, email, level)` calls the `forTestingOnly` `/fixture/becomeUser` endpoint through a
 fresh client — creating the user if needed and capturing the session cookie — so every call it makes is *as
-that user*. `level` is a rung of the privilege ladder (`ROLE.user`, the default, `ROLE.operator` or
-`ROLE.admin`, each including the ones below it) and applies only to a user being **created**: becoming an
-existing user gets you whoever is already there, roles and all. `name` (create-only) sets their real-world name
+that user*. `level` is a rung of the privilege ladder (`ROLE.user`, `ROLE.operator` or `ROLE.admin`, each
+including the ones below it) and applies only to a user being **created**: becoming an existing user gets you
+whoever is already there, roles and all. A created user starts with its `persona`'s default roles (issue #1647),
+so `persona = PERSONA.editor` holds `editor` and `persona = PERSONA.admin` with no `level` is an administrator; a
+`level` given sets the rung over them, and with neither the user is at `ROLE.user`. `name` (create-only) sets their real-world name
 (a person's full name, distinct from the username / `publicName`) — reach for it when the feature under test
 reads the owner's name, e.g. a `prefillFromOwner` on the `name` attribute (issue #736). Since the identity split
 (issue #747) an address is an **identity** that may have several users, one per client, persona and `personaSuffix`:

@@ -67,13 +67,15 @@ fun testSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.test") {
             field(TEP.email, "The email address (primary contact) of the user to become.", required = true)
             field(TEP.level,
                 "Access level for a freshly created user (ignored when the user already exists). One of the " +
-                    "privilege ladder's rungs; each includes the ones below it. Defaults to `${ROLE.user}`.") {
+                    "privilege ladder's rungs; each includes the ones below it. Given, it sets the rung over the " +
+                    "persona's default roles; absent, the persona's own rung, or `${ROLE.user}` with no persona.") {
                 for (rung in RoleLadder.ordered) option(rung)
             }
             field(
                 TEP.capabilities,
-                "Extra roles for a freshly created user, beyond the level -- capabilities such as " +
-                    "`${ROLE.allClients}`, which are orthogonal to the ladder and cannot be expressed by a level.",
+                "Extra roles for a freshly created user, added to the persona's and the level's -- capabilities " +
+                    "such as `${ROLE.allClients}`, which are orthogonal to the ladder and cannot be expressed by a " +
+                    "level or a persona.",
             ) {
                 type = SCT.array
                 items { type = SCT.string }
@@ -97,7 +99,13 @@ fun testSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.test") {
                 "The created user's real-world name -- a person's full name, distinct from the username. " +
                     "Ignored when the user already exists; absent leaves the account unnamed.",
             )
-            field(TEP.persona, "The user's persona (issue #747); absent, the one the level implies (`${PERSONA.admin}` for an admin, else `${PERSONA.member}`).") {
+            field(
+                TEP.persona,
+                "The user's persona (issue #747). A freshly created user starts with its default roles (issue #1647) -- " +
+                    "`${ROLE.editor}` for `${PERSONA.editor}`, `${ROLE.admin}` for `${PERSONA.admin}` -- with `level` " +
+                    "setting the rung over them when given. Absent, the one the level and capabilities imply " +
+                    "(`${PERSONA.admin}` for an admin, `${PERSONA.editor}` for an editor, else `${PERSONA.member}`).",
+            ) {
                 for (def in PERSONA.defs) option(def.name, def.label)
             }
             field(
@@ -114,7 +122,7 @@ fun testSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.test") {
         service.authFormHandler.becomeUserByEmail(
             c,
             email = request[TEP.email] as String,
-            level = request.getOptStr(TEP.level) ?: ROLE.user,
+            level = request.getOptStr(TEP.level),
             capabilities = request[TEP.capabilities].toJsonListOfStrings(),
             failIfUserAlreadyExists = request[TEP.failIfUserAlreadyExists] == true,
             failIfUserMissing = request[TEP.failIfUserMissing] == true,

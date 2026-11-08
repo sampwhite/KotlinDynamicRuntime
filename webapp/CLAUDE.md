@@ -697,6 +697,9 @@ a test fixture rather than the real email-code flow:
   issue #748), else its first outside `public` (issue #752), else its first -- among the **registered** users
   (issue #749; a fixture user is registered on creation). Given only an address that already has a real-client
   user, the fixture therefore signs in as that one: name `client: "public"` to get the placeholder. `personaSuffix` is the UAT batch discriminator (`A`, `B`, `1`, `2`, …).
+  A created user starts with the persona's default roles (issue #1647), as an administrator's create does: an
+  `editor` persona holds `editor`, and an `admin` persona given no `level` is an administrator. A `level` that is
+  given sets the rung over them, and `capabilities` are added.
 
 This is one `fetch`, not a heavyweight login — reach for it rather than declaring a login-gated change
 unverifiable. Other test fixtures exist for more specialized needs (for example reading a real login code back

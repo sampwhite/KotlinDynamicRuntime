@@ -544,10 +544,12 @@ class AuthFormHandler(
 
     /**
      * Test-only (issue #125): logs [cxt] in as the user whose primary contact is [email], **creating** that
-     * user first if none exists. On a create, [level] places the new user on the privilege ladder (see
-     * [RoleLadder.rolesAtLevel], which is also what the admin console composes with) and [capabilities] adds
-     * roles that are *not* rungs -- `allClients` and the like, which no level can express. On an existing
-     * user both are ignored: you become whoever is already there, roles and all. When
+     * user first if none exists. On a create, a named [persona] starts the new user with its default roles (issue
+     * #1647), as an administrator's create does; [level], when given, places the user on the privilege ladder over
+     * them (see [RoleLadder.rolesAtLevel], which is also what the admin console composes with), and [capabilities]
+     * adds roles that are *not* rungs -- `allClients` and the like, which no level can express. With neither a
+     * persona nor a level, the user is at the `user` level. On an existing user all three are ignored: you become
+     * whoever is already there, roles and all. When
      * [failIfUserAlreadyExists] is set, an existing user is an error instead of a login; when [failIfUserMissing] is, a
      * user who cannot be found is an error instead of a create.
      *
@@ -556,7 +558,7 @@ class AuthFormHandler(
      * a real login it flags the session cookie to be written (via [completeLogin]) and returns the user info.
      */
     fun becomeUserByEmail(
-        cxt: KdrCxt, email: String, level: String, capabilities: List<String>, failIfUserAlreadyExists: Boolean,
+        cxt: KdrCxt, email: String, level: String?, capabilities: List<String>, failIfUserAlreadyExists: Boolean,
         client: String? = null, name: String? = null, persona: String? = null, personaSuffix: String = "",
         failIfUserMissing: Boolean = false,
     ): Map<String, Any?> {
@@ -577,7 +579,7 @@ class AuthFormHandler(
      * as later. [ProvisionedUser.existed] says which it was.
      */
     fun findOrProvisionUser(
-        cxt: KdrCxt, email: String, level: String, capabilities: List<String>, failIfUserAlreadyExists: Boolean,
+        cxt: KdrCxt, email: String, level: String?, capabilities: List<String>, failIfUserAlreadyExists: Boolean,
         client: String? = null, name: String? = null, persona: String? = null, personaSuffix: String = "",
         failIfUserMissing: Boolean = false,
     ): ProvisionedUser {
@@ -606,7 +608,7 @@ class AuthFormHandler(
         }
         // A caller naming a user on screen (issue #1511) means that user: one gone since is not to be made anew.
         if (failIfUserMissing) throw KdrException("That user no longer exists.", code = EXC.notFound)
-        val roles = RoleLadder.rolesAtLevel(emptyList(), level) + capabilities.filter { it.isNotBlank() }
+        val roles = provisionedRoles(persona, level, capabilities)
         val userId = userService.provisionUser(
             cxt, address, namedClientOrRefuse(cxt, client, roles), roles,
             createdAt = cxt.now(), persona = persona, personaSuffix = personaSuffix, verifiedAt = cxt.now(), registered = true,
@@ -620,6 +622,18 @@ class AuthFormHandler(
         val row = userService.queryByUserId(cxt, userId)
             ?: throw KdrException("Could not load the just-created user '$address'.", code = EXC.internalError)
         return ProvisionedUser(row, existed = false)
+    }
+
+    /**
+     * The roles [findOrProvisionUser] creates a user with (issue #1647): the default roles of [persona] when it names one
+     * the registry holds, as an administrator's create starts from them, else the `user` floor; then [level], when given,
+     * sets the rung over them, keeping a persona's `editor`, which is no rung; then [capabilities] are added. So an Editor
+     * persona holds `editor` at any level, and an Admin persona given no level is an administrator.
+     */
+    fun provisionedRoles(persona: String?, level: String?, capabilities: List<String>): List<String> {
+        val start = persona?.let { PERSONA.def(it)?.defaultRoles } ?: listOf(ROLE.user)
+        val atLevel = level?.let { RoleLadder.rolesAtLevel(start, it) } ?: start
+        return (atLevel + capabilities.filter { it.isNotBlank() }).distinct()
     }
 
     /**
