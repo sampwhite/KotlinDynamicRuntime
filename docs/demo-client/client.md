@@ -11,7 +11,7 @@ workflow](talk-core-details.md), which is the first thing to use them, explains 
 {
   "clientId": "confdemo",
   "name": "Conference demo",
-  "description": "A demo client: a conference's call for talks. Documented in docs/demo-client.",
+  "description": "A small conference's call for talks: speakers submit talks, and a committee reviews them and accepts them for the program.",
   "usageType": "demo",
   "audience": "internal",
   "enabledEnvironments": ["unit", "local", "dev"],
@@ -48,7 +48,7 @@ workflow](talk-core-details.md), which is the first thing to use them, explains 
 | --- | --- |
 | `clientId` | The client's id. Every form and every user that belongs to the client has this id stored on it, so there is never any doubt about which client something belongs to. |
 | `name` | The name people see. |
-| `description` | A note for whoever maintains the client. Its users never see it. |
+| `description` | A note about the client, for whoever maintains it. A demo's is shown to visitors too, on its card on the home page and on its Join page, so the demo's says what it is. |
 | `usageType` | What the client is for. The value `demo` marks a client that exists to show the product. |
 | `audience` | Whose client it is. The value `internal` means it belongs to the platform, not to a customer. |
 | `enabledEnvironments` | Where the client runs. Every client runs in `unit` and `local`, so that tests and local development can reach it. |
@@ -70,7 +70,7 @@ the demo's workflows show several, each where the workflow that collects it is i
 ## What the bundle holds
 
 The pages that follow add to the `base` bundle as they go: the client's name for a platform trait, its own traits,
-its columns in the forms list, a shared type, its facts, and a menu entry. Each is shown on the page where it first matters. This table is the
+its columns in the forms list and how the list shows workflows, a shared type, its facts, and a menu entry. Each is shown on the page where it first matters. This table is the
 bundle as a whole, kept current as the pages add to it.
 
 | Slot | What it holds | Explained on |
@@ -81,5 +81,6 @@ bundle as a whole, kept current as the pages add to it.
 | `kdr:schemaDef` | The demo's name for the platform's `kdr:name` trait, and the shared `Speaker` type. | [Creating a talk](create-talk.md#the-traits-name), [Abstract](abstract.md#a-shared-type) |
 | `kdr:cfactDef` | The client's two facts, `isWorkshop` and `talkAccepted`. | [Workshop logistics](workshop-logistics.md#a-computed-fact) |
 | `kdr:uiBlockDef` | The menu entry that turns the Workflows page on. | [Abstract](abstract.md#what-the-speaker-sees) |
+| `kdr:listingDef` | How the forms list shows each form's workflows: all in one column. | [Talk core details](talk-core-details.md#workflows-in-one-column) |
 
 Next: [Creating a talk](create-talk.md).

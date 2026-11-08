@@ -14,7 +14,9 @@
 # !home
 # @publicHome
 # +walkThrough
-New here? Follow [the walk-through](/docs/walk-through.md): it takes you through the site one step at a time,
-starting with the conference demo, where you submit a talk as a speaker and then review it as the committee, and then
-a client of your own, with a workflow you build, try out, and open to the people you invite, and last, for developers,
-a workflow an AI assistant builds through the API.
+New here? [The walk-through](/docs/walk-through.md) shows you the site a step at a time, in three parts:
+
+1. **The conference demo.** Submit a talk as a speaker, then review it and accept it as the committee.
+2. **A client of your own.** Build a form and a workflow for a book club, try them in a sandbox, publish them, and
+   invite somebody to use them.
+3. **For developers.** Call the API with a key of your own, and have an AI assistant build a workflow through it.

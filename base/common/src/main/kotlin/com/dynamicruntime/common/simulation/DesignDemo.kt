@@ -127,6 +127,9 @@ fun designDemoConfig(cxt: KdrCxtBase = LiteCxt(), client: String = DesignDemo.cl
             ClientDef(
                 clientId = client,
                 name = "Design demo",
+                // Shown to visitors on a reference deployment's demo card and Join page (issue #1686).
+                description = "An event request form to take apart in Design View: see what each part of a form is made of, " +
+                    "and change it.",
                 usageType = ClientUsageType.demo,
                 audience = ClientAudience.internal,
                 enabledEnvironments = setOf(ENV.unit, ENV.local, ENV.dev),

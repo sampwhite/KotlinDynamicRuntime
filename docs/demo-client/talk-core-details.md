@@ -182,6 +182,26 @@ filter is a choice between Yes and No, and its search takes `true` or `false` (o
 `display` does more than name one field, such as
 `${city}, ${state}`, works as the name column does: its filter suggests only the values the forms hold.
 
+### Workflows in one column
+
+After the client's own columns, the forms list shows the workflows each form is in. By default, a step that is
+waiting on the reader gets a column of its own, ahead of the rest, so the reader's work comes first in the row. In the
+demo that column would be headed **To review**, and a speaker never reviews, so it would always be empty for one, and
+it takes width that a narrow screen does not have. So the demo shows every workflow in one column, which it sets in
+the `kdr:listingDef` slot of its `base` bundle:
+
+<!-- kdr-doc: bundle=base pointer=/kdr:listingDef -->
+```json
+[{ "workflowLayout": "combined" }]
+```
+
+| Key | What it means |
+| --- | --- |
+| `workflowLayout` | How the forms list shows each form's workflows. With `split`, the default, a step waiting on the reader is in a column of its own, before the **Workflows** column. With `combined`, every workflow is in the **Workflows** column, and a step waiting on the reader is still highlighted there. |
+
+The slot holds one entry for the whole client, because it applies to the forms list as a whole rather than to one
+column.
+
 ## Core details workflow
 
 Here is the whole `talkCoreDetails` bundle:

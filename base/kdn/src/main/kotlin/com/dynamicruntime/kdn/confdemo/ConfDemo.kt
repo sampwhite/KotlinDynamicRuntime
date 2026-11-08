@@ -15,6 +15,8 @@ import com.dynamicruntime.common.content.ComponentImageDef
 import com.dynamicruntime.common.content.componentImage
 import com.dynamicruntime.common.gedra.GCFG
 import com.dynamicruntime.common.gedra.GT
+import com.dynamicruntime.common.gedra.ListingDef
+import com.dynamicruntime.common.gedra.WorkflowLayout
 import com.dynamicruntime.common.gedra.report.RMETA
 import com.dynamicruntime.common.gedra.report.RUSR
 import com.dynamicruntime.common.gedra.report.RWF
@@ -250,7 +252,9 @@ fun confDemoBase(cxt: KdrCxtBase = LiteCxt(), client: String = ConfDemo.client, 
             ClientDef(
                 clientId = client,
                 name = "Conference demo",
-                description = "A demo client: a conference's call for talks. Documented in docs/demo-client.",
+                // Shown to visitors on the home page's demo card and the Join page (issue #1686), so it says what the demo is.
+                description = "A small conference's call for talks: speakers submit talks, and a committee reviews them and " +
+                    "accepts them for the program.",
                 usageType = ClientUsageType.demo,
                 audience = ClientAudience.internal,
                 enabledEnvironments = setOf(ENV.unit, ENV.local, ENV.dev),
@@ -446,6 +450,9 @@ fun confDemoBase(cxt: KdrCxtBase = LiteCxt(), client: String = ConfDemo.client, 
         traitUsage(GT.name, "Talk", $$"${name}", substring = true)
         traitUsage(ConfDemo.session, "Track", $$"${track}")
         traitUsage(ConfDemo.questionnaire, "Audience", $$"${audienceLevel}", columnId = "audience")
+        // Every workflow link in one cell (issue #1686): a speaker never reviews, so the split layout's To review column
+        // was always empty for one, and its width is what a narrow screen lacks.
+        listing(ListingDef(workflowLayout = WorkflowLayout.combined))
     }
 
 /** The `createTalk` bundle: the workflow that runs when a speaker starts a submission. */

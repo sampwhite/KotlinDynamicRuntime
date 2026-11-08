@@ -24,10 +24,10 @@ site you can sign in to.
 
 ## Before you start
 
-Every part starts from a user of your own. Open **Register** from the menu, under **Account**, give your email
-address, and enter the code the site mails to it. If you have registered on this site before, choose **Log in**
-instead. Either way you are signed in as your user in the site's **Public** client: the one you start each part from,
-and the one Part 2 asks you to choose in the bar.
+Every part starts from a user of your own. Choose **Register** on the home page (it is in the menu too, under
+**Account**), give your email address and your name, and enter the code the site mails to you. If you have registered
+on this site before, choose **Log in** instead. Either way you are signed in as your user in the site's **Public**
+client: the one you start each part from, and the one Part 2 asks you to choose in the bar.
 
 ## Part 1: The conference demo
 
@@ -47,7 +47,8 @@ The demo is shared with everyone who joins it. Other visitors see the talks you 
 3. Choose **Join as Speaker**.
 
 Joining gives you a new user of your own, as a speaker in the conference demo, and switches you to it. The bar at the
-top of every page shows which user you are acting as, and the client it is in.
+top of every page shows which user you are acting as, and the client it is in, and the menu and your home page are
+now the conference demo's.
 
 ### Submit a talk
 
@@ -72,13 +73,14 @@ Choose **Needs Info** on your talk's row. The form that opens is **About your ta
 | Track | Kotlin |
 | Is this your first conference talk? | Yes |
 
-Choose **Save**. Back in the forms list, the talk's status is **Valid**, and the **Workflows** column now offers
-**Committee review**, which waits for complete core details.
+Choose **Save**, and then **My forms** to go back to the list. The talk's status is now **Valid**, so **Committee
+review**, which waits for complete core details, is open to the committee.
 
 ### Write the abstract
 
-A talk can be in several workflows at once, each working on its own part of the form. Choose **Write the abstract**
-in your talk's **Workflows** column, then **Engage**, which starts the workflow on your talk and opens it for editing:
+A talk can be in several workflows at once, each working on its own part of the form. In your talk's **Workflows**
+column, a workflow you can start now is marked with a highlighted **Start**. Choose **Write the abstract**, and then
+**Engage**, which starts the workflow on your talk and opens it for editing:
 
 <!-- kdr-walk: workflow=abstract -->
 | Field | What to enter |
@@ -94,8 +96,9 @@ is shorter, the form says so and does not save.
 
 ### Join the committee
 
-Now switch sides. Choose your name in the bar at the top of the page, and choose your **Public** user. Then open the
-[Join page for the conference demo](/wa/join/confdemo) again, and choose **Join as Committee member**. (You
+Now switch sides. Choose your name in the bar at the top of the page, and choose your **Public** user. On your home
+page, the **Conference demo** card now offers **Open as Speaker**, which switches back to the user you have, and
+**Join as another role…**. Choose **Join as another role…**, and then **Join as Committee member**. (You
 acknowledged that the demo is shared when you joined as a speaker, so you are not asked again.)
 
 That gives you a second user in the conference demo, an editor with the committee's label, so it may review talks.
@@ -112,11 +115,17 @@ and choose **Save name**. The name belongs to this user alone. Your speaker user
 
 ### Review your talk
 
-As an editor, you see every talk in the demo, not just your own, so the menu's forms page is **Forms** rather
-than **My forms**. Open it, and type your talk's name in **Search** to find it.
+You do not have to go looking for work: it is waiting for you. Open your home page. Its **Waiting on you** card lists
+each form with a step that is yours to take, and names the step: your talk is there, with **Record the review**.
+Other visitors' talks may be there too, so find yours by its title, and choose it. The review opens, started and
+ready to fill in.
 
-Choose **Committee review** in its **Workflows** column, then **Engage**. The review has two steps,
-listed at the top: **Record the review**, and **Accept the talk**. The first one asks for:
+The menu's forms page says the same. As an editor, you see every talk in the demo, not just your own, so it is
+**Forms** rather than **My forms**. Its **Waiting on you** button, beside **Filters**, narrows the list to the talks
+waiting for you, and in each one's **Workflows** column the review is marked with a highlighted **Start**.
+
+The review has two steps, listed beside the form: **Record the review**, and **Accept the talk**. The first one asks
+for:
 
 <!-- kdr-walk: workflow=review -->
 | Field | What to enter |
@@ -124,20 +133,24 @@ listed at the top: **Record the review**, and **Accept the talk**. The first one
 | Score | 4 |
 | Notes for the speaker | A clear story. Show one test as well. |
 
-Choose **Save the review**. The second step then asks you to read the review and accept the talk. Choose **Accept the
-talk**, and confirm. An approval cannot be taken back, which is why it asks.
+Choose **Save the review**, and the first step is checked. Then choose the second step, **Accept the talk**, from the
+list beside the form. It asks you to read the review and accept the talk: choose its **Accept the talk** button, and
+confirm. An approval cannot be taken back, which is why it asks.
 
 ### See the result as the speaker
 
-Choose your name in the bar again, and switch to your speaker user. Open your talk from **My forms**, and choose
-**Committee review**: both steps are checked, and the score and notes are there for you to read. The speaker cannot
-change them. Only a committee member may save the review, which is why the speaker's page shows it read-only.
+Choose your name in the bar again, and switch to your speaker user. In **My forms**, your talk's status is now
+**Finished**. Open it, and choose **Committee review**: both steps are checked, and the score and notes are there for
+you to read. The speaker cannot change them. Only a committee member may save the review, which is why the speaker's
+page shows it read-only.
 
 ### What you have seen
 
 - **One form, several workflows.** The talk was created by one workflow, completed by its core details workflow, and
   then worked on by two more, each with its own form showing only the fields it needs.
 - **A workflow that waits.** The committee review was not available until the talk's core details were complete.
+- **Work that finds you.** Once the talk was ready, the committee member's home page listed it as waiting on them,
+  and the forms list marked it with a highlighted **Start**.
 - **Who may do what.** The review could be saved only by a user with the committee's label, and the speaker saw it
   read-only.
 - **Several users, one person.** You acted as a speaker and as a committee member, with the same email, switching
@@ -174,6 +187,9 @@ Leave everything else as it is, and choose **Create the client**. You become its
 there. The client starts with two workflows, **New form** and **Form details**, which let its people make a form and
 name it, and with a report, **Forms**, which lists them.
 
+Your client's home page has a **Getting started** checklist: the first things a client needs before its people use
+it, each checked off once it is done. This part does them, and more.
+
 ### Open its sandbox
 
 Choose **Open sandbox** in the bar. The bar now shows **Book Club Sandbox**.
@@ -190,7 +206,7 @@ your client may change any of it. Make two changes, one at a time:
 <!-- kdr-walk: copy -->
 | Words now | Key | New words |
 | --- | --- | --- |
-| A reference deployment | home.title | Welcome to the Book Club |
+| Try KotlinDynamicRuntime | home.title | Welcome to the Book Club |
 | You have been invited | invitation.subject | You are invited to the Book Club |
 
 For each one, type the words it says now into **Find**, and choose **Edit** on the key the table names: the same

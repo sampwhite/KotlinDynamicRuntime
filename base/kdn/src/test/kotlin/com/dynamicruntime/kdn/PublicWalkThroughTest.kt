@@ -613,7 +613,9 @@ private const val collectSave = "saveInformation"
 private class ShownField(val traitId: String, val key: String, val choices: Map<String, String>)
 
 private val walkMarkerRegex = Regex("""^\s*<!--\s*kdr-walk:\s*(.*?)\s*-->\s*$""")
-private val joinAsRegex = Regex("""\*\*Join as ([^*]+)\*\*""")
+/** A **Join as** button the page names, by its role's label: a label ending in an ellipsis, the home page's **Join as
+ * another role…**, is a link to the Join page, not a role (issue #1686). */
+private val joinAsRegex = Regex("""\*\*Join as ([^*…]+)\*\*""")
 
 /**
  * Each marked table of [page], by its marker, as its rows: each a list of its cells, with Markdown's emphasis on the
