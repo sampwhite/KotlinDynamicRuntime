@@ -178,7 +178,7 @@ class ConvertUtilTest : StringSpec({
     }
 
     // Through `fmt`, not `toString`: a bare `toString` on a Double prints "1.0" here and "1" under Kotlin/JS,
-    // and both sides run this. KernelSharedTest pins the same expectations on the JS target.
+    // and both sides run this. CrossTargetParityTest pins the same expectations on the JS target.
     "toOptStr renders a double the way the wire does" {
         (1.0 as Any?).toOptStr() shouldBe "1"
         (1.0e10 as Any?).toOptStr() shouldBe "10000000000"

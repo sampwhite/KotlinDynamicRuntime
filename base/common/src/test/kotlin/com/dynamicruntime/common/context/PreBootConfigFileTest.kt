@@ -1,6 +1,7 @@
 package com.dynamicruntime.common.context
 
 import io.kotest.core.spec.style.StringSpec
+import io.kotest.core.spec.style.stringSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 import java.io.File
@@ -12,8 +13,17 @@ import java.nio.file.Files
  * It was opened by a bare relative path, so it was found only when the JVM happened to start in the workspace
  * -- which a Gradle `run` task does not. A deployment's defaults were therefore silently not applied, and the
  * silence is half the defect: an absent file and an empty one produced the same empty map.
+ *
+ * Also, since issue #1738, the tests that were `AppPathsTest`: finding the workspace directory itself, by walking up to
+ * the ancestor holding `settings.gradle.kts`, which every lookup here starts from.
  */
 class PreBootConfigFileTest : StringSpec({
+    include(preBootConfigFileTests)
+    include(appPathsTests)
+})
+
+/** This file's own tests, as the class describes them. */
+private val preBootConfigFileTests = stringSpec {
 
     /** A throwaway workspace: a settings file to anchor on, and the defaults file beside it. */
     fun workspace(vararg lines: String): File {
@@ -113,4 +123,33 @@ class PreBootConfigFileTest : StringSpec({
         ) { name -> if (name == "KDR_PORT") "7001" else null }
         defaults.containsKey("KDR_PORT") shouldBe false
     }
-})
+}
+
+/**
+ * Verifies the workspace-directory walk-up: a launch whose working directory is an interior to the workspace
+ * (as an IDE run often is) still resolves the workspace directory by finding the ancestor holding
+ * `settings.gradle.kts`.
+ */
+private val appPathsTests = stringSpec {
+
+    "findWorkspaceDir walks up to the ancestor containing settings.gradle.kts" {
+        val root = Files.createTempDirectory("kdrWorkspace").toFile()
+        try {
+            File(root, AppPaths.settingsFileName).writeText("// test settings\n")
+            val nested = File(root, "KotlinDynamicRuntime/base/common").apply { mkdirs() }
+            AppPaths.findWorkspaceDir(nested)?.canonicalFile shouldBe root.canonicalFile
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    "findWorkspaceDir returns null when no settings file is found upward" {
+        val root = Files.createTempDirectory("kdrNoWorkspace").toFile()
+        try {
+            val nested = File(root, "a/b").apply { mkdirs() }
+            AppPaths.findWorkspaceDir(nested) shouldBe null
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+}

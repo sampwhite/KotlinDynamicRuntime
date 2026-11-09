@@ -1,5 +1,8 @@
 package com.dynamicruntime.common.context
 
+import com.dynamicruntime.common.schema.SchTypesBuilder
+import com.dynamicruntime.common.schema.parseSchemaTypes
+import com.dynamicruntime.common.schema.validate
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -205,5 +208,19 @@ class UserProfileCopyTest {
         assertTrue(text.contains("42"))
         assertTrue(text.contains("admin"))
     }
-}
 
+    /**
+     * The serialization satisfies the schema type the profile declares for it, built with a `LiteCxt` alone, as the
+     * frontend builds it. Every field set, so a field the type forgets fails here; and a required one dropped fails
+     * too, so the type is real rather than accepting anything.
+     */
+    @Test
+    fun theUserInfoSatisfiesItsOwnSchemaType() {
+        val builder = SchTypesBuilder(LiteCxt(), "user")
+        UserProfile.defineInfoType(builder)
+        val userInfo = parseSchemaTypes(builder.defs).getValue("user.UserInfo")
+        val info = populated().toUserInfo()
+        assertTrue(validate(userInfo, info).isEmpty(), "toUserInfo() must satisfy defineInfoType")
+        assertTrue(validate(userInfo, info - "authId").isNotEmpty())
+    }
+}

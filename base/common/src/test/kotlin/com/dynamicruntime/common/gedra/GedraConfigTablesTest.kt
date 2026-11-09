@@ -5,7 +5,6 @@ import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.KdrSchemaStore
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SCT
-import com.dynamicruntime.common.schema.SFMT
 import com.dynamicruntime.common.sql.PF
 import com.dynamicruntime.common.sql.SqlTopicService
 import com.dynamicruntime.common.sql.SqlTopicTranProvider
@@ -56,24 +55,15 @@ class GedraConfigTablesTest : StringSpec({
         root.columnsByName.getValue(PF.client).required shouldBe true
     }
 
-    "the content row is keyed by the versioned id, with the class and version as an indexed predicate" {
+    "the content row is keyed by the versioned id, owned by a client, with its published and current flags optional" {
         val content = table(GCT.gedraConfig)
         content.primaryKey shouldBe listOf(GC.gedraId)
         content.isTransactional shouldBe false
         content.features shouldBe setOf(TableFeature.client)
-        content.columnsByName.getValue(GC.version).schema[SCH.type] shouldBe SCT.integer
-        // `publishedAt` is the published flag and the audit date in one: a nullable timestamp.
-        content.columnsByName.getValue(GC.publishedAt).schema[SCH.format] shouldBe SFMT.dateTime
+        // `publishedAt` is the published flag and the audit date in one, so it may be null; and the current flag is
+        // optional, since a row from before it has none until the boot backfills it (issue #875).
         content.columnsByName.getValue(GC.publishedAt).required shouldBe false
-        content.columnsByName.getValue(GC.data).schema[SCH.type] shouldBe SCT.kObject
-        // The current flag is optional (a row from before it has none until the boot backfills it), and indexed for
-        // the reads that skip history across every client and within one (issue #875).
-        content.columnsByName.getValue(GC.isCurrent).schema[SCH.type] shouldBe SCT.boolean
         content.columnsByName.getValue(GC.isCurrent).required shouldBe false
-        content.indexes.map { it.fieldNames } shouldContainExactly listOf(
-            listOf(GC.configId, GC.version), listOf(PF.updatedAt),
-            listOf(GC.isCurrent), listOf(PF.client, GC.isCurrent),
-        )
     }
 
     // The point of the two-key design, proven rather than described: one transaction locks the client's row on

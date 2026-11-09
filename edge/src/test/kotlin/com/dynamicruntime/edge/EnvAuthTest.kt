@@ -3,12 +3,15 @@ package com.dynamicruntime.edge
 import com.dynamicruntime.common.context.ACFG
 import com.dynamicruntime.common.context.BOOT
 import com.dynamicruntime.common.context.CL
+import com.dynamicruntime.common.context.ENV
+import com.dynamicruntime.common.context.KdrInstanceConfig
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.endpoint.HttpMethod
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.http.request.RoleLadder
 import com.dynamicruntime.common.http.request.TestHttpClient
+import com.dynamicruntime.common.node.NodeService
 import com.dynamicruntime.common.user.ADMR
 import com.dynamicruntime.common.user.GOOG
 import com.dynamicruntime.common.user.JwtKeySource
@@ -17,12 +20,25 @@ import com.dynamicruntime.common.util.toJsonMap
 import com.dynamicruntime.common.util.toJsonStr
 import com.dynamicruntime.kdn.Startup
 import io.kotest.core.spec.style.StringSpec
+import io.kotest.core.spec.style.stringSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import java.security.KeyPair
 import java.security.KeyPairGenerator
 import java.security.Signature
 import java.security.interfaces.RSAPublicKey
+
+/**
+ * Env auth at the edge (issue #1738 gathered these): signing in with Google and the session it starts, signing out,
+ * where a caller lands afterwards, and how long the session lasts. Each part below is one of the specs that used to be
+ * a file of its own, kept whole.
+ */
+class EnvAuthTest : StringSpec({
+    include(envAuthLoginTests)
+    include(envAuthLogoutTests)
+    include(envAuthReturnTests)
+    include(envAuthSessionTests)
+})
 
 /**
  * Drives the Env Auth login end to end (issue #386): a Google credential in, a session out, and the refusals
@@ -32,7 +48,7 @@ import java.security.interfaces.RSAPublicKey
  * `aud` check, expiry -- with no network. Modelled on `GoogleLoginTest`, which does the same for the
  * application's Google login.
  */
-class EnvAuthLoginTest : StringSpec({
+private val envAuthLoginTests = stringSpec {
 
     val clientId = "kdr-edge-test.apps.googleusercontent.com"
     val testKid = "edge-key-1"
@@ -203,4 +219,91 @@ class EnvAuthLoginTest : StringSpec({
         client.cookies[ENVAUTH.cookie] = "not-encrypted-by-this-node"
         client.sendGetRequest("/health").createdCxt?.userProfile?.isLoggedIn shouldBe false
     }
-})
+}
+
+/**
+ * Signing out of an environment (issue #486): the counterpart to `EnvAuthLoginTest`.
+ *
+ * Seeds a live session by encoding a cookie with the instance key -- the same thing the login endpoint does on
+ * success -- rather than driving Google, since what is under test is the *clearing*, not the minting.
+ */
+private val envAuthLogoutTests = stringSpec {
+
+    val cxt = Startup.mkTestBootCxt("envLogout", "envLogoutTest", mapOf(ACFG.bootRole to BOOT.edge), additionalComponents = listOf(EdgeComponent()))
+    val node = NodeService.get(cxt)
+
+    fun seedSession(client: TestHttpClient, email: String) {
+        val expireMs = cxt.now().toEpochMilliseconds() + 3_600_000
+        client.cookies[ENVAUTH.cookie] = EnvAuthCookie(email, expireMs).encode(node)
+    }
+
+    "signing out clears the session, so the next request is anonymous" {
+        val client = TestHttpClient(cxt.instanceConfig)
+        seedSession(client, "sam@gyassa.com")
+        // The seeded session is live -- proving the logout below is what ends it.
+        client.sendGetRequest("/health").createdCxt?.userProfile?.isLoggedIn shouldBe true
+
+        client.sendGetRequest(EAEP.logout).rptStatusCode shouldBe EXC.ok
+        // The very next request no longer carries an identity: the cleared cookie decodes to nothing.
+        client.sendGetRequest("/health").createdCxt?.userProfile?.isLoggedIn shouldBe false
+    }
+
+    "signing out with no session is not an error -- logout is idempotent" {
+        val client = TestHttpClient(cxt.instanceConfig)
+        client.sendGetRequest(EAEP.logout).rptStatusCode shouldBe EXC.ok
+        client.sendGetRequest("/health").createdCxt?.userProfile?.isLoggedIn shouldBe false
+    }
+}
+
+/**
+ * Coverage for where a caller lands after signing in (issue #386).
+ *
+ * The feature is the reason a bought solution did not fit: a challenge that drops you at the hostname rather
+ * than the page you asked for is a poor experience. The care is because a redirect target read from a query
+ * string is an **open redirect** unless proven otherwise -- and on a perimeter, a link to the genuine sign-in
+ * host that lands somewhere else afterwards is exactly the shape of a credible phishing link.
+ */
+private val envAuthReturnTests = stringSpec {
+
+    // What a safe return address is -- no protocol-relative, off-site, scheme, backslash, or control character -- is
+    // the kernel's `sameOriginPath`, tested on both targets by `UrlUtilTest` (issue #1738). This holds the wrapper to it.
+    "a safe path is kept, and anything else lands at the default" {
+        EnvAuthReturn.sanitize("/ea/schema/endpoints?limit=10") shouldBe "/ea/schema/endpoints?limit=10"
+        for (refused in listOf(null, "", "//evil.example.com", "https://evil.example.com", "/ea\\..\\evil")) {
+            EnvAuthReturn.sanitize(refused) shouldBe EnvAuthReturn.default
+        }
+    }
+}
+
+/**
+ * Coverage for the Env Auth session's length (issue #386) -- the value that matters most about it, because it
+ * is the **only revocation an edge has**. No user store means no live role refresh, so whoever holds a valid
+ * cookie keeps their access until it expires and nothing can take it back.
+ */
+private val envAuthSessionTests = stringSpec {
+
+    fun config(env: String) = KdrInstanceConfig("envAuthSession", env, ENV.liveSource)
+
+    "production sessions are short, and everywhere else is longer" {
+        ENVAUTH.sessionMillis(config(ENV.prod)) shouldBe ENVAUTH.prodSessionMillis
+        ENVAUTH.sessionMillis(config(ENV.local)) shouldBe ENVAUTH.defaultSessionMillis
+        ENVAUTH.sessionMillis(config(ENV.dev)) shouldBe ENVAUTH.defaultSessionMillis
+    }
+
+    /**
+     * Twelve hours against the application's thirty days is not an inconsistency: that one is safe because
+     * `refreshActingRoles` overrules the cookie from the user's row within seconds. This has no row to consult.
+     */
+    "twelve hours in production, two days elsewhere" {
+        ENVAUTH.prodSessionMillis shouldBe 12L * 3600 * 1000
+        ENVAUTH.defaultSessionMillis shouldBe 2L * 24 * 3600 * 1000
+    }
+
+    "the config option wins, and the env var is the default beneath it" {
+        val c = config(ENV.prod).apply { put(ENVAUTH.sessionMillisKey, 5_000L) }
+        ENVAUTH.sessionMillis(c) shouldBe 5_000L
+
+        val viaEnv = config(ENV.prod).apply { put(ENVAUTH.sessionMillisEnvVar.name, "9000") }
+        ENVAUTH.sessionMillis(viaEnv) shouldBe 9_000L
+    }
+}
