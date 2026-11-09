@@ -1,6 +1,9 @@
 package com.dynamicruntime.common.app
 
+import com.dynamicruntime.common.content.MarkdownFragmentService
 import com.dynamicruntime.common.content.UIC
+import com.dynamicruntime.common.home.HFRAG
+import com.dynamicruntime.common.util.renderMarkdownText
 import com.dynamicruntime.common.context.DebugTags
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.user.EnvAuthRules
@@ -101,6 +104,10 @@ fun appSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.app") {
                 required = true,
             ) { type = SCT.integer }
             property(
+                APP.testDeploymentBand,
+                "On a public test deployment, what its band says on every page: the home copy's testDeployment.band, plain text.",
+            )
+            property(
                 APP.dataId,
                 "For a caller with test access, the id of the data this node serves: it changes when the data is reset, and holds across restarts on a persistent database.",
             )
@@ -159,7 +166,7 @@ fun appSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.app") {
                 // Always served: the caller's client's, else the deployment's, defaulting when the deployment did not
                 // tune it (a custom-config override, not an env var -- this is UI tuning, not an *ops* concern).
                 APP.idleBumpIntervalMs to IdleRefresh.millisFor(c, c.client),
-            ) + dataIdSetting(c),
+            ) + dataIdSetting(c) + testDeploymentBandSetting(c),
             // The `_debug` words (issue #1334), to whom the words answer: the diagnostic fence, as for error detail.
             UIC.state to mapOf(
                 APP.debugTags to if (c.hasTestAccess || c.isEnvDebug) DebugTags.get(c.instanceConfig)?.toWire().orEmpty() else emptyList(),
@@ -229,6 +236,17 @@ fun appSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.app") {
  * The [APP.dataId] setting (issue #1099), for a caller with test access on a node that reads one: the only caller
  * offered simulations, whose recent runs are kept against it (issue #1149). Nothing elsewhere.
  */
+/**
+ * The band's words, on a public test deployment only (issue #1697): the `home` file's `testDeployment.band` for the
+ * caller's client, as plain text, else [APP.defaultTestDeploymentBand]. Served with the flag that draws the band, so the
+ * band never shows words a flavor has replaced while the page's copy is on its way.
+ */
+private fun testDeploymentBandSetting(c: KdrCxt): Map<String, Any?> {
+    if (!PublicTestDeployment.isOn(c.instanceConfig)) return emptyMap()
+    val copy = MarkdownFragmentService.get(c).resolveFragment(c, HFRAG.home, HFRAG.testDeploymentNs, HFRAG.testDeploymentBand)
+    return mapOf(APP.testDeploymentBand to (copy?.renderMarkdownText()?.trim()?.ifEmpty { null } ?: APP.defaultTestDeploymentBand))
+}
+
 private fun dataIdSetting(c: KdrCxt): Map<String, Any?> {
     if (!c.hasTestAccess) return emptyMap()
     val id = InstanceConfigService.getOrNull(c)?.dataId?.ifEmpty { null } ?: return emptyMap()

@@ -63,6 +63,16 @@ object APP {
     const val publicTestDeployment = "publicTestDeployment"
 
     /**
+     * A setting, served only on a public test deployment ([publicTestDeployment]): the words of its band (issue #1697),
+     * plain text. Copy, the `home` file's `testDeployment.band` for the caller's client, so a deployment or a flavor
+     * rewords it; [defaultTestDeploymentBand] when the copy says nothing, since the band is never drawn empty.
+     */
+    const val testDeploymentBand = "testDeploymentBand"
+
+    /** The band's words where no copy gives them: the copy as core ships it, and the frontend's before it is told. */
+    const val defaultTestDeploymentBand = "For testing and development only \u2014 data here may be reset at any time."
+
+    /**
      * Feature flag: whether this request is **currently acting** env-authed (issues #348, #360) -- the
      * *effective* value, not the raw truth of the channel. False when no edge vouched for the request, and
      * also when the session has deliberately suppressed its env auth ([envAuthPath]).

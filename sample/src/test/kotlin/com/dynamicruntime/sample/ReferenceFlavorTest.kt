@@ -7,6 +7,7 @@ import com.dynamicruntime.common.flavor.FLV
 import com.dynamicruntime.common.gedra.ClientService
 import com.dynamicruntime.common.gedra.GEP
 import com.dynamicruntime.common.gedra.workflow.WVF
+import com.dynamicruntime.common.app.APP
 import com.dynamicruntime.common.home.HCARD
 import com.dynamicruntime.common.home.HFRAG
 import com.dynamicruntime.common.home.PFRAG
@@ -56,6 +57,9 @@ class ReferenceFlavorTest : StringSpec({
         copy(plain, HFRAG.home, HFRAG.siteNs)[HFRAG.title] shouldBe "KotlinDynamicRuntime"
         copy(plain, HFRAG.home, "home")["title"] shouldBe "Welcome"
         copy(plain, AFRAG.auth, "login")["intro"] shouldBe ""
+        // And the band a public test deployment draws says it calmly (issue #1697).
+        copy(reference, HFRAG.home, HFRAG.testDeploymentNs)[HFRAG.testDeploymentBand].orEmpty() shouldContain "A demonstration site"
+        copy(plain, HFRAG.home, HFRAG.testDeploymentNs)[HFRAG.testDeploymentBand] shouldBe APP.defaultTestDeploymentBand
     }
 
     "core says in the Register card, not the intro, why to register and what the address is for (issue #1652)" {

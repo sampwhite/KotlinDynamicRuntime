@@ -59,7 +59,7 @@ class ConfigParsersTest {
                     APP.envAuthDebug to true,
                     APP.publicTestDeployment to true,
                 ),
-                settings = mapOf(APP.idleBumpIntervalMs to 30_000),
+                settings = mapOf(APP.idleBumpIntervalMs to 30_000, APP.testDeploymentBand to "A demonstration site."),
             ),
         )
         assertTrue(cfg.obfuscateSensitiveErrors)
@@ -69,6 +69,8 @@ class ConfigParsersTest {
         assertTrue(cfg.isEnvAuthed)
         assertTrue(cfg.envAuthDebug)
         assertTrue(cfg.publicTestDeployment)
+        // The band's words are the deployment's (issue #1697).
+        assertEquals("A demonstration site.", cfg.testDeploymentBand)
         assertEquals(30_000, cfg.idleBumpIntervalMs)
     }
 
@@ -89,6 +91,8 @@ class ConfigParsersTest {
         assertFalse(cfg.envAuthDebug)
         // No testing band until the backend says this is a public test deployment (issue #1150).
         assertFalse(cfg.publicTestDeployment)
+        // With no words served, the band says the built-in ones rather than nothing (issue #1697).
+        assertEquals(APP.defaultTestDeploymentBand, cfg.testDeploymentBand)
         assertEquals(APP.defaultIdleBumpIntervalMs, cfg.idleBumpIntervalMs)
     }
 

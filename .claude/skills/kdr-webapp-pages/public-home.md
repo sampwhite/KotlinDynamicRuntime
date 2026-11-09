@@ -9,6 +9,12 @@ sandbox and success) and marks the page root (`data-test-deployment`, `markPageT
 page's content clears it. Fixed at the bottom, not the top, so it shows at any scroll without competing with the
 sticky bar. Every mail says the same beneath its footer (`common.testDeploymentNote`).
 
+The band's words are copy (issue #1697): the `home` file's `testDeployment.band` for the caller's client, as plain text,
+which the app config serves as the `testDeploymentBand` setting beside the flag, so the band has them from its first
+frame rather than switching words once the page's copy arrives. Blank or absent, it says `APP.defaultTestDeploymentBand`,
+since the band is never drawn empty. The `reference` flavor says "A demonstration site: what you add here is cleared
+from time to time."
+
 ## Joining a demo client (issue #1248)
 
 On a deployment that offers it (`JOIN.offeredKey`, set by the `reference` flavor), a visitor signed in to `public` can

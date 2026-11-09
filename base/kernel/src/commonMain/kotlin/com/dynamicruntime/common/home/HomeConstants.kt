@@ -514,6 +514,14 @@ object HFRAG {
     const val siteNs = "site"
     const val siteDescription = "description"
 
+    /**
+     * The home file's namespace for a public test deployment's band (issue #1697): [testDeploymentBand], what it says
+     * on every page. Served by the app config rather than read from the shell's copy, so the band has its words before
+     * the page draws.
+     */
+    const val testDeploymentNs = "testDeployment"
+    const val testDeploymentBand = "band"
+
     /** The home file's namespace for the forms listing's copy (issue #791). */
     const val formsNs = "forms"
 

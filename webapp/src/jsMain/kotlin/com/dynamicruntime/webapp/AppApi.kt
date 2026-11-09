@@ -67,6 +67,11 @@ class AppConfig(
      */
     val publicTestDeployment: Boolean = false,
     /**
+     * What the band says (issue #1697): the deployment's words, from its copy, served with [publicTestDeployment];
+     * [APP.defaultTestDeploymentBand] when the config carried none.
+     */
+    val testDeploymentBand: String = APP.defaultTestDeploymentBand,
+    /**
      * The `_debug` words the node declares (issue #1334), for the app bar's debug box to offer. Served only to a caller
      * the words answer, so empty for anyone else, and before the first fetch.
      */
@@ -121,6 +126,7 @@ fun appConfigFrom(config: UiConfig): AppConfig = AppConfig(
     envAuthDebug = config.features[APP.envAuthDebug] == true,
     dataId = config.settings[APP.dataId] as? String,
     publicTestDeployment = config.features[APP.publicTestDeployment] == true,
+    testDeploymentBand = (config.settings[APP.testDeploymentBand] as? String)?.ifBlank { null } ?: APP.defaultTestDeploymentBand,
     debugTags = debugTagChoicesFrom(config.state[APP.debugTags]),
 )
 
