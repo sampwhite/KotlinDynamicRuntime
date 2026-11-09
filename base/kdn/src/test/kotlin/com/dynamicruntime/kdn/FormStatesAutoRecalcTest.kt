@@ -28,6 +28,7 @@ import com.dynamicruntime.common.gedra.workflow.WFP
 import com.dynamicruntime.common.gedra.workflow.WFS
 import com.dynamicruntime.common.gedra.workflow.WfEntry
 import com.dynamicruntime.common.gedra.workflow.WfSaveKind
+import com.dynamicruntime.common.gedra.workflow.WorkflowService
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.user.TestUser
@@ -185,6 +186,34 @@ class FormStatesAutoRecalcTest : StringSpec({
         )
         written[FSR.auto].shouldBeNull()
         storedWorkflows(client, gid) shouldNotContain "review"
+    }
+
+    "a reload reads the client's configurations in the order the boot does, so re-saving one moves no form" {
+        // Each bundle's workflow, written in the reverse of their names' order: a reload that read the bundles in the
+        // order they were written, where the boot reads them by name, put the workflows -- and so every form's state
+        // entries -- in another order, and every form read as out of date.
+        val client = "fsaOrder1741"
+        val admin = defineClient(client)
+        fun write(bundle: String, workflowId: String): Map<String, Any?> {
+            val flows = gedraConfig(cxt, bundle, clientNamespace(client), client) {
+                workflow(workflowId, WfEntry.normal) { task("draft", "Draft it") { trait("memo"); save("saveMemo", "Save", WfSaveKind.edit) } }
+            }
+            val slots = gedraConfigToEntries(flows)
+            return admin.postData(
+                CFEP.bundleWrite,
+                mapOf(CFEP.name to bundle, CFEP.namespaceField to clientNamespace(client), CFEP.slots to slots, CFEP.reloadField to true),
+            )
+        }
+        write("zFlows", "zReview")
+        write("aFlows", "aReview")
+        val normal = WorkflowService.get(cxt).forClient(client).workflows.values.filter { it.def.entry == WfEntry.normal }
+        normal.map { it.def.workflowId } shouldBe listOf("aReview", "zReview")
+        forms(client, 2)
+        for ((bundle, workflowId) in listOf("zFlows" to "zReview", "aFlows" to "aReview")) {
+            val again = auto(write(bundle, workflowId))
+            again[FSR.updated] shouldBe 0L
+            again[FSR.current] shouldBe 2L
+        }
     }
 
     "why none runs: the client's choice first, then the deployment's limit, then the forms" {
