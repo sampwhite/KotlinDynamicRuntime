@@ -280,8 +280,9 @@ Home says so too (issue #1636), with two home cards the module overlays on `home
 caller as the menu entry and opens the page, its button reading "Switch on the assistant" while it is off and the person
 may switch it on. The other is offered to a person signed in to `public`, where the deployment offers the assistant to
 self-serve clients (the module's node fact `assistant:selfServeOffered`: a model, and `KDR_ASSISTANT_SELF_SERVE`), and
-gives it as a reason to create a client. The create card then says that the page moves to the assistant once the
-client is made.
+gives it as a reason to create a client. The create card then says that the new client's home page starts the person
+on the assistant: a new client lands on its home page (issue #1723), whose Getting started checklist leads with
+switching the assistant on.
 
 Before anything is sent the page reads `GET /clientAdmin/assistant/status`: whether the assistant is on, whether the
 client has a sandbox, whether the caller is in it, the month's use **as a share** of the budget -- never the amount,
