@@ -222,7 +222,7 @@ private val envAuthLoginTests = stringSpec {
 }
 
 /**
- * Signing out of an environment (issue #486): the counterpart to `EnvAuthLoginTest`.
+ * Signing out of an environment (issue #486): the counterpart to the sign-in part above.
  *
  * Seeds a live session by encoding a cookie with the instance key -- the same thing the login endpoint does on
  * success -- rather than driving Google, since what is under test is the *clearing*, not the minting.

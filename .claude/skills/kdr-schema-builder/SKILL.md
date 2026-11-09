@@ -725,6 +725,7 @@ Don't write `as`/`@Suppress("UNCHECKED_CAST")`. Use `com.dynamicruntime.common.u
   `SchLayout.kt` (the `g-layout` model, its `SL` vocabulary, collect/strip/prune and the boot check)
 - `base/kernel/src/commonMain/.../util/`: `CollectionUtil.kt` (`deepClone`), `ConvertUtil.kt`
   (`toT`/`toJsonMap`/`toOptStr`)
-- Tests: `base/common/src/test/.../schema/SchTypeBuilderTest.kt`, `SchValidatorTest.kt`, `SchParserTest.kt`
+- Tests: `base/common/src/test/.../schema/SchStructureTest.kt` (the type builder and the parser among them),
+  `SchValidatorTest.kt`, `SchKeywordsTest.kt`
 
 For building HTTP endpoints on top of this layer, see the `kdr-endpoint-builder` skill.

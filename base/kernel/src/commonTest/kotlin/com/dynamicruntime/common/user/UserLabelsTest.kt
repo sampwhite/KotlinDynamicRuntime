@@ -10,8 +10,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
-import kotlin.test.assertTrue
-
 /** The label rule the backend stores by and the admin console edits by (issue #786), on JVM and JS alike. */
 class UserLabelsTest {
     @Test

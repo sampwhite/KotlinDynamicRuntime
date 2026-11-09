@@ -7,6 +7,7 @@ import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldBeEmpty
+import io.kotest.matchers.collections.shouldContainAll
 import io.kotest.matchers.shouldBe
 
 /**
@@ -19,6 +20,18 @@ class ClientFieldPoliciesTest : StringSpec({
     "every field the definition's schema declares has a policy, and nothing else does" {
         val declared = ClientDefSchema.defs(cxt)[CLD.writtenInfoTypeQualified].toJsonMapOrEmpty()[SCH.properties].toJsonMapOrEmpty()
         ClientFieldPolicies.byField.keys shouldBe declared.keys
+    }
+
+    // What a client's own administrator may set is an authority boundary (issue #1116), so it is held here: the
+    // fields that decide what a client is, whose it is, and where it runs or is reached stay the platform's, and the
+    // definition editor offers a client's administrator none of them.
+    "a client's own administrator edits no field the platform owns" {
+        ClientFieldPolicies.platformFields shouldContainAll listOf(
+            CLD.customerId, CLD.usageType, CLD.audience, CLD.enabledEnvironments, CLD.extendsFromClientId,
+            CLD.domainPrefix, CLD.customDomain, CLD.webResourcesId, CLD.staticConfig, CLD.retired, CLD.publicTemplate,
+            CLD.testFeatures, CLD.joinRoles, CLD.refreshIntervalSeconds,
+        )
+        (ClientPresentationFields.names intersect ClientFieldPolicies.platformFields.toSet()).shouldBeEmpty()
     }
 
     // Issue #1112: a client made by another takes the creator's choices and what its maker passes on, nothing else -- not
