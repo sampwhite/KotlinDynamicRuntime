@@ -550,9 +550,19 @@ already written. `AuthFlowTest` and `TimeTravelTest` are the worked examples.
   Check a spec meant to share with `-Pkdr.concurrentSpecs=4`, which runs specs side by side and so finds a count
   that only held because nothing else was running.
 - **Merging spec files keeps each one whole.** Where several small specs on one subject become one file, each keeps
-  its body verbatim as a file-private `stringSpec { }` factory under its own KDoc, and the merged class `include`s
-  them (`FormStateTest`, `WorkflowEndpointsTest`): every test keeps its own context, helpers and name, so nothing
-  in a merge can change what a test checks.
+  its body verbatim as a file-private factory under its own KDoc -- `private fun xTests() = stringSpec { ... }` --
+  and the merged class `include`s each (`include(xTests())`; `FormStateTest`, `DemoSimulationsTest`). Every test
+  keeps its own context, helpers and name, so nothing in a merge can change what a test checks.
+  - **A function, not a `val`.** A top-level `val` would run every part's setup -- boots, provisioning -- in the file's
+    static initializer, so one part's failure would surface as an `ExceptionInInitializerError` that fails every
+    part and hides its cause. Called from the class, a part's setup runs where the spec is built.
+  - **The `private` keyword is needed here**, despite the code guide's preference for `@KdrPrivate`: every merged
+    file in a package declares its parts at the top level, and only the keyword keeps two files' `xTests` apart.
+  - **Running one part's test.** A part is no longer a class `--tests` can name, so filter by test name through
+    Kotest's own filter, which matches the test's whole path (spec, then name) as a glob:
+    `kotest_filter_tests='*a rerun tops up*' ./gradlew :base:kdn:test --tests '*DemoSimulationsTest'`. Every
+    part's setup still runs, since the parts are built with the spec; only the tests are filtered. To reproduce an
+    order-dependent failure (above), name the merged spec in `--tests`: its parts run in the order it includes them.
 
 - **An in-memory database is one per instance name, and outlives the instance.** Unless `KDR_DB_NAME` names
   it, an in-memory H2 database takes the instance's name (issue #836), and the URL carries `DB_CLOSE_DELAY=-1`,

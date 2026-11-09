@@ -20,15 +20,15 @@ import java.util.concurrent.TimeUnit
  * loaded, and nothing leaves the process.
  */
 class MailTest : StringSpec({
-    include(mailSendingTests)
-    include(mailDeliverTests)
+    include(mailSendingTests())
+    include(mailDeliverTests())
 })
 
 /**
  * Where mail is sent from (issue #1250): `KDR_MAIL_DOMAIN`, the config overrides, and the refusal for a node that
  * can send but does not say from where. Decided by a pure function, so no key is ever loaded to test it.
  */
-private val mailSendingTests = stringSpec {
+private fun mailSendingTests() = stringSpec {
 
     fun config(vararg settings: Pair<String, Any?>): KdrInstanceConfig =
         KdrInstanceConfig("mail1250", ENV.unit, ENV.liveSource).also { c -> settings.forEach { (k, v) -> c.put(k, v) } }
@@ -76,7 +76,7 @@ private val mailSendingTests = stringSpec {
  * process. In the background the call returns before the send runs, the send runs on a context of its own, and its
  * failure does not reach the caller.
  */
-private val mailDeliverTests = stringSpec {
+private fun mailDeliverTests() = stringSpec {
     val mail = MailService()
     val cxt = KdrCxt.mkSimpleCxt("deliver").also { it.traceId = "trace-1299" }
 

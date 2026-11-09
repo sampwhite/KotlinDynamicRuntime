@@ -44,12 +44,12 @@ import io.kotest.matchers.shouldBe
  * Also, since issue #1739, the tests that were `HighlightedStartTest`, each kept whole below.
  */
 class WaitingStepsTest : StringSpec({
-    include(waitingStepsTests)
-    include(highlightedStartTests)
+    include(waitingStepsTests())
+    include(highlightedStartTests())
 })
 
 /** This file's own tests, as the class describes them. */
-private val waitingStepsTests = stringSpec {
+private fun waitingStepsTests() = stringSpec {
     val cxt = TestInstances.default("waiting1637")
     val client = "waiting1637"
 
@@ -225,7 +225,7 @@ private val waitingStepsTests = stringSpec {
  * Over a client of its own with two workflows that differ only in that: `check`, which highlights its Start, and `plain`,
  * which does not. Each one's first task is saved by a reviewer (the `reviewer` label) alone, its trait locked to it.
  */
-private val highlightedStartTests = stringSpec {
+private fun highlightedStartTests() = stringSpec {
     val cxt = TestInstances.default("highlightedStart1662")
     val client = "hlstart1662"
 

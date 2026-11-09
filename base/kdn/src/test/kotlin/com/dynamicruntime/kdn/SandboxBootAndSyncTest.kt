@@ -41,12 +41,12 @@ import io.kotest.matchers.shouldBe
  * Also, since issue #1739, the tests that were `SandboxBootTierTest`, each kept whole below.
  */
 class SandboxBootAndSyncTest : StringSpec({
-    include(sandboxBootAndSyncTests)
-    include(sandboxBootTierTests)
+    include(sandboxBootAndSyncTests())
+    include(sandboxBootTierTests())
 })
 
 /** This file's own tests, as the class describes them. */
-private val sandboxBootAndSyncTests = stringSpec {
+private fun sandboxBootAndSyncTests() = stringSpec {
     fun traits(node: KdrCxt, client: String): List<String> =
         SchemaService.get(node).gedraTraitsFor(client).map { it.traitId }
     fun asClient(node: KdrCxt, client: String): KdrCxt = node.mkSubContext("sandboxSync", client).also { it.userId = 9400L }
@@ -161,7 +161,7 @@ private val sandboxBootAndSyncTests = stringSpec {
  * toggle -- so a restarted node ran the client's drafts, which made the publish impact report empty, since the
  * running configuration already was the candidate. Two boots over one database: the second is the restart.
  */
-private val sandboxBootTierTests = stringSpec {
+private fun sandboxBootTierTests() = stringSpec {
     val db = mapOf("KDR_DB_NAME" to "sbxBootTierDb", "KDR_LOAD_STORED_CONFIG" to "true")
     val client = "sbxboot"
 

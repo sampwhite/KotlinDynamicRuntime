@@ -61,12 +61,12 @@ import io.kotest.matchers.string.shouldContain
  * Also, since issue #1739, the tests that were `NewTraitInWorkflowCatalogTest`, each kept whole below.
  */
 class ClientWorkflowTemplateTest : StringSpec({
-    include(clientWorkflowTemplateTests)
-    include(newTraitInWorkflowCatalogTests)
+    include(clientWorkflowTemplateTests())
+    include(newTraitInWorkflowCatalogTests())
 })
 
 /** This file's own tests, as the class describes them. */
-private val clientWorkflowTemplateTests = stringSpec {
+private fun clientWorkflowTemplateTests() = stringSpec {
     val cxt = TestInstances.default("clientWorkflowTemplate1120")
 
     fun defineClient(client: String, ownCreation: Boolean = false) {
@@ -293,7 +293,7 @@ private val clientWorkflowTemplateTests = stringSpec {
  * and must offer the sandbox's traits with them -- and its user labels -- not only the published ones the client itself
  * runs. A client without a sandbox is offered its own, as it runs them. Over the shared instance, a client per case.
  */
-private val newTraitInWorkflowCatalogTests = stringSpec {
+private fun newTraitInWorkflowCatalogTests() = stringSpec {
     val cxt = TestInstances.default("newTraitCatalog1425")
 
     "a draft trait is offered to a new workflow at once, and a workflow collecting it saves as a draft" {

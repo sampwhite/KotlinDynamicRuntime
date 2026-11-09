@@ -56,8 +56,8 @@ import io.kotest.matchers.shouldBe
  * the specs that used to be a file of its own, kept whole.
  */
 class WorkflowKeywordsTest : StringSpec({
-    include(reviewKeywordTests)
-    include(workflowKeywordCountsTests)
+    include(reviewKeywordTests())
+    include(workflowKeywordCountsTests())
 })
 
 /**
@@ -68,7 +68,7 @@ class WorkflowKeywordsTest : StringSpec({
  * Over a client of its own, whose `check` workflow is two data tasks: `look`, which carries `review`, then `file`, which
  * carries nothing. Its copy overlay rewords the keyword's verb and status text.
  */
-private val reviewKeywordTests = stringSpec {
+private fun reviewKeywordTests() = stringSpec {
     val cxt = TestInstances.default("reviewKeyword1596")
     val client = "reviewkw1596"
 
@@ -180,7 +180,7 @@ private val reviewKeywordTests = stringSpec {
  * saves, carrying no keyword.
  * The reviewer reviews the Northwest region and is no legal reviewer.
  */
-private val workflowKeywordCountsTests = stringSpec {
+private fun workflowKeywordCountsTests() = stringSpec {
     val cxt = TestInstances.default("workflowKeywords1600")
     val client = "wfkw1600"
 

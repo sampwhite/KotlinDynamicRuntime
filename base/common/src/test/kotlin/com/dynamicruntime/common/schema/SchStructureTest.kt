@@ -32,13 +32,13 @@ import io.kotest.matchers.types.shouldNotBeSameInstanceAs
  * below is one of the specs that used to be a file of its own, kept whole.
  */
 class SchStructureTest : StringSpec({
-    include(schExtendsTests)
-    include(schMapValuesTests)
-    include(schVariantsTests)
-    include(schOverlayTests)
-    include(schNarrowingTests)
-    include(schParserTests)
-    include(schTypeBuilderTests)
+    include(schExtendsTests())
+    include(schMapValuesTests())
+    include(schVariantsTests())
+    include(schOverlayTests())
+    include(schNarrowingTests())
+    include(schParserTests())
+    include(schTypeBuilderTests())
 })
 
 /**
@@ -46,7 +46,7 @@ class SchStructureTest : StringSpec({
  * merger -- properties merged by default, the layout by field, every other key replaced -- and refused where it cannot
  * be resolved. And the `$ref` beside schema keys that used to parse clean and do nothing, now refused at each site.
  */
-private val schExtendsTests = stringSpec {
+private fun schExtendsTests() = stringSpec {
     fun prop(type: String = SCT.string) = mapOf<String, Any?>(SCH.type to type, SCH.description to "A field.")
     val base = mapOf<String, Any?>(
         SCH.type to SCT.kObject,
@@ -175,7 +175,7 @@ private val schExtendsTests = stringSpec {
  * `additionalProperties` given as a schema. The third way to describe an object, beside the closed record and the
  * open one, and until now the one this layer could not state: a map of author-chosen names was an untyped object.
  */
-private val schMapValuesTests = stringSpec {
+private fun schMapValuesTests() = stringSpec {
     val cxt = KdrCxt.mkSimpleCxt("test")
 
     val defs = schemaDefs(cxt, "m") {
@@ -501,7 +501,7 @@ private val schMapValuesTests = stringSpec {
  * document standard-valid, and it is the one worth guarding, because nothing about a passing selection test
  * would notice if it stopped being true.
  */
-private val schVariantsTests = stringSpec {
+private fun schVariantsTests() = stringSpec {
 
     val cxt = KdrCxt.mkSimpleCxt("test")
 
@@ -774,7 +774,7 @@ private val schVariantsTests = stringSpec {
  * `$ref` to an altered type resolves to the **altered** form once re-parsed -- the case namespacing cannot
  * fake -- and that nothing is ever written into the global document, since every client shares it.
  */
-private val schOverlayTests = stringSpec {
+private fun schOverlayTests() = stringSpec {
 
     fun defs(vararg pairs: Pair<String, Any?>): Map<String, Any?> = linkedMapOf(*pairs)
 
@@ -963,7 +963,7 @@ private val schOverlayTests = stringSpec {
  * rule load-bearing rather than tidy. The permitted set is deliberately closed at three, so most of this file
  * is refusals; each is only reachable here, since a boot that refuses never serves a request.
  */
-private val schNarrowingTests = stringSpec {
+private fun schNarrowingTests() = stringSpec {
 
     /** A closed object: two properties, one of them required, one offering a choice list. */
     val base: Map<String, Any?> = linkedMapOf(
@@ -1177,7 +1177,7 @@ private val schNarrowingTests = stringSpec {
  * This is the shape every list endpoint's output uses (`items { ref(...) }`), so without it array elements are
  * never validated.
  */
-private val schParserTests = stringSpec {
+private fun schParserTests() = stringSpec {
 
     val cxt = KdrCxt.mkSimpleCxt("test")
 
@@ -1267,7 +1267,7 @@ private val schParserTests = stringSpec {
 }
 
 /** Formerly `SchTypeBuilderTest`. */
-private val schTypeBuilderTests = stringSpec {
+private fun schTypeBuilderTests() = stringSpec {
 
     $$"namespaced $defs, refs, mandatory field descriptions, default string, reusable props" {
         val cxt = KdrCxt.mkSimpleCxt("test")

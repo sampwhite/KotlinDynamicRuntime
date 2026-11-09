@@ -27,8 +27,8 @@ import io.kotest.matchers.string.shouldContain
  * file of its own, kept whole.
  */
 class OutboundHttpTest : StringSpec({
-    include(kdrHttpClientTests)
-    include(outboundHttpServiceTests)
+    include(kdrHttpClientTests())
+    include(outboundHttpServiceTests())
 })
 
 /**
@@ -37,7 +37,7 @@ class OutboundHttpTest : StringSpec({
  * the Jetty blocking path the whole layer rests on against a local [TestHttpServer]: real status codes, a real
  * body, real headers.
  */
-private val kdrHttpClientTests = stringSpec {
+private fun kdrHttpClientTests() = stringSpec {
 
     val cxt = TestInstances.default("kdrHttpClient")
     val server = TestHttpServer(cxt.instanceConfig)
@@ -96,7 +96,7 @@ private val kdrHttpClientTests = stringSpec {
  * `mkTestBootCxt` forces `ENV.unit`, which is what the refusal is keyed on -- deliberately not `isTestInstance`,
  * so a developer's own in-memory local node still calls out (see `OutboundHttpService`).
  */
-private val outboundHttpServiceTests = stringSpec {
+private fun outboundHttpServiceTests() = stringSpec {
 
     "fast and slow both refuse in the unit test environment" {
         val cxt = TestInstances.default("outboundHttp")

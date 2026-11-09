@@ -54,12 +54,12 @@ import io.kotest.matchers.string.shouldContain
  * Also, since issue #1739, the tests that were `StoredReportConfigTest`, each kept whole below.
  */
 class ReportRegistryReloadTest : StringSpec({
-    include(reportRegistryReloadTests)
-    include(storedReportConfigTests)
+    include(reportRegistryReloadTests())
+    include(storedReportConfigTests())
 })
 
 /** This file's own tests, as the class describes them. */
-private val reportRegistryReloadTests = stringSpec {
+private fun reportRegistryReloadTests() = stringSpec {
     val cxt = TestInstances.default("reportRegistry")
 
     fun writer(on: KdrCxt, client: String): KdrCxt = on.mkSubContext("reportWrite", client).also { it.userId = 9800L }
@@ -237,7 +237,7 @@ private val reportRegistryReloadTests = stringSpec {
  * schema, the reload reassembles it, and the client sees it -- on a booted node, where the slot's reference to the
  * definition schema has to resolve.
  */
-private val storedReportConfigTests = stringSpec {
+private fun storedReportConfigTests() = stringSpec {
     val cxt = TestInstances.default("storedReport")
     val client = "rptstored"
     fun writer(): KdrCxt = cxt.mkSubContext("reportWrite", client).also { it.userId = 9470L }

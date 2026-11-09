@@ -73,11 +73,11 @@ import io.kotest.matchers.string.shouldContain
  * its own, kept whole.
  */
 class DemoSimulationsTest : StringSpec({
-    include(simulationTests)
-    include(designDemoLogisticsTests)
-    include(listingDemoTests)
-    include(confDemoProvisionTests)
-    include(demoSwitchesTests)
+    include(simulationTests())
+    include(designDemoLogisticsTests())
+    include(listingDemoTests())
+    include(confDemoProvisionTests())
+    include(demoSwitchesTests())
 })
 
 /**
@@ -85,7 +85,7 @@ class DemoSimulationsTest : StringSpec({
  * and users to sign in as -- a suffix makes an independent copy, a rerun is safe, and the listing offers it to a caller
  * with test access, who alone may run it (issue #1149).
  */
-private val simulationTests = stringSpec {
+private fun simulationTests() = stringSpec {
     val cxt = TestInstances.default("simulation997")
     // An ordinary signed-in user, env-authed: whoever is testing the instance. Test access, not a role, is what a
     // simulation asks of its caller (issue #1149).
@@ -149,7 +149,7 @@ private val simulationTests = stringSpec {
  * step the designer, an administrator without the `reviewer` label, sees as someone else's. Over a fresh copy of the
  * demo, provisioned by its simulation with its labeled reviewer.
  */
-private val designDemoLogisticsTests = stringSpec {
+private fun designDemoLogisticsTests() = stringSpec {
     val cxt = TestInstances.default("designDemoLogistics1071")
     val client = provisionDesignDemo(cxt, "logistics1071").clients.single()
     val designer = TestUser.create(cxt, "designer@$client.example", level = ROLE.admin, userClient = client)
@@ -214,7 +214,7 @@ private val designDemoLogisticsTests = stringSpec {
 }
 
 /** The listing demo (issue #1316): the counts it is asked for, topped up on a rerun, spread unevenly over owners. */
-private val listingDemoTests = stringSpec {
+private fun listingDemoTests() = stringSpec {
     val cxt = TestInstances.default("listingDemo1316")
 
     fun formsOf(client: String, scope: ReadScope = ReadScope.ofClient(client)): Int {
@@ -257,7 +257,7 @@ private val listingDemoTests = stringSpec {
  * over one an earlier run made an administrator, which a persistent store (a developer's Postgres, a reference node
  * provisioning at boot) still holds. Each case on a copy of its own (`confdemo<suffix>`).
  */
-private val confDemoProvisionTests = stringSpec {
+private fun confDemoProvisionTests() = stringSpec {
     val cxt = TestInstances.default("confDemoProvision1455")
 
     /** The committee member of [client] as stored: found, never made, by the simulation's own lookup. */
@@ -300,7 +300,7 @@ private val confDemoProvisionTests = stringSpec {
  *
  * Instances of their own, since each is a deployment's configuration.
  */
-private val demoSwitchesTests = stringSpec {
+private fun demoSwitchesTests() = stringSpec {
     // Joining offered, as on a reference deployment, and visitors' edits at their default: off.
     val joinable = Startup.mkTestBootCxt("demoSwitchesJoin", "kdnDemoSwitchesJoin1668", mapOf(JOIN.offeredKey to true))
     provisionConfDemo(joinable)

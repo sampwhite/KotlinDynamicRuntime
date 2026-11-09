@@ -45,12 +45,12 @@ import io.kotest.matchers.shouldBe
  * Also, since issue #1739, the tests that were `UnpublishedDraftsTest`, each kept whole below.
  */
 class ClientChecklistTest : StringSpec({
-    include(clientChecklistTests)
-    include(unpublishedDraftsTests)
+    include(clientChecklistTests())
+    include(unpublishedDraftsTests())
 })
 
 /** This file's own tests, as the class describes them. */
-private val clientChecklistTests = stringSpec {
+private fun clientChecklistTests() = stringSpec {
     val cxt = TestInstances.default("checklist1639")
 
     /** [user]'s checklist, each step's id to whether it is done. */
@@ -149,7 +149,7 @@ private val clientChecklistTests = stringSpec {
  * counted, publishing it clears it, and from inside the sandbox the answer is the parent's. Over a person's own client,
  * which has a sandbox, on the shared instance.
  */
-private val unpublishedDraftsTests = stringSpec {
+private fun unpublishedDraftsTests() = stringSpec {
     val cxt = TestInstances.default("drafts1638")
 
     /** A configuration [name] of [client] declaring one cfact of its own: something to leave as a draft. */

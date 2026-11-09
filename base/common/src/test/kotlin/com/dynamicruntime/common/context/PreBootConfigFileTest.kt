@@ -18,12 +18,12 @@ import java.nio.file.Files
  * the ancestor holding `settings.gradle.kts`, which every lookup here starts from.
  */
 class PreBootConfigFileTest : StringSpec({
-    include(preBootConfigFileTests)
-    include(appPathsTests)
+    include(preBootConfigFileTests())
+    include(appPathsTests())
 })
 
 /** This file's own tests, as the class describes them. */
-private val preBootConfigFileTests = stringSpec {
+private fun preBootConfigFileTests() = stringSpec {
 
     /** A throwaway workspace: a settings file to anchor on, and the defaults file beside it. */
     fun workspace(vararg lines: String): File {
@@ -130,7 +130,7 @@ private val preBootConfigFileTests = stringSpec {
  * (as an IDE run often is) still resolves the workspace directory by finding the ancestor holding
  * `settings.gradle.kts`.
  */
-private val appPathsTests = stringSpec {
+private fun appPathsTests() = stringSpec {
 
     "findWorkspaceDir walks up to the ancestor containing settings.gradle.kts" {
         val root = Files.createTempDirectory("kdrWorkspace").toFile()

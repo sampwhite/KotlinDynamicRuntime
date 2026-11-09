@@ -57,12 +57,12 @@ import kotlin.time.Duration.Companion.seconds
  * Also, since issue #1739, the tests that were `JobChoiceListsTest`, each kept whole below.
  */
 class JobRunnerTest : StringSpec({
-    include(jobRunnerTests)
-    include(jobChoiceListsTests)
+    include(jobRunnerTests())
+    include(jobChoiceListsTests())
 })
 
 /** This file's own tests, as the class describes them. */
-private val jobRunnerTests = stringSpec {
+private fun jobRunnerTests() = stringSpec {
     // Its own instance (issue #1075): it runs the job machinery, which is instance-wide, with JobFixture's jobs, and
     // freezes the clock.
     val cxt = Startup.mkTestBootCxt("jobRunner", "jobRunnerTest", additionalComponents = listOf(JobFixture()))
@@ -310,7 +310,7 @@ private val jobRunnerTests = stringSpec {
  * resolved per caller as the catalog is served. Neither list is enforced by validation; the handler refuses an
  * unknown job type or client itself.
  */
-private val jobChoiceListsTests = stringSpec {
+private fun jobChoiceListsTests() = stringSpec {
     // Its own instance (issue #1075): ChoiceFixture's job types with env auth, a setup no shared entry has.
     // Env-authed, as ClientOptionsTest explains: the caller must see the catalog endpoint itself.
     val cxt = Startup.mkTestBootCxt(

@@ -20,8 +20,8 @@ import io.kotest.matchers.string.shouldContain
  * of its own, kept whole.
  */
 class MarkdownContentEndpointTest : StringSpec({
-    include(markdownFragmentEndpointTests)
-    include(markdownDocEndpointTests)
+    include(markdownFragmentEndpointTests())
+    include(markdownDocEndpointTests())
 })
 
 /**
@@ -30,7 +30,7 @@ class MarkdownContentEndpointTest : StringSpec({
  * immutable cache header. Exercised through the real request pipeline against the classpath resource
  * `md-fragments/sample.md`.
  */
-private val markdownFragmentEndpointTests = stringSpec {
+private fun markdownFragmentEndpointTests() = stringSpec {
 
     "the static root serves a fragment file as a two-tier map with an immutable cache header" {
         val cxt = TestInstances.default("md")
@@ -79,7 +79,7 @@ private val markdownFragmentEndpointTests = stringSpec {
  * unlike a fragment, a document does **not** 404 on a mismatch (a user recovers by navigating away and back).
  * Driven through the real pipeline against the embedded `md-docs/readme.md` resource.
  */
-private val markdownDocEndpointTests = stringSpec {
+private fun markdownDocEndpointTests() = stringSpec {
 
     "a matching build id serves the document with the permanent immutable header" {
         val cxt = TestInstances.default("doc")

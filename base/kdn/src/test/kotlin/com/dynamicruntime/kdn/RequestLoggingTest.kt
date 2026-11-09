@@ -50,10 +50,10 @@ import io.kotest.matchers.string.shouldStartWith
  * that used to be a file of its own, kept whole.
  */
 class RequestLoggingTest : StringSpec({
-    include(debugTagsTests)
-    include(captureLogsTests)
-    include(polledCallLogTests)
-    include(requestLogSummaryTests)
+    include(debugTagsTests())
+    include(captureLogsTests())
+    include(polledCallLogTests())
+    include(requestLogSummaryTests())
 })
 
 /**
@@ -61,7 +61,7 @@ class RequestLoggingTest : StringSpec({
  * line per statement for one request, and `logFileStore` one per file store call, with its time (issue #1650). The
  * declaration rules themselves are `KdrCxtTest`'s.
  */
-private val debugTagsTests = stringSpec {
+private fun debugTagsTests() = stringSpec {
 
     val cxt = TestInstances.default("debugTags")
     val admin = TestUser.createFullAdmin(cxt, "debugtags-admin@example.com")
@@ -146,7 +146,7 @@ private val debugTagsTests = stringSpec {
  * to a caller the diagnostic fence admits, and ignored for anyone else. The capture itself -- below the configured
  * level, sub contexts, the cap -- is `RequestLogCaptureTest`'s.
  */
-private val captureLogsTests = stringSpec {
+private fun captureLogsTests() = stringSpec {
 
     val cxt = TestInstances.default("captureLogs")
     val admin = TestUser.createFullAdmin(cxt, "capture-admin@example.com")
@@ -201,7 +201,7 @@ private val captureLogsTests = stringSpec {
  * and is counted instead, a summary per endpoint called in a window gives the count and average duration, and a
  * failed call, or one carrying a `_debug` tag, logs as any other does.
  */
-private val polledCallLogTests = stringSpec {
+private fun polledCallLogTests() = stringSpec {
     val cxt = TestInstances.default("polledCallLog")
     val polledCalls = RequestService.get(cxt).polledCalls
     val user = TestUser.create(cxt, "person@polled1395.test")
@@ -262,7 +262,7 @@ private val polledCallLogTests = stringSpec {
  * What the request log writes for a real request (issue #1168): the query and the body through `RequestArgsLog`, with
  * the endpoint's `g-sensitive` fields redacted.
  */
-private val requestLogSummaryTests = stringSpec {
+private fun requestLogSummaryTests() = stringSpec {
     val cxt = TestInstances.default("requestLogSummary1168")
 
     "a body is logged with its secrets redacted and its addresses masked" {

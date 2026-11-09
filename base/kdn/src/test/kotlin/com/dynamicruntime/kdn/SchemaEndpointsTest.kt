@@ -48,14 +48,14 @@ import io.kotest.matchers.shouldNotBe
  * Also, since issue #1739, the tests that were `SchemaEndpointResolveClientTest`, `SamePathVerbTest`, `PublishedClientAdminCatalogTest`, each kept whole below.
  */
 class SchemaEndpointsTest : StringSpec({
-    include(schemaEndpointsTests)
-    include(schemaEndpointResolveClientTests)
-    include(samePathVerbTests)
-    include(publishedClientAdminCatalogTests)
+    include(schemaEndpointsTests())
+    include(schemaEndpointResolveClientTests())
+    include(samePathVerbTests())
+    include(publishedClientAdminCatalogTests())
 })
 
 /** This file's own tests, as the class describes them. */
-private val schemaEndpointsTests = stringSpec {
+private fun schemaEndpointsTests() = stringSpec {
 
     // /schema/endpoints is a general endpoint: its result carries the endpoint renderings and a shared $defs.
     fun results(resp: Map<String, Any?>): Map<String, Any?> = resp[EP.results]!!.toJsonMap()
@@ -453,7 +453,7 @@ private val schemaEndpointsTests = stringSpec {
  * schema and therefore gets per-client copies of the gedra-section endpoints; `env auth` is assumed so the
  * catalog is unrestricted and this test turns on `resolveClient` alone, not the #489 publicApi gate.
  */
-private val schemaEndpointResolveClientTests = stringSpec {
+private fun schemaEndpointResolveClientTests() = stringSpec {
     // Its own instance (issue #1075): VariantFixtureComponent with env auth, a setup no shared entry has.
     // One instance for the file (issue #1075): every test here only looks endpoints up, each as its own caller.
     fun boot(name: String): KdrCxt = Startup.mkTestBootCxt(
@@ -584,7 +584,7 @@ private val schemaEndpointResolveClientTests = stringSpec {
  * These assertions fail loudly if that memo is ever keyed by path again: the two verbs take disjoint input
  * fields and answer with different output types, and endpoint input is closed to undeclared properties.
  */
-private val samePathVerbTests = stringSpec {
+private fun samePathVerbTests() = stringSpec {
 
     fun client() = TestHttpClient(TestInstances.default("samePathVerb").instanceConfig).alwaysWithTestAccess()
 
@@ -622,7 +622,7 @@ private val samePathVerbTests = stringSpec {
  *
  * The published set is pinned whole, so that adding to it or taking from it is a decision this test is changed for.
  */
-private val publishedClientAdminCatalogTests = stringSpec {
+private fun publishedClientAdminCatalogTests() = stringSpec {
     val cxt = TestInstances.default("publishedClientAdmin")
 
     val published = setOf(

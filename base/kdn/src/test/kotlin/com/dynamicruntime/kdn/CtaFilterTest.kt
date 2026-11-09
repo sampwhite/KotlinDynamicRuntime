@@ -61,12 +61,12 @@ import io.kotest.matchers.string.shouldContain
  * Also, since issue #1739, the tests that were `CtaFilterActsTest`, each kept whole below.
  */
 class CtaFilterTest : StringSpec({
-    include(ctaFilterTests)
-    include(ctaFilterActsTests)
+    include(ctaFilterTests())
+    include(ctaFilterActsTests())
 })
 
 /** This file's own tests, as the class describes them. */
-private val ctaFilterTests = stringSpec {
+private fun ctaFilterTests() = stringSpec {
     val cxt = TestInstances.default("ctaFilter1594")
     val svc = GedraConfigService.get(cxt)
 
@@ -275,7 +275,7 @@ private val ctaFilterTests = stringSpec {
  * reviewer; its `siteCheck` has a data task saved by that reviewer (`saveWhen: kdr:reviewer`, its trait locked to the
  * task). The `northwest` and `south` user labels make a reviewer of each region; every reviewer also carries `reviewer`.
  */
-private val ctaFilterActsTests = stringSpec {
+private fun ctaFilterActsTests() = stringSpec {
     val cxt = TestInstances.default("ctaFilterActs1595")
     val client = "ctaacts1595"
 

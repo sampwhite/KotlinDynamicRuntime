@@ -52,12 +52,12 @@ import io.kotest.matchers.string.shouldContain
  * Also, since issue #1739, the tests that were `CoreDetailsStateDerivationTest`, each kept whole below.
  */
 class CoreDetailsEditTest : StringSpec({
-    include(coreDetailsEditTests)
-    include(coreDetailsStateDerivationTests)
+    include(coreDetailsEditTests())
+    include(coreDetailsStateDerivationTests())
 })
 
 /** This file's own tests, as the class describes them. */
-private val coreDetailsEditTests = stringSpec {
+private fun coreDetailsEditTests() = stringSpec {
     val cxt = TestInstances.default("coreDetailsEdit658")
     val client = "coreDetailsedit658"
 
@@ -401,7 +401,7 @@ private val coreDetailsEditTests = stringSpec {
  * production `base/common` code, and a purpose-built client with a core details workflow requiring one trait proves the
  * whole path (deriver -> `writeState` -> states cache -> the `withStates` read) without depending on acme's shapes.
  */
-private val coreDetailsStateDerivationTests = stringSpec {
+private fun coreDetailsStateDerivationTests() = stringSpec {
     val cxt = TestInstances.default("coreDetailsState657")
     val client = "coreDetails657"
 

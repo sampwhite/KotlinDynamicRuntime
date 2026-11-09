@@ -57,12 +57,12 @@ import io.kotest.matchers.string.shouldContain
  * the typed report endpoints, on a context of their own.
  */
 class ReportTypedEndpointTest : StringSpec({
-    include(reportTypedEndpointTests)
-    include(reportTypedCatalogTests)
+    include(reportTypedEndpointTests())
+    include(reportTypedCatalogTests())
 })
 
 /** This file's own tests, as the class describes them. */
-private val reportTypedEndpointTests = stringSpec {
+private fun reportTypedEndpointTests() = stringSpec {
     // An instance of its own (issue #1736): it turns response validation off and assumes env auth, which no shared instance has.
     val cxt = Startup.mkTestBootCxt(
         "reportTyped", "reportTypedEndpointTest",
@@ -268,7 +268,7 @@ private val reportTypedEndpointTests = stringSpec {
  * An instance of its own because it needs the sample's reports **without** env auth assumed: `ReportTypedEndpointTest`
  * assumes it, to read the whole catalog, and the catalog's answer to a caller without it is what is under test here.
  */
-private val reportTypedCatalogTests = stringSpec {
+private fun reportTypedCatalogTests() = stringSpec {
     val cxt = SampleTestInstances.default("reportTypedCatalog")
     val acmeAdmin = TestUser.create(cxt, "catalog-admin@acme.test", level = ROLE.admin, userClient = SC.acme)
     val acmeUser = TestUser.create(cxt, "catalog-user@acme.test", userClient = SC.acme)

@@ -53,9 +53,9 @@ import io.kotest.matchers.string.shouldContain
  * of the specs that used to be a file of its own, kept whole.
  */
 class StoredConfigRepairTest : StringSpec({
-    include(storedSchemaRepairTests)
-    include(storedOverlayRepairTests)
-    include(sourceSchemaForgivenessTests)
+    include(storedSchemaRepairTests())
+    include(storedOverlayRepairTests())
+    include(sourceSchemaForgivenessTests())
 })
 
 /**
@@ -67,7 +67,7 @@ class StoredConfigRepairTest : StringSpec({
  * A shared instance with the stored-config check at `warn` (the forgiving path a unit test opts into, #839) and a
  * new client per scenario; the unit-default `strict` refusal and a restart get cases of their own.
  */
-private val storedSchemaRepairTests = stringSpec {
+private fun storedSchemaRepairTests() = stringSpec {
 
     val warn = mapOf(GCFG.storedCheckEnvVar.name to BootCheckMode.warn.name)
     val cxt = TestInstances.storedConfigWarn("storedRepair")
@@ -366,7 +366,7 @@ private val storedSchemaRepairTests = stringSpec {
  *
  * A shared instance with the stored-config check at `warn` (#839) and a new client per scenario.
  */
-private val storedOverlayRepairTests = stringSpec {
+private fun storedOverlayRepairTests() = stringSpec {
 
     val warn = mapOf(GCFG.storedCheckEnvVar.name to BootCheckMode.warn.name)
     val cxt = TestInstances.storedConfigWarn("overlayRepair")
@@ -471,7 +471,7 @@ private val storedOverlayRepairTests = stringSpec {
  * outside production, but in production the faulty keyword or layout is dropped and the node serves, as every
  * other source-config check does there. Before, these refused the boot even in production.
  */
-private val sourceSchemaForgivenessTests = stringSpec {
+private fun sourceSchemaForgivenessTests() = stringSpec {
 
     val typeName = "${SourceFaultComponent.namespace}.Faulty"
 

@@ -77,9 +77,9 @@ import java.util.concurrent.ConcurrentHashMap
  * of its own, kept whole.
  */
 class CodeLayerTest : StringSpec({
-    include(codeOverridesTests)
-    include(configCodeLayerTests)
-    include(codeOverlaysTests)
+    include(codeOverridesTests())
+    include(configCodeLayerTests())
+    include(codeOverlaysTests())
 })
 
 /**
@@ -89,7 +89,7 @@ class CodeLayerTest : StringSpec({
  * entry with nothing under it is refused. The patch's dry run is the code-layer part's, below, and Acme's own code the
  * sample's `AcmeCodeOverrideTest`. A client per case, on the shared extension-template instance.
  */
-private val codeOverridesTests = stringSpec {
+private fun codeOverridesTests() = stringSpec {
     val tpl = ExtensionTemplateComponent.template
     val own = ExtensionTemplateComponent.ownCode
     val cxt = TestInstances.extensionTemplate("codeOverrides1634")
@@ -297,7 +297,7 @@ private val codeOverridesTests = stringSpec {
  * code over its template's, and what it stores over either -- and whether each is marked; and a patch's dry run saying
  * what it would newly replace.
  */
-private val configCodeLayerTests = stringSpec {
+private fun configCodeLayerTests() = stringSpec {
     val tpl = ExtensionTemplateComponent.template
     val kid = ExtensionTemplateComponent.child
     val cxt = TestInstances.extensionTemplate("configCodeLayer1616")
@@ -527,7 +527,7 @@ private val configCodeLayerTests = stringSpec {
  * a later change to the code reaches the parts the client left alone. One that does not merge is refused at write and by
  * a patch's dry run; one the code has since moved out from under is forgiven at load, part by part, and reported.
  */
-private val codeOverlaysTests = stringSpec {
+private fun codeOverlaysTests() = stringSpec {
     val tpl = ExtensionTemplateComponent.template
     val own = ExtensionTemplateComponent.ownCode
     val cxt = TestInstances.extensionTemplate("codeOverlays1657")

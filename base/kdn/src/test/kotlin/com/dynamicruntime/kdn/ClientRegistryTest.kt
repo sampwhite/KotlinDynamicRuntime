@@ -52,12 +52,12 @@ import io.kotest.matchers.shouldBe
  * Also, since issue #1739, the tests that were `ClientStatusListingTest`, each kept whole below.
  */
 class ClientRegistryTest : StringSpec({
-    include(clientRegistryTests)
-    include(clientStatusListingTests)
+    include(clientRegistryTests())
+    include(clientStatusListingTests())
 })
 
 /** This file's own tests, as the class describes them. */
-private val clientRegistryTests = stringSpec {
+private fun clientRegistryTests() = stringSpec {
 
     // Its own instance (issue #1075): OffsiteClientComponent, a fixture component no shared entry has; a case lists
     // every client the instance carries.
@@ -112,7 +112,7 @@ private val clientRegistryTests = stringSpec {
  * is as it was -- present clients only. One client per status, on a node where stored config is forgiven (as it is
  * everywhere but unit's strict default), so the dropped and refused ones load as issues rather than refusing.
  */
-private val clientStatusListingTests = stringSpec {
+private fun clientStatusListingTests() = stringSpec {
 
     val cxt = TestInstances.storedConfigWarn("statusListing")
     val present = "status828ok"

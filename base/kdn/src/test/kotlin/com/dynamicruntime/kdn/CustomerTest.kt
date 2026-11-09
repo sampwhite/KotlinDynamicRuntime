@@ -41,12 +41,12 @@ import io.kotest.matchers.string.shouldContain
  * Also, since issue #1739, the tests that were `CustomerOverviewTest`, each kept whole below.
  */
 class CustomerTest : StringSpec({
-    include(customerTests)
-    include(customerOverviewTests)
+    include(customerTests())
+    include(customerOverviewTests())
 })
 
 /** This file's own tests, as the class describes them. */
-private val customerTests = stringSpec {
+private fun customerTests() = stringSpec {
     val cxt = TestInstances.default("customers1107")
     val admin = TestUser.createFullAdmin(cxt, "operator@customers1107.test")
     val customer = "cust1107"
@@ -157,7 +157,7 @@ private val customerTests = stringSpec {
  * customer's clients for them or for the administrators of its root -- read-only, facts only, and nobody else's.
  * Over the shared instance, with a customer of this issue's own.
  */
-private val customerOverviewTests = stringSpec {
+private fun customerOverviewTests() = stringSpec {
     val cxt = TestInstances.default("customer1114")
     val operator = TestUser.createFullAdmin(cxt, "operator@cust1114.test")
     val root = "cust1114"

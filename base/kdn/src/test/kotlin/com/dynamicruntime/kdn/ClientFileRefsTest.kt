@@ -85,12 +85,12 @@ import java.nio.file.Files
  * Also, since issue #1739, the tests that were `FileRefLimitTest`, each kept whole below.
  */
 class ClientFileRefsTest : StringSpec({
-    include(clientFileRefsTests)
-    include(fileRefLimitTests)
+    include(clientFileRefsTests())
+    include(fileRefLimitTests())
 })
 
 /** This file's own tests, as the class describes them. */
-private val clientFileRefsTests = stringSpec {
+private fun clientFileRefsTests() = stringSpec {
     val cxt = TestInstances.default("clientFileRefs1153")
     val svc = GedraConfigService.get(cxt)
     val refs = FileRefService.get(cxt)
@@ -960,7 +960,7 @@ private val clientFileRefsTests = stringSpec {
  * **An instance of its own** (issue #1075): its fixture ships clients over the limit, a problem in source that the
  * instance is told to report rather than refuse (`KDR_GEDRA_CONFIG_CHECK=warn`), and local files are instance-wide.
  */
-private val fileRefLimitTests = stringSpec {
+private fun fileRefLimitTests() = stringSpec {
     val png = byteArrayOf(0x89.toByte(), 'P'.code.toByte(), 'N'.code.toByte(), 'G'.code.toByte(), 0x0D, 0x0A, 0x1A, 0x0A, 1, 2, 3)
     val otherPng = png + byteArrayOf(9, 9)
     val files = Files.createTempDirectory("kdrRefLimit").toFile()

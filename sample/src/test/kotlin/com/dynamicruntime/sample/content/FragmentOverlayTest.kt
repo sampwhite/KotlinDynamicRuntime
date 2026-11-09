@@ -46,12 +46,12 @@ import io.kotest.matchers.string.shouldContain
  * their own.
  */
 class FragmentOverlayTest : StringSpec({
-    include(fragmentOverlayTests)
-    include(sampleImageTests)
+    include(fragmentOverlayTests())
+    include(sampleImageTests())
 })
 
 /** This file's own tests, as the class describes them. */
-private val fragmentOverlayTests = stringSpec {
+private fun fragmentOverlayTests() = stringSpec {
 
     val cxt = SampleTestInstances.default("fragOverlay")
 
@@ -218,7 +218,7 @@ private val fragmentOverlayTests = stringSpec {
  * The image the sample ships (issue #1339): read from its resources, served under the static root, and named by acme's
  * home page copy, which a deployment carrying the sample loads with no problem found.
  */
-private val sampleImageTests = stringSpec {
+private fun sampleImageTests() = stringSpec {
     val cxt = SampleTestInstances.default("sampleImage")
 
     "the sample's image is served as an SVG by its name and content" {

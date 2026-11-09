@@ -23,12 +23,12 @@ import io.kotest.matchers.shouldBe
  * Also, since issue #1739, the tests that were `AppUiConfigEndpointTest`, each kept whole below.
  */
 class UiConfigEndpointTest : StringSpec({
-    include(uiConfigEndpointTests)
-    include(appUiConfigEndpointTests)
+    include(uiConfigEndpointTests())
+    include(appUiConfigEndpointTests())
 })
 
 /** This file's own tests, as the class describes them. */
-private val uiConfigEndpointTests = stringSpec {
+private fun uiConfigEndpointTests() = stringSpec {
 
     fun results(resp: Map<String, Any?>): Map<String, Any?> = resp.getValue(EP.results)!!.toJsonMap()
     fun Map<String, Any?>.obj(key: String): Map<String, Any?> = getValue(key)!!.toJsonMap()
@@ -81,7 +81,7 @@ private val uiConfigEndpointTests = stringSpec {
  * It is anonymous; it carries the error-display policy `obfuscateSensitiveErrors` (reflected through the same
  * resolver the error edge uses) and the idle-bump interval (issue #146) the frontend refreshes itself on.
  */
-private val appUiConfigEndpointTests = stringSpec {
+private fun appUiConfigEndpointTests() = stringSpec {
 
     fun results(resp: Map<String, Any?>): Map<String, Any?> = resp.getValue(EP.results)!!.toJsonMap()
     fun features(resp: Map<String, Any?>): Map<String, Any?> = results(resp).getValue(UIC.features)!!.toJsonMap()

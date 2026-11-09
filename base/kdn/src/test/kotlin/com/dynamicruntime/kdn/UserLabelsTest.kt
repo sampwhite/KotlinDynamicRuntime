@@ -64,12 +64,12 @@ import io.kotest.matchers.string.shouldContain
  * Also, since issue #1739, the tests that were `UserLabelUsesTest`, each kept whole below.
  */
 class UserLabelsTest : StringSpec({
-    include(userLabelsTests)
-    include(userLabelUsesTests)
+    include(userLabelsTests())
+    include(userLabelUsesTests())
 })
 
 /** This file's own tests, as the class describes them. */
-private val userLabelsTests = stringSpec {
+private fun userLabelsTests() = stringSpec {
     val cxt = TestInstances.default("labels786")
     val client = "labels786"
 
@@ -287,7 +287,7 @@ private val userLabelsTests = stringSpec {
  * The label-suggestions read says what each label does (issue #1658), worked out from the client's workflows: over a
  * fresh copy of the design demo, whose logistics workflow ends in an approval only a `reviewer` may give.
  */
-private val userLabelUsesTests = stringSpec {
+private fun userLabelUsesTests() = stringSpec {
     val cxt = TestInstances.default("labelUses1658")
     val client = provisionDesignDemo(cxt, "labeluses1658").clients.single()
     val admin = TestUser.create(cxt, "admin@$client.example", level = ROLE.admin, userClient = client)

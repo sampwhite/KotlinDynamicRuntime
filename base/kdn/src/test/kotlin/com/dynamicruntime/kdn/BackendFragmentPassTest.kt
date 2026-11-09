@@ -29,12 +29,12 @@ import io.kotest.matchers.string.shouldContain
  * Also, since issue #1739, the tests that were `LayoutStringsDeliveryTest`, each kept whole below.
  */
 class BackendFragmentPassTest : StringSpec({
-    include(backendFragmentPassTests)
-    include(layoutStringsDeliveryTests)
+    include(backendFragmentPassTests())
+    include(layoutStringsDeliveryTests())
 })
 
 /** This file's own tests, as the class describes them. */
-private val backendFragmentPassTests = stringSpec {
+private fun backendFragmentPassTests() = stringSpec {
 
     fun service(cxt: com.dynamicruntime.common.context.KdrCxt) = MarkdownFragmentService.get(cxt)
 
@@ -111,7 +111,7 @@ private val backendFragmentPassTests = stringSpec {
  * one is resolved at delivery rather than shipped as written and rendered as literal text (issue #814). And what is
  * delivered parses back on the page, a heading-only layout included.
  */
-private val layoutStringsDeliveryTests = stringSpec {
+private fun layoutStringsDeliveryTests() = stringSpec {
 
     val cxt = TestInstances.default("layoutStrings")
 

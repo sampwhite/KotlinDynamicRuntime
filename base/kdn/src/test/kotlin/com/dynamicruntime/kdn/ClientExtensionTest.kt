@@ -64,12 +64,12 @@ import io.kotest.matchers.string.shouldContain
  * Also, since issue #1739, the tests that were `ClientTemplateInheritanceTest`, each kept whole below.
  */
 class ClientExtensionTest : StringSpec({
-    include(clientExtensionTests)
-    include(clientTemplateInheritanceTests)
+    include(clientExtensionTests())
+    include(clientTemplateInheritanceTests())
 })
 
 /** This file's own tests, as the class describes them. */
-private val clientExtensionTests = stringSpec {
+private fun clientExtensionTests() = stringSpec {
     val tpl = ExtensionTemplateComponent.template
     val kid = ExtensionTemplateComponent.child
     val cxt = TestInstances.extensionTemplate("clientExtension")
@@ -282,7 +282,7 @@ private val clientExtensionTests = stringSpec {
  * own and marked as the template's; and the definition fields the template fills in, which the definition read
  * names. One booted instance with the extension fixture; a stored client per case.
  */
-private val clientTemplateInheritanceTests = stringSpec {
+private fun clientTemplateInheritanceTests() = stringSpec {
     val cxt = TestInstances.extensionTemplate("clientTemplateInheritance1621")
     val svc = GedraConfigService.get(cxt)
     val tpl = ExtensionTemplateComponent.template

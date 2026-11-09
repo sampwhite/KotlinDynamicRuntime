@@ -60,12 +60,12 @@ import io.kotest.matchers.string.shouldContain
  * Also, since issue #1739, the tests that were `ClientRefBoundaryTest`, each kept whole below.
  */
 class ClientConfigIsolationTest : StringSpec({
-    include(clientConfigIsolationTests)
-    include(clientRefBoundaryTests)
+    include(clientConfigIsolationTests())
+    include(clientRefBoundaryTests())
 })
 
 /** This file's own tests, as the class describes them. */
-private val clientConfigIsolationTests = stringSpec {
+private fun clientConfigIsolationTests() = stringSpec {
 
     val warn = mapOf(GCFG.storedCheckEnvVar.name to BootCheckMode.warn.name)
 
@@ -183,7 +183,7 @@ private val clientConfigIsolationTests = stringSpec {
  * schema is the global defs plus its own overlays. So a reference to another client's type has nothing to
  * resolve against, and the write's trial refuses it.
  */
-private val clientRefBoundaryTests = stringSpec {
+private fun clientRefBoundaryTests() = stringSpec {
 
     val cxt = TestInstances.default("refBoundary")
     val owner = "refboundaryowner"

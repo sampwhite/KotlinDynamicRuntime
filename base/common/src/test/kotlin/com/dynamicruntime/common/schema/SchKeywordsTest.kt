@@ -27,14 +27,14 @@ import io.kotest.matchers.types.shouldNotBeSameInstanceAs
  * the kernel on both targets.
  */
 class SchKeywordsTest : StringSpec({
-    include(schConditionTests)
-    include(schDerivedTests)
-    include(schOuterWhitespaceTests)
-    include(schVisibleOnlyTests)
-    include(schOpenOptionsTests)
-    include(schOptionsSourceTests)
-    include(schGKeywordsTests)
-    include(schStdKeywordsTests)
+    include(schConditionTests())
+    include(schDerivedTests())
+    include(schOuterWhitespaceTests())
+    include(schVisibleOnlyTests())
+    include(schOpenOptionsTests())
+    include(schOptionsSourceTests())
+    include(schGKeywordsTests())
+    include(schStdKeywordsTests())
 })
 
 /**
@@ -45,7 +45,7 @@ class SchKeywordsTest : StringSpec({
  * *vacuously* on an absent property, so the natural way to write this construct demands the dependent field
  * from a payload that said nothing at all. That failure is invisible until someone submits an empty form.
  */
-private val schConditionTests = stringSpec {
+private fun schConditionTests() = stringSpec {
 
     val cxt = KdrCxt.mkSimpleCxt("test")
 
@@ -217,7 +217,7 @@ private val schConditionTests = stringSpec {
  * same question asked twice: what a request may carry, and what a response does carry. A test that only ever
  * asked one of the two would pass for a model that had collapsed them.
  */
-private val schDerivedTests = stringSpec {
+private fun schDerivedTests() = stringSpec {
 
     val cxt = KdrCxt.mkSimpleCxt("test")
 
@@ -300,7 +300,7 @@ private val schDerivedTests = stringSpec {
  * trims on the `forInput` path (so bounds/options/the handler measure the trimmed value) and is left untouched
  * everywhere else; `"keep"` is the opt-out from that default.
  */
-private val schOuterWhitespaceTests = stringSpec {
+private fun schOuterWhitespaceTests() = stringSpec {
 
     val cxt = KdrCxt.mkSimpleCxt("test")
 
@@ -570,7 +570,7 @@ private val schOuterWhitespaceTests = stringSpec {
  * while tightening the other. Every invisible character is written as a `\uXXXX` escape: spelled literally
  * they would be exactly as unreadable here as the rule says they are.
  */
-private val schVisibleOnlyTests = stringSpec {
+private fun schVisibleOnlyTests() = stringSpec {
 
     val cxt = KdrCxt.mkSimpleCxt("test")
 
@@ -747,7 +747,7 @@ private val schVisibleOnlyTests = stringSpec {
  * validator had stopped checking options for everybody -- and those are the two ways this could be wrong
  * while looking right. The closed half is what says the check still exists.
  */
-private val schOpenOptionsTests = stringSpec {
+private fun schOpenOptionsTests() = stringSpec {
 
     val cxt = KdrCxt.mkSimpleCxt("openOptions")
 
@@ -884,7 +884,7 @@ private val schOpenOptionsTests = stringSpec {
  * dropdown. So the assertions are mostly about which objects came back, and the first thing the substitution
  * test does is check that the input was not the thing that changed.
  */
-private val schOptionsSourceTests = stringSpec {
+private fun schOptionsSourceTests() = stringSpec {
 
     val cxt = KdrCxt.mkSimpleCxt("optionsSource")
 
@@ -1127,7 +1127,7 @@ private val schOptionsSourceTests = stringSpec {
  * the wrong shape, fails the parse by name -- where it used to be ignored, or read leniently back to a default.
  * Keys without the prefix stay a document's own business.
  */
-private val schGKeywordsTests = stringSpec {
+private fun schGKeywordsTests() = stringSpec {
 
     /** Parses one type whose `v` property carries [keyword] = [value]; returns the refusal's message, or null. */
     fun refusal(keyword: String, value: Any?): String? = try {
@@ -1205,7 +1205,7 @@ private val schGKeywordsTests = stringSpec {
  * validation off and nothing said so. A keyword the layer does not read stays a document's own business, and a
  * client's stored definition is repaired rather than refused: the keyword goes, and the fault costs only itself.
  */
-private val schStdKeywordsTests = stringSpec {
+private fun schStdKeywordsTests() = stringSpec {
 
     /** Parses one type whose `v` property is [property]; returns the refusal's message, or null. */
     fun refusal(property: Map<String, Any?>, vararg onType: Pair<String, Any?>): String? = try {

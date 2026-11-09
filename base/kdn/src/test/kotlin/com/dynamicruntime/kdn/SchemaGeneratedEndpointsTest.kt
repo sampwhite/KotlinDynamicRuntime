@@ -40,8 +40,8 @@ import io.kotest.matchers.string.shouldContain
  * no env auth (issue #1128). Each part below is one of the specs that used to be a file of its own, kept whole.
  */
 class SchemaGeneratedEndpointsTest : StringSpec({
-    include(schemaPublishGeneratedTests)
-    include(schemaGeneratedCatalogTests)
+    include(schemaPublishGeneratedTests())
+    include(schemaGeneratedCatalogTests())
 })
 
 /**
@@ -54,7 +54,7 @@ class SchemaGeneratedEndpointsTest : StringSpec({
  * so the whole catalog can be read around what was generated; what the catalog shows of a generated endpoint to a
  * caller without env auth (issue #1128) is the catalog part's, below.
  */
-private val schemaPublishGeneratedTests = stringSpec {
+private fun schemaPublishGeneratedTests() = stringSpec {
     val cxt = TestInstances.envAuth("publishGenerated")
     val schema = SchemaService.get(cxt)
     val admin = TestUser.createFullAdmin(cxt, "publish-generated@example.com")
@@ -261,7 +261,7 @@ private val schemaPublishGeneratedTests = stringSpec {
  * On the shared default instance, which assumes no env auth -- the production caller's case -- under clients of its
  * own; the last case removes what the first published, and so reads as its tail.
  */
-private val schemaGeneratedCatalogTests = stringSpec {
+private fun schemaGeneratedCatalogTests() = stringSpec {
     val cxt = TestInstances.default("generatedCatalog")
     val gen = GeneratedSurfaces(cxt, "gcattest", setupUserId = 9200L)
     val schema = gen.schema

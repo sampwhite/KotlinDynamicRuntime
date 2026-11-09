@@ -22,8 +22,8 @@ import io.kotest.matchers.string.shouldContain
  * `FragmentReferenceCheckTest`. Each part below is one of the specs that used to be a file of its own, kept whole.
  */
 class FragmentReferencesTest : StringSpec({
-    include(fragmentReferenceBootTests)
-    include(backendReferenceCheckTests)
+    include(fragmentReferenceBootTests())
+    include(backendReferenceCheckTests())
 })
 
 /**
@@ -33,7 +33,7 @@ class FragmentReferencesTest : StringSpec({
  * finding. A fragment is injected through `FRAG.registryKey`, which replaces the node's registered set for the
  * duration of the check.
  */
-private val fragmentReferenceBootTests = stringSpec {
+private fun fragmentReferenceBootTests() = stringSpec {
 
     fun service(cxt: KdrCxt): MarkdownFragmentService = MarkdownFragmentService.get(cxt)
 
@@ -103,7 +103,7 @@ private val fragmentReferenceBootTests = stringSpec {
  * Fragments are injected through `FRAG.registryKey`, replacing the node's set, so only the files each case
  * declares are in play. Values use `%{...}` (no `$`), so plain strings -- no multi-dollar prefix.
  */
-private val backendReferenceCheckTests = stringSpec {
+private fun backendReferenceCheckTests() = stringSpec {
 
     fun service(cxt: KdrCxt): MarkdownFragmentService = MarkdownFragmentService.get(cxt)
 

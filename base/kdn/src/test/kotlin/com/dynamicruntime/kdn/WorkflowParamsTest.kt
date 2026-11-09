@@ -70,9 +70,9 @@ import kotlin.time.Instant
  * a workflow's phases stays in `WorkflowWindowsTest`, on an instance of its own.
  */
 class WorkflowParamsTest : StringSpec({
-    include(clientWorkflowWindowsTests)
-    include(workflowParamsSourceTests)
-    include(workflowParamsSyncTests)
+    include(clientWorkflowWindowsTests())
+    include(workflowParamsSourceTests())
+    include(workflowParamsSyncTests())
 })
 
 /**
@@ -82,7 +82,7 @@ class WorkflowParamsTest : StringSpec({
  * engaged with the workflow; and a sandbox reading its parent's until it has its own. A client per case, on the shared
  * default instance.
  */
-private val clientWorkflowWindowsTests = stringSpec {
+private fun clientWorkflowWindowsTests() = stringSpec {
     val cxt = TestInstances.default("clientWorkflowWindows1121")
 
     fun defineClient(client: String, sandbox: Boolean = false) {
@@ -276,7 +276,7 @@ private val clientWorkflowWindowsTests = stringSpec {
  * the client runs until it sets its own, and a sandbox until it or its client does -- **each parameter on its own**, so
  * a scope follows the fallback for what it does not set, and unsetting returns to it. Only source code declares them.
  */
-private val workflowParamsSourceTests = stringSpec {
+private fun workflowParamsSourceTests() = stringSpec {
     // Its own instance (issue #1075): the client is declared by a component, in source.
     val cxt = Startup.mkTestBootCxt("wfParamsSource", "wfParamsSource1386", additionalComponents = listOf(SourceParamsComponent()))
     val client = SourceParamsComponent.client
@@ -404,7 +404,7 @@ private val workflowParamsSourceTests = stringSpec {
  * next reads the shared cache state, with no reload and no publish. The single-node behavior is
  * `ClientWorkflowWindowsTest`'s.
  */
-private val workflowParamsSyncTests = stringSpec {
+private fun workflowParamsSyncTests() = stringSpec {
     // Its own instances (issue #1075): two nodes over one database of their own (`KDR_DB_NAME`), and node B's clock
     // is moved past the state-read throttle.
     val db = mapOf("KDR_DB_NAME" to "wfParamsSyncDb")

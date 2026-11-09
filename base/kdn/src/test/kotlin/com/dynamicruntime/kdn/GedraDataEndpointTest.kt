@@ -64,13 +64,13 @@ import io.kotest.matchers.string.shouldStartWith
  * Also, since issue #1739, the tests that were `GedraDataExtraTest`, `GedraPatchRefusalTest`, each kept whole below.
  */
 class GedraDataEndpointTest : StringSpec({
-    include(gedraDataEndpointTests)
-    include(gedraDataExtraTests)
-    include(gedraPatchRefusalTests)
+    include(gedraDataEndpointTests())
+    include(gedraDataExtraTests())
+    include(gedraPatchRefusalTests())
 })
 
 /** This file's own tests, as the class describes them. */
-private val gedraDataEndpointTests = stringSpec {
+private fun gedraDataEndpointTests() = stringSpec {
     val cxt = TestInstances.default("gedraData")
 
     val alice = TestUser.create(cxt, "alice@gedra.test", userClient = CL.hub)
@@ -310,7 +310,7 @@ private val gedraDataEndpointTests = stringSpec {
  *
  * Its own client, as `GedraDataCacheTest` explains.
  */
-private val gedraDataExtraTests = stringSpec {
+private fun gedraDataExtraTests() = stringSpec {
     val cxt = TestInstances.default("gedraExtra")
 
     val client = "gextraclient"
@@ -425,7 +425,7 @@ private val gedraDataExtraTests = stringSpec {
  * in order, so the refusal says which landed, which it is for, and which were never tried. The refusal used is a stale
  * `entryId` on the middle target, one of the checks only the apply phase makes.
  */
-private val gedraPatchRefusalTests = stringSpec {
+private fun gedraPatchRefusalTests() = stringSpec {
     val cxt = TestInstances.default("gedraPatchRefusal")
     val user = TestUser.create(cxt, "patch-refusal@gedra.test", userClient = CL.hub)
 

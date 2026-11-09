@@ -34,10 +34,10 @@ import io.kotest.matchers.shouldBe
  * configuration as it was. Each part below is one of the specs that used to be a file of its own, kept whole.
  */
 class SampleInvariantsTest : StringSpec({
-    include(metaSchemaCoverageTests)
-    include(sampleConfigSlotShapeTests)
-    include(sourceTraitNamesTests)
-    include(configTrialIsolationTests)
+    include(metaSchemaCoverageTests())
+    include(sampleConfigSlotShapeTests())
+    include(sourceTraitNamesTests())
+    include(configTrialIsolationTests())
 })
 
 /**
@@ -49,7 +49,7 @@ class SampleInvariantsTest : StringSpec({
  * Both readings are held to every type: the **walk**, which a write is judged by, and the **document**, validated
  * with our own validator.
  */
-private val metaSchemaCoverageTests = stringSpec {
+private fun metaSchemaCoverageTests() = stringSpec {
     val cxt = SampleTestInstances.default("metaSchemaCoverage")
 
     fun faults(name: String, body: Map<String, Any?>, stored: Boolean): List<String> =
@@ -83,7 +83,7 @@ private val metaSchemaCoverageTests = stringSpec {
  * whole configuration on a patch, so anything the serializer can write must be something the gate accepts: a
  * configuration promoted from source, or read and written back, is never refused for its own canonical form.
  */
-private val sampleConfigSlotShapeTests = stringSpec {
+private fun sampleConfigSlotShapeTests() = stringSpec {
     val cxt = SampleTestInstances.default("sampleSlotShape")
 
     "the stored form of every source configuration is one the gate accepts" {
@@ -106,7 +106,7 @@ private val sampleConfigSlotShapeTests = stringSpec {
  * Contains column, a form's section heading, the workflow editor, and Design View. Booted with the widest set a test
  * reaches: the sample, and the reference flavor's demo clients.
  */
-private val sourceTraitNamesTests = stringSpec {
+private fun sourceTraitNamesTests() = stringSpec {
 
     "every trait declared in source code is named by a heading or a title, not by its id" {
         val cxt = SampleTestInstances.reference("sourceTraitNames")
@@ -138,7 +138,7 @@ private val sourceTraitNamesTests = stringSpec {
  * the node: resolving their workflow functions there once reassigned each definition's `resolvedFunctions`, so a
  * refused write could still change what the node's workflows run.
  */
-private val configTrialIsolationTests = stringSpec {
+private fun configTrialIsolationTests() = stringSpec {
     val cxt = SampleTestInstances.default("trialIso")
 
     "a trial does not touch the resolved functions of a client's source-code workflows" {

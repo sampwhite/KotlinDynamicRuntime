@@ -31,15 +31,15 @@ import io.kotest.matchers.shouldBe
  * that used to be a file of its own, kept whole.
  */
 class TraitNamesTest : StringSpec({
-    include(traitNameTests)
-    include(listingTraitNamesTests)
+    include(traitNameTests())
+    include(listingTraitNamesTests())
 })
 
 /**
  * A trait's name in a server message -- a lock's refusal -- by the rule every page names a trait with (issue #1520): its
  * data type's layout heading, its backend pull resolved, then its title, then its id humanized. Over a client of its own.
  */
-private val traitNameTests = stringSpec {
+private fun traitNameTests() = stringSpec {
     val cxt = TestInstances.default("traitName1520")
     val client = "traitname1520"
 
@@ -91,7 +91,7 @@ private val traitNameTests = stringSpec {
  * name for a global one. Over two clients of their own: `renamer` names the platform's name trait **Talk title** (a
  * layout-only alteration, as Adapt writes) and has a trait of its own with a heading; `plain` takes both as they are.
  */
-private val listingTraitNamesTests = stringSpec {
+private fun listingTraitNamesTests() = stringSpec {
     val cxt = TestInstances.default("listingTraitNames1543")
     val renamer = "renamer1543"
     val plain = "plain1543"

@@ -41,12 +41,12 @@ import io.kotest.matchers.shouldBe
  * Also, since issue #1739, the tests that were `ConfigWriteReloadSyncTest`, each kept whole below.
  */
 class GedraConfigSyncTest : StringSpec({
-    include(gedraConfigSyncTests)
-    include(configWriteReloadSyncTests)
+    include(gedraConfigSyncTests())
+    include(configWriteReloadSyncTests())
 })
 
 /** This file's own tests, as the class describes them. */
-private val gedraConfigSyncTests = stringSpec {
+private fun gedraConfigSyncTests() = stringSpec {
     val db = mapOf("KDR_DB_NAME" to "cfgSyncDb", "KDR_LOAD_STORED_CONFIG" to "true")
     // Its own instance (issue #1075): nodes A and B, two nodes over one database of their own (`KDR_DB_NAME`), as
     // syncing between peers needs.
@@ -192,7 +192,7 @@ private val gedraConfigSyncTests = stringSpec {
  * announces the reload, so a peer behind catches up on its next sync check. The single-node half -- live at once,
  * and not without asking -- is `GedraConfigEndpointTest`'s.
  */
-private val configWriteReloadSyncTests = stringSpec {
+private fun configWriteReloadSyncTests() = stringSpec {
     val db = mapOf("KDR_DB_NAME" to "cfgReloadSyncDb", "KDR_LOAD_STORED_CONFIG" to "true")
     // Its own instances (issue #1075): two nodes over one database of their own (`KDR_DB_NAME`), as a peer catching
     // up needs. Node B reads the database rather than a cache, so it sees what node A stored.

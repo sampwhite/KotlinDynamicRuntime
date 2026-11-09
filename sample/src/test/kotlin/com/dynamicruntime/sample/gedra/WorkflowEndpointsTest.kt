@@ -67,12 +67,12 @@ import io.kotest.matchers.string.shouldNotContain
  * state in `FormStateTest`.
  */
 class WorkflowEndpointsTest : StringSpec({
-    include(workflowBootTests)
-    include(workflowSaveTests)
-    include(workflowTaskSaveTests)
-    include(workflowViewTests)
-    include(workflowPagesTests)
-    include(workflowVisibleWhenTests)
+    include(workflowBootTests())
+    include(workflowSaveTests())
+    include(workflowTaskSaveTests())
+    include(workflowViewTests())
+    include(workflowPagesTests())
+    include(workflowVisibleWhenTests())
 })
 
 /**
@@ -81,7 +81,7 @@ class WorkflowEndpointsTest : StringSpec({
  * scopes. The refusals themselves are covered over plain data in `WorkflowRegistryTest`; this is the smoke
  * that the pieces are connected.
  */
-private val workflowBootTests = stringSpec {
+private fun workflowBootTests() = stringSpec {
     // The sample component is loaded only in developer environments, so a unit boot has to force it on --
     // the same way every other sample test reaches its own fixtures.
     val cxt = SampleTestInstances.default("wfBoot")
@@ -150,7 +150,7 @@ private val workflowBootTests = stringSpec {
  * while the two kinds of "no" stay apart: an unfinished form is a *result* naming what is missing, a mistake
  * is a loud 400.
  */
-private val workflowSaveTests = stringSpec {
+private fun workflowSaveTests() = stringSpec {
     val cxt = SampleTestInstances.default("wfSave")
     val globex = TestUser.create(cxt, "save@globex.test", userClient = SC.globex)
     val savePath = clientPath(GEP.workflowSave, SC.globex)
@@ -285,7 +285,7 @@ private val workflowSaveTests = stringSpec {
  * Acme's "Record the audit" is the reviewers' (`saveWhen(kdr:reviewer)` beside a `userHasLabel`); its site follow-up's
  * tasks say nothing, so anyone who can see the form may save them -- once the form is in the follow-up.
  */
-private val workflowTaskSaveTests = stringSpec {
+private fun workflowTaskSaveTests() = stringSpec {
     val cxt = SampleTestInstances.default("wfTaskSave856")
     val create = clientPath(GEP.formDocCreate, SC.acme)
     val engage = clientPath(GEP.workflowEngage, SC.acme)
@@ -379,7 +379,7 @@ private val workflowTaskSaveTests = stringSpec {
  * fragment pass, traits into that client's schema. The two sample clients resolve **differently**, which is
  * the whole point of a per-client view, and a caller whose client has no creation workflow gets `found=false`.
  */
-private val workflowViewTests = stringSpec {
+private fun workflowViewTests() = stringSpec {
     val cxt = SampleTestInstances.default("wfView")
     val acme = TestUser.create(cxt, "view@acme.test", userClient = SC.acme)
     val globex = TestUser.create(cxt, "view@globex.test", userClient = SC.globex)
@@ -478,7 +478,7 @@ private val workflowViewTests = stringSpec {
  * everything the caller may see; the forms listing's drill-down opens exactly the forms a count counted; and the
  * menu item is a client's to turn on.
  */
-private val workflowPagesTests = stringSpec {
+private fun workflowPagesTests() = stringSpec {
     val cxt = SampleTestInstances.default("wfPages792")
     val create = clientPath(GEP.formDocCreate, SC.acme)
     val engage = clientPath(GEP.workflowEngage, SC.acme)
@@ -573,7 +573,7 @@ private val workflowPagesTests = stringSpec {
  * `acme`'s creation workflow collects `expenseReport`, whose data schema carries an admin-only `reviewerNote`
  * (`SampleTraits`), so acme's workflow view is where the two callers diverge.
  */
-private val workflowVisibleWhenTests = stringSpec {
+private fun workflowVisibleWhenTests() = stringSpec {
     val cxt = SampleTestInstances.default("wfVisibleWhen")
     val admin = TestUser.create(cxt, "wf-admin@acme.test", level = ROLE.admin, userClient = SC.acme)
     val ordinary = TestUser.create(cxt, "wf-user@acme.test", userClient = SC.acme)

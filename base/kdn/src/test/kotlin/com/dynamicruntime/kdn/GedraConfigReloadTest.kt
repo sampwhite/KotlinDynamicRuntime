@@ -47,12 +47,12 @@ import io.kotest.matchers.types.shouldNotBeSameInstanceAs
  * Also, since issue #1739, the tests that were `GedraConfigReloadScopeTest`, each kept whole below.
  */
 class GedraConfigReloadTest : StringSpec({
-    include(gedraConfigReloadTests)
-    include(gedraConfigReloadScopeTests)
+    include(gedraConfigReloadTests())
+    include(gedraConfigReloadScopeTests())
 })
 
 /** This file's own tests, as the class describes them. */
-private val gedraConfigReloadTests = stringSpec {
+private fun gedraConfigReloadTests() = stringSpec {
     // Its own instance (issue #1075): a later case appends a source layer to its fragment registry (`FRAG.registryKey`)
     // while running.
     val cxt = Startup.mkTestBootCxt("gedraCfgReload", "gedraCfgReloadTest")
@@ -265,7 +265,7 @@ private val gedraConfigReloadTests = stringSpec {
  * Each case boots its own instance -- and so, since issue #836, its own in-memory database -- because each stores
  * a deliberately bad client definition that stays in the node's collectors.
  */
-private val gedraConfigReloadScopeTests = stringSpec {
+private fun gedraConfigReloadScopeTests() = stringSpec {
 
     fun writer(cxt: KdrCxt, client: String): KdrCxt = cxt.mkSubContext("scopeWrite", client).also { it.userId = 8420L }
 

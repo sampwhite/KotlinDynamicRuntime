@@ -30,12 +30,12 @@ import io.kotest.matchers.string.shouldContain
  * Also, since issue #1739, the tests that were `TopicStartupInitTest`, each kept whole below.
  */
 class StartupTest : StringSpec({
-    include(startupTests)
-    include(topicStartupInitTests)
+    include(startupTests())
+    include(topicStartupInitTests())
 })
 
 /** This file's own tests, as the class describes them. */
-private val startupTests = stringSpec {
+private fun startupTests() = stringSpec {
 
     "booting initializes SchemaService and assembles schema from all components" {
         // Its own instance (issue #1075): the boot itself is under test: what an instance assembles at startup.
@@ -128,7 +128,7 @@ private val startupTests = stringSpec {
  * Asserting the topics exist immediately after boot is what keeps the creation in startup: it fails if anyone
  * makes topic init lazy again.
  */
-private val topicStartupInitTests = stringSpec {
+private fun topicStartupInitTests() = stringSpec {
 
     "the auth topic and its tables are created during startup, before any request" {
         val cxt = TestInstances.default("topicInit")

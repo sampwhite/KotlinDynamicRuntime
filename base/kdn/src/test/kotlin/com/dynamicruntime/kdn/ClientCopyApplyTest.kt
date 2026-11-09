@@ -44,12 +44,12 @@ import io.kotest.matchers.string.shouldContain
  * Also, since issue #1739, the tests that were `CopyRolesTest`, each kept whole below.
  */
 class ClientCopyApplyTest : StringSpec({
-    include(clientCopyApplyTests)
-    include(copyRolesTests)
+    include(clientCopyApplyTests())
+    include(copyRolesTests())
 })
 
 /** This file's own tests, as the class describes them. */
-private val clientCopyApplyTests = stringSpec {
+private fun clientCopyApplyTests() = stringSpec {
     val cxt = TestInstances.default("clientCopyApply1062")
     val svc = GedraConfigService.get(cxt)
     val fragments = MarkdownFragmentService.get(cxt)
@@ -197,7 +197,7 @@ private val clientCopyApplyTests = stringSpec {
  * A client's copy is held to the declared roles (issue #1562): a misspelled role, or one written on what it does not
  * apply to, is refused with its configuration, where it is written, rather than rendering as nothing.
  */
-private val copyRolesTests = stringSpec {
+private fun copyRolesTests() = stringSpec {
 
     val cxt = TestInstances.default("copyRoles")
 

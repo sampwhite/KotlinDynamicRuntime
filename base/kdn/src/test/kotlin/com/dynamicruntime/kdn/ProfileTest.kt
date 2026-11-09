@@ -48,8 +48,8 @@ import kotlin.time.Duration.Companion.minutes
  * (issue #1480). Each part below is one of the specs that used to be a file of its own, kept whole.
  */
 class ProfileTest : StringSpec({
-    include(profileNameTests)
-    include(profileAccountTests)
+    include(profileNameTests())
+    include(profileAccountTests())
 })
 
 /**
@@ -62,7 +62,7 @@ class ProfileTest : StringSpec({
  * The call is session-authorized with no verification code, unlike the password calls beside it, and the tests
  * below pin both halves of that choice: a logged-in user may rename themselves, and a logged-out one may not.
  */
-private val profileNameTests = stringSpec {
+private fun profileNameTests() = stringSpec {
 
     "a user sets the name they are shown under, and it survives the round trip" {
         val cxt = TestInstances.default("profileName")
@@ -147,7 +147,7 @@ private val profileNameTests = stringSpec {
  * An invited user nobody has claimed cannot sign in to read it (accepting the invitation is the claim), so the invited
  * case reads it at the acceptance.
  */
-private val profileAccountTests = stringSpec {
+private fun profileAccountTests() = stringSpec {
     // Its own instance: it moves the instance clock, which is instance-wide.
     val cxt = Startup.mkTestBootCxt("profileAccount1480", "profileAccountTest")
     val users = UserService.get(cxt)

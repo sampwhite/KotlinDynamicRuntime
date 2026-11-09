@@ -48,13 +48,13 @@ import io.kotest.matchers.types.shouldNotBeSameInstanceAs
  * Also, since issue #1739, the tests that were `ClientVariantPresenceTest`, `ClientSchemaTest`, each kept whole below.
  */
 class ClientSchemaVariantTest : StringSpec({
-    include(clientSchemaVariantTests)
-    include(clientVariantPresenceTests)
-    include(clientSchemaTests)
+    include(clientSchemaVariantTests())
+    include(clientVariantPresenceTests())
+    include(clientSchemaTests())
 })
 
 /** This file's own tests, as the class describes them. */
-private val clientSchemaVariantTests = stringSpec {
+private fun clientSchemaVariantTests() = stringSpec {
 
     // Its own instance (issue #1075): what the boot builds from VariantFixtureComponent (a client's schema variant) is
     // under test.
@@ -145,7 +145,7 @@ private val clientSchemaVariantTests = stringSpec {
  * from its rejected definition -- contrary to "nothing can reach them". Each client here declares its own type, so
  * a variant, if built, would carry it.
  */
-private val clientVariantPresenceTests = stringSpec {
+private fun clientVariantPresenceTests() = stringSpec {
 
     val cxt = TestInstances.storedConfigWarn("variantPresence")
 
@@ -207,7 +207,7 @@ private val clientVariantPresenceTests = stringSpec {
  * `getClientSchema` the store of the client the context is **bound** to -- a client's variant, following a re-bind,
  * and dropped with the global one when that is reset.
  */
-private val clientSchemaTests = stringSpec {
+private fun clientSchemaTests() = stringSpec {
     val cxt = TestInstances.default("clientSchema946")
     val client = "cschema946"
     val union = "${GCFG.globalNamespace}.${GU.unionName(GedraDataType.formDoc)}"

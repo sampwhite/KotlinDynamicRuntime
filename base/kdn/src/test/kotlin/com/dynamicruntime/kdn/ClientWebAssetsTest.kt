@@ -63,12 +63,12 @@ import io.kotest.matchers.string.shouldContain
  * Also, since issue #1739, the tests that were `WebResourcesTest`, each kept whole below.
  */
 class ClientWebAssetsTest : StringSpec({
-    include(clientWebAssetsTests)
-    include(webResourcesTests)
+    include(clientWebAssetsTests())
+    include(webResourcesTests())
 })
 
 /** This file's own tests, as the class describes them. */
-private val clientWebAssetsTests = stringSpec {
+private fun clientWebAssetsTests() = stringSpec {
     val cxt = TestInstances.default("clientWebAssets1130")
     val svc = GedraConfigService.get(cxt)
 
@@ -400,7 +400,7 @@ private val clientWebAssetsTests = stringSpec {
  * front of the package's image, and removing it brings the package's back. Only source code names a package. Each
  * instance its own, as the images' are: the boot itself is under test.
  */
-private val webResourcesTests = stringSpec {
+private fun webResourcesTests() = stringSpec {
     val faulty = listOf(
         WebResourcesDef("wresfix:badSlot", mapOf("logo" to "fixture/dot.png")),
         webResources("wresfix:misnamed", favicon = "fixture/png-named.svg"),

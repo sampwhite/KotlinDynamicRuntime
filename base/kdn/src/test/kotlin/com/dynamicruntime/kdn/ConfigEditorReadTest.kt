@@ -43,12 +43,12 @@ import io.kotest.matchers.shouldBe
  * Also, since issue #1739, the tests that were `BundleLiveStateTest`, each kept whole below.
  */
 class ConfigEditorReadTest : StringSpec({
-    include(configEditorReadTests)
-    include(bundleLiveStateTests)
+    include(configEditorReadTests())
+    include(bundleLiveStateTests())
 })
 
 /** This file's own tests, as the class describes them. */
-private val configEditorReadTests = stringSpec {
+private fun configEditorReadTests() = stringSpec {
     val cxt = TestInstances.default("configEditor1436")
     val svc = GedraConfigService.get(cxt)
 
@@ -183,7 +183,7 @@ private val configEditorReadTests = stringSpec {
  * What the client detail's configuration table reads to say whether a bundle's latest revision is live (issue #1001):
  * the bundles summary's latest *published* version beside the latest version, and the overview row's tier.
  */
-private val bundleLiveStateTests = stringSpec {
+private fun bundleLiveStateTests() = stringSpec {
     val cxt = TestInstances.default("bundleLive1001")
     val svc = GedraConfigService.get(cxt)
 

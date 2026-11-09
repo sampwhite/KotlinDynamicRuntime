@@ -47,12 +47,12 @@ import io.kotest.matchers.string.shouldContain
  * Also, since issue #1739, the tests that were `ScopedClientFieldTest`, each kept whole below.
  */
 class ClientOptionsTest : StringSpec({
-    include(clientOptionsTests)
-    include(scopedClientFieldTests)
+    include(clientOptionsTests())
+    include(scopedClientFieldTests())
 })
 
 /** This file's own tests, as the class describes them. */
-private val clientOptionsTests = stringSpec {
+private fun clientOptionsTests() = stringSpec {
 
     // Env-authed (issue #489): this tests the client-filter *options* on the catalog endpoint, so the caller
     // must see /schema/endpoints itself -- which the publicApi restriction would hide from a non-env-authed one.
@@ -166,7 +166,7 @@ private val clientOptionsTests = stringSpec {
  * the `kdr:isDeploymentAdmin` cfact delivered to the frontend. The served schema is the same for every caller; the
  * delivered cfacts decide who sees the field, and the handler still refuses another client to anyone else.
  */
-private val scopedClientFieldTests = stringSpec {
+private fun scopedClientFieldTests() = stringSpec {
     // Env-authed, as ClientOptionsTest explains: the caller must see the catalog endpoint itself.
     val cxt = TestInstances.envAuth("scopedClient1000")
     val full = TestUser.createFullAdmin(cxt, "full@scoped1000.test")

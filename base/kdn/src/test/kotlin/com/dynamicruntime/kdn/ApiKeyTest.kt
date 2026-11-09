@@ -73,12 +73,12 @@ import kotlin.time.Instant
  * Also, since issue #1739, the tests that were `SandboxApiKeyTest`, each kept whole below.
  */
 class ApiKeyTest : StringSpec({
-    include(apiKeyTests)
-    include(sandboxApiKeyTests)
+    include(apiKeyTests())
+    include(sandboxApiKeyTests())
 })
 
 /** This file's own tests, as the class describes them. */
-private val apiKeyTests = stringSpec {
+private fun apiKeyTests() = stringSpec {
     val cxt = TestInstances.default("apiKey1402")
 
     fun defineClient(client: String) {
@@ -458,7 +458,7 @@ private val apiKeyTests = stringSpec {
  * acts with its row's roles. A key's configuration writes land as the parent's drafts, as a session's do. One booted
  * instance; a parent client per case.
  */
-private val sandboxApiKeyTests = stringSpec {
+private fun sandboxApiKeyTests() = stringSpec {
     val cxt = TestInstances.default("sandboxApiKey1453")
     val svc = GedraConfigService.get(cxt)
 

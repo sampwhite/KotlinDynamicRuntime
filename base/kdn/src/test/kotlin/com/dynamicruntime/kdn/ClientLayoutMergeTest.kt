@@ -41,12 +41,12 @@ import io.kotest.matchers.string.shouldContain
  * Also, since issue #1739, the tests that were `InheritedLayoutRequiredTest`, each kept whole below.
  */
 class ClientLayoutMergeTest : StringSpec({
-    include(clientLayoutMergeTests)
-    include(inheritedLayoutRequiredTests)
+    include(clientLayoutMergeTests())
+    include(inheritedLayoutRequiredTests())
 })
 
 /** This file's own tests, as the class describes them. */
-private val clientLayoutMergeTests = stringSpec {
+private fun clientLayoutMergeTests() = stringSpec {
     // Its own instance (issue #1075): LayoutMergeFixture, a fixture component no shared entry has.
     val cxt = Startup.mkTestBootCxt(
         "layoutMerge985", "layoutMerge985", mapOf(LayoutMergeFixture.loadFlag.name to "true"), listOf(LayoutMergeFixture()),
@@ -180,7 +180,7 @@ private val clientLayoutMergeTests = stringSpec {
  * checked against the client's own type: outside production that refuses the boot, as any faulty source config
  * does; in production the client renders the type without a layout, and says why.
  */
-private val inheritedLayoutRequiredTests = stringSpec {
+private fun inheritedLayoutRequiredTests() = stringSpec {
 
     val overlay = mapOf(InheritedLayoutFixture.loadFlag.name to "true")
 

@@ -41,12 +41,12 @@ import io.kotest.matchers.string.shouldContain
  * Also, since issue #1739, the tests that were `ListingPresentationTest`, each kept whole below.
  */
 class UsageColumnsTest : StringSpec({
-    include(usageColumnsTests)
-    include(listingPresentationTests)
+    include(usageColumnsTests())
+    include(listingPresentationTests())
 })
 
 /** This file's own tests, as the class describes them. */
-private val usageColumnsTests = stringSpec {
+private fun usageColumnsTests() = stringSpec {
     val cxt = TestInstances.default("usageColumns1490")
     val client = "cols1490"
 
@@ -139,7 +139,7 @@ private val usageColumnsTests = stringSpec {
  * row carries, and the presentation its cells read through comes once, with the listing's columns. Over the shared
  * instance, with a client of its own.
  */
-private val listingPresentationTests = stringSpec {
+private fun listingPresentationTests() = stringSpec {
     val cxt = TestInstances.default("presentation1323")
     val client = "present1323"
     val amountPresentation = $$"""${currency(value, "USD")}"""
