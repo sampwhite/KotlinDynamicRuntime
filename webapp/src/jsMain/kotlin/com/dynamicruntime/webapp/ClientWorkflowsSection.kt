@@ -1,5 +1,7 @@
 package com.dynamicruntime.webapp
 
+import com.dynamicruntime.common.user.UserLabelDetail
+import com.dynamicruntime.common.user.nobodyCarriesWarnings
 import com.dynamicruntime.common.gedra.workflow.WfDef
 import com.dynamicruntime.common.gedra.workflow.WfTemplateSlots
 import com.dynamicruntime.common.gedra.workflow.WfVisibility
@@ -109,10 +111,14 @@ val ClientWorkflowsSection = FC<ClientWorkflowsSectionProps> { props ->
     var removeError by useState<DisplayError?>(null)
     // Which client a read was started for: an answer for a client the page has moved on from lands nowhere.
     val latest = useRef(0)
+    // What the client's labels do and who carries them (issues #1658, #1661), for the notice when label-gated work has
+    // nobody to do it. Only an administrator may read them; for anyone else there is simply no notice.
+    var labelDetails by useState<List<UserLabelDetail>>(emptyList())
 
     useEffect(props.clientId) {
         latest.current = (latest.current ?: 0) + 1
         workflowCatalog = null
+        labelDetails = emptyList()
         open = null
         note = null
     }
@@ -125,6 +131,8 @@ val ClientWorkflowsSection = FC<ClientWorkflowsSectionProps> { props ->
                     workflowCatalog = read
                     loadError = null
                 }
+                val labels = apiResult { AdminApi.labelSuggestions(props.clientId) }.valueOrNull()
+                if (latest.current == token) labelDetails = labels?.details.orEmpty()
             } catch (e: Throwable) {
                 if (latest.current == token) loadError = userFacingError(e)
             }
@@ -152,6 +160,9 @@ val ClientWorkflowsSection = FC<ClientWorkflowsSectionProps> { props ->
         return@FC
     }
     loadError?.let { errorText("Couldn't refresh the workflows; showing what was loaded.", it) }
+    nobodyCarriesWarnings(labelDetails).takeIf { it.isNotEmpty() }?.let {
+        labelWarnings(it, "Give a user of this client the label on the Users page.")
+    }
 
     fun remove(workflowId: String, acknowledge: Boolean) {
         val token = latest.current

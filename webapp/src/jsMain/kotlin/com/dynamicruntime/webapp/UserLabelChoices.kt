@@ -6,6 +6,10 @@ import com.dynamicruntime.common.user.joinedWithOr
 import com.dynamicruntime.common.user.mergeLabelSuggestions
 import com.dynamicruntime.common.user.normalizeUserLabels
 import com.dynamicruntime.common.util.toJsonListOfStrings
+import react.ChildrenBuilder
+import react.dom.html.ReactHTML.div
+import react.dom.html.ReactHTML.p
+import web.cssom.ClassName
 
 /**
  * What the label-suggestions read says for one client (issues #786, #1481, #1658): the labels a label control offers
@@ -83,3 +87,17 @@ fun missingLabelsPrompt(details: List<UserLabelDetail>, draft: List<String>): Li
     }
 }
 
+/**
+ * The notice that label-gated work has nobody to do it (issue #1661), a line per label from `nobodyCarriesWarnings`,
+ * and [advice] saying what to do. Drawn on the Users list and on a client's Workflows section.
+ */
+fun ChildrenBuilder.labelWarnings(warnings: List<String>, advice: String) {
+    div {
+        className = ClassName("user-labels-prompt")
+        for (line in warnings) p { +line }
+        p {
+            className = ClassName("type-hint")
+            +advice
+        }
+    }
+}

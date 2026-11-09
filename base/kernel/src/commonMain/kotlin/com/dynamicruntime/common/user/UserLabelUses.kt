@@ -160,3 +160,21 @@ fun joinedWithOr(items: List<String>): String = when (items.size) {
     else -> items.dropLast(1).joinToString(", ") + ", or " + items.last()
 }
 
+/**
+ * What goes undone for want of a label nobody carries (issue #1661), a sentence per such label: "Nobody carries
+ * “reviewer”, so nobody can approve “Approve the plan” in “Plan the logistics”." A restricted workflow is still seen by
+ * the client's administrators, which the sentence says. A label whose uses withhold nothing, or that somebody carries,
+ * says nothing. The count is of the users the caller sees, so an administrator confined to an organization is told
+ * about their own. A notice, never a refusal: a new client starts with nobody labeled.
+ */
+fun nobodyCarriesWarnings(details: List<UserLabelDetail>): List<String> = details.mapNotNull { d ->
+    if (d.carriers > 0) return@mapNotNull null
+    val acts = d.uses.filter { it.kind == UserLabelUseKind.approves || it.kind == UserLabelUseKind.saves }
+        .mapNotNull { it.withheld }.distinct()
+    val sees = d.uses.filter { it.kind == UserLabelUseKind.sees }.mapNotNull { it.withheld }.distinct()
+    val parts = listOfNotNull(
+        acts.takeIf { it.isNotEmpty() }?.let { "nobody can ${joinedWithOr(it)}" },
+        sees.takeIf { it.isNotEmpty() }?.let { "only the client's administrators can ${joinedWithOr(it)}" },
+    )
+    if (parts.isEmpty()) null else "Nobody carries “${d.label}”, so ${parts.joinToString(", and ")}."
+}

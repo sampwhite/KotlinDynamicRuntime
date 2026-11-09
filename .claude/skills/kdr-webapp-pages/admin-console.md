@@ -146,8 +146,9 @@ One more is neither authority nor identity:
   its rule for who may save names, or that only changes what it shows; a restricted workflow's visibility) -- and how
   many users carry it. Under the rows, **Other labels**: free entry for any label the client does not suggest. While
   the draft holds **no** label and some workflow withholds something for want of one, a note says what this user
-  cannot do (`missingLabelsPrompt`: "Without “reviewer”, this user can't approve …"); it never blocks a save. The
-  free-entry box is a tags `Select` offering the *user's*
+  cannot do (`missingLabelsPrompt`: "Without “reviewer”, this user can't approve …"); it never blocks a save. The Users
+  list says above Create user when **nobody** carries a label some work needs (`nobodyCarriesWarnings`, issue #1661),
+  and the Clients page's Workflows section says the same. The free-entry box is a tags `Select` offering the *user's*
   client's suggestions (`labelSuggestions`, fetched
   by `ensureLabelSuggestions` the first time that client is asked for and kept keyed by client, so a slow reply can
   only fill its own client's entry — never land on the next user's editor) while accepting any other label typed.

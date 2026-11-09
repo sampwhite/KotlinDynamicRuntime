@@ -670,6 +670,11 @@ set it and **Use these values**, which fills the editor -- a pre-fill, never a s
 A setter the caller may not administer (an operator who set a client's windows) is not named: that line, and the
 byline, say only when.
 
+**Nobody carries a label** (issue #1661): above the Workflows list, a notice per label some workflow's work needs that
+no active user of the client carries (`nobodyCarriesWarnings`, from the label-suggestions read of issue #1658): "Nobody
+carries “reviewer”, so nobody can approve …". Only an administrator may read the labels, so for anyone else there is
+no notice; and the count is of the users the caller sees. The Users list says the same.
+
 **Visibility** (issue #1384, `WorkflowVisibilityEditor.kt`, its pure half in `WorkflowVisibility.kt`, covered by
 `WorkflowVisibilityTest`): who sees a workflow, a parameter beside its windows -- on a workflow of **any** kind, so
 every row of Workflows offers **Visibility…** and a **Seen by** column (`visibilityText`; restricted ones in
