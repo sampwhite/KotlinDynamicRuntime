@@ -63,6 +63,7 @@ class ClientOverridesEndpointTest : StringSpec({
         rows.keys shouldBe setOf(
             "${SF.content}:${SF.welcome}.${SF.title}", "${SF.content}:${SF.welcome}.${SF.support}",
             "${HFRAG.home}:home.brand", "${HFRAG.home}:home.note", "${HFRAG.home}:${HFRAG.formsNs}.${HFRAG.noWorkflows}",
+            "${HFRAG.home}:home.${HFRAG.title}", "${HFRAG.home}:home.${HFRAG.intro}",
             "${AFRAG.mail}:${MCOPY.common}.${MCOPY.footer}",
         )
         val brand = rows.getValue("${HFRAG.home}:home.brand")
@@ -102,8 +103,9 @@ class ClientOverridesEndpointTest : StringSpec({
         globex[COV.blocks].toJsonListOrEmpty().shouldBeEmpty()
 
         val listed = admin.getItems(UADEP.clientsOverview).associateBy { it[CLD.clientId] as String }
-        // Six since its home page's note shows the sample's image (issue #1339).
-        (listed.getValue(SC.acme)[CLD.copyOverrides] as Number).toInt() shouldBe 6
+        // Six since its home page's note shows the sample's image (issue #1339), eight since its home page has a title
+        // and an introduction of its own (issue #1692).
+        (listed.getValue(SC.acme)[CLD.copyOverrides] as Number).toInt() shouldBe 8
         (listed.getValue(SC.acme)[CLD.blockOverrides] as Number).toInt() shouldBe 4
         (listed.getValue(SC.globex)[CLD.copyOverrides] as Number).toInt() shouldBe 1
         (listed.getValue(SC.globex)[CLD.blockOverrides] as Number).toInt() shouldBe 0

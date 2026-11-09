@@ -107,8 +107,10 @@ class ReferenceFlavorTest : StringSpec({
     "the sample loads, by the flavor's default, and says what its clients demonstrate" {
         reference.instanceConfig.resolveEnvVar(SampleComponent.loadSampleEnvVar).source shouldBe EVSRC.flavor
         MarkdownFragmentService.get(reference).effectiveFragmentsFor(reference, SF.content, null).shouldNotBeNull()
-        copy(reference, HFRAG.home, "home")["note"].orEmpty() shouldContain "Acme"
-        copy(plain, HFRAG.home, "home")["note"] shouldBe ""
+        // On the public home page, where a visitor chooses a demo, not under every client's intro (issue #1692).
+        copy(reference, HFRAG.home, "publicHome")["demosNote"].orEmpty() shouldContain "Acme"
+        copy(reference, HFRAG.home, "home")["note"] shouldBe ""
+        copy(plain, HFRAG.home, "publicHome")["demosNote"] shouldBe ""
     }
 
     "the conference demo is provisioned at boot, and each workflow page links to its walkthrough" {
@@ -131,7 +133,7 @@ class ReferenceFlavorTest : StringSpec({
         val withoutSample = boot("referenceNoSample1221", mapOf(FLV.deployFlavorsEnvVar.name to FLV.reference, "KDR_LOAD_SAMPLE" to "false"))
         MarkdownFragmentService.get(withoutSample).effectiveFragmentsFor(withoutSample, SF.content, null).shouldBeNull()
         // The sample's note goes with it; core's copy stays.
-        copy(withoutSample, HFRAG.home, "home")["note"] shouldBe ""
+        copy(withoutSample, HFRAG.home, "publicHome")["demosNote"] shouldBe ""
         copy(withoutSample, HFRAG.home, "home")["title"] shouldBe "Try KotlinDynamicRuntime"
     }
 })

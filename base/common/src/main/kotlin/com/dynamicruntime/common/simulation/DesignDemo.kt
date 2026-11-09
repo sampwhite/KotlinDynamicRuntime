@@ -17,6 +17,7 @@ import com.dynamicruntime.common.gedra.workflow.WSC
 import com.dynamicruntime.common.gedra.workflow.WfEntry
 import com.dynamicruntime.common.gedra.workflow.WfSaveKind
 import com.dynamicruntime.common.gedra.workflow.userHasLabel
+import com.dynamicruntime.common.home.HFRAG
 import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SCT
@@ -151,6 +152,23 @@ fun designDemoConfig(cxt: KdrCxtBase = LiteCxt(), client: String = DesignDemo.cl
             ),
         )
         cfact(DesignDemo.planApproved, "designDemo", "True, in the logistics workflow, once a reviewer has approved the plan.")
+
+        // Its home page's own words (issue #1692): what the demo is and how to start taking its form apart, in place of
+        // the deployment's, which say what the site is.
+        fragmentOverlay(HFRAG.home) {
+            namespace(HFRAG.homeNs) {
+                key(HFRAG.title, "Design demo")
+                key(
+                    HFRAG.intro,
+                    "The **Design demo** is an event request form, built to be taken apart in Design View. Each part of the " +
+                        "form, from a field's label and hint to a field only administrators see, comes from configuration " +
+                        "that you can look at and change.\n\n" +
+                        "Open **Forms** from the menu, and choose **Create a form** to start an event request. Then choose " +
+                        "**Design** at the end of the form's header: each part of the form is outlined, and choosing one " +
+                        "shows the definition behind it.",
+                )
+            }
+        }
 
         // A shared type: declared once, referenced from the request -- so its fields belong to a `schemaDef` entry
         // rather than to the trait that uses it.

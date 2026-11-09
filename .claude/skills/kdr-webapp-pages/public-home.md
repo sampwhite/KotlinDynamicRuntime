@@ -62,6 +62,14 @@ production client).
   the user the person joined from, and the switch list carries the role's label (`UserChoice.roleLabel`, from the
   client's `joinRoles` by `joinedAs`), which the bar's bracket says in place of the persona: `Pat [Conference demo ·
   Speaker]`, `[Conference demo · Committee member]`. A role the client no longer offers falls back to the persona.
+- **A demo client's home page is its own** (issue #1692): each demo's configuration overlays the `home` file's `title`
+  and `intro` (confdemo in its `base` bundle, `designDemoConfig`, acme's source overlay), saying what the demo is and
+  where its joiner starts, in the words of the joiner's own menu (**My forms** for a speaker, **Forms** for an
+  administrator or an editor). A client's overlay wins over the `reference` flavor's, whose title and intro say what
+  the site is. A new demo client does the same. It points to **Waiting on you** only as a card that appears once
+  something waits, since the card is not drawn while nothing does. So a word about the demos on offer goes in
+  `publicHome.demosNote`, under **Try a demo**'s introduction (the sample's on Acme), never in `home.note`, which every
+  client's home page draws beneath its intro.
 - **Whether a visitor may change the demo client's configuration** is the deployment's (`JOIN.visitorsEditConfigKey`,
   off by default, on in the `reference` flavor; `ClientJoin.configEditRefusal`). Off, every configuration write --
   bundles, copy and menu, file refs, workflows' parameters, Design View -- refuses a visitor of a demo client (403),

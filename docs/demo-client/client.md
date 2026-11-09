@@ -69,6 +69,40 @@ it uses in `includedTraits`. A client can also define traits of its own, with wh
 the demo's workflows show several, each where the workflow that collects it is introduced. The first two appear in
 [Talk core details](talk-core-details.md).
 
+## Home page
+
+The home page is the first page a visitor sees after joining the demo. The platform ships its words, and a deployment
+can change them: a public reference site's home page says what the site is. The demo changes two of them, the title
+and the introduction, so that its home page says what the demo is and where to start:
+
+<!-- kdr-doc: bundle=base pointer=/kdr:fragmentDef/0 -->
+```json
+{
+  "fileId": "home",
+  "content": {
+    "home": {
+      "title": "Conference demo",
+      "intro": "The **Conference demo** is a small conference's call for talks. Speakers submit the talks they want to give, and a committee reviews each one and accepts it for the program. The demo is shared with everyone who joins it, so you see the talks other visitors add, and they see yours.\n\nAs a speaker, open **My forms** from the menu, and choose **Create a form** to submit a talk. As a member of the committee, once a talk is ready for your review, this page lists it under **Waiting on you**. [Part 1 of the walk-through](/docs/walk-through.md#part-1-the-conference-demo) takes you through both, a step at a time."
+    }
+  }
+}
+```
+
+| Key | What it means |
+| --- | --- |
+| `fileId` | The file of shipped words this entry changes. The `home` file holds the words of the home page and of the parts of the app around it, such as the menu. |
+| `content` | The words that change, by namespace and then by key: here the `title` and `intro` keys of the `home` namespace. Every other word in the file stays as it was. |
+
+The introduction is Markdown, so it can make words bold and link to a page. Its link opens the first part of the
+walk-through, in the app. An entry like this one can only change words the file already has: a key the file does
+not have is refused when the bundle is saved, so a misspelled key is caught rather than ignored. The demo's words win
+over the deployment's, because the most specific words win. The copy reference explains
+[a client's copy overlay](../reference/copy.md#a-clients-copy-overlay) in full.
+
+**What a visitor sees.** After joining, the home page is titled **Conference demo**, with the introduction under it.
+A speaker's next step, **My forms**, is named there, and so is the **Waiting on you** card, which appears on a
+committee member's home page once a talk is ready for their review.
+
 ## What the bundle holds
 
 The pages that follow add to the `base` bundle as they go: the client's name for a platform trait, its own traits,
@@ -84,5 +118,6 @@ bundle as a whole, kept current as the pages add to it.
 | `kdr:cfactDef` | The client's two facts, `isWorkshop` and `talkAccepted`. | [Workshop logistics](workshop-logistics.md#a-computed-fact) |
 | `kdr:uiBlockDef` | The menu entry that turns the Workflows page on. | [Abstract](abstract.md#what-the-speaker-sees) |
 | `kdr:listingDef` | How the forms list shows each form's workflows: all in one column. | [Talk core details](talk-core-details.md#workflows-in-one-column) |
+| `kdr:fragmentDef` | The home page's title and introduction. | [Home page](#home-page), above |
 
 Next: [Creating a talk](create-talk.md).
