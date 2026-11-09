@@ -6,7 +6,10 @@ every sign-in and registration with the auth copy's `error.testDeploymentSignIn`
 `publicTestDeployment` feature is served to every caller, and while it is true the shell draws `TestDeploymentBand`
 along the bottom edge of every page (`.test-deployment-band`, a deep rose -- apart from the accent, the admin bar, the
 sandbox and success) and marks the page root (`data-test-deployment`, `markPageTestDeployment`) so the last of a
-page's content clears it. Fixed at the bottom, not the top, so it shows at any scroll without competing with the
+page's content clears it: the body is padded by the band's height and `#root`, which fills the window, is that much
+shorter, so a page shorter than the window does not scroll (issue #1711). Both are CSS on the attribute alone, never a
+change to the React tree, which would remount the page and lose what it had taken from the address (an invitation's
+token). Fixed at the bottom, not the top, so it shows at any scroll without competing with the
 sticky bar. Every mail says the same beneath its footer (`common.testDeploymentNote`).
 
 The band's words are copy (issue #1697): the `home` file's `testDeployment.band` for the caller's client, as plain text,

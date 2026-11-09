@@ -139,6 +139,11 @@
 :root[data-test-deployment] body {
     padding-bottom: 32px;
 }
+/* And the root that much shorter: it fills the window (`#root`'s min-height) inside the body, so with the body's padding
+   added a page as short as the window would always scroll by the band's height. */
+:root[data-test-deployment] #root {
+    min-height: calc(100vh - 32px);
+}
 
 /* Becoming someone on a test instance (issue #1183): the Home page's card, and the remembered identities as a wrap of
    buttons. The card sits above the welcome copy, set off by the inset surface like the other wells. */
