@@ -30,3 +30,23 @@ fun mergeLabelSuggestions(suggestions: List<String>, inUse: List<String>): List<
     val seen = mutableSetOf<String>()
     return normalizeUserLabels(suggestions + inUse).filter { seen.add(it.lowercase()) }
 }
+
+/**
+ * The notes on a client's labels (issue #1660) from the definition editor's text: one `label: note` per line, the label
+ * before the first colon. A line without a colon, or with nothing on either side of it, is no note, and a label named
+ * twice keeps its last. Labels and notes trimmed.
+ */
+fun labelNotesOfText(text: String): Map<String, String> {
+    val out = linkedMapOf<String, String>()
+    for (line in text.lines()) {
+        val colon = line.indexOf(':')
+        if (colon < 0) continue
+        val label = line.substring(0, colon).trim()
+        val note = line.substring(colon + 1).trim()
+        if (label.isNotEmpty() && note.isNotEmpty()) out[label] = note
+    }
+    return out
+}
+
+/** [notes] as the definition editor writes them ([labelNotesOfText]): one `label: note` per line. */
+fun labelNotesText(notes: Map<String, String>): String = notes.entries.joinToString("\n") { "${it.key}: ${it.value}" }

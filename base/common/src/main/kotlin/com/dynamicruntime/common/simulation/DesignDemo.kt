@@ -137,6 +137,7 @@ fun designDemoConfig(cxt: KdrCxtBase = LiteCxt(), client: String = DesignDemo.cl
                 includedTraits = listOf(GT.name),
                 // Whoever carries it approves a logistics plan (issue #1071).
                 userLabels = listOf(DesignDemo.reviewerLabel),
+                userLabelNotes = mapOf(DesignDemo.reviewerLabel to "Give this to whoever signs off event plans."),
                 // A visitor to a reference deployment may join as its designer (issue #1248), to open Design View on
                 // the demo's form and see what each part of it is made of.
                 joinRoles = listOf(

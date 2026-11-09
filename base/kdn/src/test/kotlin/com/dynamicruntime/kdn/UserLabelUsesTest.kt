@@ -37,6 +37,8 @@ class UserLabelUsesTest : StringSpec({
         use.cfact shouldBe WFC.reviewer
         use.sentence shouldBe "Approves “Approve the plan” in “Plan the logistics”"
         use.withheld shouldBe "approve “Approve the plan” in “Plan the logistics”"
+        // And the client's own sentence about it (issue #1660).
+        reviewer().note shouldBe "Give this to whoever signs off event plans."
     }
 
     "the count is of the users who carry the label exactly as written" {

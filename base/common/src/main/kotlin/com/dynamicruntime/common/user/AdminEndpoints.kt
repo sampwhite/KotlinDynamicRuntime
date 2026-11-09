@@ -556,7 +556,8 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, published: Boolean, 
     ) { c, request ->
         // The same rule as naming a client on create: your own, or any present one with `allClients`.
         val client = assignableClient(c, request[ADF.client].toOptStr(), "read the label suggestions of")
-        val suggested = ClientService.get(c).present(client)?.userLabels ?: emptyList()
+        val def = ClientService.get(c).present(client)
+        val suggested = def?.userLabels ?: emptyList()
         val scope = ReadScopeRules.forUserAdmin(c)
         // What each suggested label does (issue #1658): the client's workflows' uses of it, and who carries it.
         val uses = UserLabelUseReader.usesByLabel(c, client)
@@ -566,7 +567,7 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, published: Boolean, 
             ADF.labels to suggested,
             ADF.labelsInUse to userService(c).labelsInUse(c, client, scope),
             ULU.details to suggested.map { label ->
-                UserLabelDetail(label, uses[label].orEmpty(), carriers[label] ?: 0).toJsonMap()
+                UserLabelDetail(label, uses[label].orEmpty(), carriers[label] ?: 0, def?.userLabelNotes?.get(label)).toJsonMap()
             },
         )
     }
@@ -603,6 +604,7 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, published: Boolean, 
         type = SCT.kObject
         description = "A label a client suggests: what its workflows do with it, and how many users carry it (issue #1658)."
         property(ULU.label, "The label.", required = true)
+        property(ULU.note, "The client's own sentence about who should carry it (issue #1660); absent when it wrote none.")
         property(
             ULU.uses,
             "What the client's turned-on workflows do with it, in workflow and task order; empty when none names it.",

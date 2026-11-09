@@ -471,6 +471,7 @@ fun clientOverviewSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CLD.overvie
                             type = SCT.array
                             items { type = SCT.string }
                         }
+                        ClientPresentationFields.Kind.labelNotes -> mapOfValues { type = SCT.string }
                         ClientPresentationFields.Kind.choice -> ClientPresentationFields.choicesOf(name).forEach { option(it) }
                         ClientPresentationFields.Kind.choices -> {
                             type = SCT.array

@@ -310,6 +310,7 @@ Each is a type the server declares, named as the endpoint catalog names it. A fi
 | `includedTraits` | array of string |  | Trait ids and group names the client takes as they stand. |
 | `testFeatures` | array of string |  | Test/demo feature names, honored only on a test instance (stripped elsewhere). |
 | `userLabels` | array of string |  | User labels the client suggests; a label editor offers them, without binding to them. |
+| `userLabelNotes` | map of string |  | A sentence per suggested user label, by label, saying who should carry it. |
 | `sandbox` | boolean |  | Whether the client has a sandbox beside it, running its latest configuration. |
 | `retired` | boolean |  | Whether the platform retired the client: its data kept, and the client absent everywhere. |
 | `publicTemplate` | boolean |  | Whether anyone creating a client -- a person's own, or a customer's -- may build it on this code-defined client. |

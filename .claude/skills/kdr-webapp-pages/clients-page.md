@@ -303,7 +303,10 @@ changes". Wire names: `MNU` in the kernel.
 refuses each in its own words; the page only spares showing an editor that cannot save), **Edit
 definition** opens the fields the caller's policy lets them edit (issue #1116, `ClientPresentationFields.namesFor`):
 for a client's administrator its name, description, time zone (issue #1115; the editor says a change moves no stored
-moment; picked, not typed -- see "The time-zone picker" below), user labels as one comma line (`labelsOfText`), and
+moment; picked, not typed -- see "The time-zone picker" below), user labels as one comma line (`labelsOfText`), a note
+per label in a text area, one `label: note` per line (issue #1660, `CLD.userLabelNotes`, `labelNotesOfText`: a request
+sends only the notes on labels the draft still suggests, so taking a label away takes its note, which the definition's
+check would otherwise refuse; the summary rows list them as **Label notes**), and
 session lifetime in hours (issue #1308); for an administrator who sees every client also its refresh interval in
 seconds, usage type and audience (selects), environments (a multi-select), preload (a checkbox), domain prefix, custom
 domain, and web resources -- seeded from the client's **configured** definition, the retrieve's

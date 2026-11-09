@@ -143,6 +143,9 @@ fun clientCatalogSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CLD.catalogN
                 type = SCT.array
                 items { type = SCT.string }
             }
+            property(CLD.userLabelNotes, "The template's notes on its user labels that the client does not write over.") {
+                mapOfValues { type = SCT.string }
+            }
         }
         property(
             CLD.platformDefaults,

@@ -34,6 +34,8 @@ import com.dynamicruntime.common.home.HMENU
 import com.dynamicruntime.common.uiblock.UIB
 import com.dynamicruntime.common.user.ADEP
 import com.dynamicruntime.common.user.UADEP
+import com.dynamicruntime.common.user.labelNotesOfText
+import com.dynamicruntime.common.user.labelNotesText
 import com.dynamicruntime.common.user.normalizeUserLabels
 import com.dynamicruntime.common.user.USF
 import com.dynamicruntime.common.util.humanizeFieldName
@@ -1138,6 +1140,7 @@ fun definitionDraftOf(baseline: Map<String, Any?>): Map<String, String> =
         when (ClientPresentationFields.kind(name)) {
             ClientPresentationFields.Kind.labels, ClientPresentationFields.Kind.choices ->
                 baseline[name].toJsonListOfStrings().joinToString(", ")
+            ClientPresentationFields.Kind.labelNotes -> labelNotesText(notesOf(baseline[name]))
             ClientPresentationFields.Kind.flag -> (baseline[name] == true).toString()
             else -> baseline[name].toOptStr().orEmpty()
         }
@@ -1148,6 +1151,9 @@ fun choicesOfText(name: String, text: String): List<String> {
     val named = text.split(',').map { it.trim() }.toSet()
     return ClientPresentationFields.choicesOf(name).filter { it in named }
 }
+
+/** A definition's label notes ([CLD.userLabelNotes], issue #1660) as a map of label to note. */
+fun notesOf(value: Any?): Map<String, String> = value.toJsonMapOrEmpty().mapValues { it.value.toOptStr().orEmpty() }
 
 /** The labels a comma-separated line names, each once and trimmed -- the rule a client's list is held to. */
 fun labelsOfText(text: String): List<String> = normalizeUserLabels(text.split(','))
@@ -1169,6 +1175,13 @@ fun definitionEditRequest(
             ClientPresentationFields.Kind.labels -> {
                 val labels = labelsOfText(draft[name].orEmpty())
                 if (labels != baseline[name].toJsonListOfStrings()) out[name] = labels
+            }
+            // Only the notes on labels the draft still suggests (issue #1660): removing a label takes its note with
+            // it, rather than leaving a note the definition's check would refuse.
+            ClientPresentationFields.Kind.labelNotes -> {
+                val suggested = labelsOfText(draft[CLD.userLabels].orEmpty()).toSet()
+                val notes = labelNotesOfText(draft[name].orEmpty()).filterKeys { it in suggested }
+                if (notes != notesOf(baseline[name])) out[name] = notes
             }
             ClientPresentationFields.Kind.choices -> {
                 val chosen = choicesOfText(name, draft[name].orEmpty())

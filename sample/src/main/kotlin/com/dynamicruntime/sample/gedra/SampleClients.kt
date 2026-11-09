@@ -318,6 +318,10 @@ private fun acmeClient(cxt: KdrCxt): GedraConfig =
                 // The user labels acme suggests (issue #786): what the admin console's label editor offers, and
                 // what a workflow function naming a label is checked against. Suggestions -- any label may be set.
                 userLabels = listOf(SC.reviewerLabel, SC.siteLeadLabel),
+                userLabelNotes = mapOf(
+                    SC.reviewerLabel to "Give this to whoever checks submitted site audits.",
+                    SC.siteLeadLabel to "Give this to the person who runs a site and records its follow-ups.",
+                ),
                 // A Shadow Sandbox (issue #994), so the sample's showpiece client demonstrates one: `acme:sandbox`
                 // runs acme's latest configuration, published or not, where an administrator previews a change
                 // before publishing it. Asking for one makes acme published-only (#930), so the copy and menu

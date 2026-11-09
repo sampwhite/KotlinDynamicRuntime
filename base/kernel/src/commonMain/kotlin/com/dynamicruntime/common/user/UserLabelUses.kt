@@ -18,6 +18,9 @@ object ULU {
     const val label = "label"
     const val uses = "uses"
 
+    /** The client's own sentence about the label (issue #1660), from its definition's `userLabelNotes`. */
+    const val note = "note"
+
     /** How many enabled users of the client carry the label, as the caller sees them. */
     const val carriers = "carriers"
 
@@ -119,21 +122,29 @@ class UserLabelUse(
 }
 
 /**
- * A label a client suggests (issue #1658), with what its workflows do with it ([uses], empty when none names it) and how
- * many of the client's enabled users carry it ([carriers]), counted among those the caller sees.
+ * A label a client suggests (issue #1658), with what its workflows do with it ([uses], empty when none names it), how
+ * many of the client's enabled users carry it ([carriers]), counted among those the caller sees, and the client's own
+ * sentence about it ([note], issue #1660), when it wrote one.
  */
-class UserLabelDetail(val label: String, val uses: List<UserLabelUse>, val carriers: Int) : JsonMappable {
-    override fun toJsonMap(): Map<String, Any?> = mapOf(
-        ULU.label to label,
-        ULU.uses to uses.map { it.toJsonMap() },
-        ULU.carriers to carriers,
-    )
+class UserLabelDetail(
+    val label: String,
+    val uses: List<UserLabelUse>,
+    val carriers: Int,
+    val note: String? = null,
+) : JsonMappable {
+    override fun toJsonMap(): Map<String, Any?> = buildMap {
+        put(ULU.label, label)
+        note?.let { put(ULU.note, it) }
+        put(ULU.uses, uses.map { it.toJsonMap() })
+        put(ULU.carriers, carriers)
+    }
 
     companion object {
         fun fromJson(m: Map<String, Any?>): UserLabelDetail = UserLabelDetail(
             label = m[ULU.label].toOptStr() ?: "",
             uses = m[ULU.uses].toJsonListOfMaps().mapNotNull { UserLabelUse.fromJson(it) },
             carriers = (m[ULU.carriers].toOptLong() ?: 0L).toInt(),
+            note = m[ULU.note].toOptStr(),
         )
 
         /** The details on a label-suggestions answer ([ULU.details]); empty from a backend that sends none. */

@@ -101,6 +101,11 @@ object ClientDefinitionEdit {
             }
             out[key] = when (ClientPresentationFields.kind(key)) {
                 ClientPresentationFields.Kind.labels -> normalizeUserLabels(value.toJsonListOfStrings()).ifEmpty { null }
+                // Trimmed, a blank note dropped (issue #1660); naming a label the client does not suggest is the
+                // definition's own check.
+                ClientPresentationFields.Kind.labelNotes -> value.toJsonMapOrEmpty().entries
+                    .mapNotNull { (label, note) -> note.toOptStr()?.trim()?.ifEmpty { null }?.let { label.trim() to it } }
+                    .toMap().ifEmpty { null }
                 ClientPresentationFields.Kind.choices -> value.toJsonListOfStrings().distinct()
                 ClientPresentationFields.Kind.flag -> value == true
                 ClientPresentationFields.Kind.choice -> value.toOptStr()?.trim()?.ifEmpty { null }

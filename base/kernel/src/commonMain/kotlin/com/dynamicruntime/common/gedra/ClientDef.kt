@@ -176,6 +176,8 @@ object ClientFieldPolicies {
         // Where the client's people are: a client made by another starts where its maker is (issue #1115).
         CLD.timeZone to p(ClientFieldAtCreate.parent, ClientFieldEdit.definitionEditor),
         CLD.userLabels to p(ClientFieldAtCreate.cleared, ClientFieldEdit.definitionEditor),
+        // Said of the labels, so whoever keeps the labels keeps what they mean (issue #1660).
+        CLD.userLabelNotes to p(ClientFieldAtCreate.cleared, ClientFieldEdit.definitionEditor),
         CLD.sandbox to p(ClientFieldAtCreate.creator, ClientFieldEdit.ownSurface),
         CLD.includedTraits to p(ClientFieldAtCreate.cleared, ClientFieldEdit.ownSurface),
         CLD.preload to p(ClientFieldAtCreate.cleared, ClientFieldEdit.platform),
@@ -268,6 +270,7 @@ object ClientFieldPolicies {
     /** [value] of [field] in a form two definitions compare by: a set for a list, a flag for a boolean, else text. */
     private fun comparable(field: String, value: Any?): Any? = when (field) {
         CLD.enabledEnvironments, CLD.testFeatures, CLD.includedTraits, CLD.userLabels -> value.toJsonListOfStrings().toSet()
+        CLD.userLabelNotes -> value.toJsonMapOrEmpty()
         CLD.preload, CLD.staticConfig, CLD.sandbox, CLD.retired, CLD.publicTemplate -> value == true
         else -> value.toOptStr()
     }
@@ -289,6 +292,12 @@ object ClientPresentationFields {
 
         /** The suggested user labels: several strings, written as one comma-separated line. */
         labels,
+
+        /**
+         * A note per suggested label (issue #1660): a map of label to text on the wire, written in the editor one
+         * `label: note` per line (`labelNotesOfText`, `labelNotesText`).
+         */
+        labelNotes,
 
         /** One of [choicesOf]. */
         choice,
@@ -327,7 +336,7 @@ object ClientPresentationFields {
     /** The [Section] [name] is drawn in. */
     fun section(name: String): Section = when (name) {
         CLD.name, CLD.description -> Section.about
-        CLD.timeZone, CLD.userLabels, CLD.sessionHours, CLD.refreshIntervalSeconds -> Section.behavior
+        CLD.timeZone, CLD.userLabels, CLD.userLabelNotes, CLD.sessionHours, CLD.refreshIntervalSeconds -> Section.behavior
         else -> Section.platform
     }
 
@@ -342,6 +351,8 @@ object ClientPresentationFields {
         CLD.timeZone to "The client's IANA time zone (America/Chicago), which its dates are read and shown in; " +
             "blank clears it. Changing it moves no stored moment.",
         CLD.userLabels to "The user labels the client suggests, each once and trimmed; empty clears them.",
+        CLD.userLabelNotes to "A sentence per suggested label saying who should carry it, by label; empty clears them. " +
+            "The Users editor shows it beside what the client's workflows do with the label.",
         CLD.sessionHours to "How long a sign-in lasts, in hours; blank for the deployment's default. At most the " +
             "deployment's limit. Shortening it ends longer sessions at once; lengthening it reaches sign-ins made after.",
         CLD.refreshIntervalSeconds to "How often, in seconds, an idle open tab re-reads what it shows " +
@@ -377,6 +388,7 @@ object ClientPresentationFields {
     /** How the editor takes [name]'s value. */
     fun kind(name: String): Kind = when (name) {
         CLD.userLabels -> Kind.labels
+        CLD.userLabelNotes -> Kind.labelNotes
         CLD.usageType, CLD.audience -> Kind.choice
         CLD.enabledEnvironments -> Kind.choices
         CLD.preload -> Kind.flag
@@ -449,6 +461,9 @@ object CLD {
     const val includedTraits = "includedTraits"
     const val testFeatures = "testFeatures"
     const val userLabels = "userLabels"
+
+    /** A sentence per suggested user label, by label (issue #1660); see [ClientDef.userLabelNotes]. */
+    const val userLabelNotes = "userLabelNotes"
     const val sandbox = "sandbox"
 
     /** The customer that owns the client (issue #1107); see [ClientDef.customerId]. */
@@ -943,6 +958,13 @@ data class ClientDef(
      */
     val userLabels: List<String> = emptyList(),
     /**
+     * A sentence per suggested label (issue #1660), by label: who should carry it, in the words of whoever keeps the
+     * client -- "Give this to whoever signs off event budgets". The Users editor shows it first, beside what the
+     * client's workflows do with the label, which it works out for itself. Each names a label of [userLabels] and says
+     * something; a client built on another takes the template's notes for the template's labels.
+     */
+    val userLabelNotes: Map<String, String> = emptyMap(),
+    /**
      * Whether this client has a **sandbox** beside it (issue #928, the Shadow Sandbox #925): a linked client,
      * [sandboxOf] this one's id, that runs this client's *latest* configuration with users and data of its own,
      * where unpublished changes are seen before they are published. Read from the definition the client runs, so
@@ -1006,6 +1028,7 @@ data class ClientDef(
         // surface later as a workflow's literal `reviewer` failing the suggestion check -- blaming the workflow
         // for a typo in the client.
         userLabelsFault(clientId, userLabels)?.let { throw KdrException.mkConv(it) }
+        userLabelNotesFault(clientId, userLabels, userLabelNotes)?.let { throw KdrException.mkConv(it) }
     }
 
     /**
@@ -1052,6 +1075,7 @@ data class ClientDef(
         // (checkClientDefs), so emitting it here is safe -- the present definition it reads from has none.
         if (testFeatures.isNotEmpty()) put(CLD.testFeatures, testFeatures.toList())
         if (userLabels.isNotEmpty()) put(CLD.userLabels, userLabels)
+        if (userLabelNotes.isNotEmpty()) put(CLD.userLabelNotes, userLabelNotes)
         if (sandbox) put(CLD.sandbox, true)
         if (customerId != null) put(CLD.customerId, customerId)
         if (retired) put(CLD.retired, true)
@@ -1072,6 +1096,25 @@ data class ClientDef(
             val bad = userLabels.filterIndexed { i, l -> l.isBlank() || l != l.trim() || userLabels.indexOf(l) != i }
             return "Client '$clientId' suggests user labels ${bad.map { "'$it'" }} that are blank, padded with " +
                 "spaces, or repeated. Write each label once, trimmed -- a label is matched exactly as written."
+        }
+
+        /**
+         * What is wrong with [notes] as client [clientId]'s notes on its suggested [userLabels] (issue #1660), or null
+         * when nothing is: each names a label the client suggests, since a note on any other would be shown nowhere,
+         * and each says something.
+         */
+        fun userLabelNotesFault(clientId: String, userLabels: List<String>, notes: Map<String, String>): String? {
+            val unsuggested = notes.keys.filter { it !in userLabels }
+            if (unsuggested.isNotEmpty()) {
+                return "Client '$clientId' has notes on user labels ${unsuggested.map { "'$it'" }} that it does not " +
+                    "suggest (${CLD.userLabels}). Suggest the label, or remove its note."
+            }
+            val blank = notes.filterValues { it.isBlank() }.keys
+            if (blank.isNotEmpty()) {
+                return "Client '$clientId' has blank notes on user labels ${blank.map { "'$it'" }}. Remove a note " +
+                    "rather than leave it empty."
+            }
+            return null
         }
 
         /**
@@ -1103,6 +1146,7 @@ data class ClientDef(
             includedTraits = m[CLD.includedTraits].toJsonListOfStrings(),
             testFeatures = m[CLD.testFeatures].toJsonListOfStrings().toSet(),
             userLabels = m[CLD.userLabels].toJsonListOfStrings(),
+            userLabelNotes = m[CLD.userLabelNotes].toJsonMapOrEmpty().mapNotNull { (k, v) -> v.toOptStr()?.let { k to it } }.toMap(),
             sandbox = m[CLD.sandbox] as? Boolean ?: false,
             customerId = m[CLD.customerId].toOptStr(),
             retired = m[CLD.retired] as? Boolean ?: false,
@@ -1272,6 +1316,9 @@ data class ClientDef(
                 type = SCT.array
                 items { type = SCT.string }
             }
+            prop(CLD.userLabelNotes, "A sentence per suggested user label, by label, saying who should carry it.") {
+                mapOfValues { type = SCT.string }
+            }
             prop(CLD.sandbox, "Whether the client has a sandbox beside it, running its latest configuration.") {
                 type = SCT.boolean
                 allowCoerce = false
@@ -1358,6 +1405,10 @@ fun readClientDef(cxt: KdrCxtBase, raw: Map<String, Any?>): ClientDefRead {
     val m = result.value.toJsonMapOrEmpty()
     ClientDef.userLabelsFault(m[CLD.clientId].toOptStr().orEmpty(), m[CLD.userLabels].toJsonListOfStrings())?.let {
         return ClientDefRead(null, listOf(SchFailure(CLD.userLabels, SchFailCode.badValue, it)))
+    }
+    val notes = m[CLD.userLabelNotes].toJsonMapOrEmpty().mapValues { it.value.toOptStr().orEmpty() }
+    ClientDef.userLabelNotesFault(m[CLD.clientId].toOptStr().orEmpty(), m[CLD.userLabels].toJsonListOfStrings(), notes)?.let {
+        return ClientDefRead(null, listOf(SchFailure(CLD.userLabelNotes, SchFailCode.badValue, it)))
     }
     return ClientDefRead(ClientDef.fromInfo(m), emptyList())
 }

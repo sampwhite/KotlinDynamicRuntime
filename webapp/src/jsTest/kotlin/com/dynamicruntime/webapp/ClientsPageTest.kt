@@ -618,6 +618,26 @@ class ClientsPageTest {
         assertEquals(false, definitionEditChanges(definitionEditRequest("globex", storedInfo, draft + (CLD.userLabels to " reviewer,auditor "), EDM.live)))
     }
 
+    /** A note per label (issue #1660): a line each in the draft, a map on the wire, and none on a label no longer suggested. */
+    @Test
+    fun labelNotesAreALineEachAndGoWithTheirLabel() {
+        val stored = storedInfo + (CLD.userLabelNotes to mapOf("reviewer" to "Approves plans"))
+        val draft = definitionDraftOf(stored)
+        assertEquals("reviewer: Approves plans", draft[CLD.userLabelNotes])
+        assertEquals(false, definitionEditChanges(definitionEditRequest("globex", stored, draft, EDM.live)))
+        val noted = draft + (CLD.userLabelNotes to "reviewer: Approves plans\nauditor: Audits the books")
+        assertEquals(
+            mapOf("reviewer" to "Approves plans", "auditor" to "Audits the books"),
+            definitionEditRequest("globex", stored, noted, EDM.live)[CLD.userLabelNotes],
+        )
+        // Taking a label away takes its note with it, rather than sending one the definition's check would refuse.
+        val unlabeled = noted + (CLD.userLabels to "auditor")
+        assertEquals(
+            mapOf("auditor" to "Audits the books"),
+            definitionEditRequest("globex", stored, unlabeled, EDM.live)[CLD.userLabelNotes],
+        )
+    }
+
     /** The platform's fields (issue #1116): sent only for an administrator who sees every client, each by its kind. */
     @Test
     fun thePlatformsFieldsAreSentForAPlatformAdministratorOnly() {
@@ -953,7 +973,7 @@ class ClientsPageTest {
     fun theDefinitionEditorDrawsItsFieldsInSections() {
         val scoped = ClientPresentationFields.bySection(ClientPresentationFields.namesFor(platform = false))
         assertEquals(listOf("About", "How it behaves"), scoped.map { it.first.heading })
-        assertEquals(listOf(CLD.timeZone, CLD.userLabels, CLD.sessionHours), scoped[1].second)
+        assertEquals(listOf(CLD.timeZone, CLD.userLabels, CLD.userLabelNotes, CLD.sessionHours), scoped[1].second)
         // The platform's own fields join theirs, the refresh interval among how the client behaves.
         val platform = ClientPresentationFields.bySection(ClientPresentationFields.namesFor(platform = true))
         assertEquals(listOf("About", "How it behaves", "Platform"), platform.map { it.first.heading })

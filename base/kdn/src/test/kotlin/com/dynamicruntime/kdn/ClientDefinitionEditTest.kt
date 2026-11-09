@@ -97,6 +97,22 @@ class ClientDefinitionEditTest : StringSpec({
         admin.expectError(EXC.badInput, UADEP.clientDefinitionSet, emptyMap())
     }
 
+    "a client's administrator writes a note on a suggested label, and one on any other label is refused (issue #1660)" {
+        val client = "defeditnotes"
+        defineClient(client)
+        val admin = TestUser.create(cxt, "chief@$client.test", level = ROLE.admin, userClient = client)
+
+        val saved = admin.postData(UADEP.clientDefinitionSet, mapOf(CLD.userLabelNotes to mapOf("reviewer" to "  Approves plans ", "x" to "")))
+        // Trimmed, and a blank note dropped rather than stored.
+        saved[CLD.definition].toJsonMapOrEmpty()[CLD.userLabelNotes] shouldBe mapOf("reviewer" to "Approves plans")
+        present(client).userLabelNotes shouldBe mapOf("reviewer" to "Approves plans")
+        // A note on a label the client does not suggest would be shown nowhere.
+        admin.expectError(EXC.badInput, UADEP.clientDefinitionSet, mapOf(CLD.userLabelNotes to mapOf("auditor" to "Audits")))
+        // An empty map clears them.
+        admin.postData(UADEP.clientDefinitionSet, mapOf(CLD.userLabelNotes to emptyMap<String, String>()))
+        present(client).userLabelNotes shouldBe emptyMap()
+    }
+
     "an administrator who sees every client edits one by name, and the retrieve shows the stored definition" {
         val client = "defeditnamed"
         defineClient(client)

@@ -115,6 +115,8 @@ object ClientExtension {
         refreshIntervalSeconds = child.refreshIntervalSeconds ?: template.refreshIntervalSeconds,
         includedTraits = (template.includedTraits + child.includedTraits).distinct(),
         userLabels = (template.userLabels + child.userLabels).distinct(),
+        // The template's notes for the template's labels, the child's own winning (issue #1660).
+        userLabelNotes = template.userLabelNotes + child.userLabelNotes,
     )
 
     /**
@@ -143,6 +145,8 @@ object ClientExtension {
                 ?.let { put(CLD.includedTraits, it) }
             template.userLabels.filter { it !in child.userLabels && it in running.userLabels }.ifEmpty { null }
                 ?.let { put(CLD.userLabels, it) }
+            template.userLabelNotes.filter { (label, note) -> label !in child.userLabelNotes && running.userLabelNotes[label] == note }
+                .ifEmpty { null }?.let { put(CLD.userLabelNotes, it) }
         }
 
     /**

@@ -25,12 +25,12 @@ class ClientFieldPoliciesTest : StringSpec({
     "the platform's create, the editor and the platform's own fields are read from the policies" {
         ClientFieldPolicies.createFields shouldContainExactly listOf(
             CLD.clientId, CLD.name, CLD.description, CLD.customerId, CLD.usageType, CLD.audience, CLD.enabledEnvironments,
-            CLD.extendsFromClientId, CLD.domainPrefix, CLD.customDomain, CLD.timeZone, CLD.userLabels,
+            CLD.extendsFromClientId, CLD.domainPrefix, CLD.customDomain, CLD.timeZone, CLD.userLabels, CLD.userLabelNotes,
             CLD.sandbox, CLD.preload, CLD.sessionHours, CLD.refreshIntervalSeconds,
         )
         // The client's own administrator edits these (issue #1116); an administrator who sees every client these too.
         ClientPresentationFields.names shouldContainExactly
-            listOf(CLD.name, CLD.description, CLD.timeZone, CLD.userLabels, CLD.sessionHours)
+            listOf(CLD.name, CLD.description, CLD.timeZone, CLD.userLabels, CLD.userLabelNotes, CLD.sessionHours)
         // The refresh interval is the platform's (issue #1308): every open tab asks that often.
         ClientPresentationFields.platformNames shouldContainExactly listOf(
             CLD.refreshIntervalSeconds, CLD.usageType, CLD.audience, CLD.enabledEnvironments, CLD.preload, CLD.domainPrefix, CLD.customDomain,
