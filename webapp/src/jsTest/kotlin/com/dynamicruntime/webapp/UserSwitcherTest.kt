@@ -1,5 +1,9 @@
 package com.dynamicruntime.webapp
 
+import com.dynamicruntime.common.context.CL
+import com.dynamicruntime.common.context.UPF
+import com.dynamicruntime.common.home.HFEAT
+import com.dynamicruntime.common.home.HFLD
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.user.PERSONA
 import com.dynamicruntime.common.user.UCF
@@ -9,6 +13,8 @@ import com.dynamicruntime.common.user.personaTerm
 import com.dynamicruntime.common.user.userKeyLabel
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 /**
  * Pure-logic coverage (issue #161) for the account menu's user switcher (issue #749): the users-list parse,
@@ -117,6 +123,34 @@ class UserSwitcherTest {
         // The Persona column and the editors read the user's own roles.
         assertEquals("Member B (Administrator access)", personaCell("member", "B", listOf(ROLE.user, ROLE.admin)))
         assertEquals("Member B", personaCell("member", "B"))
+    }
+
+    // Issue #1696: every `public` registrant is given `admin` over their own address's users, which makes them no
+    // administrator of anything -- so the bar describes them as Profile does, with no "Administrator access" and no
+    // Admin badge, while the Users page stays theirs.
+    @Test
+    fun aPublicRegistrantIsNoAdministratorInTheBar() {
+        fun shell(client: String, roles: List<String>) = homeConfigFrom(
+            UiConfig(
+                FragmentRef("frag", "b1"),
+                mapOf(HFEAT.canManageUsers to true),
+                emptyMap(),
+                mapOf(HFLD.userInfo to mapOf(UPF.userId to 7L, UPF.client to client, UPF.roles to roles, UPF.publicName to "Pat")),
+            ),
+        )
+        val registrant = shell(CL.public, listOf(ROLE.user, ROLE.admin))
+        assertTrue(registrant.canManageUsers)
+        assertFalse(barElevated(registrant))
+        val shown = profileShownRoles(registrant.user)
+        val public = UserChoice(7L, CL.public, "member", name = "Pat", clientName = "Public", isCurrent = true)
+        val speaker = UserChoice(8L, "confdemo", "member", name = "Pat", clientName = "Conference demo", roleLabel = "Speaker")
+        assertEquals("Pat [Public]", identityBadgeText("Pat", listOf(public, speaker), shown))
+        assertEquals("[Public]", userMenuEntryText(public, listOf(public, speaker), shown))
+        assertEquals("You are signed in as Public (public) / Member -- Pat.", identityBadgeTitle(public, shown))
+        // A client's administrator is one, and so is an administrator of every client wherever they are.
+        assertTrue(barElevated(shell("acme", listOf(ROLE.user, ROLE.admin))))
+        assertTrue(barElevated(shell(CL.public, listOf(ROLE.user, ROLE.admin, ROLE.allClients))))
+        assertFalse(barElevated(null))
     }
 
     @Test
