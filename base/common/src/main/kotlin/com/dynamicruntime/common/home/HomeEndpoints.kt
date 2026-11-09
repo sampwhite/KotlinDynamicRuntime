@@ -7,6 +7,7 @@ import com.dynamicruntime.common.gedra.clientConfigurationMarkdown
 import com.dynamicruntime.common.gedra.sandboxParentOf
 import com.dynamicruntime.common.gedra.ClientService
 import com.dynamicruntime.common.gedra.ClientJoin
+import com.dynamicruntime.common.gedra.ClientSelfServeCreate
 import com.dynamicruntime.common.content.DOCORDER
 import com.dynamicruntime.common.content.MDOC
 import com.dynamicruntime.common.content.MarkdownDocDef
@@ -47,7 +48,6 @@ import com.dynamicruntime.common.user.UserService
 import com.dynamicruntime.common.user.refreshActingRoles
 import com.dynamicruntime.common.webasset.ClientWebAssetService
 import com.dynamicruntime.common.context.CL
-import com.dynamicruntime.common.user.IDD
 import com.dynamicruntime.common.util.genericZoneLabel
 import com.dynamicruntime.common.util.toOptStr
 
@@ -391,10 +391,8 @@ fun homeSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.home") {
                 if (c.client == CL.public && c.userProfile.isLoggedIn) {
                     // Joining a demo client (issue #1248), so the public home page (issue #1324) asks which there are.
                     if (ClientJoin.isOffered(c)) put(HFLD.joinOffered, true)
-                    val identityId = c.userProfile.identityId
-                    val users = UserService.getOrNull(c)
-                    if (identityId != null && users != null) {
-                        val made = users.queryIdentityById(c, identityId)?.identityData?.get(IDD.selfServeClient).toOptStr()
+                    if (c.userProfile.identityId != null && UserService.getOrNull(c) != null) {
+                        val made = ClientSelfServeCreate.madeBy(c)
                         made?.let {
                             put(HFLD.selfServeClient, it)
                             // A person creates one, so a client retired or run elsewhere is said, not offered to open.

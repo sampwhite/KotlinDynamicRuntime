@@ -188,7 +188,8 @@ none of its own.
   **Operating this deployment** for a deployment operator.
 - **The assistant module's cards** (`ASST.homeCard`, `ASST.createHomeCard`): the workflow assistant, for whoever its
   menu entry is offered to, and "Design your own forms" for a person signed in to `public` where the deployment offers
-  the assistant to self-serve clients. The create card asks whether that card was sent (`ownClientAssistantOffered`)
+  the assistant to self-serve clients, until they have made their client (`kdr:madeOwnClient`, issue #1743), when the
+  page's **Your own client** section opens it instead. The create card asks whether that card was sent (`ownClientAssistantOffered`)
   and then says the new client's home page starts them on the assistant. A new client lands on its home page either way
   (issue #1723), whose **Getting started** list leads with switching the assistant on where it is offered.
 - **A card with a `kind`** reads what it needs when it is drawn, never in the polled shell config. The assistant's

@@ -52,6 +52,16 @@ object ClientSelfServeCreate {
     )
 
     /**
+     * The self-serve client the person signed in as [cxt]'s user made, read off their identity (through its cache, since
+     * the shell config asks on every poll): null when they have made none, or nobody is signed in. Once made it stays,
+     * whatever becomes of the client, as the one a person may make does.
+     */
+    fun madeBy(cxt: KdrCxt): String? {
+        val identityId = cxt.userProfile.identityId ?: return null
+        return UserService.getOrNull(cxt)?.queryIdentityById(cxt, identityId)?.identityData?.get(IDD.selfServeClient).toOptStr()
+    }
+
+    /**
      * Creates the self-serve client named [name] for the person signed in as [cxt]'s user, in [timeZone] -- the
      * creator's browser's, as the page sends it (issue #1115) -- or the deployment's when none is given.
      */

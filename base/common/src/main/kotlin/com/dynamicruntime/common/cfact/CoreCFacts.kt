@@ -2,6 +2,7 @@ package com.dynamicruntime.common.cfact
 
 import com.dynamicruntime.common.context.BOOT
 import com.dynamicruntime.common.context.CL
+import com.dynamicruntime.common.gedra.ClientSelfServeCreate
 import com.dynamicruntime.common.gedra.ClientService
 import com.dynamicruntime.common.gedra.CustomerAccess
 import com.dynamicruntime.common.gedra.isSelfServeClient
@@ -118,6 +119,12 @@ object CFACTS {
      * where they may create a client of their own. Not a visitor who has not signed in, though they act in `public` too.
      */
     const val publicMember = "kdr:publicMember"
+
+    /**
+     * The caller is [publicMember] and **has made their own client** (issue #1743), the one a person may: so the home
+     * page offers to open it rather than to create one. Read off their identity, and only in `public`, where it is asked.
+     */
+    const val madeOwnClient = "kdr:madeOwnClient"
 
     /**
      * The caller's client is a **self-serve** one (issue #1636): created by a person from the public home page, its id
@@ -350,6 +357,14 @@ fun addCoreCFacts(collector: SchemaCollector) {
                 "create a client of their own there. A visitor who has not signed in acts in `public` too, and is not one.",
         ),
     ) { it.userProfile.isLoggedIn && it.client == CL.public }
+    // Not a cheap fact like its neighbors: it reads the identity, though from its cache, and only for a `public` member.
+    collector.addCFact(
+        CFactDef(
+            CFACTS.madeOwnClient, CFGRP.caller,
+            "True when the caller is signed in to `public` (`${CFACTS.publicMember}`) and has made their own client, the " +
+                "one a person may make there -- whatever has become of it since.",
+        ),
+    ) { it.userProfile.isLoggedIn && it.client == CL.public && ClientSelfServeCreate.madeBy(it) != null }
     collector.addCFact(
         CFactDef(
             CFACTS.selfServeClient, CFGRP.caller,
