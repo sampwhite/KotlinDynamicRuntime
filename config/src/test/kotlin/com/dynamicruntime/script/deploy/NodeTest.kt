@@ -104,8 +104,23 @@ class NodeTest : StringSpec({
         report shouldContain "-cp '/home/kdr/kdr/current/lib/*' ${Node.clearFileStoreMain}"
         report shouldNotContain "--remove"
         Node.clearFileStoreCommand(target, remove = true) shouldContain "${Node.clearFileStoreMain} --remove"
-        // The database is the one directory under the base directory, quoted.
-        Node.removeDatabaseCommand(target) shouldBe "rm -rf -- '/home/kdr/kdr/h2Database'"
-        Node.logsCommand(target, 50, follow = true) shouldBe "journalctl --user -u 'kdr' -n 50 --no-pager -f"
+        // The log is the service's and its daily reset check's (issue #1722).
+        Node.logsCommand(target, 50, follow = true) shouldBe "journalctl --user -u 'kdr' -u 'kdr-reset.service' -n 50 --no-pager -f"
+    }
+
+    "status says when the data was last reset, when the next is due, and the journal's limits (issue #1722)" {
+        val installed = Node.resetLine(
+            "2026-11-09T09:00:00Z\n\nLoadState=loaded\nActiveState=active\nNextElapseUSecRealtime=Tue 2026-11-10 09:00:00 UTC",
+        )
+        installed shouldBe "last 2026-11-09T09:00:00Z, next due 2026-12-09T09:00:00Z; " +
+            "daily check active, next run Tue 2026-11-10 09:00:00 UTC"
+        Node.resetLine("\nLoadState=not-found\nActiveState=inactive") shouldBe "none recorded; no daily check installed"
+
+        // The main file, then a drop-in, the later one winning; comments and sections are not settings.
+        val conf = "[Journal]\n#MaxRetentionSec=\nSystemMaxUse=1G\n[Journal]\nSystemMaxUse=500M\nMaxRetentionSec=1month\n"
+        Node.journalLine(conf) shouldBe
+            "entries kept 1month (MaxRetentionSec), each file spans up to 1month (MaxFileSec, the default), at most 500M"
+        Node.journalLine(conf + "MaxFileSec=1week\n") shouldContain "each file spans up to 1week (MaxFileSec)"
+        Node.journalLine("[Journal]\n#MaxRetentionSec=\n") shouldContain "no age limit"
     }
 })

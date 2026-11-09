@@ -33,6 +33,12 @@ data class DeployTarget(
     val buildProfile: String?,
     /** The node's settings, written as `kdr.env` in this order; empty leaves the node's own file alone. */
     val env: Map<String, String>,
+    /**
+     * Whether the node resets its own data once it is a month old (issue #1722): a daily check `kdr-deploy` installs as
+     * systemd user units ([ResetUnits]), and removes from a node whose target stops asking. What a reference deployment
+     * that promises a monthly wipe sets.
+     */
+    val resetDataMonthly: Boolean = false,
 ) {
     /** What `ssh` and `rsync` are pointed at. */
     val sshDestination: String get() = "$user@$host"
@@ -45,8 +51,10 @@ data class DeployTarget(
     val port: Int get() = env["KDR_PORT"]?.toIntOrNull() ?: DPL.defaultPort
 
     companion object {
-        /** The keys a target file must have; every other key is `env.<VAR>`, [DPL.keepReleasesKey] or [DPL.buildProfileKey]. */
+        /** The keys a target file must have; every other key is `env.<VAR>` or one of [optional]. */
         private val required = listOf("host", "user", "baseDir", "service", "publicUrl")
+
+        private val optional = listOf(DPL.keepReleasesKey, DPL.buildProfileKey, DPL.resetDataMonthlyKey)
 
         /**
          * Reads a target file's [text], named [name]. A properties file in its simplest form -- `key=value` per
@@ -69,7 +77,7 @@ data class DeployTarget(
                     require(variable.isNotEmpty()) { "Target '$name', line ${index + 1}: '${DPL.envPrefix}' names no variable." }
                     require(env.put(variable, value) == null) { "Target '$name': $variable is set twice." }
                 } else {
-                    require(key in required || key == DPL.keepReleasesKey || key == DPL.buildProfileKey) {
+                    require(key in required || key in optional) {
                         "Target '$name', line ${index + 1}: unknown key '$key'. A setting for the node is '${DPL.envPrefix}<VARIABLE>'."
                     }
                     require(values.put(key, value) == null) { "Target '$name': '$key' is set twice." }
@@ -90,9 +98,14 @@ data class DeployTarget(
                     "Target '$name': ${DPL.buildProfileKey} must be a plain name (letters, digits, '-', '_'), not '$it'."
                 }
             }
+            val resetMonthly = values[DPL.resetDataMonthlyKey]?.let {
+                requireNotNull(it.toBooleanStrictOrNull()) {
+                    "Target '$name': ${DPL.resetDataMonthlyKey} must be true or false, not '$it'."
+                }
+            } ?: false
             return DeployTarget(
                 name, values.getValue("host"), values.getValue("user"), baseDir, values.getValue("service"),
-                values.getValue("publicUrl").trimEnd('/'), keep, profile, env,
+                values.getValue("publicUrl").trimEnd('/'), keep, profile, env, resetMonthly,
             )
         }
 
@@ -133,6 +146,9 @@ object DPL {
 
     /** A target file's key naming its build (issue #1273): see [DeployTarget.buildProfile]. */
     const val buildProfileKey = "buildProfile"
+
+    /** A target file's key asking for the node's monthly data reset (issue #1722): see [DeployTarget.resetDataMonthly]. */
+    const val resetDataMonthlyKey = "resetDataMonthly"
 
     /** The Gradle property a build profile is passed as, which a workspace's `settings.gradle.kts` reads. */
     const val buildProperty = "kdrBuild"
