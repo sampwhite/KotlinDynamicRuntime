@@ -458,7 +458,9 @@ internal fun SchModuleBuilder.clientTraitsEndpoints() {
         val result = ClientTraitNarrowEdit.save(
             c, client, traitNarrowingFromInfo(request[CIT.narrowing].toJsonMapOrEmpty()), expectedModeOf(request), gate,
         )
-        editorSaveResult(c, client, result.configName, CIT.narrowing to result.narrowing.toInfo(), result.mode, result.issues, result.draftImpact)
+        editorSaveResult(
+            c, client, result.configName, CIT.narrowing to result.narrowing.toInfo(), result.mode, result.issues, result.draftImpact,
+        )
     }
 }
 

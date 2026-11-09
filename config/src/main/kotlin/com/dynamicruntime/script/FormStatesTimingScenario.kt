@@ -66,7 +66,9 @@ fun formStatesTiming(cxt: ProbeContext) {
             val started = System.nanoTime()
             val written = admin.sendPostRequest(CFEP.bundleWrite, write)
             val ms = msSince(started)
-            if (!written.isSuccess) throw KdrException("Saving workflow '$workflowId' failed (HTTP ${written.statusCode}): ${written.errorMessage}")
+            if (!written.isSuccess) {
+                throw KdrException("Saving workflow '$workflowId' failed (HTTP ${written.statusCode}): ${written.errorMessage}")
+            }
             @Suppress("UNCHECKED_CAST")
             val auto = written.results[FSR.auto] as? Map<String, Any?> ?: emptyMap()
             println("  ${case.padEnd(22)}: ${ms.toString().padStart(6)} ms  (${autoText(auto)})")

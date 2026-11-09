@@ -32,7 +32,9 @@ client's definition, a global one -- the inspector says why, from the block's `e
 #1026): published and live at once for a client without a sandbox -- so it is refused while the config carries
 somebody's unpublished changes (`unpublishedChanges`) -- and a draft of the parent's config, shown by the sandbox, for
 one with a sandbox, whose own page points to the sandbox instead (`publishedOnly`). The two kinds of editor therefore
-never leave each other a draft to refuse. A field's summary keeps what the data requires apart from what this form
+never leave each other a draft to refuse. Like them, a save brings a small client's forms up to date at once (issue
+#1741), since a form's requirements and choices are in its layout; its result says what happened (`formStatesAuto`),
+which the page does not draw yet: the editor closes on a save and has no note to put it in. A field's summary keeps what the data requires apart from what this form
 asks for (issue #1022): **Required by the data** beside **Required on this form** and **Choices on this form**, the
 form's requirements from its layout entry. The workflow copy editor sets them (issue #1048,
 `formRequirementControls`): a **Required on this form** checkbox -- locked when the data already requires the field,

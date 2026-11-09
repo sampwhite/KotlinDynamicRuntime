@@ -313,8 +313,6 @@ object DesignView {
             },
             restorePublished = holder?.isPublished == true,
             impact = impact,
-            // Wording, layouts, and choices move no form's state (issue #1741).
-            recalculateForms = false,
         )
     }
 
@@ -621,6 +619,8 @@ fun designViewSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, DSV.namespace) 
         type = SCT.kObject
         description = "The outcome of a layout-entry edit: the stamp of the definition as it now stands."
         property(DSV.basedOn, "The workflow definition's stamp after the edit -- what the next edit is based on.", required = true)
+        // A field's layout entry, or which fields a form shows, can change what a task requires (issue #1741).
+        formStatesAutoProperty()
     }
 
     generalEndpoint(
@@ -640,18 +640,22 @@ fun designViewSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, DSV.namespace) 
         },
     ) { c, request ->
         AdminRules.requireClientAdministrator(c)
+        // Its own context when it names another client: where the edit leaves what it did to the forms (issue #1741).
+        val dc = designCxt(c, request)
         val stamp = DesignView.setLayoutEntry(
-            designCxt(c, request), request.getReqNonBlankStr(DSV.workflowId), request.getReqNonBlankStr(DSV.typeName),
+            dc, request.getReqNonBlankStr(DSV.workflowId), request.getReqNonBlankStr(DSV.typeName),
             request.getReqNonBlankStr(DSV.field), (request[DSV.entry] as? Map<*, *>)?.toJsonMap(),
             request.getReqNonBlankStr(DSV.basedOn),
         )
-        linkedMapOf(DSV.basedOn to stamp)
+        linkedMapOf(DSV.basedOn to stamp).withFormStatesAuto(dc)
     }
 
     type(DSV.sharedFieldEditType) {
         type = SCT.kObject
         description = "The outcome of a shared-field edit: the stamp of the definition's entry as it now stands."
         property(DSV.sharedBasedOn, "The entry's stamp after the edit -- what the next shared edit is based on.", required = true)
+        // Removing a choice can make a stored value one a task no longer accepts (issue #1741).
+        formStatesAutoProperty()
     }
 
     generalEndpoint(
@@ -684,20 +688,23 @@ fun designViewSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, DSV.namespace) 
         },
     ) { c, request ->
         AdminRules.requireClientAdministrator(c)
+        val dc = designCxt(c, request)
         val stamp = DesignSharedEdit.setSharedField(
-            designCxt(c, request), request.getReqNonBlankStr(DSV.typeName), request.getReqNonBlankStr(DSV.field),
+            dc, request.getReqNonBlankStr(DSV.typeName), request.getReqNonBlankStr(DSV.field),
             (request[DSV.entry] as? Map<*, *>)?.toJsonMap(),
             (request[DSV.options] as? List<*>)?.map { (it as? Map<*, *>)?.toJsonMap().orEmpty() },
             request.getReqNonBlankStr(DSV.sharedBasedOn),
             acknowledgeImpact = request[IMP.acknowledgeImpact] == true,
         )
-        linkedMapOf(DSV.sharedBasedOn to stamp)
+        linkedMapOf(DSV.sharedBasedOn to stamp).withFormStatesAuto(dc)
     }
 
     type(DSV.labelEditType) {
         type = SCT.kObject
         description = "The outcome of an edit of a workflow's own copy: the stamp of its definition as it now stands."
         property(DSV.basedOn, "The workflow definition's stamp after the edit -- what the next edit is based on.", required = true)
+        // A field's layout entry, or which fields a form shows, can change what a task requires (issue #1741).
+        formStatesAutoProperty()
     }
 
     generalEndpoint(
@@ -715,11 +722,12 @@ fun designViewSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, DSV.namespace) 
         },
     ) { c, request ->
         AdminRules.requireClientAdministrator(c)
+        val dc = designCxt(c, request)
         val stamp = DesignView.setLabel(
-            designCxt(c, request), request.getReqNonBlankStr(DSV.workflowId), request[DSV.taskId].toOptStr(),
+            dc, request.getReqNonBlankStr(DSV.workflowId), request[DSV.taskId].toOptStr(),
             request[DSV.saveId].toOptStr(), request[DSV.label].toOptStr(), request.getReqNonBlankStr(DSV.basedOn),
         )
-        linkedMapOf(DSV.basedOn to stamp)
+        linkedMapOf(DSV.basedOn to stamp).withFormStatesAuto(dc)
     }
 
     generalEndpoint(
@@ -739,11 +747,12 @@ fun designViewSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, DSV.namespace) 
         },
     ) { c, request ->
         AdminRules.requireClientAdministrator(c)
+        val dc = designCxt(c, request)
         val stamp = DesignView.setHeading(
-            designCxt(c, request), request.getReqNonBlankStr(DSV.workflowId), request.getReqNonBlankStr(DSV.typeName),
+            dc, request.getReqNonBlankStr(DSV.workflowId), request.getReqNonBlankStr(DSV.typeName),
             request[DSV.label].toOptStr(), request[DSV.description].toOptStr(), request.getReqNonBlankStr(DSV.basedOn),
         )
-        linkedMapOf(DSV.basedOn to stamp)
+        linkedMapOf(DSV.basedOn to stamp).withFormStatesAuto(dc)
     }
 
     generalEndpoint(
@@ -763,11 +772,12 @@ fun designViewSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, DSV.namespace) 
         },
     ) { c, request ->
         AdminRules.requireClientAdministrator(c)
+        val dc = designCxt(c, request)
         val stamp = DesignView.setShownFields(
-            designCxt(c, request), request.getReqNonBlankStr(DSV.workflowId), request.getReqNonBlankStr(DSV.typeName),
+            dc, request.getReqNonBlankStr(DSV.workflowId), request.getReqNonBlankStr(DSV.typeName),
             (request[DSV.fields] as? List<*>)?.mapNotNull { it.toOptStr() }, request.getReqNonBlankStr(DSV.basedOn),
         )
-        linkedMapOf(DSV.basedOn to stamp)
+        linkedMapOf(DSV.basedOn to stamp).withFormStatesAuto(dc)
     }
 
     generalEndpoint(
@@ -785,11 +795,12 @@ fun designViewSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, DSV.namespace) 
         },
     ) { c, request ->
         AdminRules.requireClientAdministrator(c)
+        val dc = designCxt(c, request)
         val stamp = DesignSharedEdit.setSharedHeading(
-            designCxt(c, request), request.getReqNonBlankStr(DSV.typeName), request[DSV.label].toOptStr(),
+            dc, request.getReqNonBlankStr(DSV.typeName), request[DSV.label].toOptStr(),
             request[DSV.description].toOptStr(), request.getReqNonBlankStr(DSV.sharedBasedOn),
         )
-        linkedMapOf(DSV.sharedBasedOn to stamp)
+        linkedMapOf(DSV.sharedBasedOn to stamp).withFormStatesAuto(dc)
     }
 
     itemEndpoint(

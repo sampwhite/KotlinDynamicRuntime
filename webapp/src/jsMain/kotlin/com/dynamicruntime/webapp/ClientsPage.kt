@@ -1051,6 +1051,7 @@ val StoredConfigTable = FC<StoredConfigTableProps> { props ->
     fun delete(bundle: ConfigSummaryView) {
         deleting = bundle.name
         deleteError = null
+        published = null
         clientsScope.launch {
             try {
                 ClientsApi.deleteBundle(props.clientId, props.acrossClients, bundle.name, bundle.updatedAt)

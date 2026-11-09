@@ -38,6 +38,9 @@ val FormStatesSection = FC<FormStatesSectionProps> { props ->
         result = null
         error = null
     }
+    // The page re-reads the client after a save, and a save may have recalculated the forms itself (issue #1741): the
+    // last run's counts no longer describe them, so they go.
+    useEffect(props.row) { result = null }
     val offer = formStatesOffer(props.row)
     p {
         className = ClassName("subtitle")

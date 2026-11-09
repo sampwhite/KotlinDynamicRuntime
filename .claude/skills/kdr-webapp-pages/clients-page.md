@@ -482,10 +482,11 @@ too, since its forms are its own. `kdr-probe --url <your server> form-states-tim
 
 **A saved change brings a small client's forms up to date by itself** (issue #1741). The backend runs the same
 recalculation, synchronously, in the request of every edit that can move a form's state -- the definition, the traits,
-the workflows and their parameters, a trait's design or narrowing, a bundle editor save, and a publish -- when the
-client holds no more forms than the deployment's limit (`formStatesAutoRecalcLimit` instance-config key, default 200) and its definition does
-not set `manualFormStates`. It reaches the client's own forms, or for a draft its sandbox's. Wording, layouts, menus,
-columns, files, and reports move no form's state and run none. The answer carries what happened under
+the workflows and their parameters, a trait's design or narrowing, a Design View save (a layout holds a workflow's form
+requirements), a bundle editor save, and a publish -- when the client holds no more forms than the deployment's limit
+(the `formStatesAutoRecalcLimit` instance-config key, default 200) and its definition does not set `manualFormStates`.
+It reaches the client's own forms, or for a draft its sandbox's. The copy, the menu, columns, files, and reports move no
+form's state and run none. The answer carries what happened under
 `formStatesAuto` (`FormStatesAuto`, `formStatesAutoOf`), and the page says it after the save's own note
 (`formStatesAutoText`, through `savedNote`; the publishing bar's `publishedNote`; the bundle editor's note), so a person
 learns the rule the moment it matters: brought up to date, already current, too many for the limit, by hand, off for

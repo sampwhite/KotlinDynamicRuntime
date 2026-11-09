@@ -196,7 +196,9 @@ class FormStatesAutoRecalcTest : StringSpec({
         val admin = defineClient(client)
         fun write(bundle: String, workflowId: String): Map<String, Any?> {
             val flows = gedraConfig(cxt, bundle, clientNamespace(client), client) {
-                workflow(workflowId, WfEntry.normal) { task("draft", "Draft it") { trait("memo"); save("saveMemo", "Save", WfSaveKind.edit) } }
+                workflow(workflowId, WfEntry.normal) {
+                    task("draft", "Draft it") { trait("memo"); save("saveMemo", "Save", WfSaveKind.edit) }
+                }
             }
             val slots = gedraConfigToEntries(flows)
             return admin.postData(

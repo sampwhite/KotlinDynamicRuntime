@@ -115,7 +115,7 @@ object ClientStoredEdit {
     ): ConfigReloadResult {
         val reload = if (target.draft) SandboxEdits.reloadParent(cxt, target.client)
         else publishAndReload(cxt, target.bound, target.client, written, undo, restorePublished, impact)
-        if (recalculateForms) autoRecalculateFormStates(cxt, if (target.draft) sandboxOf(target.client) else target.client)
+        if (recalculateForms) autoRecalculateFormStates(cxt, target.readsAs)
         return reload
     }
 

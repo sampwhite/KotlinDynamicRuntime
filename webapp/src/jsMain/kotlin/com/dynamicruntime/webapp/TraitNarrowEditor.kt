@@ -92,7 +92,8 @@ val TraitNarrowEditor = FC<TraitNarrowEditorProps> { props ->
             try {
                 val result = ClientsApi.narrowTrait(traitNarrowRequest(props.clientId, narrowing, expectedMode(props.savesDraft), acknowledge))
                 impact = null
-                val said = savedNote("Saved how this client takes ${props.trait.traitId}, in ${result.configName}.", result.mode, result.forms)
+                val said =
+                    savedNote("Saved how this client takes ${props.trait.traitId}, in ${result.configName}.", result.mode, result.forms)
                 props.onSaved(listOfNotNull(said, draftImpactText(result.draftImpact)).joinToString(" "))
             } catch (e: Throwable) {
                 val report = impactOf(e)

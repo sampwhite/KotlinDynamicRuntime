@@ -71,7 +71,17 @@ fun formStatesAutoText(auto: FormStatesAuto?): String? {
                 "$whoseLead ${if (total == 1L) "one form was" else "${forms(total)} were"} already up to date with the change."
             run.current == 0L && run.failed == 0L ->
                 "Brought ${if (total == 1L) "$whose one form" else "all $total of $whose forms"} up to date with the change."
-            else -> "Brought ${run.updated} of $whose ${forms(total)} up to date with the change; the rest already were.$failed"
+            else -> {
+                // Some failed: say how many of the rest were current, rather than that all of them were.
+                val rest = when {
+                    run.current == 0L -> ""
+                    run.failed == 0L -> "; the rest already were"
+                    else -> "; ${run.current} already were"
+                }
+                val brought = if (run.updated == 0L) "None of $whose ${forms(total)} was brought"
+                else "Brought ${run.updated} of $whose ${forms(total)}"
+                "$brought up to date with the change$rest.$failed"
+            }
         }
         FSR.tooMany -> "$whoseLead ${forms(total)} are more than the ${auto.autoLimit ?: "few"} brought up to date as a change is " +
             "saved: $later"

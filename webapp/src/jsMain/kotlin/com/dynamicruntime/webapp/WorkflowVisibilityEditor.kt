@@ -73,7 +73,8 @@ val WorkflowVisibilityEditor = FC<WorkflowVisibilityEditorProps> { props ->
         saveError = null
         visibilityScope.launch {
             try {
-                val saved = ClientsApi.saveWorkflowParams(visibilitySaveRequest(props.clientId, props.workflow.workflowId, visibility, acknowledge))
+                val request = visibilitySaveRequest(props.clientId, props.workflow.workflowId, visibility, acknowledge)
+                val saved = ClientsApi.saveWorkflowParams(request)
                 impact = null
                 val done = if (visibility == null) "Who sees ${props.workflow.workflowId} follows the fallback again, at once."
                 else "${props.workflow.workflowId} is now seen by: ${visibilityText(visibility)}. In force at once."

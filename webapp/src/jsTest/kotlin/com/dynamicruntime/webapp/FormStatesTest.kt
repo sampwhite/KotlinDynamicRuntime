@@ -74,6 +74,11 @@ class FormStatesTest {
             "This client's 2 forms were already up to date with the change.",
             formStatesAutoText(auto(results = arrayOf(FSR.outcome to FSR.completed, FSR.current to 2, FSR.total to 2))),
         )
+        // Every form failed: not "brought 0 ... the rest already were".
+        formStatesAutoText(auto(results = arrayOf(FSR.outcome to FSR.completed, FSR.failed to 2, FSR.total to 2)))!!.let {
+            assertTrue(it.startsWith("None of this client's 2 forms was brought up to date with the change."))
+            assertTrue("could not be stored" in it)
+        }
         formStatesAutoText(auto(results = arrayOf(FSR.outcome to FSR.tooMany, FSR.total to 201)))!!.let {
             assertTrue("201 forms are more than the 200" in it && "nightly" in it)
         }

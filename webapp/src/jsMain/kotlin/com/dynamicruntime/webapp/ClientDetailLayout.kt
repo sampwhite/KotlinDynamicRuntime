@@ -74,11 +74,8 @@ fun clientSummaryGroups(
         val refresh = inForceText(CLD.refreshIntervalSeconds, info, def.platformDefaults)
         val refreshMarked = if (info[CLD.refreshIntervalSeconds] != null) marked(CLD.refreshIntervalSeconds, refresh) else refresh
         add(humanizeFieldName(CLD.refreshIntervalSeconds) to fromTemplate(CLD.refreshIntervalSeconds, refreshMarked))
-        // How a change reaches the forms (issue #1741): the Form states section says the deployment's limit.
-        add(
-            "Form states" to if (info[CLD.manualFormStates] == true) "Brought up to date by hand, or by the nightly recalculation"
-            else "Brought up to date as a change is saved, for a small client",
-        )
+        // How a change reaches the forms (issue #1741): the client's choice, then the deployment's limit.
+        add("Form states" to formStatesRowText(info[CLD.manualFormStates] == true, row?.formStatesAutoLimit))
         // Each listed only where its section is not drawn below (issue #1491).
         if (!traitsShownBelow) {
             add("Listing columns" to list(def.usageLabels))
@@ -201,4 +198,16 @@ fun menuPanelSummary(changedItems: Int): String = when (changedItems) {
     0 -> "Shipped as is"
     1 -> "1 item changed by this client"
     else -> "$changedItems items changed by this client"
+}
+
+/**
+ * The definition's Form states row (issue #1741): by hand when the client asks for that ([manual]); otherwise as a
+ * change is saved while the client holds no more than the deployment's [autoLimit] forms -- or not at all when the
+ * deployment brings none up to date that way. The limit is the overview row's, unknown (null) without one. Pure.
+ */
+fun formStatesRowText(manual: Boolean, autoLimit: Int?): String = when {
+    manual -> "Brought up to date by hand, or by the nightly recalculation"
+    autoLimit == null -> "Brought up to date as a change is saved, while the client holds few forms"
+    autoLimit <= 0 -> "Brought up to date by hand, or by the nightly recalculation: this deployment does none as a change is saved"
+    else -> "Brought up to date as a change is saved, while the client holds no more than $autoLimit forms"
 }

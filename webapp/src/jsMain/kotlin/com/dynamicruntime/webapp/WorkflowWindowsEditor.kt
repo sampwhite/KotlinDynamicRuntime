@@ -83,10 +83,12 @@ val WorkflowWindowsEditor = FC<WorkflowWindowsEditorProps> { props ->
         saveError = null
         windowsScope.launch {
             try {
-                val saved = ClientsApi.saveWorkflowParams(windowsSaveRequest(props.clientId, props.workflow.workflowId, windows, acknowledge))
+                val request = windowsSaveRequest(props.clientId, props.workflow.workflowId, windows, acknowledge)
+                val saved = ClientsApi.saveWorkflowParams(request)
                 impact = null
-                val done = if (windows == null) "The time windows of ${props.workflow.workflowId} follow the fallback again; they are in force now."
-                else "Saved the time windows of ${props.workflow.workflowId}; they are in force now."
+                val workflowId = props.workflow.workflowId
+                val done = if (windows == null) "The time windows of $workflowId follow the fallback again; they are in force now."
+                else "Saved the time windows of $workflowId; they are in force now."
                 props.onSaved(savedNote(done, EDM.live, saved.forms))
             } catch (e: Throwable) {
                 val report = impactOf(e)

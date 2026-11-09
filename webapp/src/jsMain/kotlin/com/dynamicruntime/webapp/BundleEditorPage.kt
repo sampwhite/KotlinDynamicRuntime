@@ -165,7 +165,8 @@ val BundleEditorPage = FC<Props> {
                 impact = null
                 replacing = null
                 showCall = false
-                val done = "Saved ${if (count == 1) "1 edit" else "$count edits"}${if (row?.sandboxOf != null) " as a draft" else ""}, and reloaded the client."
+                val asDraft = if (row?.sandboxOf != null) " as a draft" else ""
+                val done = "Saved ${if (count == 1) "1 edit" else "$count edits"}$asDraft, and reloaded the client."
                 // And what the reload's recalculation did to the client's forms (issue #1741).
                 savedNote = formStatesAutoText(formStatesAutoOf(answer))?.let { "$done $it" } ?: done
                 bump()
