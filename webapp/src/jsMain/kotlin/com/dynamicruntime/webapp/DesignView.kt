@@ -8,13 +8,16 @@ import com.dynamicruntime.common.gedra.IMP
 import com.dynamicruntime.common.gedra.DesignOrigin
 import com.dynamicruntime.common.gedra.GedraConfigOrigin
 import com.dynamicruntime.common.gedra.workflow.WFD
+import com.dynamicruntime.common.home.HFRAG
 import com.dynamicruntime.common.schema.SCH
+import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.SL
 import com.dynamicruntime.common.schema.SchLayout
 import com.dynamicruntime.common.schema.SchLayoutField
 import com.dynamicruntime.common.schema.SchProperty
 import com.dynamicruntime.common.schema.SchType
 import com.dynamicruntime.common.schema.fieldsAListMustShow
+import com.dynamicruntime.common.schema.isListOfEntries
 import com.dynamicruntime.common.util.humanizeFieldName
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonListOfStrings
@@ -441,18 +444,46 @@ class DesignSession(
 
 // --- editing a field's copy for this workflow (issue #984) ------------------------------------------------------
 
-/** The copy attributes the edit form offers, in the order it shows them. */
-val editableCopyKeys: List<String> = listOf(SL.label, SL.description, SL.hint)
+/**
+ * The copy attributes the edit forms offer for [prop], in the order they show them: every field's label, description and
+ * hint, and the heading each entry has where a form heads entries by it ([entryLabelHeadsEntries], issue #1748, the
+ * layout's `entryLabel`), as **Choices on this form** is offered only for a field with a closed list. Pure.
+ */
+fun editableCopyKeys(prop: SchProperty): List<String> =
+    if (entryLabelHeadsEntries(prop.valueType)) fieldCopyKeys + SL.entryLabel else fieldCopyKeys
+
+/** The copy attributes every field's edit forms offer. */
+private val fieldCopyKeys: List<String> = listOf(SL.label, SL.description, SL.hint)
+
+/** Every copy attribute an edit form may offer: what [copyEntryFrom] and [copyChanged] act on, and nothing else. */
+private val allCopyKeys: Set<String> = (fieldCopyKeys + SL.entryLabel).toSet()
 
 /**
- * The layout entry an edit saves: [start] -- the entry being changed, or the one being overridden -- with each of
- * [editableCopyKeys] set from [values], a blank value removing it. Every other key of [start] (an error override, a
- * default mode) is kept, since the form does not offer it and saving must not drop it. Pure.
+ * Whether a form heads the entries of a list of type [vt] by its `entryLabel` (issue #1748), so Design View offers it:
+ * a list of objects ([isListOfEntries]) neither keyed nor a union. A keyed entry is headed by its key and a union's by
+ * its branch's name (`elementRowHeader`), and a list of single values draws no heading at all -- the label would reach
+ * only its remove buttons -- so on those the row would change nothing to be seen. The load still accepts one there,
+ * written as JSON. Pure.
+ */
+fun entryLabelHeadsEntries(vt: SchType): Boolean {
+    if (!isListOfEntries(vt)) return false
+    val item = vt.itemType ?: return false
+    if (item.variants != null) return false
+    if (item.jsonType != SCT.kObject && item.properties.isEmpty()) return false
+    // Keyed as `keyedElementLabel` reads it: the item's own type, or one of its properties' types.
+    return item.primaryKey.isEmpty() && item.properties.values.none { it.valueType.primaryKey.isNotEmpty() }
+}
+
+/**
+ * The layout entry an edit saves: [start] -- the entry being changed, or the one being overridden -- with each key of
+ * [values], the copy the editor offers ([editableCopyKeys]), set from it, a blank value removing it; a key of [values]
+ * that is no copy attribute is ignored. Every other key of [start] (an error override, a default mode) is kept, since
+ * the form does not offer it and saving must not drop it. Pure.
  */
 fun copyEntryFrom(start: Map<String, Any?>, field: String, values: Map<String, String>): Map<String, Any?> {
     val out = LinkedHashMap(start)
     out[SL.field] = field
-    for (key in editableCopyKeys) {
+    for (key in values.keys.filter { it in allCopyKeys }) {
         val v = values[key]?.trim().orEmpty()
         if (v.isEmpty()) out.remove(key) else out[key] = v
     }
@@ -468,15 +499,28 @@ class CopyFallback(val text: String?, val note: String)
 /**
  * What a form shows for [key] of the field [name] when no layout entry gives it: the field's own wording, as
  * `SchemaForm` falls back to it -- its title or a label made from its name, its description, the hint its bounds
- * give, in [boundWords]. A blank copy input means this, which the editor says rather than showing an empty box. Pure.
+ * give, in [boundWords], and each entry's heading from [entryLabel], the client's copy (issue #1748). A blank copy input
+ * means this, which the editor says rather than showing an empty box. Pure.
  */
-fun copyFallback(key: String, name: String, prop: SchProperty, boundWords: FieldBoundWords = FieldBoundWords()): CopyFallback = when (key) {
+fun copyFallback(
+    key: String,
+    name: String,
+    prop: SchProperty,
+    boundWords: FieldBoundWords = FieldBoundWords(),
+    entryLabel: String = HFRAG.defaultEntryLabel,
+): CopyFallback = when (key) {
     SL.label -> prop.title?.let { CopyFallback(it, "Blank: forms show the field's own title.") }
         ?: CopyFallback(humanizeFieldName(name), "Blank: forms show a label made from the field's name.")
     SL.description -> prop.description?.let { CopyFallback(it, "Blank: forms show the field's own description.") }
         ?: CopyFallback(null, "Blank: forms show no description.")
     SL.hint -> boundHintText(prop.valueType, boundWords)?.let { CopyFallback(it, "Blank: forms show the field's range.") }
         ?: CopyFallback(null, "Blank: forms show no hint.")
+    // The template is the placeholder, since it is what is typed; the note says what it reads as.
+    SL.entryLabel -> CopyFallback(
+        entryLabel,
+        "Blank: forms head the entries ${entryHeading(entryLabel, 0)}, ${entryHeading(entryLabel, 1)}, and so on. " +
+            "Write \${n} where the entry's number goes.",
+    )
     else -> CopyFallback(null, "")
 }
 
@@ -734,7 +778,7 @@ fun sharedOptionsPayload(rows: List<ChoiceRow>): List<Map<String, Any?>> =
 
 /** Whether the editor's copy [values] differ from [start]'s, key by key, blanks and absent alike (issue #1029). */
 fun copyChanged(start: Map<String, Any?>, values: Map<String, String>): Boolean =
-    editableCopyKeys.any { key -> start[key].toOptStr()?.trim().orEmpty() != values[key]?.trim().orEmpty() }
+    values.keys.filter { it in allCopyKeys }.any { key -> start[key].toOptStr()?.trim().orEmpty() != values[key]?.trim().orEmpty() }
 
 /** The values of [start]'s choices that [rows] no longer carry: what a save would remove (issue #1040). Pure. */
 fun removedChoiceValues(start: List<ChoiceRow>?, rows: List<ChoiceRow>): List<String> {

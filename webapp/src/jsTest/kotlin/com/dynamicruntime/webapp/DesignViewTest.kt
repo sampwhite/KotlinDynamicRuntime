@@ -15,6 +15,7 @@ import com.dynamicruntime.common.schema.SchLayoutField
 import com.dynamicruntime.common.schema.SchLayoutMode
 import com.dynamicruntime.common.schema.SchType
 import com.dynamicruntime.common.schema.parseSchemaTypes
+import com.dynamicruntime.common.util.humanizeFieldName
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -341,6 +342,81 @@ class DesignViewTest {
         assertEquals("Blank: forms show the field's range.", fallback(SL.hint, "attendees").note)
         assertNull(fallback(SL.hint, "phone").text)
         assertEquals("Blank: forms show no hint.", fallback(SL.hint, "phone").note)
+    }
+
+    // --- a list's entry label (issue #1748) ---
+
+    private val listTypes = parseSchemaTypes(
+        mapOf(
+            "client.demo.Lists" to mapOf(
+                SCH.type to SCT.kObject,
+                SCH.properties to mapOf(
+                    "speakers" to mapOf(SCH.type to SCT.array, SCH.items to mapOf(SCH.type to SCT.kObject)),
+                    "topics" to mapOf(
+                        SCH.type to SCT.array,
+                        SCH.items to mapOf(SCH.type to SCT.string, SCH.options to listOf("a", "b")),
+                    ),
+                    "title" to mapOf(SCH.type to SCT.string),
+                    "tags" to mapOf(SCH.type to SCT.array, SCH.items to mapOf(SCH.type to SCT.string)),
+                    "visits" to mapOf(
+                        SCH.type to SCT.array,
+                        SCH.items to mapOf(
+                            SCH.type to SCT.kObject,
+                            SCH.properties to mapOf("year" to mapOf(SCH.type to SCT.integer)),
+                            SCH.required to listOf("year"),
+                            SCH.primaryKey to listOf("year"),
+                        ),
+                    ),
+                ),
+            ),
+        ),
+    ).getValue("client.demo.Lists")
+
+    @Test
+    fun onlyAListOfEntriesIsOfferedAnEntryLabel() {
+        val props = listTypes.properties
+        assertEquals(listOf(SL.label, SL.description, SL.hint, SL.entryLabel), editableCopyKeys(props.getValue("speakers")))
+        // A list of choices is one control; a plain field has no entries.
+        assertEquals(listOf(SL.label, SL.description, SL.hint), editableCopyKeys(props.getValue("topics")))
+        assertEquals(listOf(SL.label, SL.description, SL.hint), editableCopyKeys(props.getValue("title")))
+        // Where a form heads the entries otherwise, the row would change nothing: a keyed entry reads as its key, and a
+        // list of single values draws no heading.
+        assertEquals(listOf(SL.label, SL.description, SL.hint), editableCopyKeys(props.getValue("visits")))
+        assertEquals(listOf(SL.label, SL.description, SL.hint), editableCopyKeys(props.getValue("tags")))
+        assertEquals("Entry label", humanizeFieldName(SL.entryLabel))
+    }
+
+    @Test
+    fun aBlankEntryLabelIsTheFormsOwnHeading() {
+        val speakers = listTypes.properties.getValue("speakers")
+        val shipped = copyFallback(SL.entryLabel, "speakers", speakers)
+        // The template is what is typed, so it is the placeholder; the note says what forms read.
+        assertEquals($$"Entry ${n}", shipped.text)
+        assertEquals($$"Blank: forms head the entries Entry 1, Entry 2, and so on. Write ${n} where the entry's number goes.", shipped.note)
+        // A client's copy rewords it.
+        val reworded = copyFallback(SL.entryLabel, "speakers", speakers, entryLabel = $$"Item ${n}")
+        assertEquals($$"Item ${n}", reworded.text)
+        assertTrue(reworded.note.startsWith("Blank: forms head the entries Item 1, Item 2"))
+    }
+
+    @Test
+    fun aSavedEntryLabelIsKeptOrClearedLikeTheOtherCopy() {
+        val start = mapOf(SL.field to "speakers", SL.label to "Speakers", SL.entryLabel to $$"Speaker ${n}")
+        val keys = editableCopyKeys(listTypes.properties.getValue("speakers"))
+        val values = keys.associateWith { start[it]?.toString().orEmpty() }
+        assertEquals(false, copyChanged(start, values))
+        val renamed = values + (SL.entryLabel to $$"Co-speaker ${n}")
+        assertEquals(true, copyChanged(start, renamed))
+        assertEquals($$"Co-speaker ${n}", copyEntryFrom(start, "speakers", renamed)[SL.entryLabel])
+        // Blank, the key goes, and the form says its own heading again.
+        val cleared = copyEntryFrom(start, "speakers", values + (SL.entryLabel to ""))
+        assertEquals(mapOf(SL.field to "speakers", SL.label to "Speakers"), cleared)
+        // Only copy is set from the editor's values: anything else there is no copy, and is not written.
+        assertEquals(null, copyEntryFrom(start, "speakers", values + (SL.required to "true"))[SL.required])
+        assertEquals(false, copyChanged(start, values + (SL.required to "true")))
+        // An editor that does not offer it keeps it as stored, as it keeps every key it does not offer.
+        val withoutIt = mapOf(SL.label to "Speakers", SL.description to "", SL.hint to "")
+        assertEquals($$"Speaker ${n}", copyEntryFrom(start, "speakers", withoutIt)[SL.entryLabel])
     }
 
     @Test

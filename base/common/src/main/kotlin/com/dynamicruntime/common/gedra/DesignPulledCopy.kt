@@ -21,8 +21,11 @@ import com.dynamicruntime.common.util.analyzeTemplate
  * the same is read for a type's **heading** and a workflow's **labels** -- its own, its tasks' and its saves'.
  */
 object DesignPulledCopy {
-    /** The copy slots of a layout field entry, in the order the inspector shows them. */
-    val copySlots: List<String> = listOf(SL.label, SL.description, SL.hint)
+    /**
+     * The copy slots of a layout field entry, in the order the inspector shows them: a list of entries' heading (issue
+     * #1748) after the three every field has.
+     */
+    val copySlots: List<String> = listOf(SL.label, SL.description, SL.hint, SL.entryLabel)
 
     /**
      * `{ typeName -> { field -> { slot -> { mixed, keys: [...] } } } }` for every slot of [typeNames]' layouts, as the
@@ -41,11 +44,7 @@ object DesignPulledCopy {
             for (field in layout.fields) {
                 val bySlot = linkedMapOf<String, Any?>()
                 for (slot in copySlots) {
-                    val text = when (slot) {
-                        SL.label -> field.label
-                        SL.description -> field.description
-                        else -> field.hint
-                    } ?: continue
+                    val text = field.copyIn(slot) ?: continue
                     pulls.slot(text, layout.fragmentFileId)?.let { bySlot[slot] = it }
                 }
                 if (bySlot.isNotEmpty()) byField[field.field] = bySlot

@@ -90,6 +90,10 @@ class SchLayoutReportTest {
         val good = layoutOf(mapOf(SL.field to "speakers", SL.entryLabel to $$"Co-speaker ${n}"))
         assertEquals($$"Co-speaker ${n}", good.fields.single().entryLabel)
         assertEquals($$"Co-speaker ${n}", good.fields.single().toJsonMap()[SL.entryLabel])
+        // Read by its slot's name, as Design View reads a field's copy (issue #1748); a name that is no copy reads nothing.
+        assertEquals($$"Co-speaker ${n}", good.fields.single().copyIn(SL.entryLabel))
+        assertEquals(null, good.fields.single().copyIn(SL.hint))
+        assertEquals(null, good.fields.single().copyIn(SL.required))
         assertEquals(emptyList(), layoutFieldProblems(where, good, type) + layoutTemplateProblems(where, good, type))
 
         // Only a list drawn entry by entry: neither a plain field nor a list of choices, which is one control.
