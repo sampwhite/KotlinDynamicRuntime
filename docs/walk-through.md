@@ -127,8 +127,9 @@ for:
 | Notes for the speaker | A clear story. Show one test as well. |
 
 Choose **Save the review**. The first step is checked, and says *Nothing more is needed on this step*. Then choose
-**Next: Accept the talk**, beside it, to go to the second step. It asks you to read the review and accept the talk:
-choose its **Accept the talk** button, and confirm. An approval cannot be taken back, which is why it asks.
+**Next: Accept the talk**, beside it, to go to the second step. It shows the review you just recorded, and asks you to
+read it and accept the talk: choose its **Accept the talk** button, and confirm. An approval cannot be taken back, which
+is why it asks.
 
 ### See the result as the speaker
 

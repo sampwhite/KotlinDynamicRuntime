@@ -163,6 +163,8 @@ class WfApprovalView(
     val approvedByName: String?,
     val approvedAt: String?,
     val data: Map<String, Any?>,
+    /** The tasks whose traits it shows above its prompt (issue #1695), as the backend resolved them. */
+    val showTasks: List<String> = emptyList(),
 )
 
 /**
@@ -370,7 +372,20 @@ fun parseApproval(raw: Any?): WfApprovalView? {
         approvedByName = a[WVF.approvedByName].toOptStr(),
         approvedAt = a[WFS.approvedAt].toOptStr(),
         data = a,
+        showTasks = (a[WFD.showTasks] as? List<*>).orEmpty().mapNotNull { it.toOptStr() },
     )
+}
+
+/**
+ * The traits an approval task shows, read-only, above its prompt (issue #1695): those of the tasks its approval names
+ * (the backend's resolution: named, else the nearest earlier task that collects traits), each once, in the view's
+ * order. None on a task that is no approval, or one its display disables -- a step greyed until something is done has
+ * nothing yet to approve. Pure, and covered under `jsNodeTest`.
+ */
+fun approvalShownTraits(view: WorkflowView, task: WfTaskView): List<WfTraitView> {
+    val shows = task.approval?.showTasks.orEmpty()
+    if (shows.isEmpty() || task.isDisabled) return emptyList()
+    return view.tasks.filter { it.id in shows && it.id != task.id }.flatMap { it.traits }.distinctBy { it.traitId }
 }
 
 /**

@@ -137,12 +137,16 @@ fun resolveWorkflowView(
     // username. Not their internal user id: this view reaches the form's owner, who could not read the reviewer's user
     // row. The workflow's own text decides what to show (`contains(approvedByName, "@")` finds an email), and the
     // page's default line leaves out a name that is one.
-    fun approvalView(approval: WfApproval, record: Map<String, Any?>?): Map<String, Any?> {
+    //
+    // And the tasks whose traits it shows above its prompt (issue #1695), resolved: those it names, else the nearest
+    // earlier task that collects traits -- so the page draws what is approved without knowing the rule.
+    fun approvalView(approval: WfApproval, record: Map<String, Any?>?, shows: List<String>): Map<String, Any?> {
         val out = linkedMapOf<String, Any?>(
             WFD.cfact to approval.cfact,
             WFD.prompt to label(approval.prompt),
             WFD.button to label(approval.button),
             WVF.approved to (record != null),
+            WFD.showTasks to shows,
         )
         if (record != null) {
             out[WFS.approvedAt] = record[WFS.approvedAt]
@@ -183,7 +187,7 @@ fun resolveWorkflowView(
         // form kept to its owner, since it is who the step is for, not why this caller may not change the form.
         if (declared.def.entry == WfEntry.normal) judge.waitingOn(task)?.let { raw[WVF.waitingOn] = label(it) }
         task.approval?.let {
-            raw[WVF.approval] = approvalView(it, approvals[task.id])
+            raw[WVF.approval] = approvalView(it, approvals[task.id], declared.def.approvalShows(task))
             // Whether this caller may approve it, by the rule the approve endpoint enforces -- so the page offers the
             // button only where it can succeed.
             raw[WVF.canApprove] = judge.mayApprove(task, taskFacts)

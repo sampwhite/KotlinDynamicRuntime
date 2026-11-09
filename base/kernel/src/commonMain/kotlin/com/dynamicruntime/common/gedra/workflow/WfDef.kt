@@ -119,6 +119,13 @@ object WFD {
     const val approveWhen = "approveWhen"
 
     /**
+     * On an approval (issue #1695): the tasks whose traits the approval shows, read-only, above its prompt, so the
+     * reviewer approves what is in front of them. Absent means the nearest earlier task that collects traits
+     * ([WfDef.approvalShows]); empty shows none.
+     */
+    const val showTasks = "showTasks"
+
+    /**
      * On a task: how it is shown (issue #788) -- one display branch ([WDSP]), or, usually, a UiBlock **selector**
      * (`select`) choosing among several by the caller's task facts. What turns an approval task into "approved by
      * ...", "waiting on earlier work", the approve button, or "wait for a reviewer", as the case may be.
@@ -353,7 +360,8 @@ object WVF {
 
     /**
      * On an **approval task**'s view (issue #787): its approval, resolved for the page -- the [WFD.cfact], the
-     * backend-passed [WFD.prompt] and [WFD.button] copy, whether it is [approved], and when so `approvedAt` and the
+     * backend-passed [WFD.prompt] and [WFD.button] copy, the tasks whose traits it shows ([WFD.showTasks], resolved by
+     * `WfDef.approvalShows`, issue #1695), whether it is [approved], and when so `approvedAt` and the
      * approver's [approvedByName] -- the name another person sees them called (issue #1430): their profile's name, else
      * their public name, which is their email while they have chosen no username. Not their user id: the view reaches
      * the form's owner, who could not read the reviewer's user row.
@@ -575,6 +583,11 @@ class WfApproval(
      * configuration, where a reviewer of the configuration sees it.
      */
     val approveWhen: String? = null,
+    /**
+     * The tasks whose traits it shows, read-only, above its prompt (issue #1695); null for the default, the nearest
+     * earlier task that collects traits ([WfDef.approvalShows]); empty for none.
+     */
+    val showTasks: List<String>? = null,
 ) {
     /** The rule the approve endpoint judges by: [approveWhen], or [defaultApproveWhen]. */
     val effectiveApproveWhen: String get() = approveWhen ?: defaultApproveWhen
@@ -965,6 +978,17 @@ class WfDef(
                     "workflow does, since a lock holds while a form is engaged with it.",
             )
         }
+        // What an approval shows (issue #1695) names other tasks of this workflow, as a lock's task does.
+        for (task in tasks) {
+            for (shown in task.approval?.showTasks.orEmpty()) {
+                if (shown == task.id || tasksById[shown] == null) {
+                    throw KdrException.mkConv(
+                        "Approval task '${task.id}' in workflow '$workflowId' shows task '$shown', which is not another " +
+                            "task of the workflow.",
+                    )
+                }
+            }
+        }
         val lockedTraits = HashSet<String>()
         for (lock in locks) {
             if (!lockedTraits.add(lock.traitId)) {
@@ -1037,6 +1061,19 @@ class WfDef(
 
     /** The task named, or null. */
     fun task(id: String): WfTask? = tasksById[id]
+
+    /**
+     * The tasks whose traits approval task [task] shows, read-only, above its prompt (issue #1695), so a reviewer
+     * approves what is in front of them: those its approval names ([WfApproval.showTasks]), else the nearest task before
+     * it that collects traits -- the work it approves, as a review's acceptance follows the review. Empty for a task that
+     * is no approval, or one that names none.
+     */
+    fun approvalShows(task: WfTask): List<String> {
+        val approval = task.approval ?: return emptyList()
+        approval.showTasks?.let { return it }
+        val before = tasks.takeWhile { it.id != task.id }
+        return listOfNotNull(before.lastOrNull { it.traits.isNotEmpty() }?.id)
+    }
 
     /**
      * Whether a page shows the list of tasks: **behavior, not configuration** -- a workflow with one task has
@@ -1120,6 +1157,14 @@ object WfDefSchema {
                 "Who may approve: a cfact expression over the caller's task and viewer facts and kdr:isOwner. Absent means " +
                     "a reviewer who does not own the form (${WfApproval.defaultApproveWhen}).",
             )
+            property(
+                WFD.showTasks,
+                "The tasks whose traits the approval shows, read-only, above its prompt. Absent means the nearest earlier " +
+                    "task that collects traits; empty shows none.",
+            ) {
+                type = SCT.array
+                items { type = SCT.string }
+            }
         }
         type(WFD.lockType) {
             type = SCT.kObject
@@ -1264,6 +1309,7 @@ fun WfDef.toJsonMap(): Map<String, Any?> = buildMap {
                         WFD.approval,
                         linkedMapOf<String, Any?>(WFD.cfact to it.cfact, WFD.prompt to it.prompt, WFD.button to it.button).apply {
                             it.approveWhen?.let { rule -> put(WFD.approveWhen, rule) }
+                            it.showTasks?.let { shown -> put(WFD.showTasks, shown) }
                         },
                     )
                 }
@@ -1333,6 +1379,8 @@ fun parseWfDef(cxt: KdrCxtBase, raw: Map<String, Any?>, templateOverlay: Map<Str
                         am[WFD.cfact].toOptStr() ?: "", am[WFD.prompt].toOptStr() ?: "", am[WFD.button].toOptStr() ?: "",
                         // Blank arrives absent, as a blank saveWhen does: the default rule.
                         approveWhen = am[WFD.approveWhen].toOptStr(),
+                        // Absent is the default; an empty list shows none.
+                        showTasks = (am[WFD.showTasks] as? List<*>)?.mapNotNull { it.toOptStr() },
                     )
                 },
                 display = (t[WFD.display] as? Map<*, *>)?.toJsonMapOrEmpty(),
@@ -1534,11 +1582,13 @@ class WfTaskBuilder(private val id: String, private val label: String) {
      * Makes this an **approval task** (issue #787): no traits and no saves -- a reviewer approves it, which emits
      * [cfact] into the workflow's cfacts. [prompt] is the text above the button and [button] the button's; both are
      * templates, like a label. [approveWhen] says who may approve (issue #1595); left out, a reviewer who does not own
-     * the form ([WfApproval.defaultApproveWhen]).
+     * the form ([WfApproval.defaultApproveWhen]). [showTasks] names the tasks whose traits it shows above its prompt
+     * (issue #1695); left out, the nearest earlier task that collects traits.
      */
-    fun approval(cfact: String, prompt: String, button: String, approveWhen: String? = null) {
+    fun approval(cfact: String, prompt: String, button: String, approveWhen: String? = null, showTasks: List<String>? = null) {
         approval = linkedMapOf<String, Any?>(WFD.cfact to cfact, WFD.prompt to prompt, WFD.button to button).apply {
             approveWhen?.let { put(WFD.approveWhen, it) }
+            showTasks?.let { put(WFD.showTasks, it) }
         }
     }
 
