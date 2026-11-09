@@ -83,6 +83,13 @@ class ReferenceFlavorTest : StringSpec({
         copy(plain, HFRAG.home, ns)[key].orEmpty() shouldContain "If you have registered before, log in instead."
     }
 
+    "the business-account checkbox is explained, and left off the reference site (issue #1699)" {
+        // It changes only how the account's name is labeled, which nobody trying the site needs.
+        copy(plain, AFRAG.auth, "register")["isEntityLabel"] shouldBe "This is a business account"
+        copy(plain, AFRAG.auth, "register")["isEntityHelp"].orEmpty() shouldContain "rather than a person"
+        copy(reference, AFRAG.auth, "register")["isEntityLabel"] shouldBe ""
+    }
+
     "core says on the profile page that the bar switches between a person's users too (issue #1330)" {
         copy(reference, AFRAG.profile, "users")["helpExtra"].orEmpty() shouldContain "bar at the top"
         copy(plain, AFRAG.profile, "users")["helpExtra"] shouldBe ""

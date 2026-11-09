@@ -36,6 +36,14 @@
 # +intro
 
 # +emailLabel Email address
+/- What kind of account it is, and its name (issue #1699). The checkbox changes only how the account's name is read
+   and labeled -- the business's, not a person's -- so a deployment whose visitors are all people empties
+   `isEntityLabel`, which leaves the checkbox and its help off the form. -/
+# +isEntityLabel This is a business account
+# +isEntityHelp Check this when the account is for a business or other organization rather than a person. Its name is then the business's name.
+# +nameLabel Full name
+# +businessNameLabel Business name
+# +nameHelp The name shown for your account. It need not be unique.
 /- For an allClients administrator only (issue #751): the client, persona and personaSuffix the new user takes. -/
 # +clientLabel Client ID
 # +personaLabel Persona

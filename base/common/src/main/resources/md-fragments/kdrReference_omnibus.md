@@ -3,9 +3,9 @@
    between a person's users too (issue #1330), and where a client or a workflow is made that a new workflow is seen
    by administrators only until it is opened up (issue #1384). The home page's Register card says, to a visitor who
    has not signed in, why to register and what the address is used for (issue #1652), and the Register page says the
-   second again where the address is typed (issue #1698). A link to the site says what it is in its preview (issue
-   #1688), and the band a public test deployment draws says it calmly (issue #1697). The
-   sign-in line holds whichever `KDR_PUBLIC_SIGN_IN` the deployment chose: under `blocked`, the refusal itself says
+   second again where the address is typed (issue #1698), with no business-account checkbox (issue #1699). A link to
+   the site says what it is in its preview (issue #1688), and the band a public test deployment draws says it calmly
+   (issue #1697). The sign-in line holds whichever `KDR_PUBLIC_SIGN_IN` the deployment chose: under `blocked`, the refusal itself says
    why. A deployment rewords any of it with `<flavor dir>/reference.md`, in this same format, naming only the keys it
    changes. -/
 
@@ -94,6 +94,9 @@ its data is cleared.
 /- Where a visitor types their address (issue #1698): the Register card's promise, said again at the form, since the
    card's button and the one under the home page's title both come straight here. -/
 # @register
+/- Left off (issue #1699): a business account changes only how its name is labeled, which nobody trying the site
+   needs. -/
+# +isEntityLabel
 # +intro
 Your email address is used only to sign you in and for mail about your account here, such as a verification code.
 It is not shared with anyone outside this site, and it is not used for marketing or to contact you about anything
