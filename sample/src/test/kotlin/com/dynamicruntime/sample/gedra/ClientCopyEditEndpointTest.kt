@@ -107,7 +107,7 @@ class ClientCopyEditEndpointTest : StringSpec({
         after shouldBe "Acme Co"
         buildAfter shouldNotBe buildBefore
         // The file's other keys, and the other client, are as they were.
-        served(SC.acme, key = "title").first shouldBe "Welcome"
+        served(SC.acme, key = "title").first shouldBe "Acme"
         served(SC.acme, ns = HFRAG.formsNs, key = HFRAG.noWorkflows).first shouldBe "No workflows available."
         served(SC.globex) shouldBe ("KDR" to globexBefore)
         // Stored and published, under the conventional name.
@@ -125,19 +125,20 @@ class ClientCopyEditEndpointTest : StringSpec({
     "a second key of the same file joins the same config; a key of another file, too, when nothing else overlays it" {
         admin.postData(CPY.setPath, address(SC.acme, HFRAG.formsNs, HFRAG.noWorkflows) + mapOf(COV.value to "Nothing yet."))[COV.configName] shouldBe CPY.copyConfigName
         // A key the client's source config never set: now overridden from the same config.
-        admin.postData(CPY.setPath, address(SC.acme, "home", "title") + mapOf(COV.value to "Hello, Acme"))[COV.configName] shouldBe CPY.copyConfigName
-        served(sandboxOf(SC.acme), key = "title").first shouldBe "Hello, Acme"
-        served(SC.acme, key = "title").first shouldBe "Welcome"
+        admin.postData(CPY.setPath, address(SC.acme, HFRAG.siteNs, HFRAG.title) + mapOf(COV.value to "Hello, Acme"))[COV.configName] shouldBe
+            CPY.copyConfigName
+        served(sandboxOf(SC.acme), ns = HFRAG.siteNs, key = HFRAG.title).first shouldBe "Hello, Acme"
+        served(SC.acme, ns = HFRAG.siteNs, key = HFRAG.title).first shouldBe "KotlinDynamicRuntime"
         publishAcme(admin)
         served(SC.acme, ns = HFRAG.formsNs, key = HFRAG.noWorkflows).first shouldBe "Nothing yet."
         served(SC.acme).first shouldBe "Acme Co"
-        served(SC.acme, key = "title").first shouldBe "Hello, Acme"
-        copyRow(SC.acme, "home", "title")!![COV.sourceValue].toOptStr() shouldBe null
+        served(SC.acme, ns = HFRAG.siteNs, key = HFRAG.title).first shouldBe "Hello, Acme"
+        copyRow(SC.acme, HFRAG.siteNs, HFRAG.title)!![COV.sourceValue].toOptStr() shouldBe null
         // The bundle holds one entry for the file with all three keys.
         val bundle = admin.getItem(ACEP.bundle, mapOf(CFEP.client to SC.acme, CFEP.name to CPY.copyConfigName))
         val slots = bundle[CFEP.slots].toJsonMapOrEmpty()
         val homeEntry = slots[CCT.fragmentDef].toJsonListOrEmpty().map { it.toJsonMapOrEmpty() }.single { it[CCT.fileId] == HFRAG.home }
-        homeEntry[CCT.content].toJsonMapOrEmpty().keys shouldBe setOf("home", HFRAG.formsNs)
+        homeEntry[CCT.content].toJsonMapOrEmpty().keys shouldBe setOf("home", HFRAG.formsNs, HFRAG.siteNs)
     }
 
     "a reset removes the stored value, so the source value shows again; nothing stored is refused" {
@@ -150,7 +151,7 @@ class ClientCopyEditEndpointTest : StringSpec({
         served(SC.acme).first shouldBe "ACME KDR"
         copyRow(SC.acme, "home", "brand")!![COV.origin] shouldBe GedraConfigOrigin.source.name
         // The other stored keys survived the reset.
-        served(SC.acme, key = "title").first shouldBe "Hello, Acme"
+        served(SC.acme, ns = HFRAG.siteNs, key = HFRAG.title).first shouldBe "Hello, Acme"
         // Now the source alone sets it: a second reset has nothing to remove.
         val refused = admin.expectError(EXC.badInput, CPY.resetPath, data = address(SC.acme, "home", "brand"))
         refused[EP.errorMessage].toOptStr().orEmpty() shouldContain "code or the shipped copy"

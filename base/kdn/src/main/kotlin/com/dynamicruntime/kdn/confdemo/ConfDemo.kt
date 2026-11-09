@@ -36,6 +36,7 @@ import com.dynamicruntime.common.gedra.workflow.WfSaveKind
 import com.dynamicruntime.common.gedra.workflow.computeCFactsFromData
 import com.dynamicruntime.common.gedra.workflow.userHasLabel
 import com.dynamicruntime.common.home.HFLD
+import com.dynamicruntime.common.home.HFRAG
 import com.dynamicruntime.common.home.HMENU
 import com.dynamicruntime.common.home.menuItem
 import com.dynamicruntime.common.http.request.ROLE
@@ -457,6 +458,24 @@ fun confDemoBase(cxt: KdrCxtBase = LiteCxt(), client: String = ConfDemo.client, 
         // Every workflow link in one cell (issue #1686): a speaker never reviews, so the split layout's To review column
         // was always empty for one, and its width is what a narrow screen lacks.
         listing(ListingDef(workflowLayout = WorkflowLayout.combined))
+
+        // Its home page's own words (issue #1692): what the demo is and where a speaker and a committee member start, in
+        // place of the deployment's, which say what the site is.
+        fragmentOverlay(HFRAG.home) {
+            namespace(HFRAG.homeNs) {
+                key(HFRAG.title, "Conference demo")
+                key(
+                    HFRAG.intro,
+                    "The **Conference demo** is a small conference's call for talks. Speakers submit the talks they want to " +
+                        "give, and a committee reviews each one and accepts it for the program. The demo is shared with " +
+                        "everyone who joins it, so you see the talks other visitors add, and they see yours.\n\n" +
+                        "As a speaker, open **My forms** from the menu, and choose **Create a form** to submit a talk. As a " +
+                        "member of the committee, once a talk is ready for your review, this page lists it under **Waiting on " +
+                        "you**. [Part 1 of the walk-through](/docs/walk-through.md#part-1-the-conference-demo) takes you " +
+                        "through both, a step at a time.",
+                )
+            }
+        }
     }
 
 /** The `createTalk` bundle: the workflow that runs when a speaker starts a submission. */

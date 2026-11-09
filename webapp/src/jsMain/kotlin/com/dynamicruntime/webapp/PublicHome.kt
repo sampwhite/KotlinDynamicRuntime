@@ -125,6 +125,8 @@ val PublicHome = FC<PublicHomeProps> { props ->
                 id = ElementId(HSEC.demos)
                 copy.opt("publicHome", "demosTitle")?.let { h2 { +it } }
                 copy.opt("publicHome", "demosIntro")?.let { Markdown { source = it; linkResolver = copyLinks } }
+                // A component's word on a demo it offers (issue #1692), here rather than under every client's intro.
+                copy.opt("publicHome", "demosNote")?.takeIf { it.isNotBlank() }?.let { Markdown { source = it; linkResolver = copyLinks } }
                 demosError?.let { errorText("Couldn't read the demo clients.", it) }
                 val loaded = demos
                 if (loaded == null && demosError == null) p { className = ClassName("subtitle"); +"Loading…" }

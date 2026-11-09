@@ -309,6 +309,17 @@ and its menu entry. Explained on the [client](client.md), [talk core details](ta
   ],
   "kdr:listingDef": [
     {"workflowLayout": "combined"}
+  ],
+  "kdr:fragmentDef": [
+    {
+      "fileId": "home",
+      "content": {
+        "home": {
+          "title": "Conference demo",
+          "intro": "The **Conference demo** is a small conference's call for talks. Speakers submit the talks they want to give, and a committee reviews each one and accepts it for the program. The demo is shared with everyone who joins it, so you see the talks other visitors add, and they see yours.\n\nAs a speaker, open **My forms** from the menu, and choose **Create a form** to submit a talk. As a member of the committee, once a talk is ready for your review, this page lists it under **Waiting on you**. [Part 1 of the walk-through](/docs/walk-through.md#part-1-the-conference-demo) takes you through both, a step at a time."
+        }
+      }
+    }
   ]
 }
 ```

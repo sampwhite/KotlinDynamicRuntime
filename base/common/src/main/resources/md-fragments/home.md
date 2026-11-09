@@ -49,6 +49,9 @@ section, and says what to read for what you want to do.
 # +demosTitle Try a demo
 # +demosIntro
 Join a demo client with a user of your own email. Each one is shared with everyone who joins it.
+/- Under the demos' introduction, above their cards (issue #1692). Empty as shipped: room for a component's word on a
+   demo it offers -- the sample's on Acme, say -- without its competing with whoever rewords the introduction. -/
+# +demosNote
 /- Under the create card's starter workflows (issue #1384). Empty as shipped; the `reference` flavor says how a workflow
    made later is opened to people. -/
 # +createClientNote
