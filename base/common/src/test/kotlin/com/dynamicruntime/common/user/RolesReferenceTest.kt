@@ -13,6 +13,8 @@ import io.kotest.matchers.string.shouldContain
 /**
  * The roles and access reference (issue #1610) says something for every role and every section the gate knows: one
  * added without a meaning fails here rather than publishing a blank row.
+ *
+ * Theme: #DOCDR.
  */
 class RolesReferenceTest : StringSpec({
     "every role and every section has a meaning" {

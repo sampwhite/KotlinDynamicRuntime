@@ -9,6 +9,8 @@ import kotlin.test.assertTrue
 /**
  * The report paths reference (issue #1563): every name a path may end in outside a trait's data says what it holds,
  * every combine says what it gives, and the page lists each one.
+ *
+ * Theme: #DOCDR.
  */
 class ReportPathReferenceTest {
     @Test

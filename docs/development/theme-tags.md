@@ -68,3 +68,4 @@ each tag marks, and warns when one marks more than 40, too broad to review and a
 | `#RELSY` | Client reload and cross-node sync: how stored configuration becomes live on one node and then the rest. | reloads a client's configuration, or carries a reload to other nodes. |
 | `#NARRW` | What a client's alteration of a shared type may change: narrowing, never widening. | decides or describes what a client may change in a type it shares with others. |
 | `#TPLPS` | The two template passes: `%{…}` on the server at delivery, `${…}` on the page. | resolves, checks, or describes either pass, or keeps the two apart. |
+| `#DOCDR` | Documentation-drift checks: the tests that fail when a document, a skill or a generated reference falls behind the code. | checks a document, skill or reference against the code, or describes those checks. |

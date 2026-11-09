@@ -13,6 +13,7 @@ Every one, with its default and what it does, is listed in
 has read, with each variable's resolved value, at the `operator` endpoint `/operator/env/reference`.
 
 ## Skills: the house APIs, already written down
+<!-- Theme: #DOCDR -->
 
 `.claude/skills/` documents this codebase's own APIs. Read the relevant one **before** working an API out from
 its source or reaching for a library — that is what they are for, and each covers ground that is easy to get

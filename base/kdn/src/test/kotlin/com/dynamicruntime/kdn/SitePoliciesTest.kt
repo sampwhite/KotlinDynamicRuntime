@@ -26,6 +26,8 @@ import io.kotest.matchers.string.shouldStartWith
  * A deployment's privacy policy and terms of service (issue #1711): the `reference` flavor names dynamicruntime.org's,
  * which kdn then declares as documents; the shell config tells every caller, signed in or out, which documents they are;
  * and a signed-out caller can read them. A deployment that names none has neither the links nor the pages.
+ *
+ * Theme: #DOCDR.
  */
 class SitePoliciesTest : StringSpec({
     val reference = TestInstances.reference("sitePolicies1711")

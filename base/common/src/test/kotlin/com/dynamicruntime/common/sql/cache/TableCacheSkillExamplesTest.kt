@@ -31,6 +31,8 @@ import kotlin.time.Duration.Companion.seconds
  * edit. Keep the code below a faithful transcription of what the skill shows; do not "improve" it past that.
  *
  * The subsystem itself is covered by [SqlTableCacheTest]. This is about the documentation.
+ *
+ * Theme: #DOCDR.
  */
 class TableCacheSkillExamplesTest : StringSpec({
 

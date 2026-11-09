@@ -25,6 +25,8 @@ import io.kotest.matchers.shouldBe
  * faithful transcription of the skill's example; do not "improve" it past what the skill shows.
  *
  * The DSL itself is covered by [SchTypeBuilderTest] / [SchValidatorTest]. This is about the documentation.
+ *
+ * Theme: #DOCDR.
  */
 class SchemaSkillExamplesTest : StringSpec({
 

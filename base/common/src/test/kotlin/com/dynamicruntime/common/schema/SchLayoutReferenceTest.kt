@@ -9,6 +9,8 @@ import io.kotest.matchers.string.shouldContain
  * The form layouts reference (issue #1609) says something for everything the layout parser reads: a key, a mode, an
  * option, or a form string added without a meaning fails here rather than publishing a blank row, and the page's
  * example is a layout the parser accepts.
+ *
+ * Theme: #DOCDR.
  */
 class SchLayoutReferenceTest : StringSpec({
     "every key, mode, option, and form string has a meaning, and every form string its default wording" {

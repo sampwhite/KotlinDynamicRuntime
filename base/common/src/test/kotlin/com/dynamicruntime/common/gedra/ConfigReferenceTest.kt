@@ -10,6 +10,8 @@ import io.kotest.matchers.string.shouldContain
 /**
  * The client configuration reference (issue #1476): made from the slot shapes the write gate is held to, so it lists
  * every slot and every field, and its links within the page each land on a heading.
+ *
+ * Theme: #DOCDR.
  */
 class ConfigReferenceTest : StringSpec({
     val page = clientConfigurationMarkdown()

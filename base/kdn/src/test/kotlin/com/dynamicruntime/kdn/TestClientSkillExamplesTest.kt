@@ -31,6 +31,8 @@ import io.kotest.matchers.shouldBe
  * code below a faithful transcription of the skill's example; do not "improve" it past what the skill shows.
  * The technique itself (reload semantics, isolation) is covered by `GedraConfigReloadTest`; this pins the
  * documentation, including the reload -> create-user chain that is the skill's headline.
+ *
+ * Theme: #DOCDR.
  */
 class TestClientSkillExamplesTest : StringSpec({
     // One shared instance for the whole spec -- the technique is to create a client per scenario, not a node.

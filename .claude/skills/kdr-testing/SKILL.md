@@ -592,6 +592,31 @@ already written. `AuthFlowTest` and `TimeTravelTest` are the worked examples.
   domain under `.test` -- a developer's secrets may hold a real key. Ask `MailService.deliveryFor` what would happen to
   a mail rather than sending one. `PublicTestDeploymentTest` is the worked example.
 
+## Documentation-drift checks: keep every one
+<!-- Theme: #DOCDR -->
+
+Some tests exist so documentation cannot fall behind the code: each fails the build when a document, a skill or a
+generated reference says something the code no longer does. They look like tests of documentation, and they are the
+only thing between a renamed endpoint and a guide that still names the old one, so **a cleanup never deletes one or
+loosens what it asserts** (issue #1737). Moving one into a merged file is fine. Each is tagged `#DOCDR`, so
+`grep -rn DOCDR --exclude-dir=build .` lists them all.
+
+| Kind | Tests | What fails when the docs drift |
+| --- | --- | --- |
+| Skills | `EndpointSkillExamplesTest`, `SchemaSkillExamplesTest`, `TableCacheSkillExamplesTest`, `FlavorSkillExamplesTest`, `ImagesSkillExamplesTest`, `TestClientSkillExamplesTest` | A skill's example no longer compiles or does what the skill says. |
+| Documents run as programs | `ApiGuideTest`, `PublicWalkThroughTest`, `ConfDemoDocsTest` | A request, field, choice or step a page shows is not the product's. |
+| Generated references | `ReferenceCopiesTest`, and one `*ReferenceTest` per page (`FactsReference`, `RolesReference`, `SchMessageReference`, `SchLayoutReference`, `ConfigReference`, `ReferenceIndex`, `CopyReference`, `ScriptReference`, `ReportPathReference`, `EnvVarReference`) | A committed copy differs from what the code generates, or a page leaves out something the code declares. |
+| Links and wiring | `RepoDocLinksTest`, the reference links in `HomeUiConfigEndpointTest`, `SitePoliciesTest` | A link or a declared document leads nowhere. |
+| Registries | `ThemeTagsTest`, `MarkdownRoleStylesTest` | A tag or a role is used where its registry does not have it. |
+
+The copy check and the per-page checks are not redundant. `ReferenceCopiesTest` holds a committed copy to what the
+generator writes, so an item the generator leaves out is missing from both and passes. Only the page's own test, which
+holds the page to what the code declares, catches it.
+
+**A change to what one of these covers updates the document in the same edit.** The failing test says which, and for a
+generated reference `./gradlew :launch:refDocsDump` rewrites the copy. A test that only pins wording no document depends
+on (a hint, a flavor's copy) is not a drift check, and is free to go.
+
 ## How much to test
 
 Cover a mechanism **once**, plus the cases where its behavior genuinely diverges: seven tests of the same bounds check

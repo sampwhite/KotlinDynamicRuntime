@@ -7,6 +7,8 @@ import kotlin.test.assertTrue
 /**
  * The expressions reference (issue #1560): every built-in function says what it gives, names each argument it takes,
  * and shows an example that renders as the page says, and the page lists every one.
+ *
+ * Theme: #DOCDR.
  */
 class ScriptReferenceTest {
     @Test

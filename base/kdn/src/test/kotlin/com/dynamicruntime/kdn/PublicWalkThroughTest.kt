@@ -112,6 +112,8 @@ import java.io.File
  * repository, which the app resolves to the image it serves from the same file.
  *
  * The page's own buttons and headings are not checked here; following the page in a browser is part of changing it.
+ *
+ * Theme: #DOCDR.
  */
 class PublicWalkThroughTest : StringSpec({
     val cxt = TestInstances.reference("publicWalkThrough1429")

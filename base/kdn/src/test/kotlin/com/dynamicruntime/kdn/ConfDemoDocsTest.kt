@@ -41,6 +41,8 @@ import java.io.File
  * - **Every page is declared** (`confDemoDocs`), and every declaration has its page.
  *
  * The comparison is of values, not text, so a block may be laid out for reading.
+ *
+ * Theme: #DOCDR.
  */
 class ConfDemoDocsTest : StringSpec({
     val cxt = TestInstances.default("confDemoDocs")

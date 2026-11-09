@@ -36,6 +36,8 @@ import java.io.File
  * The test instance assumes no env auth, so the key is shown what it is on a public site: the published API. Every
  * `/kda/...` endpoint the guide names is one it is shown, and the catalog names the guide, at the address the site
  * serves it from.
+ *
+ * Theme: #DOCDR.
  */
 class ApiGuideTest : StringSpec({
     val cxt = TestInstances.reference("apiGuide1493")

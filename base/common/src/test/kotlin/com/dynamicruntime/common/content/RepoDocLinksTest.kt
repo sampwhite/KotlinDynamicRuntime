@@ -26,6 +26,8 @@ object RDL {
  * The list of documents is not here: base/common's build declares it once and passes it in ([RDL.repoDocsProperty]),
  * as the inputs of the `docLinksTest` task that runs this (issue #1474), so a change to Markdown alone reruns it. Run
  * it with `./gradlew :base:common:docLinksTest`; the module's `test` task leaves it out.
+ *
+ * Theme: #DOCDR.
  */
 class RepoDocLinksTest : StringSpec({
     // The tests run in the module's directory (base/common), two below the repository root.

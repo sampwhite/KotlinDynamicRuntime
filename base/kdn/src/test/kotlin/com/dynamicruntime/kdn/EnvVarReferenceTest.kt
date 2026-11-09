@@ -13,6 +13,8 @@ import io.kotest.matchers.string.shouldNotContain
  * The operator environment-variable reference (issue #371): the genuinely-new half of the change, an
  * `operator`-section endpoint that assembles a Markdown document showing, per variable, the value it resolved
  * to **on this node** -- which no static file could. Rendered by the frontend the way the README is.
+ *
+ * Theme: #DOCDR.
  */
 class EnvVarReferenceTest : StringSpec({
 

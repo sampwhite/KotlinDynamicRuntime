@@ -16,6 +16,8 @@ import java.io.File
  * The committed copies of the reference documents are current (issues #1603, #1607): each file's generated region holds
  * what its generator makes now. Run by `./gradlew :launch:refDocsTest`, a task of its own whose inputs are the files,
  * as `docLinksTest` is (the module's `test` task leaves it out, and `check` runs it).
+ *
+ * Theme: #DOCDR.
  */
 class ReferenceCopiesTest : StringSpec({
     // The tests run in the module's directory (launch), one below the repository root.
