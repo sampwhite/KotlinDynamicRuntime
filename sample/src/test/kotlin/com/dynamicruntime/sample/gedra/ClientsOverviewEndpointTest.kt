@@ -36,8 +36,10 @@ import io.kotest.matchers.shouldBe
  * globex are both defined in source, so their origin is `source` with no stored configuration.
  */
 class ClientsOverviewEndpointTest : StringSpec({
+    // An instance of its own (issue #1736): it counts every form and user of acme and globex, which other tests' would
+    // change, even between its own before and after when specs run at once.
     val cxt = Startup.mkTestBootCxt(
-        "clientsOverview", "clientsOverviewTest", mapOf("KDR_LOAD_SAMPLE" to "true"),
+        "clientsOverview", "clientsOverviewTest", mapOf(SampleComponent.loadSampleEnvVar.name to "true"),
         additionalComponents = listOf(SampleComponent()),
     )
     val admin = TestUser.createFullAdmin(cxt, "overview-admin@example.com")

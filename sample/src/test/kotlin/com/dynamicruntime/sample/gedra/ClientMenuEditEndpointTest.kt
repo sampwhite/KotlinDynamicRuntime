@@ -39,6 +39,7 @@ import io.kotest.matchers.string.shouldContain
  * scoping is the client overview's.
  */
 class ClientMenuEditEndpointTest : StringSpec({
+    // An instance of its own (issue #1736): it publishes menu edits to acme, which every test on a shared instance would then be served.
     val cxt = Startup.mkTestBootCxt(
         "clientMenuEdit", "clientMenuEditTest", mapOf("KDR_LOAD_SAMPLE" to "true"),
         additionalComponents = listOf(SampleComponent()),

@@ -40,17 +40,12 @@ import com.dynamicruntime.common.util.toJsonMapOrEmpty
  * `acme` or `designdemo`, or a speaker, organizer or committee member of `confdemo` -- a user of their own identity in
  * that one shared client, with the session moved there. Nowhere else is it offered.
  *
- * Two instances of its own, each with the sample: one under the `reference` flavor, which offers joining and
+ * On the two shared sample instances (issue #1736): one under the `reference` flavor, which offers joining and
  * provisions the two data-defined demos at boot, and one without it.
  */
 class ClientJoinTest : StringSpec({
-    val reference = Startup.mkTestBootCxt(
-        "clientJoinRef", "clientJoinRef", mapOf(FLV.deployFlavorsEnvVar.name to FLV.reference, "KDR_LOAD_SAMPLE" to "true"),
-        additionalComponents = listOf(SampleComponent()),
-    )
-    val plain = Startup.mkTestBootCxt(
-        "clientJoinPlain", "clientJoinPlain", mapOf("KDR_LOAD_SAMPLE" to "true"), additionalComponents = listOf(SampleComponent()),
-    )
+    val reference = SampleTestInstances.reference("clientJoinRef")
+    val plain = SampleTestInstances.default("clientJoinPlain")
 
     fun joinable(user: TestUser) = user.getItems(JOIN.joinablePath)
     fun roleOf(rows: List<Map<String, Any?>>, client: String, role: String): Map<String, Any?> =

@@ -1,5 +1,6 @@
 package com.dynamicruntime.sample.uiblock
 
+import com.dynamicruntime.sample.SampleTestInstances
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.UserProfile
 import com.dynamicruntime.common.home.HFLD
@@ -27,7 +28,7 @@ import io.kotest.matchers.shouldBe
  */
 class UiBlockResolveTest : StringSpec({
 
-    val cxt = Startup.mkTestBootCxt("uiBlock", "uiBlockTest", mapOf("KDR_LOAD_SAMPLE" to "true"), additionalComponents = listOf(SampleComponent()))
+    val cxt = SampleTestInstances.default("uiBlock")
     val service = UiBlockService.get(cxt)
 
     fun asUser(name: String, client: String? = null, vararg roles: String): KdrCxt {

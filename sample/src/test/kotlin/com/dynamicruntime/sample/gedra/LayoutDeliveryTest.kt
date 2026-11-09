@@ -1,5 +1,6 @@
 package com.dynamicruntime.sample.gedra
 
+import com.dynamicruntime.sample.SampleTestInstances
 import com.dynamicruntime.common.endpoint.EI
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.endpoint.clientPath
@@ -29,9 +30,7 @@ import io.kotest.matchers.string.shouldNotContain
  * surface does the served schema carry the keyword.
  */
 class LayoutDeliveryTest : StringSpec({
-    val cxt = Startup.mkTestBootCxt(
-        "layoutDelivery", "layoutDeliveryTest", mapOf("KDR_LOAD_SAMPLE" to "true"), additionalComponents = listOf(SampleComponent()),
-    )
+    val cxt = SampleTestInstances.default("layoutDelivery")
     val acme = TestUser.create(cxt, "layout@acme.test", userClient = SC.acme)
     val everyone = TestUser.create(cxt, "layout@public.test")
 

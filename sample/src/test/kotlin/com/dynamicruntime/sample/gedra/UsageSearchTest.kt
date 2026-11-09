@@ -1,5 +1,6 @@
 package com.dynamicruntime.sample.gedra
 
+import com.dynamicruntime.sample.SampleTestInstances
 import com.dynamicruntime.common.endpoint.EI
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.endpoint.clientPath
@@ -36,9 +37,7 @@ import io.kotest.matchers.string.shouldStartWith
  * which also means these run through the SQL fall-back path; the cache path filters the same predicate.
  */
 class UsageSearchTest : StringSpec({
-    val cxt = Startup.mkTestBootCxt(
-        "usageSearch", "usageSearchTest", mapOf("KDR_LOAD_SAMPLE" to "true"), additionalComponents = listOf(SampleComponent()),
-    )
+    val cxt = SampleTestInstances.default("usageSearch")
 
     // The search parameter names, derived exactly as the backend derives them from a usage's trait id.
     fun exact(traitId: String) = traitId

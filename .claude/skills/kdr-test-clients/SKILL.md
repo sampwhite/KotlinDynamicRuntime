@@ -159,7 +159,8 @@ later schema rejects" test.
     written inline; the `{ … }` is the `kdr-schema-builder` DSL. An overload takes `dataType` (a `$ref`) instead.
     **A trait declared in code gets a `title`** (or a layout heading): it is the trait's name wherever one is shown
     (`traitNameOf`, issue #1520), and without either a person reads its id humanized, "Kdr:name". The sample's
-    `SourceTraitNamesTest` holds every trait loaded at boot to it. A test's own throwaway trait need not have one.
+    `SampleInvariantsTest` (sample module) holds every trait loaded at boot to it. A test's own throwaway trait need
+    not have one.
   - **`workflow(workflowId, entry: WfEntry) { <WfDefBuilder> }`** — a workflow definition (or `workflowFromMap`
     for the JSON form). See the compile-time `createForm` workflow in `sample/.../SampleClients.kt` for the
     shape, and the workflow pages of `docs/demo-client/` (from `create-talk.md`) for what each key does -- they are held

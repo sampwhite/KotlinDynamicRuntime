@@ -1,5 +1,6 @@
 package com.dynamicruntime.sample.gedra
 
+import com.dynamicruntime.sample.SampleTestInstances
 import com.dynamicruntime.common.cfact.CFACTS
 import com.dynamicruntime.common.cfact.CFD
 import com.dynamicruntime.common.endpoint.clientPath
@@ -28,7 +29,7 @@ import io.kotest.matchers.string.shouldNotContain
  */
 class ClientCFactTest : StringSpec({
 
-    val cxt = Startup.mkTestBootCxt("clientCFact", "clientCFactTest", mapOf("KDR_LOAD_SAMPLE" to "true"), additionalComponents = listOf(SampleComponent()))
+    val cxt = SampleTestInstances.default("clientCFact")
 
     // The endpoint's answer depends on *which* caller asks. `acmeAdmin` and `globexAdmin` are each confined to
     // their own client -- the ordinary customer administrator, and who this surface is for -- while `crossClient`

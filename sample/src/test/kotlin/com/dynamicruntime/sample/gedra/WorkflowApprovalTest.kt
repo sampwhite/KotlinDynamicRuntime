@@ -1,5 +1,6 @@
 package com.dynamicruntime.sample.gedra
 
+import com.dynamicruntime.sample.SampleTestInstances
 import com.dynamicruntime.common.endpoint.clientPath
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.gedra.GDF
@@ -47,10 +48,7 @@ import io.kotest.matchers.string.shouldContain
  * someone else's engaged form at the right moment, once.
  */
 class WorkflowApprovalTest : StringSpec({
-    val cxt = Startup.mkTestBootCxt(
-        "wfApprove787", "wfApprove787Test", mapOf("KDR_LOAD_SAMPLE" to "true"),
-        additionalComponents = listOf(SampleComponent()),
-    )
+    val cxt = SampleTestInstances.default("wfApprove787")
 
     val create = clientPath(GEP.formDocCreate, SC.acme)
     val engage = clientPath(GEP.workflowEngage, SC.acme)

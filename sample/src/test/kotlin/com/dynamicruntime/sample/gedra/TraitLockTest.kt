@@ -1,5 +1,6 @@
 package com.dynamicruntime.sample.gedra
 
+import com.dynamicruntime.sample.SampleTestInstances
 import com.dynamicruntime.common.endpoint.clientPath
 import com.dynamicruntime.common.endpoint.HttpMethod
 import com.dynamicruntime.common.exception.EXC
@@ -35,10 +36,7 @@ import io.kotest.matchers.string.shouldNotContain
  * lock: disengaging lifts it.
  */
 class TraitLockTest : StringSpec({
-    val cxt = Startup.mkTestBootCxt(
-        "traitLock857", "traitLock857Test", mapOf("KDR_LOAD_SAMPLE" to "true"),
-        additionalComponents = listOf(SampleComponent()),
-    )
+    val cxt = SampleTestInstances.default("traitLock857")
     val create = clientPath(GEP.formDocCreate, SC.acme)
     val engage = clientPath(GEP.workflowEngage, SC.acme)
     val patch = clientPath(GEP.patch, SC.acme)

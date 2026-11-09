@@ -1,5 +1,6 @@
 package com.dynamicruntime.sample.gedra
 
+import com.dynamicruntime.sample.SampleTestInstances
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.ReadScope
 import com.dynamicruntime.common.endpoint.HttpMethod
@@ -39,10 +40,7 @@ import kotlinx.datetime.toLocalDateTime
  * "future" year is computed from the same clock the function reads.
  */
 class GedraPrepForSaveTest : StringSpec({
-    val cxt = Startup.mkTestBootCxt(
-        "gedraPrepForSave", "gedraPrepForSaveTest", mapOf("KDR_LOAD_SAMPLE" to "true"),
-        additionalComponents = listOf(SampleComponent()),
-    )
+    val cxt = SampleTestInstances.default("gedraPrepForSave")
 
     fun service(): GedraDataService = GedraDataService.get(cxt)
     fun asUser(userId: Long): KdrCxt = cxt.mkSubContext("prep", SC.acme).also { it.userId = userId }

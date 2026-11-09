@@ -27,8 +27,10 @@ import io.kotest.matchers.shouldBe
  * Two clients with a form each (acme and globex), so a cross-client listing has something to distinguish.
  */
 class FormsClientFilterTest : StringSpec({
+    // An instance of its own (issue #1736): it lists and sorts every client's forms at once, which other specs' forms
+    // would push off the first page.
     val cxt = Startup.mkTestBootCxt(
-        "formsClientFilter", "formsClientFilterTest", mapOf("KDR_LOAD_SAMPLE" to "true"),
+        "formsClientFilter", "formsClientFilterTest", mapOf(SampleComponent.loadSampleEnvVar.name to "true"),
         additionalComponents = listOf(SampleComponent()),
     )
 
