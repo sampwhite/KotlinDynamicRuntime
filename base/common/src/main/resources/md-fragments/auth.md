@@ -31,6 +31,10 @@
 
 # @register
 # +title Create your account
+/- Above the registration form, and empty as shipped, so nothing shows (issue #1698): a word about what the address is
+   used for, where it is typed -- a reference deployment's promise that it is used for nothing else. Markdown. -/
+# +intro
+
 # +emailLabel Email address
 /- For an allClients administrator only (issue #751): the client, persona and personaSuffix the new user takes. -/
 # +clientLabel Client ID

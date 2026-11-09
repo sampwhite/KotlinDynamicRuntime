@@ -49,6 +49,14 @@ object HCARD {
      */
     const val jumpLabel = "jumpLabel"
 
+    /**
+     * Whether the card is the page's call to action (issue #1698): its button and links come before its words, and the
+     * row under Home's title draws, in place of a link to it ([jumpLabel]), a button that does what its button does. For
+     * a card whose reason to be read is to be acted on -- the Register card, which on a phone otherwise puts its button
+     * several screens down. Absent is false.
+     */
+    const val actionFirst = "actionFirst"
+
     /** A card's further links, each a [linkLabel] and a [UIB.action] (a route), drawn under its text. */
     const val links = "links"
 
@@ -134,6 +142,8 @@ fun UiBlockItemsBuilder.homeCard(
     offerLabel: String? = null,
     /** The words of a link to the card in the row under Home's title ([HCARD.jumpLabel]); absent for none. */
     jumpLabel: String? = null,
+    /** Whether the card is the page's call to action ([HCARD.actionFirst]): its button first, its link a button. */
+    actionFirst: Boolean? = null,
     /** Further links, drawn under the text; replaced whole by an overlay that names them. */
     links: List<HomeCardLink>? = null,
     /** The live body the card draws ([HCARD.kind]). */
@@ -152,6 +162,7 @@ fun UiBlockItemsBuilder.homeCard(
         if (actionLabel != null) set(HCARD.actionLabel, actionLabel)
         if (offerLabel != null) set(HCARD.offerLabel, offerLabel)
         if (jumpLabel != null) set(HCARD.jumpLabel, jumpLabel)
+        if (actionFirst != null) set(HCARD.actionFirst, actionFirst)
         if (links != null) {
             set(HCARD.links, links.map { mapOf(HCARD.linkLabel to it.label, UIB.action to it.action.toJson()) })
         }

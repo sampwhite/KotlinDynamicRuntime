@@ -48,7 +48,15 @@ class HomeCard(
     val kind: String?,
     /** The body as `home` copy, `namespace.key` ([HCARD.textCopy]), drawn in place of [text]; null for none. */
     val textCopy: String? = null,
-)
+    /** Whether the card is the page's call to action ([HCARD.actionFirst]): its button first, and a button under the title. */
+    val actionFirst: Boolean = false,
+) {
+    /**
+     * Whether the row under Home's title draws this card as a button ([homeCardJumpButtons]), not a link: the page's
+     * call to action, named in the row, with a page for the button to open.
+     */
+    val leadsJumpRow: Boolean get() = actionFirst && jumpLabel != null && actionPage != null
+}
 
 /**
  * What [card]'s body says (issue #1652): the `home` copy its [HomeCard.textCopy] names, read from [copy] -- blank, and so
@@ -85,6 +93,7 @@ fun homeCardsFrom(raw: Any?): List<HomeCard> = raw.toJsonListOfMaps().mapNotNull
         },
         kind = (card[HCARD.kind] as? String)?.ifBlank { null },
         textCopy = (card[HCARD.textCopy] as? String)?.ifBlank { null },
+        actionFirst = card[HCARD.actionFirst] == true,
     )
 }
 
@@ -226,15 +235,26 @@ fun assistantCardActionLabel(card: HomeCard, view: AssistantView?): String? =
 
 /**
  * The links to cards in the row under Home's title (issue #1636), as each label to the card's element id: one for each
- * card that names a [HomeCard.jumpLabel], in the cards' order. The assistant's reads its offer label while the person
- * may switch it on ([assistantView]), as its button does. Pure, and covered under `jsNodeTest`.
+ * card that names a [HomeCard.jumpLabel], in the cards' order, but for a card drawn there as a button
+ * ([homeCardJumpButtons]). The assistant's reads its offer label while the person may switch it on ([assistantView]),
+ * as its button does. Pure, and covered under `jsNodeTest`.
  */
 fun homeCardJumpLinks(cards: List<HomeCard>, assistantView: AssistantView?): List<Pair<String, String>> =
-    cards.mapNotNull { card ->
+    cards.filterNot { it.leadsJumpRow }.mapNotNull { card ->
         val label = card.jumpLabel ?: return@mapNotNull null
         val shown = if (card.kind == ASST.cardKind && assistantView == AssistantView.switchOn) card.offerLabel ?: label else label
         shown to homeCardElementId(card.id)
     }
+
+/**
+ * The buttons at the head of the row under Home's title (issue #1698), as each label to the page it opens: one for each
+ * card that is the page's call to action ([HomeCard.leadsJumpRow]). The button does what the card's own button does --
+ * Register opens the Register page -- rather than scroll to the card, which on a window showing the whole page would
+ * move nothing and seem to do nothing. Such a card is left out of what the row's links count as drawn, so a link the
+ * copy writes to it gives way to the button. Pure, and covered under `jsNodeTest`.
+ */
+fun homeCardJumpButtons(cards: List<HomeCard>): List<Pair<String, String>> =
+    cards.filter { it.leadsJumpRow }.map { card -> card.jumpLabel!! to card.actionPage!! }
 
 /**
  * What the workflow assistant's status says, for its card and the link to it (issue #1636), or null while it is being
@@ -281,7 +301,8 @@ val HomeCards = FC<HomeCardsProps> { props ->
 
 /**
  * One card's panel: [card]'s title, its [body] ([homeCardBody]), what its kind draws ([live]), its links, and its primary
- * button reading [actionLabel].
+ * button reading [actionLabel] -- the button and links first, before the words, for the page's call to action
+ * ([HomeCard.actionFirst], issue #1698).
  */
 private fun ChildrenBuilder.homeCardPanel(
     card: HomeCard,
@@ -291,32 +312,58 @@ private fun ChildrenBuilder.homeCardPanel(
     live: ChildrenBuilder.() -> Unit = {},
 ) {
     panel(homeCardElementId(card.id), card.title) {
+        if (card.actionFirst) homeCardActions(card, actionLabel, first = true)
         if (body.isNotBlank()) Markdown { source = body; linkResolver = copyLinks }
         live()
-        if (card.links.isNotEmpty()) {
-            nav {
-                className = ClassName("home-card-links")
-                // Keyed by place: two links may open the same page, and the list is only ever replaced whole.
-                for ((index, link) in card.links.withIndex()) {
-                    // An in-app link: a plain click is followed without a reload, a ctrl-click opens a tab.
-                    a {
-                        key = index.toString().unsafeCast<Key>()
-                        href = routeHref(listOf(HP.page to link.page))
-                        +link.label
-                    }
-                }
+        if (!card.actionFirst) homeCardActions(card, actionLabel, first = false)
+    }
+}
+
+/**
+ * [card]'s links and its primary button reading [actionLabel]. After its words ([first] false), the links and then the
+ * button beneath them, as cards have always drawn. Before its words, one row led by the button, the links beside it
+ * (`home-card-lead`), so the card's purpose is the first thing in it.
+ */
+private fun ChildrenBuilder.homeCardActions(card: HomeCard, actionLabel: String?, first: Boolean) {
+    val page = card.actionPage
+    val button: ChildrenBuilder.() -> Unit = {
+        if (page != null && actionLabel != null) {
+            Button {
+                type = "primary"
+                onClick = { navigate(listOf(HP.page to page)) }
+                +actionLabel
             }
         }
-        val page = card.actionPage
-        if (page != null && actionLabel != null) {
-            div {
-                className = ClassName("home-card-action")
-                Button {
-                    type = "primary"
-                    onClick = { navigate(listOf(HP.page to page)) }
-                    +actionLabel
-                }
+    }
+    // An in-app link each: a plain click is followed without a reload, a ctrl-click opens a tab. Keyed by place: two links
+    // may open the same page, and the list is only ever replaced whole.
+    val links: ChildrenBuilder.() -> Unit = {
+        for ((index, link) in card.links.withIndex()) {
+            a {
+                key = index.toString().unsafeCast<Key>()
+                href = routeHref(listOf(HP.page to link.page))
+                +link.label
             }
+        }
+    }
+    if (first) {
+        div {
+            className = ClassName("home-card-lead")
+            button()
+            links()
+        }
+        return
+    }
+    if (card.links.isNotEmpty()) {
+        nav {
+            className = ClassName("home-card-links")
+            links()
+        }
+    }
+    if (page != null && actionLabel != null) {
+        div {
+            className = ClassName("home-card-action")
+            button()
         }
     }
 }

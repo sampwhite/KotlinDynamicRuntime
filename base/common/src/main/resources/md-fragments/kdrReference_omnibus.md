@@ -2,8 +2,9 @@
    home page, on its sign-in page that an account here is temporary, on the profile page that the bar switches
    between a person's users too (issue #1330), and where a client or a workflow is made that a new workflow is seen
    by administrators only until it is opened up (issue #1384). The home page's Register card says, to a visitor who
-   has not signed in, why to register and what the address is used for (issue #1652), a link to the site says what
-   it is in its preview (issue #1688), and the band a public test deployment draws says it calmly (issue #1697). The
+   has not signed in, why to register and what the address is used for (issue #1652), and the Register page says the
+   second again where the address is typed (issue #1698). A link to the site says what it is in its preview (issue
+   #1688), and the band a public test deployment draws says it calmly (issue #1697). The
    sign-in line holds whichever `KDR_PUBLIC_SIGN_IN` the deployment chose: under `blocked`, the refusal itself says
    why. A deployment rewords any of it with `<flavor dir>/reference.md`, in this same format, naming only the keys it
    changes. -/
@@ -90,3 +91,13 @@ here. When it is ready, choose **Visibility…** on its row and **Everyone** to 
 # +intro
 This site is for trying KotlinDynamicRuntime out. Anything you create here, your account included, is deleted whenever
 its data is cleared.
+/- Where a visitor types their address (issue #1698): the Register card's promise, said again at the form, since the
+   card's button and the one under the home page's title both come straight here. -/
+# @register
+# +intro
+Your email address is used only to sign you in and for mail about your account here, such as a verification code.
+It is not shared with anyone outside this site, and it is not used for marketing or to contact you about anything
+else. Within the site, a client's administrators can see the email addresses of its users, so joining a demo shows
+yours to the demo's administrators.
+
+An account lasts only until the site's data is cleared.

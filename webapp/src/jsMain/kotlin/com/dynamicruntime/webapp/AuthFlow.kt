@@ -219,9 +219,10 @@ val AuthFlow = FC<AuthFlowProps> { props ->
         val codeSent = token != null
 
         // A word above the sign-in form (issue #1221), empty as shipped: that an account is temporary on a reference
-        // deployment, say. Markdown, so it can link to what explains more.
-        if (!register && !claim) {
-            copy.opt("login", "intro")?.takeIf { it.isNotBlank() }?.let { intro ->
+        // deployment, say. Markdown, so it can link to what explains more. Registering has its own (issue #1698): what
+        // the address is used for, said where it is typed.
+        if (!claim) {
+            copy.opt(ns, "intro")?.takeIf { it.isNotBlank() }?.let { intro ->
                 div {
                     className = ClassName("subtitle")
                     Markdown { source = intro }

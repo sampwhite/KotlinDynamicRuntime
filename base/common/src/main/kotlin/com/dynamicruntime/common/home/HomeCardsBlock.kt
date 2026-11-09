@@ -39,6 +39,9 @@ fun homeCardsBlock(): UiBlockSource = uiBlock(
             action = UiRoute(HMENU.pageRegister),
             actionLabel = "Register",
             jumpLabel = "Register",
+            // What a visitor reads it for (issue #1698): its button before its words, and under the title a Register
+            // button of its own, so a phone has Register on its first screen.
+            actionFirst = true,
             links = listOf(HomeCardLink("Log in", UiRoute(HMENU.pageLogin))),
             cfactExpression = "${CFACTS.anonymous},${CFACTS.signInOpenToEveryone},${CFACTS.app}",
             displayOrder = UIB.orderStep / 20,
