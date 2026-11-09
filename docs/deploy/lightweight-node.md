@@ -114,6 +114,11 @@ sudo systemctl restart systemd-journald
 
 That keeps a month of history, or 500 MB if that comes first, which is plenty to look back on what happened.
 
+On a reference deployment this step is also a promise: dynamicruntime.org's privacy policy says logs more than a month
+old are deleted every month, and `MaxRetentionSec` is what keeps it. journald deletes a whole file once everything in
+it is past the limit, and a file spans up to a month by default (`MaxFileSec`), so an entry can last about two months,
+which is what the policy says. `kdr-node … status` reports the limits the node actually has (issue #1722).
+
 ### 6. Let the user run a service of its own
 
 The application runs as a **systemd user service**: a service belonging to the `kdr` user rather than to the
@@ -279,7 +284,8 @@ It has nothing to run yet. The first deploy starts it.
 
 **Describe the node once, in a target file.** `kdr-deploy` reads where the node is and the settings it runs with from
 `deploy/targets/<name>.properties` in the repository: `host`, `user`, `baseDir` (the node's `~/kdr`, as an absolute
-path), `service`, `publicUrl`, and how many releases to keep, then each setting of step 8 as `env.<VARIABLE>=<value>`.
+path), `service`, `publicUrl`, how many releases to keep, and whether the node resets its data every month
+(`resetDataMonthly`, see "Every month, on its own"), then each setting of step 8 as `env.<VARIABLE>=<value>`.
 `deploy/targets/dynamicruntime.org.properties` is a complete example. A target file holds no secrets: the node keeps
 those in `private/`, which the command never touches.
 
@@ -360,8 +366,9 @@ kdr-node dynamicruntime.org status
 
 It reports the service (running or not, since when, its restarts), the release `current` points at and the
 releases kept, health, memory and disk, and the node's own view: the JVM's memory and uptime, the active deployment
-flavors, and what the boot checks found. It reads that view from the operator pages over SSH, as below, so nobody
-signs in. For the log:
+flavors, and what the boot checks found. It also says when the data was last reset and when the next is due (see
+"Every month, on its own"), and the journal's limits. It reads the node's view from the operator pages over SSH, as
+below, so nobody signs in. For the log:
 
 ```bash
 kdr-node dynamicruntime.org logs --lines 200
@@ -427,7 +434,8 @@ the database. The reset then, after asking:
 1. stops the service;
 2. empties the file store: every declared bucket, whether in `fileStore/` or in object storage (below);
 3. removes the database, `h2Database/`;
-4. starts the service, and waits until it answers on the node and through the public address.
+4. records the reset, in `~/kdr/data-reset`, which the monthly check (below) counts from;
+5. starts the service, and waits until it answers on the node and through the public address.
 
 **The buckets themselves stay.** The application never creates one, and it refuses to start without them.
 
@@ -435,8 +443,10 @@ the database. The reset then, after asking:
 live only in the file store, and a reset brings such a client back with the same id, so its images come back with it.
 A client created on the site is not brought back, so its images go with everything else.
 
-The emptying is done by a small command in the deployed release (`ClearFileStore`), run on the node under its own
-settings, so nothing is installed for it. The application creates an empty database as it starts, and the
+The reset is a small program in the deployed release (`NodeReset`, issue #1722), run on the node with the release's own
+Java under the node's own settings, so nothing is installed for it, and every reset -- this command's, a deploy's, the
+monthly check's -- is the same code. If a step fails after the stop, it starts the service again on what was left, and
+says what failed. The application creates an empty database as it starts, and the
 `reference` flavor sets up the conference demo again. Removing `h2Database/` also removes H2's trace file
 (`kdr.dat.trace.db`), which H2 writes beside the database when it runs into errors.
 
@@ -474,6 +484,42 @@ stop, the service is started again rather than left down, and the command says w
 combined with `--rollback`. If you roll back after a reset, reset again with `kdr-node reset-data`, since the
 data was written by the newer release.
 
+### Every month, on its own
+
+A target with `resetDataMonthly=true`, as dynamicruntime.org's is, has its node reset its data once it is a month old,
+as the site's privacy policy and terms promise (issue #1722). `kdr-deploy` installs it, and removes it from a node whose
+target stops asking: two systemd **user** units beside the application's own, `kdr-reset.service` and
+`kdr-reset.timer`, so nothing needs `sudo`, and the user's lingering (step 6) runs them with nobody signed in.
+
+**The timer checks every day, and resets only data a month old.** It runs `NodeReset` in its check mode daily at
+09:00 UTC. A check reads when the last reset was from `~/kdr/data-reset`, and resets when a calendar month has passed
+since then; otherwise it only says when the next is due. So:
+
+- every reset restarts the clock, however it was made: a reset with a deploy on the 28th is not followed by another a
+  few days later;
+- a node that was down at the time checks when it is back, and resets then if one is due;
+- with no record yet, as on the first check after installing it, a check records one and removes nothing: installing
+  the timer never wipes the site at once.
+
+**Seeing it.** `kdr-node dynamicruntime.org status` says when the data was last reset, when the next is due, and when
+the check runs next, beside the journal's limits. `kdr-node dynamicruntime.org logs` includes what each check said.
+On the node:
+
+```bash
+systemctl --user list-timers kdr-reset.timer
+```
+
+```bash
+journalctl --user -u kdr-reset.service -n 20
+```
+
+**Proving it on a new node.** Nothing about it can be tried without a node, so on one where it has not run yet:
+
+1. `kdr-node <target> reset-data --dry-run`, which shows what would go and changes nothing;
+2. `kdr-node <target> reset-data`, at a time you choose, which writes the first record;
+3. a deploy, which installs the timer, then `systemctl --user list-timers kdr-reset.timer` on the node;
+4. the next day, `kdr-node <target> logs`, where the check says when the next reset is due.
+
 ### By hand
 
 With the files in `fileStore/`:
@@ -485,7 +531,8 @@ systemctl --user start kdr
 ```
 
 That removes the web assets too. A node that keeps its files in object storage has no `fileStore/`, so its buckets
-are emptied with the provider's console or an S3 tool, while the service is stopped.
+are emptied with the provider's console or an S3 tool, while the service is stopped. A reset by hand records nothing,
+so the monthly check still counts from the last recorded one; `kdr-node … reset-data` records it.
 
 ## Env auth on the node itself
 

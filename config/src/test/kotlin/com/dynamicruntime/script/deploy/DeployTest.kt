@@ -56,6 +56,14 @@ class DeployTest : StringSpec({
         problem("$targetText\nbuildProfile=référence") shouldContain "plain name"
     }
 
+    "a target asks for the monthly data reset with true, and nothing else reads as true (issue #1722)" {
+        DeployTarget.parse("node", targetText).resetDataMonthly shouldBe false
+        DeployTarget.parse("node", targetText + "\nresetDataMonthly=true").resetDataMonthly shouldBe true
+        DeployTarget.parse("node", targetText + "\nresetDataMonthly=false").resetDataMonthly shouldBe false
+        shouldThrow<IllegalArgumentException> { DeployTarget.parse("node", targetText + "\nresetDataMonthly=yes") }
+            .message shouldContain "must be true or false"
+    }
+
     "a target's build profile reaches Gradle as -PkdrBuild, and none builds as a developer does (issue #1273)" {
         target.buildProfile shouldBe null
         Deploy.buildArgs(target) shouldBe listOf(":launch:installDist")
@@ -71,6 +79,8 @@ class DeployTest : StringSpec({
         reference.env["KDR_DEPLOY_FLAVORS"] shouldBe "reference"
         // Built without the workspace's own projects (issue #1273).
         reference.buildProfile shouldBe "reference"
+        // Its data reset once a month, as its privacy policy promises (issue #1722).
+        reference.resetDataMonthly shouldBe true
         // A target never carries a secret; the node keeps its own.
         reference.env.keys.none { it.contains("KEY") || it.contains("SECRET") || it.contains("PASSWORD") } shouldBe true
     }

@@ -36,9 +36,10 @@ import kotlin.system.exitProcess
  * `KDR_DIRECT_ACCESS=loopback`.
  *
  * **`reset-data` is the periodic clearing of a reference deployment's data**, and destructive, so it shows what it
- * would remove and asks first. It stops the service, empties the file store ([ClearFileStore][com.dynamicruntime.script.ClearFileStore],
- * run on the node from the deployed release, so nothing is installed there), removes the database, and starts the
- * service, which a `reference` node provisions the conference demo in again as it starts.
+ * would remove and asks first. The reset itself is [NodeReset], run on the node from the deployed release (issue
+ * #1722), so nothing is installed there and every reset -- this one, a deploy's, the daily check's -- is the same code:
+ * it stops the service, empties the file store, removes the database, records the reset, and starts the service, which
+ * a `reference` node provisions the conference demo in again as it starts.
  */
 @Suppress("ConstPropertyName")
 object Node {
@@ -96,6 +97,8 @@ object Node {
         const val flavors = "flavors"
         const val boot = "boot"
         const val system = "system"
+        const val reset = "reset"
+        const val journal = "journal"
         fun marker(name: String): String = "--kdr:$name--"
     }
 
@@ -114,6 +117,11 @@ object Node {
         SEC.flavors to nodeGet(target, FLV.operatorPath),
         SEC.boot to nodeGet(target, OPS.bootChecksPath),
         SEC.system to nodeGet(target, OPS.systemInfoPath),
+        // The last reset and the daily check (issue #1722), and the journal's limits, which the privacy policy rests on.
+        SEC.reset to "cat ${shellQuote("${target.baseDir}/${NodeReset.NRST.markerFile}")} 2>/dev/null; echo; " +
+            "systemctl --user show ${shellQuote("${ResetUnits.unitName(target)}.timer")} -p LoadState -p ActiveState " +
+            "-p NextElapseUSecRealtime 2>/dev/null",
+        SEC.journal to "cat /etc/systemd/journald.conf /etc/systemd/journald.conf.d/*.conf 2>/dev/null",
     // Each marker on a line of its own: what came before may end without a newline (`curl` prints none), and a
     // marker run on to the end of it would be read as part of it.
     ).joinToString("; ") { (name, command) -> "echo; echo ${SEC.marker(name)}; $command" }
@@ -151,7 +159,48 @@ object Node {
         out += "  jvm:      " + jvmLine(sections[SEC.system].orEmpty())
         out += "  flavors:  " + flavorsLine(sections[SEC.flavors].orEmpty())
         out += bootLines(sections[SEC.boot].orEmpty())
+        out += "  reset:    " + resetLine(sections[SEC.reset].orEmpty())
+        out += "  journal:  " + journalLine(sections[SEC.journal].orEmpty())
         return out
+    }
+
+    /**
+     * The last reset the node recorded, when the next is due, and whether its daily check is installed (issue #1722):
+     * what the reset section printed -- the marker, then the timer's `systemctl show` properties.
+     */
+    fun resetLine(section: String): String {
+        val lines = section.lines().map { it.trim() }.filter { it.isNotEmpty() }
+        val props = lines.mapNotNull { line ->
+            line.indexOf('=').takeIf { it > 0 }?.let { line.substring(0, it) to line.substring(it + 1) }
+        }.toMap()
+        val last = NodeReset.parseMarker(lines.firstOrNull { '=' !in it })
+        val recorded = last?.let { "last $it, next due ${NodeReset.nextReset(it)}" } ?: "none recorded"
+        val timer = when {
+            props["LoadState"] != "loaded" -> "no daily check installed"
+            props["ActiveState"] == "active" -> "daily check active, next run ${props["NextElapseUSecRealtime"].orEmpty().ifEmpty { "-" }}"
+            else -> "daily check installed but ${props["ActiveState"] ?: "unknown"}"
+        }
+        return "$recorded; $timer"
+    }
+
+    /**
+     * The journal's limits as the node configures them (issue #1722): the main file's settings, then each drop-in's,
+     * the last one read winning, as journald reads them. The age limit is what the privacy policy's log promise rests
+     * on, so its absence is said.
+     */
+    fun journalLine(conf: String): String {
+        val settings = LinkedHashMap<String, String>()
+        for (raw in conf.lines()) {
+            val line = raw.trim()
+            if (line.isEmpty() || line.startsWith("#") || line.startsWith(";") || line.startsWith("[")) continue
+            val eq = line.indexOf('=').takeIf { it > 0 } ?: continue
+            settings[line.substring(0, eq).trim()] = line.substring(eq + 1).trim()
+        }
+        val age = settings["MaxRetentionSec"]?.ifEmpty { null }
+            ?: return "no age limit (MaxRetentionSec) -- setup step 5 of the deploy guide sets one"
+        val files = settings["MaxFileSec"]?.ifEmpty { null }?.let { "$it (MaxFileSec)" } ?: "1month (MaxFileSec, the default)"
+        val size = settings["SystemMaxUse"]?.ifEmpty { null }?.let { ", at most $it" }.orEmpty()
+        return "entries kept $age (MaxRetentionSec), each file spans up to $files$size"
     }
 
     /** `free -m`'s memory and swap rows, as used of total. */
@@ -207,9 +256,10 @@ object Node {
         }
     }
 
-    /** The journal's last [lines] lines for the service, or a follow of it. */
+    /** The journal's last [lines] lines for the service and its daily reset check (issue #1722), or a follow of them. */
     fun logsCommand(target: DeployTarget, lines: Int, follow: Boolean): String =
-        "journalctl --user -u ${shellQuote(target.service)} -n $lines --no-pager" + if (follow) " -f" else ""
+        "journalctl --user -u ${shellQuote(target.service)} -u ${shellQuote("${ResetUnits.unitName(target)}.service")} " +
+            "-n $lines --no-pager" + if (follow) " -f" else ""
 
     /** Restarts the service. */
     fun restartCommand(target: DeployTarget): String = "systemctl --user restart ${shellQuote(target.service)}"
@@ -234,8 +284,6 @@ object Node {
     /** The size of the database directory, or a word for its absence. */
     fun databaseSizeCommand(target: DeployTarget): String =
         "du -sh ${shellQuote(databasePath(target))} 2>/dev/null | cut -f1 || true"
-
-    fun removeDatabaseCommand(target: DeployTarget): String = "rm -rf -- ${shellQuote(databasePath(target))}"
 
     // --- running it ---------------------------------------------------------------------------------------------
 
@@ -270,29 +318,31 @@ object Node {
 
     private fun resetData(options: Options, target: DeployTarget): Int {
         println("Reset the data of ${target.sshDestination} (${target.publicUrl})")
-        println("  stop:      ${stopCommand(target)}")
+        println("  on the node: stop ${target.service}, then")
         if (!printResetPlan(target, emptiedBy = "")) return fail("The file store could not be read; nothing was changed.")
-        println("  start:     ${startCommand(target)}, then /kda/health on the node and ${target.publicUrl}")
+        println("  record:    the reset, in ${target.baseDir}/${NodeReset.NRST.markerFile}, which the next month's is counted from")
+        println("  start:     ${target.service}, then /kda/health on the node and ${target.publicUrl}")
         if (options.dryRun) {
             println("Dry run: nothing was changed.")
             return 0
         }
         if (!options.assumeYes && !confirm("This deletes the data of ${target.host}. Reset it?")) return fail("Not reset.")
 
-        if (ssh(target, stopCommand(target)).failed) return fail("Stopping the service failed; nothing was removed.")
-        removeData(target)?.let { problem ->
-            ssh(target, startCommand(target))
-            return fail("$problem, and the service started again.")
-        }
-        println("Starting...")
-        if (ssh(target, startCommand(target)).failed) return fail("Starting the service failed; see kdr-node ${options.target} logs.")
+        if (!resetOnNode(target)) return fail("The reset did not finish; what it said is above. See kdr-node ${options.target} logs.")
         return if (healthy(target)) {
             println("Reset ${target.host}.")
             0
         } else {
-            fail("The service started but did not answer as healthy; see kdr-node ${options.target} logs.")
+            fail("The service started but did not answer as healthy through ${target.publicUrl}; see kdr-node ${options.target} logs.")
         }
     }
+
+    /**
+     * Runs [NodeReset] on the node in its "now" mode ([ResetUnits.resetNowCommand]), its output going straight to the
+     * terminal; whether the service came back healthy on the node on emptied data. A failure after the stop has already
+     * started the service again, and said so.
+     */
+    fun resetOnNode(target: DeployTarget): Boolean = sshToTerminal(target, ResetUnits.resetNowCommand(target))
 
     /**
      * Prints what a reset would remove, as the running release counts it: each bucket's files, and the size of the
@@ -308,20 +358,6 @@ object Node {
         val dbSize = ssh(target, databaseSizeCommand(target)).out.ifEmpty { "absent" }
         println("  database:  remove ${databasePath(target)} ($dbSize)")
         return true
-    }
-
-    /**
-     * Empties the file store, from the release `current` points at, and removes the database, of a node whose service
-     * is stopped, printing what went. Null when both went, or else what failed, which leaves the service stopped for
-     * the caller to start again.
-     */
-    fun removeData(target: DeployTarget): String? {
-        val cleared = ssh(target, clearFileStoreCommand(target, remove = true))
-        cleared.out.lines().filter { it.isNotBlank() }.forEach { println("  $it") }
-        if (cleared.failed) return "Emptying the file store failed; the database was kept"
-        if (ssh(target, removeDatabaseCommand(target)).failed) return "Removing the database failed"
-        println("Removed the database.")
-        return null
     }
 
     fun parseArgs(args: List<String>): Options? {
@@ -361,11 +397,13 @@ object Node {
             Looks at and operates the lightweight node <target> describes -- a name in ${DPL.targetsDir}/, or a path
             to a target file -- set up by docs/deploy/lightweight-node.md.
 
-              ${NDF.status}       the service, the release, memory and disk, health, and the node's own view
+              ${NDF.status}       the service, the release, memory and disk, health, the node's own view, the last
+                           data reset and the daily check, and the journal's limits
               ${NDF.logs}         the service's journal (${NDF.lines} N, default $defaultLogLines; ${NDF.follow} to follow)
               ${NDF.restart}      restart the service and wait for health
               ${NDF.resetData}   stop, empty the file store (keeping source clients' web assets), remove the
-                           database, start, and wait for health; ${NDF.dryRun} shows what it would remove
+                           database, record the reset, start, and wait for health; ${NDF.dryRun} shows what it
+                           would remove
             """.trimIndent(),
         )
         return failureExit

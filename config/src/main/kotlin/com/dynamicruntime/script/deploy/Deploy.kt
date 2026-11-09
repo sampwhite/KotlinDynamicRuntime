@@ -25,17 +25,20 @@ import kotlin.system.exitProcess
  * 3. writes the node's `kdr.env` from the target, when it differs, keeping the old one as `kdr.env.prev`;
  * 4. points `current` at the new release and restarts the service;
  * 5. waits for `/kda/health` on the node itself, then through the public address;
- * 6. deletes releases beyond the target's `keepReleases`, never the running one.
+ * 6. writes, updates, or removes the node's daily data-reset check to match the target's `resetDataMonthly` (issue
+ *    #1722, [ResetUnits]);
+ * 7. deletes releases beyond the target's `keepReleases`, never the running one.
  *
  * It never touches the node's data (`h2Database/`, `fileStore/`) unless asked, or its secrets (`private/`), which are
  * outside every release.
  *
- * **`--reset-data` resets the node's data under the new release** (issue #1601), as `kdr-node reset-data` does, in
- * the one pass: it stops the service, points `current` at the new release, empties the file store with that
- * release's own code, removes the database, and starts it. The new release is then the only one that writes the fresh
- * data -- a `reference` node provisions the conference demo again as it starts -- which a reset before or after the
- * deploy cannot promise: before it, the old release writes the demo in a shape a release changing stored
- * configuration may refuse; after it, the new release first starts on the old data, and may refuse that.
+ * **`--reset-data` resets the node's data under the new release** (issue #1601), as `kdr-node reset-data` does, in the
+ * one pass: it stops the service, points `current` at the new release, and runs that release's [NodeReset] on the node,
+ * which empties the file store, removes the database, records the reset, and starts it (issue #1722). The new release
+ * is then the only one that writes the fresh data -- a `reference` node provisions the conference demo again as it
+ * starts -- which a reset before or after the deploy cannot promise: before it, the old release writes the demo in a
+ * shape a release changing stored configuration may refuse; after it, the new release first starts on the old data, and
+ * may refuse that.
  *
  * `--rollback` points `current` back at the release before it, and restarts. A failed health check
  * leaves the new release running and says how to roll back, rather than rolling back on its own: whoever deployed
@@ -187,6 +190,8 @@ object Deploy {
         val wantedEnv = envFileText(target)
         val envChanges = if (target.env.isEmpty()) emptyList() else envDiff(remoteEnv, wantedEnv)
         val prune = releasesToPrune(releases + release, current = release, keep = target.keepReleases, keepAlso = current)
+        val (unitService, unitTimer) = ResetUnits.parseRead(ssh(target, ResetUnits.readCommand(target)).out)
+        val unitChange = ResetUnits.change(target, unitService, unitTimer)
 
         println("Deploy to ${target.sshDestination} (${target.publicUrl})")
         println("  release:   $release${if (dirty) "   (the checkout has uncommitted changes)" else ""}")
@@ -211,11 +216,13 @@ object Deploy {
             if (!Node.printResetPlan(target, emptiedBy = " with the new release")) {
                 return fail("The file store could not be read with the running release; nothing was changed.")
             }
-            println("  start:     ${Node.startCommand(target)}")
+            println("  record:    the reset, which the next month's is counted from")
+            println("  start:     ${target.service}")
         } else {
             println("  switch:    ${switchCommand(target, release)}")
         }
         println("  check:     /kda/health on the node, then ${target.publicUrl}/kda/health")
+        println("  reset:     ${ResetUnits.planText(target, unitChange)}")
         println("  remove:    ${prune.joinToString(", ").ifEmpty { "nothing" }}")
         if (options.dryRun) {
             println("Dry run: nothing was changed.")
@@ -256,13 +263,42 @@ object Deploy {
                     "(journalctl --user -u ${target.service} on the node); to go back: $back.",
             )
         }
+        val unitProblem = applyResetUnits(target, unitChange)
         if (prune.isNotEmpty()) {
             val remove = "cd ${shellQuote(target.releasesDir)} && rm -rf -- " + prune.joinToString(" ") { shellQuote(it) }
             if (ssh(target, remove).failed) println("Could not remove the old releases ${prune.joinToString(", ")}; they are still there.")
             else println("Removed ${prune.joinToString(", ")}.")
         }
         println("Deployed $release to ${target.publicUrl}.")
-        return 0
+        return unitProblem?.let { fail(it) } ?: 0
+    }
+
+    /**
+     * Writes, updates, or removes the node's daily reset check as [change] says (issue #1722), saying what it did; null
+     * when it went, or what failed. A failure here leaves the deployed release running: it is the check that is wrong.
+     */
+    private fun applyResetUnits(target: DeployTarget, change: ResetUnits.Change): String? {
+        val name = "${ResetUnits.unitName(target)}.timer"
+        return when (change) {
+            ResetUnits.Change.Install, ResetUnits.Change.Update -> {
+                fun write(path: String, text: String) = !ssh(target, ResetUnits.writeCommand(path), stdin = text).failed
+                val wrote = write(ResetUnits.servicePath(target), ResetUnits.serviceText(target)) &&
+                    write(ResetUnits.timerPath(target), ResetUnits.timerText(target))
+                val enabled = wrote && !ssh(target, ResetUnits.enableCommand(target)).failed
+                if (enabled) {
+                    println("${if (change == ResetUnits.Change.Install) "Installed" else "Updated"} $name, the daily data-reset check.")
+                    null
+                } else {
+                    "Deployed, but installing $name, the daily data-reset check, failed: the data is not reset monthly until it is."
+                }
+            }
+            ResetUnits.Change.Remove ->
+                if (ssh(target, ResetUnits.removeCommand(target)).failed) "Deployed, but removing $name failed." else {
+                    println("Removed $name: the target asks for no monthly reset.")
+                    null
+                }
+            ResetUnits.Change.Unchanged, ResetUnits.Change.None -> null
+        }
     }
 
     /**
@@ -282,14 +318,14 @@ object Deploy {
             return false
         }
         println("Switched to $release. Resetting the data...")
-        Node.removeData(target)?.let { problem ->
-            ssh(target, Node.startCommand(target))
-            fail("$problem. $release started on what was left; kdr-node ${options.target} ${Node.NDF.resetData} resets it.")
-            return false
-        }
-        println("Starting $release...")
-        if (ssh(target, Node.startCommand(target)).failed) {
-            fail("Starting the service failed; see kdr-node ${options.target} ${Node.NDF.logs}.")
+        // The new release's own reset (issue #1722): it finds the service stopped, and starts it on the emptied data, or
+        // -- when a step fails -- on what was left, having said what failed.
+        if (!Node.resetOnNode(target)) {
+            fail(
+                "The reset did not finish; what it said is above. $release may be running on what was left: " +
+                    "kdr-node ${options.target} ${Node.NDF.resetData} resets it, and " +
+                    "kdr-node ${options.target} ${Node.NDF.logs} shows why.",
+            )
             return false
         }
         return true
