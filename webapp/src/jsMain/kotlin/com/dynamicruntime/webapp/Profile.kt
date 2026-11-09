@@ -562,6 +562,15 @@ val Profile = FC<Props> {
                         }
                     }
                 }
+                // The deployment's privacy policy and terms (issue #1711): the deployment's, so whoever the facts describe.
+                val policies = sitePolicyLinks(shellFacts)
+                if (policies.isNotEmpty()) {
+                    p {
+                        className = ClassName("subtitle")
+                        +"${SITEW.profileLead} "
+                        sitePolicyLinkList(policies)
+                    }
+                }
             }
 
             // ---- Your users: live (issues #1330, #752) ---------------------

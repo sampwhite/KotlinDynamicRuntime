@@ -102,6 +102,9 @@ class HomeConfig(
      * note that what they do there, other visitors see.
      */
     val sharedDemo: Boolean = false,
+    /** The ids of the documents that are the deployment's privacy policy and terms of service (issue #1711); null for none. */
+    val privacyPolicy: String? = null,
+    val termsOfService: String? = null,
     /**
      * For a caller signed in to `public`, the self-serve client their person created (issue #1228) -- one per
      * person -- so the home page offers to open it rather than to create another; null when they have made none.
@@ -211,6 +214,8 @@ fun homeConfigFrom(config: UiConfig): HomeConfig {
             SandboxOf(it, config.state[HFLD.sandboxOfName] as? String ?: it, stranded = config.state[HFLD.sandboxStranded] == true)
         },
         sharedDemo = config.state[HFLD.sharedDemo] == true,
+        privacyPolicy = (config.state[HFLD.privacyPolicy] as? String)?.ifBlank { null },
+        termsOfService = (config.state[HFLD.termsOfService] as? String)?.ifBlank { null },
         selfServeClient = (config.state[HFLD.selfServeClient] as? String)?.ifBlank { null },
         selfServeClientAbsent = config.state[HFLD.selfServeClientAbsent] == true,
         selfServeTemplates = selfServeTemplatesFrom(config.state[HFLD.selfServeTemplates]),

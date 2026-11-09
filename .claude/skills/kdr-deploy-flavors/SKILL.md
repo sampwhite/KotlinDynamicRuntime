@@ -17,17 +17,17 @@ came from. It is also what keeps flavors from interacting: a flavor is a list of
 
 ## Declaring and contributing
 
-**`reference`** (`FLV.reference`, issue #1221) is core's, for a public reference deployment, and the fullest
-example: core rewords the home page, fills the sign-in page's `login.intro`, and sets `landingFocus` to `app`, so the
-site root opens on the web application rather than the endpoint portal (issue #1268), and offers joining a demo
-client from `public` (`publicJoinOffered`), provisioning `designdemo` at boot so there is one to join (issue #1248);
-the sample defaults
-`KDR_LOAD_SAMPLE` and fills `home.note`; kdn sets `confDemoProvisionAtBoot` (its `ConfDemoBootService` then
-provisions the conference demo as the node starts) and fills the demo's **workflow help**. Three copy slots exist
-for this, each empty as shipped so nothing shows until something fills it: `home.note` under the home page's intro,
-`login.intro` above the sign-in form, and the help line under a workflow page's title -- the backend file
-`workflowHelp`, namespace the client, key the workflow id (`WVF.helpFile`), whose base a component ships with an
-empty key per workflow so the overlay check holds an overlay to real workflows.
+**`reference`** (`FLV.reference`, issue #1221) is core's, for a public reference deployment, and the fullest example:
+core rewords the home page, fills the sign-in page's `login.intro`, and sets `landingFocus` to `app`, so the site root
+opens on the web application rather than the endpoint portal (issue #1268), and offers joining a demo client from
+`public` (`publicJoinOffered`), provisioning `designdemo` at boot so there is one to join (issue #1248); the sample
+defaults `KDR_LOAD_SAMPLE` and fills `home.note`; kdn sets `confDemoProvisionAtBoot` (its `ConfDemoBootService` then
+provisions the conference demo as the node starts), fills the demo's **workflow help**, and names dynamicruntime.org's
+privacy policy and terms (`HCFG.privacyPolicyDoc`, `HCFG.termsOfServiceDoc`, issue #1711), the documents it then
+declares. Three copy slots exist for this, each empty as shipped so nothing shows until something fills it: `home.note`
+under the home page's intro, `login.intro` above the sign-in form, and the help line under a workflow page's title --
+the backend file `workflowHelp`, namespace the client, key the workflow id (`WVF.helpFile`), whose base a component
+ships with an empty key per workflow so the overlay check holds an overlay to real workflows.
 
 The sample component's **`samples`** (`SampleComponent.samplesFlavor`): it defaults
 `KDR_LOAD_SAMPLE` and points the home page at the sample clients through `sampleSamples_omnibus.md`. To try a

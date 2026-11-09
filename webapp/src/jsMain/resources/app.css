@@ -139,6 +139,11 @@
 :root[data-test-deployment] body {
     padding-bottom: 32px;
 }
+/* And the root that much shorter: it fills the window (`#root`'s min-height) inside the body, so with the body's padding
+   added a page as short as the window would always scroll by the band's height. */
+:root[data-test-deployment] #root {
+    min-height: calc(100vh - 32px);
+}
 
 /* Becoming someone on a test instance (issue #1183): the Home page's card, and the remembered identities as a wrap of
    buttons. The card sits above the welcome copy, set off by the inset surface like the other wells. */
@@ -178,6 +183,18 @@ body {
 /* The app bar sits at the top; the page content fills the rest and centers its card. */
 #root { min-height: 100vh; display: flex; flex-direction: column; }
 .app-content { flex: 1; display: flex; justify-content: center; align-items: flex-start; padding: 32px 16px; }
+/* The deployment's privacy policy and terms (issue #1711): a quiet line under every page, after its content, at the
+   bottom of a short one. Links keep the app's link color (`a` rules above), the line itself muted. */
+.site-footer {
+    padding: 16px;
+    border-top: 1px solid var(--border);
+    color: var(--text-muted);
+    font-size: 0.85rem;
+    text-align: center;
+}
+/* The same links under the sign-in choices, set apart from a hint above them: more specific than the card's
+   `.type-hint + .type-hint`, which keeps consecutive hints together. */
+.card > p.type-hint.site-policies-line { margin-top: 16px; }
 /* "A new version is available" bar (issue #136): sits above the app bar, non-intrusive, offering a reload. */
 .update-banner {
     display: flex;

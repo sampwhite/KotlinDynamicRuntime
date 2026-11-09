@@ -239,6 +239,16 @@ fun homeSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.home") {
                     "links; absent when the deployment configured no source repo.",
             )
             property(
+                HFLD.privacyPolicy,
+                "The id of the document that is the deployment's privacy policy (issue #1711), which every page links to; " +
+                    "absent when it names none.",
+            )
+            property(
+                HFLD.termsOfService,
+                "The id of the document that is the deployment's terms of service (issue #1711), which every page links " +
+                    "to; absent when it names none.",
+            )
+            property(
                 HFLD.timeZone,
                 "The IANA time zone the caller's moments are shown in (issue #1115): their client's, else the " +
                     "deployment's display default (KDR_DISPLAY_TIME_ZONE); absent when neither is set, for the " +
@@ -362,6 +372,8 @@ fun homeSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.home") {
                 // Only when configured -- an absent field says "no source repo", which is how the frontend
                 // leaves a non-document interior link as written (issue #492).
                 sourceRepoBase(c)?.let { put(HFLD.sourceRepoBase, it) }
+                // The deployment's privacy policy and terms (issue #1711), which every page links to.
+                putAll(sitePolicies(c))
                 // Where the client's people are (issue #1115): the zone the webapp shows moments in -- the client's, else
                 // the deployment's display default. Absent, the webapp shows the deployment's day start.
                 ClientService.getOrNull(c)?.displayZoneOf(c.client)?.let { zone ->
@@ -793,4 +805,34 @@ object HCFG {
     const val homeTopBar = "homeTopBar"
     const val homeLeftBar = "homeLeftBar"
     const val homeInlineLinks = "homeInlineLinks"
+
+    /**
+     * The id of the document that is the deployment's privacy policy, and of its terms of service (issue #1711): a
+     * deployment's own pages, set in its configuration or by a flavor, as the `reference` flavor sets dynamicruntime.org's.
+     * Each must name a document a component declares, or the boot is refused ([sitePolicyFaults]). Unset, the deployment
+     * has none, and no page links to one.
+     */
+    const val privacyPolicyDoc = "privacyPolicyDoc"
+    const val termsOfServiceDoc = "termsOfServiceDoc"
+}
+
+/**
+ * The site policies [HCFG.privacyPolicyDoc] and [HCFG.termsOfServiceDoc] name (issue #1711), by the home config field
+ * each is sent as, for those the deployment names: what every page's footer links to.
+ */
+fun sitePolicies(cxt: KdrCxt): Map<String, String> = buildMap {
+    cxt.instanceConfig.get(HCFG.privacyPolicyDoc).toOptStr()?.let { put(HFLD.privacyPolicy, it) }
+    cxt.instanceConfig.get(HCFG.termsOfServiceDoc).toOptStr()?.let { put(HFLD.termsOfService, it) }
+}
+
+/**
+ * What is wrong with the site policies a deployment names (issue #1711), read through [config], against [docs], the
+ * documents its components declare: each must be one of them, or every page would link to a page that is not there. A
+ * deployment's configuration or a flavor's, so a fault refuses the boot.
+ */
+fun sitePolicyFaults(config: (String) -> Any?, docs: List<MarkdownDocDef>): List<String> {
+    val declared = docs.map { it.docId }.toSet()
+    return listOf(HCFG.privacyPolicyDoc, HCFG.termsOfServiceDoc).mapNotNull { key ->
+        config(key).toOptStr()?.takeIf { it !in declared }?.let { "'$key' names the document '$it', which no component declares." }
+    }
 }

@@ -321,6 +321,9 @@ val App = FC<Props> {
                             }
                         }
                     }
+                    // The deployment's privacy policy and terms (issue #1711), under every page: drawn only where it names
+                    // them. Outside the page's boundary, so a page that fails still has them beneath it.
+                    SiteFooter { key = "siteFooter".unsafeCast<Key>() }
                 }
             }
         }

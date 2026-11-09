@@ -174,6 +174,14 @@ object HFLD {
     const val sharedDemo = "sharedDemo"
 
     /**
+     * `state.privacyPolicy` and `state.termsOfService`: the ids of the documents that are the deployment's privacy policy
+     * and terms of service (issue #1711), which every page links to in its footer, beside the sign-in choices, and from
+     * the profile page; each absent when the deployment names none, and then nothing links to one.
+     */
+    const val privacyPolicy = "privacyPolicy"
+    const val termsOfService = "termsOfService"
+
+    /**
      * `state.selfServeClient`: for a caller signed in to `public`, the self-serve client their person has created
      * (issue #1228) -- a person creates one -- so the home page offers to open it rather than to create another
      * without trying the create; absent when they have made none.
