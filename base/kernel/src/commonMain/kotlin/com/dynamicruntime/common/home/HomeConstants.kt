@@ -645,6 +645,15 @@ object HFRAG {
     const val wcNotStarted = "notStarted"
 
     /**
+     * In [workflowCellNs]: a workflow's page, under a step that asks nothing more of anyone (issue #1694) -- its required
+     * parts present, valid, and saved -- and the step list's check's tooltip. Says nothing of being finished.
+     */
+    const val wcStepSatisfied = "stepSatisfied"
+
+    /** In [workflowCellNs]: a workflow's page, the link to the step after a satisfied one (issue #1694), over `${'$'}{label}`. */
+    const val wcNextStep = "nextStep"
+
+    /**
      * The key of a "What is this?" explanation (issue #1337), in the namespace of the copy it explains -- in this
      * file and in a page's own ([PFRAG]), as the profile file's `users.whatIsThis` is. Empty, the link is not offered.
      */

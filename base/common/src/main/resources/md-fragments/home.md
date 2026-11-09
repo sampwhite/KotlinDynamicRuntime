@@ -121,6 +121,11 @@ form stands in each.
 /- A workflow's page, for a form not in the workflow yet that may start it (issue #1691): the line under its title, and
    the button that starts it says `start`, as the forms list's link does. -/
 # +notStarted This form has not started this workflow. Start it to work on it.
+/- A workflow's page, under a step that asks nothing more of anyone (issue #1694): its required parts are there and
+   valid, and saved. It says nothing of being finished, since the step can still be changed; the step list's check
+   says the same on hover. `nextStep` is the link to the step after it, `${label}` being that step's name. -/
+# +stepSatisfied Nothing more is needed on this step.
+# +nextStep Next: ${label} →
 
 # @ctaReview
 /- The `review` search keyword's words (issue #1596): what a call to action asking for a review is called wherever it is

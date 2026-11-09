@@ -189,7 +189,8 @@ On a talk whose core details are done, the member's forms list shows **Start** a
 its **Workflows** column, and its **Waiting on you** button narrows the list to the talks waiting on them. One click
 puts the talk into the review and opens the **Record the review** step, with no second **Start** to press. The talk's
 status in the forms list is then **Needs Review**. The step is editable: a **Score** and **Notes for the speaker**, and
-a **Save the review** button. Once saved, the **Accept the talk** step offers its button. After it is pressed, the step
-reads *Accepted by* and who accepted it, and the talk's status in the forms list is **Finished**.
+a **Save the review** button. Once saved, the step says *Nothing more is needed on this step*, and a link beside it,
+**Next: Accept the talk**, opens that step, which offers its button. After it is pressed, the step reads *Accepted by*
+and who accepted it, and the talk's status in the forms list is **Finished**.
 
 Next: [Workshop logistics](workshop-logistics.md).

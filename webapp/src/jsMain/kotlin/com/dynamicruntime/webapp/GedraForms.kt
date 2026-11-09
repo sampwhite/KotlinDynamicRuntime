@@ -1134,7 +1134,14 @@ data class WorkflowCellWords(
     val keywordAny: String = "Anyone's",
     /** A workflow's page, for a form that may start the workflow and has not (issue #1691): the line under its title. */
     val notStarted: String = "This form has not started this workflow. Start it to work on it.",
+    /** A workflow's page, under a step that asks nothing more of anyone (issue #1694), and its step list check's tooltip. */
+    val stepSatisfied: String = "Nothing more is needed on this step.",
+    /** A workflow's page, the link to the next step (issue #1694), over `${'$'}{label}`. */
+    val nextStep: String = $$"Next: ${label} →",
 ) {
+    /** The link to the step named [label] (issue #1694). */
+    fun nextStepText(label: String): String = nextStep.evalTemplate(mapOf("label" to label))
+
     /** The heading over [kind]'s links in a popover, which is also the name of that kind. */
     fun group(kind: WorkflowCellKind): String = groups[kind] ?: kind.group
 
@@ -1173,6 +1180,8 @@ data class WorkflowCellWords(
                 keywordMine = t(HFRAG.wcKeywordMine, shipped.keywordMine),
                 keywordAny = t(HFRAG.wcKeywordAny, shipped.keywordAny),
                 notStarted = t(HFRAG.wcNotStarted, shipped.notStarted),
+                stepSatisfied = t(HFRAG.wcStepSatisfied, shipped.stepSatisfied),
+                nextStep = t(HFRAG.wcNextStep, shipped.nextStep),
             )
         }
     }

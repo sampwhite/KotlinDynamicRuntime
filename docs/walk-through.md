@@ -126,9 +126,9 @@ for:
 | Score | 4 |
 | Notes for the speaker | A clear story. Show one test as well. |
 
-Choose **Save the review**, and the first step is checked. Then choose the second step, **Accept the talk**, from the
-list beside the form. It asks you to read the review and accept the talk: choose its **Accept the talk** button, and
-confirm. An approval cannot be taken back, which is why it asks.
+Choose **Save the review**. The first step is checked, and says *Nothing more is needed on this step*. Then choose
+**Next: Accept the talk**, beside it, to go to the second step. It asks you to read the review and accept the talk:
+choose its **Accept the talk** button, and confirm. An approval cannot be taken back, which is why it asks.
 
 ### See the result as the speaker
 
