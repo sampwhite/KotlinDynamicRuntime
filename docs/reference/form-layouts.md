@@ -66,6 +66,7 @@ Each entry of `schemaFields` is about one field. The keys besides `field` are ea
 | `required` | `true` when this form asks for the field, though the schema may not require it. Checked when a workflow saves, never by a general edit of the data; only adds, so `false` is refused. |
 | `choices` | The choices this form offers, restated: which of the schema's choices, in what order, with the form's own copy for each. Each entry is described below. |
 | `lines` | How many lines a long text field's box starts with, from 1 to 40 (3 when unset). Only on a field the schema marks long text (`g-longText`). |
+| `entryLabel` | What the form heads each entry of a list with, such as `Co-speaker ${n}`, where `${n}` is the entry's number, counting from 1. Unset, the form says "Entry 1", "Entry 2", and so on. Only on a list of entries, not a list of choices. |
 | `$comment` | A note for whoever maintains the layout, never delivered to a page. |
 
 The codes a message under `errors` is keyed by, and the parameters each may use, are in
@@ -129,8 +130,9 @@ A layout's copy may hold two kinds of template, filled in at different times, an
   delivered, and shown as written if it does not resolve. Fragment files are described in [Copy](copy.md).
 - **`${…}`, on the page, as the form is drawn.** In a `label` or a `description`, it reads the data being
   entered: `${topic}`. In a `hint`, it reads the field's declared bounds, `${min}` and
-  `${max}`, as numbers, so a hint may compute with them. In a message under `errors`, it reads the
-  failure's parameters. The language is described in [Expressions](expressions.md).
+  `${max}`, as numbers, so a hint may compute with them. In an `entryLabel`, it reads the entry's
+  number, `${n}`, counting from 1. In a message under `errors`, it reads the failure's parameters.
+  The language is described in [Expressions](expressions.md).
 
 A pull is written with `%`, never `$`: a `${@t(…)}` in a layout is refused. A message under `errors` takes no
 `%{…}` at all, since it is filled in wherever the failure is shown.
@@ -169,9 +171,10 @@ those fields, which is not a fault.
 | `notAChoice` | A field entry's `choices` naming a value the schema does not offer. |
 | `requiredUnfillable` | A field entry's `required` on a field nobody at the form could always fill in: derived, or gated by `g-visibleWhen`. |
 | `linesNotLongText` | A field entry's `lines` on a field the schema does not mark long text. |
+| `entryLabelNotList` | A field entry's `entryLabel` on a field that is not a list of entries: not a list, or a list of choices. |
 | `malformedTemplate` | Copy whose `${…}` or `%{…}` template does not parse. |
 | `frontendPull` | A frontend `${@t(…)}` pull, where a layout pulls with the backend `%{@t(…)}`, or a pull where none is allowed. |
-| `unknownParam` | A template parameter its context does not provide: `${max}` on a field with no maximum. |
+| `unknownParam` | A template parameter its context does not provide: `${max}` on a field with no maximum, or anything but `${n}` in an `entryLabel`. |
 | `backendBlock` | A backend `%{…}` block in an error message, which delivery does not resolve. |
 | `badPullKey` | A backend pull whose key names no fragment file: neither `fileId.namespace.key`, nor `namespace.key` in a block with a `fragmentFileId`. |
 | `pullFileMissing` | A backend pull naming a fragment file that is not declared. |

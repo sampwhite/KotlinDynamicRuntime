@@ -415,6 +415,10 @@ fun confDemoBase(cxt: KdrCxtBase = LiteCxt(), client: String = ConfDemo.client, 
                 longText = true
                 visibleWhen = CFACTS.hasAdminLevel
             }
+            // What the form calls each co-speaker (issue #1714), in place of "Entry 1".
+            layout(comment = "Each co-speaker is headed by their number in the list.") {
+                field(ConfDemo.coSpeakers, entryLabel = $$"Co-speaker ${n}")
+            }
         }
         trait(ConfDemo.reviewEntry, ConfDemo.review, setOf(GedraDataType.formDoc), "The committee's review of the talk.") {
             title = "Committee review"
