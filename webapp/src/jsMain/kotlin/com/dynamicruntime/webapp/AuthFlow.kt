@@ -256,14 +256,26 @@ val AuthFlow = FC<AuthFlowProps> { props ->
         // code step so the choice is not lost when the email field locks. The name is asked of everyone -- a
         // person has a full name just as a business has a business name -- and the checkbox relabels the one
         // field rather than revealing a second, which is the rule the app displays by (UserProfile.displayName).
+        // The checkbox says what it does beside it, and a deployment leaves it off by emptying its label (issue #1699) --
+        // read from the copy alone, with no word of the app's in its place, so a deployment that leaves it off never
+        // shows it for the moment before the copy arrives.
         if (register) {
-            div {
-                className = ClassName("row")
-                Checkbox {
-                    checked = isEntity
-                    disabled = busy
-                    onChange = { event -> isEntity = event.target.checked as Boolean }
-                    +t("register", "isEntityLabel", "This is a business account")
+            val isEntityLabel = copy.opt("register", "isEntityLabel").orEmpty()
+            if (isEntityLabel.isNotBlank()) {
+                div {
+                    className = ClassName("row")
+                    Checkbox {
+                        checked = isEntity
+                        disabled = busy
+                        onChange = { event -> isEntity = event.target.checked as Boolean }
+                        +isEntityLabel
+                    }
+                }
+                t("register", "isEntityHelp", "").takeIf { it.isNotBlank() }?.let {
+                    p {
+                        className = ClassName("type-hint")
+                        +it
+                    }
                 }
             }
             textField(
