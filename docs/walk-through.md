@@ -3,7 +3,9 @@
      Its tables are what the reader types, and PublicWalkThroughTest (base/kdn) enters each one, through the same
      endpoints the pages use, so a label or a choice the demo renames fails the build. A table is marked on the line
      before it: in part 1, `kdr-walk: workflow=<id>` for a form of that workflow; in parts 2 and 3, a name for each step
-     (`kdr-walk: copy`, `kdr-walk: apiKey`, and so on), which the test lists. Part 3's `/kda/...` paths are the ones the test calls with an API key.
+     (`kdr-walk: copy`, `kdr-walk: apiKey`, and so on), which the test lists. Part 3's JSON blocks are marked by their
+     slot, and an entry of the later change by the change too (`kdr-walk: entry=kdr:workflowDef approval`), and the test
+     saves each. Part 3's `/kda/...` paths are the ones the test calls with an API key.
      `*your first name*` and `*an address of yours*` are placeholders the test fills in. -->
 
 # A walk-through
@@ -16,10 +18,12 @@ make is kept in a temporary database, which is cleared from time to time, so not
 long. On another site, what you make is kept, unless the site runs in memory, as a developer's own server often does:
 then it is lost when the server stops.
 
-Another site may also lack two things this page uses. Part 1 needs the conference demo to be offered for joining,
+Another site may also lack three things this page uses. Part 1 needs the conference demo to be offered for joining,
 which a test site does when it runs with the `reference` deployment flavor. The invitation in Part 2 reaches you only
-if the site sends its mail for real, where a developer's server usually keeps it instead. Everything else works on any
-site you can sign in to.
+if the site sends its mail for real, where a developer's server usually keeps it instead. The workflow assistant in
+Part 3 needs a key for Anthropic's API, and either an operator who switches it on for your client or a site that lets
+the clients its visitors make switch it on themselves, as this one does; without it, Part 3 has you make the same
+changes by hand. Everything else works on any site you can sign in to.
 
 ## Before you start
 
@@ -182,7 +186,7 @@ there. The client starts with two workflows, **New form** and **Form details**, 
 name it, and with a report, **Forms**, which lists them.
 
 Your client's home page has a **Getting started** checklist: the first things a client needs before its people use
-it, each checked off once it is done. This part does them, and more.
+it, each checked off once it is done. This part and the next check off most of them, and do more.
 
 ### Open its sandbox
 
@@ -396,60 +400,18 @@ the sandbox is not there: it belongs to the sandbox.
 
 ## Part 3: For developers
 
-![Part 3: API key, catalog, call it, editor or AI, workflow, and revoke](images/walk-part3.svg)
+![Part 3: JSON, assistant, try it, approval, publish, API key, a program, and revoke](images/walk-part3.svg)
 
-Everything you did in the pages, a program can do through the site's API, and every page you used is built on it. In
-this part you make an API key, find an endpoint in the catalog and call it with the key, and then build a workflow for
-your Book Club from its JSON: by hand in the bundle editor, or by having an AI assistant write it through the API.
+Every workflow is stored as JSON, and every page you used is built on the site's API. In this part you have the site's
+workflow assistant write the JSON for a workflow in your Book Club, and say what it does, before anything is saved. You
+try the workflow, then have the assistant add a step to it that only an administrator may take. Each change can be made
+by hand instead, from the JSON on this page. Last, you make an API key, and make a third change from a program.
 
-All of it happens in your sandbox. What you save there is a draft, and the forms made to try the workflow are the
+All of it is tried in your sandbox. What is saved there is a draft, and the forms made to try the workflow are the
 sandbox's, not your client's people's.
 
-On the reference site, everything here is temporary, like the rest of the site: your key, your client, and the
-workflow you build all go when the site's data is cleared.
-
-### Make an API key
-
-A key lets a program act as one of your users, without signing in. Choose **Open sandbox** in the bar, so that the bar
-shows **Book Club Sandbox**. Then open your [profile](/wa/profile), and under **API keys**:
-
-<!-- kdr-walk: apiKey -->
-| Field | What to enter |
-| --- | --- |
-| New key | Walk-through |
-| Access | Read-only, unchecked |
-| Lasts | 30 days |
-
-**Read-only** starts checked. Uncheck it, so that the key can write configuration, as an AI building the workflow
-below would. Choose **Create key**.
-
-The key is shown once, and never again: only a hash of it is kept. Choose **Copy**, and keep it somewhere you can paste
-it from for the rest of this part. The dialog also shows a `curl` command that calls the site with the key, with this
-site's address in it, which the steps below use. Choose **I have copied it**.
-
-The key acts as your administrator in the sandbox, which may change your client's configuration and publish it. So
-anybody holding the key can do the same until it is revoked: treat it as a password. The last step of this part
-revokes it.
-
-### Find an endpoint in the catalog
-
-Open **Endpoint catalog** from the menu. It lists the endpoints published for programs, among them the ones that read
-and write a client's forms, each with what it takes and what it answers. The key may call what you may, except what
-only a signed-in session may do, such as making more keys. Find the row
-
-<!-- kdr-walk: catalog -->
-| Method | Endpoint |
-| --- | --- |
-| GET | /gedra/*your sandbox's id*/formDocs |
-
-Your browser's find, looking for `formDocs`, is the quickest way to it. Your sandbox's id is your client's id followed
-by `:sandbox`, as **My client** shows it. The row says what the endpoint does: it lists the forms you may see. Choose
-it, and then **View output schema**, which shows the JSON it answers with, the fields of your own traits included.
-**Run** calls it as you.
-
-To call it with the key instead, take the dialog's `curl` command and replace its path, `/kda/auth/self/info`, with
-`/kda/gedra/` and your sandbox's id and `/formDocs`. The answer is the sandbox's forms, the one you made in part 2
-among them, as a program sees them.
+On the reference site, everything here is temporary, like the rest of the site: your client, the workflow, and the key
+all go when the site's data is cleared.
 
 ### The workflow as JSON
 
@@ -507,13 +469,39 @@ The workflow, an entry in the **Workflows** slot (`kdr:workflowDef`):
 
 It has one step, **Your review**, which collects the trait by its id, and a button that saves it.
 
-Build it one of the two ways below, not both. The second would be refused, since the trait's id and the workflow's
+Build it one of the two ways below, not both: the second would be refused, since the trait's id and the workflow's
 would already be taken.
 
-### Build it in the bundle editor
+### Ask the workflow assistant for it
 
-This way needs no key. Still in the sandbox, open **My client**, and under **Publishing**, choose **Open every
-bundle**. The page lists your client's bundles, and what you save on it is a draft that your sandbox runs.
+The workflow assistant is an AI that writes your client's configuration for you, as a draft in its sandbox. It is
+switched on from the client itself, so start as your administrator in Book Club, where the bar offers **Open
+sandbox**. Open **Workflow assistant** from the menu. If it is not on yet, the page says what is sent to Anthropic,
+whose AI it is, and offers **Switch on the assistant**: choose it, and **Switch on** to confirm. Your client's
+**Getting started** checklist has the same step.
+
+Under **Conversation**, type this, and choose **Send**:
+
+```text
+I want a workflow called "Review the book": after the club has read a book, a member records a rating from 1 to 5,
+which is required, and a few sentences on what they thought. Use a new trait with the id bookReview, whose fields are
+labeled "Rating" and "What I thought", and a workflow with the id reviewTheBook, with one step, "Your review", and a
+button, "Save the review". Before you save anything, show me the JSON you would write, and explain it.
+```
+
+The assistant looks at your client's configuration first. Then it answers with the JSON and what each part of it does,
+and offers the ways it can go on. Compare its JSON with the page's: it may differ in small ways, such as a description,
+and still be right. Then tell it to save it. Whatever it saves is a draft, which your sandbox runs at once and your
+client's people do not see until you publish. It is listed under **Drafts from this conversation**.
+
+If the site does not offer the assistant, the page says that an operator switches it on. Build the workflow by hand
+instead.
+
+### Or build it by hand
+
+This way needs no assistant. Choose **Open sandbox** in the bar, so that the bar shows **Book Club Sandbox**. Then open
+**My client**, and under **Publishing**, choose **Open every bundle**. The page lists your client's bundles, and what
+you save on it is a draft that your sandbox runs.
 
 1. Under **Bundles**, type `reviewTheBook` where it says **Name a new bundle**, and choose **Add bundle**.
 2. In the new bundle, choose **Traits (kdr:traitDef)** from **Add a slot…**. A new entry opens, with the field its
@@ -525,34 +513,14 @@ bundle**. The page lists your client's bundles, and what you save on it is a dra
 
 Each entry is checked as you type, and says **edited, not saved** once it passes. Choose **Show the call**, which
 shows the request that **Save** sends: a `POST` to `/kda/clientAdmin/config/bundle/patch` with both entries in it,
-and your client's id where the JSON says `@self`. A program holding a key could send the same request. Choose **Save**.
+and your client's id where the JSON says `@self`. A program holding a key could send the same request, as the
+assistant does for you. Choose **Save**.
 
-### Or have an AI build it
+### Try it
 
-An AI assistant learns the site's API from the site itself: its API guide, served as Markdown at `/st/api/doc/api-guide`,
-says what it needs to know, so the assistant needs no copy of the code, only your site's address and your key. Any
-assistant that can make web requests will do. Ask it for the workflow, along these lines, with your site's address,
-your sandbox's id, and your key put in:
-
-```text
-I have an API key for the sandbox <your sandbox's id> of my client on the KotlinDynamicRuntime site at
-<your site's address>. The key is <your key>. Start with the site's API guide, at
-<your site's address>/st/api/doc/api-guide. Then add a workflow to my client called "Review the book": after the club
-has read a book, a member records a rating from 1 to 5 and a few sentences on what they thought. Part 3 of the site's
-walk-through, at <your site's address>/st/api/doc/walk-through, shows it as JSON. Put it in a new bundle of its own,
-with one patch that adds each entry as new and asks for a reload, so that my sandbox runs it at once. Do not publish
-it. Try it by making a form in the sandbox and filling in the workflow.
-```
-
-The AI sends the request a save in the bundle editor sends, with the key, so what it writes is a draft too. Since
-the page's JSON is a known answer, you can compare the AI's work with it, or ask it for something more, such as a
-question asking whether the member would recommend the book. A change it makes later can be a patch of the one entry
-it changes, leaving the rest of the bundle as it is.
-
-### Try it, and publish it
-
-Open **Forms**, and in a form's **Workflows** column, choose **Review the book**, then **Start**.
-The form from part 2 will do, or one the AI made:
+In your sandbox, open **Forms** from the menu. If you came from the assistant, its **Try it in the sandbox** takes you
+into the sandbox first. In the **Workflows** column of the form you made in part 2, choose **Review the book**, then
+**Start**:
 
 <!-- kdr-walk: reviewForm -->
 | Field | What to enter |
@@ -560,27 +528,170 @@ The form from part 2 will do, or one the AI made:
 | Rating | 4 |
 | What I thought | A good read, slow to start. |
 
-Choose **Save the review**. If the workflow is not what you wanted, change its JSON in the bundle editor, or tell the
-AI what to change, and try it again.
+Choose **Save the review**. If the workflow is not what you wanted, tell the assistant what to change, or change its
+JSON in the bundle editor, and try it again.
 
-When it is right, open **My client**, and under **Publishing**, choose **Select all unpublished** and **Publish
-selected**, as in part 2.
+### Add an approval
+
+Once the review is saved, the workflow is done. The second change makes a review wait for an administrator to approve
+it. Open **Workflow assistant** again: it works from inside the sandbox too, and your conversation is where you left
+it. Type this, and choose **Send**:
+
+```text
+Add a second step to Review the book, "Approve the review", that only an administrator may take: a button, "Approve
+the review", which records that the review is approved, as the fact reviewApproved. Let an administrator approve their
+own review, so that I can try it alone. Show me the change first.
+```
+
+The assistant changes the workflow it wrote, rather than writing another, and declares the fact the approval records.
+Tell it to save the change, as before.
+
+By hand, the change is two entries. The fact, a new entry in the **Cfacts** slot (`kdr:cfactDef`), since a client
+declares a fact before its workflows name it:
+
+<!-- kdr-walk: entry=kdr:cfactDef approval -->
+```json
+{
+  "name": "reviewApproved",
+  "group": "bookClub",
+  "description": "True once an administrator has approved the review.",
+  "toFrontend": false
+}
+```
+
+And the workflow, as it reads with the second step:
+
+<!-- kdr-walk: entry=kdr:workflowDef approval -->
+```json
+{
+  "workflowId": "reviewTheBook",
+  "definition": {
+    "workflowId": "reviewTheBook",
+    "label": "Review the book",
+    "entry": "normal",
+    "tasks": [
+      {
+        "id": "review",
+        "label": "Your review",
+        "traits": [{"traitId": "bookReview", "required": true}],
+        "saves": [{"id": "saveReview", "label": "Save the review", "kind": "edit"}]
+      },
+      {
+        "id": "approve",
+        "label": "Approve the review",
+        "traits": [],
+        "saves": [],
+        "approval": {
+          "cfact": "reviewApproved",
+          "prompt": "Read the review, then approve it.",
+          "button": "Approve the review",
+          "approveWhen": "kdr:hasAdminLevel"
+        }
+      }
+    ]
+  }
+}
+```
+
+The new step collects nothing. Its `approval` is a button, which records who pressed it and when, and gives the form
+the fact `reviewApproved`. Its `approveWhen` says who may press it: `kdr:hasAdminLevel`, any administrator. Left out,
+it is a reviewer who does not own the form, so that nobody approves their own; this page lets you, since you are trying
+it alone.
+
+To make the change in the bundle editor, open the `reviewTheBook` bundle again. Choose **Cfacts (kdr:cfactDef)** from
+**Add a slot…**, and replace its new entry's text with the fact's JSON. Then replace the text of the workflow's entry
+with the workflow's new JSON, and choose **Save**.
+
+Now open your home page, in the sandbox. Your review waits on an administrator, so a **Waiting on you** card lists
+the form, at its **Approve the review** step. Choose it: the step shows the review above its button. Choose **Approve
+the review**, and **Approve the review** again to confirm, since an approval cannot be taken back. The step now says
+when it was approved.
+
+### Publish
+
+When the workflow is right, open **My client**, and under **Publishing**, choose **Select all unpublished** and
+**Publish selected**, as in part 2. The assistant's own page has no publish button, by design: its **Check impact and
+publish** brings you here.
+
+### From a program
+
+A key lets a program act as one of your users, without signing in. Still in the sandbox, open your
+[profile](/wa/profile), and under **API keys**:
+
+<!-- kdr-walk: apiKey -->
+| Field | What to enter |
+| --- | --- |
+| New key | Walk-through |
+| Access | Read-only, unchecked |
+| Lasts | 30 days |
+
+**Read-only** starts checked. Uncheck it, so that the key can write configuration, as the program below does. Choose
+**Create key**.
+
+The key is shown once, and never again: only a hash of it is kept. Choose **Copy**, and keep it somewhere you can paste
+it from for the rest of this part. The dialog also shows a `curl` command that calls the site with the key, with this
+site's address in it, which the steps below use. Choose **I have copied it**.
+
+The key acts as your administrator in the sandbox, which may change your client's configuration and publish it. So
+anybody holding the key can do the same until it is revoked: treat it as a password. The last step of this part
+revokes it.
+
+Open **Endpoint catalog** from the menu. It lists the endpoints published for programs, among them the ones that read
+and write a client's forms, each with what it takes and what it answers. The key may call what you may, except what
+only a signed-in session may do, such as making more keys. Find the row
+
+<!-- kdr-walk: catalog -->
+| Method | Endpoint |
+| --- | --- |
+| GET | /gedra/*your sandbox's id*/formDocs |
+
+Your browser's find, looking for `formDocs`, is the quickest way to it. Your sandbox's id is your client's id followed
+by `:sandbox`, as **My client** shows it. The row says what the endpoint does: it lists the forms you may see. Choose
+it, and then **View output schema**, which shows the JSON it answers with, the fields of your own traits included.
+**Run** calls it as you.
+
+To call it with the key instead, take the dialog's `curl` command and replace its path, `/kda/auth/self/info`, with
+`/kda/gedra/` and your sandbox's id and `/formDocs`. The answer is the sandbox's forms, with the review you saved, as a
+program sees them.
+
+**Optional: an AI outside the site.** Any AI assistant that can make web requests can change your client the same
+way, with your key. It learns the site's API from the site itself: the API guide, served as Markdown at
+`/st/api/doc/api-guide`, says what it needs to know, so it needs no copy of the code. Ask it for a third change, along
+these lines, with your site's address, your sandbox's id, and your key put in:
+
+```text
+I have an API key for the sandbox <your sandbox's id> of my client on the KotlinDynamicRuntime site at
+<your site's address>. The key is <your key>. Start with the site's API guide, at
+<your site's address>/st/api/doc/api-guide. My client has a workflow, "Review the book", whose trait bookReview holds a
+member's review. Add a yes-or-no field to that trait, labeled "Would you recommend it?", which is not required. Patch
+only that entry, and ask for a reload, so that my sandbox runs it at once. Do not publish it.
+```
+
+It sends the same kind of request a save in the bundle editor sends, with the key, so what it writes is a draft too.
+Open the review on your form in the sandbox again: it now asks **Would you recommend it?** under the rest. To keep it,
+publish it as before.
 
 ### Revoke the key
 
-If you gave the key to an AI, it is now in the session's transcript, so end the session. Either way, revoke the key:
+If you gave the key to an AI, it is now in that session's transcript, so end the session. Either way, revoke the key:
 still in the sandbox, open your [profile](/wa/profile), and under **API keys**, choose **Revoke** on **Walk-through**,
 and **Revoke** again to confirm. Any request made with it from now on is refused.
 
-Then go back to Book Club, and open a form in your client: the new workflow is in its **Workflows** column, for your
-client's people too. The forms made in the sandbox are not there: they stayed in the sandbox.
+Then go back to Book Club, and open a form in your client: **Review the book** is in its **Workflows** column, for
+your client's people too. The forms made in the sandbox are not there: they stayed in the sandbox.
 
 ### What you have seen
 
+- **An assistant that shows its work.** It wrote the workflow's JSON, said what each part does, and saved it as a
+  draft when you told it to. Its second change edited the workflow it had written.
+- **Configuration is data.** The workflow is JSON, stored and published as the workflows you made in the pages are,
+  and the same JSON can be written by the assistant, by hand in the bundle editor, or by a program.
+- **A step that waits on somebody.** The approval is a step only an administrator may take, and Home's **Waiting on
+  you** showed it to you. The review was saved before the step existed: a change to a workflow reaches the forms it
+  already has.
 - **One API for the pages and for programs.** The catalog documents the published endpoints, the forms' among them,
-  with what each takes and answers, and a key calls them as you.
-- **Configuration is data.** The workflow you saved, or the AI wrote, is JSON, stored and published as the workflows
-  you made in the pages are. The bundle editor's save is a call to the same API a program makes.
+  with what each takes and answers, and a key calls them as you. The bundle editor and the assistant save through the
+  same call a program makes.
 - **A key is yours, and narrower than you.** It acts as one of your users, never above it, and cannot sign in, make
   keys, or switch users. A key made in the sandbox stays in the sandbox.
 

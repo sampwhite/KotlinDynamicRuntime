@@ -73,7 +73,9 @@ import com.dynamicruntime.common.util.toOptStr
 import com.dynamicruntime.kdn.confdemo.ConfDemo
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldBeEmpty
+import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.collections.shouldContainAll
+import io.kotest.matchers.collections.shouldNotContain
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
@@ -101,12 +103,15 @@ import java.io.File
  * a new client starts with.
  *
  * Part 3, for developers, builds a workflow from the JSON the page shows (issue #1487), each entry marked on the line
- * before its block (`<!-- kdr-walk: entry=kdr:traitDef -->`), one of two ways. The bundle editor's way is followed
- * through the patch its save sends: the page's entries as new ones, in the portable form the page pastes them in, then
- * the form the page fills in. The AI's way makes the key in the sandbox as the page says, finds the endpoint the page
- * names in the catalog the key is shown, reads the sandbox's forms with it, and plays the AI by sending the editor's
- * patch with the key, as the parent's draft the sandbox runs, tried on a form that stays the sandbox's, published, and
- * seen by the client's people. The key is revoked and refused. Every `/kda/...` path part 3 names is one the key is shown.
+ * before its block (`<!-- kdr-walk: entry=kdr:traitDef -->`), and then changes it twice (issue #1747). The workflow
+ * assistant writes it on the reference site, and an AI cannot be followed here, so each change is followed through the
+ * patch the bundle editor's save sends, which is the page's other way and the request the assistant's write makes too:
+ * the page's entries as new ones, in the portable form the page pastes them in, then the form the page fills in; then
+ * the approval step (`entry=kdr:workflowDef approval`, with the fact it records), Waiting on you listing the review
+ * saved before it, and the approval. The program's way makes the key in the sandbox as the page says, finds the endpoint the
+ * page names in the catalog the key is shown, reads the sandbox's forms with it, and plays the outside AI by patching
+ * the trait with the field the page names, as the parent's draft the sandbox runs, published, and seen by the client's
+ * people. The key is revoked and refused. Every `/kda/...` path part 3 names is one the key is shown.
  *
  * Each part opens with its banner and closes with a rule (issue #1463), and each banner is named by its path in the
  * repository, which the app resolves to the image it serves from the same file.
@@ -119,10 +124,14 @@ class PublicWalkThroughTest : StringSpec({
     val cxt = TestInstances.reference("publicWalkThrough1429")
     val page = File(File("../..").canonicalFile, WalkThrough.sourcePath).readText()
     val tables = walkTables(page)
-    /** Part 3's JSON, each entry by its slot, as the reader pastes it: in portable form. */
+    /** Part 3's JSON, each entry by its marker -- its slot, and the change it belongs to -- as the reader pastes it. */
     val pageEntries = walkJsonEntries(page)
     val pageTrait = pageEntries.getValue(CCT.traitDef)
     val pageWorkflow = pageEntries.getValue(CCT.workflowDef)
+    // The second change (issue #1747): the fact the approval records, and the workflow with its approval step.
+    val approvalFact = pageEntries.getValue("${CCT.cfactDef} $approvalChange")
+    val approvalWorkflow = pageEntries.getValue("${CCT.workflowDef} $approvalChange")
+    val approvalTask = approvalWorkflow[CCT.definition].toJsonMapOrEmpty()[WFD.tasks].toJsonListOfMaps().last()
     val reviewWorkflow = pageWorkflow[CCT.workflowId].toOptStr().shouldNotBeNull()
     val reviewTask = pageWorkflow[CCT.definition].toJsonMapOrEmpty()[WFD.tasks].toJsonListOfMaps().single()
     val reviewSave = reviewTask[WFD.saves].toJsonListOfMaps().single()
@@ -439,10 +448,9 @@ class PublicWalkThroughTest : StringSpec({
     }
 
 
-    // Part 3 (issue #1429, phase 3): an API key made in the sandbox, the catalog, and an AI's workflow written through the
-    // API. The AI is played here by the bundle an assistant following docs/demo-client would write, and the form it makes
-    // to try it, which is enough to hold the page to what a sandbox key may do (issue #1453): read the catalog and the
-    // sandbox's forms, write a bundle as the parent's draft, try it on a form of the sandbox's own, and publish it.
+    // Part 3 (issue #1429, phase 3; reorganized in #1747): the workflow's JSON saved as the bundle editor saves it, its
+    // approval step added, and an API key made in the sandbox that reads the catalog and the sandbox's forms and makes the
+    // outside AI's change, as the parent's draft, then publishes it -- what a sandbox key may do (issue #1453).
 
     /**
      * Saves the page's two entries as new into its bundle, as the bundle editor's Save does and the page has the AI do:
@@ -458,7 +466,26 @@ class PublicWalkThroughTest : StringSpec({
         )
     }
 
-    /** Engages the page's workflow on the form [gid], and saves its one step as the page's review table fills it in. */
+    /**
+     * Saves the page's second change into its bundle, as the bundle editor's Save does: the fact, a new entry, and the
+     * workflow's entry replaced by the one with its approval step, the client reloaded.
+     */
+    fun patchApproval(by: TestUser): Map<String, Any?> {
+        val edits = listOf(
+            mapOf(CFEP.slot to CCT.cfactDef, GED.action to GedraEditAction.addOrReplace.name, GE.data to approvalFact, CFEP.expectNew to true),
+            mapOf(CFEP.slot to CCT.workflowDef, GED.action to GedraEditAction.addOrReplace.name, GE.data to approvalWorkflow),
+        )
+        return by.postData(
+            CFEP.bundlePatch,
+            mapOf(CFEP.configs to listOf(mapOf(CFEP.name to reviewBundle, CFEP.edits to edits)), CFEP.reloadField to true),
+        )
+    }
+
+    /** The ids of the forms Home's **Waiting on you** lists for [by]: the listing it reads, narrowed to [by]'s steps. */
+    fun waitingOn(by: TestUser): List<Any?> =
+        by.getItems(GEP.formDocs, mapOf(GDF.needsMe to true, EP.limit to 5)).map { it[GDF.gedraId] }
+
+    /** Engages the page's workflow on the form [gid], and saves its first step as the page's review table fills it in. */
     fun review(by: TestUser, gid: String) {
         by.postData(GEP.workflowEngage, mapOf(GDF.gedraId to gid, WFD.workflowId to reviewWorkflow))
         by.postData(
@@ -492,9 +519,31 @@ class PublicWalkThroughTest : StringSpec({
         val saved = founder.getItem(GEP.formDoc, mapOf(GDF.gedraId to formId))[GDF.entries].toJsonListOfMaps()
             .single { it[GE.traitId] == pageTrait[CCT.traitId] }[GE.data].toJsonMapOrEmpty()
         saved.values.map { it.toString() } shouldBe tables.getValue("reviewForm").map { it[1] }
+
+        // The second change only adds a step: the first is the one the page built, unchanged.
+        approvalWorkflow[CCT.workflowId] shouldBe reviewWorkflow
+        approvalWorkflow[CCT.definition].toJsonMapOrEmpty()[WFD.tasks].toJsonListOfMaps().first() shouldBe reviewTask
+        page shouldContain "**${approvalTask[WFD.label]}**"
+        page shouldContain "**${approvalTask[WFD.approval].toJsonMapOrEmpty()[WFD.button]}**"
+        waitingOn(founder) shouldNotContain formId
+        patchApproval(founder)
+        // The review saved before the change now waits on an administrator, the founder among them, though they own the
+        // form: the change recalculated the sandbox's forms (issue #1741), and Home's Waiting on you lists it, opening
+        // at the new step.
+        waitingOn(founder) shouldContain formId
+        val step = founder.getData(GEP.workflowView, mapOf(WFD.workflowId to reviewWorkflow, GDF.gedraId to formId))
+        step[WVF.focusTask] shouldBe approvalTask[WFD.id]
+        step[WFD.tasks].toJsonListOfMaps().single { it[WFD.id] == approvalTask[WFD.id] }[WVF.canApprove] shouldBe true
+        founder.postData(
+            GEP.workflowApprove,
+            mapOf(GDF.gedraId to formId, GDF.workflowId to reviewWorkflow, GDF.taskId to approvalTask[WFD.id]),
+        )
+        waitingOn(founder) shouldNotContain formId
+        founder.getData(GEP.workflowView, mapOf(WFD.workflowId to reviewWorkflow, GDF.gedraId to formId))[WFD.tasks]
+            .toJsonListOfMaps().single { it[WFD.id] == approvalTask[WFD.id] }[WVF.approval].toJsonMapOrEmpty()[WVF.approved] shouldBe true
     }
 
-    "part 3: a sandbox key made as the page says builds and publishes a workflow, its trial form stays in the sandbox" {
+    "part 3: a sandbox key made as the page says makes the outside AI's change, and publishes it; the trial form stays" {
         val founder = TestUser.create(cxt, "developer@walk1429.test")
         val client = founder.postData(AEP.createOwnClient, mapOf(CLD.name to cell("client", "Name")))[CLD.client].toOptStr()
             .shouldNotBeNull()
@@ -502,6 +551,11 @@ class PublicWalkThroughTest : StringSpec({
         founder.postData(AEP.openSandbox, emptyMap())
         val sandbox = sandboxOf(client)
         val formId = createForm(founder, "sandboxForm")
+        // The workflow as the page's earlier steps leave it, built and tried in the sandbox, then published.
+        patchPageEntries(founder)
+        review(founder, formId)
+        founder.postData(CFEP.bundlePublish, mapOf(CFEP.names to listOf(reviewBundle), CFEP.reloadField to true))
+        WorkflowService.get(cxt).forClient(client).workflow(reviewWorkflow).shouldNotBeNull()
 
         // The key, made in the sandbox: Read-only unchecked, so a full key, lasting the days the page picks.
         cell("apiKey", "Access") shouldBe "Read-only, unchecked"
@@ -531,36 +585,50 @@ class PublicWalkThroughTest : StringSpec({
         val named = kdaPathRegex.findAll(page.substringAfter(part3Heading)).map { it.groupValues[1] }
             .filterNot { it.startsWith("/gedra") }.toSet()
         named shouldBe setOf(AEP.selfInfo, CFEP.bundlePatch)
-        // The bundle editor's save, which the page has the AI send with the key: the key is shown it.
+        // The bundle editor's save, which the outside AI sends with the key: the key is shown it.
         (HttpMethod.POST.name to CFEP.bundlePatch) shouldBe endpoints.single { it.second == CFEP.bundlePatch }
         program.sendGetRequest(AEP.selfInfo).rptStatusCode shouldBe 200
         keyed.getItems(formDocs).map { it[GDF.gedraId] } shouldBe listOf(formId)
 
-        // The AI's bundle: the page's trait and workflow, sent with the key as the bundle editor's save sends them, as
-        // the parent's draft, which the sandbox runs once reloaded, as the prompt asks.
-        val written = patchPageEntries(keyed)[CFEP.configs].toJsonListOfMaps().single()
+        // The outside AI's change, as the prompt asks: the trait's entry alone, patched with the key, the field it asks
+        // for added, not required, and a reload -- the parent's draft, which the sandbox runs at once.
+        page shouldContain "labeled \"$recommendLabel\""
+        val recommending = pageTrait + (CCT.dataSchema to pageTrait[CCT.dataSchema].toJsonMapOrEmpty().let { schema ->
+            schema + (SCH.properties to schema[SCH.properties].toJsonMapOrEmpty() +
+                ("recommend" to mapOf(SCH.title to recommendLabel, SCH.type to SCT.boolean)))
+        })
+        val written = keyed.postData(
+            CFEP.bundlePatch,
+            mapOf(
+                CFEP.configs to listOf(
+                    mapOf(
+                        CFEP.name to reviewBundle,
+                        CFEP.edits to listOf(
+                            mapOf(CFEP.slot to CCT.traitDef, GED.action to GedraEditAction.addOrReplace.name, GE.data to recommending),
+                        ),
+                    ),
+                ),
+                CFEP.reloadField to true,
+            ),
+        )[CFEP.configs].toJsonListOfMaps().single()
         written[CFEP.client] shouldBe client
         written[CFEP.published] shouldBe false
-        WorkflowService.get(cxt).forClient(sandbox).workflow(reviewWorkflow).shouldNotBeNull()
-        WorkflowService.get(cxt).forClient(client).workflow(reviewWorkflow) shouldBe null
+        // The review on the form in the sandbox now asks it.
+        shownFields(founder, reviewWorkflow, formId).keys shouldContain recommendLabel
 
-        // The AI tries it, as the prompt asks, on a form of its own: the sandbox's.
-        val tried = createForm(keyed, "sandboxForm")
-        review(keyed, tried)
-        GedraId.parse(tried).client shouldBe sandbox
-
-        // Published from the sandbox, then the key revoked there, as the page's last step does: it is refused.
+        // Published, as the page says to keep it, then the key revoked there, as the page's last step does: it is refused.
         keyed.postData(CFEP.bundlePublish, mapOf(CFEP.names to listOf(reviewBundle), CFEP.reloadField to true))
-        WorkflowService.get(cxt).forClient(client).workflow(reviewWorkflow).shouldNotBeNull()
         founder.postData(AKEY.selfRevoke, mapOf(AKEY.keyId to made[AKEY.key].toJsonMapOrEmpty()[AKEY.keyId]))
         program.sendGetRequest(AEP.selfInfo).rptStatusCode shouldBe 401
 
-        // Back in the client: the workflow is there for its people too, and the AI's trial form is not.
+        // Back in the client: the workflow is there for its people too, with the new field, and the sandbox's form is not.
         founder.postData(AEP.leaveSandbox, mapOf(AFLD.userId to administrator))
         founder.selfClient() shouldBe client
-        founder.getItems(GEP.formDocs, mapOf(EP.limit to 500)).map { it[GDF.gedraId] }.contains(tried) shouldBe false
+        founder.getItems(GEP.formDocs, mapOf(EP.limit to 500)).map { it[GDF.gedraId] }.contains(formId) shouldBe false
+        GedraId.parse(formId).client shouldBe sandbox
         val member = TestUser.create(cxt, "member@walk1429.test", userClient = client)
         member.getData(GEP.workflowView, mapOf(WFD.workflowId to reviewWorkflow))[WVF.found] shouldBe true
+        shownFields(member, reviewWorkflow, null).keys shouldContain recommendLabel
     }
 
 })
@@ -590,8 +658,14 @@ private const val sandboxIdPlaceholder = "*your sandbox's id*"
 /** The bundle part 3 has the reader add, in the bundle editor or by an AI's write. */
 private const val reviewBundle = "reviewTheBook"
 
-/** The marker of a JSON block holding one entry: the slot it goes in follows. */
+/** The field part 3's outside AI is asked to add to the review's trait (issue #1747). */
+private const val recommendLabel = "Would you recommend it?"
+
+/** The marker of a JSON block holding one entry: the slot it goes in follows, and the change it belongs to after a space. */
 private const val entryMarkerPrefix = "entry="
+
+/** The change part 3's second entries belong to: the approval step (issue #1747). */
+private const val approvalChange = "approval"
 
 /** The page's placeholder for the address the reader invites. */
 private const val addressPlaceholder = "*an address of yours*"
@@ -644,7 +718,7 @@ private fun walkTables(page: String): Map<String, List<List<String>>> {
 
 /**
  * Each marked JSON block of [page] (`<!-- kdr-walk: entry=kdr:traitDef -->` on the line before its fence), parsed, by
- * the slot its marker names.
+ * what its marker names: the slot, and for an entry of a later change, the change after a space (`kdr:cfactDef approval`).
  */
 private fun walkJsonEntries(page: String): Map<String, Map<String, Any?>> {
     val lines = page.lines()

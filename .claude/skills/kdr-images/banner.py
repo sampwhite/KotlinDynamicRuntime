@@ -72,8 +72,8 @@ PARTS = [
   'An application built on KotlinDynamicRuntime: configure its forms and workflows, try them in a sandbox, publish, and people fill in forms, review them, approve them, and read the report.',
   [('braces','Configure'),('sandbox','Try it'),('publish','Publish'),('checklist','Fill in'),('people','Review'),('check','Approve'),('bars','Report')]),
  ('walk-part3.svg', 'Part 3', 'For developers', 'amber', WALK_ABOUT,
-  'Part 3 of the walk-through: make an API key, find an endpoint in the catalog, call it, build a workflow from its JSON in the bundle editor or with an AI assistant, and revoke the key.',
-  [('key','API key'),('braces','Catalog'),('terminal','Call it'),('spark','Editor or AI'),('flow','Workflow'),('revoke','Revoke')]),
+  'Part 3 of the walk-through: a workflow as JSON, written by the workflow assistant or by hand, tried, given an approval step, and published; then an API key, a change from a program, and the key revoked.',
+  [('braces','JSON'),('spark','Assistant'),('flow','Try it'),('check','Approval'),('publish','Publish'),('key','API key'),('terminal','Program'),('revoke','Revoke')]),
 ]
 
 # The layout: a 960x160 strip, the steps spread evenly 90 in from each side, 26-radius circles, 13px labels.
