@@ -337,7 +337,7 @@ class DesignViewTest {
 
     @Test
     fun aBlankHintIsTheRangeTheBoundsGiveOrNone() {
-        assertEquals("range: 1 to 200", fallback(SL.hint, "attendees").text)
+        assertEquals("From 1 to 200", fallback(SL.hint, "attendees").text)
         assertEquals("Blank: forms show the field's range.", fallback(SL.hint, "attendees").note)
         assertNull(fallback(SL.hint, "phone").text)
         assertEquals("Blank: forms show no hint.", fallback(SL.hint, "phone").note)

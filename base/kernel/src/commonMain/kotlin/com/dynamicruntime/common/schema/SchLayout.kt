@@ -413,7 +413,7 @@ object SL {
         field to "The property of the type this entry is about. Required, and one the type declares.",
         label to "The field's label on the form, in place of the schema's `title`.",
         description to "The field's description on the form, in place of the schema's `description`.",
-        hint to "The hint under the field, in place of the one the form derives from its bounds (`range: 1 to 10`). " +
+        hint to "The hint under the field, in place of the one the form derives from its bounds (\"From 1 to 10\"). " +
             "May use `\${min}` and `\${max}`, its declared bounds.",
         errors to "The form's message for a failure against the field, keyed by its code (and `default` for any " +
             "other), in place of the built-in wording and the schema's own `g-errors`.",

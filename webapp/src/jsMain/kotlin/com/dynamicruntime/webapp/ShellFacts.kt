@@ -60,6 +60,8 @@ data class ShellFacts(
      * says to start a form in it, so the page and the list's link say it alike. As shipped until the copy arrives.
      */
     val workflowWords: WorkflowCellWords = WorkflowCellWords(),
+    /** The words of the line under a form's field saying its bounds (issue #1693), from the shell's copy. As shipped until it arrives. */
+    val fieldBoundWords: FieldBoundWords = FieldBoundWords(),
 ) {
     /** Whether these are [userId]'s facts, told by the shell: not before it has been, nor another user's (issue #1479). */
     fun describes(userId: Long): Boolean = this.userId == userId
@@ -113,6 +115,7 @@ fun shellFactsOf(config: HomeConfig, shellCopy: Copy? = null): ShellFacts = Shel
     whatIsThisLink = shellCopy?.opt(HFRAG.whatIsThisNs, HFRAG.whatIsThisLink)?.ifBlank { null },
     whatIsThisHide = shellCopy?.opt(HFRAG.whatIsThisNs, HFRAG.whatIsThisHide)?.ifBlank { null },
     workflowWords = shellCopy?.let { WorkflowCellWords.of(it) } ?: WorkflowCellWords(),
+    fieldBoundWords = shellCopy?.let { FieldBoundWords.of(it) } ?: FieldBoundWords(),
 )
 
 /**

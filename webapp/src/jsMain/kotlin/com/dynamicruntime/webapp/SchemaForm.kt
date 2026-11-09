@@ -27,7 +27,6 @@ import com.dynamicruntime.common.schema.isPathAtOrBelow
 import com.dynamicruntime.common.schema.orderedFieldNames
 import com.dynamicruntime.common.util.analyzeTemplate
 import com.dynamicruntime.common.util.evalTemplate
-import com.dynamicruntime.common.util.fmtD
 import com.dynamicruntime.common.util.toJsonStr
 import com.dynamicruntime.common.util.toOptStr
 import kotlinx.browser.document
@@ -1806,11 +1805,16 @@ private val FieldDescription = FC<FieldDescriptionProps> { props ->
     }
 }
 
-/** A short label of the expected value shape, used as an empty text widget's placeholder. */
-internal fun typeHint(vt: SchType): String = when (vt.jsonType) {
-    SCT.string if isBinaryFormat(vt.format) -> "file"
-    SCT.string if isDateFormat(vt.format) -> vt.format ?: SCT.string
-    else -> vt.jsonType ?: "value"
+/**
+ * An empty text widget's placeholder: the shape a value must take where a person could not guess it -- a date's format,
+ * or `file` -- and none otherwise (issue #1693). A plain string or number says nothing, since its type's name reads as a
+ * program's output to someone filling in a form; its bounds are said in words beneath it ([boundHintText]).
+ */
+internal fun typeHint(vt: SchType): String? = when {
+    vt.jsonType != SCT.string -> null
+    isBinaryFormat(vt.format) -> "file"
+    isDateFormat(vt.format) -> vt.format
+    else -> null
 }
 
 /**
@@ -1846,56 +1850,4 @@ internal fun jsToList(v: dynamic): List<Any?> {
     val out = ArrayList<Any?>(n)
     for (i in 0 until n) out.add(v[i])
     return out
-}
-
-
-
-/**
- * A field's declared bounds, stated the way the outline already states a choice field's options — the range
- * is part of what the shape *is*, and reading it here beats discovering it by being rejected (issue #203).
- * Silent when the field declares neither end.
- */
-internal fun ChildrenBuilder.boundHint(vt: SchType, override: String? = null) {
-    // A layout `hint` (issue #587) replaces the derived range wholesale -- it was resolved against this field's
-    // `${'$'}{min}` / `${'$'}{max}`, so it says what the author wanted in place of "range: X to Y". A blank override is
-    // treated as "no hint" so a layout can suppress the derived one by setting it empty.
-    if (override != null) {
-        if (override.isNotBlank()) {
-            p {
-                className = ClassName("type-hint")
-                +override
-            }
-        }
-        return
-    }
-    val text = boundHintText(vt) ?: return
-    p {
-        className = ClassName("type-hint")
-        +text
-    }
-}
-
-/**
- * The hint a field's declared bounds give it -- "range: 1 to 200", "characters: 3 or more" -- or null when it declares
- * neither end. What a form shows beneath the field when no layout `hint` replaces it. Pure.
- */
-fun boundHintText(vt: SchType): String? {
-    val min = vt.minBound
-    val max = vt.maxBound
-    if (min == null && max == null) return null
-    val what = when (vt.jsonType) {
-        SCT.string -> "characters"
-        SCT.array -> "items"
-        SCT.kObject -> "properties"
-        else -> null
-    }
-    // An exclusive end (issue #823) does not admit the bound itself, so it is said differently.
-    val range = when {
-        min != null && max != null ->
-            "${min.fmtD()}${if (vt.minExclusive) " (exclusive)" else ""} to " +
-                "${max.fmtD()}${if (vt.maxExclusive) " (exclusive)" else ""}"
-        min != null -> if (vt.minExclusive) "more than ${min.fmtD()}" else "${min.fmtD()} or more"
-        else -> if (vt.maxExclusive) "less than ${max!!.fmtD()}" else "${max!!.fmtD()} or less"
-    }
-    return if (what == null) "range: $range" else "$what: $range"
 }

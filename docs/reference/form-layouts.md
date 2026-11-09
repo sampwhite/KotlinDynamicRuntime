@@ -60,7 +60,7 @@ Each entry of `schemaFields` is about one field. The keys besides `field` are ea
 | `field` | The property of the type this entry is about. Required, and one the type declares. |
 | `label` | The field's label on the form, in place of the schema's `title`. |
 | `description` | The field's description on the form, in place of the schema's `description`. |
-| `hint` | The hint under the field, in place of the one the form derives from its bounds (`range: 1 to 10`). May use `${min}` and `${max}`, its declared bounds. |
+| `hint` | The hint under the field, in place of the one the form derives from its bounds ("From 1 to 10"). May use `${min}` and `${max}`, its declared bounds. |
 | `errors` | The form's message for a failure against the field, keyed by its code (and `default` for any other), in place of the built-in wording and the schema's own `g-errors`. |
 | `defaultMode` | How the form presents a value supplied for the field that nobody entered, such as a default from the caller's account: one of the default-value options below. Unset is `filled`. |
 | `required` | `true` when this form asks for the field, though the schema may not require it. Checked when a workflow saves, never by a general edit of the data; only adds, so `false` is refused. |
