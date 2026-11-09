@@ -171,7 +171,8 @@ none of its own.
   to where it is done: the client page's Forms and data panel, Users, or New form. The steps wait for the assistant's
   status where the menu offers it, so the list never grows a step after it is drawn. The card draws while a step is
   left; once every one is done, or **Hide this checklist** is pressed, it is put away in this browser for good
-  (`checklistHiddenKey`, per client, read once per client) and Home stops reading it.
+  (`checklistHiddenKey`, per client, read once per client) and Home stops reading it. The client page opens on the same
+  steps for the same person (issue #1700, the Clients page's file).
 - **Core's other cards** are shortcuts: **Your client** for an administrator of one client (My client, Users, Reports),
   **Clients and customers** for every client's administrator, **Your client's forms** for an editor, and
   **Operating this deployment** for a deployment operator.

@@ -1,5 +1,6 @@
 package com.dynamicruntime.webapp
 
+import com.dynamicruntime.common.assistant.ASST
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.gedra.CLD
 import com.dynamicruntime.common.gedra.ClientPresentationFields
@@ -43,6 +44,7 @@ import react.dom.html.ReactHTML.thead
 import react.dom.html.ReactHTML.tr
 import react.dom.html.ReactHTML.ul
 import react.useEffect
+import react.useMemo
 import react.useRef
 import react.useState
 import web.cssom.ClassName
@@ -253,6 +255,16 @@ val ClientsPage = FC<Props> {
         }
     }
 
+    // A self-serve client opens on what to do next (issue #1700): its checklist, read as Home's card reads it, with the
+    // workflow assistant's step where the menu offers the assistant. Not read once this browser put the checklist away.
+    val nextStepsWanted = openId != null && across == false && clientOpensOnNextSteps(openId, acrossClients = false)
+    val checklistOwner = openId?.let { sandboxParentOf(it) ?: it }
+    val checklistHidden = useMemo(checklistOwner) { checklistOwner != null && checklistHiddenHere(checklistOwner) }
+    val assistantOffered = config?.menu.orEmpty().any { it.id == ASST.menuItem }
+    val wantsChecklist = nextStepsWanted && !checklistHidden
+    val assistantView = useAssistantCardView(emptyList(), alsoWanted = wantsChecklist && assistantOffered)
+    val nextSteps = useClientChecklist(wantsChecklist)?.let { checklistSteps(it, assistantOffered, assistantView) }
+
     val current = config
     when {
         refusal != null -> deniedCard(refusal!!)
@@ -266,7 +278,7 @@ val ClientsPage = FC<Props> {
         openId != null -> clientDetail(
             openId, rows?.firstOrNull { it.clientId == openId }, definition, storedConfigs,
             detailError, detailNote, storedError, overrides, overridesError, overridesRefused, current.canSeeAllClients,
-            inPlace, pageCopy, onChanged = bump,
+            inPlace, pageCopy, nextSteps.takeIf { nextStepsWanted }, onChanged = bump,
         )
         // The view across clients, and the listing, are the allClients administrator's: a client's own
         // administrator was shown their client above (issue #1082).
@@ -304,6 +316,12 @@ private fun ChildrenBuilder.clientDetail(
     inPlace: Boolean,
     /** The page's copy (issue #1337), whose explanations the sections' headings offer. */
     pageCopy: Copy,
+    /**
+     * For a self-serve client shown to its own administrator (issue #1700, [clientOpensOnNextSteps]), its checklist's
+     * steps, once read; null for any other client, or before the read answers. The page opens on those left, and folds
+     * what the platform sets under More options.
+     */
+    nextSteps: List<ChecklistStep>?,
     /** What a copy edit calls once it is live (issue #918): the page re-reads, and so does the shell. */
     onChanged: () -> Unit,
 ) {
@@ -321,8 +339,13 @@ private fun ChildrenBuilder.clientDetail(
         "${it.message} ${it.degradedTo}".trim() + (if (it.origin.isEmpty()) "" else " (${originWord(it.origin)})")
     }
         ?: row?.issues.orEmpty()
+    // A self-serve client, to its own administrator (issue #1700): the page opens on what is left to do, while anything
+    // is, and what the platform sets -- which they did not choose and cannot change -- waits under More options.
+    val selfServe = clientOpensOnNextSteps(clientId, acrossClients)
+    val stepsLeft = nextSteps?.takeIf { steps -> steps.any { !it.done } }
     // The panels drawn, in their order (issue #1397): what the section links under the header lead to.
     val panels = buildList {
+        if (stepsLeft != null) add(panelGettingStarted to "Getting started")
         add(panelDefinition to "Definition")
         if (workflowsShown) add(panelFormsData to "Forms and data")
         if (!overridesRefused) add(panelCopy to "Copy")
@@ -403,6 +426,15 @@ private fun ChildrenBuilder.clientDetail(
                 panelLinks(panels)
             }
         }
+        stepsLeft?.let { steps ->
+            panel(panelGettingStarted, "Getting started") {
+                p {
+                    className = ClassName("subtitle")
+                    +"A few steps make your client ready for the people who will use it. Each is checked off once it is done."
+                }
+                clientNextStepsBody(clientNextSteps(steps, inSandbox = sandboxParentOf(clientId) != null, formsDataShown = workflowsShown))
+            }
+        }
         panel(panelDefinition, "Definition", "") {
             // Editing the definition (issue #1026): the presentation fields of a client defined in stored configuration.
             def?.stored?.let { stored ->
@@ -444,23 +476,15 @@ private fun ChildrenBuilder.clientDetail(
                     +"Loading…"
                 }
             }
-            div {
-                className = ClassName("client-def-groups")
-                for (group in clientSummaryGroups(clientId, row, def, acrossClients, traitsShownBelow = configEditable)) {
-                    div {
-                        key = group.heading.unsafeCast<Key>()
-                        className = ClassName("client-def-group")
-                        WhatIsThis {
-                            heading = group.heading
-                            headingLevel = 3
-                            text = pageCopy.explanation(group.explanationNs)
-                        }
-                        for ((label, value) in group.rows) {
-                            // The customer row opens the customer's page where the caller may (issue #1114).
-                            val href = clientSummaryHref(label, row, acrossClients, def?.info?.get(CLD.customerId).toOptStr())
-                            if (href == null) readOnlyField(label, value) else linkedField(label, value, href)
-                        }
-                    }
+            val groups = clientSummaryGroups(clientId, row, def, acrossClients, traitsShownBelow = configEditable)
+            val (shown, folded) = if (selfServe) groups.partition { it.heading !in platformSetGroups } else groups to emptyList()
+            summaryGroups(shown, row, def, acrossClients, pageCopy)
+            if (folded.isNotEmpty()) {
+                MoreOptions {
+                    key = "platform".unsafeCast<Key>()
+                    recordKey = clientId
+                    inForce = emptyList()
+                    summaryGroups(folded, row, def, acrossClients, pageCopy)
                 }
             }
         }
@@ -696,7 +720,43 @@ private fun ChildrenBuilder.clientDetail(
     }
 }
 
+/**
+ * The definition's groups a self-serve client's administrator finds under More options (issue #1700): what the platform
+ * sets, and where the client runs, which they did not choose and cannot change.
+ */
+private val platformSetGroups = setOf(ClientPresentationFields.Section.platform.heading, runsGroupHeading)
+
+/** The definition's read-only rows as [groups] (issue #1397), side by side where there is room. */
+private fun ChildrenBuilder.summaryGroups(
+    groups: List<SummaryGroup>,
+    row: ClientOverview?,
+    def: ClientDefinitionView?,
+    acrossClients: Boolean,
+    pageCopy: Copy,
+) {
+    div {
+        className = ClassName("client-def-groups")
+        for (group in groups) {
+            div {
+                key = group.heading.unsafeCast<Key>()
+                className = ClassName("client-def-group")
+                WhatIsThis {
+                    heading = group.heading
+                    headingLevel = 3
+                    text = pageCopy.explanation(group.explanationNs)
+                }
+                for ((label, value) in group.rows) {
+                    // The customer row opens the customer's page where the caller may (issue #1114).
+                    val href = clientSummaryHref(label, row, acrossClients, def?.info?.get(CLD.customerId).toOptStr())
+                    if (href == null) readOnlyField(label, value) else linkedField(label, value, href)
+                }
+            }
+        }
+    }
+}
+
 /** The client page's panels' element ids (issue #1397), which its section links lead to. */
+private const val panelGettingStarted = "client-getting-started"
 private const val panelDefinition = "client-definition"
 /** Public, unlike its neighbors: Home's new client checklist leads to it for its workflow steps (issue #1639). */
 const val panelFormsData = "client-forms-data"

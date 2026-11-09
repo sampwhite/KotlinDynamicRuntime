@@ -88,6 +88,14 @@ The page has a header, and then panels: each a keyed `section` (the shared `pane
      nothing too (issue #1657), since a client of code changes its code's bundles there.
   6. **Menu**: closed (`Disclosure`), its editor read only once opened. By default it lists only the items a client's people may be offered (`menuItemsForPeople`). It hides those shipped for the deployment's own people, which the items listing marks `deploymentOnly` from `MenuAudience.deployment`.
   7. **Retirement**: last, as a danger zone.
+- **A self-serve client opens on what to do next** (issue #1700, `clientOpensOnNextSteps`): for its own administrator,
+  in the client or its sandbox, a **Getting started** panel comes first while any step is left -- Home's checklist
+  (`/clientAdmin/client/checklist`, `checklistSteps`, the assistant's step included where the menu offers it), not read
+  once this browser put it away. Each step leads to the panel of the page that does it (`clientNextSteps`: the workflow
+  steps scroll to Forms and data) or to its page; from the sandbox, inviting someone and a first form say they are done
+  in the client itself rather than lead to the sandbox's users and forms. The definition's **Platform** and **Where it
+  runs** groups, which such a person did not choose and cannot change, wait under a closed **More options**. A platform
+  operator, who sees across clients, keeps the page as it is.
 - **What is not repeated.** The definition does not repeat what the page shows elsewhere: the counts are links in the header, the load is a chip, and the workflows have a panel. The traits and the listing columns are listed in the definition only where their sections are not drawn.
 - **Explanations.** Each panel and each definition group has a "What is this?" from the `clients` file (`PFRAG.clientsExplained`).
 - **Every child of the card is keyed.** A section keeps its state by what it is, so issues appearing or clearing do not remake the editors below.
