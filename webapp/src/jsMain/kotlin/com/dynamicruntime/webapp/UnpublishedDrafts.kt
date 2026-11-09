@@ -48,11 +48,11 @@ fun draftsPublishRoute(read: DraftsRead): List<Pair<String, String>> = listOf(
 
 /**
  * The client's unpublished drafts, for Home's card (issue #1638), or null while they are read, when they cannot be, or
- * when no card in [cards] asks for them -- then nothing is read ([useCardRead]). Read again on every refresh, so a
- * publish made elsewhere takes the card away.
+ * when no card in [cards] asks for them -- then nothing is read ([useCardRead], which says what [decidedAt] is). Read
+ * again on every refresh, so a publish made elsewhere takes the card away.
  */
-fun useUnpublishedDrafts(cards: List<HomeCard>): DraftsRead? =
-    useCardRead(cards.any { it.kind == HCARD.kindUnpublishedDrafts }, null, "the unpublished drafts") {
+fun useUnpublishedDrafts(cards: List<HomeCard>, decidedAt: Int): DraftsRead? =
+    useCardRead(cards.any { it.kind == HCARD.kindUnpublishedDrafts }, decidedAt, null, "the unpublished drafts") {
         parseDraftsRead(Http.getApi(CFEP.drafts)[EP.item].toJsonMapOrEmpty())
     }
 

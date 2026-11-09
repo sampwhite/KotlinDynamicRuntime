@@ -164,15 +164,23 @@ class HomeLiveReads(
  * The checklist is put away in this browser once it is hidden or every step is done, and then is not read at all; what
  * this browser remembers is read once per client, not on every draw. Its steps wait for the assistant's status where the
  * menu offers the assistant, so the list never grows a step after it is drawn, and never looks done before it is.
+ *
+ * [decidedAt] is the refresh generation Home's config, which holds [cards], was read at ([useCardRead]).
  */
-fun useHomeLiveReads(cards: List<HomeCard>, waitingClient: String?, assistantOffered: Boolean, ownClient: String?): HomeLiveReads {
+fun useHomeLiveReads(
+    cards: List<HomeCard>,
+    decidedAt: Int,
+    waitingClient: String?,
+    assistantOffered: Boolean,
+    ownClient: String?,
+): HomeLiveReads {
     val hiddenBefore = useMemo(ownClient) { ownClient != null && checklistHiddenHere(ownClient) }
     // What this browser put away since Home was drawn, beside what it remembers from before: a hide redraws at once.
     var hiddenNow by useState(emptySet<String>())
     val checklistHidden = ownClient == null || hiddenBefore || ownClient in hiddenNow
     val wantsChecklist = !checklistHidden && cards.any { it.kind == HCARD.kindNewClientChecklist }
-    val assistantView = useAssistantCardView(cards, alsoWanted = wantsChecklist && assistantOffered)
-    val checklistRead = useClientChecklist(wantsChecklist)
+    val assistantView = useAssistantCardView(cards, decidedAt, alsoWanted = wantsChecklist && assistantOffered)
+    val checklistRead = useClientChecklist(wantsChecklist, decidedAt)
     val checklist = checklistRead?.let { checklistSteps(it, assistantOffered, assistantView) }.orEmpty()
     fun putAway() {
         if (ownClient == null) return
@@ -183,9 +191,9 @@ fun useHomeLiveReads(cards: List<HomeCard>, waitingClient: String?, assistantOff
     useEffect(allDone, ownClient) { if (allDone) putAway() }
     return HomeLiveReads(
         assistantView = assistantView,
-        waiting = useWaitingOnYou(cards, waitingClient),
+        waiting = useWaitingOnYou(cards, decidedAt, waitingClient),
         waitingClient = waitingClient,
-        drafts = useUnpublishedDrafts(cards),
+        drafts = useUnpublishedDrafts(cards, decidedAt),
         checklist = checklist,
         checklistHidden = checklistHidden,
         hideChecklist = ::putAway,
@@ -199,16 +207,20 @@ fun useHomeLiveReads(cards: List<HomeCard>, waitingClient: String?, assistantOff
 fun visibleHomeCards(cards: List<HomeCard>, reads: HomeLiveReads): List<HomeCard> = cards.filter(reads::shows)
 
 /**
- * One live card's read (issues #1636, #1637, #1638): [read]'s answer when [wanted], read again on every refresh and
- * whenever [key] changes, and null when not wanted. A failed read leaves what was there and says so ([what] names it).
- * **Only the latest read lands**: one overtaken -- by a refresh, a changed [key], or the card going -- is dropped when it
- * answers, so a slow earlier answer never replaces a newer one.
+ * One live card's read (issues #1636, #1637, #1638): [read]'s answer when [wanted], read again whenever the config that
+ * decided [wanted] is read again ([decidedAt]) and whenever [key] changes, and null when not wanted. A failed read
+ * leaves what was there and says so ([what] names it). **Only the latest read lands**: one overtaken -- by a refresh, a
+ * changed [key], or the card going -- is dropped when it answers, so a slow earlier answer never replaces a newer one.
+ *
+ * [decidedAt] is the refresh generation that config was read at, never the generation now. A session change bumps the
+ * generation before the new caller's config arrives, and a read keyed on the bump would be made as the new caller from
+ * the old caller's cards: an administrator's drafts read, made as the editor they just switched to, is refused. Keyed on
+ * the config, it waits for the cards that are the new caller's.
  */
-fun <T : Any> useCardRead(wanted: Boolean, key: String?, what: String, read: suspend () -> T?): T? {
-    val generation = useRefreshGeneration()
+fun <T : Any> useCardRead(wanted: Boolean, decidedAt: Int, key: String?, what: String, read: suspend () -> T?): T? {
     var value by useState<T?>(null)
     val latest = useRef(0)
-    useEffect(wanted, generation, key) {
+    useEffect(wanted, decidedAt, key) {
         val token = (latest.current ?: 0) + 1
         latest.current = token
         if (!wanted) {
@@ -262,10 +274,11 @@ fun homeCardJumpButtons(cards: List<HomeCard>): List<Pair<String, String>> =
 /**
  * What the workflow assistant's status says, for its card and the link to it (issue #1636), or null while it is being
  * read, or when no card in [cards] is the assistant's and nothing else wants it ([alsoWanted]: the new client checklist's
- * step, issue #1639) -- then nothing is read ([useCardRead]). [AssistantView.failed] when it cannot be read.
+ * step, issue #1639) -- then nothing is read ([useCardRead], which says what [decidedAt] is). [AssistantView.failed] when
+ * it cannot be read.
  */
-fun useAssistantCardView(cards: List<HomeCard>, alsoWanted: Boolean): AssistantView? =
-    useCardRead(alsoWanted || cards.any { it.kind == ASST.cardKind }, null, "the assistant's status") {
+fun useAssistantCardView(cards: List<HomeCard>, decidedAt: Int, alsoWanted: Boolean): AssistantView? =
+    useCardRead(alsoWanted || cards.any { it.kind == ASST.cardKind }, decidedAt, null, "the assistant's status") {
         // A failure is an answer too ([AssistantView.failed]), so what waits for the status -- the checklist -- is not
         // kept waiting by one that will not come.
         val status = apiResult { AssistantApi.status() }

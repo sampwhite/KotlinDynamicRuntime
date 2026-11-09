@@ -190,7 +190,10 @@ none of its own.
   the card's words alone. **A new kind is added in `HomeLiveReads` alone** (`HomeCards.kt`): its read in
   `useHomeLiveReads`, whether it has something to say (`shows`, which `visibleHomeCards` applies), its button's words,
   and its body. Each read goes through `useCardRead`, where only the latest read lands, so a slow answer from before a
-  refresh never replaces a newer one.
+  refresh never replaces a newer one. It re-reads when Home's config is read again (`decidedAt`, the generation that
+  config was read at), not on the bump itself: a switch of user bumps while Home still holds the old user's cards, and a
+  read made then, as the new user, from the old one's cards is refused (an administrator's drafts, read as the editor
+  switched to). The public home's demos (`GET /user/self/joinable`, refused outside `public`) key on the same.
 - **A card's body may be copy** (`HCARD.textCopy`, issue #1652): `namespace.key` of the shell's `home` file, drawn in
   place of its literal `text`. A blank value draws no body, as blank copy removes anything else. It is how a card's words
   are reworded by a deployment flavor, which can reword copy but cannot overlay a block.

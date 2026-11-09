@@ -48,6 +48,13 @@ fun hasRoleToJoin(demo: JoinableView): Boolean = demo.roles.any { it.userId == n
 
 external interface PublicHomeProps : Props {
     var config: HomeConfig
+
+    /**
+     * The refresh generation [config] was read at, which the demos' read keys on: after a switch from `public` into a
+     * demo, the generation moves before the demo's config arrives, and a read keyed on it would ask for the joinable
+     * demos as the demo's user, which is refused ([useCardRead] says the same of Home's cards).
+     */
+    var configAt: Int
     var copy: Copy
 }
 
@@ -69,13 +76,12 @@ val PublicHome = FC<PublicHomeProps> { props ->
     var busy by useState(false)
     // A failed switch, and the demo's client id it was asked from, so it is said on that demo's card.
     var switchError by useState<Pair<String, DisplayError>?>(null)
-    val generation = useRefreshGeneration()
     val bump = useRefreshBump()
     // The copy's links, as a document's are: `/docs/...` to the in-app document, `/wa/...` under the live app root.
     val copyLinks = useShellFacts().copyLinkResolver()
     val sections = publicHomeSections(config)
 
-    useEffect(generation, config.joinOffered) {
+    useEffect(props.configAt, config.joinOffered) {
         if (!config.joinOffered) return@useEffect
         publicHomeScope.launch {
             try {

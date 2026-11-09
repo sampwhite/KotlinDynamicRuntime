@@ -79,12 +79,12 @@ fun waitingListingRoute(client: String? = null): List<Pair<String, String>> =
 
 /**
  * What waits on the caller, for Home's card (issue #1637), or null while it is read, when it cannot be, or when no card
- * in [cards] asks for it -- then nothing is read ([useCardRead]). Read again on every refresh, so a step taken elsewhere
- * leaves it. [client], for a caller who sees across clients, confines the read to their own client: Home asks about
- * where they are, never every form of the deployment.
+ * in [cards] asks for it -- then nothing is read ([useCardRead], which says what [decidedAt] is). Read again on every
+ * refresh, so a step taken elsewhere leaves it. [client], for a caller who sees across clients, confines the read to their
+ * own client: Home asks about where they are, never every form of the deployment.
  */
-fun useWaitingOnYou(cards: List<HomeCard>, client: String?): WaitingRead? =
-    useCardRead(cards.any { it.kind == HCARD.kindWaitingOnYou }, client, "what waits on you") {
+fun useWaitingOnYou(cards: List<HomeCard>, decidedAt: Int, client: String?): WaitingRead? =
+    useCardRead(cards.any { it.kind == HCARD.kindWaitingOnYou }, decidedAt, client, "what waits on you") {
         val query = mapOf(GDF.needsMe to true, EP.limit to WAIT.shownForms) + listOfNotNull(client?.let { EI.client to it })
         parseWaitingRead(Http.getApi(GEP.formDocs + queryString(query)), DisplayZone.scriptEnv())
     }

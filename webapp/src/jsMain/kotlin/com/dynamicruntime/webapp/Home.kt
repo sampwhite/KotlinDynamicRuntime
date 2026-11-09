@@ -41,6 +41,12 @@ val Home = FC<Props> {
     var config by useState<HomeConfig?>(null)
     var copy by useState(Copy.empty)
     var error by useState<DisplayError?>(null)
+    // The refresh generation [config] was read at: what a read the config decides -- a live card's, the public home's
+    // demos -- keys on, rather than the generation now, so after a session change it waits for the new caller's config
+    // instead of reading as them from the old caller's ([useCardRead]). -1 until a config has loaded.
+    var configAt by useState(-1)
+    // A token per read, so one overtaken -- by a later generation or poll -- is dropped when it answers.
+    val latestRead = useRef(0)
 
     val generation = useRefreshGeneration()
     // The copy's links, as a document's are (issue #1510): `/docs/...` to the in-app document, `/wa/...` under the live
@@ -52,19 +58,26 @@ val Home = FC<Props> {
     // And on every idle poll: it reads the home config, a polled endpoint, and static copy alone (issue #1372).
     val polls = useIdlePolls()
     useEffect(generation, polls) {
+        val token = (latestRead.current ?: 0) + 1
+        latestRead.current = token
         homeScope.launch {
             try {
                 val loaded = HomeApi.fetchConfig()
+                // An answer from before a session change would hand the new caller the old caller's cards.
+                if (latestRead.current != token) return@launch
                 config = loaded
+                configAt = generation
                 // Recover a stale build id silently (issue #469): a rolling deploy leaves this ref one deploy
                 // old, which 404s -- re-fetch the config for a fresh ref and retry once, rather than surfacing
                 // the misleading "is the runtime running?" below for a runtime that is running perfectly.
-                copy = fetchCopyWithRetry(loaded.fragment) {
+                val loadedCopy = fetchCopyWithRetry(loaded.fragment) {
                     apiResult { HomeApi.fetchConfig().fragment }.valueOrNull()
                 }
+                if (latestRead.current != token) return@launch
+                copy = loadedCopy
                 error = null
             } catch (e: Throwable) {
-                error = userFacingError(e)
+                if (latestRead.current == token) error = userFacingError(e)
             }
         }
     }
@@ -77,6 +90,7 @@ val Home = FC<Props> {
     val allCards = current?.cards.orEmpty()
     val reads = useHomeLiveReads(
         allCards,
+        decidedAt = configAt,
         waitingClient = current?.takeIf { it.canSeeAllClients }?.user?.client,
         // The checklist's step for the workflow assistant (issue #1639), only where the menu offers it.
         assistantOffered = current?.menu.orEmpty().any { it.id == ASST.menuItem },
@@ -208,6 +222,7 @@ val Home = FC<Props> {
                                 // Qualified: Home's own `config` and `copy` are state, and a bare name here would set
                                 // them -- during render, which loops.
                                 this.config = current
+                                this.configAt = configAt
                                 this.copy = copy
                             }
                         }
