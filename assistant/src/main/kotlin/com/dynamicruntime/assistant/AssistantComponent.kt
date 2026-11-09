@@ -105,7 +105,8 @@ class AssistantComponent : ComponentDefinition {
             }
         },
         // Its home cards (issue #1636), ahead of core's: the assistant offered to whoever its menu entry is, and -- to a
-        // public administrator, where a client they create comes with it -- the reason to create one.
+        // public member who has not made their client yet, where a client they create comes with it -- the reason to
+        // create one.
         uiBlockOverlay(HCARD.block, origin = providerName) {
             items(HCARD.cards) {
                 homeCard(
@@ -127,7 +128,8 @@ class AssistantComponent : ComponentDefinition {
                     "[Create a client of your own](#${HSEC.ownClient}) and the workflow assistant helps you build it: " +
                         "describe the form you want people to fill in and the steps it goes through, and it drafts them " +
                         "for you to try.",
-                    cfactExpression = "${CFACTS.publicMember},${ASST.selfServeOfferedCFact},${CFACTS.app}",
+                    // Not once the person has made their client (issue #1743): the page's own-client section opens it.
+                    cfactExpression = "${CFACTS.publicMember},~${CFACTS.madeOwnClient},${ASST.selfServeOfferedCFact},${CFACTS.app}",
                     displayOrder = UIB.orderStep / 2,
                 )
             }

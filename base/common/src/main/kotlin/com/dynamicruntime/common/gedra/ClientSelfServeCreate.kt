@@ -40,7 +40,7 @@ object ClientSelfServeCreate {
     /** The length of the id's random part: enough that two people naming their clients alike do not collide. */
     private const val randomLength = 6
 
-    private val randomChars = ('a'..'z') + ('0'..'9')
+    private val randomChars = ('a'..'z') + ('0'..'9').toList()
 
     /** What the create did: the client's create, and the creator's own user in it. */
     class Result(
@@ -50,6 +50,16 @@ object ClientSelfServeCreate {
         /** Why the creator's user could not be made, when it could not -- after the client was, so not to be repeated. */
         val userFailure: String? = null,
     )
+
+    /**
+     * The self-serve client the person signed in as [cxt]'s user made, read off their identity (through its cache, since
+     * the shell config asks on every poll): null when they have made none, or nobody is signed in. Once made it stays,
+     * whatever becomes of the client, as the one a person may make does.
+     */
+    fun madeBy(cxt: KdrCxt): String? {
+        val identityId = cxt.userProfile.identityId ?: return null
+        return UserService.getOrNull(cxt)?.queryIdentityById(cxt, identityId)?.identityData?.get(IDD.selfServeClient).toOptStr()
+    }
 
     /**
      * Creates the self-serve client named [name] for the person signed in as [cxt]'s user, in [timeZone] -- the

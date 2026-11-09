@@ -20,6 +20,7 @@ import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.sql.PF
 import com.dynamicruntime.common.user.ADEP
 import com.dynamicruntime.common.user.AEP
+import com.dynamicruntime.common.user.AFLD
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.user.UADEP
 import com.dynamicruntime.common.util.toJsonListOfMaps
@@ -83,6 +84,9 @@ class AssistantSelfServeTest : StringSpec({
         // In the client made: the assistant's card, ahead of core's for administering it, offered as its menu entry is.
         cardIds(person) shouldBe listOf(ASST.homeCard, HCARD.administer)
         menuIds(person) shouldContain ASST.menuItem
+        // Back in public, the person has made their client, so the page no longer asks them to make one (issue #1743).
+        person.postData(AEP.switchUser, mapOf(AFLD.userId to person.userId))
+        cardIds(person) shouldBe emptyList()
         // An ordinary member of a client is offered neither.
         cardIds(TestUser.create(cxt, "member@asst1636.test", userClient = CL.hub)) shouldBe emptyList()
     }
