@@ -13,6 +13,7 @@ import com.dynamicruntime.common.flavor.FlavorContribution
 import com.dynamicruntime.common.flavor.flavor
 import com.dynamicruntime.common.gedra.GedraConfig
 import com.dynamicruntime.common.gedra.workflow.WVF
+import com.dynamicruntime.common.home.HCFG
 import com.dynamicruntime.common.naming.OWNR
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.startup.ComponentDefinition
@@ -60,7 +61,7 @@ class KdnComponent : ComponentDefinition {
      * The conference demo's documentation (issue #1137), the developer docs `docs/demo-client/` holds, and the
      * walk-through that starts with the demo (issue #1429).
      */
-    override fun docs(cxt: KdrCxt): List<MarkdownDocDef> = confDemoDocs() + WalkThrough.doc
+    override fun docs(cxt: KdrCxt): List<MarkdownDocDef> = confDemoDocs() + WalkThrough.doc + SitePolicies.declared(cxt)
 
     /** The walk-through's banners, one opening each part (issues #1429, #1463). */
     override fun images(cxt: KdrCxt): List<ComponentImageDef> = WalkThrough.images + ConfDemo.images
@@ -103,6 +104,9 @@ class KdnComponent : ComponentDefinition {
         flavor(FLV.reference) {
             set(ConfDemo.fromCodeKey, true)
             set(ConfDemo.provisionAtBootKey, true)
+            // dynamicruntime.org's privacy policy and terms (issue #1711), which every page then links to.
+            set(HCFG.privacyPolicyDoc, SitePolicies.privacyDocId)
+            set(HCFG.termsOfServiceDoc, SitePolicies.termsDocId)
             omnibusOverlay("kdrConfDemoReference")
         },
     )

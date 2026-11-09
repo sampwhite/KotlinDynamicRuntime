@@ -40,6 +40,7 @@ val AuthFlow = FC<AuthFlowProps> { props ->
     // The plain login mode: the one with the password path, the set-a-password code, and Google sign-in --
     // none of which belongs on the register or claim pages.
     val login = !register && !claim
+    val shellFacts = useShellFacts()
 
     var config by useState<AuthConfig?>(null)
     var copy by useState(Copy.empty)
@@ -374,6 +375,15 @@ val AuthFlow = FC<AuthFlowProps> { props ->
                 GoogleSignInButton {
                     clientId = googleCfg.googleClientId
                     onCredential = { submitGoogle(it) }
+                }
+            }
+            // The deployment's privacy policy and terms (issue #1711), before a person signs in or up with either way.
+            val policies = sitePolicyLinks(shellFacts)
+            if (policies.isNotEmpty()) {
+                p {
+                    className = ClassName("type-hint site-policies-line")
+                    +"${SITEW.beforeSignIn} "
+                    sitePolicyLinkList(policies)
                 }
             }
         } else {

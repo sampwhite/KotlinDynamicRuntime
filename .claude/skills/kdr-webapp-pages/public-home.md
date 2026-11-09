@@ -15,6 +15,25 @@ frame rather than switching words once the page's copy arrives. Blank or absent,
 since the band is never drawn empty. The `reference` flavor says "A demonstration site: what you add here is cleared
 from time to time."
 
+## Site policies (issue #1711)
+
+A deployment's privacy policy and terms of service are documents it names in the instance config keys
+`HCFG.privacyPolicyDoc` and `HCFG.termsOfServiceDoc` (the boot is refused if one names a document no component
+declares). The shell config sends their ids to every caller, signed in or out (`HFLD.privacyPolicy`,
+`HFLD.termsOfService`), and `sitePolicyLinks` (`SitePolicies.kt`, covered by `SitePoliciesTest`) makes them links to the
+documents page, which a signed-out visitor can read. They are drawn in three places, and nowhere on a deployment that
+names neither:
+
+- **`SiteFooter`**, under every page, after the page's boundary so a failed page still has it: what Google's sign-in
+  verification looks for on the home page.
+- **The sign-in page**, under the sign-in choices, in every mode: "Before you sign in: Privacy policy · Terms of
+  service".
+- **Profile's account panel**: "This site's policies: ...".
+
+The words are the app's (`SITEW`), as a document's name is what a reader looks for. The `reference` flavor names
+dynamicruntime.org's (kdn's `SitePolicies`, kept in `docs/dynamicruntime-org/`), which kdn declares only where the keys
+name them, so another deployment neither serves nor links them.
+
 ## Joining a demo client (issue #1248)
 
 On a deployment that offers it (`JOIN.offeredKey`, set by the `reference` flavor), a visitor signed in to `public` can

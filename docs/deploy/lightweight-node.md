@@ -209,6 +209,21 @@ reaches the same account even if their Google address later changes. An address 
 Google sign-in follows `KDR_PUBLIC_SIGN_IN` as the emailed code does. It does not replace the mail provider: the
 sign-in page still offers the emailed code.
 
+**Publishing Google sign-in to everyone** needs Google to verify the app, and verification needs a privacy policy, and
+ideally terms of service, on your site's own domain. Name the documents that are yours in the instance config keys
+`privacyPolicyDoc` and `termsOfServiceDoc` (each the id of a document a component declares; the boot is refused if one
+names nothing). Every page then links them in its footer, beside the sign-in choices, and on the profile page, and
+anyone can read them signed out at `/wa/docs/<id>`. The `reference` flavor names dynamicruntime.org's own, kept under
+`docs/dynamicruntime-org/`; another deployment writes its own. Then, in Google Cloud Console's OAuth consent screen
+(its Branding page):
+
+- set the **home page** to your site (`https://example.org`), the **privacy policy** to
+  `https://example.org/wa/docs/<privacy id>`, and the **terms of service** to `https://example.org/wa/docs/<terms id>`;
+- add your domain under **Authorized domains**, and verify that you own it in Google Search Console with the same Google
+  account;
+- publish the app, and submit it for verification. Signing in asks only for the email address and name, so it needs no
+  security review.
+
 **Optional: the workflow assistant.** The assistant answers through the Anthropic API, so it needs a key: put it in
 `~/kdr/private/secrets.properties` as `anthropicApiKey`, beside the mail key (see "Mail and sign-in" below). Without it
 the assistant is unavailable. An operator switches it on per client. To let visitors try it in clients of their own,

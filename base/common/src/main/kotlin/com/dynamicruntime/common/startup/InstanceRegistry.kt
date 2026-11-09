@@ -11,6 +11,7 @@ import com.dynamicruntime.common.content.FragmentSource
 import com.dynamicruntime.common.content.MDOC
 import com.dynamicruntime.common.content.MarkdownDocDef
 import com.dynamicruntime.common.content.checkedMarkdownDocs
+import com.dynamicruntime.common.home.sitePolicyFaults
 import com.dynamicruntime.common.uiblock.UIB
 import com.dynamicruntime.common.uiblock.UiBlockSource
 import com.dynamicruntime.common.webasset.DeclaredWebResources
@@ -202,6 +203,8 @@ object InstanceRegistry {
             config.put(FRAG.registryKey, fragmentSources.toList())
             config.put(UIB.registryKey, uiBlockSources.toList())
             config.put(MDOC.registryKey, checkedMarkdownDocs(docs))
+            // The site policies every page links to (issue #1711) must be documents that are there.
+            sitePolicyFaults(config::get, docs).firstOrNull()?.let { throw KdrException("Site policies: $it") }
             config.put(DebugTags.registryKey, DebugTags.of(debugTags))
             config.put(IMGS.registryKey, images.toList())
             config.put(WRES.registryKey, webResources.toList())

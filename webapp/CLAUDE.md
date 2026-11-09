@@ -255,6 +255,9 @@ Current UI-config endpoints:
   it cannot be replayed against another user. `POST /auth/claim/register` is a code login aimed at that user:
   it claims an unclaimed one and simply signs in as a claimed one -- the one way to log in as a particular
   non-default user by address alone.
+- **Site policies** (issue #1711): a deployment's privacy policy and terms, documents it names in instance config, are
+  linked under every page (`SiteFooter`), under the sign-in choices, and on Profile -- see the `kdr-webapp-pages`
+  skill's `public-home.md`.
 - **The mails are fragment copy** (issue #773): every mail the auth flows send -- the code, the invitation, the
   sign-in reminder, the claim page's answers -- is authored in the **backend** fragment file `mail.md` (never served; one namespace
   per mail, `subject` + `body`, a shared `common.footer` and `common.htmlStyle`) and goes out as one message

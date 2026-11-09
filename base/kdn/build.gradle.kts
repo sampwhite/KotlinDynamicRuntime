@@ -24,6 +24,12 @@ val embedDocs = tasks.register<Copy>("embedDocs") {
     // The walk-through a reference deployment links from a signed-in visitor's home page (issue #1429): its doc id is
     // its file name, `walk-through`.
     from(layout.projectDirectory.file("../../docs/walk-through.md"))
+    // dynamicruntime.org's privacy policy and terms (issue #1711), flattened as the demo's pages are:
+    // `dynamicruntime-org-privacy-policy`, `dynamicruntime-org-terms-of-service`.
+    from(layout.projectDirectory.dir("../../docs/dynamicruntime-org")) {
+        include("*.md")
+        rename { "dynamicruntime-org-$it" }
+    }
     into(layout.buildDirectory.dir("docResources/md-docs"))
 }
 
