@@ -599,19 +599,23 @@ Some tests exist so documentation cannot fall behind the code: each fails the bu
 generated reference says something the code no longer does. They look like tests of documentation, and they are the
 only thing between a renamed endpoint and a guide that still names the old one, so **a cleanup never deletes one or
 loosens what it asserts** (issue #1737). Moving one into a merged file is fine. Each is tagged `#DOCDR`, so
-`grep -rn DOCDR --exclude-dir=build .` lists them all.
+`grep -rn DOCDR --exclude-dir=build .` lists them all: on the class's KDoc when the whole file is a drift check, and as
+a `// Theme: #DOCDR.` comment in the test block itself when only some of a file's tests are. Tag a new one the same
+way, so a cleanup slimming a mixed file sees which block it must keep.
 
 | Kind | Tests | What fails when the docs drift |
 | --- | --- | --- |
 | Skills | `EndpointSkillExamplesTest`, `SchemaSkillExamplesTest`, `TableCacheSkillExamplesTest`, `FlavorSkillExamplesTest`, `ImagesSkillExamplesTest`, `TestClientSkillExamplesTest` | A skill's example no longer compiles or does what the skill says. |
 | Documents run as programs | `ApiGuideTest`, `PublicWalkThroughTest`, `ConfDemoDocsTest` | A request, field, choice or step a page shows is not the product's. |
-| Generated references | `ReferenceCopiesTest`, and one `*ReferenceTest` per page (`FactsReference`, `RolesReference`, `SchMessageReference`, `SchLayoutReference`, `ConfigReference`, `ReferenceIndex`, `CopyReference`, `ScriptReference`, `ReportPathReference`, `EnvVarReference`) | A committed copy differs from what the code generates, or a page leaves out something the code declares. |
+| Generated references | `ReferenceCopiesTest` for the copies, and a check per page that it lists everything the code declares: `FactsReference` and the facts test in `CFactRegistryEndpointTest`, `RolesReference`, `SchMessageReference`, `SchLayoutReference`, `ConfigReference`, `ReferenceIndex`, `CopyReference`, `ScriptReference`, `ReportPathReference`, the reference tests in `SchMetaSchemaTest` (schema dialect), and the endpoint and environment-variable tests in `ReferenceCopiesTest` | A committed copy differs from what the code generates, or a page leaves out something the code declares. |
+| Operator reference | `EnvVarReferenceTest` | The operator view of the variables a node read, which no static file could show, stops saying how each resolved. |
 | Links and wiring | `RepoDocLinksTest`, the reference links in `HomeUiConfigEndpointTest`, `SitePoliciesTest` | A link or a declared document leads nowhere. |
-| Registries | `ThemeTagsTest`, `MarkdownRoleStylesTest` | A tag or a role is used where its registry does not have it. |
+| Registries | `ThemeTagsTest`, `MarkdownRoleStylesTest` | A tag is used without being registered (or a registered one marks too few places), or a declared Markdown role has no style in `app.css`. |
 
 The copy check and the per-page checks are not redundant. `ReferenceCopiesTest` holds a committed copy to what the
-generator writes, so an item the generator leaves out is missing from both and passes. Only the page's own test, which
-holds the page to what the code declares, catches it.
+generator writes, so an item the generator leaves out is missing from both and passes. Only the page's own check, which
+holds the page to what the code declares, catches it, so **every generated page has one**. A new page gets its check in
+the same change.
 
 **A change to what one of these covers updates the document in the same edit.** The failing test says which, and for a
 generated reference `./gradlew :launch:refDocsDump` rewrites the copy. A test that only pins wording no document depends
