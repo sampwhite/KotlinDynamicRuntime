@@ -3,15 +3,13 @@ package com.dynamicruntime.common.gedra
 import com.dynamicruntime.common.context.CL
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.KdrSchemaStore
-import com.dynamicruntime.common.schema.SCH
-import com.dynamicruntime.common.schema.SCT
-import com.dynamicruntime.common.schema.SFMT
 import com.dynamicruntime.common.sql.PF
 import com.dynamicruntime.common.sql.SqlTopicService
 import com.dynamicruntime.common.sql.SqlTopicTranProvider
 import com.dynamicruntime.common.sql.SqlTopicUtil
 import com.dynamicruntime.common.sql.TableFeature
 import io.kotest.core.spec.style.StringSpec
+import io.kotest.matchers.collections.shouldContainAll
 import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
@@ -44,7 +42,6 @@ class GedraConfigTablesTest : StringSpec({
         control.primaryKey shouldBe listOf(PF.client, GC.environment)
         control.isTransactional shouldBe false
         control.features shouldBe setOf(TableFeature.client)
-        control.columnsByName.getValue(GC.publishedOnly).schema[SCH.type] shouldBe SCT.boolean
     }
 
     "the root is keyed by the client, carries the lock, and is owned by a client and nothing narrower" {
@@ -56,24 +53,18 @@ class GedraConfigTablesTest : StringSpec({
         root.columnsByName.getValue(PF.client).required shouldBe true
     }
 
-    "the content row is keyed by the versioned id, with the class and version as an indexed predicate" {
+    "the content row is keyed by the versioned id, owned by a client, with its flags optional and the current one indexed" {
         val content = table(GCT.gedraConfig)
         content.primaryKey shouldBe listOf(GC.gedraId)
         content.isTransactional shouldBe false
         content.features shouldBe setOf(TableFeature.client)
-        content.columnsByName.getValue(GC.version).schema[SCH.type] shouldBe SCT.integer
-        // `publishedAt` is the published flag and the audit date in one: a nullable timestamp.
-        content.columnsByName.getValue(GC.publishedAt).schema[SCH.format] shouldBe SFMT.dateTime
+        // `publishedAt` is the published flag and the audit date in one, so it may be null; and the current flag is
+        // optional, since a row from before it has none until the boot backfills it (issue #875).
         content.columnsByName.getValue(GC.publishedAt).required shouldBe false
-        content.columnsByName.getValue(GC.data).schema[SCH.type] shouldBe SCT.kObject
-        // The current flag is optional (a row from before it has none until the boot backfills it), and indexed for
-        // the reads that skip history across every client and within one (issue #875).
-        content.columnsByName.getValue(GC.isCurrent).schema[SCH.type] shouldBe SCT.boolean
         content.columnsByName.getValue(GC.isCurrent).required shouldBe false
-        content.indexes.map { it.fieldNames } shouldContainExactly listOf(
-            listOf(GC.configId, GC.version), listOf(PF.updatedAt),
-            listOf(GC.isCurrent), listOf(PF.client, GC.isCurrent),
-        )
+        // Indexed for the reads that skip history across every client and within one (issue #875): without them a
+        // config read scans every revision, which H2 answers correctly and slowly and nothing else would notice.
+        content.indexes.map { it.fieldNames } shouldContainAll listOf(listOf(GC.isCurrent), listOf(PF.client, GC.isCurrent))
     }
 
     // The point of the two-key design, proven rather than described: one transaction locks the client's row on

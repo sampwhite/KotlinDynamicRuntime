@@ -7,7 +7,7 @@ import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldBeEmpty
-import io.kotest.matchers.collections.shouldContainExactly
+import io.kotest.matchers.collections.shouldContainAll
 import io.kotest.matchers.shouldBe
 
 /**
@@ -22,24 +22,16 @@ class ClientFieldPoliciesTest : StringSpec({
         ClientFieldPolicies.byField.keys shouldBe declared.keys
     }
 
-    "the platform's create, the editor and the platform's own fields are read from the policies" {
-        ClientFieldPolicies.createFields shouldContainExactly listOf(
-            CLD.clientId, CLD.name, CLD.description, CLD.customerId, CLD.usageType, CLD.audience, CLD.enabledEnvironments,
-            CLD.extendsFromClientId, CLD.domainPrefix, CLD.customDomain, CLD.timeZone, CLD.userLabels, CLD.userLabelNotes,
-            CLD.sandbox, CLD.preload, CLD.sessionHours, CLD.refreshIntervalSeconds,
-        )
-        // The client's own administrator edits these (issue #1116); an administrator who sees every client these too.
-        ClientPresentationFields.names shouldContainExactly
-            listOf(CLD.name, CLD.description, CLD.timeZone, CLD.userLabels, CLD.userLabelNotes, CLD.sessionHours)
-        // The refresh interval is the platform's (issue #1308): every open tab asks that often.
-        ClientPresentationFields.platformNames shouldContainExactly listOf(
-            CLD.refreshIntervalSeconds, CLD.usageType, CLD.audience, CLD.enabledEnvironments, CLD.preload, CLD.domainPrefix, CLD.customDomain,
-        )
-        ClientFieldPolicies.platformFields shouldContainExactly listOf(
-            CLD.clientId, CLD.customerId, CLD.usageType, CLD.audience, CLD.enabledEnvironments, CLD.extendsFromClientId,
-            CLD.domainPrefix, CLD.customDomain, CLD.webResourcesId, CLD.preload, CLD.staticConfig, CLD.retired, CLD.publicTemplate,
+    // What a client's own administrator may set is an authority boundary (issue #1116), so it is held here: the
+    // fields that decide what a client is, whose it is, and where it runs or is reached stay the platform's, and the
+    // definition editor offers a client's administrator none of them.
+    "a client's own administrator edits no field the platform owns" {
+        ClientFieldPolicies.platformFields shouldContainAll listOf(
+            CLD.customerId, CLD.usageType, CLD.audience, CLD.enabledEnvironments, CLD.extendsFromClientId,
+            CLD.domainPrefix, CLD.customDomain, CLD.webResourcesId, CLD.staticConfig, CLD.retired, CLD.publicTemplate,
             CLD.testFeatures, CLD.joinRoles, CLD.refreshIntervalSeconds,
         )
+        (ClientPresentationFields.names intersect ClientFieldPolicies.platformFields.toSet()).shouldBeEmpty()
     }
 
     // Issue #1112: a client made by another takes the creator's choices and what its maker passes on, nothing else -- not

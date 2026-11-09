@@ -14,16 +14,13 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
- * Proof-of-concept (issue #56) that the shared kernel code runs on BOTH targets. Because it lives in
- * `commonTest` and is written in the multiplatform `kotlin.test`, this exact source is compiled and executed
- * by the `jvm` target (backend) AND the `js` target (frontend) -- the same tests, both sides. It deliberately
- * touches the meatier moved code (the JSON parser and the JSON-Schema parser/validator), not just a trivial
- * utility, to demonstrate that even those transpile and behave identically.
- *
- * The existing Kotest suites still live in `base:common` and cover this code thoroughly on the JVM; a fuller
- * cross-target suite is a follow-up (it means choosing a multiplatform test framework).
+ * The kernel answers the same on both targets (issue #56; renamed from `KernelSharedTest` in issue #1738). This source
+ * runs on the JVM and under Kotlin/JS alike, so each case here is one where the two could plausibly part ways -- a
+ * `Double` spelled as text, a gedra id read from a URL, an expression's arithmetic, the built-in functions, a schema's
+ * validation -- and a regression on one target fails here and nowhere else. The JVM-only Kotest suites in `base:common`
+ * cover the same code in depth; these are the cases worth holding on both sides.
  */
-class KernelSharedTest {
+class CrossTargetParityTest {
 
     @Test
     fun templateAndJsonAndFormatWork() {
