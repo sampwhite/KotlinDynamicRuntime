@@ -468,14 +468,14 @@ class CopyFallback(val text: String?, val note: String)
 /**
  * What a form shows for [key] of the field [name] when no layout entry gives it: the field's own wording, as
  * `SchemaForm` falls back to it -- its title or a label made from its name, its description, the hint its bounds
- * give. A blank copy input means this, which the editor says rather than showing an empty box. Pure.
+ * give, in [boundWords]. A blank copy input means this, which the editor says rather than showing an empty box. Pure.
  */
-fun copyFallback(key: String, name: String, prop: SchProperty): CopyFallback = when (key) {
+fun copyFallback(key: String, name: String, prop: SchProperty, boundWords: FieldBoundWords = FieldBoundWords()): CopyFallback = when (key) {
     SL.label -> prop.title?.let { CopyFallback(it, "Blank: forms show the field's own title.") }
         ?: CopyFallback(humanizeFieldName(name), "Blank: forms show a label made from the field's name.")
     SL.description -> prop.description?.let { CopyFallback(it, "Blank: forms show the field's own description.") }
         ?: CopyFallback(null, "Blank: forms show no description.")
-    SL.hint -> boundHintText(prop.valueType)?.let { CopyFallback(it, "Blank: forms show the field's range.") }
+    SL.hint -> boundHintText(prop.valueType, boundWords)?.let { CopyFallback(it, "Blank: forms show the field's range.") }
         ?: CopyFallback(null, "Blank: forms show no hint.")
     else -> CopyFallback(null, "")
 }

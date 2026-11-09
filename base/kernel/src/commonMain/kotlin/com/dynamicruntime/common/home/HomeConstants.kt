@@ -654,6 +654,13 @@ object HFRAG {
     const val wcNextStep = "nextStep"
 
     /**
+     * The home file's namespace for the line under a form's field saying its declared bounds (issue #1693): "Up to 128
+     * characters", "From 20 to 90", "Choose up to 3". Its keys are the page's (`FieldBound`), templates over `min` and
+     * `max`; a layout's own `hint` replaces the line.
+     */
+    const val fieldBoundsNs = "fieldBounds"
+
+    /**
      * The key of a "What is this?" explanation (issue #1337), in the namespace of the copy it explains -- in this
      * file and in a page's own ([PFRAG]), as the profile file's `users.whatIsThis` is. Empty, the link is not offered.
      */

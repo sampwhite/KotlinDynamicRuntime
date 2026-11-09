@@ -693,6 +693,8 @@ external interface WorkflowCopyEditorProps : Props {
  * for each. They save into the same entry, so changing one keeps the copy, and Reset removes them with it.
  */
 private val WorkflowCopyEditor = FC<WorkflowCopyEditorProps> { props ->
+    // The words a blank hint falls back to, as forms say a field's bounds (issue #1693).
+    val boundWords = useShellFacts().fieldBoundWords
     val pageCopy = usePageCopy(PFRAG.design)
     val session = props.session
     val target = props.target
@@ -764,7 +766,7 @@ private val WorkflowCopyEditor = FC<WorkflowCopyEditorProps> { props ->
                         }
                         // Blank, the page shows the shared copy -- or, with none, the field's own (issue #1039).
                         val sharedValue = shared?.get(key).toOptStr()?.let { inheritedCopyText(it, props.pulled?.get(key)) }
-                        val fallback = copyFallback(key, target.name, target.prop)
+                        val fallback = copyFallback(key, target.name, target.prop, boundWords)
                         Input {
                             value = values[key].orEmpty()
                             placeholder = sharedValue ?: fallback.text
@@ -1072,6 +1074,8 @@ external interface SharedFieldSectionProps : Props {
  * a dialog with **Save anyway** (issue #1040).
  */
 private val SharedFieldSection = FC<SharedFieldSectionProps> { props ->
+    // The words a blank hint falls back to, as forms say a field's bounds (issue #1693).
+    val boundWords = useShellFacts().fieldBoundWords
     val facts = props.facts
     val target = props.target
     val start = props.authored ?: emptyMap()
@@ -1163,7 +1167,7 @@ private val SharedFieldSection = FC<SharedFieldSectionProps> { props ->
                 }
                 for (key in editableCopyKeys) {
                     // A blank input is the field's own wording, not nothing: say what the form shows instead.
-                    val fallback = copyFallback(key, target.name, target.prop)
+                    val fallback = copyFallback(key, target.name, target.prop, boundWords)
                     // A slot pulled from a fragment file is shared wording, edited at its key in its own section
                     // (issue #1010); overwriting the pull with literal text here would silently drop it.
                     props.pulled?.get(key)?.let { slot ->

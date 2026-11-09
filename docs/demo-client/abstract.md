@@ -233,7 +233,7 @@ This one says the **Workflows** entry shows for anyone who is logged in to the a
 
 The page is titled **Write the abstract**. Until the talk has entered the workflow, it offers one button, **Start**.
 After that it shows the form: under **Abstract**, the fields **Summary**, **Duration (minutes)**, **Topics**, and
-**Co-speakers**, each with a hint such as *characters: 50 to 600*; under **Questionnaire**, the four questions. The
+**Co-speakers**, each with a hint such as *From 50 to 600 characters*; under **Questionnaire**, the four questions. The
 speaker does not see **Organizer's note**. The button is **Save the abstract**.
 
 A summary that is too short is refused with the schema's own words: *A summary is at least 50 characters; give the

@@ -127,6 +127,29 @@ form stands in each.
 # +stepSatisfied Nothing more is needed on this step.
 # +nextStep Next: ${label} →
 
+# @fieldBounds
+/- The line under a form's field saying the bounds its schema declares (issue #1693), unless the form's layout gives the
+   field a `hint` of its own. `${min}` and `${max}` are the bounds as numbers, so a line may compare them, as in
+   `${max == 1 ? 'entry' : 'entries'}`, or say "Exactly 6" when they are equal. `text...` is a text field's length,
+   `number...` a number's value, `choice...` how many of a list of choices, and `list...` how many entries of any other
+   list. A number's bound may leave out the bound itself: `numberMoreThan` and `numberLessThan` say one end so, and `numberBetweenExclusive` both ends when either does
+   (`${minExclusive}` and `${maxExclusive}` say which). -/
+# +textBetween ${min == max ? 'Exactly' : 'From ' ~ min ~ ' to'} ${max} ${max == 1 ? 'character' : 'characters'}
+# +textAtLeast At least ${min} ${min == 1 ? 'character' : 'characters'}
+# +textAtMost Up to ${max} ${max == 1 ? 'character' : 'characters'}
+# +numberBetween From ${min} to ${max}
+# +numberAtLeast At least ${min}
+# +numberAtMost Up to ${max}
+# +numberMoreThan More than ${min}
+# +numberLessThan Less than ${max}
+# +numberBetweenExclusive ${minExclusive ? 'More than' : 'From'} ${min} ${minExclusive ? 'and' : 'to'} ${maxExclusive ? 'less than' : 'up to'} ${max}
+# +choiceBetween Choose ${min == max ? '' : min ~ ' to '}${max}
+# +choiceAtLeast Choose at least ${min}
+# +choiceAtMost Choose up to ${max}
+# +listBetween ${min == max ? 'Exactly' : 'From ' ~ min ~ ' to'} ${max} ${max == 1 ? 'entry' : 'entries'}
+# +listAtLeast At least ${min} ${min == 1 ? 'entry' : 'entries'}
+# +listAtMost Up to ${max} ${max == 1 ? 'entry' : 'entries'}
+
 # @ctaReview
 /- The `review` search keyword's words (issue #1596): what a call to action asking for a review is called wherever it is
    shown. A client's overlay rewords them as it rewords other copy. `statusText` is the Status column's chip for a form
