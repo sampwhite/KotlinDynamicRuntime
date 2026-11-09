@@ -107,6 +107,17 @@ fun clientOverviewSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CLD.overvie
             required = true,
         ) { type = SCT.integer }
         property(
+            FSR.autoLimit,
+            "The most forms the deployment brings up to date automatically as a change to a client's configuration is " +
+                "saved (issue #1741); 0 when it brings none.",
+            required = true,
+        ) { type = SCT.integer }
+        property(
+            CLD.manualFormStates,
+            "True when the client brings its forms up to date only by hand, not as a change to its configuration is " +
+                "saved (issue #1741). Absent otherwise.",
+        ) { type = SCT.boolean }
+        property(
             CLD.users,
             "How many active (enabled) users the client has. Disabled and deleted users are not counted; the count " +
                 "is client-wide whoever asks.",
@@ -285,6 +296,29 @@ fun clientOverviewSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CLD.overvie
     }
 
     // --- recalculating a client's form states now, rather than overnight (issue #1412) ------------------------------
+    // What the automatic recalculation after a configuration change did (issue #1741), on each change's result.
+    type(FSR.autoTypeName) {
+        type = SCT.kObject
+        description = "What the automatic recalculation of form states after a change to the client's configuration did " +
+            "(issue #1741)."
+        property(FSR.outcome, "What became of it: one of the manual recalculation's outcomes, or why none ran.", required = true) {
+            option(FSR.completed, "The forms the change reaches were looked at, and the out-of-date ones recalculated.")
+            option(FSR.stopped, "It stopped before it had looked at every form, or could not run; reason says why.")
+            option(FSR.busy, "Another recalculation of these forms was running, so this one did not.")
+            option(FSR.tooMany, "The client holds more forms than autoLimit; the nightly run or Recalculate brings them up to date.")
+            option(FSR.manual, "The client brings its forms up to date only by hand (its definition's manualFormStates).")
+            option(FSR.off, "The deployment recalculates no client's forms automatically.")
+            option(FSR.noForms, "The client holds no forms.")
+        }
+        property(FSR.client, "Whose forms: the client's own, or for a draft its sandbox's.", required = true)
+        property(FSR.updated, "How many forms had their state recalculated and stored.") { type = SCT.integer }
+        property(FSR.current, "How many forms were already current, and left as they were.") { type = SCT.integer }
+        property(FSR.failed, "How many forms' recalculated state could not be stored.") { type = SCT.integer }
+        property(FSR.total, "How many forms the client holds.") { type = SCT.integer }
+        property(FSR.autoLimit, "The most forms the deployment recalculates automatically.") { type = SCT.integer }
+        property(FSR.reason, "Why it stopped, or why nothing ran.")
+    }
+
     type(FSR.resultTypeName) {
         type = SCT.kObject
         description = "What recalculating a client's form states did (issue #1412)."
@@ -508,7 +542,7 @@ fun clientOverviewSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CLD.overvie
             CLD.definition to result.info,
             CPY.mode to result.mode,
             CPY.issues to result.issues.map { it.toWireMap() },
-        )
+        ).withFormStatesAuto(c)
     }
 
     // --- the traits it includes (issue #1117), a surface of their own beside the definition editor ---------------
@@ -644,6 +678,7 @@ fun overviewRow(
         CLD.forms to forms,
         FSR.count to formStatesRecalcCount(cxt, clientId),
         FSR.limit to recalcLimit,
+        FSR.autoLimit to formStatesAutoRecalcLimit(cxt),
         CLD.users to users.total,
         CLD.unclaimedUsers to users.unclaimed,
         CLD.workflowCount to if (isPresent) workflowIdsFor(cxt, clientId).size else 0,
@@ -660,6 +695,8 @@ fun overviewRow(
             put(CLD.sandboxOfName, ClientService.get(cxt).known(parent)?.name.orEmpty().ifEmpty { parent })
         }
         put(CLD.hasSandbox, !isSandboxClient(clientId) && ClientService.get(cxt).isPresent(sandboxOf(clientId)))
+        // A client that brings its forms up to date only by hand (issue #1741), so the page says why a change does not.
+        if (ClientService.get(cxt).known(clientId)?.manualFormStates == true) put(CLD.manualFormStates, true)
         // Whether the switch may take it away (issue #1677).
         if (!isSandboxClient(clientId) && ClientSandboxEdit.codeSetsSandbox(cxt, clientId)) put(CLD.sandboxInCode, true)
         // A customer's root may not be retired (issue #1182): said, so the page offers no action that could only fail.
@@ -685,6 +722,19 @@ fun overviewRow(
  * How an editor's save took effect, and the problems the client has after it: the tail of every save result -- the copy,
  * menu, and definition editors' (issues #918, #930, #1026, #1094) -- spelled once.
  */
+/** What the automatic recalculation after the change did (issue #1741), on a change's result; absent when it ran none. */
+internal fun SchTypeBuilder.formStatesAutoProperty() {
+    property(
+        FSR.auto,
+        "What the automatic recalculation of form states after this change did (issue #1741); absent for a change that " +
+            "cannot affect a form's state.",
+    ) { ref(FSR.autoTypeQualified) }
+}
+
+/** [this] result with the automatic recalculation its change ran in [cxt]'s request (issue #1741), when it ran one. */
+internal fun Map<String, Any?>.withFormStatesAuto(cxt: KdrCxt): Map<String, Any?> =
+    autoRecalculationOf(cxt)?.let { this + (FSR.auto to it) } ?: this
+
 internal fun SchTypeBuilder.saveOutcomeFields() {
     property(CPY.mode, "How the save took effect (issue #930): live for the client at once, or a draft its sandbox runs until it is published.", required = true) {
         option(EDM.live, "Live")
@@ -695,6 +745,7 @@ internal fun SchTypeBuilder.saveOutcomeFields() {
         type = SCT.array
         items { ref(CLD.configIssueTypeQualified) }
     }
+    formStatesAutoProperty()
 }
 
 /**

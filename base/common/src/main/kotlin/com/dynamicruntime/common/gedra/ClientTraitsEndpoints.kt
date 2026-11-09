@@ -346,7 +346,7 @@ internal fun SchModuleBuilder.clientTraitsEndpoints() {
             CLD.includedTraits to result.included,
             CPY.mode to result.mode,
             CPY.issues to result.issues.map { it.toWireMap() },
-        )
+        ).withFormStatesAuto(c)
     }
 
     type(CIT.designResultTypeName) {
@@ -391,7 +391,7 @@ internal fun SchModuleBuilder.clientTraitsEndpoints() {
             throw KdrException.mkInput(e.message ?: "The design does not read.")
         }
         val result = ClientTraitDesignEdit.save(c, client, design, expectedModeOf(request), gate)
-        editorSaveResult(client, result.configName, CIT.design to result.design.toInfo(), result.mode, result.issues, result.draftImpact)
+        editorSaveResult(c, client, result.configName, CIT.design to result.design.toInfo(), result.mode, result.issues, result.draftImpact)
     }
 
     // --- narrowing a global trait (issue #1119) -------------------------------------------------------------------
@@ -458,7 +458,9 @@ internal fun SchModuleBuilder.clientTraitsEndpoints() {
         val result = ClientTraitNarrowEdit.save(
             c, client, traitNarrowingFromInfo(request[CIT.narrowing].toJsonMapOrEmpty()), expectedModeOf(request), gate,
         )
-        editorSaveResult(client, result.configName, CIT.narrowing to result.narrowing.toInfo(), result.mode, result.issues, result.draftImpact)
+        editorSaveResult(
+            c, client, result.configName, CIT.narrowing to result.narrowing.toInfo(), result.mode, result.issues, result.draftImpact,
+        )
     }
 }
 
@@ -468,6 +470,7 @@ internal fun SchModuleBuilder.clientTraitsEndpoints() {
  * impact.
  */
 internal fun editorSaveResult(
+    cxt: KdrCxt,
     client: String,
     configName: String,
     saved: Pair<String, Any?>,
@@ -481,6 +484,7 @@ internal fun editorSaveResult(
     put(CPY.mode, mode)
     put(CPY.issues, issues.map { it.toWireMap() })
     draftImpact?.let { put(CIT.draftImpact, it.toMap()) }
+    autoRecalculationOf(cxt)?.let { put(FSR.auto, it) }
 }
 
 /** A draft save's [CIT.draftImpact] (issue #1119): the report of publishing it, against the live client. */

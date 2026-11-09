@@ -129,7 +129,7 @@ internal fun SchModuleBuilder.clientUsagesEndpoints() {
         val client = overseenClient(c, request[CLD.client].toOptStr())
         val wanted = usageFromRuleMap(request[CUS.column].toJsonMapOrEmpty())
         val result = ClientUsageEdit.save(c, client, request[CUS.previousLabel].toOptStr(), wanted, expectedModeOf(request))
-        editorSaveResult(client, result.configName, CUS.column to result.usage?.toRuleMap(), result.mode, result.issues, null)
+        editorSaveResult(c, client, result.configName, CUS.column to result.usage?.toRuleMap(), result.mode, result.issues, null)
     }
 
     type(CUS.removeResultTypeName) {
@@ -159,7 +159,7 @@ internal fun SchModuleBuilder.clientUsagesEndpoints() {
         val client = overseenClient(c, request[CLD.client].toOptStr())
         val label = request[CCT.label].toOptStr().orEmpty()
         val result = ClientUsageEdit.remove(c, client, request[CCT.traitId].toOptStr().orEmpty(), label, expectedModeOf(request))
-        editorSaveResult(client, result.configName, CCT.label to label, result.mode, result.issues, null)
+        editorSaveResult(c, client, result.configName, CCT.label to label, result.mode, result.issues, null)
     }
 
     type(CUS.layoutResultTypeName) {
@@ -191,6 +191,6 @@ internal fun SchModuleBuilder.clientUsagesEndpoints() {
         val layout = request[CUS.workflowLayout].toOptEnum<WorkflowLayout>()
             ?: throw KdrException.mkInput("'${request[CUS.workflowLayout]}' is not a workflow layout.")
         val result = ClientListingEdit.setLayout(c, client, layout, expectedModeOf(request))
-        editorSaveResult(client, result.configName, CUS.workflowLayout to result.layout.name, result.mode, result.issues, null)
+        editorSaveResult(c, client, result.configName, CUS.workflowLayout to result.layout.name, result.mode, result.issues, null)
     }
 }

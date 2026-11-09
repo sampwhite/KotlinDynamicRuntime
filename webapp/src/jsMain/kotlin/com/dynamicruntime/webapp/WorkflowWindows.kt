@@ -160,6 +160,12 @@ fun windowsSaveRequest(clientId: String, workflowId: String, windows: WfWindows?
 /** What a windows save did: the workflow's parameters here now, with the setting it replaced among the earlier ones. */
 fun parseWindowsSaveResult(raw: Map<String, Any?>): WorkflowParamsView = parseWorkflowParams(raw[CWF.params].toJsonMapOrEmpty())
 
+/** What a save of a workflow's parameters did: the [params] now, and what became of the client's forms (issue #1741). */
+class ParamsSaveResult(val params: WorkflowParamsView, val forms: FormStatesAuto?)
+
+/** The parameters save's answer as a [ParamsSaveResult]. Pure. */
+fun parseParamsSaveResult(raw: Map<String, Any?>): ParamsSaveResult = ParamsSaveResult(parseWindowsSaveResult(raw), formStatesAutoOf(raw))
+
 /**
  * How a windows save takes effect (issue #1356), said beside Save: at once, in the client or sandbox [clientId] names,
  * with no draft and no publish -- and from a sandbox, never reaching its client.

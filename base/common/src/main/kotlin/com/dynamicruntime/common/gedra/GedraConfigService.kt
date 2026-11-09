@@ -964,14 +964,18 @@ class GedraConfigService : ServiceInitializer {
             chosen?.let { GedraConfigRow.extract(gedraService, it) }
         }
 
-    /** Every enabled revision row of [client]'s configs, grouped by class -- the raw material both list reads reduce. */
+    /**
+     * Every enabled revision row of [client]'s configs, grouped by class -- the raw material both list reads reduce --
+     * in the order of their config ids, the order the boot load reads them in (issue #1741). A reload loads the classes
+     * in this order, and the workflows registry and every form's derived state follow it: in any other order, a reload
+     * would put a client's workflows in another order than the boot did, and every form's state would read as changed.
+     */
     private fun listRevisionRows(cxt: KdrCxt, client: String): List<List<Map<String, Any?>>> {
         // The cache holds every client's rows, so it serves this regardless of which client is asked for; SQL
         // is the fallback on a miss, as everywhere else.
         configCache?.let { cache ->
             cache.checkRefresh(cxt)
-            return GedraConfigCache.rowsForClient(cache, client)
-                .groupBy { it[GC.configId].toOptStr() ?: "" }.filterKeys { it.isNotEmpty() }.values.toList()
+            return byConfigId(GedraConfigCache.rowsForClient(cache, client))
         }
         val sqlCxt = SqlTopicService.mkSqlCxt(cxt, gedraConfigTopic)
         val table = configTable(cxt)
@@ -982,8 +986,12 @@ class GedraConfigService : ServiceInitializer {
         )
         var rows: List<Map<String, Any?>> = emptyList()
         sqlCxt.sqlDb.withSession(cxt) { rows = sqlCxt.sqlDb.queryStatement(cxt, stmt, mapOf(PF.client to client)) }
-        return rows.groupBy { it[GC.configId].toOptStr() ?: "" }.filterKeys { it.isNotEmpty() }.values.toList()
+        return byConfigId(rows)
     }
+
+    /** [rows] grouped by class, the classes in config id order, as [listRevisionRows] answers them. */
+    private fun byConfigId(rows: List<Map<String, Any?>>): List<List<Map<String, Any?>>> =
+        rows.groupBy { it[GC.configId].toOptStr() ?: "" }.filterKeys { it.isNotEmpty() }.toSortedMap().values.toList()
 
     /**
      * The latest revision of [configId] as it stands inside the transaction, or null when the class has no

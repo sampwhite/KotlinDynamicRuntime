@@ -443,7 +443,7 @@ object ClientFileRefEdit {
 
     /** Makes [written] take effect ([ClientStoredEdit.takeEffect]: live, or a draft) and says where it landed. */
     private fun goLive(cxt: KdrCxt, target: ClientStoredEdit.EditTarget, written: GedraConfigRow, refId: String, undo: () -> Unit): Result {
-        ClientStoredEdit.takeEffect(cxt, target, written, undo)
+        ClientStoredEdit.takeEffect(cxt, target, written, undo, recalculateForms = false)
         return Result(target.client, refId, written.configId.baseId, target.mode, target.readsAs)
     }
 

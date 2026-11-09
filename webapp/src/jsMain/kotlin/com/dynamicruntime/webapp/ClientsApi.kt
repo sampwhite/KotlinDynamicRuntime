@@ -99,6 +99,10 @@ class ClientOverview(
      * backend counts it -- not necessarily [forms].
      */
     val formStatesRecalcCount: Int = 0,
+    /** The most forms the deployment brings up to date as a change to a client's configuration is saved (issue #1741). */
+    val formStatesAutoLimit: Int = 0,
+    /** Whether the client brings its forms up to date only by hand, never as a change is saved (issue #1741). */
+    val manualFormStates: Boolean = false,
 )
 
 /** The overview endpoint's items as rows; one without a client id is not a client. Pure, and covered under `jsNodeTest`. */
@@ -131,6 +135,8 @@ fun parseClientOverview(items: List<Map<String, Any?>>): List<ClientOverview> = 
         rootOf = row[CLD.rootOf].toOptStr(),
         formStatesRecalcLimit = int(FSR.limit),
         formStatesRecalcCount = int(FSR.count),
+        formStatesAutoLimit = int(FSR.autoLimit),
+        manualFormStates = row[CLD.manualFormStates] == true,
     )
 }
 
@@ -733,10 +739,23 @@ fun saveFailure(e: Throwable, reread: () -> Unit): DisplayError = saveConflict(e
 
 /**
  * The note an editor shows after a save (issue #930): [done]'s account of what changed, and -- for a draft, which a
- * client with a Shadow Sandbox saves -- where it can be seen and how it goes live. Pure, and covered under `jsNodeTest`.
+ * client with a Shadow Sandbox saves -- where it can be seen and how it goes live; then what became of the forms the
+ * change reaches ([forms], issue #1741). Pure, and covered under `jsNodeTest`.
  */
-fun savedNote(done: String, mode: String): String =
-    if (mode == EDM.draft) "$done Saved as a draft: the client's sandbox shows it, and it goes live once published." else done
+fun savedNote(done: String, mode: String, forms: FormStatesAuto? = null): String {
+    val saved = if (mode == EDM.draft) "$done Saved as a draft: the client's sandbox shows it, and it goes live once published." else done
+    // And what became of the forms the change reaches (issue #1741), when the save says.
+    return formStatesAutoText(forms)?.let { "$saved $it" } ?: saved
+}
+
+/**
+ * The note the publishing bar shows after a publish (issue #1741): what was published, then what became of the
+ * client's forms ([forms]). Pure, and covered under `jsNodeTest`.
+ */
+fun publishedNote(names: List<String>, forms: FormStatesAuto?): String {
+    val done = if (names.size == 1) "Published ${names.single()}." else "Published ${names.size} configurations together."
+    return formStatesAutoText(forms)?.let { "$done $it" } ?: done
+}
 
 /**
  * Whether a copy row offers a reset (issue #918): only a **stored** value is data's to remove. A row set in source
@@ -1243,8 +1262,17 @@ fun definitionEditOffer(storedConfig: String?, configs: List<ConfigSummaryView>?
 /** Whether a configuration row wants attention in the table (issue #1026): it could be published from this page (#1353). */
 fun configRowNeedsPublish(row: ClientOverview?, bundle: ConfigSummaryView): Boolean = bundleAction(row, bundle).publish
 
-/** What a definition edit did (issue #1026), and how it took effect -- live, or a draft its sandbox runs (issue #930). */
-class DefinitionEditResult(val configName: String, val info: Map<String, Any?>, val issues: List<String>, val mode: String = EDM.live)
+/**
+ * What a definition edit did (issue #1026), how it took effect -- live, or a draft its sandbox runs (issue #930) -- and
+ * what became of the forms (issue #1741).
+ */
+class DefinitionEditResult(
+    val configName: String,
+    val info: Map<String, Any?>,
+    val issues: List<String>,
+    val mode: String = EDM.live,
+    val forms: FormStatesAuto? = null,
+)
 
 /** The set result as a [DefinitionEditResult]. Pure, and covered under `jsNodeTest`. */
 fun parseDefinitionEditResult(results: Map<String, Any?>): DefinitionEditResult = DefinitionEditResult(
@@ -1252,6 +1280,7 @@ fun parseDefinitionEditResult(results: Map<String, Any?>): DefinitionEditResult 
     info = results[CLD.definition].toJsonMapOrEmpty(),
     issues = results[CPY.issues].toJsonListOfMaps().mapNotNull { it[GCI.message].toOptStr() },
     mode = results[CPY.mode].toOptStr() ?: EDM.live,
+    forms = formStatesAutoOf(results),
 )
 
 /** The clients endpoints (issue #905): the scoped surface, which both kinds of administrator reach. */
@@ -1448,8 +1477,8 @@ object ClientsApi {
      * or [visibilitySaveRequest] -- in force at once in the client or sandbox named. One that would freeze or hide
      * engaged forms now, or take one out of its owner's sight, is refused with the impact report ([impactOf]).
      */
-    suspend fun saveWorkflowParams(request: Map<String, Any?>): WorkflowParamsView =
-        parseWindowsSaveResult(Http.sendApi("POST", UADEP.clientWorkflowParams, request)[EP.results].toJsonMapOrEmpty())
+    suspend fun saveWorkflowParams(request: Map<String, Any?>): ParamsSaveResult =
+        parseParamsSaveResult(Http.sendApi("POST", UADEP.clientWorkflowParams, request)[EP.results].toJsonMapOrEmpty())
 
     /** A client's listing columns and the traits a column may read (issue #1491): the client's own, or one named. */
     suspend fun usageCatalog(clientId: String): UsageCatalogView =
@@ -1521,16 +1550,17 @@ object ClientsApi {
      * Publishes [clientId]'s configurations [names] together and reloads the client (issues #1001, #1352), so a
      * published-only client runs what was just published. For a sandbox, its parent's: the full-scope surface names the parent; the scoped
      * one, called in the sandbox, acts on the parent already (#930). A publish that would affect the client's stored
-     * data is refused unless [acknowledgeImpact] (issue #935); [impactOf] reads the report off that refusal.
+     * data is refused unless [acknowledgeImpact] (issue #935); [impactOf] reads the report off that refusal. Answers
+     * what the reload's recalculation did to the client's forms (issue #1741), or null when it ran none.
      */
-    suspend fun publishBundles(clientId: String, names: List<String>, acrossClients: Boolean, acknowledgeImpact: Boolean = false) {
+    suspend fun publishBundles(
+        clientId: String,
+        names: List<String>,
+        acrossClients: Boolean,
+        acknowledgeImpact: Boolean = false,
+    ): FormStatesAuto? {
         val request = publishBundleRequest(clientId, names, acrossClients, acknowledgeImpact)
-        Http.sendApi("POST", request.path, request.body)
-        if (acrossClients) {
-            Http.sendApi("POST", ACEP.reload, mapOf(CFEP.client to (sandboxParentOf(clientId) ?: clientId)))
-        } else {
-            Http.sendApi("POST", CFEP.reload, emptyMap())
-        }
+        return formStatesAutoOf(Http.sendApi("POST", request.path, request.body)[EP.results].toJsonMapOrEmpty())
     }
 
     /** Deletes [clientId]'s empty configuration [name], as it was read at [expectUpdatedAt], and reloads (issue #1461). */
@@ -1565,13 +1595,16 @@ class ApiRequest(val path: String, val body: Map<String, Any?>)
 /**
  * The publish of [clientId]'s configurations [names], together (issues #1001, #935, #1352): the full-scope surface naming the owner --
  * a sandbox's parent, since a sandbox holds none of its own -- or the scoped one; with [acknowledgeImpact] when the
- * caller has seen the impact report and goes ahead. Pure, and covered under `jsNodeTest`.
+ * caller has seen the impact report and goes ahead; reloading the client as it publishes. Pure, and covered under
+ * `jsNodeTest`.
  */
 fun publishBundleRequest(clientId: String, names: List<String>, acrossClients: Boolean, acknowledgeImpact: Boolean): ApiRequest {
     val body = buildMap {
         if (acrossClients) put(CFEP.client, sandboxParentOf(clientId) ?: clientId)
         put(CFEP.names, names)
         if (acknowledgeImpact) put(IMP.acknowledgeImpact, true)
+        // Reloaded in the same call, so the answer says what the change did to the client's forms (issue #1741).
+        put(CFEP.reloadField, true)
     }
     return ApiRequest(if (acrossClients) ACEP.bundlePublish else CFEP.bundlePublish, body)
 }

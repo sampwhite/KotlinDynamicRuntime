@@ -719,13 +719,17 @@ class GedraDataService : ServiceInitializer {
     }
 
     /**
-     * Whether two state entry lists hold the same entries in the same order, by trait and data alone: the
-     * envelope a stored entry carries (its id and stamps) is not part of what a recompute decides. Compared
-     * through their JSON text, so a number stored as a `Long` and derived as an `Int` do not differ.
+     * Whether two state entry lists hold the same entries, by trait and data alone: the envelope a stored entry
+     * carries (its id and stamps) is not part of what a recompute decides. Compared through their JSON text, so a
+     * number stored as a `Long` and derived as an `Int` do not differ.
+     *
+     * **In any order** (issue #1741): the entries of one trait are told apart by their data (a workflow's by its id),
+     * never by position, and the order a deriver emits them in follows the order configuration was loaded in. A
+     * reload once loaded it in another order than the boot, and every form then read as changed and was rewritten.
      */
     private fun sameState(a: List<Map<String, Any?>>, b: List<Map<String, Any?>>): Boolean {
         fun essence(entries: List<Map<String, Any?>>) =
-            entries.map { linkedMapOf(GE.traitId to it[GE.traitId], GE.data to it[GE.data]) }.toJsonStr(compact = true)
+            entries.map { linkedMapOf(GE.traitId to it[GE.traitId], GE.data to it[GE.data]).toJsonStr(compact = true) }.sorted()
         return essence(a) == essence(b)
     }
 

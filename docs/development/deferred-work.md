@@ -1002,6 +1002,16 @@ client waits for the nightly run.
 - **An asynchronous launch from the page.** The same client launch with `JobRunMode.async`, answering at once, and
   the page following the launch row's progress until it ends.
 
+## When a customer with more forms than the automatic limit wants a change applied without waiting
+
+A saved configuration change brings the client's forms up to date in the same request only while the client holds no
+more forms than the deployment's `formStatesAutoRecalcLimit` limit, 200 by default (issue #1741). A larger client's forms
+wait for the nightly run, or for Recalculate on its page.
+
+- **A background recalculation after a run of edits** *(#1741, deferred here 2026-11-09).* An edit to a larger client
+  schedules an asynchronous client launch a short while after the change, and every further edit in that while pushes
+  it back, so a run of edits is recalculated once. The save's note says it is scheduled rather than "tonight".
+
 ## When the node table exists
 
 The endpoints that accept a large request body are collected at boot and read from `GET /operator/request/largeBodies`

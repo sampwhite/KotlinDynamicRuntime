@@ -148,7 +148,7 @@ val ClientTraitsSection = FC<ClientTraitsSectionProps> { props ->
             try {
                 val result = ClientsApi.setIncludedTraits(traitsEditRequest(props.clientId, after, expectedMode(props.savesDraft), acknowledge))
                 if (latest.current == token) {
-                    note = savedNote("Saved the client's traits to ${result.configName}.", result.mode)
+                    note = savedNote("Saved the client's traits to ${result.configName}.", result.mode, result.forms)
                     saved = result.included
                     impact = null
                 }

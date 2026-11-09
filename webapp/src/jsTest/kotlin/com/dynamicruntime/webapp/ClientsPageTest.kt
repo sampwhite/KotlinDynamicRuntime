@@ -973,7 +973,7 @@ class ClientsPageTest {
     fun theDefinitionEditorDrawsItsFieldsInSections() {
         val scoped = ClientPresentationFields.bySection(ClientPresentationFields.namesFor(platform = false))
         assertEquals(listOf("About", "How it behaves"), scoped.map { it.first.heading })
-        assertEquals(listOf(CLD.timeZone, CLD.userLabels, CLD.userLabelNotes, CLD.sessionHours), scoped[1].second)
+        assertEquals(listOf(CLD.timeZone, CLD.userLabels, CLD.userLabelNotes, CLD.sessionHours, CLD.manualFormStates), scoped[1].second)
         // The platform's own fields join theirs, the refresh interval among how the client behaves.
         val platform = ClientPresentationFields.bySection(ClientPresentationFields.namesFor(platform = true))
         assertEquals(listOf("About", "How it behaves", "Platform"), platform.map { it.first.heading })

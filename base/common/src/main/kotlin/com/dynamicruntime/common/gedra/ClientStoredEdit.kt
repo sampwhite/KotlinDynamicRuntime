@@ -98,6 +98,11 @@ object ClientStoredEdit {
      * Makes a save take effect: published and live ([publishAndReload]), or -- a draft -- the owner reloaded, which
      * rebuilds its sandbox from the latest revision while a published-only owner keeps running what it published. A
      * draft is not judged by [impact]: nothing reaches the owner's data until it is published, and publishing judges it.
+     *
+     * Then the forms the change reaches are brought up to date when the client is small enough (issue #1741,
+     * [autoRecalculateFormStates]): the client's own, or for a draft its sandbox's, which is what a draft changes. An
+     * editor whose saves cannot change any form's state -- copy, the menu, file refs, the listing and its columns,
+     * reports -- passes false for [recalculateForms], and its result says nothing of form states.
      */
     fun takeEffect(
         cxt: KdrCxt,
@@ -106,9 +111,13 @@ object ClientStoredEdit {
         undo: () -> Unit,
         restorePublished: Boolean = false,
         impact: ImpactGate = ImpactGate.unchecked,
-    ): ConfigReloadResult =
-        if (target.draft) SandboxEdits.reloadParent(cxt, target.client)
+        recalculateForms: Boolean = true,
+    ): ConfigReloadResult {
+        val reload = if (target.draft) SandboxEdits.reloadParent(cxt, target.client)
         else publishAndReload(cxt, target.bound, target.client, written, undo, restorePublished, impact)
+        if (recalculateForms) autoRecalculateFormStates(cxt, target.readsAs)
+        return reload
+    }
 
     /**
      * For a [target] that saved a draft, what publishing [written] would do to the stored data of the client it is

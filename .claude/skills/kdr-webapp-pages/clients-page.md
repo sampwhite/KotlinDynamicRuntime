@@ -480,6 +480,21 @@ is said as counts (`formStatesRecalcText`), including a run that changed nothing
 recalculation holds the client. Not asked about first: it changes no data anybody entered. A sandbox's page offers it
 too, since its forms are its own. `kdr-probe --url <your server> form-states-timing [counts...]` times it.
 
+**A saved change brings a small client's forms up to date by itself** (issue #1741). The backend runs the same
+recalculation, synchronously, in the request of every edit that can move a form's state -- the definition, the traits,
+the workflows and their parameters, a trait's design or narrowing, a Design View save (a layout holds a workflow's form
+requirements), a bundle editor save, and a publish -- when the client holds no more forms than the deployment's limit
+(the `formStatesAutoRecalcLimit` instance-config key, default 200) and its definition does not set `manualFormStates`.
+It reaches the client's own forms, or for a draft its sandbox's. The copy, the menu, columns, files, and reports move no
+form's state and run none. The answer carries what happened under
+`formStatesAuto` (`FormStatesAuto`, `formStatesAutoOf`), and the page says it after the save's own note
+(`formStatesAutoText`, through `savedNote`; the publishing bar's `publishedNote`; the bundle editor's note), so a person
+learns the rule the moment it matters: brought up to date, already current, too many for the limit, by hand, off for
+the deployment, or busy. A client with no forms says nothing. The publish asks for its reload in the same call
+(`publishBundleRequest` sends `reload`), so its answer has the outcome. The Form states section says the rule before
+any save (`formStatesAutoRule`, from the overview row's `formStatesAutoLimit` and `manualFormStates`), and the
+definition's read-only rows have a Form states line.
+
 **The bundle editor** (issues #1436, #1460; `BundleEditorPage.kt`, its pure half in `BundleEditor.kt`,
 covered by `BundleEditorTest`) is its own page, `page=bundleEditor&client=<id>`, reached from **Open every bundle** on a
 client's page. One read answers it, `GET /clientAdmin/config/editor` or, for a caller who sees every client,

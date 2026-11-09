@@ -243,7 +243,7 @@ object ClientCopyEdit {
         changes: List<Change>,
         undo: () -> Unit,
     ): ApplyResult {
-        val reload = ClientStoredEdit.takeEffect(cxt, target, written, undo)
+        val reload = ClientStoredEdit.takeEffect(cxt, target, written, undo, recalculateForms = false)
         val effective = MarkdownFragmentService.get(cxt).effectiveFragmentsFor(cxt, fileId, target.readsAs)
         return ApplyResult(
             configName = written.configId.baseId,

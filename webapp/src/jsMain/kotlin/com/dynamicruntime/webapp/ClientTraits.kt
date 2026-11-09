@@ -228,11 +228,12 @@ fun traitsEditRequest(clientId: String, included: List<String>, expected: String
     if (acknowledge) put(IMP.acknowledgeImpact, true)
 }
 
-/** What a save did: the configuration it landed in, the traits now stored, and how it took effect. */
-class TraitsSetResult(val configName: String, val included: List<String>, val mode: String)
+/** What a save did: the configuration it landed in, the traits now stored, how it took effect, and what became of the forms. */
+class TraitsSetResult(val configName: String, val included: List<String>, val mode: String, val forms: FormStatesAuto? = null)
 
 fun parseTraitsSetResult(raw: Map<String, Any?>): TraitsSetResult = TraitsSetResult(
     configName = raw[COV.configName].toOptStr().orEmpty(),
     included = raw[CLD.includedTraits].toJsonListOfStrings(),
     mode = raw[CPY.mode].toOptStr().orEmpty(),
+    forms = formStatesAutoOf(raw),
 )

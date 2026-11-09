@@ -126,7 +126,7 @@ internal fun SchModuleBuilder.reportEditEndpoints() {
     ) { c, request ->
         val client = overseenClient(c, request[RRUN.client].toOptStr())
         val result = ReportEdit.create(c, client, request, expectedModeOf(request))
-        editorSaveResult(client, result.configName, RRUN.reportId to result.reportId, result.mode, result.issues, null)
+        editorSaveResult(c, client, result.configName, RRUN.reportId to result.reportId, result.mode, result.issues, null)
     }
 
     generalEndpoint(
@@ -145,6 +145,6 @@ internal fun SchModuleBuilder.reportEditEndpoints() {
     ) { c, request ->
         val client = overseenClient(c, request[RRUN.client].toOptStr())
         val result = ReportEdit.remove(c, client, request[RRUN.reportId].toOptStr().orEmpty(), expectedModeOf(request))
-        editorSaveResult(client, result.configName, RRUN.reportId to result.reportId, result.mode, result.issues, null)
+        editorSaveResult(c, client, result.configName, RRUN.reportId to result.reportId, result.mode, result.issues, null)
     }
 }

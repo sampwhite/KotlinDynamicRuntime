@@ -174,7 +174,7 @@ val ClientWorkflowsSection = FC<ClientWorkflowsSectionProps> { props ->
                 val result = ClientsApi.removeWorkflow(workflowRemoveRequest(props.clientId, workflowId, expectedMode(props.savesDraft), acknowledge))
                 if (latest.current != token) return@launch
                 removeImpact = null
-                val said = savedNote("Removed workflow ${result.workflowId} from ${result.configName}.", result.mode)
+                val said = savedNote("Removed workflow ${result.workflowId} from ${result.configName}.", result.mode, result.forms)
                 note = listOfNotNull(said, draftImpactText(result.draftImpact)).joinToString(" ")
                 props.onChanged()
             } catch (e: Throwable) {
@@ -574,7 +574,7 @@ val WorkflowSlotEditor = FC<WorkflowSlotEditorProps> { props ->
                 val request = workflowSaveRequest(props.clientId, slots, expectedMode(props.savesDraft), acknowledge, visibility)
                 val result = ClientsApi.saveWorkflow(request)
                 impact = null
-                val said = savedNote("Saved workflow ${result.slots.workflowId} to ${result.configName}.", result.mode)
+                val said = savedNote("Saved workflow ${result.slots.workflowId} to ${result.configName}.", result.mode, result.forms)
                 props.onSaved(listOfNotNull(said, draftImpactText(result.draftImpact)).joinToString(" "))
             } catch (e: Throwable) {
                 val report = impactOf(e)

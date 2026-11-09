@@ -270,6 +270,7 @@ object ReportEdit {
                 if (holder == null) undone.updatedAt?.let { svc.deleteConfig(bound, undone.configId, it) }
             },
             restorePublished = holder?.isPublished == true,
+            recalculateForms = false,
         )
         return Result(written.configId.baseId, reportId, reload.issues, target.mode)
     }
@@ -317,6 +318,7 @@ object ReportEdit {
             cxt, target, written,
             undo = { patch { before } },
             restorePublished = holder.isPublished,
+            recalculateForms = false,
         )
         return Result(written.configId.baseId, reportId, reload.issues, target.mode)
     }

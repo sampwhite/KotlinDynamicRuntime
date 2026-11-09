@@ -15,6 +15,7 @@ import com.dynamicruntime.common.job.JobService
 import com.dynamicruntime.common.job.JobTaskResult
 import com.dynamicruntime.common.startup.SchemaService
 import com.dynamicruntime.common.util.mkUniqueId
+import com.dynamicruntime.common.util.toOptLongOrNull
 
 /** The derived-state recompute job's names (issue #793). Each name matches its value. */
 @Suppress("ConstPropertyName")
@@ -97,9 +98,17 @@ fun recalculateFormStates(cxt: KdrCxt, client: String): Map<String, Any?> {
                 "nightly recalculation brings them up to date.",
         )
     }
-    // A name of its own, so no click adopts an earlier one's finished work and does nothing. Counted once, above.
+    return launchRecalculation(cxt, client, forms, "page")
+}
+
+/**
+ * Runs the job synchronously for [client]'s [forms], as a **client launch** named for [by] (the page, or an edit) and a
+ * fresh id, so no run adopts an earlier one's finished work: what [recalculateFormStates] and
+ * [autoRecalculateFormStates] share. Answers in [FSR]'s names.
+ */
+private fun launchRecalculation(cxt: KdrCxt, client: String, forms: Int, by: String): Map<String, Any?> {
     val result = JobService.get(cxt).launch(
-        cxt, SRJ.jobType, "page-${cxt.mkUniqueId()}", JobLaunchKind.client, JobRunMode.sync, clients = listOf(client),
+        cxt, SRJ.jobType, "$by-${cxt.mkUniqueId()}", JobLaunchKind.client, JobRunMode.sync, clients = listOf(client),
         countedTasks = forms.toLong(),
     )
     val busy = result.outcome == JobLaunchOutcome.lockedOut || client in result.busyClients
@@ -126,6 +135,75 @@ fun recalculateFormStates(cxt: KdrCxt, client: String): Map<String, Any?> {
         }
     }
 }
+
+/** The automatic recalculation's names (issue #1741) that are not on the wire. */
+@Suppress("ConstPropertyName")
+object FSRA {
+    /**
+     * The instance-config key for the most forms a client may hold and still have them recalculated automatically
+     * after a configuration change: [defaultLimit] unless the deployment, or a test, sets another. 0 turns it off.
+     */
+    const val limitKey = "formStatesAutoRecalcLimit"
+
+    /**
+     * 200: a few hundred milliseconds when every form is out of date (#1423 measured about 1 ms a form on file-backed
+     * H2), and a few when none is -- a cost a save can carry, and a size a client being designed or shown stays under.
+     */
+    const val defaultLimit = 200
+
+    /** Where an edit leaves what it did on the request's context, for its endpoint's result ([autoRecalculationOf]). */
+    const val sessionKey = "formStatesAutoRecalc"
+}
+
+/** The most forms a client may hold and still be recalculated automatically after a change (issue #1741); 0 for none. */
+fun formStatesAutoRecalcLimit(cxt: KdrCxt): Int =
+    cxt.instanceConfig.get(FSRA.limitKey)?.toOptLongOrNull()?.toInt()?.coerceAtLeast(0) ?: FSRA.defaultLimit
+
+/**
+ * Brings [client]'s forms up to date with a configuration change just made (issue #1741), when the client is small
+ * enough: a synchronous recalculation, at once, in the request that made the change, for a client holding no more
+ * forms than [formStatesAutoRecalcLimit] and not asking to be brought up to date only by hand
+ * ([ClientDef.manualFormStates]). [client] is the client whose forms the change reaches: the one edited, or for a draft
+ * its sandbox. No check of whether the change could affect any form's state: at this size it costs little, and the job
+ * leaves a current form alone.
+ *
+ * What it did is answered in [FSR]'s names and left on the request's context ([FSRA.sessionKey]), where the change's
+ * endpoint puts it into its result ([autoRecalculationOf]). It never fails the change, which has already been made: a
+ * recalculation that cannot run says so, and the nightly run or Recalculate brings the forms up to date.
+ */
+fun autoRecalculateFormStates(cxt: KdrCxt, client: String): Map<String, Any?> {
+    val result = try {
+        val limit = formStatesAutoRecalcLimit(cxt)
+        val forms = formStatesRecalcCount(cxt, client)
+        val manual = ClientService.get(cxt).known(client)?.manualFormStates == true
+        autoRecalcSkipped(manual, limit, forms) ?: (launchRecalculation(cxt, client, forms, "edit") + (FSR.autoLimit to limit))
+    } catch (e: Exception) {
+        LogGedra.warn(cxt) { "Could not recalculate the forms of client '$client' after a change to its configuration: ${e.message}" }
+        mapOf(FSR.outcome to FSR.stopped, FSR.reason to "The recalculation could not run: ${e.message}")
+    } + (FSR.client to client)
+    cxt.session[FSRA.sessionKey] = result
+    return result
+}
+
+/**
+ * Why the automatic recalculation runs nothing (issue #1741), in [FSR]'s names, or null when it runs: the client asks
+ * to be brought up to date only by hand ([manual]), the deployment's [limit] is 0, the client holds no [forms], or more
+ * than the limit. Pure.
+ */
+fun autoRecalcSkipped(manual: Boolean, limit: Int, forms: Int): Map<String, Any?>? = when {
+    manual -> mapOf(FSR.outcome to FSR.manual)
+    limit <= 0 -> mapOf(FSR.outcome to FSR.off)
+    forms == 0 -> mapOf(FSR.outcome to FSR.noForms, FSR.total to 0)
+    forms > limit -> mapOf(FSR.outcome to FSR.tooMany, FSR.total to forms, FSR.autoLimit to limit)
+    else -> null
+}
+
+/**
+ * The automatic recalculation a change made in this request ran ([autoRecalculateFormStates], issue #1741), for its
+ * endpoint's result under [FSR.auto]; null when it ran none.
+ */
+@Suppress("UNCHECKED_CAST")
+fun autoRecalculationOf(cxt: KdrCxt): Map<String, Any?>? = cxt.session[FSRA.sessionKey] as? Map<String, Any?>
 
 /** Every live gedra in [client] of a kind some registered deriver applies to. */
 private fun gedraIds(cxt: KdrCxt, client: String): List<String> {

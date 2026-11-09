@@ -1,5 +1,6 @@
 package com.dynamicruntime.webapp
 
+import com.dynamicruntime.common.gedra.EDM
 import com.dynamicruntime.common.gedra.workflow.WFP
 import com.dynamicruntime.common.gedra.workflow.WfDef
 import com.dynamicruntime.common.gedra.workflow.WfVisibility
@@ -72,12 +73,12 @@ val WorkflowVisibilityEditor = FC<WorkflowVisibilityEditorProps> { props ->
         saveError = null
         visibilityScope.launch {
             try {
-                ClientsApi.saveWorkflowParams(visibilitySaveRequest(props.clientId, props.workflow.workflowId, visibility, acknowledge))
+                val request = visibilitySaveRequest(props.clientId, props.workflow.workflowId, visibility, acknowledge)
+                val saved = ClientsApi.saveWorkflowParams(request)
                 impact = null
-                props.onSaved(
-                    if (visibility == null) "Who sees ${props.workflow.workflowId} follows the fallback again, at once."
-                    else "${props.workflow.workflowId} is now seen by: ${visibilityText(visibility)}. In force at once.",
-                )
+                val done = if (visibility == null) "Who sees ${props.workflow.workflowId} follows the fallback again, at once."
+                else "${props.workflow.workflowId} is now seen by: ${visibilityText(visibility)}. In force at once."
+                props.onSaved(savedNote(done, EDM.live, saved.forms))
             } catch (e: Throwable) {
                 val report = impactOf(e)
                 if (report != null) impact = report else saveError = saveFailure(e, props.onChanged)
