@@ -148,7 +148,7 @@ object ClientWorkflowEdit {
      * [def]'s labels as [scope]'s page shows them ([CWF.labels]): each fragment pull resolved, or the label as written
      * where one does not resolve. Null when no label pulls any, which is every workflow made from a template.
      */
-    private fun shownLabels(cxt: KdrCxt, scope: String, def: WfDef): Map<String, Any?>? {
+    fun shownLabels(cxt: KdrCxt, scope: String, def: WfDef): Map<String, Any?>? {
         if ((listOf(def.label) + def.tasks.map { it.label }).none { "%{" in it }) return null
         val fragments = MarkdownFragmentService.get(cxt)
         val scoped = cxt.mkSubContext("workflowLabels", scope)
