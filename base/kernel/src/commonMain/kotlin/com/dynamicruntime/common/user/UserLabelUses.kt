@@ -152,3 +152,11 @@ class UserLabelDetail(
     }
 }
 
+/** [items] as a sentence lists them: "a", "a or b", "a, b, or c". */
+fun joinedWithOr(items: List<String>): String = when (items.size) {
+    0 -> ""
+    1 -> items[0]
+    2 -> "${items[0]} or ${items[1]}"
+    else -> items.dropLast(1).joinToString(", ") + ", or " + items.last()
+}
+

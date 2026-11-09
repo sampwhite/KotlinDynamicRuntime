@@ -19,8 +19,9 @@ unclaimed user asks first, because becoming it claims it and ends its invitation
 asked about first too, since the session changes before the move home, and the leave guard goes only once it has
 succeeded. A failure is said by the page, a table cell having no room. The Email address has a **Copy** button (`readOnlyField`'s `copyLabel`), not on a deleted user.
 
-1. **User** (a draft): the identity and authority fields, with **More options** (`MoreOptions`, keyed by the record)
-   holding Editor, All clients, the persona suffix on a create, labels, Enabled, and on a create **Send invitation** --
+1. **User** (a draft): the identity and authority fields, then **Labels** in plain view (issue #1659; see Labels
+   below), then **More options** (`MoreOptions`, keyed by the record)
+   holding Editor, All clients, the persona suffix on a create, Enabled, and on a create **Send invitation** --
    open by itself when any is set away from its default (`userMoreOptionsInForce`), each with a "Use this when" hint.
    Send invitation (issue #1504) is on by default, is not drawn at the caller's own address, and waits, saying why,
    while Enabled is off, since a disabled user is never invited. The note after a create says whether the mail went
@@ -136,7 +137,18 @@ One more is neither authority nor identity:
 
 - **Labels** (issue #786) — free-form words an administrator puts on a user (`reviewer`) for a workflow's
   `userHasLabel` function to test. They **grant nothing**, which is why they sit apart from the access level
-  rather than beside it. A tags `Select` offering the *user's* client's suggestions (`labelSuggestions`, fetched
+  rather than beside it -- but they are **in plain view**, not under More options (issue #1659): an administrator
+  making a reviewer should not have to know to look. The group (`userLabelsGroup` in `Users.kt`, its pure half in
+  `UserLabelChoices.kt`, covered by `UserLabelChoicesTest`) draws a **checkbox per label the client suggests**
+  (`labelRows`), each with the client's own note on it (`CLD.userLabelNotes`, issue #1660), what the client's
+  workflows do with it -- "Approves “Approve the plan” in “Plan the logistics”", the kernel's `UserLabelUse.sentence`,
+  from the label-suggestions read's `details` (issue #1658: a task's `userHasLabel` whose fact its approval rule or
+  its rule for who may save names, or that only changes what it shows; a restricted workflow's visibility) -- and how
+  many users carry it. Under the rows, **Other labels**: free entry for any label the client does not suggest. While
+  the draft holds **no** label and some workflow withholds something for want of one, a note says what this user
+  cannot do (`missingLabelsPrompt`: "Without “reviewer”, this user can't approve …"); it never blocks a save. The
+  free-entry box is a tags `Select` offering the *user's*
+  client's suggestions (`labelSuggestions`, fetched
   by `ensureLabelSuggestions` the first time that client is asked for and kept keyed by client, so a slow reply can
   only fill its own client's entry — never land on the next user's editor) while accepting any other label typed.
   On the create form too, offering the suggestions of the client the form names, and always sent with the create:
