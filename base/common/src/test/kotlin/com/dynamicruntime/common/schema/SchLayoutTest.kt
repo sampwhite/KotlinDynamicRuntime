@@ -539,6 +539,21 @@ class SchLayoutTest : StringSpec({
             "string '${LAYSTR.formErrorHint}'"
     }
 
+    // An entry's heading (issue #1714) pulls like a hint, so both boot checks cover it.
+    "the pull and malformed-block checks cover a field's entry label" {
+        val layout = SchLayout(
+            "help", null, listOf(SchLayoutField("a", null, null, null, entryLabel = """%{@t("q.missing")}""")),
+        )
+        fun resolve(@Suppress("unused") fileId: String, nsKey: String): LayoutPullHit =
+            LayoutPullHit(fileFound = true, backend = true, keyPresent = nsKey != "q.missing")
+        val problems = layoutPullProblems("Type 'X'", layout, ::resolve)
+        problems.single().message shouldContain "a's entry label"
+        problems.single().location?.path shouldBe "schemaFields[0].${SL.entryLabel}"
+
+        val malformed = SchLayout(null, null, listOf(SchLayoutField("a", null, null, null, entryLabel = "Broken %{oops")))
+        layoutBackendBlockProblems("Type 'X'", malformed).single().message shouldContain "a's entry label"
+    }
+
     "layoutPullProblems tells a missing file from a frontend-file pull" {
         val layout = SchLayout("help", null, listOf(
             SchLayoutField("a", """%{@t("nofile.ns.k")}""", null, null),

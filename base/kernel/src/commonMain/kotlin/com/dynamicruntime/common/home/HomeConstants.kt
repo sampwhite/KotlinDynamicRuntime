@@ -673,6 +673,21 @@ object HFRAG {
     const val fieldBoundsNs = "fieldBounds"
 
     /**
+     * The home file's namespace for what a form heads each entry of a list with (issue #1714), unless the form's layout
+     * gives the field an `entryLabel`: its [formEntryLabel], a template over `n`, the entry's number.
+     */
+    const val formEntriesNs = "formEntries"
+
+    /**
+     * In [formEntriesNs]: the heading over each entry of a list, as shipped [defaultEntryLabel]. Named apart from a
+     * layout's `entryLabel` key (`SL.entryLabel`), which is another key.
+     */
+    const val formEntryLabel = "label"
+
+    /** [formEntryLabel] as the home file ships it, which a form says until the shell's copy arrives. */
+    const val defaultEntryLabel = $$"Entry ${n}"
+
+    /**
      * The key of a "What is this?" explanation (issue #1337), in the namespace of the copy it explains -- in this
      * file and in a page's own ([PFRAG]), as the profile file's `users.whatIsThis` is. Empty, the link is not offered.
      */

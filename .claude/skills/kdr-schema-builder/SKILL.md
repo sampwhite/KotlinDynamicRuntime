@@ -501,6 +501,13 @@ is equivalent):
 - **Default handling** (`defaultMode`, issue #709): `field(..., defaultMode = SLDM.offer)`. It is about the *field*,
   not where the value came from, so it never names `prefill`: a `prefillData` default is the first source, not the
   only one.
+- **What a list's entries are called** (`entryLabel`, issue #1714): `field(name, entryLabel = $$"Co-speaker ${n}")`. A
+  user-facing form heads each entry by its key when it is keyed, else by its branch's name when it is an element of a
+  union (the edit form's sections, by trait), else by this, else by the home copy's `formEntries.label` ("Entry
+  ${n}", `HFRAG.defaultEntryLabel`) -- never `[0]`, which only the endpoint catalog shows, since it names failures by
+  path (`elementRowHeader`, `entryHeading` in the webapp). It is the
+  layout's, not the schema's, because what an entry is called varies by form. It is checked at load to say only
+  `${n}`, and to be on a list of entries (`entryLabelProblems`), not a list of choices, which a form draws as one control.
 - **Form requirements** (`required`, `choices`, issue #1022): what *this form* asks for beyond the schema --
   `field(name, required = true)`, and `field(name, choices = listOf(SchLayoutChoice("park", "Outdoors"), …))`, a
   **restated** list of the schema's choices (which, in what order, with the form's labels). They never change what

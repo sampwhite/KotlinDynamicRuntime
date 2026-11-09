@@ -1,5 +1,6 @@
 package com.dynamicruntime.webapp
 
+import com.dynamicruntime.common.home.HFRAG
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.SchType
@@ -94,19 +95,57 @@ class SchemaFormKeyingTest {
         assertNull(keyedElementLabel(keyed, mapOf("client" to "acme")))
     }
 
-    /** The row header keeps its index and adds the key beside it; an unkeyed element is the bare index. */
+    /**
+     * The row header: where a failure is named by its path, the index with the key beside it, and the bare index for an
+     * unkeyed element; on a user-facing form, the key, else a union's branch name, else the entry's heading for its
+     * number (issue #1714).
+     */
     @Test
     fun composesTheRowHeader() {
         val u = union()
         val yearly = mapOf("kind" to "yearly", "data" to mapOf("year" to 2024))
-        // The index stays -- a failure named "edits[1].data.year" still points at a row on screen -- with the
-        // key added beside it.
-        assertEquals("[0] Yearly — 2024", elementRowHeader(u, yearly, 0, friendly = true))
-        // Not friendly: the raw discriminator value stands in for the title.
+        val unkeyed = mapOf("kind" to "name", "data" to mapOf("name" to "x"))
+        val keyNotFilled = mapOf("kind" to "yearly", "data" to emptyMap<String, Any?>())
+        // Not friendly: the index stays -- a failure named "edits[1].data.year" still points at a row on screen -- with
+        // the key added beside it, and the raw discriminator value standing in for the title.
         assertEquals("[0] yearly — 2024", elementRowHeader(u, yearly, 0, friendly = false))
-        // The unkeyed branch is the index it always showed.
-        assertEquals("[1]", elementRowHeader(u, mapOf("kind" to "name", "data" to mapOf("name" to "x")), 1, friendly = true))
-        // A keyed branch whose key is not yet filled also falls back to the bare index.
-        assertEquals("[2]", elementRowHeader(u, mapOf("kind" to "yearly", "data" to emptyMap<String, Any?>()), 2, friendly = true))
+        assertEquals("[1]", elementRowHeader(u, unkeyed, 1, friendly = false))
+        assertEquals("[2]", elementRowHeader(u, keyNotFilled, 2, friendly = false))
+        // Friendly: no path is shown outside debug, so no index. A keyed entry is its key; an entry of a union without
+        // one (an edit form's section) is its branch's name; any other is its number, counting from 1.
+        assertEquals("Yearly — 2024", elementRowHeader(u, yearly, 0, friendly = true))
+        assertEquals("Name", elementRowHeader(u, unkeyed, 1, friendly = true))
+        assertEquals("Yearly", elementRowHeader(u, keyNotFilled, 2, friendly = true))
+        // A section whose branch is not chosen yet has no name to give.
+        assertEquals("Entry 4", elementRowHeader(u, emptyMap(), 3, friendly = true))
+        // A plain list's entry, by its number -- or as the field's layout names its entries.
+        val speaker = parseSchemaTypes(mapOf("t.Speaker" to mapOf(SCH.type to SCT.kObject))).getValue("t.Speaker")
+        assertEquals("Entry 2", elementRowHeader(speaker, mapOf("name" to "Pat"), 1, friendly = true))
+        val named = elementRowHeader(speaker, mapOf("name" to "Pat"), 1, friendly = true, entryLabel = $$"Co-speaker ${n}")
+        assertEquals("Co-speaker 2", named)
+    }
+
+    /** An entry's heading (issue #1714): its number put in the template; a template that fails gives the shipped one. */
+    @Test
+    fun headsAnEntryByItsNumber() {
+        assertEquals("Entry 1", entryHeading(HFRAG.defaultEntryLabel, 0))
+        assertEquals("Co-speaker 3", entryHeading($$"Co-speaker ${n}", 2))
+        assertEquals("Panelist #10", entryHeading($$"Panelist #${n}", 9))
+        // A client's copy may compute on it.
+        assertEquals("First speaker", entryHeading($$"${n == 1 ? 'First' : 'Another'} speaker", 0))
+        // A client's line that names what it is not given costs the client its words, not the form.
+        assertEquals("Entry 2", entryHeading($$"Speaker ${name}", 1))
+        // Words with no number are taken as written.
+        assertEquals("Speaker", entryHeading("Speaker", 4))
+    }
+
+    /** Headings that read alike on a friendly list are numbered apart, the rest left as they are (issue #1714). */
+    @Test
+    fun numbersApartHeadingsThatReadAlike() {
+        assertEquals(listOf("Session", "Talk title"), distinctHeadings(listOf("Session", "Talk title")))
+        assertEquals(
+            listOf("Questionnaire (1)", "Session", "Questionnaire (2)", "Questionnaire (3)"),
+            distinctHeadings(listOf("Questionnaire", "Session", "Questionnaire", "Questionnaire")),
+        )
     }
 }

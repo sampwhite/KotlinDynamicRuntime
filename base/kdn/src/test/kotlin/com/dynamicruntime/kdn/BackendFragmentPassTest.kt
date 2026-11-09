@@ -10,6 +10,7 @@ import com.dynamicruntime.common.schema.SL
 import com.dynamicruntime.common.schema.parseDeliveredLayouts
 import com.dynamicruntime.common.schema.resolveDeliveredLayouts
 import com.dynamicruntime.common.test.TEP
+import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonMap
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import io.kotest.assertions.throwables.shouldThrow
@@ -109,7 +110,7 @@ private fun backendFragmentPassTests() = stringSpec {
 /**
  * A layout's form-level strings (issue #641) are copy like its heading and field text, so a backend `%{@t(...)}` in
  * one is resolved at delivery rather than shipped as written and rendered as literal text (issue #814). And what is
- * delivered parses back on the page, a heading-only layout included.
+ * delivered parses back on the page, a heading-only layout included. A field's entry label (issue #1714) pulls the same way.
  */
 private fun layoutStringsDeliveryTests() = stringSpec {
 
@@ -136,6 +137,15 @@ private fun layoutStringsDeliveryTests() = stringSpec {
         strings[LAYSTR.formErrorHint] shouldBe
             "This message was sent automatically. If you were not expecting it, you can ignore it."
         strings[LAYSTR.formErrorSummary] shouldBe $$"Plain, with a frontend ${field} left for the page."
+    }
+
+    "a backend pull in a field's entry label is resolved at delivery, its frontend number left for the page" {
+        // Issue #1714: an entryLabel is copy like a hint, so it pulls the same way.
+        val entry = mapOf(SL.field to "a", SL.entryLabel to $$"""%{@t("common.footer")} ${n}""")
+        val block = mapOf(SL.fragmentFileId to "mail", SL.schemaFields to listOf(entry))
+        val fields = resolveDeliveredLayouts(cxt, mapOf("t.Form" to block))["t.Form"].toJsonMapOrEmpty()[SL.schemaFields]
+        fields.toJsonListOfMaps().single()[SL.entryLabel] shouldBe
+            $$"This message was sent automatically. If you were not expecting it, you can ignore it. ${n}"
     }
 
     "a heading-only layout is delivered with no field list, so the page's parse takes it" {

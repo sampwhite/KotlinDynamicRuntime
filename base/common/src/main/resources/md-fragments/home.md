@@ -153,6 +153,11 @@ form stands in each.
 # +listAtLeast At least ${min} ${min == 1 ? 'entry' : 'entries'}
 # +listAtMost Up to ${max} ${max == 1 ? 'entry' : 'entries'}
 
+# @formEntries
+/- What a form heads each entry of a list with (issue #1714), unless the form's layout gives the field an `entryLabel` of
+   its own: "Co-speaker ${n}". `${n}` is the entry's number, counting from 1. -/
+# +label Entry ${n}
+
 # @ctaReview
 /- The `review` search keyword's words (issue #1596): what a call to action asking for a review is called wherever it is
    shown. A client's overlay rewords them as it rewords other copy. `statusText` is the Status column's chip for a form

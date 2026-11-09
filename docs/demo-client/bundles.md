@@ -181,7 +181,11 @@ and its menu entry. Explained on the [client](client.md), [talk core details](ta
           }
         },
         "required": ["summary"],
-        "type": "object"
+        "type": "object",
+        "g-layout": {
+          "$comment": "Each co-speaker is headed by their number in the list.",
+          "schemaFields": [{ "field": "coSpeakers", "entryLabel": "Co-speaker ${n}" }]
+        }
       }
     },
     {

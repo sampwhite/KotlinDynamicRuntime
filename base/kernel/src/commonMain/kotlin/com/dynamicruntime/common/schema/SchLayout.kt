@@ -169,6 +169,14 @@ class SchLayoutField(
      * about the data; this is only how the form sizes it, so only a long text field takes it ([layoutFieldProblems]).
      */
     val lines: Int? = null,
+    /**
+     * What a user-facing form heads each of a **list** field's entries with (issue #1714): a template over
+     * [LayoutCtx.n], the entry's number counting from 1, such as `Co-speaker ${'$'}{n}`. Null for the form's default, the
+     * home copy's `formEntries.label` ("Entry ${'$'}{n}" as shipped). What an entry is called varies by form -- one
+     * `Speaker` type is a co-speaker on one and a panelist on another -- so it is said here, not in the schema. Only a
+     * list of entries takes it ([entryLabelProblems]).
+     */
+    val entryLabel: String? = null,
 ) : JsonMappable {
     /** The entry as written in a `schemaFields` list; see [SchLayout.toJsonMap]. */
     override fun toJsonMap(): Map<String, Any?> {
@@ -182,6 +190,7 @@ class SchLayoutField(
         if (required) out[SL.required] = true
         choices?.let { list -> out[SL.choices] = list.map { it.toJsonMap() } }
         lines?.let { out[SL.lines] = it }
+        entryLabel?.let { out[SL.entryLabel] = it }
         return out
     }
 }
@@ -242,6 +251,7 @@ class SchLayoutBuilder(
         choices: List<SchLayoutChoice>? = null,
         comment: String? = null,
         lines: Int? = null,
+        entryLabel: String? = null,
         errors: (SchErrors.() -> Unit)? = null,
     ) {
         comment?.let { fieldComments[name] = it }
@@ -250,7 +260,7 @@ class SchLayoutBuilder(
             SchErrors(data).block()
             data.mapValues { it.value.toOptStr().orEmpty() }
         } ?: emptyMap()
-        fields.add(SchLayoutField(name, label, description, hint, errMap, defaultMode, required, choices, lines))
+        fields.add(SchLayoutField(name, label, description, hint, errMap, defaultMode, required, choices, lines, entryLabel))
     }
 
     /** The finished block, as the JSON `g-layout` value, with each comment beside what it is about. */
@@ -355,6 +365,9 @@ object SL {
     /** On a [schemaFields] entry: how many lines a long text field's box starts with on this form (issue #1550). */
     const val lines = "lines"
 
+    /** On a [schemaFields] entry: what a list field's entries are headed with on this form (issue #1714). */
+    const val entryLabel = "entryLabel"
+
     /** On a [choices] entry: the schema's value it offers. Its [label] and [description] are the form's copy for it. */
     const val value = "value"
 
@@ -382,7 +395,7 @@ object SL {
 
     /** Every key a [schemaFields] entry may carry. */
     val fieldKeys: Set<String> =
-        setOf(field, label, description, hint, errors, defaultMode, required, choices, lines, SCH.dComment)
+        setOf(field, label, description, hint, errors, defaultMode, required, choices, lines, entryLabel, SCH.dComment)
 
     /** Every key a [choices] entry may carry. */
     val choiceKeys: Set<String> = setOf(value, label, description)
@@ -425,6 +438,9 @@ object SL {
             "form's own copy for each. Each entry is described below.",
         lines to "How many lines a long text field's box starts with, from 1 to $maxLongTextLines " +
             "($defaultLongTextLines when unset). Only on a field the schema marks long text (`g-longText`).",
+        entryLabel to "What the form heads each entry of a list with, such as `Co-speaker \${n}`, where `\${n}` " +
+            "is the entry's number, counting from 1. Unset, the form says \"Entry 1\", \"Entry 2\", and so on. Only " +
+            "on a list of entries, not a list of choices.",
         SCH.dComment to "A note for whoever maintains the layout, never delivered to a page.",
     )
 
@@ -662,7 +678,7 @@ fun parseSchLayoutResult(where: String, raw: Map<String, Any?>): Parsed<SchLayou
         }
         SchLayoutField(
             field, m[SL.label].toOptStr(), m[SL.description].toOptStr(), m[SL.hint].toOptStr(), errors, defaultMode,
-            required, choices, lines,
+            required, choices, lines, m[SL.entryLabel].toOptStr(),
         )
     }
     val strings = readLayoutStrings(where, raw[SL.strings], problems)
@@ -949,7 +965,7 @@ fun layoutFieldProblems(where: String, layout: SchLayout, type: SchType?): List<
     if (undeclared.isNotEmpty()) return undeclared
 
     return formRequirementProblems(where, layout, type) + linesProblems(where, layout, type) +
-        authoritativeLayoutProblems(where, layout, type)
+        entryLabelProblems(where, layout, type) + authoritativeLayoutProblems(where, layout, type)
 }
 
 /** How many lines a long text field's box starts with when its form's layout does not say (issue #1550). */
@@ -973,6 +989,26 @@ fun linesProblems(where: String, layout: SchLayout, type: SchType): List<Problem
             "${SL.schemaFields}[$i].${SL.lines}",
         )
     }
+
+/**
+ * The fields [layout] gives an `entryLabel` (issue #1714) that are not lists of entries in [type]: only such a list's
+ * entries are headed, so a label for them anywhere else would head nothing. A list of choices is not one, since a form
+ * draws it as one control that picks several.
+ */
+fun entryLabelProblems(where: String, layout: SchLayout, type: SchType): List<Problem> =
+    layout.fields.withIndex().mapNotNull { (i, field) ->
+        val prop = type.properties[field.field]?.takeIf { field.entryLabel != null } ?: return@mapNotNull null
+        if (isListOfEntries(prop.valueType)) return@mapNotNull null
+        layoutProblem(
+            LayoutError.entryLabelNotList,
+            "$where: '${SCH.layout}' gives field '${field.field}' ${SL.entryLabel}, but the field is not a list of " +
+                "entries.",
+            "${SL.schemaFields}[$i].${SL.entryLabel}",
+        )
+    }
+
+/** Whether [type] is a list a form draws entry by entry (issue #1714): a list, but not one of closed choices. */
+fun isListOfEntries(type: SchType): Boolean = type.jsonType == SCT.array && type.itemType?.options.isNullOrEmpty()
 
 /** Whether [type] is plain text: a string with no choices and no date or binary format -- what a text area can enter. */
 fun isPlainText(type: SchType): Boolean =
@@ -1163,6 +1199,9 @@ object LayoutCtx {
 
     /** The declared upper bound (`maximum` / `maxLength` / `maxItems`), when the field has one. */
     const val max = "max"
+
+    /** In an `entryLabel` (issue #1714): the entry's number in its list, counting from 1 -- the one param it is given. */
+    const val n = "n"
 }
 
 /** The bounds-context param names [type] provides: [LayoutCtx.min] when it declares a minimum, [LayoutCtx.max]
@@ -1262,15 +1301,16 @@ fun errorContextData(
 }
 
 /**
- * The problems with a layout's copy **templates** -- `label` / `description` / `hint` -- against the field they
- * annotate (issues #587, #605), the boot check for §10's frontend substitution:
- *  - a **malformed** template (an unterminated `${'$'}{...}`, an empty block) fails, on any of the three;
+ * The problems with a layout's copy **templates** -- `label` / `description` / `hint` / `entryLabel` -- against the
+ * field they annotate (issues #587, #605), the boot check for §10's frontend substitution:
+ *  - a **malformed** template (an unterminated `${'$'}{...}`, an empty block) fails, on any of them;
  *  - a **frontend fragment pull** `${'$'}{@t("ns.key")}` fails: a layout pulls a fragment with the backend prefix
  *    `%{@t}`, resolved at delivery (#605), and a frontend one would render as raw text, exactly the "parses
  *    clean, renders wrong" the layout boot checks exist to prevent;
  *  - a **hint** additionally may reference only its field's bounds params: a `${'$'}{max}` on a field with no maximum
- *    fails, like a mistyped key. A `label` / `description` resolves against the field's own **dynamic** data, so
- *    its `${'$'}{...}` data paths are not checked here (no boot can enumerate them).
+ *    fails, like a mistyped key. An **entryLabel** may reference only `${'$'}{n}`, the entry's number (issue #1714).
+ *    A `label` / `description` resolves against the field's own **dynamic** data, so its `${'$'}{...}` data paths are
+ *    not checked here (no boot can enumerate them).
  * [type] is the object the layout annotates; a field it does not declare is reported by [layoutFieldProblems]
  * and skipped here.
  *
@@ -1316,7 +1356,11 @@ fun layoutTemplateProblems(where: String, layout: SchLayout, type: SchType?): Li
     }
     for ((i, field) in layout.fields.withIndex()) {
         val prop = type.properties[field.field] ?: continue
-        for ((kind, text) in listOf(SL.label to field.label, SL.description to field.description, SL.hint to field.hint)) {
+        val copies = listOf(
+            SL.label to field.label, SL.description to field.description, SL.hint to field.hint,
+            SL.entryLabel to field.entryLabel,
+        )
+        for ((kind, text) in copies) {
             if (text == null) continue
             val at = "${SL.schemaFields}[$i].$kind"
             val analysis = text.analyzeTemplate()
@@ -1333,6 +1377,17 @@ fun layoutTemplateProblems(where: String, layout: SchLayout, type: SchType?): Li
                     $$"$$where: the '$${SCH.layout}' $$kind for '$${field.field}' uses a frontend fragment pull ('${@t}'); " +
                         "a layout fragment pull uses the backend prefix '%{@t}', resolved at delivery (see #605).",
                 )
+            }
+            // An entry's heading is given its number alone (issue #1714).
+            if (kind == SL.entryLabel) {
+                for (path in analysis.paths.required + analysis.paths.optional) {
+                    if (path.substringBefore('.') == LayoutCtx.n) continue
+                    add(
+                        LayoutError.unknownParam, at,
+                        $$"$$where: the '$${SCH.layout}' entryLabel for '$${field.field}' references '${$$path}', but an " +
+                            $$"entry's heading is given only '$${LayoutCtx.n}', its number.",
+                    )
+                }
             }
             if (kind == SL.hint) {
                 val allowed = boundsContextNames(prop.valueType)
@@ -1414,9 +1469,13 @@ enum class LayoutError(
         "A field entry's `required` on a field nobody at the form could always fill in: derived, or gated by `g-visibleWhen`.",
     ),
     linesNotLongText("A field entry's `lines` on a field the schema does not mark long text."),
+    entryLabelNotList("A field entry's `entryLabel` on a field that is not a list of entries: not a list, or a list of choices."),
     malformedTemplate("Copy whose `\${…}` or `%{…}` template does not parse."),
     frontendPull("A frontend `\${@t(…)}` pull, where a layout pulls with the backend `%{@t(…)}`, or a pull where none is allowed."),
-    unknownParam("A template parameter its context does not provide: `\${max}` on a field with no maximum."),
+    unknownParam(
+        "A template parameter its context does not provide: `\${max}` on a field with no maximum, or anything but " +
+            "`\${n}` in an `entryLabel`.",
+    ),
     backendBlock("A backend `%{…}` block in an error message, which delivery does not resolve."),
     badPullKey(
         "A backend pull whose key names no fragment file: neither `fileId.namespace.key`, nor `namespace.key` in a block " +

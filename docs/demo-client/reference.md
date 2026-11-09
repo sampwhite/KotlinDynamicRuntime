@@ -114,6 +114,9 @@ A field whose `type` is `array` holds a list. Its `items` say what each element 
 which makes the field a multi-select, or an object, given by `$ref` to a type the client defines in its
 `kdr:schemaDef` slot. `uniqueItems` refuses a repeated element, and `maxItems` caps the length.
 
+A form shows a list of objects one entry at a time, each under a heading of its own: **Entry 1**, **Entry 2**, and so
+on, unless a layout names the entries (see [Field layouts](#field-layouts)).
+
 ## Who sees a field
 
 A field with `g-visibleWhen` is left off a form unless the person editing it has the fact the keyword names.
@@ -190,6 +193,11 @@ this form, which the schema may leave optional.
 A layout entry can also say how many `lines` a long text field's box starts with, which is three when no layout says.
 Whether a field is [long text](#long-text) is the schema's to say, with `g-longText`, since it is a fact about the
 data rather than about one form. The [abstract's summary](abstract.md) is one.
+
+A layout entry for a [list](#lists) can say what the form calls each of its entries, with an `entryLabel` such as
+`Co-speaker ${n}`. The form puts the entry's number, counting from 1, in place of `${n}`, so the entries read
+**Co-speaker 1**, **Co-speaker 2**, and so on. Without one, they read **Entry 1**, **Entry 2**. The
+[abstract's co-speakers](abstract.md#the-abstract-trait) have one.
 
 A layout can also name the trait and introduce it. Its `label` is the trait's name, the heading of its section on a
 form, and its `description` is a line under that heading. A client can give a trait a layout for every form it shows,
