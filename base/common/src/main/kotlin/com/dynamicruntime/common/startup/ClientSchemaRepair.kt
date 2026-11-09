@@ -350,7 +350,10 @@ fun layoutProblems(name: String, where: String, body: Map<*, *>, type: SchType?)
     when (val parsed = parseTypeLayout(name, body)) {
         is Parsed.Failed -> parsed.problems
         is Parsed.Ok -> parsed.value?.let { layout ->
-            layoutFieldProblems(where, layout, type) + layoutTemplateProblems(where, layout, type) +
-                layoutBackendBlockProblems(where, layout)
+            buildList {
+                addAll(layoutFieldProblems(where, layout, type))
+                addAll(layoutTemplateProblems(where, layout, type))
+                addAll(layoutBackendBlockProblems(where, layout))
+            }
         }.orEmpty()
     }
