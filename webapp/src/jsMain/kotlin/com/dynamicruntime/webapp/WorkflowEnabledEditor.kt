@@ -1,5 +1,6 @@
 package com.dynamicruntime.webapp
 
+import com.dynamicruntime.common.gedra.EDM
 import com.dynamicruntime.common.gedra.workflow.WFP
 import com.dynamicruntime.common.gedra.workflow.WfDef
 import kotlinx.coroutines.MainScope
@@ -65,9 +66,9 @@ val WorkflowEnabledEditor = FC<WorkflowEnabledEditorProps> { props ->
         saveError = null
         enabledScope.launch {
             try {
-                ClientsApi.saveWorkflowParams(enabledSaveRequest(props.clientId, workflowId, on, acknowledge))
+                val saved = ClientsApi.saveWorkflowParams(enabledSaveRequest(props.clientId, workflowId, on, acknowledge))
                 impact = null
-                props.onSaved(enabledSavedNote(workflowId, on))
+                props.onSaved(savedNote(enabledSavedNote(workflowId, on), EDM.live, saved.forms))
             } catch (e: Throwable) {
                 val report = impactOf(e)
                 if (report != null) impact = report else saveError = saveFailure(e, props.onChanged)

@@ -178,13 +178,20 @@ fun traitNarrowRequest(clientId: String, narrowing: TraitNarrowing, expected: St
 }
 
 /** What a narrowing's save did: the configuration it is in, the narrowing now, how it took effect, and a draft's impact. */
-class TraitNarrowResult(val configName: String, val narrowing: TraitNarrowing, val mode: String, val draftImpact: ImpactReportView?)
+class TraitNarrowResult(
+    val configName: String,
+    val narrowing: TraitNarrowing,
+    val mode: String,
+    val draftImpact: ImpactReportView?,
+    val forms: FormStatesAuto? = null,
+)
 
 fun parseTraitNarrowResult(raw: Map<String, Any?>): TraitNarrowResult = TraitNarrowResult(
     configName = raw[CIT.configName].toOptStr().orEmpty(),
     narrowing = traitNarrowingFromInfo(raw[CIT.narrowing].toJsonMapOrEmpty()),
     mode = raw[CPY.mode].toOptStr().orEmpty(),
     draftImpact = raw[CIT.draftImpact]?.toJsonMapOrEmpty()?.let(::parseImpactReport),
+    forms = formStatesAutoOf(raw),
 )
 
 /**

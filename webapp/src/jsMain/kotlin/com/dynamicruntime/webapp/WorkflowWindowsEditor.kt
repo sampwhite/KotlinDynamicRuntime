@@ -1,5 +1,6 @@
 package com.dynamicruntime.webapp
 
+import com.dynamicruntime.common.gedra.EDM
 import com.dynamicruntime.common.gedra.workflow.WFP
 import com.dynamicruntime.common.gedra.workflow.WfDef
 import com.dynamicruntime.common.gedra.workflow.WfWindows
@@ -82,12 +83,11 @@ val WorkflowWindowsEditor = FC<WorkflowWindowsEditorProps> { props ->
         saveError = null
         windowsScope.launch {
             try {
-                ClientsApi.saveWorkflowParams(windowsSaveRequest(props.clientId, props.workflow.workflowId, windows, acknowledge))
+                val saved = ClientsApi.saveWorkflowParams(windowsSaveRequest(props.clientId, props.workflow.workflowId, windows, acknowledge))
                 impact = null
-                props.onSaved(
-                    if (windows == null) "The time windows of ${props.workflow.workflowId} follow the fallback again; they are in force now."
-                    else "Saved the time windows of ${props.workflow.workflowId}; they are in force now.",
-                )
+                val done = if (windows == null) "The time windows of ${props.workflow.workflowId} follow the fallback again; they are in force now."
+                else "Saved the time windows of ${props.workflow.workflowId}; they are in force now."
+                props.onSaved(savedNote(done, EDM.live, saved.forms))
             } catch (e: Throwable) {
                 val report = impactOf(e)
                 if (report != null) impact = report else saveError = saveFailure(e, props.onChanged)

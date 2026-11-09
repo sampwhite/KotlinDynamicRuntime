@@ -160,12 +160,14 @@ val BundleEditorPage = FC<Props> {
                         return@launch
                     }
                 }
-                Http.sendApi("POST", real.path, real.body)
+                val answer = Http.sendApi("POST", real.path, real.body)[EP.results].toJsonMapOrEmpty()
                 edits = BundleEdits()
                 impact = null
                 replacing = null
                 showCall = false
-                savedNote = "Saved ${if (count == 1) "1 edit" else "$count edits"}${if (row?.sandboxOf != null) " as a draft" else ""}, and reloaded the client."
+                val done = "Saved ${if (count == 1) "1 edit" else "$count edits"}${if (row?.sandboxOf != null) " as a draft" else ""}, and reloaded the client."
+                // And what the reload's recalculation did to the client's forms (issue #1741).
+                savedNote = formStatesAutoText(formStatesAutoOf(answer))?.let { "$done $it" } ?: done
                 bump()
             } catch (e: Throwable) {
                 impact = null

@@ -852,7 +852,7 @@ private val DefinitionEditor = FC<DefinitionEditorProps> { props ->
             try {
                 val result = ClientsApi.setDefinition(request)
                 if (latest.current == token) {
-                    note = savedNote("Saved the definition to ${result.configName}.", result.mode)
+                    note = savedNote("Saved the definition to ${result.configName}.", result.mode, result.forms)
                     editing = false
                     saved = result.info
                 }
@@ -1012,12 +1012,14 @@ val StoredConfigTable = FC<StoredConfigTableProps> { props ->
     var error by useState<DisplayError?>(null)
     var impact by useState<ImpactDialog?>(null)
     var selected by useState<Set<String>>(emptySet())
+    // What the last publish did to the client's forms (issue #1741), said under the bar.
+    var published by useState<String?>(null)
     // The bundle being deleted (issue #1461), and why the last delete was not made.
     var deleting by useState<String?>(null)
     var deleteError by useState<DisplayError?>(null)
     // What the Published and Updated columns read their relative times against (issue #1141).
     val now = useRelativeClock()
-    useEffect(props.clientId) { error = null; impact = null; selected = emptySet(); deleteError = null }
+    useEffect(props.clientId) { error = null; impact = null; selected = emptySet(); deleteError = null; published = null }
     val publishedOnly = props.row?.let { it.publishedOnly || it.sandboxOf != null } ?: true
     val group = publishGroup(props.row, props.configs)
     val selectable = selectableBundles(props.row, props.configs)
@@ -1029,9 +1031,11 @@ val StoredConfigTable = FC<StoredConfigTableProps> { props ->
     fun publish(names: List<String>, acknowledge: Boolean) {
         busy = true
         error = null
+        published = null
         clientsScope.launch {
             try {
-                ClientsApi.publishBundles(props.clientId, names, props.acrossClients, acknowledgeImpact = acknowledge)
+                val forms = ClientsApi.publishBundles(props.clientId, names, props.acrossClients, acknowledgeImpact = acknowledge)
+                published = publishedNote(names, forms)
                 impact = null
                 selected = emptySet()
                 props.onChanged()
@@ -1215,6 +1219,12 @@ val StoredConfigTable = FC<StoredConfigTableProps> { props ->
         }
     }
     error?.let { errorText("Couldn't publish the configurations, check their impact, or open the sandbox.", it) }
+    published?.let {
+        p {
+            className = ClassName("subtitle")
+            +it
+        }
+    }
     deleteError?.let { errorText("The bundle was not deleted.", it) }
     ImpactReportDialog {
         dialog = impact

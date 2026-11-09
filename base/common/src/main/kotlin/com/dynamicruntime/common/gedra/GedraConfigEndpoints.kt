@@ -994,7 +994,7 @@ private fun cfgPublishBody(c: KdrCxt, request: Map<String, Any?>): Map<String, A
         throw KdrException("No configuration '$it' for client '${c.client}'.", code = EXC.notFound)
     }
     val published = svc.publish(c, names.map { configId(c, it) }, trial = true, impact = impactGate(request))
-    return mapOf(CFEP.configs to published.map { summaryOf(c, it) }).withReloadIfAsked(c, request)
+    return mapOf(CFEP.configs to published.map { summaryOf(c, it) }).withReloadIfAsked(c, request, publish = true)
 }
 
 private fun cfgImpactBody(c: KdrCxt, request: Map<String, Any?>): Map<String, Any?> {
@@ -1121,9 +1121,21 @@ private fun reloadAndAnnounce(c: KdrCxt): Map<String, Any?> {
  * This answer with the client reloaded, when [request] asked for it with [CFEP.reloadField] (issue #1156): the change
  * is stored by now, so the reload runs it, and how the reload went is added under the same key. Not asked, the answer
  * is as it was -- the change waits for a reload somebody asks for, as in production it should.
+ *
+ * Reloaded, the forms the change now reaches are brought up to date when the client is small enough (issue #1741,
+ * [autoRecalculateFormStates]), and what that did is added under [FSR.auto]: for a [publish], the client's own; for a
+ * write, the client's own unless it runs only what is published, when the write is a draft and reaches its sandbox's,
+ * if it has one, or nothing yet.
  */
-private fun Map<String, Any?>.withReloadIfAsked(c: KdrCxt, request: Map<String, Any?>): Map<String, Any?> =
-    if (request[CFEP.reloadField] == true) this + (CFEP.reloadField to reloadAndAnnounce(c)) else this
+private fun Map<String, Any?>.withReloadIfAsked(c: KdrCxt, request: Map<String, Any?>, publish: Boolean = false): Map<String, Any?> {
+    if (request[CFEP.reloadField] != true) return this
+    val reloaded = this + (CFEP.reloadField to reloadAndAnnounce(c))
+    val reached = when {
+        publish || !GedraConfigService.get(c).publishedOnly(c, c.client) -> c.client
+        else -> sandboxOf(c.client).takeIf { ClientService.get(c).isPresent(it) }
+    } ?: return reloaded
+    return reloaded + (FSR.auto to autoRecalculateFormStates(c, reached))
+}
 
 /** A config write's [CFEP.reloadField] input, on a write type declared as a whole (issue #1156). */
 private fun SchTypeBuilder.reloadRequestProperty() {
@@ -1139,11 +1151,15 @@ private const val reloadRequestDescription =
     "Reload the client once the change is stored, as the reload endpoint does, so it is live at once (issue #1156). " +
         "Without it the change waits for a reload asked for -- the deliberate step a production change takes."
 
-/** How the reload a write asked for went (issue #1156), present only when it asked. */
+/**
+ * How the reload a write asked for went (issue #1156), present only when it asked; and beside it what the automatic
+ * recalculation of form states after it did (issue #1741).
+ */
 private fun SchTypeBuilder.reloadResultProperty() {
     property(CFEP.reloadField, "How the reload this call asked for went; absent when it asked for none.") {
         ref(CFEP.reloadResultType)
     }
+    formStatesAutoProperty()
 }
 
 private fun cfgPublishedOnlyBody(c: KdrCxt, request: Map<String, Any?>): Map<String, Any?> {

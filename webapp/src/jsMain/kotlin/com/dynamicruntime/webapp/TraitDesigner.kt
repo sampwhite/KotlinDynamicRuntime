@@ -179,11 +179,18 @@ fun traitDesignRequest(clientId: String, draft: TraitDesign, expected: String, a
  * What a design's save did: the configuration the trait is in, the trait as designed now, how it took effect, and --
  * for a draft -- what publishing it would do to the live client's forms (issue #1119).
  */
-class TraitDesignResult(val configName: String, val design: TraitDesign, val mode: String, val draftImpact: ImpactReportView? = null)
+class TraitDesignResult(
+    val configName: String,
+    val design: TraitDesign,
+    val mode: String,
+    val draftImpact: ImpactReportView? = null,
+    val forms: FormStatesAuto? = null,
+)
 
 fun parseTraitDesignResult(raw: Map<String, Any?>): TraitDesignResult = TraitDesignResult(
     configName = raw[CIT.configName].toOptStr().orEmpty(),
     design = traitDesignFromInfo(raw[CIT.design].toJsonMapOrEmpty()),
     mode = raw[CPY.mode].toOptStr().orEmpty(),
     draftImpact = raw[CIT.draftImpact]?.toJsonMapOrEmpty()?.let(::parseImpactReport),
+    forms = formStatesAutoOf(raw),
 )

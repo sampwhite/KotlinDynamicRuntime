@@ -43,6 +43,13 @@ val FormStatesSection = FC<FormStatesSectionProps> { props ->
         className = ClassName("subtitle")
         +offer.text
     }
+    // And what saving a change does for them (issue #1741).
+    offer.auto?.let {
+        p {
+            className = ClassName("subtitle")
+            +it
+        }
+    }
     if (offer.recalculate) {
         Button {
             loading = busy

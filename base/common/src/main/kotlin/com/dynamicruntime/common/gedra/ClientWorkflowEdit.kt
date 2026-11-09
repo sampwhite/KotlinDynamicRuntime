@@ -370,6 +370,8 @@ object ClientWorkflowEdit {
             ConfigImpact.requireNoneForParams(cxt, client, workflowId, before.layers.inForce, before.layers.withOwn(after).inForce)
         }
         service.save(cxt, client, workflowId, edit, unset)
+        // A workflow turned on or off, or its windows moved, changes the forms' state (issue #1741). Saved live, in [client].
+        autoRecalculateFormStates(cxt, client)
         return service.resolve(cxt, client, workflowId)
     }
 

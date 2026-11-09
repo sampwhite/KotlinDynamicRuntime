@@ -317,6 +317,7 @@ Each is a type the server declares, named as the endpoint catalog names it. A fi
 | `joinRoles` | array of object |  | The roles a visitor signed in to public may join the client as, on a deployment that offers it. |
 | `sessionHours` | integer |  | How long a sign-in lasts, in hours; absent for the deployment's default, and never past its limit. |
 | `refreshIntervalSeconds` | integer |  | How often, in seconds, an idle open tab re-reads what it shows; absent for the deployment's. |
+| `manualFormStates` | boolean |  | Whether a change to the client's configuration reaches its forms only by the nightly recalculation or by hand; absent or false recalculates a client with few enough forms as each change is saved. |
 
 ### WfDef
 

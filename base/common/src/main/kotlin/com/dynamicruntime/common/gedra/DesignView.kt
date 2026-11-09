@@ -313,6 +313,8 @@ object DesignView {
             },
             restorePublished = holder?.isPublished == true,
             impact = impact,
+            // Wording, layouts, and choices move no form's state (issue #1741).
+            recalculateForms = false,
         )
     }
 

@@ -318,6 +318,7 @@ object ClientUsageEdit {
             cxt, target, written,
             undo = { patch(written) { before } },
             restorePublished = holder.isPublished,
+            recalculateForms = false,
         )
         return Written(written.configId.baseId, reload.issues, target.mode)
     }

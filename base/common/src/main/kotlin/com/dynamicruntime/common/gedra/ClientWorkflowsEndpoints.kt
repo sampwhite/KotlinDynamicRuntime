@@ -191,7 +191,7 @@ internal fun SchModuleBuilder.clientWorkflowsEndpoints() {
         }
         val slots = templateSlotsFromInfo(request[CWF.slots].toJsonMapOrEmpty())
         val result = ClientWorkflowEdit.save(c, client, slots, expectedModeOf(request), gate, visibility)
-        editorSaveResult(client, result.configName, CWF.slots to result.slots.toInfo(), result.mode, result.issues, result.draftImpact)
+        editorSaveResult(c, client, result.configName, CWF.slots to result.slots.toInfo(), result.mode, result.issues, result.draftImpact)
     }
 
     // --- a workflow's parameters: a normal one's time windows, and who sees any (issues #1121, #1356, #1384) ---
@@ -200,6 +200,7 @@ internal fun SchModuleBuilder.clientWorkflowsEndpoints() {
         description = "What setting a workflow's parameters did (issues #1356, #1384): the parameters as the client or sandbox now runs them."
         property(CLD.client, "The client or sandbox they were set in.", required = true)
         property(CWF.params, "The workflow's parameters now, with their earlier settings.", required = true) { ref(CWF.paramsTypeName) }
+        formStatesAutoProperty()
     }
 
     generalEndpoint(
@@ -242,7 +243,7 @@ internal fun SchModuleBuilder.clientWorkflowsEndpoints() {
         }
         val unset = request[WFP.unset].toJsonListOfStrings().toSet()
         val resolved = ClientWorkflowEdit.saveParams(c, client, request[WFD.workflowId].toOptStr().orEmpty(), params, unset, gate)
-        mapOf(CLD.client to client, CWF.params to ClientWorkflowEdit.paramsInfo(c, resolved))
+        mapOf(CLD.client to client, CWF.params to ClientWorkflowEdit.paramsInfo(c, resolved)).withFormStatesAuto(c)
     }
 
     // --- removing a workflow made from a template (issue #1346) ---
@@ -279,6 +280,6 @@ internal fun SchModuleBuilder.clientWorkflowsEndpoints() {
         val gate = if (request[IMP.acknowledgeImpact] == true) ImpactGate.acknowledged else ImpactGate.refuse
         val workflowId = request[WFD.workflowId].toOptStr().orEmpty()
         val result = ClientWorkflowEdit.remove(c, client, workflowId, expectedModeOf(request), gate)
-        editorSaveResult(client, result.configName, WFD.workflowId to workflowId, result.mode, result.issues, result.draftImpact)
+        editorSaveResult(c, client, result.configName, WFD.workflowId to workflowId, result.mode, result.issues, result.draftImpact)
     }
 }

@@ -54,7 +54,8 @@ import kotlin.time.Instant
  * state after a recompute.
  *
  * One booted instance; a client per case, its workflow `review` in a bundle `flows` of its own, and a form engaged in
- * `review` with its draft saved, so its state names `check` as the task to do next.
+ * `review` with its draft saved, so its state names `check` as the task to do next. Each client brings its forms up to
+ * date by hand (`manualFormStates`, issue #1741), so a case decides when a recompute happens.
  */
 class DeletedWorkflowTest : StringSpec({
     val cxt = TestInstances.default("deletedWorkflow1354")
@@ -79,6 +80,9 @@ class DeletedWorkflowTest : StringSpec({
                 ClientDef(
                     clientId = client, name = client, usageType = ClientUsageType.dev, audience = ClientAudience.internal,
                     enabledEnvironments = setOf(ENV.unit, ENV.local), sandbox = sandbox, timeZone = "America/Chicago",
+                    // Brought up to date by hand (issue #1741): each case reads what a form stored before anything
+                    // recalculates it, which an edit's automatic recalculation would otherwise take away.
+                    manualFormStates = true,
                 ),
             )
             trait("MemoEntry", "memo", setOf(GedraDataType.formDoc), "A memo.") { property("text", "What it says.") }

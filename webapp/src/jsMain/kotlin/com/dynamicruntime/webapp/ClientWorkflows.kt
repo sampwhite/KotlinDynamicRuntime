@@ -313,13 +313,20 @@ fun workflowSaveRequest(
 }
 
 /** What a save did: the configuration the workflow is in, its slots now, how it took effect, and a draft's impact. */
-class WorkflowSaveResult(val configName: String, val slots: WfTemplateSlots, val mode: String, val draftImpact: ImpactReportView?)
+class WorkflowSaveResult(
+    val configName: String,
+    val slots: WfTemplateSlots,
+    val mode: String,
+    val draftImpact: ImpactReportView?,
+    val forms: FormStatesAuto? = null,
+)
 
 fun parseWorkflowSaveResult(raw: Map<String, Any?>): WorkflowSaveResult = WorkflowSaveResult(
     configName = raw[CWF.configName].toOptStr().orEmpty(),
     slots = templateSlotsFromInfo(raw[CWF.slots].toJsonMapOrEmpty()),
     mode = raw[CPY.mode].toOptStr().orEmpty(),
     draftImpact = raw[CIT.draftImpact]?.toJsonMapOrEmpty()?.let(::parseImpactReport),
+    forms = formStatesAutoOf(raw),
 )
 
 /**
@@ -347,11 +354,18 @@ fun workflowRemoveRequest(clientId: String, workflowId: String, expected: String
 }
 
 /** What a removal did: the configuration the workflow was in, how it took effect, and a draft's impact. */
-class WorkflowRemoveResult(val configName: String, val workflowId: String, val mode: String, val draftImpact: ImpactReportView?)
+class WorkflowRemoveResult(
+    val configName: String,
+    val workflowId: String,
+    val mode: String,
+    val draftImpact: ImpactReportView?,
+    val forms: FormStatesAuto? = null,
+)
 
 fun parseWorkflowRemoveResult(raw: Map<String, Any?>): WorkflowRemoveResult = WorkflowRemoveResult(
     configName = raw[CWF.configName].toOptStr().orEmpty(),
     workflowId = raw[WFD.workflowId].toOptStr().orEmpty(),
     mode = raw[CPY.mode].toOptStr().orEmpty(),
     draftImpact = raw[CIT.draftImpact]?.toJsonMapOrEmpty()?.let(::parseImpactReport),
+    forms = formStatesAutoOf(raw),
 )

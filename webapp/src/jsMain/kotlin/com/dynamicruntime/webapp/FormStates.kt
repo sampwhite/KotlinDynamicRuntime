@@ -2,6 +2,7 @@ package com.dynamicruntime.webapp
 
 import com.dynamicruntime.common.gedra.ClientStatus
 import com.dynamicruntime.common.gedra.FSR
+import com.dynamicruntime.common.gedra.sandboxParentOf
 import com.dynamicruntime.common.util.toOptStr
 
 /**
@@ -36,6 +37,53 @@ fun parseFormStatesRecalc(results: Map<String, Any?>): FormStatesRecalc {
 private fun forms(n: Number): String = if (n.toLong() == 1L) "1 form" else "$n forms"
 
 /**
+ * What the automatic recalculation after a configuration change did (issue #1741), as a change's result carries it
+ * under [FSR.auto]: the [run] in the manual recalculation's terms, whose forms they were ([client], the client's own or
+ * for a draft its sandbox's), and the deployment's [autoLimit] when the client held more.
+ */
+class FormStatesAuto(val run: FormStatesRecalc, val client: String, val autoLimit: Long?)
+
+/** A change's [results] automatic recalculation, or null when the change ran none. Pure, and covered under `jsTest`. */
+fun formStatesAutoOf(results: Map<String, Any?>): FormStatesAuto? {
+    val raw = results[FSR.auto] as? Map<*, *> ?: return null
+    val auto = raw.entries.associate { it.key.toString() to it.value }
+    return FormStatesAuto(parseFormStatesRecalc(auto), auto[FSR.client].toOptStr().orEmpty(), (auto[FSR.autoLimit] as? Number)?.toLong())
+}
+
+/**
+ * What a save's note adds about the client's forms (issue #1741): whether the change was brought to them at once, and
+ * if not, how they will be -- so a person learns the rule the moment it matters. Null when there is nothing to say: no
+ * recalculation, or no forms. Pure, and covered under `jsTest`.
+ */
+fun formStatesAutoText(auto: FormStatesAuto?): String? {
+    if (auto == null) return null
+    val run = auto.run
+    val whose = if (sandboxParentOf(auto.client) != null) "the sandbox's" else "this client's"
+    val whoseLead = whose.replaceFirstChar { it.uppercase() }
+    val total = run.total ?: (run.updated + run.current + run.failed)
+    val failed = if (run.failed > 0) " The state of ${forms(run.failed)} could not be stored; the job's exceptions name them." else ""
+    val later = "the nightly recalculation, or Recalculate, brings them up to date."
+    return when (run.outcome) {
+        FSR.noForms -> null
+        FSR.completed -> when {
+            total == 0L -> null
+            run.updated == 0L && run.failed == 0L ->
+                "$whoseLead ${if (total == 1L) "one form was" else "${forms(total)} were"} already up to date with the change."
+            run.current == 0L && run.failed == 0L ->
+                "Brought ${if (total == 1L) "$whose one form" else "all $total of $whose forms"} up to date with the change."
+            else -> "Brought ${run.updated} of $whose ${forms(total)} up to date with the change; the rest already were.$failed"
+        }
+        FSR.tooMany -> "$whoseLead ${forms(total)} are more than the ${auto.autoLimit ?: "few"} brought up to date as a change is " +
+            "saved: $later"
+        FSR.manual -> "$whoseLead forms are brought up to date by hand, as the client's definition asks: $later"
+        FSR.off -> "This deployment brings no client's forms up to date as a change is saved: $later"
+        FSR.busy -> "A recalculation of $whose forms is already running; they are brought up to date when it finishes."
+        else -> "Bringing $whose forms up to date stopped: ${run.reason?.trimEnd('.') ?: "no reason given"}. " +
+            later.replaceFirstChar { it.uppercase() } + failed
+    }
+}
+
+/**
  * What the page says a recalculation did. A run that changed nothing says so, so that an administrator who expected a
  * change knows to look elsewhere -- at whether the configuration is published, say. Pure, and covered under `jsTest`.
  */
@@ -60,8 +108,32 @@ fun formStatesRecalcText(result: FormStatesRecalc): String {
     }
 }
 
-/** What the page's Form states section says about `row` (issue #1412), and whether it offers to [recalculate]. */
-class FormStatesOffer(val text: String, val recalculate: Boolean)
+/**
+ * What the page's Form states section says about `row` (issue #1412), and whether it offers to [recalculate]; and the
+ * rule for bringing its forms up to date as a change is saved ([auto], issue #1741).
+ */
+class FormStatesOffer(val text: String, val recalculate: Boolean, val auto: String? = null)
+
+/**
+ * The rule for `row`'s forms as a change to its configuration is saved (issue #1741), said beside Recalculate so a
+ * person learns it before it matters: whether this client's are brought up to date at once, and if not, why -- its
+ * definition asks for it by hand, the deployment brings none, or it holds more than the deployment's limit. Null for a
+ * client this node does not carry. Pure, and covered under `jsTest`.
+ */
+fun formStatesAutoRule(row: ClientOverview): String? {
+    val limit = row.formStatesAutoLimit
+    val count = row.formStatesRecalcCount
+    return when {
+        row.status != ClientStatus.present.name -> null
+        row.manualFormStates -> "A change to this client's configuration is not brought to its forms as it is saved: its " +
+            "definition asks for that to be done here, or left to the nightly recalculation."
+        limit <= 0 -> "This deployment brings no client's forms up to date as a change to its configuration is saved."
+        count <= limit -> "A change to this client's configuration brings its forms up to date as it is saved, while it holds " +
+            "no more than ${forms(limit)}."
+        else -> "A change to a client's configuration brings its forms up to date as it is saved only while it holds no more " +
+            "than ${forms(limit)}; this one holds $count, so a change waits for this or the nightly recalculation."
+    }
+}
 
 /**
  * The page's Form states section for `row` (issue #1412). A client this node does not carry has no forms here to
@@ -71,7 +143,7 @@ class FormStatesOffer(val text: String, val recalculate: Boolean)
  */
 fun formStatesOffer(row: ClientOverview): FormStatesOffer {
     val count = row.formStatesRecalcCount
-    return when {
+    val offer = when {
         row.status != ClientStatus.present.name -> FormStatesOffer("Not loaded on this node, so its forms cannot be recalculated here.", false)
         count == 0 -> FormStatesOffer("This client holds no forms yet.", false)
         count > row.formStatesRecalcLimit -> FormStatesOffer(
@@ -85,4 +157,5 @@ fun formStatesOffer(row: ClientOverview): FormStatesOffer {
             true,
         )
     }
+    return FormStatesOffer(offer.text, offer.recalculate, formStatesAutoRule(row))
 }

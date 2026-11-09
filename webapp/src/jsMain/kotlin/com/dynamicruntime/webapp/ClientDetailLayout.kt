@@ -74,6 +74,11 @@ fun clientSummaryGroups(
         val refresh = inForceText(CLD.refreshIntervalSeconds, info, def.platformDefaults)
         val refreshMarked = if (info[CLD.refreshIntervalSeconds] != null) marked(CLD.refreshIntervalSeconds, refresh) else refresh
         add(humanizeFieldName(CLD.refreshIntervalSeconds) to fromTemplate(CLD.refreshIntervalSeconds, refreshMarked))
+        // How a change reaches the forms (issue #1741): the Form states section says the deployment's limit.
+        add(
+            "Form states" to if (info[CLD.manualFormStates] == true) "Brought up to date by hand, or by the nightly recalculation"
+            else "Brought up to date as a change is saved, for a small client",
+        )
         // Each listed only where its section is not drawn below (issue #1491).
         if (!traitsShownBelow) {
             add("Listing columns" to list(def.usageLabels))

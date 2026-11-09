@@ -194,6 +194,8 @@ object ClientFieldPolicies {
         CLD.sessionHours to p(ClientFieldAtCreate.parent, ClientFieldEdit.definitionEditor),
         // How often its open tabs ask the deployment for more (issue #1308): a load on the deployment, so the platform's.
         CLD.refreshIntervalSeconds to p(ClientFieldAtCreate.parent, ClientFieldEdit.platform),
+        // Whether a change reaches its forms only by hand (issue #1741): the client's own choice, made afresh by each client.
+        CLD.manualFormStates to p(ClientFieldAtCreate.cleared, ClientFieldEdit.definitionEditor),
     )
 
     /** [field]'s policy; a field with none is a fault, since every field the schema declares has one. */
@@ -271,7 +273,7 @@ object ClientFieldPolicies {
     private fun comparable(field: String, value: Any?): Any? = when (field) {
         CLD.enabledEnvironments, CLD.testFeatures, CLD.includedTraits, CLD.userLabels -> value.toJsonListOfStrings().toSet()
         CLD.userLabelNotes -> value.toJsonMapOrEmpty()
-        CLD.preload, CLD.staticConfig, CLD.sandbox, CLD.retired, CLD.publicTemplate -> value == true
+        CLD.preload, CLD.staticConfig, CLD.sandbox, CLD.retired, CLD.publicTemplate, CLD.manualFormStates -> value == true
         else -> value.toOptStr()
     }
 }
@@ -336,7 +338,8 @@ object ClientPresentationFields {
     /** The [Section] [name] is drawn in. */
     fun section(name: String): Section = when (name) {
         CLD.name, CLD.description -> Section.about
-        CLD.timeZone, CLD.userLabels, CLD.userLabelNotes, CLD.sessionHours, CLD.refreshIntervalSeconds -> Section.behavior
+        CLD.timeZone, CLD.userLabels, CLD.userLabelNotes, CLD.sessionHours, CLD.refreshIntervalSeconds, CLD.manualFormStates ->
+            Section.behavior
         else -> Section.platform
     }
 
@@ -357,6 +360,9 @@ object ClientPresentationFields {
             "deployment's limit. Shortening it ends longer sessions at once; lengthening it reaches sign-ins made after.",
         CLD.refreshIntervalSeconds to "How often, in seconds, an idle open tab re-reads what it shows " +
             "(${CLD.minRefreshIntervalSeconds} to ${CLD.maxRefreshIntervalSeconds}); blank for the deployment's. Set by the platform.",
+        CLD.manualFormStates to "Whether the client's forms are brought up to date with a change to its configuration only by " +
+            "the nightly recalculation or Recalculate. Off, a client with few enough forms has them recalculated as each " +
+            "change is saved.",
         CLD.usageType to "What the client is for. Set by the platform.",
         CLD.audience to "Whose client this is: ours, or somebody else's. Set by the platform.",
         CLD.enabledEnvironments to "The environments the client is enabled in; naming any past unit and local needs " +
@@ -391,7 +397,7 @@ object ClientPresentationFields {
         CLD.userLabelNotes -> Kind.labelNotes
         CLD.usageType, CLD.audience -> Kind.choice
         CLD.enabledEnvironments -> Kind.choices
-        CLD.preload -> Kind.flag
+        CLD.preload, CLD.manualFormStates -> Kind.flag
         CLD.timeZone -> Kind.timeZone
         CLD.sessionHours, CLD.refreshIntervalSeconds -> Kind.number
         else -> Kind.text
@@ -489,6 +495,12 @@ object CLD {
 
     /** How often an idle open tab re-reads, in seconds (issue #1308); see [ClientDef.refreshIntervalSeconds]. */
     const val refreshIntervalSeconds = "refreshIntervalSeconds"
+
+    /**
+     * Whether the client's forms are brought up to date with a configuration change only by hand (issue #1741); see
+     * [ClientDef.manualFormStates].
+     */
+    const val manualFormStates = "manualFormStates"
 
     /** The most often a client's idle tabs may re-read, in seconds. */
     const val minRefreshIntervalSeconds = 5
@@ -1021,6 +1033,15 @@ data class ClientDef(
      * [CLD.maxRefreshIntervalSeconds].
      */
     val refreshIntervalSeconds: Int? = null,
+    /**
+     * Whether a change to the client's configuration reaches its forms' stored state only by hand (issue #1741): the
+     * nightly recalculation, or Recalculate on its page. False, the default: a client holding no more forms than the
+     * deployment's limit for it has them recalculated as each change that could affect them is saved, which is what
+     * someone designing or demonstrating a client expects. True keeps the forms as they are until then -- what a test of
+     * the manual recalculation, or a client that wants to choose when its forms move, sets. Set by the client's own
+     * administrator; a client made by another starts without it.
+     */
+    val manualFormStates: Boolean = false,
 ) {
     init {
         // Held to the one label rule ([normalizeUserLabels]) that a label on a *user* is held to, and refused here,
@@ -1083,6 +1104,7 @@ data class ClientDef(
         if (joinRoles.isNotEmpty()) put(CLD.joinRoles, joinRoles.map { it.toJsonMap() })
         if (sessionHours != null) put(CLD.sessionHours, sessionHours)
         if (refreshIntervalSeconds != null) put(CLD.refreshIntervalSeconds, refreshIntervalSeconds)
+        if (manualFormStates) put(CLD.manualFormStates, true)
     }
 
     companion object {
@@ -1154,6 +1176,7 @@ data class ClientDef(
             joinRoles = ClientJoinRole.listFrom(m[CLD.joinRoles]),
             sessionHours = m[CLD.sessionHours].toOptLongOrNull()?.toInt(),
             refreshIntervalSeconds = m[CLD.refreshIntervalSeconds].toOptLongOrNull()?.toInt(),
+            manualFormStates = m[CLD.manualFormStates] as? Boolean ?: false,
         )
 
         private fun <E : Enum<E>> enumOf(values: List<E>, name: String?, field: String): E =
@@ -1347,6 +1370,11 @@ data class ClientDef(
                 minimum = CLD.minRefreshIntervalSeconds
                 maximum = CLD.maxRefreshIntervalSeconds
             }
+            prop(
+                CLD.manualFormStates,
+                "Whether a change to the client's configuration reaches its forms only by the nightly recalculation or by " +
+                    "hand; absent or false recalculates a client with few enough forms as each change is saved.",
+            ) { type = SCT.boolean }
         }
     }
 }

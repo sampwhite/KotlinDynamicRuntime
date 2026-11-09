@@ -106,6 +106,8 @@ class ImpactReportTest {
         assertEquals(CFEP.bundlePublish, anyway.path)
         assertEquals(listOf("traits"), anyway.body[CFEP.names])
         assertEquals(true, anyway.body[IMP.acknowledgeImpact])
+        // Reloaded in the same call, so its answer says what became of the forms (issue #1741).
+        assertEquals(true, anyway.body[CFEP.reloadField])
         assertFalse(publishBundleRequest("acme", listOf("traits"), acrossClients = false, acknowledgeImpact = false).body.containsKey(IMP.acknowledgeImpact))
         // Across clients, a sandbox's page publishes its parent's, by name.
         val fromSandbox = publishBundleRequest("acme:sandbox", listOf("traits"), acrossClients = true, acknowledgeImpact = true)

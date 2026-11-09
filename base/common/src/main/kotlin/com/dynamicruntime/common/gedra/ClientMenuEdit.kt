@@ -287,7 +287,7 @@ object ClientMenuEdit {
      * people of the client it shows for now get it -- the client's when live, its sandbox's for a draft.
      */
     private fun goLive(cxt: KdrCxt, target: ClientStoredEdit.EditTarget, written: GedraConfigRow, itemId: String, undo: () -> Unit): Result {
-        val reload = ClientStoredEdit.takeEffect(cxt, target, written, undo)
+        val reload = ClientStoredEdit.takeEffect(cxt, target, written, undo, recalculateForms = false)
         val item = menuItems(UiBlockService.get(cxt).merged(cxt, HMENU.block, target.readsAs).content).firstOrNull { it[HFLD.id].toOptStr() == itemId }
         val condition = item?.get(UIB.cfactExpression).toOptStr()
         return Result(

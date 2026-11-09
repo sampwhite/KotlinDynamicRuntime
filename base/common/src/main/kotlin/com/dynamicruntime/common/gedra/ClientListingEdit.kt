@@ -52,6 +52,7 @@ object ClientListingEdit {
             cxt, target, written,
             undo = { patch(written, before) },
             restorePublished = holder.isPublished,
+            recalculateForms = false,
         )
         return Result(written.configId.baseId, layout, reload.issues, target.mode)
     }
