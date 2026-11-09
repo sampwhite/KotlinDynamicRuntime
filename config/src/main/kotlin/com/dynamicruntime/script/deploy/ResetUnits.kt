@@ -109,10 +109,18 @@ object ResetUnits {
 
     const val separator = "--kdr:unit--"
 
-    /** What [readCommand] printed, as the service's text and the timer's, each null when the node has none. */
+    /**
+     * What [readCommand] printed, as the service's text and the timer's, each null when the node has none. Divided at
+     * the separator's own lines, whatever surrounds them: what ssh answers arrives trimmed (`Subprocess.capture`), so a
+     * node with neither file answers with the separator as its very first line, which a split on a newline and the
+     * separator read as the service's text (issue #1722).
+     */
     fun parseRead(output: String): Pair<String?, String?> {
-        val parts = output.split("\n$separator")
-        fun part(i: Int) = parts.getOrNull(i)?.removePrefix("\n")?.removeSuffix("\n")?.takeIf { it.isNotBlank() }?.let { "$it\n" }
+        val parts = mutableListOf(StringBuilder())
+        for (line in output.lines()) {
+            if (line.trim() == separator) parts += StringBuilder() else parts.last().append(line).append('\n')
+        }
+        fun part(i: Int) = parts.getOrNull(i)?.toString()?.trim('\n')?.takeIf { it.isNotBlank() }?.let { "$it\n" }
         return part(0) to part(1)
     }
 

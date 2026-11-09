@@ -178,8 +178,22 @@ class NodeResetTest : StringSpec({
         val off = target.copy(resetDataMonthly = false)
         ResetUnits.change(off, service, timer) shouldBe ResetUnits.Change.Remove
         ResetUnits.change(off, null, null) shouldBe ResetUnits.Change.None
-        // What the node printed reads back as the two files, each null when absent.
-        ResetUnits.parseRead("${service}\n${ResetUnits.separator}\n${timer}\n${ResetUnits.separator}\n") shouldBe (service to timer)
-        ResetUnits.parseRead("\n${ResetUnits.separator}\n\n${ResetUnits.separator}\n") shouldBe (null to null)
+        // What the node printed reads back as the two files, each null when absent, trimmed as ssh's answer arrives
+        // (`Subprocess.capture`) or not. The node prints each file (ending in a newline), then a newline and a separator.
+        fun printed(service: String?, timer: String?) =
+            "${service.orEmpty()}\n${ResetUnits.separator}\n${timer.orEmpty()}\n${ResetUnits.separator}\n"
+        for (answer in listOf(printed(service, timer), printed(service, timer).trim())) {
+            ResetUnits.parseRead(answer) shouldBe (service to timer)
+        }
+        // A node with neither: trimmed, the separator is the very first line, and is never taken for the service's text.
+        for (answer in listOf(printed(null, null), printed(null, null).trim())) {
+            ResetUnits.parseRead(answer) shouldBe (null to null)
+            ResetUnits.change(target, null, null) shouldBe ResetUnits.Change.Install
+            ResetUnits.parseRead(answer).let { (s, t) -> ResetUnits.change(off, s, t) } shouldBe ResetUnits.Change.None
+        }
+        // One file without the other is still a node that has the units, to be rewritten.
+        ResetUnits.parseRead(printed(null, timer).trim()) shouldBe (null to timer)
+        ResetUnits.parseRead(printed(service, null).trim()).let { (s, t) -> ResetUnits.change(target, s, t) } shouldBe
+            ResetUnits.Change.Update
     }
 })
