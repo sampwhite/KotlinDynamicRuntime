@@ -1,5 +1,6 @@
 package com.dynamicruntime.sample.gedra
 
+import com.dynamicruntime.sample.SampleTestInstances
 import com.dynamicruntime.common.endpoint.EI
 import com.dynamicruntime.common.endpoint.clientPath
 import com.dynamicruntime.common.gedra.GDF
@@ -27,10 +28,7 @@ import io.kotest.matchers.shouldBe
  * Two clients with a form each (acme and globex), so a cross-client listing has something to distinguish.
  */
 class FormsClientFilterTest : StringSpec({
-    val cxt = Startup.mkTestBootCxt(
-        "formsClientFilter", "formsClientFilterTest", mapOf("KDR_LOAD_SAMPLE" to "true"),
-        additionalComponents = listOf(SampleComponent()),
-    )
+    val cxt = SampleTestInstances.default("formsClientFilter")
 
     val acmeUser = TestUser.create(cxt, "cf-acme@acme.test", userClient = SC.acme)
     val globexUser = TestUser.create(cxt, "cf-globex@globex.test", userClient = SC.globex)

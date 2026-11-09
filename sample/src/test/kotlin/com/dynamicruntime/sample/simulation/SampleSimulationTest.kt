@@ -27,8 +27,9 @@ import io.kotest.matchers.shouldBe
  * sample is loaded, adds the forms its report says on every run, and its acme administrator sees them in a report.
  */
 class SampleSimulationTest : StringSpec({
+    // An instance of its own (issue #1736): the report demo it provisions is counted across all of globex, which other tests' forms would change.
     val cxt = Startup.mkTestBootCxt(
-        "sampleSimulations", "sampleSimulation997", mapOf("KDR_LOAD_SAMPLE" to "true"),
+        "sampleSimulations", "sampleSimulationsTest", mapOf(SampleComponent.loadSampleEnvVar.name to "true"),
         additionalComponents = listOf(SampleComponent()),
     )
     // Env-authed: a simulation is for a caller with test access (issue #1149).

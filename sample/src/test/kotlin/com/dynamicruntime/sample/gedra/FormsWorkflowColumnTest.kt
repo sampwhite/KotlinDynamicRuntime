@@ -1,5 +1,6 @@
 package com.dynamicruntime.sample.gedra
 
+import com.dynamicruntime.sample.SampleTestInstances
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.endpoint.EI
 import com.dynamicruntime.common.endpoint.clientPath
@@ -35,10 +36,7 @@ import io.kotest.matchers.string.shouldNotContain
  * core details workflow decides whether it is eligible for the audit.
  */
 class FormsWorkflowColumnTest : StringSpec({
-    val cxt = Startup.mkTestBootCxt(
-        "wfColumn791", "wfColumn791Test", mapOf("KDR_LOAD_SAMPLE" to "true"),
-        additionalComponents = listOf(SampleComponent()),
-    )
+    val cxt = SampleTestInstances.default("wfColumn791")
     val list = clientPath(GEP.formDocs, SC.acme)
     val create = clientPath(GEP.formDocCreate, SC.acme)
     val engage = clientPath(GEP.workflowEngage, SC.acme)

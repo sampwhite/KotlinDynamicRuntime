@@ -1,5 +1,6 @@
 package com.dynamicruntime.sample.file
 
+import com.dynamicruntime.sample.SampleTestInstances
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.filestore.FST
 import com.dynamicruntime.common.filestore.FileStoreService
@@ -25,7 +26,7 @@ import io.kotest.matchers.string.shouldContain
  */
 class SampleFileApiTest : StringSpec({
     // Force SampleComponent.isLoaded on: it otherwise gates to developer envs, and mkTestBootCxt uses unit.
-    val cxt = Startup.mkTestBootCxt("sampleFiles", "sampleFileTest", mapOf("KDR_LOAD_SAMPLE" to "true"), additionalComponents = listOf(SampleComponent()))
+    val cxt = SampleTestInstances.default("sampleFiles")
     val c = TestHttpClient(cxt.instanceConfig)
     val files = FileStoreService.get(cxt)
 

@@ -619,7 +619,8 @@ val byDocument = validate(SchMetaSchema.nodeType, body).map { it.path } // the s
 
 **Adding a keyword is adding it to its table** -- the walk, the document and the endpoint follow, and
 `SchMetaSchemaTest` holds them to the parser (each fault fixture is refused by all three) while
-`MetaSchemaCoverageTest` holds them to the repository (every type any component or sample client declares passes).
+`SampleInvariantsTest` (sample module) holds them to the repository (every type any component or sample client
+declares passes).
 
 What our dialect cannot say about a schema node, the document does not state; `SchMetaSchema.notStated` lists it,
 generated from the same tables, and the walk enforces it. Neither is validity: what a body may still get wrong once

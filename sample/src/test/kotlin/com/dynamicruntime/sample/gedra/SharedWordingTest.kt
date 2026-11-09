@@ -1,5 +1,6 @@
 package com.dynamicruntime.sample.gedra
 
+import com.dynamicruntime.sample.SampleTestInstances
 import com.dynamicruntime.common.content.MarkdownFragmentService
 import com.dynamicruntime.common.gedra.CCT
 import com.dynamicruntime.common.gedra.COV
@@ -29,10 +30,7 @@ import io.kotest.matchers.string.shouldContain
  * is edited.
  */
 class SharedWordingTest : StringSpec({
-    val cxt = Startup.mkTestBootCxt(
-        "sharedWording1010", "sharedWording1010", mapOf("KDR_LOAD_SAMPLE" to "true"),
-        additionalComponents = listOf(SampleComponent()),
-    )
+    val cxt = SampleTestInstances.default("sharedWording1010")
     val admin = TestUser.createFullAdmin(cxt, "wording-admin@example.com")
     val dataType = "${ST.namespace}.${traitDataTypeName(ST.questionnaireEntry)}"
     val fragments = MarkdownFragmentService.get(cxt)

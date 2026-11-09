@@ -41,6 +41,7 @@ import io.kotest.matchers.string.shouldContain
  * and the scoping is the client overview's. globex, which has no sandbox, publishes an edit at once.
  */
 class ClientCopyEditEndpointTest : StringSpec({
+    // An instance of its own (issue #1736): it publishes copy edits to acme and globex, which every test on a shared instance would then be served.
     val cxt = Startup.mkTestBootCxt(
         "clientCopyEdit", "clientCopyEditTest", mapOf("KDR_LOAD_SAMPLE" to "true"),
         additionalComponents = listOf(SampleComponent()),

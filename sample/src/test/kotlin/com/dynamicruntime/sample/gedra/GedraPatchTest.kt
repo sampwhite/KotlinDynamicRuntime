@@ -1,5 +1,6 @@
 package com.dynamicruntime.sample.gedra
 
+import com.dynamicruntime.sample.SampleTestInstances
 import io.kotest.matchers.string.shouldContain
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.context.CL
@@ -40,7 +41,7 @@ class GedraPatchTest : StringSpec({
 
     // As in GedraEntryFixtureTest: the ServiceLoader entry that finds the component in a deployment does not
     // reach the test classpath, and `KDR_LOAD_SAMPLE` forces `isLoaded` past the developer-environment gate.
-    val cxt = Startup.mkTestBootCxt("gedraPatch", "gedraPatchTest", mapOf("KDR_LOAD_SAMPLE" to "true"), additionalComponents = listOf(SampleComponent()))
+    val cxt = SampleTestInstances.default("gedraPatch")
 
     val alice = TestUser.create(cxt, "alice@patch.test")
     val bob = TestUser.create(cxt, "bob@patch.test")

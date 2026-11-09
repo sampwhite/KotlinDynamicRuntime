@@ -37,6 +37,7 @@ import io.kotest.matchers.shouldBe
  * since it changes acme for the rest of the boot -- a stored config winning over acme's source one.
  */
 class ClientOverridesEndpointTest : StringSpec({
+    // An instance of its own (issue #1736): it publishes a stored config over acme's source one, which every test on a shared instance would then run.
     val cxt = Startup.mkTestBootCxt(
         "clientOverrides", "clientOverridesTest", mapOf("KDR_LOAD_SAMPLE" to "true"),
         additionalComponents = listOf(SampleComponent()),

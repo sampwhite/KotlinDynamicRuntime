@@ -1,5 +1,6 @@
 package com.dynamicruntime.sample.content
 
+import com.dynamicruntime.common.content.ComponentImageService
 import com.dynamicruntime.common.content.ContentResources
 import com.dynamicruntime.common.content.FCHK
 import com.dynamicruntime.common.content.MarkdownFragmentService
@@ -21,9 +22,11 @@ import com.dynamicruntime.common.util.toJsonListOfStrings
 import com.dynamicruntime.common.util.toOptStr
 import com.dynamicruntime.kdn.Startup
 import com.dynamicruntime.sample.SampleComponent
+import com.dynamicruntime.sample.SampleTestInstances
 import com.dynamicruntime.sample.gedra.SC
 import com.dynamicruntime.sample.gedra.SF
 import io.kotest.core.spec.style.StringSpec
+import io.kotest.core.spec.style.stringSpec
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
@@ -38,10 +41,19 @@ import io.kotest.matchers.string.shouldContain
  * and a client's Gedra config both reach the same registry, that the merge happens per client, and that the
  * content server hands out the right document. The merge rules themselves are covered by `FragmentLayerTest`,
  * where they are maps in and a map out.
+ *
+ * Also, since issue #1736, the tests that were `SampleImageTest`: the sample's own component image, on a context of
+ * their own.
  */
 class FragmentOverlayTest : StringSpec({
+    include(fragmentOverlayTests)
+    include(sampleImageTests)
+})
 
-    val cxt = Startup.mkTestBootCxt("fragOverlay", "fragOverlayTest", mapOf("KDR_LOAD_SAMPLE" to "true"), additionalComponents = listOf(SampleComponent()))
+/** This file's own tests, as the class describes them. */
+val fragmentOverlayTests = stringSpec {
+
+    val cxt = SampleTestInstances.default("fragOverlay")
 
     val service = MarkdownFragmentService.get(cxt)
     val acmeCxt = cxt.mkSubContext("acme", SC.acme)
@@ -200,4 +212,24 @@ class FragmentOverlayTest : StringSpec({
             row[FCHK.orphans].toJsonListOfStrings().shouldBeEmpty()
         }
     }
-})
+}
+
+/**
+ * The image the sample ships (issue #1339): read from its resources, served under the static root, and named by acme's
+ * home page copy, which a deployment carrying the sample loads with no problem found.
+ */
+val sampleImageTests = stringSpec {
+    val cxt = SampleTestInstances.default("sampleImage")
+
+    "the sample's image is served as an SVG by its name and content" {
+        val served = ComponentImageService.get(cxt).servedNames().getValue(SF.siteVisitFlow)
+        val handler = TestHttpClient(cxt.instanceConfig).sendGetRequestRaw("/st/myapp/img/$served")
+        handler.rptStatusCode shouldBe EXC.ok
+        handler.rptResponseMimeType shouldBe "image/svg+xml"
+    }
+
+    "acme's home page shows it" {
+        val copy = MarkdownFragmentService.get(cxt).effectiveFragmentsFor(cxt, HFRAG.home, SC.acme)
+        copy?.content?.get("home")?.get("note").orEmpty() shouldContain "img:${SF.siteVisitFlow}"
+    }
+}

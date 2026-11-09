@@ -38,6 +38,7 @@ import io.kotest.matchers.string.shouldContain
  * sample and response-schema validation on.
  */
 class ReportHistoryTest : StringSpec({
+    // An instance of its own (issue #1736): it keeps three snapshots per report (its history-keep setting), which no shared instance has.
     val cxt = Startup.mkTestBootCxt(
         "reportHistory", "reportHistoryTest", mapOf("KDR_LOAD_SAMPLE" to "true", REP.historyKeepEnvVar.name to "3"),
         additionalComponents = listOf(SampleComponent()),

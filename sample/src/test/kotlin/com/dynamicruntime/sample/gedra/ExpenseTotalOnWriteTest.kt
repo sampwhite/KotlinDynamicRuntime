@@ -1,5 +1,6 @@
 package com.dynamicruntime.sample.gedra
 
+import com.dynamicruntime.sample.SampleTestInstances
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.ReadScope
 import com.dynamicruntime.common.endpoint.clientPath
@@ -31,10 +32,7 @@ import io.kotest.matchers.shouldBe
  * details workflow workflows), so both the endpoints and the view resolve against a real trait.
  */
 class ExpenseTotalOnWriteTest : StringSpec({
-    val cxt = Startup.mkTestBootCxt(
-        "expenseTotalOnWrite", "expenseTotalOnWriteTest", mapOf("KDR_LOAD_SAMPLE" to "true"),
-        additionalComponents = listOf(SampleComponent()),
-    )
+    val cxt = SampleTestInstances.default("expenseTotalOnWrite")
 
     fun service(): GedraDataService = GedraDataService.get(cxt)
     fun asUser(client: String, userId: Long): KdrCxt = cxt.mkSubContext("onWriteTotal", client).also { it.userId = userId }

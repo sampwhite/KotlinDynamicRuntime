@@ -43,8 +43,9 @@ import io.kotest.matchers.string.shouldContain
  * value, an aggregate run's groups and rollups, a keyed trait read several ways, and who may run what.
  */
 class ReportEndpointTest : StringSpec({
+    // An instance of its own (issue #1736): a report runs over every form of its client, so other tests' forms would change what it counts.
     val cxt = Startup.mkTestBootCxt(
-        "reportEndpoints", "reportEndpointTest", mapOf("KDR_LOAD_SAMPLE" to "true"),
+        "reportEndpoints", "reportEndpointsTest", mapOf(SampleComponent.loadSampleEnvVar.name to "true"),
         additionalComponents = listOf(SampleComponent()),
     )
     val admin = TestUser.create(cxt, "rpt-admin@acme.test", level = ROLE.admin, userClient = SC.acme)

@@ -76,7 +76,7 @@ changes, and its name matches no component's file. A missing directory or file i
 each file read; one that will not parse is left out and judged as a fragment fault (refused outside production,
 reported in it). In ranks, that is two steps per flavor (`flavorLayerRank`): the components', then the deployment's.
 
-`EachFlavorBootsTest` (sample module) boots once with each declared flavor on its own, so a flavor overlay naming
+`FlavorsTest` (sample module) boots once with each declared flavor on its own, so a flavor overlay naming
 a key its base dropped fails the build. It enumerates the declarations: a new flavor is covered with no change.
 
 ## When and in what order

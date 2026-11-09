@@ -1,5 +1,6 @@
 package com.dynamicruntime.sample.gedra
 
+import com.dynamicruntime.sample.SampleTestInstances
 import com.dynamicruntime.common.gedra.GDF
 import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.gedra.GED
@@ -32,7 +33,7 @@ import com.dynamicruntime.common.endpoint.EP
  */
 class YearlyTraitTest : StringSpec({
 
-    val cxt = Startup.mkTestBootCxt("yearlyTrait", "yearlyTraitTest", mapOf("KDR_LOAD_SAMPLE" to "true"), additionalComponents = listOf(SampleComponent()))
+    val cxt = SampleTestInstances.default("yearlyTrait")
     val alice = TestUser.create(cxt, "alice@yearly.test")
 
     fun yearly(year: Int, note: String? = null): Map<String, Any?> =

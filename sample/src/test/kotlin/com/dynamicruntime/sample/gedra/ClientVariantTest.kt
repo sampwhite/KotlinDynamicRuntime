@@ -1,5 +1,6 @@
 package com.dynamicruntime.sample.gedra
 
+import com.dynamicruntime.sample.SampleTestInstances
 import com.dynamicruntime.common.gedra.GCFG
 import io.kotest.matchers.collections.shouldNotContain
 import io.kotest.matchers.collections.shouldContain
@@ -42,7 +43,7 @@ import io.kotest.matchers.shouldBe
  */
 class ClientVariantTest : StringSpec({
 
-    val cxt = Startup.mkTestBootCxt("clientVariant", "clientVariantTest", mapOf("KDR_LOAD_SAMPLE" to "true"), additionalComponents = listOf(SampleComponent()))
+    val cxt = SampleTestInstances.default("clientVariant")
 
     // A user per client. `acme` narrows; `globex` takes everything global offers; `public` varies nothing at
     // all, so it is the control that shows a payload is globally valid to begin with.

@@ -1,5 +1,6 @@
 package com.dynamicruntime.sample.gedra
 
+import com.dynamicruntime.sample.SampleTestInstances
 import com.dynamicruntime.common.endpoint.clientPath
 import com.dynamicruntime.common.gedra.GDF
 import com.dynamicruntime.common.gedra.GE
@@ -22,9 +23,7 @@ import io.kotest.matchers.shouldBe
  * each computed on the backend and attached to the list and read rows.
  */
 class TraitUsageTest : StringSpec({
-    val cxt = Startup.mkTestBootCxt(
-        "traitUsage", "traitUsageTest", mapOf("KDR_LOAD_SAMPLE" to "true"), additionalComponents = listOf(SampleComponent()),
-    )
+    val cxt = SampleTestInstances.default("traitUsage")
     val globex = TestUser.create(cxt, "usage@globex.test", userClient = SC.globex)
     val acme = TestUser.create(cxt, "usage@acme.test", userClient = SC.acme)
 

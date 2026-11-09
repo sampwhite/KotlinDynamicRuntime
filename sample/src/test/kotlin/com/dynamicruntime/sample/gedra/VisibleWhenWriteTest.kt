@@ -1,5 +1,6 @@
 package com.dynamicruntime.sample.gedra
 
+import com.dynamicruntime.sample.SampleTestInstances
 import com.dynamicruntime.common.endpoint.clientPath
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.gedra.GDF
@@ -30,10 +31,7 @@ import io.kotest.matchers.string.shouldContain
  * entry that holds it included. On every write path: create, patch, the core details workflow's save, and import.
  */
 class VisibleWhenWriteTest : StringSpec({
-    val cxt = Startup.mkTestBootCxt(
-        "visibleWhen830", "visibleWhen830Test", mapOf("KDR_LOAD_SAMPLE" to "true"),
-        additionalComponents = listOf(SampleComponent()),
-    )
+    val cxt = SampleTestInstances.default("visibleWhen830")
     val create = clientPath(GEP.formDocCreate, SC.acme)
     val patch = clientPath(GEP.patch, SC.acme)
     val get = clientPath(GEP.formDoc, SC.acme)
