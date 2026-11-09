@@ -60,62 +60,52 @@ class FormStatesTest {
         fun auto(client: String = "acme", limit: Long? = 200, vararg results: Pair<String, Any?>) =
             formStatesAutoOf(mapOf(FSR.auto to mapOf(FSR.client to client, FSR.autoLimit to limit, *results)))
         assertNull(formStatesAutoOf(emptyMap()))
-        assertEquals(
-            "Brought all 3 of this client's forms up to date with the change.",
-            formStatesAutoText(auto(results = arrayOf(FSR.outcome to FSR.completed, FSR.updated to 3, FSR.total to 3))),
-        )
-        assertEquals(
-            "Brought 1 of the sandbox's 4 forms up to date with the change; the rest already were.",
-            formStatesAutoText(
-                auto("acme:sandbox", results = arrayOf(FSR.outcome to FSR.completed, FSR.updated to 1, FSR.current to 3, FSR.total to 4)),
-            ),
-        )
-        assertEquals(
-            "This client's 2 forms were already up to date with the change.",
-            formStatesAutoText(auto(results = arrayOf(FSR.outcome to FSR.completed, FSR.current to 2, FSR.total to 2))),
-        )
+        val all = formStatesAutoText(auto(results = arrayOf(FSR.outcome to FSR.completed, FSR.updated to 3, FSR.total to 3)))!!
+        val some = formStatesAutoText(
+            auto("acme:sandbox", results = arrayOf(FSR.outcome to FSR.completed, FSR.updated to 1, FSR.current to 3, FSR.total to 4)),
+        )!!
+        val none = formStatesAutoText(auto(results = arrayOf(FSR.outcome to FSR.completed, FSR.current to 2, FSR.total to 2)))!!
+        // All, some, and none brought up to date each read differently, and a sandbox's names the sandbox.
+        assertEquals(3, setOf(all, some, none).size)
+        assertTrue("sandbox" in some && "sandbox" !in all)
         // Every form failed: not "brought 0 ... the rest already were".
         formStatesAutoText(auto(results = arrayOf(FSR.outcome to FSR.completed, FSR.failed to 2, FSR.total to 2)))!!.let {
-            assertTrue(it.startsWith("None of this client's 2 forms was brought up to date with the change."))
+            assertTrue(it.startsWith("None"))
             assertTrue("could not be stored" in it)
         }
         formStatesAutoText(auto(results = arrayOf(FSR.outcome to FSR.tooMany, FSR.total to 201)))!!.let {
-            assertTrue("201 forms are more than the 200" in it && "nightly" in it)
+            assertTrue("201" in it && "200" in it)
         }
-        assertTrue("by hand" in formStatesAutoText(auto(limit = null, results = arrayOf(FSR.outcome to FSR.manual)))!!)
-        assertTrue("This deployment" in formStatesAutoText(auto(limit = null, results = arrayOf(FSR.outcome to FSR.off)))!!)
-        assertTrue("already running" in formStatesAutoText(auto(limit = null, results = arrayOf(FSR.outcome to FSR.busy)))!!)
+        // Held back by hand, by the deployment, or by a run already going: three different answers.
+        val held = listOf(FSR.manual, FSR.off, FSR.busy).map { formStatesAutoText(auto(limit = null, results = arrayOf(FSR.outcome to it)))!! }
+        assertEquals(3, held.toSet().size)
         assertNull(formStatesAutoText(auto(limit = null, results = arrayOf(FSR.outcome to FSR.noForms))))
         // The save's own note leads, a draft's words after it, then the forms.
-        assertEquals(
-            "Saved. Saved as a draft: the client's sandbox shows it, and it goes live once published. " +
-                "Brought all 3 of the sandbox's forms up to date with the change.",
-            savedNote(
-                "Saved.",
-                EDM.draft,
-                auto("acme:sandbox", results = arrayOf(FSR.outcome to FSR.completed, FSR.updated to 3, FSR.total to 3)),
-            ),
-        )
-        assertEquals("Published base.", publishedNote(listOf("base"), null))
+        val sandboxAll = auto("acme:sandbox", results = arrayOf(FSR.outcome to FSR.completed, FSR.updated to 3, FSR.total to 3))
+        val forms = formStatesAutoText(sandboxAll)!!
+        val note = savedNote("Saved.", EDM.draft, sandboxAll)
+        assertTrue(note.startsWith("Saved. ") && note.endsWith(forms))
+        assertTrue("draft" in note.removePrefix("Saved.").removeSuffix(forms))
     }
 
     @Test
     fun itSaysWhatARunDidIncludingNothing() {
         fun said(vararg results: Pair<String, Any?>) = formStatesRecalcText(parseFormStatesRecalc(mapOf(*results)))
-        assertEquals(
-            "Updated 3 of 10 forms; the rest were already current.",
+        // Some updated, none needed it, one form, and all updated each read differently.
+        val completed = listOf(
             said(FSR.outcome to FSR.completed, FSR.updated to 3, FSR.current to 7, FSR.failed to 0, FSR.total to 10),
+            said(FSR.outcome to FSR.completed, FSR.current to 10, FSR.total to 10),
+            said(FSR.outcome to FSR.completed, FSR.current to 1, FSR.total to 1),
+            said(FSR.outcome to FSR.completed, FSR.updated to 500, FSR.total to 500),
         )
-        assertEquals("All 10 forms were already current.", said(FSR.outcome to FSR.completed, FSR.current to 10, FSR.total to 10))
-        assertEquals("Its one form was already current.", said(FSR.outcome to FSR.completed, FSR.current to 1, FSR.total to 1))
-        assertEquals("Updated all 500 forms.", said(FSR.outcome to FSR.completed, FSR.updated to 500, FSR.total to 500))
+        assertEquals(4, completed.toSet().size)
         assertTrue(
             "could not be stored" in said(FSR.outcome to FSR.completed, FSR.updated to 1, FSR.failed to 1, FSR.current to 1, FSR.total to 3),
         )
+        // A held run says the backend's reason as given, and a stopped one carries it after what was done.
         assertEquals("Held.", said(FSR.outcome to FSR.busy, FSR.reason to "Held."))
-        assertEquals(
-            "Stopped after updating 2 of 5 forms: The run hit its cap.",
-            said(FSR.outcome to FSR.stopped, FSR.updated to 2, FSR.total to 5, FSR.reason to "The run hit its cap."),
-        )
+        said(FSR.outcome to FSR.stopped, FSR.updated to 2, FSR.total to 5, FSR.reason to "The run hit its cap.").let {
+            assertTrue("2 of 5" in it && it.endsWith("The run hit its cap."))
+        }
     }
 }

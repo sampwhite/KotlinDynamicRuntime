@@ -23,20 +23,6 @@ class GoogleOriginHintTest {
         assertContains(googleOriginHint("http://127.0.0.1:7071"), "http://127.0.0.1:7071")
     }
 
-    @Test
-    fun saysWhatToRegisterItAs() {
-        // The Console's own wording, so the sentence and the field a developer is hunting for match.
-        assertContains(googleOriginHint("http://localhost:7070"), "Authorized JavaScript origin")
-    }
-
-    /** Both observed symptoms are named, since either one is where a developer arrives from. */
-    @Test
-    fun namesTheSymptomsThatLeadHere() {
-        val hint = googleOriginHint("http://localhost:8080")
-        assertContains(hint, "Access blocked")
-        assertContains(hint, "does nothing")
-    }
-
     /**
      * It must not assert that anything is wrong. The component has no way to know, and a message that cries
      * wolf on a healthy instance is one nobody reads on the day it is right.

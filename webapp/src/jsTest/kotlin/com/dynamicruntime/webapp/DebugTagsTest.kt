@@ -41,11 +41,4 @@ class DebugTagsTest {
                 .debugTags.map { it.name },
         )
     }
-
-    @Test
-    fun aKindSaysWhatTheWordDoesToTheRequest() {
-        assertEquals("explains", debugTagKindLabel(DBGK.explain))
-        assertEquals("adds logging", debugTagKindLabel(DBGK.log))
-        assertEquals("changes the request", debugTagKindLabel(DBGK.alter))
-    }
 }

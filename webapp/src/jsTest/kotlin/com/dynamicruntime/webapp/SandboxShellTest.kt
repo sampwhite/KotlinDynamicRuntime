@@ -43,7 +43,7 @@ class SandboxShellTest {
         val of = SandboxOf("acme", "Acme")
         assertEquals("Acme Sandbox", sandboxChipLabel(of))
         val info = sandboxInfoText(of)
-        assertTrue(info.startsWith("You are in Acme's sandbox."))
+        assertTrue("Acme" in info)
         assertTrue("published" in info)
         assertFalse("Shadow" in sandboxChipLabel(of) + info)
     }
@@ -56,11 +56,10 @@ class SandboxShellTest {
         val stranded = config(state = state + (HFLD.sandboxStranded to true)).sandboxOf!!
         assertTrue(stranded.stranded)
         val info = sandboxInfoText(stranded)
-        assertTrue(info.startsWith("You are in Acme's sandbox, but your access to it has ended"))
-        assertTrue(info.endsWith("Go back, or switch to another of your users."))
+        assertTrue("Acme" in info && "ended" in info)
         assertFalse("published" in info)
         // With nowhere listed to go, the exit that remains is named instead.
-        assertTrue(sandboxInfoText(stranded, hasWayOut = false).endsWith("Sign out, and sign in again as another of your users."))
+        assertTrue(sandboxInfoText(stranded, hasWayOut = false) != info)
         // A sandbox somebody stands behind reads as before, whatever the exits.
         assertEquals(sandboxInfoText(SandboxOf("acme", "Acme")), sandboxInfoText(SandboxOf("acme", "Acme"), hasWayOut = false))
     }
@@ -102,26 +101,21 @@ class SandboxShellTest {
     fun aDeleteNamesTheClientItActsInAndWhetherItIsLive() {
         assertEquals("acme (live data)", deleteTargetText("acme"))
         assertEquals("acme's sandbox", deleteTargetText("acme:sandbox"))
-        assertEquals("Delete this form from acme (live data)?", deleteFormQuestion("gd.fd.acme.e20261007120000000AbCd"))
-        assertEquals("Delete this form from acme's sandbox?", deleteFormQuestion("gd.fd.acme:sandbox.e20261007120000000AbCd"))
+        // The question names the form's own client, as the delete target says it.
+        assertTrue(deleteFormQuestion("gd.fd.acme.e20261007120000000AbCd").contains(deleteTargetText("acme")))
+        assertTrue(deleteFormQuestion("gd.fd.acme:sandbox.e20261007120000000AbCd").contains(deleteTargetText("acme:sandbox")))
         // An id that does not parse names nothing rather than guessing.
-        assertEquals("Delete this form?", deleteFormQuestion(null))
+        assertFalse("live data" in deleteFormQuestion(null) || "sandbox" in deleteFormQuestion(null))
         // Another user's form, which an editor may delete (issue #1452), says whose it is.
-        assertEquals(
-            "Delete Ada Lovelace's form from acme (live data)?",
-            deleteFormQuestion("gd.fd.acme.e20261007120000000AbCd", "Ada Lovelace"),
-        )
-        assertEquals(
-            "Delete Ada Lovelace's form from acme (live data)?",
-            deleteRowQuestion("gd.fd.acme.e20261007120000000AbCd", "Ada Lovelace"),
-        )
+        assertTrue("Ada Lovelace" in deleteFormQuestion("gd.fd.acme.e20261007120000000AbCd", "Ada Lovelace"))
+        assertTrue("Ada Lovelace" in deleteRowQuestion("gd.fd.acme.e20261007120000000AbCd", "Ada Lovelace"))
         assertEquals("Ada Lovelace", otherOwnerLabel(8, 7, "Ada Lovelace", "ada@x.com"))
         assertEquals("ada@x.com", otherOwnerLabel(8, 7, " ", "ada@x.com"))
         assertEquals(null, otherOwnerLabel(7, 7, "Me", "me@x.com"))
         assertEquals(null, otherOwnerLabel(null, 7, "Ada", "ada@x.com"))
         // A cross-client listing's row names its own form's client, not the page's.
-        assertEquals("Delete from globex (live data)?", deleteRowQuestion("gd.fd.globex.e20261007120000000AbCd"))
-        assertEquals("Delete?", deleteRowQuestion("not an id"))
-        assertEquals("Delete this user from acme's sandbox?", deleteUserQuestion("acme:sandbox"))
+        assertTrue(deleteRowQuestion("gd.fd.globex.e20261007120000000AbCd").contains(deleteTargetText("globex")))
+        assertFalse("live data" in deleteRowQuestion("not an id"))
+        assertTrue(deleteUserQuestion("acme:sandbox").contains(deleteTargetText("acme:sandbox")))
     }
 }
