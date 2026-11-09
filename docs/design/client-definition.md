@@ -1095,7 +1095,8 @@ user, so every self-registered `public` user *is* given `admin` -- and an admini
 themselves at their own address; their content reads stay `ofUser`; and the client's configuration endpoints
 refuse them (`AdminRules.requireClientAdministrator`). The rule is keyed on the client, not on how the role
 arrived, so no route to `admin` in `public` reaches further. An administrator provisioned with no client named
-lands in `hub` instead (`AddressRules.defaultClient`).
+lands in `hub` instead (`AddressRules.defaultClient`), and so does an editor (issue #1647), since `public` has no
+editors either.
 
 That is what settles the tension in giving `public` a usage type. The worry was that typing it `demo` would put
 demo conveniences — relaxed security, bulk delete — within reach of the client that holds every registered

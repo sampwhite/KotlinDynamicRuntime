@@ -193,15 +193,16 @@ class TestUser(val client: TestHttpClient, val cxt: KdrCxt, val userInfo: Map<St
          * Creates (or finds) the user with primary contact [email] and returns a [TestUser] authenticated as
          * them, built on [cxt]'s instance. [capabilities] adds non-rung roles (see [createFullAdmin]), and
          * [level] places a *freshly created* user on the privilege ladder --
-         * `ROLE.user` (the default), `ROLE.operator` or `ROLE.admin`, each including the levels below it --
-         * and is ignored when the user already exists, since you become whoever is already there. [name] sets the
+         * `ROLE.user`, `ROLE.operator` or `ROLE.admin`, each including the levels below it -- over the default roles
+         * of the [persona], when one is named (issue #1647); with neither, the user is at `ROLE.user`. All of them are
+         * ignored when the user already exists, since you become whoever is already there. [name] sets the
          * account's real-world name (a person's full name, distinct from the username), also only on creation.
          * Requires the deployment to allow test endpoints (unit tests do).
          */
         fun create(
             cxt: KdrCxt,
             email: String,
-            level: String = ROLE.user,
+            level: String? = null,
             capabilities: List<String> = emptyList(),
             userClient: String? = null,
             name: String? = null,
@@ -212,7 +213,8 @@ class TestUser(val client: TestHttpClient, val cxt: KdrCxt, val userInfo: Map<St
             val client = TestHttpClient(cxt.instanceConfig)
             val body = buildMap {
                 put(TEP.email, email)
-                put(TEP.level, level)
+                // Sent only when given, so a persona's default roles stand when no level is named (issue #1647).
+                if (level != null) put(TEP.level, level)
                 put(TEP.capabilities, capabilities)
                 // Sent only when asked for, so the endpoint's own default -- read the client off the address --
                 // is what an ordinary call gets, rather than this having to know what that default is.

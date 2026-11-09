@@ -49,7 +49,10 @@ object AddressRules {
      * thing an operator saw a client that is nobody's. So does a user provisioned as an administrator
      * ([ROLE.admin]) with no client named (issue #805): `public` has no client administrators -- an
      * administrator there reaches only their own users -- so an administrator meant to administer a client
-     * belongs in a real one. Everyone else lands in [CL.public], the placeholder for a person who has not yet
+     * belongs in a real one. An editor ([ROLE.editor], issue #1647) is the same case: `public` has no editors either
+     * (`AdminRules.editsClient` never answers yes there), so one made with no client named reaches something only in
+     * the hub. Only a caller who may name a persona can provision one -- the test fixture, or an `allClients`
+     * placement. Everyone else lands in [CL.public], the placeholder for a person who has not yet
      * been invited anywhere; a `public` user is made an administrator of themselves only *after* landing there
      * (`AdminRules.rolesInClient`), so that grant never moves them.
      *
@@ -59,7 +62,7 @@ object AddressRules {
      */
     @Suppress("UNUSED_PARAMETER")
     fun defaultClient(cxt: KdrCxt, roles: Collection<String>): String =
-        if (ROLE.allClients in roles || ROLE.admin in roles) CL.hub else CL.public
+        if (ROLE.allClients in roles || ROLE.admin in roles || ROLE.editor in roles) CL.hub else CL.public
 
     /**
      * Whether [address] sits on a domain this deployment treats as its own.

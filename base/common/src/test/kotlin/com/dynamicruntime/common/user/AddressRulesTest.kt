@@ -73,6 +73,11 @@ class AddressRulesTest : StringSpec({
         AddressRules.defaultClient(cxtIn(ENV.local), listOf(ROLE.user, ROLE.admin)) shouldBe CL.hub
     }
 
+    // Nor has it editors (issue #1647): an editor's reach is its client's, and `public` gives a client role none.
+    "a user provisioned as an editor lands in the hub too" {
+        AddressRules.defaultClient(cxtIn(ENV.local), listOf(ROLE.user, ROLE.editor)) shouldBe CL.hub
+    }
+
     "a user granted allClients lands in the hub, the deployment's own client (issue #799)" {
         // The auto-admin grant is the common case: admin and allClients together.
         AddressRules.defaultClient(cxtIn(ENV.local), listOf(ROLE.user, ROLE.admin, ROLE.allClients)) shouldBe CL.hub
