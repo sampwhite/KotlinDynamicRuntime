@@ -17,6 +17,11 @@ bundle now holds.
 The committee itself is a label, `committee`, that the [client](client.md) lists in `userLabels`. An administrator
 puts the label on a user, and that user is a committee member.
 
+The organizer does this on the Users page, where each user's **Labels** show a **committee** box. Beside it is the
+note the client's definition gives the label (in `userLabelNotes`), then what the label lets a person do, worked out
+from this workflow: *Saves “Record the review” in “Committee review”* and *Approves “Accept the talk” in “Committee
+review”*. Last comes how many users have it. While a user has no label, the page says what they can't do without one.
+
 ## The review trait
 
 The `review` trait is small: a score and a note for the speaker.

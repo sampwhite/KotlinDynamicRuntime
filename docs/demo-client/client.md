@@ -20,6 +20,7 @@ workflow](talk-core-details.md), which is the first thing to use them, explains 
   "includedTraits": ["kdr:name"],
   "webResourcesId": "kdr:confdemo",
   "userLabels": ["committee"],
+  "userLabelNotes": { "committee": "Give this to the people who review talks and accept them for the program." },
   "joinRoles": [
     {
       "name": "speaker",
@@ -56,6 +57,7 @@ workflow](talk-core-details.md), which is the first thing to use them, explains 
 | `includedTraits` | The shared traits the client uses. Here there is one, `kdr:name`, the trait that gives a form its name. |
 | `webResourcesId` | The package of images the client presents itself with, which a component of the platform ships. The demo's holds its brand mark, the speech bubble in the app bar and on its home page, and no tab icon, so the browser tab keeps the site's. Only a client declared in code can name a package, so the demo has one where it is declared in code, as on a reference deployment, and none where the conf-demo simulation writes it on a test instance. |
 | `userLabels` | Labels an administrator can put on a user. A workflow can ask whether a user has one; [Committee review](committee-review.md) asks for `committee`. |
+| `userLabelNotes` | A sentence for each label, saying who should have it. The Users page shows it beside the label, together with what the client's workflows do with the label. |
 | `joinRoles` | The roles a visitor can join the demo as, on a site that offers joining. Joining gives the visitor a user of their own email in the client. Its `persona` decides what kind of user that is: an ordinary user (`member`), an editor (`editor`), who sees and edits every form of the client but administers nothing, or an administrator (`admin`). The demo's three roles each take a different persona, so one person can hold all three. (Two roles of the same persona would each need a `personaSuffix` to tell them apart.) Its `userLabels` are put on the user. The Join page shows each role's `label` and `summary`. |
 
 ## Traits

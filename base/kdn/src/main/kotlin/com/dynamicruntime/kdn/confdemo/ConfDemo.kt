@@ -263,6 +263,10 @@ fun confDemoBase(cxt: KdrCxtBase = LiteCxt(), client: String = ConfDemo.client, 
                 webResourcesId = ConfDemo.webResources.takeIf { inCode },
                 // Whoever carries it reviews talks (issue #1139).
                 userLabels = listOf(ConfDemo.committeeLabel),
+                // Said beside the label on the Users page, with what the review workflow does with it (issue #1726).
+                userLabelNotes = mapOf(
+                    ConfDemo.committeeLabel to "Give this to the people who review talks and accept them for the program.",
+                ),
                 // The demo's three roles, which a visitor to a reference deployment may join as (issue #1248) -- the
                 // speaker, organizer and committee member the walkthrough in docs/demo-client follows.
                 joinRoles = listOf(

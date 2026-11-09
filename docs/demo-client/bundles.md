@@ -32,6 +32,7 @@ and its menu entry. Explained on the [client](client.md), [talk core details](ta
       "includedTraits": ["kdr:name"],
       "webResourcesId": "kdr:confdemo",
       "userLabels": ["committee"],
+      "userLabelNotes": { "committee": "Give this to the people who review talks and accept them for the program." },
       "joinRoles": [
         {"name": "speaker", "label": "Speaker", "persona": "member", "summary": "Submit a talk, and follow it through the committee's review."},
         {"name": "organizer", "label": "Organizer", "persona": "admin", "summary": "See every talk submitted, and run the conference's workflows."},
