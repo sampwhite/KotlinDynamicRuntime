@@ -187,6 +187,8 @@ class TraitDesign(
             entry[SL.label] = f.label
             // The box's size is long text's alone: a field made something else keeps no lines to size nothing with.
             if (f.kind != TraitFieldKind.longText) entry.remove(SL.lines)
+            // No kind here is a list of entries (several choices are one control), so none has entries to head.
+            entry.remove(SL.entryLabel)
             // A form's restated choices may name only choices there are.
             if (f.kind.hasChoices) {
                 val values = f.choices.mapNotNull { it.value }.toSet()

@@ -3,6 +3,7 @@ package com.dynamicruntime.webapp
 import com.dynamicruntime.common.gedra.branchDisplayName
 import com.dynamicruntime.common.cfact.CFactParser
 import com.dynamicruntime.common.gedra.GE
+import com.dynamicruntime.common.home.HFRAG
 import com.dynamicruntime.common.schema.PRES
 import com.dynamicruntime.common.schema.PSTAT
 import com.dynamicruntime.common.schema.SCH
@@ -147,6 +148,11 @@ class FormOpts(
      * only the workflow form provides, so no other surface is ever marked.
      */
     val design: DesignSession? = null,
+    /**
+     * What a [friendly] form heads each entry of a list with when the field's layout gives no `entryLabel` (issue
+     * #1714): the home copy's `formEntries.label`, a template over `${'$'}{n}` ([entryHeading]).
+     */
+    val entryLabel: String = HFRAG.defaultEntryLabel,
 ) {
     /**
      * Whether a derived field at [path] holding [value] should be shown read-only rather than hidden (issue
@@ -296,14 +302,21 @@ private fun directPrimaryKeyLabel(type: SchType, value: Any?): String? {
 }
 
 /**
- * The header an array element shows above its sub-form: its `[i]` index, followed by the branch title joined to
- * its primary-key value(s) when it is keyed -- "[1] Yearly — 2024" for a keyed trait, "[1] 2024" when the
- * element is not a union, and just "[1]" when it carries no key at all (issue #487).
+ * The header an array element shows above its sub-form.
  *
- * The index stays, always, because a validation failure is reported by path (`edits[1].data.year`) and the
- * listing lets a reader jump to `[1]`; dropping it would leave that message naming a row nothing on screen
- * carried. The key is added beside it, not in place of it, so several entries of one trait are still told apart
- * at a glance. Pure, and covered under `jsNodeTest`.
+ * - **Where a failure is named by its path** (not [friendly]: the endpoint catalog), its `[i]` index, followed by the
+ *   branch title joined to its primary-key value(s) when it is keyed -- "[1] yearly — 2024" for a keyed trait, "[1]
+ *   2024" when the element is not a union, and just "[1]" when it carries no key at all (issue #487). The index stays
+ *   there, because a validation failure is reported by path (`entries[1].data.year`), and dropping it would leave that
+ *   message naming a row nothing on screen carried.
+ * - **On a user-facing form** ([friendly]: a workflow's form, a new form, the edit form), which shows a failure beside
+ *   its field and a path only in debug, no index (issue #1714): the key when the element is keyed ("Yearly — 2024"),
+ *   else, for an element of a union, its branch's name -- a trait's, on the edit form's sections ("Questionnaire") --
+ *   else [entryLabel], the field's layout `entryLabel` or the form's default, for the entry's number ("Co-speaker 2").
+ *   The row shows its path as a tooltip, for a debug summary that names it, and [distinctHeadings] numbers apart two
+ *   rows that would read alike.
+ *
+ * Pure, and covered under `jsNodeTest`.
  */
 fun elementRowHeader(
     elementType: SchType,
@@ -311,6 +324,7 @@ fun elementRowHeader(
     index: Int,
     friendly: Boolean,
     layouts: Map<String, SchLayout> = emptyMap(),
+    entryLabel: String = HFRAG.defaultEntryLabel,
 ): String {
     val key = keyedElementLabel(elementType, element)
     val title = elementType.variants?.let { v ->
@@ -321,7 +335,25 @@ fun elementRowHeader(
         key != null -> key
         else -> null
     }
+    if (friendly) return label ?: title ?: entryHeading(entryLabel, index)
     return if (label != null) "[$index] $label" else "[$index]"
+}
+
+/**
+ * A friendly list's [headers] (issue #1714), each that more than one row has numbered by its place among them --
+ * "Questionnaire (1)", "Questionnaire (2)" -- since no index tells them apart, and a remove button labeled by one would
+ * not say which it removes. Pure, and covered under `jsNodeTest`.
+ */
+fun distinctHeadings(headers: List<String>): List<String> {
+    val repeated = headers.groupingBy { it }.eachCount().filterValues { it > 1 }.keys
+    if (repeated.isEmpty()) return headers
+    val seen = HashMap<String, Int>()
+    return headers.map { h ->
+        if (h !in repeated) return@map h
+        val n = (seen[h] ?: 0) + 1
+        seen[h] = n
+        "$h ($n)"
+    }
 }
 
 /**
@@ -566,6 +598,7 @@ val SchemaForm = FC<SchemaFormProps> { props ->
         traitDataField = props.traitDataField,
         elementNote = props.elementNote ?: { _, _ -> null },
         design = use(DesignViewContext),
+        entryLabel = useShellFacts().entryLabel,
     )
     div {
         // `friendly` on the root lets the stylesheet give a data-entry / read form's field groups room to breathe
@@ -1385,16 +1418,19 @@ private fun ChildrenBuilder.renderObjectList(
 
     val typeName = elementType.name
     val childSeen = if (typeName != null) seen + typeName else seen
+    // A keyed element (issue #487) reads by its primary-key value -- "Yearly — 2024" -- so several entries of one trait
+    // are told apart at a glance. Computed once, for the whole list, so the row's header and its remove button's label
+    // name the same thing, and two that would read alike on a friendly form are numbered apart (issue #1714).
+    val headers = elements.mapIndexed { i, element ->
+        elementRowHeader(elementType, element.toJsonMapOrEmpty(), i, opts.friendly, opts.fieldLayouts, entryLabelFor(copy, opts))
+    }.let { if (opts.friendly) distinctHeadings(it) else it }
     elements.forEachIndexed { i, element ->
         val elementPath = indexPath(path, i)
         // A failure against the element *itself* rather than one of its fields -- an element that is not an
         // object at all, say. Its fields each have a row; until now the element did not, so this was the one
         // failure inside a list with nowhere of its own to appear.
         val elementMessages = errors.messagesAt(elementPath)
-        // A keyed element (issue #487) reads by its primary-key value -- "[i] Yearly — 2024" -- so several
-        // entries of one trait are told apart at a glance; an unkeyed list keeps its bare index. Computed once
-        // so the row's header and its remove button's label name the same thing.
-        val header = elementRowHeader(elementType, element.toJsonMapOrEmpty(), i, opts.friendly, opts.fieldLayouts)
+        val header = headers[i]
         div {
             className = ClassName("nested")
             div {
@@ -1403,6 +1439,8 @@ private fun ChildrenBuilder.renderObjectList(
                 className = ClassName(rowClass(elementMessages))
                 span {
                     className = ClassName("type-hint")
+                    // A friendly header has no index, so its path is its tooltip: what a debug summary names it by.
+                    if (opts.friendly) title = elementPath
                     +header
                 }
                 // What the page knows about this element (issue #857) -- a locked section -- said on the element.
@@ -1413,7 +1451,7 @@ private fun ChildrenBuilder.renderObjectList(
                     }
                 }
                 if (editable) {
-                    removeControl("$name $header") {
+                    removeControl(if (opts.friendly) header else "$name $header") {
                         // Noted against the list, not the element: removing re-indexes everything after it, so
                         // a failure held against element 2 would end up pointing at what used to be element 3.
                         errors.noteEdit(path)
@@ -1468,6 +1506,8 @@ private fun ChildrenBuilder.renderScalarList(
     val elements = value.toJsonListOrEmpty()
     val messages = errors.messagesAt(path)
     fieldFrame(name, prop, required, path, messages, opts, copy, value = value)
+    // What each remove button names its entry by on a friendly form (issue #1714), numbered apart when they read alike.
+    val removeLabels = if (opts.friendly) distinctHeadings(elements.indices.map { entryHeading(entryLabelFor(copy, opts), it) }) else null
 
     elements.forEachIndexed { i, element ->
         val elementPath = indexPath(path, i)
@@ -1498,7 +1538,7 @@ private fun ChildrenBuilder.renderScalarList(
                     onChange = { e -> replace(e.target.value as String) }
                 }
             }
-            removeControl("$name $i") {
+            removeControl(removeLabels?.get(i) ?: "$name $i") {
                 // Against the list, since removing re-indexes what follows (see renderObjectList).
                 errors.noteEdit(path)
                 val rest = elements.filterIndexed { j, _ -> j != i }
@@ -1515,6 +1555,9 @@ private fun ChildrenBuilder.renderScalarList(
         }
     }
 }
+
+/** What a list field's entries are headed with on a friendly form (issue #1714): its layout's `entryLabel`, else the form's. */
+private fun entryLabelFor(copy: LayoutCopy?, opts: FormOpts): String = copy?.entry?.entryLabel ?: opts.entryLabel
 
 /**
  * The "add" affordance. It carries only the verb: it sits inside the block of the field it adds to, so position

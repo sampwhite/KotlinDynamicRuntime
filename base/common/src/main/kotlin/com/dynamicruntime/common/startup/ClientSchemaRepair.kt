@@ -281,7 +281,7 @@ private fun baseMapAt(node: Map<String, Any?>?, key: String): Map<String, Any?>?
 
 /**
  * Malformed **backend** `%{...}` blocks in a layout's copy (issue #605) -- the registry-free half of the
- * fragment-pull check. A layout `label` / `description` / `hint` may carry a `%{@t("…")}` pull resolved at
+ * fragment-pull check. A layout `label` / `description` / `hint` / `entryLabel` may carry a `%{@t("…")}` pull resolved at
  * delivery; an unterminated or empty `%{...}` block would otherwise fail per request, so it is caught here
  * at boot. Whether a well-formed pull actually *resolves* (its target file and key exist) is a cross-service
  * check that needs the fragment registry, which is not available to this startup-phase service: it runs in
@@ -318,6 +318,7 @@ fun layoutBackendBlockProblems(where: String, layout: SchLayout): List<Problem> 
         checkBackendBlocks("${field.field}'s label", "$at.${SL.label}", field.label)
         checkBackendBlocks("${field.field}'s description", "$at.${SL.description}", field.description)
         checkBackendBlocks("${field.field}'s hint", "$at.${SL.hint}", field.hint)
+        checkBackendBlocks("${field.field}'s entry label", "$at.${SL.entryLabel}", field.entryLabel)
         // An error override (issue #588) is frontend `${'$'}{…}`-only; delivery does not run the backend pass
         // over it, so a `%{…}` block there would ship raw. Refuse any -- not merely a malformed one --
         // rather than let it render as literal text.
@@ -349,7 +350,10 @@ fun layoutProblems(name: String, where: String, body: Map<*, *>, type: SchType?)
     when (val parsed = parseTypeLayout(name, body)) {
         is Parsed.Failed -> parsed.problems
         is Parsed.Ok -> parsed.value?.let { layout ->
-            layoutFieldProblems(where, layout, type) + layoutTemplateProblems(where, layout, type) +
-                layoutBackendBlockProblems(where, layout)
+            buildList {
+                addAll(layoutFieldProblems(where, layout, type))
+                addAll(layoutTemplateProblems(where, layout, type))
+                addAll(layoutBackendBlockProblems(where, layout))
+            }
         }.orEmpty()
     }

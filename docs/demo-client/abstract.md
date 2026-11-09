@@ -118,7 +118,11 @@ and a list of objects.
         "g-visibleWhen": "kdr:hasAdminLevel"
       }
     },
-    "required": ["summary"]
+    "required": ["summary"],
+    "g-layout": {
+      "$comment": "Each co-speaker is headed by their number in the list.",
+      "schemaFields": [{ "field": "coSpeakers", "entryLabel": "Co-speaker ${n}" }]
+    }
   }
 }
 ```
@@ -145,6 +149,10 @@ See [Lists](reference.md#lists).
 
 **The co-speakers are a list of objects.** Each item is a `Speaker`, the shared type above. The form shows a list the
 speaker can add to, with a name and an email in each entry.
+
+**The trait's layout names the entries.** Its one entry gives `coSpeakers` an `entryLabel`, so the form heads each
+co-speaker **Co-speaker 1**, **Co-speaker 2**, and so on, in place of **Entry 1**. The layout is on the trait itself,
+so every form that shows the abstract says it. See [Field layouts](reference.md#field-layouts).
 
 **The organizer's note is left off the speaker's form.** Its `g-visibleWhen` says the field is for someone with an
 administrator's level. The speaker's form does not show it; an organizer's does. See
@@ -234,7 +242,8 @@ This one says the **Workflows** entry shows for anyone who is logged in to the a
 The page is titled **Write the abstract**. Until the talk has entered the workflow, it offers one button, **Start**.
 After that it shows the form: under **Abstract**, the fields **Summary**, **Duration (minutes)**, **Topics**, and
 **Co-speakers**, each with a hint such as *From 50 to 600 characters*; under **Questionnaire**, the four questions. The
-speaker does not see **Organizer's note**. The button is **Save the abstract**.
+speaker does not see **Organizer's note**. Under **Co-speakers**, **+ Add** adds an entry headed **Co-speaker 1**, then
+**Co-speaker 2**, each with **Name** and **Email**. The button is **Save the abstract**.
 
 A summary that is too short is refused with the schema's own words: *A summary is at least 50 characters; give the
 audience a reason to come.* Once the abstract is saved, the forms list says **Write the abstract finished**.

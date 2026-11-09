@@ -11,7 +11,7 @@ import com.dynamicruntime.common.util.toOptStr
 
 /**
  * Resolves the **backend pass** over a delivered `{ typeName -> g-layout block }` map before it ships (issue
- * #605). A layout's heading, each field's `label` / `description` / `hint`, and each form-level string in
+ * #605). A layout's heading, each field's `label` / `description` / `hint` / `entryLabel`, and each form-level string in
  * `strings` (issue #814) may pull shared copy with a backend `%{@t("…")}`, and this is where that pull happens:
  * each copy string runs through [MarkdownFragmentService.layoutBackendPassReport] against the block's
  * `fragmentFileId`, so a `%{@t(...)}` becomes the caller's finished copy and only `${...}` (the
@@ -54,7 +54,7 @@ fun resolveDeliveredLayouts(cxt: KdrCxt, layouts: Map<String, Any?>): Map<String
         val introduction = blockCopy(SL.description, "introduction")
         val fields = body[SL.schemaFields].toJsonListOfMaps().map { field ->
             val resolved = LinkedHashMap<String, Any?>(field)
-            for (copyKey in listOf(SL.label, SL.description, SL.hint)) {
+            for (copyKey in listOf(SL.label, SL.description, SL.hint, SL.entryLabel)) {
                 val text = field[copyKey] as? String ?: continue
                 // Only a string carrying a backend block needs the pass; plain copy and a frontend-only `${…}`
                 // are left exactly as they are.
@@ -97,7 +97,7 @@ class LayoutPullHit(val fileFound: Boolean, val backend: Boolean, val keyPresent
  * carries no dependency on `MarkdownFragmentService`: a regular-phase caller supplies [resolve] against the
  * fragment registry (see `LayoutCheckService`).
  *
- * For each copy string -- the block heading, every field's `label` / `description` / `hint`, and every form-level
+ * For each copy string -- the block heading, every field's `label` / `description` / `hint` / `entryLabel`, and every form-level
  * string (issue #814) -- each
  * **literal, un-guarded** `%{@t(...)}` is resolved: a two-part `namespace.key` against the block's
  * `fragmentFileId`, a three-part `fileId.namespace.key` against its own file (the composition the delivery's
@@ -162,6 +162,7 @@ fun layoutPullProblems(
         check("${field.field}'s label", "$at.${SL.label}", field.label)
         check("${field.field}'s description", "$at.${SL.description}", field.description)
         check("${field.field}'s hint", "$at.${SL.hint}", field.hint)
+        check("${field.field}'s entry label", "$at.${SL.entryLabel}", field.entryLabel)
     }
     for ((key, text) in layout.strings) {
         check("string '$key'", "${SL.strings}.$key", text)

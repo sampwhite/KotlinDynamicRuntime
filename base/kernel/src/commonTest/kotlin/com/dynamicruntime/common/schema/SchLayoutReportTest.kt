@@ -80,6 +80,35 @@ class SchLayoutReportTest {
     }
 
     @Test
+    fun anEntryLabelHeadsAListOfEntriesAndIsGivenOnlyItsNumber() {
+        // Issue #1714: what a form heads each entry of a list with, a template over the entry's number.
+        val type = objType(
+            "speakers" to mapOf(SCH.type to SCT.array, SCH.items to mapOf(SCH.type to SCT.kObject)),
+            "topics" to mapOf(SCH.type to SCT.array, SCH.items to mapOf(SCH.type to SCT.string, SCH.options to listOf("a", "b"))),
+            "title" to mapOf(SCH.type to SCT.string),
+        )
+        val good = layoutOf(mapOf(SL.field to "speakers", SL.entryLabel to $$"Co-speaker ${n}"))
+        assertEquals($$"Co-speaker ${n}", good.fields.single().entryLabel)
+        assertEquals($$"Co-speaker ${n}", good.fields.single().toJsonMap()[SL.entryLabel])
+        assertEquals(emptyList(), layoutFieldProblems(where, good, type) + layoutTemplateProblems(where, good, type))
+
+        // Only a list drawn entry by entry: neither a plain field nor a list of choices, which is one control.
+        val notLists = layoutOf(
+            mapOf(SL.field to "title", SL.entryLabel to "Line"),
+            mapOf(SL.field to "topics", SL.entryLabel to "Topic"),
+        )
+        val misplaced = layoutFieldProblems(where, notLists, type)
+        assertEquals(listOf(LayoutError.entryLabelNotList, LayoutError.entryLabelNotList), misplaced.map { it.code })
+        assertEquals(listOf("schemaFields[0].entryLabel", "schemaFields[1].entryLabel"), misplaced.map { it.location?.path })
+
+        // Given its number alone: anything else would render as written.
+        val otherParam = layoutOf(mapOf(SL.field to "speakers", SL.entryLabel to $$"Speaker ${name}"))
+        val problem = layoutTemplateProblems(where, otherParam, type).single()
+        assertEquals(LayoutError.unknownParam, problem.code)
+        assertEquals("schemaFields[0].entryLabel", problem.location?.path)
+    }
+
+    @Test
     fun aFieldTheTypeLacksIsLocatedAtItsEntry() {
         val layout = layoutOf(mapOf(SL.field to "a"), mapOf(SL.field to "b"))
         val problem = layoutFieldProblems(where, layout, objType("a" to emptyMap())).single()

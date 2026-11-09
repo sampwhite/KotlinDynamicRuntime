@@ -67,6 +67,8 @@ data class ShellFacts(
     val workflowWords: WorkflowCellWords = WorkflowCellWords(),
     /** The words of the line under a form's field saying its bounds (issue #1693), from the shell's copy. As shipped until it arrives. */
     val fieldBoundWords: FieldBoundWords = FieldBoundWords(),
+    /** What a form heads each entry of a list with (issue #1714), from the shell's copy, over `n`. As shipped until it arrives. */
+    val entryLabel: String = HFRAG.defaultEntryLabel,
 ) {
     /** Whether these are [userId]'s facts, told by the shell: not before it has been, nor another user's (issue #1479). */
     fun describes(userId: Long): Boolean = this.userId == userId
@@ -123,6 +125,7 @@ fun shellFactsOf(config: HomeConfig, shellCopy: Copy? = null): ShellFacts = Shel
     whatIsThisHide = shellCopy?.opt(HFRAG.whatIsThisNs, HFRAG.whatIsThisHide)?.ifBlank { null },
     workflowWords = shellCopy?.let { WorkflowCellWords.of(it) } ?: WorkflowCellWords(),
     fieldBoundWords = shellCopy?.let { FieldBoundWords.of(it) } ?: FieldBoundWords(),
+    entryLabel = shellCopy?.opt(HFRAG.formEntriesNs, HFRAG.formEntryLabel)?.ifBlank { null } ?: HFRAG.defaultEntryLabel,
 )
 
 /**
