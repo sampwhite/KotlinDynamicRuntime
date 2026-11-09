@@ -7,7 +7,10 @@ import com.dynamicruntime.common.gedra.ClientDef
 import com.dynamicruntime.common.gedra.ClientService
 import com.dynamicruntime.common.gedra.ClientSyncService
 import com.dynamicruntime.common.gedra.ClientUsageType
+import com.dynamicruntime.common.gedra.GCFG
+import com.dynamicruntime.common.gedra.GU
 import com.dynamicruntime.common.gedra.GedraConfig
+import com.dynamicruntime.common.gedra.GedraConfigBuilder
 import com.dynamicruntime.common.gedra.GedraConfigLoadService
 import com.dynamicruntime.common.gedra.GedraConfigReload
 import com.dynamicruntime.common.gedra.GedraConfigService
@@ -20,6 +23,7 @@ import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.startup.ComponentDefinition
 import com.dynamicruntime.common.startup.SchemaService
 import io.kotest.core.spec.style.StringSpec
+import io.kotest.core.spec.style.stringSpec
 import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.collections.shouldNotContain
 import io.kotest.matchers.maps.shouldContainKey
@@ -33,8 +37,16 @@ import io.kotest.matchers.shouldBe
  * The multi-node cases share one isolated database with stored-config loading on, and turn node B's config cache
  * off for the reason `GedraConfigSyncTest` gives: these tests drive the services outside any request, so the cache
  * would sit stale.
+ *
+ * Also, since issue #1739, the tests that were `SandboxBootTierTest`, each kept whole below.
  */
 class SandboxBootAndSyncTest : StringSpec({
+    include(sandboxBootAndSyncTests())
+    include(sandboxBootTierTests())
+})
+
+/** This file's own tests, as the class describes them. */
+private fun sandboxBootAndSyncTests() = stringSpec {
     fun traits(node: KdrCxt, client: String): List<String> =
         SchemaService.get(node).gedraTraitsFor(client).map { it.traitId }
     fun asClient(node: KdrCxt, client: String): KdrCxt = node.mkSubContext("sandboxSync", client).also { it.userId = 9400L }
@@ -141,8 +153,62 @@ class SandboxBootAndSyncTest : StringSpec({
         traits(second, sandboxOf(parent)) shouldContain "drA"
         GedraConfigLoadService.get(second).loadedMarkers() shouldContainKey sandboxOf(parent)
     }
-})
+}
 
+/**
+ * A client with a Shadow Sandbox runs only what it publishes **after a restart too** (issues #930, #935). Its tier
+ * comes from its published definition asking for a sandbox, not from a toggle, and the boot once read only the
+ * toggle -- so a restarted node ran the client's drafts, which made the publish impact report empty, since the
+ * running configuration already was the candidate. Two boots over one database: the second is the restart.
+ */
+private fun sandboxBootTierTests() = stringSpec {
+    val db = mapOf("KDR_DB_NAME" to "sbxBootTierDb", "KDR_LOAD_STORED_CONFIG" to "true")
+    val client = "sbxboot"
+
+    fun known(node: KdrCxt, client: String, traitId: String): Boolean =
+        SchemaService.get(node).storeFor(client).types["${GCFG.globalNamespace}.${GU.unionName(GedraDataType.formDoc)}"]
+            ?.variants?.isKnown(traitId) == true
+
+    "a restarted node runs the published revision of a client whose definition asks for a sandbox; the sandbox its draft" {
+        // Its own instance (issue #1075): the first of two boots over its own database (`KDR_DB_NAME`); the restart's
+        // boot-time load is under test.
+        val first = Startup.mkTestBootCxt("sbxBootA", "sbxBootNodeA", db)
+        val svc = GedraConfigService.get(first)
+        val setup = first.mkSubContext("setup", client).also { it.userId = 9930L }
+        fun write(name: String, build: GedraConfigBuilder.() -> Unit) =
+            svc.writeConfig(setup, gedraConfig(first, name, clientNamespace(client), client, build = build))
+        fun publish(name: String) = svc.publish(setup, listOf(GedraId.of(GedraConfigType.configDoc, client, name)))
+
+        write("main") {
+            defineClient(
+                ClientDef(
+                    clientId = client, name = client, usageType = ClientUsageType.dev, audience = ClientAudience.internal,
+                    enabledEnvironments = setOf(ENV.unit, ENV.local), sandbox = true,
+                ),
+            )
+        }
+        write("traits") {
+            trait("MemoEntry", "memo", setOf(GedraDataType.formDoc), "A memo.") { property("text", "What it says.") }
+            trait("ExtraEntry", "extra", setOf(GedraDataType.formDoc), "A note.") { property("note", "A note.") }
+        }
+        publish("main")
+        publish("traits")
+        // The draft drops `extra`.
+        write("traits") {
+            trait("MemoEntry", "memo", setOf(GedraDataType.formDoc), "A memo.") { property("text", "What it says.") }
+        }
+        GedraConfigReload.reloadClient(first, client)
+        known(first, client, "extra") shouldBe true
+        known(first, sandboxOf(client), "extra") shouldBe false
+
+        // The restart: a fresh boot reads the same database.
+        val second = Startup.mkTestBootCxt("sbxBootB", "sbxBootNodeB", db)
+        known(second, client, "extra") shouldBe true
+        known(second, sandboxOf(client), "extra") shouldBe false
+    }
+}
+
+// Declared with what was `SandboxBootAndSyncTest`.
 /** A fixture component whose source-code client asks for a sandbox (issue #928). */
 class SandboxParentComponent : ComponentDefinition {
     override val providerName: String = "sandboxParentFixture"

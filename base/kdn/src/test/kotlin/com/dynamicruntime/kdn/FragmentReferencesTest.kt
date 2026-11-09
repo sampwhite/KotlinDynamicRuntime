@@ -2,6 +2,7 @@ package com.dynamicruntime.kdn
 
 import com.dynamicruntime.common.content.FRAG
 import com.dynamicruntime.common.content.FragmentAudience
+import com.dynamicruntime.common.content.FragmentNamespaceBuilder
 import com.dynamicruntime.common.content.MarkdownFragmentService
 import com.dynamicruntime.common.content.fragmentInline
 import com.dynamicruntime.common.context.KdrCxt
@@ -9,13 +10,91 @@ import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.util.ScriptError
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
+import io.kotest.core.spec.style.stringSpec
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 
 /**
+ * The `@t` reference checks at boot (issue #1739 gathered these; issue #505): the frontend pass, a two-part pull within
+ * one fragment file, wired into the boot fragment check; and the backend pass, a three-part pull across the whole
+ * registry, with its cycles and a client overlay's. The per-reference logic itself runs on both targets in the kernel's
+ * `FragmentReferenceCheckTest`. Each part below is one of the specs that used to be a file of its own, kept whole.
+ */
+class FragmentReferencesTest : StringSpec({
+    include(fragmentReferenceBootTests())
+    include(backendReferenceCheckTests())
+})
+
+/**
+ * The boot fragment check validates `@t` references, not just template syntax (Phase 2 of issue #505). The
+ * per-reference and cycle logic is covered on both targets in `FragmentReferenceCheckTest`; this exercises the
+ * wiring -- that `checkFragments` runs it over the registered fragments, and a strict boot refuses on a
+ * finding. A fragment is injected through `FRAG.registryKey`, which replaces the node's registered set for the
+ * duration of the check.
+ */
+private fun fragmentReferenceBootTests() = stringSpec {
+
+    fun service(cxt: KdrCxt): MarkdownFragmentService = MarkdownFragmentService.get(cxt)
+
+    fun register(cxt: KdrCxt, build: FragmentNamespaceBuilder.() -> Unit) {
+        cxt.instanceConfig.put(
+            FRAG.registryKey,
+            listOf(fragmentInline("wf", origin = "test", isOverlay = false) { namespace("items", build) }),
+        )
+    }
+
+    "a dangling @t reference in a registered fragment is reported" {
+        // Its own instance (issue #1075): it replaces the node's fragment registry (`FRAG.registryKey`) while running.
+        val cxt = Startup.mkTestBootCxt("fragRefDangling", "fragRefDanglingTest")
+        register(cxt) {
+            key("chooser", $$"""${@t("items.gone")}""")
+            key("noItems", "none")
+        }
+        val issues = service(cxt).checkFragments(cxt).flatMap { it.issues }
+        issues.any { it.code == ScriptError.fragmentNotFound && it.message.contains("items.gone") } shouldBe true
+    }
+
+    "a valid @t reference is clean" {
+        // Its own instance (issue #1075): it replaces the node's fragment registry (`FRAG.registryKey`) while running.
+        val cxt = Startup.mkTestBootCxt("fragRefValid", "fragRefValidTest")
+        register(cxt) {
+            key("chooser", $$"""${@t("items.noItems")}""")
+            key("noItems", "none")
+        }
+        val refIssues = service(cxt).checkFragments(cxt)
+            .flatMap { it.issues }
+            .filter { it.code == ScriptError.fragmentNotFound || it.code == ScriptError.fragmentCycle }
+        refIssues shouldBe emptyList()
+    }
+
+    "a reference cycle in a registered fragment is reported" {
+        // Its own instance (issue #1075): it replaces the node's fragment registry (`FRAG.registryKey`) while running.
+        val cxt = Startup.mkTestBootCxt("fragRefCycle", "fragRefCycleTest")
+        register(cxt) {
+            key("a", $$"""${@t("items.b")}""")
+            key("b", $$"""${@t("items.a")}""")
+        }
+        val issues = service(cxt).checkFragments(cxt).flatMap { it.issues }
+        issues.any { it.code == ScriptError.fragmentCycle } shouldBe true
+    }
+
+    "a strict boot refuses to start on a dangling @t reference" {
+        // Its own instance (issue #1075): it replaces the node's fragment registry (`FRAG.registryKey`) while running.
+        // mkTestBootCxt forces the unit environment, where the check is strict.
+        val cxt = Startup.mkTestBootCxt("fragRefStrict", "fragRefStrictTest")
+        register(cxt) {
+            key("chooser", $$"""${@t("items.gone")}""")
+            key("noItems", "none")
+        }
+        val ex = shouldThrow<KdrException> { service(cxt).checkFragmentsAtStartup(cxt) }
+        (ex.message ?: "").contains("items.gone") shouldBe true
+    }
+}
+
+/**
  * Registry-wide validation of the **backend** `@t` pass (the reference-level remainder of issue #505). Where
- * the frontend checker (`FragmentReferenceBootTest`) resolves a two-part pull within one file, a backend pull
+ * the frontend checker (the part above) resolves a two-part pull within one file, a backend pull
  * is `%{@t("fileId.namespace.key")}` -- three parts across the whole registry -- so its validation lives in
  * `MarkdownFragmentService`, which has the registry, not in the per-file kernel walk. Two things it catches
  * that the audience checks (`FragmentAudienceTest`) do not: a pull to a **missing key** in a real backend
@@ -24,7 +103,7 @@ import io.kotest.matchers.string.shouldContain
  * Fragments are injected through `FRAG.registryKey`, replacing the node's set, so only the files each case
  * declares are in play. Values use `%{...}` (no `$`), so plain strings -- no multi-dollar prefix.
  */
-class BackendReferenceCheckTest : StringSpec({
+private fun backendReferenceCheckTests() = stringSpec {
 
     fun service(cxt: KdrCxt): MarkdownFragmentService = MarkdownFragmentService.get(cxt)
 
@@ -174,4 +253,4 @@ class BackendReferenceCheckTest : StringSpec({
         rows.any { it.fileId == "bePull" && it.client == "acme" } shouldBe true
         rows.flatMap { it.issues }.any { it.code == ScriptError.fragmentNotFound } shouldBe false
     }
-})
+}

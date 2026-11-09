@@ -7,22 +7,17 @@ import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.logging.LogConfig
 import com.dynamicruntime.common.logging.LogLevel
 import com.dynamicruntime.common.logging.LogSinks
+import com.dynamicruntime.common.sql.SqlTopicService
 import com.dynamicruntime.common.startup.ComponentDefinition
 import com.dynamicruntime.common.startup.SchemaService
+import com.dynamicruntime.common.user.authTopic
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
+import io.kotest.core.spec.style.stringSpec
+import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.maps.shouldContainKey
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
-
-/** A do-nothing component that marks the instance it is loaded into, so a test can see where it did (not) go. */
-private const val fixtureMarker = "startupTestFixtureLoaded"
-
-private class MarkerFixtureComponent : ComponentDefinition {
-    override fun applyInstanceConfig(cxt: KdrCxt) {
-        cxt.instanceConfig.put(fixtureMarker, true)
-    }
-}
 
 /**
  * Boots real instances through [Startup.mkTestBootCxt] and checks the
@@ -31,8 +26,16 @@ private class MarkerFixtureComponent : ComponentDefinition {
  * only once. Each test uses a distinct instance name because
  * [com.dynamicruntime.common.startup.InstanceRegistry] caches instances VM-globally -- and refuses a cached name asked
  * for with another setup (issue #1075).
+ *
+ * Also, since issue #1739, the tests that were `TopicStartupInitTest`, each kept whole below.
  */
 class StartupTest : StringSpec({
+    include(startupTests())
+    include(topicStartupInitTests())
+})
+
+/** This file's own tests, as the class describes them. */
+private fun startupTests() = stringSpec {
 
     "booting initializes SchemaService and assembles schema from all components" {
         // Its own instance (issue #1075): the boot itself is under test: what an instance assembles at startup.
@@ -106,4 +109,48 @@ class StartupTest : StringSpec({
             )
         }
     }
-})
+}
+
+/**
+ * Every topic's tables must be created during **startup**, as the system user -- never lazily by whichever
+ * request happens to touch a topic first.
+ *
+ * Creating a table is DDL, and `SqlDatabase.executeSchemaChangeSql` refuses to run DDL on behalf of an end
+ * user. So if creation were deferred to first use, a signed-in user's request that landed on a topic whose
+ * tables were not all present would fail with "Schema-change SQL may only be executed by the system user".
+ *
+ * That is not hypothetical, and it is nastier than it looks: an *anonymous* caller's userId is the system user
+ * id (both 0), so an anonymous first touch satisfies the guard by coincidence and everything appears fine. The
+ * failure surfaces only when a **signed-in** user makes the first request after a deployment that added a table
+ * to an existing topic, against a database that already holds the rest of it -- i.e. on upgrade, and never in a
+ * fresh in-memory test. Adding `LinkedUsers` to the `auth` topic (issue #157) hit exactly that.
+ *
+ * Asserting the topics exist immediately after boot is what keeps the creation in startup: it fails if anyone
+ * makes topic init lazy again.
+ */
+private fun topicStartupInitTests() = stringSpec {
+
+    "the auth topic and its tables are created during startup, before any request" {
+        val cxt = TestInstances.default("topicInit")
+        val service = SqlTopicService.get(cxt)
+        // Populated by checkReady, so it is already there without a single request having been made.
+        service.topics.keys shouldContain authTopic
+    }
+
+    "every topic the schema store declares is created, not just the one a test happens to use" {
+        val cxt = TestInstances.default("topicInitAll")
+        val service = SqlTopicService.get(cxt)
+        val declared = cxt.getGlobalSchema().tables.values.map { it.topic }.toSet()
+        declared.forEach { service.topics.keys shouldContain it }
+    }
+}
+
+// Declared with what was `StartupTest`.
+/** A do-nothing component that marks the instance it is loaded into, so a test can see where it did (not) go. */
+private const val fixtureMarker = "startupTestFixtureLoaded"
+
+private class MarkerFixtureComponent : ComponentDefinition {
+    override fun applyInstanceConfig(cxt: KdrCxt) {
+        cxt.instanceConfig.put(fixtureMarker, true)
+    }
+}

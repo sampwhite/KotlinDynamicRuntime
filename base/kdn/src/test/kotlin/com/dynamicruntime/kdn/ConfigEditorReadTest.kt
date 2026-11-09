@@ -6,6 +6,7 @@ import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.gedra.ACEP
 import com.dynamicruntime.common.gedra.CCT
 import com.dynamicruntime.common.gedra.CFEP
+import com.dynamicruntime.common.gedra.CLD
 import com.dynamicruntime.common.gedra.ClientAudience
 import com.dynamicruntime.common.gedra.ClientDef
 import com.dynamicruntime.common.gedra.ClientUsageType
@@ -23,11 +24,13 @@ import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.user.TestUser
+import com.dynamicruntime.common.user.UADEP
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonListOfStrings
 import com.dynamicruntime.common.util.toJsonListOrEmpty
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import io.kotest.core.spec.style.StringSpec
+import io.kotest.core.spec.style.stringSpec
 import io.kotest.matchers.collections.shouldContainAll
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
@@ -36,8 +39,16 @@ import io.kotest.matchers.shouldBe
  * The bundle editor page's read (issue #1436): every configuration a client stores, its latest revision with the
  * published one beside it when the latest is a draft over it, and each slot's declared shape; and a bundle read of the
  * published revision alone. A client per case, with a sandbox, so a change is a draft over what is published.
+ *
+ * Also, since issue #1739, the tests that were `BundleLiveStateTest`, each kept whole below.
  */
 class ConfigEditorReadTest : StringSpec({
+    include(configEditorReadTests())
+    include(bundleLiveStateTests())
+})
+
+/** This file's own tests, as the class describes them. */
+private fun configEditorReadTests() = stringSpec {
     val cxt = TestInstances.default("configEditor1436")
     val svc = GedraConfigService.get(cxt)
 
@@ -166,4 +177,52 @@ class ConfigEditorReadTest : StringSpec({
         operator.getItem(ACEP.editor, mapOf(CFEP.client to client))[CFEP.configs].toJsonListOfMaps()
             .map { it[CFEP.name] }.toSet() shouldBe setOf("main", "traits")
     }
-})
+}
+
+/**
+ * What the client detail's configuration table reads to say whether a bundle's latest revision is live (issue #1001):
+ * the bundles summary's latest *published* version beside the latest version, and the overview row's tier.
+ */
+private fun bundleLiveStateTests() = stringSpec {
+    val cxt = TestInstances.default("bundleLive1001")
+    val svc = GedraConfigService.get(cxt)
+
+    "the summary names the published version under a draft, and the overview row the client's tier" {
+        val client = "bundlelive"
+        val setup = cxt.mkSubContext("setup", client).also { it.userId = 10010L }
+        fun write(name: String) = svc.writeConfig(
+            setup,
+            gedraConfig(cxt, "main", clientNamespace(client), client) {
+                defineClient(
+                    ClientDef(
+                        clientId = client, name = name, usageType = ClientUsageType.dev,
+                        audience = ClientAudience.internal, enabledEnvironments = setOf(ENV.unit, ENV.local),
+                    ),
+                )
+            },
+        )
+        write("First")
+        svc.publish(setup, listOf(GedraId.of(GedraConfigType.configDoc, client, "main")))
+        write("Second")
+        GedraConfigReload.reloadClient(cxt, client)
+        val admin = TestUser.create(cxt, "chief@$client.test", level = ROLE.admin, userClient = client)
+
+        val main = admin.getItems(CFEP.bundles).single { it[CFEP.name] == "main" }
+        main[CFEP.version] shouldBe 2
+        main[CFEP.published] shouldBe false
+        main[CFEP.publishedVersion] shouldBe 1
+
+        fun row() = admin.getItems(UADEP.clientsOverview).single { it[CLD.clientId] == client }
+        row()[CLD.publishedOnly] shouldBe false
+        row()[CLD.staticHere] shouldBe false
+        svc.setPublishedOnly(setup, client, true)
+        row()[CLD.publishedOnly] shouldBe true
+
+        // Published, the latest is its own published version.
+        onlyConfig(admin.postData(CFEP.bundlePublish, mapOf(CFEP.names to listOf("main"))))[CFEP.publishedVersion] shouldBe 2
+    }
+}
+
+// Declared with what was `BundleLiveStateTest`.
+/** The one configuration a single-config patch or publish answered with (issue #1352). */
+private fun onlyConfig(result: Map<String, Any?>): Map<String, Any?> = result[CFEP.configs].toJsonListOfMaps().single()

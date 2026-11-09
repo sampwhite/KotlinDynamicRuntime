@@ -28,7 +28,9 @@ import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonListOrEmpty
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
+import io.kotest.core.spec.style.stringSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import io.kotest.matchers.string.shouldContain
@@ -38,8 +40,16 @@ import io.kotest.matchers.string.shouldContain
  * keys of one file in one save -- one config, one publish, one new build id -- or one draft for a client with a
  * sandbox; a batch the checks refuse leaves every key as it was; and a key changed twice, a reset with nothing
  * stored, or keys held by two stored configs are refused. One booted instance; a client per case.
+ *
+ * Also, since issue #1739, the tests that were `CopyRolesTest`, each kept whole below.
  */
 class ClientCopyApplyTest : StringSpec({
+    include(clientCopyApplyTests())
+    include(copyRolesTests())
+})
+
+/** This file's own tests, as the class describes them. */
+private fun clientCopyApplyTests() = stringSpec {
     val cxt = TestInstances.default("clientCopyApply1062")
     val svc = GedraConfigService.get(cxt)
     val fragments = MarkdownFragmentService.get(cxt)
@@ -181,4 +191,35 @@ class ClientCopyApplyTest : StringSpec({
         served(client, "home", "brand") shouldBe "KDR"
         result[CPY.issues].toJsonListOrEmpty().size shouldBe 0
     }
-})
+}
+
+/**
+ * A client's copy is held to the declared roles (issue #1562): a misspelled role, or one written on what it does not
+ * apply to, is refused with its configuration, where it is written, rather than rendering as nothing.
+ */
+private fun copyRolesTests() = stringSpec {
+
+    val cxt = TestInstances.default("copyRoles")
+
+    "a client's copy writing an undeclared or misplaced role is refused with its configuration" {
+        val client = "copyroles1562"
+        fun write(note: String) {
+            val config = gedraConfig(cxt, "${client}cfg", clientNamespace(client), client) {
+                defineClient(
+                    ClientDef(
+                        clientId = client, name = client, usageType = ClientUsageType.dev, audience = ClientAudience.internal,
+                        enabledEnvironments = setOf(ENV.unit, ENV.local),
+                    ),
+                )
+                fragmentOverlay(HFRAG.home) { namespace(HFRAG.homeNs) { key("note", note) } }
+            }
+            GedraConfigService.get(cxt).writeConfig(cxt.mkSubContext("copyRoles", client), config)
+            GedraConfigReload.reloadClient(cxt, client)
+        }
+        write("Write to [ops@acme.test]{.value}.")
+        shouldThrow<Exception> { write("Write to [ops@acme.test]{.vaule}.") }.message.orEmpty() shouldContain
+            "The role '.vaule' is not one the renderer knows"
+        shouldThrow<Exception> { write("[Beside]{.float-left} the text.") }.message.orEmpty() shouldContain
+            "written on a span, but it applies only to an image"
+    }
+}

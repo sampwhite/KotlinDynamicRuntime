@@ -17,7 +17,7 @@ private class RecordingSink : LogSink {
 
 /**
  * Capturing a context's log lines (issue #1173): kept as well as logged, down to debug whatever the topic is set to,
- * shared with sub contexts, and bounded. Through a request, see `CaptureLogsTest` in kdn.
+ * shared with sub contexts, and bounded. Through a request, see `RequestLoggingTest` in kdn.
  */
 class RequestLogCaptureTest : StringSpec({
 

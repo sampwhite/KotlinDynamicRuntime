@@ -47,7 +47,7 @@ import io.kotest.matchers.string.shouldContain
  * off, the workflow is as if not configured -- outside its lifetime -- so nothing shows it, its stored data is kept, and
  * turning it on again brings it all back. A change that hides engaged forms is refused with the impact report until
  * acknowledged; a workflow of another kind has no switch; and a sandbox's switch is its own. The code's default, and a
- * client turning off a workflow its code declares, are in `WorkflowParamsSourceTest`. A client per case, on the shared
+ * client turning off a workflow its code declares, are in `WorkflowParamsTest`. A client per case, on the shared
  * default instance.
  */
 class WorkflowEnabledTest : StringSpec({

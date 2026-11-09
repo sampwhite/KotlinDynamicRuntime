@@ -4,30 +4,37 @@ import com.dynamicruntime.common.content.FRAG
 import com.dynamicruntime.common.content.FragmentSource
 import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.KdrCxt
+import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.CFEP
 import com.dynamicruntime.common.gedra.ClientAudience
+import com.dynamicruntime.common.gedra.ClientConfigIssues
 import com.dynamicruntime.common.gedra.ClientDef
 import com.dynamicruntime.common.gedra.ClientService
 import com.dynamicruntime.common.gedra.ClientUsageType
+import com.dynamicruntime.common.gedra.ConfigReloadResult
 import com.dynamicruntime.common.gedra.GT
 import com.dynamicruntime.common.gedra.GedraConfigLoadService
 import com.dynamicruntime.common.gedra.GedraConfigReload
 import com.dynamicruntime.common.gedra.GedraConfigService
-import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.UsageKind
 import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.naming.clientNamespace
+import com.dynamicruntime.common.startup.BCHK
+import com.dynamicruntime.common.startup.BootCheckRegistry
 import com.dynamicruntime.common.startup.SchemaService
 import com.dynamicruntime.common.user.TestUser
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
+import io.kotest.core.spec.style.stringSpec
+import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.collections.shouldNotContain
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.string.shouldContain as shouldContainString
 import io.kotest.matchers.types.shouldBeSameInstanceAs
 import io.kotest.matchers.types.shouldNotBeSameInstanceAs
@@ -36,8 +43,16 @@ import io.kotest.matchers.types.shouldNotBeSameInstanceAs
  * Reloading one client's stored configuration on a running node (issue #616): the reload changes what the
  * client's schema advertises and validates against, a request in flight is unaffected, a second client is
  * untouched, and a reload that fails leaves the node exactly as it was. One booted instance; unique clients.
+ *
+ * Also, since issue #1739, the tests that were `GedraConfigReloadScopeTest`, each kept whole below.
  */
 class GedraConfigReloadTest : StringSpec({
+    include(gedraConfigReloadTests())
+    include(gedraConfigReloadScopeTests())
+})
+
+/** This file's own tests, as the class describes them. */
+private fun gedraConfigReloadTests() = stringSpec {
     // Its own instance (issue #1075): a later case appends a source layer to its fragment registry (`FRAG.registryKey`)
     // while running.
     val cxt = Startup.mkTestBootCxt("gedraCfgReload", "gedraCfgReloadTest")
@@ -240,4 +255,71 @@ class GedraConfigReloadTest : StringSpec({
         val after = (cxt.instanceConfig.get(FRAG.registryKey) as? List<*>)?.filterIsInstance<FragmentSource>().orEmpty()
         after.any { it === sourceLayer } shouldBe true
     }
-})
+}
+
+/**
+ * A reload judges only the client being reloaded (issue #842). Before, its second phase re-ran the client,
+ * workflow and schema checks over **every** client: on strict, one client's bad definition failed every later
+ * reload of any client (review item B4); on warn, every reload reported every other client's problems again.
+ *
+ * Each case boots its own instance -- and so, since issue #836, its own in-memory database -- because each stores
+ * a deliberately bad client definition that stays in the node's collectors.
+ */
+private fun gedraConfigReloadScopeTests() = stringSpec {
+
+    fun writer(cxt: KdrCxt, client: String): KdrCxt = cxt.mkSubContext("scopeWrite", client).also { it.userId = 8420L }
+
+    fun storeAndReload(cxt: KdrCxt, client: String, extraEnv: String? = null): ConfigReloadResult {
+        val config = gedraConfig(cxt, "${client}cfg", clientNamespace(client), client) {
+            defineClient(
+                ClientDef(
+                    clientId = client, name = client, usageType = ClientUsageType.dev, audience = ClientAudience.internal,
+                    enabledEnvironments = setOfNotNull(ENV.unit, ENV.local, extraEnv),
+                ),
+            )
+            trait("${client}Entry", "${client}Trait", setOf(GedraDataType.formDoc), "A trait of $client.") {
+                property("text", "A value.")
+            }
+        }
+        GedraConfigService.get(cxt).writeConfig(writer(cxt, client), config)
+        return GedraConfigReload.reloadClient(cxt, client)
+    }
+
+    // B4 strict, now fixed: the bad client's own reload is refused (stored config is strict in unit), but it no
+    // longer takes an unrelated client's reload down with it.
+    "on strict, one client's bad definition does not fail another client's reload" {
+        val cxt = TestInstances.default("reloadScopeS")
+        val bad = "scope842bad"
+        val good = "scope842good"
+
+        shouldThrow<KdrException> { storeAndReload(cxt, bad, extraEnv = "noSuchEnv842") }
+            .message.shouldNotBeNull() shouldContain "noSuchEnv842"
+
+        val result = storeAndReload(cxt, good)
+        result.loaded shouldBe 1
+        result.issues.shouldBeEmpty()
+        ClientService.get(cxt).present(good).shouldNotBeNull()
+    }
+
+    "on warn, a reload does not report another client's problems again" {
+        val cxt = TestInstances.storedConfigWarn("reloadScopeW")
+        val bad = "scope842drop"
+        val good = "scope842fine"
+
+        // The bad client is dropped, with one issue on it.
+        storeAndReload(cxt, bad, extraEnv = "noSuchEnv842").issues.size shouldBe 1
+        ClientService.get(cxt).known(bad) shouldBe null
+
+        // Reloading another client reports nothing about it: no new finding in the operator report (a whole-node
+        // recheck re-recorded the bad client's there on every reload), and neither service's list grows.
+        fun storedFindings() = BootCheckRegistry.get(cxt).results().first { it.name == BCHK.storedConfig }.findings.size
+        val findingsBefore = storedFindings()
+        storeAndReload(cxt, good).issues.shouldBeEmpty()
+        storedFindings() shouldBe findingsBefore
+        ClientService.get(cxt).issues.count { it.client == bad } shouldBe 1
+        ClientConfigIssues.get(cxt).issuesFor(bad).size shouldBe 1
+        // The dropped client stays dropped, and the good one is present.
+        ClientService.get(cxt).known(bad) shouldBe null
+        ClientService.get(cxt).present(good).shouldNotBeNull()
+    }
+}

@@ -40,12 +40,12 @@ import io.kotest.matchers.shouldBe
  * their own.
  */
 class FormDocForUserTest : StringSpec({
-    include(formDocForUserTests)
-    include(createFormForUserTests)
+    include(formDocForUserTests())
+    include(createFormForUserTests())
 })
 
 /** This file's own tests, as the class describes them. */
-private val formDocForUserTests = stringSpec {
+private fun formDocForUserTests() = stringSpec {
     val cxt = SampleTestInstances.default("formDocForUser")
 
     fun siteAuditEntries() = listOf(
@@ -150,7 +150,7 @@ private val formDocForUserTests = stringSpec {
  * The sample gives `acme` (its own `acmeSiteAudit` trait) and `globex` (whose creation workflow collects
  * `name`), so both surfaces have something concrete to land in.
  */
-private val createFormForUserTests = stringSpec {
+private fun createFormForUserTests() = stringSpec {
     val cxt = SampleTestInstances.default("createFormForUser")
 
     fun siteAuditEntries() = listOf(

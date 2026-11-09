@@ -559,7 +559,7 @@ edits its parent's, as drafts. A client with a sandbox stays read-only and says 
 - **The save area sticks below the app bar** (`.bundle-editor-save`). A save's answer is drawn inside it, so it shows
   wherever the page is scrolled.
 
-**The code layer** (issues #1616, #1646; the backend's `ConfigCodeLayer`, covered by `ConfigCodeLayerTest`, and the
+**The code layer** (issues #1616, #1646; the backend's `ConfigCodeLayer`, covered by `CodeLayerTest`, and the
 page's `CodeBundle` and `CodeReplacementView`, covered by `BundleEditorTest`). The editor read also answers what the
 client runs that no row stores, **as declared**: `codeConfigs`, each configuration its own code declares (`origin`
 `code`, from the loader's `ownSourceOf`, so what a marked entry stands over is shown, not cut), then a whole copy of

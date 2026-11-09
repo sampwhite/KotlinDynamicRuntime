@@ -1,8 +1,10 @@
 package com.dynamicruntime.kdn
 
 import com.dynamicruntime.common.context.ENV
+import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.exception.EXC
+import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.CCT
 import com.dynamicruntime.common.gedra.CLD
 import com.dynamicruntime.common.gedra.CWF
@@ -12,6 +14,7 @@ import com.dynamicruntime.common.gedra.ClientUsageType
 import com.dynamicruntime.common.gedra.GDF
 import com.dynamicruntime.common.gedra.GEP
 import com.dynamicruntime.common.gedra.GT
+import com.dynamicruntime.common.gedra.GedraConfig
 import com.dynamicruntime.common.gedra.GedraConfigReload
 import com.dynamicruntime.common.gedra.GedraConfigService
 import com.dynamicruntime.common.gedra.GedraConfigType
@@ -25,6 +28,7 @@ import com.dynamicruntime.common.gedra.workflow.WFP
 import com.dynamicruntime.common.gedra.workflow.WFT
 import com.dynamicruntime.common.gedra.workflow.WfEntry
 import com.dynamicruntime.common.gedra.workflow.WfParams
+import com.dynamicruntime.common.gedra.workflow.WfParamsBuilder
 import com.dynamicruntime.common.gedra.workflow.WfParamsFrom
 import com.dynamicruntime.common.gedra.workflow.WfParamsSetting
 import com.dynamicruntime.common.gedra.workflow.WfSaveKind
@@ -38,20 +42,38 @@ import com.dynamicruntime.common.gedra.workflow.WorkflowPhases
 import com.dynamicruntime.common.gedra.workflow.WorkflowService
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.naming.clientNamespace
+import com.dynamicruntime.common.sql.cache.SqlTableCacheService
+import com.dynamicruntime.common.startup.ComponentDefinition
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.user.UADEP
+import com.dynamicruntime.common.util.parseDate
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonListOfStrings
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
+import io.kotest.core.spec.style.stringSpec
 import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 import kotlin.time.Duration.Companion.days
+import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
+
+/**
+ * A workflow's parameters -- its time windows, whether it is on -- as a client and its sandbox run them (issue #1739
+ * gathered these): set from the client page (issues #1121, #1356), defaulted by source code (issue #1386), and carried to
+ * other nodes. Each part below is one of the specs that used to be a file of its own, kept whole. The clock walk through
+ * a workflow's phases stays in `WorkflowWindowsTest`, on an instance of its own.
+ */
+class WorkflowParamsTest : StringSpec({
+    include(clientWorkflowWindowsTests())
+    include(workflowParamsSourceTests())
+    include(workflowParamsSyncTests())
+})
 
 /**
  * A normal workflow's time windows set from the client page as its **parameters** (issues #1121, #1356): kept per
@@ -60,7 +82,7 @@ import kotlin.time.Instant
  * engaged with the workflow; and a sandbox reading its parent's until it has its own. A client per case, on the shared
  * default instance.
  */
-class ClientWorkflowWindowsTest : StringSpec({
+private fun clientWorkflowWindowsTests() = stringSpec {
     val cxt = TestInstances.default("clientWorkflowWindows1121")
 
     fun defineClient(client: String, sandbox: Boolean = false) {
@@ -247,4 +269,210 @@ class ClientWorkflowWindowsTest : StringSpec({
         chief.postData(UADEP.clientWorkflowParams, windowsRequest("review", WfWindows(lifetime = WfWindow(end = now + 25.days))))
         currentAs(chief).setByName.shouldNotBeNull()
     }
-})
+}
+
+/**
+ * A workflow's parameters from source code (issue #1386): a client's source configuration declares defaults, which
+ * the client runs until it sets its own, and a sandbox until it or its client does -- **each parameter on its own**, so
+ * a scope follows the fallback for what it does not set, and unsetting returns to it. Only source code declares them.
+ */
+private fun workflowParamsSourceTests() = stringSpec {
+    // Its own instance (issue #1075): the client is declared by a component, in source.
+    val cxt = Startup.mkTestBootCxt("wfParamsSource", "wfParamsSource1386", additionalComponents = listOf(SourceParamsComponent()))
+    val client = SourceParamsComponent.client
+    val sandbox = sandboxOf(client)
+    val params = WorkflowParamsService.get(cxt)
+    val defaults = WfWindows(
+        lifetime = WfWindow(SourceParamsComponent.defaultStart.parseDate(), SourceParamsComponent.defaultEnd.parseDate()),
+    )
+    val now = Instant.fromEpochSeconds(cxt.instanceNow().epochSeconds)
+    val full = TestUser.createFullAdmin(cxt, "full@$client.test")
+
+    fun request(scope: String, windows: WfWindows?) = buildMap {
+        put(CLD.client, scope)
+        put(WFD.workflowId, "review")
+        if (windows == null) put(WFP.unset, listOf(WFP.windows)) else put(WFP.params, WfParams(windows).toInfo())
+    }
+
+    fun shown(scope: String): Map<String, Any?> = full.getItem(UADEP.clientWorkflows, mapOf(CLD.client to scope))[CWF.workflows]
+        .toJsonListOfMaps().single { it[CWF.definition].toJsonMapOrEmpty()[WFD.workflowId] == "review" }[CWF.params].toJsonMapOrEmpty()
+
+    fun fromOf(scope: String): String? = shown(scope)[WFP.from].toJsonMapOrEmpty()[WFP.windows] as String?
+
+    "with nothing set, the client and its sandbox run the source code's defaults" {
+        params.windowsFor(cxt, client, "review") shouldBe defaults
+        params.windowsFor(cxt, sandbox, "review") shouldBe defaults
+        fromOf(client) shouldBe WfParamsFrom.source.name
+        fromOf(sandbox) shouldBe WfParamsFrom.source.name
+        WfParams.fromInfo(shown(client)[WFP.source]).windows shouldBe defaults
+    }
+
+    "each scope's own windows win, unsetting them returns to the fallback, and the history keeps every step" {
+        val clientOwn = WfWindows(lifetime = WfWindow(end = now + 40.days))
+        val sandboxOwn = WfWindows(lifetime = WfWindow(end = now + 10.days))
+        // The client sets its own: the sandbox now follows the client's, not the source code's.
+        full.postData(UADEP.clientWorkflowParams, request(client, clientOwn))
+        params.windowsFor(cxt, client, "review") shouldBe clientOwn
+        params.windowsFor(cxt, sandbox, "review") shouldBe clientOwn
+        fromOf(client) shouldBe null
+        fromOf(sandbox) shouldBe WfParamsFrom.parent.name
+        // The sandbox sets its own, then unsets them: back to its client's.
+        full.postData(UADEP.clientWorkflowParams, request(sandbox, sandboxOwn))
+        params.windowsFor(cxt, sandbox, "review") shouldBe sandboxOwn
+        full.postData(UADEP.clientWorkflowParams, request(sandbox, null))
+        params.windowsFor(cxt, sandbox, "review") shouldBe clientOwn
+        // Its own row stays, with what it set kept in the history.
+        shown(sandbox)[WFP.history].toJsonListOfMaps() shouldHaveSize 1
+        // No limits, set deliberately, is the client's own and hides the source code's defaults.
+        full.postData(UADEP.clientWorkflowParams, request(client, WfWindows.none))
+        params.windowsFor(cxt, client, "review") shouldBe WfWindows.none
+        // Unset, the client runs the source code's defaults again, and so does the sandbox.
+        full.postData(UADEP.clientWorkflowParams, request(client, null))
+        params.windowsFor(cxt, client, "review") shouldBe defaults
+        params.windowsFor(cxt, sandbox, "review") shouldBe defaults
+        shown(client)[WFP.history].toJsonListOfMaps() shouldHaveSize 2
+        // Unsetting what is not set is nothing to save.
+        full.expectError(EXC.badInput, UADEP.clientWorkflowParams, request(client, null)).toString() shouldContain "nothing to save"
+    }
+
+    // Issue #1635: the switch resolves as every parameter does, so code ships a workflow off, and a client turns off one
+    // its code declares, with no override of the code.
+    "code may ship a workflow turned off, and a client turns its code's workflows on and off" {
+        fun exists(scope: String, workflowId: String): Boolean = WorkflowPhases.of(
+            cxt, scope, WorkflowService.get(cxt).forClient(scope).workflow(workflowId).shouldNotBeNull().def,
+        ).exists
+        fun switch(scope: String, workflowId: String, on: Boolean?) = full.postData(
+            UADEP.clientWorkflowParams,
+            buildMap {
+                put(CLD.client, scope)
+                put(WFD.workflowId, workflowId)
+                if (on == null) put(WFP.unset, listOf(WFP.enabled)) else put(WFP.params, mapOf(WFP.enabled to on))
+            },
+        )
+        fun enabledFrom(scope: String, workflowId: String): Any? =
+            full.getItem(UADEP.clientWorkflows, mapOf(CLD.client to scope))[CWF.workflows].toJsonListOfMaps()
+                .single { it[CWF.definition].toJsonMapOrEmpty()[WFD.workflowId] == workflowId }[CWF.params].toJsonMapOrEmpty()[WFP.from]
+                .toJsonMapOrEmpty()[WFP.enabled]
+        // Off as shipped, in the client and its sandbox, and the page says it is the code's default.
+        exists(client, "pilot") shouldBe false
+        exists(sandbox, "pilot") shouldBe false
+        enabledFrom(client, "pilot") shouldBe WfParamsFrom.source.name
+        // The client turns it on; unset, it is off again, as the code ships it.
+        switch(client, "pilot", true)
+        exists(client, "pilot") shouldBe true
+        exists(sandbox, "pilot") shouldBe true
+        switch(client, "pilot", null)
+        exists(client, "pilot") shouldBe false
+        // A workflow its code declares on, the client turns off with no override of the code, and back.
+        switch(client, "review", false)
+        exists(client, "review") shouldBe false
+        switch(client, "review", null)
+        exists(client, "review") shouldBe true
+        // The switch alone is a default, without windows.
+        WfParamsBuilder("pilot").apply { enabled(false) }.build().windows shouldBe null
+    }
+
+    "only source code declares defaults" {
+        // A stored configuration cannot hold them: what the database holds is a scope's own values.
+        val written = shouldThrow<KdrException> {
+            GedraConfigService.get(cxt).writeConfig(
+                cxt.mkSubContext("setup", "storedparams1386").also { it.userId = 13860L },
+                gedraConfig(cxt, "main", clientNamespace("storedparams1386"), "storedparams1386") {
+                    workflow("review", WfEntry.normal) { task("t", "T") { trait(GT.name); save("go", "Save", WfSaveKind.edit) } }
+                    workflowParams("review") { lifetime(end = "2099-01-01T00:00:00Z") }
+                },
+            )
+        }
+        written.message.orEmpty() shouldContain "only code declares"
+        // Nor a global one, since a template has no windows, nor a sandbox's overlay.
+        shouldThrow<KdrException> {
+            gedraConfig(cxt, "templates", "kdr.templates") { workflowParams("review") { lifetime(end = "2099-01-01T00:00:00Z") } }
+        }.message.orEmpty() shouldContain "global configuration"
+        shouldThrow<KdrException> {
+            gedraConfig(cxt, "overlay", clientNamespace(client), sandbox) { workflowParams("review") { lifetime(end = "2099-01-01T00:00:00Z") } }
+        }.message.orEmpty() shouldContain "a sandbox follows its client's"
+        // And a default naming no workflow of the client's source refuses the boot, as a mistake in source does.
+        shouldThrow<KdrException> {
+            // Its own instance (issue #1075): the boot itself is under test.
+            Startup.mkTestBootCxt("badParams", "badSourceParams1386", additionalComponents = listOf(BadSourceParamsComponent()))
+        }.message.orEmpty() shouldContain "name no workflow"
+    }
+}
+
+/**
+ * A workflow's parameters reach every node (issue #1356): saved on one, they are in force on another as soon as it
+ * next reads the shared cache state, with no reload and no publish. The single-node behavior is
+ * `ClientWorkflowWindowsTest`'s.
+ */
+private fun workflowParamsSyncTests() = stringSpec {
+    // Its own instances (issue #1075): two nodes over one database of their own (`KDR_DB_NAME`), and node B's clock
+    // is moved past the state-read throttle.
+    val db = mapOf("KDR_DB_NAME" to "wfParamsSyncDb")
+    val nodeA = Startup.mkTestBootCxt("wfParamsSyncA", "wfParamsSyncNodeA", db)
+    val nodeB = Startup.mkTestBootCxt("wfParamsSyncB", "wfParamsSyncNodeB", db)
+
+    "windows saved on one node are in force on another at its next read" {
+        val client = "wfparamsync1356"
+        // A fresh context per read: a context refreshes the caches once, and remembers it did.
+        fun windowsOn(node: KdrCxt): WfWindows =
+            WorkflowParamsService.get(node).windowsFor(node.mkSubContext("read", client), client, "review")
+
+        // Node B has read the table, so what follows is news to a loaded cache, not its first load.
+        windowsOn(nodeB) shouldBe WfWindows.none
+        val windows = WfWindows(lifetime = WfWindow(end = Instant.fromEpochSeconds(nodeA.instanceNow().epochSeconds) + 30.days))
+        // Outside a request, the write is announced to the other nodes by monitoring it, as a request's end would.
+        SqlTableCacheService.get(nodeA).withMonitoring(nodeA) {
+            WorkflowParamsService.get(nodeA).save(nodeA.mkSubContext("set", client).also { it.userId = 13560L }, client, "review", WfParams(windows))
+        }
+        windowsOn(nodeA) shouldBe windows
+
+        nodeB.instanceConfig.clock.advanceBy(1.seconds)
+        windowsOn(nodeB) shouldBe windows
+    }
+}
+
+// Declared with what was `WorkflowParamsSourceTest`.
+/** A client declared in source code with default parameters for its normal workflow (issue #1386), and a sandbox. */
+class SourceParamsComponent : ComponentDefinition {
+    override val providerName: String = "sourceParamsFixture"
+
+    override fun gedraConfigs(cxt: KdrCxt): List<GedraConfig> = listOf(
+        gedraConfig(cxt, "main", clientNamespace(client), client) {
+            defineClient(
+                ClientDef(
+                    clientId = client, name = "Source params", usageType = ClientUsageType.dev, audience = ClientAudience.internal,
+                    enabledEnvironments = setOf(ENV.unit, ENV.local), includedTraits = listOf(GT.name), sandbox = true,
+                ),
+            )
+            workflow("review", WfEntry.normal) { task("record", "Record it") { trait(GT.name); save("go", "Save", WfSaveKind.edit) } }
+            workflowParams("review") { lifetime(start = defaultStart, end = defaultEnd) }
+            // Shipped turned off (issue #1635): the client turns it on when it wants it.
+            workflow("pilot", WfEntry.normal) { task("note", "Note it") { trait(GT.name); save("go", "Save", WfSaveKind.edit) } }
+            workflowParams("pilot") { enabled(false) }
+        },
+    )
+
+    @Suppress("ConstPropertyName")
+    companion object {
+        const val client = "srcparams1386"
+        const val defaultStart = "2026-01-01T00:00:00Z"
+        const val defaultEnd = "2099-01-01T00:00:00Z"
+    }
+}
+
+/** A source default naming no workflow of its client: a mistake in the code, which refuses the boot. */
+class BadSourceParamsComponent : ComponentDefinition {
+    override val providerName: String = "badSourceParamsFixture"
+
+    override fun gedraConfigs(cxt: KdrCxt): List<GedraConfig> = listOf(
+        gedraConfig(cxt, "main", clientNamespace("badparams1386"), "badparams1386") {
+            defineClient(
+                ClientDef(
+                    clientId = "badparams1386", name = "Bad params", usageType = ClientUsageType.dev,
+                    audience = ClientAudience.internal, enabledEnvironments = setOf(ENV.unit, ENV.local),
+                ),
+            )
+            workflowParams("nosuch") { lifetime(end = "2099-01-01T00:00:00Z") }
+        },
+    )
+}

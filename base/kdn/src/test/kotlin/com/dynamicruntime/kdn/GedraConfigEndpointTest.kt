@@ -137,7 +137,7 @@ class GedraConfigEndpointTest : StringSpec({
     }
 
     // Issue #1156: a write that asks for a reload is live at once; one that does not waits for a reload asked for, as a
-    // production change should. That the reload is announced to the other nodes is ConfigWriteReloadSyncTest's.
+    // production change should. That the reload is announced to the other nodes is GedraConfigSyncTest's.
     "a write asking for a reload is live at once; without it, it waits" {
         val u = admin()
         val client = u.selfClient()!!

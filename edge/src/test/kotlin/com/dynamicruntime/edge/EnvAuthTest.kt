@@ -34,10 +34,10 @@ import java.security.interfaces.RSAPublicKey
  * a file of its own, kept whole.
  */
 class EnvAuthTest : StringSpec({
-    include(envAuthLoginTests)
-    include(envAuthLogoutTests)
-    include(envAuthReturnTests)
-    include(envAuthSessionTests)
+    include(envAuthLoginTests())
+    include(envAuthLogoutTests())
+    include(envAuthReturnTests())
+    include(envAuthSessionTests())
 })
 
 /**
@@ -48,7 +48,7 @@ class EnvAuthTest : StringSpec({
  * `aud` check, expiry -- with no network. Modelled on `GoogleLoginTest`, which does the same for the
  * application's Google login.
  */
-private val envAuthLoginTests = stringSpec {
+private fun envAuthLoginTests() = stringSpec {
 
     val clientId = "kdr-edge-test.apps.googleusercontent.com"
     val testKid = "edge-key-1"
@@ -227,7 +227,7 @@ private val envAuthLoginTests = stringSpec {
  * Seeds a live session by encoding a cookie with the instance key -- the same thing the login endpoint does on
  * success -- rather than driving Google, since what is under test is the *clearing*, not the minting.
  */
-private val envAuthLogoutTests = stringSpec {
+private fun envAuthLogoutTests() = stringSpec {
 
     val cxt = Startup.mkTestBootCxt("envLogout", "envLogoutTest", mapOf(ACFG.bootRole to BOOT.edge), additionalComponents = listOf(EdgeComponent()))
     val node = NodeService.get(cxt)
@@ -263,7 +263,7 @@ private val envAuthLogoutTests = stringSpec {
  * string is an **open redirect** unless proven otherwise -- and on a perimeter, a link to the genuine sign-in
  * host that lands somewhere else afterwards is exactly the shape of a credible phishing link.
  */
-private val envAuthReturnTests = stringSpec {
+private fun envAuthReturnTests() = stringSpec {
 
     // What a safe return address is -- no protocol-relative, off-site, scheme, backslash, or control character -- is
     // the kernel's `sameOriginPath`, tested on both targets by `UrlUtilTest` (issue #1738). This holds the wrapper to it.
@@ -280,7 +280,7 @@ private val envAuthReturnTests = stringSpec {
  * is the **only revocation an edge has**. No user store means no live role refresh, so whoever holds a valid
  * cookie keeps their access until it expires and nothing can take it back.
  */
-private val envAuthSessionTests = stringSpec {
+private fun envAuthSessionTests() = stringSpec {
 
     fun config(env: String) = KdrInstanceConfig("envAuthSession", env, ENV.liveSource)
 
