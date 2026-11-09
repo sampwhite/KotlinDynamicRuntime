@@ -14,6 +14,7 @@ import com.dynamicruntime.script.deploy.NodeReset.NRST
  * Java by its path rather than through a shell: systemd expands `$` and `%` in a unit's command line, and a path written
  * out needs neither.
  */
+@Suppress("ConstPropertyName")
 object ResetUnits {
     /** When the daily check runs: early morning in the United States, quiet on the reference site. */
     const val calendar = "*-*-* 09:00:00 UTC"

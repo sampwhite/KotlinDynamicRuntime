@@ -42,6 +42,7 @@ import kotlin.system.exitProcess
  * Everything runs as the node's user, with no `sudo`: the service is a systemd user service, stopped and started with
  * `systemctl --user`.
  */
+@Suppress("ConstPropertyName")
 object NodeReset {
     /** The modes and flags the program accepts. */
     @Suppress("ConstPropertyName")
