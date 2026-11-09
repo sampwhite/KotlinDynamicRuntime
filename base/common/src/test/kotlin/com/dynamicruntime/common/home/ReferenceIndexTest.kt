@@ -10,6 +10,8 @@ import io.kotest.matchers.string.shouldNotContain
 /**
  * The reference index (issue #1632) lists every served reference from the declarations, links the two no server
  * serves, and is the one reference the Documents list offers.
+ *
+ * Theme: #DOCDR.
  */
 class ReferenceIndexTest : StringSpec({
     "every document under the references' directory but the index is a served reference, generated and unlisted" {

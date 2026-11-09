@@ -38,6 +38,8 @@ object TTAG {
  *
  * The files scanned are listed once, in base/common's build, and passed in ([TTAG.filesProperty]) as the inputs of the
  * `themeTagsTest` task that runs this, as `docLinksTest` does. Run it with `./gradlew :base:common:themeTagsTest`.
+ *
+ * Theme: #DOCDR.
  */
 class ThemeTagsTest : StringSpec({
     // The tests run in the module's directory (base/common), two below the repository root.

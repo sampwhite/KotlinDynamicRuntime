@@ -93,6 +93,7 @@ JSON is laid out for reading: short arrays and small objects inline when they fi
 The instance returns keys in another order; the test compares values, so lay keys out in explanation order.
 
 ## The markers, and what the test holds them to
+<!-- Theme: #DOCDR -->
 
 Every ```` ```json ```` block has a marker on the line directly before its fence, an HTML comment the renderers drop
 (the kernel's `renderMarkdown` skips a line that is wholly `<!-- ... -->`, as GitHub does):

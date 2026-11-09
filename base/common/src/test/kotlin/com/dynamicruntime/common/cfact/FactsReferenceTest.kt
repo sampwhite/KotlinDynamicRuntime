@@ -9,6 +9,8 @@ import io.kotest.matchers.string.shouldNotContain
 /**
  * The facts reference (issue #1561): every fact `base:common` declares is on the page, with what makes it true and
  * whether it reaches the page, and its description is written for a reader -- no issue numbers, which belong in KDoc.
+ *
+ * Theme: #DOCDR.
  */
 class FactsReferenceTest : StringSpec({
 

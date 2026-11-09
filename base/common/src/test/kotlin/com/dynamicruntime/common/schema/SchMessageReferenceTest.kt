@@ -10,6 +10,8 @@ import io.kotest.matchers.string.shouldNotBeBlank
  * The validation messages reference (issue #1559): made from the validator's codes and the parameters the boot check
  * holds a message to, so every code is on it with what it means, and a message's parameters are the ones that check
  * allows.
+ *
+ * Theme: #DOCDR.
  */
 class SchMessageReferenceTest : StringSpec({
 

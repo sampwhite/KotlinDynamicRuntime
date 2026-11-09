@@ -17,6 +17,8 @@ import io.kotest.matchers.shouldBe
  *
  * The images themselves are covered by `ComponentImageTest` (kdn) and `DocLinkUtilTest`. This is about the
  * documentation.
+ *
+ * Theme: #DOCDR.
  */
 class ImagesSkillExamplesTest : StringSpec({
 

@@ -83,6 +83,7 @@ class SchMetaSchemaTest : StringSpec({
 
     "every keyword of both tables has a meaning, and every meaning is of a keyword the table holds" {
         // A keyword added without a meaning would publish a blank on the schema dialect reference (issue #1347).
+        // Theme: #DOCDR.
         SchStdKeywords.meanings.keys shouldBe SchStdKeywords.entries.keys + SchStdKeywords.closeReads.keys
         (SchStdKeywords.entries.keys intersect SchStdKeywords.closeReads.keys).shouldBeEmpty()
         SchGKeywords.meanings.keys shouldBe SchGKeywords.entries.keys
@@ -98,7 +99,7 @@ class SchMetaSchemaTest : StringSpec({
     "every keyword the parser reads off a schema node has a meaning" {
         // Read from the source (issue #1606), so a keyword the parser starts reading without a meaning fails here, rather
         // than going unlisted on the reference, where a reader concludes it is not supported. The parser reads a node's
-        // keywords as `map[SCH.<name>]`; the bounds, read by a computed name, are all in the shape table.
+        // keywords as `map[SCH.<name>]`; the bounds, read by a computed name, are all in the shape table. Theme: #DOCDR.
         val schemaDir = "../kernel/src/commonMain/kotlin/com/dynamicruntime/common/schema"
         val schBody = File("$schemaDir/SchemaConstants.kt").readText().substringAfter("object SCH {").substringBefore("\n}\n")
         val keywordOf = Regex("""const val (\w+) = (?:\$\$)?"([^"]*)"""").findAll(schBody)
@@ -111,6 +112,7 @@ class SchMetaSchemaTest : StringSpec({
     }
 
     "the reference page lists every keyword, every refused keyword, and what a shape does not decide" {
+        // The page's own completeness check, which the committed copy's cannot be. Theme: #DOCDR.
         val page = schemaDialectMarkdown()
         val listed = SchStdKeywords.entries.keys + SchStdKeywords.closeReads.keys + SchGKeywords.entries.keys + refusedKeywords.keys
         for (keyword in listed) {

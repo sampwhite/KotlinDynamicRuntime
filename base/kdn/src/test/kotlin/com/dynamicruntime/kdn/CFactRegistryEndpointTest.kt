@@ -54,6 +54,7 @@ class CFactRegistryEndpointTest : StringSpec({
     "the facts reference lists every platform fact the node declares" {
         // The generated page (issue #1561) is made from `addCommonCFacts` alone, so a `kdr:` fact declared anywhere else
         // would be missing from it. A fact under another root is an optional component's, named in the page's prose.
+        // Theme: #DOCDR.
         val listed = SchemaCollector().also { addCommonCFacts(it) }.cfacts.keys
         val declared = SchemaService.get(cxt).cfactsFor(null).names
         declared.filter { it.startsWith("${OWNR.kdrRoot}${OWNR.rootSep}") && it !in listed } shouldBe emptyList()

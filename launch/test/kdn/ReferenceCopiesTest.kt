@@ -1,6 +1,7 @@
 package kdn
 
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.operator.envVarCatalogMarkdown
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.assertions.withClue
 import io.kotest.core.spec.style.StringSpec
@@ -16,6 +17,8 @@ import java.io.File
  * The committed copies of the reference documents are current (issues #1603, #1607): each file's generated region holds
  * what its generator makes now. Run by `./gradlew :launch:refDocsTest`, a task of its own whose inputs are the files,
  * as `docLinksTest` is (the module's `test` task leaves it out, and `check` runs it).
+ *
+ * Theme: #DOCDR.
  */
 class ReferenceCopiesTest : StringSpec({
     // The tests run in the module's directory (launch), one below the repository root.
@@ -50,6 +53,21 @@ class ReferenceCopiesTest : StringSpec({
         // The edge's sign-in, under its own heading after the application's sections.
         index.substringAfter("## On an edge node") shouldContain "`/auth/env/login`"
         index.substringBefore("## On an edge node") shouldNotContain "`/auth/env/login`"
+    }
+
+    "the endpoint index lists every endpoint each node offers, by method and path" {
+        // The page's own completeness check (issue #1737): the copy check above cannot see an endpoint the generator
+        // leaves out, since the committed copy would leave it out too. Theme: #DOCDR.
+        val (appEndpoints, edgeOnly, _) = endpointIndexInputs(repoRoot)
+        val index = endpointIndex(repoRoot)
+        val missing = (appEndpoints + edgeOnly).filter { "| ${it.method.name} | `${it.path}` |" !in index }
+        missing.map { "${it.method.name} ${it.path}" }.shouldBeEmpty()
+    }
+
+    "the environment-variable reference lists every declared variable" {
+        // As above, for the variables (issue #1737). Theme: #DOCDR.
+        val page = envVarCatalogMarkdown(declaredEnvVars(repoRoot))
+        declaredEnvVars(repoRoot).map { it.name }.filter { "### `$it`" !in page }.shouldBeEmpty()
     }
 
     "a region is replaced, and the file's own text around it is kept" {

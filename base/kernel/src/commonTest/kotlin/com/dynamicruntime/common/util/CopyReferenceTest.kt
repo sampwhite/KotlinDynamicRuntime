@@ -8,6 +8,8 @@ import kotlin.test.assertTrue
 /**
  * The copy reference and the roles it lists (issue #1562): every declared role is on the page, and copy writing a role
  * nobody declared, or one on what it does not apply to, is reported while every declared use is not.
+ *
+ * Theme: #DOCDR.
  */
 class CopyReferenceTest {
     @Test

@@ -12,6 +12,7 @@ import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.home.REFDOC
 import com.dynamicruntime.common.home.coreDocs
 import com.dynamicruntime.common.http.request.RequestService
+import com.dynamicruntime.common.http.request.SectionRules
 import com.dynamicruntime.common.operator.envVarCatalogMarkdown
 import com.dynamicruntime.common.startup.ComponentDefinition
 import com.dynamicruntime.common.startup.KdrProvider
@@ -67,6 +68,15 @@ fun referenceCopies(repoRoot: File): List<ReferenceCopy> =
  * one deployment's components, which is why this one is made here and committed instead.
  */
 fun endpointIndex(repoRoot: File): String {
+    val (appEndpoints, edgeOnly, rules) = endpointIndexInputs(repoRoot)
+    return endpointIndexMarkdown(appEndpoints, edgeOnly, rules)
+}
+
+/**
+ * What [endpointIndex] is made from: the application node's shared endpoints, those only an edge adds, and every
+ * section's rules. Its own function so a test can hold the page to the endpoints it should list (issue #1737).
+ */
+fun endpointIndexInputs(repoRoot: File): Triple<List<KdrEndpoint>, List<KdrEndpoint>, Map<String, SectionRules>> {
     val components = repoComponents(repoRoot)
     val app = Startup.mkTestBootCxt("refDocsApp", "refDocsApp", mapOf(GENREF.loadSampleEnvVar to "true"), components)
     val edge = Startup.mkTestBootCxt("refDocsEdge", "refDocsEdge", mapOf(ACFG.bootRole to BOOT.edge), components)
@@ -74,7 +84,7 @@ fun endpointIndex(repoRoot: File): String {
     val appKeys = appEndpoints.map { it.collationKey }.toSet()
     val edgeOnly = sharedEndpoints(edge).filter { it.collationKey !in appKeys }
     val rules = RequestService.get(app).sectionRulesMap + RequestService.get(edge).sectionRulesMap
-    return endpointIndexMarkdown(appEndpoints, edgeOnly, rules)
+    return Triple(appEndpoints, edgeOnly, rules)
 }
 
 /** The endpoints [cxt]'s node offers every caller's client alike: none of a client's own copies. */

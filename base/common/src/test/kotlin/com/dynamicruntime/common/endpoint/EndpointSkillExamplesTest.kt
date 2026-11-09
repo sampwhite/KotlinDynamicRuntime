@@ -44,6 +44,8 @@ import io.kotest.matchers.shouldBe
  *
  * The builders themselves are covered by [EndpointBuilderTest] / [EndpointCatalogTest]. This is about the
  * documentation.
+ *
+ * Theme: #DOCDR.
  */
 class EndpointSkillExamplesTest : StringSpec({
 

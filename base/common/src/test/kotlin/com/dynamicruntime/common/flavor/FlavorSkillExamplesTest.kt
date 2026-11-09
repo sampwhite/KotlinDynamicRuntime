@@ -29,7 +29,11 @@ private class ReferenceComponent : ComponentDefinition {
     )
 }
 
-/** The `kdr-deploy-flavors` skill's examples, compiled and run, so a signature change breaks the build. */
+/**
+ * The `kdr-deploy-flavors` skill's examples, compiled and run, so a signature change breaks the build.
+ *
+ * Theme: #DOCDR.
+ */
 class FlavorSkillExamplesTest : StringSpec({
 
     "the skill's component declares a flavor and sets its values when it is active" {

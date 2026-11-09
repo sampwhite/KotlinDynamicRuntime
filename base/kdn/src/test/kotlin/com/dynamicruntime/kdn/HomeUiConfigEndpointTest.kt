@@ -86,7 +86,7 @@ class HomeUiConfigEndpointTest : StringSpec({
             }
         }
         // Each page links the references about its subject (issue #1633), each by the source path of a document this node
-        // serves, so a reference renamed or withdrawn fails here rather than leaving a link to nothing.
+        // serves, so a reference renamed or withdrawn fails here rather than leaving a link to nothing. Theme: #DOCDR.
         val served = cfg.obj(UIC.state).list(HFLD.links).map { it!!.toJsonMap()[HFLD.sourcePath] }.toSet()
         val pageLinks = listOf(
             Triple(PFRAG.clients, PFRAG.bundleListNs, "docs/reference/client-configuration.md"),

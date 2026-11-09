@@ -11,6 +11,8 @@ import java.io.File
  * stylesheet has a rule for every role, so a declared role never renders as nothing, and the boot's copy check reports a
  * role the list does not have. (The copy the platform ships is held to the list by every test that boots: the check is
  * strict outside production.)
+ *
+ * Theme: #DOCDR.
  */
 class MarkdownRoleStylesTest : StringSpec({
 
