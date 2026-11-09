@@ -97,13 +97,19 @@ val profileAccountDefaults: Map<String, String> = mapOf(
 fun profileAccountDefault(key: String): String = profileAccountDefaults[key] ?: key
 
 /**
- * The roles Profile describes the signed-in user by (issue #1479): their own, less the `admin` every registrant of
- * `public` is given there -- in `public` an administrator is no different from an ordinary user (`AdminScope.ownIdentity`)
- * -- unless they also hold `allClients`, whose administration is real wherever they are. Pure, covered under
- * `jsNodeTest`.
+ * Whether [profile] administers nobody but themselves (issue #1696): a user of `public`, where every registrant is given
+ * `admin` over their own address's users (`AdminScope.ownIdentity`), without `allClients`, whose administration is real
+ * wherever they are. Such a user is no different from an ordinary one, so neither Profile nor the bar says otherwise.
+ * Pure, covered under `jsNodeTest`.
+ */
+fun administersOnlySelf(profile: UserProfile): Boolean = profile.client == CL.public && ROLE.allClients !in profile.roles
+
+/**
+ * The roles Profile and the bar describe the signed-in user by (issues #1479, #1696): their own, less the `admin` of a
+ * user who [administersOnlySelf]. Pure, covered under `jsNodeTest`.
  */
 fun profileShownRoles(profile: UserProfile): Set<String> =
-    if (profile.client == CL.public && ROLE.allClients !in profile.roles) profile.roles - ROLE.admin else profile.roles
+    if (administersOnlySelf(profile)) profile.roles - ROLE.admin else profile.roles
 
 /**
  * What the caller may do (issue #1479), as [PRFA] keys, widest first: administer every client, else their own -- their

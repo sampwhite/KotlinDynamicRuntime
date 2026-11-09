@@ -111,6 +111,15 @@ fun identityBadgeTitle(current: UserChoice, roles: Collection<String>?): String 
 }
 
 /**
+ * Whether the bar takes on the elevated-privilege look and its **Admin** badge, for the caller [config] describes. It
+ * reads the same `canManageUsers` capability the menu does, so the cue and the Users item can never disagree -- and when
+ * that capability narrows, the cue narrows with it. Except for a user who [administersOnlySelf] (issue #1696): every
+ * registrant of `public` manages their own address's users, which makes them no administrator of anything, so the bar
+ * says nothing of it. Pure, covered under `jsNodeTest`.
+ */
+fun barElevated(config: HomeConfig?): Boolean = config != null && config.canManageUsers && !administersOnlySelf(config.user)
+
+/**
  * The users the identity badge offers to switch to (issue #749): the list as the backend sent it when there is
  * someone in it to become -- more than one, or one that is not the user the session acts as -- and nothing
  * otherwise: a menu with a single entry, the user you already are, is a control that does nothing, so the badge
@@ -416,10 +425,11 @@ val AppBar = FC<AppBarProps> { props ->
         },
     )
 
-    // The bar takes on the elevated-privilege look while the caller holds administrative rights. It reads the
-    // same `canManageUsers` capability the menu does, so the cue and the Users item can never disagree -- and
-    // when that capability narrows, the cue narrows with it.
-    val elevated = config?.canManageUsers == true
+    // The bar takes on the elevated-privilege look while the caller holds administrative rights ([barElevated]).
+    val elevated = barElevated(config)
+    // The roles the bar describes the caller by, as Profile does: a `public` user's access without the `admin` that
+    // marks nothing there (issue #1696).
+    val shownRoles = config?.user?.let(::profileShownRoles)
 
     // A *delayed* loading flag so a fast load never flashes the cue (issue #469).
     val brandLoadingShown = useDelayedFlag(brandState is ShellBrand.Loading)
@@ -722,10 +732,10 @@ val AppBar = FC<AppBarProps> { props ->
                         // The list holds registered, enabled users only, so a session acting as one that is
                         // neither has no current entry here -- the badge then just offers the others.
                         title = users.firstOrNull { it.isCurrent }
-                            ?.let { "${identityBadgeTitle(it, config?.user?.roles)} Click to switch users." }
+                            ?.let { "${identityBadgeTitle(it, shownRoles)} Click to switch users." }
                             ?: "Click to switch users."
                         onClick = { userMenuOpen = !userMenuOpen }
-                        +identityBadgeText(label, users, config?.user?.roles)
+                        +identityBadgeText(label, users, shownRoles)
                         span { className = ClassName("app-menu-caret"); +(if (userMenuOpen) "▲" else "▼") }
                     }
                     if (userMenuOpen) {
@@ -733,7 +743,7 @@ val AppBar = FC<AppBarProps> { props ->
                             className = ClassName("app-menu-overlay")
                             onClick = { userMenuOpen = false }
                         }
-                        userMenu(users, config?.user?.roles) { switchUserAction(it) }
+                        userMenu(users, shownRoles) { switchUserAction(it) }
                     }
                 }
             }

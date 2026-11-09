@@ -203,7 +203,9 @@ Current UI-config endpoints:
   persona is `member` (shown `Member`); `editor` and `admin` are the others. Given the session's roles, the current user's
   persona says the access it has when that differs from the persona's (`Member (Administrator access)`, issue
   #1450) -- in the badge, its tooltip, its own menu row, and the Profile page's active row and help, never on
-  another user's, since the list carries nobody's roles.
+  another user's, since the list carries nobody's roles. A `public` user's `admin`, which every registrant there is
+  given over their own address's users, is left out of all of these (`profileShownRoles`), and draws neither the bar's
+  **Admin** badge nor its elevated look (`barElevated`, issue #1696): it makes them no administrator of anything.
 - The **sandbox** (issues #929, #931), login-required (`user` section): `POST /user/self/openSandbox {client?}`
   moves the session into a client's Shadow Sandbox as the person's own user there, created on first use; it is for
   an administrator of the parent (an `allClients` administrator may name any client), and in a sandbox `admin`
