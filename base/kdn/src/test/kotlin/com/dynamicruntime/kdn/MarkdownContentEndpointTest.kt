@@ -2,14 +2,74 @@ package com.dynamicruntime.kdn
 
 import com.dynamicruntime.common.content.ContentResources
 import com.dynamicruntime.common.content.MarkdownDocService
+import com.dynamicruntime.common.content.MarkdownFragmentService
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.home.HDOC
 import com.dynamicruntime.common.http.request.TestHttpClient
 import com.dynamicruntime.common.schema.schemaDialectMarkdown
+import com.dynamicruntime.common.util.jsonMap
 import io.kotest.core.spec.style.StringSpec
+import io.kotest.core.spec.style.stringSpec
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
+
+/**
+ * The static content servers for Markdown (issue #1739 gathered these): fragment files as two-tier maps (issue #59), and
+ * documents with their build-id caching contract (issue #472). Each part below is one of the specs that used to be a file
+ * of its own, kept whole.
+ */
+class MarkdownContentEndpointTest : StringSpec({
+    include(markdownFragmentEndpointTests)
+    include(markdownDocEndpointTests)
+})
+
+/**
+ * End-to-end test of the Markdown fragment content server (issue #59): a GET under the static root
+ * `/st/<appId>/md/<fileId:buildId>` returns the fragment file parsed into a two-tier JSON map, with an
+ * immutable cache header. Exercised through the real request pipeline against the classpath resource
+ * `md-fragments/sample.md`.
+ */
+private val markdownFragmentEndpointTests = stringSpec {
+
+    "the static root serves a fragment file as a two-tier map with an immutable cache header" {
+        val cxt = TestInstances.default("md")
+        val client = TestHttpClient(cxt.instanceConfig)
+
+        // The buildId is a content hash of the merged content, and since #456 it *selects* what is served.
+        val buildId = MarkdownFragmentService.fragmentBuildId(cxt, "sample").shouldNotBeNull()
+        val handler = client.sendGetRequestRaw("/st/myapp/md/sample:$buildId")
+
+        handler.rptStatusCode shouldBe EXC.ok
+        handler.rptResponseMimeType shouldBe "application/json"
+        handler.rptResponseHeaders["cache-control"] shouldBe listOf(ContentResources.cacheControl)
+
+        val map = handler.rptResponseData.shouldNotBeNull().jsonMap().shouldNotBeNull()
+        @Suppress("UNCHECKED_CAST")
+        val email = map["email"] as Map<String, Any?>
+        email["subject"] shouldBe "Your verification code"
+        // The value's ${...} placeholder survives verbatim -- the frontend resolves it at render time.
+        (email["body"] as String) shouldContain $$"${code}"
+        @Suppress("UNCHECKED_CAST")
+        (map["portal"] as Map<String, Any?>)["welcome"] shouldBe "Welcome to the portal."
+    }
+
+    "an unknown appId is ignored -- content is still served" {
+        val cxt = TestInstances.default("md2")
+        val client = TestHttpClient(cxt.instanceConfig)
+        val buildId = MarkdownFragmentService.fragmentBuildId(cxt, "sample").shouldNotBeNull()
+        // A different appId (with client/locale-style suffixes) resolves the same file for now.
+        val handler = client.sendGetRequestRaw("/st/myapp.acme.en/md/sample:$buildId")
+        handler.rptStatusCode shouldBe EXC.ok
+    }
+
+    "a missing fragment file returns 404" {
+        val cxt = TestInstances.default("md404")
+        val client = TestHttpClient(cxt.instanceConfig)
+        val handler = client.sendGetRequestRaw("/st/myapp/md/does-not-exist:1")
+        handler.rptStatusCode shouldBe EXC.notFound
+    }
+}
 
 /**
  * The Markdown *document* content server's caching contract (issue #472). A document served under
@@ -19,7 +79,7 @@ import io.kotest.matchers.string.shouldContain
  * unlike a fragment, a document does **not** 404 on a mismatch (a user recovers by navigating away and back).
  * Driven through the real pipeline against the embedded `md-docs/readme.md` resource.
  */
-class MarkdownDocEndpointTest : StringSpec({
+private val markdownDocEndpointTests = stringSpec {
 
     "a matching build id serves the document with the permanent immutable header" {
         val cxt = TestInstances.default("doc")
@@ -84,4 +144,4 @@ class MarkdownDocEndpointTest : StringSpec({
         handler.rptStatusCode shouldBe EXC.notFound
         handler.rptResponseHeaders["cache-control"] shouldBe listOf(ContentResources.noStore)
     }
-})
+}

@@ -684,7 +684,7 @@ the in-process pipeline. It **carries cookies across calls**, so a login on one 
   fun Map<String, Any?>.list(key: String) = getValue(key) as List<*>      // items
   ```
 
-Worked examples: `SchemaComplexEndpointTest`, `UiConfigEndpointTest`, `AppUiConfigEndpointTest` (all in `base/kdn`).
+Worked examples: `SchemaComplexEndpointTest` and `UiConfigEndpointTest` (both in `base/kdn`).
 
 ## Unit tests: config-resolution helpers, directly
 

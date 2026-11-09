@@ -187,8 +187,7 @@ later schema rejects" test.
     is left as the labels say. A person without it may neither save nor approve whatever `saveWhen` or `approveWhen`
     says, is no reviewer of the current work to the owner-only rule or the popover (`SWF.isReviewer`), and the view's
     task carries `WVF.waitingOn`, the filter's label. A test's reviewer therefore
-    needs the label the filter names, not only `reviewer`. `CtaFilterTest` and `CtaFilterActsTest` (kdn) are the
-    references.
+    needs the label the filter names, not only `reviewer`. `CtaFilterTest` (kdn) is the reference.
     **Searching by keyword** (issue #1597): the client's **own** listing, `clientPath(GEP.formDocs, client)`, takes
     `review=mine` (`CTKQ.mine`: the caller may act on the CTA now) or `review=any` once one of the client's workflows
     uses the keyword -- a task's own, an approval's, or one a `ctaFilter` function sets (a function kind lists those in
@@ -289,7 +288,7 @@ over nothing**, it is refused. **Nothing removes a code entry**: turn off what i
 and the editor files it in the one named like the code bundle it covers (issue #1646): `base` over the code's `base`,
 `from_starterKit_base` over that copy. The two share an id, and sit side by side because a config's key adds that it is
 stored (`GedraConfig.configKey`); the collector and the loader's records go by the key.
-A test that stores an entry over a template's or a code client's marks it; `CodeOverridesTest.kt` and the sample's
+A test that stores an entry over a template's or a code client's marks it; `CodeLayerTest.kt` and the sample's
 `AcmeCodeOverrideTest.kt` are the references.
 
 **A workflow or a type may instead hold only what it changes** (issue #1657): marked `"overrides": "codeOverlay"`

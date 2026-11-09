@@ -1,18 +1,25 @@
 package com.dynamicruntime.kdn
 
+import com.dynamicruntime.common.cfact.CFACTS
 import com.dynamicruntime.common.context.CL
 import com.dynamicruntime.common.context.UPF
 import com.dynamicruntime.common.endpoint.EI
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.gedra.ACEP
+import com.dynamicruntime.common.gedra.CFEP
 import com.dynamicruntime.common.gedra.CLD
+import com.dynamicruntime.common.gedra.COV
+import com.dynamicruntime.common.gedra.CPY
+import com.dynamicruntime.common.gedra.GEP
+import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.http.request.TestHttpClient
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SchOption
 import com.dynamicruntime.common.schema.SchOptionsProvider
+import com.dynamicruntime.common.startup.SS
 import com.dynamicruntime.common.startup.SchemaCollector
 import com.dynamicruntime.common.startup.SchemaService
-import com.dynamicruntime.common.startup.SS
 import com.dynamicruntime.common.user.ADEP
 import com.dynamicruntime.common.user.ADF
 import com.dynamicruntime.common.user.TestUser
@@ -21,7 +28,9 @@ import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
+import io.kotest.core.spec.style.stringSpec
 import io.kotest.matchers.collections.shouldContain
+import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 
@@ -34,8 +43,16 @@ import io.kotest.matchers.string.shouldContain
  * administrator's answer reaching the ordinary user afterward would be a resolution that wrote into the
  * compiled store rather than a copy of it, which is the defect this design exists to make impossible and the
  * one that would otherwise look exactly like a working page.
+ *
+ * Also, since issue #1739, the tests that were `ScopedClientFieldTest`, each kept whole below.
  */
 class ClientOptionsTest : StringSpec({
+    include(clientOptionsTests)
+    include(scopedClientFieldTests)
+})
+
+/** This file's own tests, as the class describes them. */
+private val clientOptionsTests = stringSpec {
 
     // Env-authed (issue #489): this tests the client-filter *options* on the catalog endpoint, so the caller
     // must see /schema/endpoints itself -- which the publicApi restriction would hide from a non-env-authed one.
@@ -141,4 +158,53 @@ class ClientOptionsTest : StringSpec({
         shouldThrow<KdrException> { collector.addOptionsProvider(CLD.clientOptions, provider) }
             .fullMessage() shouldContain CLD.clientOptions
     }
-})
+}
+
+/**
+ * A scoped endpoint's `client` field (issue #1000): one shared declaration (`overseenClientField`) that offers the
+ * clients the caller may name and is shown only to a caller who may name another -- an `allClients` administrator,
+ * the `kdr:isDeploymentAdmin` cfact delivered to the frontend. The served schema is the same for every caller; the
+ * delivered cfacts decide who sees the field, and the handler still refuses another client to anyone else.
+ */
+private val scopedClientFieldTests = stringSpec {
+    // Env-authed, as ClientOptionsTest explains: the caller must see the catalog endpoint itself.
+    val cxt = TestInstances.envAuth("scopedClient1000")
+    val full = TestUser.createFullAdmin(cxt, "full@scoped1000.test")
+    val scoped = TestUser.create(cxt, "scoped@scoped1000.test", level = ROLE.admin)
+
+    /** [field] of [path]'s ([method]) input schema, as [user] is served it. */
+    fun inputField(user: TestUser, path: String, field: String, method: String = "GET"): Map<String, Any?> =
+        user.getData("/schema/endpoints", mapOf(SS.pathRegex to path))[EI.endpoints].toJsonListOfMaps()
+            .single { it[EI.path].toOptStr() == path && it[EI.method] == method }[EI.inputSchema].toJsonMapOrEmpty()[SCH.properties]
+            .toJsonMapOrEmpty()[field].toJsonMapOrEmpty()
+
+    fun values(choices: Any?): List<String?> = choices.toJsonListOfMaps().map { it[SCH.value].toOptStr() }
+
+    fun delivered(user: TestUser): Map<String, Any?> = user.getData("/schema/endpoints")[EI.cfacts].toJsonMapOrEmpty()
+
+    "the deployment-admin cfact is delivered, true only for an allClients administrator" {
+        delivered(full)[CFACTS.isDeploymentAdmin] shouldBe true
+        delivered(scoped)[CFACTS.isDeploymentAdmin] shouldBe false
+    }
+
+    "a scoped client field offers the clients the caller may name, and is shown only to one who may name another" {
+        val forFull = inputField(full, CPY.keysPath, COV.client)
+        forFull[SCH.visibleWhen] shouldBe CFACTS.isDeploymentAdmin
+        values(forFull[SCH.options]) shouldContain scoped.selfClient()
+        // The client-scoped administrator is served the same field -- its condition fails their delivered cfacts, so
+        // the frontend hides it -- and its choices are only their own client, the one they may name.
+        val forScoped = inputField(scoped, CPY.keysPath, COV.client)
+        forScoped[SCH.visibleWhen] shouldBe CFACTS.isDeploymentAdmin
+        values(forScoped[SCH.options]) shouldContainExactly listOf(scoped.selfClient())
+    }
+
+    "the forms listing's client filter follows the same fact" {
+        inputField(full, GEP.formDocs, EI.client)[SCH.visibleWhen] shouldBe CFACTS.isDeploymentAdmin
+    }
+
+    "the full-scope config endpoints offer a choice of client, with no visibility condition" {
+        val field = inputField(full, ACEP.bundle, CFEP.client)
+        values(field[SCH.options]) shouldContain scoped.selfClient()
+        field.containsKey(SCH.visibleWhen) shouldBe false
+    }
+}

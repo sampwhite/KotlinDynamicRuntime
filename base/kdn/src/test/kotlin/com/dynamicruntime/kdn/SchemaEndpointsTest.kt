@@ -1,36 +1,61 @@
 package com.dynamicruntime.kdn
 
 import com.dynamicruntime.common.context.ACFG
+import com.dynamicruntime.common.context.CL
+import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.endpoint.EI
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.endpoint.ETAG
+import com.dynamicruntime.common.endpoint.HttpMethod
+import com.dynamicruntime.common.endpoint.clientPath
 import com.dynamicruntime.common.endpoint.defaultEndpointListLimit
+import com.dynamicruntime.common.exception.EXC
+import com.dynamicruntime.common.gedra.CFEP
+import com.dynamicruntime.common.gedra.GEP
 import com.dynamicruntime.common.http.request.ROLE
+import com.dynamicruntime.common.http.request.SECT
 import com.dynamicruntime.common.http.request.TestHttpClient
+import com.dynamicruntime.common.schema.MSCH
 import com.dynamicruntime.common.schema.SCH
+import com.dynamicruntime.common.startup.SS
+import com.dynamicruntime.common.test.TVB
 import com.dynamicruntime.common.user.ADEP
-import com.dynamicruntime.common.user.UADEP
 import com.dynamicruntime.common.user.ADF
 import com.dynamicruntime.common.user.TestUser
-import com.dynamicruntime.common.startup.SS
-import com.dynamicruntime.common.util.toJsonMap
-import com.dynamicruntime.common.util.toJsonMapOrEmpty
+import com.dynamicruntime.common.user.UADEP
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonListOfStrings
-import com.dynamicruntime.common.schema.MSCH
+import com.dynamicruntime.common.util.toJsonMap
+import com.dynamicruntime.common.util.toJsonMapOrEmpty
+import com.dynamicruntime.common.util.toOptStr
 import io.kotest.core.spec.style.StringSpec
+import io.kotest.core.spec.style.stringSpec
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.collections.shouldContainAll
+import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.collections.shouldNotContain
+import io.kotest.matchers.collections.shouldNotContainAnyOf
+import io.kotest.matchers.ints.shouldBeLessThan
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.shouldNotBe
 
 /**
  * Exercises the two SchemaService endpoints through the in-process client. Because these run under
  * [Startup.mkTestBootCxt] (which sets `validateResponseSchema`), every response is also validated against
  * the endpoint's output schema, so a non-conforming catalog or sample item would fail the call.
+ *
+ * Also, since issue #1739, the tests that were `SchemaEndpointResolveClientTest`, `SamePathVerbTest`, `PublishedClientAdminCatalogTest`, each kept whole below.
  */
 class SchemaEndpointsTest : StringSpec({
+    include(schemaEndpointsTests)
+    include(schemaEndpointResolveClientTests)
+    include(samePathVerbTests)
+    include(publishedClientAdminCatalogTests)
+})
+
+/** This file's own tests, as the class describes them. */
+private val schemaEndpointsTests = stringSpec {
 
     // /schema/endpoints is a general endpoint: its result carries the endpoint renderings and a shared $defs.
     fun results(resp: Map<String, Any?>): Map<String, Any?> = resp[EP.results]!!.toJsonMap()
@@ -390,7 +415,7 @@ class SchemaEndpointsTest : StringSpec({
     // the published endpoints, cannot lift that with the publicApi filter, and is told filtering is unavailable
     // so the frontend drops its controls. A unit instance does not auto-assume env auth, so its caller is that
     // ordinary user. (What a client's *administrator* is shown beyond the published set -- the endpoints generated
-    // for that client, issue #1128 -- is `SchemaGeneratedCatalogTest`'s.)
+    // for that client, issue #1128 -- is `SchemaGeneratedEndpointsTest`'s.)
     "without env auth the catalog serves an ordinary user only the published endpoints, and says filters are unavailable" {
         // A logged-in ordinary user, not env-authed (a unit instance auto-assumes nothing) -- the production
         // caller the restriction is for. Logged in, so the login-gated gedra surface is theirs to see; the
@@ -416,4 +441,217 @@ class SchemaEndpointsTest : StringSpec({
             client.sendJsonGetRequest("/schema/endpoint", mapOf(EI.method to "GET", EI.path to "/health")),
         ).shouldBeEmpty()
     }
-})
+}
+
+/**
+ * `GET /schema/endpoint?resolveClient=true`: resolving a **bare** path to the caller's own client-scoped copy
+ * before the lookup (issue #552). This is what lets a form page fetch just its one endpoint's closure -- it
+ * holds only the bare path (`GEP.formDocCreate`) and cannot form the concrete `/gedra/<client>/...` one
+ * itself, because only the catalog knows whether the caller's client varies.
+ *
+ * Booted with [VariantFixtureComponent] (shared with [ClientSchemaVariantTest]) so `hub` varies its gedra
+ * schema and therefore gets per-client copies of the gedra-section endpoints; `env auth` is assumed so the
+ * catalog is unrestricted and this test turns on `resolveClient` alone, not the #489 publicApi gate.
+ */
+private val schemaEndpointResolveClientTests = stringSpec {
+    // Its own instance (issue #1075): VariantFixtureComponent with env auth, a setup no shared entry has.
+    // One instance for the file (issue #1075): every test here only looks endpoints up, each as its own caller.
+    fun boot(name: String): KdrCxt = Startup.mkTestBootCxt(
+        name, "resolveClientShared",
+        mapOf(VariantFixtureComponent.loadFlag.name to "true", ACFG.assumeEnvAuth to true),
+        additionalComponents = listOf(VariantFixtureComponent()),
+    )
+
+    fun lookupArgs(path: String, resolveClient: Boolean, method: String, client: String?): Map<String, Any?> =
+        buildMap {
+            put(EI.method, method)
+            put(EI.path, path)
+            if (resolveClient) put(EI.resolveClient, true)
+            client?.let { put(EI.client, it) }
+        }
+
+    fun lookup(
+        user: TestUser,
+        path: String,
+        resolveClient: Boolean,
+        method: String = "POST",
+        client: String? = null,
+    ): Map<String, Any?> = user.getData("/schema/endpoint", lookupArgs(path, resolveClient, method, client))
+
+    fun paths(results: Map<String, Any?>): List<String?> =
+        results[EI.endpoints].toJsonListOfMaps().map { it[EI.path].toOptStr() }
+
+    fun defCount(results: Map<String, Any?>): Int = results[SCH.dDefs].toJsonMapOrEmpty().size
+
+    "resolveClient resolves a bare path to the caller's own client-scoped copy" {
+        val hub = TestUser.create(boot("hubForms"), "hub-forms@resolve.test", userClient = CL.hub)
+
+        // Without the flag the bare path is looked up verbatim. It still exists in the store, so the caller gets
+        // the *bare* endpoint -- whose handler would bind the client from who is calling, not from the path.
+        paths(lookup(hub, GEP.formDocCreate, resolveClient = false)) shouldContainExactly listOf(GEP.formDocCreate)
+
+        // With it, the bare path resolves to this client's own copy: the concrete path the form page must POST
+        // to, and exactly the one a whole-catalog scan would have found by suffix.
+        val resolved = lookup(hub, GEP.formDocCreate, resolveClient = true)
+        paths(resolved) shouldContainExactly listOf(clientPath(GEP.formDocCreate, CL.hub))
+    }
+
+    "the resolved lookup returns a closure, not the whole catalog's defs" {
+        val hub = TestUser.create(boot("hubClosure"), "hub-closure@resolve.test", userClient = CL.hub)
+
+        val resolved = lookup(hub, GEP.formDocCreate, resolveClient = true)
+        val catalog = hub.getData("/schema/endpoints", mapOf(EP.limit to 1000))
+        // The endpoint is actually present -- asserted so the size comparison below cannot pass on an empty
+        // result (0 defs is trivially fewer than the catalog's), which would hide a broken resolution.
+        paths(resolved) shouldContainExactly listOf(clientPath(GEP.formDocCreate, CL.hub))
+        // Its $defs is only that input's transitive closure -- strictly fewer than the whole surface's bag,
+        // which is the isolation this issue is about.
+        defCount(resolved) shouldBeLessThan defCount(catalog)
+    }
+
+    "resolveClient leaves a bare-surface caller's path untouched" {
+        // A default-client user does not vary, so their surface has no client segment. resolveClient then has
+        // nothing to insert (`surface.client` is null) and the bare path is looked up as-is.
+        val plain = TestUser.create(boot("plainForms"), "plain-forms@resolve.test")
+
+        paths(lookup(plain, GEP.formDocCreate, resolveClient = true)) shouldContainExactly listOf(GEP.formDocCreate)
+    }
+
+    "resolveClient falls back to the shared endpoint when the caller's client has no copy of it" {
+        // A varying client still gets client copies only of the endpoints `buildClientEndpoints` copies (the
+        // gedra section, plus anything `clientShaped`). `/schema/endpoints` is neither, so `hub` has no copy of
+        // it -- and resolveClient must fall back to the shared path rather than answer empty, since a caller
+        // cannot tell which endpoints were copied. (Without the fallback this resolves to the non-existent
+        // `/schema/hub/endpoints` and returns nothing.)
+        val hub = TestUser.create(boot("hubFallback"), "hub-fallback@resolve.test", userClient = CL.hub)
+
+        val schemaListPath = "/schema/endpoints"
+        paths(lookup(hub, schemaListPath, resolveClient = true, method = "GET")) shouldContainExactly
+            listOf(schemaListPath)
+    }
+
+    "an allClients caller resolves a bare path on another client's surface" {
+        // The lookup takes the listing's `client` (issue #714): an allClients admin editing a hub form asks for
+        // hub's copy of the patch endpoint -- in hub's `$defs` -- rather than forming `/gedra/hub/patch` itself.
+        // The admin is placed in `public`, which does not vary, so without `client` the bare path answers. (Named:
+        // an allClients admin's own default is the hub, issue #799, which here has copies of its own.)
+        val cxt = boot("adminOther")
+        val admin = TestUser.createFullAdmin(cxt, "admin-other@resolve.test", userClient = CL.public)
+
+        paths(lookup(admin, GEP.patch, resolveClient = true)) shouldContainExactly listOf(GEP.patch)
+        paths(lookup(admin, GEP.patch, resolveClient = true, client = CL.hub)) shouldContainExactly
+            listOf(clientPath(GEP.patch, CL.hub))
+    }
+
+    "naming a client that varies nothing falls back to the shared endpoint" {
+        // The regression the #714 review found: a client with no schema overlay and no cfacts -- the default
+        // client here -- has no client copies at all, so a caller who formed `/gedra/<client>/patch` by hand
+        // found nothing. Resolved on that client's surface, the bare path answers -- the shared endpoint, bound
+        // to the client at request time. (The narrow fixture client is *not* such a client: declaring which
+        // traits it supports gives it a variant, and so copies of its own.)
+        val cxt = boot("adminDefault")
+        val admin = TestUser.createFullAdmin(cxt, "admin-default@resolve.test")
+
+        paths(lookup(admin, GEP.patch, resolveClient = true, client = CL.public)) shouldContainExactly listOf(GEP.patch)
+        paths(lookup(admin, GEP.patch, resolveClient = true, client = VariantFixtureComponent.narrowClient))
+            .shouldContainExactly(listOf(clientPath(GEP.patch, VariantFixtureComponent.narrowClient)))
+    }
+
+    "an ordinary caller may look up only their own client's surface" {
+        val cxt = boot("hubOwnOnly")
+        val hub = TestUser.create(cxt, "hub-own-only@resolve.test", userClient = CL.hub)
+
+        // Their own client by name is what they would have been shown anyway.
+        paths(lookup(hub, GEP.patch, resolveClient = true, client = CL.hub)) shouldContainExactly
+            listOf(clientPath(GEP.patch, CL.hub))
+        // Another client's surface takes the allClients capability, as on the listing.
+        hub.expectError(
+            EXC.badInput,
+            "/schema/endpoint",
+            args = lookupArgs(GEP.patch, resolveClient = true, method = "POST", client = VariantFixtureComponent.narrowClient),
+        )
+    }
+}
+
+/**
+ * Two endpoints on one path, differing only by verb (issue #335).
+ *
+ * `KdrEndpoint.collationKey` is `path:method` and the endpoint store is keyed by it, so dispatch always found
+ * the right endpoint. What did not was the dispatcher's memo of **compiled input and output types**, which was
+ * keyed by path alone -- so whichever verb was called first compiled its schemas and the other was then
+ * validated against them. It went unnoticed because nothing shared a URL until this issue.
+ *
+ * These assertions fail loudly if that memo is ever keyed by path again: the two verbs take disjoint input
+ * fields and answer with different output types, and endpoint input is closed to undeclared properties.
+ */
+private val samePathVerbTests = stringSpec {
+
+    fun client() = TestHttpClient(TestInstances.default("samePathVerb").instanceConfig).alwaysWithTestAccess()
+
+    "each verb on a shared path validates against its own input and output schema" {
+        val c = client()
+
+        // Deliberately DELETE first: the bug was order-dependent -- whichever verb compiled first won -- so
+        // exercising the second-registered one ahead of the first is what makes this a real check.
+        val deleted = c.sendJsonDeleteRequest(TVB.path, mapOf(TVB.deleteOnly to "d1"))[EP.results].toJsonMapOrEmpty()
+        deleted[TVB.verb] shouldBe HttpMethod.DELETE.name
+        deleted[TVB.deleteOnly] shouldBe "d1"
+
+        val got = c.sendJsonGetRequest(TVB.path, mapOf(TVB.getOnly to "g1"))[EP.results].toJsonMapOrEmpty()
+        got[TVB.verb] shouldBe HttpMethod.GET.name
+        got[TVB.getOnly] shouldBe "g1"
+    }
+
+    "neither verb accepts the other's field, which is what proves the schemas did not collide" {
+        val c = client()
+
+        // Each field is required by its own verb and undeclared on the other, so a collision shows up twice
+        // over: the wrong field is refused, and the right one goes missing.
+        c.sendGetRequest(TVB.path, mapOf(TVB.deleteOnly to "d1")).rptStatusCode shouldBe EXC.badInput
+        c.sendDeleteRequest(TVB.path, mapOf(TVB.getOnly to "g1")).rptStatusCode shouldBe EXC.badInput
+    }
+}
+
+/**
+ * What of the client-scoped administration is published (issue #1483): what an AI configuring one client and its users
+ * needs -- the configuration's reads, write, and patch; the users' listing and the calls that set them up; and a
+ * client's file refs, whose bytes no bundle carries. A caller without env auth is shown these in the catalog, as an
+ * outside developer is, and not the rest: publishing, which a client's own people do; the shortcuts the frontend's
+ * pages use, which a write or a patch already covers; and the web assets, which a sandbox may not change and which
+ * reach everyone in the client at once, as a publish does.
+ *
+ * The published set is pinned whole, so that adding to it or taking from it is a decision this test is changed for.
+ */
+private val publishedClientAdminCatalogTests = stringSpec {
+    val cxt = TestInstances.default("publishedClientAdmin")
+
+    val published = setOf(
+        CFEP.bundles, CFEP.bundle, CFEP.slotEntries, CFEP.bundleWrite, CFEP.bundlePatch,
+        UADEP.users, UADEP.userCreate, UADEP.userSetRoles, UADEP.userSetLabels, UADEP.userSetEnabled, UADEP.userSetName,
+        UADEP.userSetOrg,
+        UADEP.clientFiles, UADEP.clientFilesTakes, UADEP.clientFilesUpload, UADEP.clientFilesDownloadMeta,
+    )
+
+    "a client's administrator without env auth is shown exactly the published client administration" {
+        // The premise: this node grants no env auth of its own accord, so the caller is the production one.
+        cxt.instanceConfig.get(ACFG.assumeEnvAuth) shouldNotBe true
+        val admin = TestUser.create(cxt, "pubca-admin@example.com", level = ROLE.admin, userClient = CL.public)
+
+        val catalog = admin.catalog()
+        catalog[EI.filtersAvailable] shouldBe false
+        val shown = TestUser.endpointsIn(catalog).filter { it[EI.path].toString().startsWith("/${SECT.clientAdmin}/") }
+        shown.map { it[EI.path] }.toSet() shouldBe published
+        shown.forEach { it[EI.publicApi] shouldBe true }
+    }
+
+    "publishing, and the shortcuts a write or a patch covers, stay unpublished" {
+        val admin = TestUser.create(cxt, "pubca-admin@example.com", level = ROLE.admin, userClient = CL.public)
+        val paths = TestUser.pathsIn(admin.catalog())
+        paths shouldContainAll listOf(CFEP.bundleWrite, CFEP.bundlePatch)
+        paths shouldNotContainAnyOf listOf(
+            CFEP.bundlePublish, CFEP.bundleImpact, CFEP.publishedOnly, CFEP.reload, CFEP.editor,
+            UADEP.userSearch, UADEP.userDelete, UADEP.clientFilesRemove, UADEP.clientFilesDescribe,
+            UADEP.clientWeb, UADEP.clientWebUpload,
+        )
+    }
+}

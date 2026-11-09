@@ -138,7 +138,7 @@ may call an endpoint.
   left unpublished when a bundle write or patch already does the same (the per-kind editors, `config/editor`,
   `config/reload`). Users and file refs' bytes have no bundle form, so their calls are published. Web assets are
   not: a sandbox may not change them, and a change reaches everyone in the client at once, as a publish does. A
-  page that names an endpoint is a prompt to decide, not the decision. `PublishedClientAdminCatalogTest` pins the
+  page that names an endpoint is a prompt to decide, not the decision. `SchemaEndpointsTest` pins the
   published set whole, so a change to it is made there too.
 - **`tags = setOf(ETAG.internal)`** attaches free-form tags, filterable in the catalog by **any-of** (OR). The
   shared vocabulary is the `ETAG` object (`base/kernel`, `endpoint/EndpointConstants.kt`): `internal`

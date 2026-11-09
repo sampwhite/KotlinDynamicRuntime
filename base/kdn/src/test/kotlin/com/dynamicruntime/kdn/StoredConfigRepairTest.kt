@@ -1,5 +1,7 @@
 package com.dynamicruntime.kdn
 
+import com.dynamicruntime.common.content.MarkdownFragmentService
+import com.dynamicruntime.common.context.ACFG
 import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.KdrException
@@ -11,6 +13,8 @@ import com.dynamicruntime.common.gedra.ClientUsageType
 import com.dynamicruntime.common.gedra.ConfigReloadResult
 import com.dynamicruntime.common.gedra.GCEL
 import com.dynamicruntime.common.gedra.GCFG
+import com.dynamicruntime.common.gedra.GID
+import com.dynamicruntime.common.gedra.GedraConfig
 import com.dynamicruntime.common.gedra.GedraConfigBuilder
 import com.dynamicruntime.common.gedra.GedraConfigOrigin
 import com.dynamicruntime.common.gedra.GedraConfigReload
@@ -19,21 +23,40 @@ import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.gedra.workflow.CDF
 import com.dynamicruntime.common.gedra.workflow.WfEntry
+import com.dynamicruntime.common.home.HFLD
+import com.dynamicruntime.common.home.HMENU
 import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.SL
 import com.dynamicruntime.common.schema.layout
 import com.dynamicruntime.common.startup.BootCheckMode
+import com.dynamicruntime.common.startup.ComponentDefinition
 import com.dynamicruntime.common.startup.SchemaService
+import com.dynamicruntime.common.uiblock.UIB
+import com.dynamicruntime.common.uiblock.UiBlockService
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
+import io.kotest.core.spec.style.stringSpec
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
+
+/**
+ * A fault in a client's configuration costs only itself (issue #1739 gathered these; issue #841): a fault in its stored
+ * schema -- a keyword, message, layout, type, or cfact -- and in the rest of its stored configuration -- a UiBlock or
+ * fragment overlay, the extends rule, a layout pull -- is dropped and reported rather than refusing the reload or the
+ * next boot; and a fault in a component's own source schema is judged by the source check mode. Each part below is one
+ * of the specs that used to be a file of its own, kept whole.
+ */
+class StoredConfigRepairTest : StringSpec({
+    include(storedSchemaRepairTests)
+    include(storedOverlayRepairTests)
+    include(sourceSchemaForgivenessTests)
+})
 
 /**
  * A fault in a client's stored schema costs only itself (issue #841): the offending keyword, message, layout, type
@@ -44,7 +67,7 @@ import io.kotest.matchers.string.shouldContain
  * A shared instance with the stored-config check at `warn` (the forgiving path a unit test opts into, #839) and a
  * new client per scenario; the unit-default `strict` refusal and a restart get cases of their own.
  */
-class StoredSchemaRepairTest : StringSpec({
+private val storedSchemaRepairTests = stringSpec {
 
     val warn = mapOf(GCFG.storedCheckEnvVar.name to BootCheckMode.warn.name)
     val cxt = TestInstances.storedConfigWarn("storedRepair")
@@ -333,4 +356,174 @@ class StoredSchemaRepairTest : StringSpec({
             }
         }.issues.shouldBeEmpty()
     }
-})
+}
+
+/**
+ * The rest of a client's stored configuration costs only itself too (issue #841, part 2): a UiBlock or fragment
+ * overlay at fault is dropped rather than served (a reload used to take both unchecked, and the boot refused a bad
+ * UiBlock even in production), a stored config breaking the extends rule is skipped rather than refusing the whole
+ * reload, and an unresolvable layout pull is reported under the holding config's mode rather than refusing the boot.
+ *
+ * A shared instance with the stored-config check at `warn` (#839) and a new client per scenario.
+ */
+private val storedOverlayRepairTests = stringSpec {
+
+    val warn = mapOf(GCFG.storedCheckEnvVar.name to BootCheckMode.warn.name)
+    val cxt = TestInstances.storedConfigWarn("overlayRepair")
+
+    fun writer(on: KdrCxt, client: String): KdrCxt = on.mkSubContext("overlayWrite", client).also { it.userId = 8411L }
+
+    fun clientDef(client: String, extendsFrom: String? = null) = ClientDef(
+        clientId = client, name = client,
+        usageType = ClientUsageType.dev, audience = ClientAudience.internal,
+        enabledEnvironments = setOf(ENV.unit, ENV.local), extendsFromClientId = extendsFrom,
+    )
+
+    fun storeAndReload(on: KdrCxt, client: String, build: GedraConfigBuilder.() -> Unit): ConfigReloadResult {
+        val config = gedraConfig(on, "${client}cfg", clientNamespace(client), client) {
+            defineClient(clientDef(client))
+            build()
+        }
+        GedraConfigService.get(on).writeConfig(writer(on, client), config)
+        return GedraConfigReload.reloadClient(on, client)
+    }
+
+    "a UiBlock overlay naming a cfact nothing declares is dropped, and the block serves without it" {
+        val client = "ovl841ui"
+        val result = storeAndReload(cxt, client) {
+            uiBlockOverlay(HMENU.block) {
+                items(HFLD.menu) { item { set(HFLD.id, "extra841"); set(UIB.cfactExpression, "noSuchFact841") } }
+            }
+        }
+        val issue = result.issues.single()
+        issue.elementKind shouldBe GCEL.uiBlock
+        issue.message shouldContain "noSuchFact841"
+        UiBlockService.registeredUiBlocks(cxt).none { it.client == client } shouldBe true
+        ClientService.get(cxt).present(client).shouldNotBeNull()
+    }
+
+    "a fragment overlay with keys no base declares is dropped, and the client reads the default copy" {
+        val client = "ovl841frag"
+        val result = storeAndReload(cxt, client) {
+            fragmentOverlay("home") {
+                namespace("home") {
+                    key("title", "Overlaid title")
+                    key("noSuchKey841", "Nowhere")
+                }
+            }
+        }
+        val issue = result.issues.single()
+        issue.elementKind shouldBe GCEL.fragment
+        issue.message shouldContain "noSuchKey841"
+        MarkdownFragmentService.registeredFragmentSources(cxt).none { it.client == client } shouldBe true
+        val asClient = cxt.mkSubContext("read", client)
+        MarkdownFragmentService.get(cxt).resolveFragment(asClient, "home", "home", "title") shouldBe
+            MarkdownFragmentService.get(cxt).resolveFragment(cxt, "home", "home", "title")
+    }
+
+    // The reload used to refuse outright (`KdrException.mkInput`) on the first config breaking the extends rule;
+    // it is now that config's problem alone, judged as stored config.
+    "a stored config breaking the extends rule is skipped, not the reload" {
+        val client = "ovl841ext"
+        val config = gedraConfig(cxt, "${client}cfg", clientNamespace(client), client) {
+            // No source client of that name: a data config may extend only a code-defined one.
+            defineClient(clientDef(client, extendsFrom = "nosuchbase"))
+        }
+        GedraConfigService.get(cxt).writeConfig(writer(cxt, client), config)
+        val result = GedraConfigReload.reloadClient(cxt, client)
+        result.loaded shouldBe 0
+        result.issues.single().message shouldContain "which is not defined in code"
+        ClientService.get(cxt).known(client) shouldBe null
+    }
+
+    // Checked only at boot, since the fragment registry it needs belongs to a later service. Forgiving drops
+    // nothing -- delivery already renders an unresolved pull as written -- so the layout stands.
+    "an unresolvable layout pull in stored config no longer refuses the restart" {
+        val db = mapOf("KDR_DB_NAME" to "overlayRepair_pull", "KDR_LOAD_STORED_CONFIG" to "true")
+        val client = "ovl841pull"
+        // Its own instance (issue #1075): the first of three boots over its own database (`KDR_DB_NAME`); the restarts'
+        // boot-time repair is under test.
+        val first = Startup.mkTestBootCxt("overlayRepair1", "storedOverlayRepair1", db + warn)
+        storeAndReload(first, client) {
+            type("Pulled") {
+                type = SCT.kObject
+                property("topic", "A topic.")
+                layout { field("topic", label = "%{@t(\"noSuchFile841.ns.key\")}") }
+            }
+        }
+
+        // Its own instance (issue #1075): a restart over the same database, whose boot-time repair is under test.
+        val restarted = Startup.mkTestBootCxt("overlayRepair2", "storedOverlayRepair2", db + warn)
+        val issue = ClientConfigIssues.get(restarted).issuesFor(client).single()
+        issue.message shouldContain "noSuchFile841"
+        issue.elementId shouldBe "${clientNamespace(client)}.Pulled"
+
+        // Its own instance (issue #1075): the boot itself is under test: a strict restart over the same database is
+        // expected to refuse.
+        shouldThrow<KdrException> { Startup.mkTestBootCxt("overlayRepair3", "storedOverlayRepair3", db) }
+            .message.shouldNotBeNull() shouldContain GCFG.storedCheckEnvVar.name
+    }
+}
+
+/**
+ * Source-code schema is judged by the source check mode (issue #841, part 3): a fault in a component's own types --
+ * here an unregistered `g-optionsSource` and a layout naming a field its type lacks -- still refuses the boot
+ * outside production, but in production the faulty keyword or layout is dropped and the node serves, as every
+ * other source-config check does there. Before, these refused the boot even in production.
+ */
+private val sourceSchemaForgivenessTests = stringSpec {
+
+    val typeName = "${SourceFaultComponent.namespace}.Faulty"
+
+    "outside production a component's schema fault still refuses the boot, naming the source variable" {
+        val failure = shouldThrow<KdrException> {
+            // Its own instance (issue #1075): the boot itself is under test: SourceFaultComponent is expected to refuse
+            // it.
+            Startup.mkTestBootCxt("srcFaultUnit", "sourceFaultUnitTest", additionalComponents = listOf(SourceFaultComponent()))
+        }
+        failure.message.shouldNotBeNull() shouldContain GCFG.checkEnvVar.name
+    }
+
+    "in production the faulty keyword and layout are dropped, and the node serves" {
+        // Its own instance (issue #1075): a production boot with SourceFaultComponent: what that boot drops and serves
+        // is under test.
+        val cxt: KdrCxt = Startup.mkBootCxt(
+            "srcFaultProd", "sourceFaultProdTest",
+            // Not a test instance (so SchemaService's test-instance refusal is not what fires), yet in-memory, so no real
+            // database is needed.
+            Startup.realNodeOverlay(ENV.prod),
+            additionalComponents = listOf(SourceFaultComponent()),
+        )
+        val def = SchemaService.get(cxt).storeFor(null).defs[typeName].toJsonMapOrEmpty()
+        def[SCH.properties].toJsonMapOrEmpty()["pick"].toJsonMapOrEmpty().containsKey(SCH.optionsSource) shouldBe false
+        def.containsKey(SCH.layout) shouldBe false
+
+        val issues = ClientConfigIssues.get(cxt).issuesFor(GID.globalClient).filter { it.elementId == typeName }
+        issues.size shouldBe 2
+        issues.all { it.origin == GedraConfigOrigin.source && it.elementKind == GCEL.type } shouldBe true
+    }
+}
+
+// Declared with what was `SourceSchemaForgivenessTest`.
+/** A component whose one global type carries two faults the boot check finds. */
+class SourceFaultComponent : ComponentDefinition {
+    override val providerName: String = "sourceFaultFixture"
+
+    /** The fixture's own owner root (issue #950). */
+    override val ownerRoot: String = namespace
+
+    override fun gedraConfigs(cxt: KdrCxt): List<GedraConfig> = listOf(
+        gedraConfig(cxt, "sourceFault", namespace, GID.globalClient) {
+            type("Faulty") {
+                type = SCT.kObject
+                property("pick", "From an unregistered source.") { optionsSource("noSuchOptionsSource841c") }
+                layout { field("noSuchField841c", label = "Nope") }
+            }
+        },
+    )
+
+    @Suppress("ConstPropertyName")
+    companion object {
+        const val namespace = "sourcefault"
+    }
+}

@@ -225,8 +225,7 @@ The behavior above is pinned by these specs, in `base/kdn`:
 | Spec | What it covers |
 |---|---|
 | `SandboxClientTest` | loading and reloading beside the parent, and placing a `TestUser` in a sandbox |
-| `SandboxBootAndSyncTest` | the code layer, a persistent boot, and a peer catching up by the sandbox's marker |
-| `SandboxBootTierTest` | published-only surviving a restart |
+| `SandboxBootAndSyncTest` | the code layer, a persistent boot, a peer catching up by the sandbox's marker, and published-only surviving a restart |
 | `SandboxAccessTest` | who may open, and what a sandbox user acts with |
 | `SandboxEditsTest` | edits from inside as the parent's drafts |
 | `SandboxManageTest` | adding and removing a sandbox |

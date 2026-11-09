@@ -16,12 +16,73 @@ import com.dynamicruntime.common.gedra.GedraConfigService
 import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.gedra.traitDataTypeName
+import com.dynamicruntime.common.gedra.workflow.TraitLocks
 import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.schema.layout
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import io.kotest.core.spec.style.StringSpec
+import io.kotest.core.spec.style.stringSpec
 import io.kotest.matchers.shouldBe
+
+/**
+ * How a trait is named to a person (issue #1739 gathered these): in a server message, by the rule every page uses (issue
+ * #1520), and in the forms listing, as each row's own client names it (issue #1543). Each part below is one of the specs
+ * that used to be a file of its own, kept whole.
+ */
+class TraitNamesTest : StringSpec({
+    include(traitNameTests)
+    include(listingTraitNamesTests)
+})
+
+/**
+ * A trait's name in a server message -- a lock's refusal -- by the rule every page names a trait with (issue #1520): its
+ * data type's layout heading, its backend pull resolved, then its title, then its id humanized. Over a client of its own.
+ */
+private val traitNameTests = stringSpec {
+    val cxt = TestInstances.default("traitName1520")
+    val client = "traitname1520"
+
+    val config = gedraConfig(cxt, "${client}cfg", clientNamespace(client), client) {
+        defineClient(
+            ClientDef(
+                clientId = client, name = client, usageType = ClientUsageType.dev,
+                audience = ClientAudience.internal, enabledEnvironments = setOf(ENV.unit, ENV.local),
+            ),
+        )
+        trait("SiteVisitEntry", "siteVisit", setOf(GedraDataType.formDoc), "A visit.") {
+            title = "Visit (title)"
+            property("where", "Where it was.")
+            layout(label = "## Site Visit Data", description = "Where you went, and why.") {}
+        }
+        trait("ClaimEntry", "claim", setOf(GedraDataType.formDoc), "A claim.") {
+            title = "Expense claim"
+            property("amount", "How much.")
+        }
+        trait("PlainEntry", "plainThing", setOf(GedraDataType.formDoc), "Plain.") { property("x", "X.") }
+        // A heading pulled from a backend fragment file is named by the copy it pulls.
+        trait("PulledEntry", "pulled", setOf(GedraDataType.formDoc), "Pulled.") {
+            property("y", "Y.")
+            layout(fragmentFileId = "mail", label = """%{@t("common.footer")}""") {}
+        }
+    }
+    GedraConfigService.get(cxt).writeConfig(cxt.mkSubContext("setup", client), config)
+    GedraConfigReload.reloadClient(cxt, client)
+    val asClient = cxt.mkSubContext("names", client)
+
+    "the layout label, then the title, then the id humanized" {
+        TraitLocks.traitName(asClient, client, "siteVisit") shouldBe "Site Visit Data"
+        TraitLocks.traitName(asClient, client, "claim") shouldBe "Expense claim"
+        TraitLocks.traitName(asClient, client, "plainThing") shouldBe "Plain thing"
+        // A trait the client does not carry is named by its id.
+        TraitLocks.traitName(asClient, client, "notHere") shouldBe "Not here"
+    }
+
+    "a pulled heading is named by the copy it pulls" {
+        TraitLocks.traitName(asClient, client, "pulled") shouldBe
+            "This message was sent automatically. If you were not expecting it, you can ignore it."
+    }
+}
 
 /**
  * The forms listing names each row's traits as the **row's** client names them (issue #1543), in the row's
@@ -30,7 +91,7 @@ import io.kotest.matchers.shouldBe
  * name for a global one. Over two clients of their own: `renamer` names the platform's name trait **Talk title** (a
  * layout-only alteration, as Adapt writes) and has a trait of its own with a heading; `plain` takes both as they are.
  */
-class ListingTraitNamesTest : StringSpec({
+private val listingTraitNamesTests = stringSpec {
     val cxt = TestInstances.default("listingTraitNames1543")
     val renamer = "renamer1543"
     val plain = "plain1543"
@@ -103,4 +164,4 @@ class ListingTraitNamesTest : StringSpec({
     "a client's own listing names its traits as its catalog does" {
         namesOf(plainUser.getItems(GEP.formDocs), plainDoc) shouldBe mapOf(GT.name to "Name")
     }
-})
+}

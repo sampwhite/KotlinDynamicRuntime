@@ -1,5 +1,6 @@
 package com.dynamicruntime.kdn
 
+import com.dynamicruntime.common.context.ACFG
 import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.ENVGRP
 import com.dynamicruntime.common.context.EnvVarDef
@@ -26,6 +27,7 @@ import com.dynamicruntime.common.startup.ComponentDefinition
 import com.dynamicruntime.common.startup.SchemaService
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
+import io.kotest.core.spec.style.stringSpec
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
@@ -35,8 +37,16 @@ import io.kotest.matchers.string.shouldContain
  * A client's alteration of a type's field layout merges with the inherited layout **by field** (issue #985): it
  * states only the entries it changes, and everything else -- the other fields' entries, the form strings -- is the
  * global layout's. Written as stored configuration and reloaded live, the way a client edits its own copy.
+ *
+ * Also, since issue #1739, the tests that were `InheritedLayoutRequiredTest`, each kept whole below.
  */
 class ClientLayoutMergeTest : StringSpec({
+    include(clientLayoutMergeTests)
+    include(inheritedLayoutRequiredTests)
+})
+
+/** This file's own tests, as the class describes them. */
+private val clientLayoutMergeTests = stringSpec {
     // Its own instance (issue #1075): LayoutMergeFixture, a fixture component no shared entry has.
     val cxt = Startup.mkTestBootCxt(
         "layoutMerge985", "layoutMerge985", mapOf(LayoutMergeFixture.loadFlag.name to "true"), listOf(LayoutMergeFixture()),
@@ -162,8 +172,48 @@ class ClientLayoutMergeTest : StringSpec({
         }
         layoutFor("bare985", LayoutMergeFixture.card).shouldBeNull()
     }
-})
+}
 
+/**
+ * A client that alters a type may add to what it requires, and a global **authoritative** layout it inherits could
+ * then omit a field this client's form must show -- a form nobody can submit (issue #811). The inherited layout is
+ * checked against the client's own type: outside production that refuses the boot, as any faulty source config
+ * does; in production the client renders the type without a layout, and says why.
+ */
+private val inheritedLayoutRequiredTests = stringSpec {
+
+    val overlay = mapOf(InheritedLayoutFixture.loadFlag.name to "true")
+
+    "outside production, an inherited authoritative layout omitting a field the client requires refuses the boot" {
+        val message = shouldThrow<KdrException> {
+            // Its own instance (issue #1075): the boot itself is under test: InheritedLayoutFixture is expected to
+            // refuse it.
+            Startup.mkTestBootCxt(
+                "inheritedLayout", "inheritedLayoutTest", overlay, listOf(InheritedLayoutFixture()),
+            )
+        }.fullMessage()
+        message shouldContain "client '${InheritedLayoutFixture.client}'"
+        message shouldContain "omits 'nick'"
+    }
+
+    "in production, that client renders the type without a layout, and global keeps its own" {
+        // Its own instance (issue #1075): a production boot with InheritedLayoutFixture: what that boot assembles is
+        // under test.
+        val prod: KdrCxt = Startup.mkBootCxt(
+            "inheritedLayoutProd", "inheritedLayoutProdTest",
+            overlay + Startup.realNodeOverlay(ENV.prod),
+            listOf(InheritedLayoutFixture()),
+        )
+        val schema = SchemaService.get(prod)
+        val type = InheritedLayoutFixture.profileType
+        schema.storeFor(null).layouts[type].shouldNotBeNull().mode shouldBe SchLayoutMode.authoritative
+        schema.storeFor(InheritedLayoutFixture.client).layouts[type].shouldBeNull()
+        // The alteration itself stands: the client still requires what it said it does.
+        schema.storeFor(InheritedLayoutFixture.client).types.getValue(type).required shouldBe setOf("name", "nick")
+    }
+}
+
+// Declared with what was `ClientLayoutMergeTest`.
 /** Global types with field layouts for clients to alter: one that only annotates, one whose order matters. */
 class LayoutMergeFixture : ComponentDefinition {
     override val providerName: String = "layoutMergeFixture"
@@ -208,5 +258,52 @@ class LayoutMergeFixture : ComponentDefinition {
         const val baseNamespace = "layoutmerge"
         const val card = "$baseNamespace.Card"
         const val ordered = "$baseNamespace.Ordered"
+    }
+}
+
+// Declared with what was `InheritedLayoutRequiredTest`.
+/** A global type with an authoritative layout listing only `name`, and a client alteration that requires `nick`. */
+class InheritedLayoutFixture : ComponentDefinition {
+    override val providerName: String = "inheritedLayoutFixture"
+
+    /** The fixture's own owner root (issue #950). */
+    override val ownerRoot: String = baseNamespace
+
+    override fun isLoaded(cxt: KdrCxt): Boolean = cxt.getEnvBool(loadFlag) == true
+
+    override fun gedraConfigs(cxt: KdrCxt): List<GedraConfig> = listOf(
+        gedraConfig(cxt, "inheritedLayoutBase", baseNamespace, GID.globalClient) {
+            type("Profile") {
+                type = SCT.kObject
+                property("name", "The name.", required = true)
+                property("nick", "A nickname.")
+                layout(mode = SchLayoutMode.authoritative) { field("name", label = "Name") }
+            }
+        },
+        gedraConfig(cxt, "inheritedLayoutClient", clientNamespace(client), client) {
+            defineClient(
+                ClientDef(
+                    clientId = client, name = "Inherited layout", usageType = ClientUsageType.dev,
+                    audience = ClientAudience.internal, enabledEnvironments = setOf(ENV.unit, ENV.local, ENV.prod),
+                ),
+            )
+            // Narrowing rule 3, more required: legitimate on its own, and it leaves the inherited layout short.
+            type(profileType) {
+                type = SCT.kObject
+                property("name", "The name.", required = true)
+                property("nick", "A nickname.", required = true)
+            }
+        },
+    )
+
+    @Suppress("ConstPropertyName")
+    companion object {
+        val loadFlag = EnvVarDef(
+            "KDR_LOAD_INHERITED_LAYOUT_FIXTURE", group = ENVGRP.application, defaultDoc = "off",
+            description = "Test-only flag that loads this fixture component regardless of environment.",
+        )
+        const val baseNamespace = "inheritedlayout"
+        const val client = "inheritedlayoutclient"
+        const val profileType = "$baseNamespace.Profile"
     }
 }

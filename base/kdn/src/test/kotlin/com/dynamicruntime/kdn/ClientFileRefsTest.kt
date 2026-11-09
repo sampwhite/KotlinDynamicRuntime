@@ -1,6 +1,5 @@
 package com.dynamicruntime.kdn
 
-import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.content.ContentResources
 import com.dynamicruntime.common.content.HashedFileServing
 import com.dynamicruntime.common.context.CL
@@ -11,6 +10,7 @@ import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.fileref.FREF
 import com.dynamicruntime.common.fileref.FileRefService
+import com.dynamicruntime.common.fileref.LFENV
 import com.dynamicruntime.common.filestore.FMETA
 import com.dynamicruntime.common.filestore.FileStoreService
 import com.dynamicruntime.common.gedra.CCT
@@ -32,6 +32,7 @@ import com.dynamicruntime.common.gedra.GD
 import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.gedra.GED
 import com.dynamicruntime.common.gedra.GedraConfig
+import com.dynamicruntime.common.gedra.GedraConfigOrigin
 import com.dynamicruntime.common.gedra.GedraConfigReload
 import com.dynamicruntime.common.gedra.GedraConfigService
 import com.dynamicruntime.common.gedra.GedraConfigType
@@ -56,48 +57,40 @@ import com.dynamicruntime.common.startup.ComponentDefinition
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.user.UADEP
 import com.dynamicruntime.common.util.sha256Hex
+import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
 import com.dynamicruntime.common.webasset.WAS
 import com.dynamicruntime.common.webasset.WebAssetCheck
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
+import io.kotest.core.spec.style.stringSpec
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldContainAll
 import io.kotest.matchers.collections.shouldContainExactly
+import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
-
-/** A component whose source configuration declares a file ref -- which only stored configuration may hold. */
-class SourceFileRefComponent : ComponentDefinition {
-    override val providerName: String = "sourceFileRefFixture"
-
-    override fun gedraConfigs(cxt: KdrCxt): List<GedraConfig> = listOf(
-        gedraConfig(cxt, "main", clientNamespace(client), client) {
-            defineClient(
-                ClientDef(
-                    clientId = client, name = "Source ref", usageType = ClientUsageType.dev,
-                    audience = ClientAudience.internal, enabledEnvironments = setOf(ENV.unit, ENV.local),
-                ),
-            )
-            fileRef("logo", "ab".repeat(32))
-        },
-    )
-
-    companion object {
-        const val client = "srcref1153"
-    }
-}
+import java.io.File
+import java.nio.file.Files
 
 /**
  * A client's file refs (issue #1153), end to end on one booted instance, a client per case: an upload stores the
  * bytes under their hash and writes the ref into the client's configuration; the client's people are served it by
  * name and hash; a client with a sandbox drafts it there and publishes it; and what an administrator types into
  * the configuration by hand is held to the same rules as what an upload writes.
+ *
+ * Also, since issue #1739, the tests that were `FileRefLimitTest`, each kept whole below.
  */
 class ClientFileRefsTest : StringSpec({
+    include(clientFileRefsTests)
+    include(fileRefLimitTests)
+})
+
+/** This file's own tests, as the class describes them. */
+private val clientFileRefsTests = stringSpec {
     val cxt = TestInstances.default("clientFileRefs1153")
     val svc = GedraConfigService.get(cxt)
     val refs = FileRefService.get(cxt)
@@ -956,7 +949,214 @@ class ClientFileRefsTest : StringSpec({
         // Nothing of the kind is served on the instance every other case runs on.
         refs.forClient(SourceFileRefComponent.client).refs.isEmpty() shouldBe true
     }
-})
+}
+
+/**
+ * The limit on how many file refs a client is served (issue #1169): over it, the client has **one** problem, the same
+ * however its refs are held and whichever configurations hold them -- so a write that only takes refs away, or only
+ * replaces a file, is never refused for it -- and a client at it is told what it can do, which for refs it was shipped
+ * with is not "remove one".
+ *
+ * **An instance of its own** (issue #1075): its fixture ships clients over the limit, a problem in source that the
+ * instance is told to report rather than refuse (`KDR_GEDRA_CONFIG_CHECK=warn`), and local files are instance-wide.
+ */
+private val fileRefLimitTests = stringSpec {
+    val png = byteArrayOf(0x89.toByte(), 'P'.code.toByte(), 'N'.code.toByte(), 'G'.code.toByte(), 0x0D, 0x0A, 0x1A, 0x0A, 1, 2, 3)
+    val otherPng = png + byteArrayOf(9, 9)
+    val files = Files.createTempDirectory("kdrRefLimit").toFile()
+    File(files, RefLimitComponent.root).apply { mkdirs() }.let { File(it, "pic.png").writeBytes(png) }
+    afterSpec { files.deleteRecursively() }
+
+    val cxt = Startup.mkTestBootCxt(
+        "refLimit", "fileRefLimit1169",
+        mapOf(
+            LFENV.dir.name to files.absolutePath,
+            GCFG.checkEnvVar.name to BootCheckMode.warn.name,
+            GCFG.storedCheckEnvVar.name to BootCheckMode.warn.name,
+        ),
+        listOf(RefLimitComponent()),
+    )
+    val svc = GedraConfigService.get(cxt)
+    val refs = FileRefService.get(cxt)
+
+    fun writerOf(client: String): KdrCxt = cxt.mkSubContext("write", client).also { it.userId = 11690L }
+
+    fun adminOf(client: String) = TestUser.create(cxt, "chief@$client.test", level = ROLE.admin, userClient = client)
+
+    fun image(bytes: ByteArray) = ContentData(bytes, "image/png", saveAsFilename = "pic.png", inLine = false)
+
+    fun upload(user: TestUser, refId: String, bytes: ByteArray): Map<String, Any?> =
+        user.upload(UADEP.clientFilesUpload, mapOf(CCT.refId to refId, FREF.file to image(bytes)))
+
+    fun remove(user: TestUser, refId: String): Map<String, Any?> =
+        user.client.sendJsonPostRequest(UADEP.clientFilesRemove, mapOf(CCT.refId to refId))
+
+    /** The limit's problem among [client]'s, as its last load recorded them. */
+    fun overLimit(client: String) = ClientConfigIssues.get(cxt).issuesFor(client).filter { it.message.contains("as many as a client is served") }
+
+    fun publish(client: String, name: String) {
+        svc.publish(writerOf(client), listOf(GedraId.of(GedraConfigType.configDoc, client, name)))
+    }
+
+    "emptying the first stored configuration that holds refs, while over the limit, is not refused" {
+        val client = "reflimitempty"
+        svc.writeConfig(
+            writerOf(client),
+            gedraConfig(cxt, "main", clientNamespace(client), client) {
+                defineClient(
+                    ClientDef(
+                        clientId = client, name = "Client $client", usageType = ClientUsageType.dev,
+                        audience = ClientAudience.internal, enabledEnvironments = setOf(ENV.unit, ENV.local),
+                    ),
+                )
+            },
+        )
+        publish(client, "main")
+        FileStoreService.get(cxt).forOwner(cxt, client).put(writerOf(client), FileRefService.bucket, FileRefService.keyOf(client, png.sha256Hex()), ContentData(png, "image/png"))
+        val hash = png.sha256Hex()
+        // Over the limit across two configurations, the first of which -- as a load orders them -- holds only three.
+        svc.writeConfig(writerOf(client), gedraConfig(cxt, "afew", clientNamespace(client), client) { for (n in 1..3) fileRef("r$n", hash) })
+        svc.writeConfig(writerOf(client), gedraConfig(cxt, "bmany", clientNamespace(client), client) { for (n in 4..FREF.maxRefs + 5) fileRef("r$n", hash) })
+        publish(client, "afew")
+        publish(client, "bmany")
+        GedraConfigReload.reloadClient(cxt, client)
+        overLimit(client) shouldHaveSize 1
+        val admin = adminOf(client)
+
+        // Taking every ref out of the first: the last of them leaves the over-the-limit state held by the other.
+        for (n in 1..3) remove(admin, "r$n")[EP.status].shouldBeNull()
+
+        refs.forClient(client).refs.size shouldBe FREF.maxRefs
+        overLimit(client) shouldHaveSize 1
+    }
+
+    "a client over the limit on refs it was shipped with takes an upload over one of them" {
+        val client = RefLimitComponent.over
+        overLimit(client).single().origin shouldBe GedraConfigOrigin.source
+        val admin = adminOf(client)
+
+        // The first upload over a shipped id: it adds no ref, and starts the client's own stored configuration.
+        upload(admin, "s1", otherPng)[EP.status].shouldBeNull()
+
+        refs.forClient(client).refs.size shouldBe FREF.maxRefs
+        refs.forClient(client).refs.getValue("s1").def.stored shouldBe true
+        // Still one problem, now judged as stored configuration's: the client's own data holds refs.
+        overLimit(client).single().origin shouldBe GedraConfigOrigin.stored
+
+        // A new one cannot be made room for by removing what it may: one stored ref, of the six that would have to go.
+        val refused = upload(admin, "extra", otherPng)[EP.errorMessage].toOptStr().orEmpty()
+        refused shouldContain "holds ${FREF.maxRefs + 5} file refs, more than the ${FREF.maxRefs} a client is served"
+        refused shouldContain "only 1 of them are held in stored configuration -- fewer than the 6 that would have to go"
+        refused shouldContain "Upload over one of them to replace its file"
+    }
+
+    "an id past the limit is one ref, however many declarations hold it" {
+        val client = RefLimitComponent.double
+        val hash = png.sha256Hex()
+        FileStoreService.get(cxt).forOwner(cxt, client).put(writerOf(client), FileRefService.bucket, FileRefService.keyOf(client, hash), ContentData(png, "image/png"))
+        // Its own refs fill the limit, read first as stored ones are; then a stored override of a shipped ref, past it.
+        svc.writeConfig(writerOf(client), gedraConfig(cxt, "amany", clientNamespace(client), client) { for (n in 1..FREF.maxRefs) fileRef("r$n", hash) })
+        svc.writeConfig(writerOf(client), gedraConfig(cxt, "bover", clientNamespace(client), client) { fileRef("s2", hash) })
+        publish(client, "amany")
+        publish(client, "bover")
+        GedraConfigReload.reloadClient(cxt, client)
+        refs.forClient(client).refs.size shouldBe FREF.maxRefs
+
+        val registry = refs.forClient(client)
+        // The 200 stored, and s1, s2, s3 -- s2 once, though both its override and what it overrides are past the limit.
+        registry.held shouldBe FREF.maxRefs + 3
+        registry.heldStored shouldBe FREF.maxRefs + 1
+        val refused = upload(adminOf(client), "extra", otherPng)[EP.errorMessage].toOptStr().orEmpty()
+        refused shouldContain "holds ${FREF.maxRefs + 3} file refs"
+        refused shouldContain "Remove 4 of the ${FREF.maxRefs + 1} it holds in stored configuration first (2 were shipped"
+    }
+
+    "a client shipped with more refs than it is served refuses a strict boot, where a mistake in source is caught" {
+        val refused = runCatching {
+            // Its own instance: the boot itself is under test, under the checks' own strict mode, and is expected to
+            // be refused for the client shipped over the limit -- its refs held by source code alone.
+            Startup.mkTestBootCxt("refLimitStrict", "fileRefLimitStrict1169", mapOf(LFENV.dir.name to files.absolutePath), listOf(RefLimitComponent()))
+        }.exceptionOrNull()
+
+        generateSequence(refused) { it.cause }.mapNotNull { it.message }.joinToString(" | ") shouldContain
+            "Client '${RefLimitComponent.over}' has more than ${FREF.maxRefs} file refs"
+    }
+
+    "a client full of refs it was shipped with is told what it can do, which is not removing one" {
+        val client = RefLimitComponent.full
+        val admin = adminOf(client)
+
+        val refused = upload(admin, "extra", otherPng)
+
+        (refused[EP.status] as Number).toInt() shouldBe 400
+        val message = refused[EP.errorMessage].toOptStr().orEmpty()
+        message shouldContain "has ${FREF.maxRefs} file refs, which is as many as a client is served"
+        message shouldContain "all ${FREF.maxRefs} were shipped with it"
+        message shouldContain "Upload over one of them to replace its file"
+        // Which it can.
+        upload(admin, "s7", otherPng)[EP.status].shouldBeNull()
+        // And with one of its own among them, it is told which it can remove.
+        val partly = upload(admin, "extra", otherPng)[EP.errorMessage].toOptStr().orEmpty()
+        partly shouldContain "Remove one of the 1 it holds in stored configuration"
+        partly shouldContain "${FREF.maxRefs - 1} were shipped with it"
+        // The over-the-limit problem was never this client's: it is at the limit, not over it.
+        overLimit(client) shouldBe emptyList()
+        refs.forClient(client).refs.getValue("s7").def.stored shouldBe true
+        refs.forClient(client).refs["extra"].shouldBeNull()
+    }
+}
+
+// Declared with what was `ClientFileRefsTest`.
+/** A component whose source configuration declares a file ref -- which only stored configuration may hold. */
+class SourceFileRefComponent : ComponentDefinition {
+    override val providerName: String = "sourceFileRefFixture"
+
+    override fun gedraConfigs(cxt: KdrCxt): List<GedraConfig> = listOf(
+        gedraConfig(cxt, "main", clientNamespace(client), client) {
+            defineClient(
+                ClientDef(
+                    clientId = client, name = "Source ref", usageType = ClientUsageType.dev,
+                    audience = ClientAudience.internal, enabledEnvironments = setOf(ENV.unit, ENV.local),
+                ),
+            )
+            fileRef("logo", "ab".repeat(32))
+        },
+    )
+
+    companion object {
+        const val client = "srcref1153"
+    }
+}
 
 /** The one configuration a single-config patch or publish answered with (issue #1352). */
 private fun onlyConfig(result: Map<String, Any?>): Map<String, Any?> = result[CFEP.configs].toJsonListOfMaps().single()
+
+// Declared with what was `FileRefLimitTest`.
+/** Two clients shipped with as many local refs as a client is served, and more: every ref names one picture. */
+class RefLimitComponent : ComponentDefinition {
+    override val providerName: String = "refLimitFixture"
+
+    override fun gedraConfigs(cxt: KdrCxt): List<GedraConfig> = listOf(
+        shippedWith(cxt, over, FREF.maxRefs + 5),
+        shippedWith(cxt, full, FREF.maxRefs),
+        shippedWith(cxt, double, 3),
+    )
+
+    private fun shippedWith(cxt: KdrCxt, client: String, count: Int): GedraConfig =
+        gedraConfig(cxt, "art", clientNamespace(client), client) {
+            defineClient(
+                ClientDef(
+                    clientId = client, name = "Client $client", usageType = ClientUsageType.dev,
+                    audience = ClientAudience.internal, enabledEnvironments = setOf(ENV.unit, ENV.local),
+                ),
+            )
+            for (n in 1..count) fileRef("s$n") { local(root, "pic.png") }
+        }
+
+    companion object {
+        const val root = "art"
+        const val over = "reflimitover"
+        const val full = "reflimitfull"
+        const val double = "reflimitdouble"
+    }
+}

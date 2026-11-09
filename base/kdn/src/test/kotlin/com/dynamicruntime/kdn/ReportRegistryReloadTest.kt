@@ -6,6 +6,7 @@ import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.endpoint.clientPath
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.gedra.CCT
 import com.dynamicruntime.common.gedra.ClientAudience
 import com.dynamicruntime.common.gedra.ClientConfigIssues
 import com.dynamicruntime.common.gedra.ClientDef
@@ -16,16 +17,20 @@ import com.dynamicruntime.common.gedra.GDF
 import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.gedra.GEP
 import com.dynamicruntime.common.gedra.GedraConfigBuilder
+import com.dynamicruntime.common.gedra.GedraConfigLoadService
 import com.dynamicruntime.common.gedra.GedraConfigReload
 import com.dynamicruntime.common.gedra.GedraConfigService
 import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.gedraConfig
+import com.dynamicruntime.common.gedra.report.RDEF
 import com.dynamicruntime.common.gedra.report.RGEN
 import com.dynamicruntime.common.gedra.report.RRUN
+import com.dynamicruntime.common.gedra.report.ReportCombine
 import com.dynamicruntime.common.gedra.report.ReportKind
 import com.dynamicruntime.common.gedra.report.ReportService
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.startup.GeneratedSurface
+import com.dynamicruntime.common.startup.SchemaCollector
 import com.dynamicruntime.common.startup.SchemaService
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.user.UADEP
@@ -33,6 +38,8 @@ import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
+import io.kotest.core.spec.style.stringSpec
+import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
@@ -43,8 +50,16 @@ import io.kotest.matchers.string.shouldContain
  * The report registry on a booted node (issue #980): a stored report bound when its client reloads, a write whose
  * report reads nothing refused by its trial, and -- under the forgiving stored mode -- a report a trait change
  * breaks dropped on the reload that makes the change, with the rest of the configuration loading.
+ *
+ * Also, since issue #1739, the tests that were `StoredReportConfigTest`, each kept whole below.
  */
 class ReportRegistryReloadTest : StringSpec({
+    include(reportRegistryReloadTests)
+    include(storedReportConfigTests)
+})
+
+/** This file's own tests, as the class describes them. */
+private val reportRegistryReloadTests = stringSpec {
     val cxt = TestInstances.default("reportRegistry")
 
     fun writer(on: KdrCxt, client: String): KdrCxt = on.mkSubContext("reportWrite", client).also { it.userId = 9800L }
@@ -215,4 +230,84 @@ class ReportRegistryReloadTest : StringSpec({
         ReportService.get(cxt).forClient(client).report("visits").shouldNotBeNull()
         schema.schemaStore.endpoints.getValue("$taken:GET").client shouldBe client
     }
-})
+}
+
+/**
+ * A report written to a client's stored configuration (issue #979): the write's trial accepts it against the slot's
+ * schema, the reload reassembles it, and the client sees it -- on a booted node, where the slot's reference to the
+ * definition schema has to resolve.
+ */
+private val storedReportConfigTests = stringSpec {
+    val cxt = TestInstances.default("storedReport")
+    val client = "rptstored"
+    fun writer(): KdrCxt = cxt.mkSubContext("reportWrite", client).also { it.userId = 9470L }
+
+    "a stored report is written, reloaded and seen by its client" {
+        val config = gedraConfig(cxt, "main", "client.$client", client) {
+            defineClient(
+                ClientDef(
+                    clientId = client, name = client, usageType = ClientUsageType.dev, audience = ClientAudience.internal,
+                    enabledEnvironments = setOf(ENV.unit, ENV.local),
+                ),
+            )
+            report("owners", "Owners") {
+                column("email", "Email", "user.email")
+                column("labels", "Labels", "user.labels", combine = ReportCombine.count)
+                excludeEmpty = listOf("email")
+            }
+        }
+        val row = GedraConfigService.get(cxt).writeConfig(writer(), config, trial = true)
+        row.entriesBySlot()[CCT.reportDef].shouldNotBeNull().single()[CCT.reportId] shouldBe "owners"
+        GedraConfigReload.reloadClient(cxt, client)
+        val loaded = GedraConfigLoadService.get(cxt).loadedFor(client).single()
+        loaded.reports.getValue("owners").columns.map { it.columnId } shouldContainExactly listOf("email", "labels")
+        val collector = SchemaCollector.get(cxt).shouldNotBeNull()
+        collector.gedraConfigs.reportsFor(client).map { it.reportId } shouldContain "owners"
+    }
+
+    // A stored report that a later release can no longer read -- planted here by patching the row, since a write
+    // goes through the builder, which refuses it -- costs only itself, and the client and its other reports stay.
+    "a stored report that cannot be read costs only itself at a reload" {
+        val warn = TestInstances.storedConfigWarn("storedReportWarn")
+        val unreadable = "rptunread"
+        val writer = warn.mkSubContext("reportWrite", unreadable).also { it.userId = 9471L }
+        val config = gedraConfig(warn, "main", "client.$unreadable", unreadable) {
+            defineClient(
+                ClientDef(
+                    clientId = unreadable, name = unreadable, usageType = ClientUsageType.dev,
+                    audience = ClientAudience.internal, enabledEnvironments = setOf(ENV.unit, ENV.local),
+                ),
+            )
+            report("kept", "Kept") { column("email", "Email", "user.email") }
+            report("spoilt", "Spoilt") { column("email", "Email", "user.email") }
+        }
+        val svc = GedraConfigService.get(warn)
+        val row = svc.writeConfig(writer, config)
+        svc.patchConfigs(writer) { edit(row.configId) { slots ->
+            slots + (CCT.reportDef to slots.getValue(CCT.reportDef).map { entry ->
+                if (entry[CCT.reportId] != "spoilt") entry
+                else entry + (CCT.definition to (entry[CCT.definition] as Map<*, *>).entries.associate { (k, v) -> k.toString() to v } + (RDEF.reportId to "spoilt id"))
+            })
+        } }.single()
+        val result = GedraConfigReload.reloadClient(warn, unreadable)
+        // The client and its readable report load; the unreadable one is an issue naming it, on the client's list.
+        ClientService.get(warn).present(unreadable).shouldNotBeNull()
+        SchemaCollector.get(warn).shouldNotBeNull().gedraConfigs.reportsFor(unreadable).map { it.reportId } shouldContainExactly listOf("kept")
+        val issue = result.issues.single { it.elementKind == GCEL.report }
+        // Named by its slot key: how the stored config addresses it, and what an editor fixes.
+        issue.elementId shouldBe "spoilt"
+        ClientConfigIssues.get(warn).issuesFor(unreadable).any { it.elementKind == GCEL.report } shouldBe true
+        // An edit of something else in the config keeps the unreadable report as stored, rather than deleting it.
+        svc.patchConfigs(writer) { edit(row.configId) { slots -> slots } }.single()
+        svc.listConfigs(writer).single().entriesBySlot().getValue(CCT.reportDef).map { it[CCT.reportId] } shouldContainExactly
+            listOf("kept", "spoilt")
+    }
+
+    "a stored report under a rooted id is refused at the write" {
+        val config = gedraConfig(cxt, "rooted", "client.$client", client) {
+            report("kdr:mine", "Mine") { column("email", "Email", "user.email") }
+        }
+        shouldThrow<KdrException> { GedraConfigService.get(cxt).writeConfig(writer(), config, trial = true) }
+            .message.shouldNotBeNull() shouldContain "kdr:mine"
+    }
+}

@@ -2,6 +2,7 @@ package com.dynamicruntime.kdn
 
 import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.endpoint.EP
+import com.dynamicruntime.common.endpoint.clientPath
 import com.dynamicruntime.common.gedra.ClientAudience
 import com.dynamicruntime.common.gedra.ClientDef
 import com.dynamicruntime.common.gedra.ClientUsageType
@@ -13,12 +14,14 @@ import com.dynamicruntime.common.gedra.GedraConfigService
 import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.gedra.workflow.SWF
+import com.dynamicruntime.common.gedra.workflow.WCOL
 import com.dynamicruntime.common.gedra.workflow.WFC
 import com.dynamicruntime.common.gedra.workflow.WFD
 import com.dynamicruntime.common.gedra.workflow.WFS
 import com.dynamicruntime.common.gedra.workflow.WSC
 import com.dynamicruntime.common.gedra.workflow.WfEntry
 import com.dynamicruntime.common.gedra.workflow.WfSaveKind
+import com.dynamicruntime.common.gedra.workflow.WfWaitsOn
 import com.dynamicruntime.common.gedra.workflow.ctaFilterByValue
 import com.dynamicruntime.common.gedra.workflow.userHasLabel
 import com.dynamicruntime.common.http.request.ROLE
@@ -30,14 +33,23 @@ import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
 import io.kotest.core.spec.style.StringSpec
+import io.kotest.core.spec.style.stringSpec
 import io.kotest.matchers.shouldBe
 
 /**
  * What waits on whom (issue #1637): the forms listing's `needsMe`, by the rule the save and approve gates apply, judged
  * from stored state. Over a client of its own: a site review whose `describe` task its owner saves (naming nobody), whose
  * approval waits on a reviewer of the site's region, and whose follow-up is the owner's again.
+ *
+ * Also, since issue #1739, the tests that were `HighlightedStartTest`, each kept whole below.
  */
 class WaitingStepsTest : StringSpec({
+    include(waitingStepsTests)
+    include(highlightedStartTests)
+})
+
+/** This file's own tests, as the class describes them. */
+private val waitingStepsTests = stringSpec {
     val cxt = TestInstances.default("waiting1637")
     val client = "waiting1637"
 
@@ -203,4 +215,89 @@ class WaitingStepsTest : StringSpec({
         val resp = owner.client.sendJsonGetRequest(GEP.formDocs, mapOf(GDF.needsMe to true, EP.limit to 1))
         (resp[EP.numAvailable] as? Number)?.toInt() shouldBe 1
     }
-})
+}
+
+/**
+ * A workflow's highlighted Start (issue #1662): while a form is eligible for a workflow that highlights it and is not yet
+ * in it, its first task waits on whoever could act on it -- so the classification makes it their turn and "waiting on
+ * you" lists it -- and on nobody else, who may still engage. Once the form is in, it is the current task as ever.
+ *
+ * Over a client of its own with two workflows that differ only in that: `check`, which highlights its Start, and `plain`,
+ * which does not. Each one's first task is saved by a reviewer (the `reviewer` label) alone, its trait locked to it.
+ */
+private val highlightedStartTests = stringSpec {
+    val cxt = TestInstances.default("highlightedStart1662")
+    val client = "hlstart1662"
+
+    val config = gedraConfig(cxt, "${client}cfg", clientNamespace(client), client) {
+        defineClient(
+            ClientDef(
+                clientId = client, name = client, usageType = ClientUsageType.dev, audience = ClientAudience.internal,
+                enabledEnvironments = setOf(ENV.unit, ENV.local), userLabels = listOf("reviewer"),
+            ),
+        )
+        for ((id, highlight) in listOf("check" to true, "plain" to false)) {
+            // Each its own trait, locked to its task, as a task whose save is restricted must be.
+            trait("${id}Entry", "${id}Verdict", setOf(GedraDataType.formDoc), "The reviewer's check.") { property("verdict", "The verdict.") }
+            workflow(id, WfEntry.normal) {
+                highlightStart = highlight
+                task("${id}Task", "Check the form") {
+                    trait("${id}Verdict")
+                    save("${id}Save", "Save", WfSaveKind.edit)
+                    saveWhen(WFC.reviewer)
+                    function(userHasLabel { label = "reviewer" })
+                }
+                lock("${id}Verdict", writableVia = "${id}Task")
+            }
+        }
+    }
+    GedraConfigService.get(cxt).writeConfig(cxt.mkSubContext("setup", client).also { it.userId = 16620L }, config)
+    GedraConfigReload.reloadClient(cxt, client)
+
+    val owner = TestUser.create(cxt, "owner@$client.test", userClient = client)
+    val admin = TestUser.create(cxt, "admin@$client.test", level = ROLE.admin, userClient = client)
+    val reviewer = TestUser.create(cxt, "reviewer@$client.test", capabilities = listOf(ROLE.editor), userClient = client).also {
+        admin.postData(UADEP.userSetLabels, mapOf(ADF.userId to it.userId, ADF.labels to listOf("reviewer")))
+    }
+
+    /** The steps waiting on [user] in form [gid], by workflow: its task, and whether it is a Start. */
+    fun steps(user: TestUser, gid: String, vararg params: Pair<String, Any?>): Map<String, Pair<String?, Boolean>> =
+        user.client.sendJsonGetRequest(clientPath(GEP.formDocs, client), mapOf(GDF.withStates to true, *params))[EP.items]
+            .toJsonListOfMaps().firstOrNull { it[GDF.gedraId] == gid }?.get(GDF.waitingSteps).toJsonListOfMaps()
+            .associate { it[WFD.workflowId].toOptStr()!! to (it[WFS.ctaTask].toOptStr() to (it[SWF.startsWorkflow] == true)) }
+
+    "a highlighted Start waits on whoever could act on its first task, and is the current task once the form is in" {
+        val gid = owner.postItem(GEP.formDocCreate, mapOf(GDF.entries to emptyList<Any>()))[GDF.gedraId].toOptStr()!!
+        // The reviewer may save the first task, so the highlighting workflow's Start is theirs; the other's is not.
+        steps(reviewer, gid) shouldBe mapOf("check" to ("checkTask" to true))
+        // And "waiting on you" lists the form for them, not for the owner, who may not save it.
+        steps(reviewer, gid, GDF.needsMe to true) shouldBe mapOf("check" to ("checkTask" to true))
+        steps(owner, gid) shouldBe emptyMap()
+        steps(owner, gid, GDF.needsMe to true) shouldBe emptyMap()
+        // It decides nothing about who may engage: the owner, whose turn it is not, engages it.
+        owner.postData(GEP.workflowEngage, mapOf(GDF.gedraId to gid, WFD.workflowId to "check"))
+        steps(reviewer, gid) shouldBe mapOf("check" to ("checkTask" to false))
+        // A workflow that does not highlight its Start waits on the reviewer only once the form is in.
+        owner.postData(GEP.workflowEngage, mapOf(GDF.gedraId to gid, WFD.workflowId to "plain"))
+        steps(reviewer, gid) shouldBe mapOf("check" to ("checkTask" to false), "plain" to ("plainTask" to false))
+    }
+
+    /** Why each of form [gid]'s steps waits on someone other than [user], by workflow: whom it waits on. */
+    fun reasons(user: TestUser, gid: String): Map<String, String?> =
+        user.client.sendJsonGetRequest(clientPath(GEP.formDocs, client), mapOf(GDF.withStates to true))[EP.items]
+            .toJsonListOfMaps().first { it[GDF.gedraId] == gid }[GDF.waitingReasons].toJsonListOfMaps()
+            .associate { it[WFD.workflowId].toOptStr()!! to it[WCOL.waitsOn].toOptStr() }
+
+    "a highlighted Start that waits on someone else is waiting, with the reason its first task gives, to everyone else" {
+        val gid = owner.postItem(GEP.formDocCreate, mapOf(GDF.entries to emptyList<Any>()))[GDF.gedraId].toOptStr()!!
+        // The owner may not save the first task, so the highlighted Start waits on others -- the reason the page gives
+        // when it draws the link waiting (issue #1690). The plain workflow's Start invites nobody, so it has none.
+        reasons(owner, gid) shouldBe mapOf("check" to WfWaitsOn.others.name)
+        // The reviewer's Start is their step, not a reason.
+        reasons(reviewer, gid) shouldBe emptyMap()
+        // Who may engage is unchanged: the owner still engages it, and its first task is then the current one, still
+        // waiting on the reviewer.
+        owner.postData(GEP.workflowEngage, mapOf(GDF.gedraId to gid, WFD.workflowId to "check"))
+        reasons(owner, gid) shouldBe mapOf("check" to WfWaitsOn.others.name)
+    }
+}

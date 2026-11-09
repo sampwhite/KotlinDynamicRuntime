@@ -1,18 +1,26 @@
 package com.dynamicruntime.kdn
 
-import com.dynamicruntime.common.gedra.ClientUsageType
-import com.dynamicruntime.common.gedra.ClientDef
-import com.dynamicruntime.common.gedra.ClientAudience
+import com.dynamicruntime.common.context.CL
 import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.ENVGRP
 import com.dynamicruntime.common.context.EnvVarDef
-import com.dynamicruntime.common.gedra.GCFG
-import com.dynamicruntime.common.gedra.GU
-import com.dynamicruntime.common.context.CL
 import com.dynamicruntime.common.context.KdrCxt
+import com.dynamicruntime.common.context.KdrSchemaStore
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.gedra.CLD
+import com.dynamicruntime.common.gedra.ClientAudience
+import com.dynamicruntime.common.gedra.ClientDef
+import com.dynamicruntime.common.gedra.ClientService
+import com.dynamicruntime.common.gedra.ClientUsageType
+import com.dynamicruntime.common.gedra.GCFG
 import com.dynamicruntime.common.gedra.GID
+import com.dynamicruntime.common.gedra.GU
 import com.dynamicruntime.common.gedra.GedraConfig
+import com.dynamicruntime.common.gedra.GedraConfigReload
+import com.dynamicruntime.common.gedra.GedraConfigService
+import com.dynamicruntime.common.gedra.GedraConfigType
+import com.dynamicruntime.common.gedra.GedraDataType
+import com.dynamicruntime.common.gedra.GedraId
 import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.schema.SCT
@@ -20,11 +28,14 @@ import com.dynamicruntime.common.startup.ComponentDefinition
 import com.dynamicruntime.common.startup.SchemaService
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
+import io.kotest.core.spec.style.stringSpec
 import io.kotest.matchers.collections.shouldContainExactly
+import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.types.shouldBeSameInstanceAs
+import io.kotest.matchers.types.shouldNotBeSameInstanceAs
 
 /**
  * A client's schema variant, built through the real startup path (issue #356).
@@ -33,8 +44,17 @@ import io.kotest.matchers.types.shouldBeSameInstanceAs
  * booted instance actually carries one -- that a client's own config becomes an **overlay** rather than a
  * change to the shared document, which is the distinction a mistake here would erase silently and for
  * everybody.
+ *
+ * Also, since issue #1739, the tests that were `ClientVariantPresenceTest`, `ClientSchemaTest`, each kept whole below.
  */
 class ClientSchemaVariantTest : StringSpec({
+    include(clientSchemaVariantTests)
+    include(clientVariantPresenceTests)
+    include(clientSchemaTests)
+})
+
+/** This file's own tests, as the class describes them. */
+private val clientSchemaVariantTests = stringSpec {
 
     // Its own instance (issue #1075): what the boot builds from VariantFixtureComponent (a client's schema variant) is
     // under test.
@@ -117,8 +137,138 @@ class ClientSchemaVariantTest : StringSpec({
             theirs.additionalProperties shouldBe true
         }
     }
-})
+}
 
+/**
+ * Only a **present** client gets a schema variant (issue #819). Variants were built from every client definition in
+ * the collector, so one the client checks dropped, or one not enabled in this environment, still got a variant built
+ * from its rejected definition -- contrary to "nothing can reach them". Each client here declares its own type, so
+ * a variant, if built, would carry it.
+ */
+private val clientVariantPresenceTests = stringSpec {
+
+    val cxt = TestInstances.storedConfigWarn("variantPresence")
+
+    fun store(client: String, def: ClientDef) {
+        val config = gedraConfig(cxt, "main", clientNamespace(client), client) {
+            defineClient(def)
+            type("Own") {
+                type = SCT.kObject
+                property("text", "Text.")
+            }
+        }
+        val writer = cxt.mkSubContext("presence", client).also { it.userId = 8190L }
+        GedraConfigService.get(cxt).writeConfig(writer, config)
+        GedraConfigReload.reloadClient(cxt, client)
+    }
+
+    fun def(
+        client: String,
+        envs: Set<String> = setOf(ENV.unit, ENV.local),
+        includedTraits: List<String> = emptyList(),
+    ) = ClientDef(
+        clientId = client, name = client, usageType = ClientUsageType.production, audience = ClientAudience.customer,
+        enabledEnvironments = envs, includedTraits = includedTraits,
+    )
+
+    fun hasVariant(client: String): Boolean = "${clientNamespace(client)}.Own" in SchemaService.get(cxt).storeFor(client).defs
+
+    "a present client gets its variant" {
+        store("presentok819", def("presentok819"))
+        hasVariant("presentok819") shouldBe true
+    }
+
+    "a client not enabled in this environment gets none" {
+        store("elsewhere819", def("elsewhere819", envs = setOf(ENV.local)))
+        ClientService.get(cxt).known("elsewhere819").shouldNotBeNull()
+        ClientService.get(cxt).present("elsewhere819").shouldBeNull()
+        hasVariant("elsewhere819") shouldBe false
+    }
+
+    // A customer production client may not include a functional group; the checks drop it (forgiven here, as
+    // stored config is outside unit's strict default), and it gets no variant.
+    "a client the checks dropped gets none" {
+        store("dropped819", def("dropped819", includedTraits = listOf(CLD.allGlobal)))
+        ClientService.get(cxt).present("dropped819").shouldBeNull()
+        hasVariant("dropped819") shouldBe false
+    }
+
+    // A client that stops being present on a reload loses the variant it had.
+    "a client that stops being present loses its variant" {
+        store("fading819", def("fading819"))
+        hasVariant("fading819") shouldBe true
+        store("fading819", def("fading819", envs = setOf(ENV.local)))
+        hasVariant("fading819") shouldBe false
+    }
+}
+
+/**
+ * The context's two schema reads (issue #946): `getGlobalSchema` is the store every client shares, and
+ * `getClientSchema` the store of the client the context is **bound** to -- a client's variant, following a re-bind,
+ * and dropped with the global one when that is reset.
+ */
+private val clientSchemaTests = stringSpec {
+    val cxt = TestInstances.default("clientSchema946")
+    val client = "cschema946"
+    val union = "${GCFG.globalNamespace}.${GU.unionName(GedraDataType.formDoc)}"
+
+    // A client whose stored configuration adds a trait, so its schema is a variant of the global one.
+    val setup = cxt.mkSubContext("setup", client).also { it.userId = 9460L }
+    val svc = GedraConfigService.get(cxt)
+    svc.writeConfig(
+        setup,
+        gedraConfig(cxt, "main", clientNamespace(client), client) {
+            defineClient(
+                ClientDef(
+                    clientId = client, name = client, usageType = ClientUsageType.dev, audience = ClientAudience.internal,
+                    enabledEnvironments = setOf(ENV.unit, ENV.local),
+                ),
+            )
+            trait("NoteEntry", "note946", setOf(GedraDataType.formDoc), "A note.") { property("text", "What it says.") }
+        },
+    )
+    svc.publish(setup, listOf(GedraId.of(GedraConfigType.configDoc, client, "main")))
+    GedraConfigReload.reloadClient(cxt, client)
+
+    fun knowsNote(store: KdrSchemaStore): Boolean = store.types[union]?.variants?.isKnown("note946") == true
+
+    // The instance is shared, and any client's reload republishes every store, so these hold a context to what it
+    // read -- what it contains, and that it keeps reading the same -- rather than to the service's live stores.
+
+    "a context bound to a client that varies the schema reads that client's variant" {
+        val bound = cxt.mkSubContext("bound", client)
+        knowsNote(bound.getClientSchema()) shouldBe true
+        // The global store is the one every client shares, and knows nothing of the client's trait.
+        knowsNote(bound.getGlobalSchema()) shouldBe false
+        bound.getClientSchema() shouldNotBeSameInstanceAs bound.getGlobalSchema()
+        // Read again, the context answers from what it holds.
+        bound.getClientSchema() shouldBeSameInstanceAs bound.getClientSchema()
+    }
+
+    "re-binding the context's client re-resolves; a client that varies nothing reads the global store" {
+        val bound = cxt.mkSubContext("rebound", client)
+        knowsNote(bound.getClientSchema()) shouldBe true
+        bound.client = "nobody946"
+        bound.getClientSchema() shouldBeSameInstanceAs bound.getGlobalSchema()
+        bound.client = client
+        knowsNote(bound.getClientSchema()) shouldBe true
+        // A sub context for another client does not inherit the cached store.
+        bound.mkSubContext("other", "nobody946").getClientSchema() shouldBeSameInstanceAs bound.getGlobalSchema()
+    }
+
+    "dropping the cached global store drops the client store with it" {
+        val bound = cxt.mkSubContext("reset", client)
+        val before = bound.getClientSchema()
+        // A reload publishes a fresh variant; the context keeps what it read until its cache is reset.
+        GedraConfigReload.reloadClient(cxt, client)
+        bound.getClientSchema() shouldBeSameInstanceAs before
+        bound.schemaStore = null
+        bound.getClientSchema() shouldNotBeSameInstanceAs before
+        knowsNote(bound.getClientSchema()) shouldBe true
+    }
+}
+
+// Declared with what was `ClientSchemaVariantTest`.
 /** Contributes a global type and a `hub`-owned alteration of it, so a boot has a variant to build. */
 class VariantFixtureComponent : ComponentDefinition {
     override val providerName: String = "variantFixture"
