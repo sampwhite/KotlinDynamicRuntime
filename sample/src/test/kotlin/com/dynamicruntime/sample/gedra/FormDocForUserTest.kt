@@ -45,7 +45,7 @@ class FormDocForUserTest : StringSpec({
 })
 
 /** This file's own tests, as the class describes them. */
-val formDocForUserTests = stringSpec {
+private val formDocForUserTests = stringSpec {
     val cxt = SampleTestInstances.default("formDocForUser")
 
     fun siteAuditEntries() = listOf(
@@ -150,7 +150,7 @@ val formDocForUserTests = stringSpec {
  * The sample gives `acme` (its own `acmeSiteAudit` trait) and `globex` (whose creation workflow collects
  * `name`), so both surfaces have something concrete to land in.
  */
-val createFormForUserTests = stringSpec {
+private val createFormForUserTests = stringSpec {
     val cxt = SampleTestInstances.default("createFormForUser")
 
     fun siteAuditEntries() = listOf(

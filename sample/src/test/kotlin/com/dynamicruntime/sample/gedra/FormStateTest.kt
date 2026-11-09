@@ -82,7 +82,7 @@ class FormStateTest : StringSpec({
  * declared state trait, and the state union that validates one is built from the sample config's state traits.
  * Its own client, so its assertions see only the entries written here.
  */
-val gedraStateTests = stringSpec {
+private val gedraStateTests = stringSpec {
     val cxt = SampleTestInstances.default("gedraState")
 
     val client = "gstateclient"
@@ -214,7 +214,7 @@ val gedraStateTests = stringSpec {
  * stored `cfacts` state flows into `CFactRegistry.assemble` as target facts. Its own clients, as the other
  * gedra sample tests do.
  */
-val gedraStateDerivationTests = stringSpec {
+private val gedraStateDerivationTests = stringSpec {
     val cxt = SampleTestInstances.default("gedraStateDeriv")
 
     fun service(): GedraDataService = GedraDataService.get(cxt)
@@ -358,7 +358,7 @@ val gedraStateDerivationTests = stringSpec {
  * Driven over HTTP through `TestHttpClient`, since these are endpoints; `sample` because the state entries it
  * writes (`externalId`) are sample-declared. Its own users, as the other sample gedra tests do.
  */
-val gedraStateSurfaceTests = stringSpec {
+private val gedraStateSurfaceTests = stringSpec {
     val cxt = SampleTestInstances.default("gedraStateSurface")
 
     val user = TestUser.create(cxt, "user@statesurface.test")
@@ -434,7 +434,7 @@ val gedraStateSurfaceTests = stringSpec {
  * replaces**. A cache over user content is safe only if it cannot widen an answer, so the scope cases are the
  * point. Its own client, like `gedraStateTests` above.
  */
-val gedraStatesCacheTests = stringSpec {
+private val gedraStatesCacheTests = stringSpec {
     val cxt = SampleTestInstances.default("gedraStatesCache")
 
     val client = "gstatecacheclient"
@@ -559,7 +559,7 @@ val gedraStatesCacheTests = stringSpec {
  * engagement -- a person's choice -- is preserved verbatim, which is what makes "an entry the recompute does
  * not emit is implicitly deleted" safe to rely on.
  */
-val workflowStateFoundationTests = stringSpec {
+private val workflowStateFoundationTests = stringSpec {
     val cxt = SampleTestInstances.default("wfState794")
 
     val create = clientPath(GEP.formDocCreate, SC.acme)

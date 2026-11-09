@@ -51,7 +51,7 @@ class FragmentOverlayTest : StringSpec({
 })
 
 /** This file's own tests, as the class describes them. */
-val fragmentOverlayTests = stringSpec {
+private val fragmentOverlayTests = stringSpec {
 
     val cxt = SampleTestInstances.default("fragOverlay")
 
@@ -218,7 +218,7 @@ val fragmentOverlayTests = stringSpec {
  * The image the sample ships (issue #1339): read from its resources, served under the static root, and named by acme's
  * home page copy, which a deployment carrying the sample loads with no problem found.
  */
-val sampleImageTests = stringSpec {
+private val sampleImageTests = stringSpec {
     val cxt = SampleTestInstances.default("sampleImage")
 
     "the sample's image is served as an SVG by its name and content" {

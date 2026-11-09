@@ -542,6 +542,17 @@ already written. `AuthFlowTest` and `TimeTravelTest` are the worked examples.
   tests could share goes into `TestInstances` instead; within one file, share one instance across its tests rather
   than booting one per test. In the `unit` environment the registry **refuses** a cached name asked for with
   other components or settings, since a cache hit would otherwise ignore them silently.
+- **The `sample` module has its own: `SampleTestInstances` (issue #1736).** `default(cxtName)` is a node with the
+  sample loaded, `reference(cxtName)` the same under the `reference` flavor. The same rules hold, with one more that
+  the sample's fixed clients make easy to break: acme and globex hold every spec's forms, so never list or count a
+  whole client -- find your own forms by owner (`EI.user`) or id. A spec that publishes acme's or globex's
+  configuration, runs a report over a whole client, or counts a client's forms or users boots its own, saying so.
+  Check a spec meant to share with `-Pkdr.concurrentSpecs=4`, which runs specs side by side and so finds a count
+  that only held because nothing else was running.
+- **Merging spec files keeps each one whole.** Where several small specs on one subject become one file, each keeps
+  its body verbatim as a file-private `stringSpec { }` factory under its own KDoc, and the merged class `include`s
+  them (`FormStateTest`, `WorkflowEndpointsTest`): every test keeps its own context, helpers and name, so nothing
+  in a merge can change what a test checks.
 
 - **An in-memory database is one per instance name, and outlives the instance.** Unless `KDR_DB_NAME` names
   it, an in-memory H2 database takes the instance's name (issue #836), and the URL carries `DB_CLOSE_DELAY=-1`,

@@ -1,6 +1,7 @@
 package com.dynamicruntime.sample
 
 import com.dynamicruntime.common.CommonComponent
+import com.dynamicruntime.common.app.APP
 import com.dynamicruntime.common.content.MarkdownFragmentService
 import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.EVSRC
@@ -77,11 +78,22 @@ class FlavorsTest : StringSpec({
         copy(reference, AFRAG.auth, "register")["isEntityLabel"] shouldBe ""
         // A key the flavor does not set is core's either way.
         copy(reference, AFRAG.auth, "register")["isEntityHelp"] shouldBe copy(plain, AFRAG.auth, "register")["isEntityHelp"]
+        // Core's band for a public test deployment falls back to the built-in default; the flavor sets its own (#1697).
+        copy(plain, HFRAG.home, HFRAG.testDeploymentNs)[HFRAG.testDeploymentBand] shouldBe APP.defaultTestDeploymentBand
+        copy(reference, HFRAG.home, HFRAG.testDeploymentNs)[HFRAG.testDeploymentBand] shouldNotBe APP.defaultTestDeploymentBand
+        // Copy that pulls another key takes the flavor's value through the pull: the profile help pulls `helpExtra`,
+        // which only the reference flavor fills (#1330).
+        copy(plain, AFRAG.profile, "users")["help"].orEmpty() shouldContain $$"${@t(\"users.helpExtra\")}"
+        copy(plain, AFRAG.profile, "users")["helpExtra"] shouldBe ""
+        copy(reference, AFRAG.profile, "users")["helpExtra"].orEmpty() shouldNotBe ""
     }
 
     "the reference flavor loads the sample by its default, and an explicit KDR_LOAD_SAMPLE beats that" {
         reference.instanceConfig.resolveEnvVar(SampleComponent.loadSampleEnvVar).source shouldBe EVSRC.flavor
         sampleLoaded(reference) shouldBe true
+        // The sample contributes its own copy to the flavor: the note on the public home page's demos.
+        copy(reference, HFRAG.home, "publicHome")["demosNote"].orEmpty() shouldNotBe ""
+        copy(plain, HFRAG.home, "publicHome")["demosNote"] shouldBe ""
         val withoutSample = boot(
             "flavorsReferenceNoSample",
             mapOf(FLV.deployFlavorsEnvVar.name to FLV.reference, SampleComponent.loadSampleEnvVar.name to "false"),
