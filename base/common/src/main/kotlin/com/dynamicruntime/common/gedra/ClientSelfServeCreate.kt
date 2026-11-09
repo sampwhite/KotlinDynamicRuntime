@@ -40,7 +40,7 @@ object ClientSelfServeCreate {
     /** The length of the id's random part: enough that two people naming their clients alike do not collide. */
     private const val randomLength = 6
 
-    private val randomChars = ('a'..'z') + ('0'..'9')
+    private val randomChars = ('a'..'z') + ('0'..'9').toList()
 
     /** What the create did: the client's create, and the creator's own user in it. */
     class Result(
