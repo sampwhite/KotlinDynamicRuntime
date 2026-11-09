@@ -86,11 +86,11 @@ fun checklistHiddenHere(client: String): Boolean = localStorageGet(checklistHidd
 
 /**
  * The new client's checklist, for Home's card (issue #1639), or null while it is read, when it cannot be, or when not
- * [wanted] -- no card asks for it, or this browser put it away -- and then nothing is read ([useCardRead]). Read again on
- * every refresh, so a step done elsewhere is checked off.
+ * [wanted] -- no card asks for it, or this browser put it away -- and then nothing is read ([useCardRead], which says what
+ * [decidedAt] is). Read again on every refresh, so a step done elsewhere is checked off.
  */
-fun useClientChecklist(wanted: Boolean): ChecklistRead? =
-    useCardRead(wanted, null, "the client's checklist") {
+fun useClientChecklist(wanted: Boolean, decidedAt: Int): ChecklistRead? =
+    useCardRead(wanted, decidedAt, null, "the client's checklist") {
         parseChecklistRead(Http.getApi(UADEP.clientChecklist)[EP.item].toJsonMapOrEmpty())
     }
 

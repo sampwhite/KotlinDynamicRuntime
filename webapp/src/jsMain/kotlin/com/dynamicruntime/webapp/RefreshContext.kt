@@ -76,6 +76,11 @@ fun useRefreshBump(): () -> Unit = use(RefreshContext).bump
  * bump -- the shell, the menu, the users list, the sandbox chip -- or fetches when it mounts, and navigating away
  * unmounts the page that was showing. The bump covers the move that changes no address (already home), which tells
  * nobody. A reload stays for picking up a newly deployed web app, which the next navigation does on its own.
+ *
+ * **A read that a config decides waits for the new caller's config.** The bump arrives while the page still holds the
+ * old caller's config, so a read keyed on the generation is made as the new caller from what the old one was offered:
+ * an administrator's drafts read, made as the editor just switched to, is refused. Such a read keys on the generation
+ * its config was read at instead -- Home's live cards and the public home's demos ([useCardRead]).
  */
 fun afterSessionChange(bump: () -> Unit, to: List<Pair<String, String>> = emptyList()) {
     sessionChangedHere = true

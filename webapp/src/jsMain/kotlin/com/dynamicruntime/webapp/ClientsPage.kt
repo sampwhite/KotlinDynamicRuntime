@@ -84,6 +84,9 @@ val ClientsPage = FC<Props> {
     // The page's own copy (issue #1337): its sections' "What is this?" explanations.
     val pageCopy = usePageCopy(PFRAG.clients)
     var config by useState<HomeConfig?>(null)
+    // The refresh generation [config] was read at, which the next steps' reads key on ([useCardRead]): opening or leaving
+    // a sandbox here changes the caller before their config arrives. -1 until a config has loaded.
+    var configAt by useState(-1)
     var rows by useState<List<ClientOverview>?>(null)
     var loadError by useState<DisplayError?>(null)
     // The endpoint's refusal (a 403), in its words: a designed answer, drawn as the permission panel.
@@ -129,6 +132,7 @@ val ClientsPage = FC<Props> {
             try {
                 val loaded = HomeApi.fetchConfig()
                 config = loaded
+                configAt = generation
                 // Not asked of a caller the shell says may not administer: the panel below says so instead.
                 if (loaded.canManageUsers) rows = ClientsApi.listOverview()
                 loadError = null
@@ -262,8 +266,8 @@ val ClientsPage = FC<Props> {
     val checklistHidden = useMemo(checklistOwner) { checklistOwner != null && checklistHiddenHere(checklistOwner) }
     val assistantOffered = config?.menu.orEmpty().any { it.id == ASST.menuItem }
     val wantsChecklist = nextStepsWanted && !checklistHidden
-    val assistantView = useAssistantCardView(emptyList(), alsoWanted = wantsChecklist && assistantOffered)
-    val nextSteps = useClientChecklist(wantsChecklist)?.let { checklistSteps(it, assistantOffered, assistantView) }
+    val assistantView = useAssistantCardView(emptyList(), configAt, alsoWanted = wantsChecklist && assistantOffered)
+    val nextSteps = useClientChecklist(wantsChecklist, configAt)?.let { checklistSteps(it, assistantOffered, assistantView) }
 
     val current = config
     when {
