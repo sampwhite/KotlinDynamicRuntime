@@ -57,6 +57,10 @@ class ClientChecklistTest : StringSpec({
             CHKL.newForm to false, CHKL.workflow to false, CHKL.invite to false, CHKL.firstForm to false,
         )
         cardIds(founder) shouldContain HCARD.checklist
+        // Drawn above the introduction (issue #1723), which until the founder writes their own is the site's.
+        val card = founder.getData(HEP.homeUiConfig)[UIC.state].toJsonMapOrEmpty()[HCARD.cards].toJsonListOfMaps()
+            .single { it[HFLD.id] == HCARD.checklist }
+        card[HCARD.aboveIntro] shouldBe true
 
         // Someone besides its founder.
         TestUser.create(cxt, "colleague@check1639.test", userClient = client)

@@ -50,6 +50,8 @@ class HomeCard(
     val textCopy: String? = null,
     /** Whether the card is the page's call to action ([HCARD.actionFirst]): its button first, and a button under the title. */
     val actionFirst: Boolean = false,
+    /** Whether Home draws the card above its introduction ([HCARD.aboveIntro]). */
+    val aboveIntro: Boolean = false,
 ) {
     /**
      * Whether the row under Home's title draws this card as a button ([homeCardJumpButtons]), not a link: the page's
@@ -94,6 +96,7 @@ fun homeCardsFrom(raw: Any?): List<HomeCard> = raw.toJsonListOfMaps().mapNotNull
         kind = (card[HCARD.kind] as? String)?.ifBlank { null },
         textCopy = (card[HCARD.textCopy] as? String)?.ifBlank { null },
         actionFirst = card[HCARD.actionFirst] == true,
+        aboveIntro = card[HCARD.aboveIntro] == true,
     )
 }
 

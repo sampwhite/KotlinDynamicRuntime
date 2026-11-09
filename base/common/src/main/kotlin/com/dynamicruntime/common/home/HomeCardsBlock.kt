@@ -72,10 +72,13 @@ fun homeCardsBlock(): UiBlockSource = uiBlock(
         // A new client's checklist (issue #1639): for the administrator of a self-serve client, the few steps that make it
         // useful, checked off from its state. Not inside its sandbox, which has users and forms of its own: the client is
         // set up from the client. Drawn only while a step is left, after the drafts, which finish work already begun.
+        // Above the introduction (issue #1723): a new client lands here, and until its administrator writes its own words
+        // the introduction is the site's, which on a phone would put the list below the first screen.
         homeCard(
             HCARD.checklist, "Getting started",
             "A few steps make your client ready for the people who will use it. Each is checked off once it is done.",
             jumpLabel = "Getting started",
+            aboveIntro = true,
             kind = HCARD.kindNewClientChecklist,
             cfactExpression = "${CFACTS.administersClient},${CFACTS.selfServeClient},~${CFACTS.inSandbox},${CFACTS.app}",
             displayOrder = UIB.orderStep * 3 / 10,

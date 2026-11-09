@@ -143,6 +143,11 @@ fun homeSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.home") {
             "Whether the card is the page's call to action: its button and links before its words, and in place of a link to " +
                 "it under Home's title, a button doing what its button does.",
         ) { type = SCT.boolean }
+        property(
+            HCARD.aboveIntro,
+            "Whether Home draws the card above its introduction, as what the caller came to do, rather than among the cards " +
+                "below it.",
+        ) { type = SCT.boolean }
         property(HCARD.links, "Further links, drawn under the card's text.") {
             type = SCT.array
             items { ref(HTYPE.homeCardLink) }

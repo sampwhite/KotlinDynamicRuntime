@@ -154,6 +154,20 @@ class HomeCardsTest {
     }
 
     @Test
+    fun aCardMayAskToComeBeforeTheIntroduction() {
+        // Issue #1723: a new client's Getting started list, which a long introduction would put below a phone's first screen.
+        val cards = homeCardsFrom(
+            listOf(
+                mapOf(HFLD.id to HCARD.checklist, HCARD.kind to HCARD.kindNewClientChecklist, HCARD.aboveIntro to true),
+                administer,
+            ),
+        )
+        assertEquals(listOf(true, false), cards.map { it.aboveIntro })
+        val (above, below) = cards.partition { it.aboveIntro }
+        assertEquals(listOf(HCARD.checklist) to listOf(HCARD.administer), above.map { it.id } to below.map { it.id })
+    }
+
+    @Test
     fun cardLinksJoinTheCopysRowInItsOwnStyle() {
         val links = listOf("Workflow assistant" to "home.card.assistant")
         // After a list, as list items -- the shipped copy, and the reference flavor's "Start here" before it.

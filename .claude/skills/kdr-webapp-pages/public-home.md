@@ -171,15 +171,18 @@ none of its own.
   to where it is done: the client page's Forms and data panel, Users, or New form. The steps wait for the assistant's
   status where the menu offers it, so the list never grows a step after it is drawn. The card draws while a step is
   left; once every one is done, or **Hide this checklist** is pressed, it is put away in this browser for good
-  (`checklistHiddenKey`, per client, read once per client) and Home stops reading it. The client page opens on the same
-  steps for the same person (issue #1700, the Clients page's file).
+  (`checklistHiddenKey`, per client, read once per client) and Home stops reading it. It is drawn above the home page's
+  introduction (`HCARD.aboveIntro`, issue #1723), since a new client lands here after it is made, and until its
+  administrator writes their own words the introduction is the site's, which on a phone put the list below the first
+  screen. The client page opens on the same steps for the same person (issue #1700, the Clients page's file).
 - **Core's other cards** are shortcuts: **Your client** for an administrator of one client (My client, Users, Reports),
   **Clients and customers** for every client's administrator, **Your client's forms** for an editor, and
   **Operating this deployment** for a deployment operator.
 - **The assistant module's cards** (`ASST.homeCard`, `ASST.createHomeCard`): the workflow assistant, for whoever its
   menu entry is offered to, and "Design your own forms" for a person signed in to `public` where the deployment offers
   the assistant to self-serve clients. The create card asks whether that card was sent (`ownClientAssistantOffered`)
-  and then says the page moves to the assistant once the client is made.
+  and then says the new client's home page starts them on the assistant. A new client lands on its home page either way
+  (issue #1723), whose **Getting started** list leads with switching the assistant on where it is offered.
 - **A card with a `kind`** reads what it needs when it is drawn, never in the polled shell config. The assistant's
   (`ASST.cardKind`) uses the assistant's status, read by Home, and while the person may switch it on its button reads the card's
   `offerLabel` ("Switch on the assistant", `assistantCardActionLabel`) -- in the card, so an overlay rewords it with

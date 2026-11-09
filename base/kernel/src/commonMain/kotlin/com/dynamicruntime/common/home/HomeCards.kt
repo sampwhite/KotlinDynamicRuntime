@@ -57,6 +57,14 @@ object HCARD {
      */
     const val actionFirst = "actionFirst"
 
+    /**
+     * Whether Home draws the card above its introduction rather than among the cards below it (issue #1723): for a card
+     * that is what the caller came to do, which on a phone a long introduction would otherwise put below the first
+     * screen -- a new client's Getting started list, under the site's words until its administrator writes its own.
+     * Absent is false.
+     */
+    const val aboveIntro = "aboveIntro"
+
     /** A card's further links, each a [linkLabel] and a [UIB.action] (a route), drawn under its text. */
     const val links = "links"
 
@@ -144,6 +152,8 @@ fun UiBlockItemsBuilder.homeCard(
     jumpLabel: String? = null,
     /** Whether the card is the page's call to action ([HCARD.actionFirst]): its button first, its link a button. */
     actionFirst: Boolean? = null,
+    /** Whether Home draws the card above its introduction ([HCARD.aboveIntro]). */
+    aboveIntro: Boolean? = null,
     /** Further links, drawn under the text; replaced whole by an overlay that names them. */
     links: List<HomeCardLink>? = null,
     /** The live body the card draws ([HCARD.kind]). */
@@ -163,6 +173,7 @@ fun UiBlockItemsBuilder.homeCard(
         if (offerLabel != null) set(HCARD.offerLabel, offerLabel)
         if (jumpLabel != null) set(HCARD.jumpLabel, jumpLabel)
         if (actionFirst != null) set(HCARD.actionFirst, actionFirst)
+        if (aboveIntro != null) set(HCARD.aboveIntro, aboveIntro)
         if (links != null) {
             set(HCARD.links, links.map { mapOf(HCARD.linkLabel to it.label, UIB.action to it.action.toJson()) })
         }

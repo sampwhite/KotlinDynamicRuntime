@@ -178,6 +178,14 @@ val Home = FC<Props> {
                                 jumpLinks?.let { Markdown { source = it; linkResolver = copyLinks } }
                             }
                         }
+                        // A card that is what the caller came to do comes before the introduction (issue #1723), the rest
+                        // after it; one list split in two, so a card is drawn in exactly one place.
+                        val (aboveIntro, belowIntro) = cards.partition { it.aboveIntro }
+                        HomeCards {
+                            this.cards = aboveIntro
+                            this.reads = reads
+                            this.copy = copy
+                        }
                         copy.opt(HFRAG.homeNs, HFRAG.intro)?.let { Markdown { source = it; linkResolver = copyLinks } }
                         // A note beneath the intro (issue #1221), empty as shipped: room for a component's own word on
                         // a deployment -- a flavor's, say -- without its competing with whoever rewords the intro.
@@ -189,7 +197,7 @@ val Home = FC<Props> {
                         }
                         // The home cards (issue #1636): what this caller can do next, as the backend decided for them.
                         HomeCards {
-                            this.cards = cards
+                            this.cards = belowIntro
                             this.reads = reads
                             this.copy = copy
                         }
