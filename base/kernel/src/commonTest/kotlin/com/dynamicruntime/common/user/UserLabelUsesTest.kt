@@ -3,7 +3,7 @@ package com.dynamicruntime.common.user
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
-/** What a label does, said the one way (issue #1658), on JVM and JS alike. */
+/** What a label does, said the one way (issues #1658, #1661), on JVM and JS alike. */
 class UserLabelUsesTest {
     private val approves = UserLabelUse(UserLabelUseKind.approves, "plan", "Plan", "approve", "Approve it", "kdr:reviewer")
     private val saves = UserLabelUse(UserLabelUseKind.saves, "visit", "Site visit", "followUp", "Record the follow-up", "kdr:reviewer")
@@ -20,4 +20,21 @@ class UserLabelUsesTest {
         assertEquals("Changes what “arrange” in “Plan” shows", UserLabelUse(UserLabelUseKind.tests, "plan", "Plan", "arrange").sentence)
     }
 
+    @Test
+    fun nobodyCarryingALabelSaysWhatGoesUndone() {
+        val details = listOf(
+            UserLabelDetail("reviewer", listOf(approves, sees, shows), carriers = 0),
+            UserLabelDetail("siteLead", listOf(saves), carriers = 0),
+            UserLabelDetail("carried", listOf(approves), carriers = 2),
+            UserLabelDetail("idle", listOf(shows), carriers = 0),
+        )
+        assertEquals(
+            listOf(
+                "Nobody carries “reviewer”, so nobody can approve “Approve it” in “Plan”, and only the client's " +
+                    "administrators can see “Plan”.",
+                "Nobody carries “siteLead”, so nobody can save “Record the follow-up” in “Site visit”.",
+            ),
+            nobodyCarriesWarnings(details),
+        )
+    }
 }

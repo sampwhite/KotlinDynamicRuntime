@@ -16,6 +16,7 @@ import com.dynamicruntime.common.user.UserFilterChoices
 import com.dynamicruntime.common.user.UserFilterKind
 import com.dynamicruntime.common.user.UserFilterOption
 import com.dynamicruntime.common.user.UserSearchFieldSpec
+import com.dynamicruntime.common.user.nobodyCarriesWarnings
 import com.dynamicruntime.common.user.normalizeUserLabels
 import com.dynamicruntime.common.user.userSearchFieldSpecs
 import com.dynamicruntime.common.user.userSearchFieldSpecsByName
@@ -450,12 +451,13 @@ val Users = FC<Props> {
     // The Labels filter offers the suggestions of the client being searched: the one the Client filter names -- which
     // only an `allClients` caller is offered, so a shared link naming another client asks nothing of anyone else --
     // else the caller's own. For an `allClients` caller searching every client, that is their own client's list, and
-    // any other label is typed. Fetched once the well is open, so a page nobody filters asks for nothing.
+    // any other label is typed. Fetched with the list, since the list also says when nobody carries a label some
+    // workflow's work needs (issue #1661); [ensureLabelSuggestions] asks only an administrator's.
     val searchesAllClients = config?.user?.roles?.contains(ROLE.allClients) == true
     val labelFilterClient = textFilters[USF.client]?.trim()?.ifEmpty { null }?.takeIf { searchesAllClients }
         ?: config?.user?.client ?: ""
-    useEffect(filtersOpen, labelFilterClient, config?.canManageUsers, labelFilterClient in labelSuggestions) {
-        if (filtersOpen) ensureLabelSuggestions(labelFilterClient)
+    useEffect(labelFilterClient, config?.canManageUsers, labelFilterClient in labelSuggestions) {
+        ensureLabelSuggestions(labelFilterClient)
     }
 
     /**
@@ -1359,6 +1361,11 @@ val Users = FC<Props> {
             val filtersInForce = userFilterChips(textFilters, rangeFilters)
             val chips = filtersInForce + listOfNotNull(userSortChip(sortBy, descending))
 
+            // Label-gated work nobody can do (issue #1661), for the client being viewed, above Create user.
+            if (!readOnly) {
+                val warnings = nobodyCarriesWarnings(labelSuggestions[labelFilterClient]?.details.orEmpty())
+                if (warnings.isNotEmpty()) labelWarnings(warnings, "Give a user the label to change that: Create user, or open one.")
+            }
             div {
                 className = ClassName("row")
                 // In `public` an administrator creates only users of their own (issue #805), so the ordinary create,
