@@ -328,11 +328,13 @@ fun routeParamsOf(path: String, query: String, fragment: String): Map<String, St
  * fragment. Params with no page
  * are home's, except that an endpoint (`m`) is the catalog's and a document (`doc`) is the documents page's, as the
  * router has always read them. A page with no route, or missing a param its path needs, falls back to home's path
- * with the page in the query, which the router shows as it always showed a page it did not know.
+ * with the page in the query, which the router shows as it always showed a page it did not know. Home named as a page
+ * (the menu's Home, issue #1730) is written as no page, so it has the one address the mark at the left of the bar uses.
  */
 private fun routeUrlOf(params: List<Pair<String, String>>): Triple<String, String, String> {
     val all = LinkedHashMap<String, String>()
     for ((k, v) in params) all[k] = v
+    if (all[HP.page] == HMENU.pageHome) all.remove(HP.page)
     val page = all[HP.page] ?: when {
         HP.method in all -> HMENU.pageCatalog
         HP.doc in all -> HMENU.pageDocs
