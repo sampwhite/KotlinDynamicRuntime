@@ -144,8 +144,9 @@ class FileRefsTest {
 
         fileRefTakesText(takes).let { assertTrue("PNG" in it && "WebP" in it && "2 MB" in it, it) }
         fileRefTakesText(bare).let { assertTrue("MB" !in it && "KB" !in it, it) }
-        // The wording a web asset's slot uses, shared: kinds with no size, a size with no kinds.
-        assertEquals(webAssetTakesText(WebAssetSlot(WAS.favicon, "Favicon", 0, emptyList(), listOf("PNG", "SVG"), null, null)), imageTakesText(listOf("PNG", "SVG"), 0))
+        // The wording a web asset's slot uses too: kinds with no size, a size with no kinds.
+        imageTakesText(listOf("PNG", "SVG"), 0).let { assertTrue("PNG" in it && "KB" !in it && "MB" !in it, it) }
+        imageTakesText(emptyList(), 1024 * 1024).let { assertTrue("1 MB" in it && "PNG" !in it, it) }
         assertNull(fileRefFileProblem(takes, 2L * 1024 * 1024))
         fileRefFileProblem(takes, 3L * 1024 * 1024)!!.let { assertTrue("3 MB" in it && "2 MB" in it, it) }
         // With no limit known the browser says nothing, and the backend does.
@@ -170,7 +171,7 @@ class FileRefsTest {
         // sandbox's view, a file removed as a draft in it too (issue #1188).
         val live = fileRefsIntro(null, hasSandbox = false, staticHere = false)
         assertFalse("draft" in live)
-        assertTrue("draft" in fileRefsIntro(null, hasSandbox = true, staticHere = false))
+        fileRefsIntro(null, hasSandbox = true, staticHere = false).let { assertTrue("draft" in it && "sandbox" in it && "removed" in it, it) }
         val inSandbox = fileRefsIntro("acme", hasSandbox = false, staticHere = false)
         assertTrue("acme" in inSandbox && "draft" in inSandbox)
         // A sandbox's page is a sandbox's page whatever else its row says.
@@ -366,6 +367,11 @@ class FileRefsTest {
         assertEquals(5, removals.toSet().size)
         assertTrue(removals.all { "logo" in it })
         assertTrue("art" in removals[4])
+        // A removal made as a draft is not said with a save's draft line, as something the sandbox "shows"; one from a
+        // draft says it can be put back.
+        val draftLine = savedNote("X.", EDM.draft).removePrefix("X. ")
+        assertTrue(draftLine.isNotBlank() && removals.none { draftLine in it })
+        assertTrue("back" in removals[2])
         assertTrue("logo" in fileRefRestoredNote(FileRefChange("logo", "copy", EDM.draft, ref())))
     }
 

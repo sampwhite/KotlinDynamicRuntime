@@ -762,6 +762,6 @@ class CreateOwnClientTest {
         )
         assertTrue("free_y" in createOwnClientFailureText(absent)!!)
         createOwnClientFailureText(loadFailed)!!.let { assertTrue("free_z" in it && it.endsWith("A trait is missing."), it) }
-        assertTrue(createOwnClientFailureText(noUser)!!.removeSuffix("The plan is full.") != createOwnClientFailureText(absent)!!.replace("free_y", "free_x"))
+        assertEquals(3, setOf(noUser, absent, loadFailed).map { createOwnClientFailureText(it) }.toSet().size)
     }
 }

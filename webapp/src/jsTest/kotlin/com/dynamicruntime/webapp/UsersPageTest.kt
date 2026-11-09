@@ -23,8 +23,8 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Clock
 
-// The Users page's pure rules (issue #1740 gathered these into one file): a row's level and cells, the editor's layout,
-// labels and create form, the person behind a user, a sandbox user, the filter chips and well, and the search's
+// The Users page's pure rules (issue #1740 gathered these into one file): a row's level and cells; the editor's layout,
+// labels, and create form; the person behind a user; a sandbox user; the filter chips and well; and the search's
 // address. Each class is the file it used to be, kept whole with its own helpers.
 
 /** The Users editor's layout (issue #1478): its chips, its structure line, its More options, and its save. */

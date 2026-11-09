@@ -74,6 +74,8 @@ class WebAssetsTest {
     @Test
     fun aSlotSaysWhatItTakesAndWhatItHolds() {
         assertTrue("256 KB" in webAssetTakesText(slot()))
+        // An empty slot says the deployment's image stands in.
+        assertTrue("deployment" in webAssetHoldsText(slot()))
         assertNull(webAssetUploadedText(slot()))
 
         val held = slot(pngFile, by = "Chief One")
@@ -81,6 +83,8 @@ class WebAssetsTest {
         // Who is said only when it was recorded, and a file that came with no name is described without one.
         assertTrue(webAssetUploadedText(held)!!.endsWith("by Chief One"))
         assertFalse(" by " in webAssetUploadedText(slot(pngFile))!!)
+        // A file with neither a date nor an uploader is still said to be an upload, with no who.
+        webAssetUploadedText(slot(WebAssetFile("image/png", 1, "h", "", null)))!!.let { assertTrue(it.isNotBlank() && " by " !in it, it) }
         webAssetHoldsText(slot(WebAssetFile("image/png", 12_345, "h", "", null))).let {
             assertTrue("13 KB" in it && !it.trimEnd().endsWith("·"), it)
         }
@@ -171,7 +175,8 @@ class WebAssetsTest {
         webAssetFileProblem(slot(), 256 * 1024 + 1)!!.let { assertTrue("257 KB" in it && "256 KB" in it, it) }
         // Said in megabytes from the first size that rounds to one, as the limit beside it is.
         val brand = WebAssetSlot(WAS.brandMark, "Brand mark", 1024 * 1024, emptyList(), emptyList(), null, null)
-        webAssetFileProblem(brand, 1024 * 1024 + 1)!!.let { assertTrue("1.1 MB" in it && "1 MB" in it, it) }
+        // The limit is its own "1 MB", not the one inside "1.1 MB".
+        webAssetFileProblem(brand, 1024 * 1024 + 1)!!.let { assertTrue("1.1 MB" in it && "1 MB" in it.replace("1.1 MB", ""), it) }
         // A listing that named no limit leaves the judging to the backend.
         assertNull(webAssetFileProblem(WebAssetSlot(WAS.favicon, "Favicon", 0, emptyList(), emptyList(), null, null), 9_999_999))
     }

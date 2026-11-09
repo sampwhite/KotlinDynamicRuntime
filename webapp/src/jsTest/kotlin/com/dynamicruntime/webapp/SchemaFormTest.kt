@@ -990,7 +990,9 @@ class FieldBoundsTest {
         assertEquals(expected, hint(*schema, words = probe))
         // The shipped line for it evaluates, and says the numbers it was given.
         val shipped = hint(*schema)!!
-        for (n in expected.split(" ").drop(1).take(2).filter { it != "-" }) assertTrue(n in shipped, "$n in '$shipped'")
+        // Each a number of its own, so a 0 is not found inside a 10.
+        val numbers = shipped.split(Regex("[^0-9.]+")).map { it.trimEnd('.') }
+        for (n in expected.split(" ").drop(1).take(2).filter { it != "-" }) assertTrue(n in numbers, "$n in '$shipped'")
     }
 
     @Test
