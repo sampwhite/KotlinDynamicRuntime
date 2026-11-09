@@ -3,12 +3,15 @@ package com.dynamicruntime.webapp
 import com.dynamicruntime.common.assistant.ASST
 import com.dynamicruntime.common.gedra.CHKL
 import com.dynamicruntime.common.gedra.CLD
+import com.dynamicruntime.common.gedra.sandboxOf
 import com.dynamicruntime.common.home.HCARD
 import com.dynamicruntime.common.home.HFLD
 import com.dynamicruntime.common.home.HMENU
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 /** Home's new client checklist (issue #1639): reading the steps, the assistant's step beside them, and when the card shows. */
 class ClientChecklistTest {
@@ -85,5 +88,35 @@ class ClientChecklistTest {
         assertEquals(listOf(HCARD.administer), visibleHomeCards(cards, readsOf(left, hidden = true)).map { it.id })
         // Before its read answers.
         assertEquals(listOf(HCARD.administer), visibleHomeCards(cards, readsOf(emptyList())).map { it.id })
+    }
+
+    @Test
+    fun aSelfServeClientOpensOnItsStepsForItsOwnAdministratorOnly() {
+        // Issue #1700: a client made from the public home page, or its sandbox, shown to its own administrator.
+        assertTrue(clientOpensOnNextSteps("free_pat", acrossClients = false))
+        assertTrue(clientOpensOnNextSteps(sandboxOf("free_pat"), acrossClients = false))
+        // A platform operator keeps the page as it is, and any other client is unchanged.
+        assertFalse(clientOpensOnNextSteps("free_pat", acrossClients = true))
+        assertFalse(clientOpensOnNextSteps("acme", acrossClients = false))
+        assertFalse(clientOpensOnNextSteps("acme_east", acrossClients = false))
+    }
+
+    @Test
+    fun eachStepLeadsToThePanelOfThePageThatDoesIt() {
+        val steps = checklistSteps(
+            ChecklistRead("free_pat", listOf(CHKL.newForm to false, CHKL.workflow to true, CHKL.invite to false, CHKL.firstForm to false)),
+            assistantOffered = true,
+            assistantView = AssistantView.switchOn,
+        )
+        val client = clientNextSteps(steps, inSandbox = false, formsDataShown = true)
+        assertEquals(listOf(null, panelFormsData, panelFormsData, null, null), client.map { it.panel })
+        assertEquals(listOf<String?>(null, null, null, null, null), client.map { it.note })
+        // The rest go to their pages, as Home's card leads them.
+        assertEquals(listOf(HP.page to ASST.page), client.first().step.route)
+        // From the sandbox, the client's own people and forms are the client's, not the sandbox's: said, not linked.
+        val sandbox = clientNextSteps(steps, inSandbox = true, formsDataShown = true)
+        assertEquals(listOf(false, false, false, true, true), sandbox.map { it.note != null })
+        // With no Forms and data panel drawn, a workflow step goes nowhere rather than to a panel that is not there.
+        assertEquals(listOf<String?>(null, null), clientNextSteps(steps.drop(1).take(2), inSandbox = false, formsDataShown = false).map { it.panel })
     }
 }

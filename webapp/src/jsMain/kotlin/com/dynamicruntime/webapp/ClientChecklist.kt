@@ -4,6 +4,8 @@ import com.dynamicruntime.common.assistant.ASST
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.gedra.CHKL
 import com.dynamicruntime.common.gedra.CLD
+import com.dynamicruntime.common.gedra.isSelfServeClient
+import com.dynamicruntime.common.gedra.sandboxParentOf
 import com.dynamicruntime.common.home.HMENU
 import com.dynamicruntime.common.user.UADEP
 import com.dynamicruntime.common.util.toJsonListOfMaps
@@ -128,5 +130,74 @@ fun ChildrenBuilder.checklistCardBody(steps: List<ChecklistStep>, onHide: () -> 
         size = "small"
         onClick = { onHide() }
         +"Hide this checklist"
+    }
+}
+
+/**
+ * Whether the client page opens [clientId] on what to do next (issue #1700): a self-serve client, or its sandbox, shown to
+ * its own administrator. One who sees across clients -- a platform operator -- keeps the page as it is. Pure, and covered
+ * under `jsNodeTest`.
+ */
+fun clientOpensOnNextSteps(clientId: String, acrossClients: Boolean): Boolean =
+    !acrossClients && isSelfServeClient(sandboxParentOf(clientId) ?: clientId)
+
+/**
+ * One step as the client page's "Getting started" panel lists it (issue #1700): the [step], and where it is done -- a
+ * [panel] of the page itself, scrolled to; else a page, the step's own route; or, where neither is right, a [note]
+ * saying where, with no link.
+ */
+class ClientNextStep(val step: ChecklistStep, val panel: String? = null, val note: String? = null)
+
+/**
+ * Where each of [steps] is done, from the client page (issue #1700). Its workflow steps lead to the page's own Forms and
+ * data panel when it is drawn ([formsDataShown]). Inviting someone and a first form are the client's own users and forms,
+ * which a sandbox has apart, so from [inSandbox] they say so rather than lead to the sandbox's. Pure, and covered under
+ * `jsNodeTest`.
+ */
+fun clientNextSteps(steps: List<ChecklistStep>, inSandbox: Boolean, formsDataShown: Boolean): List<ClientNextStep> =
+    steps.map { step ->
+        when {
+            step.id == CHKL.newForm || step.id == CHKL.workflow ->
+                if (formsDataShown) ClientNextStep(step, panel = panelFormsData) else ClientNextStep(step)
+            inSandbox && (step.id == CHKL.invite || step.id == CHKL.firstForm) ->
+                ClientNextStep(step, note = "in your client itself, not its sandbox")
+            else -> ClientNextStep(step)
+        }
+    }
+
+/**
+ * The client page's "Getting started" list (issue #1700), as Home's card draws its steps: each checked when done, and
+ * linked when not -- to its panel of the page, scrolled to, or to its page -- or followed by where it is done.
+ */
+fun ChildrenBuilder.clientNextStepsBody(steps: List<ClientNextStep>) {
+    ul {
+        className = ClassName("home-checklist")
+        for (next in steps) {
+            val step = next.step
+            li {
+                key = step.id.unsafeCast<Key>()
+                className = ClassName(if (step.done) "done" else "todo")
+                span {
+                    className = ClassName("home-checklist-mark")
+                    ariaHidden = true
+                    +(if (step.done) "✓" else "○")
+                }
+                span {
+                    className = ClassName("visually-hidden")
+                    +(if (step.done) "Done: " else "To do: ")
+                }
+                val panel = next.panel
+                val note = next.note
+                when {
+                    step.done -> span { +step.label }
+                    panel != null -> panelLink(panel, step.label)
+                    note != null -> span { +"${step.label} ($note)" }
+                    else -> a {
+                        href = routeHref(step.route)
+                        +step.label
+                    }
+                }
+            }
+        }
     }
 }
