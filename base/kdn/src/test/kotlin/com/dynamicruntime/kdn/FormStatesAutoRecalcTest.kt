@@ -46,7 +46,7 @@ import io.kotest.matchers.shouldBe
  * that takes effect -- here the bundle editor's write, and a workflow's parameters -- brings the forms it reaches up to
  * date at once when the client holds no more forms than the deployment's limit, and says what it did in its result.
  *
- * Its own instance, with the limit at [limit], so a client over it needs only a few forms. A client per case.
+ * Its own instance, with the limit at `limit`, so a client over it needs only a few forms. A client per case.
  */
 class FormStatesAutoRecalcTest : StringSpec({
     val limit = 3
