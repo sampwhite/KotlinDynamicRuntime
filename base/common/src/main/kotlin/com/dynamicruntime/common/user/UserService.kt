@@ -791,19 +791,31 @@ class UserService : ServiceInitializer {
      * the read for the whole client. Through [scope]'s own index when it names this client, so a `public`
      * administrator, confined to their own users, pays for those and not for every self-registered person.
      */
-    fun labelsInUse(cxt: KdrCxt, client: String, scope: ReadScope): List<String> {
+    fun labelsInUse(cxt: KdrCxt, client: String, scope: ReadScope): List<String> =
+        labelsOfUsers(cxt, client, scope).flatten()
+            .sortedWith(String.CASE_INSENSITIVE_ORDER)
+            .distinctBy { it.lowercase() }
+
+    /**
+     * How many of [client]'s active users carry each label (issue #1658), among those [scope] admits, as [labelsInUse]
+     * reads them. Counted **exactly as written**, since that is how a workflow's `userHasLabel` matches a label: a user
+     * carrying `Reviewer` is no `reviewer`.
+     */
+    fun labelCarriers(cxt: KdrCxt, client: String, scope: ReadScope): Map<String, Int> =
+        labelsOfUsers(cxt, client, scope).flatMap { it.distinct() }.groupingBy { it }.eachCount()
+
+    /** Each active user's labels, for those of [client]'s users [scope] admits ([labelsInUse], [labelCarriers]). */
+    fun labelsOfUsers(cxt: KdrCxt, client: String, scope: ReadScope): List<List<String>> {
         val rows = enabledUserRows(cxt, if (scope.client == client) scope else ReadScope.ofClient(client))
-        return rows.flatMap { row ->
+        return rows.mapNotNull { row ->
             val userData = row[AU.authUserData]?.toJsonMap() ?: emptyMap()
             val userId = row[AU.userId].toOptLong()
             val identityId = row[AU.identityId].toOptStr()
             val org = userData[AD.org].toOptStr()?.ifEmpty { null }
             val admitted = userId != null && identityId != null &&
                 scope.admitsUserRow(row[PF.client].toOptStr() ?: "", org, userId, identityId)
-            if (admitted) (userData[AD.labels] as? List<*>)?.mapNotNull { it?.toString() }.orEmpty() else emptyList()
+            if (admitted) (userData[AD.labels] as? List<*>)?.mapNotNull { it?.toString() }.orEmpty() else null
         }
-            .sortedWith(String.CASE_INSENSITIVE_ORDER)
-            .distinctBy { it.lowercase() }
     }
 
     /**

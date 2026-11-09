@@ -16,6 +16,7 @@ import com.dynamicruntime.common.endpoint.schemaModule
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.ClientService
+import com.dynamicruntime.common.gedra.workflow.UserLabelUseReader
 import com.dynamicruntime.common.gedra.PlanLimits
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.http.request.RoleLadder
@@ -555,10 +556,18 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, published: Boolean, 
     ) { c, request ->
         // The same rule as naming a client on create: your own, or any present one with `allClients`.
         val client = assignableClient(c, request[ADF.client].toOptStr(), "read the label suggestions of")
+        val suggested = ClientService.get(c).present(client)?.userLabels ?: emptyList()
+        val scope = ReadScopeRules.forUserAdmin(c)
+        // What each suggested label does (issue #1658): the client's workflows' uses of it, and who carries it.
+        val uses = UserLabelUseReader.usesByLabel(c, client)
+        val carriers = userService(c).labelCarriers(c, client, scope)
         mapOf(
             ADF.client to client,
-            ADF.labels to (ClientService.get(c).present(client)?.userLabels ?: emptyList()),
-            ADF.labelsInUse to userService(c).labelsInUse(c, client, ReadScopeRules.forUserAdmin(c)),
+            ADF.labels to suggested,
+            ADF.labelsInUse to userService(c).labelsInUse(c, client, scope),
+            ULU.details to suggested.map { label ->
+                UserLabelDetail(label, uses[label].orEmpty(), carriers[label] ?: 0).toJsonMap()
+            },
         )
     }
 
@@ -579,6 +588,50 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, published: Boolean, 
             type = SCT.array
             items { type = SCT.string }
         }
+        property(
+            ULU.details,
+            "Each suggested label in the client's order, with what the client's workflows do with it and how many of its " +
+                "active users carry it (issue #1658).",
+            required = true,
+        ) {
+            type = SCT.array
+            items { ref(ADTY.labelDetail) }
+        }
+    }
+
+    type(ADTY.labelDetail) {
+        type = SCT.kObject
+        description = "A label a client suggests: what its workflows do with it, and how many users carry it (issue #1658)."
+        property(ULU.label, "The label.", required = true)
+        property(
+            ULU.uses,
+            "What the client's turned-on workflows do with it, in workflow and task order; empty when none names it.",
+            required = true,
+        ) {
+            type = SCT.array
+            items { ref(ADTY.labelUse) }
+        }
+        property(
+            ULU.carriers,
+            "How many of the client's active users carry it, exactly as written, among those the caller sees.",
+            required = true,
+        ) { type = SCT.integer }
+    }
+
+    type(ADTY.labelUse) {
+        type = SCT.kObject
+        description = "One thing a client's workflow does with a user label (issue #1658)."
+        property(
+            ULU.kind,
+            "`approves`, `saves`, or `tests`: a task's userHasLabel emits a fact its approval rule, its rule for who " +
+                "may save, or only its display names. `sees`: the workflow is restricted to holders of its labels.",
+            required = true,
+        ) { options(UserLabelUseKind.entries) }
+        property(ULU.workflowId, "The workflow.", required = true)
+        property(ULU.workflowLabel, "The workflow's label, as the client's page shows it.", required = true)
+        property(ULU.taskId, "For a task's use: the task.")
+        property(ULU.taskLabel, "For a task's use: the task's label, as the client's page shows it.")
+        property(ULU.cfact, "For a task's use: the fact its userHasLabel emits for a holder.")
     }
 }
 

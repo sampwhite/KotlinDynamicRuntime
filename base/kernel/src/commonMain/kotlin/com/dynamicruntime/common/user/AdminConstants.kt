@@ -626,6 +626,12 @@ object ADTY {
 
     /** What the label-suggestions read returns: a client and the labels it suggests (issue #786). */
     const val labelSuggestions = "UserLabelSuggestions"
+
+    /** A suggested label with what its client's workflows do with it (issue #1658). */
+    const val labelDetail = "UserLabelDetail"
+
+    /** One thing a client's workflow does with a user label (issue #1658). */
+    const val labelUse = "UserLabelUse"
 }
 
 /**
