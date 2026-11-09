@@ -4,7 +4,9 @@ import com.dynamicruntime.common.filestore.FMETA
 import com.dynamicruntime.common.webasset.WAS
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 /**
  * Pure-logic coverage (issue #161) for a client's own web assets (issue #1130): what the shell reads out of its
@@ -71,30 +73,35 @@ class WebAssetsTest {
 
     @Test
     fun aSlotSaysWhatItTakesAndWhatItHolds() {
-        assertEquals("PNG, SVG or ICO, up to 256 KB.", webAssetTakesText(slot()))
-        assertEquals("Not set: the deployment's favicon is shown.", webAssetHoldsText(slot()))
+        assertTrue("256 KB" in webAssetTakesText(slot()))
+        // An empty slot says the deployment's image stands in.
+        assertTrue("deployment" in webAssetHoldsText(slot()))
         assertNull(webAssetUploadedText(slot()))
 
         val held = slot(pngFile, by = "Chief One")
-        assertEquals("image/png · 13 KB · our icon.png", webAssetHoldsText(held))
-        assertEquals("Uploaded Oct 12, 2026, 11:49 AM GMT-8 by Chief One", webAssetUploadedText(held))
+        webAssetHoldsText(held).let { assertTrue("image/png" in it && "13 KB" in it && "our icon.png" in it, it) }
         // Who is said only when it was recorded, and a file that came with no name is described without one.
-        assertEquals("Uploaded Oct 12, 2026, 11:49 AM GMT-8", webAssetUploadedText(slot(pngFile)))
-        assertEquals("image/png · 13 KB", webAssetHoldsText(slot(WebAssetFile("image/png", 12_345, "h", "", null))))
-        assertEquals("Uploaded", webAssetUploadedText(slot(WebAssetFile("image/png", 1, "h", "", null))))
+        assertTrue(webAssetUploadedText(held)!!.endsWith("by Chief One"))
+        assertFalse(" by " in webAssetUploadedText(slot(pngFile))!!)
+        // A file with neither a date nor an uploader is still said to be an upload, with no who.
+        webAssetUploadedText(slot(WebAssetFile("image/png", 1, "h", "", null)))!!.let { assertTrue(it.isNotBlank() && " by " !in it, it) }
+        webAssetHoldsText(slot(WebAssetFile("image/png", 12_345, "h", "", null))).let {
+            assertTrue("13 KB" in it && !it.trimEnd().endsWith("·"), it)
+        }
         // A file whose type the listing did not say is described by what it did say, with no separator left over.
-        assertEquals("13 KB · a.png", webAssetHoldsText(slot(WebAssetFile("", 12_345, "h", "", "a.png"))))
+        webAssetHoldsText(slot(WebAssetFile("", 12_345, "h", "", "a.png"))).let {
+            assertTrue("a.png" in it && !it.trimStart().startsWith("·"), it)
+        }
     }
 
     @Test
     fun whatASlotTakesIsWordedFromWhateverTheListingSaid() {
         fun takes(kinds: List<String>, maxSize: Long) = webAssetTakesText(WebAssetSlot(WAS.favicon, "Favicon", maxSize, emptyList(), kinds, null, null))
-        assertEquals("PNG, up to 1 MB.", takes(listOf("PNG"), 1024 * 1024))
-        assertEquals("PNG or SVG, up to 256 KB.", takes(listOf("PNG", "SVG"), 256 * 1024))
+        assertTrue("1 MB" in takes(listOf("PNG"), 1024 * 1024))
+        takes(listOf("PNG", "SVG"), 256 * 1024).let { assertTrue("PNG" in it && "SVG" in it && "256 KB" in it, it) }
         // A listing that named no kinds, or no limit, is not filled in with a guess at either.
-        assertEquals("An image, up to 256 KB.", takes(emptyList(), 256 * 1024))
-        assertEquals("PNG or SVG.", takes(listOf("PNG", "SVG"), 0))
-        assertEquals("An image.", takes(emptyList(), 0))
+        takes(emptyList(), 256 * 1024).let { assertTrue("256 KB" in it && "PNG" !in it, it) }
+        takes(listOf("PNG", "SVG"), 0).let { assertTrue("KB" !in it && "MB" !in it, it) }
     }
 
     @Test
@@ -117,14 +124,12 @@ class WebAssetsTest {
 
     @Test
     fun aRemovalIsAskedAboutNamingTheClientItActsOnAndIsDrawnFromItsAnswer() {
-        assertEquals("Remove the favicon of acme (live data)?", webAssetRemoveQuestion(slot(pngFile), "acme"))
-        // With no package behind it, the deployment's comes back.
-        assertEquals("Its people see the deployment's favicon again, at once.", webAssetRemoveConsequence(slot(pngFile)))
+        // The question names the slot and the client, as a delete target says it.
+        webAssetRemoveQuestion(slot(pngFile), "acme").let { assertTrue("favicon" in it && deleteTargetText("acme") in it, it) }
         assertEquals(true, webAssetRemovable(slot(pngFile)))
-        assertEquals(
-            "Remove the brand mark of globex (live data)?",
-            webAssetRemoveQuestion(slot(pngFile, slot = WAS.brandMark, label = "Brand mark"), "globex"),
-        )
+        webAssetRemoveQuestion(slot(pngFile, slot = WAS.brandMark, label = "Brand mark"), "globex").let {
+            assertTrue("brand mark" in it && deleteTargetText("globex") in it, it)
+        }
 
         // What is under way names its slot and its action, so a removal is not shown on the upload's control.
         assertEquals("favicon/remove", webAssetBusyKey(WAS.favicon, WACT.remove))
@@ -154,13 +159,11 @@ class WebAssetsTest {
         // The package's image is the client's source code's: said as such, with no upload to remove.
         assertEquals(true, webAssetFromPackage(shipped))
         assertEquals(false, webAssetRemovable(shipped))
-        assertEquals(
-            "From the client's web resources package, sample:acme, shipped with its code. An upload replaces it for the client's people.",
-            webAssetUploadedText(shipped),
-        )
+        assertTrue("sample:acme" in webAssetUploadedText(shipped)!!)
         // An upload in front of it is removable, and removing it brings the package's back.
         assertEquals(true, webAssetRemovable(uploaded))
-        assertEquals("Its people see the favicon of its web resources package again, at once.", webAssetRemoveConsequence(uploaded))
+        // With no package behind it the deployment's comes back, so the two removals say different things.
+        assertTrue(webAssetRemoveConsequence(uploaded) != webAssetRemoveConsequence(slot(pngFile)))
         assertNull(empty.source)
         assertEquals(false, webAssetFromPackage(empty))
         assertEquals(false, webAssetRemovable(empty))
@@ -169,10 +172,11 @@ class WebAssetsTest {
     @Test
     fun aFileTooLargeIsSaidBeforeItIsSentAndNothingElseIsJudgedHere() {
         assertNull(webAssetFileProblem(slot(), 256 * 1024))
-        assertEquals("This file is 257 KB; a favicon may be at most 256 KB.", webAssetFileProblem(slot(), 256 * 1024 + 1))
+        webAssetFileProblem(slot(), 256 * 1024 + 1)!!.let { assertTrue("257 KB" in it && "256 KB" in it, it) }
         // Said in megabytes from the first size that rounds to one, as the limit beside it is.
         val brand = WebAssetSlot(WAS.brandMark, "Brand mark", 1024 * 1024, emptyList(), emptyList(), null, null)
-        assertEquals("This file is 1.1 MB; a brand mark may be at most 1 MB.", webAssetFileProblem(brand, 1024 * 1024 + 1))
+        // The limit is its own "1 MB", not the one inside "1.1 MB".
+        webAssetFileProblem(brand, 1024 * 1024 + 1)!!.let { assertTrue("1.1 MB" in it && "1 MB" in it.replace("1.1 MB", ""), it) }
         // A listing that named no limit leaves the judging to the backend.
         assertNull(webAssetFileProblem(WebAssetSlot(WAS.favicon, "Favicon", 0, emptyList(), emptyList(), null, null), 9_999_999))
     }

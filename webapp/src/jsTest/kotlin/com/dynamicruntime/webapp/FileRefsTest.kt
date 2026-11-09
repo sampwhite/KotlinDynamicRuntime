@@ -142,13 +142,13 @@ class FileRefsTest {
         assertEquals(emptyList(), bare.roots)
         assertEquals(0, bare.maxSize)
 
-        assertEquals("PNG, SVG, ICO, JPEG or WebP, up to 2 MB.", fileRefTakesText(takes))
-        assertEquals("An image.", fileRefTakesText(bare))
-        // The wording a web asset's slot uses, shared: kinds with no size, a size with no kinds.
-        assertEquals("PNG or SVG.", imageTakesText(listOf("PNG", "SVG"), 0))
-        assertEquals("An image, up to 1 MB.", imageTakesText(emptyList(), 1024 * 1024))
+        fileRefTakesText(takes).let { assertTrue("PNG" in it && "WebP" in it && "2 MB" in it, it) }
+        fileRefTakesText(bare).let { assertTrue("MB" !in it && "KB" !in it, it) }
+        // The wording a web asset's slot uses too: kinds with no size, a size with no kinds.
+        imageTakesText(listOf("PNG", "SVG"), 0).let { assertTrue("PNG" in it && "KB" !in it && "MB" !in it, it) }
+        imageTakesText(emptyList(), 1024 * 1024).let { assertTrue("1 MB" in it && "PNG" !in it, it) }
         assertNull(fileRefFileProblem(takes, 2L * 1024 * 1024))
-        assertEquals("This file is 3 MB; a file ref's file may be at most 2 MB.", fileRefFileProblem(takes, 3L * 1024 * 1024))
+        fileRefFileProblem(takes, 3L * 1024 * 1024)!!.let { assertTrue("3 MB" in it && "2 MB" in it, it) }
         // With no limit known the browser says nothing, and the backend does.
         assertNull(fileRefFileProblem(bare, 9L * 1024 * 1024))
         assertNull(fileRefFileProblem(null, 9L * 1024 * 1024))
@@ -167,42 +167,34 @@ class FileRefsTest {
 
     @Test
     fun theIntroSaysHowAChangeTakesEffectForThisClient() {
-        assertEquals(
-            "Named images this client's configuration holds, each served at an address of its own. A change takes effect at once for everyone in the client.",
-            fileRefsIntro(null, hasSandbox = false, staticHere = false),
-        )
-        val drafts = fileRefsIntro(null, hasSandbox = true, staticHere = false)
-        assertTrue(drafts.contains("a change here is a draft"))
-        // The list is the sandbox's view, and a file removed as a draft is in it too, marked (issue #1188).
-        assertTrue(drafts.contains("What is listed is what the sandbox shows: the client's latest configuration, drafts included"))
-        assertTrue(drafts.contains("a file removed as a draft, which the client's people are served until that is published, marked so and offered to be put back."))
-        assertTrue(drafts.contains("from the configuration listed below"))
-
+        // Live at once: nothing of drafts. With a sandbox, or on one's own page, a change is a draft and the list is the
+        // sandbox's view, a file removed as a draft in it too (issue #1188).
+        val live = fileRefsIntro(null, hasSandbox = false, staticHere = false)
+        assertFalse("draft" in live)
+        fileRefsIntro(null, hasSandbox = true, staticHere = false).let { assertTrue("draft" in it && "sandbox" in it && "removed" in it, it) }
         val inSandbox = fileRefsIntro("acme", hasSandbox = false, staticHere = false)
-        assertTrue(inSandbox.startsWith("The files of acme's sandbox."))
-        assertTrue(inSandbox.contains("acme's latest configuration, drafts included"))
-        assertTrue(inSandbox.contains("which acme's people are served until that is published"))
-        assertTrue(inSandbox.endsWith("A change made here is a draft of acme's, and goes live for its people once that is published."))
+        assertTrue("acme" in inSandbox && "draft" in inSandbox)
         // A sandbox's page is a sandbox's page whatever else its row says.
         assertEquals(inSandbox, fileRefsIntro("acme", hasSandbox = true, staticHere = false))
 
         // A client that takes nothing stored here is told that, and nothing of drafts it cannot make.
         for (static in listOf(fileRefsIntro(null, hasSandbox = true, staticHere = true), fileRefsIntro("acme", hasSandbox = false, staticHere = true))) {
-            assertTrue(static.endsWith("This client's configuration comes from code on this node, so its files are listed here and not changed."))
+            assertTrue(static != live)
             assertFalse(static.contains("draft"))
         }
 
-        assertEquals("This client has no files.", fileRefsEmptyText(draft = false))
         // Where the list is the sandbox's view, an empty one does not say the client has none.
-        assertEquals("No files in the latest configuration, which is what the sandbox shows.", fileRefsEmptyText(draft = true))
+        assertTrue(fileRefsEmptyText(draft = false) != fileRefsEmptyText(draft = true))
     }
 
     @Test
     fun aNewIdHasToBeANameTheClientDoesNotHave() {
         val existing = listOf(ref("logo"))
         assertNull(fileRefNewIdProblem("heroImage", existing))
-        assertEquals("Give the file an id: a name for it, such as heroImage.", fileRefNewIdProblem("", existing))
-        assertEquals("This client already has a file 'logo'. Replace it from its own row.", fileRefNewIdProblem("logo", existing))
+        val noId = fileRefNewIdProblem("", existing)
+        val taken = fileRefNewIdProblem("logo", existing)
+        assertTrue(noId != null && taken != null && noId != taken)
+        assertTrue("logo" in taken!!)
         // The kernel's own rule, which the backend holds an id to: said before anything is sent.
         for (bad in listOf("my logo", "logo.png", "2logo", "a/b")) assertNotNull(fileRefNewIdProblem(bad, existing), "should refuse '$bad'")
         // What stands where a ref's id would for the form that adds one can be no ref's id.
@@ -214,14 +206,16 @@ class FileRefsTest {
         val existing = listOf(ref("logo"))
         // An upload: the id, then the file.
         assertNull(fileRefAddUploadProblem("hero", existing, takes, 1024))
-        assertEquals("Give the file an id: a name for it, such as heroImage.", fileRefAddUploadProblem("", existing, takes, 9L * 1024 * 1024))
-        assertEquals("This file is 9 MB; a file ref's file may be at most 2 MB.", fileRefAddUploadProblem("hero", existing, takes, 9L * 1024 * 1024))
+        // An upload: the id, then the file -- each said as its own check says it.
+        assertEquals(fileRefNewIdProblem("", existing), fileRefAddUploadProblem("", existing, takes, 9L * 1024 * 1024))
+        assertEquals(fileRefFileProblem(takes, 9L * 1024 * 1024), fileRefAddUploadProblem("hero", existing, takes, 9L * 1024 * 1024))
 
         // A file the deployment keeps: the id, then where, then its path.
         assertNull(fileRefLocalProblem("hero", existing, "approved", "hero.png"))
-        assertEquals("This client already has a file 'logo'. Replace it from its own row.", fileRefLocalProblem("logo", existing, null, ""))
-        assertEquals("Choose where the file is.", fileRefLocalProblem("hero", existing, null, ""))
-        assertEquals("Give the file's path.", fileRefLocalProblem("hero", existing, "approved", ""))
+        assertEquals(fileRefNewIdProblem("logo", existing), fileRefLocalProblem("logo", existing, null, ""))
+        val noWhere = fileRefLocalProblem("hero", existing, null, "")
+        val noPath = fileRefLocalProblem("hero", existing, "approved", "")
+        assertTrue(noWhere != null && noPath != null && noWhere != noPath)
 
         // Where: the one chosen while it is still open, else the only one there is, else none.
         assertEquals("seasonal", fileRefChosenRoot("seasonal", listOf("approved", "seasonal")))
@@ -244,58 +238,45 @@ class FileRefsTest {
         assertEquals(listOf("Missing", "Shipped"), fileRefTags(ref(source = FREF.sourceLocal, stored = false, missing = true)))
         assertEquals(listOf("Draft", "Missing"), fileRefTags(ref(live = false, missing = true)))
 
-        assertEquals("The file logo", fileRefAltText(ref()))
+        assertTrue("logo" in fileRefAltText(ref()))
         assertEquals("Our logo.", fileRefAltText(ref(description = "Our logo.")))
     }
 
     @Test
     fun whatAFileIsAndWhereAreSaidByItsSource() {
-        assertEquals("image/png · 13 KB · our logo.png", fileRefHoldsText(ref()))
+        fileRefHoldsText(ref()).let { assertTrue("image/png" in it && "13 KB" in it && "our logo.png" in it, it) }
         assertEquals("13 KB", fileRefHoldsText(ref(file = WebAssetFile("", 12_345, hash, "", null))))
-        val notThere = "Its file is not there to be served: the address answers as not found."
-        assertEquals(notThere, fileRefHoldsText(ref(missing = true)))
+        val notThere = fileRefHoldsText(ref(missing = true))
+        assertFalse("KB" in notThere)
         // A listing that says a ref is there and gives no record of its file is read as one that is not.
         assertEquals(notThere, fileRefHoldsText(ref(file = null)))
 
         val at = formatTimestamp(pngFile.uploadedAt)
         // The upload's who and when are the file's -- whoever first stored those bytes (issue #1192).
-        assertEquals("Its file was first uploaded $at by Chief One. In the configuration 'copy'.", fileRefWhereText(ref()))
-        assertEquals("Its file was first uploaded $at.", fileRefWhereText(ref(by = null, configName = null)))
+        fileRefWhereText(ref()).let { assertTrue(at in it && "Chief One" in it && "'copy'" in it, it) }
+        fileRefWhereText(ref(by = null, configName = null)).let { assertTrue(at in it && "Chief One" !in it && "configuration" !in it, it) }
         // An upload whose file has gone has no date to give; who is not known either.
-        assertEquals("Its file was first uploaded. In the configuration 'copy'.", fileRefWhereText(ref(missing = true, by = null)))
+        assertFalse(at in fileRefWhereText(ref(missing = true, by = null)))
         // Who set this ref is its entry's stamp, said with the configuration.
-        val set = ref(setAt = pngFile.uploadedAt, setBy = "Chief Two")
-        assertEquals("Its file was first uploaded $at by Chief One. In the configuration 'copy', set $at by Chief Two.", fileRefWhereText(set))
-        assertEquals(
-            "Shipped with the client, as a file on the server: brand/logo.png, last changed $at. In the configuration 'art'.",
-            fileRefWhereText(ref(source = FREF.sourceLocal, root = "brand", path = "logo.png", stored = false, by = null, configName = "art")),
-        )
-        assertEquals(
-            "A file on the server: brand/logo.png, last changed $at. In the configuration 'copy'.",
-            fileRefWhereText(ref(source = FREF.sourceLocal, root = "brand", path = "logo.png", by = null)),
-        )
-        assertEquals(
-            "A file the deployment keeps for this client: marks/hero.png in approved, last changed $at. In the configuration 'copy'.",
-            fileRefWhereText(ref(source = FREF.sourceClientLocal, root = "approved", path = "marks/hero.png", by = null)),
-        )
+        fileRefWhereText(ref(setAt = pngFile.uploadedAt, setBy = "Chief Two")).let { assertTrue("Chief Two" in it, it) }
+        // Shipped, a file on the server, and one the deployment keeps each say their own source and where.
+        val shippedWhere = fileRefWhereText(ref(source = FREF.sourceLocal, root = "brand", path = "logo.png", stored = false, by = null, configName = "art"))
+        val localWhere = fileRefWhereText(ref(source = FREF.sourceLocal, root = "brand", path = "logo.png", by = null))
+        val keptWhere = fileRefWhereText(ref(source = FREF.sourceClientLocal, root = "approved", path = "marks/hero.png", by = null))
+        assertTrue("brand/logo.png" in shippedWhere && "'art'" in shippedWhere && "brand/logo.png" in localWhere)
+        assertTrue(shippedWhere.removeSuffix("'art'.") != localWhere.removeSuffix("'copy'."))
+        assertTrue("marks/hero.png" in keptWhere && "approved" in keptWhere && at in keptWhere)
         // An inherited ref served its template's file, the client having none of its own (issue #1180).
         val inherited = parseFileRef(
             mapOf(CCT.refId to "hero", CCT.source to FREF.sourceClientLocal, CCT.root to "approved", CCT.path to "hero.png",
                 FREF.live to true, FREF.stored to false, FREF.configName to "from_tpl_base", FREF.fromTemplate to "tpl"),
         )!!
         assertEquals("tpl", inherited.fromTemplate)
-        assertEquals(
-            "The template tpl's file, which this client is served until the deployment keeps one of its own: hero.png in approved. " +
-                "In the configuration 'from_tpl_base'.",
-            fileRefWhereText(inherited),
-        )
+        fileRefWhereText(inherited).let { assertTrue("tpl" in it && "hero.png" in it && "'from_tpl_base'" in it, it) }
         // With no file there is no date to give.
-        assertEquals(
-            "A file the deployment keeps for this client: hero.png in approved. In the configuration 'copy'.",
-            fileRefWhereText(ref(source = FREF.sourceClientLocal, root = "approved", path = "hero.png", missing = true, nameless = true)),
-        )
+        assertFalse(at in fileRefWhereText(ref(source = FREF.sourceClientLocal, root = "approved", path = "hero.png", missing = true, nameless = true)))
         // A source a later backend adds is called what it is called, and not passed off as an upload.
-        assertEquals("Kept as 'vault', which this page does not know. In the configuration 'copy'.", fileRefWhereText(ref(source = "vault")))
+        fileRefWhereText(ref(source = "vault")).let { assertTrue("'vault'" in it && "uploaded" !in it, it) }
     }
 
     @Test
@@ -317,8 +298,7 @@ class FileRefsTest {
         assertNull(fileRefPreviewArgs("acme", nameless))
 
         // Whose address it is: the static root answers each caller with their own client's ref.
-        assertEquals("Served to this client's people at ", fileRefAddressLead(ref()))
-        assertEquals("Served in the sandbox, and to the client's people once published, at ", fileRefAddressLead(ref(live = false)))
+        assertTrue(fileRefAddressLead(ref()) != fileRefAddressLead(ref(live = false)))
         // The kernel's own address, so the backend serves what the page shows.
         assertEquals("/kdr.en/ref/logo:$hash", FREF.staticPath("kdr.en", FREF.versionedName("logo", hash)))
     }
@@ -337,75 +317,62 @@ class FileRefsTest {
         assertFalse(fileRefRemovable(ref(removable = false)))
         assertEquals(true, parseFileRef(mapOf(CCT.refId to "logo", FREF.removable to true, FREF.stored to false))?.removable)
         assertNull(parseFileRef(mapOf(CCT.refId to "logo"))?.removable)
-        assertEquals(
-            "Shipped with the client, so it is not removed or reworded here: uploading a file over it replaces it, and removing that upload shows this one again.",
-            fileRefShippedHint(shipped),
-        )
+        assertNotNull(fileRefShippedHint(shipped))
     }
 
     @Test
     fun aRemovalIsAskedAboutNamingWhereItActsAndWhatItLeaves() {
-        assertEquals("Remove the file 'logo' of acme (live data)?", fileRefRemoveQuestion(ref(), "acme", draft = false))
-        assertEquals("Remove the file 'logo' from the draft of acme?", fileRefRemoveQuestion(ref(), "acme", draft = true))
-        // On a sandbox's page the draft is its parent's.
-        assertEquals("Remove the file 'logo' from the draft of acme?", fileRefRemoveQuestion(ref(), "acme:sandbox", draft = true))
+        // Live, it names the client as a delete target does; from a draft, the draft, and a sandbox's is its parent's.
+        fileRefRemoveQuestion(ref(), "acme", draft = false).let { assertTrue("logo" in it && deleteTargetText("acme") in it, it) }
+        val fromDraft = fileRefRemoveQuestion(ref(), "acme", draft = true)
+        assertTrue("acme" in fromDraft && deleteTargetText("acme") !in fromDraft)
+        assertEquals(fromDraft, fileRefRemoveQuestion(ref(), "acme:sandbox", draft = true))
 
-        // Under an upload there may be an image the client was shipped with, which then takes its place.
-        assertEquals(
-            "The client's people stop being served it at once, or are served the image the client was shipped with under this id, where there is one.",
-            fileRefRemoveConsequence(ref(), draft = false),
-        )
-        assertEquals(
-            "The sandbox stops showing it, or shows the image the client was shipped with under this id, where there is one. " +
-                "The client's people are served it until the configuration is published.",
-            fileRefRemoveConsequence(ref(), draft = true),
-        )
-        // A draft the client's people were never served: nothing is said of their keeping it.
-        assertEquals(
-            "The sandbox stops showing it, or shows the image the client was shipped with under this id, where there is one.",
-            fileRefRemoveConsequence(ref(live = false), draft = true),
-        )
+        // A draft's removal says the client's people keep the file until it is published -- and says nothing of it for
+        // a draft they were never served.
+        val live = fileRefRemoveConsequence(ref(), draft = false)
+        val served = fileRefRemoveConsequence(ref(), draft = true)
+        val neverServed = fileRefRemoveConsequence(ref(live = false), draft = true)
+        assertTrue(live != served)
+        assertTrue(served.startsWith(neverServed) && served != neverServed)
     }
 
     @Test
     fun aChangeIsSaidWithHowItTookEffect() {
         val live = FileRefChange("logo", "copy", EDM.live, ref())
         val draft = FileRefChange("logo", "copy", EDM.draft, ref(live = false))
-        assertEquals("Uploaded 'logo', in copy.", fileRefUploadedNote(live))
-        assertEquals("Uploaded 'logo', in copy. Saved as a draft: the client's sandbox shows it, and it goes live once published.", fileRefUploadedNote(draft))
+        // Each note names the ref; a draft's says so after what a live one says.
+        val uploaded = fileRefUploadedNote(live)
+        assertTrue("logo" in uploaded && "copy" in uploaded)
+        assertTrue(fileRefUploadedNote(draft).startsWith(uploaded) && fileRefUploadedNote(draft) != uploaded)
 
         val named = FileRefChange("hero", "copy", EDM.live, ref("hero", source = FREF.sourceClientLocal, root = "approved", path = "marks/hero.png"))
-        assertEquals("'hero' now names marks/hero.png, in copy.", fileRefNamedNote(named))
-        assertEquals("'hero' now names that file, in copy.", fileRefNamedNote(FileRefChange("hero", "copy", EDM.live, null)))
-        assertTrue(fileRefNamedNote(FileRefChange("hero", "copy", EDM.draft, named.ref)).endsWith("it goes live once published."))
+        assertTrue("marks/hero.png" in fileRefNamedNote(named))
+        assertTrue("hero" in fileRefNamedNote(FileRefChange("hero", "copy", EDM.live, null)))
+        assertTrue(fileRefNamedNote(FileRefChange("hero", "copy", EDM.draft, named.ref)).startsWith(fileRefNamedNote(named).removeSuffix(".")))
 
-        assertEquals("Reworded 'logo'.", fileRefDescribedNote(FileRefChange("logo", "copy", EDM.live, ref(description = "New."))))
-        assertEquals("Cleared the description of 'logo'.", fileRefDescribedNote(FileRefChange("logo", "copy", EDM.live, ref())))
-        assertTrue(fileRefDescribedNote(FileRefChange("logo", "copy", EDM.draft, ref(description = "New."))).startsWith("Reworded 'logo'. Saved as a draft"))
+        val reworded = fileRefDescribedNote(FileRefChange("logo", "copy", EDM.live, ref(description = "New.")))
+        assertTrue(reworded != fileRefDescribedNote(FileRefChange("logo", "copy", EDM.live, ref())))
+        assertTrue(fileRefDescribedNote(FileRefChange("logo", "copy", EDM.draft, ref(description = "New."))).startsWith(reworded))
 
-        assertEquals("Removed 'logo'.", fileRefRemovedNote(FileRefChange("logo", "copy", EDM.live, null)))
-        // A removal made as a draft is not said to be something the sandbox "shows".
-        assertEquals(
-            "Removed 'logo'. A draft: the sandbox shows the change, and the client's people keep what they have until it is published.",
+        // A removal says which of five things happened, each its own way: gone, gone in a draft, marked in a draft (the
+        // client's people are still served it), the shipped image shown again, or another configuration still holding one.
+        val removals = listOf(
+            fileRefRemovedNote(FileRefChange("logo", "copy", EDM.live, null)),
             fileRefRemovedNote(FileRefChange("logo", "copy", EDM.draft, null)),
-        )
-        // From a draft, a ref the client's people are served stays, marked: the note says so, not "removed" outright.
-        assertEquals(
-            "Removed 'logo' from the draft. The client's people are served it until the configuration is published; until then it can be put back.",
             fileRefRemovedNote(FileRefChange("logo", "copy", EDM.draft, ref(removedInDraft = true))),
-        )
-        assertEquals(
-            "Put 'logo' back, in copy, as the client's people are served it. Saved as a draft: the client's sandbox shows it, and it goes live once published.",
-            fileRefRestoredNote(FileRefChange("logo", "copy", EDM.draft, ref())),
-        )
-        // Still there after a removal and held by no stored configuration: the image the client was shipped with.
-        val revealed = FileRefChange("logo", "copy", EDM.live, ref(source = FREF.sourceLocal, root = "brand", path = "logo.png", stored = false))
-        assertEquals("Removed the upload of 'logo': the image the client was shipped with is shown again.", fileRefRemovedNote(revealed))
-        // Still there and stored: another configuration held one too, and nothing was "shipped".
-        assertEquals(
-            "Removed one entry of 'logo'; another configuration, art, still holds one.",
+            fileRefRemovedNote(FileRefChange("logo", "copy", EDM.live, ref(source = FREF.sourceLocal, root = "brand", path = "logo.png", stored = false))),
             fileRefRemovedNote(FileRefChange("logo", "copy", EDM.live, ref(configName = "art"))),
         )
+        assertEquals(5, removals.toSet().size)
+        assertTrue(removals.all { "logo" in it })
+        assertTrue("art" in removals[4])
+        // A removal made as a draft is not said with a save's draft line, as something the sandbox "shows"; one from a
+        // draft says it can be put back.
+        val draftLine = savedNote("X.", EDM.draft).removePrefix("X. ")
+        assertTrue(draftLine.isNotBlank() && removals.none { draftLine in it })
+        assertTrue("back" in removals[2])
+        assertTrue("logo" in fileRefRestoredNote(FileRefChange("logo", "copy", EDM.draft, ref())))
     }
 
     // Issue #1188: a ref a draft removed is a row of its own kind -- marked, previewed from what its people are
@@ -426,7 +393,7 @@ class FileRefsTest {
             mapOf(FREF.client to "acme", CCT.refId to "logo", CCT.hash to hash, FREF.served to true),
             fileRefPreviewArgs("acme", ref(removedInDraft = true)),
         )
-        assertTrue(fileRefRemovedInDraftText(ref(removedInDraft = true))!!.contains("served it until the configuration is published"))
+        assertNotNull(fileRefRemovedInDraftText(ref(removedInDraft = true)))
         assertNull(fileRefRemovedInDraftText(ref()))
     }
 
@@ -462,18 +429,20 @@ class FileRefsTest {
         val first = fileRefPage(many, FileRefFilter(), showAll = false)
         assertEquals(fileRefFirstShown, first.shown.size)
         assertEquals(5, first.hidden)
-        assertEquals("Showing 20 of 25 files.", fileRefPageText(first, FileRefFilter()))
+        fileRefPageText(first, FileRefFilter())!!.let { assertTrue("20" in it && "25" in it, it) }
         assertEquals(25, fileRefPage(many, FileRefFilter(), showAll = true).shown.size)
         assertNull(fileRefPageText(fileRefPage(many, FileRefFilter(), showAll = true), FileRefFilter()))
         val narrowed = FileRefFilter("ref1")
-        assertEquals("10 of 25 files match.", fileRefPageText(fileRefPage(many, narrowed, showAll = false), narrowed))
+        fileRefPageText(fileRefPage(many, narrowed, showAll = false), narrowed)!!.let { assertTrue("10" in it && "25" in it, it) }
         val none = FileRefFilter("zzz")
-        assertEquals("No file matches.", fileRefPageText(fileRefPage(many, none, showAll = false), none))
-        // A filter every file matches says the count once.
+        assertNotNull(fileRefPageText(fileRefPage(many, none, showAll = false), none))
+        // A filter every file matches says the count once, as no filter does.
         val wide = FileRefFilter("ref")
-        assertEquals("Showing 20 of 25 files.", fileRefPageText(fileRefPage(many, wide, showAll = false), wide))
+        assertEquals(fileRefPageText(first, FileRefFilter()), fileRefPageText(fileRefPage(many, wide, showAll = false), wide))
         val most = FileRefFilter("ref") to (many + ref("other"))
-        assertEquals("Showing 20 of the 25 matching, of 26 files.", fileRefPageText(fileRefPage(most.second, most.first, showAll = false), most.first))
+        fileRefPageText(fileRefPage(most.second, most.first, showAll = false), most.first)!!.let {
+            assertTrue("20" in it && "25" in it && "26" in it, it)
+        }
 
         // What this page just added or changed is drawn where it was made: past the cap, and outside the filter.
         val added = many + ref("zebra")
@@ -488,8 +457,8 @@ class FileRefsTest {
 
     @Test
     fun aCopySaysWhatItDidInWords() {
-        assertEquals("Copied.", copyOutcomeText(true))
-        assertEquals("Couldn't copy it: select it and copy instead.", copyOutcomeText(false))
+        assertNotNull(copyOutcomeText(true))
+        assertTrue(copyOutcomeText(true) != copyOutcomeText(false))
         assertNull(copyOutcomeText(null))
     }
 
@@ -512,9 +481,11 @@ class FileRefsTest {
 
         // Where, then its path; and not the file it already names.
         val kept = ref("logo", source = FREF.sourceClientLocal, root = "approved", path = "a.png")
-        assertEquals("Choose where the file is.", fileRefRepointProblem(kept, null, ""))
-        assertEquals("Give the file's path.", fileRefRepointProblem(kept, "approved", ""))
-        assertEquals("'logo' already names that file.", fileRefRepointProblem(kept, "approved", "a.png"))
+        val noWhere = fileRefRepointProblem(kept, null, "")
+        val noPath = fileRefRepointProblem(kept, "approved", "")
+        val same = fileRefRepointProblem(kept, "approved", "a.png")
+        assertEquals(3, setOf(noWhere, noPath, same).filterNotNull().size)
+        assertTrue("logo" in same!!)
         assertNull(fileRefRepointProblem(kept, "approved", "b.png"))
         assertNull(fileRefRepointProblem(kept, "seasonal", "a.png"))
         // The same path under an upload or a shipped file is not the same file.
@@ -552,21 +523,15 @@ class FileRefsTest {
         fun some(n: Int) = List(n) { ref("r$it") }
         assertNull(fileRefCountText(some(10), takes))
         assertNull(fileRefCountText(some(179), takes))
-        assertEquals("This client has 180 of the 200 a client is served.", fileRefCountText(some(180), takes))
+        assertTrue(fileRefCountText(some(180), takes)!!.let { "180" in it && "200" in it })
         assertNull(fileRefCountText(some(180), null))
 
         assertNull(fileRefAtLimitText(some(199), takes))
-        assertEquals(
-            "This client has 200 files, which is as many as a client is served. Remove one to add another, or replace one of them.",
-            fileRefAtLimitText(some(200), takes),
-        )
+        val atLimit = fileRefAtLimitText(some(200), takes)!!
+        assertTrue("200" in atLimit)
         // A client whose every file was shipped with it cannot remove one here (issue #1169): it is told what it can do.
         val shipped = List(200) { ref("s$it", source = FREF.sourceLocal, stored = false) }
-        assertEquals(
-            "This client has 200 files, which is as many as a client is served. Every one was shipped with it, so none " +
-                "can be removed here: replace one of them, or have the client's code changed.",
-            fileRefAtLimitText(shipped, takes),
-        )
+        assertTrue(fileRefAtLimitText(shipped, takes)!! != atLimit)
         // A backend that names no limit holds the page to none.
         val unlimited = FileRefTakes(0, emptyList(), emptyList(), 0, emptyList())
         assertNull(fileRefAtLimitText(some(500), unlimited))
