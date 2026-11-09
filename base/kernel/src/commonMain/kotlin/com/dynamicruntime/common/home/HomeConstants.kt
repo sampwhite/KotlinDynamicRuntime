@@ -299,6 +299,8 @@ object HMENU {
     const val block = "homeMenu"
 
     // Item ids.
+    /** The home page (issue #1730), the menu's first item, so the way back does not rest on knowing the mark is a link. */
+    const val home = "home"
     /** Reference group parent: the pages read to learn something, visited far less than the daily ones. */
     const val reference = "reference"
     const val catalog = "catalog"
@@ -378,6 +380,8 @@ object HMENU {
 
     // Frontend page ids, carried in a menu item's `action` as a string; the frontend maps them onto its
     // own routing (issue #483).
+    /** The home page (issue #1730): the app root, which the router writes with no page at all. */
+    const val pageHome = "home"
     const val pageCatalog = "catalog"
     const val pageDocs = "docs"
     const val pageUsers = "users"

@@ -483,7 +483,11 @@ fun homeMenuBlock(): UiBlockSource = uiBlock(
     arrayKeys = mapOf(HFLD.menu to HFLD.id),
 ) {
     items(HFLD.menu) {
-        // The Account group leads the menu (issue #540): the signed-in user's account menu belongs at the
+        // Home comes first (issue #1730), for any app caller, signed in or not: the mark at the left of the bar goes
+        // there too, but only for whoever knows it is a link, and on a phone the menu is the navigation. A client
+        // that does not want it hides or renames it, as it does any item.
+        menuItem(HMENU.home, "Home", UiRoute(HMENU.pageHome), cfactExpression = CFACTS.app)
+        // The Account group leads the groups (issue #540): the signed-in user's account menu belongs at the
         // top, the way a user menu sits top-right in a conventional shell. The parent is gated on the app
         // boot role alone, so it shows to any app caller -- logged in or anonymous. The children keep their own
         // loggedIn/anonymous gates, so the group shows Profile+Log out or Log in+Register; and an anonymous caller

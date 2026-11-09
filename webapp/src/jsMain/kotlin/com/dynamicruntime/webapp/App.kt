@@ -470,6 +470,6 @@ private fun currentPage(): String {
         params[HP.page] == pageSimulations -> pageSimulations
         params[HP.page] == pageBecomeUser -> pageBecomeUser
         params[HP.page] == pageNotFound -> pageNotFound
-        else -> "home"
+        else -> HMENU.pageHome
     }
 }

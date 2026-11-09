@@ -66,6 +66,7 @@ class HomeMenuTest : StringSpec({
 
     "a signed-out visitor is offered only what they can open" {
         anonymousMenu() shouldBe listOf(
+            page(HMENU.home, "Home", HMENU.pageHome),
             header(HMENU.account, "Account"),
             page(HMENU.login, "Log in", HMENU.pageLogin, HMENU.account),
             page(HMENU.register, "Register", HMENU.pageRegister, HMENU.account),
@@ -78,6 +79,7 @@ class HomeMenuTest : StringSpec({
     "an ordinary signed-in user gets the forms and profile entries, and logout as an action" {
         val user = TestUser.create(cxt, "menu-user@example.com")
         menuIn(user.getData(HEP.homeUiConfig)) shouldBe listOf(
+            page(HMENU.home, "Home", HMENU.pageHome),
             header(HMENU.account, "Account"),
             page(HMENU.profile, "Profile", HMENU.pageProfile, HMENU.account),
             call(HMENU.logout, "Log out", HACT.logout.name, HMENU.account),
@@ -94,6 +96,7 @@ class HomeMenuTest : StringSpec({
         // follows the deployment `operator` section, which has required `allClients` since #464 (issue #488).
         val admin = TestUser.create(cxt, "menu-admin@example.com", level = ROLE.admin)
         menuIn(admin.getData(HEP.homeUiConfig)) shouldBe listOf(
+            page(HMENU.home, "Home", HMENU.pageHome),
             header(HMENU.account, "Account"),
             page(HMENU.profile, "Profile", HMENU.pageProfile, HMENU.account),
             call(HMENU.logout, "Log out", HACT.logout.name, HMENU.account),
@@ -155,6 +158,7 @@ class HomeMenuTest : StringSpec({
     "a deployment operator gets Environment and Client facts, and not Users" {
         val operator = TestUser.createOperator(cxt, "menu-ops@example.com")
         menuIn(operator.getData(HEP.homeUiConfig)) shouldBe listOf(
+            page(HMENU.home, "Home", HMENU.pageHome),
             header(HMENU.account, "Account"),
             page(HMENU.profile, "Profile", HMENU.pageProfile, HMENU.account),
             call(HMENU.logout, "Log out", HACT.logout.name, HMENU.account),

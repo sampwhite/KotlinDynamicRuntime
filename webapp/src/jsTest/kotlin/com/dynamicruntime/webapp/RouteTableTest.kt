@@ -103,6 +103,14 @@ class RouteTableTest {
     }
 
     @Test
+    fun homeNamedAsAPageIsTheRootAddress() {
+        // The menu's Home (issue #1730) names its page, and gets the address the mark at the left of the bar uses: home
+        // has one address, not a second `/?page=home`.
+        assertEquals(routeHref(emptyList()), routeHref(listOf(HP.page to HMENU.pageHome)))
+        assertEquals("/?x=1", routeHref(listOf(HP.page to HMENU.pageHome, "x" to "1")))
+    }
+
+    @Test
     fun aPathSegmentIsEncodedAndKeepsAColon() {
         assertRoute("/clients/acme:sandbox", HP.page to HMENU.pageClients, HP.client to "acme:sandbox")
         assertRoute("/docs/a%2Fb%20c", HP.page to HMENU.pageDocs, HP.doc to "a/b c")
