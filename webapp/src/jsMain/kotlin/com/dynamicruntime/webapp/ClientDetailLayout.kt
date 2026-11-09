@@ -6,6 +6,7 @@ import com.dynamicruntime.common.gedra.ClientStatus
 import com.dynamicruntime.common.home.PFRAG
 import com.dynamicruntime.common.util.humanizeFieldName
 import com.dynamicruntime.common.util.toJsonListOfStrings
+import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
 import kotlin.time.Clock
 
@@ -64,6 +65,9 @@ fun clientSummaryGroups(
         if (def == null) return@buildList
         add("Time zone" to timeZoneText(info[CLD.timeZone].toOptStr(), Clock.System.now()))
         add("User labels" to fromTemplate(CLD.userLabels, list(info[CLD.userLabels].toJsonListOfStrings())))
+        // Each label's note (issue #1660), listed only when there is one.
+        val notes = info[CLD.userLabelNotes].toJsonMapOrEmpty().mapValues { it.value.toOptStr().orEmpty() }
+        if (notes.isNotEmpty()) add("Label notes" to fromTemplate(CLD.userLabelNotes, notes.entries.joinToString("; ") { "${it.key}: ${it.value}" }))
         // The value in force (issue #1308): the client's, its template's, else the platform's, said as such.
         val session = inForceText(CLD.sessionHours, info, def.platformDefaults)
         add(humanizeFieldName(CLD.sessionHours) to fromTemplate(CLD.sessionHours, session))

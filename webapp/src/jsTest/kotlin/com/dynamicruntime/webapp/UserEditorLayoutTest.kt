@@ -69,22 +69,22 @@ class UserEditorLayoutTest {
 
     @Test
     fun moreOptionsNamesWhatIsSetAndNothingAtItsDefault() {
-        assertEquals(emptyList(), userMoreOptionsInForce(false, false, emptyList(), enabled = true, creating = false))
+        assertEquals(emptyList(), userMoreOptionsInForce(false, false, enabled = true, creating = false))
         assertEquals(
-            listOf("Editor", "All clients", "labels: reviewer, siteLead", "disabled"),
-            userMoreOptionsInForce(true, true, listOf(" reviewer", "siteLead", "reviewer"), enabled = false, creating = false),
+            listOf("Editor", "All clients", "disabled"),
+            userMoreOptionsInForce(true, true, enabled = false, creating = false),
         )
         // On a create: the suffix, a collision asking for one, and starting disabled.
         assertEquals(
-            listOf("persona suffix B"), userMoreOptionsInForce(false, false, emptyList(), true, true, personaSuffix = " B "),
+            listOf("persona suffix B"), userMoreOptionsInForce(false, false, true, true, personaSuffix = " B "),
         )
         assertEquals(
             listOf("a persona suffix is needed"),
-            userMoreOptionsInForce(false, false, emptyList(), true, true, suffixNeeded = true),
+            userMoreOptionsInForce(false, false, true, true, suffixNeeded = true),
         )
-        assertEquals(listOf("starts disabled"), userMoreOptionsInForce(false, false, emptyList(), enabled = false, creating = true))
+        assertEquals(listOf("starts disabled"), userMoreOptionsInForce(false, false, enabled = false, creating = true))
         // What it says is what opens it.
-        assertTrue(moreOptionsOpens(userMoreOptionsInForce(true, false, emptyList(), true, false)))
+        assertTrue(moreOptionsOpens(userMoreOptionsInForce(true, false, true, false)))
     }
 
     @Test
@@ -169,7 +169,7 @@ class UserEditorLayoutTest {
         assertFalse(invitationHeld(offered = true, enabled = false, invite = false))
         assertFalse(invitationHeld(offered = false, enabled = true, invite = false))
         assertEquals(
-            listOf("no invitation"), userMoreOptionsInForce(false, false, emptyList(), true, true, invitationHeld = true),
+            listOf("no invitation"), userMoreOptionsInForce(false, false, true, true, invitationHeld = true),
         )
     }
 

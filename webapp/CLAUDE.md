@@ -401,7 +401,7 @@ all of them.
 5. **Simple first, the rest on request — per panel, not a global mode.** An "advanced mode" switch hides state: a
    reader in simple mode cannot see that a user holds All clients. A draft panel shows its common fields and puts the
    rest under `MoreOptions`, which opens itself when anything inside is set and names what is in its summary ("More
-   options · Editor, labels: reviewer"); both come from its one `inForce` list, so they cannot disagree. It takes the
+   options · Editor, All clients"); both come from its one `inForce` list, so they cannot disagree. It takes the
    record it belongs to (`recordKey`), so another record starts it afresh rather than as the reader left the last
    one. Each option inside has a one-line hint beginning "Use this when".
 6. **Deleting the thing the page is about appears only when it can succeed** — an existing record, never one being

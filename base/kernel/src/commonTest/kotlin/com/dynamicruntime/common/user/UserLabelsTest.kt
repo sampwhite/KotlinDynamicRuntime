@@ -51,4 +51,25 @@ class UserLabelsTest {
         val message = e.message.orEmpty()
         assertTrue(message.contains("' reviewer'") && message.contains("'siteLead'") && message.contains("''"), message)
     }
+    @Test
+    fun labelNotesAreWrittenOnePerLineAndReadBack() {
+        val text = "reviewer: Approves plans\n\nno colon here\n  siteLead :  Runs a site: and its follow-ups \n: no label\nempty:"
+        val notes = labelNotesOfText(text)
+        // The label before the first colon; a later colon is the note's own.
+        assertEquals(mapOf("reviewer" to "Approves plans", "siteLead" to "Runs a site: and its follow-ups"), notes)
+        assertEquals(notes, labelNotesOfText(labelNotesText(notes)))
+    }
+
+    @Test
+    fun aClientsLabelNoteNamesALabelItSuggestsAndSaysSomething() {
+        fun client(notes: Map<String, String>) = ClientDef(
+            clientId = "notes", name = "Notes", usageType = ClientUsageType.dev, audience = ClientAudience.internal,
+            enabledEnvironments = setOf(ENV.unit), userLabels = listOf("reviewer"), userLabelNotes = notes,
+        )
+        assertEquals("Approves plans", client(mapOf("reviewer" to "Approves plans")).userLabelNotes["reviewer"])
+        val unsuggested = assertFailsWith<KdrException> { client(mapOf("siteLead" to "Runs a site")) }
+        assertTrue(unsuggested.message.orEmpty().contains("'siteLead'"), unsuggested.message)
+        val blank = assertFailsWith<KdrException> { client(mapOf("reviewer" to "  ")) }
+        assertTrue(blank.message.orEmpty().contains("blank"), blank.message)
+    }
 }

@@ -105,7 +105,6 @@ fun rolesForAuthority(current: List<String>, authority: UserAuthority): List<Str
 fun userMoreOptionsInForce(
     editor: Boolean,
     allClients: Boolean,
-    labels: List<String>,
     enabled: Boolean,
     creating: Boolean,
     personaSuffix: String = "",
@@ -118,7 +117,6 @@ fun userMoreOptionsInForce(
         personaSuffix.isNotBlank() -> add("persona suffix ${personaSuffix.trim()}")
         suffixNeeded -> add("a persona suffix is needed")
     }
-    normalizeUserLabels(labels).takeIf { it.isNotEmpty() }?.let { add("labels: ${it.joinToString(", ")}") }
     if (!enabled) add(if (creating) "starts disabled" else "disabled")
     if (invitationHeld) add("no invitation")
 }

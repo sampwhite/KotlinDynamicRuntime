@@ -16,8 +16,8 @@ import com.dynamicruntime.common.user.UserFilterChoices
 import com.dynamicruntime.common.user.UserFilterKind
 import com.dynamicruntime.common.user.UserFilterOption
 import com.dynamicruntime.common.user.UserSearchFieldSpec
+import com.dynamicruntime.common.user.nobodyCarriesWarnings
 import com.dynamicruntime.common.user.normalizeUserLabels
-import com.dynamicruntime.common.user.userLabelChoices
 import com.dynamicruntime.common.user.userSearchFieldSpecs
 import com.dynamicruntime.common.user.userSearchFieldSpecsByName
 import com.dynamicruntime.common.user.userSortKeys
@@ -30,6 +30,7 @@ import kotlinx.coroutines.launch
 import react.FC
 import react.Key
 import react.Props
+import react.dom.html.ReactHTML.code
 import react.dom.html.ReactHTML.div
 import react.dom.html.ReactHTML.h1
 import react.dom.html.ReactHTML.p
@@ -165,9 +166,9 @@ val Users = FC<Props> {
     // one cannot leave acme's suggestions on the globex editor. A client is fetched once, and again after a save
     // writes labels (see [forgetLabelSuggestions]).
     var draftLabels by useState<List<String>>(emptyList())
-    val (labelSuggestions, setLabelSuggestions) = useState<Map<String, List<String>>>(emptyMap())
+    val (labelSuggestions, setLabelSuggestions) = useState<Map<String, LabelSuggestions>>(emptyMap())
     // Read through a ref by [ensureLabelSuggestions], whose fetch outlives the render that started it.
-    val labelSuggestionsRef = useRef<Map<String, List<String>>>(emptyMap())
+    val labelSuggestionsRef = useRef<Map<String, LabelSuggestions>>(emptyMap())
     labelSuggestionsRef.current = labelSuggestions
     // How many times each client's suggestions have been dropped after a save. A fetch already under way when one is
     // dropped carries the labels from before that save, so it is discarded and asked again rather than written back.
@@ -450,12 +451,13 @@ val Users = FC<Props> {
     // The Labels filter offers the suggestions of the client being searched: the one the Client filter names -- which
     // only an `allClients` caller is offered, so a shared link naming another client asks nothing of anyone else --
     // else the caller's own. For an `allClients` caller searching every client, that is their own client's list, and
-    // any other label is typed. Fetched once the well is open, so a page nobody filters asks for nothing.
+    // any other label is typed. Fetched with the list, since the list also says when nobody carries a label some
+    // workflow's work needs (issue #1661); [ensureLabelSuggestions] asks only an administrator's.
     val searchesAllClients = config?.user?.roles?.contains(ROLE.allClients) == true
     val labelFilterClient = textFilters[USF.client]?.trim()?.ifEmpty { null }?.takeIf { searchesAllClients }
         ?: config?.user?.client ?: ""
-    useEffect(filtersOpen, labelFilterClient, config?.canManageUsers, labelFilterClient in labelSuggestions) {
-        if (filtersOpen) ensureLabelSuggestions(labelFilterClient)
+    useEffect(labelFilterClient, config?.canManageUsers, labelFilterClient in labelSuggestions) {
+        ensureLabelSuggestions(labelFilterClient)
     }
 
     /**
@@ -1088,12 +1090,20 @@ val Users = FC<Props> {
                 }
             }
 
+            // Labels in plain view (issue #1659), not under More options: what a label does is the client's workflows'
+            // to say, and an administrator making a reviewer should not have to know to look for one.
+            userLabelsGroup(
+                suggestions = labelSuggestions[editorLabelClient] ?: LabelSuggestions.none,
+                draft = draftLabels,
+                busy = busy,
+            ) { draftLabels = it }
+
             // The rest, on request (rule 5 of #1477): open by itself whenever any of it is set away from its default.
             MoreOptions {
                 recordKey = openRecord() ?: HP.newRecord
                 inForce = userMoreOptionsInForce(
                     editor = editorShown && draftEditor, allClients = allClientsShown && draftAllClients,
-                    labels = draftLabels, enabled = draftEnabled, creating = creating,
+                    enabled = draftEnabled, creating = creating,
                     invitationHeld = invitationHeld(invitationOffered, draftEnabled, draftInvite),
                     personaSuffix = if (creating) draftPersonaSuffix else "",
                     suffixNeeded = creating && personaSuffixCollided,
@@ -1154,31 +1164,6 @@ val Users = FC<Props> {
                         className = ClassName("type-hint")
                         +personaSuffixHint(collided = personaSuffixCollided)
                     }
-                }
-                // Labels (issues #786, #1481), on a new user as on an existing one. A tags select: the suggestions of
-                // the user's client -- on a new user, the client the form names -- are offered, and anything else may
-                // be typed, because a label is free-form by design.
-                div {
-                    className = ClassName("row")
-                    span {
-                        className = ClassName("field-label")
-                        +"Labels"
-                    }
-                    Select {
-                        mode = "tags"
-                        value = draftLabels.toTypedArray()
-                        options = labelSelectOptions(
-                            userLabelChoices(labelSuggestions[editorLabelClient].orEmpty(), draftLabels),
-                        )
-                        placeholder = "(none)"
-                        disabled = busy
-                        style = choiceStyle()
-                        onChange = { v -> draftLabels = (v.unsafeCast<Array<String>>()).toList() }
-                    }
-                }
-                p {
-                    className = ClassName("type-hint")
-                    +labelsHint
                 }
                 div {
                     className = ClassName("row")
@@ -1376,6 +1361,11 @@ val Users = FC<Props> {
             val filtersInForce = userFilterChips(textFilters, rangeFilters)
             val chips = filtersInForce + listOfNotNull(userSortChip(sortBy, descending))
 
+            // Label-gated work nobody can do (issue #1661), for the client being viewed, above Create user.
+            if (!readOnly) {
+                val warnings = nobodyCarriesWarnings(labelSuggestions[labelFilterClient]?.details.orEmpty())
+                if (warnings.isNotEmpty()) labelWarnings(warnings, "Give a user the label to change that: Create user, or open one.")
+            }
             div {
                 className = ClassName("row")
                 // In `public` an administrator creates only users of their own (issue #805), so the ordinary create,
@@ -1455,7 +1445,7 @@ val Users = FC<Props> {
                                 // as `onSelect`; the debounced half then finds that search already run, and skips.
                                 UserFilterChoices.labels -> AutoComplete {
                                     value = textFilters[spec.name] ?: ""
-                                    options = labelSelectOptions(labelSuggestions[labelFilterClient].orEmpty())
+                                    options = labelSelectOptions(labelSuggestions[labelFilterClient]?.offered.orEmpty())
                                     filterOption = false
                                     placeholder = "Any"
                                     allowClear = true
@@ -1919,11 +1909,93 @@ private const val orgHint =
     "An optional organization within the client. Someone assigned one sees only their own organization, " +
         "plus anything belonging to no organization at all. Leave it blank for client-wide."
 
-/** Says what a label is for -- and, since it sits beside the access level, what it is not. */
+/** Says what a label is for -- and, since it sits beside the access level, what it is not (issue #1659). */
 private const val labelsHint =
-    "Use this when a workflow tests for a label -- \"reviewer\" can make someone a reviewer of a workflow's task. " +
-        "Labels grant no access. The client's suggestions are offered, then the labels its users already carry; " +
-        "type to add any other."
+    "Labels grant no access by themselves; the client's workflows give them meaning, as each suggested label says. " +
+        "Labels are matched exactly as written."
+
+/** Beside the free-entry box under the suggested labels. */
+private const val otherLabelsHint =
+    "Any other label, typed; the labels the client's users already carry are offered. A workflow tests only for the " +
+        "client's suggested labels."
+
+/**
+ * The Users editor's Labels group (issue #1659), in plain view in the User panel: a checkbox per label the client
+ * suggests, each saying what the client's workflows do with it ([labelRows]), then a free-entry box for any other
+ * label, and -- while the draft holds none -- what this user will not be able to do ([missingLabelsPrompt]). Part of
+ * the User draft, so Save user (or Create user) writes it with the rest.
+ */
+private fun react.ChildrenBuilder.userLabelsGroup(
+    suggestions: LabelSuggestions,
+    draft: List<String>,
+    busy: Boolean,
+    onLabels: (List<String>) -> Unit,
+) {
+    div {
+        className = ClassName("user-labels")
+        span {
+            className = ClassName("field-label")
+            +"Labels"
+        }
+        p {
+            className = ClassName("type-hint")
+            +labelsHint
+        }
+        for (row in labelRows(suggestions.details, draft)) {
+            div {
+                className = ClassName("user-label-row")
+                Checkbox {
+                    checked = row.checked
+                    disabled = busy
+                    onChange = { event -> onLabels(withLabel(draft, row.label, event.target.checked as Boolean)) }
+                    code { +row.label }
+                }
+                div {
+                    className = ClassName("user-label-about")
+                    row.note?.let { p { className = ClassName("user-label-note"); +it } }
+                    if (row.uses.isEmpty()) {
+                        p { +"No workflow tests for it yet." }
+                    } else {
+                        for (use in row.uses) p { +"$use." }
+                    }
+                    p {
+                        className = ClassName("type-hint")
+                        +row.carriers
+                    }
+                }
+            }
+        }
+        val others = otherLabels(suggestions.details, draft)
+        val suggested = suggestions.details.map { it.label }.toSet()
+        div {
+            className = ClassName("row")
+            span {
+                className = ClassName("field-label")
+                +(if (suggested.isEmpty()) "Labels" else "Other labels")
+            }
+            Select {
+                mode = "tags"
+                value = others.toTypedArray()
+                options = labelSelectOptions(normalizeUserLabels(suggestions.offered.filter { it !in suggested } + others))
+                placeholder = "(none)"
+                disabled = busy
+                style = choiceStyle()
+                onChange = { v -> onLabels(withOtherLabels(suggestions.details, draft, v.unsafeCast<Array<String>>().toList())) }
+            }
+        }
+        p {
+            className = ClassName("type-hint")
+            +otherLabelsHint
+        }
+        val prompt = missingLabelsPrompt(suggestions.details, draft)
+        if (prompt.isNotEmpty()) {
+            div {
+                className = ClassName("user-labels-prompt")
+                for (line in prompt) p { +line }
+            }
+        }
+    }
+}
 
 /**
  * What the Enabled box under More options is for (issue #1478): on a create, starting the account disabled; on an

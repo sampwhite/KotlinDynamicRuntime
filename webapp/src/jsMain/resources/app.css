@@ -2117,3 +2117,17 @@ body.dv-resizing, body.dv-resizing * { cursor: col-resize !important; }
 .allowance-bar { height: 10px; border-radius: 999px; background: var(--surface-page); border: 1px solid var(--border); overflow: hidden; }
 .allowance-used { height: 100%; background: var(--accent-bright); }
 .allowance-used.spent { background: var(--danger); }
+
+/* The Users editor's Labels group (issue #1659): a checkbox per suggested label, with what it does beneath its name. */
+.user-labels { margin: 12px 0; }
+.user-labels > .type-hint { margin: 2px 0 8px; }
+.user-label-row { margin: 6px 0 10px; }
+.user-label-row code { font-weight: 600; }
+.user-label-about { margin-left: 24px; color: var(--text-dim); }
+.user-label-about p { margin: 2px 0; }
+.user-label-note { color: var(--text); }
+.user-labels-prompt {
+    margin-top: 8px; padding: 8px 12px; border-left: 3px solid var(--border-admin);
+    background: color-mix(in oklab, var(--surface-admin), transparent 55%); color: var(--text);
+}
+.user-labels-prompt p { margin: 2px 0; }

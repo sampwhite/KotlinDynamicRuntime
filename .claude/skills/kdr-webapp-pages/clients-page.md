@@ -311,7 +311,10 @@ changes". Wire names: `MNU` in the kernel.
 refuses each in its own words; the page only spares showing an editor that cannot save), **Edit
 definition** opens the fields the caller's policy lets them edit (issue #1116, `ClientPresentationFields.namesFor`):
 for a client's administrator its name, description, time zone (issue #1115; the editor says a change moves no stored
-moment; picked, not typed -- see "The time-zone picker" below), user labels as one comma line (`labelsOfText`), and
+moment; picked, not typed -- see "The time-zone picker" below), user labels as one comma line (`labelsOfText`), a note
+per label in a text area, one `label: note` per line (issue #1660, `CLD.userLabelNotes`, `labelNotesOfText`: a request
+sends only the notes on labels the draft still suggests, so taking a label away takes its note, which the definition's
+check would otherwise refuse; the summary rows list them as **Label notes**), and
 session lifetime in hours (issue #1308); for an administrator who sees every client also its refresh interval in
 seconds, usage type and audience (selects), environments (a multi-select), preload (a checkbox), domain prefix, custom
 domain, and web resources -- seeded from the client's **configured** definition, the retrieve's
@@ -674,6 +677,11 @@ settings** expands the three a workflow's parameters keep, newest first, each in
 set it and **Use these values**, which fills the editor -- a pre-fill, never a save: the person saves it as any change.
 A setter the caller may not administer (an operator who set a client's windows) is not named: that line, and the
 byline, say only when.
+
+**Nobody carries a label** (issue #1661): above the Workflows list, a notice per label some workflow's work needs that
+no active user of the client carries (`nobodyCarriesWarnings`, from the label-suggestions read of issue #1658): "Nobody
+carries “reviewer”, so nobody can approve …". Only an administrator may read the labels, so for anyone else there is
+no notice; and the count is of the users the caller sees. The Users list says the same.
 
 **Visibility** (issue #1384, `WorkflowVisibilityEditor.kt`, its pure half in `WorkflowVisibility.kt`, covered by
 `WorkflowVisibilityTest`): who sees a workflow, a parameter beside its windows -- on a workflow of **any** kind, so

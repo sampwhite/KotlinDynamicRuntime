@@ -907,6 +907,15 @@ private val DefinitionEditor = FC<DefinitionEditorProps> { props ->
                             onChange = { e -> set((e.target.checked == true).toString()) }
                         }
                     }
+                    ClientPresentationFields.Kind.labelNotes -> choiceRow(label) {
+                        TextArea {
+                            value = draft[name].orEmpty()
+                            disabled = busy
+                            placeholder = "reviewer: Give this to whoever approves event plans"
+                            asDynamic()["rows"] = fittedRows(draft[name].orEmpty(), 2, 8)
+                            onChange = { e -> set(e.target.value as String) }
+                        }
+                    }
                     ClientPresentationFields.Kind.timeZone -> choiceRow(label) {
                         TimeZonePicker {
                             value = draft[name].orEmpty()
@@ -924,7 +933,9 @@ private val DefinitionEditor = FC<DefinitionEditorProps> { props ->
         }
         p {
             className = ClassName("subtitle")
-            +("Labels are comma-separated; each is matched exactly as written. $timeZoneEditNote $numberFieldsEditNote " +
+            +("Labels are comma-separated; each is matched exactly as written. Label notes are one per line, " +
+                "the label, a colon, then who should carry it; a note on a label no longer suggested is dropped. " +
+                "$timeZoneEditNote $numberFieldsEditNote " +
                 saveEffectText(props.savesDraft))
         }
         p {
