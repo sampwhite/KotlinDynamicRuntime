@@ -75,8 +75,9 @@ For a program, or an AI assistant, given a site's address and an API key.
    common, and a recipe for each job. A site serves it to programs at `/st/api/doc/api-guide`, and its endpoint catalog
    names that address.
 2. **[API keys and access tokens](api-keys-and-tokens.md),** for how a key is made, used, and limited.
-3. **[The walk-through, part 3](walk-through.md#part-3-for-developers),** in which you make a key, find an endpoint,
-   and build a workflow from its JSON, in the bundle editor or by having an AI assistant build it through the API.
+3. **[The walk-through, part 3](walk-through.md#part-3-for-developers),** in which the site's workflow assistant
+   writes a workflow's JSON and says what it does, or you save it in the bundle editor, then add an approval step to
+   it; and a key lets a program, or an AI outside the site, make a change through the API.
 4. **[The client configuration reference](reference/client-configuration.md),** for every part of a client's
    configuration.
 5. **[Validation messages](reference/validation-messages.md),** for every code a refused value is reported with, what
