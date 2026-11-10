@@ -218,34 +218,42 @@ fun ReportDraft.withShape(shape: ReportShape): ReportDraft =
     copy(shape = shape, groupBy = if (shape == ReportShape.totals) groupBy ?: groupableColumns(this).firstOrNull()?.id else null)
 
 /**
- * What a totals report's chart may measure (issue #1773), as its Grouped view offers ([reportMeasures]): the count of
- * forms first, keyed [RRUN.count], then each column not grouped by whose rollup gives a number, keyed by its
- * [ReportColumnDraft.id] -- the rule the report's binding holds a chart to (issue #1771). [catalog] says what each path
- * holds.
+ * What a totals report's chart may measure (issue #1773): exactly what the report's Grouped view will offer
+ * ([reportMeasures], the rule its binding holds a chart to, issue #1771), and worded the same, over the draft's columns
+ * as the report will have them -- each keyed by its [ReportColumnDraft.id], the count of forms by [RRUN.count]. Only the
+ * count for a row per form, which sends no rollups. [catalog] says what each path holds, so what a column's rollup
+ * gives; the panel works this out once per render and hands it to [reportDraftProblems] and [reportCreateRequest].
  */
-fun reportDraftMeasures(draft: ReportDraft, catalog: ReportPathCatalogView?): List<ReportMeasure> = buildList {
-    add(ReportMeasure(RRUN.count, reportCountLabel, additive = true))
-    if (draft.shape != ReportShape.totals) return@buildList
-    for (c in draft.columns) {
-        val rollup = c.rollup ?: continue
-        if (c.id == draft.groupBy) continue
-        val kind = reportColumnKind(c, catalog?.path(c.path))
-        if (rollup.resultKind(kind) != ReportKind.number) continue
-        add(ReportMeasure(c.id.toString(), "${c.label.trim().ifEmpty { "(no heading)" }} (${rollupText(rollup, kind)})", rollup.addsUp))
+fun reportDraftMeasures(draft: ReportDraft, catalog: ReportPathCatalogView?): List<ReportMeasure> {
+    val totals = draft.shape == ReportShape.totals
+    val columns = if (!totals) emptyList() else draft.columns.map { c ->
+        val path = catalog?.path(c.path)
+        ReportColumnInfo(
+            c.id.toString(), c.label.trim().ifEmpty { "(no heading)" }, c.path, reportColumnKind(c, path).name,
+            (c.pick?.combine ?: ReportCombine.first).name, c.rollup?.name, path?.multiValued == true,
+        )
     }
+    return reportMeasures(columns, listOfNotNull(draft.groupBy?.toString()))
 }
+
+/** The measure [draft]'s chart is of, among [measures] ([reportDraftMeasures]): the column it names, else the count. */
+fun reportDraftMeasure(draft: ReportDraft, measures: List<ReportMeasure>): ReportMeasure =
+    measures.firstOrNull { it.key == draft.chartMeasure?.toString() } ?: measures.first()
 
 /**
- * The measure [draft]'s chart is of: the column it names while that column may still be measured, else the count of
- * forms -- so removing the column, grouping by it, or rolling it up to a date leaves the chart counting forms.
+ * This draft with its chart's measure forgotten once that column may no longer be measured ([measures], from
+ * [reportDraftMeasures]) -- removed, grouped by, or rolled up to something not a number -- so the chart counts forms
+ * from then on, as its Of shows, rather than going back to the column unasked when it qualifies again. The panel applies
+ * it to every change.
  */
-fun reportDraftMeasure(draft: ReportDraft, catalog: ReportPathCatalogView?): ReportMeasure {
-    val measures = reportDraftMeasures(draft, catalog)
-    return measures.firstOrNull { it.key == draft.chartMeasure?.toString() } ?: measures.first()
-}
+fun ReportDraft.withChartMeasureSettled(measures: List<ReportMeasure>): ReportDraft =
+    if (chartMeasure == null || measures.any { it.key == chartMeasure.toString() }) this else copy(chartMeasure = null)
 
-/** What is wrong with [draft], said as what to do; empty when it can be made. [catalog] says what each path holds. */
-fun reportDraftProblems(draft: ReportDraft, catalog: ReportPathCatalogView? = null): List<String> = buildList {
+/**
+ * What is wrong with [draft], said as what to do; empty when it can be made. [measures] is what its chart may measure
+ * ([reportDraftMeasures]).
+ */
+fun reportDraftProblems(draft: ReportDraft, measures: List<ReportMeasure>): List<String> = buildList {
     if (draft.name.isBlank()) add("Give the report a name.")
     if (draft.columns.isEmpty()) add("Add at least one column.")
     val headings = draft.columns.map { it.label.trim() }
@@ -259,7 +267,7 @@ fun reportDraftProblems(draft: ReportDraft, catalog: ReportPathCatalogView? = nu
     if (draft.shape == ReportShape.totals && draft.columns.isNotEmpty() && draft.columns.none { it.id == draft.groupBy }) {
         add("Choose the column to group by.")
     }
-    if (draft.shape == ReportShape.totals && draft.chart == ReportChartKind.pie && !reportDraftMeasure(draft, catalog).additive) {
+    if (draft.shape == ReportShape.totals && draft.chart == ReportChartKind.pie && !reportDraftMeasure(draft, measures).additive) {
         add("A pie shows shares of a whole: chart the forms, or a column combined by its total or how many.")
     }
 }
@@ -267,17 +275,18 @@ fun reportDraftProblems(draft: ReportDraft, catalog: ReportPathCatalogView? = nu
 /**
  * The create's request for [draft] -- [client] when the caller names one, and how its page told them it takes effect,
  * [expected]. Only a totals report sends a grouping, rollups (but not on the grouped-by column), history, and a chart:
- * its kind, and the column it measures marked [RCR.charted] ([reportDraftMeasure]; none for the count of forms).
+ * its kind, and the column it measures among [measures] ([reportDraftMeasures]) marked [RCR.charted] -- none for the
+ * count of forms.
  */
 fun reportCreateRequest(
-    client: String?, draft: ReportDraft, expected: String, catalog: ReportPathCatalogView? = null,
+    client: String?, draft: ReportDraft, expected: String, measures: List<ReportMeasure>,
 ): Map<String, Any?> = buildMap {
     client?.let { put(RRUN.client, it) }
     put(RDEF.label, draft.name.trim())
     draft.description.trim().takeIf { it.isNotEmpty() }?.let { put(RDEF.description, it) }
     val totals = draft.shape == ReportShape.totals
     val chart = draft.chart.takeIf { totals }
-    val measured = chart?.let { reportDraftMeasure(draft, catalog).key.toIntOrNull() }
+    val measured = chart?.let { reportDraftMeasure(draft, measures).key.toIntOrNull() }
     put(
         RDEF.columns,
         draft.columns.map { c ->

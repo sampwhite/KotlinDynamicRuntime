@@ -3,6 +3,7 @@ package com.dynamicruntime.kdn
 import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.exception.EXC
+import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.CCT
 import com.dynamicruntime.common.gedra.CIT
 import com.dynamicruntime.common.gedra.CPY
@@ -39,6 +40,7 @@ import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.user.UADEP
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
@@ -232,8 +234,10 @@ class ReportCreateTest : StringSpec({
         refused("No chart", listOf(level, minutes(ReportCombine.sum)), null) shouldContain "no chart is asked for"
         refused("Two measures", listOf(level, minutes(ReportCombine.sum), column("Again", "form.talk.minutes",
             mapOf(RDEF.rollup to ReportCombine.max.name, RCR.charted to true))), ReportChartKind.bar.name) shouldContain "2 are marked"
-        // Not a kind of chart: the endpoint's own options refuse it.
+        // Not a kind of chart: the endpoint's own options refuse it, and so does the create behind it, called directly.
         refused("Line", listOf(level), "line")
+        shouldThrow<KdrException> { ReportEdit.chartOf("line", emptyList()) }.message shouldContain "There is no chart 'line'"
+        ReportEdit.chartOf("", emptyList()) shouldBe null
         ReportService.get(cxt).forClient(client).reports.keys.filter { !it.contains(':') }.toSet() shouldBe
             setOf("minutesByLevel", "talksByLevel")
     }

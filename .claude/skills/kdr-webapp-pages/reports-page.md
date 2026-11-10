@@ -72,12 +72,15 @@ way -- afterwards it is changed in the bundle editor, and removed there or under
   date as the latest; "Not shown when grouped" sends none. Only a totals report sends a grouping, rollups, history, and
   a chart.
 - **A totals report's Chart** (issue #1773): Table only, Bar chart, or Pie chart, worded as the Grouped view's Chart, and
-  for a chart **Of** what. The measures are the Grouped view's rule over the draft (`reportDraftMeasures`): the forms,
-  then each column not grouped by whose rollup gives a number. The draft keeps the measured column's draft id
-  (`chartMeasure`), and `reportDraftMeasure` reads it back, falling back to the forms once that column cannot be
-  measured -- removed, grouped by, rolled up to a date -- so no edit has to clear it. Pie is disabled for a measure that
-  does not add up, and a pie left over one (its column's rollup changed to an average) is a draft problem, not a silent
-  change of kind. The request sends `chart` with the kind and marks the measured column `charted` (`RCR.charted`), since
+  for a chart **Of** what. The measures are the Grouped view's own (`reportDraftMeasures` hands the draft's columns, as
+  the report will have them, to `reportMeasures`), so they are offered and worded as the report this makes will offer
+  them: the forms, then each column not grouped by whose rollup gives a number. The panel works them out once a render
+  and passes them to the problems, the Chart choice, and the request, which each take them rather than a catalog to
+  work them out from. The draft keeps the measured column's draft id (`chartMeasure`); every change goes through the
+  panel's `change`, which forgets it once that column cannot be measured -- removed, grouped by, no longer rolled up to
+  a number (`withChartMeasureSettled`) -- so the chart counts forms, as Of then shows, and does not go back to the
+  column unasked when it qualifies again. Pie is disabled for a measure that does not add up, and a pie left over one
+  (its column's rollup changed to an average) is a draft problem, not a silent change of kind. The request sends `chart` with the kind and marks the measured column `charted` (`RCR.charted`), since
   a column's id is the server's to make; the binding checks the chart as it does a declared one (#1771), and the created
   report opens on it.
 - **The Add-a-column choice searches by label** (`showSearch` with `optionFilterProp: 'label'`): antd filters on an

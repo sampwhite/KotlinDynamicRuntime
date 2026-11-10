@@ -1,5 +1,6 @@
 package com.dynamicruntime.common.gedra.report
 
+import com.dynamicruntime.common.annotation.KdrPrivate
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.KdrSchemaStore
 import com.dynamicruntime.common.exception.EXC
@@ -357,8 +358,13 @@ object ReportEdit {
         )
     }
 
-    /** The chart a create asks for: of [kind], measuring the one column marked [RCR.charted], else the count of forms. */
-    private fun chartOf(kind: Any?, charted: List<String>): ReportChart? {
+    /**
+     * The chart a create asks for: of [kind], measuring the one column marked [RCR.charted], else the count of forms.
+     * Open only so a test reaches the refusals the endpoint's own validation keeps a request from (a kind it does not
+     * list).
+     */
+    @KdrPrivate
+    fun chartOf(kind: Any?, charted: List<String>): ReportChart? {
         val name = kind.toOptStr()?.ifEmpty { null }
         if (name == null) {
             if (charted.isNotEmpty()) {

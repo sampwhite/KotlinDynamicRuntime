@@ -67,7 +67,14 @@ val ReportCreatePanel = FC<ReportCreatePanelProps> { props ->
         }
     }
 
-    val problems = reportDraftProblems(draft, catalog)
+    // Every change goes through here, so a chart's measure that can no longer be measured is forgotten, not revived.
+    fun change(next: ReportDraft) {
+        draft = next.withChartMeasureSettled(reportDraftMeasures(next, catalog))
+    }
+
+    // What the chart may measure, worked out once a render for the problems, the Chart choice, and the request.
+    val measures = reportDraftMeasures(draft, catalog)
+    val problems = reportDraftProblems(draft, measures)
     val dirty = draft != ReportDraft()
     val totals = draft.shape == ReportShape.totals
 
@@ -77,7 +84,7 @@ val ReportCreatePanel = FC<ReportCreatePanelProps> { props ->
         reportCreateScope.launch {
             try {
                 val made = ReportsApi.create(
-                    reportCreateRequest(props.client, draft, if (props.createsDraft) EDM.draft else EDM.live, catalog),
+                    reportCreateRequest(props.client, draft, if (props.createsDraft) EDM.draft else EDM.live, measures),
                 )
                 saving = false
                 props.onCreated(made.reportId)
@@ -100,7 +107,7 @@ val ReportCreatePanel = FC<ReportCreatePanelProps> { props ->
                 options = choiceOptions(ReportShape.entries.map { it.label to it.name })
                 disabled = saving
                 style = js("({ minWidth: 220 })")
-                onChange = { v -> ReportShape.entries.firstOrNull { it.name == v }?.let { draft = draft.withShape(it) } }
+                onChange = { v -> ReportShape.entries.firstOrNull { it.name == v }?.let { change(draft.withShape(it)) } }
             }
         }
         p {
@@ -114,7 +121,7 @@ val ReportCreatePanel = FC<ReportCreatePanelProps> { props ->
                 placeholder = "What the report is called"
                 disabled = saving
                 style = js("({ maxWidth: 360 })")
-                onChange = { e -> draft = draft.copy(name = e.target.value as String) }
+                onChange = { e -> change(draft.copy(name = e.target.value as String)) }
             }
         }
         choiceRow("Description") {
@@ -123,12 +130,12 @@ val ReportCreatePanel = FC<ReportCreatePanelProps> { props ->
                 placeholder = "What it shows, for the person choosing it (optional)"
                 disabled = saving
                 style = js("({ maxWidth: 560 })")
-                onChange = { e -> draft = draft.copy(description = e.target.value as String) }
+                onChange = { e -> change(draft.copy(description = e.target.value as String)) }
             }
         }
         h4 { +"Columns" }
         val shown = catalog
-        if (draft.columns.isNotEmpty() && shown != null) columnsTable(draft, shown, saving) { draft = it }
+        if (draft.columns.isNotEmpty() && shown != null) columnsTable(draft, shown, saving) { change(it) }
         if (shown != null) {
             choiceRow("Add a column") {
                 Select {
@@ -141,7 +148,7 @@ val ReportCreatePanel = FC<ReportCreatePanelProps> { props ->
                     style = js("({ minWidth: 360 })")
                     onChange = { v ->
                         shown.path(v.toString())?.let {
-                            draft = draft.withColumn(newReportColumn(nextId, it))
+                            change(draft.withColumn(newReportColumn(nextId, it)))
                             nextId += 1
                         }
                     }
@@ -162,7 +169,7 @@ val ReportCreatePanel = FC<ReportCreatePanelProps> { props ->
                     options = choiceOptions(groupable.map { it.label.ifBlank { "(no heading)" } to it.id.toString() })
                     disabled = saving || groupable.isEmpty()
                     style = js("({ minWidth: 260 })")
-                    onChange = { v -> draft = draft.copy(groupBy = v.toString().toIntOrNull()) }
+                    onChange = { v -> change(draft.copy(groupBy = v.toString().toIntOrNull())) }
                 }
             }
             p {
@@ -173,7 +180,7 @@ val ReportCreatePanel = FC<ReportCreatePanelProps> { props ->
                 Checkbox {
                     checked = draft.history
                     disabled = saving
-                    onChange = { e -> draft = draft.copy(history = e.target.checked == true) }
+                    onChange = { e -> change(draft.copy(history = e.target.checked == true)) }
                     +"Keep a daily snapshot"
                 }
             }
@@ -181,7 +188,7 @@ val ReportCreatePanel = FC<ReportCreatePanelProps> { props ->
                 className = ClassName("type-hint")
                 +"Use this when its History view should chart how its totals change from day to day; one is taken each night."
             }
-            chartChoice(draft, catalog, saving) { draft = it }
+            chartChoice(draft, measures, saving) { change(it) }
         }
         if (dirty && problems.isNotEmpty()) {
             ul {
@@ -209,11 +216,11 @@ val ReportCreatePanel = FC<ReportCreatePanelProps> { props ->
 
 /**
  * A totals report's chart (issue #1773): the kind it opens on, as the Grouped view's Chart offers it -- a pie only of a
- * measure that adds up -- and, for a chart, what it measures, as the Grouped view's Of does. [update] takes the draft as
- * changed.
+ * measure that adds up -- and, for a chart, what it measures among [measures], as the Grouped view's Of does. [update]
+ * takes the draft as changed.
  */
-private fun ChildrenBuilder.chartChoice(draft: ReportDraft, catalog: ReportPathCatalogView?, busy: Boolean, update: (ReportDraft) -> Unit) {
-    val measure = reportDraftMeasure(draft, catalog)
+private fun ChildrenBuilder.chartChoice(draft: ReportDraft, measures: List<ReportMeasure>, busy: Boolean, update: (ReportDraft) -> Unit) {
+    val measure = reportDraftMeasure(draft, measures)
     choiceRow("Chart") {
         Select {
             value = draft.chart?.name ?: reportChartTable
@@ -228,7 +235,6 @@ private fun ChildrenBuilder.chartChoice(draft: ReportDraft, catalog: ReportPathC
         }
     }
     if (draft.chart != null) {
-        val measures = reportDraftMeasures(draft, catalog)
         choiceRow("Of") {
             Select {
                 value = measure.key
