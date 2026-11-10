@@ -12,20 +12,25 @@ import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.endpoint.HttpMethod
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.gedra.CCT
 import com.dynamicruntime.common.gedra.CFEP
 import com.dynamicruntime.common.gedra.CLD
+import com.dynamicruntime.common.gedra.COV
 import com.dynamicruntime.common.gedra.CPY
+import com.dynamicruntime.common.gedra.DSV
 import com.dynamicruntime.common.gedra.EDM
 import com.dynamicruntime.common.gedra.GDF
 import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.gedra.GED
 import com.dynamicruntime.common.gedra.GEP
+import com.dynamicruntime.common.gedra.MNU
 import com.dynamicruntime.common.gedra.PORT
 import com.dynamicruntime.common.home.HDOC
 import com.dynamicruntime.common.http.request.InProcessCaller
 import com.dynamicruntime.common.http.request.InProcessPrincipal
 import com.dynamicruntime.common.user.InProcessScope
 import com.dynamicruntime.common.user.UADEP
+import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonStr
 import com.dynamicruntime.common.util.toOptStr
 import com.dynamicruntime.kdn.confdemo.ConfDemo
@@ -64,6 +69,16 @@ object TOOL {
 
     /** How deep a tool's input may nest before it is refused rather than walked. */
     const val maxDepth = 30
+}
+
+/** The wire names of `read_copy`'s index (issue #1762) that are not the copy keys' own. */
+@Suppress("ConstPropertyName")
+object CPYIDX {
+    /** Per file: its namespaces, each with how many keys it holds. */
+    const val namespaces = "namespaces"
+
+    /** Said instead when a file or namespace holds no keys. */
+    const val none = "none"
 }
 
 /** What a tool answered: [text] for the model, and whether it was an error the model can correct from. */
@@ -153,9 +168,11 @@ class AssistantTool(
 }
 
 /**
- * The assistant's tools (issue #1526): reads of the client's configuration, workflows, traits, and cfacts, and two
- * writes -- `patch_config`, a dry run before every write, and `set_included_traits` -- that can only make drafts: the
- * tools act as the person's own user in the client's sandbox, whose configuration edits become drafts on the parent.
+ * The assistant's tools (issue #1526): reads of the client's configuration, workflows, traits, and cfacts, and of the
+ * client as its sandbox runs it -- its definition, menu, copy, forms list, reports, images, drafts and their impact
+ * ([clientReads], issue #1762) -- and two writes -- `patch_config`, a dry run before every write, and
+ * `set_included_traits` -- that can only make drafts: the tools act as the person's own user in the client's sandbox,
+ * whose configuration edits become drafts on the parent.
  *
  * **What is left out is the point.** Publishing, reverting, deleting a config, `publishedOnly`, `bundle/write` (which
  * deletes what it is not given), switching the sandbox, `workflows/params` (in force at once), users, keys, sessions,
@@ -269,6 +286,7 @@ object AssistantTools {
         ) { run, input ->
             run.call(HttpMethod.GET, GEP.workflowView, input[GDF.workflowId].toOptStr()?.let { mapOf(GDF.workflowId to it) })
         },
+    ) + clientReads() + listOf(
         AssistantTool(
             ATOOL.patchConfig,
             "Changes the client's configuration, as a draft: nothing is live until a person publishes it. Each config " +
@@ -317,6 +335,174 @@ object AssistantTools {
             run.call(HttpMethod.POST, UADEP.clientTraitsSet, body = body)
         },
     )
+
+    /**
+     * The reads of the client as its sandbox runs it (issue #1762): what the client's own configuration does not show,
+     * because it is merged from the platform's, its components', its flavor's, and the client's -- its definition, menu,
+     * copy, forms list, reports, images -- and what is pending: its drafts, what publishing them would do to stored
+     * forms, and its getting-started steps. Each is the endpoint the client's administrator reads on its page, called as
+     * the person's user in the sandbox, so each answers for the sandbox (its id ends ':sandbox'), which runs the client's
+     * drafts; the drafts, their impact, and the checklist answer for the client itself.
+     *
+     * Left out on purpose: the client's users and its stored forms. From the sandbox both answer for the sandbox's own,
+     * which would say nothing true of the client's people or data.
+     */
+    @KdrPrivate
+    fun clientReads(): List<AssistantTool> = listOf(
+        AssistantTool(
+            ATOOL.readClient,
+            "Reads the client's definition as its sandbox runs it (its id ends ':sandbox'): its name, time zone, the user " +
+                "labels it suggests and what each is for, the roles a visitor may join as, and the traits it includes. A " +
+                "workflow's userHasLabel should name one of its labels.",
+            objectSchema(), HttpMethod.GET, UADEP.clientDefinition,
+        ) { run, _ -> run.call(HttpMethod.GET, UADEP.clientDefinition) },
+        AssistantTool(
+            ATOOL.readMenu,
+            "Reads the home menu as the client's people are offered it, in order: each item's id, its label and the " +
+                "condition that shows it -- the platform's and, where the client changed them, the client's -- and the " +
+                "named audiences a condition may be. An item the platform ships turned off, such as 'workflows', has the " +
+                "condition '#never' until a client turns it on.",
+            objectSchema(), HttpMethod.GET, MNU.itemsPath,
+        ) { run, _ -> run.call(HttpMethod.GET, MNU.itemsPath, shape = ::menuShaped) },
+        AssistantTool(
+            ATOOL.readCopy,
+            "Reads the copy the client may reword: the words its pages, forms, and mails show, as the client reads them, " +
+                "each a key of a namespace of a fragment file, with where the file is shown. With no '${ATOOL.file}', an " +
+                "index: each file, where it is shown, and its namespaces with how many keys each holds. With a " +
+                "'${ATOOL.file}', that file's keys and their values, narrowed to one '${ATOOL.namespace}' when given.",
+            objectSchema(
+                ATOOL.file to stringSchema("A fragment file's id, such as 'home'."),
+                ATOOL.namespace to stringSchema("A namespace of that file, to read only its keys."),
+            ),
+            HttpMethod.GET, CPY.keysPath,
+        ) { run, input ->
+            val file = input[ATOOL.file].toOptStr()
+            val namespace = input[ATOOL.namespace].toOptStr()
+            run.call(HttpMethod.GET, CPY.keysPath, shape = { payload -> copyKeysShaped(payload, file, namespace) })
+        },
+        AssistantTool(
+            ATOOL.readOverrides,
+            "Reads what the client's own configuration changes: each copy key it rewords, with the platform's value beside " +
+                "its own, and each menu or home-card item it changes. What the client has made its own, as opposed to what " +
+                "it inherits.",
+            objectSchema(), HttpMethod.GET, UADEP.clientOverrides,
+        ) { run, _ -> run.call(HttpMethod.GET, UADEP.clientOverrides) },
+        AssistantTool(
+            ATOOL.readFormsList,
+            "Reads the forms list's columns: each column, the trait field its value comes from and how it reads, the " +
+                "fields a new column could show, and how the list draws each form's workflows.",
+            objectSchema(), HttpMethod.GET, UADEP.clientUsages,
+        ) { run, _ -> run.call(HttpMethod.GET, UADEP.clientUsages) },
+        AssistantTool(
+            ATOOL.listReports,
+            "Lists the reports the client may run, the platform's and its own, each with its columns, and whether it may " +
+                "make one.",
+            objectSchema(), HttpMethod.GET, UADEP.reports,
+        ) { run, _ -> run.call(HttpMethod.GET, UADEP.reports) },
+        AssistantTool(
+            ATOOL.readReportPaths,
+            "Reads the paths a report column of this client may read, grouped by where they come from -- the form itself, " +
+                "and each trait's fields -- each with its kind.",
+            objectSchema(), HttpMethod.GET, UADEP.reportPaths,
+        ) { run, _ -> run.call(HttpMethod.GET, UADEP.reportPaths) },
+        AssistantTool(
+            ATOOL.readWebAssets,
+            "Reads the client's web assets -- its favicon and brand mark -- each with what image it shows now, if any. " +
+                "Images are uploaded by a person on the Clients page, never by you.",
+            objectSchema(), HttpMethod.GET, UADEP.clientWeb,
+        ) { run, _ -> run.call(HttpMethod.GET, UADEP.clientWeb) },
+        AssistantTool(
+            ATOOL.readFileRefs,
+            "Reads the client's file refs: the named images its copy may show as ![alt](ref:<name>), each with the file it " +
+                "names. Files are uploaded by a person on the Clients page, never by you.",
+            objectSchema(), HttpMethod.GET, UADEP.clientFiles,
+        ) { run, _ -> run.call(HttpMethod.GET, UADEP.clientFiles) },
+        AssistantTool(
+            ATOOL.listDrafts,
+            "Lists the client's bundles that have unpublished changes -- drafts, yours or the administrator's -- by name.",
+            objectSchema(), HttpMethod.GET, CFEP.drafts,
+        ) { run, _ -> run.call(HttpMethod.GET, CFEP.drafts) },
+        AssistantTool(
+            ATOOL.readImpact,
+            "Reads what publishing bundles' drafts together would do to the forms the client stores: each form a narrowed " +
+                "schema would no longer accept, and why. You cannot publish; read this to tell the administrator what " +
+                "publishing would do before they do.",
+            objectSchema(
+                CFEP.names to arraySchema("The bundles whose drafts would be published together.", stringSchema("A bundle's name.")),
+                required = listOf(CFEP.names),
+            ),
+            HttpMethod.GET, CFEP.bundleImpact, setOf(CFEP.names),
+        ) { run, input ->
+            // A GET's input is query text, which takes the names comma-separated rather than as a list.
+            val names = (input[CFEP.names] as? List<*>)?.joinToString(",") ?: input[CFEP.names]
+            run.call(HttpMethod.GET, CFEP.bundleImpact, mapOf(CFEP.names to names))
+        },
+        AssistantTool(
+            ATOOL.readChecklist,
+            "Reads the client's getting-started steps -- its own New form, a workflow of its own, someone invited, a first " +
+                "form -- and which are done.",
+            objectSchema(), HttpMethod.GET, UADEP.clientChecklist,
+        ) { run, _ -> run.call(HttpMethod.GET, UADEP.clientChecklist) },
+        AssistantTool(
+            ATOOL.readDefinition,
+            "Reads where one definition comes from -- the platform, the client's code, or its own configuration, and which " +
+                "bundle -- with its authored entry, the workflows that use it, and whether its shared copy may be changed " +
+                "here. Slot '${CCT.traitDef}', '${CCT.schemaDef}', or '${CCT.workflowDef}', and the entry's key in it.",
+            objectSchema(
+                DSV.slot to stringSchema("'${CCT.traitDef}', '${CCT.schemaDef}', or '${CCT.workflowDef}'."),
+                DSV.key to stringSchema("The entry's key: a trait's id, a type's name, or a workflow's id."),
+                required = listOf(DSV.slot, DSV.key),
+            ),
+            HttpMethod.GET, DSV.definition, setOf(DSV.slot, DSV.key),
+        ) { run, input ->
+            run.call(HttpMethod.GET, DSV.definition, mapOf(DSV.slot to input[DSV.slot], DSV.key to input[DSV.key]))
+        },
+    )
+
+    /**
+     * `read_menu`'s answer (issue #1762) from the menu items [payload]: each item repeats the audiences a condition may be,
+     * the same for every item, which runs a menu past what one answer holds -- so they are said once, beside the items --
+     * and an item's platform label, condition, and audience are kept only where the client's differ from them.
+     */
+    @KdrPrivate
+    fun menuShaped(payload: Any?): Any? {
+        val items = (payload as? Map<*, *>)?.get(EP.items).toJsonListOfMaps()
+        val pairs = listOf(COV.baseLabel to MNU.label, MNU.baseCondition to MNU.condition, MNU.baseAudience to MNU.audience)
+        return linkedMapOf(
+            MNU.audiences to items.flatMap { it[MNU.audiences].toJsonListOfMaps() }.distinct(),
+            EP.items to items.map { item ->
+                item.filterKeys { key -> key != MNU.audiences && pairs.none { (base, own) -> key == base && item[base] == item[own] } }
+            },
+        )
+    }
+
+    /**
+     * `read_copy`'s answer (issue #1762) from the copy keys [payload]: every key is more than one answer holds, so with no
+     * [file] an index -- each file, where it is shown, and its namespaces with their key counts -- and with one, its
+     * keys, narrowed to [namespace] when given. A file or namespace with no keys says so, naming the files there are.
+     */
+    @KdrPrivate
+    fun copyKeysShaped(payload: Any?, file: String?, namespace: String?): Any? {
+        val keys = (payload as? Map<*, *>)?.get(EP.items).toJsonListOfMaps()
+        if (file == null) {
+            return keys.groupBy { it[COV.fileId].toOptStr().orEmpty() }.map { (fileId, inFile) ->
+                linkedMapOf(
+                    COV.fileId to fileId,
+                    COV.shownOn to inFile.firstNotNullOfOrNull { it[COV.shownOn] },
+                    CPYIDX.namespaces to inFile.groupingBy { it[COV.namespaceField].toOptStr().orEmpty() }.eachCount(),
+                )
+            }
+        }
+        val chosen = keys.filter { it[COV.fileId] == file && (namespace == null || it[COV.namespaceField] == namespace) }
+        if (chosen.isEmpty()) {
+            val files = keys.mapNotNull { it[COV.fileId].toOptStr() }.distinct()
+            return mapOf(
+                CPYIDX.none to "No copy keys in file '$file'" + (namespace?.let { ", namespace '$it'" } ?: "") +
+                    ". The files are: ${files.joinToString(", ")}.",
+            )
+        }
+        return chosen.map { k -> k.filterKeys { it != COV.fileId } }
+    }
 
     /**
      * `patch_config`: a dry run is recorded by what it was given, and a write must match one the model has seen the

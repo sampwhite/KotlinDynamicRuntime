@@ -168,6 +168,19 @@ else is refused, and a drift test holds each tool to its endpoint.
 | `list_traits` | the global traits, the client's own, and the plan's quotas | `GET /clientAdmin/client/traits` |
 | `read_cfacts` | the cfacts reference | `GET /clientOperator/cfacts` |
 | `view_workflow` | a workflow as the sandbox runs it | `GET /gedra/workflow/view` |
+| `read_client` | the client's definition as the sandbox runs it: labels and their notes, join roles, time zone | `GET /clientAdmin/client/definition` |
+| `read_menu` | the home menu's items, the audiences said once | `GET /clientAdmin/client/menu/items` |
+| `read_copy` | an index of the copy files, or one file's keys (a namespace of it) | `GET /clientAdmin/client/copy/keys` |
+| `read_overrides` | what the client's own configuration rewords or changes | `GET /clientAdmin/client/overrides` |
+| `read_forms_list` | the forms list's columns, and the fields a column could show | `GET /clientAdmin/client/usages` |
+| `list_reports` | the reports the client may run | `GET /clientAdmin/reports` |
+| `read_report_paths` | what a report column may read | `GET /clientAdmin/report/paths` |
+| `read_web_assets` | the favicon and brand mark | `GET /clientAdmin/client/web` |
+| `read_file_refs` | the named images copy may show | `GET /clientAdmin/client/files` |
+| `list_drafts` | the bundles with unpublished changes | `GET /clientAdmin/config/drafts` |
+| `read_impact` | what publishing named bundles' drafts would do to stored forms | `GET /clientAdmin/config/bundle/impact` |
+| `read_checklist` | the getting-started steps | `GET /clientAdmin/client/checklist` |
+| `read_definition` | where a trait, type, or workflow comes from, and its authored entry | `GET /clientAdmin/design/definition` |
 | `patch_config` | a change, as a draft: a dry run, then the same configs written | `POST /clientAdmin/config/bundle/patch` |
 | `set_included_traits` | the client's global traits, expected as a draft | `POST /clientAdmin/client/traits/set` |
 
@@ -176,7 +189,11 @@ turn, so the model has read its impact first. A write asks for no reload: a patc
 and with it the sandbox, so `view_workflow` shows the draft at once. Left out on purpose:
 publishing, reverting, deleting a bundle, `publishedOnly`, `bundle/write` (which deletes what it is not given), the
 sandbox switch, `workflows/params` (in force at once), users, keys, sessions, form data, the endpoint catalog, and
-every `admin`, `operator`, and `fixture` endpoint. A tool's result is the endpoint's answer without its envelope, cut
+every `admin`, `operator`, and `fixture` endpoint. The reads of the client (issue #1762) answer for the sandbox, which
+runs its drafts, except the drafts, their impact, and the checklist, which answer for the client itself; the client's
+users and stored forms are left out of them, since from the sandbox both answer for the sandbox's own. Two answers are
+reshaped to fit what the model is shown: the menu says the audiences once rather than per item, and the copy is an index
+until a file is named. A tool's result is the endpoint's answer without its envelope, cut
 at 30,000 characters (100,000 for a document read whole), saying so; a refusal comes back as an error the model can
 correct from. A dry run's answer leaves out the bundles as they would be -- the model sent them -- so its impact, which
 is what it is for, is never what a long answer cuts; a write's answer keeps them, since they say what was written and

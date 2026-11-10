@@ -3,6 +3,7 @@ package com.dynamicruntime.assistant
 import com.dynamicruntime.common.assistant.ACNV
 import com.dynamicruntime.common.assistant.ASST
 import com.dynamicruntime.common.assistant.ATOOL
+import com.dynamicruntime.common.cfact.CFACT
 import com.dynamicruntime.common.content.UIC
 import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.KdrCxt
@@ -14,16 +15,19 @@ import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.gedra.CCT
 import com.dynamicruntime.common.gedra.CFEP
 import com.dynamicruntime.common.gedra.CLD
+import com.dynamicruntime.common.gedra.COV
 import com.dynamicruntime.common.gedra.CPY
 import com.dynamicruntime.common.gedra.CUST
 import com.dynamicruntime.common.gedra.CWF
 import com.dynamicruntime.common.gedra.ClientAudience
 import com.dynamicruntime.common.gedra.ClientDef
 import com.dynamicruntime.common.gedra.ClientUsageType
+import com.dynamicruntime.common.gedra.DSV
 import com.dynamicruntime.common.gedra.EDM
 import com.dynamicruntime.common.gedra.GDF
 import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.gedra.GED
+import com.dynamicruntime.common.gedra.GEP
 import com.dynamicruntime.common.gedra.GedraConfigBuilder
 import com.dynamicruntime.common.gedra.GedraConfigReload
 import com.dynamicruntime.common.gedra.GedraConfigService
@@ -31,6 +35,7 @@ import com.dynamicruntime.common.gedra.GedraConfigType
 import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.GedraEditAction
 import com.dynamicruntime.common.gedra.GedraId
+import com.dynamicruntime.common.gedra.MNU
 import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.gedra.sandboxOf
 import com.dynamicruntime.common.gedra.workflow.WFT
@@ -41,6 +46,7 @@ import com.dynamicruntime.common.gedra.workflow.WfTemplateSlots
 import com.dynamicruntime.common.gedra.workflow.WfTraitRef
 import com.dynamicruntime.common.home.HEP
 import com.dynamicruntime.common.home.HFLD
+import com.dynamicruntime.common.home.HFRAG
 import com.dynamicruntime.common.home.HMENU
 import com.dynamicruntime.common.http.request.InProcessCaller
 import com.dynamicruntime.common.http.request.InProcessPrincipal
@@ -55,6 +61,7 @@ import com.dynamicruntime.common.user.AFLD
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.user.UADEP
 import com.dynamicruntime.common.user.UserService
+import com.dynamicruntime.common.util.json
 import com.dynamicruntime.common.util.jsonMap
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
@@ -65,6 +72,7 @@ import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.collections.shouldHaveSize
+import io.kotest.matchers.collections.shouldNotBeEmpty
 import io.kotest.matchers.collections.shouldNotContain
 import io.kotest.matchers.comparables.shouldBeGreaterThan
 import io.kotest.matchers.longs.shouldBeGreaterThan
@@ -535,9 +543,11 @@ class AssistantTurnsTest : StringSpec({
             HttpMethod.POST to CFEP.bundleDelete, HttpMethod.POST to CFEP.publishedOnly, HttpMethod.POST to UADEP.clientSandbox,
             HttpMethod.POST to UADEP.clientWorkflowParams, HttpMethod.POST to ACNV.messagePath, HttpMethod.POST to UADEP.userCreate,
             HttpMethod.POST to ADEP.userCreate, HttpMethod.GET to OENV.envReferencePath, HttpMethod.POST to TEP.becomeUser,
+            // From the sandbox these answer for its own users and forms, not the client's (issue #1762), so none is a tool.
+            HttpMethod.GET to UADEP.userSearch, HttpMethod.GET to GEP.formDocs,
         )
         val more = listOf(
-            HttpMethod.POST to CFEP.reload, HttpMethod.GET to CFEP.editor, HttpMethod.GET to CFEP.bundleImpact,
+            HttpMethod.POST to CFEP.reload, HttpMethod.GET to CFEP.editor,
             // A permitted path by another method.
             HttpMethod.POST to CFEP.bundles, HttpMethod.GET to CFEP.bundlePatch,
         )
@@ -550,10 +560,56 @@ class AssistantTurnsTest : StringSpec({
         for (path in listOf("/clientOperator/$client/cfacts", "/gedra/$client/workflow/view")) {
             call(HttpMethod.GET, path).isSuccess shouldBe false
         }
+        // Every read answers from the sandbox, given what it requires.
+        val requires = mapOf(
+            CFEP.name to "flows", CFEP.names to "flows", DSV.slot to CCT.traitDef, DSV.key to "memo",
+        )
         for (tool in AssistantTools.all.filter { it.method == HttpMethod.GET }) {
-            val answer = call(tool.method!!, tool.path!!, if (CFEP.name in tool.sends) mapOf(CFEP.name to "flows") else null)
+            val answer = call(tool.method!!, tool.path!!, requires.filterKeys { it in tool.sends }.ifEmpty { null })
             (tool.name to answer.status) shouldBe (tool.name to EXC.ok)
         }
+    }
+
+    "the reads answer for the client as its sandbox runs it: its definition, menu, copy, drafts, and where a trait comes from" {
+        // Issue #1762: what the client's own configuration does not show, merged from every layer.
+        val client = "asstreads"
+        val admin = clientWithAssistant(cxt, client)
+        val sandboxUserId = admin.postData(AEP.openSandbox, emptyMap())[UPF.userId].toOptLong().shouldNotBeNull()
+        admin.postData(AEP.leaveSandbox, mapOf(AFLD.userId to admin.userId))
+        val row = UserService.get(cxt).queryByUserId(cxt, sandboxUserId).shouldNotBeNull()
+        val principal = InProcessPrincipal(sandboxUserId, row.identityId, row.client, "assistant:test", AssistantTools.scope)
+        val run = ToolRun(cxt, principal, "t1762")
+        fun read(name: String, input: Map<String, Any?> = emptyMap()): Any? {
+            val result = AssistantTools.run(run, name, input)
+            result.isError shouldBe false
+            return result.text.json()
+        }
+
+        // The definition, as the sandbox runs it.
+        read(ATOOL.readClient).toJsonMapOrEmpty()[CLD.client].toJsonMapOrEmpty()[CLD.clientId] shouldBe sandboxOf(client)
+        // The menu, the platform's items among it: the Workflows entry ships turned off.
+        val menu = read(ATOOL.readMenu).toJsonMapOrEmpty()
+        val workflows = menu[EP.items].toJsonListOfMaps().single { it[COV.itemId] == HMENU.workflows }
+        workflows[MNU.condition] shouldBe CFACT.neverName
+        // The audiences are said once, and the platform's condition only where the client's differs: here it does not.
+        menu[MNU.audiences].toJsonListOfMaps().shouldNotBeEmpty()
+        workflows.keys shouldNotContain MNU.audiences
+        workflows.keys shouldNotContain MNU.baseCondition
+        // The copy: an index of the files, then one file's namespace whole.
+        val index = read(ATOOL.readCopy).toJsonListOfMaps().single { it[COV.fileId] == HFRAG.home }
+        index[CPYIDX.namespaces].toJsonMapOrEmpty().keys shouldContain HFRAG.formEntriesNs
+        val entries = read(ATOOL.readCopy, mapOf(ATOOL.file to HFRAG.home, ATOOL.namespace to HFRAG.formEntriesNs)).toJsonListOfMaps()
+        entries.single()[COV.key] shouldBe HFRAG.formEntryLabel
+        entries.single()[COV.value] shouldBe HFRAG.defaultEntryLabel
+        read(ATOOL.readCopy, mapOf(ATOOL.file to "nope")).toJsonMapOrEmpty()[CPYIDX.none].toString() shouldContain "The files are:"
+        // What is pending, for the client itself.
+        read(ATOOL.listDrafts).toJsonMapOrEmpty()[CFEP.client] shouldBe client
+        read(ATOOL.readImpact, mapOf(CFEP.names to listOf("main"))).toJsonMapOrEmpty()[CFEP.client] shouldBe client
+        // Where a trait comes from: the client's own configuration.
+        val memo = read(ATOOL.readDefinition, mapOf(DSV.slot to CCT.traitDef, DSV.key to "memo")).toJsonMapOrEmpty()
+        memo[DSV.config] shouldBe "main"
+        // A read refused is the endpoint's answer, for the model to correct from.
+        AssistantTools.run(run, ATOOL.readDefinition, mapOf(DSV.slot to "kdr:nope", DSV.key to "memo")).isError shouldBe true
     }
 
     "each tool's endpoint exists, is open to the seam, and takes what the tool sends; the assistant's own are session-only" {
