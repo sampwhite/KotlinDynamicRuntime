@@ -410,6 +410,8 @@ private fun webResourcesTests() = stringSpec {
         webResources("wresfix:twice", favicon = "fixture/dot.png"),
         webResources("wresfix:twice", favicon = "fixture/dot.png"),
         webResources("wresfix:empty"),
+        // A slot the page shell links under a PNG's name takes only a PNG (issue #1779).
+        webResources("wresfix:svgShare", shareImage = "fixture/mark.svg"),
     )
     // Package problems reported rather than refused, as in production: the faulty files are left out.
     val cxt = Startup.mkTestBootCxt(
@@ -431,8 +433,8 @@ private fun webResourcesTests() = stringSpec {
             Startup.mkTestBootCxt("wresStrict1301", "wresStrict1301", emptyMap(), listOf(WebResourcesFixture(listOf(WebResourcesFixture.full) + faulty.take(1))))
         }.message.orEmpty() shouldContain "wresfix:badSlot"
         val findings = BootCheckRegistry.get(cxt).results().single { it.name == BCHK.images }.findings
-        // Seven: the package declared twice is one finding.
-        findings shouldHaveSize 7
+        // Eight: the package declared twice is one finding.
+        findings shouldHaveSize 8
         findings.single { "wresfix:badSlot" in it } shouldContain "the slot 'logo'"
         findings.single { "wresfix:misnamed" in it } shouldContain "named as an SVG image, but its content is a PNG image"
         findings.single { "wresfix:missing" in it } shouldContain "no resource"
@@ -440,6 +442,7 @@ private fun webResourcesTests() = stringSpec {
         findings.single { "elsewhere:pkg" in it } shouldContain "not the component's own root"
         findings.single { "wresfix:twice" in it } shouldContain "declared 2 times"
         findings.single { "wresfix:empty" in it } shouldContain "names no file"
+        findings.single { "wresfix:svgShare" in it } shouldContain "is not a PNG image, which a share image must be"
         // The good package is held whole; a package whose id was faulty is left out.
         packaged.keys.toList() shouldContainExactly listOf(WAS.favicon, WAS.brandMark)
         ComponentImageService.get(cxt).packages.containsKey("elsewhere:pkg") shouldBe false

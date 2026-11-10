@@ -15,6 +15,7 @@ import com.dynamicruntime.common.home.sitePolicyFaults
 import com.dynamicruntime.common.uiblock.UIB
 import com.dynamicruntime.common.uiblock.UiBlockSource
 import com.dynamicruntime.common.webasset.DeclaredWebResources
+import com.dynamicruntime.common.util.toOptStr
 import com.dynamicruntime.common.webasset.WRES
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.KdrInstanceConfig
@@ -208,6 +209,10 @@ object InstanceRegistry {
             config.put(DebugTags.registryKey, DebugTags.of(debugTags))
             config.put(IMGS.registryKey, images.toList())
             config.put(WRES.registryKey, webResources.toList())
+            // The deployment's default web resources package (issue #1779) must be one a component declares.
+            WRES.defaultFault(config.get(WRES.defaultKey).toOptStr(), webResources.mapTo(HashSet()) { it.def.id })?.let {
+                throw KdrException("Web resources: $it")
+            }
 
             val startupEntries = mutableListOf<ServiceEntry>()
             val serviceEntries = mutableListOf<ServiceEntry>()

@@ -127,67 +127,73 @@ In the directory that *contains* `KotlinDynamicRuntime/` (the same directory as 
 
 ## Branding the webapp
 
-A deployment can serve its own artwork — favicon, logo — without forking `:webapp`. Name a classpath directory
-with the `appUiBrandingDir` config key and ship the files there:
+A deployment can serve its own artwork -- favicon, logo, the image a link preview shows -- without forking `:webapp`.
+It ships a **web resources package** (issue #1301) and names it as the deployment's default with the
+`defaultWebResourcesId` config key (issue #1779). A component declares the package under its owner root, with a file
+per slot under `web-resources/` in its resources:
+
+```kotlin
+class AcmeComponent : ComponentDefinition {
+    override val ownerRoot: String = "acmeco"
+
+    override fun webResources(cxt: KdrCxt) = listOf(
+        webResources(
+            "acmeco:site",
+            favicon = "acmesite/favicon.svg",          // tab icon (heavier strokes, for 16px)
+            brandMark = "acmesite/brand-mark.svg",     // the app bar logo and home hero
+            faviconPng = "acmesite/favicon-32.png",    // tab-icon fallback, a PNG
+            appleTouchIcon = "acmesite/apple-touch-icon.png", // 180x180, opaque, a PNG: iOS home screen
+            shareImage = "acmesite/share-image.png",   // 1200x630, a PNG: what a link preview shows (LinkedIn, Slack)
+        ),
+    )
+}
+```
+
+and the deployment names it:
 
 ```kotlin
 class KdrConfig : AppConfigApplier {
     override fun AppConfigBuilder.applyAppConfig() {
-        data["appUiBrandingDir"] = "acmeBranding"
+        data["defaultWebResourcesId"] = "acmeco:site"
     }
 }
 ```
 
-`customConfig` is on the runtime classpath and (per step 2) already has resources enabled, so it is the natural
-carrier. Place the files under the `resources` root, in a directory matching the key (alongside the
-`META-INF/services` file):
-
-```
-customConfig/
-├── apps/com/dynamicruntime/deploy/KdrConfig.kt
-└── resources/
-    ├── META-INF/services/com.dynamicruntime.common.startup.KdrProvider
-    └── acmeBranding/
-        ├── favicon.svg          # tab icon (heavier strokes, for 16px)
-        ├── brand-mark.svg       # the app bar logo and home hero
-        ├── favicon-32.png       # tab-icon fallback
-        ├── apple-touch-icon.png # 180×180, opaque — iOS home screen
-        ├── share-image.png      # 1200×630 — what a link preview shows (LinkedIn, Slack)
-        └── favicon.ico          # legacy
-```
+`customConfig` is on the runtime classpath and (per step 2) already has resources enabled, so it is a natural carrier
+for the files; a flavor sets the key as it sets any other (the `reference` flavor names kdn's `kdr:gedra`).
 
 Notes:
 
-- **Every file is optional.** Resolution is per asset, so you can override just `brand-mark.svg` and inherit the
-  rest. Anything you omit falls back to the built-in.
-- **You override a filename, not the shell markup.** The shell links each asset by its stable name
-  (`favicon.svg`), but since issue #137 the served URL has carried a content hash of the *served* bytes
-  (`/wa/favicon.svg:<hash>`). So branding an asset gives it its own hashed URL automatically — you never touch
-  the `<link>` tags, and immutable caching can never serve a stale built-in in a branded asset's place.
-- **Watch the startup log.** A directory that overrides nothing logs a warning: the usual cause is a typo, or
-  resources not reaching the classpath, and without the warning it just looks like the branding "didn't take"
-  (the app serves its built-in set and appears fine).
-- **Production only.** The webpack dev server serves `:webapp`'s own resources, so it always shows the built-in
-  set. Only the deployed app (`appui`) is branded.
+- **Every slot is optional.** Resolution is per slot, so a package can supply just the share image and inherit the
+  rest. A slot it leaves empty is the built-in image.
+- **Who sees it.** The default stands behind every client that names no package of its own: `public`, and so every
+  anonymous visitor, as well as a client defined in data. The page shell links its images under fixed names
+  (`/wa/favicon.svg`, `/wa/share-image.png`), each with a content hash of the image served, so a new image gets a new
+  address and immutable caching never serves a stale one. A slot the shell names as SVG (`favicon.svg`,
+  `brand-mark.svg`) takes the package's image there only when it is an SVG; the page still shows a PNG brand mark,
+  which it reads from the shell config as it reads a client's.
+- **Checked at boot.** A default naming a package no component declares refuses the boot, and the package's files are
+  checked as a client's package's are. The share image, the PNG favicon, and the Apple touch icon must be PNGs, and are
+  only ever a package's: what an anonymous visitor or a link preview sees can vary only by the domain a link uses, and
+  only a client defined in code has one, so there is nothing for a client to upload there.
+- **Production only.** The webpack dev server serves `:webapp`'s own resources, so it always shows the built-in set.
+  Only the deployed app (`appui`) is branded.
 - **A link preview's words are copy, not files.** The page's title and the title and description a link preview shows
   are the `home` file's `site` copy (issue #1688), which a deployment rewords as it rewords any copy; the preview's
-  image is `share-image.png`. A preview needs the image's absolute address, which the shell gives only where
+  image is the package's share image. A preview needs the image's absolute address, which the shell gives only where
   `KDR_PUBLIC_URL` is set.
 - **The stylesheet is not brandable.** Replacing `app.css` wholesale would fork it and re-create the drift a
   single sheet exists to prevent; theming wants CSS variables instead.
 - **This is the deployment's branding, not a client's.** A client defined in source code can bring its own favicon
-  and brand mark as a **web resources package** (issue #1301): a component ships the files under `web-resources/`
-  and declares them (`ComponentDefinition.webResources`), and the client's definition names the package
-  (`webResourcesId`). A client's administrator can also upload a favicon and a brand mark from the Clients page
-  (issue #1130), with no code and no redeploy, and an upload stands in front of the package's. Either stands in for
-  these for that client's signed-in people. The set here is what everybody else sees, and what every page paints
-  first.
+  and brand mark in a package of its own, which its definition names (`webResourcesId`). A client's administrator can
+  also upload a favicon and a brand mark from the Clients page (issue #1130), with no code and no redeploy, and an
+  upload stands in front of a package's. Either stands in for the default for that client's signed-in people.
 
 ### A client's web resources package
 
-The deployment's branding above is one set for everybody. A client defined in source code presents its own through
-a package: a component ships a file per slot under `web-resources/` in its resources, and declares them under its
-owner root.
+The deployment's default above is one package for everybody who names none. A client defined in source code presents
+its own through a package of its own: a component ships a file per slot under `web-resources/` in its resources, and
+declares them under its owner root.
 
 ```kotlin
 class AcmeComponent : ComponentDefinition {

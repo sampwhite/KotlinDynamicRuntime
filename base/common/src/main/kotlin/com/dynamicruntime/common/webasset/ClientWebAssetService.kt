@@ -99,11 +99,11 @@ class ClientWebAssetService : ServiceInitializer, ContentServer {
 
     /**
      * The web resources package [client]'s people are shown the images of (issue #1301): the one its definition names
-     * -- its parent's, for a sandbox -- or null for none. Read off the definition this node knows, which a template
-     * fills in when the client names none; a node carrying no clients knows of no package.
+     * -- its parent's, for a sandbox -- else the deployment's default (issue #1779, [WRES.defaultId]), or null for
+     * none. Read off the definition this node knows, which a template fills in when the client names none.
      */
     fun packageIdOf(cxt: KdrCxt, client: String): String? =
-        ClientService.getOrNull(cxt)?.known(ownerOf(client))?.webResourcesId
+        ClientService.getOrNull(cxt)?.known(ownerOf(client))?.webResourcesId ?: WRES.defaultId(cxt)
 
     /** The image [client]'s web resources package ships for [slot] ([packageIdOf]), or null when it ships none. */
     fun packaged(cxt: KdrCxt, client: String, slot: String): StoredFile? {

@@ -24,9 +24,9 @@ The product is **Gedra**, built on KotlinDynamicRuntime. The `reference` flavor'
 so wherever the site names itself: the wordmark beside the brand mark (`home.brand`, "KDR" as shipped), the tab and
 link-preview title and description (`site.title`, `site.description`), the home page's title and intro, which names
 the open-source engine once and links the About page, and the sign-in page's line. A client with a brand of its own,
-as the demos have, keeps it. The link preview's image is Gedra's too: the flavor names kdn's `reference-branding`
-directory as the deployment's branding (`AUIC.appUiBrandingDir`, a core key so kdn can name it), which supplies only
-`share-image.png`, rendered from the `share-image.svg` beside it; every other branding asset is the built-in one.
+as the demos have, keeps it. The link preview's image is Gedra's too: the flavor makes kdn's web resources package
+`kdr:gedra` the deployment's default (`WRES.defaultKey`, issue #1779), which supplies only the share image, rendered
+from the `share-image.svg` beside it under `web-resources/gedra/`; every other image is the built-in one.
 
 ## Site policies (issue #1711) and the About page (issue #1769)
 

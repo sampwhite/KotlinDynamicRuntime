@@ -22,10 +22,13 @@ object SitePolicies {
     const val aboutDocId = "dynamicruntime-org-about-gedra"
 
     /**
-     * The classpath directory of the reference deployment's branding (issue #1769): its link-preview image, Gedra's,
-     * rendered from the `share-image.svg` beside it.
+     * Gedra's web resources package (issues #1769, #1779), the reference deployment's default: its link-preview image,
+     * rendered from the `share-image.svg` beside it under `web-resources/gedra/`. Every other slot is the built-in.
      */
-    const val brandingDir = "reference-branding"
+    const val gedraWebResources = "kdr:gedra"
+
+    /** The file of [gedraWebResources]' share image, under `web-resources/`. */
+    const val gedraShareImage = "gedra/share-image.png"
 
     private val privacy = MarkdownDocDef(
         privacyDocId, "Privacy policy", "docs/dynamicruntime-org/privacy-policy.md",
