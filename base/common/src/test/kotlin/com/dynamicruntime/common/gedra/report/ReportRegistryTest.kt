@@ -16,6 +16,7 @@ import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.gedra.supportedTraits
 import com.dynamicruntime.common.schema.SCT
+import com.dynamicruntime.common.schema.SchType
 import com.dynamicruntime.common.schema.parseSchemaTypes
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
@@ -53,19 +54,25 @@ class ReportRegistryTest : StringSpec({
         enabledEnvironments = setOf(ENV.local),
     )
 
-    fun scopeOf(client: String?): ReportScope = ReportScope(
+    /** [client]'s scope -- or the global one, for null -- over the configs of [from], whose compiled types are [fromTypes]. */
+    fun scopeOver(from: GedraConfigCollector, fromTypes: Map<String, SchType>, client: String?): ReportScope = ReportScope(
         ReportService.formTraitsOf(
-            if (client == null) collector.traitsFor(GID.globalClient) else supportedTraits(collector, client, acme, emptySet()),
+            if (client == null) from.traitsFor(GID.globalClient) else supportedTraits(from, client, acme, emptySet()),
         ),
-        types,
+        fromTypes,
         emptyMap(),
     )
 
-    /** The registries, with every problem captured as a trial captures them rather than refusing. */
-    fun captured(): Pair<ReportRegistries, List<GedraConfigIssue>> {
+    fun scopeOf(client: String?): ReportScope = scopeOver(collector, types, client)
+
+    /** The registries over [from], with every problem captured as a trial captures them rather than refusing. */
+    fun captured(
+        from: GedraConfigCollector = collector,
+        fromTypes: Map<String, SchType> = types,
+    ): Pair<ReportRegistries, List<GedraConfigIssue>> {
         val capture = mutableListOf<GedraConfigIssue>()
         val tcxt = cxt.mkSubContext("trial", "acme").also { it.locals[GCFG.trialCaptureKey] = capture }
-        val registries = buildReportRegistries(tcxt, collector, mapOf("acme" to acme), ::scopeOf, mutableListOf())
+        val registries = buildReportRegistries(tcxt, from, mapOf("acme" to acme), { scopeOver(from, fromTypes, it) }, mutableListOf())
         return registries to capture
     }
 
@@ -107,6 +114,34 @@ class ReportRegistryTest : StringSpec({
         registries.global.reports.keys.toList() shouldContainExactly listOf("kdr:sites")
         registries.forClient("acme").reports.keys.toList() shouldContainExactly listOf("kdr:sites", "audits", "owners")
         registries.forClient("acme").report("audits").shouldNotBeNull().bound.report.label shouldBe "Audits"
+    }
+
+    // Issue #1771: a chart that cannot be drawn costs its report as any other binding problem does, named as the chart's.
+    "a report whose chart cannot be drawn is one issue, and the report is left out" {
+        val charted = gedraConfig(cxt, "charts", "client.acme", "acme") {
+            trait("AuditEntry", "audit", setOf(GedraDataType.formDoc), "An audit.") {
+                property("auditor", "Who.")
+                property("score", "A score.") { type = SCT.integer }
+            }
+            report("byAuditor", "By auditor") {
+                column("auditor", "Auditor", "form.audit.auditor")
+                column("score", "Score", "form.audit.score", rollup = ReportCombine.sum)
+                groupBy = listOf("auditor")
+                chart(ReportChartKind.pie, measure = "score")
+            }
+            report("averages", "Averages") {
+                column("auditor", "Auditor", "form.audit.auditor")
+                column("score", "Score", "form.audit.score", rollup = ReportCombine.avg)
+                groupBy = listOf("auditor")
+                chart(ReportChartKind.pie, measure = "score")
+            }
+        }
+        val chartCollector = GedraConfigCollector().apply { add(cxt, charted) }
+        val (registries, capture) = captured(chartCollector, parseSchemaTypes(chartCollector.defs()))
+        registries.forClient("acme").reports.keys.toList() shouldContainExactly listOf("byAuditor")
+        registries.forClient("acme").report("byAuditor").shouldNotBeNull().bound.report.chart?.kind shouldBe ReportChartKind.pie
+        capture.map { it.elementId } shouldContainExactly listOf("averages")
+        capture.single().message shouldContain "a pie's slices are shares of a whole"
     }
 
     "a reload builds the one client against the running global registry" {

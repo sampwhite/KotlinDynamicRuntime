@@ -11,8 +11,10 @@ import com.dynamicruntime.common.gedra.GEP
 import com.dynamicruntime.common.gedra.GPF
 import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.GedraEditAction
+import com.dynamicruntime.common.gedra.report.RDEF
 import com.dynamicruntime.common.gedra.report.REP
 import com.dynamicruntime.common.gedra.report.RRUN
+import com.dynamicruntime.common.gedra.report.ReportChartKind
 import com.dynamicruntime.common.gedra.report.ReportCombine
 import com.dynamicruntime.common.gedra.report.ReportKind
 import com.dynamicruntime.common.gedra.report.ReportMode
@@ -111,6 +113,11 @@ class ReportEndpointTest : StringSpec({
         columns.getValue("owner")[RRUN.multiValued] shouldBe false
         report[RRUN.groupBy] shouldBe listOf("auditor")
         report[RRUN.configName] shouldBe "${SC.acme}Client"
+        // The chart its grouped run opens on (issue #1771): a pie of the count, so no measure is named.
+        report[RRUN.chart] shouldBe mapOf(RDEF.kind to ReportChartKind.pie.name)
+        itemsOf(env).single { it[RRUN.reportId] == SC.expensesByYear }[RRUN.chart] shouldBe
+            mapOf(RDEF.kind to ReportChartKind.bar.name, RDEF.measure to "total")
+        itemsOf(env).single { it[RRUN.reportId] == SC.formRoster }[RRUN.chart] shouldBe null
         summaryOf(env)[RRUN.client] shouldBe SC.acme
         summaryOf(env)[RRUN.issues].toJsonListOrEmpty().shouldBeEmpty()
     }

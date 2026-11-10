@@ -77,6 +77,13 @@ enum class ReportCombine(
     /** Whether the combined value is itself a list. Such a column cannot be grouped by. */
     val yieldsList: Boolean get() = this == list || this == distinct
 
+    /**
+     * Whether several groups' results of this rollup add into one (issue #1771): a count's and a sum's do, so they are
+     * shares of a whole -- what a pie's slices are, and what lets a chart fold its smallest groups into one -- and an
+     * average's, a minimum's, or a first value's do not.
+     */
+    val addsUp: Boolean get() = this == count || this == sum
+
     companion object {
         /**
          * The combine a column gets when it names none: [first] for a path that has one value, [list] for one that

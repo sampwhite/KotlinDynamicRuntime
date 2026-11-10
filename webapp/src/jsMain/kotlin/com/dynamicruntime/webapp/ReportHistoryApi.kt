@@ -150,9 +150,11 @@ fun historyMetrics(columns: List<ReportColumnInfo>, groupBy: List<String>): List
     for (c in columns) {
         val rollup = c.rollup ?: continue
         if (c.columnId in groupBy) continue
-        val counted = rollup == ReportCombine.count.name
+        val combine = ReportCombine.entries.firstOrNull { it.name == rollup }
+        val counted = combine == ReportCombine.count
         if (!counted && c.kind != ReportKind.number.name) continue
-        add(HistoryMetric(c.columnId, "${c.label} ($rollup)", additive = counted || rollup == ReportCombine.sum.name))
+        // Adding up is the kernel's rule (issue #1771), the one a report's pie is held to.
+        add(HistoryMetric(c.columnId, "${c.label} ($rollup)", additive = combine?.addsUp == true))
     }
 }
 

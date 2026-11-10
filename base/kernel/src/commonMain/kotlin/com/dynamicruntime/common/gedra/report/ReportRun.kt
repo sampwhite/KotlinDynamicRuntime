@@ -47,6 +47,8 @@ object RRUN {
     const val issues = "issues"
     /** Whether the nightly job stores snapshots of the report (issue #1033). */
     const val history = "history"
+    /** The chart the report's grouped run opens on (issue #1771), as its definition declares it (`RDEF.chart`). */
+    const val chart = "chart"
 }
 
 /** The field names of a report **snapshot** on the wire (issue #1033): a grouped run kept as it was. */

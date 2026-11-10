@@ -129,6 +129,9 @@ fun reportSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, REP.namespace) {
         }
         property(RRUN.template, "The template the report came from, for a client's copy of its template's report.")
         property(RRUN.history, "Whether the nightly job stores snapshots of the report (issue #1033).", required = true) { type = SCT.boolean }
+        property(RRUN.chart, "The chart the report's grouped run opens on (issue #1771); absent, the table alone.") {
+            ref("${RDEF.namespace}.${RDEF.chartType}")
+        }
     }
     type(REP.listSummaryType) {
         type = SCT.kObject
@@ -400,6 +403,7 @@ private fun describeReport(declared: ReportDeclared, copy: (String) -> String): 
         put(RRUN.origin, declared.bundle.origin.name)
         declared.bundle.inheritedFrom?.let { put(RRUN.template, it) }
         put(RRUN.history, report.history)
+        report.chart?.let { put(RRUN.chart, it.toJsonMap()) }
     }
 }
 

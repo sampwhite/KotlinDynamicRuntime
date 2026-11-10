@@ -25,6 +25,7 @@ object RDEF {
     const val namespace = "kdr.reportdef"
     const val defType = "ReportDef"
     const val columnType = "ReportColumnDef"
+    const val chartType = "ReportChartDef"
 
     const val reportId = "reportId"
     const val label = "label"
@@ -33,12 +34,39 @@ object RDEF {
     const val groupBy = "groupBy"
     const val excludeEmpty = "excludeEmpty"
     const val history = "history"
+    const val chart = "chart"
 
     const val columnId = "columnId"
     const val path = "path"
     const val kind = "kind"
     const val combine = "combine"
     const val rollup = "rollup"
+
+    /** The column a chart measures (issue #1771); its kind is [kind], as a column's is. */
+    const val measure = "measure"
+}
+
+/** The kinds of chart a report's grouped run may be drawn as (issue #1771): a closed set the page knows how to draw. */
+@Suppress("EnumEntryName")
+enum class ReportChartKind {
+    /** A bar per group, its length the group's measure. */
+    bar,
+
+    /** A slice per group, its share of the whole the group's share of the measure; so the measure must add up. */
+    pie,
+}
+
+/**
+ * The chart a report's **grouped** run opens on (issue #1771): a [kind], and the column it [measure]s -- a column with a
+ * rollup whose result is a number, not one the report groups by -- or, absent, the count of forms in each group. The
+ * page may draw another; this is the report's own. Whether the measure fits the report is the binding's to say
+ * (`bindReport`), as for every other default a report names.
+ */
+class ReportChart(val kind: ReportChartKind, val measure: String? = null) : JsonMappable {
+    override fun toJsonMap(): Map<String, Any?> = buildMap {
+        put(RDEF.kind, kind.name)
+        measure?.let { put(RDEF.measure, it) }
+    }
 }
 
 /**
@@ -90,6 +118,8 @@ class ClientReport(
     val excludeEmpty: List<String> = emptyList(),
     /** Whether the nightly job stores a snapshot of this report's grouped run (issue #1033). */
     val history: Boolean = false,
+    /** The chart the report's grouped run opens on (issue #1771), or none: the table alone. */
+    val chart: ReportChart? = null,
     /**
      * The author's note on the report (issue #1135): its `$comment`, stored and read back, changing nothing. The
      * [description] is for the person choosing the report; this is for whoever maintains it.
@@ -115,6 +145,7 @@ class ClientReport(
         if (excludeEmpty.isNotEmpty()) put(RDEF.excludeEmpty, excludeEmpty)
         // Only when set, so the stored form of every report declared before history existed is unchanged.
         if (history) put(RDEF.history, true)
+        chart?.let { put(RDEF.chart, it.toJsonMap()) }
     }
 
     override fun toString(): String = reportId
@@ -150,6 +181,18 @@ object ReportDefSchema {
                 options(ReportCombine.entries)
             }
         }
+        type(RDEF.chartType) {
+            type = SCT.kObject
+            description = "The chart a report's grouped run opens on: a bar or a slice per group."
+            property(RDEF.kind, "The kind of chart: a bar per group, or a pie of the groups' shares.", required = true) {
+                options(ReportChartKind.entries)
+            }
+            property(
+                RDEF.measure,
+                "The column each group is measured by: one with a rollup whose result is a number, not one grouped by, and for " +
+                    "a pie one that adds up (a count or a sum). Absent, the count of forms in each group.",
+            )
+        }
         type(RDEF.defType) {
             type = SCT.kObject
             description = "A named report: the columns a client's forms are shown with, and how they are grouped and filtered by default."
@@ -175,6 +218,7 @@ object ReportDefSchema {
             property(RDEF.history, "Whether the nightly job stores a snapshot of the report's grouped run, so its groups can be charted over time.") {
                 type = SCT.boolean
             }
+            property(RDEF.chart, "The chart the report's grouped run opens on; absent, the table alone.") { ref(RDEF.chartType) }
         }
     }
 
@@ -222,6 +266,11 @@ fun clientReportResult(cxt: KdrCxtBase, raw: Map<String, Any?>): Parsed<ClientRe
                 groupBy = m[RDEF.groupBy].toJsonListOrEmpty().mapNotNull { it.toOptStr() },
                 excludeEmpty = m[RDEF.excludeEmpty].toJsonListOrEmpty().mapNotNull { it.toOptStr() },
                 history = m[RDEF.history] == true,
+                // The schema requires a chart's kind and holds it to the closed set, so a chart present has one.
+                chart = m[RDEF.chart]?.let { raw ->
+                    val c = raw.toJsonMapOrEmpty()
+                    enumOrNull(ReportChartKind.entries, c[RDEF.kind])?.let { ReportChart(it, c[RDEF.measure].toOptStr()) }
+                },
                 comment = m[SCH.dComment].toOptStr(),
             ),
         )
@@ -245,6 +294,7 @@ private fun <E : Enum<E>> enumOrNull(entries: List<E>, value: Any?): E? = value.
  *     column("auditor", "Auditor", "form.acmeSiteAudit.auditor")
  *     column("total", "Total", "form.sample:expenseReport.totalAmount", rollup = ReportCombine.sum)
  *     groupBy = listOf("auditor")
+ *     chart(ReportChartKind.bar, measure = "total")
  * }
  * ```
  */
@@ -256,7 +306,14 @@ class ReportBuilder(private val reportId: String, private val label: String) {
     var history: Boolean = false
     /** The author's note on the report (issue #1135), stored as its `$comment`; it changes nothing. */
     var comment: String? = null
+    /** The chart the grouped run opens on (issue #1771); [chart] sets it. */
+    var chart: ReportChart? = null
     private val columns = mutableListOf<ReportColumn>()
+
+    /** Opens the grouped run on a [kind] of chart of [measure] -- a column id -- or, absent, of each group's count of forms. */
+    fun chart(kind: ReportChartKind, measure: String? = null) {
+        chart = ReportChart(kind, measure)
+    }
 
     fun column(
         columnId: String,
@@ -271,5 +328,5 @@ class ReportBuilder(private val reportId: String, private val label: String) {
 
     /** The definition's JSON form, for the parser. */
     fun build(): Map<String, Any?> =
-        ClientReport(reportId, label, columns.toList(), description, groupBy, excludeEmpty, history, comment).toJsonMap()
+        ClientReport(reportId, label, columns.toList(), description, groupBy, excludeEmpty, history, chart, comment).toJsonMap()
 }

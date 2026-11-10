@@ -442,6 +442,7 @@ Each is a type the server declares, named as the endpoint catalog names it. A fi
 | `groupBy` | array of string |  | The columns a grouped run groups by, unless the run names others. |
 | `excludeEmpty` | array of string |  | The columns that must hold a value for a form to appear, unless the run names others. |
 | `history` | boolean |  | Whether the nightly job stores a snapshot of the report's grouped run, so its groups can be charted over time. |
+| `chart` | [ReportChartDef](#reportchartdef) |  | The chart the report's grouped run opens on; absent, the table alone. |
 
 ### ReportColumnDef
 
@@ -455,6 +456,15 @@ Each is a type the server declares, named as the endpoint catalog names it. A fi
 | `kind` | one of `string`, `number`, `date`, `boolean` |  | The value's kind, when it should be read as other than its target says. |
 | `combine` | one of `first`, `list`, `distinct`, `count`, `sum`, `min`, `max`, `avg` |  | How the path's several values are made one within a form; absent, the first, or a list for a path with several. |
 | `rollup` | one of `first`, `list`, `distinct`, `count`, `sum`, `min`, `max`, `avg` |  | How the column is combined across the forms of a group when the report is grouped. |
+
+### ReportChartDef
+
+`kdr.reportdef.ReportChartDef`: The chart a report's grouped run opens on: a bar or a slice per group.
+
+| Field | Type | Required | What it is |
+|---|---|---|---|
+| `kind` | one of `bar`, `pie` | yes | The kind of chart: a bar per group, or a pie of the groups' shares. |
+| `measure` | string |  | The column each group is measured by: one with a rollup whose result is a number, not one grouped by, and for a pie one that adds up (a count or a sum). Absent, the count of forms in each group. |
 <!-- kdr-generated: end -->
 
 ## About this file

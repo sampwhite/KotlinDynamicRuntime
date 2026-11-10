@@ -25,6 +25,7 @@ import com.dynamicruntime.common.gedra.report.RMETA
 import com.dynamicruntime.common.gedra.report.RPT
 import com.dynamicruntime.common.gedra.report.RUSR
 import com.dynamicruntime.common.gedra.report.RWF
+import com.dynamicruntime.common.gedra.report.ReportChartKind
 import com.dynamicruntime.common.gedra.report.ReportCombine
 import com.dynamicruntime.common.gedra.report.ReportSource
 import com.dynamicruntime.common.gedra.workflow.PFO
@@ -708,6 +709,8 @@ private fun acmeClient(cxt: KdrCxt): GedraConfig =
             groupBy = listOf("auditor")
             // Snapshotted nightly (issue #1035), so the History view has a series of audits per auditor.
             history = true
+            // Opened as a pie of each auditor's share of the audits (issue #1771): a count adds up to the whole.
+            chart(ReportChartKind.pie)
         }
 
         // The aggregation example: built to be read grouped. One row per reporting year -- how many forms, what they
@@ -729,6 +732,8 @@ private fun acmeClient(cxt: KdrCxt): GedraConfig =
             excludeEmpty = listOf("year")
             // Snapshotted nightly (issue #1035): the yearly totals over time are what the History view charts.
             history = true
+            // Opened as a bar per year of what was claimed (issue #1771).
+            chart(ReportChartKind.bar, measure = "total")
         }
 
         // The straight-up example: a listing, one row per form, with nothing to group by and nothing rolled up --
