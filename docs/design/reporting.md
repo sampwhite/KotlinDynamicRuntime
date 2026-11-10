@@ -335,8 +335,9 @@ The checks, when the report binds:
 - a pie's measure adds up (`ReportCombine.addsUp`): the count, or a `count` or `sum` rollup. A pie's slices are
   shares of a whole, which an average, a minimum or a maximum does not make.
 
-The reports listing carries each report's chart (`chart`); the run does not. The webapp's drawing of it, the Grouped
-view's, is #1772.
+The reports listing carries each report's chart (`chart`); the run does not. The webapp's Reports page draws it above
+the Grouped view's table (#1772), and the viewer may choose another kind or measure, kept in the page's address; the
+`kdr-webapp-pages` skill describes it (`reports-page.md`).
 
 ## Samples
 

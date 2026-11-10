@@ -8,6 +8,7 @@ import com.dynamicruntime.common.gedra.choiceLabel
 import com.dynamicruntime.common.gedra.report.RMETA
 import com.dynamicruntime.common.gedra.report.RRUN
 import com.dynamicruntime.common.gedra.report.RWF
+import com.dynamicruntime.common.gedra.report.ReportChart
 import com.dynamicruntime.common.gedra.report.ReportCombine
 import com.dynamicruntime.common.gedra.report.ReportKind
 import com.dynamicruntime.common.gedra.report.ReportMode
@@ -68,6 +69,8 @@ class ReportInfo(
     val history: Boolean = false,
     /** Whether the configuration declaring it is stored, rather than in source code (issue #1492). */
     val stored: Boolean = false,
+    /** The chart its grouped run opens on (issue #1771), or null for the table alone. */
+    val chart: ReportChart? = null,
 ) {
     /** How the report opens: grouped when it declares what to group by, otherwise one row per form. */
     val defaultMode: ReportMode get() = if (groupBy.isEmpty()) ReportMode.detail else ReportMode.aggregate
@@ -135,6 +138,7 @@ fun parseReportListing(envelope: Map<String, Any?>): ReportListing = ReportListi
             template = r[RRUN.template].toOptStr(),
             history = r[RRUN.history] == true,
             stored = r[RRUN.origin] == GedraConfigOrigin.stored.name,
+            chart = parseReportChart(r[RRUN.chart]),
         )
     },
     issues = envelope[EP.summary].toJsonMapOrEmpty()[RRUN.issues].toJsonListOfMaps().mapNotNull { issue ->
@@ -398,12 +402,19 @@ fun reportsHref(client: String? = null, reportId: String? = null, mode: ReportMo
     reportsRouteParams(client, reportId, if (history) HMENU.reportViewHistory else mode?.let { reportModeParam(it) }),
 )
 
-/** The Reports page's address for [client], [reportId] and a `view` value: what a link carries and what the page writes. */
-fun reportsRouteParams(client: String?, reportId: String?, view: String?): List<Pair<String, String>> = buildList {
+/**
+ * The Reports page's address for [client], [reportId] and a `view` value: what a link carries and what the page writes.
+ * A grouped run's [chart] and [measure] (issue #1772) ride it too, once the user has chosen them.
+ */
+fun reportsRouteParams(
+    client: String?, reportId: String?, view: String?, chart: String? = null, measure: String? = null,
+): List<Pair<String, String>> = buildList {
     add(HP.page to HMENU.pageReports)
     client?.let { add(HP.client to it) }
     reportId?.let { add(HP.report to it) }
     view?.let { add(HP.reportView to it) }
+    chart?.let { add(HP.reportChart to it) }
+    measure?.let { add(HP.reportMeasure to it) }
 }
 
 /**
@@ -434,13 +445,15 @@ const val reportCsvFormLabel = "Form"
  * fetched is dropped. A failure of any page propagates: a run that cannot be fetched whole is not handed over in part.
  *
  * Returns the first page's summary with all the rows. A cursor that never ends is cut off at [maxPages] and thrown
- * as a fault, rather than walked forever.
+ * as a fault, rather than walked forever. A walk asked for at most [maxRows] stops there instead (issue #1772): its
+ * answer holds that many rows and says how many the run has (`numAvailable`), and its `next` where it stopped.
  */
 suspend fun walkReportRun(
     fetchPage: suspend (after: String?) -> ReportRunPage,
     onProgress: (fetched: Int, total: Int) -> Unit = { _, _ -> },
     stillWanted: () -> Boolean = { true },
     maxPages: Int = 10_000,
+    maxRows: Int = Int.MAX_VALUE,
 ): ReportRunPage? {
     val rows = ArrayList<ReportRunRow>()
     var first: ReportRunPage? = null
@@ -453,6 +466,9 @@ suspend fun walkReportRun(
         if (first == null) first = page
         rows.addAll(page.rows)
         onProgress(rows.size, page.numAvailable)
+        if (page.next != null && rows.size >= maxRows) {
+            return ReportRunPage(rows.take(maxRows), page.numAvailable, page.next, first.summary)
+        }
         after = page.next ?: return ReportRunPage(rows, rows.size, null, first.summary)
         if (++pages >= maxPages) throw IllegalStateException("The report's paging did not end after $maxPages pages.")
     }
@@ -560,4 +576,13 @@ object ReportsApi {
         onProgress: (fetched: Int, total: Int) -> Unit,
         stillWanted: () -> Boolean,
     ): ReportRunPage? = walkReportRun({ after -> run(reportId, client, setup, after, reportDownloadPageSize) }, onProgress, stillWanted)
+
+    /**
+     * The groups of a grouped run for its chart (issue #1772): walked from the first page in large pages, up to
+     * [chartMaxGroups]; null when no longer wanted.
+     */
+    suspend fun chartGroups(reportId: String, client: String?, setup: ReportRunSetup, stillWanted: () -> Boolean): ReportRunPage? =
+        walkReportRun(
+            { after -> run(reportId, client, setup, after, reportDownloadPageSize) }, stillWanted = stillWanted, maxRows = chartMaxGroups,
+        )
 }

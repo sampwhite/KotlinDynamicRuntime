@@ -4,6 +4,7 @@ import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.gedra.ClientStatus
 import com.dynamicruntime.common.gedra.EDM
 import com.dynamicruntime.common.gedra.clientLabel
+import com.dynamicruntime.common.gedra.report.ReportChartKind
 import com.dynamicruntime.common.gedra.report.ReportMode
 import com.dynamicruntime.common.home.HMENU
 import com.dynamicruntime.common.home.PFRAG
@@ -58,7 +59,9 @@ private class ReportShown(val key: String, val page: ReportRunPage)
  * ordinary links, so Back steps through them, as the Clients page does. Whether the open report is shown per form or
  * grouped rides the address too (`view`), so the page always shows what its address says; what it groups by and what a
  * form must have are the page's own state for that report. `view=history` shows the report's stored snapshots as a
- * chart instead of running it (`ReportHistoryPanel`, issue #1037).
+ * chart instead of running it (`ReportHistoryPanel`, issue #1037). A grouped run may be drawn as a bar or a pie above
+ * its table (`ReportChartPanel`, issue #1772): the report's declared chart, or the one the address names (`chart`,
+ * `measure`), which the page writes when the user chooses another.
  *
  * **The table grows rather than pages** (issue #1315), as the forms listing does: the first [listingBatch] rows, then
  * more on request up to [listingCap], each time asked again from the start with the larger limit -- so a refresh keeps
@@ -83,6 +86,8 @@ val ReportsPage = FC<Props> {
     var runError by useState<DisplayError?>(null)
     var running by useState(false)
     var choice by useState<ReportListsChoice?>(null)
+    // Bumped when the chart is changed: writing the address fires no event, so this is what makes the page read it again.
+    var chartChanges by useState(0)
     var growth by useState<ReportGrowth?>(null)
     // Monotonic tokens, so a slow answer for a client, report or page the user has moved on from is dropped.
     val latestList = useRef(0)
@@ -107,6 +112,8 @@ val ReportsPage = FC<Props> {
     val lists = choice?.takeIf { it.key == reportKey }
     val setup = reportSetupInForce(route[HP.reportView], report?.defaultMode, lists?.groupBy, lists?.excludeEmpty)
     val pagingKey = reportWalkKey(client, reportId, setup)
+    // The chart over a grouped run (issue #1772): the address's, else the report's own; null when the run is per form.
+    val chart = report?.let { reportChartInForce(route[HP.reportChart], route[HP.reportMeasure], it, setup) }
     val shownCount = growth?.takeIf { it.key == pagingKey }?.shown ?: listingBatch
     // The rows on screen, only while they are this walk's: another report's, or another setup's, are never drawn
     // under this one's heading while its own are on their way.
@@ -269,14 +276,21 @@ val ReportsPage = FC<Props> {
         // The mode goes to the address, which is where the page reads it from; the lists are the session's. Writing
         // the address fires no event, so setting the lists -- a new object even when they are unchanged -- is also
         // what makes the page read the address again.
-        replaceRoute(reportsRouteParams(client, reportId, reportModeParam(next.mode)))
+        // The chart chosen rides along: it is held to what the new setup can draw when it is read back.
+        replaceRoute(reportsRouteParams(client, reportId, reportModeParam(next.mode), route[HP.reportChart], route[HP.reportMeasure]))
         choice = ReportListsChoice(reportKey, next.groupBy, next.excludeEmpty)
+    }
+
+    fun changeChart(next: ReportChartChoice) {
+        val (kind, measure) = reportChartParams(next)
+        replaceRoute(reportsRouteParams(client, reportId, reportModeParam(setup.mode), kind, measure))
+        chartChanges += 1
     }
 
     fun showHistory() {
         // The address says History; the lists set on this report are kept for the way back, and setting them again
         // is what makes the page read the address (writing the address fires no event).
-        replaceRoute(reportsRouteParams(client, reportId, HMENU.reportViewHistory))
+        replaceRoute(reportsRouteParams(client, reportId, HMENU.reportViewHistory, route[HP.reportChart], route[HP.reportMeasure]))
         choice = ReportListsChoice(reportKey, lists?.groupBy, lists?.excludeEmpty)
     }
 
@@ -330,6 +344,7 @@ val ReportsPage = FC<Props> {
                         report != null -> {
                             reportHeading(report, pageCopy.explanation(PFRAG.viewsNs))
                             reportControls(report, setup, running, historyView, ::changeSetup, ::showHistory)
+                            if (!historyView && chart != null) reportChartControls(report, setup, chart, ::changeChart)
                             if (historyView) {
                                 ReportHistoryPanel {
                                     this.client = client
@@ -345,6 +360,16 @@ val ReportsPage = FC<Props> {
                                         +"Running…"
                                     }
                                 } else {
+                                    if (chart?.kind != null && shown.summary.mode == ReportMode.aggregate) {
+                                        ReportChartPanel {
+                                            this.client = client
+                                            this.reportId = report.reportId
+                                            this.setup = setup
+                                            walkKey = pagingKey
+                                            this.choice = chart
+                                            run = shown
+                                        }
+                                    }
                                     reportTable(shown, client)
                                     reportGrowBar(shown, shownCount, running) { growth = ReportGrowth(pagingKey, it) }
                                 }
@@ -578,6 +603,59 @@ private fun ChildrenBuilder.reportControls(
             placeholder = "Any form"
             style = js("({ minWidth: 200 })")
             onChange = { v -> change(ReportRunSetup(setup.mode, setup.groupBy, chosen(v))) }
+        }
+    }
+}
+
+/**
+ * What a grouped run is drawn as (issue #1772): the table alone, bars, or a pie, and -- for a chart -- what it measures.
+ * Pie is offered only for a measure that adds up, since its slices are shares of a whole; a measure chosen that does not
+ * turns a pie into bars ([reportChartInForce]).
+ */
+private fun ChildrenBuilder.reportChartControls(
+    report: ReportInfo,
+    setup: ReportRunSetup,
+    chart: ReportChartChoice,
+    change: (ReportChartChoice) -> Unit,
+) {
+    val measures = reportMeasures(report.columns, setup.groupBy ?: report.groupBy)
+    fun option(label: String, value: String, disabled: Boolean = false): dynamic {
+        val o: dynamic = js("({})")
+        o.label = label
+        o.value = value
+        o.disabled = disabled
+        return o
+    }
+    div {
+        className = ClassName("row reports-controls")
+        span {
+            className = ClassName("type-hint")
+            +"Chart:"
+        }
+        Select {
+            value = chart.kind?.name ?: reportChartTable
+            options = arrayOf(
+                option("Table only", reportChartTable),
+                option("Bar chart", ReportChartKind.bar.name),
+                option("Pie chart", ReportChartKind.pie.name, disabled = !chart.measure.additive),
+            )
+            style = js("({ minWidth: 140 })")
+            onChange = { v ->
+                val kind = ReportChartKind.entries.firstOrNull { it.name == v as? String }
+                change(ReportChartChoice(kind, chart.measure))
+            }
+        }
+        if (chart.kind != null && measures.size > 1) {
+            span {
+                className = ClassName("type-hint")
+                +"Of:"
+            }
+            Select {
+                value = chart.measure.key
+                options = measures.map { option(it.label, it.key) }.toTypedArray()
+                style = js("({ minWidth: 200 })")
+                onChange = { v -> measures.firstOrNull { it.key == v as? String }?.let { change(ReportChartChoice(chart.kind, it)) } }
+            }
         }
     }
 }
