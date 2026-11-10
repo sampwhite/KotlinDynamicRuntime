@@ -178,6 +178,19 @@ class SchLayoutField(
      */
     val entryLabel: String? = null,
 ) : JsonMappable {
+    /**
+     * The copy this entry gives in [slot], one of its copy keys -- [SL.label], [SL.description], [SL.hint] or
+     * [SL.entryLabel] -- or null when it gives none, or [slot] names no copy. The one place a slot's name is read as a
+     * property, so a copy key added here is read everywhere a slot is (issue #1748).
+     */
+    fun copyIn(slot: String): String? = when (slot) {
+        SL.label -> label
+        SL.description -> description
+        SL.hint -> hint
+        SL.entryLabel -> entryLabel
+        else -> null
+    }
+
     /** The entry as written in a `schemaFields` list; see [SchLayout.toJsonMap]. */
     override fun toJsonMap(): Map<String, Any?> {
         val out = LinkedHashMap<String, Any?>()

@@ -16,9 +16,13 @@ as hatched ghosts saying why. The inspector's left edge drags it wider (issue #1
 grip sets `--dv-panel-width` on the page root, which the room the page makes reads too, held by `inspectorWidthFor` to
 leave the form 480px; the arrow keys move it while focused, a double-click restores the default, and the width is
 remembered per browser. Its JSON blocks are read-only text areas, starting at their lines up to sixteen
-(`jsonBlockRowsFor`), that drag taller. A field's copy -- label, description, hint -- can be edited there as **this workflow's
-own** (issue #984, `WorkflowCopyEditor`): the edit is written into the workflow's stored definition as an alteration
-of the field's type, shows on that workflow's pages only, and **Reset to shared** removes it. It is offered where
+(`jsonBlockRowsFor`), that drag taller. A field's copy -- label, description, hint, and on a list of entries its
+**Entry label** (issue #1748: the layout's `entryLabel`, what a form heads each entry with, offered only on a list of
+objects neither keyed nor a union, where a form heads entries by it, as **Choices on this form** is only for a closed
+list; `entryLabelHeadsEntries`, `editableCopyKeys(prop)`) -- can be
+edited there as **this workflow's own** (issue #984, `WorkflowCopyEditor`): the edit is written into the workflow's
+stored definition as an alteration of the field's type, shows on that workflow's pages only, and **Reset to shared**
+removes it. It is offered where
 the workflow is the client's own: configured, or declared in its own code (its code, its template's copies, a sandbox's
 copies, `DesignView.isOwnCode`), whose first edit stores an **overlay** of it in the stored bundle named like the code
 bundle, holding only what changed, as the bundle editor's Edit does (issues #1657, #1670); each later edit rewrites that
@@ -56,17 +60,20 @@ removes a choice is checked against the forms the client stores (issue #1040, #9
 refused with the report when one holds it; the dialog's **Save anyway** resends it with `acknowledgeImpact`. In a
 sandbox the save is only a draft, so the check waits for its publish. Its two headings say what an edit changes -- **Form copy** (what forms show) and **Choices** (what
 the field accepts) -- under one save (issue #1039). A blank copy input is not empty copy: the form falls back to the
-field's own title or name, description and range hint, and both copy editors show that fallback in place
-(`copyFallback`, mirroring `SchemaForm`'s own fallbacks -- change the two together). A field the type's layout leaves
-out of a list that owns the order (`reorder`, `authoritative`) cannot take shared copy, and the read says so per field
+field's own title or name, description and range hint, and each entry's heading from the client's copy (the
+template, `Entry ${n}`, is the placeholder, and the note says what forms read), and both copy editors show that
+fallback in place (`copyFallback`, mirroring `SchemaForm`'s own fallbacks -- change the two together). A field the
+type's layout leaves out of a list that owns the order (`reorder`, `authoritative`) cannot take shared copy, and the
+read says so per field
 (`sharedCopyRefusals`), so the inputs are disabled with the reason rather than refused on Save. The facts come from the
 definition read (`parseSharedFacts`); the save is `/clientAdmin/design/sharedField`. Where a definition comes from is said in one sentence (`provenanceText`, issue
 #1013): where it is declared, and the client configuration altering it when one does -- the reader sees what every
 client shares and what is this client's own, however it was assembled.
 
 **Shared wording** (issue #1010, `SharedWordingSection`): field copy **pulled from a fragment file** --
-`%{@t("questionnaire.topicHelp")}` in a label, description or hint -- is edited at its key, as the client's copy
-override (#918, the Clients page's `/clientAdmin/client/copy/set` and `/reset`), so the change reaches everywhere the
+`%{@t("questionnaire.topicHelp")}` in a label, description, hint, or entry label -- is edited at its key, as the
+client's copy override (#918, the Clients page's `/clientAdmin/client/copy/set` and `/reset`), so the change reaches
+everywhere the
 key is used, in every workflow. It is offered whatever the definition's origin -- a global or code-declared
 definition included, which nothing else in Design View can edit -- since an override is the client's own data. It
 keeps the rule every Design View save keeps (#1026): a client with a sandbox changes its wording from the sandbox,

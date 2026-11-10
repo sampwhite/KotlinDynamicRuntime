@@ -346,7 +346,10 @@ val DesignInspector = FC<DesignInspectorProps> { props ->
                     div {
                         className = ClassName("dv-edit")
                         overrideFacts(edit, pageCopy.explanation(PFRAG.ownCopyNs))
-                        edit?.let { sharedCopyFacts(it.inherited, pulledCopyOf(definition?.response, owner.typeName, selected.name)) }
+                        edit?.let {
+                            val pulled = pulledCopyOf(definition?.response, owner.typeName, selected.name)
+                            sharedCopyFacts(it.inherited, pulled, editableCopyKeys(selected.prop))
+                        }
                         p {
                             className = ClassName("dv-note")
                             +design.editRefusal
@@ -362,7 +365,9 @@ val DesignInspector = FC<DesignInspectorProps> { props ->
                         key = "${selected.id}|wording".unsafeCast<Key>()
                         this.session = session
                         this.subject = "This field's copy"
-                        this.slots = editableCopyKeys.mapNotNull { k -> pulled[k]?.let { WordingSlot(humanizeFieldName(k), it, shownCopy(shown, k)) } }
+                        this.slots = editableCopyKeys(selected.prop).mapNotNull { k ->
+                            pulled[k]?.let { WordingSlot(humanizeFieldName(k), it, shownCopy(shown, k)) }
+                        }
                         this.refusal = sharedWordingRefusalOf(definition?.response)
                         onSaved = rereadDefinition
                     }
@@ -523,6 +528,7 @@ private fun ChildrenBuilder.fieldSummary(target: DesignTarget.Field, layout: Sch
         layout.label?.let { fact("Label", it) }
         layout.description?.let { fact("Description", it) }
         layout.hint?.let { fact("Hint", it) }
+        layout.entryLabel?.let { fact("Entry label", it) }
     }
 }
 
@@ -660,11 +666,12 @@ private fun ChildrenBuilder.overrideFacts(edit: LayoutEdit?, explanation: String
 
 /**
  * The shared copy a workflow's override replaces, for a reader who cannot edit it here -- the editor shows the same
- * beside each of its inputs. [inherited] is null when the shared layout has no entry for the field.
+ * beside each of its inputs. [inherited] is null when the shared layout has no entry for the field; [keys] are the
+ * field's copy attributes ([editableCopyKeys]).
  */
-private fun ChildrenBuilder.sharedCopyFacts(inherited: Map<String, Any?>?, pulled: Map<String, PulledSlot>) {
+private fun ChildrenBuilder.sharedCopyFacts(inherited: Map<String, Any?>?, pulled: Map<String, PulledSlot>, keys: List<String>) {
     // A pulled slot reads as its words, naming the shared wording, never as its template (issue #1010).
-    val copy = editableCopyKeys.mapNotNull { key -> inherited?.get(key).toOptStr()?.let { key to inheritedCopyText(it, pulled[key]) } }
+    val copy = keys.mapNotNull { key -> inherited?.get(key).toOptStr()?.let { key to inheritedCopyText(it, pulled[key]) } }
     if (copy.isEmpty()) {
         fact("Shared copy", "none")
         return
@@ -693,8 +700,9 @@ external interface WorkflowCopyEditorProps : Props {
  * for each. They save into the same entry, so changing one keeps the copy, and Reset removes them with it.
  */
 private val WorkflowCopyEditor = FC<WorkflowCopyEditorProps> { props ->
-    // The words a blank hint falls back to, as forms say a field's bounds (issue #1693).
+    // The words a blank hint falls back to, as forms say a field's bounds (issue #1693), and a blank entry label's.
     val boundWords = useShellFacts().fieldBoundWords
+    val entryWords = useShellFacts().entryLabel
     val pageCopy = usePageCopy(PFRAG.design)
     val session = props.session
     val target = props.target
@@ -702,9 +710,11 @@ private val WorkflowCopyEditor = FC<WorkflowCopyEditorProps> { props ->
     val edit = session.design.layoutEdit(owner.typeName, target.name)
     val shared = edit?.inherited ?: props.authored
     val start = edit?.entry ?: props.authored ?: emptyMap()
+    // The copy this field takes: an entry label on a list of entries (issue #1748) beside the label, description and hint.
+    val copyKeys = editableCopyKeys(target.prop)
     var editing by useState(false)
     var asJson by useState(false)
-    var values by useState(editableCopyKeys.associateWith { start[it].toOptStr().orEmpty() })
+    var values by useState(copyKeys.associateWith { start[it].toOptStr().orEmpty() })
     var required by useState(start[SL.required] == true)
     var choiceRows by useState(formChoiceRowsOf(target.prop.valueType, start))
     var jsonText by useState(start.toJsonStr())
@@ -757,7 +767,7 @@ private val WorkflowCopyEditor = FC<WorkflowCopyEditorProps> { props ->
                     onChange = { e -> jsonText = e.target.value }
                 }
             } else {
-                for (key in editableCopyKeys) {
+                for (key in copyKeys) {
                     div {
                         className = ClassName("dv-edit-row")
                         span {
@@ -766,7 +776,7 @@ private val WorkflowCopyEditor = FC<WorkflowCopyEditorProps> { props ->
                         }
                         // Blank, the page shows the shared copy -- or, with none, the field's own (issue #1039).
                         val sharedValue = shared?.get(key).toOptStr()?.let { inheritedCopyText(it, props.pulled?.get(key)) }
-                        val fallback = copyFallback(key, target.name, target.prop, boundWords)
+                        val fallback = copyFallback(key, target.name, target.prop, boundWords, entryWords)
                         Input {
                             value = values[key].orEmpty()
                             placeholder = sharedValue ?: fallback.text
@@ -964,11 +974,7 @@ private val SharedWordingSection = FC<SharedWordingSectionProps> { props ->
 }
 
 /** [field]'s copy in [slot], as the page shows it. */
-private fun shownCopy(field: SchLayoutField?, slot: String): String? = when (slot) {
-    SL.label -> field?.label
-    SL.description -> field?.description
-    else -> field?.hint
-}
+private fun shownCopy(field: SchLayoutField?, slot: String): String? = field?.copyIn(slot)
 
 external interface SharedWordingRowProps : Props {
     var session: DesignSession
@@ -1074,14 +1080,17 @@ external interface SharedFieldSectionProps : Props {
  * a dialog with **Save anyway** (issue #1040).
  */
 private val SharedFieldSection = FC<SharedFieldSectionProps> { props ->
-    // The words a blank hint falls back to, as forms say a field's bounds (issue #1693).
+    // The words a blank hint falls back to, as forms say a field's bounds (issue #1693), and a blank entry label's.
     val boundWords = useShellFacts().fieldBoundWords
+    val entryWords = useShellFacts().entryLabel
     val facts = props.facts
     val target = props.target
     val start = props.authored ?: emptyMap()
     val startRows = choiceRowsOf(props.fieldSchema)
+    // The copy this field takes: an entry label on a list of entries (issue #1748) beside the label, description and hint.
+    val copyKeys = editableCopyKeys(target.prop)
     var editing by useState(false)
-    var values by useState(editableCopyKeys.associateWith { start[it].toOptStr().orEmpty() })
+    var values by useState(copyKeys.associateWith { start[it].toOptStr().orEmpty() })
     var rows by useState(startRows.orEmpty())
     var saving by useState(false)
     var failure by useState<DisplayError?>(null)
@@ -1165,9 +1174,9 @@ private val SharedFieldSection = FC<SharedFieldSectionProps> { props ->
                         +it
                     }
                 }
-                for (key in editableCopyKeys) {
+                for (key in copyKeys) {
                     // A blank input is the field's own wording, not nothing: say what the form shows instead.
-                    val fallback = copyFallback(key, target.name, target.prop, boundWords)
+                    val fallback = copyFallback(key, target.name, target.prop, boundWords, entryWords)
                     // A slot pulled from a fragment file is shared wording, edited at its key in its own section
                     // (issue #1010); overwriting the pull with literal text here would silently drop it.
                     props.pulled?.get(key)?.let { slot ->
