@@ -8,6 +8,7 @@ import com.dynamicruntime.common.gedra.choiceLabel
 import com.dynamicruntime.common.gedra.report.RMETA
 import com.dynamicruntime.common.gedra.report.RRUN
 import com.dynamicruntime.common.gedra.report.RWF
+import com.dynamicruntime.common.gedra.report.ReportChart
 import com.dynamicruntime.common.gedra.report.ReportCombine
 import com.dynamicruntime.common.gedra.report.ReportKind
 import com.dynamicruntime.common.gedra.report.ReportMode
@@ -68,6 +69,8 @@ class ReportInfo(
     val history: Boolean = false,
     /** Whether the configuration declaring it is stored, rather than in source code (issue #1492). */
     val stored: Boolean = false,
+    /** The chart its grouped run opens on (issue #1771), or null for the table alone. */
+    val chart: ReportChart? = null,
 ) {
     /** How the report opens: grouped when it declares what to group by, otherwise one row per form. */
     val defaultMode: ReportMode get() = if (groupBy.isEmpty()) ReportMode.detail else ReportMode.aggregate
@@ -135,6 +138,7 @@ fun parseReportListing(envelope: Map<String, Any?>): ReportListing = ReportListi
             template = r[RRUN.template].toOptStr(),
             history = r[RRUN.history] == true,
             stored = r[RRUN.origin] == GedraConfigOrigin.stored.name,
+            chart = parseReportChart(r[RRUN.chart]),
         )
     },
     issues = envelope[EP.summary].toJsonMapOrEmpty()[RRUN.issues].toJsonListOfMaps().mapNotNull { issue ->
@@ -398,12 +402,19 @@ fun reportsHref(client: String? = null, reportId: String? = null, mode: ReportMo
     reportsRouteParams(client, reportId, if (history) HMENU.reportViewHistory else mode?.let { reportModeParam(it) }),
 )
 
-/** The Reports page's address for [client], [reportId] and a `view` value: what a link carries and what the page writes. */
-fun reportsRouteParams(client: String?, reportId: String?, view: String?): List<Pair<String, String>> = buildList {
+/**
+ * The Reports page's address for [client], [reportId] and a `view` value: what a link carries and what the page writes.
+ * A grouped run's [chart] and [measure] (issue #1772) ride it too, once the user has chosen them.
+ */
+fun reportsRouteParams(
+    client: String?, reportId: String?, view: String?, chart: String? = null, measure: String? = null,
+): List<Pair<String, String>> = buildList {
     add(HP.page to HMENU.pageReports)
     client?.let { add(HP.client to it) }
     reportId?.let { add(HP.report to it) }
     view?.let { add(HP.reportView to it) }
+    chart?.let { add(HP.reportChart to it) }
+    measure?.let { add(HP.reportMeasure to it) }
 }
 
 /**
@@ -560,4 +571,12 @@ object ReportsApi {
         onProgress: (fetched: Int, total: Int) -> Unit,
         stillWanted: () -> Boolean,
     ): ReportRunPage? = walkReportRun({ after -> run(reportId, client, setup, after, reportDownloadPageSize) }, onProgress, stillWanted)
+
+    /**
+     * The groups of a grouped run for its chart (issue #1772): up to [chartMaxGroups] in **one** request, since every page
+     * of a grouped run reads each form again -- walking it in pages would read the client's forms once a page. The answer
+     * says how many groups there are (`numAvailable`), so the chart can say when it read only some.
+     */
+    suspend fun chartGroups(reportId: String, client: String?, setup: ReportRunSetup): ReportRunPage =
+        run(reportId, client, setup, after = null, limit = chartMaxGroups)
 }

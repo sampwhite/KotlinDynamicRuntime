@@ -161,6 +161,13 @@ object HP {
     const val shown = "shown"
     const val reportView = HMENU.reportViewParam
 
+    /**
+     * Reports page (issue #1772): the chart a grouped run is drawn as -- a `ReportChartKind` name, or `table` for none --
+     * and the measure it draws, a column id or the count's key. Absent, the report's own declared chart applies.
+     */
+    const val reportChart = "chart"
+    const val reportMeasure = "measure"
+
     /** Workflow assistant page (issue #1527): the conversation open, so a reload or Back reopens it; absent for a new one. */
     const val conversation = "cv"
 

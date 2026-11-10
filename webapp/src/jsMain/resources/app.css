@@ -1920,6 +1920,23 @@ body.dv-resizing, body.dv-resizing * { cursor: col-resize !important; }
 .rh-key { width: 12px; height: 3px; border-radius: 2px; background: var(--rh-color); flex: none; }
 .rh-tip-date { color: var(--text-muted); }
 .rh-table { margin-top: 12px; }
+/* A grouped run's bar chart and pie (issue #1772): drawn with the History chart's classes above -- its palette, marks,
+   axis, hit targets and readout -- and these of their own. A bar chart is one series, so its bars wear the first colour;
+   a pie's slices each wear their place's. The value and share are text in the text colours, never a series colour. */
+.rc-panel { margin: 4px 0 12px; }
+.rc-label { fill: var(--text-dim); font-size: 12px; }
+.rc-value { fill: var(--text); font-size: 12px; font-variant-numeric: tabular-nums; }
+/* A hairline of the card between slices, so two neighbours of close colours still read as two. */
+.rc-slice { stroke: var(--surface-raised); stroke-width: 1.5; outline: none; cursor: default; }
+.rc-slice:focus-visible { stroke: var(--accent-bright); stroke-width: 2; }
+.rc-pie { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 16px 24px; }
+.rc-legend {
+    display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; gap: 4px 10px; align-items: center; min-width: 0;
+    color: var(--text-dim); font-size: 13px;
+}
+.rc-legend-row { display: contents; }
+.rc-legend-value, .rc-legend-share { text-align: right; color: var(--text); font-variant-numeric: tabular-nums; }
+.rc-legend-hot .rc-legend-name { color: var(--text); }
 /* One line per row: a report has many narrow columns, and wrapped timestamps make each row four lines tall. The table
    scrolls sideways inside `.op-table-scroll` instead. */
 .reports-run .op-table th, .reports-run .op-table td { white-space: nowrap; }

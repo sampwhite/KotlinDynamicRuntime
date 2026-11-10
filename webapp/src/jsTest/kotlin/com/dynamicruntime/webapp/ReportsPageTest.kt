@@ -8,6 +8,8 @@ import com.dynamicruntime.common.gedra.report.RCR
 import com.dynamicruntime.common.gedra.report.RDEF
 import com.dynamicruntime.common.gedra.report.RHIS
 import com.dynamicruntime.common.gedra.report.RRUN
+import com.dynamicruntime.common.gedra.report.ReportChart
+import com.dynamicruntime.common.gedra.report.ReportChartKind
 import com.dynamicruntime.common.gedra.report.ReportCombine
 import com.dynamicruntime.common.gedra.report.ReportKind
 import com.dynamicruntime.common.gedra.report.ReportMode
@@ -16,6 +18,7 @@ import com.dynamicruntime.common.gedra.report.ReportSnapshotTrigger
 import com.dynamicruntime.common.home.HMENU
 import com.dynamicruntime.common.schema.SchOption
 import com.dynamicruntime.common.util.toJsonListOfMaps
+import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -623,7 +626,7 @@ class ReportHistoryTest {
     private fun snapshot(id: Long, takenAt: String, vararg rows: ReportRunRow, same: Boolean = true, trigger: String = "scheduled") =
         ReportSnapshot(id, takenAt, trigger, null, listOf("year"), columns, rows.toList(), 0, 0, truncated = false, sameDefinition = same)
 
-    private val count = HistoryMetric(RRUN.count, "Forms", additive = true)
+    private val count = ReportMeasure(RRUN.count, "Forms", additive = true)
 
     @Test
     fun aGroupIsNamedByTheNewestSnapshotWhoseColumnCarriesItsChoices() {
@@ -670,14 +673,14 @@ class ReportHistoryTest {
 
     @Test
     fun theMetricsAreTheCountThenTheNumericRollupsNotGroupedBy() {
-        val metrics = historyMetrics(columns, listOf("year"))
+        val metrics = reportMeasures(columns, listOf("year"))
         // The count; the sum and the average of a number; a count of text. Not the grouped-by column, nor a date's maximum.
         assertEquals(listOf(RRUN.count, "total", "price", "items"), metrics.map { it.key })
         assertEquals(listOf(true, true, false, true), metrics.map { it.additive })
         assertEquals("Total (sum)", metrics[1].label)
-        assertEquals(12.5, metricValue(row(2024, 3, 12.5), metrics[1]))
-        assertEquals(3.0, metricValue(row(2024, 3, 12.5), metrics[0]))
-        assertNull(metricValue(row(2024, 3), metrics[1]))
+        assertEquals(12.5, measureValue(row(2024, 3, 12.5), metrics[1]))
+        assertEquals(3.0, measureValue(row(2024, 3, 12.5), metrics[0]))
+        assertNull(measureValue(row(2024, 3), metrics[1]))
     }
 
     @Test
@@ -699,7 +702,8 @@ class ReportHistoryTest {
         assertEquals(1, series.otherDefinitions)
         assertEquals(0, series.otherCount)
         // Another metric changes the heights and nothing about whose place is whose.
-        assertEquals(series.groups.map { it.key }, historySeries(snapshots, HistoryMetric("total", "Total (sum)", true)).groups.map { it.key })
+        val byTotal = historySeries(snapshots, ReportMeasure("total", "Total (sum)", true))
+        assertEquals(series.groups.map { it.key }, byTotal.groups.map { it.key })
     }
 
     @Test
@@ -713,12 +717,12 @@ class ReportHistoryTest {
         assertEquals(listOf<Double?>(3.0), folded.otherValues)
         assertTrue(folded.otherDrawn)
         // An average of groups is not their sum: nothing is drawn for them.
-        val average = historySeries(one, HistoryMetric("price", "Price (avg)", additive = false), maxGroups = 3)
+        val average = historySeries(one, ReportMeasure("price", "Price (avg)", additive = false), maxGroups = 3)
         assertEquals(2, average.otherCount)
         assertNull(average.otherValues)
         // A report grouping by nothing has the one group, named for what it is.
         val total = ReportSnapshot(9, "2026-10-02T12:30:00Z", "manual", null, emptyList(), columns, listOf(ReportRunRow(null, emptyMap(), 12, emptyMap())), 12, 0, false, true)
-        assertEquals(listOf(historyAllFormsLabel), historySeries(listOf(total), count).groups.map { it.label })
+        assertEquals(listOf(reportAllFormsLabel), historySeries(listOf(total), count).groups.map { it.label })
     }
 
     @Test
@@ -733,15 +737,15 @@ class ReportHistoryTest {
         assertEquals(4, layout.bars.size)
         // Ticks are clean numbers ending past the largest value; bars are never thicker than the cap.
         assertEquals(listOf(0.0, 50.0, 100.0, 150.0), layout.ticks.map { it.value })
-        assertTrue(layout.bars.all { it.width == HCH.barMax })
+        assertTrue(layout.bars.all { it.width == CHT.barMax })
         // Heights are in proportion, from the baseline; neighbours in a day are a gap apart.
         val byValue = layout.bars.associateBy { it.value }
         assertTrue(abs(byValue.getValue(124.0).height / byValue.getValue(62.0).height - 2.0) < 1e-9)
         assertTrue(layout.bars.all { abs(it.y + it.height - layout.baselineY) < 1e-9 })
         val firstDay = layout.bars.filter { it.dayIndex == 0 }.sortedBy { it.x }
-        assertTrue(abs(firstDay[1].x - (firstDay[0].x + firstDay[0].width + HCH.barGap)) < 1e-9)
+        assertTrue(abs(firstDay[1].x - (firstDay[0].x + firstDay[0].width + CHT.barGap)) < 1e-9)
         // The label band is part of the chart's height, so day labels are never clipped.
-        assertEquals(layout.plotBottom + HCH.axisBand, layout.height)
+        assertEquals(layout.plotBottom + CHT.axisBand, layout.height)
         // Rounded at the data end, square at the baseline.
         assertTrue(firstDay[0].path.contains("Q") && firstDay[0].path.endsWith("Z"))
     }
@@ -753,13 +757,13 @@ class ReportHistoryTest {
         assertTrue(layout.firstDay > 0)
         assertEquals(60 - layout.firstDay, layout.slots.size)
         assertEquals(layout.firstDay, historyDaysNotDrawn(layout))
-        assertTrue(layout.bars.all { it.width >= HCH.barMin })
+        assertTrue(layout.bars.all { it.width >= CHT.barMin })
         // Labels are thinned to fit, and the latest day keeps its own.
         assertTrue(layout.slots.count { it.label != null } < layout.slots.size)
         assertEquals("Oct 30", layout.slots.last().label)
         // A group with no value on a day has no bar there, and a negative value hangs below the baseline.
         val gappy = listOf(snapshot(1, "2026-10-02T12:30:00Z", row(2023, 1, -40.0), row(2024, 1)))
-        val sums = historyChartLayout(historySeries(gappy, HistoryMetric("total", "Total (sum)", true)))
+        val sums = historyChartLayout(historySeries(gappy, ReportMeasure("total", "Total (sum)", true)))
         assertEquals(1, sums.bars.size)
         assertEquals(sums.baselineY, sums.bars.single().y)
         assertTrue(sums.ticks.first().value < 0)
@@ -777,32 +781,32 @@ class ReportHistoryTest {
         assertEquals(1, bars[historyBarEntry(bars)].dayIndex)
         assertEquals(-1, historyBarEntry(emptyList()))
         // The arrows go to the neighbour, across days; at either end the key is the browser's again.
-        assertEquals(1, historyBarStep(2, bars.size, HKEY.left))
-        assertEquals(3, historyBarStep(2, bars.size, HKEY.right))
-        assertNull(historyBarStep(0, bars.size, HKEY.left))
-        assertNull(historyBarStep(3, bars.size, HKEY.right))
-        assertEquals(0, historyBarStep(2, bars.size, HKEY.home))
-        assertEquals(3, historyBarStep(2, bars.size, HKEY.end))
-        assertNull(historyBarStep(0, bars.size, HKEY.home))
-        assertNull(historyBarStep(3, bars.size, HKEY.end))
-        assertNull(historyBarStep(2, bars.size, "Tab"))
-        assertNull(historyBarStep(0, 0, HKEY.end))
+        assertEquals(1, chartStep(2, bars.size, HKEY.left))
+        assertEquals(3, chartStep(2, bars.size, HKEY.right))
+        assertNull(chartStep(0, bars.size, HKEY.left))
+        assertNull(chartStep(3, bars.size, HKEY.right))
+        assertEquals(0, chartStep(2, bars.size, HKEY.home))
+        assertEquals(3, chartStep(2, bars.size, HKEY.end))
+        assertNull(chartStep(0, bars.size, HKEY.home))
+        assertNull(chartStep(3, bars.size, HKEY.end))
+        assertNull(chartStep(2, bars.size, "Tab"))
+        assertNull(chartStep(0, 0, HKEY.end))
     }
 
     @Test
     fun numbersTicksAndLinksReadAsTheChartWritesThem() {
-        assertEquals("1,480", historyNumberText(1480.0))
-        assertEquals("-12,345.50", historyNumberText(-12345.5))
-        assertEquals("62", historyNumberText(62.0))
+        assertEquals("1,480", chartNumberText(1480.0))
+        assertEquals("-12,345.50", chartNumberText(-12345.5))
+        assertEquals("62", chartNumberText(62.0))
         assertEquals(50.0, niceTickStep(124.0))
         assertEquals(10.0, niceTickStep(26.0))
         assertEquals(0.1, niceTickStep(0.4))
         // There is no half a form.
         assertEquals(1.0, niceTickStep(2.0, wholeOnly = true))
         // The chart follows its pane between its narrowest and widest, in whole pixels.
-        assertEquals(486.0, historyChartWidth(486.7))
-        assertEquals(HCH.maxWidth, historyChartWidth(1400.0))
-        assertEquals(HCH.minWidth, historyChartWidth(120.0))
+        assertEquals(486.0, chartWidthFor(486.7))
+        assertEquals(CHT.maxWidth, chartWidthFor(1400.0))
+        assertEquals(CHT.minWidth, chartWidthFor(120.0))
         assertEquals("Oct 2", historyDayLabel("2026-10-02"))
         assertEquals("not a day", historyDayLabel("not a day"))
         assertEquals("2026-13-02", historyDayLabel("2026-13-02"))
@@ -813,5 +817,187 @@ class ReportHistoryTest {
         assertEquals("/reports/expensesByYear?${HP.reportView}=${HMENU.reportViewHistory}", reportsHref(null, "expensesByYear", history = true))
         assertEquals("No snapshots yet.", historySummaryText(emptyList()))
         assertTrue(historySummaryText(listOf(snapshot(1, "2026-10-02T12:30:00Z"), snapshot(2, "2026-10-03T12:30:00Z", trigger = "manual"))).startsWith("2 snapshots over 2 days; the latest "))
+    }
+}
+
+/** A grouped run's bar chart and pie (issue #1772), their pure half: which chart is in force, the groups drawn, and the geometry. */
+@OptIn(DelicateCoroutinesApi::class)
+class ReportChartTest {
+    private fun column(id: String, kind: ReportKind = ReportKind.string, rollup: ReportCombine? = null) =
+        ReportColumnInfo(id, id.replaceFirstChar { it.uppercase() }, "form.x.$id", kind.name, ReportCombine.first.name, rollup?.name, false)
+
+    private val columns = listOf(
+        column("auditor"),
+        column("total", ReportKind.number, ReportCombine.sum),
+        column("price", ReportKind.number, ReportCombine.avg),
+    )
+
+    private fun report(chart: ReportChart? = null, groupBy: List<String> = listOf("auditor")) = ReportInfo(
+        "audits", "Audits", null, columns, groupBy, emptyList(), "main", null, chart = chart,
+    )
+
+    private val grouped = ReportRunSetup(ReportMode.aggregate)
+    private val summary = ReportRunSummary(ReportMode.aggregate, listOf("auditor"), emptyList(), columns, 0, 0)
+
+    private fun row(auditor: String?, count: Int, total: Double? = null, price: Double? = null) =
+        ReportRunRow(null, mapOf("auditor" to auditor), count, mapOf("total" to total, "price" to price))
+
+    private fun measure(key: String) = reportMeasures(columns, listOf("auditor")).first { it.key == key }
+
+    @Test
+    fun theListingCarriesAReportsDeclaredChart() {
+        val listing = parseReportListing(
+            mapOf(
+                EP.items to listOf(
+                    mapOf(RRUN.reportId to "a", RRUN.chart to mapOf(RDEF.kind to "pie")),
+                    mapOf(RRUN.reportId to "b", RRUN.chart to mapOf(RDEF.kind to "bar", RDEF.measure to "total")),
+                    mapOf(RRUN.reportId to "c"),
+                    // A kind this page does not draw is no chart, rather than a fault.
+                    mapOf(RRUN.reportId to "d", RRUN.chart to mapOf(RDEF.kind to "donut")),
+                ),
+            ),
+        )
+        val charts = listing.reports.associate { it.reportId to it.chart }
+        assertEquals(ReportChartKind.pie, charts["a"]?.kind)
+        assertNull(charts["a"]?.measure)
+        assertEquals("total", charts["b"]?.measure)
+        assertNull(charts["c"])
+        assertNull(charts["d"])
+    }
+
+    @Test
+    fun theAddressDecidesTheChartAndTheReportsOwnFillsInWhereItIsSilent() {
+        val pie = report(ReportChart(ReportChartKind.pie))
+        // Only a grouped run has groups to draw.
+        assertNull(reportChartInForce(null, null, pie, ReportRunSetup(ReportMode.detail)))
+        // Nothing in the address: the report's own.
+        reportChartInForce(null, null, pie, grouped)!!.let {
+            assertEquals(ReportChartKind.pie, it.kind)
+            assertEquals(RRUN.count, it.measure.key)
+        }
+        // None declared: the table alone.
+        assertNull(reportChartInForce(null, null, report(), grouped)!!.kind)
+        // The address's word wins, the table included.
+        assertNull(reportChartInForce(reportChartTable, null, pie, grouped)!!.kind)
+        reportChartInForce("bar", "total", pie, grouped)!!.let {
+            assertEquals(ReportChartKind.bar, it.kind)
+            assertEquals("total", it.measure.key)
+        }
+        // Grouped otherwise than the report groups: its own chart is not assumed to fit.
+        assertNull(reportChartInForce(null, null, pie, ReportRunSetup(ReportMode.aggregate, listOf("price")))!!.kind)
+        // A measure the run does not offer -- here one the user groups by -- falls back to the count.
+        val byTotal = ReportRunSetup(ReportMode.aggregate, listOf("total"))
+        assertEquals(RRUN.count, reportChartInForce("bar", "total", pie, byTotal)!!.measure.key)
+        // A pie of an average is drawn as bars: its slices would be shares of no whole.
+        assertEquals(ReportChartKind.bar, reportChartInForce("pie", "price", pie, grouped)!!.kind)
+        // A choice is written whole, so it overrides the report's own measure too.
+        assertEquals("pie" to RRUN.count, reportChartParams(ReportChartChoice(ReportChartKind.pie, measure(RRUN.count))))
+        assertEquals(reportChartTable to "total", reportChartParams(ReportChartChoice(null, measure("total"))))
+        assertEquals(
+            listOf(
+                HP.page to HMENU.pageReports, HP.report to "audits", HP.reportView to "grouped", HP.reportChart to "bar",
+                HP.reportMeasure to "total",
+            ),
+            reportsRouteParams(null, "audits", "grouped", "bar", "total"),
+        )
+    }
+
+    @Test
+    fun aPieKeepsTheLargestInRunOrderFoldsTheRestAndLeavesOutWhatIsNoShare() {
+        val rows = listOf(row("none", 0), row("neg", 3, total = -5.0), row(null, 2, total = null)) +
+            (1..9).map { row("a$it", it, total = it * 10.0) }
+        val data = reportChartData(rows, summary, ReportChartKind.pie, measure("total"))
+        // No value, zero, or below zero is no share: three groups left out.
+        assertEquals(3, data.leftOut)
+        assertEquals(12, data.read)
+        // Nine left, past eight slices: the seven largest kept, in the run's order, and two folded into "Other".
+        assertEquals(listOf("a3", "a4", "a5", "a6", "a7", "a8", "a9", "Other (2 groups)"), data.entries.map { it.label })
+        assertEquals(30.0, data.entries.last().value)
+        assertEquals((0..6).toList() + chartOtherIndex, data.entries.map { it.colorIndex })
+        assertEquals(2, data.otherCount)
+        assertEquals(0, data.notShown)
+    }
+
+    @Test
+    fun aBarChartIsOneColourAndLeavesWhatCannotBeAddedToTheTable() {
+        val rows = (1..22).map { row("a$it", it, price = it.toDouble()) }
+        val data = reportChartData(rows, summary, ReportChartKind.bar, measure("price"))
+        assertEquals(20, data.entries.size)
+        assertTrue(data.entries.none { it.isOther })
+        assertEquals(2, data.notShown)
+        assertTrue(data.entries.all { it.colorIndex == 0 })
+        assertEquals("a3", data.entries.first().label)
+        assertTrue(reportChartNotes(data, 22).single().startsWith("2 more groups not shown"))
+        // The count adds up: past twenty, "Other" is the last bar.
+        val counted = reportChartData(rows, summary, ReportChartKind.bar, measure(RRUN.count))
+        assertEquals(chartOtherLabel(3), counted.entries.last().label)
+        assertEquals(6.0, counted.entries.last().value)
+        // A run read only in part says so.
+        assertEquals("The chart reads the first 22 of 3,000 groups.", reportChartNotes(counted, 3000).first())
+    }
+
+    @Test
+    fun barsAreRowsFromZeroWithTheirNamesAboveAndCleanTicks() {
+        val data = reportChartData(
+            listOf(row("a", 1, total = 150.0), row("b", 1, total = -50.0), row("c", 1, total = 40.0)), summary,
+            ReportChartKind.bar, measure("total"),
+        )
+        val layout = barChartLayout(data, width = 476.0)
+        assertEquals(3, layout.bars.size)
+        assertEquals(listOf(-50.0, 0.0, 50.0, 100.0, 150.0), layout.ticks.map { it.value })
+        assertEquals(400.0, layout.plotRight)
+        assertEquals(layout.ticks[1].at, layout.baselineX)
+        // A row a bar, each under the last; a negative bar grows left from zero, a positive one right.
+        assertEquals(listOf(0.0, 1.0, 2.0).map { HBAR.marginTop + it * HBAR.rowHeight }, layout.bars.map { it.rowTop })
+        assertTrue(abs(layout.bars[0].x - layout.baselineX) < 1e-9)
+        assertTrue(abs(layout.bars[1].x + layout.bars[1].width - layout.baselineX) < 1e-9)
+        assertEquals(layout.plotBottom + HBAR.axisBand, layout.height)
+        // Rows need less room than days side by side: in a phone's 271-pixel card the bars are laid out at 271, not 320.
+        assertEquals(271.0, chartWidthFor(271.6, chartRowsMinWidth))
+        assertEquals(CHT.minWidth, chartWidthFor(271.6))
+        // A name too long for the plot is cut with an ellipsis; a short one is left whole.
+        assertEquals("Short", chartFitText("Short", 100.0))
+        assertEquals("abcdefghi…", chartFitText("abcdefghijklmnopqrstuvwxyz", 65.0))
+    }
+
+    @Test
+    fun aPieRunsClockwiseFromTwelveAndOneSliceIsTheWholeCircle() {
+        val data = reportChartData(listOf(row("a", 1), row("b", 3)), summary, ReportChartKind.pie, measure(RRUN.count))
+        val layout = pieChartLayout(data, width = 600.0)
+        assertEquals(pieMaxDiameter / 2, layout.r)
+        assertEquals(listOf(0.25, 0.75), layout.slices.map { it.share })
+        // The first slice starts at twelve o'clock and runs a quarter turn: to three o'clock.
+        val (x, y) = pointOnCircle(layout.cx, layout.cy, layout.r, PI / 2)
+        val fromTwelve = "M${layout.cx},${layout.cy} L${layout.cx},${layout.cy - layout.r} A"
+        assertTrue(layout.slices[0].path.startsWith(fromTwelve), layout.slices[0].path)
+        assertTrue(abs(x - (layout.cx + layout.r)) < 1e-9 && abs(y - layout.cy) < 1e-9)
+        // The larger slice takes the long way round.
+        assertTrue(" 0 1 1 " in layout.slices[1].path, layout.slices[1].path)
+        // One group is the whole: an arc from a point to itself draws nothing, so it is the circle in two halves.
+        val whole = pieChartLayout(reportChartData(listOf(row("a", 4)), summary, ReportChartKind.pie, measure(RRUN.count)))
+        assertEquals(2, whole.slices.single().path.count { it == 'A' })
+        assertEquals(listOf("0%", "<1%", "25%", "100%"), listOf(0.0, 0.004, 0.25, 1.0).map { chartShareText(it) })
+    }
+
+    @Test
+    fun theArrowsStepDownARowOfBarsAndLeaveUpAndDownToTheBrowserOnADayChart() {
+        assertEquals(1, chartStep(0, 3, HKEY.down, vertical = true))
+        assertEquals(1, chartStep(2, 3, HKEY.up, vertical = true))
+        assertNull(chartStep(2, 3, HKEY.down, vertical = true))
+        assertNull(chartStep(0, 3, HKEY.down))
+        assertEquals(1, chartStep(0, 3, HKEY.right))
+    }
+
+    @Test
+    fun aNameIsCutByItsLettersWidthsSoCapitalsStayInsideThePlot() {
+        fun width(text: String) = text.sumOf { chartCharWidth(it) }
+        // Capitals run wider than lower case: the same count of letters is cut sooner.
+        val capitals = chartFitText("MAINTENANCE WORKSHOP NORTH WING", 120.0)
+        val lower = chartFitText("maintenance workshop north wing", 120.0)
+        assertTrue(capitals.endsWith(chartEllipsis) && width(capitals) <= 120.0, capitals)
+        assertTrue(capitals.length < lower.length, "$capitals / $lower")
+        // A name that fits is left whole, and the chart asks for every group it reads in one request.
+        assertEquals("Lee", chartFitText("Lee", 30.0))
+        assertEquals(chartMaxGroups, reportRunQuery("audits", null, ReportRunSetup(ReportMode.aggregate), null, chartMaxGroups)[EP.limit])
     }
 }

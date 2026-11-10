@@ -65,7 +65,7 @@ private class HistoryHover(val dayIndex: Int, val groupIndex: Int)
  * resizes -- rather than scaled to it, so its text keeps its size; the hover readout is HTML over it, placed in the
  * same pixels. Every bar can be reached by the pointer or the keyboard and says the same thing either way, and
  * nothing the readout says is missing from the table. To the keyboard the chart is **one** Tab stop -- the latest
- * day's first bar -- and the arrows, Home and End move among the bars (`historyBarStep`); a chart of sixty bars is
+ * day's first bar -- and the arrows, Home and End move among the bars (`chartStep`); a chart of sixty bars is
  * not sixty stops between the controls and the table.
  *
  * A refetch -- after a snapshot, or on the app's refresh -- keeps the chart on screen, dimmed, until its replacement
@@ -92,10 +92,10 @@ val ReportHistoryPanel = FC<ReportHistoryPanelProps> { props ->
     // Monotonic, so a slow answer for a report the user has moved on from is dropped.
     val latest = useRef(0)
     // The width the chart is laid out at: the panel's own, followed as it changes.
-    var chartWidth by useState(HCH.maxWidth)
+    var chartWidth by useState(CHT.maxWidth)
     useEffectOnce {
         val panel = document.getElementById(historyPanelId) ?: return@useEffectOnce
-        val measure: () -> Unit = { chartWidth = historyChartWidth(panel.clientWidth.toDouble()) }
+        val measure: () -> Unit = { chartWidth = chartWidthFor(panel.clientWidth.toDouble()) }
         measure()
         val observer = resizeObserver(measure)
         observer.observe(panel)
@@ -158,7 +158,7 @@ val ReportHistoryPanel = FC<ReportHistoryPanelProps> { props ->
         }
     }
 
-    val metrics = historyMetrics(report.columns, report.groupBy)
+    val metrics = reportMeasures(report.columns, report.groupBy)
     val metric = metrics.firstOrNull { it.key == metricKey } ?: metrics.first()
     val snapshots = shown?.takeIf { it.key == key }?.snapshots
     val failed = failure?.takeIf { it.key == key }
@@ -264,11 +264,8 @@ private fun historyChartTitle(report: ReportInfo, series: HistorySeries): String
     return if (by.isEmpty()) "${series.metric.label}, by day" else "${series.metric.label} by ${by.joinToString(" and ")}, by day"
 }
 
-/** The class that gives a group's mark its colour: its place among the series' groups, or the folded groups' grey. */
-private fun colorClass(groupIndex: Int): String = if (groupIndex == historyOtherIndex) "rh-other" else "rh-c$groupIndex"
-
 private fun groupName(series: HistorySeries, groupIndex: Int): String =
-    if (groupIndex == historyOtherIndex) "Other (${series.otherCount} groups)" else series.groups[groupIndex].label
+    if (groupIndex == chartOtherIndex) "Other (${series.otherCount} groups)" else series.groups[groupIndex].label
 
 /**
  * The chart: its title, the legend (for two series or more -- one needs none), and the plot with its readout.
@@ -301,12 +298,12 @@ private fun ChildrenBuilder.historyChart(
     if (seriesCount >= 2) {
         div {
             className = ClassName("rh-legend")
-            val entries = series.groups.indices.toList() + (if (series.otherDrawn) listOf(historyOtherIndex) else emptyList())
+            val entries = series.groups.indices.toList() + (if (series.otherDrawn) listOf(chartOtherIndex) else emptyList())
             entries.forEach { g ->
                 span {
                     key = "l$g".unsafeCast<Key>()
                     className = ClassName("rh-legend-item")
-                    span { className = ClassName("rh-swatch ${colorClass(g)}") }
+                    span { className = ClassName("rh-swatch ${chartColorClass(g)}") }
                     +groupName(series, g)
                 }
             }
@@ -331,14 +328,14 @@ private fun ChildrenBuilder.historyChart(
                     asDynamic().className = if (t.value == 0.0) "rh-baseline" else "rh-grid"
                     x1 = layout.plotLeft
                     x2 = layout.plotRight
-                    y1 = t.y
-                    y2 = t.y
+                    y1 = t.at
+                    y2 = t.at
                 }
                 text {
                     key = "t${t.value}".unsafeCast<Key>()
                     asDynamic().className = "rh-tick"
                     x = layout.plotLeft - 8
-                    y = t.y
+                    y = t.at
                     textAnchor = TextAnchor.end
                     dominantBaseline = DominantBaseline.middle
                     +t.label
@@ -359,7 +356,7 @@ private fun ChildrenBuilder.historyChart(
                 val hot = at != null && at.dayIndex == b.dayIndex && at.groupIndex == b.groupIndex
                 path {
                     key = "b${b.dayIndex}_${b.groupIndex}".unsafeCast<Key>()
-                    asDynamic().className = "rh-bar ${colorClass(b.groupIndex)}" + (if (hot) " rh-hot" else "")
+                    asDynamic().className = "rh-bar ${chartColorClass(b.groupIndex)}" + (if (hot) " rh-hot" else "")
                     d = b.path
                 }
             }
@@ -371,19 +368,19 @@ private fun ChildrenBuilder.historyChart(
                     key = "h${b.dayIndex}_${b.groupIndex}".unsafeCast<Key>()
                     asDynamic().className = "rh-hit"
                     asDynamic().id = historyHitId(i)
-                    x = b.x - HCH.barGap / 2
+                    x = b.x - CHT.barGap / 2
                     y = layout.plotTop
-                    width = b.width + HCH.barGap
+                    width = b.width + CHT.barGap
                     height = layout.plotBottom - layout.plotTop
                     role = AriaRole.img
                     tabIndex = if (i == tabStop) 0 else -1
-                    ariaLabel = "${series.days[b.dayIndex].day}, ${groupName(series, b.groupIndex)}: ${historyNumberText(b.value)}"
+                    ariaLabel = "${series.days[b.dayIndex].day}, ${groupName(series, b.groupIndex)}: ${chartNumberText(b.value)}"
                     onMouseEnter = { hoverAt(HistoryHover(b.dayIndex, b.groupIndex)) }
                     onMouseLeave = { hoverAt(null) }
                     onFocus = { focusAt(HistoryHover(b.dayIndex, b.groupIndex)) }
                     onBlur = { focusAt(null) }
                     onKeyDown = { e ->
-                        historyBarStep(i, layout.bars.size, e.key)?.let { next ->
+                        chartStep(i, layout.bars.size, e.key)?.let { next ->
                             e.preventDefault()
                             document.getElementById(historyHitId(next))?.asDynamic()?.focus()
                         }
@@ -400,10 +397,10 @@ private fun ChildrenBuilder.historyChart(
                 place.left = "${bar.x + bar.width / 2}px"
                 place.top = "${bar.y}px"
                 asDynamic().style = place
-                strong { +historyNumberText(bar.value) }
+                strong { +chartNumberText(bar.value) }
                 div {
                     className = ClassName("rh-tip-series")
-                    span { className = ClassName("rh-key ${colorClass(bar.groupIndex)}") }
+                    span { className = ClassName("rh-key ${chartColorClass(bar.groupIndex)}") }
                     +groupName(series, bar.groupIndex)
                 }
                 div {
@@ -482,13 +479,13 @@ private fun ChildrenBuilder.historyTable(series: HistorySeries) {
                             td {
                                 key = "v$g".unsafeCast<Key>()
                                 className = ClassName("op-num")
-                                +(v?.let { historyNumberText(it) } ?: reportBlank)
+                                +(v?.let { chartNumberText(it) } ?: reportBlank)
                             }
                         }
                         if (series.otherDrawn) {
                             td {
                                 className = ClassName("op-num")
-                                +(series.otherValues?.get(d)?.let { historyNumberText(it) } ?: reportBlank)
+                                +(series.otherValues?.get(d)?.let { chartNumberText(it) } ?: reportBlank)
                             }
                         }
                     }

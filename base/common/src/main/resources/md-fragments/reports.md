@@ -8,7 +8,9 @@ A report reads the client's forms in one of three views.
 
 - **Per form** lists each form the report covers, one row each, with the report's columns.
 - **Grouped** puts together the forms that share the values of the columns chosen under **Group by**. Each group is
-  one row, with its count of forms and the other columns rolled up: a total, an average, the latest.
+  one row, with its count of forms and the other columns rolled up: a total, an average, the latest. **Chart** draws
+  the groups above the table, as bars or as a pie of their shares, of the count or of a rolled-up number. A report
+  may name the chart it opens on.
 - **History** charts the report's **snapshots** over days. A snapshot keeps what the grouped view answered on a
   day, always with the report's own grouping, so the days can be compared. One is taken each night for a report
   that keeps a history, and **Snapshot now** takes one at any time.
