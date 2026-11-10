@@ -88,6 +88,9 @@ enum class ReportBindProblem : ProblemCode {
 
     /** A grouped-by column whose value is a list. */
     groupByList,
+
+    /** A chart that cannot be drawn from the report's grouped run: no grouping, or a measure that is no number per group. */
+    chart,
 }
 
 /**
@@ -109,7 +112,7 @@ private fun BoundReport.ownColumns(ids: List<String>, what: String): List<BoundC
  *
  * Checked, in order: the report's shape; each column's path -- that it parses, and that what it names exists in the
  * scope ([bindReportPath]); the column's declared kind against the one its path reads; its combine and rollup against
- * the kind; and that a grouped-by column has one value.
+ * the kind; that a grouped-by column has one value; and that its chart, if it names one, can be drawn ([chartProblem]).
  */
 fun bindReport(report: ClientReport, scope: ReportScope): Parsed<BoundReport> {
     shapeProblem(report)?.let { return Parsed.failed(ReportBindProblem.shape, it) }
@@ -163,7 +166,37 @@ fun bindReport(report: ClientReport, scope: ReportScope): Parsed<BoundReport> {
             )
         }
     }
+    report.chart?.let { chart -> chartProblem(report, chart, bound)?.let { return Parsed.failed(ReportBindProblem.chart, it) } }
     return Parsed.Ok(BoundReport(report, bound))
+}
+
+/**
+ * What is wrong with [report]'s [chart] over its [bound] columns, or null (issue #1771). A chart draws the groups of the
+ * report's own grouped run, so the report must group by something; its measure, when it names one, is a number per
+ * group -- a column rolled up to a number, the rule the History view's metrics follow -- and not a grouped-by column,
+ * which has one value per group by definition. A pie's slices are shares of a whole, so its measure must add up
+ * ([ReportCombine.addsUp]): the count of forms, or a count or a sum.
+ */
+private fun chartProblem(report: ClientReport, chart: ReportChart, bound: List<BoundColumn>): String? {
+    if (report.groupBy.isEmpty()) {
+        return "Its chart draws the groups of a grouped run, and it groups by nothing; give it a ${RDEF.groupBy}."
+    }
+    val measure = chart.measure ?: return null
+    val column = bound.firstOrNull { it.columnId == measure }
+        ?: return "Its chart measures '$measure', which is not one of its columns."
+    if (measure in report.groupBy) {
+        return "Its chart measures '$measure', which it groups by; measure a rolled-up column, or leave the measure out to count the forms."
+    }
+    val rollup = column.column.rollup
+        ?: return "Its chart measures '$measure', which has no rollup, so a group has no one value of it to draw."
+    if (rollup.resultKind(column.kind) != ReportKind.number) {
+        return "Its chart measures '$measure', which rolls up by ${rollup.name} to a ${column.kind.name}, not a number."
+    }
+    if (chart.kind == ReportChartKind.pie && !rollup.addsUp) {
+        return "Its pie measures '$measure', which rolls up by ${rollup.name}; a pie's slices are shares of a whole, which " +
+            "only a count or a sum makes."
+    }
+    return null
 }
 
 /**

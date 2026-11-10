@@ -117,7 +117,8 @@ class ReportBindTest {
         groupBy: List<String> = emptyList(),
         excludeEmpty: List<String> = emptyList(),
         label: String = "A report",
-    ) = ClientReport("sites", label, columns.toList(), groupBy = groupBy, excludeEmpty = excludeEmpty)
+        chart: ReportChart? = null,
+    ) = ClientReport("sites", label, columns.toList(), groupBy = groupBy, excludeEmpty = excludeEmpty, chart = chart)
 
     private fun col(id: String, path: String, kind: ReportKind? = null, combine: ReportCombine? = null, rollup: ReportCombine? = null) =
         ReportColumn(id, id.replaceFirstChar { it.uppercase() }, path, kind, combine, rollup)
@@ -341,5 +342,31 @@ class ReportBindTest {
         assertIs<Parsed.Ok<BoundReport>>(
             bindReport(report(col("tags", "form.audit.tags", combine = ReportCombine.first), groupBy = listOf("tags")), scope),
         )
+    }
+
+    // Issue #1771: a chart draws the groups of the report's own grouped run, measured by a number per group.
+    @Test
+    fun aChartMustDrawGroupsOfANumberThatForAPieAddsUp() {
+        val auditor = col("auditor", "form.audit.auditor")
+        val score = col("score", "form.audit.score", rollup = ReportCombine.sum)
+        val average = col("average", "form.audit.score", rollup = ReportCombine.avg)
+        val latest = col("latest", "form.audit.visitedOn", rollup = ReportCombine.max)
+        val visits = col("visits", "form.audit.revisits", rollup = ReportCombine.count)
+        val plain = col("plain", "form.audit.score")
+        fun charted(kind: ReportChartKind, measure: String?, groupBy: List<String> = listOf("auditor")) =
+            report(auditor, score, average, latest, visits, plain, groupBy = groupBy, chart = ReportChart(kind, measure))
+
+        // The count, a sum, and a count of a list's values all draw either way; an average draws only as bars.
+        for (measure in listOf(null, "score", "visits")) {
+            for (kind in ReportChartKind.entries) assertIs<Parsed.Ok<BoundReport>>(bindReport(charted(kind, measure), scope))
+        }
+        assertIs<Parsed.Ok<BoundReport>>(bindReport(charted(ReportChartKind.bar, "average"), scope))
+
+        reportRefusal(charted(ReportChartKind.bar, null, groupBy = emptyList()), ReportBindProblem.chart, "groups by nothing")
+        reportRefusal(charted(ReportChartKind.bar, "nope"), ReportBindProblem.chart, "not one of its columns")
+        reportRefusal(charted(ReportChartKind.bar, "auditor"), ReportBindProblem.chart, "which it groups by")
+        reportRefusal(charted(ReportChartKind.bar, "plain"), ReportBindProblem.chart, "has no rollup")
+        reportRefusal(charted(ReportChartKind.bar, "latest"), ReportBindProblem.chart, "to a date, not a number")
+        reportRefusal(charted(ReportChartKind.pie, "average"), ReportBindProblem.chart, "rolls up by avg")
     }
 }

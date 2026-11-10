@@ -437,6 +437,26 @@ code or its template declares stays listed for the client.
   is kept. See the code guide's [disable rather than delete](code-guide.md#disable-rather-than-delete). Left out until a
   client asks, since no client has wanted a code report gone.
 
+## When an administrator wants a report's chart without opening Reports
+
+A report may declare the chart its grouped run opens on, a bar or a pie of its groups (issue #1771), drawn in the
+Reports page's Grouped view (issue #1772). Nothing shows that chart anywhere else.
+
+- **A report's chart on Home** *(from #1771, deferred here 2026-11-10).* A home card (the `homeCards` block) drawing
+  one report's chart for the client's administrators, the report named by the card. Left out until an administrator
+  asks to see a figure without opening Reports.
+- **A chart as an image or in an export** *(from #1771, deferred here 2026-11-10).* A chart saved as an image, or
+  carried in the downloaded file, for a slide or a mail. Left out because the table and the file hold every number.
+
+## When a client wants another kind of chart
+
+A grouped run draws as a bar or a pie (issue #1771), and History draws a report's snapshots as bars over days (issue
+#1037).
+
+- **More kinds, and a pie of a History day** *(from #1771, deferred here 2026-11-10).* A line over days, stacked bars,
+  or a pie of one snapshot's groups. `ReportChartKind` is a closed set the page draws, so each is a new entry and its
+  drawing. Left out until a client asks for one.
+
 ## When long notes crowd a listing or a report
 
 A field the schema marks long text (`g-longText`, issue #1550) holds free text over several lines. A report cell

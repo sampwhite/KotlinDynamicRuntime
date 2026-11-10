@@ -116,7 +116,8 @@ configuration write runs — each report is **bound** to what it reads (`ReportS
   branches declare with different kinds reads as text) — and ends at a value or an array of values;
 - a workflow path's workflow is a normal workflow of the client's — a creation or core details workflow has no place on
   a form to report — and an approval's task is one of its approval tasks;
-- the declared kind, the combine and the rollup suit the value, and a grouped-by column has one value.
+- the declared kind, the combine and the rollup suit the value, and a grouped-by column has one value;
+- its chart, if it declares one, can be drawn (see *Charts*).
 
 A global report is bound once, against the global traits, types and workflows; run for a client that lacks a trait it
 names, it shows blank cells. A client's own — its template copies included — is bound against that client. So a
@@ -307,6 +308,35 @@ metric to chart, a table of the same numbers, and **Snapshot now**; the `kdr-web
 **Client-wide only.** Both endpoints are in the `clientAdmin` section and scoped as the run is, and both refuse an
 administrator whose administration is confined to an organization: their own runs narrow to their organization's
 forms, and a snapshot would show them the client's totals.
+
+## Charts
+
+A report may declare the chart its **grouped** run opens on (#1771): a `bar` or a `pie`, a bar or a slice per group,
+measured by the count of forms in each group or by one rolled-up column.
+
+```kotlin
+report("auditOverview", "Audit overview") {
+    column("auditor", "Auditor", "form.acmeSiteAudit.auditor")
+    column("total", "Total", "form.sample:expenseReport.totalAmount", rollup = ReportCombine.sum)
+    groupBy = listOf("auditor")
+    chart(ReportChartKind.pie, measure = "total")
+}
+```
+
+Stored, it is the definition's `chart`: `{"kind": "pie", "measure": "total"}`, with `measure` left out for the count.
+It is a default, as `groupBy` is: the page opens on it, and the viewer may draw another kind or measure. A report
+declaring none opens on its table alone.
+
+The checks, when the report binds:
+
+- the report groups by something, since a chart draws groups;
+- a measure names one of its columns that has a rollup whose result is a number (a `count`, or a number rolled up),
+  the same columns the History view offers to chart, and not one it groups by, which has one value per group;
+- a pie's measure adds up (`ReportCombine.addsUp`): the count, or a `count` or `sum` rollup. A pie's slices are
+  shares of a whole, which an average, a minimum or a maximum does not make.
+
+The reports listing carries each report's chart (`chart`); the run does not. The webapp's drawing of it, the Grouped
+view's, is #1772.
 
 ## Samples
 
