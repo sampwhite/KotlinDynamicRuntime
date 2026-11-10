@@ -19,6 +19,7 @@ import com.dynamicruntime.common.gedra.COV
 import com.dynamicruntime.common.gedra.CPY
 import com.dynamicruntime.common.gedra.DSV
 import com.dynamicruntime.common.gedra.EDM
+import com.dynamicruntime.common.gedra.FSR
 import com.dynamicruntime.common.gedra.GDF
 import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.gedra.GED
@@ -308,7 +309,9 @@ object AssistantTools {
                             "names a bundle (a new name makes one) and its edits; each edit names a slot, an action ('addOrMerge', " +
                             "'addOrReplace', or 'deleteOrNoOp'), and the entry's data, in portable form. **Dry run first**: with " +
                             "dryRun true nothing is written, and the answer is what the change would affect. A write answers with " +
-                            "the bundles as written, each entry's new 'updatedAt' among them. A write (dryRun false) is refused " +
+                            "the bundles as written, each entry's new 'updatedAt' among them, and under '${FSR.auto}' whether the " +
+                            "forms the sandbox already holds were brought up to date, so a new workflow is offered to them. " +
+                            "A write (dryRun false) is refused " +
                             "unless the same configs passed a dry run in an earlier step of this turn: dry run, read the answer, " +
                             "then write.",
                     this@AssistantTools.objectSchema(
@@ -336,7 +339,7 @@ object AssistantTools {
                         CFEP.dryRun to mapOf("type" to "boolean", "description" to "True to check the change without writing it."),
                         required = listOf(CFEP.configs, CFEP.dryRun),
                     ),
-                    HttpMethod.POST, CFEP.bundlePatch, setOf(CFEP.configs, CFEP.dryRun),
+                    HttpMethod.POST, CFEP.bundlePatch, setOf(CFEP.configs, CFEP.dryRun, CFEP.reloadField),
                 ) { run, input -> this@AssistantTools.patch(run, input) },
                 AssistantTool(
                     ATOOL.setIncludedTraits,
@@ -529,10 +532,15 @@ object AssistantTools {
 
     /**
      * `patch_config`: a dry run is recorded by what it was given, and a write must match one the model has seen the
-     * answer to. No reload is asked for: a patch made from a sandbox reloads its parent, and with it the sandbox, so
-     * `view_workflow` shows the draft at once. A dry run's answer leaves out the bundles as they would be -- the model
-     * sent them -- so its impact, which is what it is for, is never what a long answer cuts. A write's answer keeps
-     * them: they say what was written, and each entry's new `updatedAt`, for the next edit's `expectUpdatedAt`.
+     * answer to. A write asks for a reload ([CFEP.reloadField]), as the bundle editor's does (issue #1770): a patch made
+     * from a sandbox reloads its parent, and with it the sandbox, so `view_workflow` shows the draft at once either way,
+     * but only an asked reload brings the forms the sandbox already holds up to date (issue #1741's
+     * `autoRecalculateFormStates`) -- without it, a workflow drafted for existing forms is offered to none of them until
+     * someone recalculates them, or the nightly run does. The parent is then reloaded twice, as for the bundle editor; the
+     * answer says what the recalculation did under `formStatesAuto`. A dry run asks for none: it stores nothing. A dry
+     * run's answer leaves out the bundles as they would be -- the model sent them -- so its impact, which is what it is
+     * for, is never what a long answer cuts. A write's answer keeps them: they say what was written, and each entry's
+     * new `updatedAt`, for the next edit's `expectUpdatedAt`.
      */
     @KdrPrivate
     fun patch(run: ToolRun, input: Map<String, Any?>): ToolResult {
@@ -552,7 +560,8 @@ object AssistantTools {
                 isError = true,
             )
         }
-        return run.call(HttpMethod.POST, CFEP.bundlePatch, body = mapOf(CFEP.configs to configs, CFEP.dryRun to false))
+        val body = mapOf(CFEP.configs to configs, CFEP.dryRun to false, CFEP.reloadField to true)
+        return run.call(HttpMethod.POST, CFEP.bundlePatch, body = body)
     }
 
     /** [value] with every map's keys in order, so two inputs differing only in key order compare equal. */
