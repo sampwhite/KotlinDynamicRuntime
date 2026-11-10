@@ -392,10 +392,25 @@ Each is a type the server declares, named as the endpoint catalog names it. A fi
 | Field | Type | Required | What it is |
 |---|---|---|---|
 | `cfact` | string | yes | The cfact the workflow gains once this task is approved. |
-| `prompt` | string | yes | The text above the approve button -- a template, evaluated in two passes. |
-| `button` | string | yes | The approve button's own text -- a template, evaluated in two passes. |
-| `approveWhen` | string |  | Who may approve: a cfact expression over the caller's task and viewer facts and kdr:isOwner. Absent means a reviewer who does not own the form (kdr:reviewer,~kdr:isOwner). |
+| `prompt` | string |  | The text above the approve button -- a template, evaluated in two passes. Required without steps; with steps, each step has its own. |
+| `button` | string |  | The approve button's own text -- a template, evaluated in two passes. Required without steps; with steps, each step has its own. |
+| `approveWhen` | string |  | Who may approve: a cfact expression over the caller's task and viewer facts and kdr:isOwner. Absent means a reviewer who does not own the form (kdr:reviewer,~kdr:isOwner). With steps, each step has its own. |
+| `steps` | array of [WfApprovalStep](#wfapprovalstep) |  | The approval's ordered steps, each given by a person in turn. Absent, the approval is given at once. |
 | `showTasks` | array of string |  | The tasks whose traits the approval shows, read-only, above its prompt. Absent means the nearest earlier task that collects traits; empty shows none. |
+
+### WfApprovalStep
+
+`kdr.wfdef.WfApprovalStep`: One step of an ordered approval: who may give it, the copy around its button, and who it waits on.
+
+| Field | Type | Required | What it is |
+|---|---|---|---|
+| `id` | string | yes | The step's id, unique in its task: what its record is kept under. |
+| `label` | string |  | What the record shows once the step is given -- a template, like a task's label. |
+| `prompt` | string | yes | The text above the step's button -- a template, evaluated in two passes. |
+| `button` | string | yes | The step's button text -- a template, evaluated in two passes. |
+| `approveWhen` | string |  | Who may give the step: a cfact expression over the caller's task and viewer facts and kdr:isOwner. Absent means a reviewer who does not own the form (kdr:reviewer,~kdr:isOwner). |
+| `waiting` | string |  | Who the step waits on, for whoever cannot give it -- a template, like a label. |
+| `cfact` | string |  | A cfact the workflow gains once this step is given, before the approval's own. |
 
 ### WfEligibility
 

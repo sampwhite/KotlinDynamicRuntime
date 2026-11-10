@@ -78,8 +78,9 @@ object WorkflowTaskStatus {
         client: String,
         declared: WfDeclared,
         entries: List<Map<String, Any?>>,
-        approvedTaskIds: Set<String> = emptySet(),
+        /** The [approvalKey]s of the form's current approvals: an approval task is done once all its steps are among them. */
+        approvalKeys: Set<String> = emptySet(),
     ): Pair<WfTask, WfTaskStatus>? =
-        declared.def.tasks.asSequence().map { it to of(cxt, client, it, entries, it.id in approvedTaskIds, declared) }
+        declared.def.tasks.asSequence().map { it to of(cxt, client, it, entries, it.isApproved(approvalKeys), declared) }
             .firstOrNull { !it.second.done }
 }

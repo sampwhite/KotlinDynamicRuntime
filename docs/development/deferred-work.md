@@ -1176,3 +1176,28 @@ long a form has waited, because a form's state keeps its current call to action 
   last changed -- its task, its keyword, or whom it waits on -- carried forward while it stays the same, and read it as a
   report path (`workflow.<id>.ctaSince`, a date) whose age a column can show. Time in review is then a report grouped by
   workflow with an average of that age. Worth it once a client asks how long reviews take, or which have waited longest.
+
+## When a client wants a reviewer to send a form back
+
+An approval in steps (issue #1702) has no refusal, as a single approval has none: a person who will not give a step
+leaves it, and the form waits. Refusing a step, and what that does to the steps before it (kept, or given again), waits
+for a client that wants a form sent back to its owner or to an earlier step.
+
+## When a client wants two-person approval
+
+Nothing stops one person giving two steps of an approval when both steps' rules admit them (issue #1702); each step's
+`approveWhen` decides alone. Separation of duties would need a fact about the row, `kdr:gaveEarlierStep`, read from the
+form's approval records as `kdr:isOwner` is read from its owner, so a step could say `~kdr:gaveEarlierStep`.
+
+## When a step has to be signed rather than approved
+
+An approval step (issue #1702) is a button and a record. A signature would be a step of another kind (`kind: sign`),
+kept on the same record under the same key, with whatever a signature adds (what was signed, how the signer was
+proven). Built when a client needs a signature.
+
+## When a task's text has to name the person who gave an earlier step
+
+A display's text reads the approval's view (issue #1702): `${approvedByName}` is whoever gave the last step, and `steps`
+lists each step, but a template has no way to index a list, so "Accepted by `<first step's approver>`" cannot be
+written. Either give templates list indexing or give the view each step by its id (`given.committee.approvedByName`).
+The default rendering already lists each step given, by its label, so this waits for a client whose text needs it.

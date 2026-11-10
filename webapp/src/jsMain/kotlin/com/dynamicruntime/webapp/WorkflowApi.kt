@@ -58,12 +58,18 @@ object WorkflowApi {
      * Approves approval task [taskId] of normal workflow [workflowId] for form [gedraId] (issue #787). The endpoint
      * decides who may and when -- by the approval's rule, by default a reviewer who does not own the form (issue #1595),
      * on the current task, once -- and a refusal comes back as the error it raised. [client] as for
-     * [fetchCoreDetailsView].
+     * [fetchCoreDetailsView]. [stepId] is the step the page showed (issue #1702), which the endpoint refuses once it is
+     * no longer the one the form waits on; left out, the task's one step.
      */
-    suspend fun approve(gedraId: String, workflowId: String, taskId: String, client: String? = null) {
+    suspend fun approve(gedraId: String, workflowId: String, taskId: String, client: String? = null, stepId: String? = null) {
         Http.sendApi(
             "POST", pathFor(GEP.workflowApprove, client),
-            mapOf(GDF.gedraId to gedraId, WFD.workflowId to workflowId, GDF.taskId to taskId),
+            buildMap {
+                put(GDF.gedraId, gedraId)
+                put(WFD.workflowId, workflowId)
+                put(GDF.taskId, taskId)
+                stepId?.let { put(GDF.stepId, it) }
+            },
         )
     }
 

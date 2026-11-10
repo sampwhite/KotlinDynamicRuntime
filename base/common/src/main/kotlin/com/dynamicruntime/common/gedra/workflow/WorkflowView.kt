@@ -54,7 +54,7 @@ fun resolveWorkflowView(
     declared: WfDeclared,
     entriesByTask: Map<String, List<Map<String, Any?>>> = emptyMap(),
     ownerAttributes: Map<String, Any?> = emptyMap(),
-    /** The form's approvals of this workflow's approval tasks (issue #787), task id to entry data; see WorkflowApprovals.forView. */
+    /** The form's approvals of this workflow (issue #787), by [approvalKey] (issue #1702) to entry data; see WorkflowApprovals.forView. */
     approvals: Map<String, Map<String, Any?>> = emptyMap(),
     /** For a normal workflow viewed against a form: where the form stands with it (issue #791); see [WorkflowFormFacts]. */
     formFacts: WorkflowFormFacts? = null,
@@ -140,19 +140,44 @@ fun resolveWorkflowView(
     //
     // And the tasks whose traits it shows above its prompt (issue #1695), resolved: those it names, else the nearest
     // earlier task that collects traits -- so the page draws what is approved without knowing the rule.
-    fun approvalView(approval: WfApproval, record: Map<String, Any?>?, shows: List<String>): Map<String, Any?> {
+    //
+    // An approval is given in ordered steps (issue #1702), one implicit step when it declares none: `steps` is the record
+    // of each, and the top level speaks of the step to give next (`currentStep`) -- its prompt, button, and who it waits
+    // on -- or, once every step is given, of the last, with its time and approver as the task's.
+    val approverNames = mutableMapOf<Long, String?>()
+    fun approverName(record: Map<String, Any?>): String? = record[WFS.approvedBy].toOptLong()?.let { userId ->
+        // Memo, not getOrPut: an approver who cannot be read (null) is asked once, not once per step.
+        approverNames.memo(userId) { UserService.getOrNull(cxt)?.queryByUserId(cxt, userId)?.shownName() }
+    }
+
+    fun approvalView(task: WfTask, approval: WfApproval, shows: List<String>): Map<String, Any?> {
+        val steps = task.approvalSteps
+        val current = judge.currentStep(task)
+        val shown = current ?: steps.last()
         val out = linkedMapOf<String, Any?>(
             WFD.cfact to approval.cfact,
-            WFD.prompt to label(approval.prompt),
-            WFD.button to label(approval.button),
-            WVF.approved to (record != null),
+            WFD.prompt to label(shown.prompt),
+            WFD.button to label(shown.button),
+            WVF.approved to (current == null),
             WFD.showTasks to shows,
         )
-        if (record != null) {
+        current?.let { step ->
+            out[WVF.currentStep] = step.id
+            step.waiting?.let { out[WFD.waiting] = label(it) }
+        }
+        out[WVF.steps] = steps.map { step ->
+            val record = approvals[approvalKey(task.id, step.id)]
+            linkedMapOf<String, Any?>(WFD.id to step.id, WVF.approved to (record != null)).apply {
+                step.label?.let { put(WFD.label, label(it)) }
+                if (record != null) {
+                    put(WFS.approvedAt, record[WFS.approvedAt])
+                    approverName(record)?.let { put(WVF.approvedByName, it) }
+                }
+            }
+        }
+        task.lastApproval(approvals)?.let { record ->
             out[WFS.approvedAt] = record[WFS.approvedAt]
-            record[WFS.approvedBy].toOptLong()
-                ?.let { UserService.getOrNull(cxt)?.queryByUserId(cxt, it) }
-                ?.let { out[WVF.approvedByName] = it.shownName() }
+            approverName(record)?.let { out[WVF.approvedByName] = it }
         }
         return out
     }
@@ -187,7 +212,7 @@ fun resolveWorkflowView(
         // form kept to its owner, since it is who the step is for, not why this caller may not change the form.
         if (declared.def.entry == WfEntry.normal) judge.waitingOn(task)?.let { raw[WVF.waitingOn] = label(it) }
         task.approval?.let {
-            raw[WVF.approval] = approvalView(it, approvals[task.id], declared.def.approvalShows(task))
+            raw[WVF.approval] = approvalView(task, it, declared.def.approvalShows(task))
             // Whether this caller may approve it, by the rule the approve endpoint enforces -- so the page offers the
             // button only where it can succeed.
             raw[WVF.canApprove] = judge.mayApprove(task, taskFacts)
@@ -318,7 +343,7 @@ class WorkflowTaskJudge(
     val declared: WfDeclared,
     /** The form's entries each task collects ([taskEntriesOf]): what a task's completeness is judged on. */
     private val entriesByTask: Map<String, List<Map<String, Any?>>>,
-    /** The form's approvals of this workflow, by task id. */
+    /** The form's approvals of this workflow, by [approvalKey] (issue #1702): the task id, or `task.step` for a step. */
     private val approvals: Map<String, Map<String, Any?>>,
     /** The request's cfacts alone, assembled once by whoever already holds them: the same for every form. */
     requestFacts: Set<String>,
@@ -335,7 +360,9 @@ class WorkflowTaskJudge(
     val callerFacts: Set<String> = requestFacts + rowFacts
 
     val statuses: List<Pair<WfTask, WfTaskStatus>> = declared.def.tasks.map {
-        it to WorkflowTaskStatus.of(cxt, client, it, entriesByTask[it.id] ?: emptyList(), approved = it.id in approvals, declared = declared)
+        it to WorkflowTaskStatus.of(
+            cxt, client, it, entriesByTask[it.id] ?: emptyList(), approved = it.isApproved(approvals.keys), declared = declared,
+        )
     }
     val statusById: Map<String, WfTaskStatus> = statuses.associate { (task, status) -> task.id to status }
 
@@ -348,7 +375,12 @@ class WorkflowTaskJudge(
      * data now. Lazy, since most judgments (a task with no filter function, a check of a task that is not the CTA)
      * never ask.
      */
-    val cta: CtaAssignment? by lazy { ctaTask?.let { ctaAssignment(cxt, cfacts, declared.def.workflowId, it, formEntries) } }
+    val cta: CtaAssignment? by lazy {
+        ctaTask?.let { ctaAssignment(cxt, cfacts, declared.def.workflowId, it, formEntries, it.declaredCurrentStep(approvals.keys)) }
+    }
+
+    /** [task]'s approval step to give next (issue #1702), or null when it is no approval task or every step is given. */
+    fun currentStep(task: WfTask): WfApprovalStep? = task.currentStep(approvals.keys)
 
     /**
      * Step 2: whether the caller passes [task]'s CTA filter rule (issue #1595). True for every task but the CTA, and for
@@ -368,7 +400,10 @@ class WorkflowTaskJudge(
      * when the caller passes its CTA filter rule.
      */
     fun taskFacts(task: WfTask): Set<String> {
-        val own = WfTaskFacts.of(task, entriesByTask[task.id] ?: emptyList(), isCta = task.id == ctaTaskId, approved = task.id in approvals)
+        val own = WfTaskFacts.of(
+            task, entriesByTask[task.id] ?: emptyList(), isCta = task.id == ctaTaskId,
+            approved = task.isApproved(approvals.keys), stepCfacts = task.givenStepCfacts(approvals.keys),
+        )
         return buildSet {
             addAll(own)
             addAll(viewer.forTask(task))
@@ -387,14 +422,14 @@ class WorkflowTaskJudge(
             (task.saves.isEmpty() || WFC.passesCtaFilter in facts)
 
     /**
-     * Step 3, an approval (issue #1595): [task] is an approval task whose rule ([WfApproval.effectiveApproveWhen], by
-     * default a reviewer who does not own the form) passes over [callerFacts] and [facts], **and** the caller has
-     * [WFC.passesCtaFilter]. Whether the task is current and not yet approved is the approve endpoint's to refuse and
-     * the display's to show.
+     * Step 3, an approval (issue #1595): [task] is an approval task whose current step's rule
+     * ([WfApprovalStep.effectiveApproveWhen], by default a reviewer who does not own the form; the last step's once every
+     * one is given, issue #1702) passes over [callerFacts] and [facts], **and** the caller has [WFC.passesCtaFilter].
+     * Whether the task is current and not yet approved is the approve endpoint's to refuse and the display's to show.
      */
     fun mayApprove(task: WfTask, facts: Set<String> = taskFacts(task)): Boolean {
-        val approval = task.approval ?: return false
-        return cfacts.parse(approval.effectiveApproveWhen).matches(callerFacts + facts) && WFC.passesCtaFilter in facts
+        val step = currentStep(task) ?: task.approvalSteps.lastOrNull() ?: return false
+        return cfacts.parse(step.effectiveApproveWhen).matches(callerFacts + facts) && WFC.passesCtaFilter in facts
     }
 
     /**

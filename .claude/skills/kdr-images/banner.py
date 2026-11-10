@@ -63,8 +63,8 @@ OVERVIEW_ABOUT = [
 # Each banner: its file, kicker, title, accent (a PALETTE key), comment lines, <title> text, and steps as (icon, label).
 PARTS = [
  ('walk-part1.svg', 'Part 1', 'The conference demo', 'accent-bright', WALK_ABOUT,
-  'Part 1 of the walk-through: join the conference demo as a speaker, submit a talk, fill in the core details, write the abstract, join the committee, review the talk, and see the result.',
-  [('badge','Join'),('slide','Submit a talk'),('checklist','Core details'),('pencil','Abstract'),('people','Committee'),('star','Review'),('check','Result')]),
+  'Part 1 of the walk-through: join the conference demo as a speaker, submit a talk, fill in the core details, write the abstract, join the committee, review the talk, confirm it as an organizer, and see the result.',
+  [('badge','Join'),('slide','Submit a talk'),('checklist','Core details'),('pencil','Abstract'),('people','Committee'),('star','Review'),('check','Organizer'),('slide','Result')]),
  ('walk-part2.svg', 'Part 2', 'A client of your own', 'design', WALK_ABOUT,
   'Part 2 of the walk-through: create a client, open its sandbox, change its words, design a trait, make a workflow, publish, invite somebody, and read the report.',
   [('building','Client'),('sandbox','Sandbox'),('words','Words'),('fields','Trait'),('flow','Workflow'),('publish','Publish'),('mail','Invite'),('bars','Report')]),

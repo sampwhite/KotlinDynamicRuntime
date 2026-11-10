@@ -30,7 +30,9 @@ import com.dynamicruntime.common.cfact.CFACTS
 import com.dynamicruntime.common.gedra.workflow.CDF
 import com.dynamicruntime.common.gedra.workflow.WFC
 import com.dynamicruntime.common.gedra.workflow.CTAK
+import com.dynamicruntime.common.gedra.workflow.RCF
 import com.dynamicruntime.common.gedra.workflow.WSC
+import com.dynamicruntime.common.gedra.workflow.WfApprovalStep
 import com.dynamicruntime.common.gedra.workflow.WfEntry
 import com.dynamicruntime.common.gedra.workflow.WfSaveKind
 import com.dynamicruntime.common.gedra.workflow.computeCFactsFromData
@@ -115,6 +117,10 @@ object ConfDemo {
     const val saveReview = "saveReview"
     const val acceptTask = "accept"
 
+    /** The steps of the [acceptTask]'s approval (issue #1702): the committee accepts the talk, then an organizer confirms it. */
+    const val committeeStep = "committee"
+    const val organizerStep = "organizer"
+
     const val logisticsWorkflow = "logistics"
     const val planTask = "plan"
     const val savePlan = "savePlan"
@@ -127,9 +133,13 @@ object ConfDemo {
     const val audienceColumn = "audience"
     const val recordingColumn = "recording"
 
-    /** The client's own cfacts: a talk's track is the workshop track; the committee accepted the talk. */
+    /**
+     * The client's own cfacts: a talk's track is the workshop track; the talk is accepted, by the committee and then an
+     * organizer; the committee has accepted it, the first of those two steps (issue #1702).
+     */
     const val isWorkshop = "isWorkshop"
     const val talkAccepted = "talkAccepted"
+    const val talkRecommended = "talkRecommended"
     const val cfactGroup = "confDemo"
 
     /** The label a committee member carries to review talks. */
@@ -254,8 +264,8 @@ fun confDemoBase(cxt: KdrCxtBase = LiteCxt(), client: String = ConfDemo.client, 
                 clientId = client,
                 name = "Conference demo",
                 // Shown to visitors on the home page's demo card and the Join page (issue #1686), so it says what the demo is.
-                description = "A small conference's call for talks: speakers submit talks, and a committee reviews them and " +
-                    "accepts them for the program.",
+                description = "A small conference's call for talks: speakers submit talks, a committee reviews and accepts " +
+                    "them, and an organizer confirms them for the program.",
                 usageType = ClientUsageType.demo,
                 audience = ClientAudience.internal,
                 enabledEnvironments = setOf(ENV.unit, ENV.local, ENV.dev),
@@ -281,7 +291,8 @@ fun confDemoBase(cxt: KdrCxtBase = LiteCxt(), client: String = ConfDemo.client, 
                         name = ConfDemo.organizerRole,
                         label = "Organizer",
                         persona = PERSONA.admin,
-                        summary = "See every talk submitted, and run the conference's workflows.",
+                        summary = "See every talk submitted, confirm the talks the committee accepts, and run the conference's " +
+                            "workflows.",
                     ),
                     ClientJoinRole(
                         name = ConfDemo.committeeRole,
@@ -296,7 +307,14 @@ fun confDemoBase(cxt: KdrCxtBase = LiteCxt(), client: String = ConfDemo.client, 
         )
         cfact(ConfDemo.isWorkshop, ConfDemo.cfactGroup, "The talk's track is the workshop track; computed by the core details " +
             "workflow from the session.")
-        cfact(ConfDemo.talkAccepted, ConfDemo.cfactGroup, "True once the committee has accepted the talk.")
+        cfact(
+            ConfDemo.talkAccepted, ConfDemo.cfactGroup,
+            "True once the committee has accepted the talk and an organizer has confirmed it.",
+        )
+        cfact(
+            ConfDemo.talkRecommended, ConfDemo.cfactGroup,
+            "True once the committee has accepted the talk, whether or not an organizer has confirmed it yet.",
+        )
 
         // The workflow pages are off in the shipped menu; a client with normal workflows turns them on (issue #792).
         uiBlockOverlay(HMENU.block) {
@@ -471,12 +489,14 @@ fun confDemoBase(cxt: KdrCxtBase = LiteCxt(), client: String = ConfDemo.client, 
                 key(
                     HFRAG.intro,
                     "The **Conference demo** is a small conference's call for talks. Speakers submit the talks they want to " +
-                        "give, and a committee reviews each one and accepts it for the program. The demo is shared with " +
-                        "everyone who joins it, so you see the talks other visitors add, and they see yours.\n\n" +
+                        "give, a committee reviews and accepts each one, and an organizer confirms it for the program. The " +
+                        "demo is shared with everyone who joins it, so you see the talks other visitors add, and they see " +
+                        "yours.\n\n" +
                         "As a speaker, open **My forms** from the menu, and choose **Create a form** to submit a talk. As a " +
                         "member of the committee, once a talk is ready for your review, this page lists it under **Waiting on " +
-                        "you**. [Part 1 of the walk-through](/docs/walk-through.md#part-1-the-conference-demo) takes you " +
-                        "through both, a step at a time.",
+                        "you**, and as an organizer, so does each talk the committee has accepted, for you to confirm. " +
+                        "[Part 1 of the walk-through](/docs/walk-through.md#part-1-the-conference-demo) takes you through " +
+                        "all three, a step at a time.",
                 )
             }
         }
@@ -565,7 +585,7 @@ fun confDemoAbstract(cxt: KdrCxtBase = LiteCxt(), client: String = ConfDemo.clie
 fun confDemoReview(cxt: KdrCxtBase = LiteCxt(), client: String = ConfDemo.client): GedraConfig =
     gedraConfig(cxt, ConfDemo.reviewConfig, clientNamespace(client), client) {
         workflow(ConfDemo.reviewWorkflow, WfEntry.normal) {
-            comment = "The committee reviews a talk once its core details are complete, then accepts it."
+            comment = "The committee reviews a talk once its core details are complete, then accepts it, and an organizer confirms it."
             label = "Committee review"
             // Its Start is highlighted for a committee member (issue #1662), who may act on its first task.
             highlightStart = true
@@ -580,16 +600,39 @@ fun confDemoReview(cxt: KdrCxtBase = LiteCxt(), client: String = ConfDemo.client
                 saveWhen(WFC.reviewer)
             }
             task(ConfDemo.acceptTask, "Accept the talk") {
-                approval(ConfDemo.talkAccepted, "Read the review, then accept the talk for the program.", "Accept the talk")
+                comment = "Two people accept a talk, in order: a committee member, then an organizer."
+                approvalSteps(
+                    ConfDemo.talkAccepted,
+                    listOf(
+                        WfApprovalStep(
+                            ConfDemo.committeeStep,
+                            label = "Committee acceptance",
+                            prompt = "Read the review, then accept the talk for the program.",
+                            button = "Accept the talk",
+                            approveWhen = "${WFC.reviewer},~${RCF.isOwner}",
+                            waiting = "A committee member accepts the talk.",
+                            cfact = ConfDemo.talkRecommended,
+                        ),
+                        WfApprovalStep(
+                            ConfDemo.organizerStep,
+                            label = "Organizer confirmation",
+                            prompt = "The committee accepted this talk. Confirm it for the program.",
+                            button = "Confirm for the program",
+                            approveWhen = "${CFACTS.hasAdminLevel},~${RCF.isOwner}",
+                            waiting = "An organizer confirms the talk for the program.",
+                            cfact = null,
+                        ),
+                    ),
+                )
                 function(userHasLabel { label = ConfDemo.committeeLabel })
                 display {
-                    whenCfacts(ConfDemo.talkAccepted) { text($$"Accepted by ${approvedByName}.") }
+                    whenCfacts(ConfDemo.talkAccepted) { defaultRendering() }
                     whenCfacts("~${WFC.isCta}") {
                         text("The review has to be recorded before the talk can be accepted.")
                         disabled = true
                     }
-                    whenCfacts(WFC.reviewer) { defaultRendering() }
-                    otherwise { text("A committee member accepts the talk.") }
+                    whenCfacts("${WFC.reviewer}|${CFACTS.hasAdminLevel}") { defaultRendering() }
+                    otherwise { text("The committee accepts the talk, then an organizer confirms it for the program.") }
                 }
             }
             singleton(WSC.finished, ConfDemo.talkAccepted)

@@ -217,8 +217,18 @@ fun passesCtaFilterRule(registry: CFactRegistry, filterRule: String?, facts: Set
  * priority order, then the task's own keyword ([WfTask.ctaKeyword]) where none set one. A filter naming anything but
  * facts about the person is dropped with a warning -- reported, never stored -- since a listing could not evaluate it;
  * the resolution pass refuses such a filter before it runs wherever it can be known ahead.
+ *
+ * For an approval with steps (issue #1702), [step] is the current one: its rule for who may give it joins the filter
+ * (both must pass), and its `waiting` is the label when no function set one. Its rule was held to the same check at load.
  */
-fun ctaAssignment(cxt: KdrCxt, registry: CFactRegistry, workflowId: String, task: WfTask, entries: List<Map<String, Any?>>): CtaAssignment {
+fun ctaAssignment(
+    cxt: KdrCxt,
+    registry: CFactRegistry,
+    workflowId: String,
+    task: WfTask,
+    entries: List<Map<String, Any?>>,
+    step: WfApprovalStep? = null,
+): CtaAssignment {
     val params = CtaFilterParams(entries)
     task.ctaFilterFns().forEach { it.computeCtaFilter(cxt, params) }
     val filter = params.filter?.takeIf { filter ->
@@ -241,5 +251,10 @@ fun ctaAssignment(cxt: KdrCxt, registry: CFactRegistry, workflowId: String, task
             }
         }
     } ?: task.ctaKeyword
-    return CtaAssignment(keyword, filterRule = filter, filterLabel = filter?.let { params.label })
+    val label = filter?.let { params.label }
+    if (step == null) {
+        return CtaAssignment(keyword, filterRule = filter, filterLabel = label)
+    }
+    val rule = filter?.let { "($it),(${step.effectiveApproveWhen})" } ?: step.effectiveApproveWhen
+    return CtaAssignment(keyword, filterRule = rule, filterLabel = label ?: step.waiting)
 }

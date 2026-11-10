@@ -67,13 +67,14 @@ object UserLabelUseReader {
 
     /**
      * What [task] does with [cfact], the fact its `userHasLabel` emits: lets its holder approve when the approval's rule
-     * names it (the default rule names `kdr:reviewer`), save when the rule for who may save names it, and otherwise
-     * only changes what the task shows. The names as the cfact grammar reads them, so a rooted name is not split.
+     * -- any of its steps' rules, issue #1702 -- names it (the default rule names `kdr:reviewer`), save when the rule for
+     * who may save names it, and otherwise only changes what the task shows. The names as the cfact grammar reads them,
+     * so a rooted name is not split.
      */
     fun kindOf(task: WfTask, cfact: String): UserLabelUseKind {
         fun names(rule: String?) = rule != null && cfact in CFactParser.analyze(rule, emptySet()).names
         return when {
-            task.approval?.let { names(it.effectiveApproveWhen) } == true -> UserLabelUseKind.approves
+            task.approval?.approveWhens?.any { names(it) } == true -> UserLabelUseKind.approves
             names(task.saveWhen) -> UserLabelUseKind.saves
             else -> UserLabelUseKind.tests
         }

@@ -126,6 +126,19 @@ object WFD {
     const val showTasks = "showTasks"
 
     /**
+     * On an approval (issue #1702): its **ordered steps**, each given by a person in turn -- a step's [id], [label],
+     * [prompt], [button], [approveWhen], [waiting], and optional [cfact]. Absent, the approval is one implicit step made
+     * of its own [prompt], [button], and [approveWhen].
+     */
+    const val steps = "steps"
+
+    /** On an approval step (issue #1702): who it waits on, for whoever cannot give it -- a template, like a label. */
+    const val waiting = "waiting"
+
+    /** The named type of one of an approval's [steps]. */
+    const val approvalStepType = "WfApprovalStep"
+
+    /**
      * On a task: how it is shown (issue #788) -- one display branch ([WDSP]), or, usually, a UiBlock **selector**
      * (`select`) choosing among several by the caller's task facts. What turns an approval task into "approved by
      * ...", "waiting on earlier work", the approve button, or "wait for a reviewer", as the case may be.
@@ -368,8 +381,21 @@ object WVF {
      */
     const val approval = "approval"
 
-    /** Under [approval]: whether the task has been approved. */
+    /** Under [approval]: whether the task has been approved -- every one of its steps given (issue #1702). */
     const val approved = "approved"
+
+    /**
+     * Under [approval] (issue #1702): its steps in order, each with its `id`, `label`, whether it is [approved], and when
+     * so `approvedAt` and [approvedByName]. An approval without steps lists its one implicit step, whose `id` is the
+     * task's. What the page draws as the record of the approvals given, and a display template reads as `steps`.
+     */
+    const val steps = "steps"
+
+    /**
+     * Under [approval] (issue #1702): the id of the step to give next -- the first not given -- with its `prompt`,
+     * `button`, and `waiting` resolved at the approval's top level. Absent once every step is given.
+     */
+    const val currentStep = "currentStep"
 
     /**
      * Under [approval]: the approver's name, for "approved by ..." -- their profile's name, else their email. A task's
@@ -575,7 +601,9 @@ class WfSingleton(val cfact: String, val whenExpr: String)
  */
 class WfApproval(
     val cfact: String,
+    /** The text above the button of an approval without [steps]; a step's own otherwise (issue #1702). */
     val prompt: String,
+    /** The button's text of an approval without [steps]; a step's own otherwise (issue #1702). */
     val button: String,
     /**
      * Who may approve (issue #1595), a cfact expression; null for [defaultApproveWhen]. A client says otherwise only on
@@ -588,9 +616,23 @@ class WfApproval(
      * earlier task that collects traits ([WfDef.approvalShows]); empty for none.
      */
     val showTasks: List<String>? = null,
+    /**
+     * The approval's ordered steps (issue #1702), each given by a person in turn; empty for an approval given at once,
+     * which is one implicit step ([effectiveSteps]).
+     */
+    val steps: List<WfApprovalStep> = emptyList(),
 ) {
-    /** The rule the approve endpoint judges by: [approveWhen], or [defaultApproveWhen]. */
-    val effectiveApproveWhen: String get() = approveWhen ?: defaultApproveWhen
+    /**
+     * The steps a person gives in turn (issue #1702): [steps], or for an approval without them one implicit step, its id
+     * [implicitStepId] -- the task's, so its record is keyed as an approval was before steps -- made of the approval's
+     * own [prompt], [button], and [approveWhen].
+     */
+    fun effectiveSteps(implicitStepId: String): List<WfApprovalStep> =
+        steps.ifEmpty { listOf(WfApprovalStep(implicitStepId, null, prompt, button, approveWhen, null, null)) }
+
+    /** Every step's rule for who may give it, the default where a step says none: what a check of who approves reads. */
+    val approveWhens: List<String>
+        get() = steps.map { it.effectiveApproveWhen }.ifEmpty { listOf(approveWhen ?: defaultApproveWhen) }
 
     @Suppress("ConstPropertyName")
     companion object {
@@ -602,6 +644,42 @@ class WfApproval(
         const val defaultApproveWhen = "${WFC.reviewer},~${RCF.isOwner}"
     }
 }
+
+/**
+ * One step of an ordered approval (issue #1702), given by a person in turn: its [id] (unique in the task), its [label]
+ * (what the record shows once it is given), its [prompt] and [button], who may give it ([approveWhen], left out the
+ * approval's default, [WfApproval.defaultApproveWhen]), who it waits on ([waiting], a template shown to whoever cannot
+ * give it), and an optional [cfact], asserted once it is given, so locks, display branches, and eligibility can react to
+ * partial progress. The approval's own cfact is asserted once every step is given.
+ */
+class WfApprovalStep(
+    val id: String,
+    val label: String?,
+    val prompt: String,
+    val button: String,
+    val approveWhen: String?,
+    val waiting: String?,
+    val cfact: String?,
+) {
+    /** Who may give the step: [approveWhen], or [WfApproval.defaultApproveWhen]. */
+    val effectiveApproveWhen: String get() = approveWhen ?: WfApproval.defaultApproveWhen
+
+    /** The step as written in an approval's `steps` list. */
+    fun toJsonMap(): Map<String, Any?> = linkedMapOf<String, Any?>(WFD.id to id).apply {
+        label?.let { put(WFD.label, it) }
+        put(WFD.prompt, prompt)
+        put(WFD.button, button)
+        approveWhen?.let { put(WFD.approveWhen, it) }
+        waiting?.let { put(WFD.waiting, it) }
+        cfact?.let { put(WFD.cfact, it) }
+    }
+}
+
+/**
+ * The key an approval record is filed under among a form's approvals (issue #1702): the task's id for its implicit step,
+ * whose [stepId] is the task's own -- as an approval was keyed before steps -- and `<task>.<step>` for a declared step.
+ */
+fun approvalKey(taskId: String, stepId: String?): String = if (stepId == null || stepId == taskId) taskId else "$taskId.$stepId"
 
 /**
  * A task's **task layout** -- as opposed to a *field* layout (`SchLayout`, `g-layout`), which presents the fields
@@ -700,6 +778,7 @@ class WfTask(
             if (approval.cfact.isBlank()) {
                 throw KdrException.mkConv("Approval task '$id' names no cfact for its approval to emit.")
             }
+            approvalStepsProblem(approval)?.let { throw KdrException.mkConv(it) }
         }
         if (keyword != null && keyword !in CTAK.all) {
             throw KdrException.mkConv(
@@ -714,6 +793,75 @@ class WfTask(
      * [CTAK.review] for an approval task, which waits on a review by definition. A `ctaFilter` function may replace it.
      */
     val ctaKeyword: String? get() = keyword ?: if (approval != null) CTAK.review else null
+
+    /** An approval task's steps in order (issue #1702): its declared ones, or its one implicit step; none for any other task. */
+    val approvalSteps: List<WfApprovalStep> get() = approval?.effectiveSteps(id).orEmpty()
+
+    /** Whether every step of this approval task is given, among the [approvalKey]s of a form's current approvals. */
+    fun isApproved(approvalKeys: Collection<String>): Boolean =
+        approval != null && approvalSteps.all { approvalKey(id, it.id) in approvalKeys }
+
+    /** The step to give next among [approvalKeys] -- the first not given -- or null once every one is (issue #1702). */
+    fun currentStep(approvalKeys: Collection<String>): WfApprovalStep? =
+        approvalSteps.firstOrNull { approvalKey(id, it.id) !in approvalKeys }
+
+    /**
+     * The current step when this approval task **declares** steps (issue #1702), which its call to action follows: its
+     * filter and [WFS.ctaStep]. Null for an approval given at once, whose CTA is as it was before steps.
+     */
+    fun declaredCurrentStep(approvalKeys: Collection<String>): WfApprovalStep? =
+        if (approval?.steps.isNullOrEmpty()) null else currentStep(approvalKeys)
+
+    /** The approval step [stepId] of this task, or null when it has none by that id. */
+    fun approvalStep(stepId: String?): WfApprovalStep? = approvalSteps.firstOrNull { it.id == stepId }
+
+    /** The cfacts of this approval task's steps given among [approvalKeys], each that names one (issue #1702). */
+    fun givenStepCfacts(approvalKeys: Collection<String>): Set<String> =
+        approvalSteps.filter { approvalKey(id, it.id) in approvalKeys }.mapNotNullTo(LinkedHashSet()) { it.cfact }
+
+    /** The record of the last step given, when every step is: who approved the task as a whole, and when (issue #1702). */
+    fun lastApproval(approvals: Map<String, Map<String, Any?>>): Map<String, Any?>? =
+        if (isApproved(approvals.keys)) approvals[approvalKey(id, approvalSteps.last().id)] else null
+
+    /**
+     * What is wrong with [approval]'s steps (issue #1702), or null when nothing is: an approval without steps has its own
+     * prompt and button; one with steps says who may give each step there, not on the approval, and its steps have ids
+     * unique in the task, each with a prompt and a button. A step's id is a variable name, as a task's is, and not the
+     * task's own: a record is filed under `<task>.<step>`, which a dot in either could make ambiguous, and the task's id
+     * alone is the key of an approval given at once.
+     */
+    private fun approvalStepsProblem(approval: WfApproval): String? {
+        if (approval.steps.isEmpty()) {
+            return if (approval.prompt.isBlank() || approval.button.isBlank()) {
+                "Approval task '$id' has no prompt or no button. An approval without steps has both."
+            } else null
+        }
+        if (approval.prompt.isNotBlank() || approval.button.isNotBlank() || approval.approveWhen != null) {
+            return "Approval task '$id' has steps, and a prompt, a button, or an approveWhen of its own. With steps, each " +
+                "step has its own."
+        }
+        val ids = HashSet<String>()
+        for (step in approval.steps) {
+            if (step.id.isBlank()) return "An approval step of task '$id' has no id."
+            if (!step.id.isVariableName()) {
+                return "'${step.id}' cannot be the id of an approval step of task '$id': it has to be a variable name, a " +
+                    "letter or underscore, then letters, digits and underscores."
+            }
+            if (step.id == id) {
+                return "Approval step '${step.id}' of task '$id' has the task's own id, which is the key of an approval " +
+                    "given at once. Give the step an id of its own."
+            }
+            if (!ids.add(step.id)) return "Approval task '$id' has two steps with the id '${step.id}'."
+            if (step.prompt.isBlank() || step.button.isBlank()) {
+                return "Approval step '${step.id}' of task '$id' has no prompt or no button."
+            }
+            if (step.cfact != null && step.cfact == approval.cfact) {
+                return "Approval step '${step.id}' of task '$id' emits '${step.cfact}', the approval's own cfact, which is " +
+                    "asserted once every step is given."
+            }
+        }
+        return null
+    }
 
     /** The traits an entry must be present for -- what [WfEngine.taskComplete] checks. */
     val requiredTraitIds: List<String> get() = traits.filter { it.required }.map { it.traitId }
@@ -1146,17 +1294,47 @@ object WfDefSchema {
             property(WFD.cfact, "The framework singleton cfact emitted (needsReview, finished, ownerOnly).", required = true)
             property(WFD.kWhen, "The cfact expression over the workflow's current cfacts that emits it.", required = true)
         }
+        type(WFD.approvalStepType) {
+            type = SCT.kObject
+            description = "One step of an ordered approval: who may give it, the copy around its button, and who it waits on."
+            property(WFD.id, "The step's id, unique in its task: what its record is kept under.", required = true)
+            property(WFD.label, "What the record shows once the step is given -- a template, like a task's label.")
+            property(WFD.prompt, "The text above the step's button -- a template, evaluated in two passes.", required = true)
+            property(WFD.button, "The step's button text -- a template, evaluated in two passes.", required = true)
+            property(
+                WFD.approveWhen,
+                "Who may give the step: a cfact expression over the caller's task and viewer facts and kdr:isOwner. " +
+                    "Absent means a reviewer who does not own the form (${WfApproval.defaultApproveWhen}).",
+            )
+            property(WFD.waiting, "Who the step waits on, for whoever cannot give it -- a template, like a label.")
+            property(WFD.cfact, "A cfact the workflow gains once this step is given, before the approval's own.")
+        }
         type(WFD.approvalType) {
             type = SCT.kObject
             description = "What makes a task an approval task: the cfact an approval emits, and the copy around its button."
             property(WFD.cfact, "The cfact the workflow gains once this task is approved.", required = true)
-            property(WFD.prompt, "The text above the approve button -- a template, evaluated in two passes.", required = true)
-            property(WFD.button, "The approve button's own text -- a template, evaluated in two passes.", required = true)
+            property(
+                WFD.prompt,
+                "The text above the approve button -- a template, evaluated in two passes. Required without steps; with " +
+                    "steps, each step has its own.",
+            )
+            property(
+                WFD.button,
+                "The approve button's own text -- a template, evaluated in two passes. Required without steps; with steps, " +
+                    "each step has its own.",
+            )
             property(
                 WFD.approveWhen,
                 "Who may approve: a cfact expression over the caller's task and viewer facts and kdr:isOwner. Absent means " +
-                    "a reviewer who does not own the form (${WfApproval.defaultApproveWhen}).",
+                    "a reviewer who does not own the form (${WfApproval.defaultApproveWhen}). With steps, each step has its own.",
             )
+            property(
+                WFD.steps,
+                "The approval's ordered steps, each given by a person in turn. Absent, the approval is given at once.",
+            ) {
+                type = SCT.array
+                items { ref(WFD.approvalStepType) }
+            }
             property(
                 WFD.showTasks,
                 "The tasks whose traits the approval shows, read-only, above its prompt. Absent means the nearest earlier " +
@@ -1307,9 +1485,14 @@ fun WfDef.toJsonMap(): Map<String, Any?> = buildMap {
                 task.approval?.let {
                     put(
                         WFD.approval,
-                        linkedMapOf<String, Any?>(WFD.cfact to it.cfact, WFD.prompt to it.prompt, WFD.button to it.button).apply {
+                        linkedMapOf<String, Any?>(WFD.cfact to it.cfact).apply {
+                            if (it.steps.isEmpty()) {
+                                put(WFD.prompt, it.prompt)
+                                put(WFD.button, it.button)
+                            }
                             it.approveWhen?.let { rule -> put(WFD.approveWhen, rule) }
                             it.showTasks?.let { shown -> put(WFD.showTasks, shown) }
+                            if (it.steps.isNotEmpty()) put(WFD.steps, it.steps.map { step -> step.toJsonMap() })
                         },
                     )
                 }
@@ -1381,6 +1564,14 @@ fun parseWfDef(cxt: KdrCxtBase, raw: Map<String, Any?>, templateOverlay: Map<Str
                         approveWhen = am[WFD.approveWhen].toOptStr(),
                         // Absent is the default; an empty list shows none.
                         showTasks = (am[WFD.showTasks] as? List<*>)?.mapNotNull { it.toOptStr() },
+                        steps = (am[WFD.steps] as? List<*>).orEmpty().map { s ->
+                            val sm = s.toJsonMapOrEmpty()
+                            WfApprovalStep(
+                                sm[WFD.id].toOptStr() ?: "", sm[WFD.label].toOptStr(), sm[WFD.prompt].toOptStr() ?: "",
+                                sm[WFD.button].toOptStr() ?: "", sm[WFD.approveWhen].toOptStr(), sm[WFD.waiting].toOptStr(),
+                                sm[WFD.cfact].toOptStr(),
+                            )
+                        },
                     )
                 },
                 display = (t[WFD.display] as? Map<*, *>)?.toJsonMapOrEmpty(),
@@ -1593,6 +1784,17 @@ class WfTaskBuilder(private val id: String, private val label: String) {
     }
 
     /**
+     * Makes this an approval task given in **ordered steps** (issue #1702): each of [steps] by a person in turn, then
+     * [cfact] once every one is given. [showTasks] as for a single approval.
+     */
+    fun approvalSteps(cfact: String, steps: List<WfApprovalStep>, showTasks: List<String>? = null) {
+        approval = linkedMapOf<String, Any?>(WFD.cfact to cfact).apply {
+            showTasks?.let { put(WFD.showTasks, it) }
+            put(WFD.steps, steps.map { it.toJsonMap() })
+        }
+    }
+
+    /**
      * Who may save the task (issue #856): [cfacts], a cfact expression over the caller's task facts and viewer facts
      * -- `kdr:reviewer` from a `userHasLabel` function on this task, say. The save endpoint refuses anyone it does not
      * admit, and the view tells the page whether the caller may, so the page offers Save only where it can succeed.
@@ -1758,7 +1960,14 @@ object WDSP {
  * generic `kdr:taskComplete`.
  */
 object WfTaskFacts {
-    fun of(task: WfTask, entries: List<Map<String, Any?>>, isCta: Boolean = false, approved: Boolean = false): Set<String> {
+    fun of(
+        task: WfTask,
+        entries: List<Map<String, Any?>>,
+        isCta: Boolean = false,
+        approved: Boolean = false,
+        /** The cfacts of the steps given so far (issue #1702), present while the approval is not yet whole. */
+        stepCfacts: Set<String> = emptySet(),
+    ): Set<String> {
         val facts = LinkedHashSet<String>()
         facts.add(WFC.taskAvailable)
         val complete = if (task.approval != null) approved else WfEngine.taskComplete(task, entries)
@@ -1768,6 +1977,7 @@ object WfTaskFacts {
         if (approved) {
             task.approval?.let { facts.add(it.cfact) }
         }
+        facts.addAll(stepCfacts)
         if (isCta) {
             facts.add(WFC.isCta)
         }

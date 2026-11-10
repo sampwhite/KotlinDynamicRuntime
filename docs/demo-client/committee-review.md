@@ -3,8 +3,8 @@
 # Committee review
 
 The committee review is a normal workflow that not every talk may enter, and not every person may work on. A talk
-may enter it once its core details are complete. A committee member records a review, then accepts the talk; the speaker
-can read the review but cannot change it.
+may enter it once its core details are complete. A committee member records a review and accepts the talk, and then an
+organizer confirms it for the program. The speaker can read the review but cannot change it.
 
 Two pieces of configuration go into it, and this page shows both:
 
@@ -73,7 +73,7 @@ Here is the whole `review` bundle:
       "definition": {
         "workflowId": "review",
         "entry": "normal",
-        "$comment": "The committee reviews a talk once its core details are complete, then accepts it.",
+        "$comment": "The committee reviews a talk once its core details are complete, then accepts it, and an organizer confirms it.",
         "label": "Committee review",
         "highlightStart": true,
         "eligibility": [
@@ -97,26 +97,44 @@ Here is the whole `review` bundle:
           },
           {
             "id": "accept",
+            "$comment": "Two people accept a talk, in order: a committee member, then an organizer.",
             "label": "Accept the talk",
             "traits": [],
             "saves": [],
             "functions": [{ "fn": "userHasLabel", "label": "committee", "cfact": "kdr:reviewer" }],
             "approval": {
               "cfact": "talkAccepted",
-              "prompt": "Read the review, then accept the talk for the program.",
-              "button": "Accept the talk"
+              "steps": [
+                {
+                  "id": "committee",
+                  "label": "Committee acceptance",
+                  "approveWhen": "kdr:reviewer,~kdr:isOwner",
+                  "waiting": "A committee member accepts the talk.",
+                  "prompt": "Read the review, then accept the talk for the program.",
+                  "button": "Accept the talk",
+                  "cfact": "talkRecommended"
+                },
+                {
+                  "id": "organizer",
+                  "label": "Organizer confirmation",
+                  "approveWhen": "kdr:hasAdminLevel,~kdr:isOwner",
+                  "waiting": "An organizer confirms the talk for the program.",
+                  "prompt": "The committee accepted this talk. Confirm it for the program.",
+                  "button": "Confirm for the program"
+                }
+              ]
             },
             "display": {
               "select": [
-                { "cfactExpression": "talkAccepted", "mode": "text", "text": "Accepted by ${approvedByName}." },
+                { "cfactExpression": "talkAccepted", "mode": "default" },
                 {
                   "cfactExpression": "~kdr:isCta",
                   "mode": "text",
                   "text": "The review has to be recorded before the talk can be accepted.",
                   "disabled": true
                 },
-                { "cfactExpression": "kdr:reviewer", "mode": "default" },
-                { "mode": "text", "text": "A committee member accepts the talk." }
+                { "cfactExpression": "kdr:reviewer|kdr:hasAdminLevel", "mode": "default" },
+                { "mode": "text", "text": "The committee accepts the talk, then an organizer confirms it for the program." }
               ]
             }
           }
@@ -131,7 +149,7 @@ Here is the whole `review` bundle:
 }
 ```
 
-Six things are new. The reference explains each in general under
+Seven things are new. The reference explains each in general under
 [Facts and eligibility](reference.md#facts-and-eligibility) and
 [Who may work on a task](reference.md#who-may-work-on-a-task); here is what they do for the review.
 
@@ -161,11 +179,23 @@ someone to look the talk over. While a step carrying it is the workflow's next s
 **Needs Review**. The `accept` task carries `review` too without saying so, as every approval task does, so the talk
 needs review from the moment it enters the workflow until it is accepted.
 
-**An approval task.** The `accept` task collects no traits and offers no saves; its `approval` is a button. Pressing
-it records who accepted the talk and when, and asserts the fact `talkAccepted`, which the client declared in its
-`base` bundle. The task's `display` chooses what the step shows, trying its branches in order: once accepted, who
-accepted it; before the review is recorded, a note that it comes first, greyed out; for a committee member, the
-button; for anyone else, a line saying a committee member accepts the talk.
+**An approval task.** The `accept` task collects no traits and offers no saves. Its `approval` is a button, which
+records who pressed it and when. Once the talk is accepted, the approval asserts the fact `talkAccepted`, which the
+client declared in its `base` bundle.
+
+**An approval in two steps.** The approval's `steps` are given in order, each by a different kind of person. First a
+committee member presses **Accept the talk**, then an organizer presses **Confirm for the program**, and only then does
+`talkAccepted` hold. Each step has its own `prompt` and `button`, and an `approveWhen` saying who may give it: the
+committee's step takes a reviewer, and the organizer's an administrator (`kdr:hasAdminLevel`). Both leave out the talk's
+own speaker, with `~kdr:isOwner`. A step's `label` names it in the record once it is given, and its `waiting` tells
+anyone else who the step is waiting on. The committee's step also asserts a fact of its own as it is given,
+`talkRecommended`, which a lock or another workflow could test. While a step is the one the talk waits on, its
+`approveWhen` decides whose turn it is in the forms list, so the talk moves from the committee's **Waiting on you** to
+the organizers'.
+
+The task's `display` chooses what the step shows, trying its branches in order: once accepted, the steps and who gave
+each; before the review is recorded, a note that it comes first, greyed out; for a committee member or an organizer,
+the step waiting and its button for whoever may press it; for anyone else, a line saying how a talk is accepted.
 
 **What the approval shows.** Above its prompt, an approval task shows the review it is accepting: the traits of the
 task before it, read-only, so a committee member reads the score and the notes before pressing the button. That is the
@@ -200,7 +230,16 @@ its **Workflows** column, and its **Waiting on you** button narrows the list to 
 puts the talk into the review and opens the **Record the review** step, with no second **Start** to press. The talk's
 status in the forms list is then **Needs Review**. The step is editable: a **Score** and **Notes for the speaker**, and
 a **Save the review** button. Once saved, the step says *Nothing more is needed on this step*, and a link beside it,
-**Next: Accept the talk**, opens that step, which offers its button. After it is pressed, the step reads *Accepted by*
-and who accepted it, and the talk's status in the forms list is **Finished**.
+**Next: Accept the talk**, opens that step, which offers its button. After it is pressed, the step reads *Committee
+acceptance by* and who accepted it, then *An organizer confirms the talk for the program.* The talk still needs
+review, and has left the member's **Waiting on you**.
+
+## What the organizer sees
+
+An organizer is an administrator, who sees every talk, so their forms list is **Forms**. Once the committee has
+accepted a talk, the organizer's forms list shows **Committee review** highlighted in its **Workflows** column, and the
+talk is under their **Waiting on you**. Opening it and choosing **Accept the talk** shows the review read-only, the line
+*Committee acceptance by* and who accepted it, and the button **Confirm for the program**. After it is pressed, the
+step lists both acceptances, and the talk's status in the forms list is **Finished**.
 
 Next: [Workshop logistics](workshop-logistics.md).

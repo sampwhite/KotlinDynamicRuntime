@@ -284,6 +284,29 @@ class ReportEvalTest {
     }
 
     @Test
+    fun anApprovalInStepsIsApprovedOnceEveryStepIsByTheLastStepsPerson() {
+        // Two steps (issue #1702), recorded under the task and step; the report path reads the task as a whole.
+        fun stepRecord(step: String, at: Any?, by: Long) = state(
+            WFS.workflowApproval,
+            mapOf(
+                WFD.workflowId to "auditReview", WFS.taskId to "approveAudit", WFS.stepId to step, WFS.approvedAt to at,
+                WFS.approvedBy to by,
+            ),
+        )
+        val base = states().filterNot { it[GE.traitId] == WFS.workflowApproval }
+        fun stepped(vararg records: Map<String, Any?>) = ReportSubject(
+            meta, entries, base + records, owner,
+            approvalSteps = { _, task -> if (task == "approveAudit") listOf("first", "second") else null },
+        ) { WfPhase.engageable }
+        val first = stepRecord("first", t2, 12L)
+        assertEquals(false, value("workflow.auditReview.approval[approveAudit].approved", s = stepped(first)))
+        assertNull(value("workflow.auditReview.approval[approveAudit].approvedBy", s = stepped(first)))
+        val both = stepped(first, stepRecord("second", t2, 14L))
+        assertEquals(true, value("workflow.auditReview.approval[approveAudit].approved", s = both))
+        assertEquals(14L, value("workflow.auditReview.approval[approveAudit].approvedBy", s = both))
+    }
+
+    @Test
     fun anApprovalCountsOnlyInTheCurrentEngagement() {
         assertEquals(true, value("workflow.auditReview.approval[approveAudit].approved"))
         assertEquals(t2, value("workflow.auditReview.approval[approveAudit].approvedAt"))

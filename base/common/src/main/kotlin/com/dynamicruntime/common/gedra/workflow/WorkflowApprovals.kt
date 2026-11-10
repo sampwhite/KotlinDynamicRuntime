@@ -3,6 +3,7 @@ package com.dynamicruntime.common.gedra.workflow
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.gedra.GDF
 import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.gedra.GedraDataRow
 import com.dynamicruntime.common.gedra.GedraDataService
@@ -17,7 +18,8 @@ import com.dynamicruntime.common.util.toOptStr
  *
  * ### Where an approval lives, and what it turns into
  *
- * The record is an **asserted** [WFS.workflowApproval] entry keyed by workflow and task -- who approved and when --
+ * The record is an **asserted** [WFS.workflowApproval] entry keyed by workflow, task, and step (issue #1702: an
+ * approval given at once has one step, the task's own) -- who approved and when --
  * apart from the derived per-workflow state, because it is a person's act that no recompute may compute away. An
  * `approved` event is also appended to the form's engagement trail, which exists to tell the story of the form
  * and the workflow. What the record *does* happens in the recompute: an approved task's configured cfact joins
@@ -80,9 +82,14 @@ object WorkflowApprovals {
         return ownerIdentityId == callerIdentityId
     }
 
-    /** The cfacts [def]'s approved approval tasks emit, given its [approvals] -- one per approved task. */
-    fun cfacts(def: WfDef, approvals: Map<String, Map<String, Any?>>): Set<String> =
-        def.tasks.mapNotNullTo(LinkedHashSet()) { task -> task.approval?.cfact?.takeIf { task.id in approvals } }
+    /**
+     * The cfacts [def]'s approval tasks emit, given its [approvals]: each step's own as it is given, and the approval's
+     * once every step is (issue #1702) -- for an approval given at once, its cfact once approved.
+     */
+    fun cfacts(def: WfDef, approvals: Map<String, Map<String, Any?>>): Set<String> = def.tasks.flatMapTo(LinkedHashSet()) { task ->
+        val approval = task.approval ?: return@flatMapTo emptyList()
+        task.givenStepCfacts(approvals.keys) + listOfNotNull(approval.cfact.takeIf { task.isApproved(approvals.keys) })
+    }
 
     /**
      * The approvals the workflow view shows for [gedraId]'s form, read in the caller's scope -- or none, without a
@@ -97,21 +104,26 @@ object WorkflowApprovals {
     }
 
     /**
-     * Approves [task] of [declared] on the form [row], as the person [cxt] acts as, and returns the form's state as
-     * it then stands. The caller -- the approve endpoint -- has already established **who** may approve (a reviewer
-     * of the task, and not the form's owner); this establishes **when**, under the lock and against the state as
-     * freshly recomputed ([GedraDataService.changeState]):
+     * Gives step [stepId] of [task] of [declared] on the form [row], as the person [cxt] acts as, and returns the form's
+     * state as it then stands. An approval given at once has one step, whose id is the task's (issue #1702). The caller
+     * -- the approve endpoint -- has already established **who** may approve (a reviewer of the task, and not the
+     * form's owner); this establishes **when**, under the lock and against the state as freshly recomputed
+     * ([GedraDataService.changeState]):
      *
      *  - the form is **engaged** with the workflow -- an approval is a step in a workflow the form is in;
      *  - the task is the workflow's **CTA** -- the earlier tasks are done, so there is something to approve;
-     *  - it is **not approved already** in this engagement -- an approval is recorded once (409). A record from an
-     *    earlier engagement does not count, and is replaced.
+     *  - it is **not approved already** in this engagement -- every step given -- which is a conflict (409). A record from
+     *    an earlier engagement does not count, and is replaced;
+     *  - [stepId] is the **current** step, the first not given -- else a conflict (409): a stale page, or two people
+     *    pressing at once, gives no step but the one the form is waiting on. Null names the task's one step, which only
+     *    an approval given at once has; for one in steps it is refused (400), naming the step the form waits on.
      */
     fun approve(
         cxt: KdrCxt,
         row: GedraDataRow,
         declared: WfDeclared,
         task: WfTask,
+        stepId: String?,
         /**
          * Whether the caller may (issue #1595): run under the lock once the checks above pass -- the task is the current
          * one -- with the form's state as it then stands, and throwing to refuse. The approve endpoint's judge: the
@@ -130,9 +142,21 @@ object WorkflowApprovals {
                         "engaged with the workflow first.",
                 )
             }
-            if (task.id in of(current, workflowId)) {
+            val given = of(current, workflowId).keys
+            val step = task.currentStep(given) ?: throw KdrException(
+                "Task '${task.id}' of workflow '$workflowId' is already approved for this form.",
+                code = EXC.conflict,
+            )
+            if (stepId == null && !task.approval?.steps.isNullOrEmpty()) {
+                throw KdrException.mkInput(
+                    "Task '${task.id}' of workflow '$workflowId' is approved in steps, so an approval names the step it " +
+                        "gives (${GDF.stepId}). This form waits on step '${step.id}'.",
+                )
+            }
+            if (step.id != (stepId ?: task.id)) {
                 throw KdrException(
-                    "Task '${task.id}' of workflow '$workflowId' is already approved for this form.",
+                    "Step '$stepId' of task '${task.id}' is not the one this form waits on: step '${step.id}' is. " +
+                        "The steps are given in order.",
                     code = EXC.conflict,
                 )
             }
@@ -158,16 +182,19 @@ object WorkflowApprovals {
                 GE.data to linkedMapOf(
                     WFD.workflowId to workflowId,
                     WFS.taskId to task.id,
+                    WFS.stepId to step.id,
                     WFS.approvedAt to stamp,
                     WFS.approvedBy to by,
                 ),
             )
-            val event = linkedMapOf<String, Any?>(WFS.kind to WFS.approvedEvent, WFS.at to stamp, WFS.by to by, WFS.note to task.id)
-            // A stale record for this task (from an earlier engagement) shares the new one's key; it is replaced.
+            val key = approvalKey(task.id, step.id)
+            val event = linkedMapOf<String, Any?>(WFS.kind to WFS.approvedEvent, WFS.at to stamp, WFS.by to by, WFS.note to key)
+            // A stale record for this step (from an earlier engagement) shares the new one's key; it is replaced.
             val others = current.filterNot {
                 it[GE.traitId].toOptStr() == WFS.workflowApproval &&
                     it[GE.data].toJsonMapOrEmpty().let { d ->
-                        d[WFD.workflowId].toOptStr() == workflowId && d[WFS.taskId].toOptStr() == task.id
+                        d[WFD.workflowId].toOptStr() == workflowId &&
+                            approvalKey(d[WFS.taskId].toOptStr().orEmpty(), d[WFS.stepId].toOptStr()) == key
                     }
             }
             WorkflowEngagement.withEvent(others + approval, workflowId, event)

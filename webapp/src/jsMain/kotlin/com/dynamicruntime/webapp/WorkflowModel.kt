@@ -153,8 +153,11 @@ class WfTaskDisplay(val mode: String, val text: String?, val disabled: Boolean)
 
 /**
  * An approval task's approval (issue #787): the backend-passed [prompt] and [button] copy, whether it is [approved],
- * and once it is, [approvedByName] (the approver's profile name, else their email, issue #1430) and [approvedAt]. [data] is the whole block as it
- * arrived -- what a display's `${'$'}{…}` placeholders are filled from.
+ * and once it is, [approvedByName] (the approver's profile name, else their email, issue #1430) and [approvedAt]. [data] is the
+ * whole block as it arrived -- what a display's `${'$'}{…}` placeholders are filled from.
+ *
+ * Given in ordered [steps] (issue #1702), one implicit step when it declares none: [prompt] and [button] are those of
+ * the [currentStep], which [waiting] says who gives, and the approver and time are the last step's.
  */
 class WfApprovalView(
     val prompt: String,
@@ -165,6 +168,24 @@ class WfApprovalView(
     val data: Map<String, Any?>,
     /** The tasks whose traits it shows above its prompt (issue #1695), as the backend resolved them. */
     val showTasks: List<String> = emptyList(),
+    /** Its steps in order (issue #1702), given or not. */
+    val steps: List<WfApprovalStepView> = emptyList(),
+    /** The id of the step to give next, the one the approve names; null once every step is given. */
+    val currentStep: String? = null,
+    /** Who the [currentStep] waits on, backend-passed; null when it says nothing. */
+    val waiting: String? = null,
+)
+
+/**
+ * One step of an approval (issue #1702): its [id], its [label] (what its record says once given; null for an approval
+ * given at once), whether it is [approved], and once it is, by whom and when.
+ */
+class WfApprovalStepView(
+    val id: String,
+    val label: String?,
+    val approved: Boolean,
+    val approvedByName: String?,
+    val approvedAt: String?,
 )
 
 /**
@@ -373,6 +394,17 @@ fun parseApproval(raw: Any?): WfApprovalView? {
         approvedAt = a[WFS.approvedAt].toOptStr(),
         data = a,
         showTasks = (a[WFD.showTasks] as? List<*>).orEmpty().mapNotNull { it.toOptStr() },
+        steps = a[WVF.steps].toJsonListOfMaps().map { st ->
+            WfApprovalStepView(
+                id = st[WFD.id].toOptStr().orEmpty(),
+                label = st[WFD.label].toOptStr()?.ifBlank { null },
+                approved = st[WVF.approved] == true,
+                approvedByName = st[WVF.approvedByName].toOptStr(),
+                approvedAt = st[WFS.approvedAt].toOptStr(),
+            )
+        },
+        currentStep = a[WVF.currentStep].toOptStr(),
+        waiting = a[WFD.waiting].toOptStr()?.ifBlank { null },
     )
 }
 
@@ -411,10 +443,21 @@ private val unfilledPlaceholder = Regex("""\$\{[^}]*\}""")
  * no author chose this wording, and the reader may not be one who should see it. A workflow's own display text can
  * show it, deciding with `contains(approvedByName, "@")`. Pure, and covered under `jsNodeTest`.
  */
-fun approvedLine(approval: WfApprovalView): String {
-    val day = approval.approvedAt?.let { it.parseDateOrNull()?.formatDayPart() }
-    val name = approval.approvedByName?.takeUnless { "@" in it }
-    return "Approved" + (name?.let { " by $it" } ?: "") + (day?.let { " on $it" } ?: "") + "."
+fun approvedLine(approval: WfApprovalView): String = givenLine("Approved", approval.approvedByName, approval.approvedAt)
+
+/**
+ * The lines an approval's given steps show (issue #1702), one per step given, in order: its label, then who gave it
+ * and on what day, as [approvedLine] says them. None for an approval whose steps have no labels -- one given at once,
+ * whose [approvedLine] says it all. Pure, and covered under `jsNodeTest`.
+ */
+fun givenStepLines(approval: WfApprovalView): List<String> =
+    approval.steps.filter { it.approved && it.label != null }.map { givenLine(it.label!!, it.approvedByName, it.approvedAt) }
+
+/** "[what] by <name> on <day>.", as far as known, leaving out a name that is an email (issue #1430). */
+private fun givenLine(what: String, approvedByName: String?, approvedAt: String?): String {
+    val day = approvedAt?.let { it.parseDateOrNull()?.formatDayPart() }
+    val name = approvedByName?.takeUnless { "@" in it }
+    return what.trimEnd('.') + (name?.let { " by $it" } ?: "") + (day?.let { " on $it" } ?: "") + "."
 }
 
 /**

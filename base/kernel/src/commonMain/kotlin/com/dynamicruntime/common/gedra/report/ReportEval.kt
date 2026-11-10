@@ -10,6 +10,7 @@ import com.dynamicruntime.common.gedra.workflow.FormWorkflow
 import com.dynamicruntime.common.gedra.workflow.WFS
 import com.dynamicruntime.common.gedra.workflow.WfColumnCategory
 import com.dynamicruntime.common.gedra.workflow.WfPhase
+import com.dynamicruntime.common.gedra.workflow.approvalKey
 import com.dynamicruntime.common.gedra.workflow.currentApprovals
 import com.dynamicruntime.common.gedra.workflow.engagementDataOf
 import com.dynamicruntime.common.gedra.workflow.formStatusOf
@@ -111,6 +112,12 @@ class ReportSubject(
      * pass. As written, by default: a test, or a reader with no copy to resolve against.
      */
     val copy: (String) -> String = { it },
+    /**
+     * The step ids of a workflow's approval task (issue #1702), in order, or null where none are known: a task approved
+     * at once, or one this client does not have. An `approval[<taskId>]` path reads the task as a whole, approved once
+     * every step is, by the last step's person and time.
+     */
+    val approvalSteps: (workflowId: String, taskId: String) -> List<String>? = { _, _ -> null },
     /** A workflow's phase now, or null for one this client does not have -- as `formWorkflowsOf` takes it. */
     val phaseOf: (workflowId: String) -> WfPhase?,
 ) {
@@ -253,7 +260,10 @@ private fun workflowValue(path: WorkflowPath, subject: ReportSubject): Any? {
     if (subject.phaseOf(id)?.isShown(engaged) != true) return null
     val taskId = path.taskId
     if (taskId != null) {
-        val approval = currentApprovals(subject.states, id)[taskId]
+        // The task as a whole (issue #1702): every step given, read as the last step's record.
+        val approvals = currentApprovals(subject.states, id)
+        val keys = subject.approvalSteps(id, taskId)?.map { approvalKey(taskId, it) } ?: listOf(taskId)
+        val approval = if (keys.all { it in approvals }) approvals[keys.last()] else null
         return when (path.attrName) {
             RWF.approved -> approval != null
             RWF.approvedAt -> approval?.get(WFS.approvedAt)

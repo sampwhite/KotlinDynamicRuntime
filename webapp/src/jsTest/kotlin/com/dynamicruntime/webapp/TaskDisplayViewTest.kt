@@ -62,6 +62,31 @@ class TaskDisplayViewTest {
         assertEquals("Approved by Rex Reviewer.", displayTextOf(named))
     }
 
+    /** An approval in steps (issue #1702): the step waited on, and a line for each step given, by its label. */
+    @Test
+    fun anApprovalInStepsReadsItsCurrentStepAndListsTheStepsGiven() {
+        val step = { id: String, label: String, given: Boolean ->
+            buildMap {
+                put(WFD.id, id); put(WFD.label, label); put(WVF.approved, given)
+                if (given) { put(WVF.approvedByName, "Rex Reviewer"); put(WFS.approvedAt, "2026-09-24T19:18:34.577Z") }
+            }
+        }
+        val waiting = mapOf(
+            WFD.prompt to "Sign it off.", WFD.button to "Sign off", WVF.approved to false, WVF.currentStep to "admin",
+            WFD.waiting to "Waiting on an administrator",
+            WVF.steps to listOf(step("review", "Review", true), step("admin", "Sign-off", false)),
+        )
+        val approval = view(approvalTask(waiting)).tasks.single().approval!!
+        assertEquals("admin", approval.currentStep)
+        assertEquals("Waiting on an administrator", approval.waiting)
+        assertEquals(listOf("Review", "Sign-off"), approval.steps.map { it.label })
+        assertEquals(listOf("Review by Rex Reviewer on 2026-09-24."), givenStepLines(approval))
+        // An approval given at once has one step and no label: nothing to list beside its approved line.
+        val once = view(approvalTask(approvedBlock + (WVF.steps to listOf(mapOf(WFD.id to "approve", WVF.approved to true)))))
+        assertEquals(emptyList(), givenStepLines(once.tasks.single().approval!!))
+        assertNull(once.tasks.single().approval!!.currentStep)
+    }
+
     @Test
     fun aPlaceholderIsNeverShownAsTemplateSyntax() {
         // The approver's name is missing (their account since removed): it reads as "a reviewer".

@@ -153,7 +153,7 @@ class WorkflowApprovalTest : StringSpec({
                 GDF.states to stored() + listOf(
                     mapOf(GE.traitId to WFS.workflowEngagement, GE.data to mapOf(WFD.workflowId to retired, WFS.engaged to true)),
                     mapOf(GE.traitId to WFS.workflowApproval, GE.data to mapOf(
-                        WFD.workflowId to retired, WFS.taskId to "approve", WFS.approvedBy to reviewer.userId,
+                        WFD.workflowId to retired, WFS.taskId to "approve", WFS.stepId to "approve", WFS.approvedBy to reviewer.userId,
                         WFS.approvedAt to "2026-01-01T00:00:00Z",
                     )),
                 ),
@@ -226,7 +226,7 @@ class WorkflowApprovalTest : StringSpec({
         val orphan = mapOf(
             GE.traitId to WFS.workflowApproval,
             GE.data to mapOf(
-                WFD.workflowId to SW.auditReview, WFS.taskId to "renamedAway",
+                WFD.workflowId to SW.auditReview, WFS.taskId to "renamedAway", WFS.stepId to "renamedAway",
                 WFS.approvedAt to "2099-01-01T00:00:00Z", WFS.approvedBy to reviewer.userId,
             ),
         )

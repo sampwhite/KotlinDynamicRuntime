@@ -36,16 +36,20 @@ fun workflowStateDataOf(entries: List<Map<String, Any?>>, workflowId: String): M
     }
     ?.get(GE.data).toJsonMapOrEmpty().takeIf { it.isNotEmpty() }
 
-/** Every approval record [entries] hold for [workflowId], current or not: task id to the entry's data (issue #787). */
+/**
+ * Every approval record [entries] hold for [workflowId], current or not (issue #787): each filed under its [approvalKey] --
+ * the task's id for an approval given at once, `<task>.<step>` for a step of an ordered one (issue #1702) -- to the
+ * entry's data.
+ */
 fun recordedApprovals(entries: List<Map<String, Any?>>, workflowId: String): Map<String, Map<String, Any?>> = entries
     .filter { it[GE.traitId].toOptStr() == WFS.workflowApproval }
     .map { it[GE.data].toJsonMapOrEmpty() }
     .filter { it[WFD.workflowId].toOptStr() == workflowId }
-    .mapNotNull { data -> data[WFS.taskId].toOptStr()?.let { it to data } }
+    .mapNotNull { data -> data[WFS.taskId].toOptStr()?.let { approvalKey(it, data[WFS.stepId].toOptStr()) to data } }
     .toMap()
 
 /**
- * The approvals that **count** for [workflowId] in [entries] -- task id to the approval entry's data (issue #787):
+ * The approvals that **count** for [workflowId] in [entries] -- each [approvalKey] to the approval entry's data (issue #787):
  * none when the form is not engaged with the workflow, and otherwise those given during the **current** engagement.
  * So a form taken out of a workflow and put back in starts over: the old approval stays in the state as history and
  * no longer counts. The reasons are `WorkflowApprovals`'.
@@ -66,8 +70,9 @@ fun currentApprovals(entries: List<Map<String, Any?>>, workflowId: String): Map<
     val events = engagement[WFS.events].toJsonListOfMaps()
     val lastEngaged = events.indexOfLast { it[WFS.kind].toOptStr() == WFS.engagedEvent }
     val since = engagement[WFS.lastEngagedAt].toOptInstant()
-    return recordedApprovals(entries, workflowId).filter { (taskId, data) ->
-        val approved = events.indexOfLast { it[WFS.kind].toOptStr() == WFS.approvedEvent && it[WFS.note].toOptStr() == taskId }
+    return recordedApprovals(entries, workflowId).filter { (key, data) ->
+        // An approval's event is noted with its key (issue #1702), the task's id for an approval given at once.
+        val approved = events.indexOfLast { it[WFS.kind].toOptStr() == WFS.approvedEvent && it[WFS.note].toOptStr() == key }
         if (lastEngaged >= 0 && approved >= 0) {
             approved > lastEngaged
         } else {

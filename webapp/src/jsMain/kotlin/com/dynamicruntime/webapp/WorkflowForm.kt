@@ -462,8 +462,11 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
         val busy = approvingTask != null
         div {
             className = ClassName("wf-approval")
+            // The steps given so far (issue #1702), each with who gave it: an approval given at once has none to list.
+            val given = givenStepLines(approval)
+            given.forEach { line -> p { +line } }
             when {
-                approval.approved -> p { +approvedLine(approval) }
+                approval.approved -> if (given.isEmpty()) p { +approvedLine(approval) }
                 else -> {
                     if (approval.prompt.isNotBlank()) Markdown { source = approval.prompt; linkResolver = copyLinks }
                     val gid = gedraId
@@ -474,7 +477,7 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
                             className = ClassName("subtitle")
                             // Who it waits on, when the CTA's filter names someone other than this caller (issue #1595):
                             // copy, so drawn as copy is.
-                            task.waitingOn?.let { MarkdownInline { source = it; linkResolver = copyLinks } }
+                            (task.waitingOn ?: approval.waiting)?.let { MarkdownInline { source = it; linkResolver = copyLinks } }
                                 ?: +"Waiting for a reviewer to approve this."
                         }
                     } else {
@@ -492,7 +495,7 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
                                     approveFailure = null
                                     wfFormScope.launch {
                                         try {
-                                            WorkflowApi.approve(gid, wf.workflowId, task.id, props.client)
+                                            WorkflowApi.approve(gid, wf.workflowId, task.id, props.client, approval.currentStep)
                                             props.onApproveSettled?.invoke(task.id, null)
                                         } catch (e: Throwable) {
                                             val shown = userFacingError(e)

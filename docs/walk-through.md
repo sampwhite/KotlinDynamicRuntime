@@ -34,11 +34,11 @@ client: the one you start each part from, and the one Part 2 asks you to choose 
 
 ## Part 1: The conference demo
 
-![Part 1: join, submit a talk, core details, abstract, committee, review, and result](images/walk-part1.svg)
+![Part 1: join, submit a talk, core details, abstract, committee, review, organizer, and result](images/walk-part1.svg)
 
 The conference demo is a small conference's call for talks. Speakers submit the talks they want to give, and a
-committee reviews each one and accepts it for the program. You play both parts: first a speaker, then a member of the
-committee who reviews your own talk.
+committee reviews each one and accepts it, and an organizer confirms it for the program. You play every part: first a
+speaker, then a member of the committee who reviews your own talk, and last an organizer who confirms it.
 
 The demo is shared with everyone who joins it. Other visitors see the talks you add, and you see theirs.
 
@@ -135,6 +135,19 @@ Choose **Save the review**. The first step is checked, and says *Nothing more is
 read it and accept the talk: choose its **Accept the talk** button, and confirm. An approval cannot be taken back, which
 is why it asks.
 
+The step now says *Committee acceptance by* and your name, and that an organizer confirms the talk for the program. A
+talk is accepted in two steps, by two people in turn, and the second is not the committee's.
+
+### Confirm as an organizer
+
+Switch sides once more. Choose your name in the bar, choose your **Public** user, and on the **Conference demo** card
+choose **Join as another role…**, and then **Join as Organizer**. That gives you a third user in the demo, an
+administrator of it, and the bar says **[Conference demo · Organizer]**.
+
+Open your home page. Its **Waiting on you** card lists your talk again, now with **Confirm for the program**: the talk
+moved from the committee's list to the organizers' once the committee accepted it. Choose it. The step shows the
+review, who accepted it, and a **Confirm for the program** button. Choose it, and confirm.
+
 ### See the result as the speaker
 
 Choose your name in the bar again, and switch to your speaker user. In **My forms**, your talk's status is now
@@ -151,8 +164,10 @@ page shows it read-only.
   and the forms list marked it with a highlighted **Start**.
 - **Who may do what.** The review could be saved only by a user with the committee's label, and the speaker saw it
   read-only.
-- **Several users, one person.** You acted as a speaker and as a committee member, with the same email, switching
-  between them from the bar.
+- **Approvals in order.** Accepting the talk took two people in turn: a committee member, then an organizer. The talk
+  waited on each of them in their turn.
+- **Several users, one person.** You acted as a speaker, a committee member, and an organizer, with the same email,
+  switching between them from the bar.
 
 Every one of these comes from the demo's configuration. There is no code written just for the conference demo. To see
 how each piece is configured, read [the conference demo's pages](demo-client/README.md), which go through its
