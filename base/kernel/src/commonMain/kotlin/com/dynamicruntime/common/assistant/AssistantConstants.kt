@@ -228,7 +228,6 @@ object ABLK {
     // --- Block types ---
     const val text = "text"
     const val thinking = "thinking"
-    const val redactedThinking = "redacted_thinking"
     const val toolUse = "tool_use"
     const val toolResult = "tool_result"
 

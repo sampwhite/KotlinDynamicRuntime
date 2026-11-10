@@ -140,7 +140,9 @@ class AssistantTurnsTest : StringSpec({
         return TestUser.create(on, "chief@$client.test", level = ROLE.admin, userClient = client)
     }
 
-    var messageIds = 0
+    // A false suppression, IntelliJ has a bug where it does not see that messageIds can be mutated - but the built-in
+    // compiler shows an error if you change it to val - so different parts of IntelliJ disagree on this.
+    @Suppress("CanBeVal") var messageIds = 0
 
     /** A message's request body. */
     fun message(clientMessageId: String, text: String, conversationId: String? = null): Map<String, Any?> = buildMap {
@@ -396,6 +398,7 @@ class AssistantTurnsTest : StringSpec({
         })
         val started = admin.postData(ACNV.messagePath, mapOf(ACNV.clientMessageId to "cancel1", ACNV.text to "Look around."))
         val conversationId = started[ACNV.conversationId].toString()
+        @Suppress("BlockingMethodInNonBlockingContext")
         entered.await(20, TimeUnit.SECONDS) shouldBe true
         // A second message while the first runs is refused.
         admin.expectError(EXC.conflict, ACNV.messagePath, message("cancel2", "And?", conversationId))[EP.errorCode] shouldBe ACNV.busyCode
@@ -691,6 +694,7 @@ class AssistantTurnsTest : StringSpec({
         })
         val started = admin.postData(ACNV.messagePath, mapOf(ACNV.clientMessageId to "lease1", ACNV.text to "Look."))
         val conversationId = started[ACNV.conversationId].toString()
+        @Suppress("BlockingMethodInNonBlockingContext")
         entered.await(20, TimeUnit.SECONDS) shouldBe true
         own.instanceConfig.clock.advanceBy((TURN.leaseMinutes + 1).minutes)
         // A lapsed turn holds no place in the client's limit, even before anyone looks at its conversation.
