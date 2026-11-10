@@ -90,8 +90,9 @@ The page has a header, and then panels: each a keyed `section` (the shared `pane
   7. **Retirement**: last, as a danger zone.
 - **A self-serve client opens on what to do next** (issue #1700, `clientOpensOnNextSteps`): for its own administrator,
   in the client or its sandbox, a **Getting started** panel comes first while any step is left -- Home's checklist
-  (`/clientAdmin/client/checklist`, `checklistSteps`, the assistant's step included where the menu offers it), not read
-  once this browser put it away. Each step leads to the panel of the page that does it (`clientNextSteps`: the workflow
+  (`/clientAdmin/client/checklist`, `checklistSteps`, the assistant's step included where the menu offers it), whether
+  or not Home's card was hidden (issue #1757). While it is hidden on Home in this browser, the panel offers **Show on
+  Home again** (`showOnHomeOffered`, `showChecklistOnHome`): the way back from a hide. Each step leads to the panel of the page that does it (`clientNextSteps`: the workflow
   steps scroll to Forms and data) or to its page; from the sandbox, inviting someone and a first form say they are done
   in the client itself rather than lead to the sandbox's users and forms. The definition's **Platform** and **Where it
   runs** groups, which such a person did not choose and cannot change, wait under a closed **More options**. A platform

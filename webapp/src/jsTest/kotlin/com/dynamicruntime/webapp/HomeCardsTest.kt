@@ -320,6 +320,16 @@ class ClientChecklistTest {
     }
 
     @Test
+    fun theClientPageBringsAListHiddenOnHomeBackWhileAStepIsLeft() {
+        // Issue #1757: hiding the list on Home leaves the client page's panel, which offers the way back.
+        assertTrue(showOnHomeOffered(hiddenOnHome = true, stepsLeft = true))
+        assertFalse(showOnHomeOffered(hiddenOnHome = false, stepsLeft = true))
+        // Every step done: nothing to bring back.
+        assertFalse(showOnHomeOffered(hiddenOnHome = true, stepsLeft = false))
+        assertEquals(CHKV.hiddenKeyPrefix + "free_pat", checklistHiddenKey("free_pat"))
+    }
+
+    @Test
     fun eachStepLeadsToThePanelOfThePageThatDoesIt() {
         val steps = checklistSteps(
             ChecklistRead("free_pat", listOf(CHKL.newForm to false, CHKL.workflow to true, CHKL.invite to false, CHKL.firstForm to false)),

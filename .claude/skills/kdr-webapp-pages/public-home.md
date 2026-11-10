@@ -178,8 +178,10 @@ none of its own.
   (`checklistSteps`, from the status Home already reads; core never asks the module), and links each step that is left
   to where it is done: the client page's Forms and data panel, Users, or New form. The steps wait for the assistant's
   status where the menu offers it, so the list never grows a step after it is drawn. The card draws while a step is
-  left; once every one is done, or **Hide this checklist** is pressed, it is put away in this browser for good
-  (`checklistHiddenKey`, per client, read once per client) and Home stops reading it. It is drawn above the home page's
+  left; once every one is done, or **Hide here** is pressed, it is put away on Home in this browser
+  (`checklistHiddenKey`, per client, read once per client) and Home stops reading it. Hiding it is Home's alone (issue
+  #1757): the link says the list stays on the client's page (`CHKV.hideNote`), whose Getting started panel shows while
+  a step is left and offers **Show on Home again** (`showChecklistOnHome`), which brings the card back. It is drawn above the home page's
   introduction (`HCARD.aboveIntro`, issue #1723), since a new client lands here after it is made, and until its
   administrator writes their own words the introduction is the site's, which on a phone put the list below the first
   screen. The client page opens on the same steps for the same person (issue #1700, the Clients page's file).
