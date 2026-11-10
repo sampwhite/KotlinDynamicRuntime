@@ -182,6 +182,13 @@ object HFLD {
     const val termsOfService = "termsOfService"
 
     /**
+     * The id of the document that is the deployment's About page, and its title, the footer's words for it (issue
+     * #1769): each absent when the deployment names none.
+     */
+    const val about = "about"
+    const val aboutTitle = "aboutTitle"
+
+    /**
      * `state.selfServeClient`: for a caller signed in to `public`, the self-serve client their person has created
      * (issue #1228) -- a person creates one -- so the home page offers to open it rather than to create another
      * without trying the create; absent when they have made none.

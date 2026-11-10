@@ -1,5 +1,6 @@
 package com.dynamicruntime.appui
 
+import com.dynamicruntime.common.app.AUIC
 import com.dynamicruntime.common.content.ContentResources
 import com.dynamicruntime.common.content.MarkdownFragmentService
 import com.dynamicruntime.common.context.KdrCxt
@@ -18,27 +19,6 @@ import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.util.crc32Hex
 import com.dynamicruntime.common.util.renderMarkdownText
 import com.dynamicruntime.common.util.toJsonStr
-
-/**
- * Instance-config keys for the webapp host — *deployment* inputs, as opposed to [AUI], which holds the app's
- * own fixed paths and types. Defaults live at the read sites in [AppUiService].
- */
-@Suppress("ConstPropertyName")
-object AUIC {
-    /**
-     * The classpath directory the app's **branding** assets ([AUI.brandingAssets]) are read from, letting a
-     * deployment ship its own artwork instead of forking `:webapp`. Absent (the default) means the built-in
-     * set. A deployment sets this from its `:customConfig` project and puts the files on the runtime classpath
-     * — the same project, being on that classpath already, is the natural place to carry them (see
-     * `examples/custom-config.md`; note its example build script disables resources, which such a deployment
-     * would re-enable).
-     *
-     * Resolution is **per asset**: a file the configured directory does not supply falls back to the built-in
-     * one, so a deployment can override just its logo and inherit the rest. This swaps the *bytes* only — the
-     * URLs are fixed, so both shells' `<link>` tags stay identical and static.
-     */
-    const val appUiBrandingDir: String = "appUiBrandingDir"
-}
 
 /**
  * Webapp host paths, resource locations, and MIME types. Kept short and referenced qualified, per the code

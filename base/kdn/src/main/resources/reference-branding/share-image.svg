@@ -1,0 +1,35 @@
+<!--
+  The source of this directory's share-image.png (issue #1769): the image a link preview (LinkedIn, Slack, a messenger)
+  shows for a reference deployment, dynamicruntime.org, which presents the product as Gedra. The reference flavor names
+  this directory as the deployment's branding (appUiBrandingDir), so this image replaces the runtime's own
+  (webapp/src/jsMain/resources/share-image.svg, issue #1688), whose layout and colors it keeps; every other branding
+  asset is the built-in one. Previews take a raster, not SVG, so this is rendered to the PNG, which is what is served.
+  To change it, edit this file and render it again, from this directory:
+
+      rsvg-convert -w 1200 -h 630 share-image.svg -o share-image.png
+
+  The mark is brand-mark.svg's paths, verbatim, scaled.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630" role="img">
+  <title>Gedra: forms, reviews, and approvals, set up as configuration and changed while they run</title>
+  <!-- The ground: the app's page (its surface-page color), with a raised panel (surface-raised) edged in its border color. -->
+  <rect width="1200" height="630" fill="#0F172A"/>
+  <rect x="48" y="48" width="1104" height="534" rx="28" fill="#1E293B" stroke="#334155" stroke-width="2"/>
+  <!-- The brand mark, brand-mark.svg's own paths and colors, at 240 px. -->
+  <g transform="translate(110 195) scale(3.75)">
+    <g fill="none" stroke="#7F77DD" stroke-width="4" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M23 8 C18 8 17 11 17 16 V24 C17 28.5 15.5 30.5 12 32 C15.5 33.5 17 35.5 17 40 V48 C17 53 18 56 23 56"/>
+      <path d="M41 8 C46 8 47 11 47 16 V24 C47 28.5 48.5 30.5 52 32 C48.5 33.5 47 35.5 47 40 V48 C47 53 46 56 41 56"/>
+    </g>
+    <rect x="22.5" y="36" width="5" height="10" rx="1.5" fill="#1D9E75"/>
+    <rect x="29.5" y="29" width="5" height="17" rx="1.5" fill="#1D9E75"/>
+    <rect x="36.5" y="22" width="5" height="24" rx="1.5" fill="#D85A30"/>
+  </g>
+  <g font-family="system-ui, -apple-system, Segoe UI, Helvetica, Arial, sans-serif">
+    <!-- The name (the app's text color), what it does (text-dim), and what it is built on (text-muted). -->
+    <text x="400" y="262" font-size="84" font-weight="700" fill="#E2E8F0">Gedra</text>
+    <text x="400" y="336" font-size="32" fill="#CBD5E1">Forms, reviews, and approvals, set up as</text>
+    <text x="400" y="380" font-size="32" fill="#CBD5E1">configuration and changed while they run.</text>
+    <text x="400" y="454" font-size="26" fill="#94A3B8">Built on KotlinDynamicRuntime, which is open source.</text>
+  </g>
+</svg>

@@ -1,5 +1,6 @@
 package com.dynamicruntime.appui
 
+import com.dynamicruntime.common.app.AUIC
 import com.dynamicruntime.common.http.request.TestHttpClient
 import com.dynamicruntime.kdn.Startup
 import io.kotest.core.spec.style.StringSpec

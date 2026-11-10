@@ -254,6 +254,12 @@ fun homeSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.home") {
                     "to; absent when it names none.",
             )
             property(
+                HFLD.about,
+                "The id of the document that is the deployment's About page (issue #1769), which every page's footer links " +
+                    "to; absent when it names none.",
+            )
+            property(HFLD.aboutTitle, "The About page's title, the footer's words for its link (issue #1769); absent with it.")
+            property(
                 HFLD.timeZone,
                 "The IANA time zone the caller's moments are shown in (issue #1115): their client's, else the " +
                     "deployment's display default (KDR_DISPLAY_TIME_ZONE); absent when neither is set, for the " +
@@ -377,8 +383,10 @@ fun homeSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.home") {
                 // Only when configured -- an absent field says "no source repo", which is how the frontend
                 // leaves a non-document interior link as written (issue #492).
                 sourceRepoBase(c)?.let { put(HFLD.sourceRepoBase, it) }
-                // The deployment's privacy policy and terms (issue #1711), which every page links to.
+                // The deployment's privacy policy and terms (issue #1711), which every page links to, and its About page
+                // (issue #1769), which the footer does.
                 putAll(sitePolicies(c))
+                putAll(siteAbout(c))
                 // Where the client's people are (issue #1115): the zone the webapp shows moments in -- the client's, else
                 // the deployment's display default. Absent, the webapp shows the deployment's day start.
                 ClientService.getOrNull(c)?.displayZoneOf(c.client)?.let { zone ->
@@ -821,6 +829,13 @@ object HCFG {
      */
     const val privacyPolicyDoc = "privacyPolicyDoc"
     const val termsOfServiceDoc = "termsOfServiceDoc"
+
+    /**
+     * The id of the document that is the deployment's About page (issue #1769): what the product is and who makes it,
+     * linked from every page's footer by its title. Held to a declared document as the site policies are
+     * ([sitePolicyFaults]). Unset, the footer links none.
+     */
+    const val aboutDoc = "aboutDoc"
 }
 
 /**
@@ -833,13 +848,23 @@ fun sitePolicies(cxt: KdrCxt): Map<String, String> = buildMap {
 }
 
 /**
- * What is wrong with the site policies a deployment names (issue #1711), read through [config], against [docs], the
- * documents its components declare: each must be one of them, or every page would link to a page that is not there. A
- * deployment's configuration or a flavor's, so a fault refuses the boot.
+ * The deployment's About page [HCFG.aboutDoc] names (issue #1769), by the home config fields it is sent as: its id, and
+ * its title, which the footer's link says. Nothing for a deployment that names none.
+ */
+fun siteAbout(cxt: KdrCxt): Map<String, String> {
+    val docId = cxt.instanceConfig.get(HCFG.aboutDoc).toOptStr() ?: return emptyMap()
+    val title = MarkdownDocService.declaredDoc(cxt, docId)?.label ?: return emptyMap()
+    return mapOf(HFLD.about to docId, HFLD.aboutTitle to title)
+}
+
+/**
+ * What is wrong with the site policies and About page a deployment names (issues #1711, #1769), read through [config],
+ * against [docs], the documents its components declare: each must be one of them, or every page would link to a page
+ * that is not there. A deployment's configuration or a flavor's, so a fault refuses the boot.
  */
 fun sitePolicyFaults(config: (String) -> Any?, docs: List<MarkdownDocDef>): List<String> {
     val declared = docs.map { it.docId }.toSet()
-    return listOf(HCFG.privacyPolicyDoc, HCFG.termsOfServiceDoc).mapNotNull { key ->
+    return listOf(HCFG.privacyPolicyDoc, HCFG.termsOfServiceDoc, HCFG.aboutDoc).mapNotNull { key ->
         config(key).toOptStr()?.takeIf { it !in declared }?.let { "'$key' names the document '$it', which no component declares." }
     }
 }
