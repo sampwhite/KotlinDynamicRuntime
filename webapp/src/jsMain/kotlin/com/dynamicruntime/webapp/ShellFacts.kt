@@ -24,7 +24,7 @@ import react.use
  *   a document is drawn as its text (issue #1380).
  * - [privacyPolicy] and [termsOfService] are the ids of the documents that are the deployment's site policies (issue
  *   #1711), null for one it has not got: what [sitePolicyLinks] makes the footer's, the sign-in page's, and Profile's
- *   links from.
+ *   links from. [about] is its About page (issue #1769), which only the footer links to ([siteFooterLinks]).
  * - [fileRefs] are the file refs the caller's client is served (issue #1186), what an image in copy naming one is
  *   drawn from -- see [copyRefAddress]. Empty until the shell has been told, when such an image draws its alt text.
  * - [inSandbox] is whether the session is in a sandbox (issue #1330), which decides how a switch to another of the
@@ -50,6 +50,7 @@ data class ShellFacts(
     val sourceRepoBase: String? = null,
     val privacyPolicy: String? = null,
     val termsOfService: String? = null,
+    val about: SiteAbout? = null,
     val fileRefs: Map<String, String> = emptyMap(),
     val images: Map<String, String> = emptyMap(),
     val inSandbox: Boolean = false,
@@ -107,6 +108,7 @@ fun shellFactsOf(config: HomeConfig, shellCopy: Copy? = null): ShellFacts = Shel
     sourceRepoBase = config.sourceRepoBase,
     privacyPolicy = config.privacyPolicy,
     termsOfService = config.termsOfService,
+    about = config.about,
     fileRefs = config.fileRefs,
     images = config.images,
     inSandbox = switchesFromSandbox(config),

@@ -1,5 +1,6 @@
 package com.dynamicruntime.kdn
 
+import com.dynamicruntime.common.app.AUIC
 import com.dynamicruntime.common.content.ComponentImageDef
 import com.dynamicruntime.common.content.FragmentAudience
 import com.dynamicruntime.common.content.FragmentSource
@@ -104,9 +105,14 @@ class KdnComponent : ComponentDefinition {
         flavor(FLV.reference) {
             set(ConfDemo.fromCodeKey, true)
             set(ConfDemo.provisionAtBootKey, true)
-            // dynamicruntime.org's privacy policy and terms (issue #1711), which every page then links to.
+            // dynamicruntime.org's privacy policy and terms (issue #1711), which every page then links to, and its About
+            // page (issue #1769), which the footer does.
             set(HCFG.privacyPolicyDoc, SitePolicies.privacyDocId)
             set(HCFG.termsOfServiceDoc, SitePolicies.termsDocId)
+            set(HCFG.aboutDoc, SitePolicies.aboutDocId)
+            // Gedra's link-preview image (issue #1769), in place of the runtime's; every other branding asset is the
+            // built-in one.
+            set(AUIC.appUiBrandingDir, SitePolicies.brandingDir)
             omnibusOverlay("kdrConfDemoReference")
         },
     )

@@ -105,6 +105,8 @@ class HomeConfig(
     /** The ids of the documents that are the deployment's privacy policy and terms of service (issue #1711); null for none. */
     val privacyPolicy: String? = null,
     val termsOfService: String? = null,
+    /** The deployment's About page (issue #1769), which the footer links to by its title; null for none. */
+    val about: SiteAbout? = null,
     /**
      * For a caller signed in to `public`, the self-serve client their person created (issue #1228) -- one per
      * person -- so the home page offers to open it rather than to create another; null when they have made none.
@@ -216,6 +218,7 @@ fun homeConfigFrom(config: UiConfig): HomeConfig {
         sharedDemo = config.state[HFLD.sharedDemo] == true,
         privacyPolicy = (config.state[HFLD.privacyPolicy] as? String)?.ifBlank { null },
         termsOfService = (config.state[HFLD.termsOfService] as? String)?.ifBlank { null },
+        about = siteAboutOf(config.state[HFLD.about] as? String, config.state[HFLD.aboutTitle] as? String),
         selfServeClient = (config.state[HFLD.selfServeClient] as? String)?.ifBlank { null },
         selfServeClientAbsent = config.state[HFLD.selfServeClientAbsent] == true,
         selfServeTemplates = selfServeTemplatesFrom(config.state[HFLD.selfServeTemplates]),

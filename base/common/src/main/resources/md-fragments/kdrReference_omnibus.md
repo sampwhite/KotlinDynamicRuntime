@@ -5,21 +5,26 @@
    has not signed in, why to register and what the address is used for (issue #1652), and the Register page says the
    second again where the address is typed (issue #1698), with no business-account checkbox (issue #1699). A link to
    the site says what it is in its preview (issue #1688), and the band a public test deployment draws says it calmly
-   (issue #1697). The sign-in line holds whichever `KDR_PUBLIC_SIGN_IN` the deployment chose: under `blocked`, the refusal itself says
-   why. A deployment rewords any of it with `<flavor dir>/reference.md`, in this same format, naming only the keys it
+   (issue #1697). The product is named Gedra throughout, beside the brand mark too (issue #1769). The sign-in line
+   holds whichever `KDR_PUBLIC_SIGN_IN` the deployment chose: under `blocked`, the refusal itself says why. A
+   deployment rewords any of it with `<flavor dir>/reference.md`, in this same format, naming only the keys it
    changes. -/
 
 # !home
 # @home
+/- The product a reference deployment shows is Gedra (issue #1769): its name beside the brand mark, in place of the
+   runtime's "KDR". A client with a brand of its own, as the demos have, keeps it. -/
+# +brand Gedra
 /- The title and intro are read by every visitor, signed in or not, and on the home page of every client that has not
    reworded them, the demos' included (issue #1686): they say what the product does before what this site is, and
-   leave registering to the Register card. -/
-# +title Try KotlinDynamicRuntime
+   leave registering to the Register card. They name the product, Gedra, and the open-source engine it is built on
+   once (issue #1769), with the page that says more. -/
+# +title Try Gedra
 # +intro
-**KotlinDynamicRuntime** runs applications built around forms. People fill in forms, others review and approve them,
-and the results end up in reports: a call for talks, a grant program, a vendor's onboarding. Each application's
-forms, steps, people, and wording are configuration, which its administrators change while it runs, with no code to
-write or deploy. It is open source.
+**Gedra** runs applications built around forms. People fill in forms, others review and approve them, and the results
+end up in reports: a call for talks, a grant program, a vendor's onboarding. Each application's forms, steps, people,
+and wording are configuration, which its administrators change while it runs, with no code to write or deploy. It is
+built on KotlinDynamicRuntime, which is open source; [About Gedra](/docs/dynamicruntime-org/about-gedra.md) says more.
 
 This site runs it for you to try out. Its data is kept in a temporary database that is cleared from time to time, so
 nothing you add here lasts, and nothing you do can break anything for long. To find your way around,
@@ -64,12 +69,13 @@ is seen **only by your client's administrators** until you change who sees it: o
 choose **Visibility…** on its row, and add a label to try it with a few people, or choose **Everyone**.
 
 
-/- What a link to the site shows (issue #1688): the tab's title, and the title and description a link preview draws. -/
+/- What a link to the site shows (issue #1688): the tab's title, and the title and description a link preview draws,
+   which name the product, Gedra (issue #1769). -/
 # @site
-# +title Try KotlinDynamicRuntime
+# +title Try Gedra
 # +description
-Forms, reviews, and approvals, set up as configuration and changed while they run, with no code to deploy. Join a demo
-as one of its people or as the person who runs it, or build forms and workflows of your own.
+Gedra: forms, reviews, and approvals, set up as configuration and changed while they run, with no code to deploy. Join
+a demo as one of its people or as the person who runs it, or build forms and workflows of your own.
 
 
 /- The band a public test deployment draws on every page (issue #1697), in words for a site that invites visitors. -/
@@ -89,7 +95,7 @@ here. When it is ready, choose **Visibility…** on its row and **Everyone** to 
 # !auth
 # @login
 # +intro
-This site is for trying KotlinDynamicRuntime out. Anything you create here, your account included, is deleted whenever
+This site is for trying Gedra out. Anything you create here, your account included, is deleted whenever
 its data is cleared.
 /- Where a visitor types their address (issue #1698): the Register card's promise, said again at the form, since the
    card's button and the one under the home page's title both come straight here. -/

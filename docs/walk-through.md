@@ -204,7 +204,7 @@ your client may change any of it. Make two changes, one at a time:
 <!-- kdr-walk: copy -->
 | Words now | Key | New words |
 | --- | --- | --- |
-| Try KotlinDynamicRuntime | home.title | Welcome to the Book Club |
+| Try Gedra | home.title | Welcome to the Book Club |
 | You have been invited | invitation.subject | You are invited to the Book Club |
 
 For each one, type the words it says now into **Find**, and choose **Edit** on the key the table names: the same

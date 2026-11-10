@@ -277,4 +277,21 @@ class SitePoliciesTest {
         assertTrue(sitePolicyLinks(ShellFacts()).isEmpty())
         assertTrue(sitePolicyLinks(factsFrom(mapOf(HFLD.privacyPolicy to ""))).isEmpty())
     }
+
+    @Test
+    fun theFooterLeadsWithTheAboutPageByItsTitleWhichOnlyTheFooterLinks() {
+        // Issue #1769: the About page, named by its document's title, then the policies.
+        val facts = factsFrom(
+            mapOf(
+                HFLD.about to "site-about", HFLD.aboutTitle to "About Gedra",
+                HFLD.privacyPolicy to "site-privacy", HFLD.termsOfService to "site-terms",
+            ),
+        )
+        assertEquals(listOf("About Gedra", SITEW.privacyPolicy, SITEW.termsOfService), siteFooterLinks(facts).map { it.label })
+        assertEquals(docHref("site-about"), siteFooterLinks(facts).first().href)
+        // The sign-in page and Profile list the policies alone.
+        assertEquals(listOf(SITEW.privacyPolicy, SITEW.termsOfService), sitePolicyLinks(facts).map { it.label })
+        // No title, no link: nothing to call it.
+        assertTrue(siteFooterLinks(factsFrom(mapOf(HFLD.about to "site-about"))).isEmpty())
+    }
 }

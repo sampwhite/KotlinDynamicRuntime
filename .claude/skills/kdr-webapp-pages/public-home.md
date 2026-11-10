@@ -18,7 +18,17 @@ frame rather than switching words once the page's copy arrives. Blank or absent,
 since the band is never drawn empty. The `reference` flavor says "A demonstration site: what you add here is cleared
 from time to time."
 
-## Site policies (issue #1711)
+## The product's name on a reference deployment (issue #1769)
+
+The product is **Gedra**, built on KotlinDynamicRuntime. The `reference` flavor's copy (`kdrReference_omnibus.md`) says
+so wherever the site names itself: the wordmark beside the brand mark (`home.brand`, "KDR" as shipped), the tab and
+link-preview title and description (`site.title`, `site.description`), the home page's title and intro, which names
+the open-source engine once and links the About page, and the sign-in page's line. A client with a brand of its own,
+as the demos have, keeps it. The link preview's image is Gedra's too: the flavor names kdn's `reference-branding`
+directory as the deployment's branding (`AUIC.appUiBrandingDir`, a core key so kdn can name it), which supplies only
+`share-image.png`, rendered from the `share-image.svg` beside it; every other branding asset is the built-in one.
+
+## Site policies (issue #1711) and the About page (issue #1769)
 
 A deployment's privacy policy and terms of service are documents it names in the instance config keys
 `HCFG.privacyPolicyDoc` and `HCFG.termsOfServiceDoc` (the boot is refused if one names a document no component
@@ -36,6 +46,12 @@ names neither:
 The words are the app's (`SITEW`), as a document's name is what a reader looks for. The `reference` flavor names
 dynamicruntime.org's (kdn's `SitePolicies`, kept in `docs/dynamicruntime-org/`), which kdn declares only where the keys
 name them, so another deployment neither serves nor links them.
+
+Its **About page** is named the same way, in `HCFG.aboutDoc` (held to a declared document too), and sent as its id and
+its document's title (`HFLD.about`, `HFLD.aboutTitle`), which is what its link says: "About Gedra" on the `reference`
+flavor (`docs/dynamicruntime-org/about-gedra.md`: what Gedra is, where the name comes from, who makes it, and what it
+is built on). Only the footer links it, first (`siteFooterLinks`); the sign-in page and Profile list the policies
+alone. The reference intro links it as well.
 
 ## Joining a demo client (issue #1248)
 
