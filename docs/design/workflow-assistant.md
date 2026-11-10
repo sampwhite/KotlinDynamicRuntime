@@ -185,8 +185,11 @@ else is refused, and a drift test holds each tool to its endpoint.
 | `set_included_traits` | the client's global traits, expected as a draft | `POST /clientAdmin/client/traits/set` |
 
 `patch_config` refuses a write unless a dry run of exactly the same configs was accepted in an earlier step of the same
-turn, so the model has read its impact first. A write asks for no reload: a patch from a sandbox reloads its parent,
-and with it the sandbox, so `view_workflow` shows the draft at once. Left out on purpose:
+turn, so the model has read its impact first. A write asks for a reload, as the bundle editor's does (issue #1770): a
+patch from a sandbox reloads its parent, and with it the sandbox, so `view_workflow` shows the draft at once either way,
+but only an asked reload brings the forms the sandbox already holds up to date (issue #1741), so a workflow drafted for
+existing forms is offered to them at once. Its answer says what that did, under `formStatesAuto`. `set_included_traits`
+needs no such flag: its save recalculates a draft's sandbox itself. Left out on purpose:
 publishing, reverting, deleting a bundle, `publishedOnly`, `bundle/write` (which deletes what it is not given), the
 sandbox switch, `workflows/params` (in force at once), users, keys, sessions, form data, the endpoint catalog, and
 every `admin`, `operator`, and `fixture` endpoint. The reads of the client (issue #1762) answer for the sandbox, which

@@ -24,6 +24,7 @@ import com.dynamicruntime.common.gedra.ClientDef
 import com.dynamicruntime.common.gedra.ClientUsageType
 import com.dynamicruntime.common.gedra.DSV
 import com.dynamicruntime.common.gedra.EDM
+import com.dynamicruntime.common.gedra.FSR
 import com.dynamicruntime.common.gedra.GDF
 import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.gedra.GED
@@ -38,6 +39,8 @@ import com.dynamicruntime.common.gedra.GedraId
 import com.dynamicruntime.common.gedra.MNU
 import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.gedra.sandboxOf
+import com.dynamicruntime.common.gedra.workflow.WAGG
+import com.dynamicruntime.common.gedra.workflow.WFD
 import com.dynamicruntime.common.gedra.workflow.WFT
 import com.dynamicruntime.common.gedra.workflow.WfEntry
 import com.dynamicruntime.common.gedra.workflow.WfSaveKind
@@ -309,6 +312,47 @@ class AssistantTurnsTest : StringSpec({
         dryRun[TOOL.isError].shouldBeNull()
         write[TOOL.isError] shouldBe true
         write[TOOL.content].toString() shouldContain "later step"
+    }
+
+    "a draft brings the forms the sandbox already holds up to date, so a new workflow is offered to them" {
+        // Issue #1770: the forms existed before the workflow was drafted, as a real client's would.
+        val client = "asstrecalc"
+        val admin = clientWithAssistant(cxt, client)
+        admin.postData(AEP.openSandbox, emptyMap())
+        repeat(2) { n ->
+            val memo = mapOf(GE.traitId to "memo", GE.data to mapOf("text" to "Form $n"))
+            admin.postData(GEP.formDocCreate, mapOf(GDF.entries to listOf(memo)))
+        }
+        fun eligibleForRsvp() = admin.getItems(GEP.workflowAggregate).firstOrNull { it[WFD.workflowId] == "rsvp" }?.get(WAGG.eligible)
+        admin.postData(AEP.leaveSandbox, mapOf(AFLD.userId to admin.userId))
+        val review = admin.getItem(CFEP.bundle, mapOf(CFEP.name to "flows"))[CFEP.slots].toJsonMapOrEmpty()[CCT.workflowDef]
+            .toJsonListOfMaps().single()
+        val configs = listOf(mapOf(CFEP.name to "flows", CFEP.edits to listOf(workflowEdit(renamed(review, "review", "rsvp")))))
+        model.add(
+            { ScriptedModel.toolResponse(ATOOL.patchConfig to mapOf(CFEP.configs to configs, CFEP.dryRun to true)) },
+            { ScriptedModel.toolResponse(ATOOL.patchConfig to mapOf(CFEP.configs to configs, CFEP.dryRun to false)) },
+            { ScriptedModel.textResponse("Drafted.") },
+        )
+        val conversationId = send(admin, "Add an RSVP workflow for my existing memos.")
+        val write = messagesOf(admin, conversationId).filter { it[MSG.role] == MSG.user }.drop(1).map { results(it).single() }[1]
+        write[TOOL.isError].shouldBeNull()
+        // The write says what it did to the sandbox's forms, so the model can tell the administrator.
+        val auto = write[TOOL.content].toString().jsonMap().shouldNotBeNull()[FSR.auto].toJsonMapOrEmpty()
+        auto[FSR.client] shouldBe sandboxOf(client)
+        auto[FSR.outcome] shouldBe FSR.completed
+        auto[FSR.updated] shouldBe 2
+        // Each existing form is offered the drafted workflow at once, with no recalculation asked for.
+        admin.postData(AEP.openSandbox, emptyMap())
+        eligibleForRsvp() shouldBe 2
+        admin.postData(AEP.leaveSandbox, mapOf(AFLD.userId to admin.userId))
+
+        // set_included_traits brings them up to date too: its save recalculates a draft's sandbox (issue #1770's check).
+        model.add(
+            { ScriptedModel.toolResponse(ATOOL.setIncludedTraits to mapOf(CLD.includedTraits to listOf(CLD.allGlobal))) },
+            { ScriptedModel.textResponse("Included.") },
+        )
+        val set = results(messagesOf(admin, send(admin, "Include every global trait."))[2]).single()
+        set[TOOL.content].toString().jsonMap().shouldNotBeNull()[FSR.auto].toJsonMapOrEmpty()[FSR.client] shouldBe sandboxOf(client)
     }
 
     "the included global traits are set as a draft" {
