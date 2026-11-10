@@ -135,6 +135,12 @@ object ACNV {
     const val cancelPath = "/${SECT.clientAdmin}/assistant/cancel"
 
     /**
+     * Deletes one of the caller's conversations (issue #1755): its transcript and what they wrote in its turns, keeping
+     * the turns' counts and cost, from which the allowance is reckoned. Refused while a turn runs in it.
+     */
+    const val deletePath = "/${SECT.clientAdmin}/assistant/conversation/delete"
+
+    /**
      * What the page shows before anything is sent (issue #1527): whether the assistant is on for the client, whether it
      * has a sandbox, how much of the month's allowance is used, and what is sent to Anthropic.
      */
@@ -154,6 +160,7 @@ object ACNV {
     const val messageType = "AssistantMessage"
     const val turnType = "AssistantTurn"
     const val cancelType = "AssistantCancel"
+    const val deletedType = "AssistantConversationDeleted"
 
     // --- Field names (each matches its value) ---
     const val conversation = "conversation"
@@ -178,6 +185,7 @@ object ACNV {
     const val startedAt = "startedAt"
     const val endedAt = "endedAt"
     const val canceled = "canceled"
+    const val deleted = "deleted"
 
     // A row's protocol date, as a summary carries it: the backend's `PF.updatedAt`, which the kernel cannot name.
     const val updatedAt = "updatedAt"

@@ -277,10 +277,18 @@ renews the session nor logs each call) and lists `GET /clientAdmin/assistant/con
 is session-only: no API key, and not the assistant itself, can start a turn or spend the budget.
 
 **Storage**, all in the database, so a poll reaching any node finds the same conversation:
-`AssistantConversations` (its running turn, if any, and its version), `AssistantMessages` (the transcript, as the
-model's API reads it), and `AssistantTurns` (each turn's status, stop reason, steps, the four token counts, the weighted
-total, the model that answered, and the note the administrator is shown). `LogAssistant` logs turns starting and
-ending, every write and refusal, and model errors, never the model's text.
+`AssistantConversations` (its running turn, if any, its version, and its title, the start of its first message),
+`AssistantMessages` (the transcript, as the model's API reads it), and `AssistantTurns` (what the administrator wrote,
+each turn's status, stop reason, steps, the four token counts, the weighted total, the model that answered, and the note
+the administrator is shown). `LogAssistant` logs turns starting and ending, every write and refusal, and model errors,
+never the model's text.
+
+**Deleting a conversation** (issue #1755). A person deletes their own (`POST /clientAdmin/assistant/conversation/delete`),
+never while a turn runs in it: its messages and the conversation row go, and what they wrote in each turn is blanked.
+The turn records stay, with what each used, since the month's allowance, the hour's limit, and the operator's usage are
+reckoned from them -- an exception to keeping a disabled row, since the point of the delete is that the words are gone.
+The delete claims the conversation as a message does, with a marker no turn's id can be, so no turn starts in it part
+way; a delete that stopped part way left its claim, and may be made again.
 
 The per-hour and per-client limits are counted, then the turn is recorded: two messages at the same instant may both
 pass. They are a fair-use limit, not a fence; the budget is the fence, checked again before every step.
@@ -321,8 +329,9 @@ notice. Its panels:
 
 Recorded here as proposed, to settle as the later issues are worked:
 
-- **Retention.** A conversation's transcript kept until the conversation is deleted, and turn records 13 months.
-  Neither is built: nothing deletes a conversation or a turn record yet.
+- **Retention by age.** Conversations untouched for a period, and turn records past 13 months, removed by a job: not
+  built ([`deferred-work.md`](../development/deferred-work.md#when-a-deployment-keeps-its-assistant-conversations-for-good)).
+  A person deleting their own conversations is (issue #1755), under "Conversations and turns".
 - **Audit.** Through the transcript and the logs, with no field on a revision naming the assistant.
 - **Progress notes.** The request asks for `display: "updates"`, so the model's notes between tool calls are stored in
   its thinking blocks, which the page shows muted. Whether the notes the real model writes are worth showing waits for

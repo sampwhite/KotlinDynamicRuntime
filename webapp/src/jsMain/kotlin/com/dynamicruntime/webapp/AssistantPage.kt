@@ -79,6 +79,8 @@ val AssistantPage = FC<Props> {
     var stopping by useState(false)
     var sendError by useState<DisplayError?>(null)
     var stopError by useState<DisplayError?>(null)
+    var deleting by useState(false)
+    var deleteError by useState<DisplayError?>(null)
     var sandboxBusy by useState(false)
     var sandboxError by useState<DisplayError?>(null)
     var switchBusy by useState(false)
@@ -271,6 +273,24 @@ val AssistantPage = FC<Props> {
         }
     }
 
+    // Deleting the open conversation (issue #1755): the page moves to a new one, and the list is read again without it.
+    fun deleteOpen() {
+        val id = conversationId ?: return
+        deleting = true
+        deleteError = null
+        assistantScope.launch {
+            try {
+                AssistantApi.deleteConversation(id)
+                if (openId.current == id) open(null)
+                setStatusReads { it + 1 }
+            } catch (e: Throwable) {
+                deleteError = userFacingError(e)
+            } finally {
+                deleting = false
+            }
+        }
+    }
+
     fun turnOnSandbox(client: String) {
         sandboxBusy = true
         sandboxError = null
@@ -420,7 +440,8 @@ val AssistantPage = FC<Props> {
                             )
                         }
                     }
-                    conversationPicker(conversations, conversationId, summary, running) { open(it) }
+                    conversationPicker(conversations, conversationId, summary, running, deleting, ::deleteOpen) { open(it) }
+                    panelNote(deleteError, null, "Couldn't delete the conversation.")
                     transcript(transcriptItems(messages), running, transcriptBox)
                     turnEndText(turns.lastOrNull()?.takeIf { !running })?.let { p { className = ClassName("type-hint"); +it } }
                     val readOnly = summary?.readOnly == true
@@ -534,6 +555,8 @@ private fun ChildrenBuilder.conversationPicker(
     openId: String?,
     open: ConversationSummary?,
     running: Boolean,
+    deleting: Boolean,
+    onDelete: () -> Unit,
     onOpen: (String?) -> Unit,
 ) {
     // One just begun is not in the list until the list is read again: named by its own summary meanwhile.
@@ -562,6 +585,24 @@ private fun ChildrenBuilder.conversationPicker(
                 disabled = running
                 onClick = { onOpen(null) }
                 +"Start a new conversation"
+            }
+            // Its own, confirmed (issue #1755); not while a turn runs in it, which would be refused.
+            Popconfirm {
+                title = "Delete this conversation?"
+                description = "What was said in it is removed, and cannot be brought back. What it used of this month's " +
+                    "allowance still counts."
+                okText = "Delete"
+                okButtonProps = js("({ danger: true })")
+                cancelText = "Cancel"
+                disabled = running
+                onConfirm = { onDelete() }
+                Button {
+                    type = "link"
+                    danger = true
+                    disabled = running
+                    loading = deleting
+                    +"Delete…"
+                }
             }
         }
     }

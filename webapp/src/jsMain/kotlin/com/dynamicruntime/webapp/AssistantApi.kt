@@ -211,6 +211,11 @@ object AssistantApi {
         Http.sendApi("POST", ACNV.cancelPath, mapOf(ACNV.conversationId to conversationId))
     }
 
+    /** Deletes one of the person's conversations (issue #1755). */
+    suspend fun deleteConversation(conversationId: String) {
+        Http.sendApi("POST", ACNV.deletePath, mapOf(ACNV.conversationId to conversationId))
+    }
+
     suspend fun clients(): AssistantClientsRead = parseAssistantClients(Http.getApi(ASST.clientsPath))
 
     /**

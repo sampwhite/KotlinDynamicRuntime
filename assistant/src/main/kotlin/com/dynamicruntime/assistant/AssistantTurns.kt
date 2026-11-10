@@ -277,6 +277,29 @@ object AssistantTurns {
         AssistantStore.releaseConversation(cxt, conversationId, turnId)
     }
 
+    /**
+     * Deletes the person's conversation [conversationId] (issue #1755): its transcript, and what they wrote in its turns,
+     * whose counts and cost stay. Refused while a turn runs in it -- stop it first. The conversation is claimed for the
+     * delete, as a message claims it for its turn, so no turn starts in it part way; a delete that stopped part way
+     * left its claim, and may be made again.
+     */
+    fun delete(cxt: KdrCxt, conversationId: String): Map<String, Any?> {
+        val person = personOf(cxt)
+        recoverLapsed(cxt, ownConversation(cxt, person, conversationId))
+        val running = ownConversation(cxt, person, conversationId)[ATBL.runningTurnId].toOptStr()
+        val claimed = running == deletingClaim || (running == null && AssistantStore.claimConversation(cxt, conversationId, deletingClaim))
+        if (!claimed) {
+            throw refused("The assistant is still answering in this conversation: stop it, then delete it.", EXC.conflict, ACNV.busyCode)
+        }
+        AssistantStore.deleteConversation(cxt, conversationId)
+        LogAssistant.info(cxt, "Conversation $conversationId was deleted by its administrator.")
+        return mapOf(ACNV.conversationId to conversationId, ACNV.deleted to true)
+    }
+
+    /** The running turn a conversation names while it is being deleted: no turn's id, so no turn is ever mistaken for it. */
+    @KdrPrivate
+    const val deletingClaim = "deleting"
+
     /** Asks the running turn of the person's conversation [conversationId] to stop at its next step. */
     fun cancel(cxt: KdrCxt, conversationId: String): Map<String, Any?> {
         val person = personOf(cxt)
