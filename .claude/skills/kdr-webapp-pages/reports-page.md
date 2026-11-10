@@ -87,7 +87,7 @@ snapshot is always the report's own setup. The pure half is `ReportHistoryApi.kt
 `ReportHistoryPanel.kt` draws it. It is the webapp's first chart, hand-drawn SVG (`react.dom.svg`, no chart
 library), and these are the rules it was built to:
 
-- **What can be charted** (`historyMetrics`): the count of forms, then each rolled-up column whose result is a
+- **What can be charted** (`reportMeasures`): the count of forms, then each rolled-up column whose result is a
   number and that the report does not group by. A rolled-up date is a moment, not a height, so it is not offered.
 - **One snapshot a day** (`latestPerDay`) -- the deployment's official day (UTC-8, `ReportSnapshot.day`, issue #1115),
   as the backend's pruning counts it, never the viewer's zone -- and **only the current definition's**: each snapshot says whether it was
@@ -109,7 +109,7 @@ library), and these are the rules it was built to:
 - **Nothing is hover-only.** Each bar's hit target is its whole column of the plot, is focusable, and shows the
   same readout on focus as on hover; the table under the chart holds every day and every number the readout shows.
   To the keyboard the chart is **one Tab stop** (the latest day's first bar) with the arrows, Home and End moving
-  among the bars (`historyBarStep`, a roving `tabindex`) -- sixty bars are not sixty stops on the way to the table.
+  among the bars (`chartStep`, a roving `tabindex`) -- sixty bars are not sixty stops on the way to the table.
   The plot's `svg` is a `group`, never an `img`: an image's children do not exist for a screen reader, and the
   bars' named hit targets are its children.
 - **A Kotlin trap this view hit**: inside an antd `Button { }` builder, `loading = x` assigns a *local* named
@@ -132,8 +132,9 @@ slice's outline, the palette's class, the keyboard's steps -- is `ChartKit.kt`, 
   rolled up to a number and not grouped by); one the run no longer offers falls back to the count, and a pie of a measure
   that does not add up (`ReportCombine.addsUp`) is drawn as bars. The control offers Pie only when the measure adds up.
 - **Every group, not the loaded batch.** The table grows by a hundred; a chart of those would keep and fold the wrong
-  groups. When the run has more groups than are loaded, the panel walks it (`ReportsApi.chartGroups`, pages of 500, up to
-  `chartMaxGroups` -- 2,000, a snapshot's cut) and a note says when there are more. Once per run and refresh, not per growth.
+  groups. When the run has more groups than are loaded, the panel asks for them in one request (`ReportsApi.chartGroups`,
+  up to `chartMaxGroups` -- 2,000, a snapshot's cut), since each page of a grouped run reads every form again, and a note
+  says when there are more. Once per run and refresh, not per growth.
 - **What is drawn** (`reportChartData`): the groups in the **run's order**, colour by place. A pie leaves out a group with
   no value, zero, or less (a share cannot be negative), keeps the seven largest of more than eight, and folds the rest into
   a grey **Other**. A bar chart is one series in the first colour, keeps twenty, and folds the rest into Other when the

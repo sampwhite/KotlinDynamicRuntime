@@ -702,7 +702,8 @@ class ReportHistoryTest {
         assertEquals(1, series.otherDefinitions)
         assertEquals(0, series.otherCount)
         // Another metric changes the heights and nothing about whose place is whose.
-        assertEquals(series.groups.map { it.key }, historySeries(snapshots, ReportMeasure("total", "Total (sum)", true)).groups.map { it.key })
+        val byTotal = historySeries(snapshots, ReportMeasure("total", "Total (sum)", true))
+        assertEquals(series.groups.map { it.key }, byTotal.groups.map { it.key })
     }
 
     @Test
@@ -885,14 +886,18 @@ class ReportChartTest {
         // Grouped otherwise than the report groups: its own chart is not assumed to fit.
         assertNull(reportChartInForce(null, null, pie, ReportRunSetup(ReportMode.aggregate, listOf("price")))!!.kind)
         // A measure the run does not offer -- here one the user groups by -- falls back to the count.
-        assertEquals(RRUN.count, reportChartInForce("bar", "total", pie, ReportRunSetup(ReportMode.aggregate, listOf("total")))!!.measure.key)
+        val byTotal = ReportRunSetup(ReportMode.aggregate, listOf("total"))
+        assertEquals(RRUN.count, reportChartInForce("bar", "total", pie, byTotal)!!.measure.key)
         // A pie of an average is drawn as bars: its slices would be shares of no whole.
         assertEquals(ReportChartKind.bar, reportChartInForce("pie", "price", pie, grouped)!!.kind)
         // A choice is written whole, so it overrides the report's own measure too.
         assertEquals("pie" to RRUN.count, reportChartParams(ReportChartChoice(ReportChartKind.pie, measure(RRUN.count))))
         assertEquals(reportChartTable to "total", reportChartParams(ReportChartChoice(null, measure("total"))))
         assertEquals(
-            listOf(HP.page to HMENU.pageReports, HP.report to "audits", HP.reportView to "grouped", HP.reportChart to "bar", HP.reportMeasure to "total"),
+            listOf(
+                HP.page to HMENU.pageReports, HP.report to "audits", HP.reportView to "grouped", HP.reportChart to "bar",
+                HP.reportMeasure to "total",
+            ),
             reportsRouteParams(null, "audits", "grouped", "bar", "total"),
         )
     }
@@ -963,7 +968,8 @@ class ReportChartTest {
         assertEquals(listOf(0.25, 0.75), layout.slices.map { it.share })
         // The first slice starts at twelve o'clock and runs a quarter turn: to three o'clock.
         val (x, y) = pointOnCircle(layout.cx, layout.cy, layout.r, PI / 2)
-        assertTrue(layout.slices[0].path.startsWith("M${layout.cx},${layout.cy} L${layout.cx},${layout.cy - layout.r} A"), layout.slices[0].path)
+        val fromTwelve = "M${layout.cx},${layout.cy} L${layout.cx},${layout.cy - layout.r} A"
+        assertTrue(layout.slices[0].path.startsWith(fromTwelve), layout.slices[0].path)
         assertTrue(abs(x - (layout.cx + layout.r)) < 1e-9 && abs(y - layout.cy) < 1e-9)
         // The larger slice takes the long way round.
         assertTrue(" 0 1 1 " in layout.slices[1].path, layout.slices[1].path)
@@ -983,15 +989,15 @@ class ReportChartTest {
     }
 
     @Test
-    fun aWalkAskedForAtMostSoManyRowsStopsThereAndSaysHowManyThereAre() = GlobalScope.promise {
-        val summary = ReportRunSummary(ReportMode.aggregate, emptyList(), emptyList(), emptyList(), 0, 0)
-        fun page(from: Int) = ReportRunPage(
-            (from until from + 500).map { ReportRunRow(null, emptyMap(), 1, emptyMap()) }, 3000, (from + 500).toString(), summary,
-        )
-        var fetches = 0
-        val walked = walkReportRun({ after -> fetches++; page(after?.toInt() ?: 0) }, maxRows = 1200)!!
-        assertEquals(1200, walked.rows.size)
-        assertEquals(3000, walked.numAvailable)
-        assertEquals(3, fetches)
+    fun aNameIsCutByItsLettersWidthsSoCapitalsStayInsideThePlot() {
+        fun width(text: String) = text.sumOf { chartCharWidth(it) }
+        // Capitals run wider than lower case: the same count of letters is cut sooner.
+        val capitals = chartFitText("MAINTENANCE WORKSHOP NORTH WING", 120.0)
+        val lower = chartFitText("maintenance workshop north wing", 120.0)
+        assertTrue(capitals.endsWith(chartEllipsis) && width(capitals) <= 120.0, capitals)
+        assertTrue(capitals.length < lower.length, "$capitals / $lower")
+        // A name that fits is left whole, and the chart asks for every group it reads in one request.
+        assertEquals("Lee", chartFitText("Lee", 30.0))
+        assertEquals(chartMaxGroups, reportRunQuery("audits", null, ReportRunSetup(ReportMode.aggregate), null, chartMaxGroups)[EP.limit])
     }
 }

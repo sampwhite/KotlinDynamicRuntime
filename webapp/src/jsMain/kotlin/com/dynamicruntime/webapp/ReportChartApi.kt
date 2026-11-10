@@ -180,8 +180,8 @@ fun reportChartData(rows: List<ReportRunRow>, summary: ReportRunSummary, kind: R
     }
     val kept = valued.filterIndexed { i, _ -> i in keptAt }
     val past = valued.filterIndexed { i, _ -> i !in keptAt }
-    val entries = kept.mapIndexed { place, (label, v) -> ChartEntry(label, v, if (pie) place else 0) } +
-        (if (past.isNotEmpty() && folds) listOf(ChartEntry(chartOtherLabel(past.size), past.sumOf { it.second }, chartOtherIndex)) else emptyList())
+    val other = if (past.isNotEmpty() && folds) ChartEntry(chartOtherLabel(past.size), past.sumOf { it.second }, chartOtherIndex) else null
+    val entries = kept.mapIndexed { place, (label, v) -> ChartEntry(label, v, if (pie) place else 0) } + listOfNotNull(other)
     return ReportChartData(
         kind, measure, entries, read = rows.size, leftOut = rows.size - valued.size,
         otherCount = if (folds) past.size else 0, notShown = if (folds) 0 else past.size,
@@ -189,12 +189,29 @@ fun reportChartData(rows: List<ReportRunRow>, summary: ReportRunSummary, kind: R
 }
 
 /**
- * [text] cut to fit [width] pixels of the chart's 12-pixel type, at an average [charWidth] a character, with an ellipsis
- * where it was cut: an estimate, since the layout is pure and cannot measure text, set wide enough not to cut early.
+ * About how wide [c] is in the chart's 12-pixel proportional type: the layout is pure and cannot measure text, so it
+ * estimates per character -- a capital or a wide letter more, a narrow one less -- erring wide, so a cut name stays inside
+ * the plot rather than running into the values beside it.
  */
-fun chartFitText(text: String, width: Double, charWidth: Double = 6.5): String {
-    val fits = (width / charWidth).toInt()
-    return if (text.length <= fits || fits < 2) text else text.take(fits - 1).trimEnd() + "…"
+fun chartCharWidth(c: Char): Double = when {
+    c in "mwMW@%" -> 10.0
+    c.isUpperCase() -> 8.5
+    c in "iljtfr.,:;'|!" -> 4.0
+    c == ' ' -> 3.5
+    else -> 7.0
+}
+
+/** What a chart writes where it cuts a name. */
+const val chartEllipsis = "…"
+
+/** [text] cut to fit [width] pixels of the chart's type ([chartCharWidth]), with an ellipsis where it was cut. */
+fun chartFitText(text: String, width: Double): String {
+    if (text.sumOf { chartCharWidth(it) } <= width) return text
+    val room = width - chartEllipsis.sumOf { chartCharWidth(it) }
+    var used = 0.0
+    var keep = 0
+    while (keep < text.length && used + chartCharWidth(text[keep]) <= room) used += chartCharWidth(text[keep++])
+    return text.take(keep).trimEnd() + chartEllipsis
 }
 
 /** What "Other" is called: how many groups it holds. */

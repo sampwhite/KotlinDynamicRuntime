@@ -445,15 +445,13 @@ const val reportCsvFormLabel = "Form"
  * fetched is dropped. A failure of any page propagates: a run that cannot be fetched whole is not handed over in part.
  *
  * Returns the first page's summary with all the rows. A cursor that never ends is cut off at [maxPages] and thrown
- * as a fault, rather than walked forever. A walk asked for at most [maxRows] stops there instead (issue #1772): its
- * answer holds that many rows and says how many the run has (`numAvailable`), and its `next` where it stopped.
+ * as a fault, rather than walked forever.
  */
 suspend fun walkReportRun(
     fetchPage: suspend (after: String?) -> ReportRunPage,
     onProgress: (fetched: Int, total: Int) -> Unit = { _, _ -> },
     stillWanted: () -> Boolean = { true },
     maxPages: Int = 10_000,
-    maxRows: Int = Int.MAX_VALUE,
 ): ReportRunPage? {
     val rows = ArrayList<ReportRunRow>()
     var first: ReportRunPage? = null
@@ -466,9 +464,6 @@ suspend fun walkReportRun(
         if (first == null) first = page
         rows.addAll(page.rows)
         onProgress(rows.size, page.numAvailable)
-        if (page.next != null && rows.size >= maxRows) {
-            return ReportRunPage(rows.take(maxRows), page.numAvailable, page.next, first.summary)
-        }
         after = page.next ?: return ReportRunPage(rows, rows.size, null, first.summary)
         if (++pages >= maxPages) throw IllegalStateException("The report's paging did not end after $maxPages pages.")
     }
@@ -578,11 +573,10 @@ object ReportsApi {
     ): ReportRunPage? = walkReportRun({ after -> run(reportId, client, setup, after, reportDownloadPageSize) }, onProgress, stillWanted)
 
     /**
-     * The groups of a grouped run for its chart (issue #1772): walked from the first page in large pages, up to
-     * [chartMaxGroups]; null when no longer wanted.
+     * The groups of a grouped run for its chart (issue #1772): up to [chartMaxGroups] in **one** request, since every page
+     * of a grouped run reads each form again -- walking it in pages would read the client's forms once a page. The answer
+     * says how many groups there are (`numAvailable`), so the chart can say when it read only some.
      */
-    suspend fun chartGroups(reportId: String, client: String?, setup: ReportRunSetup, stillWanted: () -> Boolean): ReportRunPage? =
-        walkReportRun(
-            { after -> run(reportId, client, setup, after, reportDownloadPageSize) }, stillWanted = stillWanted, maxRows = chartMaxGroups,
-        )
+    suspend fun chartGroups(reportId: String, client: String?, setup: ReportRunSetup): ReportRunPage =
+        run(reportId, client, setup, after = null, limit = chartMaxGroups)
 }

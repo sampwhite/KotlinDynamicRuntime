@@ -54,8 +54,8 @@ private class ChartGroups(val key: String, val page: ReportRunPage)
  * rolled-up column, above the run's table.
  *
  * The groups are every group of the run, not the rows the table has grown to: a chart of the first hundred would keep
- * and fold the wrong ones. When the table holds them all they are drawn as they are; otherwise the run is walked in
- * large pages, up to [chartMaxGroups], and a note says when there are more. The drawing follows the History chart's
+ * and fold the wrong ones. When the table holds them all they are drawn as they are; otherwise they are asked for in one
+ * request, up to [chartMaxGroups], and a note says when there are more. The drawing follows the History chart's
  * rules: laid out at the pane's measured width, nothing said only on hover (the bar chart writes each value, the pie's
  * legend each value and share), one Tab stop with the arrows moving among the marks, the `svg` a `group`, and no text
  * in a series colour.
@@ -81,7 +81,7 @@ val ReportChartPanel = FC<ReportChartPanelProps> { props ->
             awaitCancellation()
         } finally {
             observer.disconnect()
-            // Leaving abandons a walk under way: it runs in a scope that outlives the component.
+            // Leaving drops a read under way: it runs in a scope that outlives the component.
             latest.current = (latest.current ?: 0) + 1
         }
     }
@@ -89,7 +89,7 @@ val ReportChartPanel = FC<ReportChartPanelProps> { props ->
         hover = null
         focus = null
     }
-    // Every group, when the table holds fewer than the run has: walked once per run and refresh, not per growth.
+    // Every group, when the table holds fewer than the run has: read once per run and refresh, not per growth.
     useEffect(props.walkKey, whole, generation) {
         val token = (latest.current ?: 0) + 1
         latest.current = token
@@ -99,7 +99,7 @@ val ReportChartPanel = FC<ReportChartPanelProps> { props ->
         }
         chartScope.launch {
             try {
-                val page = ReportsApi.chartGroups(props.reportId, props.client, props.setup) { latest.current == token } ?: return@launch
+                val page = ReportsApi.chartGroups(props.reportId, props.client, props.setup)
                 if (latest.current == token) {
                     fetched = ChartGroups(props.walkKey, page)
                     error = null
@@ -297,7 +297,8 @@ private fun ChildrenBuilder.pieChart(
                 layout.slices.forEach { s ->
                     path {
                         key = "s${s.index}".unsafeCast<Key>()
-                        asDynamic().className = "rh-bar rc-slice ${chartColorClass(s.entry.colorIndex)}" + (if (at == s.index) " rh-hot" else "")
+                        asDynamic().className =
+                            "rh-bar rc-slice ${chartColorClass(s.entry.colorIndex)}" + (if (at == s.index) " rh-hot" else "")
                         asDynamic().id = chartHitId(s.index)
                         d = s.path
                         role = AriaRole.img

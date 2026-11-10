@@ -86,8 +86,10 @@ val ReportsPage = FC<Props> {
     var runError by useState<DisplayError?>(null)
     var running by useState(false)
     var choice by useState<ReportListsChoice?>(null)
-    // Bumped when the chart is changed: writing the address fires no event, so this is what makes the page read it again.
-    var chartChanges by useState(0)
+    // Counts the times the page wrote its own address for a chart (issue #1772). Nothing reads the count: changing it is
+    // what makes React render the page again, and so read the address it wrote -- `replaceRoute` fires no event. Removing
+    // it as unused would leave the Chart control looking as if it did nothing until the next navigation.
+    var addressWrites by useState(0)
     var growth by useState<ReportGrowth?>(null)
     // Monotonic tokens, so a slow answer for a client, report or page the user has moved on from is dropped.
     val latestList = useRef(0)
@@ -284,7 +286,7 @@ val ReportsPage = FC<Props> {
     fun changeChart(next: ReportChartChoice) {
         val (kind, measure) = reportChartParams(next)
         replaceRoute(reportsRouteParams(client, reportId, reportModeParam(setup.mode), kind, measure))
-        chartChanges += 1
+        addressWrites += 1
     }
 
     fun showHistory() {

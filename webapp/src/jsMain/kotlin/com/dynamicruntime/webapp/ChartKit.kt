@@ -116,9 +116,11 @@ fun hBarPath(x: Double, y: Double, width: Double, height: Double, rightward: Boo
     val right = x + width
     val bottom = y + height
     return if (rightward) {
-        "M${n(x)},${n(y)} H${n(right - r)} Q${n(right)},${n(y)} ${n(right)},${n(y + r)} V${n(bottom - r)} Q${n(right)},${n(bottom)} ${n(right - r)},${n(bottom)} H${n(x)} Z"
+        "M${n(x)},${n(y)} H${n(right - r)} Q${n(right)},${n(y)} ${n(right)},${n(y + r)} " +
+            "V${n(bottom - r)} Q${n(right)},${n(bottom)} ${n(right - r)},${n(bottom)} H${n(x)} Z"
     } else {
-        "M${n(right)},${n(y)} H${n(x + r)} Q${n(x)},${n(y)} ${n(x)},${n(y + r)} V${n(bottom - r)} Q${n(x)},${n(bottom)} ${n(x + r)},${n(bottom)} H${n(right)} Z"
+        "M${n(right)},${n(y)} H${n(x + r)} Q${n(x)},${n(y)} ${n(x)},${n(y + r)} " +
+            "V${n(bottom - r)} Q${n(x)},${n(bottom)} ${n(x + r)},${n(bottom)} H${n(right)} Z"
     }
 }
 
