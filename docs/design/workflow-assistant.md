@@ -183,13 +183,22 @@ else is refused, and a drift test holds each tool to its endpoint.
 | `read_definition` | where a trait, type, or workflow comes from, and its authored entry | `GET /clientAdmin/design/definition` |
 | `patch_config` | a change, as a draft: a dry run, then the same configs written | `POST /clientAdmin/config/bundle/patch` |
 | `set_included_traits` | the client's global traits, expected as a draft | `POST /clientAdmin/client/traits/set` |
+| `set_copy` | one key of the client's wording, as a draft | `POST /clientAdmin/client/copy/set` |
+| `apply_copy` | several keys of one file, set or put back together, as a draft | `POST /clientAdmin/client/copy/apply` |
+| `reset_copy` | one key put back to the platform's wording, as a draft | `POST /clientAdmin/client/copy/reset` |
+| `set_menu_item` | one menu item renamed, hidden, or shown, as a draft | `POST /clientAdmin/client/menu/set` |
+| `reset_menu_item` | one menu item put back as shipped, as a draft | `POST /clientAdmin/client/menu/reset` |
 
 `patch_config` refuses a write unless a dry run of exactly the same configs was accepted in an earlier step of the same
 turn, so the model has read its impact first. A write asks for a reload, as the bundle editor's does (issue #1770): a
 patch from a sandbox reloads its parent, and with it the sandbox, so `view_workflow` shows the draft at once either way,
 but only an asked reload brings the forms the sandbox already holds up to date (issue #1741), so a workflow drafted for
 existing forms is offered to them at once. Its answer says what that did, under `formStatesAuto`. `set_included_traits`
-needs no such flag: its save recalculates a draft's sandbox itself. Left out on purpose:
+needs no such flag: its save recalculates a draft's sandbox itself. The wording and menu writes (issue #1763) are the copy
+and menu editors' own saves: called as the sandbox user and naming no client, each lands in the client's configuration as
+a draft, as an editor's save from the sandbox does, and says it expects one, so a save that would go live is refused.
+They have no dry run, since a wording or menu change cannot fail in a way one would show -- each is checked as it is
+saved -- and they recalculate no form's state. Left out on purpose:
 publishing, reverting, deleting a bundle, `publishedOnly`, `bundle/write` (which deletes what it is not given), the
 sandbox switch, `workflows/params` (in force at once), users, keys, sessions, form data, the endpoint catalog, and
 every `admin`, `operator`, and `fixture` endpoint. The reads of the client (issue #1762) answer for the sandbox, which

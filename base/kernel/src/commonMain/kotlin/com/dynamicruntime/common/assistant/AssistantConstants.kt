@@ -278,6 +278,13 @@ object ATOOL {
     const val readChecklist = "read_checklist"
     const val readDefinition = "read_definition"
 
+    // The targeted writes of the client's wording and menu (issue #1763), over the copy and menu editors' endpoints.
+    const val setCopy = "set_copy"
+    const val applyCopy = "apply_copy"
+    const val resetCopy = "reset_copy"
+    const val setMenuItem = "set_menu_item"
+    const val resetMenuItem = "reset_menu_item"
+
     // A tool input that is not an endpoint's own field: the document `read_doc` reads.
     const val doc = "doc"
 

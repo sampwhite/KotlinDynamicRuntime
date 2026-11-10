@@ -59,8 +59,9 @@ Panels, by the rules of "Page structure" in `webapp/CLAUDE.md`:
    sandbox. "What is sent to Anthropic" is a `Disclosure` beside the first message of a conversation, the status's
    `dataNotice`. The last turn's ending, when it did not run to its end, is said under the transcript (`turnEndText`).
 3. **Drafts from this conversation** (view): each bundle a `patch_config` write made, at its latest version, with the
-   workflows its edits added or changed, and the included traits when `set_included_traits` succeeded (`draftsOf`). A
-   dry run or a refused write makes no draft. **Try it in the sandbox** opens the sandbox (unless already in it) at the
+   workflows its edits added or changed; the bundle a wording or menu save landed in (issue #1763), which its answer's
+   `configName` names; and the included traits when `set_included_traits` succeeded (`draftsOf`). A dry run or a
+   refused write makes no draft. **Try it in the sandbox** opens the sandbox (unless already in it) at the
    workflow's forms (`workflows/<id>/forms`), or at the forms listing. **Check impact and publish** is a link to the
    Clients page's publishing panel (`/wa/clients/<client>#client-publishing`; the sandbox's own page from inside the
    sandbox), where Check impact and Publish selected live. The Clients page follows a named panel (`HP.section`) while
@@ -75,7 +76,8 @@ Panels, by the rules of "Page structure" in `webapp/CLAUDE.md`:
 kernel's renderer. Its summarized thinking shows as muted notes; an empty note (thinking the API did not summarize)
 shows nothing. **The tool results the API stores as the person's are never shown as the person's**: each is joined to
 its call, and the calls of one answer collapse into one line (`toolsLabel`) -- "Looked at: workflows, bundle `flows`",
-"Checked a change to `flows`", "Drafted `flows` (v3)" -- that opens to each call's input and result. A call still
+"Checked a change to `flows`", "Drafted `flows` (v3)", "Drafted copy `home: home.title`", "Drafted menu item `docs`"
+(`wroteWhat`, issue #1763) -- that opens to each call's input and result. A call still
 running ends with an ellipsis, and a refused one says so. A write's version comes from its answer, which may have been
 cut to fit what the model is shown and then is not JSON: the label goes without a version, rather than failing.
 

@@ -171,9 +171,9 @@ class AssistantTool(
 /**
  * The assistant's tools (issue #1526): reads of the client's configuration, workflows, traits, and cfacts, and of the
  * client as its sandbox runs it -- its definition, menu, copy, forms list, reports, images, drafts and their impact
- * ([clientReads], issue #1762) -- and two writes -- `patch_config`, a dry run before every write, and
- * `set_included_traits` -- that can only make drafts: the tools act as the person's own user in the client's sandbox,
- * whose configuration edits become drafts on the parent.
+ * ([clientReads], issue #1762) -- and writes that can only make drafts: `patch_config`, a dry run before every write,
+ * `set_included_traits`, and the copy and menu editors' targeted edits ([wordingAndMenuWrites], issue #1763). The tools
+ * act as the person's own user in the client's sandbox, whose configuration edits become drafts on the parent.
  *
  * **What is left out is the point.** Publishing, reverting, deleting a config, `publishedOnly`, `bundle/write` (which
  * deletes what it is not given), switching the sandbox, `workflows/params` (in force at once), users, keys, sessions,
@@ -301,6 +301,7 @@ object AssistantTools {
             )
         )
         addAll(this@AssistantTools.clientReads())
+        addAll(this@AssistantTools.wordingAndMenuWrites())
         addAll(
             listOf(
                 AssistantTool(
@@ -484,6 +485,102 @@ object AssistantTools {
             run.call(HttpMethod.GET, DSV.definition, mapOf(DSV.slot to input[DSV.slot], DSV.key to input[DSV.key]))
         },
     )
+
+    /**
+     * The targeted writes of the client's wording and menu (issue #1763): the copy and menu editors' own saves, so the
+     * assistant changes a key or an item by its address rather than patching raw `kdr:fragmentDef` or `kdr:uiBlockDef`
+     * entries. Called as the person's user in the sandbox and naming no client, each save lands in the client's
+     * configuration as a draft -- a save named for a sandbox goes to its parent, as the editors' do from the sandbox --
+     * and says so: each sends [EDM.draft] as what it expects, so one that would take effect at once is refused instead.
+     *
+     * **No dry run.** A wording or menu change cannot fail in a way a dry run would show: each save is trial-checked as
+     * it is made, and refused with its findings. The saves recalculate no form's state, as the editors' do not.
+     */
+    @KdrPrivate
+    fun wordingAndMenuWrites(): List<AssistantTool> {
+        val copyKey = arrayOf(
+            COV.fileId to stringSchema("The fragment file, as ${ATOOL.readCopy} names it, such as 'home'."),
+            COV.namespaceField to stringSchema("The namespace within the file."),
+            COV.key to stringSchema("The key within the namespace."),
+        )
+        val copyKeyFields = listOf(COV.fileId, COV.namespaceField, COV.key)
+        fun drafted(input: Map<String, Any?>, fields: List<String>): Map<String, Any?> =
+            fields.filter { input[it] != null }.associateWith { input[it] } + (CPY.mode to EDM.draft)
+        return listOf(
+            AssistantTool(
+                ATOOL.setCopy,
+                "Rewords one key of the client's copy, as a draft: its value, as Markdown, which may name values with " +
+                    $$"${…}. The client's wording applies wherever the key is shown -- every form, page, and mail of the " +
+                    "client's that reads it -- so find the key and what it says now with ${ATOOL.readCopy}, and what the " +
+                    "client already rewords with ${ATOOL.readOverrides}. There is no dry run: the save is checked as it " +
+                    "is made, and refused, saying why, when it would break something. To change several keys of one file " +
+                    "together, use ${ATOOL.applyCopy}.",
+                objectSchema(
+                    *copyKey,
+                    COV.value to stringSchema("The new wording, as Markdown."),
+                    required = copyKeyFields + COV.value,
+                ),
+                HttpMethod.POST, CPY.setPath, (copyKeyFields + COV.value + CPY.mode).toSet(),
+            ) { run, input -> run.call(HttpMethod.POST, CPY.setPath, body = drafted(input, copyKeyFields + COV.value)) },
+            AssistantTool(
+                ATOOL.applyCopy,
+                "Rewords, or puts back, several keys of one fragment file of the client's copy in one save, as a draft, so " +
+                    "they change together: each change names its namespace and key, and either a new value or " +
+                    "'${CPY.reset}': true to put the platform's wording back. A key may be changed once. The client's " +
+                    "wording applies wherever a key is shown. There is no dry run: the save is checked as it is made, and " +
+                    "refused, saying why, with nothing changed.",
+                objectSchema(
+                    COV.fileId to stringSchema("The fragment file, as ${ATOOL.readCopy} names it."),
+                    CPY.changes to arraySchema(
+                        "The keys to change.",
+                        objectSchema(
+                            COV.namespaceField to stringSchema("The namespace within the file."),
+                            COV.key to stringSchema("The key within the namespace."),
+                            COV.value to stringSchema("The new wording, as Markdown; absent with '${CPY.reset}'."),
+                            CPY.reset to mapOf("type" to "boolean", "description" to "True to put the platform's wording back."),
+                            required = listOf(COV.namespaceField, COV.key),
+                        ),
+                    ),
+                    required = listOf(COV.fileId, CPY.changes),
+                ),
+                HttpMethod.POST, CPY.applyPath, setOf(COV.fileId, CPY.changes, CPY.mode),
+            ) { run, input -> run.call(HttpMethod.POST, CPY.applyPath, body = drafted(input, listOf(COV.fileId, CPY.changes))) },
+            AssistantTool(
+                ATOOL.resetCopy,
+                "Puts one key of the client's copy back to the platform's wording (or the client's code's), as a draft, " +
+                    "by removing the client's own value for it. Refused when the client has none: ${ATOOL.readOverrides} " +
+                    "lists the keys it rewords.",
+                objectSchema(*copyKey, required = copyKeyFields),
+                HttpMethod.POST, CPY.resetPath, (copyKeyFields + CPY.mode).toSet(),
+            ) { run, input -> run.call(HttpMethod.POST, CPY.resetPath, body = drafted(input, copyKeyFields)) },
+            AssistantTool(
+                ATOOL.setMenuItem,
+                "Renames, hides, or shows one item of the client's home menu, as a draft. A menu change changes what the " +
+                    "menu offers, not who may reach a page: hiding an item leaves its page open to whoever its access " +
+                    "allows, and showing one opens it to nobody new. '${MNU.visibility}' '${MNU.hide}' withdraws the " +
+                    "item; '${MNU.show}' offers it under '${MNU.condition}', which must be the condition of one of the " +
+                    "audiences ${ATOOL.readMenu} lists. Give a '${MNU.label}', a '${MNU.visibility}', or both. There is no " +
+                    "dry run: the save is checked as it is made.",
+                objectSchema(
+                    COV.itemId to stringSchema("The item's id, as ${ATOOL.readMenu} lists it."),
+                    MNU.label to stringSchema("The new label; absent leaves it."),
+                    MNU.visibility to stringSchema("'${MNU.hide}' or '${MNU.show}'; absent leaves it."),
+                    MNU.condition to stringSchema("For '${MNU.show}': an audience's condition, from ${ATOOL.readMenu}."),
+                    required = listOf(COV.itemId),
+                ),
+                HttpMethod.POST, MNU.setPath, setOf(COV.itemId, MNU.label, MNU.visibility, MNU.condition, CPY.mode),
+            ) { run, input ->
+                run.call(HttpMethod.POST, MNU.setPath, body = drafted(input, listOf(COV.itemId, MNU.label, MNU.visibility, MNU.condition)))
+            },
+            AssistantTool(
+                ATOOL.resetMenuItem,
+                "Puts one item of the client's home menu back as the platform (or the client's code) ships it, as a " +
+                    "draft, by removing the client's changes to it. Refused when the client has changed nothing of it.",
+                objectSchema(COV.itemId to stringSchema("The item's id, as ${ATOOL.readMenu} lists it."), required = listOf(COV.itemId)),
+                HttpMethod.POST, MNU.resetPath, setOf(COV.itemId, CPY.mode),
+            ) { run, input -> run.call(HttpMethod.POST, MNU.resetPath, body = drafted(input, listOf(COV.itemId))) },
+        )
+    }
 
     /**
      * `read_menu`'s answer (issue #1762) from the menu items [payload]: each item repeats the audiences a condition may be,
