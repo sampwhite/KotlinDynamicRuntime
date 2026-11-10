@@ -1646,6 +1646,8 @@ textarea.json-edit.json-field { min-height: 4.5rem; }
 .home-checklist li.done { color: var(--text-dim); }
 .home-checklist-mark { width: 1em; text-align: center; }
 .home-checklist li.done .home-checklist-mark { color: var(--accent); }
+/* Hide here, and where the list stays (issue #1757): the hint wraps under the link on a narrow screen. */
+.home-checklist-hide { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 8px; }
 /* Words for a screen reader alone, such as a checklist step's state, which the eye reads from its mark. */
 .visually-hidden {
     position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;

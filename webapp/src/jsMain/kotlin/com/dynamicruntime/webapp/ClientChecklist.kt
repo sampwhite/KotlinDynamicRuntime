@@ -14,6 +14,7 @@ import com.dynamicruntime.common.util.toOptStr
 import react.ChildrenBuilder
 import react.Key
 import react.dom.html.ReactHTML.a
+import react.dom.html.ReactHTML.div
 import react.dom.html.ReactHTML.li
 import react.dom.html.ReactHTML.span
 import react.dom.html.ReactHTML.ul
@@ -22,8 +23,17 @@ import web.cssom.ClassName
 /** A new client's checklist on Home (issue #1639): what the browser remembers of it. */
 @Suppress("ConstPropertyName")
 object CHKV {
-    /** The `localStorage` key, before the client's id, under which "Hide this checklist" is remembered. */
+    /** The `localStorage` key, before the client's id, under which hiding the list on Home is remembered. */
     const val hiddenKeyPrefix = "kdr.home.checklistHidden."
+
+    /**
+     * What Home's hide says beside it (issue #1757): the list is put away on Home only, and where it can be brought
+     * back from, so hiding it never looks like losing it.
+     */
+    const val hideNote = "It stays on your client's page, where you can bring it back to Home."
+
+    /** What the client page's Getting started panel offers while the list is hidden on Home (issue #1757). */
+    const val showOnHome = "Show on Home again"
 }
 
 /** The checklist's read (issue #1639): whose it is -- the sandbox's parent from inside it -- and each step's id and state. */
@@ -78,11 +88,24 @@ fun checklistSteps(read: ChecklistRead, assistantOffered: Boolean, assistantView
     return listOfNotNull(assistant) + read.steps.mapNotNull { (id, done) -> checklistStepOf(id, done, read.client) }
 }
 
-/** The `localStorage` key under which "Hide this checklist" is remembered for [client]. */
+/** The `localStorage` key under which hiding [client]'s checklist on Home is remembered. */
 fun checklistHiddenKey(client: String): String = CHKV.hiddenKeyPrefix + client
 
-/** Whether this browser was told to hide [client]'s checklist. */
+/**
+ * Whether this browser put [client]'s checklist away on Home: hidden there, or every step done. Home's alone (issue
+ * #1757): the client page's Getting started panel shows while a step is left, whatever this says.
+ */
 fun checklistHiddenHere(client: String): Boolean = localStorageGet(checklistHiddenKey(client), "the checklist's hide choice") == "true"
+
+/** Brings [client]'s checklist back to Home in this browser (issue #1757): what the client page's panel offers. */
+fun showChecklistOnHome(client: String) = localStorageRemove(checklistHiddenKey(client), "the checklist's hide choice")
+
+/**
+ * Whether the client page's Getting started panel offers to bring the list back to Home (issue #1757): while it is
+ * hidden there ([hiddenOnHome]) and a step is left ([stepsLeft]) -- once every step is done, there is nothing to bring
+ * back. Pure, and covered under `jsNodeTest`.
+ */
+fun showOnHomeOffered(hiddenOnHome: Boolean, stepsLeft: Boolean): Boolean = hiddenOnHome && stepsLeft
 
 /**
  * The new client's checklist, for Home's card (issue #1639), or null while it is read, when it cannot be, or when not
@@ -95,8 +118,9 @@ fun useClientChecklist(wanted: Boolean, decidedAt: Int): ChecklistRead? =
     }
 
 /**
- * The checklist card's body (issue #1639): each step, checked when done and linked when not, then "Hide this checklist".
- * The mark is drawn for the eye alone; a screen reader hears "Done" or "To do" before the step instead.
+ * The checklist card's body (issue #1639): each step, checked when done and linked when not, then **Hide here**, which
+ * says where the list stays and how it comes back ([CHKV.hideNote], issue #1757). The mark is drawn for the eye alone; a
+ * screen reader hears "Done" or "To do" before the step instead.
  */
 fun ChildrenBuilder.checklistCardBody(steps: List<ChecklistStep>, onHide: () -> Unit) {
     ul {
@@ -125,11 +149,18 @@ fun ChildrenBuilder.checklistCardBody(steps: List<ChecklistStep>, onHide: () -> 
             }
         }
     }
-    Button {
-        type = "link"
-        size = "small"
-        onClick = { onHide() }
-        +"Hide this checklist"
+    div {
+        className = ClassName("home-checklist-hide")
+        Button {
+            type = "link"
+            size = "small"
+            onClick = { onHide() }
+            +"Hide here"
+        }
+        span {
+            className = ClassName("type-hint")
+            +CHKV.hideNote
+        }
     }
 }
 

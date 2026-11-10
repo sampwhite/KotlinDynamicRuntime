@@ -260,12 +260,16 @@ val ClientsPage = FC<Props> {
     }
 
     // A self-serve client opens on what to do next (issue #1700): its checklist, read as Home's card reads it, with the
-    // workflow assistant's step where the menu offers the assistant. Not read once this browser put the checklist away.
+    // workflow assistant's step where the menu offers the assistant. Whether Home's card is hidden does not matter here
+    // (issue #1757): this panel is where the list stays, and where it is brought back to Home from.
     val nextStepsWanted = openId != null && across == false && clientOpensOnNextSteps(openId, acrossClients = false)
     val checklistOwner = openId?.let { sandboxParentOf(it) ?: it }
-    val checklistHidden = useMemo(checklistOwner) { checklistOwner != null && checklistHiddenHere(checklistOwner) }
+    // Clients brought back to Home since the page was drawn, so the offer goes at once.
+    var shownOnHome by useState(emptySet<String>())
+    val hiddenOnHome = useMemo(checklistOwner) { checklistOwner != null && checklistHiddenHere(checklistOwner) } &&
+        checklistOwner !in shownOnHome
     val assistantOffered = config?.menu.orEmpty().any { it.id == ASST.menuItem }
-    val wantsChecklist = nextStepsWanted && !checklistHidden
+    val wantsChecklist = nextStepsWanted
     val assistantView = useAssistantCardView(emptyList(), configAt, alsoWanted = wantsChecklist && assistantOffered)
     val nextSteps = useClientChecklist(wantsChecklist, configAt)?.let { checklistSteps(it, assistantOffered, assistantView) }
 
@@ -282,7 +286,14 @@ val ClientsPage = FC<Props> {
         openId != null -> clientDetail(
             openId, rows?.firstOrNull { it.clientId == openId }, definition, storedConfigs,
             detailError, detailNote, storedError, overrides, overridesError, overridesRefused, current.canSeeAllClients,
-            inPlace, pageCopy, nextSteps.takeIf { nextStepsWanted }, onChanged = bump,
+            inPlace, pageCopy, nextSteps.takeIf { nextStepsWanted }, hiddenOnHome,
+            showOnHome = {
+                checklistOwner?.let { owner ->
+                    showChecklistOnHome(owner)
+                    shownOnHome = shownOnHome + owner
+                }
+            },
+            onChanged = bump,
         )
         // The view across clients, and the listing, are the allClients administrator's: a client's own
         // administrator was shown their client above (issue #1082).
@@ -326,6 +337,10 @@ private fun ChildrenBuilder.clientDetail(
      * what the platform sets under More options.
      */
     nextSteps: List<ChecklistStep>?,
+    /** Whether this browser put the checklist away on Home (issue #1757), which the Getting started panel offers to undo. */
+    hiddenOnHome: Boolean,
+    /** Brings the checklist back to Home in this browser (issue #1757). */
+    showOnHome: () -> Unit,
     /** What a copy edit calls once it is live (issue #918): the page re-reads, and so does the shell. */
     onChanged: () -> Unit,
 ) {
@@ -437,6 +452,19 @@ private fun ChildrenBuilder.clientDetail(
                     +"A few steps make your client ready for the people who will use it. Each is checked off once it is done."
                 }
                 clientNextStepsBody(clientNextSteps(steps, inSandbox = sandboxParentOf(clientId) != null, formsDataShown = workflowsShown))
+                // Hidden on Home in this browser (issue #1757): the way back.
+                if (showOnHomeOffered(hiddenOnHome, stepsLeft = true)) {
+                    p {
+                        className = ClassName("type-hint")
+                        +"Hidden on Home in this browser. "
+                        Button {
+                            type = "link"
+                            size = "small"
+                            onClick = { showOnHome() }
+                            +CHKV.showOnHome
+                        }
+                    }
+                }
             }
         }
         panel(panelDefinition, "Definition", "") {

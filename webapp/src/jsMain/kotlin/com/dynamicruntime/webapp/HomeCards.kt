@@ -117,7 +117,7 @@ class HomeLiveReads(
     val checklist: List<ChecklistStep>,
     /** Whether this browser put the checklist away -- hidden, or done ([checklistHiddenHere]) -- or it is no one's here. */
     val checklistHidden: Boolean,
-    /** Puts the checklist away in this browser, remembering it ("Hide this checklist"). */
+    /** Puts the checklist away on Home in this browser, remembering it ("Hide here"). */
     val hideChecklist: () -> Unit,
 ) {
     /**
