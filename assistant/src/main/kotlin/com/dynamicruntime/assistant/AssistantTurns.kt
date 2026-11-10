@@ -62,6 +62,7 @@ object TURN {
  * **A worker** ([TurnRunner]) holds a lease on its turn, renewed at every step. A turn whose lease lapsed -- its node
  * stopped -- is marked interrupted by whoever next looks at the conversation ([recoverLapsed]).
  */
+@Suppress("ConstPropertyName")
 object AssistantTurns {
     /** Starts a turn for [text], in [conversationId] or a new conversation, for the person on [cxt] ([personOf]). */
     fun start(cxt: KdrCxt, service: AssistantService, conversationId: String?, clientMessageId: String, text: String): Map<String, Any?> {
@@ -429,7 +430,7 @@ class TurnRunner(@KdrPrivate val service: AssistantService, @KdrPrivate val cxt:
                 MSG.refusal -> {
                     if (response.content.isNotEmpty()) {
                         append(response.message)
-                        if (calls.isNotEmpty()) append(TurnRunner.answerAll(calls, "Not run: the model declined to go on."))
+                        if (calls.isNotEmpty()) append(answerAll(calls, "Not run: the model declined to go on."))
                     }
                     // A refusal stored in the history would meet the next request again: then this conversation ends.
                     if (response.content.isNotEmpty()) AssistantStore.markReadOnly(cxt, conversationId)
@@ -439,7 +440,7 @@ class TurnRunner(@KdrPrivate val service: AssistantService, @KdrPrivate val cxt:
                 MSG.toolUse -> {
                     append(response.message)
                     if (AssistantStore.turn(cxt, turnId)?.get(ATBL.cancelRequested) == true) {
-                        append(TurnRunner.answerAll(calls, "Not run: the administrator stopped the assistant."))
+                        append(answerAll(calls, "Not run: the administrator stopped the assistant."))
                         return end(ACNV.statusCanceled, "Stopped, as you asked.")
                     }
                     // Null when the turn's lease was given up part way: another node has answered for it.
@@ -447,7 +448,7 @@ class TurnRunner(@KdrPrivate val service: AssistantService, @KdrPrivate val cxt:
                 }
                 MSG.maxTokens -> {
                     if (response.content.isNotEmpty()) append(response.message)
-                    if (calls.isNotEmpty()) append(TurnRunner.answerAll(calls, "Not run: the answer was cut off before it was complete."))
+                    if (calls.isNotEmpty()) append(answerAll(calls, "Not run: the answer was cut off before it was complete."))
                     return end(ACNV.statusStopped, "The assistant's answer ran out of room. Ask it to go on, in smaller steps.")
                 }
                 MSG.pauseTurn -> if (response.content.isNotEmpty()) {
@@ -457,7 +458,7 @@ class TurnRunner(@KdrPrivate val service: AssistantService, @KdrPrivate val cxt:
                 else -> {
                     // `end_turn`, or a reason this code does not know: a call in such an answer is not run, but answered.
                     if (response.content.isNotEmpty()) append(response.message)
-                    if (calls.isNotEmpty()) append(TurnRunner.answerAll(calls, "Not run: the answer stopped (${response.stopReason})."))
+                    if (calls.isNotEmpty()) append(answerAll(calls, "Not run: the answer stopped (${response.stopReason})."))
                     return end(ACNV.statusDone, null)
                 }
             }
@@ -477,7 +478,7 @@ class TurnRunner(@KdrPrivate val service: AssistantService, @KdrPrivate val cxt:
             val id = call[TOOL.id].toString()
             if (failure != null) {
                 // Each call is answered with what happened to it: those not reached are not run, and say so.
-                results.add(TurnRunner.resultBlock(id, ToolResult("Not run: the assistant ran into a problem.", isError = true)))
+                results.add(resultBlock(id, ToolResult("Not run: the assistant ran into a problem.", isError = true)))
                 continue
             }
             try {
@@ -485,7 +486,7 @@ class TurnRunner(@KdrPrivate val service: AssistantService, @KdrPrivate val cxt:
                 if (!AssistantStore.recordProgress(cxt, turnId, progress, cxt.now() + TURN.leaseMinutes.minutes)) return null
             } catch (e: Exception) {
                 failure = e
-                results.add(TurnRunner.resultBlock(id, ToolResult("Not run: the assistant ran into a problem.", isError = true)))
+                results.add(resultBlock(id, ToolResult("Not run: the assistant ran into a problem.", isError = true)))
                 continue
             }
             val name = call[TOOL.name].toString()
@@ -497,7 +498,7 @@ class TurnRunner(@KdrPrivate val service: AssistantService, @KdrPrivate val cxt:
             } else if (result.isError) {
                 LogAssistant.info(cxt, "Turn $turnId: $name refused.")
             }
-            results.add(TurnRunner.resultBlock(id, result))
+            results.add(resultBlock(id, result))
         }
         toolRun.endStep()
         val answered = mapOf(MSG.role to MSG.user, MSG.content to results)
