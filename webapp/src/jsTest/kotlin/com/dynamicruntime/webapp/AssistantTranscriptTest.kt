@@ -8,6 +8,7 @@ import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.gedra.CCT
 import com.dynamicruntime.common.gedra.CFEP
 import com.dynamicruntime.common.gedra.CLD
+import com.dynamicruntime.common.gedra.DSV
 import com.dynamicruntime.common.gedra.GDF
 import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.gedra.GED
@@ -101,6 +102,12 @@ class AssistantTranscriptTest {
             lookedAt(ToolCall("x", ATOOL.viewWorkflow, mapOf(GDF.workflowId to "rsvp"), "{}", isError = false)),
         )
         assertEquals("Drafted the included traits", toolsLabel(listOf(ToolCall("t", ATOOL.setIncludedTraits, emptyMap(), "{}", false))))
+        // The reads of the client (issue #1762) that name what they read.
+        fun read(name: String, input: Map<String, Any?> = emptyMap()) = lookedAt(ToolCall("r", name, input, "{}", isError = false))
+        assertEquals("the copy files", read(ATOOL.readCopy))
+        assertEquals("copy `home`", read(ATOOL.readCopy, mapOf(ATOOL.file to "home")))
+        assertEquals("copy `home.fieldBounds`", read(ATOOL.readCopy, mapOf(ATOOL.file to "home", ATOOL.namespace to "fieldBounds")))
+        assertEquals("where `abstract` comes from", read(ATOOL.readDefinition, mapOf(DSV.slot to "kdr:traitDef", DSV.key to "abstract")))
     }
 
     @Test

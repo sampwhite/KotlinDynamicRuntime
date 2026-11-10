@@ -6,6 +6,7 @@ import com.dynamicruntime.common.assistant.ATOOL
 import com.dynamicruntime.common.gedra.CCT
 import com.dynamicruntime.common.gedra.CFEP
 import com.dynamicruntime.common.gedra.CLD
+import com.dynamicruntime.common.gedra.DSV
 import com.dynamicruntime.common.gedra.GDF
 import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.gedra.GED
@@ -136,6 +137,22 @@ fun lookedAt(call: ToolCall): String = when (call.name) {
     ATOOL.listTraits -> "traits"
     ATOOL.readCfacts -> "cfacts"
     ATOOL.viewWorkflow -> call.input.getOptStr(GDF.workflowId)?.let { "workflow `$it`" } ?: "the creation workflow"
+    // The reads of the client as its sandbox runs it (issue #1762).
+    ATOOL.readClient -> "the client's definition"
+    ATOOL.readMenu -> "the menu"
+    ATOOL.readCopy -> call.input.getOptStr(ATOOL.file)?.let { file ->
+        call.input.getOptStr(ATOOL.namespace)?.let { "copy `$file.$it`" } ?: "copy `$file`"
+    } ?: "the copy files"
+    ATOOL.readOverrides -> "the client's changes"
+    ATOOL.readFormsList -> "the forms list"
+    ATOOL.listReports -> "reports"
+    ATOOL.readReportPaths -> "report paths"
+    ATOOL.readWebAssets -> "web assets"
+    ATOOL.readFileRefs -> "file refs"
+    ATOOL.listDrafts -> "drafts"
+    ATOOL.readImpact -> "what publishing would do"
+    ATOOL.readChecklist -> "the getting-started steps"
+    ATOOL.readDefinition -> "where `${call.input.getOptStr(DSV.key).orEmpty()}` comes from"
     else -> "`${call.name}`"
 }
 

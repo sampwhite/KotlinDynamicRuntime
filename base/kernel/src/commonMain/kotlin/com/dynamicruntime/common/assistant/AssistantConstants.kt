@@ -228,7 +228,6 @@ object ABLK {
     // --- Block types ---
     const val text = "text"
     const val thinking = "thinking"
-    const val redactedThinking = "redacted_thinking"
     const val toolUse = "tool_use"
     const val toolResult = "tool_result"
 
@@ -256,6 +255,26 @@ object ATOOL {
     const val patchConfig = "patch_config"
     const val setIncludedTraits = "set_included_traits"
 
+    // The reads of the client as its sandbox runs it (issue #1762).
+    const val readClient = "read_client"
+    const val readMenu = "read_menu"
+    const val readCopy = "read_copy"
+    const val readOverrides = "read_overrides"
+    const val readFormsList = "read_forms_list"
+    const val listReports = "list_reports"
+    const val readReportPaths = "read_report_paths"
+    const val readWebAssets = "read_web_assets"
+    const val readFileRefs = "read_file_refs"
+    const val listDrafts = "list_drafts"
+    const val readImpact = "read_impact"
+    const val readChecklist = "read_checklist"
+    const val readDefinition = "read_definition"
+
     // A tool input that is not an endpoint's own field: the document `read_doc` reads.
     const val doc = "doc"
+
+    // `read_copy`'s inputs, which narrow its answer rather than being sent (issue #1762): a fragment file, and a namespace
+    // in it.
+    const val file = "file"
+    const val namespace = "namespace"
 }
