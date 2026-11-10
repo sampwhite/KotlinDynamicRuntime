@@ -96,7 +96,14 @@ was given while its text is unchanged, so pressing Send again is the same turn o
 A refusal is an answer, and the next send gets a new id.
 
 The open conversation rides the address as `cv` (`HP.conversation`), written with `replaceRoute`, so a reload reopens
-it. Choosing another conversation does not add a history entry.
+it. Choosing another conversation does not add a history entry. The tab remembers it too (issue #1754), in
+`sessionStorage` under `assistantConversationKey(client)` -- per client, the sandbox sharing its parent's, as the status
+names the parent from inside it -- so coming back to the page through the menu or Home, whose links name no
+conversation, reopens it. The page restores once, after the status and the list have both been read, and only when
+the address names none, reopening the remembered one while it is still in the person's list (`restoredConversation`);
+a new conversation is remembered as none. Writing waits for that restore, or the new conversation the page starts on
+would overwrite what it is about to read. Another tab keeps its own, and a browser refusing storage opens the page as
+before.
 
 **The operator's page**: whether this node can reach the model (provider, model, or why not), and a table of every
 client -- its switch, its monthly budget in dollars (its own, or the default), this month's use in dollars and as a

@@ -214,6 +214,20 @@ class AssistantTranscriptTest {
     }
 
     @Test
+    fun aTabComesBackToTheConversationItHadOpenWhileItIsStillTheirs() {
+        val listed = listOf(ConversationSummary("c1", "Hi", false, false, null), ConversationSummary("c2", "Later", false, true, null))
+        assertEquals("c1", restoredConversation("c1", listed))
+        // A read-only one is still theirs to read.
+        assertEquals("c2", restoredConversation("c2", listed))
+        // Nothing remembered, a new conversation remembered, or one no longer in the list: a new conversation.
+        assertNull(restoredConversation(null, listed))
+        assertNull(restoredConversation("", listed))
+        assertNull(restoredConversation("gone", listed))
+        // Each client keeps its own.
+        assertTrue(assistantConversationKey("free_shop1") != assistantConversationKey("free_shop2"))
+    }
+
+    @Test
     fun thePageShowsTheFaceItsStatusCallsFor() {
         fun status(on: Boolean = false, offered: Boolean = false, inSandbox: Boolean = false) = parseAssistantStatus(
             mapOf(ASST.client to "free_shop1", ACNV.on to on, ACNV.offered to offered, ACNV.inSandbox to inSandbox),

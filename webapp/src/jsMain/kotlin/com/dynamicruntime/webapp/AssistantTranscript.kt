@@ -232,6 +232,21 @@ fun assistantExamples(definedInCode: Boolean): List<String> = listOfNotNull(
 fun showsExamples(conversationId: String?, conversations: List<ConversationSummary>?, text: String, blocked: String?): Boolean =
     conversationId == null && conversations?.isEmpty() == true && text.isBlank() && blocked == null
 
+/**
+ * Where a browser tab keeps the conversation it had open on the assistant page for [client] (issue #1754), in
+ * `sessionStorage`, so coming back to the page in the same tab reopens it. Per client, since a person may administer
+ * several; the status names the sandbox's parent from inside it, so the sandbox shares its client's.
+ */
+fun assistantConversationKey(client: String): String = "kdrAssistantConversation.$client"
+
+/**
+ * The conversation to reopen from what the tab [remembered] (issue #1754): it, when it is one of the person's
+ * [listed] conversations still; null -- a new conversation -- when nothing is remembered, a new one was, or it is gone.
+ * Pure, and covered under `jsNodeTest`.
+ */
+fun restoredConversation(remembered: String?, listed: List<ConversationSummary>): String? =
+    remembered?.takeIf { r -> r.isNotBlank() && listed.any { it.conversationId == r } }
+
 /** How often the page polls while it does, in milliseconds. */
 const val assistantPollMs = 1_500
 

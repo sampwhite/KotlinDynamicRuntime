@@ -194,6 +194,27 @@ val AssistantPage = FC<Props> {
         conversationId = id
     }
 
+    // The conversation this tab had open, reopened on coming back to the page (issue #1754), once the status says whose
+    // client this is and the list says which conversations are still the person's. Only when the address names none,
+    // and only once: after that, what the person opens is theirs to choose.
+    val restored = useRef(routeParams()[HP.conversation] != null)
+    useEffect(status?.client, conversations) {
+        val client = status?.client ?: return@useEffect
+        val listed = conversations ?: return@useEffect
+        if (restored.current == true) return@useEffect
+        restored.current = true
+        if (conversationId == null) {
+            restoredConversation(sessionStorageGet(assistantConversationKey(client)), listed)?.let { open(it) }
+        }
+    }
+    // And what is open is remembered for the tab, a new conversation as none -- not before the restore above, which it
+    // would otherwise overwrite with the new conversation the page starts on.
+    useEffect(conversationId, status?.client) {
+        val client = status?.client ?: return@useEffect
+        if (restored.current != true) return@useEffect
+        sessionStorageSet(assistantConversationKey(client), conversationId.orEmpty())
+    }
+
     fun send() {
         val message = text.trim()
         if (message.isEmpty()) return
