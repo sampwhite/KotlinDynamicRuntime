@@ -5,6 +5,7 @@ import com.dynamicruntime.common.gedra.CPY
 import com.dynamicruntime.common.gedra.report.RCR
 import com.dynamicruntime.common.gedra.report.RDEF
 import com.dynamicruntime.common.gedra.report.RRUN
+import com.dynamicruntime.common.gedra.report.ReportChartKind
 import com.dynamicruntime.common.gedra.report.ReportCombine
 import com.dynamicruntime.common.gedra.report.ReportKind
 import com.dynamicruntime.common.gedra.report.ReportPathGroupKind
@@ -127,6 +128,10 @@ data class ReportDraft(
     val groupBy: Int? = null,
     /** Whether a totals report keeps a daily snapshot. */
     val history: Boolean = false,
+    /** The chart a totals report opens on (issue #1773); null for the table alone. */
+    val chart: ReportChartKind? = null,
+    /** The column the chart measures, by its [ReportColumnDraft.id]; null for the count of forms. */
+    val chartMeasure: Int? = null,
 )
 
 /** How [column]'s value reads, after its pick: a count is a number, anything else what its path holds. */
@@ -212,8 +217,43 @@ fun ReportDraft.withoutColumn(id: Int): ReportDraft = copy(columns = columns.fil
 fun ReportDraft.withShape(shape: ReportShape): ReportDraft =
     copy(shape = shape, groupBy = if (shape == ReportShape.totals) groupBy ?: groupableColumns(this).firstOrNull()?.id else null)
 
-/** What is wrong with [draft], said as what to do; empty when it can be made. */
-fun reportDraftProblems(draft: ReportDraft): List<String> = buildList {
+/**
+ * What a totals report's chart may measure (issue #1773): exactly what the report's Grouped view will offer
+ * ([reportMeasures], the rule its binding holds a chart to, issue #1771), and worded the same, over the draft's columns
+ * as the report will have them -- each keyed by its [ReportColumnDraft.id], the count of forms by [RRUN.count]. Only the
+ * count for a row per form, which sends no rollups. [catalog] says what each path holds, so what a column's rollup
+ * gives; the panel works this out once per render and hands it to [reportDraftProblems] and [reportCreateRequest].
+ */
+fun reportDraftMeasures(draft: ReportDraft, catalog: ReportPathCatalogView?): List<ReportMeasure> {
+    val totals = draft.shape == ReportShape.totals
+    val columns = if (!totals) emptyList() else draft.columns.map { c ->
+        val path = catalog?.path(c.path)
+        ReportColumnInfo(
+            c.id.toString(), c.label.trim().ifEmpty { "(no heading)" }, c.path, reportColumnKind(c, path).name,
+            (c.pick?.combine ?: ReportCombine.first).name, c.rollup?.name, path?.multiValued == true,
+        )
+    }
+    return reportMeasures(columns, listOfNotNull(draft.groupBy?.toString()))
+}
+
+/** The measure [draft]'s chart is of, among [measures] ([reportDraftMeasures]): the column it names, else the count. */
+fun reportDraftMeasure(draft: ReportDraft, measures: List<ReportMeasure>): ReportMeasure =
+    measures.firstOrNull { it.key == draft.chartMeasure?.toString() } ?: measures.first()
+
+/**
+ * This draft with its chart's measure forgotten once that column may no longer be measured ([measures], from
+ * [reportDraftMeasures]) -- removed, grouped by, or rolled up to something not a number -- so the chart counts forms
+ * from then on, as its Of shows, rather than going back to the column unasked when it qualifies again. The panel applies
+ * it to every change.
+ */
+fun ReportDraft.withChartMeasureSettled(measures: List<ReportMeasure>): ReportDraft =
+    if (chartMeasure == null || measures.any { it.key == chartMeasure.toString() }) this else copy(chartMeasure = null)
+
+/**
+ * What is wrong with [draft], said as what to do; empty when it can be made. [measures] is what its chart may measure
+ * ([reportDraftMeasures]).
+ */
+fun reportDraftProblems(draft: ReportDraft, measures: List<ReportMeasure>): List<String> = buildList {
     if (draft.name.isBlank()) add("Give the report a name.")
     if (draft.columns.isEmpty()) add("Add at least one column.")
     val headings = draft.columns.map { it.label.trim() }
@@ -227,17 +267,26 @@ fun reportDraftProblems(draft: ReportDraft): List<String> = buildList {
     if (draft.shape == ReportShape.totals && draft.columns.isNotEmpty() && draft.columns.none { it.id == draft.groupBy }) {
         add("Choose the column to group by.")
     }
+    if (draft.shape == ReportShape.totals && draft.chart == ReportChartKind.pie && !reportDraftMeasure(draft, measures).additive) {
+        add("A pie shows shares of a whole: chart the forms, or a column combined by its total or how many.")
+    }
 }
 
 /**
  * The create's request for [draft] -- [client] when the caller names one, and how its page told them it takes effect,
- * [expected]. Only a totals report sends a grouping, rollups (but not on the grouped-by column), and history.
+ * [expected]. Only a totals report sends a grouping, rollups (but not on the grouped-by column), history, and a chart:
+ * its kind, and the column it measures among [measures] ([reportDraftMeasures]) marked [RCR.charted] -- none for the
+ * count of forms.
  */
-fun reportCreateRequest(client: String?, draft: ReportDraft, expected: String): Map<String, Any?> = buildMap {
+fun reportCreateRequest(
+    client: String?, draft: ReportDraft, expected: String, measures: List<ReportMeasure>,
+): Map<String, Any?> = buildMap {
     client?.let { put(RRUN.client, it) }
     put(RDEF.label, draft.name.trim())
     draft.description.trim().takeIf { it.isNotEmpty() }?.let { put(RDEF.description, it) }
     val totals = draft.shape == ReportShape.totals
+    val chart = draft.chart.takeIf { totals }
+    val measured = chart?.let { reportDraftMeasure(draft, measures).key.toIntOrNull() }
     put(
         RDEF.columns,
         draft.columns.map { c ->
@@ -250,10 +299,12 @@ fun reportCreateRequest(client: String?, draft: ReportDraft, expected: String): 
                 if (grouped) put(RCR.groupedBy, true)
                 if (totals && !grouped) c.rollup?.let { put(RDEF.rollup, it.name) }
                 if (c.mustHaveValue) put(RCR.mustHaveValue, true)
+                if (c.id == measured) put(RCR.charted, true)
             }
         },
     )
     if (totals && draft.history) put(RDEF.history, true)
+    chart?.let { put(RDEF.chart, it.name) }
     put(CPY.mode, expected)
 }
 

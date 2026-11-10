@@ -23,7 +23,8 @@ A report reads the client's forms in one of three views.
 
 - **A row per form** lists each form, with a column for each value chosen.
 - **Totals by a column** puts together the forms that share the value of one column, and combines each other column
-  over them: a number's total, a date's latest. The page's **Per form** view still lists the forms one by one.
+  over them: a number's total, a date's latest. The page's **Per form** view still lists the forms one by one. It
+  may open on a **chart** of its groups, as bars or a pie, which anyone viewing it can change.
 
 The columns are picked from what the client's forms hold: facts about the form itself, the fields of each of its
 traits, and where a form stands in each workflow. A trait that keeps one entry per key -- a note a year, say -- holds

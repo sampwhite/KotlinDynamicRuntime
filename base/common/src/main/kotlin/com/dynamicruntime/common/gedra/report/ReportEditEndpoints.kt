@@ -113,14 +113,20 @@ internal fun SchModuleBuilder.reportEditEndpoints() {
                 RDEF.columns,
                 "The columns, in the order shown. Each has `${RDEF.label}` (its heading) and `${RDEF.path}` (from the " +
                     "paths read), and optionally `${RDEF.combine}`, `${RDEF.rollup}`, `${RCR.key}` (the key values naming " +
-                    "one entry of a keyed trait), `${RCR.groupedBy}` (a totals report groups by it), and " +
-                    "`${RCR.mustHaveValue}` (a form appears only with a value in it).",
+                    "one entry of a keyed trait), `${RCR.groupedBy}` (a totals report groups by it), " +
+                    "`${RCR.mustHaveValue}` (a form appears only with a value in it), and `${RCR.charted}` (the " +
+                    "report's chart measures it).",
                 required = true,
             ) {
                 type = SCT.array
                 items { type = SCT.kObject }
             }
             field(RDEF.history, "Whether the nightly job keeps a snapshot of the report's grouped run.") { type = SCT.boolean }
+            field(
+                RDEF.chart,
+                "The chart a totals report's grouped run opens on (issue #1773), measuring the column marked " +
+                    "`${RCR.charted}`, or the count of forms when none is; absent for the table alone.",
+            ) { options(ReportChartKind.entries) }
             expectedModeField()
         },
     ) { c, request ->

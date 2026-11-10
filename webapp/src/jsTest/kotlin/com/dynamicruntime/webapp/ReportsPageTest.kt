@@ -489,6 +489,14 @@ class ReportCreateTest {
     private val minutes = catalog.path("form.talk.minutes")!!
     private val note = catalog.path("form.yearly[*].note")!!
 
+    /** What the panel works out for [draft] once a render, and hands on: its chart's measures, over this catalog. */
+    private fun measuresOf(draft: ReportDraft) = reportDraftMeasures(draft, catalog)
+    private fun measureOf(draft: ReportDraft) = reportDraftMeasure(draft, measuresOf(draft))
+    private fun problems(draft: ReportDraft) = reportDraftProblems(draft, measuresOf(draft))
+    private fun request(draft: ReportDraft, client: String? = null, mode: String = EDM.live) =
+        reportCreateRequest(client, draft, mode, measuresOf(draft))
+    private fun ReportDraft.settled() = withChartMeasureSettled(measuresOf(this))
+
     @Test
     fun readsThePathsBySource() {
         assertEquals(listOf("The form", "Talk", "Yearly"), catalog.groups.map { it.label })
@@ -542,14 +550,14 @@ class ReportCreateTest {
 
     @Test
     fun saysWhatIsWrongWithADraft() {
-        assertEquals(listOf("Give the report a name.", "Add at least one column."), reportDraftProblems(ReportDraft()))
+        assertEquals(listOf("Give the report a name.", "Add at least one column."), problems(ReportDraft()))
         val twice = ReportDraft(name = "R").withColumn(newReportColumn(1, minutes)).withColumn(newReportColumn(2, minutes))
-        assertEquals(listOf("Two columns are headed “Minutes”; give each its own."), reportDraftProblems(twice))
+        assertEquals(listOf("Two columns are headed “Minutes”; give each its own."), problems(twice))
         val keyed = ReportDraft(name = "R").withColumn(newReportColumn(1, note).withPick(ValuePick.byKey, note))
-        assertEquals(1, reportDraftProblems(keyed).size)
-        assertTrue(reportDraftProblems(keyed).single().startsWith("Say which entry “Note” shows"))
+        assertEquals(1, problems(keyed).size)
+        assertTrue(problems(keyed).single().startsWith("Say which entry “Note” shows"))
         val listOnly = ReportDraft(name = "R").withShape(ReportShape.totals).withColumn(newReportColumn(1, note))
-        assertEquals(listOf("Choose the column to group by."), reportDraftProblems(listOnly))
+        assertEquals(listOf("Choose the column to group by."), problems(listOnly))
     }
 
     @Test
@@ -560,13 +568,13 @@ class ReportCreateTest {
             .withColumn(newReportColumn(3, note).withPick(ValuePick.byKey, note).copy(key = listOf(" 2024 "), label = "2024"))
             .withShape(ReportShape.totals)
             .copy(history = true)
-        val request = reportCreateRequest(null, draft, EDM.live)
-        assertFalse(RRUN.client in request)
-        assertFalse(RDEF.description in request)
-        assertEquals("Talks by level", request[RDEF.label])
-        assertEquals(true, request[RDEF.history])
-        assertEquals(EDM.live, request[CPY.mode])
-        val columns = request[RDEF.columns].toJsonListOfMaps()
+        val sent = request(draft)
+        assertFalse(RRUN.client in sent)
+        assertFalse(RDEF.description in sent)
+        assertEquals("Talks by level", sent[RDEF.label])
+        assertEquals(true, sent[RDEF.history])
+        assertEquals(EDM.live, sent[CPY.mode])
+        val columns = sent[RDEF.columns].toJsonListOfMaps()
         // The grouped-by column carries no rollup; a key is sent for the server to write into the path.
         assertEquals(mapOf(RDEF.label to "Level", RDEF.path to "form.talk.level", RCR.groupedBy to true), columns[0])
         assertEquals(
@@ -575,10 +583,62 @@ class ReportCreateTest {
         )
         assertEquals(mapOf(RDEF.label to "2024", RDEF.path to "form.yearly[*].note", RCR.key to listOf("2024")), columns[2])
         // A row per form sends no grouping, rollups or history.
-        val perForm = reportCreateRequest("acme", draft.withShape(ReportShape.perForm), EDM.draft)
+        val perForm = request(draft.withShape(ReportShape.perForm), "acme", EDM.draft)
         assertEquals("acme", perForm[RRUN.client])
         assertFalse(RDEF.history in perForm)
         assertTrue(perForm[RDEF.columns].toJsonListOfMaps().none { RDEF.rollup in it || RCR.groupedBy in it })
+    }
+
+    @Test
+    fun aTotalsReportsChartMeasuresTheFormsOrANumericRollupAndMarksItsColumn() {
+        val created = newReportColumn(3, catalog.path("meta.createdAt")!!)
+        val draft = ReportDraft(name = "Talks")
+            .withShape(ReportShape.totals)
+            .withColumn(newReportColumn(1, catalog.path("form.talk.level")!!))
+            .withColumn(newReportColumn(2, minutes))
+            .withColumn(created)
+        // The forms, then the minutes' total; not the grouped-by level, nor the latest date, which is not a number. Worded
+        // as the Grouped view words the same measure on the report this makes (`reportMeasures`).
+        assertEquals(ReportCombine.max, created.rollup)
+        val measures = reportDraftMeasures(draft, catalog)
+        assertEquals(listOf(RRUN.count to "Forms", "2" to "Minutes (sum)"), measures.map { it.key to it.label })
+        assertTrue(measures.all { it.additive })
+        // No chart asked for sends none.
+        assertFalse(RDEF.chart in request(draft))
+
+        val pie = draft.copy(chart = ReportChartKind.pie, chartMeasure = 2)
+        assertEquals(ReportChartKind.pie.name, request(pie)[RDEF.chart])
+        assertEquals(listOf(null, true, null), request(pie)[RDEF.columns].toJsonListOfMaps().map { it[RCR.charted] })
+        assertEquals(emptyList(), problems(pie))
+
+        // An average adds up to nothing: offered for a bar, a problem for a pie.
+        val averaged = pie.withColumnChanged(2) { it.copy(rollup = ReportCombine.avg) }
+        assertEquals("Minutes (avg)", measureOf(averaged).label)
+        assertFalse(measureOf(averaged).additive)
+        assertEquals(
+            listOf("A pie shows shares of a whole: chart the forms, or a column combined by its total or how many."),
+            problems(averaged),
+        )
+        assertEquals(emptyList(), problems(averaged.copy(chart = ReportChartKind.bar)))
+
+        // A measured column that can no longer be measured -- removed, grouped by, no longer rolled up -- leaves the chart
+        // counting forms, and no column is marked.
+        val dated = pie.withColumnChanged(2) { it.copy(rollup = null) }
+        for (gone in listOf(pie.withoutColumn(2), pie.copy(groupBy = 2), dated)) {
+            assertEquals(RRUN.count, measureOf(gone).key)
+            assertTrue(request(gone)[RDEF.columns].toJsonListOfMaps().none { RCR.charted in it })
+        }
+        // Settled, the draft forgets it, so grouping by the level again does not bring the minutes back unasked.
+        val regrouped = pie.copy(groupBy = 2).settled().copy(groupBy = 1).settled()
+        assertNull(regrouped.chartMeasure)
+        assertEquals(RRUN.count, measureOf(regrouped).key)
+        // One that can still be measured is kept.
+        assertEquals(2, pie.settled().chartMeasure)
+        // A row per form has no groups to chart, and sends none.
+        val perForm = request(pie.withShape(ReportShape.perForm))
+        assertFalse(RDEF.chart in perForm)
+        assertTrue(perForm[RDEF.columns].toJsonListOfMaps().none { RCR.charted in it })
+        assertEquals(listOf(RRUN.count), reportDraftMeasures(pie.withShape(ReportShape.perForm), catalog).map { it.key })
     }
 
     @Test

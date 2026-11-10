@@ -249,6 +249,9 @@ the client stores, made there or written in the bundle editor.
   or, for a keyed trait, one entry by its key, which makes a positional selector (`form.sample:yearly[2024].note`).
 - **Must have a value**, per column (the report's `excludeEmpty`), and for a totals report **Keep a daily snapshot**
   (`history`).
+- **A chart**, for a totals report (issue #1773): the bar or pie its Grouped view opens on (the report's `chart`; see
+  *Charts*), of the forms or a column rolled up to a number, a pie only of a count or a sum. The request names the kind
+  as `chart` and marks the measured column `charted`, since the server makes the column ids.
 
 **The page does not build paths.** `GET /clientAdmin/report/paths` lists every path a column may read for the
 client, each bound as the configuration load binds a report (`ReportService.scopeFor`, `bindReportPath`), with its
@@ -337,7 +340,8 @@ The checks, when the report binds:
 
 The reports listing carries each report's chart (`chart`); the run does not. The webapp's Reports page draws it above
 the Grouped view's table (#1772), and the viewer may choose another kind or measure, kept in the page's address; the
-`kdr-webapp-pages` skill describes it (`reports-page.md`).
+`kdr-webapp-pages` skill describes it (`reports-page.md`). The page's New report offers a chart too (#1773; see
+*Making a report*).
 
 ## Samples
 
