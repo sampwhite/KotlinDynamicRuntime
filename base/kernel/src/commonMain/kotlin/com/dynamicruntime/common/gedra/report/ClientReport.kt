@@ -42,8 +42,7 @@ object RDEF {
     const val combine = "combine"
     const val rollup = "rollup"
 
-    /** A chart's fields (issue #1771): its kind, and the column it measures. */
-    const val chartKind = "kind"
+    /** The column a chart measures (issue #1771); its kind is [kind], as a column's is. */
     const val measure = "measure"
 }
 
@@ -65,7 +64,7 @@ enum class ReportChartKind {
  */
 class ReportChart(val kind: ReportChartKind, val measure: String? = null) : JsonMappable {
     override fun toJsonMap(): Map<String, Any?> = buildMap {
-        put(RDEF.chartKind, kind.name)
+        put(RDEF.kind, kind.name)
         measure?.let { put(RDEF.measure, it) }
     }
 }
@@ -185,7 +184,7 @@ object ReportDefSchema {
         type(RDEF.chartType) {
             type = SCT.kObject
             description = "The chart a report's grouped run opens on: a bar or a slice per group."
-            property(RDEF.chartKind, "The kind of chart: a bar per group, or a pie of the groups' shares.", required = true) {
+            property(RDEF.kind, "The kind of chart: a bar per group, or a pie of the groups' shares.", required = true) {
                 options(ReportChartKind.entries)
             }
             property(
@@ -267,8 +266,10 @@ fun clientReportResult(cxt: KdrCxtBase, raw: Map<String, Any?>): Parsed<ClientRe
                 groupBy = m[RDEF.groupBy].toJsonListOrEmpty().mapNotNull { it.toOptStr() },
                 excludeEmpty = m[RDEF.excludeEmpty].toJsonListOrEmpty().mapNotNull { it.toOptStr() },
                 history = m[RDEF.history] == true,
-                chart = m[RDEF.chart]?.toJsonMapOrEmpty()?.let { c ->
-                    enumOrNull(ReportChartKind.entries, c[RDEF.chartKind])?.let { ReportChart(it, c[RDEF.measure].toOptStr()) }
+                // The schema requires a chart's kind and holds it to the closed set, so a chart present has one.
+                chart = m[RDEF.chart]?.let { raw ->
+                    val c = raw.toJsonMapOrEmpty()
+                    enumOrNull(ReportChartKind.entries, c[RDEF.kind])?.let { ReportChart(it, c[RDEF.measure].toOptStr()) }
                 },
                 comment = m[SCH.dComment].toOptStr(),
             ),

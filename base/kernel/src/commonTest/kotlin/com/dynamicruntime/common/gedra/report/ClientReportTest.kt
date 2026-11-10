@@ -44,7 +44,7 @@ class ClientReportTest {
         assertNull(parseClientReport(cxt, built()).chart)
 
         val pie = built { chart(ReportChartKind.pie) }
-        assertEquals(mapOf(RDEF.chartKind to ReportChartKind.pie.name), pie[RDEF.chart])
+        assertEquals(mapOf(RDEF.kind to ReportChartKind.pie.name), pie[RDEF.chart])
         val bar = built { chart(ReportChartKind.bar, measure = "total") }
         val report = parseClientReport(cxt, bar)
         assertEquals(ReportChartKind.bar, report.chart?.kind)
@@ -52,10 +52,10 @@ class ClientReportTest {
         assertEquals(bar, report.toJsonMap())
 
         // The kind is a closed set, and a chart must say which.
-        val unknown = built() + (RDEF.chart to mapOf(RDEF.chartKind to "donut"))
+        val unknown = built() + (RDEF.chart to mapOf(RDEF.kind to "donut"))
         assertTrue(problem(unknown).contains(RDEF.chart), problem(unknown))
         val noKind = built() + (RDEF.chart to mapOf(RDEF.measure to "total"))
-        assertTrue(problem(noKind).contains(RDEF.chartKind), problem(noKind))
+        assertTrue(problem(noKind).contains(RDEF.kind), problem(noKind))
     }
 
     /** A report takes a `$comment` (issue #1135), kept through the parse; a column does not, and says where one goes. */

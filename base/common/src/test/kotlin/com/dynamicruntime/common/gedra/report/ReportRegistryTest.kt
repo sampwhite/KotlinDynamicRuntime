@@ -16,6 +16,7 @@ import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.gedra.supportedTraits
 import com.dynamicruntime.common.schema.SCT
+import com.dynamicruntime.common.schema.SchType
 import com.dynamicruntime.common.schema.parseSchemaTypes
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
@@ -53,19 +54,25 @@ class ReportRegistryTest : StringSpec({
         enabledEnvironments = setOf(ENV.local),
     )
 
-    fun scopeOf(client: String?): ReportScope = ReportScope(
+    /** [client]'s scope -- or the global one, for null -- over the configs of [from], whose compiled types are [fromTypes]. */
+    fun scopeOver(from: GedraConfigCollector, fromTypes: Map<String, SchType>, client: String?): ReportScope = ReportScope(
         ReportService.formTraitsOf(
-            if (client == null) collector.traitsFor(GID.globalClient) else supportedTraits(collector, client, acme, emptySet()),
+            if (client == null) from.traitsFor(GID.globalClient) else supportedTraits(from, client, acme, emptySet()),
         ),
-        types,
+        fromTypes,
         emptyMap(),
     )
 
-    /** The registries, with every problem captured as a trial captures them rather than refusing. */
-    fun captured(): Pair<ReportRegistries, List<GedraConfigIssue>> {
+    fun scopeOf(client: String?): ReportScope = scopeOver(collector, types, client)
+
+    /** The registries over [from], with every problem captured as a trial captures them rather than refusing. */
+    fun captured(
+        from: GedraConfigCollector = collector,
+        fromTypes: Map<String, SchType> = types,
+    ): Pair<ReportRegistries, List<GedraConfigIssue>> {
         val capture = mutableListOf<GedraConfigIssue>()
         val tcxt = cxt.mkSubContext("trial", "acme").also { it.locals[GCFG.trialCaptureKey] = capture }
-        val registries = buildReportRegistries(tcxt, collector, mapOf("acme" to acme), ::scopeOf, mutableListOf())
+        val registries = buildReportRegistries(tcxt, from, mapOf("acme" to acme), { scopeOver(from, fromTypes, it) }, mutableListOf())
         return registries to capture
     }
 
@@ -130,17 +137,7 @@ class ReportRegistryTest : StringSpec({
             }
         }
         val chartCollector = GedraConfigCollector().apply { add(cxt, charted) }
-        val chartTypes = parseSchemaTypes(chartCollector.defs())
-        fun chartScope(client: String?): ReportScope = ReportScope(
-            ReportService.formTraitsOf(
-                if (client == null) chartCollector.traitsFor(GID.globalClient) else supportedTraits(chartCollector, client, acme, emptySet()),
-            ),
-            chartTypes,
-            emptyMap(),
-        )
-        val capture = mutableListOf<GedraConfigIssue>()
-        val tcxt = cxt.mkSubContext("trial", "acme").also { it.locals[GCFG.trialCaptureKey] = capture }
-        val registries = buildReportRegistries(tcxt, chartCollector, mapOf("acme" to acme), ::chartScope, mutableListOf())
+        val (registries, capture) = captured(chartCollector, parseSchemaTypes(chartCollector.defs()))
         registries.forClient("acme").reports.keys.toList() shouldContainExactly listOf("byAuditor")
         registries.forClient("acme").report("byAuditor").shouldNotBeNull().bound.report.chart?.kind shouldBe ReportChartKind.pie
         capture.map { it.elementId } shouldContainExactly listOf("averages")

@@ -114,9 +114,9 @@ class ReportEndpointTest : StringSpec({
         report[RRUN.groupBy] shouldBe listOf("auditor")
         report[RRUN.configName] shouldBe "${SC.acme}Client"
         // The chart its grouped run opens on (issue #1771): a pie of the count, so no measure is named.
-        report[RRUN.chart] shouldBe mapOf(RDEF.chartKind to ReportChartKind.pie.name)
+        report[RRUN.chart] shouldBe mapOf(RDEF.kind to ReportChartKind.pie.name)
         itemsOf(env).single { it[RRUN.reportId] == SC.expensesByYear }[RRUN.chart] shouldBe
-            mapOf(RDEF.chartKind to ReportChartKind.bar.name, RDEF.measure to "total")
+            mapOf(RDEF.kind to ReportChartKind.bar.name, RDEF.measure to "total")
         itemsOf(env).single { it[RRUN.reportId] == SC.formRoster }[RRUN.chart] shouldBe null
         summaryOf(env)[RRUN.client] shouldBe SC.acme
         summaryOf(env)[RRUN.issues].toJsonListOrEmpty().shouldBeEmpty()
