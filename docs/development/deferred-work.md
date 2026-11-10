@@ -1093,6 +1093,18 @@ limit is the spend limit on the deployment's Anthropic organization, outside the
   call, and shown in the operator's listing beside the month's total. Worth it once several clients are on, or one
   operator's mistyped budget could cost more than the deployment means to spend.
 
+## When a deployment keeps its assistant conversations for good
+
+A person deletes their own workflow assistant conversations (issue #1755): the transcript and what they wrote go, and
+the turn records stay, with what each used, since the month's allowance is reckoned from them
+([`workflow-assistant.md`](../design/workflow-assistant.md)). Nothing removes either by age. A reference deployment
+clears all its data monthly, so this waits for a deployment that keeps its data.
+
+- **Retention by age** *(from #1755).* A daily job that deletes a conversation nobody has written in for a period a
+  deployment sets (a year, say), as a person's delete does, and turn records once they are older than the usage
+  reports read (13 months, as first proposed). Worth it once a deployment keeps its data for good, or its privacy
+  policy names a period.
+
 ## When a client wants to change its home cards without writing configuration
 
 Home's cards are a registered UiBlock (`homeCardsBlock`, issue #1636), so a client hides or rewords one with an overlay

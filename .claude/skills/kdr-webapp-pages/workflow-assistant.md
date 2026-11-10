@@ -51,11 +51,13 @@ Panels, by the rules of "Page structure" in `webapp/CLAUDE.md`:
    `ClientsApi.setSandbox`, then bumps the refresh, so the app bar offers the sandbox too. A client defined in code
    takes the same switch (issue #1677), which stores the flag as an overlay of its definition; one whose code turns its
    sandbox on already has it, so the panel is not drawn.
-2. **Conversation** (live): the conversation picker (the person's conversations, and "New conversation"), the
-   transcript, the text box, **Send**, and **Stop** while a turn runs. Ctrl or Cmd+Enter sends. The send is blocked,
-   saying why, when the conversation is read-only, the month's allowance is used up, or there is no sandbox. "What is
-   sent to Anthropic" is a `Disclosure` beside the first message of a conversation, the status's `dataNotice`. The
-   last turn's ending, when it did not run to its end, is said under the transcript (`turnEndText`).
+2. **Conversation** (live): the conversation picker (the person's conversations, and "New conversation", and beside an
+   open one, **Delete…**, a danger link behind a `Popconfirm` saying the words cannot be brought back and what it used
+   still counts, disabled while a turn runs: it moves the page to a new conversation and reads the list again, issue
+   #1755), the transcript, the text box, **Send**, and **Stop** while a turn runs. Ctrl or Cmd+Enter sends. The send
+   is blocked, saying why, when the conversation is read-only, the month's allowance is used up, or there is no
+   sandbox. "What is sent to Anthropic" is a `Disclosure` beside the first message of a conversation, the status's
+   `dataNotice`. The last turn's ending, when it did not run to its end, is said under the transcript (`turnEndText`).
 3. **Drafts from this conversation** (view): each bundle a `patch_config` write made, at its latest version, with the
    workflows its edits added or changed, and the included traits when `set_included_traits` succeeded (`draftsOf`). A
    dry run or a refused write makes no draft. **Try it in the sandbox** opens the sandbox (unless already in it) at the

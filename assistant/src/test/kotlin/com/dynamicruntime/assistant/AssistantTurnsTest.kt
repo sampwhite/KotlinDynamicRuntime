@@ -67,6 +67,7 @@ import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptInstantOrNull
 import com.dynamicruntime.common.util.toOptLong
+import com.dynamicruntime.common.util.toOptStr
 import com.dynamicruntime.kdn.Startup
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldBeEmpty
@@ -413,6 +414,48 @@ class AssistantTurnsTest : StringSpec({
         historyHolds(messagesOf(admin, conversationId))
     }
 
+    "a person deletes a conversation of their own: its transcript and their words go, what its turns used stays" {
+        val admin = clientWithAssistant(cxt, "asstdelete")
+        model.add({ ScriptedModel.textResponse("A review of each memo, then.") })
+        val conversationId = send(admin, "Plan a review of each memo.")
+        val used = service.usedThisMonth(cxt, "asstdelete")
+        // Another administrator of the client cannot see it, so cannot delete it.
+        val deputy = TestUser.create(cxt, "deputy@asstdelete.test", level = ROLE.admin, userClient = "asstdelete")
+        deputy.expectError(EXC.notFound, ACNV.deletePath, mapOf(ACNV.conversationId to conversationId))
+
+        admin.postData(ACNV.deletePath, mapOf(ACNV.conversationId to conversationId))[ACNV.deleted] shouldBe true
+        admin.getItems(ACNV.conversationsPath).map { it[ACNV.conversationId] } shouldNotContain conversationId
+        admin.expectError(EXC.notFound, ACNV.conversationPath, mapOf(ACNV.conversationId to conversationId))
+        admin.expectError(EXC.notFound, ACNV.deletePath, mapOf(ACNV.conversationId to conversationId))
+        // Nothing they wrote is left; the turn is, with what it used, so the month's allowance is as it was.
+        AssistantStore.messages(cxt, conversationId).shouldBeEmpty()
+        AssistantStore.conversation(cxt, conversationId) shouldBe null
+        val turn = AssistantStore.turnsOf(cxt, conversationId).single()
+        // Blanked: the database may give an empty string back as none.
+        turn[ACNV.text].toOptStr().orEmpty() shouldBe ""
+        turn[ACNV.weighted].toOptLong().shouldNotBeNull() shouldBeGreaterThan 0L
+        service.usedThisMonth(cxt, "asstdelete") shouldBe used
+    }
+
+    "a conversation is not deleted while a turn runs in it" {
+        val admin = clientWithAssistant(cxt, "asstdeleterun")
+        val entered = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        model.add({
+            entered.countDown()
+            release.await(20, TimeUnit.SECONDS)
+            ScriptedModel.textResponse("Done looking.")
+        })
+        val started = admin.postData(ACNV.messagePath, mapOf(ACNV.clientMessageId to "delrun1", ACNV.text to "Look around."))
+        val conversationId = started[ACNV.conversationId].toString()
+        entered.await(20, TimeUnit.SECONDS) shouldBe true
+        admin.expectError(EXC.conflict, ACNV.deletePath, mapOf(ACNV.conversationId to conversationId))[EP.errorCode] shouldBe
+            ACNV.busyCode
+        release.countDown()
+        service.awaitTurn(started[ACNV.turnId].toString())
+        admin.postData(ACNV.deletePath, mapOf(ACNV.conversationId to conversationId))[ACNV.deleted] shouldBe true
+    }
+
     "a spent budget refuses a turn at its start, and stops one at a step" {
         val client = "asstbudget"
         val admin = clientWithAssistant(cxt, client)
@@ -624,7 +667,7 @@ class AssistantTurnsTest : StringSpec({
             for (name in tool.sends) input.properties.keys shouldContain name
         }
         AssistantTools.byName.keys shouldBe AssistantTools.all.map { it.name }.toSet()
-        for (path in listOf(ACNV.messagePath, ACNV.cancelPath, ACNV.switchOnPath)) {
+        for (path in listOf(ACNV.messagePath, ACNV.cancelPath, ACNV.switchOnPath, ACNV.deletePath)) {
             schema.endpoints["$path:POST"].shouldNotBeNull().sessionOnly shouldBe true
         }
         for (path in listOf(ACNV.statusPath, ACNV.conversationPath, ACNV.conversationsPath)) {

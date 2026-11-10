@@ -19,7 +19,7 @@ import com.dynamicruntime.common.util.toOptStr
 
 /**
  * A client administrator's conversations with the assistant (issue #1526): send a message, poll for what came of it,
- * list the conversations, and stop a running turn. In the `clientAdmin` section, confined to the caller's own client,
+ * list the conversations, stop a running turn, and delete a conversation (issue #1755). In the `clientAdmin` section, confined to the caller's own client,
  * and each **session-only**: an API key -- and the assistant's own calls, which go by a key's rules -- can neither
  * start a turn nor spend the client's budget.
  */
@@ -239,6 +239,23 @@ fun assistantChatSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "${ASST.root
         description = "Whether a running turn was asked to stop."
         property(ACNV.conversationId, "The conversation.", required = true)
         property(ACNV.canceled, "Whether a turn was running, and was asked to stop.", required = true) { type = SCT.boolean }
+    }
+
+    generalEndpoint(
+        ACNV.deletePath,
+        "Deletes one of the caller's conversations: its messages and its title, and what they wrote in each of its turns, " +
+            "which cannot be brought back. The turns themselves stay, with what they used, since the month's allowance is " +
+            "reckoned from them. Refused while a turn runs in the conversation (errorCode " + ACNV.busyCode + "): stop it first.",
+        HttpMethod.POST,
+        outputRef = ACNV.deletedType,
+        inputFields = { field(ACNV.conversationId, "The conversation.", required = true) },
+        sessionOnly = true,
+    ) { c, request -> AssistantTurns.delete(c, request[ACNV.conversationId].toOptStr().orEmpty()) }
+    type(ACNV.deletedType) {
+        type = SCT.kObject
+        description = "A conversation deleted."
+        property(ACNV.conversationId, "The conversation.", required = true)
+        property(ACNV.deleted, "True: it is deleted.", required = true) { type = SCT.boolean }
     }
 }
 

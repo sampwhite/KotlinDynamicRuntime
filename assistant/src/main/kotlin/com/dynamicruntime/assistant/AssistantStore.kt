@@ -56,12 +56,23 @@ object AssistantStore {
 
     /** Removes a conversation this request just made, whose first turn could not be recorded: it holds nothing. */
     fun deleteNewConversation(cxt: KdrCxt, conversationId: String) {
-        val sqlCxt = sql(cxt)
-        val stmt = SqlStmtUtil.prepareSql(
-            sqlCxt, "dAssistantConversationNew", ATBL.table(cxt, ATBL.conversations).columns,
-            "delete from t:${ATBL.conversations} where c:${ACNV.conversationId} = :${ACNV.conversationId}",
+        execute(cxt, ATBL.conversations, "dAssistantConversationNew", "delete from t:${ATBL.conversations} where c:${ACNV.conversationId} = :${ACNV.conversationId}", conversationId)
+    }
+
+    /**
+     * Deletes a conversation its administrator asked to (issue #1755), which the caller has claimed so that no turn starts
+     * in it meanwhile: its transcript, and the conversation with its title, which is the start of their first message.
+     * Its turns stay, as the record the month's allowance and the hour's limit are reckoned from, with what the
+     * administrator wrote in each blanked. The turns' text first: a delete stopped part way leaves the conversation, to
+     * be deleted again, rather than words with no conversation left to delete them from.
+     */
+    fun deleteConversation(cxt: KdrCxt, conversationId: String) {
+        update(
+            cxt, ATBL.turns, "uAssistantTurnsForget", "c:${ACNV.text} = ''",
+            "c:${ACNV.conversationId} = :${ACNV.conversationId}", mapOf(ACNV.conversationId to conversationId),
         )
-        sqlCxt.sqlDb.withSession(cxt) { sqlCxt.sqlDb.executeStatement(cxt, stmt, mapOf(ACNV.conversationId to conversationId)) }
+        execute(cxt, ATBL.messages, "dAssistantMessagesOf", "delete from t:${ATBL.messages} where c:${ACNV.conversationId} = :${ACNV.conversationId}", conversationId)
+        execute(cxt, ATBL.conversations, "dAssistantConversation", "delete from t:${ATBL.conversations} where c:${ACNV.conversationId} = :${ACNV.conversationId}", conversationId)
     }
 
     /** Clears [turnId] as the conversation's running turn, if it still is. */
@@ -201,6 +212,14 @@ object AssistantStore {
         val row = LinkedHashMap(values)
         SqlTopicUtil.prepForStdExecute(cxt, table, row)
         sqlCxt.sqlDb.withSession(cxt) { sqlCxt.sqlDb.executeStatement(cxt, SqlTopicUtil.mkTableInsertStmt(sqlCxt, table), row) }
+    }
+
+    /** One statement over [tableName] naming the conversation [conversationId], a delete. */
+    @KdrPrivate
+    fun execute(cxt: KdrCxt, tableName: String, name: String, sql: String, conversationId: String) {
+        val sqlCxt = sql(cxt)
+        val stmt = SqlStmtUtil.prepareSql(sqlCxt, name, ATBL.table(cxt, tableName).columns, sql)
+        sqlCxt.sqlDb.withSession(cxt) { sqlCxt.sqlDb.executeStatement(cxt, stmt, mapOf(ACNV.conversationId to conversationId)) }
     }
 
     /** One conditional update; the rows it changed. */
