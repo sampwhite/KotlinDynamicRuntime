@@ -69,7 +69,17 @@ way -- afterwards it is changed in the bundle editor, and removed there or under
 - **A totals report** groups by one column: the first that has one value per form until chosen, and none once that
   column shows all of several values (`withColumn`, `withColumnChanged`). Each other column's **Combined** offers only
   the rollups its value allows (`rollupChoices`, the kernel's `ReportCombine.allows`), a number starting as a total and a
-  date as the latest; "Not shown when grouped" sends none. Only a totals report sends a grouping, rollups, and history.
+  date as the latest; "Not shown when grouped" sends none. Only a totals report sends a grouping, rollups, history, and
+  a chart.
+- **A totals report's Chart** (issue #1773): Table only, Bar chart, or Pie chart, worded as the Grouped view's Chart, and
+  for a chart **Of** what. The measures are the Grouped view's rule over the draft (`reportDraftMeasures`): the forms,
+  then each column not grouped by whose rollup gives a number. The draft keeps the measured column's draft id
+  (`chartMeasure`), and `reportDraftMeasure` reads it back, falling back to the forms once that column cannot be
+  measured -- removed, grouped by, rolled up to a date -- so no edit has to clear it. Pie is disabled for a measure that
+  does not add up, and a pie left over one (its column's rollup changed to an average) is a draft problem, not a silent
+  change of kind. The request sends `chart` with the kind and marks the measured column `charted` (`RCR.charted`), since
+  a column's id is the server's to make; the binding checks the chart as it does a declared one (#1771), and the created
+  report opens on it.
 - **The Add-a-column choice searches by label** (`showSearch` with `optionFilterProp: 'label'`): antd filters on an
   option's value by default, which here is the path. Its list is virtual, so to drive it from script, open it and type
   the label's text before picking the option by its title.

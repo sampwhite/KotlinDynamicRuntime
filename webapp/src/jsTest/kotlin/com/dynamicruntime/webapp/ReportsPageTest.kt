@@ -582,6 +582,51 @@ class ReportCreateTest {
     }
 
     @Test
+    fun aTotalsReportsChartMeasuresTheFormsOrANumericRollupAndMarksItsColumn() {
+        val created = newReportColumn(3, catalog.path("meta.createdAt")!!)
+        val draft = ReportDraft(name = "Talks")
+            .withShape(ReportShape.totals)
+            .withColumn(newReportColumn(1, catalog.path("form.talk.level")!!))
+            .withColumn(newReportColumn(2, minutes))
+            .withColumn(created)
+        // The forms, then the minutes' total; not the grouped-by level, nor the latest date, which is not a number.
+        assertEquals(ReportCombine.max, created.rollup)
+        val measures = reportDraftMeasures(draft, catalog)
+        assertEquals(listOf(RRUN.count to "Forms", "2" to "Minutes (Total)"), measures.map { it.key to it.label })
+        assertTrue(measures.all { it.additive })
+        // No chart asked for sends none.
+        assertFalse(RDEF.chart in reportCreateRequest(null, draft, EDM.live, catalog))
+
+        val pie = draft.copy(chart = ReportChartKind.pie, chartMeasure = 2)
+        val request = reportCreateRequest(null, pie, EDM.live, catalog)
+        assertEquals(ReportChartKind.pie.name, request[RDEF.chart])
+        assertEquals(listOf(null, true, null), request[RDEF.columns].toJsonListOfMaps().map { it[RCR.charted] })
+        assertEquals(emptyList(), reportDraftProblems(pie, catalog))
+
+        // An average adds up to nothing: offered for a bar, a problem for a pie.
+        val averaged = pie.withColumnChanged(2) { it.copy(rollup = ReportCombine.avg) }
+        assertEquals("Minutes (Average)", reportDraftMeasure(averaged, catalog).label)
+        assertFalse(reportDraftMeasure(averaged, catalog).additive)
+        assertEquals(
+            listOf("A pie shows shares of a whole: chart the forms, or a column combined by its total or how many."),
+            reportDraftProblems(averaged, catalog),
+        )
+        assertEquals(emptyList(), reportDraftProblems(averaged.copy(chart = ReportChartKind.bar), catalog))
+
+        // A measured column that can no longer be measured -- removed, or grouped by -- leaves the chart counting forms,
+        // and no column is marked.
+        for (gone in listOf(pie.withoutColumn(2), pie.copy(groupBy = 2))) {
+            assertEquals(RRUN.count, reportDraftMeasure(gone, catalog).key)
+            assertTrue(reportCreateRequest(null, gone, EDM.live, catalog)[RDEF.columns].toJsonListOfMaps().none { RCR.charted in it })
+        }
+        // A row per form has no groups to chart, and sends none.
+        val perForm = reportCreateRequest(null, pie.withShape(ReportShape.perForm), EDM.live, catalog)
+        assertFalse(RDEF.chart in perForm)
+        assertTrue(perForm[RDEF.columns].toJsonListOfMaps().none { RCR.charted in it })
+        assertEquals(listOf(RRUN.count), reportDraftMeasures(pie.withShape(ReportShape.perForm), catalog).map { it.key })
+    }
+
+    @Test
     fun readsTheOfferFromTheListing() {
         val sandboxed = parseReportCreateOffer(mapOf(RCR.canCreate to false, RCR.createFrom to "acme:sandbox"))
         assertFalse(sandboxed.canCreate)

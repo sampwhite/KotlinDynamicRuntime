@@ -1846,12 +1846,17 @@ fun groupedOptions(vararg groups: Pair<String, List<Pair<String, String>>>): Arr
     }.toTypedArray()
 
 /** antd `{ label, value }` objects for a Select, from label/value pairs. */
-fun choiceOptions(pairs: List<Pair<String, String>>): Array<dynamic> = pairs.map { (label, value) ->
+fun choiceOptions(pairs: List<Pair<String, String>>): Array<dynamic> =
+    pairs.map { (label, value) -> choiceOption(label, value) }.toTypedArray()
+
+/** One antd `{ label, value, disabled }` object for a Select: a choice offered but, when [disabled], not to be picked. */
+fun choiceOption(label: String, value: String, disabled: Boolean = false): dynamic {
     val obj: dynamic = js("({})")
     obj.label = label
     obj.value = value
-    obj
-}.toTypedArray()
+    if (disabled) obj.disabled = true
+    return obj
+}
 
 /** The interface items a client changes: what it did, the base label, the client's, and who set it. */
 private fun ChildrenBuilder.blockOverridesTable(rows: List<BlockOverrideView>) {

@@ -36,6 +36,12 @@ object RCR {
     /** A create's column: whether a form must hold a value in it to appear. */
     const val mustHaveValue = "mustHaveValue"
 
+    /**
+     * A create's column: whether the report's chart measures it (issue #1773). Named on the column, as [groupedBy] is,
+     * since a column's id is made by the create; no column saying so measures the count of forms.
+     */
+    const val charted = "charted"
+
     /** The listing summary's offer: whether a report may be made here. */
     const val canCreate = "canCreate"
 

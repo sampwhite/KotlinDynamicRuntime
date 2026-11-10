@@ -5,6 +5,7 @@ import com.dynamicruntime.common.gedra.CPY
 import com.dynamicruntime.common.gedra.report.RCR
 import com.dynamicruntime.common.gedra.report.RDEF
 import com.dynamicruntime.common.gedra.report.RRUN
+import com.dynamicruntime.common.gedra.report.ReportChartKind
 import com.dynamicruntime.common.gedra.report.ReportCombine
 import com.dynamicruntime.common.gedra.report.ReportKind
 import com.dynamicruntime.common.gedra.report.ReportPathGroupKind
@@ -127,6 +128,10 @@ data class ReportDraft(
     val groupBy: Int? = null,
     /** Whether a totals report keeps a daily snapshot. */
     val history: Boolean = false,
+    /** The chart a totals report opens on (issue #1773); null for the table alone. */
+    val chart: ReportChartKind? = null,
+    /** The column the chart measures, by its [ReportColumnDraft.id]; null for the count of forms. */
+    val chartMeasure: Int? = null,
 )
 
 /** How [column]'s value reads, after its pick: a count is a number, anything else what its path holds. */
@@ -212,8 +217,35 @@ fun ReportDraft.withoutColumn(id: Int): ReportDraft = copy(columns = columns.fil
 fun ReportDraft.withShape(shape: ReportShape): ReportDraft =
     copy(shape = shape, groupBy = if (shape == ReportShape.totals) groupBy ?: groupableColumns(this).firstOrNull()?.id else null)
 
-/** What is wrong with [draft], said as what to do; empty when it can be made. */
-fun reportDraftProblems(draft: ReportDraft): List<String> = buildList {
+/**
+ * What a totals report's chart may measure (issue #1773), as its Grouped view offers ([reportMeasures]): the count of
+ * forms first, keyed [RRUN.count], then each column not grouped by whose rollup gives a number, keyed by its
+ * [ReportColumnDraft.id] -- the rule the report's binding holds a chart to (issue #1771). [catalog] says what each path
+ * holds.
+ */
+fun reportDraftMeasures(draft: ReportDraft, catalog: ReportPathCatalogView?): List<ReportMeasure> = buildList {
+    add(ReportMeasure(RRUN.count, reportCountLabel, additive = true))
+    if (draft.shape != ReportShape.totals) return@buildList
+    for (c in draft.columns) {
+        val rollup = c.rollup ?: continue
+        if (c.id == draft.groupBy) continue
+        val kind = reportColumnKind(c, catalog?.path(c.path))
+        if (rollup.resultKind(kind) != ReportKind.number) continue
+        add(ReportMeasure(c.id.toString(), "${c.label.trim().ifEmpty { "(no heading)" }} (${rollupText(rollup, kind)})", rollup.addsUp))
+    }
+}
+
+/**
+ * The measure [draft]'s chart is of: the column it names while that column may still be measured, else the count of
+ * forms -- so removing the column, grouping by it, or rolling it up to a date leaves the chart counting forms.
+ */
+fun reportDraftMeasure(draft: ReportDraft, catalog: ReportPathCatalogView?): ReportMeasure {
+    val measures = reportDraftMeasures(draft, catalog)
+    return measures.firstOrNull { it.key == draft.chartMeasure?.toString() } ?: measures.first()
+}
+
+/** What is wrong with [draft], said as what to do; empty when it can be made. [catalog] says what each path holds. */
+fun reportDraftProblems(draft: ReportDraft, catalog: ReportPathCatalogView? = null): List<String> = buildList {
     if (draft.name.isBlank()) add("Give the report a name.")
     if (draft.columns.isEmpty()) add("Add at least one column.")
     val headings = draft.columns.map { it.label.trim() }
@@ -227,17 +259,25 @@ fun reportDraftProblems(draft: ReportDraft): List<String> = buildList {
     if (draft.shape == ReportShape.totals && draft.columns.isNotEmpty() && draft.columns.none { it.id == draft.groupBy }) {
         add("Choose the column to group by.")
     }
+    if (draft.shape == ReportShape.totals && draft.chart == ReportChartKind.pie && !reportDraftMeasure(draft, catalog).additive) {
+        add("A pie shows shares of a whole: chart the forms, or a column combined by its total or how many.")
+    }
 }
 
 /**
  * The create's request for [draft] -- [client] when the caller names one, and how its page told them it takes effect,
- * [expected]. Only a totals report sends a grouping, rollups (but not on the grouped-by column), and history.
+ * [expected]. Only a totals report sends a grouping, rollups (but not on the grouped-by column), history, and a chart:
+ * its kind, and the column it measures marked [RCR.charted] ([reportDraftMeasure]; none for the count of forms).
  */
-fun reportCreateRequest(client: String?, draft: ReportDraft, expected: String): Map<String, Any?> = buildMap {
+fun reportCreateRequest(
+    client: String?, draft: ReportDraft, expected: String, catalog: ReportPathCatalogView? = null,
+): Map<String, Any?> = buildMap {
     client?.let { put(RRUN.client, it) }
     put(RDEF.label, draft.name.trim())
     draft.description.trim().takeIf { it.isNotEmpty() }?.let { put(RDEF.description, it) }
     val totals = draft.shape == ReportShape.totals
+    val chart = draft.chart.takeIf { totals }
+    val measured = chart?.let { reportDraftMeasure(draft, catalog).key.toIntOrNull() }
     put(
         RDEF.columns,
         draft.columns.map { c ->
@@ -250,10 +290,12 @@ fun reportCreateRequest(client: String?, draft: ReportDraft, expected: String): 
                 if (grouped) put(RCR.groupedBy, true)
                 if (totals && !grouped) c.rollup?.let { put(RDEF.rollup, it.name) }
                 if (c.mustHaveValue) put(RCR.mustHaveValue, true)
+                if (c.id == measured) put(RCR.charted, true)
             }
         },
     )
     if (totals && draft.history) put(RDEF.history, true)
+    chart?.let { put(RDEF.chart, it.name) }
     put(CPY.mode, expected)
 }
 

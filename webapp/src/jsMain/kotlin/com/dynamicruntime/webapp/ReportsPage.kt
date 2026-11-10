@@ -621,13 +621,6 @@ private fun ChildrenBuilder.reportChartControls(
     change: (ReportChartChoice) -> Unit,
 ) {
     val measures = reportMeasures(report.columns, setup.groupBy ?: report.groupBy)
-    fun option(label: String, value: String, disabled: Boolean = false): dynamic {
-        val o: dynamic = js("({})")
-        o.label = label
-        o.value = value
-        o.disabled = disabled
-        return o
-    }
     div {
         className = ClassName("row reports-controls")
         span {
@@ -637,9 +630,9 @@ private fun ChildrenBuilder.reportChartControls(
         Select {
             value = chart.kind?.name ?: reportChartTable
             options = arrayOf(
-                option("Table only", reportChartTable),
-                option("Bar chart", ReportChartKind.bar.name),
-                option("Pie chart", ReportChartKind.pie.name, disabled = !chart.measure.additive),
+                choiceOption("Table only", reportChartTable),
+                choiceOption("Bar chart", ReportChartKind.bar.name),
+                choiceOption("Pie chart", ReportChartKind.pie.name, disabled = !chart.measure.additive),
             )
             style = js("({ minWidth: 140 })")
             onChange = { v ->
@@ -654,7 +647,7 @@ private fun ChildrenBuilder.reportChartControls(
             }
             Select {
                 value = chart.measure.key
-                options = measures.map { option(it.label, it.key) }.toTypedArray()
+                options = choiceOptions(measures.map { it.label to it.key })
                 style = js("({ minWidth: 200 })")
                 onChange = { v -> measures.firstOrNull { it.key == v as? String }?.let { change(ReportChartChoice(chart.kind, it)) } }
             }

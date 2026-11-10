@@ -1,6 +1,7 @@
 package com.dynamicruntime.webapp
 
 import com.dynamicruntime.common.gedra.EDM
+import com.dynamicruntime.common.gedra.report.ReportChartKind
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.launch
 import react.ChildrenBuilder
@@ -66,7 +67,7 @@ val ReportCreatePanel = FC<ReportCreatePanelProps> { props ->
         }
     }
 
-    val problems = reportDraftProblems(draft)
+    val problems = reportDraftProblems(draft, catalog)
     val dirty = draft != ReportDraft()
     val totals = draft.shape == ReportShape.totals
 
@@ -75,7 +76,9 @@ val ReportCreatePanel = FC<ReportCreatePanelProps> { props ->
         failure = null
         reportCreateScope.launch {
             try {
-                val made = ReportsApi.create(reportCreateRequest(props.client, draft, if (props.createsDraft) EDM.draft else EDM.live))
+                val made = ReportsApi.create(
+                    reportCreateRequest(props.client, draft, if (props.createsDraft) EDM.draft else EDM.live, catalog),
+                )
                 saving = false
                 props.onCreated(made.reportId)
             } catch (e: Throwable) {
@@ -178,6 +181,7 @@ val ReportCreatePanel = FC<ReportCreatePanelProps> { props ->
                 className = ClassName("type-hint")
                 +"Use this when its History view should chart how its totals change from day to day; one is taken each night."
             }
+            chartChoice(draft, catalog, saving) { draft = it }
         }
         if (dirty && problems.isNotEmpty()) {
             ul {
@@ -200,6 +204,44 @@ val ReportCreatePanel = FC<ReportCreatePanelProps> { props ->
             onSave = { create() }
             onDiscard = { props.onCancel() }
         }
+    }
+}
+
+/**
+ * A totals report's chart (issue #1773): the kind it opens on, as the Grouped view's Chart offers it -- a pie only of a
+ * measure that adds up -- and, for a chart, what it measures, as the Grouped view's Of does. [update] takes the draft as
+ * changed.
+ */
+private fun ChildrenBuilder.chartChoice(draft: ReportDraft, catalog: ReportPathCatalogView?, busy: Boolean, update: (ReportDraft) -> Unit) {
+    val measure = reportDraftMeasure(draft, catalog)
+    choiceRow("Chart") {
+        Select {
+            value = draft.chart?.name ?: reportChartTable
+            options = arrayOf(
+                choiceOption("Table only", reportChartTable),
+                choiceOption("Bar chart", ReportChartKind.bar.name),
+                choiceOption("Pie chart", ReportChartKind.pie.name, disabled = !measure.additive),
+            )
+            disabled = busy
+            style = js("({ minWidth: 220 })")
+            onChange = { v -> update(draft.copy(chart = ReportChartKind.entries.firstOrNull { it.name == v as? String })) }
+        }
+    }
+    if (draft.chart != null) {
+        val measures = reportDraftMeasures(draft, catalog)
+        choiceRow("Of") {
+            Select {
+                value = measure.key
+                options = choiceOptions(measures.map { it.label to it.key })
+                disabled = busy || measures.size < 2
+                style = js("({ minWidth: 260 })")
+                onChange = { v -> update(draft.copy(chartMeasure = (v as? String)?.toIntOrNull())) }
+            }
+        }
+    }
+    p {
+        className = ClassName("type-hint")
+        +"Use this when the report should open on a chart of its groups, above its table; a viewer can change it on the page."
     }
 }
 

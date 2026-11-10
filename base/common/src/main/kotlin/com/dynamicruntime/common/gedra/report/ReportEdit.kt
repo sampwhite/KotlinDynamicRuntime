@@ -325,13 +325,14 @@ object ReportEdit {
 
     /**
      * The report [request] asks for, its columns from [asked]: each column's id made from its heading, a keyed path
-     * naming one entry when the column gives key values, and the report's grouping and required columns from the
-     * columns that say so.
+     * naming one entry when the column gives key values, and the report's grouping, required columns, and chart's
+     * measure from the columns that say so. Whether the chart can be drawn is the binding's to say (issue #1773).
      */
     private fun reportOf(reportId: String, label: String, request: Map<String, Any?>, asked: List<Map<String, Any?>>): ClientReport {
         val ids = HashSet<String>()
         val groupBy = ArrayList<String>()
         val excludeEmpty = ArrayList<String>()
+        val charted = ArrayList<String>()
         val columns = asked.mapIndexed { i, c ->
             val heading = c[RDEF.label].toOptStr()?.trim().orEmpty()
             if (heading.isEmpty()) throw KdrException.mkInput("Column ${i + 1} needs a heading.")
@@ -341,6 +342,7 @@ object ReportEdit {
             val columnId = keyFromLabel(heading, ids, "column").also { ids.add(it) }
             if (c[RCR.groupedBy] == true) groupBy.add(columnId)
             if (c[RCR.mustHaveValue] == true) excludeEmpty.add(columnId)
+            if (c[RCR.charted] == true) charted.add(columnId)
             ReportColumn(
                 columnId, heading, if (key.isEmpty()) path else oneEntry(heading, path, key),
                 combine = combineOf(heading, RDEF.combine, c[RDEF.combine]),
@@ -351,7 +353,23 @@ object ReportEdit {
             reportId, label, columns,
             description = request[RDEF.description].toOptStr()?.trim()?.ifEmpty { null },
             groupBy = groupBy, excludeEmpty = excludeEmpty, history = request[RDEF.history] == true,
+            chart = chartOf(request[RDEF.chart], charted),
         )
+    }
+
+    /** The chart a create asks for: of [kind], measuring the one column marked [RCR.charted], else the count of forms. */
+    private fun chartOf(kind: Any?, charted: List<String>): ReportChart? {
+        val name = kind.toOptStr()?.ifEmpty { null }
+        if (name == null) {
+            if (charted.isNotEmpty()) {
+                throw KdrException.mkInput("Column '${charted.first()}' is what a chart measures, but no chart is asked for.")
+            }
+            return null
+        }
+        val chartKind = ReportChartKind.entries.firstOrNull { it.name == name }
+            ?: throw KdrException.mkInput("There is no chart '$name'; choose ${ReportChartKind.entries.joinToString(" or ") { it.name }}.")
+        if (charted.size > 1) throw KdrException.mkInput("A chart measures one column, and ${charted.size} are marked.")
+        return ReportChart(chartKind, charted.firstOrNull())
     }
 
     /** [path], a keyed trait's path reading every entry, made to read the one entry [key] names. */

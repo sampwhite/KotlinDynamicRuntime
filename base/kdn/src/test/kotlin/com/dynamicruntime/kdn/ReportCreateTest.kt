@@ -23,6 +23,7 @@ import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.gedra.report.RCR
 import com.dynamicruntime.common.gedra.report.RDEF
 import com.dynamicruntime.common.gedra.report.RRUN
+import com.dynamicruntime.common.gedra.report.ReportChartKind
 import com.dynamicruntime.common.gedra.report.ReportCombine
 import com.dynamicruntime.common.gedra.report.ReportEdit
 import com.dynamicruntime.common.gedra.report.ReportPathGroupKind
@@ -198,6 +199,43 @@ class ReportCreateTest : StringSpec({
         create(chief, "Rooms", listOf(column("Building", "form.talk.room.building")))
         svc.readLatest(cxt.mkSubContext("read", client), GedraId.of(GedraConfigType.configDoc, client, ClientCreate.starterReportsConfig))!!
             .entriesBySlot()[CCT.reportDef].orEmpty().map { it[CCT.reportId] } shouldBe listOf("talksByLevel", "rooms")
+    }
+
+    "a totals report opens on the chart asked for, measuring the column marked or the count; one that cannot be drawn is refused" {
+        val client = "reportChart1773"
+        defineClient(client)
+        val chief = admin(client)
+        val level = column("Level", "form.talk.level", mapOf(RCR.groupedBy to true))
+        fun minutes(rollup: ReportCombine, charted: Boolean = true) = column(
+            "Minutes", "form.talk.minutes", mapOf(RDEF.rollup to rollup.name) + if (charted) mapOf(RCR.charted to true) else emptyMap(),
+        )
+        create(chief, "Minutes by level", listOf(level, minutes(ReportCombine.sum)), mapOf(RDEF.chart to ReportChartKind.pie.name))
+        create(
+            chief, "Talks by level", listOf(level, minutes(ReportCombine.avg, charted = false)),
+            mapOf(RDEF.chart to ReportChartKind.bar.name),
+        )
+        val reports = ReportService.get(cxt).forClient(client)
+        reports.report("minutesByLevel")!!.bound.report.chart!!.let { (it.kind to it.measure) shouldBe (ReportChartKind.pie to "minutes") }
+        reports.report("talksByLevel")!!.bound.report.chart!!.let { (it.kind to it.measure) shouldBe (ReportChartKind.bar to null) }
+        // The listing tells the page, which opens the report's grouped run on it.
+        val listed = chief.getItems(UADEP.reports, emptyMap()).associateBy { it[RRUN.reportId] }
+        listed.getValue("minutesByLevel")[RRUN.chart].toJsonMapOrEmpty() shouldBe
+            mapOf(RDEF.kind to ReportChartKind.pie.name, RDEF.measure to "minutes")
+
+        fun refused(label: String, columns: List<Map<String, Any?>>, chart: String?) = chief.expectError(
+            EXC.badInput, UADEP.reportCreate,
+            mapOf(RDEF.label to label, RDEF.columns to columns) + (chart?.let { mapOf(RDEF.chart to it) } ?: emptyMap()),
+        )[EP.errorMessage].toString()
+        // A pie of an average makes no whole; the binding says so, as it does of a declared one (issue #1771).
+        refused("Average pie", listOf(level, minutes(ReportCombine.avg)), ReportChartKind.pie.name) shouldContain "only a count or a sum"
+        refused("Ungrouped", listOf(column("Length", "form.talk.minutes")), ReportChartKind.bar.name) shouldContain "groups by nothing"
+        refused("No chart", listOf(level, minutes(ReportCombine.sum)), null) shouldContain "no chart is asked for"
+        refused("Two measures", listOf(level, minutes(ReportCombine.sum), column("Again", "form.talk.minutes",
+            mapOf(RDEF.rollup to ReportCombine.max.name, RCR.charted to true))), ReportChartKind.bar.name) shouldContain "2 are marked"
+        // Not a kind of chart: the endpoint's own options refuse it.
+        refused("Line", listOf(level), "line")
+        ReportService.get(cxt).forClient(client).reports.keys.filter { !it.contains(':') }.toSet() shouldBe
+            setOf("minutesByLevel", "talksByLevel")
     }
 
     "what will not bind is refused in the server's words, and nothing is made" {
