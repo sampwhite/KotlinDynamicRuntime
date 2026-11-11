@@ -487,9 +487,11 @@ fun clientOverviewSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CLD.overvie
             "is left as it is; a blank one clears it (the name may not be blank). Written to the client's stored definition under the config lock, " +
             "refused when a trial reload finds a new problem, then published and reloaded; for a client with a Shadow " +
             "Sandbox (issue #930) saved as a draft instead -- written and reloaded, not published -- so its sandbox " +
-            "shows it and it goes live once published. Refused for a client defined in code (its definition " +
-            "is edited there), for a sandbox (its definition is its parent's), and while the definition's " +
-            "configuration has somebody's unpublished changes, which a live save would publish.",
+            "shows it and it goes live once published; from the sandbox, the same draft of its client's definition. " +
+            "Refused for a client defined in code (its definition is edited there), and while the definition's " +
+            "configuration has somebody's unpublished changes, which a live save would publish. With dryRun true " +
+            "(issue #1764), checked as the save would be -- a label a workflow still names, removed, is refused -- and " +
+            "not stored.",
         HttpMethod.POST,
         outputRef = CLD.definitionEditResultTypeName,
         needsClientConfig = true,
@@ -521,6 +523,7 @@ fun clientOverviewSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CLD.overvie
                 }
             }
             expectedModeField()
+            dryRunField()
         },
     ) { c, request ->
         val client = overseenClient(c, request[CLD.client].toOptStr())
@@ -535,14 +538,15 @@ fun clientOverviewSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CLD.overvie
                 code = EXC.notAuthorized,
             )
         }
-        val result = ClientDefinitionEdit.set(c, client, fields, expectedModeOf(request))
+        val dryRun = dryRunOf(request)
+        val result = ClientDefinitionEdit.set(c, client, fields, expectedModeOf(request), dryRun)
         mapOf(
             CLD.client to client,
             COV.configName to result.configName,
             CLD.definition to result.info,
             CPY.mode to result.mode,
             CPY.issues to result.issues.map { it.toWireMap() },
-        ).withFormStatesAuto(c)
+        ).withFormStatesAuto(c).markedDryRun(dryRun)
     }
 
     // --- the traits it includes (issue #1117), a surface of their own beside the definition editor ---------------
@@ -628,6 +632,24 @@ fun InputFieldsBuilder.expectedModeField() {
         option(EDM.draft, "Draft")
     }
 }
+
+/**
+ * An editor's dry run (issue #1764): true to check the save -- every rule it is held to, and the trial reload that
+ * refuses a change adding a problem -- and store nothing, answering what it would store.
+ */
+internal fun InputFieldsBuilder.dryRunField() {
+    field(
+        CFEP.dryRun,
+        "True to check the save without storing it: refused as the save would be, else answering what it would store, " +
+            "with '${CFEP.dryRun}' true.",
+    ) { type = SCT.boolean }
+}
+
+/** What [dryRunField] carried in [request]. */
+internal fun dryRunOf(request: Map<String, Any?>): Boolean = request[CFEP.dryRun] == true
+
+/** This save result, marked a dry run's when [dryRun]: one that stored nothing. */
+internal fun Map<String, Any?>.markedDryRun(dryRun: Boolean): Map<String, Any?> = if (dryRun) this + (CFEP.dryRun to true) else this
 
 /** What [expectedModeField] carried in [request], or null when the caller did not say. */
 fun expectedModeOf(request: Map<String, Any?>): String? = request[CPY.mode].toOptStr()
@@ -741,10 +763,15 @@ internal fun SchTypeBuilder.saveOutcomeFields() {
         option(EDM.draft, "Draft")
     }
     property(CPY.issues, "The problems the client's configuration has after the reload, all pre-existing: the save itself " +
-        "was refused if it added one.", required = true) {
+        "was refused if it added one. For a dry run, which reloads nothing, the problems it has now, which the change " +
+        "would not add to.", required = true) {
         type = SCT.array
         items { ref(CLD.configIssueTypeQualified) }
     }
+    property(
+        CFEP.dryRun,
+        "Present and true for a dry run (issue #1764): nothing was stored, and the mode is how the save would take effect.",
+    ) { type = SCT.boolean }
     formStatesAutoProperty()
 }
 

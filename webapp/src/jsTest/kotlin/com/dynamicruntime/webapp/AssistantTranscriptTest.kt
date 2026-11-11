@@ -9,6 +9,7 @@ import com.dynamicruntime.common.gedra.CCT
 import com.dynamicruntime.common.gedra.CFEP
 import com.dynamicruntime.common.gedra.COV
 import com.dynamicruntime.common.gedra.CPY
+import com.dynamicruntime.common.gedra.CUS
 import com.dynamicruntime.common.gedra.CLD
 import com.dynamicruntime.common.gedra.DSV
 import com.dynamicruntime.common.gedra.GDF
@@ -165,6 +166,35 @@ class AssistantTranscriptTest {
             person(5, result("c", "Nothing to put back.", isError = true)),
         )
         assertEquals(listOf("`copy`"), draftsOf(written).map { it.title })
+    }
+
+    @Test
+    fun aDefinitionOrFormsListWriteIsCheckedThenDrafted() {
+        // Issue #1764: a dry run is a check, not a draft; the save after it is.
+        val column = mapOf(CUS.column to mapOf(CCT.traitId to "memo", CCT.label to "Memo"))
+        fun call(name: String, input: Map<String, Any?>) = ToolCall("w", name, input, "{\"${COV.configName}\":\"main\"}", false)
+        assertEquals(
+            "Checked a change to the client's definition",
+            toolsLabel(listOf(call(ATOOL.setClientDefinition, mapOf(CFEP.dryRun to true)))),
+        )
+        assertEquals("Drafted the client's definition", toolsLabel(listOf(call(ATOOL.setClientDefinition, mapOf(CFEP.dryRun to false)))))
+        assertEquals("Drafted forms list column `Memo`", toolsLabel(listOf(call(ATOOL.saveFormsListColumn, column))))
+        assertEquals(
+            "Checked a change to the removal of forms list column `Memo`",
+            toolsLabel(listOf(call(ATOOL.removeFormsListColumn, mapOf(CCT.label to "Memo", CFEP.dryRun to true)))),
+        )
+        assertEquals("Drafted the forms list's layout", toolsLabel(listOf(call(ATOOL.setFormsListLayout, emptyMap()))))
+        val checkedOnly = listOf(
+            person(1, text("Rename it.")),
+            model(2, use("a", ATOOL.setClientDefinition, mapOf(CFEP.dryRun to true))),
+            person(3, result("a", "{\"${COV.configName}\":\"main\",\"${CFEP.dryRun}\":true}")),
+        )
+        assertEquals(emptyList(), draftsOf(checkedOnly))
+        val saved = checkedOnly + listOf(
+            model(4, use("b", ATOOL.setClientDefinition, mapOf(CFEP.dryRun to false))),
+            person(5, result("b", "{\"${COV.configName}\":\"main\"}")),
+        )
+        assertEquals(listOf("`main`"), draftsOf(saved).map { it.title })
     }
 
     @Test

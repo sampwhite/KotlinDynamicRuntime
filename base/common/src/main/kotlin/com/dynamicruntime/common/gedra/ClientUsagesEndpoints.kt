@@ -109,7 +109,8 @@ internal fun SchModuleBuilder.clientUsagesEndpoints() {
             "entry where it stands. Its trait, and its column id, are fixed once saved: the server makes a column id from " +
             "the heading when the trait already has a column. A client showing the deployment's default columns makes " +
             "them its own first. Then as every editor's save: published and reloaded, or a draft for a client with a " +
-            "Shadow Sandbox; the trial refuses a column that would add a problem.",
+            "Shadow Sandbox; the trial refuses a column that would add a problem. With dryRun true (issue #1764), " +
+            "checked so and not stored.",
         HttpMethod.POST,
         outputRef = CUS.saveResultTypeName,
         needsClientConfig = true,
@@ -124,12 +125,15 @@ internal fun SchModuleBuilder.clientUsagesEndpoints() {
             ) { type = SCT.kObject }
             field(CUS.previousLabel, "The heading of the column of its trait this changes; absent for a new column.")
             expectedModeField()
+            dryRunField()
         },
     ) { c, request ->
         val client = overseenClient(c, request[CLD.client].toOptStr())
         val wanted = usageFromRuleMap(request[CUS.column].toJsonMapOrEmpty())
-        val result = ClientUsageEdit.save(c, client, request[CUS.previousLabel].toOptStr(), wanted, expectedModeOf(request))
+        val dryRun = dryRunOf(request)
+        val result = ClientUsageEdit.save(c, client, request[CUS.previousLabel].toOptStr(), wanted, expectedModeOf(request), dryRun)
         editorSaveResult(c, client, result.configName, CUS.column to result.usage?.toRuleMap(), result.mode, result.issues, null)
+            .markedDryRun(dryRun)
     }
 
     type(CUS.removeResultTypeName) {
@@ -145,7 +149,8 @@ internal fun SchModuleBuilder.clientUsagesEndpoints() {
         UADEP.clientUsageRemove,
         "Removes a column from a client's forms listing (issue #1491), from the stored configuration holding it; one the " +
             "client does not store is refused. A client showing the deployment's default columns makes the others its " +
-            "own; one removing its last column of its own shows the defaults again. Then as every editor's save.",
+            "own; one removing its last column of its own shows the defaults again. Then as every editor's save. With " +
+            "dryRun true (issue #1764), checked so and not stored.",
         HttpMethod.POST,
         outputRef = CUS.removeResultTypeName,
         needsClientConfig = true,
@@ -154,12 +159,14 @@ internal fun SchModuleBuilder.clientUsagesEndpoints() {
             field(CCT.traitId, "The trait the column reads.", required = true)
             field(CCT.label, "The column's heading.", required = true)
             expectedModeField()
+            dryRunField()
         },
     ) { c, request ->
         val client = overseenClient(c, request[CLD.client].toOptStr())
         val label = request[CCT.label].toOptStr().orEmpty()
-        val result = ClientUsageEdit.remove(c, client, request[CCT.traitId].toOptStr().orEmpty(), label, expectedModeOf(request))
-        editorSaveResult(c, client, result.configName, CCT.label to label, result.mode, result.issues, null)
+        val dryRun = dryRunOf(request)
+        val result = ClientUsageEdit.remove(c, client, request[CCT.traitId].toOptStr().orEmpty(), label, expectedModeOf(request), dryRun)
+        editorSaveResult(c, client, result.configName, CCT.label to label, result.mode, result.issues, null).markedDryRun(dryRun)
     }
 
     type(CUS.layoutResultTypeName) {

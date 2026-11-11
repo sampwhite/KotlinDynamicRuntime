@@ -8,6 +8,7 @@ import com.dynamicruntime.common.gedra.CFEP
 import com.dynamicruntime.common.gedra.CLD
 import com.dynamicruntime.common.gedra.COV
 import com.dynamicruntime.common.gedra.CPY
+import com.dynamicruntime.common.gedra.CUS
 import com.dynamicruntime.common.gedra.DSV
 import com.dynamicruntime.common.gedra.GDF
 import com.dynamicruntime.common.gedra.GE
@@ -122,9 +123,15 @@ fun toolsLabel(calls: List<ToolCall>): String {
             }
             ATOOL.setIncludedTraits ->
                 parts.add(if (call.isError) "Not drafted: the included traits" else "Drafted the included traits$outcome")
-            in wordingAndMenuWrites -> {
+            in targetedWrites -> {
                 val what = wroteWhat(call)
-                parts.add(if (call.isError) "Not drafted: $what" else "Drafted $what$outcome")
+                parts.add(
+                    when {
+                        call.input[CFEP.dryRun] == true -> "Checked a change to $what$outcome"
+                        call.isError -> "Not drafted: $what"
+                        else -> "Drafted $what$outcome"
+                    },
+                )
             }
             else -> looked.add(lookedAt(call) + outcome)
         }
@@ -133,10 +140,19 @@ fun toolsLabel(calls: List<ToolCall>): String {
     return parts.joinToString("; ")
 }
 
-/** The targeted writes of the client's wording and menu (issue #1763), each saving a draft of one bundle. */
-private val wordingAndMenuWrites = setOf(ATOOL.setCopy, ATOOL.applyCopy, ATOOL.resetCopy, ATOOL.setMenuItem, ATOOL.resetMenuItem)
+/**
+ * The targeted writes, each saving a draft of one bundle: the client's wording and menu (issue #1763), and its
+ * definition and forms list (issue #1764), whose saves but the layout's are dry-run first.
+ */
+private val targetedWrites = setOf(
+    ATOOL.setCopy, ATOOL.applyCopy, ATOOL.resetCopy, ATOOL.setMenuItem, ATOOL.resetMenuItem,
+    ATOOL.setClientDefinition, ATOOL.saveFormsListColumn, ATOOL.removeFormsListColumn, ATOOL.setFormsListLayout,
+)
 
-/** What a wording or menu write changed, as the label names it: "copy `home: home.title`", "menu item `docs`". */
+/**
+ * What a targeted write changed, as the label names it: "copy `home: home.title`", "menu item `docs`", "the client's
+ * definition", "forms list column `Memo`".
+ */
 fun wroteWhat(call: ToolCall): String {
     val file = call.input.getOptStr(COV.fileId).orEmpty()
     fun key() = "copy `$file: ${call.input.getOptStr(COV.namespaceField).orEmpty()}.${call.input.getOptStr(COV.key).orEmpty()}`"
@@ -146,6 +162,10 @@ fun wroteWhat(call: ToolCall): String {
         ATOOL.resetCopy -> "the platform's wording for ${key()}"
         ATOOL.applyCopy -> "copy in `$file` (${call.input[CPY.changes].toJsonListOfMaps().size} keys)"
         ATOOL.resetMenuItem -> "the shipped $item"
+        ATOOL.setClientDefinition -> "the client's definition"
+        ATOOL.saveFormsListColumn -> "forms list column `${call.input[CUS.column].toJsonMapOrEmpty().getOptStr(CCT.label).orEmpty()}`"
+        ATOOL.removeFormsListColumn -> "the removal of forms list column `${call.input.getOptStr(CCT.label).orEmpty()}`"
+        ATOOL.setFormsListLayout -> "the forms list's layout"
         else -> item
     }
 }
@@ -228,8 +248,9 @@ fun draftsOf(messages: List<StoredMessage>): List<AssistantDraft> {
                 }
             }
             ATOOL.setIncludedTraits -> drafts[CLD.includedTraits] = AssistantDraft(null, null, emptyList(), isTraits = true)
-            // The bundle a wording or menu save landed in (issue #1763), which its answer names.
-            in wordingAndMenuWrites -> {
+            // The bundle a targeted save landed in (issues #1763, #1764), which its answer names; a dry run saved nothing.
+            in targetedWrites -> {
+                if (call.input[CFEP.dryRun] == true) continue
                 val name = call.result.jsonMapOrNull()?.getOptStr(COV.configName) ?: continue
                 drafts[name] = drafts[name] ?: AssistantDraft(name, null, emptyList())
             }

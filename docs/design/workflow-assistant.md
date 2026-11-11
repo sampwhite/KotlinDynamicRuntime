@@ -188,6 +188,10 @@ else is refused, and a drift test holds each tool to its endpoint.
 | `reset_copy` | one key put back to the platform's wording, as a draft | `POST /clientAdmin/client/copy/reset` |
 | `set_menu_item` | one menu item renamed, hidden, or shown, as a draft | `POST /clientAdmin/client/menu/set` |
 | `reset_menu_item` | one menu item put back as shipped, as a draft | `POST /clientAdmin/client/menu/reset` |
+| `set_client_definition` | the client's own definition fields, dry-run first, as a draft | `POST /clientAdmin/client/definition/set` |
+| `save_forms_list_column` | a forms-list column added or changed, dry-run first, as a draft | `POST /clientAdmin/client/usages/save` |
+| `remove_forms_list_column` | a forms-list column removed, dry-run first, as a draft | `POST /clientAdmin/client/usages/remove` |
+| `set_forms_list_layout` | how the forms list draws workflows, as a draft | `POST /clientAdmin/client/usages/layout` |
 
 `patch_config` refuses a write unless a dry run of exactly the same configs was accepted in an earlier step of the same
 turn, so the model has read its impact first. A write asks for a reload, as the bundle editor's does (issue #1770): a
@@ -198,7 +202,11 @@ needs no such flag: its save recalculates a draft's sandbox itself. The wording 
 and menu editors' own saves: called as the sandbox user and naming no client, each lands in the client's configuration as
 a draft, as an editor's save from the sandbox does, and says it expects one, so a save that would go live is refused.
 They have no dry run, since a wording or menu change cannot fail in a way one would show -- each is checked as it is
-saved -- and they recalculate no form's state. Left out on purpose:
+saved -- and they recalculate no form's state. The definition and forms-list writes (issue #1764) are those editors'
+saves, drafts the same way; a definition edit and a column's save or removal can be refused by the trial (a label a
+workflow names, removed; a column whose value does not resolve), so their endpoints take `dryRun`, and the tool, as
+`patch_config` does, saves only a change that passed a dry run in an earlier step. The definition tool offers the
+client's own fields; what only the platform's operator sets is refused by the endpoint from the person's user. Left out on purpose:
 publishing, reverting, deleting a bundle, `publishedOnly`, `bundle/write` (which deletes what it is not given), the
 sandbox switch, `workflows/params` (in force at once), users, keys, sessions, form data, the endpoint catalog, and
 every `admin`, `operator`, and `fixture` endpoint. The reads of the client (issue #1762) answer for the sandbox, which
