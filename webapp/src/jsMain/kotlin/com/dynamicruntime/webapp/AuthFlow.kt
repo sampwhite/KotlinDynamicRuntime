@@ -239,7 +239,7 @@ val AuthFlow = FC<AuthFlowProps> { props ->
         // The email (login id) is always shown; it locks once a code has been sent.
         textField(
             t(ns, "emailLabel", "Email address"), email, disabled = busy || codeSent,
-            autoComplete = AC.username,
+            autoComplete = AC.username, email = true,
         ) { email = it }
         // The claim's key (issue #751): typed, never offered -- an anonymous caller is told nothing about which
         // clients exist or what personas they have. Locked with the address once the code is on its way, since
@@ -407,6 +407,18 @@ val AuthFlow = FC<AuthFlowProps> { props ->
                     ).evalTemplate(mapOf("user" to mapOf("email" to email.trim())))
                 }
             }
+            // Chrome fills the code with the address (issue #1790, November 2026). When someone accepts Chrome's offer to
+            // fill a remembered password into the password field below, Chrome also fills the remembered username into
+            // this code field, though it is marked `one-time-code`; Chrome does it on other sites too. Tried, and none
+            // stopped it -- do not try them again unless Chrome is known to have changed:
+            //  - a hidden `autocomplete="username"` field holding the address beside the password;
+            //  - the address field read-only rather than disabled (a visible username), with the fields named
+            //    `email`, `one-time-code`, `new-password`;
+            //  - a nonstandard `autocomplete` value on this field (`verification-code`), which also cost Safari's offer
+            //    of the code from Mail.
+            // `autocomplete="off"` is ignored by Chrome's password manager by design. What would work is putting the code
+            // and the password on separate steps (deferred-work.md, "When people report Chrome filling the verification
+            // code"). The same holds for Profile's password change.
             textField(
                 t(ns, "codeLabel", "Verification code"), code, disabled = busy, autoComplete = AC.oneTimeCode,
                 autoCapitalize = AC.capitalizeCharacters,

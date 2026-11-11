@@ -929,7 +929,7 @@ val Users = FC<Props> {
                     +createAddressHint(forSelf = true)
                 }
             } else if (creating) {
-                textField("Email address", draftEmail, disabled = busy, autoComplete = AC.username) {
+                textField("Email address", draftEmail, disabled = busy, autoComplete = AC.username, email = true) {
                     draftEmail = it
                 }
                 p {

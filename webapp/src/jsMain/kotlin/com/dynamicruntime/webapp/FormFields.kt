@@ -47,6 +47,12 @@ object AC {
      * code is, though the server takes one typed in lower case too.
      */
     const val capitalizeCharacters = "characters"
+
+    /** The `autocapitalize` hint for an address (issue #1790): no leading capital. */
+    const val capitalizeNone = "none"
+
+    /** The `inputmode` for an address (issue #1790): the keyboard with `@` and `.` on its main layer. */
+    const val inputModeEmail = "email"
     const val newPassword = "new-password"
     const val currentPassword = "current-password"
     const val username = "username"
@@ -67,6 +73,12 @@ fun ChildrenBuilder.textField(
     maxLength: Int? = null,
     /** The `autocapitalize` hint a phone keyboard follows ([AC.capitalizeCharacters]); null leaves the browser's. */
     autoCapitalize: String? = null,
+    /**
+     * Whether the field takes an email address (issue #1790): a phone's email keyboard ([AC.inputModeEmail]), no leading
+     * capital, and no autocorrect or spelling marks. The keyboard still has every letter and digit, so a field that also
+     * takes a username (sign-in's) types fine.
+     */
+    email: Boolean = false,
     onChange: (String) -> Unit,
 ) {
     div {
@@ -84,6 +96,12 @@ fun ChildrenBuilder.textField(
             placeholder?.let { this.placeholder = it }
             maxLength?.let { this.maxLength = it }
             autoCapitalize?.let { this.autoCapitalize = it }
+            if (email) {
+                inputMode = AC.inputModeEmail
+                this.autoCapitalize = AC.capitalizeNone
+                autoCorrect = "off"
+                spellCheck = false
+            }
             this.onChange = { event -> onChange(event.target.value as String) }
         }
     }
@@ -129,3 +147,4 @@ fun ChildrenBuilder.errorText(lead: String, error: DisplayError) {
         if (error.kind == DisplayError.Kind.designed) MarkdownInline { source = error.text } else +error.text
     }
 }
+
