@@ -3,6 +3,7 @@ package com.dynamicruntime.common.fileref
 import com.dynamicruntime.common.content.CMK
 import com.dynamicruntime.common.content.FragmentSource
 import com.dynamicruntime.common.content.HashedFileServing
+import com.dynamicruntime.common.content.ClientCopyPageCheck
 import com.dynamicruntime.common.content.IMGS
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.KdrException
@@ -372,6 +373,8 @@ class FileRefService : ServiceInitializer, ContentServer {
         val namePrefix = MDR.refScheme + ":"
         val imagePrefix = MDR.imageScheme + ":"
         val images = IMGS.declaredNames(cxt)
+        // Widget fences in the client's copy (issue #1792): judged once a value holds one, against the client's whole file.
+        val pages = ClientCopyPageCheck(cxt, client, configs)
         for (config in configs) {
             if (config.gedraId.client != client || config.fragments.isEmpty() || config.checkMode(cxt) == BootCheckMode.off) continue
             for (layer in config.fragments) {
@@ -379,6 +382,18 @@ class FileRefService : ServiceInitializer, ContentServer {
                 for ((namespace, keys) in content) {
                     for ((key, value) in keys) {
                         reportRoleProblems(cxt, config, layer, namespace, key, value, owner, issues)
+                        // A widget fence that is wrong (issue #1792): left out where the page is drawn.
+                        for (problem in pages.problems(layer.fileId, value)) {
+                            reportConfigProblem(
+                                cxt,
+                                config.issue(
+                                    "$namespace.$key (file '${layer.fileId}' of client '$owner', config '${config.name}'): $problem",
+                                    "Keeping the copy; the fence is left out where the page is drawn.",
+                                    GCEL.fragment, layer.fileId,
+                                ),
+                                issues,
+                            )
+                        }
                         // An image no component ships (issue #1339), judged with the refs: the same copy, the same build.
                         if (value.contains(imagePrefix)) {
                             for (name in value.componentImageNames()) {

@@ -42,6 +42,7 @@ A line of copy can also hold an expression between `${` and `}`, described in [E
 | `- item` or `1. item` | A list, one item per line. |
 | `> text` | A quotation. |
 | A fence of three backticks | A block of code, shown as written. |
+| A fence whose info string is `kdr-ui` | A widget a page places; see [Page widgets](page-widgets.md). |
 | `---` | A horizontal rule. |
 | `\| a \| b \|`, then `\|---\|---\|` | A table: a header row, a dividing row, then a row per line. |
 | `<!-- note -->`, on lines of its own | A comment, which is not shown. |

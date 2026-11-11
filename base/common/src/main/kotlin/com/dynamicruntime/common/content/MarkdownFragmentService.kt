@@ -126,6 +126,8 @@ class MarkdownFragmentService : ServiceInitializer, ContentServer {
             sharedCopyNamingNoImage(cxt, registeredFragmentSources(cxt)) +
             // Copy every client shares writing a role nothing realizes, or one where it does not apply (issue #1562).
             sharedCopyRoleProblems(registeredFragmentSources(cxt)) +
+            // Copy every client shares with a widget fence that is wrong (issue #1792): left out where it is drawn.
+            sharedCopyPageProblems(cxt, registeredFragmentSources(cxt)) +
             // A flavor-directory file that would not parse (issue #1220): already left out, and judged here like any
             // fragment fault -- refused outside production, reported in it.
             DeployFlavors.deploymentCopyFaults(cxt)

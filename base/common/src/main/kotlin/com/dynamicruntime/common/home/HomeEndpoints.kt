@@ -41,6 +41,7 @@ import com.dynamicruntime.common.schema.schemaDialectMarkdown
 import com.dynamicruntime.common.schema.validationMessagesMarkdown
 import com.dynamicruntime.common.gedra.report.reportPathsMarkdown
 import com.dynamicruntime.common.util.copyMarkdown
+import com.dynamicruntime.common.page.pageWidgetsMarkdown
 import com.dynamicruntime.common.util.expressionsMarkdown
 import com.dynamicruntime.common.user.AdminRules
 import com.dynamicruntime.common.user.UserChoice
@@ -751,6 +752,9 @@ fun coreDocs(): List<MarkdownDocDef> = listOf(
     MarkdownDocDef(HDOC.copy, "Copy", "docs/reference/copy.md",
         "The Markdown copy is written in, the roles that set a phrase or an image apart, and the fragment files copy is kept in.",
         listed = false, generate = ::copyMarkdown),
+    MarkdownDocDef(HDOC.pageWidgets, "Page widgets", "docs/reference/page-widgets.md",
+        "How a page written as copy places widgets with fences, what the checks refuse, and every kind of widget -- made from the kinds.",
+        listed = false, generate = ::pageWidgetsMarkdown),
     MarkdownDocDef(HDOC.reportPaths, "Report paths", "docs/reference/report-paths.md",
         "How a report column names where its value comes from, and every attribute a path can end in, with its kind.",
         listed = false, generate = ::reportPathsMarkdown),
