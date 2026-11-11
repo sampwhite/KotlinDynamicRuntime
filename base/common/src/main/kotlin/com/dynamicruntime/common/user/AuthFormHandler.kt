@@ -20,6 +20,7 @@ import com.dynamicruntime.common.util.checkPassword
 import com.dynamicruntime.common.util.isEmailAddress
 import com.dynamicruntime.common.util.mkRndString
 import com.dynamicruntime.common.util.normalizeEmail
+import java.security.MessageDigest
 
 /** Topic logger for the auth subsystem (placed beside the code that owns the `"auth"` topic). */
 object LogAuth : KdrLogger("auth")
@@ -100,7 +101,7 @@ class AuthFormHandler(
         if (!rateLimiter.allow(key, RL.verifyMax, RL.verifyWindowMs, cxt.now().toEpochMilliseconds())) {
             throw KdrException.mkMsg(KdrMsg(AFRAG.auth, AERR.ns, AERR.tooManyVerifyAttempts), code = EXC.tooManyRequests)
         }
-        if (node.computeVerifyCode(formAuthToken, contactAddress) != normalizeVerifyCode(verifyCode)) {
+        if (!sameVerifyCode(node.computeVerifyCode(formAuthToken, contactAddress), verifyCode)) {
             throw KdrException.mkMsg(KdrMsg(AFRAG.auth, AERR.ns, AERR.codeIncorrect))
         }
         rateLimiter.reset(key)
@@ -1118,3 +1119,10 @@ class ProvisionedUser(val row: AuthUserRow, val existed: Boolean)
  * type to break it up. Edge whitespace is trimmed before it gets here, as every input string is.
  */
 fun normalizeVerifyCode(typed: String): String = typed.filterNot { it.isWhitespace() || it == '-' }.uppercase()
+
+/**
+ * Whether [typed] is the [expected] code, once normalized ([normalizeVerifyCode]), compared in constant time (issue
+ * #1785): a comparison that stopped at the first differing character would say how much of a guess was right.
+ */
+fun sameVerifyCode(expected: String, typed: String): Boolean =
+    MessageDigest.isEqual(expected.toByteArray(Charsets.UTF_8), normalizeVerifyCode(typed).toByteArray(Charsets.UTF_8))

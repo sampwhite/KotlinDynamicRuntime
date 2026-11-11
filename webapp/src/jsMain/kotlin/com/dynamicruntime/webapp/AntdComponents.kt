@@ -79,6 +79,12 @@ external interface InputProps : PropsWithChildren {
     var autoComplete: String?
 
     /**
+     * The HTML `autocapitalize` hint a phone keyboard follows (`"characters"` for a verification code, issue #1785,
+     * [AC.capitalizeCharacters]). antd forwards it to the underlying `<input>`, as it does [autoComplete].
+     */
+    var autoCapitalize: String?
+
+    /**
      * React style object. antd's `Input` is `width: 100%`, so inside a flex row it takes whatever the
      * container has left -- which makes its width an accident of the panel rather than a decision, and is why
      * a filter box grew to 816px the moment the panel around it did (issue #462).

@@ -83,7 +83,7 @@ fun ChildrenBuilder.textField(
             this.autoComplete = autoComplete
             placeholder?.let { this.placeholder = it }
             maxLength?.let { this.maxLength = it }
-            autoCapitalize?.let { asDynamic()["autoCapitalize"] = it }
+            autoCapitalize?.let { this.autoCapitalize = it }
             this.onChange = { event -> onChange(event.target.value as String) }
         }
     }
