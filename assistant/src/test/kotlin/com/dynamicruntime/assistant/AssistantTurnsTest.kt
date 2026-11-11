@@ -834,7 +834,7 @@ class AssistantTurnsTest : StringSpec({
         fun label(of: String) = WorkflowService.get(cxt).forClient(of).workflow("review").shouldNotBeNull().def.label
         val view = ok(ATOOL.viewWorkflow, mapOf(GDF.workflowId to "review"))
         val typeName = view[WFD.tasks].toJsonListOfMaps().single()[WFD.traits].toJsonListOfMaps().single()[WVF.schemaRef]
-            .toString().removePrefix("#/\$defs/")
+            .toString().removePrefix($$"#/$defs/")
 
         // A workflow's label: a draft the sandbox runs, the client does not yet, in the workflow's own bundle.
         val basedOn = read(CCT.workflowDef, "review")[DSV.basedOn].shouldNotBeNull()

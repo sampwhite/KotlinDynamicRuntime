@@ -717,7 +717,7 @@ object AssistantTools {
         val workflowId = DSV.workflowId to stringSchema("The workflow, by its id.")
         val typeName = DSV.typeName to stringSchema(
             "The type whose field it is: a trait's data type, as ${ATOOL.viewWorkflow} names it in a trait's schemaRef " +
-                "(after '#/\$defs/').",
+                    $$"(after '#/$defs/').",
         )
         val field = DSV.field to stringSchema("The field, by its key in the type.")
         val entry = DSV.entry to mapOf(
