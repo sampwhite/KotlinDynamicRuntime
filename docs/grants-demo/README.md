@@ -37,7 +37,7 @@ visitors make, and they see yours. You can also join as a reviewer, from the sam
 
 Neither role can change the demo's words, since a change would be every other visitor's too. To try rewording, make a
 client of your own, from the same home page: its **Copy** panel, on its page under **Clients**, rewords any of the copy
-these pages show.
+these pages show, and previews each mail as it would be sent.
 
 ### On a test instance of your own
 

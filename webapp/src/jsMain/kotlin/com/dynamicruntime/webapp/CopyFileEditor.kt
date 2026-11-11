@@ -1,6 +1,7 @@
 package com.dynamicruntime.webapp
 
 import com.dynamicruntime.common.home.HMENU
+import com.dynamicruntime.common.user.AFRAG
 import com.dynamicruntime.common.user.UADEP
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.launch
@@ -66,6 +67,8 @@ val CopyFileEditor = FC<CopyFileEditorProps> { props ->
     var editing by useState<Set<CopyAddress>>(emptySet())
     var previewing by useState<Set<CopyAddress>>(emptySet())
     var raw by useState<Set<CopyAddress>>(emptySet())
+    // The mails being previewed (issue #1799), by their namespace in the mail file.
+    var mailsPreviewed by useState<Set<String>>(emptySet())
     var saving by useState(false)
     var saveError by useState<DisplayError?>(null)
     var note by useState<String?>(null)
@@ -86,6 +89,7 @@ val CopyFileEditor = FC<CopyFileEditorProps> { props ->
         editing = emptySet()
         previewing = emptySet()
         raw = emptySet()
+        mailsPreviewed = emptySet()
         saveError = null
         note = null
         // Another client's refs are not this one's to offer or draw, and a cursor seen in its boxes is not here.
@@ -159,6 +163,7 @@ val CopyFileEditor = FC<CopyFileEditorProps> { props ->
     val query = CopyViewQuery(openFile, filter, onlyChanged)
     val groups = copyFileGroups(rows, query, pending)
     val acrossFiles = copyViewSpansFiles(query)
+    val mails = copyMailNamespaces(rows)
     val refused = saveError?.let { copyKeysNamedIn(it.text, pending.keys) }.orEmpty()
     // The page's client's refs, as its listing gives them -- the static root would answer the caller's own client.
     val refAddress = refPreviewAddressFrom(props.clientId, refs) { args -> Http.apiUrl(UADEP.clientFilesDownload, args) }
@@ -275,7 +280,30 @@ val CopyFileEditor = FC<CopyFileEditorProps> { props ->
                 div {
                     key = ns.namespace.unsafeCast<Key>()
                     className = ClassName("copy-namespace")
-                    h4 { +ns.namespace }
+                    val isMail = group.fileId == AFRAG.mail && ns.namespace in mails
+                    div {
+                        className = ClassName("copy-namespace-head")
+                        h4 { +ns.namespace }
+                        // A mail of the client's, as it is sent (issue #1799): from what is saved, so a pending change
+                        // shows once saved -- as a draft, for a client with a sandbox.
+                        if (isMail) {
+                            Button {
+                                type = "link"
+                                size = "small"
+                                onClick = {
+                                    mailsPreviewed = if (ns.namespace in mailsPreviewed) mailsPreviewed - ns.namespace
+                                    else mailsPreviewed + ns.namespace
+                                }
+                                +(if (ns.namespace in mailsPreviewed) "Hide the preview" else "Preview this mail")
+                            }
+                        }
+                    }
+                    if (isMail && ns.namespace in mailsPreviewed) {
+                        MailPreviewPanel {
+                            clientId = props.clientId
+                            mail = ns.namespace
+                        }
+                    }
                     for (row in ns.rows) {
                         copyKeyItem(
                             row = row,

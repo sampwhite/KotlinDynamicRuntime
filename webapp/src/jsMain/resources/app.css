@@ -1345,7 +1345,7 @@ textarea.copy-edit { font-family: inherit; min-height: 5rem; }
 .copy-file-count { margin-left: auto; color: var(--text-muted); font-size: .85rem; white-space: nowrap; }
 .copy-file-note { margin: 10px 16px 0; }
 .copy-namespace { padding: 0 16px 6px 10px; }
-.copy-namespace > h4 {
+.copy-namespace-head > h4 {
     margin: 14px 0 4px 6px;
     font-size: .8rem;
     letter-spacing: .06em;
@@ -1359,6 +1359,15 @@ textarea.copy-edit { font-family: inherit; min-height: 5rem; }
 .copy-key-head > code { font-size: .9rem; }
 .copy-key-status { font-size: .8rem; color: var(--text-muted); }
 .copy-key-status-refused { color: var(--danger); }
+/* A mail previewed under its namespace (issue #1799): its subject, then its HTML part on a mail's own light ground. */
+.copy-namespace-head { display: flex; align-items: baseline; gap: 10px; }
+.mail-preview { margin: 0 0 14px; }
+.mail-preview-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.mail-preview-subject { font-weight: 600; color: var(--text); }
+.mail-preview-frame {
+    display: block; width: 100%; height: 340px; border: 1px solid var(--border); border-radius: 6px; background: #ffffff;
+}
+.mail-preview-text { white-space: pre-wrap; max-height: 340px; overflow: auto; }
 /* Where a person sees the key (issue #1799), under its head. */
 .copy-key-where { font-size: .8rem; color: var(--text-muted); margin-bottom: 4px; }
 .copy-key-actions { margin-left: auto; display: inline-flex; align-items: center; gap: 2px; }

@@ -60,6 +60,26 @@ class CopyFileViewTest {
     }
 
     @Test
+    fun theMailsAreTheMailFilesNamespacesWithASubjectAndABody() {
+        // Issue #1799: what the copy editor offers to preview. `common` closes every mail and is not one.
+        val mailRows = copyKeyRows(listOf(
+            key("mail", "common", "footer", "Sent automatically."),
+            key("mail", "verifyCode", "subject", "Your code"),
+            key("mail", "verifyCode", "body", "It is ABC123."),
+            key("home", "invitation", "subject", "Not the mail file"),
+            key("home", "invitation", "body", "Not the mail file"),
+        ), emptyList())
+        assertEquals(setOf("verifyCode"), copyMailNamespaces(mailRows))
+        val parsed = parseMailPreview(mapOf(
+            COV.client to "acme", CPY.mail to "verifyCode", CPY.mode to EDM.draft, CPY.subject to "Your code",
+            CPY.text to "It is ABC123.", CPY.html to "<html></html>",
+        ))
+        assertEquals("Your code", parsed.subject)
+        assertEquals(true, mailPreviewModeText(parsed.mode).contains("sandbox"))
+        assertEquals(false, mailPreviewModeText(EDM.live).contains("sandbox"))
+    }
+
+    @Test
     fun aKeysCopyNoteIsDrawnAndFoundByThePlaceItNames() {
         // Issue #1799: where a person sees a key, from the keys listing, to its row; Find matches it.
         val located = parseCopyKeys(listOf(

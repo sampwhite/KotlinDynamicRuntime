@@ -256,6 +256,15 @@ nothing having been chosen, and choosing it again changed nothing. With no file 
 file's changed keys -- the client's customizations at a glance (`copyViewSpansFiles`). A changed key says who set it (`copyRowStatus`), with "What it replaces"
 (the shipped value, and the value in code a reset returns to) a click away.
 
+**A mail is previewed under its name** (issue #1799; `MailPreviewPanel`, theme #CUSTX): in the `mail` file, each
+namespace with a `subject` and a `body` (`copyMailNamespaces`; not `common`, which closes every mail) has **Preview this
+mail** beside its heading. It reads `/clientAdmin/client/copy/mailPreview`, which renders the mail by `MailCopy.render`,
+the code that sends it, with a made-up address and code (`MailPreview`) and the links a real mail carries: the subject,
+then the HTML part in a frame with an empty `sandbox` (it runs nothing, and its styles reach nothing of the page), or
+**As text**. For a client with a sandbox it shows the sandbox's words, where a save is a draft, and says so
+(`mailPreviewModeText`); the mail still names the client. It shows what is saved, read again whenever the page re-reads,
+so a pending change shows once saved.
+
 **Edit** opens the key's text with a **Preview** (the hint says which template syntax the file takes, by its
 `audience` -- `copySyntaxHint`, issue #1001), and, for a client with file refs, **Insert an image…**: the client's refs
 (`fileRefInsertChoices`), the chosen one put in as `![<its words>](ref:<id>)` where the cursor last was

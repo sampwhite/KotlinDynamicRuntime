@@ -9,6 +9,7 @@ import com.dynamicruntime.common.uiblock.UiRoute
 import com.dynamicruntime.common.user.PERSONA
 import com.dynamicruntime.common.user.UserChoice
 import com.dynamicruntime.common.util.isVariableName
+import com.dynamicruntime.common.util.renderMarkdownText
 import com.dynamicruntime.common.util.splitComma
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.launch
@@ -152,6 +153,13 @@ sealed class ShellBrand {
     /** The copy could not be loaded (and a stale ref did not recover); mark alone, the body reports the outage. */
     object Failed : ShellBrand()
 }
+
+/**
+ * The browser tab's title in [copy], the `home` file's `site.title` reduced to plain words, as the server writes it into
+ * the page it serves (issue #1799); null when the copy says none, and the tab keeps what it has. Pure, covered under
+ * `jsNodeTest`.
+ */
+fun siteTabTitle(copy: Copy): String? = copy.opt(HFRAG.siteNs, HFRAG.title)?.renderMarkdownText()?.trim()?.ifEmpty { null }
 
 /**
  * The brand state to move to after a load attempt (issue #469), or **null to keep the current one**.
@@ -336,6 +344,9 @@ val AppBar = FC<AppBarProps> { props ->
             copy?.let { props.onShellFacts(shellFactsOf(cfg, it)) }
             brandAfterLoad(copy != null, copy?.opt(HFRAG.homeNs, HFRAG.brand), everLoaded.current == true)
                 ?.let { brandState = it }
+            // The tab's title follows the client too (issue #1799), as the wordmark does: the server writes the title of
+            // whoever loaded the page, and a switch or a join changes the client without loading it again.
+            copy?.let { siteTabTitle(it) }?.let { document.title = it }
         }
     }
 

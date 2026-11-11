@@ -636,6 +636,22 @@ fun parseCopyKeys(items: List<Map<String, Any?>>): List<CopyKeyView> = items.map
     )
 }
 
+/**
+ * A mail as the client's copy renders it, with sample values (issue #1799): its subject, its text part, and its HTML
+ * part, a whole document. [mode] says whose words: the client's people's ([EDM.live]) or its sandbox's ([EDM.draft]).
+ */
+class MailPreviewView(val client: String, val mail: String, val mode: String, val subject: String, val text: String, val html: String)
+
+/** The mail preview endpoint's answer as a [MailPreviewView]. Pure, and covered under `jsNodeTest`. */
+fun parseMailPreview(results: Map<String, Any?>): MailPreviewView = MailPreviewView(
+    client = results[COV.client].toOptStr().orEmpty(),
+    mail = results[CPY.mail].toOptStr().orEmpty(),
+    mode = results[CPY.mode].toOptStr() ?: EDM.live,
+    subject = results[CPY.subject].toOptStr().orEmpty(),
+    text = results[CPY.text].toOptStr().orEmpty(),
+    html = results[CPY.html].toOptStr().orEmpty(),
+)
+
 /** What the picker says of a file the application does not show (issue #933). */
 const val notShownNote = "Not shown by this application"
 
@@ -1515,6 +1531,12 @@ object ClientsApi {
     /** Every key an administrator may override for a client, with the client's value (issue #918). */
     suspend fun copyKeys(clientId: String): List<CopyKeyView> =
         parseCopyKeys(Http.getApi(CPY.keysPath + queryString(mapOf(COV.client to clientId)))[EP.items].toJsonListOfMaps())
+
+    /** [mail] as [clientId]'s copy renders it, with sample values (issue #1799). */
+    suspend fun mailPreview(clientId: String, mail: String): MailPreviewView =
+        parseMailPreview(
+            Http.getApi(CPY.mailPreviewPath + queryString(mapOf(COV.client to clientId, CPY.mail to mail)))[EP.results].toJsonMapOrEmpty(),
+        )
 
     /**
      * Saves the pending changes to one file of a client's copy together (issue #1062) -- [order] being the file's keys

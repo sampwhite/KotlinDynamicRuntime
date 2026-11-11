@@ -21,6 +21,14 @@ import kotlin.test.assertTrue
 class ShellBrandTest {
 
     @Test
+    fun theTabTitleIsTheSiteTitleInPlainWords() {
+        // Issue #1799: set as the copy loads, so a switch to another client's user retitles the tab.
+        assertEquals("Riverbend grants", siteTabTitle(Copy(mapOf("site" to mapOf("title" to "**Riverbend** grants")))))
+        assertNull(siteTabTitle(Copy(mapOf("site" to mapOf("title" to "  ")))))
+        assertNull(siteTabTitle(Copy(mapOf("home" to mapOf("brand" to "KDR")))))
+    }
+
+    @Test
     fun namesTheBrandOnLoad() {
         val state = brandAfterLoad(loaded = true, brand = "Acme", everLoaded = false)
         assertTrue(state is ShellBrand.Ready)

@@ -26,7 +26,20 @@ object CPY {
      */
     const val applyPath = "/${SECT.clientAdmin}/client/copy/apply"
 
+    /**
+     * A mail as the client's copy renders it, with sample values (issue #1799): what its people would be sent. Theme:
+     * #CUSTX.
+     */
+    const val mailPreviewPath = "/${SECT.clientAdmin}/client/copy/mailPreview"
+
     const val keyTypeName = "CopyKey"
+    const val mailPreviewTypeName = "CopyMailPreview"
+
+    /** The mail preview's fields: which mail (a namespace of the `mail` file), and its rendered subject and parts. */
+    const val mail = "mail"
+    const val subject = "subject"
+    const val text = "text"
+    const val html = "html"
     const val resultTypeName = "CopyEditResult"
     const val changeTypeName = "CopyChange"
     const val applyResultTypeName = "CopyApplyResult"

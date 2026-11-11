@@ -271,9 +271,10 @@ Current UI-config endpoints:
   sanitized like an error message's; a URL param becomes an anchor in the HTML part on its own, and a value a
   reader copies out is marked in the copy with a role -- `[${address}]{.value}`, `[${code}]{.code}` -- which
   the HTML part realizes as a style-only anchor (so Gmail does not linkify an address or a code) and the text
-  part shows bare. `forHtml` is bound by every render, for a body whose two parts want different words. The dev
-  autofill (`fetchDevCode`) and the tests read the code out of the text part's "verification code is <code>."
-  -- keep that phrase when rewording. `/fixture/simulatedEmails` returns both parts (`text`, `html`). The
+  part shows bare. `forHtml` is bound by every render, for a body whose two parts want different words. The copy
+  editor previews each mail as a client's copy renders it, by the same render with sample values
+  (`/clientAdmin/client/copy/mailPreview`, issue #1799). The dev autofill (`fetchDevCode`) and the tests read the
+  code out of the text part's "verification code is <code>." -- keep that phrase when rewording. `/fixture/simulatedEmails` returns both parts (`text`, `html`). The
   sample's acme and globex each overlay `common.footer` alone, so every mail about one of their users is
   signed by them (`SampleClients.kt`).
 

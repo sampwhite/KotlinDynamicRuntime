@@ -101,3 +101,8 @@ serif.
   administrator, invite someone from the **Users** page, and the invitation is the fund's too.
 
 A code for registering is still the platform's, since whoever registers is not yet one of the fund's people.
+
+**A client's administrator can look at a mail without sending one.** On the client's page under **Clients**, its
+**Copy** panel shows the `mail` file with **Preview this mail** beside each mail's name. The preview is drawn by the
+code that sends the mail, with a made-up address and code: its subject, its HTML part as a mail client draws it, and its
+text part. For a client with a sandbox, where a change to its copy is saved as a draft, the preview shows the draft.

@@ -4,6 +4,7 @@ import com.dynamicruntime.common.gedra.COV
 import com.dynamicruntime.common.gedra.CPY
 import com.dynamicruntime.common.gedra.EDM
 import com.dynamicruntime.common.gedra.GCI
+import com.dynamicruntime.common.user.AFRAG
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toOptStr
 
@@ -72,6 +73,22 @@ fun copyWhereText(where: String): String {
     val place = where.substringAfter(':').trim()
     return if (page.isEmpty()) where else "$page \u2014 $place"
 }
+
+/**
+ * The namespaces of the `mail` file that are mails (issue #1799): each with a `subject` and a `body`, as every mail has,
+ * which `common` -- what every mail ends with -- has not. Pure, and covered under `jsNodeTest`.
+ */
+fun copyMailNamespaces(rows: List<CopyKeyRow>): Set<String> =
+    rows.filter { it.address.fileId == AFRAG.mail }.groupBy { it.address.namespace }
+        .filterValues { keys -> keys.map { it.address.key }.containsAll(listOf(mailSubjectKey, mailBodyKey)) }.keys
+
+private const val mailSubjectKey = "subject"
+private const val mailBodyKey = "body"
+
+/** What a mail preview says of whose words it shows (issue #1799). Pure, and covered under `jsNodeTest`. */
+fun mailPreviewModeText(mode: String): String =
+    if (mode == EDM.draft) "In the sandbox's words, drafts included, which the client's people are not sent yet."
+    else "In the words the client's people are sent now."
 
 /** A pending change to one key: a [value] to set, or -- null -- a reset of the client's stored value. */
 class PendingCopy(val value: String?) {

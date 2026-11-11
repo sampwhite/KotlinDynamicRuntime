@@ -7,6 +7,8 @@ import com.dynamicruntime.common.endpoint.InputFieldsBuilder
 import com.dynamicruntime.common.endpoint.SchModule
 import com.dynamicruntime.common.endpoint.schemaModule
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.mail.MCOPY
+import com.dynamicruntime.common.mail.MailPreview
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.util.getReqNonBlankStr
 import com.dynamicruntime.common.util.toJsonListOfMaps
@@ -75,6 +77,46 @@ fun clientCopySchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CPY.namespace) 
         }
         property(CPY.buildId, "The build id the file's content for this client is now served under.")
         saveOutcomeFields()
+    }
+
+    type(CPY.mailPreviewTypeName) {
+        type = SCT.kObject
+        description = "A mail as a client's copy renders it, with sample values: what one of its people would be sent."
+        property(COV.client, "The client the mail is from.", required = true)
+        property(CPY.mail, "The mail: a namespace of the mail file.", required = true)
+        property(CPY.mode, "Whose words: '${EDM.live}', the client's people's, or '${EDM.draft}', its sandbox's, where a " +
+            "save of its copy is a draft.", required = true)
+        property(CPY.subject, "The subject.", required = true) { emptyIsAbsent = false }
+        property(CPY.text, "The plain text part.", required = true) { emptyIsAbsent = false }
+        property(CPY.html, "The HTML part, a whole document with inline styles only.", required = true)
+    }
+
+    generalEndpoint(
+        CPY.mailPreviewPath,
+        "One mail as a client's copy renders it (issue #1799), by the code that sends mail, with a made-up address and " +
+            "code and the links a real mail would carry: its subject, its text part, and its HTML part. For a client with a " +
+            "Shadow Sandbox, its sandbox's words, where a save of its copy is a draft. The caller's own client, or one an " +
+            "administrator who sees every client names.",
+        HttpMethod.GET,
+        outputRef = CPY.mailPreviewTypeName,
+        needsClientConfig = true,
+        inputFields = {
+            overseenClientField(COV.client)
+            field(CPY.mail, "Which mail, by its namespace in the mail file.", required = true) {
+                MCOPY.mails.forEach { option(it, it) }
+            }
+        },
+    ) { c, request ->
+        val client = overseenClient(c, request[COV.client].toOptStr())
+        val preview = MailPreview.preview(c, client, request.getReqNonBlankStr(CPY.mail))
+        linkedMapOf<String, Any?>(
+            COV.client to preview.client,
+            CPY.mail to preview.mail,
+            CPY.mode to preview.mode,
+            CPY.subject to preview.rendered.subject,
+            CPY.text to preview.rendered.text,
+            CPY.html to preview.rendered.html,
+        )
     }
 
     listEndpoint(
