@@ -14,6 +14,9 @@ import com.dynamicruntime.common.endpoint.HttpMethod
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.CCT
 import com.dynamicruntime.common.gedra.CFEP
+import com.dynamicruntime.common.gedra.CUS
+import com.dynamicruntime.common.gedra.ClientPresentationFields
+import com.dynamicruntime.common.gedra.WorkflowLayout
 import com.dynamicruntime.common.gedra.CLD
 import com.dynamicruntime.common.gedra.COV
 import com.dynamicruntime.common.gedra.CPY
@@ -172,13 +175,15 @@ class AssistantTool(
  * The assistant's tools (issue #1526): reads of the client's configuration, workflows, traits, and cfacts, and of the
  * client as its sandbox runs it -- its definition, menu, copy, forms list, reports, images, drafts and their impact
  * ([clientReads], issue #1762) -- and writes that can only make drafts: `patch_config`, a dry run before every write,
- * `set_included_traits`, and the copy and menu editors' targeted edits ([wordingAndMenuWrites], issue #1763). The tools
+ * `set_included_traits`, the copy and menu editors' targeted edits ([wordingAndMenuWrites], issue #1763), and the
+ * definition and forms-list editors' ([definitionAndFormsListWrites], issue #1764). The tools
  * act as the person's own user in the client's sandbox, whose configuration edits become drafts on the parent.
  *
  * **What is left out is the point.** Publishing, reverting, deleting a config, `publishedOnly`, `bundle/write` (which
  * deletes what it is not given), switching the sandbox, `workflows/params` (in force at once), users, keys, sessions,
  * form data, and every `admin`, `operator`, and `fixture` endpoint: none is a tool, so the seam refuses each.
  */
+@Suppress("CollectionConcatenationToBuildCollection")
 object AssistantTools {
     val all: List<AssistantTool> by lazy { build() }
 
@@ -302,6 +307,7 @@ object AssistantTools {
         )
         addAll(this@AssistantTools.clientReads())
         addAll(this@AssistantTools.wordingAndMenuWrites())
+        addAll(this@AssistantTools.definitionAndFormsListWrites())
         addAll(
             listOf(
                 AssistantTool(
@@ -583,6 +589,144 @@ object AssistantTools {
     }
 
     /**
+     * The targeted writes of the client's definition and its forms list (issue #1764): the definition and listing
+     * editors' own saves, drafts as the wording and menu writes are ([wordingAndMenuWrites]). A definition edit and a
+     * column's save or removal can be refused -- a label a workflow still names, removed; a column whose value does
+     * not resolve -- so each takes a dry run, and is written only after the same change passed one ([dryRunFirst]),
+     * as `patch_config` is. The layout is one of two values, and has none.
+     *
+     * The definition tool offers the client's own fields. What only the platform's operator sets -- what the client is
+     * for, whose it is, where it runs, its domains -- is passed to the endpoint as given, which refuses it from the
+     * person's user, and the description says so.
+     */
+    @KdrPrivate
+    fun definitionAndFormsListWrites(): List<AssistantTool> {
+        val dryRun = CFEP.dryRun to mapOf("type" to "boolean", "description" to "True to check the change without saving it.")
+        val definitionFields = ClientPresentationFields.names.associateWith { name ->
+            val description = ClientPresentationFields.descriptions[name].orEmpty()
+            when (ClientPresentationFields.kind(name)) {
+                ClientPresentationFields.Kind.labels -> arraySchema(description, stringSchema("A label."))
+                ClientPresentationFields.Kind.labelNotes -> mapOf(
+                    "type" to "object", "description" to description, "additionalProperties" to mapOf("type" to "string"),
+                )
+                else -> stringSchema(description)
+            }
+        }
+        val column = objectSchema(
+            CCT.traitId to stringSchema("The trait the column takes its value from, one ${ATOOL.readFormsList} lists."),
+            CCT.label to stringSchema("The column's heading."),
+            CCT.display to stringSchema($$"The column's value: a field of the trait as ${field}, or an expression."),
+            CCT.kind to stringSchema("How the value is compared and sorted, such as 'number' or 'date'; absent for text."),
+            CCT.presentation to stringSchema($$"How the value reads in the list, an expression over ${value}; absent as it is."),
+            required = listOf(CCT.traitId, CCT.label, CCT.display),
+        )
+        return listOf(
+            AssistantTool(
+                ATOOL.setClientDefinition,
+                "Changes the client's definition, as a draft: ${ClientPresentationFields.names.joinToString(", ")}. Only " +
+                    "the fields given change; a blank clears an optional one, and the name may not be blank. Read it " +
+                    "first with ${ATOOL.readClient}. A label a workflow names must stay among the user labels: removing " +
+                    "one is refused. What only the platform's operator sets -- what the client is for, whose it is, where " +
+                    "it runs, its domains -- is refused here. **Dry run first**: the same change with dryRun true, then " +
+                    "with dryRun false in a later step.",
+                objectSchema(*definitionFields.toList().toTypedArray(), dryRun, required = listOf(CFEP.dryRun)),
+                HttpMethod.POST, UADEP.clientDefinitionSet,
+                (ClientPresentationFields.namesFor(platform = true) + CFEP.dryRun + CPY.mode).toSet(),
+            ) { run, input ->
+                val change = given(input, ClientPresentationFields.namesFor(platform = true))
+                dryRunFirst(run, ATOOL.setClientDefinition, UADEP.clientDefinitionSet, change, input[CFEP.dryRun] == true)
+            },
+            AssistantTool(
+                ATOOL.saveFormsListColumn,
+                "Adds a column to the client's forms list, or changes one, as a draft. A column is known by its trait and " +
+                    "its heading: to change one, give the heading it has now as '${CUS.previousLabel}'. Its trait is " +
+                    "fixed once saved. A column whose value does not resolve on its trait is refused. Read the columns " +
+                    "and the fields a column may show with ${ATOOL.readFormsList}. **Dry run first**, then save in a " +
+                    "later step.",
+                objectSchema(
+                    CUS.column to column,
+                    CUS.previousLabel to stringSchema("The heading of the column this changes; absent for a new column."),
+                    dryRun,
+                    required = listOf(CUS.column, CFEP.dryRun),
+                ),
+                HttpMethod.POST, UADEP.clientUsageSave, setOf(CUS.column, CUS.previousLabel, CFEP.dryRun, CPY.mode),
+            ) { run, input ->
+                val change = given(input, listOf(CUS.column, CUS.previousLabel))
+                dryRunFirst(run, ATOOL.saveFormsListColumn, UADEP.clientUsageSave, change, input[CFEP.dryRun] == true)
+            },
+            AssistantTool(
+                ATOOL.removeFormsListColumn,
+                "Removes a column from the client's forms list, as a draft. A client showing the platform's default " +
+                    "columns makes the others its own; removing its last column of its own shows the defaults again. " +
+                    "**Dry run first**, then remove in a later step.",
+                objectSchema(
+                    CCT.traitId to stringSchema("The trait the column takes its value from."),
+                    CCT.label to stringSchema("The column's heading."),
+                    dryRun,
+                    required = listOf(CCT.traitId, CCT.label, CFEP.dryRun),
+                ),
+                HttpMethod.POST, UADEP.clientUsageRemove, setOf(CCT.traitId, CCT.label, CFEP.dryRun, CPY.mode),
+            ) { run, input ->
+                val change = given(input, listOf(CCT.traitId, CCT.label))
+                dryRunFirst(run, ATOOL.removeFormsListColumn, UADEP.clientUsageRemove, change, input[CFEP.dryRun] == true)
+            },
+            AssistantTool(
+                ATOOL.setFormsListLayout,
+                "Sets how the client's forms list draws each form's workflows, as a draft: '${WorkflowLayout.split.name}', " +
+                    "a Your turn column beside the Workflows cell, or '${WorkflowLayout.combined.name}', one cell. There " +
+                    "is no dry run: it is one of two values.",
+                objectSchema(
+                    CUS.workflowLayout to stringSchema("'${WorkflowLayout.split.name}' or '${WorkflowLayout.combined.name}'."),
+                    required = listOf(CUS.workflowLayout),
+                ),
+                HttpMethod.POST, UADEP.clientUsageLayout, setOf(CUS.workflowLayout, CPY.mode),
+            ) { run, input ->
+                val body = mapOf(CUS.workflowLayout to input[CUS.workflowLayout], CPY.mode to EDM.draft)
+                run.call(HttpMethod.POST, UADEP.clientUsageLayout, body = body)
+            },
+        )
+    }
+
+    /**
+     * A write held to the dry-run rule (issues #1526, #1764): with [dryRun] it is checked and nothing written, and a
+     * write is refused unless exactly the same [change], as [name] sends it, passed a dry run in an earlier step of this
+     * turn -- so the model has read what it would do first. [alsoSend] rides both calls (a targeted save's expected
+     * draft), [alsoWrite] the write alone (`patch_config`'s reload), and [dryShape] reshapes a dry run's answer.
+     */
+    @KdrPrivate
+    fun dryRunFirst(
+        run: ToolRun,
+        name: String,
+        path: String,
+        change: Map<String, Any?>,
+        dryRun: Boolean,
+        alsoSend: Map<String, Any?> = mapOf(CPY.mode to EDM.draft),
+        alsoWrite: Map<String, Any?> = emptyMap(),
+        dryShape: ((Any?) -> Any?)? = null,
+    ): ToolResult {
+        val key = name + canonical(change, 0).toJsonStr(compact = true)
+        val body = change + alsoSend
+        if (dryRun) {
+            val result = run.call(HttpMethod.POST, path, body = body + (CFEP.dryRun to true), shape = dryShape)
+            if (!result.isError) run.stepDryRuns.add(key)
+            return result
+        }
+        if (key !in run.dryRuns) {
+            return ToolResult(
+                "Not written: dry run this change first (dryRun true), exactly as it will be written, read the answer, " +
+                    "and write it in a later step.",
+                isError = true,
+            )
+        }
+        return run.call(HttpMethod.POST, path, body = body + (CFEP.dryRun to false) + alsoWrite)
+    }
+
+    /** The [fields] of a tool's [input] that it gives, the change a targeted save sends. */
+    @KdrPrivate
+    fun given(input: Map<String, Any?>, fields: List<String>): Map<String, Any?> =
+        fields.filter { input.containsKey(it) }.associateWith { input[it] }
+
+    /**
      * `read_menu`'s answer (issue #1762) from the menu items [payload]: each item repeats the audiences a condition may be,
      * the same for every item, which runs a menu past what one answer holds -- so they are said once, beside the items --
      * and an item's platform label, condition, and audience are kept only where the client's differ from them.
@@ -641,24 +785,11 @@ object AssistantTools {
      */
     @KdrPrivate
     fun patch(run: ToolRun, input: Map<String, Any?>): ToolResult {
-        val configs = input[CFEP.configs]
-        val key = canonical(configs, 0).toJsonStr(compact = true)
         val withoutBundles: (Any?) -> Any? = { payload -> (payload as? Map<*, *>)?.filterKeys { it != CFEP.configs } ?: payload }
-        if (input[CFEP.dryRun] == true) {
-            val body = mapOf(CFEP.configs to configs, CFEP.dryRun to true)
-            val result = run.call(HttpMethod.POST, CFEP.bundlePatch, body = body, shape = withoutBundles)
-            if (!result.isError) run.stepDryRuns.add(key)
-            return result
-        }
-        if (key !in run.dryRuns) {
-            return ToolResult(
-                "Not written: dry run these configs first (dryRun true), exactly as they will be written, read the answer, " +
-                    "and write them in a later step.",
-                isError = true,
-            )
-        }
-        val body = mapOf(CFEP.configs to configs, CFEP.dryRun to false, CFEP.reloadField to true)
-        return run.call(HttpMethod.POST, CFEP.bundlePatch, body = body)
+        return dryRunFirst(
+            run, ATOOL.patchConfig, CFEP.bundlePatch, mapOf(CFEP.configs to input[CFEP.configs]), input[CFEP.dryRun] == true,
+            alsoSend = emptyMap(), alsoWrite = mapOf(CFEP.reloadField to true), dryShape = withoutBundles,
+        )
     }
 
     /** [value] with every map's keys in order, so two inputs differing only in key order compare equal. */

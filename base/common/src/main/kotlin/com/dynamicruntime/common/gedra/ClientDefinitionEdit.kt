@@ -21,8 +21,9 @@ import com.dynamicruntime.common.util.toOptStr
  * another administrator changed a moment ago is kept. An edit starts from that stored entry -- the retrieve's
  * `storedDefinition` -- not from what the client runs, which differs by an unpublished draft and by what a template
  * fills in (a template's labels written back would become the client's own). A client defined in **source code** is refused: a stored definition cannot override a source one, so the
- * edit would change nothing, and the refusal says where the definition is. A **sandbox** is refused too: its
- * definition is derived from its parent's (`SandboxConfigs.deriveDef`), which is edited on the parent's page. A
+ * edit would change nothing, and the refusal says where the definition is. From a **sandbox** an edit is a draft of
+ * its parent's (issue #1358): the sandbox holds no configuration, its definition derived from its parent's
+ * (`SandboxConfigs.deriveDef`). A
  * routing claim on another client's domain prefix or custom domain is refused by the stored write itself
  * (`GedraConfigService`), as every write of a definition is.
  *
@@ -49,8 +50,11 @@ object ClientDefinitionEdit {
      * Sets [fields] -- [ClientPresentationFields] keys to their new values -- on [client]'s stored definition and makes
      * that take effect, live or as a draft. An absent field is left as it is; a blank string, or an empty list,
      * clears an optional one. At least one field must be given. [expected] is how the caller told its user the save would take effect, held to by [ClientStoredEdit.target].
+     * A [dryRun] (issue #1764) checks the edit as the save would -- a label a workflow still names, removed, is refused
+     * by the trial, and a live save's publish checks are run too -- and answers the definition as it would be stored,
+     * storing nothing.
      */
-    fun set(cxt: KdrCxt, client: String, fields: Map<String, Any?>, expected: String? = null): Result {
+    fun set(cxt: KdrCxt, client: String, fields: Map<String, Any?>, expected: String? = null, dryRun: Boolean = false): Result {
         // From a sandbox, its parent's: the sandbox holds no configuration, and a save is a draft of the parent's (#1358).
         val owner = sandboxParentOf(client) ?: client
         val changes = cleaned(owner, fields)
@@ -67,10 +71,12 @@ object ClientDefinitionEdit {
             ?: throw KdrException.mkInput("Client '$owner' has no stored definition to edit.")
         ClientStoredEdit.requireNoForeignDraft(target, holder, "a definition edit")
         val before = holder.entriesBySlot()[CCT.clientDef]?.firstOrNull().toJsonMapOrEmpty()
-        val written = ClientStoredEdit.patchDefinition(bound, holder) { def ->
+        val written = ClientStoredEdit.patchDefinition(bound, holder, dryRun) { def ->
             def.putAll(changes)
             def.entries.removeAll { it.value == null }
         }
+        val info = { written.slotsForEmission(cxt.instanceConfig.isTestInstance)[CCT.clientDef]?.firstOrNull().toJsonMapOrEmpty() }
+        if (dryRun) return Result(written.configId.baseId, info(), ClientStoredEdit.dryRunEffect(cxt, target, written), target.mode)
         val reload = ClientStoredEdit.takeEffect(
             cxt, target, written,
             undo = { ClientStoredEdit.patchDefinition(bound, written) { def -> def.clear(); def.putAll(before) } },
@@ -80,7 +86,7 @@ object ClientDefinitionEdit {
         return Result(
             configName = written.configId.baseId,
             // Redacted as every stored read is (`testFeatures` off a test instance, #696).
-            info = written.slotsForEmission(cxt.instanceConfig.isTestInstance)[CCT.clientDef]?.firstOrNull().toJsonMapOrEmpty(),
+            info = info(),
             issues = reload.issues,
             mode = target.mode,
         )

@@ -15,6 +15,10 @@ import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.gedra.CCT
 import com.dynamicruntime.common.gedra.CFEP
 import com.dynamicruntime.common.gedra.CLD
+import com.dynamicruntime.common.gedra.CUS
+import com.dynamicruntime.common.gedra.ClientService
+import com.dynamicruntime.common.gedra.WorkflowLayout
+import com.dynamicruntime.common.startup.SchemaService
 import com.dynamicruntime.common.gedra.COV
 import com.dynamicruntime.common.gedra.CPY
 import com.dynamicruntime.common.gedra.CUST
@@ -492,6 +496,7 @@ class AssistantTurnsTest : StringSpec({
         })
         val started = admin.postData(ACNV.messagePath, mapOf(ACNV.clientMessageId to "delrun1", ACNV.text to "Look around."))
         val conversationId = started[ACNV.conversationId].toString()
+        @Suppress("BlockingMethodInNonBlockingContext")
         entered.await(20, TimeUnit.SECONDS) shouldBe true
         admin.expectError(EXC.conflict, ACNV.deletePath, mapOf(ACNV.conversationId to conversationId))[EP.errorCode] shouldBe
             ACNV.busyCode
@@ -754,6 +759,49 @@ class AssistantTurnsTest : StringSpec({
         clientDocs() shouldBe offered
         write(ATOOL.resetMenuItem, mapOf(COV.itemId to HMENU.docs))[CPY.mode] shouldBe EDM.draft
         sandboxDocs() shouldBe offered
+    }
+
+    "the definition and forms-list writes dry-run first, then save drafts the sandbox runs and the client's people do not yet" {
+        // Issue #1764: the definition and listing editors' saves, as tools, called as the person's user in the sandbox.
+        val client = "asstdefinition"
+        val admin = clientWithAssistant(cxt, client)
+        val sandboxUserId = admin.postData(AEP.openSandbox, emptyMap())[UPF.userId].toOptLong().shouldNotBeNull()
+        admin.postData(AEP.leaveSandbox, mapOf(AFLD.userId to admin.userId))
+        val row = UserService.get(cxt).queryByUserId(cxt, sandboxUserId).shouldNotBeNull()
+        val principal = InProcessPrincipal(sandboxUserId, row.identityId, row.client, "assistant:test", AssistantTools.scope)
+        val run = ToolRun(cxt, principal, "t1764")
+        fun tool(name: String, input: Map<String, Any?>) = AssistantTools.run(run, name, input)
+        fun ok(name: String, input: Map<String, Any?>): Map<String, Any?> =
+            tool(name, input).also { it.isError shouldBe false }.text.json().toJsonMapOrEmpty()
+        val clients = ClientService.get(cxt)
+
+        // The definition: refused unsaved until the same change passed a dry run, which stores nothing.
+        val rename = mapOf(CLD.name to "Book Club")
+        tool(ATOOL.setClientDefinition, rename + (CFEP.dryRun to false)).text shouldContain "dry run this change first"
+        ok(ATOOL.setClientDefinition, rename + (CFEP.dryRun to true))[CFEP.dryRun] shouldBe true
+        clients.present(sandboxOf(client)).shouldNotBeNull().name shouldBe "Client $client (sandbox)"
+        // A dry run counts once its step is answered: a write in the same step is still refused.
+        tool(ATOOL.setClientDefinition, rename + (CFEP.dryRun to false)).isError shouldBe true
+        run.endStep()
+        ok(ATOOL.setClientDefinition, rename + (CFEP.dryRun to false))[CPY.mode] shouldBe EDM.draft
+        clients.present(sandboxOf(client)).shouldNotBeNull().name shouldBe "Book Club (sandbox)"
+        clients.present(client).shouldNotBeNull().name shouldBe "Client $client"
+        // What only the platform's operator sets is refused, dry run or not.
+        tool(ATOOL.setClientDefinition, mapOf(CLD.audience to "internal", CFEP.dryRun to true)).isError shouldBe true
+
+        // The forms list: a column dry-run, then saved as a draft; then its removal dry-run; the layout, which takes none.
+        fun columns(of: String) = SchemaService.get(cxt).listingColumnsFor(of).map { it.label }
+        val column = mapOf(CUS.column to mapOf(CCT.traitId to "memo", CCT.label to "Memo", CCT.display to $$"${text}"))
+        ok(ATOOL.saveFormsListColumn, column + (CFEP.dryRun to true))[CFEP.dryRun] shouldBe true
+        columns(sandboxOf(client)) shouldNotContain "Memo"
+        run.endStep()
+        ok(ATOOL.saveFormsListColumn, column + (CFEP.dryRun to false))[CPY.mode] shouldBe EDM.draft
+        columns(sandboxOf(client)) shouldContain "Memo"
+        columns(client) shouldNotContain "Memo"
+        val removal = mapOf(CCT.traitId to "memo", CCT.label to "Memo")
+        ok(ATOOL.removeFormsListColumn, removal + (CFEP.dryRun to true))[CFEP.dryRun] shouldBe true
+        columns(sandboxOf(client)) shouldContain "Memo"
+        ok(ATOOL.setFormsListLayout, mapOf(CUS.workflowLayout to WorkflowLayout.split.name))[CPY.mode] shouldBe EDM.draft
     }
 
     "each tool's endpoint exists, is open to the seam, and takes what the tool sends; the assistant's own are session-only" {

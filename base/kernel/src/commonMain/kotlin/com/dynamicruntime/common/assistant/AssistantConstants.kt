@@ -285,6 +285,12 @@ object ATOOL {
     const val setMenuItem = "set_menu_item"
     const val resetMenuItem = "reset_menu_item"
 
+    // The targeted writes of the client's definition and forms list (issue #1764), each but the layout dry-run first.
+    const val setClientDefinition = "set_client_definition"
+    const val saveFormsListColumn = "save_forms_list_column"
+    const val removeFormsListColumn = "remove_forms_list_column"
+    const val setFormsListLayout = "set_forms_list_layout"
+
     // A tool input that is not an endpoint's own field: the document `read_doc` reads.
     const val doc = "doc"
 

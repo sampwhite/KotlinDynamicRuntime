@@ -17,6 +17,10 @@ import com.dynamicruntime.common.gedra.GedraConfigService
 import com.dynamicruntime.common.gedra.GedraConfigType
 import com.dynamicruntime.common.gedra.GedraId
 import com.dynamicruntime.common.gedra.gedraConfig
+import com.dynamicruntime.common.gedra.GedraDataType
+import com.dynamicruntime.common.gedra.workflow.WfEntry
+import com.dynamicruntime.common.gedra.workflow.WfSaveKind
+import com.dynamicruntime.common.gedra.workflow.userHasLabel
 import com.dynamicruntime.common.gedra.sandboxOf
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.naming.clientNamespace
@@ -95,6 +99,46 @@ class ClientDefinitionEditTest : StringSpec({
         present(client).description shouldBe null
         admin.expectError(EXC.badInput, UADEP.clientDefinitionSet, mapOf(CLD.name to " "))
         admin.expectError(EXC.badInput, UADEP.clientDefinitionSet, emptyMap())
+    }
+
+    "a dry run is judged as the save would be, answers the definition it would store, and stores nothing (issue #1764)" {
+        val client = "defeditdry"
+        defineClient(client)
+        val admin = TestUser.create(cxt, "chief@$client.test", level = ROLE.admin, userClient = client)
+
+        val dry = admin.postData(UADEP.clientDefinitionSet, mapOf(CLD.name to "Tried", CFEP.dryRun to true))
+        dry[CFEP.dryRun] shouldBe true
+        dry[CPY.mode] shouldBe EDM.live
+        dry[CLD.definition].toJsonMapOrEmpty()[CLD.name] shouldBe "Tried"
+        // Nothing stored: the client runs, and stores, what it did.
+        present(client).name shouldBe "Client $client"
+        admin.getItem(UADEP.clientDefinition)[CLD.client].toJsonMapOrEmpty()[CLD.name] shouldBe "Client $client"
+        // Refused as the save would be: a note on a label the client does not suggest.
+        admin.expectError(
+            EXC.badInput, UADEP.clientDefinitionSet, mapOf(CLD.userLabelNotes to mapOf("auditor" to "Audits"), CFEP.dryRun to true),
+        )
+        // And by the trial: a workflow's userHasLabel names 'reviewer', so dropping it from the labels is refused.
+        val setup = cxt.mkSubContext("setup", client).also { it.userId = 10260L }
+        svc.writeConfig(
+            setup,
+            gedraConfig(cxt, "flows", clientNamespace(client), client) {
+                trait("DryNoteEntry", "dryNote", setOf(GedraDataType.formDoc), "A note.") { property("text", "What it says.") }
+                workflow("approve", WfEntry.normal) {
+                    task("review", "Review the form") {
+                        trait("dryNote")
+                        function(userHasLabel { label = "reviewer" })
+                        save("save", "Save", WfSaveKind.edit)
+                    }
+                }
+            },
+        )
+        svc.publish(setup, listOf(GedraId.of(GedraConfigType.configDoc, client, "flows")))
+        GedraConfigReload.reloadClient(cxt, client)
+        admin.expectError(EXC.badInput, UADEP.clientDefinitionSet, mapOf(CLD.userLabels to listOf("auditor"), CFEP.dryRun to true))
+        present(client).userLabels shouldBe listOf("reviewer")
+        // And the save itself answers no dryRun.
+        admin.postData(UADEP.clientDefinitionSet, mapOf(CLD.name to "Kept")).containsKey(CFEP.dryRun) shouldBe false
+        present(client).name shouldBe "Kept"
     }
 
     "a client's administrator writes a note on a suggested label, and one on any other label is refused (issue #1660)" {

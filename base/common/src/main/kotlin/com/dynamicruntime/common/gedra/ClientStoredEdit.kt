@@ -120,6 +120,42 @@ object ClientStoredEdit {
     }
 
     /**
+     * A dry run's [takeEffect] (issue #1764), for [written], the revision the dry run built and did not store. A live
+     * save publishes, so a dry run of one is held to what its publish checks ([checkAsPublished]); a draft's is not,
+     * since nothing reaches the client until it is published, and publishing checks it then. Answers the problems the
+     * client's configuration has now, for the result's [CPY.issues]: a change that passed its trial would add none.
+     */
+    fun dryRunEffect(
+        cxt: KdrCxt,
+        target: EditTarget,
+        written: GedraConfigRow,
+        impact: ImpactGate = ImpactGate.unchecked,
+    ): List<GedraConfigIssue> {
+        if (!target.draft) checkAsPublished(target.bound, target.client, written, impact)
+        return ClientConfigIssues.get(cxt).issuesFor(target.client)
+    }
+
+    /**
+     * What [publishAndReload] checks before publishing [written], run on the revision in hand (issue #1764): the
+     * [impact] gate, the instance's [PublishCheck], and -- for a client that runs only what it publishes -- the
+     * publish's trial, which for one that runs its latest has nothing to judge that the write's trial did not.
+     */
+    fun checkAsPublished(bound: KdrCxt, client: String, written: GedraConfigRow, impact: ImpactGate) {
+        checkBeforePublish(bound, client, written, impact)
+        if (GedraConfigService.get(bound).publishedOnly(bound, client)) {
+            GedraConfigTrial.requireClean(
+                bound, client, listOf(written), published = true, "Configuration '${written.configId.baseId}' would not be published",
+            )
+        }
+    }
+
+    /** The checks [publishAndReload] runs before it publishes [written]: the [impact] gate, and a [PublishCheck]. */
+    private fun checkBeforePublish(bound: KdrCxt, client: String, written: GedraConfigRow, impact: ImpactGate) {
+        if (impact == ImpactGate.refuse) ConfigImpact.requireNone(bound, client, listOf(written), asSave = true)
+        (bound.instanceConfig.get(publishCheckConfigKey) as? PublishCheck)?.check(bound, client, written)
+    }
+
+    /**
      * For a [target] that saved a draft, what publishing [written] would do to the stored data of the client it is
      * the draft of (issues #935, #1119): run against the live client, so the person working in the sandbox sees it
      * at the save, for information -- publishing still asks. Null for a live save, or when nothing would be affected.
@@ -141,8 +177,13 @@ object ClientStoredEdit {
      * stands under the lock, so a field another administrator changed a moment ago is kept. The definition editors'
      * shared patch (the sandbox flag, #932; the presentation fields, #1026).
      */
-    fun patchDefinition(bound: KdrCxt, row: GedraConfigRow, edit: (LinkedHashMap<String, Any?>) -> Unit): GedraConfigRow =
-        GedraConfigService.get(bound).patchConfigs(bound, trial = true) { edit(row.configId) { current ->
+    fun patchDefinition(
+        bound: KdrCxt,
+        row: GedraConfigRow,
+        dryRun: Boolean = false,
+        edit: (LinkedHashMap<String, Any?>) -> Unit,
+    ): GedraConfigRow =
+        patch(bound, dryRun) { edit(row.configId) { current ->
             val out = LinkedHashMap(current)
             val defs = current[CCT.clientDef].orEmpty()
             val def = LinkedHashMap(defs.firstOrNull().toJsonMapOrEmpty())
@@ -150,6 +191,16 @@ object ClientStoredEdit {
             out[CCT.clientDef] = listOf(def) + defs.drop(1)
             out
         } }.single()
+
+    /**
+     * An editor's write of the bound client's configuration, trial-checked: stored, or -- a [dryRun] (issue #1764) -- built
+     * and judged as the save would be, every rule and the trial reload included, and not stored. A dry run's caller
+     * then calls [dryRunEffect] in place of [takeEffect]: nothing was written to take effect.
+     */
+    fun patch(bound: KdrCxt, dryRun: Boolean, block: ConfigPatches.() -> Unit): List<GedraConfigRow> {
+        val svc = GedraConfigService.get(bound)
+        return if (dryRun) svc.dryRunPatchConfigs(bound, block) else svc.patchConfigs(bound, trial = true, block)
+    }
 
     /**
      * Puts an editor's patched [entry] back into [slot] of [out]: in place of the one at [at], or appended when there
@@ -238,8 +289,7 @@ object ClientStoredEdit {
         impact: ImpactGate = ImpactGate.unchecked,
     ): ConfigReloadResult {
         try {
-            if (impact == ImpactGate.refuse) ConfigImpact.requireNone(bound, client, listOf(written), asSave = true)
-            (bound.instanceConfig.get(publishCheckConfigKey) as? PublishCheck)?.check(bound, client, written)
+            checkBeforePublish(bound, client, written, impact)
             GedraConfigService.get(bound).publish(bound, listOf(written.configId), trial = true)
         } catch (e: KdrException) {
             undo()

@@ -9,6 +9,7 @@ import com.dynamicruntime.common.gedra.CCT
 import com.dynamicruntime.common.gedra.CFEP
 import com.dynamicruntime.common.gedra.COV
 import com.dynamicruntime.common.gedra.CPY
+import com.dynamicruntime.common.gedra.CUS
 import com.dynamicruntime.common.gedra.CLD
 import com.dynamicruntime.common.gedra.DSV
 import com.dynamicruntime.common.gedra.GDF
@@ -26,6 +27,7 @@ import kotlin.test.assertTrue
  * The workflow assistant page's pure logic (issue #1527): a conversation's messages read into the transcript, each line of
  * tool calls labeled, the drafts a conversation made, how a turn's end is told, when the page polls, and the allowance.
  */
+@Suppress("BooleanLiteralArgument")
 class AssistantTranscriptTest {
     private fun text(t: String) = mapOf(ABLK.type to ABLK.text, ABLK.text to t)
     private fun thinking(t: String) = mapOf(ABLK.type to ABLK.thinking, ABLK.thinking to t)
@@ -84,7 +86,7 @@ class AssistantTranscriptTest {
         assertEquals("Checked a change to `flows`", assertIs<TranscriptItem.Tools>(items[3]).label)
         assertEquals("Drafted `flows` (v3)", assertIs<TranscriptItem.Tools>(items[4]).label)
         // The model's text is its own; an unsummarized note shows nothing; tool results are never said by the person.
-        assertIs<TranscriptItem.Said>(items[5]).let { assertFalse(it.fromPerson) }
+        assertFalse(assertIs<TranscriptItem.Said>(items[5]).fromPerson)
     }
 
     @Test
@@ -165,6 +167,35 @@ class AssistantTranscriptTest {
             person(5, result("c", "Nothing to put back.", isError = true)),
         )
         assertEquals(listOf("`copy`"), draftsOf(written).map { it.title })
+    }
+
+    @Test
+    fun aDefinitionOrFormsListWriteIsCheckedThenDrafted() {
+        // Issue #1764: a dry run is a check, not a draft; the save after it is.
+        val column = mapOf(CUS.column to mapOf(CCT.traitId to "memo", CCT.label to "Memo"))
+        fun call(name: String, input: Map<String, Any?>) = ToolCall("w", name, input, "{\"${COV.configName}\":\"main\"}", false)
+        assertEquals(
+            "Checked a change to the client's definition",
+            toolsLabel(listOf(call(ATOOL.setClientDefinition, mapOf(CFEP.dryRun to true)))),
+        )
+        assertEquals("Drafted the client's definition", toolsLabel(listOf(call(ATOOL.setClientDefinition, mapOf(CFEP.dryRun to false)))))
+        assertEquals("Drafted forms list column `Memo`", toolsLabel(listOf(call(ATOOL.saveFormsListColumn, column))))
+        assertEquals(
+            "Checked a change to the removal of forms list column `Memo`",
+            toolsLabel(listOf(call(ATOOL.removeFormsListColumn, mapOf(CCT.label to "Memo", CFEP.dryRun to true)))),
+        )
+        assertEquals("Drafted the forms list's layout", toolsLabel(listOf(call(ATOOL.setFormsListLayout, emptyMap()))))
+        val checkedOnly = listOf(
+            person(1, text("Rename it.")),
+            model(2, use("a", ATOOL.setClientDefinition, mapOf(CFEP.dryRun to true))),
+            person(3, result("a", "{\"${COV.configName}\":\"main\",\"${CFEP.dryRun}\":true}")),
+        )
+        assertEquals(emptyList(), draftsOf(checkedOnly))
+        val saved = checkedOnly + listOf(
+            model(4, use("b", ATOOL.setClientDefinition, mapOf(CFEP.dryRun to false))),
+            person(5, result("b", "{\"${COV.configName}\":\"main\"}")),
+        )
+        assertEquals(listOf("`main`"), draftsOf(saved).map { it.title })
     }
 
     @Test

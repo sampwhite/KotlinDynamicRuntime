@@ -16,7 +16,9 @@ import com.dynamicruntime.common.filestore.FileStoreService
 import com.dynamicruntime.common.gedra.CCT
 import com.dynamicruntime.common.gedra.CLD
 import com.dynamicruntime.common.gedra.COV
+import com.dynamicruntime.common.gedra.CFEP
 import com.dynamicruntime.common.gedra.CPY
+import com.dynamicruntime.common.gedra.EDM
 import com.dynamicruntime.common.gedra.ClientAudience
 import com.dynamicruntime.common.gedra.ClientCreate
 import com.dynamicruntime.common.gedra.ClientDef
@@ -211,6 +213,23 @@ class PublishRefusalUndoTest : StringSpec({
         main.isPublished shouldBe true
         GedraConfigReload.reloadClient(cxt, client)
         ClientService.get(cxt).known(client)?.name shouldBe "Client $client"
+    }
+
+    "a dry run of a live save is held to what its publish checks, and one of a draft is not (issue #1764)" {
+        // A client without a sandbox: its save publishes, so its dry run is refused where the publish would be.
+        val client = "dryrunlive"
+        val admin = defineClient(client)
+        refusing += client
+        refused(admin, UADEP.clientDefinitionSet, mapOf(CLD.name to "Renamed", CFEP.dryRun to true)) shouldBe refusal
+        refusing -= client
+        ok(admin, UADEP.clientDefinitionSet, mapOf(CLD.name to "Renamed", CFEP.dryRun to true))[CFEP.dryRun] shouldBe true
+        ClientService.get(cxt).known(client)?.name shouldBe "Client $client"
+
+        // With a sandbox, a save is a draft, which publishes nothing: its dry run passes, checked again at publishing.
+        val drafted = "dryrundraft"
+        val chief = defineClient(drafted, sandbox = true)
+        refusing += drafted
+        ok(chief, UADEP.clientDefinitionSet, mapOf(CLD.name to "Renamed", CFEP.dryRun to true))[CPY.mode] shouldBe EDM.draft
     }
 
     "reports: a refused create takes the report out, a reports configuration it made goes too, and a refused removal puts it back" {

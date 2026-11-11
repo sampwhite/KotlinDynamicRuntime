@@ -160,7 +160,14 @@ object ClientUsageEdit {
      * [previousLabel], where it is stored -- see the class note. [wanted]'s column id is ignored: the server keeps a
      * column's, and makes a new one's. [expected] is how the caller told its user the save would take effect.
      */
-    fun save(cxt: KdrCxt, client: String, previousLabel: String?, wanted: ClientTraitUsage, expected: String? = null): Result {
+    fun save(
+        cxt: KdrCxt,
+        client: String,
+        previousLabel: String?,
+        wanted: ClientTraitUsage,
+        expected: String? = null,
+        dryRun: Boolean = false,
+    ): Result {
         // From a sandbox, its parent's: the sandbox holds no configuration, and a save is a draft of the parent's (#1358).
         val owner = sandboxParentOf(client) ?: client
         val label = wanted.label.trim()
@@ -209,7 +216,7 @@ object ClientUsageEdit {
             throw KdrException.mkInput("Column '$label' is already so; nothing to save.")
         }
         val entry = usage.toRuleMap()
-        val result = write(cxt, target, holder, "a change to its listing columns") { current ->
+        val result = write(cxt, target, holder, "a change to its listing columns", dryRun) { current ->
             when {
                 seeds != null -> {
                     if (current.isNotEmpty()) throw changedMeanwhile(owner)
@@ -232,7 +239,7 @@ object ClientUsageEdit {
      * Removes [client]'s column of trait [traitId] headed [label], where it is stored -- see the class note. A client
      * showing the defaults makes the others its own; one removing its last column of its own shows the defaults again.
      */
-    fun remove(cxt: KdrCxt, client: String, traitId: String, label: String, expected: String? = null): Result {
+    fun remove(cxt: KdrCxt, client: String, traitId: String, label: String, expected: String? = null, dryRun: Boolean = false): Result {
         val owner = sandboxParentOf(client) ?: client
         val target = ClientStoredEdit.target(cxt, client, "usageRemove", expected)
         val bound = target.bound
@@ -259,7 +266,7 @@ object ClientUsageEdit {
                 throw KdrException.mkInput("Column '$label' cannot be removed here. ${notEditable(declared.second)}")
             }
         }
-        val result = write(cxt, target, holder, "a change to its listing columns") { current ->
+        val result = write(cxt, target, holder, "a change to its listing columns", dryRun) { current ->
             if (seeds != null) {
                 if (current.isNotEmpty()) throw changedMeanwhile(owner)
                 seeds.filter { it.key != key }.map { it.toRuleMap() }
@@ -294,29 +301,32 @@ object ClientUsageEdit {
     /**
      * Rewrites [holder]'s columns as [change] leaves them -- inside `patchConfigs`, over the revision as it stands under
      * the lock, so a column another administrator added a moment ago is kept or the change refused -- and makes that take
-     * effect; a refused publish puts the columns back. [what] names the change in the draft rule's refusal.
+     * effect; a refused publish puts the columns back. [what] names the change in the draft rule's refusal. A [dryRun]
+     * (issue #1764) is judged as the save would be, the trial included, and stores nothing.
      */
     private fun write(
         cxt: KdrCxt,
         target: ClientStoredEdit.EditTarget,
         holder: GedraConfigRow,
         what: String,
+        dryRun: Boolean,
         change: (List<Map<String, Any?>>) -> List<Map<String, Any?>>,
     ): Written {
         ClientStoredEdit.requireNoForeignDraft(target, holder, what)
         val bound = target.bound
-        val svc = GedraConfigService.get(bound)
-        fun patch(row: GedraConfigRow, to: (List<Map<String, Any?>>) -> List<Map<String, Any?>>) = svc.patchConfigs(bound, trial = true) {
-            edit(row.configId) { slots ->
-                val now = to(slots[CCT.usageDef].orEmpty())
-                if (now.isEmpty()) slots - CCT.usageDef else slots + (CCT.usageDef to now)
-            }
-        }.single()
+        fun patch(row: GedraConfigRow, dry: Boolean, to: (List<Map<String, Any?>>) -> List<Map<String, Any?>>) =
+            ClientStoredEdit.patch(bound, dry) {
+                edit(row.configId) { slots ->
+                    val now = to(slots[CCT.usageDef].orEmpty())
+                    if (now.isEmpty()) slots - CCT.usageDef else slots + (CCT.usageDef to now)
+                }
+            }.single()
         val before = holder.entriesBySlot()[CCT.usageDef].orEmpty()
-        val written = patch(holder, change)
+        val written = patch(holder, dryRun, change)
+        if (dryRun) return Written(written.configId.baseId, ClientStoredEdit.dryRunEffect(cxt, target, written), target.mode)
         val reload = ClientStoredEdit.takeEffect(
             cxt, target, written,
-            undo = { patch(written) { before } },
+            undo = { patch(written, false) { before } },
             restorePublished = holder.isPublished,
             recalculateForms = false,
         )

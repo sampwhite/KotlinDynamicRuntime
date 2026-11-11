@@ -2,6 +2,7 @@ package com.dynamicruntime.kdn
 
 import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.exception.EXC
+import com.dynamicruntime.common.gedra.CFEP
 import com.dynamicruntime.common.gedra.CCT
 import com.dynamicruntime.common.gedra.CIT
 import com.dynamicruntime.common.gedra.CPY
@@ -157,6 +158,28 @@ class ClientUsagesEditTest : StringSpec({
         )
         SchemaService.get(cxt).listingColumnsFor(client).last().usage.presentation shouldBe null
         SchemaService.get(cxt).listingColumnsFor(client).last().kind shouldBe UsageKind.number
+    }
+
+    "a dry run of a column's save or removal is judged as the save would be, and stores nothing (issue #1764)" {
+        val client = "usageDry1764"
+        defineClient(client)
+        val chief = admin(client)
+        val before = labels(client)
+        val dry = chief.postData(UADEP.clientUsageSave, mapOf(CUS.column to column("Minutes", $$"${minutes}"), CFEP.dryRun to true))
+        dry[CFEP.dryRun] shouldBe true
+        dry[CUS.column].toJsonMapOrEmpty()[CCT.label] shouldBe "Minutes"
+        labels(client) shouldBe before
+        // A presentation that does not parse is refused by the dry run's trial, as by the save's.
+        chief.expectError(
+            EXC.badInput, UADEP.clientUsageSave,
+            mapOf(CUS.column to column("Minutes", $$"${minutes}", mapOf(CCT.presentation to $$"${value")), CFEP.dryRun to true),
+        )
+        // Saved for real, then a dry run of its removal leaves it.
+        save(chief, column("Minutes", $$"${minutes}"))
+        val saved = labels(client)
+        val removal = mapOf(CCT.traitId to "talk", CCT.label to "Minutes", CFEP.dryRun to true)
+        chief.postData(UADEP.clientUsageRemove, removal)[CFEP.dryRun] shouldBe true
+        labels(client) shouldBe saved
     }
 
     "removing columns; removing the last of its own brings the defaults back" {
