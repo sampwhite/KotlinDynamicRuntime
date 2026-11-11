@@ -43,7 +43,8 @@ class CopyNotesTest : StringSpec({
         withClue(
             "These keys have no copy note. Before each, or before its namespace, write `/-where <page>: <where on it>. -/` " +
                 "for a key a client is likely to reword (a page of ${CPAGE.pages.joinToString(", ")}), or " +
-                "`/-where none: <why not>. -/`.",
+                "`/-where none: <why not>. -/`. The grants demo rewords every located key, so `GrantsDemoDocsTest` (base:kdn) " +
+                "then asks for its words and a row on its page.",
         ) {
             unclassified.shouldBeEmpty()
         }

@@ -147,7 +147,8 @@ sees it. It says so in a note: a comment that starts `/-where `, directly before
 
 The Clients page's **Copy** panel shows a key's place under it, and finds keys by it. The keys listing returns it as
 `where`, and the assistant's `read_copy` lists the keys of a page by it. A note is a comment, so the values read exactly
-as they would without it.
+as they would without it. The [grants demo](../grants-demo/README.md) rewords every key that has a place, one theme a
+page.
 
 ## A client's copy overlay
 

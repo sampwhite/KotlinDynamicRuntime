@@ -24,6 +24,10 @@ import com.dynamicruntime.common.webasset.WebResourcesDef
 import com.dynamicruntime.common.webasset.WRES
 import com.dynamicruntime.common.webasset.webResources
 import com.dynamicruntime.kdn.confdemo.ConfDemo
+import com.dynamicruntime.kdn.grantsdemo.GrantsDemo
+import com.dynamicruntime.kdn.grantsdemo.GrantsDemoBootService
+import com.dynamicruntime.kdn.grantsdemo.grantsDemoDocs
+import com.dynamicruntime.kdn.grantsdemo.grantsDemoSimulationSchema
 import com.dynamicruntime.kdn.confdemo.ConfDemoBootService
 import com.dynamicruntime.kdn.confdemo.confDemoConfigs
 import com.dynamicruntime.kdn.confdemo.confDemoDocs
@@ -57,13 +61,16 @@ class KdnComponent : ComponentDefinition {
         )
         // The conference demo's simulation (issue #1137): test-only, so it exists on a test instance alone.
         collector.addModule(confDemoSimulationSchema(cxt))
+        // The grants demo's (issue #1799), likewise test-only.
+        collector.addModule(grantsDemoSimulationSchema(cxt))
     }
 
     /**
-     * The conference demo's documentation (issue #1137), the developer docs `docs/demo-client/` holds, and the
-     * walk-through that starts with the demo (issue #1429).
+     * The conference demo's documentation (issue #1137), the developer docs `docs/demo-client/` holds, the walk-through
+     * that starts with the demo (issue #1429), and the grants demo's, which `docs/grants-demo/` holds (issue #1799).
      */
-    override fun docs(cxt: KdrCxt): List<MarkdownDocDef> = confDemoDocs() + WalkThrough.doc + SitePolicies.declared(cxt)
+    override fun docs(cxt: KdrCxt): List<MarkdownDocDef> =
+        confDemoDocs() + grantsDemoDocs() + WalkThrough.doc + SitePolicies.declared(cxt)
 
     /** The walk-through's banners, one opening each part (issues #1429, #1463). */
     override fun images(cxt: KdrCxt): List<ComponentImageDef> = WalkThrough.images + ConfDemo.images
@@ -110,6 +117,8 @@ class KdnComponent : ComponentDefinition {
         flavor(FLV.reference) {
             set(ConfDemo.fromCodeKey, true)
             set(ConfDemo.provisionAtBootKey, true)
+            // The grants demo (issue #1799), provisioned as the node starts, so a visitor finds it to join.
+            set(GrantsDemo.provisionAtBootKey, true)
             // dynamicruntime.org's privacy policy and terms (issue #1711), which every page then links to, and its About
             // page (issue #1769), which the footer does.
             set(HCFG.privacyPolicyDoc, SitePolicies.privacyDocId)
@@ -122,5 +131,5 @@ class KdnComponent : ComponentDefinition {
         },
     )
 
-    override fun services(cxt: KdrCxt): List<ServiceEntry> = listOf(service(::ConfDemoBootService))
+    override fun services(cxt: KdrCxt): List<ServiceEntry> = listOf(service(::ConfDemoBootService), service(::GrantsDemoBootService))
 }

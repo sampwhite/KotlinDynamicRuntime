@@ -6,7 +6,7 @@
    Every key has a copy note, its own or its namespace's (issue #1799): a comment opening with the word "where",
    saying where a person sees a key a client is likely to reword, so the assistant and the copy editor can find it by
    its place, or `none` and why not. A new key needs one, or `copyNotesTest` fails; docs/reference/copy.md says how to
-   write one. -/
+   write one. A key with a place is also reworded by the grants demo (docs/grants-demo/), whose test says so. -/
 
 # @home
 /- The wordmark shown beside the brand mark in the home page's hero. Absent = no hero. -/
@@ -102,8 +102,8 @@ since each one works on the parts of the form it needs. Where the listing has a 
 form stands in each.
 
 
-/-where none: the workflow column's finer words (counts, tips, and states a form seldom shows); its links and headings
-   are located one by one. -/
+/-where none: the workflow column's finer words (tips, and states a form seldom shows); its links, headings, waiting
+   lines, and counts are located one by one. -/
 # @workflowCell
 /- The words of the forms listing's workflow cell (issue #1598). A link to a workflow that is your turn says its verb:
    the call to action's keyword's (`ctaReview.verb`), else what its step asks in words, else `continue`. One you could
@@ -123,8 +123,11 @@ form stands in each.
 # +continue Continue
 /-where Forms: a workflow in the workflow column that waits on someone else, when nothing says why. -/
 # +waiting Waiting
+/-where Forms: a workflow in the workflow column waiting on the form's owner, who is not you. -/
 # +waitingOnOwner Waiting on the owner
+/-where Forms: a workflow in the workflow column waiting on the people its step names, who do not include you. -/
 # +waitingOnOthers Waiting on someone else
+/-where Forms: a workflow in the workflow column waiting on an approval you may not give. -/
 # +waitingForApproval Waiting for approval
 # +opens Opens ${at}
 # +closed Closed ${at}
@@ -139,9 +142,13 @@ form stands in each.
 /-where Forms: the heading over the finished workflows, in a cell's list. -/
 # +finishedGroup Finished
 # +notAvailableGroup Not available
+/-where Forms: how many workflows are your turn, where a narrow screen folds the workflow column to counts. -/
 # +yourTurnCount ${n} your turn
+/-where Forms: how many workflows you could start, where a narrow screen folds the workflow column to counts. -/
 # +availableCount ${n} available
+/-where Forms: how many workflows wait on someone else, where a narrow screen folds the workflow column to counts. -/
 # +waitingCount ${n} waiting
+/-where Forms: how many workflows are finished, where a narrow screen folds the workflow column to counts. -/
 # +finishedCount ${n} finished
 # +notAvailableCount ${n} not available
 # +more +${n} more

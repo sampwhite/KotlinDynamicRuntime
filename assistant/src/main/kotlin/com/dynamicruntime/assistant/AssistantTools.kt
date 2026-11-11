@@ -41,6 +41,7 @@ import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonStr
 import com.dynamicruntime.common.util.toOptStr
 import com.dynamicruntime.kdn.confdemo.ConfDemo
+import com.dynamicruntime.kdn.grantsdemo.GrantsDemo
 
 /**
  * The wire names of a tool's definition and its use (each name matches its value; a block's are the kernel's `ABLK`), and
@@ -219,9 +220,12 @@ object AssistantTools {
         }
     }
 
-    /** A document `read_doc` may read: a reference ([TOOL.docs]) or a page of the demo client's. */
+    /**
+     * A document `read_doc` may read: a reference ([TOOL.docs]), a page of the demo client's, or a page of the grants
+     * demo's (issue #1799), which shows each theme of a client's wording reworded.
+     */
     fun readableDoc(cxt: KdrCxt, docId: String): String? {
-        if (docId !in TOOL.docs && !docId.startsWith(ConfDemo.docIdPrefix)) return null
+        if (!isReadableDocId(docId)) return null
         val declared = MarkdownDocService.declaredDoc(cxt, docId) ?: return null
         return declared.generatedText ?: ContentResources.readText(MarkdownDocService.resourceDir, docId)
     }
@@ -229,7 +233,10 @@ object AssistantTools {
     /** The ids [readableDoc] reads on this node. */
     @Suppress("UNCHECKED_CAST")
     fun readableDocIds(cxt: KdrCxt): List<String> = (cxt.instanceConfig.get(MDOC.registryKey) as? List<MarkdownDocDef>).orEmpty()
-        .map { it.docId }.filter { it in TOOL.docs || it.startsWith(ConfDemo.docIdPrefix) }
+        .map { it.docId }.filter { isReadableDocId(it) }
+
+    private fun isReadableDocId(docId: String): Boolean =
+        docId in TOOL.docs || docId.startsWith(ConfDemo.docIdPrefix) || docId.startsWith(GrantsDemo.docIdPrefix)
 
     @KdrPrivate
     fun build(): List<AssistantTool> = buildList {
@@ -244,8 +251,10 @@ object AssistantTools {
                             "a field's visibility, a save rule, or an eligibility test is written over), '${HDOC.copy}' (the Markdown copy " +
                             "is written in, its roles, and the fragment file format), '${HDOC.reportPaths}' (how a report column's path is " +
                             "written, and every attribute it can end in), '${HDOC.formLayouts}' (what a type's g-layout may hold, and " +
-                            "how a client's layout changes the shared one), or a page of the demo client's " +
-                            "('${ConfDemo.docIdPrefix}README' lists them), which shows a whole client's configuration worked through.",
+                            "how a client's layout changes the shared one), a page of the demo client's " +
+                            "('${ConfDemo.docIdPrefix}README' lists them), which shows a whole client's configuration worked through, " +
+                            "or a page of the grants demo's ('${GrantsDemo.docIdPrefix}README' lists them), which rewords every piece " +
+                            "of copy a client is likely to, theme by theme.",
                     this@AssistantTools.objectSchema(
                         ATOOL.doc to this@AssistantTools.stringSchema("The document's id."),
                         required = listOf(ATOOL.doc)

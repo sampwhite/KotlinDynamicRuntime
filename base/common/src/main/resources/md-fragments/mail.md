@@ -21,7 +21,7 @@
    Every key has a copy note, its own or its namespace's (issue #1799): a comment opening with the word "where",
    saying where a person sees a key a client is likely to reword, so the assistant and the copy editor can find it by
    its place, or `none` and why not. A new key needs one, or `copyNotesTest` fails; docs/reference/copy.md says how to
-   write one. -/
+   write one. A key with a place is also reworded by the grants demo (docs/grants-demo/), whose test says so. -/
 
 /- Shared by every mail. `footer` closes each one; a client overlays it to sign as itself. `htmlStyle` is the
    inline style of the HTML part's body (inline only: mail clients strip stylesheets), where a client sets its
