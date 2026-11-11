@@ -1226,3 +1226,11 @@ code field in `AuthFlow.kt`).
 - **The code and the password on separate steps** *(#1790, deferred here 2026-11-11).* Check the code first, then
   show the password, so Chrome never sees a code field beside a password field. It changes the registration and
   set-password flows and the backend steps behind them.
+
+## When an administrator wants to see a form's whole workflow history
+
+Every act on a form's workflow leaves an event on its engagement's trail -- engaged, disengaged, approved, a lock
+overridden, an approval reversed with its reason (issue #1787) -- but no page draws the trail. The form shows only where
+each approval stands now, and the latest reversal of a step not given again. A history panel would read the trail
+(`GET /gedra/formDoc/states`), name each actor as the view names an approver (`shownName`), and say what each event did.
+Built when someone asks what happened to a form, rather than where it stands.

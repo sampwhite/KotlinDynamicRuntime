@@ -280,6 +280,23 @@ object WVF {
     const val canApprove = "canApprove"
 
     /**
+     * On each approval task of a normal workflow's view (issue #1787): whether this caller may reverse its approval --
+     * it is approved, the caller administers the form's client, and the workflow is being calculated -- the rule the
+     * reverse endpoint enforces, so the page offers the control only where it works.
+     */
+    const val canReverse = "canReverse"
+
+    /**
+     * On an approval task's [approval] that does not count now (issue #1787): its approval's latest reversal in the
+     * current engagement -- when, by whom (as [approvedByName] names a reviewer), why, and, for one reversed along
+     * with an earlier approval, that approval task's label.
+     */
+    const val reversedAt = "reversedAt"
+    const val reversedByName = "reversedByName"
+    const val reversedReason = "reversedReason"
+    const val reversedWith = "reversedWith"
+
+    /**
      * On a view resolved against a form, and the locks endpoint's answer (issue #857): the traits locked for this
      * caller, each with its `traitId`, the `workflowId` and `label` of the workflow locking it, and [canOverride] --
      * so the page draws them read-only and offers an override only to whoever may make one.

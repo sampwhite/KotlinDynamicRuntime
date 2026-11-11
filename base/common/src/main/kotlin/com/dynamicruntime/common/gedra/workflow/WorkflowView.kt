@@ -66,6 +66,13 @@ fun resolveWorkflowView(
     formEntries: List<Map<String, Any?>> = emptyList(),
     /** The caller's relation to the form (issue #1595), as [RowCfacts.of] works it out: `kdr:isOwner` for its owner. */
     rowFacts: Set<String> = emptySet(),
+    /**
+     * The form's approvals of this workflow reversed in this engagement and not given again (issue #1787), by
+     * [approvalKey] to the latest reversal event; see WorkflowApprovals.forView.
+     */
+    reversals: Map<String, Map<String, Any?>> = emptyMap(),
+    /** Whether this caller may reverse the form's approvals (issue #1787), by WorkflowApprovals.mayReverse. */
+    mayReverse: Boolean = false,
 ): Map<String, Any?> {
     val client: String = cxt.client
     @Suppress("VariableInitializerIsRedundant2")
@@ -144,10 +151,20 @@ fun resolveWorkflowView(
     // An approval is given in ordered steps (issue #1702), one implicit step when it declares none: `steps` is the record
     // of each, and the top level speaks of the step to give next (`currentStep`) -- its prompt, button, and who it waits
     // on -- or, once every step is given, of the last, with its time and approver as the task's.
+    //
+    // A step given offers its reversal to whoever may make one (issue #1787, `canReverse`); a step reversed in this
+    // engagement and not given again says who reversed it, when, why, and -- reversed along with an earlier approval --
+    // which, named as the page names an approval: its task's label, and its step's.
     val approverNames = mutableMapOf<Long, String?>()
-    fun approverName(record: Map<String, Any?>): String? = record[WFS.approvedBy].toOptLong()?.let { userId ->
-        // Memo, not getOrPut: an approver who cannot be read (null) is asked once, not once per step.
-        approverNames.memo(userId) { UserService.getOrNull(cxt)?.queryByUserId(cxt, userId)?.shownName() }
+    fun nameOf(userId: Long?): String? = userId?.let {
+        // Memo, not getOrPut: a person who cannot be read (null) is asked once, not once per step.
+        approverNames.memo(it) { UserService.getOrNull(cxt)?.queryByUserId(cxt, it)?.shownName() }
+    }
+    fun approverName(record: Map<String, Any?>): String? = nameOf(record[WFS.approvedBy].toOptLong())
+    fun approvalLabel(key: String): String? = declared.def.tasks.firstNotNullOfOrNull { t ->
+        t.approvalSteps.firstOrNull { approvalKey(t.id, it.id) == key }?.let { s ->
+            listOfNotNull(label(t.label), s.label?.let { label(it) }).joinToString(": ")
+        }
     }
 
     fun approvalView(task: WfTask, approval: WfApproval, shows: List<String>): Map<String, Any?> {
@@ -172,6 +189,17 @@ fun resolveWorkflowView(
                 if (record != null) {
                     put(WFS.approvedAt, record[WFS.approvedAt])
                     approverName(record)?.let { put(WVF.approvedByName, it) }
+                    if (mayReverse) put(WVF.canReverse, true)
+                } else {
+                    reversals[approvalKey(task.id, step.id)]?.let { event ->
+                        put(WVF.reversedAt, event[WFS.at])
+                        nameOf(event[WFS.by].toOptLong())?.let { put(WVF.reversedByName, it) }
+                        event[WFS.reason].toOptStr()?.let { put(WVF.reversedReason, it) }
+                        event[WFS.reversedFrom].toOptStr()
+                            ?.takeIf { it != approvalKey(task.id, step.id) }
+                            ?.let { approvalLabel(it) ?: it }
+                            ?.let { put(WVF.reversedWith, it) }
+                    }
                 }
             }
         }

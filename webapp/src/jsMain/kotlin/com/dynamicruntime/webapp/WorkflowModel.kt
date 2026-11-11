@@ -178,7 +178,9 @@ class WfApprovalView(
 
 /**
  * One step of an approval (issue #1702): its [id], its [label] (what its record says once given; null for an approval
- * given at once), whether it is [approved], and once it is, by whom and when.
+ * given at once), whether it is [approved], and once it is, by whom and when -- and whether this caller may reverse it
+ * ([canReverse], issue #1787). A step reversed in this engagement and not given again says who reversed it, when, why
+ * ([reversedReason]), and, reversed along with an earlier approval, which ([reversedWith]).
  */
 class WfApprovalStepView(
     val id: String,
@@ -186,6 +188,11 @@ class WfApprovalStepView(
     val approved: Boolean,
     val approvedByName: String?,
     val approvedAt: String?,
+    val canReverse: Boolean = false,
+    val reversedByName: String? = null,
+    val reversedAt: String? = null,
+    val reversedReason: String? = null,
+    val reversedWith: String? = null,
 )
 
 /**
@@ -401,6 +408,11 @@ fun parseApproval(raw: Any?): WfApprovalView? {
                 approved = st[WVF.approved] == true,
                 approvedByName = st[WVF.approvedByName].toOptStr(),
                 approvedAt = st[WFS.approvedAt].toOptStr(),
+                canReverse = st[WVF.canReverse] == true,
+                reversedByName = st[WVF.reversedByName].toOptStr(),
+                reversedAt = st[WVF.reversedAt].toOptStr(),
+                reversedReason = st[WVF.reversedReason].toOptStr()?.ifBlank { null },
+                reversedWith = st[WVF.reversedWith].toOptStr()?.ifBlank { null },
             )
         },
         currentStep = a[WVF.currentStep].toOptStr(),
@@ -450,8 +462,62 @@ fun approvedLine(approval: WfApprovalView): String = givenLine("Approved", appro
  * and on what day, as [approvedLine] says them. None for an approval whose steps have no labels -- one given at once,
  * whose [approvedLine] says it all. Pure, and covered under `jsNodeTest`.
  */
-fun givenStepLines(approval: WfApprovalView): List<String> =
-    approval.steps.filter { it.approved && it.label != null }.map { givenLine(it.label!!, it.approvedByName, it.approvedAt) }
+fun givenStepLines(approval: WfApprovalView): List<String> = approval.steps.mapNotNull(::givenStepLine)
+
+/** One given step's line in [givenStepLines]: its label, then who gave it and on what day; null for one not given or unlabeled. */
+fun givenStepLine(step: WfApprovalStepView): String? =
+    step.label?.takeIf { step.approved }?.let { givenLine(it, step.approvedByName, step.approvedAt) }
+
+/**
+ * The line a step reversed and not given again shows (issue #1787), above the approval's prompt: "Approval reversed by
+ * Ada on Nov 11: <reason>." -- named by its label for a step that has one, saying "with “<approval>”" when it went with
+ * an earlier approval's reversal, and leaving out a name that is an email, as [approvedLine] does. Null for a step not
+ * reversed. Pure, and covered under `jsNodeTest`.
+ */
+fun reversedLine(step: WfApprovalStepView): String? {
+    val reason = step.reversedReason ?: return null
+    val head = givenLine("${step.label ?: "Approval"} reversed", step.reversedByName, step.reversedAt).removeSuffix(".")
+    val with = step.reversedWith?.let { ", with “$it”" }.orEmpty()
+    return "$head$with: $reason" + (if (reason.last() in ".!?") "" else ".")
+}
+
+/**
+ * What an approval is called where a reversal names it (issue #1787): its task's label, and its step's when it has one.
+ * The view's own words for it, which the backend uses for `reversedWith` too.
+ */
+fun approvalName(task: WfTaskView, step: WfApprovalStepView): String = listOfNotNull(task.label, step.label).joinToString(": ")
+
+/**
+ * The approvals given now that reversing step [stepId] of task [taskId] would take away with it (issue #1787): every
+ * later step of that task, and every step of a later task, that is approved -- each named by [approvalName], in the
+ * workflow's order. Pure, and covered under `jsNodeTest`.
+ */
+fun reversalTakesWith(view: WorkflowView, taskId: String, stepId: String): List<String> {
+    var after = false
+    return view.tasks.flatMap { task ->
+        task.approval?.steps.orEmpty().mapNotNull { step ->
+            val later = after
+            if (task.id == taskId && step.id == stepId) after = true
+            if (later && step.approved) approvalName(task, step) else null
+        }
+    }
+}
+
+/**
+ * What reversing an approval asks before it is done (issue #1787): that it has to be given again, and which later
+ * approvals go with it ([reversalTakesWith]). Pure, and covered under `jsNodeTest`.
+ */
+fun reversalQuestion(view: WorkflowView, taskId: String, stepId: String): String {
+    val with = reversalTakesWith(view, taskId, stepId)
+    val quoted = with.map { "“$it”" }
+    val also = when (quoted.size) {
+        0 -> ""
+        1 -> " It also reverses ${quoted.single()}."
+        2 -> " It also reverses ${quoted[0]} and ${quoted[1]}."
+        else -> " It also reverses ${quoted.dropLast(1).joinToString(", ")}, and ${quoted.last()}."
+    }
+    return "Reverse this approval? It has to be given again.$also"
+}
 
 /** "[what] by <name> on <day>.", as far as known, leaving out a name that is an email (issue #1430). */
 private fun givenLine(what: String, approvedByName: String?, approvedAt: String?): String {

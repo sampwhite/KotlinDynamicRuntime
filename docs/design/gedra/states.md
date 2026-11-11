@@ -96,7 +96,7 @@ The runtime and the sample declare these:
 | `kdr:coreDetailsCompletion` | derived | none | `formDoc` | `CoreDetailsState.kt` | `CoreDetailsStateDeriver` |
 | `kdr:workflowState` | derived | `workflowId` | `formDoc` | `WorkflowState.kt` | `WorkflowStateDeriver` |
 | `kdr:workflowEngagement` | asserted | `workflowId` | `formDoc` | `WorkflowState.kt` | engaging and disengaging, and the trail events of later acts |
-| `kdr:workflowApproval` | asserted | `workflowId`, `taskId` | `formDoc` | `WorkflowState.kt` | the approve endpoint |
+| `kdr:workflowApproval` | asserted | `workflowId`, `taskId` | `formDoc` | `WorkflowState.kt` | the approve endpoint; the reverse endpoint removes it (#1787) |
 | `sample:traitPresenceByYear` | derived | `year` | `formDoc` | `SampleTraits.kt` | `TraitPresenceByYearDeriver`, only on a test instance whose client lists its test feature |
 | `sample:externalId` | asserted | `externalSource` | `formDoc`, `wfData` | `SampleTraits.kt` | tests, through `writeState` |
 
@@ -198,6 +198,7 @@ any lock, so two acts on one form could each write back a set missing the other'
 |---|---|---|
 | Engaging a form with a normal workflow, or disengaging it (#794) | `POST /gedra/workflow/engage` (`WorkflowEngagement.setEngaged`) | the `kdr:workflowEngagement` entry: `engaged`, `lastEngagedAt`, `lastEngagedBy`, and an `engaged` or `disengaged` event on its trail. Engaging is refused for a form that fails the workflow's eligibility tests (#783). Disengaging keeps the entry. |
 | Approving an approval task (#787) | `POST /gedra/workflow/approve` (`WorkflowApprovals.approve`) | a `kdr:workflowApproval` entry, and an `approved` event on the engagement's trail. Refused unless the form is engaged and the task is the workflow's current task; a second approval in one engagement is a 409. |
+| Reversing an approval (#1787) | `POST /gedra/workflow/reverseApproval` (`WorkflowApprovals.reverse`), for an administrator of the form's client | removes the step's `kdr:workflowApproval` entry and those of every later step and approval of the workflow that counts now, and appends an `approvalReversed` event for each, with the `reason` and the approval chosen (`reversedFrom`). Refused unless the form is engaged and the step is approved now (a 409), and while the workflow is not calculated. The form's data is untouched; the recompute puts the call to action back on the step. |
 | Overriding a trait lock (#857) | `TraitLockGuard`, a write guard, on a patch | a `lockOverridden` event on each locking workflow's engagement trail, written in the patch's transaction before the post-write recompute |
 | Replacing a gedra's state outright (#600) | `POST /admin/gedraState`, gated `admin` and `allClients` | the complete set given, through `writeState` |
 

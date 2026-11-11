@@ -1587,6 +1587,8 @@ textarea.json-edit.json-field { min-height: 4.5rem; }
 .wf-rail-item:disabled:hover { background: none; color: inherit; }
 .wf-display-text { margin: 4px 0 8px; }
 .wf-approval > .row { margin-top: 12px; }
+/* A step reversed and not given again (issue #1787): its own line, apart from the fields above and the prompt below. */
+.wf-reversed { margin: 12px 0 8px; }
 
 /* --- Design View (issue #972) ---------------------------------------------------------------------------------
    An administrator's mode that marks each part of a workflow form with the definition behind it. Its own hue --

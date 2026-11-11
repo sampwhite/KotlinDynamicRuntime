@@ -81,3 +81,29 @@ fun currentApprovals(entries: List<Map<String, Any?>>, workflowId: String): Map<
         }
     }
 }
+
+/**
+ * The approvals of [workflowId] reversed in the **current** engagement and not given again since (issue #1787): each
+ * `approvalKey` to its latest [WFS.approvalReversedEvent] -- who reversed it, when, why, and which approval they chose
+ * ([WFS.reversedFrom]). None when the form is not engaged. What a task shows in place of the approval it had, until it
+ * is approved again. Read from the trail alone, after its last `engaged` event, since a reversal removes the record.
+ */
+fun currentReversals(entries: List<Map<String, Any?>>, workflowId: String): Map<String, Map<String, Any?>> {
+    val engagement = engagementDataOf(entries, workflowId).orEmpty()
+    if (engagement[WFS.engaged] != true) {
+        return emptyMap()
+    }
+    val events = engagement[WFS.events].toJsonListOfMaps()
+    val since = events.indexOfLast { it[WFS.kind].toOptStr() == WFS.engagedEvent } + 1
+    val given = currentApprovals(entries, workflowId).keys
+    val out = LinkedHashMap<String, Map<String, Any?>>()
+    for (event in events.drop(since)) {
+        val key = event[WFS.note].toOptStr() ?: continue
+        when (event[WFS.kind].toOptStr()) {
+            WFS.approvalReversedEvent -> out[key] = event
+            // Given again after it was reversed: the reversal no longer describes the step.
+            WFS.approvedEvent -> out.remove(key)
+        }
+    }
+    return out.filterKeys { it !in given }
+}

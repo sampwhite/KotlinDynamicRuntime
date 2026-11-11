@@ -88,6 +88,12 @@ object GEP {
     /** A reviewer approves a workflow's approval task for a form (issue #787). */
     const val workflowApprove = "/gedra/workflow/approve"
 
+    /**
+     * An administrator of the form's client reverses an approval (issue #1787): the step named, and every later step and
+     * approval of the workflow with it, giving a reason.
+     */
+    const val workflowReverseApproval = "/gedra/workflow/reverseApproval"
+
     /** The workflow pages' aggregate (issue #792): per workflow, how many visible forms are eligible, engaged, finished. */
     const val workflowAggregate = "/gedra/workflow/aggregate"
 
@@ -237,6 +243,12 @@ object GDF {
      * another. Absent, the task's one step, which only an approval that declares no steps has.
      */
     const val stepId = "stepId"
+
+    /** Why an administrator reverses an approval (issue #1787): required, recorded on the workflow's trail and shown on the task. */
+    const val reason = "reason"
+
+    /** The longest [reason] a reversal takes: a sentence or two, not a document. */
+    const val maxReasonLength = 500
 
     /** Names the save option chosen within a task (issue #535). */
     const val saveId = "saveId"

@@ -252,12 +252,13 @@ val CoreDetailsEditPage = FC<Props> {
                 onDirtyChange = { dirty = it }
                 onDesignEdited = { coreDetailsEditScope.launch { reread() } }
                 onDesignToggle = toggleDesign
-                // An approval settled (issue #832): approved, or refused by the endpoint. Either way the form's state may
-                // have moved -- the step now reads approved, someone else approved it first -- so the view is read again,
-                // as after an engage, keeping the refusal to show by its step. It stays on that step: with every step
-                // done the view names no call to action, and the page would open on the first.
+                // An approval settled (issue #832): given or reversed (issue #1787), or refused by the endpoint. Either
+                // way the form's state may have moved -- the step now reads approved, someone else approved it first --
+                // so the view is read again, as after an engage, keeping the refusal to show by its step. It stays on
+                // that step: with every step done the view names no call to action, and the page would open on the
+                // first.
                 onApproveSettled = { taskId, refusal ->
-                    approveRefusal = refusal?.let { ApproveRefusal(taskId, it) }
+                    approveRefusal = refusal
                     selectTask(taskId)
                     reloads += 1
                 }

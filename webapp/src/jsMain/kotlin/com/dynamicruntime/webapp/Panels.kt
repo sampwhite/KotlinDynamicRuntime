@@ -301,36 +301,67 @@ external interface DangerConfirmProps : Props {
     var inProgress: Boolean?
 
     var onConfirm: () -> Unit
+
+    /**
+     * When set, the act needs a reason (issue #1787): once armed, a text area under this label, the confirm disabled until
+     * something is written, and [onConfirmReason] called with it, trimmed, in place of [onConfirm].
+     */
+    var reasonLabel: String?
+
+    /** The longest reason taken, when [reasonLabel] asks for one. */
+    var reasonMaxLength: Int?
+
+    var onConfirmReason: ((String) -> Unit)?
 }
 
 /**
  * The one confirmation for what cannot be undone (issue #1477, rule 6): a danger button that, pressed, is replaced in
  * place by the question, the danger confirm, and the way back -- two deliberate presses, the second beside the words
- * saying what it does. Armed only for the record it was pressed for ([DangerConfirmProps.recordKey]).
+ * saying what it does. Armed only for the record it was pressed for ([DangerConfirmProps.recordKey]). An act that
+ * needs a reason ([DangerConfirmProps.reasonLabel], issue #1787) asks for it between the question and the confirm.
  */
 val DangerConfirm = FC<DangerConfirmProps> { props ->
     // Which record it was armed for, so another record reads as unarmed from its first render -- not after an effect
     // has caught up, a frame in which a click would delete the wrong one.
     var armedFor by useState<String?>(null)
+    // The reason being written, and the record it is for: another record starts with none.
+    var reason by useState("" to "")
     val armed = armedFor == props.recordKey
-    div {
-        className = ClassName("row")
-        if (!armed) {
+    val written = reason.second.takeIf { reason.first == props.recordKey }.orEmpty().trim()
+    val needsReason = props.reasonLabel != null
+    if (!armed) {
+        div {
+            className = ClassName("row")
             Button {
                 danger = true
                 disabled = props.inProgress == true
-                onClick = { armedFor = props.recordKey }
+                onClick = { armedFor = props.recordKey; reason = props.recordKey to "" }
                 +props.actionText
             }
-        } else {
-            span {
-                className = ClassName("subtitle")
-                +props.question
+        }
+    } else {
+        p {
+            className = ClassName("subtitle")
+            +props.question
+        }
+        props.reasonLabel?.let { label ->
+            choiceRow(label) {
+                TextArea {
+                    value = reason.second
+                    disabled = props.inProgress == true
+                    maxLength = props.reasonMaxLength
+                    asDynamic()["rows"] = 2
+                    onChange = { e -> reason = props.recordKey to (e.target.value as String) }
+                }
             }
+        }
+        div {
+            className = ClassName("row")
             Button {
                 danger = true
                 loading = props.inProgress == true
-                onClick = { props.onConfirm() }
+                disabled = needsReason && written.isEmpty()
+                onClick = { if (needsReason) props.onConfirmReason?.invoke(written) else props.onConfirm() }
                 +props.confirmText
             }
             Button {
