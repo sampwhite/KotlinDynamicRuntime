@@ -85,6 +85,18 @@ external interface InputProps : PropsWithChildren {
     var autoCapitalize: String?
 
     /**
+     * The HTML `inputmode` hint, which keyboard a phone shows (`"email"` for an address, with `@` on its main layer,
+     * issue #1790). Only the keyboard: unlike `type="email"`, it brings no validation of its own.
+     */
+    var inputMode: String?
+
+    /** Safari's `autocorrect` hint (`"off"` for an address, issue #1790), which antd forwards to the `<input>`. */
+    var autoCorrect: String?
+
+    /** Whether the browser marks spelling in the field; false for an address (issue #1790). */
+    var spellCheck: Boolean?
+
+    /**
      * React style object. antd's `Input` is `width: 100%`, so inside a flex row it takes whatever the
      * container has left -- which makes its width an accident of the panel rather than a decision, and is why
      * a filter box grew to 816px the moment the panel around it did (issue #462).

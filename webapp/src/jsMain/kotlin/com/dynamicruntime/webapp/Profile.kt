@@ -471,6 +471,8 @@ val Profile = FC<Props> {
             // Code first, then the new password -- the order the copy above just described ("we emailed a
             // code"), and the same order the registration flow uses, so the one step that appears in both
             // places does not swap its fields depending on where you reached it from.
+            // Chrome may fill the remembered username into this code field when it fills the password: see the note at the
+            // code field in AuthFlow.kt (issue #1790) for what was tried, and why it was left.
             textField(
                 t("password", "codeLabel", "Verification code"), code, disabled = busy,
                 autoComplete = AC.oneTimeCode, autoCapitalize = AC.capitalizeCharacters,

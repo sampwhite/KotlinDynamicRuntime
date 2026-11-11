@@ -1201,3 +1201,16 @@ A display's text reads the approval's view (issue #1702): `${approvedByName}` is
 lists each step, but a template has no way to index a list, so "Accepted by `<first step's approver>`" cannot be
 written. Either give templates list indexing or give the view each step by its id (`given.committee.approvedByName`).
 The default rendering already lists each step given, by its label, so this waits for a client whose text needs it.
+
+## When people report Chrome filling the verification code
+
+When someone accepts Chrome's offer to fill a remembered password on a form that also asks for a verification code --
+registration, sign-in's "Email me a code and set a password", Profile's password change -- Chrome fills the remembered
+username into the code field too, though it is marked `autocomplete="one-time-code"`. Clearing the field is the
+workaround. A hidden username field, a read-only address with named fields, and a nonstandard `autocomplete` value were
+each tried and failed, and `autocomplete="off"` is ignored by Chrome's password manager (issue #1790; the note at the
+code field in `AuthFlow.kt`).
+
+- **The code and the password on separate steps** *(#1790, deferred here 2026-11-11).* Check the code first, then
+  show the password, so Chrome never sees a code field beside a password field. It changes the registration and
+  set-password flows and the backend steps behind them.
