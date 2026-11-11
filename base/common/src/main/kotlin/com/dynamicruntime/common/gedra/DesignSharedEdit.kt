@@ -204,7 +204,7 @@ object DesignSharedEdit {
      * remove a choice are checked against the client's stored forms (issue #1040): refused with the impact report when
      * any holds a removed value, unless [acknowledgeImpact]. Saved as every Design View save is
      * ([DesignView.saveEdit]): published and live, or a draft its sandbox shows -- which the check leaves to its
-     * publish. Returns the new stamp.
+     * publish. Returns the new stamp; a [dryRun] (issue #1765) stores nothing, and answers a draft's impact.
      */
     fun setSharedField(
         cxt: KdrCxt,
@@ -214,7 +214,8 @@ object DesignSharedEdit {
         options: List<Map<String, Any?>>?,
         basedOn: String,
         acknowledgeImpact: Boolean = false,
-    ): String {
+        dryRun: Boolean = false,
+    ): DesignSave {
         val target = sharedTarget(cxt, typeName)
         // Judged against the entry as drawn; were it to change before the lock, the stamp check refuses the save.
         val removes = options != null && removedChoices(target.storedBody(cxt), field, options).isNotEmpty()
@@ -223,7 +224,7 @@ object DesignSharedEdit {
             acknowledgeImpact -> ImpactGate.acknowledged
             else -> ImpactGate.refuse
         }
-        return saveShared(cxt, target, basedOn, impact) { withSharedField(it, field, entry, options) }
+        return saveShared(cxt, target, basedOn, impact, dryRun) { withSharedField(it, field, entry, options) }
     }
 
     /**
@@ -232,7 +233,7 @@ object DesignSharedEdit {
      * every workflow on the client (issues #1070, #1539). Refused as [setSharedField] is; neither changes data, so no
      * stored form is checked. Returns the new stamp.
      */
-    fun setSharedHeading(cxt: KdrCxt, typeName: String, label: String?, description: String?, basedOn: String): String =
+    fun setSharedHeading(cxt: KdrCxt, typeName: String, label: String?, description: String?, basedOn: String): DesignSave =
         saveShared(cxt, sharedTarget(cxt, typeName), basedOn, ImpactGate.unchecked) { withSharedHeading(it, label, description) }
 
     /** Where a shared edit of a type lands: the [config] declaring it, and its entry there by [slot] and [key]. */
@@ -275,10 +276,11 @@ object DesignSharedEdit {
         target: SharedTarget,
         basedOn: String,
         impact: ImpactGate,
+        dryRun: Boolean = false,
         rewrite: (Map<String, Any?>) -> Map<String, Any?>,
-    ): String {
+    ): DesignSave {
         val (config, slot, key) = Triple(target.config, target.slot, target.key)
-        DesignView.saveEdit(cxt, config.name, impact) { slots ->
+        val draftImpact = DesignView.saveEdit(cxt, config.name, impact, dryRun) { slots ->
             val entries = slots[slot].orEmpty()
             val at = entries.indexOfFirst { it[keyField(slot)] == key }
             // A type of the client's own code with nothing stored yet: its first edit stores an overlay of it (issue #1670).
@@ -304,7 +306,7 @@ object DesignSharedEdit {
             slots + (slot to written)
         }
         val readCxt = SandboxEdits.parentCxt(cxt, cxt.client) ?: cxt
-        return storedEntry(readCxt, config, slot, key)?.let { stampOf(it) } ?: ""
+        return DesignSave(storedEntry(readCxt, config, slot, key)?.let { stampOf(it) } ?: "", config.name, draftImpact)
     }
 }
 

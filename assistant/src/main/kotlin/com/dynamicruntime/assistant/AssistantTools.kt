@@ -32,6 +32,7 @@ import com.dynamicruntime.common.gedra.PORT
 import com.dynamicruntime.common.home.HDOC
 import com.dynamicruntime.common.http.request.InProcessCaller
 import com.dynamicruntime.common.http.request.InProcessPrincipal
+import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.user.InProcessScope
 import com.dynamicruntime.common.user.UADEP
 import com.dynamicruntime.common.util.toJsonListOfMaps
@@ -176,7 +177,8 @@ class AssistantTool(
  * client as its sandbox runs it -- its definition, menu, copy, forms list, reports, images, drafts and their impact
  * ([clientReads], issue #1762) -- and writes that can only make drafts: `patch_config`, a dry run before every write,
  * `set_included_traits`, the copy and menu editors' targeted edits ([wordingAndMenuWrites], issue #1763), and the
- * definition and forms-list editors' ([definitionAndFormsListWrites], issue #1764). The tools
+ * definition and forms-list editors' ([definitionAndFormsListWrites], issue #1764), and Design View's ([designWrites],
+ * issue #1765). The tools
  * act as the person's own user in the client's sandbox, whose configuration edits become drafts on the parent.
  *
  * **What is left out is the point.** Publishing, reverting, deleting a config, `publishedOnly`, `bundle/write` (which
@@ -308,6 +310,7 @@ object AssistantTools {
         addAll(this@AssistantTools.clientReads())
         addAll(this@AssistantTools.wordingAndMenuWrites())
         addAll(this@AssistantTools.definitionAndFormsListWrites())
+        addAll(this@AssistantTools.designWrites())
         addAll(
             listOf(
                 AssistantTool(
@@ -510,8 +513,7 @@ object AssistantTools {
             COV.key to stringSchema("The key within the namespace."),
         )
         val copyKeyFields = listOf(COV.fileId, COV.namespaceField, COV.key)
-        fun drafted(input: Map<String, Any?>, fields: List<String>): Map<String, Any?> =
-            fields.filter { input[it] != null }.associateWith { input[it] } + (CPY.mode to EDM.draft)
+        fun drafted(input: Map<String, Any?>, fields: List<String>): Map<String, Any?> = given(input, fields) + expectDraft
         return listOf(
             AssistantTool(
                 ATOOL.setCopy,
@@ -681,8 +683,172 @@ object AssistantTools {
                 ),
                 HttpMethod.POST, UADEP.clientUsageLayout, setOf(CUS.workflowLayout, CPY.mode),
             ) { run, input ->
-                val body = mapOf(CUS.workflowLayout to input[CUS.workflowLayout], CPY.mode to EDM.draft)
+                val body = mapOf(CUS.workflowLayout to input[CUS.workflowLayout], expectDraft)
                 run.call(HttpMethod.POST, UADEP.clientUsageLayout, body = body)
+            },
+        )
+    }
+
+    /**
+     * The targeted writes of Design View's edits (issue #1765): a field's copy, a heading and its introduction, and a
+     * workflow's labels, for one workflow or shared by every workflow on the client, and which fields a workflow's form
+     * shows. Each changes exactly what it names and keeps every key it does not, where `patch_config` would replace an
+     * entry whole -- so the assistant need not restate what it means to keep. Called as the person's user in the sandbox,
+     * each saves a draft, as Design View's saves from the sandbox do.
+     *
+     * **Each is judged against a basis**, as the page sends one: an edit of a workflow sends the `basedOn` that
+     * `read_definition` gives for it, and a shared edit the `sharedBasedOn` it gives for the trait or type. A definition
+     * changed since is refused (409), so the model reads it again rather than overwriting a change it has not seen.
+     *
+     * **A dry run where an edit can reach stored data**: a change of a field's choices -- a removed one is judged against
+     * the forms that hold it -- and of the fields a form shows. Those are written only after the same change passed one
+     * ([dryRunFirst]); a wording-only edit has none.
+     */
+    @KdrPrivate
+    fun designWrites(): List<AssistantTool> {
+        val basedOn = DSV.basedOn to stringSchema(
+            "The workflow's stamp, from ${ATOOL.readDefinition} of slot '${CCT.workflowDef}' and the workflow's id: an edit " +
+                "of a workflow changed since is refused, and is read again.",
+        )
+        val sharedBasedOn = DSV.sharedBasedOn to stringSchema(
+            "The definition's stamp, from ${ATOOL.readDefinition} of the trait (or the type): a shared edit of one changed " +
+                "since is refused, and is read again.",
+        )
+        val workflowId = DSV.workflowId to stringSchema("The workflow, by its id.")
+        val typeName = DSV.typeName to stringSchema(
+            "The type whose field it is: a trait's data type, as ${ATOOL.viewWorkflow} names it in a trait's schemaRef " +
+                    $$"(after '#/$defs/').",
+        )
+        val field = DSV.field to stringSchema("The field, by its key in the type.")
+        val entry = DSV.entry to mapOf(
+            "type" to "object",
+            "description" to "The field's copy: 'label', 'description' (the line under it), 'hint', and the rest of a layout " +
+                "entry, as the client-configuration reference's field layouts give them.",
+        )
+        val label = DSV.label to stringSchema("The heading; absent or blank to go back to the shared one.")
+        val description = DSV.description to stringSchema("The introduction under the heading, Markdown; absent or blank to go back.")
+        val dryRun = CFEP.dryRun to mapOf("type" to "boolean", "description" to "True to check the change without saving it.")
+        // A wording-only edit: the fields given, sent to the path as they are, with no dry run -- unless [guard] refuses
+        // the input first, with what to send instead.
+        fun wording(
+            name: String,
+            description: String,
+            schema: Map<String, Any?>,
+            path: String,
+            fields: List<String>,
+            guard: (Map<String, Any?>) -> String? = { null },
+        ) = AssistantTool(name, description, schema, HttpMethod.POST, path, fields.toSet()) { run, input ->
+            guard(input)?.let { ToolResult(it, isError = true) } ?: run.call(HttpMethod.POST, path, body = given(input, fields))
+        }
+        val sharedFieldEdit = listOf(DSV.typeName, DSV.field, DSV.entry, DSV.options, DSV.sharedBasedOn)
+        val shownFieldsEdit = listOf(DSV.workflowId, DSV.typeName, DSV.fields, DSV.basedOn)
+        return listOf(
+            wording(
+                ATOOL.setFieldCopy,
+                "Sets a field's copy for one workflow's form, as a draft: its label, the line under it, its hint, and the rest " +
+                    "of its layout entry, over the copy every workflow shares. To remove the workflow's own copy, so the " +
+                    "shared copy shows again, give '${ATOOL.remove}': true and no '${DSV.entry}'. Wording only, so no dry run.",
+                objectSchema(
+                    workflowId, typeName, field, entry, basedOn,
+                    ATOOL.remove to mapOf("type" to "boolean", "description" to "True to remove the workflow's own copy."),
+                    required = listOf(DSV.workflowId, DSV.typeName, DSV.field, DSV.basedOn),
+                ),
+                DSV.layoutEntryEdit, listOf(DSV.workflowId, DSV.typeName, DSV.field, DSV.entry, DSV.basedOn),
+                // An absent entry removes the copy at the endpoint, so the tool asks for it said, never by omission.
+                guard = { input ->
+                    when {
+                        input[DSV.entry] != null && input[ATOOL.remove] == true ->
+                            "Give '${DSV.entry}' to set the copy, or '${ATOOL.remove}': true to remove it, not both."
+                        input[DSV.entry] == null && input[ATOOL.remove] != true ->
+                            "Give the copy as '${DSV.entry}', or '${ATOOL.remove}': true to remove the workflow's own copy."
+                        else -> null
+                    }
+                },
+            ),
+            AssistantTool(
+                ATOOL.setSharedField,
+                "Sets a field's copy, its choices, or both, in the trait the client declares, as a draft, for every workflow " +
+                    "on the client. '${DSV.options}' is the choices as they should stand, each {value, label}: relabeled, " +
+                    "added, or removed -- a value left out is removed. **A change of choices is dry-run first**: a removed " +
+                    "choice is judged against the forms that hold it, and the dry run says which would no longer be " +
+                    "valid once published. Copy alone needs none.",
+                objectSchema(
+                    typeName, field, entry,
+                    DSV.options to arraySchema(
+                        "The field's choices as they should stand.",
+                        objectSchema(
+                            SCH.value to stringSchema("What the form stores for the choice; a value left out is removed."),
+                            SCH.label to stringSchema("What the form shows for it."),
+                            required = listOf(SCH.value, SCH.label),
+                        ),
+                    ),
+                    sharedBasedOn, dryRun,
+                    required = listOf(DSV.typeName, DSV.field, DSV.sharedBasedOn),
+                ),
+                HttpMethod.POST, DSV.sharedFieldEdit, (sharedFieldEdit + CFEP.dryRun).toSet(),
+            ) { run, input ->
+                val change = given(input, sharedFieldEdit)
+                val dry = input[CFEP.dryRun] == true
+                if (input[DSV.options] == null) {
+                    // Copy alone needs no dry run, but one asked for is one: checked, nothing saved.
+                    run.call(HttpMethod.POST, DSV.sharedFieldEdit, body = if (dry) change + (CFEP.dryRun to true) else change)
+                } else {
+                    dryRunFirst(run, ATOOL.setSharedField, DSV.sharedFieldEdit, change, dry, alsoSend = emptyMap())
+                }
+            },
+            wording(
+                ATOOL.setHeading,
+                "Sets the heading one workflow's form shows over a trait, and the introduction under it, as a draft, over the " +
+                    "shared ones; either absent or blank goes back to the shared one. Wording only, so no dry run.",
+                objectSchema(
+                    workflowId, typeName, label, description, basedOn,
+                    required = listOf(DSV.workflowId, DSV.typeName, DSV.basedOn),
+                ),
+                DSV.headingEdit, listOf(DSV.workflowId, DSV.typeName, DSV.label, DSV.description, DSV.basedOn),
+            ),
+            wording(
+                ATOOL.setSharedHeading,
+                "Sets a trait's heading, and the introduction under it, in the trait the client declares, as a draft, for " +
+                    "every workflow on the client; either absent or blank removes it. Wording only, so no dry run.",
+                objectSchema(
+                    typeName,
+                    DSV.label to stringSchema("The heading; absent or blank to remove it, so forms show the type's own title."),
+                    DSV.description to stringSchema("The introduction under it, Markdown; absent or blank to remove it."),
+                    sharedBasedOn,
+                    required = listOf(DSV.typeName, DSV.sharedBasedOn),
+                ),
+                DSV.sharedHeadingEdit, listOf(DSV.typeName, DSV.label, DSV.description, DSV.sharedBasedOn),
+            ),
+            wording(
+                ATOOL.setWorkflowLabel,
+                "Sets a label a workflow owns, as a draft: its own (its page's title) with no '${DSV.taskId}', a task's with " +
+                    "one, or a save's -- its button -- with a '${DSV.saveId}' too. A label is a template, like any workflow " +
+                    "label. Wording only, so no dry run.",
+                objectSchema(
+                    workflowId,
+                    DSV.taskId to stringSchema("The task whose label changes, or whose save's does; absent for the workflow's own."),
+                    DSV.saveId to stringSchema("The save, within the task, whose label changes."),
+                    DSV.label to stringSchema("The label; blank clears the workflow's own, which a task's and a save's cannot be."),
+                    basedOn,
+                    required = listOf(DSV.workflowId, DSV.basedOn),
+                ),
+                DSV.labelEdit, listOf(DSV.workflowId, DSV.taskId, DSV.saveId, DSV.label, DSV.basedOn),
+            ),
+            AssistantTool(
+                ATOOL.setShownFields,
+                "Sets which fields of a trait one workflow's form shows, in order, as a draft -- and so which its save writes; " +
+                    "without '${DSV.fields}', it stops choosing, and the form shows them all. A field the type requires " +
+                    "may not be left out. **Dry run first**, then save in a later step.",
+                objectSchema(
+                    workflowId, typeName,
+                    DSV.fields to arraySchema("The fields the form shows, in order.", stringSchema("A field's key.")),
+                    basedOn, dryRun,
+                    required = listOf(DSV.workflowId, DSV.typeName, DSV.basedOn, CFEP.dryRun),
+                ),
+                HttpMethod.POST, DSV.shownFieldsEdit, (shownFieldsEdit + CFEP.dryRun).toSet(),
+            ) { run, input ->
+                val change = given(input, shownFieldsEdit)
+                dryRunFirst(run, ATOOL.setShownFields, DSV.shownFieldsEdit, change, input[CFEP.dryRun] == true, alsoSend = emptyMap())
             },
         )
     }
@@ -700,7 +866,7 @@ object AssistantTools {
         path: String,
         change: Map<String, Any?>,
         dryRun: Boolean,
-        alsoSend: Map<String, Any?> = mapOf(CPY.mode to EDM.draft),
+        alsoSend: Map<String, Any?> = mapOf(expectDraft),
         alsoWrite: Map<String, Any?> = emptyMap(),
         dryShape: ((Any?) -> Any?)? = null,
     ): ToolResult {
@@ -721,10 +887,17 @@ object AssistantTools {
         return run.call(HttpMethod.POST, path, body = body + (CFEP.dryRun to false) + alsoWrite)
     }
 
-    /** The [fields] of a tool's [input] that it gives, the change a targeted save sends. */
+    /**
+     * The [fields] of a tool's [input] that it gives, the change a targeted save sends: the one way every targeted
+     * write picks what it passes on (issues #1763-#1765). A field given as null is passed as null, as the endpoint reads it.
+     */
     @KdrPrivate
     fun given(input: Map<String, Any?>, fields: List<String>): Map<String, Any?> =
         fields.filter { input.containsKey(it) }.associateWith { input[it] }
+
+    /** What a targeted save that takes one sends to say it expects a draft ([CPY.mode]), so a live one is refused. */
+    @KdrPrivate
+    val expectDraft: Pair<String, Any?> = CPY.mode to EDM.draft
 
     /**
      * `read_menu`'s answer (issue #1762) from the menu items [payload]: each item repeats the audiences a condition may be,
