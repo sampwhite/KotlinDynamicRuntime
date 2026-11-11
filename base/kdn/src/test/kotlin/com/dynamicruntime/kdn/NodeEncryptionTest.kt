@@ -91,7 +91,7 @@ class NodeEncryptionTest : StringSpec({
         val address = "victim@example.com"
 
         // What the attacker can build with only public values (the pre-fix algorithm, verbatim).
-        val attackerGuess = (address + token).stdHashToBytes().toReadableChars(4)
+        val attackerGuess = (address + token).stdHashToBytes().toReadableChars(NodeService.verifyCodeBytes)
 
         node.computeVerifyCode(token, address) shouldNotBe attackerGuess
     }

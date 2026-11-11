@@ -473,7 +473,7 @@ val Profile = FC<Props> {
             // places does not swap its fields depending on where you reached it from.
             textField(
                 t("password", "codeLabel", "Verification code"), code, disabled = busy,
-                autoComplete = AC.oneTimeCode,
+                autoComplete = AC.oneTimeCode, autoCapitalize = AC.capitalizeCharacters,
             ) { code = it }
             textField(
                 t("password", "newPasswordLabel", "New password"), password, isPassword = true,

@@ -409,6 +409,7 @@ val AuthFlow = FC<AuthFlowProps> { props ->
             }
             textField(
                 t(ns, "codeLabel", "Verification code"), code, disabled = busy, autoComplete = AC.oneTimeCode,
+                autoCapitalize = AC.capitalizeCharacters,
             ) { code = it }
 
             // A password at this step is optional when registering (code login works without one) and required
