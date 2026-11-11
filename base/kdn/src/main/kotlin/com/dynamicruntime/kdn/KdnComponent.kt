@@ -39,6 +39,7 @@ import com.dynamicruntime.kdn.confdemo.confDemoSimulationSchema
  * its own worth rendering: `/schema/sample` and `/schema/complex` exercise choices, dates, numbers, booleans,
  * deep `$ref`s and recursion, and unlike the demo ones they are the actual subject of a test.
  */
+@Suppress("CollectionConcatenationToBuildCollection")
 class KdnComponent : ComponentDefinition {
     override val providerName: String = "kdn"
 
