@@ -192,6 +192,12 @@ else is refused, and a drift test holds each tool to its endpoint.
 | `save_forms_list_column` | a forms-list column added or changed, dry-run first, as a draft | `POST /clientAdmin/client/usages/save` |
 | `remove_forms_list_column` | a forms-list column removed, dry-run first, as a draft | `POST /clientAdmin/client/usages/remove` |
 | `set_forms_list_layout` | how the forms list draws workflows, as a draft | `POST /clientAdmin/client/usages/layout` |
+| `set_field_copy` | a field's copy for one workflow, or its removal said as `remove`, as a draft | `POST /clientAdmin/design/layoutEntry` |
+| `set_shared_field` | a field's copy or choices for every workflow; a change of choices dry-run first | `POST /clientAdmin/design/sharedField` |
+| `set_heading` | a trait's heading and introduction for one workflow, as a draft | `POST /clientAdmin/design/heading` |
+| `set_shared_heading` | a trait's heading and introduction for every workflow, as a draft | `POST /clientAdmin/design/sharedHeading` |
+| `set_workflow_label` | a workflow's, a task's, or a save's label, as a draft | `POST /clientAdmin/design/label` |
+| `set_shown_fields` | which fields a workflow's form shows, dry-run first, as a draft | `POST /clientAdmin/design/shownFields` |
 
 `patch_config` refuses a write unless a dry run of exactly the same configs was accepted in an earlier step of the same
 turn, so the model has read its impact first. A write asks for a reload, as the bundle editor's does (issue #1770): a
@@ -206,7 +212,12 @@ saved -- and they recalculate no form's state. The definition and forms-list wri
 saves, drafts the same way; a definition edit and a column's save or removal can be refused by the trial (a label a
 workflow names, removed; a column whose value does not resolve), so their endpoints take `dryRun`, and the tool, as
 `patch_config` does, saves only a change that passed a dry run in an earlier step. The definition tool offers the
-client's own fields; what only the platform's operator sets is refused by the endpoint from the person's user. Left out on purpose:
+client's own fields; what only the platform's operator sets is refused by the endpoint from the person's user. Design
+View's edits (issue #1765) change exactly what they name and keep the rest, where a `patch_config` entry is replaced
+whole. Each is judged against a basis read with the definition -- a workflow's `basedOn`, a trait's or type's
+`sharedBasedOn`, which `read_definition` gives -- so an edit of a definition changed since is refused, to be read again.
+A change of a field's choices, judged against the forms holding a removed one, and of the fields a form shows take a
+dry run first; a draft's dry run answers what publishing it would do to stored forms (`draftImpact`). Left out on purpose:
 publishing, reverting, deleting a bundle, `publishedOnly`, `bundle/write` (which deletes what it is not given), the
 sandbox switch, `workflows/params` (in force at once), users, keys, sessions, form data, the endpoint catalog, and
 every `admin`, `operator`, and `fixture` endpoint. The reads of the client (issue #1762) answer for the sandbox, which

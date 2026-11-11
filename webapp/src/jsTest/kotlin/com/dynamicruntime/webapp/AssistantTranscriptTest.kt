@@ -199,6 +199,22 @@ class AssistantTranscriptTest {
     }
 
     @Test
+    fun aDesignViewEditIsLabeledByWhatItChanges() {
+        // Issue #1765: by the workflow or field it changes; a dry run of the fields a form shows is a check.
+        fun call(name: String, input: Map<String, Any?>) = ToolCall("d", name, input, "{\"${COV.configName}\":\"flows\"}", false)
+        assertEquals("Drafted a label in `review`", toolsLabel(listOf(call(ATOOL.setWorkflowLabel, mapOf(DSV.workflowId to "review")))))
+        assertEquals(
+            "Drafted the copy of `text` in `review`",
+            toolsLabel(listOf(call(ATOOL.setFieldCopy, mapOf(DSV.workflowId to "review", DSV.field to "text")))),
+        )
+        assertEquals(
+            "Checked a change to the fields `review` shows",
+            toolsLabel(listOf(call(ATOOL.setShownFields, mapOf(DSV.workflowId to "review", CFEP.dryRun to true)))),
+        )
+        assertEquals("Drafted the shared copy of `text`", toolsLabel(listOf(call(ATOOL.setSharedField, mapOf(DSV.field to "text")))))
+    }
+
+    @Test
     fun aTurnsEndIsToldUnlessItRanToItsEnd() {
         assertNull(turnEndText(null))
         assertNull(turnEndText(TurnView("t", "Hi", ACNV.statusDone, null)))

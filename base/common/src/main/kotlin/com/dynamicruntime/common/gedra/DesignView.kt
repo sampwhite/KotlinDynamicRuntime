@@ -26,6 +26,7 @@ import com.dynamicruntime.common.gedra.workflow.workflowDefStamp
 import com.dynamicruntime.common.gedra.workflow.toJsonMap
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SCT
+import com.dynamicruntime.common.schema.SchTypeBuilder
 import com.dynamicruntime.common.schema.SL
 import com.dynamicruntime.common.startup.SchemaService
 import com.dynamicruntime.common.user.AdminRules
@@ -285,13 +286,18 @@ object DesignView {
      * [saveRefusal]'s rules. Trial-checked like every config write, and reloaded and announced. With [impact] at
      * [ImpactGate.refuse], a live save that would affect the client's stored data is refused with the impact report
      * and undone (issue #1040).
+     *
+     * A [dryRun] (issue #1765) is judged as the save would be -- the trial, and for a live save what its publish checks,
+     * the impact gate among them ([ClientStoredEdit.dryRunEffect]) -- and stores nothing. It answers, for a draft, what
+     * publishing it would do to the client's stored forms, when it would do anything; else null.
      */
     internal fun saveEdit(
         cxt: KdrCxt,
         configName: String,
         impact: ImpactGate = ImpactGate.unchecked,
+        dryRun: Boolean = false,
         patch: (Map<String, List<Map<String, Any?>>>) -> Map<String, List<Map<String, Any?>>>,
-    ) {
+    ): ImpactReport? {
         saveRefusal(cxt, configName)?.let { throw KdrException.mkInput(it.message) }
         val target = ClientStoredEdit.target(cxt, cxt.client, "designEdit")
         val svc = GedraConfigService.get(target.bound)
@@ -299,10 +305,14 @@ object DesignView {
         // None yet when the save is the first change to a code bundle (issue #1670): the patch makes it.
         val holder = svc.readLatest(target.bound, configId)
         var before: Map<String, List<Map<String, Any?>>> = emptyMap()
-        val written = svc.patchConfigs(target.bound, trial = true) { edit(configId) { slots ->
+        val written = ClientStoredEdit.patch(target.bound, dryRun) { edit(configId) { slots ->
             before = slots
             patch(slots)
         } }.single()
+        if (dryRun) {
+            ClientStoredEdit.dryRunEffect(cxt, target, written, impact)
+            return ClientStoredEdit.draftImpact(target, written)
+        }
         ClientStoredEdit.takeEffect(
             cxt, target, written,
             undo = {
@@ -314,6 +324,7 @@ object DesignView {
             restorePublished = holder?.isPublished == true,
             impact = impact,
         )
+        return null
     }
 
     /**
@@ -327,7 +338,7 @@ object DesignView {
      * Sets [field]'s layout entry for [typeName] in workflow [workflowId] to [entry], or removes it when [entry] is
      * null -- the workflow's own wording over the inherited copy (issue #984) -- as every Design View save is made
      * ([saveEdit]), and refused when the definition has changed since [basedOn]. Returns the new stamp, for the page's
-     * next edit.
+     * next edit, with the bundle it landed in.
      */
     fun setLayoutEntry(
         cxt: KdrCxt,
@@ -336,7 +347,7 @@ object DesignView {
         field: String,
         entry: Map<String, Any?>?,
         basedOn: String,
-    ): String {
+    ): DesignSave {
         val inherited = layoutEntryOf(cxt.getClientSchema(), typeName, field)
         return editWorkflowDef(cxt, workflowId, basedOn) { withLayoutEntry(it, typeName, field, entry, inherited) }
     }
@@ -348,7 +359,7 @@ object DesignView {
      * fragment key is the client's shared wording, edited at the key instead (#1010); this replaces whatever the label
      * says. Returns the new stamp.
      */
-    fun setLabel(cxt: KdrCxt, workflowId: String, taskId: String?, saveId: String?, label: String?, basedOn: String): String =
+    fun setLabel(cxt: KdrCxt, workflowId: String, taskId: String?, saveId: String?, label: String?, basedOn: String): DesignSave =
         editWorkflowDef(cxt, workflowId, basedOn) { withWorkflowLabel(it, taskId, saveId, label) }
 
     /**
@@ -357,7 +368,14 @@ object DesignView {
      * ([withLayoutHeading]), recording the client's heading and introduction they replace. Refused when the definition
      * has changed since [basedOn]. Returns the new stamp.
      */
-    fun setHeading(cxt: KdrCxt, workflowId: String, typeName: String, label: String?, description: String?, basedOn: String): String {
+    fun setHeading(
+        cxt: KdrCxt,
+        workflowId: String,
+        typeName: String,
+        label: String?,
+        description: String?,
+        basedOn: String,
+    ): DesignSave {
         val inherited = layoutHeadingOf(cxt.getClientSchema().defs, typeName)
         return editWorkflowDef(cxt, workflowId, basedOn) { withLayoutHeading(it, typeName, label, description, inherited) }
     }
@@ -366,31 +384,41 @@ object DesignView {
      * Sets the fields workflow [workflowId]'s form shows for [typeName] to [fields], in order, or removes its choice when
      * [fields] is null (issue #1071) -- its layout alteration of the type, `authoritative` ([withShownFields]). Its edit
      * save then writes only those fields. A list that omits a field the type may require is refused by the trial, as
-     * the load check refuses one. Refused when the definition has changed since [basedOn]. Returns the new stamp.
+     * the load check refuses one. Refused when the definition has changed since [basedOn]. Returns the new stamp; a
+     * [dryRun] (issue #1765) stores nothing, so its stamp is the one it was based on.
      */
-    fun setShownFields(cxt: KdrCxt, workflowId: String, typeName: String, fields: List<String>?, basedOn: String): String {
+    fun setShownFields(
+        cxt: KdrCxt,
+        workflowId: String,
+        typeName: String,
+        fields: List<String>?,
+        basedOn: String,
+        dryRun: Boolean = false,
+    ): DesignSave {
         if (fields != null && fields.isEmpty()) {
             throw KdrException.mkInput("A form shows at least one field; to show them all, stop choosing them.")
         }
-        return editWorkflowDef(cxt, workflowId, basedOn) { withShownFields(it, typeName, fields) }
+        return editWorkflowDef(cxt, workflowId, basedOn, dryRun) { withShownFields(it, typeName, fields) }
     }
 
     /**
      * Rewrites workflow [workflowId]'s stored definition with [rewrite] -- given its JSON form, returning the new one --
      * as every Design View save is made ([saveEdit]): refused first by [editRefusal], and under the write lock when the
-     * stored definition has changed since [basedOn] (409). Returns the new stamp, for the page's next edit.
+     * stored definition has changed since [basedOn] (409). Returns the new stamp, for the page's next edit, and a
+     * [dryRun]'s draft impact ([saveEdit]).
      */
     private fun editWorkflowDef(
         cxt: KdrCxt,
         workflowId: String,
         basedOn: String,
+        dryRun: Boolean = false,
         rewrite: (Map<String, Any?>) -> Map<String, Any?>,
-    ): String {
+    ): DesignSave {
         val declared = WorkflowService.get(cxt).forClient(cxt.client).workflow(workflowId)
             ?: throw KdrException("No workflow '$workflowId' for client '${cxt.client}'.", code = EXC.notFound)
         editRefusal(cxt, declared)?.let { throw KdrException.mkInput(it.message) }
         val fromCode = isOwnCode(cxt, declared.bundle)
-        saveEdit(cxt, declared.bundle.name) { slots ->
+        val impact = saveEdit(cxt, declared.bundle.name, dryRun = dryRun) { slots ->
             val workflows = slots[CCT.workflowDef].orEmpty()
             val at = workflows.indexOfFirst { it[CCT.workflowId] == workflowId }
             if (at < 0 && !fromCode) throw KdrException("No workflow '$workflowId' in '${declared.bundle.name}'.", code = EXC.notFound)
@@ -418,7 +446,7 @@ object DesignView {
             slots + (CCT.workflowDef to written)
         }
         val reloaded = WorkflowService.get(cxt).forClient(cxt.client).workflow(workflowId)
-        return reloaded?.def?.let { workflowDefStamp(it) } ?: ""
+        return DesignSave(reloaded?.def?.let { workflowDefStamp(it) } ?: "", declared.bundle.name, impact)
     }
 
     /**
@@ -500,6 +528,8 @@ object DesignView {
         }
         read.workflow?.let { def ->
             DesignPulledCopy.labelFacts(cxt, def).takeIf { it.isNotEmpty() }?.let { pulled[DSV.pulledLabels] = it }
+            // The stamp a per-workflow edit is based on (issue #1765), as the page's Design View block gives it.
+            out[DSV.basedOn] = workflowDefStamp(def)
         }
         if (pulled.isNotEmpty()) {
             out.putAll(pulled)
@@ -591,6 +621,11 @@ fun designViewSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, DSV.namespace) 
         property(DSV.sharedRefusal, "Why it may not be, when it may not.")
         property(DSV.sharedRefusalCode, "Which of the closed set of reasons that is.") { options(DesignRefusal.entries) }
         property(DSV.sharedBasedOn, "A stamp of the stored entry, sent back with a shared edit.")
+        property(
+            DSV.basedOn,
+            "For a workflow: the stamp of its definition as it runs, sent back with an edit of it (issue #1765), as the " +
+                "page's Design View block gives it.",
+        )
         property(DSV.sharedCopyRefusals, "By field, why it cannot be given shared copy; a field not named here can.") {
             type = SCT.kObject
         }
@@ -621,6 +656,7 @@ fun designViewSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, DSV.namespace) 
         property(DSV.basedOn, "The workflow definition's stamp after the edit -- what the next edit is based on.", required = true)
         // A field's layout entry, or which fields a form shows, can change what a task requires (issue #1741).
         formStatesAutoProperty()
+        designDryRunProperties()
     }
 
     generalEndpoint(
@@ -642,12 +678,12 @@ fun designViewSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, DSV.namespace) 
         AdminRules.requireClientAdministrator(c)
         // Its own context when it names another client: where the edit leaves what it did to the forms (issue #1741).
         val dc = designCxt(c, request)
-        val stamp = DesignView.setLayoutEntry(
+        val saved = DesignView.setLayoutEntry(
             dc, request.getReqNonBlankStr(DSV.workflowId), request.getReqNonBlankStr(DSV.typeName),
             request.getReqNonBlankStr(DSV.field), (request[DSV.entry] as? Map<*, *>)?.toJsonMap(),
             request.getReqNonBlankStr(DSV.basedOn),
         )
-        linkedMapOf(DSV.basedOn to stamp).withFormStatesAuto(dc)
+        saved.answer(DSV.basedOn, dc, dryRun = false)
     }
 
     type(DSV.sharedFieldEditType) {
@@ -656,6 +692,7 @@ fun designViewSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, DSV.namespace) 
         property(DSV.sharedBasedOn, "The entry's stamp after the edit -- what the next shared edit is based on.", required = true)
         // Removing a choice can make a stored value one a task no longer accepts (issue #1741).
         formStatesAutoProperty()
+        designDryRunProperties()
     }
 
     generalEndpoint(
@@ -684,19 +721,22 @@ fun designViewSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, DSV.namespace) 
                 "Save a removal of choices although stored forms hold them (issue #1040); without it, such a save is " +
                     "refused with the impact report.",
             ) { type = SCT.boolean }
+            dryRunField()
             designClientField()
         },
     ) { c, request ->
         AdminRules.requireClientAdministrator(c)
         val dc = designCxt(c, request)
-        val stamp = DesignSharedEdit.setSharedField(
+        val dryRun = dryRunOf(request)
+        val saved = DesignSharedEdit.setSharedField(
             dc, request.getReqNonBlankStr(DSV.typeName), request.getReqNonBlankStr(DSV.field),
             (request[DSV.entry] as? Map<*, *>)?.toJsonMap(),
             (request[DSV.options] as? List<*>)?.map { (it as? Map<*, *>)?.toJsonMap().orEmpty() },
             request.getReqNonBlankStr(DSV.sharedBasedOn),
             acknowledgeImpact = request[IMP.acknowledgeImpact] == true,
+            dryRun = dryRun,
         )
-        linkedMapOf(DSV.sharedBasedOn to stamp).withFormStatesAuto(dc)
+        saved.answer(DSV.sharedBasedOn, dc, dryRun)
     }
 
     type(DSV.labelEditType) {
@@ -705,6 +745,7 @@ fun designViewSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, DSV.namespace) 
         property(DSV.basedOn, "The workflow definition's stamp after the edit -- what the next edit is based on.", required = true)
         // A field's layout entry, or which fields a form shows, can change what a task requires (issue #1741).
         formStatesAutoProperty()
+        designDryRunProperties()
     }
 
     generalEndpoint(
@@ -723,11 +764,11 @@ fun designViewSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, DSV.namespace) 
     ) { c, request ->
         AdminRules.requireClientAdministrator(c)
         val dc = designCxt(c, request)
-        val stamp = DesignView.setLabel(
+        val saved = DesignView.setLabel(
             dc, request.getReqNonBlankStr(DSV.workflowId), request[DSV.taskId].toOptStr(),
             request[DSV.saveId].toOptStr(), request[DSV.label].toOptStr(), request.getReqNonBlankStr(DSV.basedOn),
         )
-        linkedMapOf(DSV.basedOn to stamp).withFormStatesAuto(dc)
+        saved.answer(DSV.basedOn, dc, dryRun = false)
     }
 
     generalEndpoint(
@@ -748,11 +789,11 @@ fun designViewSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, DSV.namespace) 
     ) { c, request ->
         AdminRules.requireClientAdministrator(c)
         val dc = designCxt(c, request)
-        val stamp = DesignView.setHeading(
+        val saved = DesignView.setHeading(
             dc, request.getReqNonBlankStr(DSV.workflowId), request.getReqNonBlankStr(DSV.typeName),
             request[DSV.label].toOptStr(), request[DSV.description].toOptStr(), request.getReqNonBlankStr(DSV.basedOn),
         )
-        linkedMapOf(DSV.basedOn to stamp).withFormStatesAuto(dc)
+        saved.answer(DSV.basedOn, dc, dryRun = false)
     }
 
     generalEndpoint(
@@ -768,16 +809,18 @@ fun designViewSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, DSV.namespace) 
                 items { type = SCT.string }
             }
             field(DSV.basedOn, "The stamp of the definition the edit was made against, from the page's Design View block.", required = true)
+            dryRunField()
             designClientField()
         },
     ) { c, request ->
         AdminRules.requireClientAdministrator(c)
         val dc = designCxt(c, request)
-        val stamp = DesignView.setShownFields(
+        val dryRun = dryRunOf(request)
+        val saved = DesignView.setShownFields(
             dc, request.getReqNonBlankStr(DSV.workflowId), request.getReqNonBlankStr(DSV.typeName),
-            (request[DSV.fields] as? List<*>)?.mapNotNull { it.toOptStr() }, request.getReqNonBlankStr(DSV.basedOn),
+            (request[DSV.fields] as? List<*>)?.mapNotNull { it.toOptStr() }, request.getReqNonBlankStr(DSV.basedOn), dryRun,
         )
-        linkedMapOf(DSV.basedOn to stamp).withFormStatesAuto(dc)
+        saved.answer(DSV.basedOn, dc, dryRun)
     }
 
     generalEndpoint(
@@ -796,11 +839,11 @@ fun designViewSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, DSV.namespace) 
     ) { c, request ->
         AdminRules.requireClientAdministrator(c)
         val dc = designCxt(c, request)
-        val stamp = DesignSharedEdit.setSharedHeading(
+        val saved = DesignSharedEdit.setSharedHeading(
             dc, request.getReqNonBlankStr(DSV.typeName), request[DSV.label].toOptStr(),
             request[DSV.description].toOptStr(), request.getReqNonBlankStr(DSV.sharedBasedOn),
         )
-        linkedMapOf(DSV.sharedBasedOn to stamp).withFormStatesAuto(dc)
+        saved.answer(DSV.sharedBasedOn, dc, dryRun = false)
     }
 
     itemEndpoint(
@@ -817,6 +860,35 @@ fun designViewSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, DSV.namespace) 
         AdminRules.requireClientAdministrator(c)
         DesignView.definition(designCxt(c, request), request.getReqNonBlankStr(DSV.slot), request.getReqNonBlankStr(DSV.key))
     }
+}
+
+/**
+ * What a Design View save left (issue #1765): the [stamp] the next edit is based on, the client's bundle it landed in
+ * ([configName]), and -- for a dry run of a draft -- what publishing it would do to the client's stored forms, when it
+ * would do anything ([draftImpact]).
+ */
+class DesignSave(val stamp: String, val configName: String, val draftImpact: ImpactReport? = null) {
+    /** The endpoint's answer: the stamp under [stampField], the bundle, what the save did to the forms, and a dry run's marks. */
+    internal fun answer(stampField: String, cxt: KdrCxt, dryRun: Boolean): Map<String, Any?> = buildMap {
+        put(stampField, stamp)
+        put(COV.configName, configName)
+        draftImpact?.let { put(CIT.draftImpact, it.toMap()) }
+    }.withFormStatesAuto(cxt).markedDryRun(dryRun)
+}
+
+/**
+ * The fields a Design View edit's result adds for the workflow assistant (issue #1765): the bundle it landed in, whether
+ * it was a dry run, and a draft's impact.
+ */
+private fun SchTypeBuilder.designDryRunProperties() {
+    property(COV.configName, "The client's bundle the edit landed in -- or, for a dry run, would.")
+    property(CFEP.dryRun, "Present and true for a dry run (issue #1765): nothing was stored, and the stamp is the one it was based on.") {
+        type = SCT.boolean
+    }
+    property(
+        CIT.draftImpact,
+        "For a dry run of a draft: what publishing it would do to the client's stored forms, when it would do anything.",
+    ) { type = SCT.kObject }
 }
 
 /** The Design View endpoints' [DSV.client] input: the client whose form the page draws. */

@@ -15,6 +15,11 @@ import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.gedra.CCT
 import com.dynamicruntime.common.gedra.CFEP
 import com.dynamicruntime.common.gedra.CLD
+import com.dynamicruntime.common.gedra.CIT
+import com.dynamicruntime.common.gedra.IMP
+import com.dynamicruntime.common.gedra.workflow.WVF
+import com.dynamicruntime.common.gedra.workflow.WorkflowService
+import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.gedra.CUS
 import com.dynamicruntime.common.gedra.ClientService
 import com.dynamicruntime.common.gedra.WorkflowLayout
@@ -71,11 +76,13 @@ import com.dynamicruntime.common.user.UserService
 import com.dynamicruntime.common.util.json
 import com.dynamicruntime.common.util.jsonMap
 import com.dynamicruntime.common.util.toJsonListOfMaps
+import com.dynamicruntime.common.util.toJsonListOfStrings
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptInstantOrNull
 import com.dynamicruntime.common.util.toOptLong
 import com.dynamicruntime.common.util.toOptStr
 import com.dynamicruntime.kdn.Startup
+import io.kotest.assertions.withClue
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldContain
@@ -136,7 +143,14 @@ class AssistantTurnsTest : StringSpec({
                         enabledEnvironments = setOf(ENV.unit, ENV.local), sandbox = sandbox,
                     ),
                 )
-                trait("MemoEntry", "memo", setOf(GedraDataType.formDoc), "A memo.") { property("text", "What it says.") }
+                trait("MemoEntry", "memo", setOf(GedraDataType.formDoc), "A memo.") {
+                    property("text", "What it says.")
+                    // A choice, for Design View's shared choices (issue #1765).
+                    property("kind", "What kind of memo it is.") {
+                        option("note", "A note")
+                        option("idea", "An idea")
+                    }
+                }
             },
         )
         configs.writeConfig(setup, gedraConfig(on, "flows", clientNamespace(client), client) { flows(workflows) })
@@ -802,6 +816,95 @@ class AssistantTurnsTest : StringSpec({
         ok(ATOOL.removeFormsListColumn, removal + (CFEP.dryRun to true))[CFEP.dryRun] shouldBe true
         columns(sandboxOf(client)) shouldContain "Memo"
         ok(ATOOL.setFormsListLayout, mapOf(CUS.workflowLayout to WorkflowLayout.split.name))[CPY.mode] shouldBe EDM.draft
+    }
+
+    "Design View's edits, judged against the basis read with the definition, save drafts the sandbox runs" {
+        // Issue #1765: Design View's saves, as tools, called as the person's user in the sandbox.
+        val client = "asstdesign"
+        val admin = clientWithAssistant(cxt, client)
+        val sandboxUserId = admin.postData(AEP.openSandbox, emptyMap())[UPF.userId].toOptLong().shouldNotBeNull()
+        admin.postData(AEP.leaveSandbox, mapOf(AFLD.userId to admin.userId))
+        val row = UserService.get(cxt).queryByUserId(cxt, sandboxUserId).shouldNotBeNull()
+        val principal = InProcessPrincipal(sandboxUserId, row.identityId, row.client, "assistant:test", AssistantTools.scope)
+        val run = ToolRun(cxt, principal, "t1765")
+        fun tool(name: String, input: Map<String, Any?>) = AssistantTools.run(run, name, input)
+        fun ok(name: String, input: Map<String, Any?>): Map<String, Any?> =
+            tool(name, input).also { withClue("$name: ${it.text}") { it.isError shouldBe false } }.text.json().toJsonMapOrEmpty()
+        fun read(slot: String, key: String) = ok(ATOOL.readDefinition, mapOf(DSV.slot to slot, DSV.key to key))
+        fun label(of: String) = WorkflowService.get(cxt).forClient(of).workflow("review").shouldNotBeNull().def.label
+        val view = ok(ATOOL.viewWorkflow, mapOf(GDF.workflowId to "review"))
+        val typeName = view[WFD.tasks].toJsonListOfMaps().single()[WFD.traits].toJsonListOfMaps().single()[WVF.schemaRef]
+            .toString().removePrefix("#/\$defs/")
+
+        // A workflow's label: a draft the sandbox runs, the client does not yet, in the workflow's own bundle.
+        val basedOn = read(CCT.workflowDef, "review")[DSV.basedOn].shouldNotBeNull()
+        val labeled = ok(ATOOL.setWorkflowLabel, mapOf(DSV.workflowId to "review", DSV.label to "Review the memo", DSV.basedOn to basedOn))
+        labeled[COV.configName] shouldBe "flows"
+        label(sandboxOf(client)) shouldBe "Review the memo"
+        label(client) shouldNotBe "Review the memo"
+        // The basis it was based on is stale now: refused, to be read again.
+        tool(ATOOL.setWorkflowLabel, mapOf(DSV.workflowId to "review", DSV.label to "Again", DSV.basedOn to basedOn)).isError shouldBe true
+        val fresh = labeled[DSV.basedOn]
+        read(CCT.workflowDef, "review")[DSV.basedOn] shouldBe fresh
+
+        // A field's copy for the workflow, and the fields its form shows: dry-run first, which stores nothing.
+        ok(
+            ATOOL.setFieldCopy,
+            mapOf(DSV.workflowId to "review", DSV.typeName to typeName, DSV.field to "text", DSV.entry to mapOf("label" to "The memo"),
+                DSV.basedOn to fresh),
+        )
+        // An entry, or remove: true -- never a removal by leaving the entry out.
+        val bare = mapOf(DSV.workflowId to "review", DSV.typeName to typeName, DSV.field to "text")
+        tool(ATOOL.setFieldCopy, bare + (DSV.basedOn to read(CCT.workflowDef, "review")[DSV.basedOn])).isError shouldBe true
+        ok(ATOOL.setFieldCopy, bare + (ATOOL.remove to true) + (DSV.basedOn to read(CCT.workflowDef, "review")[DSV.basedOn]))
+        val now = read(CCT.workflowDef, "review")[DSV.basedOn]
+        val shown = mapOf(DSV.workflowId to "review", DSV.typeName to typeName, DSV.fields to listOf("text"), DSV.basedOn to now)
+        tool(ATOOL.setShownFields, shown + (CFEP.dryRun to false)).text shouldContain "dry run this change first"
+        ok(ATOOL.setShownFields, shown + (CFEP.dryRun to true))[CFEP.dryRun] shouldBe true
+        read(CCT.workflowDef, "review")[DSV.basedOn] shouldBe now
+        run.endStep()
+        ok(ATOOL.setShownFields, shown + (CFEP.dryRun to false)).containsKey(CFEP.dryRun) shouldBe false
+
+        // Shared: the trait's heading, and a field's copy for every workflow, against the trait's own basis; a change of
+        // choices is dry-run first, and a free-text field takes none.
+        val sharedBasedOn = read(CCT.traitDef, "memo")[DSV.sharedBasedOn].shouldNotBeNull()
+        val headed = ok(ATOOL.setSharedHeading, mapOf(DSV.typeName to typeName, DSV.label to "Memo", DSV.sharedBasedOn to sharedBasedOn))
+        headed[COV.configName] shouldBe "main"
+        val copied = ok(
+            ATOOL.setSharedField,
+            mapOf(DSV.typeName to typeName, DSV.field to "text", DSV.entry to mapOf("label" to "What it says"),
+                DSV.sharedBasedOn to headed[DSV.sharedBasedOn]),
+        )
+        val choices = mapOf(
+            DSV.typeName to typeName, DSV.field to "text", DSV.options to listOf(mapOf(SCH.value to "a", SCH.label to "A")),
+            DSV.sharedBasedOn to copied[DSV.sharedBasedOn],
+        )
+        tool(ATOOL.setSharedField, choices + (CFEP.dryRun to false)).text shouldContain "dry run this change first"
+        tool(ATOOL.setSharedField, choices + (CFEP.dryRun to true)).isError shouldBe true
+        // A copy-only change asked as a dry run is one: checked, and nothing saved.
+        val copyBasedOn = read(CCT.traitDef, "memo")[DSV.sharedBasedOn]
+        val copyOnly = mapOf(DSV.typeName to typeName, DSV.field to "text", DSV.entry to mapOf("label" to "Checked only"),
+            DSV.sharedBasedOn to copyBasedOn)
+        ok(ATOOL.setSharedField, copyOnly + (CFEP.dryRun to true))[CFEP.dryRun] shouldBe true
+        read(CCT.traitDef, "memo")[DSV.sharedBasedOn] shouldBe copyBasedOn
+
+        // A choice a form of the client holds, removed: the dry run says what publishing would do, then it is drafted.
+        val held = admin.postItem(
+            GEP.formDocCreate,
+            mapOf(GDF.entries to listOf(mapOf(GE.traitId to "memo", GE.data to mapOf("text" to "Held", "kind" to "idea")))),
+        )[GDF.gedraId].shouldNotBeNull()
+        val removal = mapOf(
+            DSV.typeName to typeName, DSV.field to "kind", DSV.options to listOf(mapOf(SCH.value to "note", SCH.label to "A note")),
+            DSV.sharedBasedOn to copyBasedOn,
+        )
+        val checked = ok(ATOOL.setSharedField, removal + (CFEP.dryRun to true))
+        val finding = checked[CIT.draftImpact].toJsonMapOrEmpty()[IMP.findings].toJsonListOfMaps().single()
+        finding[IMP.sampleIds].toJsonListOfStrings() shouldContain held
+        run.endStep()
+        ok(ATOOL.setSharedField, removal + (CFEP.dryRun to false)).containsKey(CFEP.dryRun) shouldBe false
+        val schema = read(CCT.traitDef, "memo")[DSV.entry].toJsonMapOrEmpty()[CCT.dataSchema].toJsonMapOrEmpty()
+        val options = schema[SCH.properties].toJsonMapOrEmpty()["kind"].toJsonMapOrEmpty()[SCH.options].toJsonListOfMaps()
+        options.map { it[SCH.value] } shouldBe listOf("note")
     }
 
     "each tool's endpoint exists, is open to the seam, and takes what the tool sends; the assistant's own are session-only" {

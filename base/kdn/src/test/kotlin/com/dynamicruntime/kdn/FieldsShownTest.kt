@@ -18,6 +18,8 @@ import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.GedraId
 import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.gedra.traitDataTypeName
+import com.dynamicruntime.common.gedra.CCT
+import com.dynamicruntime.common.gedra.CFEP
 import com.dynamicruntime.common.gedra.workflow.WFD
 import com.dynamicruntime.common.gedra.workflow.WSF
 import com.dynamicruntime.common.gedra.workflow.WfEntry
@@ -166,6 +168,19 @@ class FieldsShownTest : StringSpec({
         // An empty list is refused; stopping the choice shows every field again.
         admin.expectError(EXC.badInput, DSV.shownFieldsEdit, mapOf(DSV.workflowId to "partA", DSV.typeName to dataType, DSV.fields to emptyList<String>(), DSV.basedOn to block()[DSV.basedOn]))
         set(null)
+        block().containsKey(DSV.shownFields) shouldBe false
+
+        // Issue #1765: the workflow's definition read gives the stamp the page's block does, which an edit is based on.
+        val read = admin.getItem(DSV.definition, mapOf(DSV.slot to CCT.workflowDef, DSV.key to "partA"))
+        read[DSV.basedOn] shouldBe block()[DSV.basedOn]
+        // A dry run stores nothing: the stamp is the one it was based on, and the form shows what it did.
+        val dry = admin.postData(
+            DSV.shownFieldsEdit,
+            mapOf(DSV.workflowId to "partA", DSV.typeName to dataType, DSV.fields to listOf("q1"), DSV.basedOn to read[DSV.basedOn],
+                CFEP.dryRun to true),
+        )
+        dry[CFEP.dryRun] shouldBe true
+        dry[DSV.basedOn] shouldBe read[DSV.basedOn]
         block().containsKey(DSV.shownFields) shouldBe false
     }
 })

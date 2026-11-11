@@ -291,6 +291,14 @@ object ATOOL {
     const val removeFormsListColumn = "remove_forms_list_column"
     const val setFormsListLayout = "set_forms_list_layout"
 
+    // The targeted writes of Design View's edits (issue #1765): a form's copy, headings, labels, choices, and fields.
+    const val setFieldCopy = "set_field_copy"
+    const val setSharedField = "set_shared_field"
+    const val setHeading = "set_heading"
+    const val setSharedHeading = "set_shared_heading"
+    const val setWorkflowLabel = "set_workflow_label"
+    const val setShownFields = "set_shown_fields"
+
     // A tool input that is not an endpoint's own field: the document `read_doc` reads.
     const val doc = "doc"
 
@@ -298,4 +306,7 @@ object ATOOL {
     // in it.
     const val file = "file"
     const val namespace = "namespace"
+
+    // `set_field_copy`'s input saying it removes the workflow's own copy (issue #1765), which a missing entry once did.
+    const val remove = "remove"
 }

@@ -22,6 +22,8 @@ import com.dynamicruntime.common.gedra.IMP
 import com.dynamicruntime.common.gedra.ImpactKind
 import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.gedra.sandboxOf
+import com.dynamicruntime.common.gedra.CIT
+import com.dynamicruntime.common.gedra.CFEP
 import com.dynamicruntime.common.gedra.workflow.WFD
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.naming.clientNamespace
@@ -208,6 +210,27 @@ class SharedEditTest : StringSpec({
         venueOptions().map { it[SCH.value] } shouldNotContain "park"
     }
 
+    "a dry run of a removal is judged as the save: refused with the report where a form holds it, and nothing stored (#1765)" {
+        val dinner = requestForm("Team dinner", "hotel")
+        val withoutHotel = venueOptions().filter { it[SCH.value] != "hotel" }
+        val basedOn = traitRead()[DSV.sharedBasedOn] as String
+        val refused = admin.expectError(
+            EXC.badInput, DSV.sharedFieldEdit,
+            sharedArgs(dataType, DesignDemo.venue, null, withoutHotel, basedOn) + (CFEP.dryRun to true),
+        )
+        refused[EP.errorCode] shouldBe IMP.refusedCode
+        refused[EP.extraData].toJsonMapOrEmpty()[IMP.report].toJsonMapOrEmpty()[IMP.findings].toJsonListOfMaps()
+            .single()[IMP.sampleIds].toJsonListOfStrings() shouldContain dinner
+        // A dry run that passes stores nothing either: the stamp is the one it was based on, and the choice stays.
+        val relabeled = venueOptions().map { if (it[SCH.value] == "hotel") it + (SCH.label to "A hotel, booked") else it }
+        val relabel = sharedArgs(dataType, DesignDemo.venue, null, relabeled, basedOn) + (CFEP.dryRun to true)
+        val dry = admin.postData(DSV.sharedFieldEdit, relabel)
+        dry[CFEP.dryRun] shouldBe true
+        dry[DSV.sharedBasedOn] shouldBe basedOn
+        traitRead()[DSV.sharedBasedOn] shouldBe basedOn
+        venueOptions().map { it[SCH.value] } shouldContain "hotel"
+    }
+
     "a changed value is a removal and an addition, and the report names the forms holding the old one" {
         val gala = requestForm("Winter gala", "hotel")
         val renamed = venueOptions().map { if (it[SCH.value] == "hotel") mapOf(SCH.value to "conference", SCH.label to "A conference center") else it }
@@ -251,6 +274,29 @@ class SharedEditTest : StringSpec({
         val report = ConfigImpact.report(cxt.mkSubContext("setup", parent), parent, listOf(DesignDemo.configName))
         report.findings.single().kind shouldBe ImpactKind.dataInvalid
         report.findings.single().rows shouldContain held
+    }
+
+    "in a sandbox, a dry run of a removal says what publishing it would do to the client's forms (#1765)" {
+        val parent = provisionDesignDemo(cxt, "sbx1765").clients.single()
+        val parentAdmin = TestUser.create(cxt, "designer@$parent.test", level = ROLE.admin, userClient = parent)
+        val held = requestForm("Offsite", "hotel", parentAdmin, parent)
+        ClientSandboxEdit.set(cxt.mkSubContext("setup", parent), parent, true)
+        parentAdmin.postData(AEP.openSandbox, emptyMap())
+        val sandboxView = parentAdmin.getData(clientPath(GEP.workflowView, sandboxOf(parent)), design)
+        val sandboxType = sandboxView[DSV.designBlock].toJsonMapOrEmpty()[DSV.types].toJsonMapOrEmpty()
+            .entries.first { it.value.toJsonMapOrEmpty()[DSV.key] == DesignDemo.eventRequest }.key
+        val read = parentAdmin.getItem(DSV.definition, mapOf(DSV.slot to CCT.traitDef, DSV.key to DesignDemo.eventRequest))
+        val venue = read[DSV.entry].toJsonMapOrEmpty()[CCT.dataSchema].toJsonMapOrEmpty()[SCH.properties].toJsonMapOrEmpty()
+        val options = venue[DesignDemo.venue].toJsonMapOrEmpty()[SCH.options].toJsonListOfMaps().filter { it[SCH.value] != "hotel" }
+        val dry = parentAdmin.postData(
+            DSV.sharedFieldEdit,
+            sharedArgs(sandboxType, DesignDemo.venue, null, options, read[DSV.sharedBasedOn] as String) + (CFEP.dryRun to true),
+        )
+        dry[CFEP.dryRun] shouldBe true
+        val finding = dry[CIT.draftImpact].toJsonMapOrEmpty()[IMP.findings].toJsonListOfMaps().single()
+        finding[IMP.sampleIds].toJsonListOfStrings() shouldContain held
+        // Nothing drafted: publishing what is stored would do nothing to the forms.
+        ConfigImpact.report(cxt.mkSubContext("setup", parent), parent, listOf(DesignDemo.configName)).findings shouldBe emptyList()
     }
 
     "an edit based on an entry that has since changed is refused" {

@@ -141,12 +141,13 @@ fun toolsLabel(calls: List<ToolCall>): String {
 }
 
 /**
- * The targeted writes, each saving a draft of one bundle: the client's wording and menu (issue #1763), and its
- * definition and forms list (issue #1764), whose saves but the layout's are dry-run first.
+ * The targeted writes, each saving a draft of one bundle: the client's wording and menu (issue #1763), its definition
+ * and forms list (issue #1764), whose saves but the layout's are dry-run first, and Design View's edits (issue #1765).
  */
 private val targetedWrites = setOf(
     ATOOL.setCopy, ATOOL.applyCopy, ATOOL.resetCopy, ATOOL.setMenuItem, ATOOL.resetMenuItem,
     ATOOL.setClientDefinition, ATOOL.saveFormsListColumn, ATOOL.removeFormsListColumn, ATOOL.setFormsListLayout,
+    ATOOL.setFieldCopy, ATOOL.setSharedField, ATOOL.setHeading, ATOOL.setSharedHeading, ATOOL.setWorkflowLabel, ATOOL.setShownFields,
 )
 
 /**
@@ -166,6 +167,14 @@ fun wroteWhat(call: ToolCall): String {
         ATOOL.saveFormsListColumn -> "forms list column `${call.input[CUS.column].toJsonMapOrEmpty().getOptStr(CCT.label).orEmpty()}`"
         ATOOL.removeFormsListColumn -> "the removal of forms list column `${call.input.getOptStr(CCT.label).orEmpty()}`"
         ATOOL.setFormsListLayout -> "the forms list's layout"
+        // Design View's edits (issue #1765), by the workflow or field they change.
+        ATOOL.setFieldCopy ->
+            "the copy of `${call.input.getOptStr(DSV.field).orEmpty()}` in `${call.input.getOptStr(DSV.workflowId).orEmpty()}`"
+        ATOOL.setSharedField -> "the shared copy of `${call.input.getOptStr(DSV.field).orEmpty()}`"
+        ATOOL.setHeading -> "a heading in `${call.input.getOptStr(DSV.workflowId).orEmpty()}`"
+        ATOOL.setSharedHeading -> "a shared heading"
+        ATOOL.setWorkflowLabel -> "a label in `${call.input.getOptStr(DSV.workflowId).orEmpty()}`"
+        ATOOL.setShownFields -> "the fields `${call.input.getOptStr(DSV.workflowId).orEmpty()}` shows"
         else -> item
     }
 }
