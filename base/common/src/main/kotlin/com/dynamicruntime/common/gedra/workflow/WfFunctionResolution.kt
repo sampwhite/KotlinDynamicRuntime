@@ -104,10 +104,31 @@ private class ResolutionScope(
  * here rather than discovered by the first reviewer who cannot press the button. Reported, not dropped: there is
  * nothing to drop that would make the task work. A rule naming no reviewer (`kdr:isOwner`, the owner's own step)
  * needs no such function.
+ *
+ * An approval with steps (issue #1702) also has each step's rule stored as its CTA filter while the step is current, so
+ * each must name only facts about the person, as a `ctaFilter` function's filter must ([ctaFilterProblem]). Reported, not
+ * dropped, for the same reason.
  */
 private fun ResolutionScope.checkApprovalAuthority(def: WfDef, task: WfTask, resolved: List<WfFunction>) {
     val approval = task.approval ?: return
-    if (WFC.reviewer !in CFactParser.analyze(approval.effectiveApproveWhen, emptySet()).names) return
+    if (approval.steps.isNotEmpty()) {
+        val personFacts = personFacts(resolved)
+        approval.steps.firstNotNullOfOrNull { step ->
+            ctaFilterProblem(declaredCfacts, personFacts, step.effectiveApproveWhen)
+                ?.let { "step '${step.id}''s rule for who may give it $it" }
+        }?.let { why ->
+            reportConfigProblem(
+                cxt,
+                bundle.issue(
+                    "Workflow '${def.workflowId}' in client '$client' has an approval task '${task.id}' whose $why.",
+                    "Keeping the task; a listing cannot tell whose turn the step is.",
+                    GCEL.workflow, def.workflowId,
+                ),
+                issues,
+            )
+        }
+    }
+    if (approval.approveWhens.none { WFC.reviewer in CFactParser.analyze(it, emptySet()).names }) return
     if (!grantsReviewer(task, resolved)) {
         reportConfigProblem(
             cxt,
@@ -121,6 +142,17 @@ private fun ResolutionScope.checkApprovalAuthority(def: WfDef, task: WfTask, res
         )
     }
 }
+
+/**
+ * The facts about the person a task's rules may name where a listing evaluates them (issues #1594, #1702): the request's,
+ * the row's (`kdr:isOwner`), and what the task's resolved `viewerCfacts` functions emit -- from [resolved], the list just
+ * resolved, not the task's stored one, since a trial resolves without assigning. What a CTA filter and an approval step's
+ * rule are both held to.
+ */
+@Suppress("CollectionConcatenationToBuildCollection")
+private fun ResolutionScope.personFacts(resolved: List<WfFunction>): Set<String> =
+    SchemaService.get(cxt).cfactsFor(client).requestNames + RCF.all +
+        resolved.filter { it.event == WfEventType.viewerCfacts }.flatMap { ViewerCfactsFn.of(it).emittedCfacts }
 
 /**
  * Whether one of [task]'s own **resolved** `viewerCfacts` functions can emit [WFC.reviewer] (issues #787, #856) -- the
@@ -145,9 +177,7 @@ private fun ResolutionScope.grantsReviewer(task: WfTask, resolved: List<WfFuncti
  */
 private fun ResolutionScope.checkCtaFilters(def: WfDef, task: WfTask, resolved: List<WfFunction>): List<WfFunction> {
     if (resolved.none { it.event == WfEventType.ctaFilter }) return resolved
-    // From the list just resolved, not the task's stored one: a trial resolves without assigning.
-    val personFacts = SchemaService.get(cxt).cfactsFor(client).requestNames + RCF.all +
-        resolved.filter { it.event == WfEventType.viewerCfacts }.flatMap { ViewerCfactsFn.of(it).emittedCfacts }
+    val personFacts = personFacts(resolved)
     return resolved.filter { fn ->
         if (fn.event != WfEventType.ctaFilter) return@filter true
         val ctaFn = CtaFilterFn.of(fn)

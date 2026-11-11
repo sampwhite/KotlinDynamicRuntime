@@ -72,7 +72,7 @@ object SingletonWorkflows {
                     // endpoint, the judge) works the rule out again from the form's data.
                     val passes = passesCtaFilterRule(cfacts, data[WFS.ctaFilterRule].toOptStr(), callerFacts + viewerFacts)
                     // The CTA's task facts, from state: available, the CTA, complete as stored, never approved.
-                    val taskFacts = stateCtaTaskFacts(data, passes)
+                    val taskFacts = stateCtaTaskFacts(data, passes, task)
                     out[WFS.ctaTask] = task.id
                     // What the action's display branches read: the caller's facts, the task's, and the viewer's for it.
                     val actionFacts = buildSet {
@@ -80,7 +80,7 @@ object SingletonWorkflows {
                         addAll(taskFacts)
                         addAll(viewerFacts)
                     }
-                    out[SWF.actionText] = actionText(task, actionFacts, cfacts::parse, ::label)
+                    out[SWF.actionText] = actionText(task, actionFacts, cfacts::parse, ::label, data[WFS.ctaStep].toOptStr())
                     // A reviewer of the current work, as the owner-only rule asks it: the functions' reviewer, and the rule.
                     out[SWF.isReviewer] = WFC.reviewer in viewerFacts && passes
                 }
@@ -90,8 +90,9 @@ object SingletonWorkflows {
 
     /**
      * What [task] asks of a caller with [facts], in words: its display branch for them when it declares one -- the
-     * text of a text branch, or for the task's own rendering its approval button (an approval task) or its label --
-     * and its label when it declares none.
+     * text of a text branch, or for the task's own rendering its approval button (an approval task: the button of
+     * [stepId], the step the state says it waits on, issue #1702, else of its first) or its label -- and its label when it
+     * declares none.
      *
      * A branch's text may carry `${…}` blocks, which the layout rule leaves for the frontend to resolve against
      * the **form's data** -- exactly what this listing never reads. Such a text cannot be finished here or in the
@@ -102,8 +103,9 @@ object SingletonWorkflows {
         facts: Set<String>,
         parse: (String) -> CFactPredicate,
         label: (String) -> String,
+        stepId: String? = null,
     ): String {
-        fun own() = label(task.approval?.button ?: task.label)
+        fun own() = label((task.approvalStep(stepId) ?: task.approvalSteps.firstOrNull())?.button ?: task.label)
         val branch = task.display?.let { filterByCFacts(mapOf(WFD.display to it), facts, parse)[WFD.display] }
             .toJsonMapOrEmpty()
         val mode = branch[WDSP.mode].toOptStr() ?: WDSP.defaultMode

@@ -23,7 +23,7 @@ and its menu entry. Explained on the [client](client.md), [talk core details](ta
     {
       "audience": "internal",
       "clientId": "confdemo",
-      "description": "A small conference's call for talks: speakers submit talks, and a committee reviews them and accepts them for the program.",
+      "description": "A small conference's call for talks: speakers submit talks, a committee reviews and accepts them, and an organizer confirms them for the program.",
       "name": "Conference demo",
       "preload": false,
       "staticConfig": false,
@@ -35,7 +35,7 @@ and its menu entry. Explained on the [client](client.md), [talk core details](ta
       "userLabelNotes": { "committee": "Give this to the people who review talks and accept them for the program." },
       "joinRoles": [
         {"name": "speaker", "label": "Speaker", "persona": "member", "summary": "Submit a talk, and follow it through the committee's review."},
-        {"name": "organizer", "label": "Organizer", "persona": "admin", "summary": "See every talk submitted, and run the conference's workflows."},
+        {"name": "organizer", "label": "Organizer", "persona": "admin", "summary": "See every talk submitted, confirm the talks the committee accepts, and run the conference's workflows."},
         {
           "name": "committee",
           "label": "Committee member",
@@ -307,7 +307,13 @@ and its menu entry. Explained on the [client](client.md), [talk core details](ta
     {
       "name": "talkAccepted",
       "group": "confDemo",
-      "description": "True once the committee has accepted the talk.",
+      "description": "True once the committee has accepted the talk and an organizer has confirmed it.",
+      "toFrontend": false
+    },
+    {
+      "name": "talkRecommended",
+      "group": "confDemo",
+      "description": "True once the committee has accepted the talk, whether or not an organizer has confirmed it yet.",
       "toFrontend": false
     }
   ],
@@ -320,7 +326,7 @@ and its menu entry. Explained on the [client](client.md), [talk core details](ta
       "content": {
         "home": {
           "title": "Conference demo",
-          "intro": "The **Conference demo** is a small conference's call for talks. Speakers submit the talks they want to give, and a committee reviews each one and accepts it for the program. The demo is shared with everyone who joins it, so you see the talks other visitors add, and they see yours.\n\nAs a speaker, open **My forms** from the menu, and choose **Create a form** to submit a talk. As a member of the committee, once a talk is ready for your review, this page lists it under **Waiting on you**. [Part 1 of the walk-through](/docs/walk-through.md#part-1-the-conference-demo) takes you through both, a step at a time."
+          "intro": "The **Conference demo** is a small conference's call for talks. Speakers submit the talks they want to give, a committee reviews and accepts each one, and an organizer confirms it for the program. The demo is shared with everyone who joins it, so you see the talks other visitors add, and they see yours.\n\nAs a speaker, open **My forms** from the menu, and choose **Create a form** to submit a talk. As a member of the committee, once a talk is ready for your review, this page lists it under **Waiting on you**, and as an organizer, so does each talk the committee has accepted, for you to confirm. [Part 1 of the walk-through](/docs/walk-through.md#part-1-the-conference-demo) takes you through all three, a step at a time."
         }
       }
     }
@@ -464,7 +470,7 @@ The committee review. Explained on [Committee review](committee-review.md).
     {
       "workflowId": "review",
       "definition": {
-        "$comment": "The committee reviews a talk once its core details are complete, then accepts it.",
+        "$comment": "The committee reviews a talk once its core details are complete, then accepts it, and an organizer confirms it.",
         "entry": "normal",
         "label": "Committee review",
         "highlightStart": true,
@@ -498,24 +504,42 @@ The committee review. Explained on [Committee review](committee-review.md).
             "traits": [{"traitId": "review", "required": true}]
           },
           {
+            "$comment": "Two people accept a talk, in order: a committee member, then an organizer.",
             "id": "accept",
             "label": "Accept the talk",
             "approval": {
               "cfact": "talkAccepted",
-              "prompt": "Read the review, then accept the talk for the program.",
-              "button": "Accept the talk"
+              "steps": [
+                {
+                  "id": "committee",
+                  "label": "Committee acceptance",
+                  "approveWhen": "kdr:reviewer,~kdr:isOwner",
+                  "waiting": "A committee member accepts the talk.",
+                  "prompt": "Read the review, then accept the talk for the program.",
+                  "button": "Accept the talk",
+                  "cfact": "talkRecommended"
+                },
+                {
+                  "id": "organizer",
+                  "label": "Organizer confirmation",
+                  "approveWhen": "kdr:hasAdminLevel,~kdr:isOwner",
+                  "waiting": "An organizer confirms the talk for the program.",
+                  "prompt": "The committee accepted this talk. Confirm it for the program.",
+                  "button": "Confirm for the program"
+                }
+              ]
             },
             "display": {
               "select": [
-                {"cfactExpression": "talkAccepted", "mode": "text", "text": "Accepted by ${approvedByName}."},
+                {"cfactExpression": "talkAccepted", "mode": "default"},
                 {
                   "cfactExpression": "~kdr:isCta",
                   "mode": "text",
                   "text": "The review has to be recorded before the talk can be accepted.",
                   "disabled": true
                 },
-                {"cfactExpression": "kdr:reviewer", "mode": "default"},
-                {"mode": "text", "text": "A committee member accepts the talk."}
+                {"cfactExpression": "kdr:reviewer|kdr:hasAdminLevel", "mode": "default"},
+                {"mode": "text", "text": "The committee accepts the talk, then an organizer confirms it for the program."}
               ]
             },
             "functions": [{"fn": "userHasLabel", "label": "committee", "cfact": "kdr:reviewer"}],

@@ -82,6 +82,13 @@ object WFS {
     /** The [ctaTask]'s general status: complete, valid, and the traits behind each ([workflowCtaStatus]). */
     const val ctaStatus = "ctaStatus"
 
+    /**
+     * The [ctaTask]'s current approval step (issue #1702), when it is an approval with steps: the first step not yet
+     * given. Its rule for who may give it is the [ctaFilterRule], with any a `ctaFilter` function set, and its `waiting`
+     * the [ctaFilterLabel] when no function set one. Absent for any other task, and for an approval given at once.
+     */
+    const val ctaStep = "ctaStep"
+
     /** The named type of [ctaStatus]. */
     const val workflowCtaStatus = "WorkflowCtaStatus"
 
@@ -93,12 +100,13 @@ object WFS {
 
     /**
      * Who may act on the [ctaTask] (issues #1594, #1595), as a **rule, not a status**: a cfact expression naming only
-     * facts about the person (and `kdr:isOwner`), which a `ctaFilter` function concluded from the form's data. What is
-     * stored is the expression, never its result -- the answer differs for each caller, so it is evaluated as each one
-     * asks, against their facts (`passesCtaFilterRule`, which gives `kdr:passesCtaFilter`). It narrows the task's
-     * `saveWhen` and `approveWhen`, never widens them. Stored so a surface that reads state alone (a listing, the Needs
-     * Review popover) can evaluate it without the form's data; anything deciding permission works it out again from
-     * the data as it stands, since a stored copy lags the data until the next recompute. Absent when nothing set one.
+     * facts about the person (and `kdr:isOwner`), which a `ctaFilter` function concluded from the form's data, joined
+     * with the rule of an approval's current step ([ctaStep], issue #1702). What is stored is the expression, never its
+     * result -- the answer differs for each caller, so it is evaluated as each one asks, against their facts
+     * (`passesCtaFilterRule`, which gives `kdr:passesCtaFilter`). It narrows the task's `saveWhen` and `approveWhen`,
+     * never widens them. Stored so a surface that reads state alone (a listing, the Needs Review popover) can evaluate
+     * it without the form's data; anything deciding permission works it out again from the data as it stands, since a
+     * stored copy lags the data until the next recompute. Absent when nothing set one.
      */
     const val ctaFilterRule = "ctaFilterRule"
 
@@ -125,6 +133,12 @@ object WFS {
 
     /** On an approval: the approval task it records; with [WFD.workflowId], the entry's primary key. */
     const val taskId = "taskId"
+
+    /**
+     * On an approval (issue #1702): the step of the approval task it records; with [WFD.workflowId] and [taskId], the
+     * entry's primary key. An approval without steps has one implicit step whose id is the task's.
+     */
+    const val stepId = "stepId"
 
     /** On an approval: when it was approved. */
     const val approvedAt = "approvedAt"
@@ -196,7 +210,7 @@ object WFS {
     /** [kind] of the event recording that a form was taken back out of the workflow. */
     const val disengagedEvent = "disengaged"
 
-    /** [kind] of the event recording an approval (issue #787); its [note] names the approval task. */
+    /** [kind] of the event recording an approval (issue #787); its [note] is its `approvalKey`: the task, and the step (#1702). */
     const val approvedEvent = "approved"
 
     /**

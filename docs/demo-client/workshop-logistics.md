@@ -17,8 +17,8 @@ lists everything it holds.
 
 ## A computed fact
 
-The client declares two facts of its own in the `kdr:cfactDef` slot of its `base` bundle. The review's
-`talkAccepted` was the first; `isWorkshop` is the other.
+The client declares three facts of its own in the `kdr:cfactDef` slot of its `base` bundle. The review's
+`talkAccepted` and `talkRecommended` come from the committee review, and this page explains `isWorkshop`.
 
 <!-- kdr-doc: bundle=base pointer=/kdr:cfactDef -->
 ```json
@@ -32,7 +32,13 @@ The client declares two facts of its own in the `kdr:cfactDef` slot of its `base
   {
     "name": "talkAccepted",
     "group": "confDemo",
-    "description": "True once the committee has accepted the talk.",
+    "description": "True once the committee has accepted the talk and an organizer has confirmed it.",
+    "toFrontend": false
+  },
+  {
+    "name": "talkRecommended",
+    "group": "confDemo",
+    "description": "True once the committee has accepted the talk, whether or not an organizer has confirmed it yet.",
     "toFrontend": false
   }
 ]

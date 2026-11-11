@@ -348,6 +348,74 @@ class WfApprovalDefTest {
         assertEquals(setOf(WFC.taskAvailable, WFC.taskComplete, "auditApproved"), WfTaskFacts.of(task, emptyList(), approved = true))
     }
 
+    /** A two-step approval (issue #1702), or one with [steps] in place of its two. */
+    private fun steppedApproval(steps: List<WfApprovalStep>? = null) = WfDefBuilder("audit", WfEntry.normal).apply {
+        task("approve", "Approve") {
+            approvalSteps(
+                "auditApproved",
+                steps ?: listOf(
+                    WfApprovalStep("first", "First look", "Look first.", "Looked", WFC.reviewer, "Waiting on a reviewer", "looked"),
+                    WfApprovalStep("second", "Sign-off", "Sign it off.", "Sign off", null, null, null),
+                ),
+            )
+        }
+    }.build()
+
+    @Test
+    fun anApprovalInStepsRoundTripsAndIsGivenInOrder() {
+        val built = steppedApproval()
+        val def = parseWfDef(cxt, built)
+        assertEquals(built, def.toJsonMap())
+        val task = def.task("approve")!!
+        assertEquals(listOf("first", "second"), task.approvalSteps.map { it.id })
+        assertEquals(WfApproval.defaultApproveWhen, task.approvalSteps[1].effectiveApproveWhen)
+        // The record of each step is keyed by task and step; the current step is the first not given.
+        val first = approvalKey("approve", "first")
+        assertEquals("approve.first", first)
+        assertEquals("first", task.currentStep(emptySet())?.id)
+        assertEquals("second", task.currentStep(setOf(first))?.id)
+        assertEquals("second", task.declaredCurrentStep(setOf(first))?.id)
+        assertFalse(task.isApproved(setOf(first)))
+        assertEquals(setOf("looked"), task.givenStepCfacts(setOf(first)))
+        val both = setOf(first, approvalKey("approve", "second"))
+        assertTrue(task.isApproved(both))
+        assertNull(task.currentStep(both))
+        // A step given out of order is no progress: the first is still the one waited on.
+        assertEquals("first", task.currentStep(setOf(approvalKey("approve", "second")))?.id)
+        // A step's cfact holds once it is given, beside the approval's own once all are.
+        assertEquals(setOf(WFC.taskAvailable, WFC.taskComplete, "auditApproved", "looked"),
+            WfTaskFacts.of(task, emptyList(), approved = true, stepCfacts = task.givenStepCfacts(both)))
+    }
+
+    @Test
+    fun anApprovalGivenAtOnceIsOneStepKeyedByItsTask() {
+        val task = parseWfDef(cxt, normalWithApproval()).task("approve")!!
+        assertEquals(listOf("approve"), task.approvalSteps.map { it.id })
+        assertEquals("approve", approvalKey("approve", "approve"))
+        assertEquals("approve", approvalKey("approve", null))
+        assertTrue(task.isApproved(setOf("approve")))
+        // Its call to action follows no step: it is as it was before steps.
+        assertNull(task.declaredCurrentStep(emptySet()))
+    }
+
+    @Test
+    fun anApprovalsStepsAreHeldToTheirRules() {
+        fun step(id: String, prompt: String = "P", button: String = "B", cfact: String? = null) =
+            WfApprovalStep(id, null, prompt, button, null, null, cfact)
+        // Two steps of one id; a step with no button; a step asserting the approval's own cfact.
+        assertFailsWith<KdrException> { parseWfDef(cxt, steppedApproval(listOf(step("a"), step("a")))) }
+        assertFailsWith<KdrException> { parseWfDef(cxt, steppedApproval(listOf(step("a", button = "")))) }
+        assertFailsWith<KdrException> { parseWfDef(cxt, steppedApproval(listOf(step("a", cfact = "auditApproved")))) }
+        // A step id is a variable name -- no dot to make `<task>.<step>` ambiguous -- and not the task's own id.
+        assertFailsWith<KdrException> { parseWfDef(cxt, steppedApproval(listOf(step("b.c")))) }
+        assertFailsWith<KdrException> { parseWfDef(cxt, steppedApproval(listOf(step("approve")))) }
+        // Steps, and a prompt of the approval's own: with steps, each step has its own.
+        val raw = steppedApproval(listOf(step("a")))
+        val tasks = raw[WFD.tasks].toJsonListOfMaps()
+        val withPrompt = raw + (WFD.tasks to tasks.map { t -> t + (WFD.approval to (t[WFD.approval] as Map<*, *>) + (WFD.prompt to "P")) })
+        assertFailsWith<KdrException> { parseWfDef(cxt, withPrompt) }
+    }
+
     @Test
     fun aTaskDisplayIsASelectorThatRoundTrips() {
         val def = parseWfDef(cxt, normalWithApproval {

@@ -95,6 +95,10 @@ fun workflowStateConfig(cxt: KdrCxt): GedraConfig = gedraConfig(cxt, WFS.stateBu
             items { type = SCT.string }
         }
         property(WFS.ctaTask, "The workflow's call-to-action task: the earliest not both complete and valid. Engaged workflows only; absent when every task is done.")
+        property(
+            WFS.ctaStep,
+            "The CTA's current approval step, when its task is an approval with steps: the first step not yet given.",
+        )
         property(WFS.ctaStatus, "The CTA task's general status.") { ref(WFS.workflowCtaStatus) }
         property(WFS.tasksDone, "Every task is complete and valid, so there is no CTA. Engaged workflows only.") { type = SCT.boolean }
         property(WFS.ctaKeyword, "The CTA's search keyword: what kind of action it asks for. Absent when it carries none.") {
@@ -147,9 +151,14 @@ fun workflowStateConfig(cxt: KdrCxt): GedraConfig = gedraConfig(cxt, WFS.stateBu
         "That a reviewer approved an approval task of a workflow for this form, and when -- an asserted fact a " +
             "recompute or a batch job must never compute away.",
     ) {
-        primaryKey(WFD.workflowId, WFS.taskId)
-        property(WFD.workflowId, "The workflow the approval belongs to; with the task, the entry's primary key.", required = true)
+        primaryKey(WFD.workflowId, WFS.taskId, WFS.stepId)
+        property(
+            WFD.workflowId, "The workflow the approval belongs to; with the task and the step, the entry's primary key.",
+            required = true,
+        )
         property(WFS.taskId, "The approval task approved.", required = true)
+        // Issue #1702: an approval given at once has one step, whose id is the task's.
+        property(WFS.stepId, "The step of the approval given: one of the task's steps, or the task's own id.", required = true)
         property(WFS.approvedAt, "When it was approved.", required = true) { dateTime() }
         property(WFS.approvedBy, "Numeric userId of the reviewer who approved it.", required = true) { type = SCT.integer }
         // Open, as the other per-workflow entries are: a revocation or a comment would add a field here.
@@ -235,7 +244,8 @@ fun addWorkflowSingletonCFacts(collector: SchemaCollector) {
  *     meant (issue #784 review). No cycle either way: a singleton never reads eligibility.
  *
  * An **engaged** workflow's entry also carries its **CTA** (issue #785): [WFS.ctaTask], the earliest task not
- * both complete and valid, with its [WFS.ctaStatus] -- or [WFS.tasksDone] when there is none. With the CTA go what it
+ * both complete and valid, with its [WFS.ctaStatus] -- or [WFS.tasksDone] when there is none -- and, for an approval
+ * with steps, the step it waits on ([WFS.ctaStep], issue #1702). With the CTA go what it
  * carries (issue #1594, [ctaAssignment]): its search keyword ([WFS.ctaKeyword]) and, when a `ctaFilter` function set
  * one, who may act on it ([WFS.ctaFilterRule], with its [WFS.ctaFilterLabel]). Engaged only: the
  * CTA is where an engaged workflow's link points, and a workflow the form has not entered has no work under way
@@ -256,6 +266,12 @@ fun addWorkflowSingletonCFacts(collector: SchemaCollector) {
  * there, so the last calculation is the answer. The workflow's endpoints refuse saves and approvals while frozen,
  * so the data cannot move underneath it.
  */
+/**
+ * An engaged workflow's call to action as the deriver works it out (issues #785, #1594, #1702): its [task] and [status],
+ * what it carries ([assigned]), and for an approval in steps the [step] it waits on.
+ */
+private data class DerivedCta(val task: WfTask, val status: WfTaskStatus, val assigned: CtaAssignment, val step: WfApprovalStep?)
+
 object WorkflowStateDeriver : GedraStateDeriver {
     override val appliesTo: Set<GedraDataType> = setOf(GedraDataType.formDoc)
 
@@ -287,11 +303,12 @@ object WorkflowStateDeriver : GedraStateDeriver {
         // since its search keyword (issue #1596) gives the workflow a fact of its own and the form a status.
         val ctas = declared.filterKeys { it in engaged }.mapValues { (id, w) ->
             WorkflowTaskStatus.ctaOf(cxt, state.row.client, w, state.row.entries, approvals.getValue(id).keys)?.let { (task, status) ->
-                Triple(task, status, ctaAssignment(cxt, registry, id, task, state.row.entries))
+                val step = task.declaredCurrentStep(approvals.getValue(id).keys)
+                DerivedCta(task, status, ctaAssignment(cxt, registry, id, task, state.row.entries, step), step)
             }
         }
         // The keyword the CTA carries, when it is one on the list.
-        fun keywordOf(workflowId: String): CtaKeyword? = CTAK.of(ctas[workflowId]?.third?.keyword)
+        fun keywordOf(workflowId: String): CtaKeyword? = CTAK.of(ctas[workflowId]?.assigned?.keyword)
         // Each declared workflow's own cfacts: its functions', its approvals', and its CTA keyword's (`kdr:ctaReview`).
         val own = declared.mapValues { (id, w) ->
             buildSet {
@@ -323,15 +340,16 @@ object WorkflowStateDeriver : GedraStateDeriver {
             // Frozen: its last calculated entry, carried forward as it stood.
             frozen[workflowId]?.let { return@map mapOf(GE.traitId to WFS.workflowState, GE.data to it) }
             val data = linkedMapOf<String, Any?>(WFD.workflowId to workflowId)
-            declared[workflowId]?.let {
+            declared[workflowId]?.let { it ->
                 data[WFS.computedAgainstRef] = it.ref.text
                 data[WFS.cfacts] = own.getValue(workflowId).sorted()
                 data[WFS.singletonCfacts] = singletons.getValue(workflowId)
                 if (workflowId in engaged) {
                     val cta = ctas[workflowId]
                     data[WFS.tasksDone] = cta == null
-                    cta?.let { (task, status, assigned) ->
+                    cta?.let { (task, status, assigned, step) ->
                         data[WFS.ctaTask] = task.id
+                        step?.let { data[WFS.ctaStep] = it.id }
                         data[WFS.ctaStatus] = status.toStateMap()
                         // Who may act on it, and what kind of action it is (issue #1594), from the form's data now.
                         assigned.keyword?.let { k -> data[WFS.ctaKeyword] = k }

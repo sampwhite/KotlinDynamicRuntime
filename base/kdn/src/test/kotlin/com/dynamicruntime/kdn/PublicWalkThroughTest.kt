@@ -40,6 +40,7 @@ import com.dynamicruntime.common.gedra.workflow.WFD
 import com.dynamicruntime.common.gedra.workflow.WFP
 import com.dynamicruntime.common.gedra.workflow.WFT
 import com.dynamicruntime.common.gedra.workflow.WSF
+import com.dynamicruntime.common.gedra.workflow.SWF
 import com.dynamicruntime.common.gedra.workflow.WVF
 import com.dynamicruntime.common.gedra.workflow.WfTaskSlot
 import com.dynamicruntime.common.gedra.workflow.WfTemplateSlots
@@ -92,8 +93,8 @@ import java.io.File
  * a capital where it has none, as the form labels it -- and turns each **value** into what the form would send: a
  * choice by its label, yes or no, a number, or text. Then it walks the page's steps through the endpoints the pages
  * use: join as a speaker, create the talk, answer the core details workflow, write the abstract, join the committee,
- * and review and accept the talk. A field or a choice the demo renames, a step the demo no longer
- * allows, and a role the page names that the demo does not offer each fail here.
+ * review and accept the talk, then join as an organizer and confirm it (issue #1702). A field or a choice the demo
+ * renames, a step the demo no longer allows, and a role the page names that the demo does not offer each fail here.
  *
  * Part 2, the reader's own client, is followed the same way, but its forms are read off the workflow view -- each
  * field by the label the form shows and with the choices it offers -- since the reader builds them: create the client,
@@ -281,10 +282,26 @@ class PublicWalkThroughTest : StringSpec({
         found[GDF.gedraId] shouldBe gid
         visitor.postData(GEP.workflowEngage, mapOf(GDF.gedraId to gid, WFD.workflowId to ConfDemo.reviewWorkflow))
         save(visitor, ConfDemo.reviewWorkflow, ConfDemo.recordReviewTask, ConfDemo.saveReview, gid)
-        visitor.postData(
+        fun approve(stepId: String) = visitor.postData(
             GEP.workflowApprove,
-            mapOf(GDF.gedraId to gid, GDF.workflowId to ConfDemo.reviewWorkflow, GDF.taskId to ConfDemo.acceptTask),
+            mapOf(
+                GDF.gedraId to gid, GDF.workflowId to ConfDemo.reviewWorkflow, GDF.taskId to ConfDemo.acceptTask,
+                GDF.stepId to stepId,
+            ),
         )
+        approve(ConfDemo.committeeStep)
+        // The talk waits on an organizer now, and no longer on the committee (issue #1702).
+        fun waitingSteps() = visitor.getItems(GEP.formDocs, mapOf(GDF.needsMe to true))
+            .firstOrNull { it[GDF.gedraId] == gid }?.get(GDF.waitingSteps).toJsonListOfMaps().map { it[SWF.actionText] }
+        waitingSteps() shouldBe emptyList()
+
+        // Back to the public user, and in again as an organizer, who finds the talk waiting on them and confirms it.
+        visitor.postData(AEP.switchUser, mapOf(AFLD.userId to publicUser))
+        val organizer = join(visitor, ConfDemo.organizerRole)
+        visitor.getData(AEP.selfUsers)[AFLD.users].toJsonListOfMaps().single { it[UCF.userId] == organizer }[UCF.roleLabel] shouldBe
+            "Organizer"
+        waitingSteps() shouldBe listOf("Confirm for the program")
+        approve(ConfDemo.organizerStep)
 
         // As the speaker again: the talk is accepted, and the speaker has the visitor's name too.
         visitor.postData(AEP.switchUser, mapOf(AFLD.userId to speaker))
@@ -648,7 +665,7 @@ private val ownClientKeys = setOf(
 private const val part3Heading = "## Part 3:"
 /** A part's heading, and the banner on the first line under it: an image named by its repo path (issue #1463). */
 private const val partHeadingPrefix = "## Part "
-private val bannerRegex = Regex("""!\[[^\]]+]\(([^)]+)\)""")
+private val bannerRegex = Regex("""!\[[^]]+]\(([^)]+)\)""")
 private const val markdownRule = "---"
 private val kdaPathRegex = Regex("""/kda(/[A-Za-z/]+[A-Za-z])""")
 

@@ -122,6 +122,11 @@ alone also confines the rows to X: on a client's own copy, an `allClients` calle
   resolves: those the approval names, else the nearest earlier task that collects traits; `approvalShownTraits`),
   through the same `traitSection` as their own task, read-only since an approval saves nothing. None on a step its
   display disables.
+- **An approval may be given in steps** (issue #1702). The view's approval speaks of the step waited on
+  (`currentStep`: its prompt, button, and `waiting`) and lists every step (`steps`). The page draws a line per step
+  given, by its label (`givenStepLines`), above the prompt, in place of the one approved line once all are given; the
+  approve names the step it showed (`stepId`), so a stale page is refused (409) rather than giving the next step. Who
+  the step waits on is the view's `waitingOn` (the step's rule is the CTA filter), else the approval's `waiting`.
 - **A workflow's listing is its own page** (`page=workflowForms`, issue #792): where a count on the Workflows
   page leads. `FormsPage` draws it in workflow mode -- the workflow as heading, a state switch, `← Workflows` --
   with the workflow and state riding the address as search keys (`formsDrillKeys`) so showing more, sorting and a client
@@ -275,7 +280,8 @@ current task is theirs to take. Done is the cell's finished (`workflowDoneIn`): 
 asserted `kdr:finished`, which it may do before its last task -- so a workflow the cell draws finished waits on nobody. The backend judges it (`WaitingSteps`), from each form's stored state, by the rule the save and
 approve gates apply, narrowed to the person the step names:
 
-- an approval waits on whoever may approve it (by default a reviewer who does not own the form), and its CTA filter;
+- an approval waits on whoever may give its current step (by default a reviewer who does not own the form), and its
+  CTA filter -- for an approval in steps, the step the state stores (`ctaStep`, issue #1702), whose rule is the filter;
 - a save whose task names someone (`saveWhen`) waits on whoever that admits, and the filter;
 - a save that names nobody waits on the form's **owner**, not on every administrator its gate would admit;
 - a task with neither a save nor an approval waits on nobody;

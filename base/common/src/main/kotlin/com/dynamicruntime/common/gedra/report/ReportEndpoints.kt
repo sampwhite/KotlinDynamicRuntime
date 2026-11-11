@@ -566,6 +566,7 @@ class AggregateRun(val groups: List<ReportGroup>, val scanned: Int, val excluded
  * [groupBy], rolled-up and [excludeEmpty] columns, the forms missing an excluding value left out, the rest grouped.
  * The run endpoint pages the groups; a snapshot stores them. [exactDates] and [zone] are [runBoundReport]'s.
  */
+@Suppress("CollectionConcatenationToBuildCollection")
 fun aggregateReportRun(
     c: KdrCxt,
     client: String,
@@ -659,6 +660,10 @@ private class SubjectReader(val c: KdrCxt, val client: String, val scope: ReadSc
             ?.takeIf { it.exists }
     }
 
+    /** The step ids of [workflowId]'s approval task [taskId] (issue #1702), or null when it has no such task. */
+    private fun approvalSteps(workflowId: String, taskId: String): List<String>? =
+        workflows.workflow(workflowId)?.def?.task(taskId)?.approvalSteps?.map { it.id }?.ifEmpty { null }
+
     /** The subjects of the forms [ids] names that still exist, in [ids]' order, with what [columns] read. */
     fun read(ids: List<String>, columns: List<BoundColumn>): List<ReportSubject> {
         if (ids.isEmpty()) return emptyList()
@@ -678,6 +683,7 @@ private class SubjectReader(val c: KdrCxt, val client: String, val scope: ReadSc
                 owner = owners[row.userId]?.let(::ownerOf),
                 copy = { text -> copy(text) },
                 phaseOf = ::phaseOf,
+                approvalSteps = ::approvalSteps,
             )
         }
     }

@@ -155,6 +155,14 @@ says who that is. Left out, it is a reviewer who does not own the form, `kdr:rev
 approves their own form. A step that is the owner's own to confirm says `"approveWhen": "kdr:isOwner"`. Its `display`
 chooses what the step shows, by trying its branches in order against the facts of whoever is looking.
 
+An approval can also be given in **steps**, by different people in turn. Its `steps` list them in order, and each step
+has its own `prompt`, `button`, and `approveWhen`, a `label` that names it once it is given, and `waiting`, which says
+who it waits on to anyone who cannot give it. The approval's fact holds once every step is given, and a step can assert
+a fact of its own as it is given, with `cfact`. Only the step the form waits on can be given. While it waits, its
+`approveWhen` decides whose turn the form is in the forms list, which works that out without reading the form, so a
+step's `approveWhen` may name only facts about the person looking and `kdr:isOwner`. The
+[committee review](committee-review.md#workflow) gives its acceptance in two steps.
+
 A task can also say **who it waits on** from the form's own data, with a `ctaFilterByValue` function. The function
 reads one field, such as a site's region, and picks a filter for each value it lists, with an `otherwise` for every
 other value. A filter is a fact test that may name only facts about the person looking, such as the ones a
@@ -173,7 +181,8 @@ Once the button is pressed, a text branch can name who pressed it as `${approved
 approver's profile, or their email when their profile has none. Since the person reading the step may be the form's
 owner, who may not know the approver, a branch can keep an email off the page by testing for its `@`:
 `Accepted by ${contains(approvedByName, "@") ? "the committee" : approvedByName}.` A step with no text branch reads
-"Approved by" and the name, and leaves an email out.
+"Approved by" and the name, and leaves an email out. An approval in steps lists each step given instead, by its `label`
+("Committee acceptance by" and the name), and its `${approvedByName}` is whoever gave the last step.
 
 ## Field layouts
 

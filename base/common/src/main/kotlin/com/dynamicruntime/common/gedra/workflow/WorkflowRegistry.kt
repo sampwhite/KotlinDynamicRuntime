@@ -330,21 +330,23 @@ fun buildWorkflowRegistries(
             }
             // An approval task (issue #787): the cfact an approval emits must be one this scope declares -- an
             // approval that emitted an unknown name could gate nothing -- and its copy rides the label check.
+            // So must each step's (issue #1702), asserted once the step is given.
             task.approval?.let { approval ->
-                if (approval.cfact !in cfactNames(scope)) {
+                val emitted = listOf(approval.cfact) + approval.steps.mapNotNull { it.cfact }
+                emitted.firstOrNull { it !in cfactNames(scope) }?.let { cfact ->
                     reportConfigProblem(
                         cxt,
                         problem(
                             scope, w,
-                            "has an approval task '${task.id}' emitting the cfact '${approval.cfact}', which this " +
-                                "scope does not declare.",
+                            "has an approval task '${task.id}' emitting the cfact '$cfact', which this scope does not declare.",
                         ),
                         issues,
                     )
                     return false
                 }
                 // Who may approve (issue #1595) parses like a save rule: one that failed to would refuse every approval.
-                approval.approveWhen?.let { rule ->
+                // A rule per step, when the approval has steps (issue #1702).
+                (listOfNotNull(approval.approveWhen) + approval.steps.mapNotNull { it.approveWhen }).forEach { rule ->
                     analyzeCFactOrAlways(rule, cfactNames(scope)).problems.firstOrNull()?.let {
                         reportConfigProblem(
                             cxt, problem(scope, w, "has a rule for who may approve task '${task.id}' that does not parse: ${it.message}"),
@@ -377,10 +379,23 @@ fun buildWorkflowRegistries(
             val displayTexts = task.display?.let { displayBranches(it) }.orEmpty()
                 .mapNotNull { it[WDSP.text].toOptStr() }
                 .map { "display text of task '${task.id}'" to it }
-            val labels = listOf("task '${task.id}'" to task.label) + task.saves.map { "save '${it.id}'" to it.label } +
-                displayTexts +
-                (task.approval?.let { listOf("approval prompt of task '${task.id}'" to it.prompt, "approval button of task '${task.id}'" to it.button) }
-                    ?: emptyList())
+            // An approval's copy: its own prompt and button, or each step's prompt, button, label, and waiting (issue #1702).
+            val declaresSteps = !task.approval?.steps.isNullOrEmpty()
+            val approvalCopy = task.approvalSteps.flatMap { step ->
+                val of = if (declaresSteps) "approval step '${step.id}'" else "approval"
+                listOfNotNull(
+                    "$of prompt of task '${task.id}'" to step.prompt,
+                    "$of button of task '${task.id}'" to step.button,
+                    step.label?.let { "$of label of task '${task.id}'" to it },
+                    step.waiting?.let { "$of waiting text of task '${task.id}'" to it },
+                )
+            }
+            val labels = buildList {
+                addAll(listOf("task '${task.id}'" to task.label))
+                task.saves.mapTo(this) { "save '${it.id}'" to it.label }
+                addAll(displayTexts)
+                addAll(approvalCopy)
+            }
             for ((where, label) in labels) {
                 labelProblem(scope, label, fragments)?.let {
                     reportConfigProblem(cxt, problem(scope, w, "has a label on $where that $it"), issues)

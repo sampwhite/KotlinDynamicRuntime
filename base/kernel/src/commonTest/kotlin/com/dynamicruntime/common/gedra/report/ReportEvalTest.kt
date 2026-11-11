@@ -25,6 +25,7 @@ import kotlin.test.assertTrue
  * Evaluating a report column over one form (issue #978): reading each source, coercing, combining, emptiness and
  * order. Shared source, so the JVM and JS are held to one answer.
  */
+@Suppress("SameParameterValue")
 class ReportEvalTest {
     private val t0 = "2026-03-01T10:00:00Z".parseDate()
     private val t1 = "2026-03-02T10:00:00Z".parseDate()
@@ -73,7 +74,7 @@ class ReportEvalTest {
         state(GT.cfacts, mapOf(GT.facts to listOf("big", WSC.needsReview))),
     )
 
-    private val owner = mapOf<String, Any?>(
+    private val owner = mapOf(
         RUSR.userId to 12L, RUSR.name to "Ada", RUSR.email to "ada@acme.test", RUSR.labels to listOf("vip", "pilot"),
         RUSR.enabled to true, RUSR.org to null,
     )
@@ -284,6 +285,29 @@ class ReportEvalTest {
     }
 
     @Test
+    fun anApprovalInStepsIsApprovedOnceEveryStepIsByTheLastStepsPerson() {
+        // Two steps (issue #1702), recorded under the task and step; the report path reads the task as a whole.
+        fun stepRecord(step: String, at: Any?, by: Long) = state(
+            WFS.workflowApproval,
+            mapOf(
+                WFD.workflowId to "auditReview", WFS.taskId to "approveAudit", WFS.stepId to step, WFS.approvedAt to at,
+                WFS.approvedBy to by,
+            ),
+        )
+        val base = states().filterNot { it[GE.traitId] == WFS.workflowApproval }
+        fun stepped(vararg records: Map<String, Any?>) = ReportSubject(
+            meta, entries, base + records, owner,
+            approvalSteps = { _, task -> if (task == "approveAudit") listOf("first", "second") else null },
+        ) { WfPhase.engageable }
+        val first = stepRecord("first", t2, 12L)
+        assertEquals(false, value("workflow.auditReview.approval[approveAudit].approved", s = stepped(first)))
+        assertNull(value("workflow.auditReview.approval[approveAudit].approvedBy", s = stepped(first)))
+        val both = stepped(first, stepRecord("second", t2, 14L))
+        assertEquals(true, value("workflow.auditReview.approval[approveAudit].approved", s = both))
+        assertEquals(14L, value("workflow.auditReview.approval[approveAudit].approvedBy", s = both))
+    }
+
+    @Test
     fun anApprovalCountsOnlyInTheCurrentEngagement() {
         assertEquals(true, value("workflow.auditReview.approval[approveAudit].approved"))
         assertEquals(t2, value("workflow.auditReview.approval[approveAudit].approvedAt"))
@@ -430,7 +454,7 @@ class ReportEvalTest {
         val huge = combineReportValues(listOf<Any>(Long.MAX_VALUE, Long.MAX_VALUE), ReportKind.number, ReportCombine.sum)
         assertTrue(huge is Double && huge > Long.MAX_VALUE.toDouble(), "$huge")
         assertEquals(Long.MAX_VALUE, combineReportValues(listOf<Any>(Long.MAX_VALUE - 1, 1L), ReportKind.number, ReportCombine.sum))
-        assertEquals(-5L, combineReportValues(listOf<Any>(Long.MIN_VALUE + 5, Long.MAX_VALUE, -9L), ReportKind.number, ReportCombine.sum).let { it })
+        assertEquals(-5L, combineReportValues(listOf<Any>(Long.MIN_VALUE + 5, Long.MAX_VALUE, -9L), ReportKind.number, ReportCombine.sum))
         // Nothing to combine is a blank -- except a count, which is then zero.
         assertNull(combineReportValues(emptyList(), ReportKind.number, ReportCombine.sum))
         assertNull(combineReportValues(emptyList(), ReportKind.string, ReportCombine.list))

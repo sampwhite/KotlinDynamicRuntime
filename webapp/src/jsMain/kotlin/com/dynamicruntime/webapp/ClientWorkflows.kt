@@ -218,7 +218,13 @@ fun workflowFixedParts(def: WfDef): List<String> = buildList {
     for (task in def.tasks) {
         val approval = task.approval
         if (approval != null) {
-            add("${task.label}: a reviewer approves it with “${approval.button}”.")
+            if (approval.steps.isEmpty()) {
+                add("${task.label}: a reviewer approves it with “${approval.button}”.")
+            } else {
+                // Given in order, a step at a time (issue #1702).
+                val steps = approval.steps.joinToString(", then ") { "“${it.button}”" }
+                add("${task.label}: approved in ${approval.steps.size} steps, in order: $steps.")
+            }
             continue
         }
         task.saves.forEach { save ->

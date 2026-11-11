@@ -23,7 +23,6 @@ import com.dynamicruntime.common.gedra.workflow.WFS
 import com.dynamicruntime.common.gedra.workflow.WfDeclared
 import com.dynamicruntime.common.gedra.workflow.CTKF
 import com.dynamicruntime.common.gedra.workflow.CTKQ
-import com.dynamicruntime.common.gedra.workflow.WfApproval
 import com.dynamicruntime.common.gedra.workflow.ctaKeywordWords
 import com.dynamicruntime.common.gedra.workflow.CTAK
 import com.dynamicruntime.common.gedra.workflow.matchesKeywordSearch
@@ -1085,10 +1084,10 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
         mapOf(GDF.gedraId to row.gedraId.fullId, GDF.states to WorkflowPhases.shownStates(c, row.client, states, alsoShow = workflowId))
     }
 
-    // A reviewer approves an approval task (issue #787). When is settled under the lock by WorkflowApprovals.approve:
-    // engaged, the current task, not already approved. Who may is settled there too, by the approval's rule -- by
-    // default a reviewer of the task who does not own the form (issue #1595) -- and the CTA's filter rule. The button a
-    // page draws is presentation; this is the permission.
+    // A reviewer approves an approval task (issue #787), one step at a time (issue #1702). When is settled under the
+    // lock by WorkflowApprovals.approve: engaged, the current task, not already approved, the step the form waits on.
+    // Who may is settled there too, by the step's rule -- by default a reviewer of the task who does not own the form
+    // (issue #1595) -- and the CTA's filter rule. The button a page draws is presentation; this is the permission.
     generalEndpoint(
         GEP.workflowApprove,
         "Approves an approval task of a normal workflow for a form, as a reviewer of that task, and answers with " +
@@ -1099,6 +1098,11 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
             field(GDF.gedraId, "The form to approve.", required = true)
             field(GDF.workflowId, "The normal workflow the approval task belongs to.", required = true)
             field(GDF.taskId, "The approval task to approve.", required = true)
+            field(
+                GDF.stepId,
+                "The step to give: the one the form waits on, or the request is refused. Required for a task approved in " +
+                    "steps; absent, the task's one step.",
+            )
         },
         publicApi = true,
         needsClientConfig = true,
@@ -1112,9 +1116,9 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
             ?: throw KdrException.mkInput("'$workflowId' is not a normal workflow of client '${row.client}'.")
         // A frozen workflow (past its relevancy, issue #790) takes no approvals: nothing would recalculate after it.
         WorkflowPhases.requireCalculated(c, row.client, declared.def, "approved")
-        val task = declared.def.task(taskId)
-        val approval = task?.approval
+        val task = declared.def.task(taskId)?.takeIf { it.approval != null }
             ?: throw KdrException.mkInput("'$taskId' is not an approval task of workflow '$workflowId'.")
+        val stepId = request[GDF.stepId].toOptStr()
         // Who may approve (issues #787, #1595) is the judge's answer, asked here rather than trusted from the page: the
         // approval's rule -- by default a reviewer who does not own the form, the second-person rule, which keeps a label
         // an administrator put on themselves (#786) from becoming self-approval -- and the CTA's filter rule. The same
@@ -1122,13 +1126,13 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
         // once the approval knows the task is the current one, with the approvals as they then stand.
         val requestFacts = SchemaService.get(c).cfactsFor(row.client).assemble(c)
         val rowFacts = RowCfacts.of(c, row.userId)
-        val states = WorkflowApprovals.approve(c, row, declared, task) { current ->
+        val states = WorkflowApprovals.approve(c, row, declared, task, stepId) { current ->
             val judge = WorkflowTaskJudge(
                 c, row.client, declared, entriesByTaskOf(declared, row), WorkflowApprovals.of(current, workflowId),
                 requestFacts, rowFacts, row.entries,
             )
             if (!judge.mayApprove(task)) {
-                throw KdrException(approveRefusal(c, judge, task, approval, row), code = EXC.notAuthorized)
+                throw KdrException(approveRefusal(c, judge, task, row), code = EXC.notAuthorized)
             }
         }
         mapOf(GDF.gedraId to row.gedraId.fullId, GDF.states to WorkflowPhases.shownStates(c, row.client, states))
@@ -1548,14 +1552,16 @@ private fun normalTaskSaveCheck(c: KdrCxt, declared: WfDeclared, taskId: String)
 }
 
 /**
- * Why [judge] refuses the caller approval task [task] of form [row] (issues #787, #1595), in the order a person
- * can act on: whom the CTA waits on, when its filter rule is what stands in the way; that the caller owns the form, when
- * the approval's rule would pass but for that (the second-person rule's own words); that they are no reviewer, when that
- * is what is missing; and otherwise that they may not.
+ * Why [judge] refuses the caller approval task [task] of form [row] (issues #787, #1595), judged on the step to give
+ * next (issue #1702), in the order a person can act on: whom the CTA waits on, when its filter rule is what stands in
+ * the way; that the caller owns the form, when the step's rule would pass but for that (the second-person rule's own
+ * words); that they are no reviewer, when that is what is missing; and otherwise that they may not.
  */
-private fun approveRefusal(c: KdrCxt, judge: WorkflowTaskJudge, task: WfTask, approval: WfApproval, row: GedraDataRow): String {
+private fun approveRefusal(c: KdrCxt, judge: WorkflowTaskJudge, task: WfTask, row: GedraDataRow): String {
     judge.waitingOn(task)?.let { return MarkdownFragmentService.get(c).backendPass(c, it) }
-    val rule = SchemaService.get(c).cfactsFor(row.client).parse(approval.effectiveApproveWhen)
+    // The rule of the step to give next (issue #1702).
+    val step = judge.currentStep(task) ?: task.approvalSteps.last()
+    val rule = SchemaService.get(c).cfactsFor(row.client).parse(step.effectiveApproveWhen)
     val facts = judge.callerFacts + judge.taskFacts(task)
     val workflowId = judge.declared.def.workflowId
     return when {

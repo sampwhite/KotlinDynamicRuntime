@@ -9,6 +9,7 @@ import com.dynamicruntime.common.gedra.GedraId
 import com.dynamicruntime.common.startup.SchemaService
 import com.dynamicruntime.common.user.AdminRules
 import com.dynamicruntime.common.user.UserService
+import com.dynamicruntime.common.util.toJsonListOfStrings
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
 
@@ -262,13 +263,16 @@ class WaitingSteps(
         // The CTA's task facts from state, as the singleton chips build them, passing its filter.
         val facts = buildSet {
             addAll(callerFacts)
-            addAll(stateCtaTaskFacts(data, passesFilter = true))
+            addAll(stateCtaTaskFacts(data, passesFilter = true, task))
             addAll(rules.viewer.forTask(task))
         }
         val approval = task.approval
         val saveWhen = task.saveWhen
         val theirs = when {
-            approval != null -> rules.cfacts.parse(approval.effectiveApproveWhen).matches(facts)
+            // The step the form waits on (issue #1702): the stored one for an approval with steps, else its one step.
+            approval != null -> rules.cfacts.parse(
+                (task.approvalStep(data[WFS.ctaStep].toOptStr()) ?: task.approvalSteps.first()).effectiveApproveWhen,
+            ).matches(facts)
             // A save the owner-only rule refuses them.
             form.keptToOwner -> false
             saveWhen != null -> rules.cfacts.parse(saveWhen).matches(facts)
@@ -282,7 +286,7 @@ class WaitingSteps(
             WFD.workflowId to workflowId,
             WFD.label to (def.label.takeIf { it.isNotBlank() }?.let { label(it) } ?: workflowId),
             WFS.ctaTask to task.id,
-            SWF.actionText to SingletonWorkflows.actionText(task, facts, rules.cfacts::parse, ::label),
+            SWF.actionText to SingletonWorkflows.actionText(task, facts, rules.cfacts::parse, ::label, data[WFS.ctaStep].toOptStr()),
         ).apply { if (current == null) put(SWF.startsWorkflow, true) }
     }
 
@@ -302,19 +306,25 @@ class WaitingSteps(
  * The value for [key], computing it with [compute] only the first time -- a null answer included, which `getOrPut`
  * would compute again on every ask.
  */
-private inline fun <K, V> MutableMap<K, V?>.memo(key: K, compute: () -> V?): V? =
+internal inline fun <K, V> MutableMap<K, V?>.memo(key: K, compute: () -> V?): V? =
     if (containsKey(key)) get(key) else compute().also { put(key, it) }
 
 /**
  * A call to action's task facts as a surface reading state alone has them (issues #789, #1597): available, the CTA,
  * complete as its stored status says, never approved (a CTA never is), [WFC.passesCtaFilter] when the caller passes its
  * filter rule, and the workflow's keyword fact ([CtaKeyword.workflowCfact]) for the keyword the state stores -- as the
- * workflow view's judge gives a task the keyword fact.
+ * workflow view's judge gives a task the keyword fact. For an approval in steps, [task]'s, the cfacts of the steps already
+ * given (issue #1702), read from the workflow's stored cfacts, as the judge gives them.
  */
-internal fun stateCtaTaskFacts(state: Map<String, Any?>, passesFilter: Boolean): Set<String> = buildSet {
+internal fun stateCtaTaskFacts(state: Map<String, Any?>, passesFilter: Boolean, task: WfTask): Set<String> = buildSet {
     add(WFC.taskAvailable)
     add(WFC.isCta)
     if (state[WFS.ctaStatus].toJsonMapOrEmpty()[CDF.complete] == true) add(WFC.taskComplete)
     if (passesFilter) add(WFC.passesCtaFilter)
     CTAK.of(state[WFS.ctaKeyword].toOptStr())?.let { add(it.workflowCfact) }
+    val stepCfacts = task.approval?.steps.orEmpty().mapNotNull { it.cfact }
+    if (stepCfacts.isNotEmpty()) {
+        val stored = state[WFS.cfacts].toJsonListOfStrings().toSet()
+        stepCfacts.filterTo(this) { it in stored }
+    }
 }

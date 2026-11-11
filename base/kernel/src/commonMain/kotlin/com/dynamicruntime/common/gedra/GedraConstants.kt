@@ -232,6 +232,12 @@ object GDF {
     /** Names the workflow task a save targets (issue #535). */
     const val taskId = "taskId"
 
+    /**
+     * Names the approval step an approve gives (issue #1702): the step the page showed, so a stale page cannot give
+     * another. Absent, the task's one step, which only an approval that declares no steps has.
+     */
+    const val stepId = "stepId"
+
     /** Names the save option chosen within a task (issue #535). */
     const val saveId = "saveId"
     const val gedraKind = "gedraKind"
