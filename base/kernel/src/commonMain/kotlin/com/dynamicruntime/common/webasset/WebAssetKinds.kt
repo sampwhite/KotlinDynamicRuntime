@@ -23,6 +23,7 @@ class WebSlotDef(val slot: String, val label: String, val maxSize: Int, val only
  * so the self-serve create's card can refuse a file the server would -- too large, or not an image we take -- before
  * it creates anything. The backend's `WebAssetCheck` still decides, by the bytes; this is the part both sides agree on.
  */
+@Suppress("ConstPropertyName")
 object WebAssetKinds {
     val png = WebImageKind("PNG", "image/png", "png")
     val svg = WebImageKind("SVG", "image/svg+xml", "svg")
