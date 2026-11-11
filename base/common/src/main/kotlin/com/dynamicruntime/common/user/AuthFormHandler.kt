@@ -20,6 +20,7 @@ import com.dynamicruntime.common.util.checkPassword
 import com.dynamicruntime.common.util.isEmailAddress
 import com.dynamicruntime.common.util.mkRndString
 import com.dynamicruntime.common.util.normalizeEmail
+import java.security.MessageDigest
 
 /** Topic logger for the auth subsystem (placed beside the code that owns the `"auth"` topic). */
 object LogAuth : KdrLogger("auth")
@@ -81,7 +82,8 @@ class AuthFormHandler(
 
     /**
      * Rate-limits, then validates, a verification [verifyCode] for [contactAddress]. The throttle runs first,
-     * so the short code cannot be cheaply brute-forced; a correct code clears the counter.
+     * so the short code cannot be cheaply brute-forced; a correct code clears the counter. The code is compared as
+     * [normalizeVerifyCode] makes it, so its case and any space or hyphen typed in it do not matter (issue #1785).
      *
      * The counter is [attemptKey]'s: **what the caller typed** -- the login id, the user id -- whether or not it names an
      * account, and the same key a refusal for an unknown one counts against (issue #1299). Keyed by the account's
@@ -99,7 +101,7 @@ class AuthFormHandler(
         if (!rateLimiter.allow(key, RL.verifyMax, RL.verifyWindowMs, cxt.now().toEpochMilliseconds())) {
             throw KdrException.mkMsg(KdrMsg(AFRAG.auth, AERR.ns, AERR.tooManyVerifyAttempts), code = EXC.tooManyRequests)
         }
-        if (node.computeVerifyCode(formAuthToken, contactAddress) != verifyCode) {
+        if (!sameVerifyCode(node.computeVerifyCode(formAuthToken, contactAddress), verifyCode)) {
             throw KdrException.mkMsg(KdrMsg(AFRAG.auth, AERR.ns, AERR.codeIncorrect))
         }
         rateLimiter.reset(key)
@@ -1110,3 +1112,17 @@ class AuthFormHandler(
 
 /** A user [AuthFormHandler.findOrProvisionUser] found or created, and whether it [existed] already. */
 class ProvisionedUser(val row: AuthUserRow, val existed: Boolean)
+
+/**
+ * A verification code as typed, made comparable with the one the node computes (issue #1785): upper case, since a phone
+ * keyboard starts in lower case and every code is capitals and digits, and without spaces or hyphens, which a person may
+ * type to break it up. Edge whitespace is trimmed before it gets here, as every input string is.
+ */
+fun normalizeVerifyCode(typed: String): String = typed.filterNot { it.isWhitespace() || it == '-' }.uppercase()
+
+/**
+ * Whether [typed] is the [expected] code, once normalized ([normalizeVerifyCode]), compared in constant time (issue
+ * #1785): a comparison that stopped at the first differing character would say how much of a guess was right.
+ */
+fun sameVerifyCode(expected: String, typed: String): Boolean =
+    MessageDigest.isEqual(expected.toByteArray(Charsets.UTF_8), normalizeVerifyCode(typed).toByteArray(Charsets.UTF_8))

@@ -360,6 +360,23 @@ class AuthFlowTest : StringSpec({
         )["userId"] shouldBe userId
     }
 
+    "a code is six characters, and is accepted in any case with a space or a hyphen typed in it (issue #1785)" {
+        val client = mkClient("10.17.85.1")
+        val contact = "pia@example.com"
+        registerByCode(client, contact, "piav")
+        client.sendGetRequest("/logout")
+
+        val token = tokenOf(client)
+        val code = codeFor(token, contact)
+        code.length shouldBe 6
+        // As a phone keyboard types it: lower case, broken up.
+        val typed = code.substring(0, 3).lowercase() + " -" + code.substring(3).lowercase()
+        val resp = client.sendJsonPostRequest(
+            "/auth/login/byCode", mapOf("loginId" to "piav", "formAuthToken" to token, "verifyCode" to typed),
+        )
+        results(resp)["publicName"] shouldBe "piav"
+    }
+
     "the throttles count the id as typed, so an address and its username are not linked (issue #1299)" {
         // Its own user and IP. Exhausting one login id's counter must say nothing about another id of the same account:
         // counted by the account, the second id would be refused too, and the refusal would say the two are one.

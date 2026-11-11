@@ -131,9 +131,12 @@ class NodeService : ServiceInitializer {
      * unkeyed digest of exactly those two public inputs, so anyone could compute any account's code offline
      * and log in as them. Keeping it a method here, rather than a free function over the raw inputs, is what
      * makes the unkeyed form impossible to write by accident.
+     *
+     * **Six characters** ([verifyCodeBytes], issue #1785), short enough to type on a phone: about 16.7 million codes,
+     * each living only as long as its form token (15 minutes) and refused after six wrong tries in that time.
      */
     fun computeVerifyCode(formAuthToken: String, contactAddress: String): String =
-        (contactAddress + formAuthToken).hmacToBytes(activeKey()).toReadableChars(4)
+        (contactAddress + formAuthToken).hmacToBytes(activeKey()).toReadableChars(verifyCodeBytes)
 
     /** The instance's active encryption key, or a hard failure if startup has not loaded one yet. */
     private fun activeKey(): String = authKeys[instanceAuthConfigKey]
@@ -154,6 +157,9 @@ class NodeService : ServiceInitializer {
     @Suppress("ConstPropertyName")
     companion object {
         const val serviceName = "NodeService"
+
+        /** The bytes of the HMAC a verification code is written from, two characters each (issue #1785). */
+        const val verifyCodeBytes = 3
 
         /**
          * Default lookup name for the active encryption key when `node.instance.authConfigKey` is not set.

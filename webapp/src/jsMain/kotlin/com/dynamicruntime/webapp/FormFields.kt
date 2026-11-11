@@ -41,6 +41,12 @@ private val PasswordInput: ComponentType<InputProps> =
 @Suppress("ConstPropertyName")
 object AC {
     const val oneTimeCode = "one-time-code"
+
+    /**
+     * The `autocapitalize` hint for a verification code (issue #1785): a phone keyboard starts in capitals, which every
+     * code is, though the server takes one typed in lower case too.
+     */
+    const val capitalizeCharacters = "characters"
     const val newPassword = "new-password"
     const val currentPassword = "current-password"
     const val username = "username"
@@ -59,6 +65,8 @@ fun ChildrenBuilder.textField(
     autoComplete: String? = null,
     placeholder: String? = null,
     maxLength: Int? = null,
+    /** The `autocapitalize` hint a phone keyboard follows ([AC.capitalizeCharacters]); null leaves the browser's. */
+    autoCapitalize: String? = null,
     onChange: (String) -> Unit,
 ) {
     div {
@@ -75,6 +83,7 @@ fun ChildrenBuilder.textField(
             this.autoComplete = autoComplete
             placeholder?.let { this.placeholder = it }
             maxLength?.let { this.maxLength = it }
+            autoCapitalize?.let { this.autoCapitalize = it }
             this.onChange = { event -> onChange(event.target.value as String) }
         }
     }
