@@ -934,8 +934,9 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
             // Kept to its owner (issue #1433): the whole form read-only for this caller, as the guard would refuse a save.
             val keptToOwner = row != null && states != null && OwnerOnly.keepsOut(c, row, states)
             // Whether this caller may reverse the form's approvals (issue #1787), by the reverse endpoint's rule.
+            // Asked only of a workflow with an approval task, which is all it is read for.
             val mayReverse = row != null && declared.def.entry == WfEntry.normal &&
-                WorkflowApprovals.mayReverse(c, row.client, declared.def)
+                declared.def.tasks.any { it.approval != null } && WorkflowApprovals.mayReverse(c, row.client, declared.def)
             resolveWorkflowView(
                 c, declared, entriesByTask, ownerAttributes, approvals.current, formFacts, lockedTraits, keptToOwner,
                 formEntries = row?.entries.orEmpty(), rowFacts = RowCfacts.of(c, row?.userId),
@@ -1176,17 +1177,18 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
         val workflowId = request[GDF.workflowId].toOptStr()
             ?: throw KdrException.mkInput("A ${GDF.workflowId} is required.")
         val taskId = request[GDF.taskId].toOptStr() ?: throw KdrException.mkInput("A ${GDF.taskId} is required.")
-        val reason = request[GDF.reason].toOptStr()?.trim().orEmpty()
-        if (reason.isEmpty()) throw KdrException.mkInput("Say why the approval is reversed: a ${GDF.reason} is required.")
-        if (reason.length > GDF.maxReasonLength) {
-            throw KdrException.mkInput("A ${GDF.reason} is at most ${GDF.maxReasonLength} characters.")
-        }
+        // Who may comes first: a caller who never may is told so, not asked for a better reason.
         val row = stateTargetRow(c, request)
         if (!AdminRules.oversees(c, row.client)) {
             throw KdrException(
                 "Reversing an approval takes an administrator of client '${row.client}'.",
                 code = EXC.notAuthorized,
             )
+        }
+        val reason = request[GDF.reason].toOptStr()?.trim().orEmpty()
+        if (reason.isEmpty()) throw KdrException.mkInput("Say why the approval is reversed: a ${GDF.reason} is required.")
+        if (reason.length > GDF.maxReasonLength) {
+            throw KdrException.mkInput("A ${GDF.reason} is at most ${GDF.maxReasonLength} characters.")
         }
         val declared = WorkflowPhases.liveFor(c, WorkflowService.get(c).forClient(row.client), workflowId)
             ?.takeIf { it.def.entry == WfEntry.normal }

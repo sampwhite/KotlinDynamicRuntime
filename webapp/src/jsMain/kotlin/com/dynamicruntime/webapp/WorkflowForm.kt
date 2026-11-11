@@ -141,7 +141,7 @@ external interface WorkflowFormProps : Props {
  * An approval's refusal (issue #832) and the task it concerns -- shown by that task's button, and nowhere else -- led by
  * what could not be done: given, or reversed (issue #1787).
  */
-class ApproveRefusal(val taskId: String, val error: DisplayError, val lead: String = "Couldn't approve the form.")
+class ApproveRefusal(val taskId: String, val error: DisplayError, val lead: String)
 
 /**
  * Renders a resolved workflow and saves it (issues #536, #659). Each trait a task collects is drawn from *its
@@ -461,10 +461,20 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
         shown?.let { errorText(it.lead, it.error) }
     }
 
+    // An approval act that failed (issues #832, #1787), led by what could not be done. A verdict (a 4xx) means the state
+    // may have moved -- approved or reversed by someone else, say -- so the page reloads to show it, keeping the refusal;
+    // anything else is shown here, since a reload would only fail too.
+    fun settleFailure(taskId: String, e: Throwable, lead: String) {
+        val refusal = ApproveRefusal(taskId, userFacingError(e), lead)
+        val status = (e as? ApiError)?.status
+        val settled = props.onApproveSettled
+        if (status != null && status in 400..499 && settled != null) settled(taskId, refusal) else approveFailure = refusal
+    }
+
     // The way an administrator reverses a given step (issue #1787): the danger control, then the question naming the
     // later approvals that go with it, a required reason, and the confirm. Reversing reloads the view as approving does,
-    // so it waits while any task holds edits not yet saved.
-    fun ChildrenBuilder.reverseControl(task: WfTaskView, step: WfApprovalStepView, anyUnsaved: Boolean) {
+    // so it waits while any task holds edits not yet saved, and while another approval or reversal runs ([busy]).
+    fun ChildrenBuilder.reverseControl(task: WfTaskView, step: WfApprovalStepView, anyUnsaved: Boolean, busy: Boolean) {
         val gid = gedraId ?: return
         if (anyUnsaved) {
             p {
@@ -481,10 +491,9 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
             question = reversalQuestion(wf, task.id, step.id)
             confirmText = "Reverse approval"
             keepText = "Keep it"
-            reasonLabel = "Reason"
-            reasonMaxLength = GDF.maxReasonLength
             inProgress = reversingKey == key
-            onConfirmReason = { reason ->
+            blocked = busy && reversingKey != key
+            askReason = DangerReason("Reason", GDF.maxReasonLength) { reason ->
                 reversingKey = key
                 approveFailure = null
                 wfFormScope.launch {
@@ -492,15 +501,7 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
                         WorkflowApi.reverseApproval(gid, wf.workflowId, task.id, reason, props.client, step.id)
                         props.onApproveSettled?.invoke(task.id, null)
                     } catch (e: Throwable) {
-                        val refusal = ApproveRefusal(task.id, userFacingError(e), "Couldn't reverse the approval.")
-                        // A verdict (a 4xx) means the state may have moved -- reversed by someone else, say -- so the page
-                        // reloads to show it, keeping the refusal.
-                        val status = (e as? ApiError)?.status
-                        if (status != null && status in 400..499 && props.onApproveSettled != null) {
-                            props.onApproveSettled?.invoke(task.id, refusal)
-                        } else {
-                            approveFailure = refusal
-                        }
+                        settleFailure(task.id, e, "Couldn't reverse the approval.")
                     } finally {
                         reversingKey = null
                     }
@@ -515,12 +516,13 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
     // under a display's text too, which says the approval in its own words (and so without the given lines).
     fun ChildrenBuilder.approvalRecord(task: WfTaskView, approval: WfApprovalView, withGiven: Boolean) {
         val anyUnsaved = wf.tasks.any { taskUnsaved(it, valuesByTrait, stored) }
+        val busy = approvingTask != null || reversingKey != null
         approval.steps.filter { it.approved }.forEach { step ->
             if (withGiven) {
                 (givenStepLine(step) ?: approvedLine(approval).takeIf { approval.approved && step.label == null })
                     ?.let { line -> p { +line } }
             }
-            if (step.canReverse) reverseControl(task, step, anyUnsaved)
+            if (step.canReverse) reverseControl(task, step, anyUnsaved, busy)
         }
         approval.steps.mapNotNull(::reversedLine).forEach { line ->
             p {
@@ -569,15 +571,7 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
                                         WorkflowApi.approve(gid, wf.workflowId, task.id, props.client, approval.currentStep)
                                         props.onApproveSettled?.invoke(task.id, null)
                                     } catch (e: Throwable) {
-                                        val shown = userFacingError(e)
-                                        // A verdict (a 4xx) means the state may have moved -- approved by someone
-                                        // else, say -- so the page reloads to show it, keeping the refusal.
-                                        val status = (e as? ApiError)?.status
-                                        if (status != null && status in 400..499 && props.onApproveSettled != null) {
-                                            props.onApproveSettled?.invoke(task.id, ApproveRefusal(task.id, shown))
-                                        } else {
-                                            approveFailure = ApproveRefusal(task.id, shown)
-                                        }
+                                        settleFailure(task.id, e, "Couldn't approve the form.")
                                     } finally {
                                         approvingTask = null
                                     }

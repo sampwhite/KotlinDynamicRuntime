@@ -300,25 +300,31 @@ external interface DangerConfirmProps : Props {
     /** While the delete runs: the confirm spins, and nothing can be pressed. Not `busy`, for the reason of [SaveBarProps.failure]. */
     var inProgress: Boolean?
 
+    /**
+     * While another act on the page runs (issue #1787): nothing here can be pressed, and the confirm does not spin --
+     * this act is not the one running.
+     */
+    var blocked: Boolean?
+
+    /** Called on the confirm, unless the act asks for a reason ([askReason]), whose own `onConfirm` is called instead. */
     var onConfirm: () -> Unit
 
-    /**
-     * When set, the act needs a reason (issue #1787): once armed, a text area under this label, the confirm disabled until
-     * something is written, and [onConfirmReason] called with it, trimmed, in place of [onConfirm].
-     */
-    var reasonLabel: String?
-
-    /** The longest reason taken, when [reasonLabel] asks for one. */
-    var reasonMaxLength: Int?
-
-    var onConfirmReason: ((String) -> Unit)?
+    /** When set, the act needs a reason (issue #1787): see [DangerReason]. */
+    var askReason: DangerReason?
 }
+
+/**
+ * The reason an act behind [DangerConfirm] needs (issue #1787): once armed, a text area under [label] taking at most
+ * [maxLength] characters, the confirm disabled until something is written, and [onConfirm] called with it, trimmed, in
+ * place of [DangerConfirmProps.onConfirm]. One value, so a reason cannot be asked for with nothing to receive it.
+ */
+class DangerReason(val label: String, val maxLength: Int, val onConfirm: (String) -> Unit)
 
 /**
  * The one confirmation for what cannot be undone (issue #1477, rule 6): a danger button that, pressed, is replaced in
  * place by the question, the danger confirm, and the way back -- two deliberate presses, the second beside the words
  * saying what it does. Armed only for the record it was pressed for ([DangerConfirmProps.recordKey]). An act that
- * needs a reason ([DangerConfirmProps.reasonLabel], issue #1787) asks for it between the question and the confirm.
+ * needs a reason ([DangerConfirmProps.askReason], issue #1787) asks for it between the question and the confirm.
  */
 val DangerConfirm = FC<DangerConfirmProps> { props ->
     // Which record it was armed for, so another record reads as unarmed from its first render -- not after an effect
@@ -328,13 +334,15 @@ val DangerConfirm = FC<DangerConfirmProps> { props ->
     var reason by useState("" to "")
     val armed = armedFor == props.recordKey
     val written = reason.second.takeIf { reason.first == props.recordKey }.orEmpty().trim()
-    val needsReason = props.reasonLabel != null
+    val ask = props.askReason
+    // Nothing can be pressed while this act runs, or another on the page does.
+    val held = props.inProgress == true || props.blocked == true
     if (!armed) {
         div {
             className = ClassName("row")
             Button {
                 danger = true
-                disabled = props.inProgress == true
+                disabled = held
                 onClick = { armedFor = props.recordKey; reason = props.recordKey to "" }
                 +props.actionText
             }
@@ -344,12 +352,12 @@ val DangerConfirm = FC<DangerConfirmProps> { props ->
             className = ClassName("subtitle")
             +props.question
         }
-        props.reasonLabel?.let { label ->
-            choiceRow(label) {
+        ask?.let {
+            choiceRow(it.label) {
                 TextArea {
                     value = reason.second
-                    disabled = props.inProgress == true
-                    maxLength = props.reasonMaxLength
+                    disabled = held
+                    maxLength = it.maxLength
                     asDynamic()["rows"] = 2
                     onChange = { e -> reason = props.recordKey to (e.target.value as String) }
                 }
@@ -360,13 +368,13 @@ val DangerConfirm = FC<DangerConfirmProps> { props ->
             Button {
                 danger = true
                 loading = props.inProgress == true
-                disabled = needsReason && written.isEmpty()
-                onClick = { if (needsReason) props.onConfirmReason?.invoke(written) else props.onConfirm() }
+                disabled = props.blocked == true || (ask != null && written.isEmpty())
+                onClick = { if (ask != null) ask.onConfirm(written) else props.onConfirm() }
                 +props.confirmText
             }
             Button {
                 type = "link"
-                disabled = props.inProgress == true
+                disabled = held
                 onClick = { armedFor = null }
                 +props.keepText
             }

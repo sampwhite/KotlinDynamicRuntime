@@ -230,16 +230,21 @@ object WorkflowApprovals {
             val key = approvalKey(task.id, step.id)
             val event = linkedMapOf<String, Any?>(WFS.kind to WFS.approvedEvent, WFS.at to stamp, WFS.by to by, WFS.note to key)
             // A stale record for this step (from an earlier engagement) shares the new one's key; it is replaced.
-            val others = current.filterNot {
-                it[GE.traitId].toOptStr() == WFS.workflowApproval &&
-                    it[GE.data].toJsonMapOrEmpty().let { d ->
-                        d[WFD.workflowId].toOptStr() == workflowId &&
-                            approvalKey(d[WFS.taskId].toOptStr().orEmpty(), d[WFS.stepId].toOptStr()) == key
-                    }
-            }
+            val others = current.filterNot { isRecordOf(it, workflowId, setOf(key)) }
             WorkflowEngagement.withEvent(others + approval, workflowId, event)
         }
     }
+
+    /**
+     * Whether state [entry] is an approval record of [workflowId] filed under one of [keys] (`approvalKey`), current or
+     * stale: what approving replaces and reversing removes.
+     */
+    fun isRecordOf(entry: Map<String, Any?>, workflowId: String, keys: Set<String>): Boolean =
+        entry[GE.traitId].toOptStr() == WFS.workflowApproval &&
+            entry[GE.data].toJsonMapOrEmpty().let { d ->
+                d[WFD.workflowId].toOptStr() == workflowId &&
+                    approvalKey(d[WFS.taskId].toOptStr().orEmpty(), d[WFS.stepId].toOptStr()) in keys
+            }
 
     /**
      * Reverses step [stepId] of [task] of [declared] on the form [row] (issue #1787), as the administrator [cxt] acts as,
@@ -295,14 +300,7 @@ object WorkflowApprovals {
                     code = EXC.conflict,
                 )
             }
-            val gone = reversed.toSet()
-            val kept = current.filterNot {
-                it[GE.traitId].toOptStr() == WFS.workflowApproval &&
-                    it[GE.data].toJsonMapOrEmpty().let { d ->
-                        d[WFD.workflowId].toOptStr() == workflowId &&
-                            approvalKey(d[WFS.taskId].toOptStr().orEmpty(), d[WFS.stepId].toOptStr()) in gone
-                    }
-            }
+            val kept = current.filterNot { isRecordOf(it, workflowId, reversed.toSet()) }
             // One event per approval taken away, each after every stamp already on the engagement (issue #1267), so the
             // trail keeps their order even inside one millisecond.
             reversed.fold(kept) { entries, k ->

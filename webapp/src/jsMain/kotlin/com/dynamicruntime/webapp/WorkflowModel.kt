@@ -16,6 +16,7 @@ import com.dynamicruntime.common.gedra.workflow.WSF
 import com.dynamicruntime.common.gedra.workflow.WVF
 import com.dynamicruntime.common.gedra.workflow.WfEntry
 import com.dynamicruntime.common.gedra.workflow.WfPhase
+import com.dynamicruntime.common.gedra.workflow.approvalName
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SLDM
 import com.dynamicruntime.common.schema.SchFailCode
@@ -482,14 +483,8 @@ fun reversedLine(step: WfApprovalStepView): String? {
 }
 
 /**
- * What an approval is called where a reversal names it (issue #1787): its task's label, and its step's when it has one.
- * The view's own words for it, which the backend uses for `reversedWith` too.
- */
-fun approvalName(task: WfTaskView, step: WfApprovalStepView): String = listOfNotNull(task.label, step.label).joinToString(": ")
-
-/**
  * The approvals given now that reversing step [stepId] of task [taskId] would take away with it (issue #1787): every
- * later step of that task, and every step of a later task, that is approved -- each named by [approvalName], in the
+ * later step of that task, and every step of a later task, that is approved -- each named by `approvalName`, in the
  * workflow's order. Pure, and covered under `jsNodeTest`.
  */
 fun reversalTakesWith(view: WorkflowView, taskId: String, stepId: String): List<String> {
@@ -498,7 +493,7 @@ fun reversalTakesWith(view: WorkflowView, taskId: String, stepId: String): List<
         task.approval?.steps.orEmpty().mapNotNull { step ->
             val later = after
             if (task.id == taskId && step.id == stepId) after = true
-            if (later && step.approved) approvalName(task, step) else null
+            if (later && step.approved) approvalName(task.label, step.label) else null
         }
     }
 }

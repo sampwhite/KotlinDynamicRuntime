@@ -163,7 +163,7 @@ fun resolveWorkflowView(
     fun approverName(record: Map<String, Any?>): String? = nameOf(record[WFS.approvedBy].toOptLong())
     fun approvalLabel(key: String): String? = declared.def.tasks.firstNotNullOfOrNull { t ->
         t.approvalSteps.firstOrNull { approvalKey(t.id, it.id) == key }?.let { s ->
-            listOfNotNull(label(t.label), s.label?.let { label(it) }).joinToString(": ")
+            approvalName(label(t.label), s.label?.let { label(it) })
         }
     }
 
