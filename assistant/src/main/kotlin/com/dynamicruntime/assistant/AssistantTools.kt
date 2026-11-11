@@ -183,6 +183,7 @@ class AssistantTool(
  * deletes what it is not given), switching the sandbox, `workflows/params` (in force at once), users, keys, sessions,
  * form data, and every `admin`, `operator`, and `fixture` endpoint: none is a tool, so the seam refuses each.
  */
+@Suppress("CollectionConcatenationToBuildCollection")
 object AssistantTools {
     val all: List<AssistantTool> by lazy { build() }
 

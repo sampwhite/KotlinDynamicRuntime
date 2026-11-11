@@ -496,6 +496,7 @@ class AssistantTurnsTest : StringSpec({
         })
         val started = admin.postData(ACNV.messagePath, mapOf(ACNV.clientMessageId to "delrun1", ACNV.text to "Look around."))
         val conversationId = started[ACNV.conversationId].toString()
+        @Suppress("BlockingMethodInNonBlockingContext")
         entered.await(20, TimeUnit.SECONDS) shouldBe true
         admin.expectError(EXC.conflict, ACNV.deletePath, mapOf(ACNV.conversationId to conversationId))[EP.errorCode] shouldBe
             ACNV.busyCode

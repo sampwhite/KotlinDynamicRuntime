@@ -27,6 +27,7 @@ import kotlin.test.assertTrue
  * The workflow assistant page's pure logic (issue #1527): a conversation's messages read into the transcript, each line of
  * tool calls labeled, the drafts a conversation made, how a turn's end is told, when the page polls, and the allowance.
  */
+@Suppress("BooleanLiteralArgument")
 class AssistantTranscriptTest {
     private fun text(t: String) = mapOf(ABLK.type to ABLK.text, ABLK.text to t)
     private fun thinking(t: String) = mapOf(ABLK.type to ABLK.thinking, ABLK.thinking to t)
@@ -85,7 +86,7 @@ class AssistantTranscriptTest {
         assertEquals("Checked a change to `flows`", assertIs<TranscriptItem.Tools>(items[3]).label)
         assertEquals("Drafted `flows` (v3)", assertIs<TranscriptItem.Tools>(items[4]).label)
         // The model's text is its own; an unsummarized note shows nothing; tool results are never said by the person.
-        assertIs<TranscriptItem.Said>(items[5]).let { assertFalse(it.fromPerson) }
+        assertFalse(assertIs<TranscriptItem.Said>(items[5]).fromPerson)
     }
 
     @Test
