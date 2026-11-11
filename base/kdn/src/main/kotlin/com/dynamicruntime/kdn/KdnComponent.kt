@@ -97,7 +97,7 @@ class KdnComponent : ComponentDefinition {
         listOf(
             webResources(ConfDemo.webResources, brandMark = ConfDemo.brandMarkFile),
             // Gedra's (issue #1779), which the reference flavor makes the deployment's default.
-            webResources(SitePolicies.gedraWebResources, shareImage = SitePolicies.gedraShareImage),
+            webResources(GedraBranding.webResources, shareImage = GedraBranding.shareImage),
         )
 
     /**
@@ -116,7 +116,7 @@ class KdnComponent : ComponentDefinition {
             set(HCFG.aboutDoc, SitePolicies.aboutDocId)
             // Gedra's web resources as the deployment's default (issues #1769, #1779): its link-preview image, in place
             // of the runtime's; every other image is the built-in one.
-            set(WRES.defaultKey, SitePolicies.gedraWebResources)
+            set(WRES.defaultKey, GedraBranding.webResources)
             omnibusOverlay("kdrConfDemoReference")
         },
     )

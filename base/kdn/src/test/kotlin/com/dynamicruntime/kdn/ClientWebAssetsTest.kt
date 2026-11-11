@@ -43,6 +43,7 @@ import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.webasset.ClientWebAssetService
 import com.dynamicruntime.common.webasset.WAS
 import com.dynamicruntime.common.webasset.WebResourcesDef
+import com.dynamicruntime.common.webasset.WRES
 import com.dynamicruntime.common.webasset.webResources
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
@@ -65,6 +66,7 @@ import io.kotest.matchers.string.shouldContain
 class ClientWebAssetsTest : StringSpec({
     include(clientWebAssetsTests())
     include(webResourcesTests())
+    include(defaultPackageTests())
 })
 
 /** This file's own tests, as the class describes them. */
@@ -506,6 +508,41 @@ private fun webResourcesTests() = stringSpec {
         }.message.orEmpty()
         message shouldContain "only a client's definition in code may"
         ClientService.get(cxt).known(client).shouldBeNull()
+    }
+}
+
+/**
+ * The deployment's default web resources package (issue #1779): it stands behind a client naming none -- here a
+ * `public` user's -- and behind each slot a client's own package leaves empty, and the client's listing says an image
+ * is the default's rather than a package the client named.
+ */
+private fun defaultPackageTests() = stringSpec {
+    val defaultId = "wresfix:default"
+    // The fixture client's own package fills the brand mark alone; the default fills both slots.
+    val own = webResources(WebResourcesFixture.fullId, brandMark = "fixture/mark.svg")
+    val default = webResources(defaultId, favicon = "fixture/dot.png", brandMark = "fixture/dot.png")
+    val cxt = Startup.mkTestBootCxt(
+        "wresDefault1779", "wresDefault1779", mapOf(WRES.defaultKey to defaultId), listOf(WebResourcesFixture(listOf(own, default))),
+    )
+    val packages = ComponentImageService.get(cxt).packages
+    fun named(id: String, slot: String) = WAS.versionedName(slot, packages.getValue(id).getValue(slot).meta.hash)
+
+    fun shellAssets(user: TestUser): Map<String, Any?> =
+        user.getData(HEP.homeUiConfig)[UIC.state].toJsonMapOrEmpty()[HFLD.webAssets].toJsonMapOrEmpty()
+
+    "a client naming no package shows the default's, and a client's own package falls back to it slot by slot" {
+        val visitor = TestUser.create(cxt, "pat@wres1779.test")
+        shellAssets(visitor)[WAS.favicon] shouldBe named(defaultId, WAS.favicon)
+        shellAssets(visitor)[WAS.brandMark] shouldBe named(defaultId, WAS.brandMark)
+
+        val admin = TestUser.create(cxt, "chief@wres1779.test", level = ROLE.admin, userClient = WebResourcesFixture.client)
+        shellAssets(admin)[WAS.brandMark] shouldBe named(WebResourcesFixture.fullId, WAS.brandMark)
+        shellAssets(admin)[WAS.favicon] shouldBe named(defaultId, WAS.favicon)
+        // The listing says which: the client's own package, or the deployment's default -- never the default as its own.
+        val listed = admin.getItems(UADEP.clientWeb).associateBy { it[WAS.slot] }
+        listed.getValue(WAS.brandMark)[WAS.source] shouldBe WAS.sourcePackage
+        listed.getValue(WAS.favicon)[WAS.source] shouldBe WAS.sourceDefault
+        listed.getValue(WAS.favicon)[WAS.packageId] shouldBe WebResourcesFixture.fullId
     }
 }
 

@@ -78,8 +78,8 @@ class SitePoliciesTest : StringSpec({
         copy(plain, HFRAG.homeNs, HFRAG.brand) shouldBe "KDR"
         // The link preview's image is Gedra's, from the web resources package the flavor makes the default (issue #1779);
         // a plain deployment names none.
-        reference.instanceConfig.get(WRES.defaultKey) shouldBe SitePolicies.gedraWebResources
-        ComponentImageService.get(reference).packageFile(SitePolicies.gedraWebResources, WAS.shareImage).shouldNotBeNull()
+        reference.instanceConfig.get(WRES.defaultKey) shouldBe GedraBranding.webResources
+        ComponentImageService.get(reference).packageFile(GedraBranding.webResources, WAS.shareImage).shouldNotBeNull()
         plain.instanceConfig.get(WRES.defaultKey).shouldBeNull()
     }
 

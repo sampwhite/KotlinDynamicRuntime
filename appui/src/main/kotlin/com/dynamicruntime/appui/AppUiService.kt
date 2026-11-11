@@ -12,6 +12,7 @@ import com.dynamicruntime.common.http.request.ContextFocus
 import com.dynamicruntime.common.http.request.LogRequest
 import com.dynamicruntime.common.http.request.RequestHandler
 import com.dynamicruntime.common.http.request.RequestService
+import com.dynamicruntime.common.logging.LogStartup
 import com.dynamicruntime.common.startup.ServiceInitializer
 import com.dynamicruntime.common.user.INVITE
 import com.dynamicruntime.common.endpoint.EP
@@ -127,6 +128,9 @@ object AUI {
         BrandingAsset(shareImageFile, pngMimeType, binary = true, slot = WAS.shareImage),
         BrandingAsset(faviconIcoFile, icoMimeType, binary = true),
     )
+
+    /** [brandingAssets] by file name, for the lookups each shell render and asset request makes. */
+    val brandingByFile: Map<String, BrandingAsset> = brandingAssets.associateBy { it.file }
 }
 
 /**
@@ -163,6 +167,30 @@ class AppUiService : ServiceInitializer, ContentServer {
 
     /** Memoized content hashes of the served shell resources (issue #137), keyed by classpath resource path. */
     private val assetHashes = java.util.concurrent.ConcurrentHashMap<String, String>()
+
+    /**
+     * Says at startup which of the shell's branding assets the deployment's default package supplies (issue #1779):
+     * the packages are read in another service's init, so by now they are. A default that supplies none of them -- a
+     * PNG where the shell names an SVG, or files the image check left out -- would otherwise look like branding that
+     * did not take, with the built-in set served and nothing said.
+     */
+    override fun checkReady(cxt: KdrCxt) {
+        val packageId = WRES.defaultId(cxt) ?: return
+        val supplied = AUI.brandingAssets.filter { packaged(cxt, it) != null }.map { it.file }
+        if (supplied.isEmpty()) {
+            val takes = AUI.brandingAssets.mapNotNull { asset -> asset.slot?.let { "${asset.file} ($it)" } }.joinToString()
+            LogStartup.warn(
+                cxt,
+                "The default web resources package '$packageId' supplies none of the page shell's images, so the " +
+                    "built-in set is served. The shell takes $takes.",
+            )
+        } else {
+            LogStartup.info(
+                cxt,
+                "The default web resources package '$packageId' supplies ${supplied.joinToString()}; the rest are built-in.",
+            )
+        }
+    }
 
     /** Registers this content server with the dispatcher (idempotent). */
     override fun checkInit(cxt: KdrCxt) {
@@ -271,7 +299,7 @@ class AppUiService : ServiceInitializer, ContentServer {
      */
     private fun versionedName(cxt: KdrCxt, file: String): String {
         // A branding asset the default package supplies is addressed by that image's own hash (issue #1779).
-        val hash = AUI.brandingAssets.firstOrNull { it.file == file }?.let { packaged(cxt, it) }?.let(::packagedHash)
+        val hash = AUI.brandingByFile[file]?.let { packaged(cxt, it) }?.let(::packagedHash)
             ?: resourceForAsset(file)?.let { assetHash(it) }
         return if (hash.isNullOrEmpty()) file else "$file:$hash"
     }
@@ -280,7 +308,7 @@ class AppUiService : ServiceInitializer, ContentServer {
     private fun resourceForAsset(file: String): String? = when (file) {
         AUI.bundlePath.removePrefix("/") -> AUI.bundleResource
         AUI.stylesheetPath.removePrefix("/") -> AUI.stylesheetResource
-        else -> AUI.brandingAssets.firstOrNull { it.file == file }?.let { builtInBranding(it.file) } // the built-in icons and mark
+        else -> AUI.brandingByFile[file]?.let { builtInBranding(it.file) } // the built-in icons and mark
     }
 
     /** A memoized CRC32-hex hash of an embedded resource's bytes (issue #137), or null when it is absent.

@@ -69,12 +69,14 @@ object WAS {
     const val uploadedByName = "uploadedByName"
 
     /**
-     * Where a slot's image comes from (issue #1301): [sourceUpload], the client's administrator uploaded it, or
-     * [sourcePackage], the client's web resources package ships it. Absent for an empty slot.
+     * Where a slot's image comes from (issue #1301): [sourceUpload], the client's administrator uploaded it,
+     * [sourcePackage], the client's web resources package ships it, or [sourceDefault], the deployment's default
+     * package does (issue #1779). Absent for an empty slot.
      */
     const val source = "source"
     const val sourceUpload = "upload"
     const val sourcePackage = "package"
+    const val sourceDefault = "default"
 
     /** The web resources package the client's definition names, beside a slot it fills or could fill; absent for none. */
     const val packageId = "packageId"

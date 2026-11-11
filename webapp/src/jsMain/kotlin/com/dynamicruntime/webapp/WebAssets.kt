@@ -88,7 +88,7 @@ class WebAssetSlot(
     val kinds: List<String>,
     val file: WebAssetFile?,
     val uploadedByName: String?,
-    /** Where [file] comes from: [WAS.sourceUpload] or [WAS.sourcePackage]; null for an empty slot. */
+    /** Where [file] comes from: [WAS.sourceUpload], [WAS.sourcePackage], or [WAS.sourceDefault]; null for an empty slot. */
     val source: String? = null,
     /** The web resources package the client's definition names, or null for none (issue #1301). */
     val packageId: String? = null,
@@ -114,8 +114,12 @@ fun parseWebAssetSlots(items: List<Map<String, Any?>>): List<WebAssetSlot> = ite
     )
 }
 
-/** Whether [slot] shows its web resources package's image, with nothing uploaded in front of it (issue #1301). */
-fun webAssetFromPackage(slot: WebAssetSlot): Boolean = slot.file != null && slot.source == WAS.sourcePackage
+/**
+ * Whether [slot] shows a package's image, with nothing uploaded in front of it: its own web resources package's (issue
+ * #1301), or the deployment's default package's (issue #1779).
+ */
+fun webAssetFromPackage(slot: WebAssetSlot): Boolean =
+    slot.file != null && (slot.source == WAS.sourcePackage || slot.source == WAS.sourceDefault)
 
 /**
  * Whether [slot] has an upload to remove: an image that is not its package's (issue #1301), which is the client's
@@ -150,6 +154,9 @@ fun webAssetHoldsText(slot: WebAssetSlot): String {
  */
 fun webAssetUploadedText(slot: WebAssetSlot): String? {
     val file = slot.file ?: return null
+    if (slot.source == WAS.sourceDefault) {
+        return "The deployment's default, shipped with its code. An upload replaces it for the client's people."
+    }
     if (webAssetFromPackage(slot)) {
         return "From the client's web resources package${slot.packageId?.let { ", $it" }.orEmpty()}, shipped with its " +
             "code. An upload replaces it for the client's people."

@@ -56,11 +56,12 @@ fun clientWebSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, WAS.namespace) {
         property(WAS.uploadedByName, "Who uploaded the image, as they were called then; absent when that was not recorded.")
         property(
             WAS.source,
-            "Where the image comes from: uploaded by the client's administrator, or shipped in its web resources " +
-                "package; absent when the slot is empty.",
+            "Where the image comes from: uploaded by the client's administrator, shipped in its web resources " +
+                "package, or shipped in the deployment's default package (issue #1779); absent when the slot is empty.",
         ) {
             option(WAS.sourceUpload, "Uploaded")
             option(WAS.sourcePackage, "Its web resources package")
+            option(WAS.sourceDefault, "The deployment's default package")
         }
         property(
             WAS.packageId,
@@ -195,15 +196,17 @@ private fun SchTypeBuilder.slotOptions() {
 }
 
 /**
- * [def]'s slot of [client] as it now shows: [uploaded], the image uploaded to it, else its package's (issue #1301).
+ * [def]'s slot of [client] as it now shows: [uploaded], the image uploaded to it, else its own package's (issue #1301),
+ * else the deployment's default package's (issue #1779), said as such -- never as a package the client named.
  */
 private fun slotShown(cxt: KdrCxt, assets: ClientWebAssetService, client: String, def: WebSlotDef, uploaded: FileMeta?): Map<String, Any?> {
     val packageId = assets.packageIdOf(cxt, client)
-    val packaged = assets.packaged(cxt, client, def.slot)?.meta
-    return if (uploaded != null) {
-        slotItem(def, uploaded, WAS.sourceUpload, packageId, packaged != null)
-    } else {
-        slotItem(def, packaged, WAS.sourcePackage, packageId, packaged != null)
+    val own = assets.ownPackaged(cxt, client, def.slot)?.meta
+    val packaged = own ?: assets.defaultPackaged(cxt, def.slot)?.meta
+    return when {
+        uploaded != null -> slotItem(def, uploaded, WAS.sourceUpload, packageId, packaged != null)
+        own != null -> slotItem(def, own, WAS.sourcePackage, packageId, true)
+        else -> slotItem(def, packaged, WAS.sourceDefault, packageId, packaged != null)
     }
 }
 
