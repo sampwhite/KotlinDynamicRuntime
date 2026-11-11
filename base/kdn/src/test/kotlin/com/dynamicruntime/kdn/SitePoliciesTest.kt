@@ -1,6 +1,6 @@
 package com.dynamicruntime.kdn
 
-import com.dynamicruntime.common.app.AUIC
+import com.dynamicruntime.common.content.ComponentImageService
 import com.dynamicruntime.common.content.MarkdownDocDef
 import com.dynamicruntime.common.content.MarkdownFragmentService
 import com.dynamicruntime.common.content.UIC
@@ -16,6 +16,8 @@ import com.dynamicruntime.common.http.request.TestHttpClient
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
+import com.dynamicruntime.common.webasset.WAS
+import com.dynamicruntime.common.webasset.WRES
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldContainExactly
@@ -74,10 +76,11 @@ class SitePoliciesTest : StringSpec({
         copy(reference, HFRAG.siteNs, HFRAG.title) shouldBe "Try Gedra"
         copy(reference, HFRAG.homeNs, HFRAG.title) shouldBe "Try Gedra"
         copy(plain, HFRAG.homeNs, HFRAG.brand) shouldBe "KDR"
-        // The link preview's image is Gedra's, from the branding directory the flavor names; a plain deployment names none.
-        reference.instanceConfig.get(AUIC.appUiBrandingDir) shouldBe SitePolicies.brandingDir
-        javaClass.classLoader.getResource("${SitePolicies.brandingDir}/share-image.png").shouldNotBeNull()
-        plain.instanceConfig.get(AUIC.appUiBrandingDir).shouldBeNull()
+        // The link preview's image is Gedra's, from the web resources package the flavor makes the default (issue #1779);
+        // a plain deployment names none.
+        reference.instanceConfig.get(WRES.defaultKey) shouldBe GedraBranding.webResources
+        ComponentImageService.get(reference).packageFile(GedraBranding.webResources, WAS.shareImage).shouldNotBeNull()
+        plain.instanceConfig.get(WRES.defaultKey).shouldBeNull()
     }
 
     "a deployment that names none has neither the links nor the pages" {

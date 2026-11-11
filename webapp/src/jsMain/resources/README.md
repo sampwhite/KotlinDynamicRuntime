@@ -21,10 +21,10 @@ place of the bundle, so they need no webapp build.
 
 ## These are the *defaults* — a deployment can override them
 
-The artwork here is the built-in set, not the only possible one. A deployment names its own classpath
-directory with the `appUiBrandingDir` config key and ships its files there; `appui` then serves those bytes at
-the same URLs, falling back to these per asset. So a deployment overrides just its logo and inherits the rest,
-without forking this module. See `examples/custom-config.md`.
+The artwork here is the built-in set, not the only possible one. A deployment names a web resources package a
+component ships as its default, with the `defaultWebResourcesId` config key (issue #1779); `appui` then serves the
+package's images at the same URLs, falling back to these per asset. So a deployment overrides just its logo, or just its
+share image, and inherits the rest, without forking this module. See `examples/custom-config.md`.
 
 The dev server always serves *this* set — it has no config. Only the deployed app is brandable.
 

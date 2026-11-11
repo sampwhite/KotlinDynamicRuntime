@@ -1,6 +1,5 @@
 package com.dynamicruntime.kdn
 
-import com.dynamicruntime.common.app.AUIC
 import com.dynamicruntime.common.content.ComponentImageDef
 import com.dynamicruntime.common.content.FragmentAudience
 import com.dynamicruntime.common.content.FragmentSource
@@ -22,6 +21,7 @@ import com.dynamicruntime.common.startup.SchemaCollector
 import com.dynamicruntime.common.startup.ServiceEntry
 import com.dynamicruntime.common.startup.service
 import com.dynamicruntime.common.webasset.WebResourcesDef
+import com.dynamicruntime.common.webasset.WRES
 import com.dynamicruntime.common.webasset.webResources
 import com.dynamicruntime.kdn.confdemo.ConfDemo
 import com.dynamicruntime.kdn.confdemo.ConfDemoBootService
@@ -39,6 +39,7 @@ import com.dynamicruntime.kdn.confdemo.confDemoSimulationSchema
  * its own worth rendering: `/schema/sample` and `/schema/complex` exercise choices, dates, numbers, booleans,
  * deep `$ref`s and recursion, and unlike the demo ones they are the actual subject of a test.
  */
+@Suppress("CollectionConcatenationToBuildCollection")
 class KdnComponent : ComponentDefinition {
     override val providerName: String = "kdn"
 
@@ -94,7 +95,11 @@ class KdnComponent : ComponentDefinition {
      * its tab keeps the deployment's.
      */
     override fun webResources(cxt: KdrCxt): List<WebResourcesDef> =
-        listOf(webResources(ConfDemo.webResources, brandMark = ConfDemo.brandMarkFile))
+        listOf(
+            webResources(ConfDemo.webResources, brandMark = ConfDemo.brandMarkFile),
+            // Gedra's (issue #1779), which the reference flavor makes the deployment's default.
+            webResources(GedraBranding.webResources, shareImage = GedraBranding.shareImage),
+        )
 
     /**
      * What kdn changes under a reference deployment (issue #1221): the conference demo is declared in code (issue #1668)
@@ -110,9 +115,9 @@ class KdnComponent : ComponentDefinition {
             set(HCFG.privacyPolicyDoc, SitePolicies.privacyDocId)
             set(HCFG.termsOfServiceDoc, SitePolicies.termsDocId)
             set(HCFG.aboutDoc, SitePolicies.aboutDocId)
-            // Gedra's link-preview image (issue #1769), in place of the runtime's; every other branding asset is the
-            // built-in one.
-            set(AUIC.appUiBrandingDir, SitePolicies.brandingDir)
+            // Gedra's web resources as the deployment's default (issues #1769, #1779): its link-preview image, in place
+            // of the runtime's; every other image is the built-in one.
+            set(WRES.defaultKey, GedraBranding.webResources)
             omnibusOverlay("kdrConfDemoReference")
         },
     )

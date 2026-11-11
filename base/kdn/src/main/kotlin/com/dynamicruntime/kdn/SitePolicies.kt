@@ -21,12 +21,6 @@ object SitePolicies {
     const val termsDocId = "dynamicruntime-org-terms-of-service"
     const val aboutDocId = "dynamicruntime-org-about-gedra"
 
-    /**
-     * The classpath directory of the reference deployment's branding (issue #1769): its link-preview image, Gedra's,
-     * rendered from the `share-image.svg` beside it.
-     */
-    const val brandingDir = "reference-branding"
-
     private val privacy = MarkdownDocDef(
         privacyDocId, "Privacy policy", "docs/dynamicruntime-org/privacy-policy.md",
         "What dynamicruntime.org keeps about you, why, who else handles it, and how it is deleted.",

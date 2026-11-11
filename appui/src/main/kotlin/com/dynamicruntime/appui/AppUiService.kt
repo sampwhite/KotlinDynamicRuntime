@@ -1,6 +1,6 @@
 package com.dynamicruntime.appui
 
-import com.dynamicruntime.common.app.AUIC
+import com.dynamicruntime.common.content.ComponentImageService
 import com.dynamicruntime.common.content.ContentResources
 import com.dynamicruntime.common.content.MarkdownFragmentService
 import com.dynamicruntime.common.context.KdrCxt
@@ -19,6 +19,9 @@ import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.util.crc32Hex
 import com.dynamicruntime.common.util.renderMarkdownText
 import com.dynamicruntime.common.util.toJsonStr
+import com.dynamicruntime.common.filestore.StoredFile
+import com.dynamicruntime.common.webasset.WAS
+import com.dynamicruntime.common.webasset.WRES
 
 /**
  * Webapp host paths, resource locations, and MIME types. Kept short and referenced qualified, per the code
@@ -28,7 +31,7 @@ import com.dynamicruntime.common.util.toJsonStr
 @Suppress("ConstPropertyName")
 object AUI {
     /** Classpath directory the build embeds the webapp's distribution at (see `appui/build.gradle.kts`). Also,
-     *  the fallback for a branding asset a deployment's [AUIC.appUiBrandingDir] does not supply. */
+     *  where a branding asset is read from when the deployment's default web resources package does not supply it. */
     const val defaultResourceDir = "webapp"
 
     // --- The app's own assets. Fixed: these are the application, not its livery, so they are never branded.
@@ -54,9 +57,9 @@ object AUI {
     /** Classpath location of the embedded stylesheet. */
     const val stylesheetResource = "/webapp/app.css"
 
-    // --- Branding assets. A deployment may replace the bytes behind these (AUIC.appUiBrandingDir); the URLs
-    // are fixed, so the shells' <link> tags never change. Each file name doubles as its application path
-    // ("/" + file), which is why one constant serves both.
+    // --- Branding assets. The deployment's default web resources package (WRES.defaultKey, issue #1779) may supply
+    // the bytes behind these, by slot; the URLs are fixed, so the shells' <link> tags never change. Each file name
+    // doubles as its application path ("/" + file), which is why one constant serves both.
 
     /** The tab icon: the mark with heavier strokes, for 16px legibility. Declared by both shells. */
     const val faviconFile = "favicon.svg"
@@ -111,27 +114,32 @@ object AUI {
     const val shellCacheControl = "no-cache"
 
     /**
-     * The brandable set: every asset a deployment may override, with how to serve it. A table rather than a
-     * branch per file, because these are handled uniformly — resolve the override, then send — and a
-     * deployment needs to be *told* which files it may supply, which this list is.
+     * The brandable set: every asset the deployment's default web resources package may supply (issue #1779), with
+     * the package slot that supplies it and how it goes out. A table rather than a branch per file, because these are
+     * handled uniformly -- the package's image when it has one of the kind the name says, else the built-in -- and a
+     * package's author needs to be *told* which slots the shell links, which this list is. The ICO has no slot: the
+     * built-in one is served.
      */
     val brandingAssets = listOf(
-        BrandingAsset(faviconFile, svgMimeType, binary = false),
-        BrandingAsset(brandMarkFile, svgMimeType, binary = false),
-        BrandingAsset(faviconPngFile, pngMimeType, binary = true),
-        BrandingAsset(appleTouchIconFile, pngMimeType, binary = true),
-        BrandingAsset(shareImageFile, pngMimeType, binary = true),
+        BrandingAsset(faviconFile, svgMimeType, binary = false, slot = WAS.favicon),
+        BrandingAsset(brandMarkFile, svgMimeType, binary = false, slot = WAS.brandMark),
+        BrandingAsset(faviconPngFile, pngMimeType, binary = true, slot = WAS.faviconPng),
+        BrandingAsset(appleTouchIconFile, pngMimeType, binary = true, slot = WAS.appleTouchIcon),
+        BrandingAsset(shareImageFile, pngMimeType, binary = true, slot = WAS.shareImage),
         BrandingAsset(faviconIcoFile, icoMimeType, binary = true),
     )
+
+    /** [brandingAssets] by file name, for the lookups each shell render and asset request makes. */
+    val brandingByFile: Map<String, BrandingAsset> = brandingAssets.associateBy { it.file }
 }
 
 /**
  * One brandable asset: the file a deployment may supply, and how it goes out. [binary] is not cosmetic —
  * [RequestHandler.sendStringResponse] is UTF-8 only and would corrupt an image, so a raster has to take
  * [RequestHandler.sendBytesResponse]. It is stated per asset rather than guessed from [mimeType], since SVG is
- * an image that *is* text.
+ * an image that *is* text. [slot] is the web resources package slot that may supply it (issue #1779), null for none.
  */
-class BrandingAsset(val file: String, val mimeType: String, val binary: Boolean) {
+class BrandingAsset(val file: String, val mimeType: String, val binary: Boolean, val slot: String? = null) {
     /** The application path this asset is served at, e.g. `/favicon.svg` (reached at `/wa/favicon.svg`). */
     val appPath: String get() = "/$file"
 }
@@ -157,25 +165,38 @@ class BrandingAsset(val file: String, val mimeType: String, val binary: Boolean)
 class AppUiService : ServiceInitializer, ContentServer {
     override val serviceName: String = AppUiService.serviceName
 
-    /**
-     * Branding file name -> the classpath resource that serves it: the deployment's own where it supplied that
-     * file, else the built-in. Resolved once at init — classpath resources are immutable within a running
-     * deployment, so this asks the classloader at startup rather than on every request.
-     */
-    var brandingResources: Map<String, String> = emptyMap()
-
     /** Memoized content hashes of the served shell resources (issue #137), keyed by classpath resource path. */
     private val assetHashes = java.util.concurrent.ConcurrentHashMap<String, String>()
 
-    /** Registers this content server with the dispatcher and resolves the branding set (idempotent). */
+    /**
+     * Says at startup which of the shell's branding assets the deployment's default package supplies (issue #1779):
+     * the packages are read in another service's init, so by now they are. A default that supplies none of them -- a
+     * PNG where the shell names an SVG, or files the image check left out -- would otherwise look like branding that
+     * did not take, with the built-in set served and nothing said.
+     */
+    override fun checkReady(cxt: KdrCxt) {
+        val packageId = WRES.defaultId(cxt) ?: return
+        val supplied = AUI.brandingAssets.filter { packaged(cxt, it) != null }.map { it.file }
+        if (supplied.isEmpty()) {
+            val takes = AUI.brandingAssets.mapNotNull { asset -> asset.slot?.let { "${asset.file} ($it)" } }.joinToString()
+            LogStartup.warn(
+                cxt,
+                "The default web resources package '$packageId' supplies none of the page shell's images, so the " +
+                    "built-in set is served. The shell takes $takes.",
+            )
+        } else {
+            LogStartup.info(
+                cxt,
+                "The default web resources package '$packageId' supplies ${supplied.joinToString()}; the rest are built-in.",
+            )
+        }
+    }
+
+    /** Registers this content server with the dispatcher (idempotent). */
     override fun checkInit(cxt: KdrCxt) {
         val requestService = RequestService.get(cxt)
         requestService.checkInit(cxt)
         requestService.addContentServer(this)
-        // Resolution is never empty once done (it always yields an entry per asset), so this runs once.
-        if (brandingResources.isEmpty()) {
-            brandingResources = resolveBranding(cxt)
-        }
         // Publish the served bundle's hash once (issue #134), so RequestService.buildEnvelope can stamp it on
         // every response and the shell can inject it into the page's bootstrap. Immutable within a deployment,
         // so computed at init. Absent when the ':webapp' distribution was not built into this module.
@@ -187,47 +208,22 @@ class AppUiService : ServiceInitializer, ContentServer {
     }
 
     /**
-     * Binds each brandable asset to the resource that will serve it. A deployment names a classpath directory
-     * ([AUIC.appUiBrandingDir]) and ships its artwork there — typically from its `:customConfig` project, which
-     * is already on the runtime classpath. Resolution is per asset, so a deployment can override just its logo
-     * and inherit the rest.
+     * The image the deployment's default web resources package (issue #1779, [WRES.defaultId]) supplies for [asset],
+     * or null when it names none, fills no such slot, or fills it with another kind of image than the file's name
+     * says -- the built-in is served then. Looked up as it is asked for, not at init: the packages are read by
+     * [ComponentImageService] in its own init, which need not come first, and the lookup is two map reads.
      */
-    private fun resolveBranding(cxt: KdrCxt): Map<String, String> {
-        val dir = (cxt.instanceConfig.get(AUIC.appUiBrandingDir) as? String)?.trim('/')?.takeIf { it.isNotEmpty() }
-        val resolved = AUI.brandingAssets.associate { it.file to brandingResource(dir, it.file) }
-        if (dir != null) {
-            // A configured directory that overrides nothing is almost always a mistake (a typo, or resources
-            // not on the classpath), and it would otherwise be invisible: the app just serves its built-in
-            // artwork and looks fine. Say so at startup rather than let someone hunt it.
-            val overridden = resolved.filterValues { it.startsWith("/$dir/") }.keys
-            if (overridden.isEmpty()) {
-                LogStartup.warn(
-                    cxt,
-                    "Branding directory '$dir' (${AUIC.appUiBrandingDir}) supplies none of the branding " +
-                        "assets, so the built-in set is being served. Is it on the runtime classpath? " +
-                        "Expected any of: ${AUI.brandingAssets.joinToString { it.file }}.",
-                )
-            } else {
-                LogStartup.info(
-                    cxt,
-                    "Branding directory '$dir' overrides ${overridden.joinToString()}; " +
-                        "any other branding asset falls back to the built-in one.",
-                )
-            }
-        }
-        return resolved
+    private fun packaged(cxt: KdrCxt, asset: BrandingAsset): StoredFile? {
+        val slot = asset.slot ?: return null
+        val packageId = WRES.defaultId(cxt) ?: return null
+        return ComponentImageService.getOrNull(cxt)?.packageFile(packageId, slot)?.takeIf { it.meta.mimeType == asset.mimeType }
     }
 
-    /** The resource for one branding [file]: the deployment's when [dir] supplies it, else the built-in. */
-    private fun brandingResource(dir: String?, file: String): String {
-        if (dir != null) {
-            val override = "/$dir/$file"
-            if (this::class.java.getResource(override) != null) {
-                return override
-            }
-        }
-        return "/${AUI.defaultResourceDir}/$file"
-    }
+    /** The hash a package's image is addressed by: the start of its content's own hash, which a changed image changes. */
+    private fun packagedHash(file: StoredFile): String = file.meta.hash.take(packagedHashLength)
+
+    /** The built-in classpath resource for a branding [file]. */
+    private fun builtInBranding(file: String): String = "/${AUI.defaultResourceDir}/$file"
 
     /**
      * Serves the webapp shell and its bundle. Only engages with app-focused requests, matching on the
@@ -266,7 +262,9 @@ class AppUiService : ServiceInitializer, ContentServer {
             // hashed asset URLs after a deploy (never no-store -- it may be stored, just not used stale). Its asset
             // URLs are absolute (`/<appRoot>/...`), so it renders the same at any depth.
             handler.setResponseHeader("Cache-Control", AUI.shellCacheControl)
-            val html = AppUiPage.render(bootstrapJson(cxt), handler.contextRoot, ::versionedName, shellMeta(cxt, handler.contextRoot))
+            val html = AppUiPage.render(
+                bootstrapJson(cxt), handler.contextRoot, { versionedName(cxt, it) }, shellMeta(cxt, handler.contextRoot),
+            )
             handler.sendStringResponse(html, EXC.ok, AUI.htmlMimeType)
             return true
         }
@@ -299,8 +297,10 @@ class AppUiService : ServiceInitializer, ContentServer {
      * asset is cache-bustable (issue #137). Falls back to the bare name when the resource is absent or unhashed
      * (nothing to bust), so the link is always valid.
      */
-    private fun versionedName(file: String): String {
-        val hash = resourceForAsset(file)?.let { assetHash(it) }
+    private fun versionedName(cxt: KdrCxt, file: String): String {
+        // A branding asset the default package supplies is addressed by that image's own hash (issue #1779).
+        val hash = AUI.brandingByFile[file]?.let { packaged(cxt, it) }?.let(::packagedHash)
+            ?: resourceForAsset(file)?.let { assetHash(it) }
         return if (hash.isNullOrEmpty()) file else "$file:$hash"
     }
 
@@ -308,7 +308,7 @@ class AppUiService : ServiceInitializer, ContentServer {
     private fun resourceForAsset(file: String): String? = when (file) {
         AUI.bundlePath.removePrefix("/") -> AUI.bundleResource
         AUI.stylesheetPath.removePrefix("/") -> AUI.stylesheetResource
-        else -> brandingResources[file] // the icons / brand mark (their resolved override or built-in)
+        else -> AUI.brandingByFile[file]?.let { builtInBranding(it.file) } // the built-in icons and mark
     }
 
     /** A memoized CRC32-hex hash of an embedded resource's bytes (issue #137), or null when it is absent.
@@ -321,13 +321,22 @@ class AppUiService : ServiceInitializer, ContentServer {
     }
 
     /**
-     * Serves the branding asset the request names, or passes on (false) when it names none. Which resource
-     * that is was settled at init by [resolveBranding], so a deployment's override and the built-in are the
-     * same code path here — only the bytes differ.
+     * Serves the branding asset the request names, or passes on (false) when it names none: the default package's
+     * image for it ([packaged], issue #1779), else the built-in, so the two are the same address -- only the bytes
+     * differ. A package's image is cached for good under its own hash, as the built-in is under its.
      */
     private fun serveBranding(cxt: KdrCxt, handler: RequestHandler, bareAppPath: String, suppliedHash: String): Boolean {
         val asset = AUI.brandingAssets.firstOrNull { it.appPath == bareAppPath } ?: return false
-        val resource = brandingResources[asset.file] ?: return false
+        packaged(cxt, asset)?.let { file ->
+            handler.setResponseHeader("Cache-Control", ContentResources.cacheHeaderFor(suppliedHash == packagedHash(file)))
+            if (asset.binary) {
+                handler.sendBytesResponse(file.bytes, EXC.ok, asset.mimeType)
+            } else {
+                handler.sendStringResponse(file.bytes.toString(Charsets.UTF_8), EXC.ok, asset.mimeType)
+            }
+            return true
+        }
+        val resource = builtInBranding(asset.file)
         return if (asset.binary) {
             serveBinaryResource(cxt, handler, resource, asset.mimeType, suppliedHash)
         } else {
@@ -401,7 +410,7 @@ class AppUiService : ServiceInitializer, ContentServer {
         // load (#529). `versionedName` supplies the whole `brand-mark.svg:<hash>`, so the frontend appends no
         // suffix of its own -- the `:` grammar stays one fact, owned by `versionedName`. Absent when the mark is
         // unhashed (no bytes to bust); the frontend then serves it bare, which is exactly the dev-server case.
-        val markName = versionedName(AUI.brandMarkFile)
+        val markName = versionedName(cxt, AUI.brandMarkFile)
         val cfg = buildMap {
             putAll(base)
             if (!hash.isNullOrEmpty()) put(EP.webAppHash, hash)
@@ -430,7 +439,7 @@ class AppUiService : ServiceInitializer, ContentServer {
         return ShellMeta(
             title = copy(HFRAG.title) ?: AUI.defaultSiteTitle,
             description = copy(HFRAG.siteDescription).orEmpty(),
-            imageUrl = "$appUrl/${versionedName(AUI.shareImageFile)}",
+            imageUrl = "$appUrl/${versionedName(cxt, AUI.shareImageFile)}",
             url = publicUrl?.let { appUrl },
         )
     }
@@ -438,6 +447,9 @@ class AppUiService : ServiceInitializer, ContentServer {
     @Suppress("ConstPropertyName")
     companion object {
         const val serviceName = "AppUiService"
+
+        /** How much of a package image's content hash its address carries (issue #1779): enough to tell versions apart. */
+        const val packagedHashLength = 12
 
         fun get(cxt: KdrCxt): AppUiService = cxt.instanceConfig.get(serviceName) as? AppUiService
             ?: throw KdrException("The $serviceName is not available on this node.")

@@ -3,7 +3,11 @@
 A client's administrator may upload a **favicon** and a **brand mark** of its own, which stand in for the
 deployment's for that client's people -- and a client defined in code may name a **web resources package** a
 component ships (issue #1301, `ClientDef.webResourcesId`), whose images it shows in a slot nothing is uploaded to; an
-upload stands in front of the package's, and removing it shows the package's again. To the frontend the two are one
+upload stands in front of the package's, and removing it shows the package's again. The deployment's default package,
+where it names one (`WRES.defaultKey`, issue #1779), stands behind a client naming none -- `public`, and so every
+anonymous visitor, and every client defined in data -- and behind each slot a client's own package leaves empty. The
+listing says such an image is the default's (`WAS.sourceDefault`, "The deployment's default, shipped with its code"),
+never a package the client named. To the frontend the two are one
 slot: the shell config names whichever is shown, and the address serves it. They are static content too, under the
 same root and absent from the catalog for the same reason:
 

@@ -105,11 +105,25 @@ class ClientWebAssetService : ServiceInitializer, ContentServer {
     fun packageIdOf(cxt: KdrCxt, client: String): String? =
         ClientService.getOrNull(cxt)?.known(ownerOf(client))?.webResourcesId
 
-    /** The image [client]'s web resources package ships for [slot] ([packageIdOf]), or null when it ships none. */
-    fun packaged(cxt: KdrCxt, client: String, slot: String): StoredFile? {
+    /** The image [client]'s own web resources package ships for [slot] ([packageIdOf]), or null when it ships none. */
+    fun ownPackaged(cxt: KdrCxt, client: String, slot: String): StoredFile? {
         val packageId = packageIdOf(cxt, client) ?: return null
         return ComponentImageService.getOrNull(cxt)?.packageFile(packageId, slot)
     }
+
+    /** The image the deployment's default package (issue #1779, [WRES.defaultId]) ships for [slot], or null for none. */
+    fun defaultPackaged(cxt: KdrCxt, slot: String): StoredFile? {
+        val packageId = WRES.defaultId(cxt) ?: return null
+        return ComponentImageService.getOrNull(cxt)?.packageFile(packageId, slot)
+    }
+
+    /**
+     * The image a package ships for [client]'s [slot]: its own package's ([ownPackaged]), else the deployment's default
+     * package's ([defaultPackaged], issue #1779) -- what a slot a client's package leaves empty shows, as one naming no
+     * package shows -- or null when neither ships one.
+     */
+    fun packaged(cxt: KdrCxt, client: String, slot: String): StoredFile? =
+        ownPackaged(cxt, client, slot) ?: defaultPackaged(cxt, slot)
 
     /**
      * What [client]'s people are shown in each slot (issue #1301), by slot: its upload ([slots]), else its package's

@@ -18,8 +18,20 @@ object WAS {
     /** The brand mark: the logo in the app bar and the home page's hero. */
     const val brandMark = "brandMark"
 
-    /** Every slot, in the order a page lists them. */
+    /** Every slot a client may upload to, in the order a page lists them. */
     val slots = listOf(favicon, brandMark)
+
+    // --- The slots only a web resources package fills (issue #1779): what the page shell links, which an anonymous
+    // visitor and a link preview's crawler are served, so they are set in code, never uploaded.
+
+    /** The image a link preview shows for the site (LinkedIn, Slack, a messenger): a 1200x630 PNG. */
+    const val shareImage = "shareImage"
+
+    /** The PNG tab icon, for a browser that does not take an SVG one: 32x32. */
+    const val faviconPng = "faviconPng"
+
+    /** The icon iOS puts on a home screen: a 180x180 opaque PNG. */
+    const val appleTouchIcon = "appleTouchIcon"
 
     // --- Wire names: the inputs of the endpoints, and the fields of a slot as the listing answers it.
 
@@ -57,12 +69,14 @@ object WAS {
     const val uploadedByName = "uploadedByName"
 
     /**
-     * Where a slot's image comes from (issue #1301): [sourceUpload], the client's administrator uploaded it, or
-     * [sourcePackage], the client's web resources package ships it. Absent for an empty slot.
+     * Where a slot's image comes from (issue #1301): [sourceUpload], the client's administrator uploaded it,
+     * [sourcePackage], the client's web resources package ships it, or [sourceDefault], the deployment's default
+     * package does (issue #1779). Absent for an empty slot.
      */
     const val source = "source"
     const val sourceUpload = "upload"
     const val sourcePackage = "package"
+    const val sourceDefault = "default"
 
     /** The web resources package the client's definition names, beside a slot it fills or could fill; absent for none. */
     const val packageId = "packageId"

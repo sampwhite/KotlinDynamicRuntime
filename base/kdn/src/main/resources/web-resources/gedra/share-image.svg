@@ -1,9 +1,10 @@
 <!--
   The source of this directory's share-image.png (issue #1769): the image a link preview (LinkedIn, Slack, a messenger)
-  shows for a reference deployment, dynamicruntime.org, which presents the product as Gedra. The reference flavor names
-  this directory as the deployment's branding (appUiBrandingDir), so this image replaces the runtime's own
-  (webapp/src/jsMain/resources/share-image.svg, issue #1688), whose layout and colors it keeps; every other branding
-  asset is the built-in one. Previews take a raster, not SVG, so this is rendered to the PNG, which is what is served.
+  shows for a reference deployment, dynamicruntime.org, which presents the product as Gedra. It is the share image of
+  kdn's web resources package kdr:gedra, which the reference flavor names as the deployment's default (issue #1779), so
+  it replaces the runtime's own (webapp/src/jsMain/resources/share-image.svg, issue #1688), whose layout and colors it
+  keeps; every other image is the built-in one. Previews take a raster, not SVG, so this is rendered to the PNG, which
+  is what is served; this file is not part of the package.
   To change it, edit this file and render it again, from this directory:
 
       rsvg-convert -w 1200 -h 630 share-image.svg -o share-image.png

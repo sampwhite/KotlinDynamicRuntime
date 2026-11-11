@@ -70,6 +70,12 @@ deployment's. Acme's is `sample:acme` (`acme/favicon.svg`, `acme/brand-mark.svg`
 bar, transparent, with no lettering, since the app sets the client's name beside it. A comment in an SVG may not hold
 `--`, so name a color token in words there, not by its CSS name.
 
+A package may also fill the slots the page shell links, which only a package fills (issue #1779): `shareImage` (a
+1200x630 PNG, what a link preview shows), `faviconPng`, and `appleTouchIcon`, each a PNG. They matter in the
+deployment's **default** package (`defaultWebResourcesId`), which every client naming none shows -- `public`, and so
+every anonymous visitor and link preview. The reference flavor's is kdn's `kdr:gedra`, a share image alone, drawn as
+the runtime's (`webapp/src/jsMain/resources/share-image.svg`) is.
+
 ## The house look
 
 **SVG by default.** It is text, small, diffable, and sharp at any width. PNG only for what is not drawn: a screenshot

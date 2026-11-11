@@ -12,14 +12,18 @@ class WebImageKind(
     val alsoDeclaredAs: Set<String> = emptySet(),
 )
 
-/** One web-asset slot (issue #1130): its name ([WAS.slots]), what a page calls it, and the largest image it takes. */
-class WebSlotDef(val slot: String, val label: String, val maxSize: Int)
+/**
+ * One web-asset slot (issue #1130): its name ([WAS.slots]), what a page calls it, the largest image it takes, and -- for
+ * a slot the page shell links under a fixed name (issue #1779) -- the one kind it must be ([only]); null for any kind.
+ */
+class WebSlotDef(val slot: String, val label: String, val maxSize: Int, val only: WebImageKind? = null)
 
 /**
  * The images a client's web assets may be, and the slots they go in (issues #1130, #1336): plain data, in the kernel
  * so the self-serve create's card can refuse a file the server would -- too large, or not an image we take -- before
  * it creates anything. The backend's `WebAssetCheck` still decides, by the bytes; this is the part both sides agree on.
  */
+@Suppress("ConstPropertyName")
 object WebAssetKinds {
     val png = WebImageKind("PNG", "image/png", "png")
     val svg = WebImageKind("SVG", "image/svg+xml", "svg")
@@ -49,4 +53,21 @@ object WebAssetKinds {
 
     /** The slot named [slot], or null when there is none of that name. */
     fun slotDef(slot: String): WebSlotDef? = slotDefs.firstOrNull { it.slot == slot }
+
+    /**
+     * The slots only a web resources package fills (issue #1779): the images the page shell links, which an anonymous
+     * visitor and a link preview are served. Never uploaded: what such a caller sees can vary only by the domain a link
+     * uses, and only a client defined in code has one. Each is a PNG, since the shell names it so.
+     */
+    val packageOnlySlotDefs = listOf(
+        WebSlotDef(WAS.shareImage, "Share image", 2048 * bytesPerKb, only = png),
+        WebSlotDef(WAS.faviconPng, "PNG favicon", 256 * bytesPerKb, only = png),
+        WebSlotDef(WAS.appleTouchIcon, "Apple touch icon", 256 * bytesPerKb, only = png),
+    )
+
+    /** The slot a package may fill named [slot]: an uploadable one, or one only a package fills; null for none. */
+    fun packageSlotDef(slot: String): WebSlotDef? = slotDef(slot) ?: packageOnlySlotDefs.firstOrNull { it.slot == slot }
+
+    /** Every slot a package may fill, in listing order. */
+    val packageSlotDefs: List<WebSlotDef> get() = slotDefs + packageOnlySlotDefs
 }

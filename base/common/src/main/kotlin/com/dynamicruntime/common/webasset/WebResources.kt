@@ -8,31 +8,47 @@ import com.dynamicruntime.common.filestore.StoredFile
 import com.dynamicruntime.common.naming.OwnedNameKind
 import com.dynamicruntime.common.naming.componentNameProblem
 import com.dynamicruntime.common.util.sha256Hex
+import com.dynamicruntime.common.util.toOptStr
 import kotlin.time.Instant
 
 /**
  * A **web resources package** a component ships (issue #1301): the images a client presents itself with, read from the
  * classpath, which a client defined in source code names as its `webResourcesId`. Its rooted [id] (`sample:acme`) is
- * what the definition names, and [files] holds each slot's file ([WAS.favicon], [WAS.brandMark]) as a path under
- * [WRES.resourceDir] (`acme/favicon.svg`), whose extension says what kind of image it is. A package need not fill
- * every slot: one it leaves empty is the deployment's. An id under another owner's root names that root in
- * [contributesTo], as an image's does.
+ * what the definition names, and [files] holds each slot's file ([WAS.favicon], [WAS.brandMark], and the slots only a
+ * package fills, issue #1779) as a path under [WRES.resourceDir] (`acme/favicon.svg`), whose extension says what kind
+ * of image it is. A package need not fill every slot: one it leaves empty is the deployment's. An id under another
+ * owner's root names that root in [contributesTo], as an image's does.
  *
  * A client's own upload stands in front of its package's image (`ClientWebAssetService`), and removing the upload
- * shows the package's again.
+ * shows the package's again. The deployment's **default package** ([WRES.defaultKey], issue #1779) stands behind a
+ * client that names none -- `public`, and so every anonymous visitor -- and its slots the page shell links are what
+ * the shell serves, a link preview's image among them.
  */
 class WebResourcesDef(val id: String, val files: Map<String, String>, val contributesTo: String? = null)
 
-/** Declares a web resources package a component ships: see [WebResourcesDef]. Each slot's file is a path under `web-resources/`. */
-fun webResources(id: String, favicon: String? = null, brandMark: String? = null, contributesTo: String? = null): WebResourcesDef =
-    WebResourcesDef(
-        id,
-        buildMap {
-            favicon?.let { put(WAS.favicon, it) }
-            brandMark?.let { put(WAS.brandMark, it) }
-        },
-        contributesTo,
-    )
+/**
+ * Declares a web resources package a component ships: see [WebResourcesDef]. Each slot's file is a path under
+ * `web-resources/`. The [shareImage], [faviconPng], and [appleTouchIcon] are PNGs only a package fills (issue #1779).
+ */
+fun webResources(
+    id: String,
+    favicon: String? = null,
+    brandMark: String? = null,
+    shareImage: String? = null,
+    faviconPng: String? = null,
+    appleTouchIcon: String? = null,
+    contributesTo: String? = null,
+): WebResourcesDef = WebResourcesDef(
+    id,
+    buildMap {
+        favicon?.let { put(WAS.favicon, it) }
+        brandMark?.let { put(WAS.brandMark, it) }
+        shareImage?.let { put(WAS.shareImage, it) }
+        faviconPng?.let { put(WAS.faviconPng, it) }
+        appleTouchIcon?.let { put(WAS.appleTouchIcon, it) }
+    },
+    contributesTo,
+)
 
 /** A [def] as the boot collected it: with the component that declared it, and that component's owner root. */
 class DeclaredWebResources(val def: WebResourcesDef, val component: String, val ownerRoot: String?)
@@ -53,6 +69,21 @@ object WRES {
 
     /** The ids of the packages the boot collected: what a client's definition may name. */
     fun declaredIds(cxt: KdrCxt): Set<String> = declared(cxt).mapTo(HashSet()) { it.def.id }
+
+    /**
+     * The instance-config key naming the deployment's **default package** (issue #1779): what a client naming none is
+     * shown -- `public`, and so every anonymous visitor -- and what the page shell links, a link preview's image among
+     * them. A deployment or a flavor sets it; unset, they are shown the built-in images. It must name a package a
+     * component declares, or the boot is refused ([defaultFault]).
+     */
+    const val defaultKey = "defaultWebResourcesId"
+
+    /** The deployment's default package ([defaultKey]), or null when it names none. */
+    fun defaultId(cxt: KdrCxt): String? = cxt.instanceConfig.get(defaultKey).toOptStr()
+
+    /** Why [named], the default package a deployment names, cannot be, against the [declared] ids; null when it can. */
+    fun defaultFault(named: String?, declared: Set<String>): String? =
+        named?.takeIf { it !in declared }?.let { "'$defaultKey' names the web resources package '$it', which no component declares." }
 
     /**
      * Whether [path] may name a file in [resourceDir]: plain directory names, then a plain file name with an
@@ -103,12 +134,14 @@ fun readWebResources(declared: List<DeclaredWebResources>, readAt: Instant): Pai
 
 /** The file at [path] as [slot]'s image, or why it cannot be. */
 private fun readPackageFile(slot: String, path: String, readAt: Instant): Pair<StoredFile?, String?> {
-    val def = WebAssetKinds.slotDef(slot)
-        ?: return null to "it names a file for the slot '$slot'; the slots are ${WebAssetKinds.slotDefs.joinToString { it.slot }}."
+    val def = WebAssetKinds.packageSlotDef(slot)
+        ?: return null to "it names a file for the slot '$slot'; the slots are ${WebAssetKinds.packageSlotDefs.joinToString { it.slot }}."
     val what = def.label.lowercase()
     if (!WRES.isSafePath(path)) return null to "its $what '$path' is not a plain path to a file with an extension."
     val expected = WRES.kindOfExtension(path.substringAfterLast('.'))
         ?: return null to "its $what '$path' is not named as an image we take (${WebAssetKinds.kinds.joinToString { it.extension }})."
+    // A slot the page shell links under a fixed name takes the one kind that name says (issue #1779).
+    def.only?.takeIf { it != expected }?.let { return null to "its $what '$path' is not ${it.withArticle()} image, which a $what must be." }
     val resource = "/${WRES.resourceDir}/$path"
     val bytes = WebResourcesDef::class.java.getResourceAsStream(resource)?.use { it.readNBytes(def.maxSize + 1) }
         ?: return null to "there is no resource '$resource' on the classpath."
