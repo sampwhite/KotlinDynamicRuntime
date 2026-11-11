@@ -148,9 +148,16 @@ object ClientTraitDesignEdit {
     /**
      * Saves [design] for [client]: a new trait when it names none, an edit of the stored one it names otherwise -- see
      * the class note. [expected] is how the caller told its user the save would take effect; [impact] whether an edit
-     * that affects stored forms goes ahead.
+     * that affects stored forms goes ahead. A [dryRun] (issue #1766) is judged as the save would be, and stores nothing.
      */
-    fun save(cxt: KdrCxt, client: String, design: TraitDesign, expected: String? = null, impact: ImpactGate = ImpactGate.refuse): Result {
+    fun save(
+        cxt: KdrCxt,
+        client: String,
+        design: TraitDesign,
+        expected: String? = null,
+        impact: ImpactGate = ImpactGate.refuse,
+        dryRun: Boolean = false,
+    ): Result {
         // From a sandbox, its parent's: the sandbox holds no configuration, and a save is a draft of the parent's (#1358).
         val owner = sandboxParentOf(client) ?: client
         val target = ClientStoredEdit.target(cxt, client, "traitDesign", expected)
@@ -180,7 +187,7 @@ object ClientTraitDesignEdit {
         val traitId = keyed.traitId!!
         val pascal = traitId.replaceFirstChar { it.uppercase() }
         val written: GedraConfigRow
-        val reload: ConfigReloadResult
+        val issues: List<GedraConfigIssue>
         if (existing == null) {
             val name = CIT.configPrefix + traitId
             val namespace = clientNamespace(owner)
@@ -193,10 +200,10 @@ object ClientTraitDesignEdit {
                 put(CCT.dataSchema, base?.let { keyed.toExtension(it.typeName, it.required) } ?: keyed.toDataSchema())
             }
             val config = reassembleForWrite(bound, name, namespace, owner, mapOf(CCT.traitDef to listOf(entry)))
-            written = GedraConfigService.get(bound).writeConfig(bound, config, trial = true, mustBeNew = true)
+            written = GedraConfigService.get(bound).writeConfig(bound, config, trial = true, mustBeNew = true, store = !dryRun)
             // Nothing stored can hold a trait that did not exist, so there is no impact to judge. A publish refused
             // after the write's own trial passed leaves the configuration as a draft, which the refusal says.
-            reload = ClientStoredEdit.takeEffect(cxt, target, written, undo = {})
+            issues = ClientStoredEdit.settle(cxt, target, written, dryRun, undo = {})
         } else {
             if (!existing.row.configId.baseId.startsWith(CIT.configPrefix)) {
                 ClientStoredEdit.requireNoForeignDraft(target, existing.row, "an edit of its traits")
@@ -206,19 +213,20 @@ object ClientTraitDesignEdit {
             val stored = existing.entry[CCT.dataSchema].toJsonMapOrEmpty()
             entry[CCT.dataSchema] = base?.let { keyed.toExtension(it.typeName, it.required, stored) } ?: keyed.toDataSchema(stored)
             if (entry == existing.entry) throw KdrException.mkInput("Trait '$traitId' is already designed so; nothing to save.")
-            fun patch(row: GedraConfigRow, to: Map<String, Any?>) = GedraConfigService.get(bound).patchConfigs(bound, trial = true) { edit(row.configId) { slots ->
+            fun patch(row: GedraConfigRow, to: Map<String, Any?>, dry: Boolean = false) =
+                ClientStoredEdit.patch(bound, dry) { edit(row.configId) { slots ->
                 val out = LinkedHashMap(slots)
                 out[CCT.traitDef] = slots[CCT.traitDef].orEmpty().map { if (it[CCT.traitId] == traitId) to else it }
                 out
             } }.single()
-            written = patch(existing.row, entry)
-            reload = ClientStoredEdit.takeEffect(
-                cxt, target, written,
+            written = patch(existing.row, entry, dryRun)
+            issues = ClientStoredEdit.settle(
+                cxt, target, written, dryRun,
                 undo = { patch(written, existing.entry) },
                 restorePublished = existing.row.isPublished,
                 impact = impact,
             )
         }
-        return Result(written.configId.baseId, keyed, reload.issues, target.mode, ClientStoredEdit.draftImpact(target, written))
+        return Result(written.configId.baseId, keyed, issues, target.mode, ClientStoredEdit.draftImpact(target, written))
     }
 }

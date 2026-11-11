@@ -232,7 +232,8 @@ object ClientWorkflowEdit {
      * given, is written as the workflow's parameter before the workflow exists, so nobody sees it before the
      * administrator chose. Made as a draft -- a client with a sandbox -- it is the sandbox's, and the client's own is
      * administrators only whatever was chosen: a publish never makes a workflow visible, and the two scopes stay apart.
-     * A change of slots takes none; who sees a workflow is changed among its parameters ([saveParams]).
+     * A change of slots takes none; who sees a workflow is changed among its parameters ([saveParams]). A [dryRun]
+     * (issue #1766) is judged as the save would be, and stores nothing -- a new workflow's visibility not set either.
      */
     fun save(
         cxt: KdrCxt,
@@ -241,6 +242,7 @@ object ClientWorkflowEdit {
         expected: String? = null,
         impact: ImpactGate = ImpactGate.refuse,
         visibility: WfVisibility? = null,
+        dryRun: Boolean = false,
     ): Result {
         // From a sandbox, its parent's: the sandbox holds no configuration, and a save is a draft of the parent's (#1358).
         val owner = sandboxParentOf(client) ?: client
@@ -252,7 +254,7 @@ object ClientWorkflowEdit {
         val bound = target.bound
         val svc = GedraConfigService.get(bound)
         val written: GedraConfigRow
-        val reload: ConfigReloadResult
+        val issues: List<GedraConfigIssue>
         val made: WfDef
         val workflowId = slots.workflowId
         if (workflowId != null && visibility != null) {
@@ -265,15 +267,15 @@ object ClientWorkflowEdit {
             val taken = WorkflowService.get(cxt).forClient(owner).workflows.keys + storedWorkflowIds(bound) + leftover
             val id = keyFromLabel(slots.label, taken, "workflow")
             made = withTemplateSlots(bound, template, slots, id)
-            seenFromTheStart(cxt, owner, id, visibility ?: WfVisibility.adminsOnly, target.draft)
+            if (!dryRun) seenFromTheStart(cxt, owner, id, visibility ?: WfVisibility.adminsOnly, target.draft)
             // A creation or core details workflow stands over the one its client's code has (issue #1634), and says so.
             val entry = CodeOverrides.markedIfOverCode(
                 cxt, owner, CCT.workflowDef, mapOf(CCT.workflowId to id, CCT.definition to workflowTemplateOverlay(template, made)),
             )
             val config = reassembleForWrite(bound, CWF.configPrefix + id, clientNamespace(owner), owner, mapOf(CCT.workflowDef to listOf(entry)))
-            written = svc.writeConfig(bound, config, trial = true, mustBeNew = true)
+            written = svc.writeConfig(bound, config, trial = true, mustBeNew = true, store = !dryRun)
             // Nothing stored can be engaged with a workflow that did not exist, so there is no impact to judge.
-            reload = ClientStoredEdit.takeEffect(cxt, target, written, undo = {}, impact = impact)
+            issues = ClientStoredEdit.settle(cxt, target, written, dryRun, undo = {}, impact = impact)
         } else {
             val (row, stored) = storedWorkflow(bound, workflowId)
                 ?: throw KdrException("Client '$owner' stores no workflow '$workflowId'.", code = EXC.notFound)
@@ -284,18 +286,19 @@ object ClientWorkflowEdit {
             made = withTemplateSlots(bound, WorkflowTemplates.readStored(bound, stored), slots, workflowId)
             val overlay = workflowTemplateOverlay(template, made)
             if (overlay == stored) throw KdrException.mkInput("Workflow '$workflowId' is already so; nothing to save.")
-            fun patch(on: GedraConfigRow, to: Map<String, Any?>) = svc.patchConfigs(bound, trial = true) { edit(on.configId) { slotsOf ->
+            fun patch(on: GedraConfigRow, to: Map<String, Any?>, dry: Boolean = false) =
+                ClientStoredEdit.patch(bound, dry) { edit(on.configId) { slotsOf ->
                 slotsOf + (CCT.workflowDef to slotsOf[CCT.workflowDef].orEmpty().map { if (it[CCT.workflowId] == workflowId) it + (CCT.definition to to) else it })
             } }.single()
-            written = patch(row, overlay)
-            reload = ClientStoredEdit.takeEffect(
-                cxt, target, written,
+            written = patch(row, overlay, dryRun)
+            issues = ClientStoredEdit.settle(
+                cxt, target, written, dryRun,
                 undo = { patch(written, stored) },
                 restorePublished = row.isPublished,
                 impact = impact,
             )
         }
-        return Result(written.configId.baseId, templateSlotsOf(made), reload.issues, target.mode, ClientStoredEdit.draftImpact(target, written))
+        return Result(written.configId.baseId, templateSlotsOf(made), issues, target.mode, ClientStoredEdit.draftImpact(target, written))
     }
 
     /**
@@ -325,7 +328,8 @@ object ClientWorkflowEdit {
      * is turned on (issue #1635), only on a normal one. A change that would, now, freeze or hide forms [client] stores that
      * are engaged with the workflow -- an end brought forward, a start pushed back, turning it off -- or take one out of its
      * owner's sight is refused with the impact report
-     * until acknowledged. Returns the parameters as [client] now runs them.
+     * until acknowledged. Returns the parameters as [client] now runs them -- or, for a [dryRun] (issue #1766), checked
+     * so and saved nowhere, as it would then run them ([WorkflowParamsService.dryRunSave]).
      */
     fun saveParams(
         cxt: KdrCxt,
@@ -334,6 +338,7 @@ object ClientWorkflowEdit {
         edit: WfParams,
         unset: Set<String> = emptySet(),
         impact: ImpactGate = ImpactGate.refuse,
+        dryRun: Boolean = false,
     ): ResolvedWorkflowParams {
         val workflows = WorkflowService.get(cxt)
         // On a client with a sandbox, a workflow its sandbox runs that a publish has yet to bring is the client's to set too.
@@ -369,6 +374,7 @@ object ClientWorkflowEdit {
         if (impact == ImpactGate.refuse) {
             ConfigImpact.requireNoneForParams(cxt, client, workflowId, before.layers.inForce, before.layers.withOwn(after).inForce)
         }
+        if (dryRun) return service.dryRunSave(cxt, client, workflowId, edit, unset)
         service.save(cxt, client, workflowId, edit, unset)
         // A workflow turned on or off, or its windows moved, changes the forms' state (issue #1741). Saved live, in [client].
         autoRecalculateFormStates(cxt, client)
@@ -382,9 +388,17 @@ object ClientWorkflowEdit {
      * Removes [client]'s workflow [workflowId] (issue #1346): one made from a template, which the client stores --
      * the starters a new client is given among them. Its entry leaves the configuration holding it, which stays,
      * and the workflow's name may be taken again. Takes effect as [save] does. A live removal of a workflow forms take
-     * part in is refused with the impact report until acknowledged; a draft's says what publishing it would do.
+     * part in is refused with the impact report until acknowledged; a draft's says what publishing it would do. A
+     * [dryRun] (issue #1766) is judged as the removal would be, and stores nothing.
      */
-    fun remove(cxt: KdrCxt, client: String, workflowId: String, expected: String? = null, impact: ImpactGate = ImpactGate.refuse): RemoveResult {
+    fun remove(
+        cxt: KdrCxt,
+        client: String,
+        workflowId: String,
+        expected: String? = null,
+        impact: ImpactGate = ImpactGate.refuse,
+        dryRun: Boolean = false,
+    ): RemoveResult {
         // From a sandbox, its parent's: the sandbox holds no configuration, and a removal is a draft of the parent's (#1358).
         val owner = sandboxParentOf(client) ?: client
         val target = ClientStoredEdit.target(cxt, client, "workflowRemove", expected)
@@ -396,19 +410,19 @@ object ClientWorkflowEdit {
             throw KdrException.mkInput("Workflow '$workflowId' is written whole, not made from a template, so it is removed where it is written.")
         }
         if (!row.configId.baseId.startsWith(CWF.configPrefix)) ClientStoredEdit.requireNoForeignDraft(target, row, "a change to its workflows")
-        val written = svc.patchConfigs(bound, trial = true) {
+        val written = ClientStoredEdit.patch(bound, dryRun) {
             edit(row.configId) { slots ->
                 val kept = slots[CCT.workflowDef].orEmpty().filter { it[CCT.workflowId] != workflowId }
                 if (kept.isEmpty()) slots - CCT.workflowDef else slots + (CCT.workflowDef to kept)
             }
         }.single()
-        val reload = ClientStoredEdit.takeEffect(
-            cxt, target, written,
+        val issues = ClientStoredEdit.settle(
+            cxt, target, written, dryRun,
             undo = { svc.patchConfigs(bound) { edit(written.configId) { row.entriesBySlot() } } },
             restorePublished = row.isPublished,
             impact = impact,
         )
-        return RemoveResult(written.configId.baseId, reload.issues, target.mode, ClientStoredEdit.draftImpact(target, written))
+        return RemoveResult(written.configId.baseId, issues, target.mode, ClientStoredEdit.draftImpact(target, written))
     }
 
     /** Every workflow id [bound]'s client stores, latest revisions, drafts included: none a new one may take. */

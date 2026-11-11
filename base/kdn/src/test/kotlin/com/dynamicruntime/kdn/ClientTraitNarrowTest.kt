@@ -5,6 +5,7 @@ import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.gedra.CCT
+import com.dynamicruntime.common.gedra.CFEP
 import com.dynamicruntime.common.gedra.CIT
 import com.dynamicruntime.common.gedra.CPY
 import com.dynamicruntime.common.gedra.ClientAudience
@@ -224,6 +225,24 @@ class ClientTraitNarrowTest : StringSpec({
         // Hiding changes no data, so it judges none.
         narrow(chief, TraitNarrowing(survey, hidden = setOf("notes")))[CPY.mode] shouldBe EDM.live
         narrow(chief, TraitNarrowing(survey, hidden = setOf("notes"), choices = mapOf("topic" to listOf("b"))), acknowledge = true)[CPY.mode] shouldBe EDM.live
+    }
+
+    "a dry run of a narrowing is judged as the save, the impact report included, and stores nothing (issue #1766)" {
+        val client = "nrwdry1766"
+        defineClient(client)
+        val chief = admin(client)
+        val user = TestUser.create(cxt, "u@$client.test", userClient = client)
+        val held = form(user, mapOf("name" to "x", "topic" to "a"))
+        val restrict = TraitNarrowing(survey, choices = mapOf("topic" to listOf("b"))).toInfo()
+        val refused = chief.expectError(EXC.badInput, UADEP.clientTraitNarrow, mapOf(CIT.narrowing to restrict, CFEP.dryRun to true))
+        refused[EP.errorCode] shouldBe IMP.refusedCode
+        refused[EP.extraData].toJsonMapOrEmpty()[IMP.report].toJsonMapOrEmpty()[IMP.findings].toJsonListOfMaps()
+            .single()[IMP.sampleIds].toJsonListOfStrings() shouldContain held
+        // A narrowing that passes is not stored: the client takes the trait as declared, and its configuration is not made.
+        val hide = mapOf(CIT.narrowing to TraitNarrowing(survey, hidden = setOf("notes")).toInfo(), CFEP.dryRun to true)
+        chief.postData(UADEP.clientTraitNarrow, hide)[CFEP.dryRun] shouldBe true
+        SchemaService.get(cxt).overlaidTypesFor(client) shouldNotContain TraitBaseComponent.dataType
+        GedraConfigService.get(cxt).listConfigs(cxt.mkSubContext("check", client)).map { it.configId.baseId } shouldBe listOf("main")
     }
 
     "a sandbox's narrowing is a draft, and its impact on the live client is said at the save" {

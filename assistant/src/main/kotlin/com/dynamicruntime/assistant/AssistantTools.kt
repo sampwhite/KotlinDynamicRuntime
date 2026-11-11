@@ -42,6 +42,16 @@ import com.dynamicruntime.common.util.toJsonStr
 import com.dynamicruntime.common.util.toOptStr
 import com.dynamicruntime.kdn.confdemo.ConfDemo
 import com.dynamicruntime.kdn.grantsdemo.GrantsDemo
+import com.dynamicruntime.common.gedra.CIT
+import com.dynamicruntime.common.gedra.CWF
+import com.dynamicruntime.common.gedra.TraitFieldKind
+import com.dynamicruntime.common.gedra.report.RCR
+import com.dynamicruntime.common.gedra.report.RDEF
+import com.dynamicruntime.common.gedra.report.RRUN
+import com.dynamicruntime.common.gedra.report.ReportChartKind
+import com.dynamicruntime.common.gedra.workflow.WFD
+import com.dynamicruntime.common.gedra.workflow.WFP
+import com.dynamicruntime.common.gedra.workflow.WfVisibilityMode
 
 /**
  * The wire names of a tool's definition and its use (each name matches its value; a block's are the kernel's `ABLK`), and
@@ -184,13 +194,14 @@ class AssistantTool(
  * client as its sandbox runs it -- its definition, menu, copy, forms list, reports, images, drafts and their impact
  * ([clientReads], issue #1762) -- and writes that can only make drafts: `patch_config`, a dry run before every write,
  * `set_included_traits`, the copy and menu editors' targeted edits ([wordingAndMenuWrites], issue #1763), and the
- * definition and forms-list editors' ([definitionAndFormsListWrites], issue #1764), and Design View's ([designWrites],
- * issue #1765). The tools
+ * definition and forms-list editors' ([definitionAndFormsListWrites], issue #1764), Design View's ([designWrites],
+ * issue #1765), and the editors of template workflows, traits, and reports ([catalogWrites], issue #1766). The tools
  * act as the person's own user in the client's sandbox, whose configuration edits become drafts on the parent.
  *
  * **What is left out is the point.** Publishing, reverting, deleting a config, `publishedOnly`, `bundle/write` (which
- * deletes what it is not given), switching the sandbox, `workflows/params` (in force at once), users, keys, sessions,
- * form data, and every `admin`, `operator`, and `fixture` endpoint: none is a tool, so the seam refuses each.
+ * deletes what it is not given), switching the sandbox, users, keys, sessions, form data, and every `admin`,
+ * `operator`, and `fixture` endpoint: none is a tool, so the seam refuses each. A workflow's parameters are a tool
+ * (issue #1766), but only ever the sandbox's own: they are never drafted, so the client's are a person's to set.
  */
 @Suppress("CollectionConcatenationToBuildCollection")
 object AssistantTools {
@@ -326,6 +337,7 @@ object AssistantTools {
         addAll(this@AssistantTools.wordingAndMenuWrites())
         addAll(this@AssistantTools.definitionAndFormsListWrites())
         addAll(this@AssistantTools.designWrites())
+        addAll(this@AssistantTools.catalogWrites())
         addAll(
             listOf(
                 AssistantTool(
@@ -623,7 +635,7 @@ object AssistantTools {
      */
     @KdrPrivate
     fun definitionAndFormsListWrites(): List<AssistantTool> {
-        val dryRun = CFEP.dryRun to mapOf("type" to "boolean", "description" to "True to check the change without saving it.")
+        val dryRun = dryRunProperty
         val definitionFields = ClientPresentationFields.names.associateWith { name ->
             val description = ClientPresentationFields.descriptions[name].orEmpty()
             when (ClientPresentationFields.kind(name)) {
@@ -656,7 +668,7 @@ object AssistantTools {
                 (ClientPresentationFields.namesFor(platform = true) + CFEP.dryRun + CPY.mode).toSet(),
             ) { run, input ->
                 val change = given(input, ClientPresentationFields.namesFor(platform = true))
-                dryRunFirst(run, ATOOL.setClientDefinition, UADEP.clientDefinitionSet, change, input[CFEP.dryRun] == true)
+                dryRunFirst(run, ATOOL.setClientDefinition, UADEP.clientDefinitionSet, change, isDryRun(input))
             },
             AssistantTool(
                 ATOOL.saveFormsListColumn,
@@ -674,7 +686,7 @@ object AssistantTools {
                 HttpMethod.POST, UADEP.clientUsageSave, setOf(CUS.column, CUS.previousLabel, CFEP.dryRun, CPY.mode),
             ) { run, input ->
                 val change = given(input, listOf(CUS.column, CUS.previousLabel))
-                dryRunFirst(run, ATOOL.saveFormsListColumn, UADEP.clientUsageSave, change, input[CFEP.dryRun] == true)
+                dryRunFirst(run, ATOOL.saveFormsListColumn, UADEP.clientUsageSave, change, isDryRun(input))
             },
             AssistantTool(
                 ATOOL.removeFormsListColumn,
@@ -690,7 +702,7 @@ object AssistantTools {
                 HttpMethod.POST, UADEP.clientUsageRemove, setOf(CCT.traitId, CCT.label, CFEP.dryRun, CPY.mode),
             ) { run, input ->
                 val change = given(input, listOf(CCT.traitId, CCT.label))
-                dryRunFirst(run, ATOOL.removeFormsListColumn, UADEP.clientUsageRemove, change, input[CFEP.dryRun] == true)
+                dryRunFirst(run, ATOOL.removeFormsListColumn, UADEP.clientUsageRemove, change, isDryRun(input))
             },
             AssistantTool(
                 ATOOL.setFormsListLayout,
@@ -747,7 +759,7 @@ object AssistantTools {
         )
         val label = DSV.label to stringSchema("The heading; absent or blank to go back to the shared one.")
         val description = DSV.description to stringSchema("The introduction under the heading, Markdown; absent or blank to go back.")
-        val dryRun = CFEP.dryRun to mapOf("type" to "boolean", "description" to "True to check the change without saving it.")
+        val dryRun = dryRunProperty
         // A wording-only edit: the fields given, sent to the path as they are, with no dry run -- unless [guard] refuses
         // the input first, with what to send instead.
         fun wording(
@@ -808,7 +820,7 @@ object AssistantTools {
                 HttpMethod.POST, DSV.sharedFieldEdit, (sharedFieldEdit + CFEP.dryRun).toSet(),
             ) { run, input ->
                 val change = given(input, sharedFieldEdit)
-                val dry = input[CFEP.dryRun] == true
+                val dry = isDryRun(input)
                 if (input[DSV.options] == null) {
                     // Copy alone needs no dry run, but one asked for is one: checked, nothing saved.
                     run.call(HttpMethod.POST, DSV.sharedFieldEdit, body = if (dry) change + (CFEP.dryRun to true) else change)
@@ -868,8 +880,217 @@ object AssistantTools {
                 HttpMethod.POST, DSV.shownFieldsEdit, (shownFieldsEdit + CFEP.dryRun).toSet(),
             ) { run, input ->
                 val change = given(input, shownFieldsEdit)
-                dryRunFirst(run, ATOOL.setShownFields, DSV.shownFieldsEdit, change, input[CFEP.dryRun] == true, alsoSend = emptyMap())
+                dryRunFirst(run, ATOOL.setShownFields, DSV.shownFieldsEdit, change, isDryRun(input), alsoSend = emptyMap())
             },
+        )
+    }
+
+    /**
+     * The targeted writes of the client's template workflows, its traits, and its reports (issue #1766): the Clients
+     * page's editors, which keep what they do not change -- a workflow made from a template is saved as its overlay of
+     * the template, so the assistant need not restate the rest as `patch_config` would make it. Each can be refused, or
+     * can reach stored forms, so each is dry-run first ([dryRunFirst]). Called as the person's user in the sandbox, each
+     * saves a draft of the client's configuration -- but a workflow's parameters, which are never drafted: from the
+     * sandbox they are the sandbox's own, in force there at once, and the client's are a person's to set.
+     */
+    @KdrPrivate
+    fun catalogWrites(): List<AssistantTool> {
+        val dryRun = dryRunProperty
+        val workflowId = WFD.workflowId to stringSchema("The workflow, by its id.")
+        // A write held to the dry run: the fields given, sent as a draft unless [draft] says the endpoint takes no mode.
+        fun write(
+            name: String,
+            description: String,
+            schema: Map<String, Any?>,
+            path: String,
+            fields: List<String>,
+            draft: Boolean = true,
+        ) = AssistantTool(
+            name, description, schema, HttpMethod.POST, path, (fields + CFEP.dryRun + if (draft) listOf(CPY.mode) else emptyList()).toSet(),
+        ) { run, input ->
+            dryRunFirst(run, name, path, given(input, fields), isDryRun(input), alsoSend = if (draft) mapOf(expectDraft) else emptyMap())
+        }
+        val slots = objectSchema(
+            WFD.workflowId to stringSchema("The workflow's id, to change one made from a template; absent to make a new one."),
+            WFD.fromTemplate to stringSchema("The template it is made from, as ${ATOOL.listWorkflows} lists the templates."),
+            WFD.label to stringSchema("The workflow's name."),
+            WFD.tasks to arraySchema(
+                "Its data-entry tasks, as the template has them, each with what it collects.",
+                objectSchema(
+                    WFD.id to stringSchema("The template's task id."),
+                    WFD.label to stringSchema("The task's label."),
+                    WFD.traits to arraySchema(
+                        "The traits the task collects.",
+                        objectSchema(
+                            WFD.traitId to stringSchema("A trait the client has."),
+                            WFD.required to mapOf("type" to "boolean", "description" to "Whether the task requires it; true when absent."),
+                            required = listOf(WFD.traitId),
+                        ),
+                    ),
+                    required = listOf(WFD.id, WFD.label, WFD.traits),
+                ),
+            ),
+            required = listOf(WFD.fromTemplate, WFD.label, WFD.tasks),
+        )
+        val visibility = objectSchema(
+            WFP.mode to stringSchema(
+                "Who sees it: '${WfVisibilityMode.everyone.name}', or '${WfVisibilityMode.restricted.name}' -- the client's " +
+                    "administrators and anyone with one of '${WFP.labels}', administrators only when there are none.",
+            ),
+            WFP.labels to arraySchema(
+                "For '${WfVisibilityMode.restricted.name}': user labels the client suggests.",
+                stringSchema("A label."),
+            ),
+            required = listOf(WFP.mode),
+        )
+        val traitField = objectSchema(
+            CIT.key to stringSchema("The field's key, to keep an existing field; absent for a new one, which gets one from its label."),
+            CIT.label to stringSchema("The field's label."),
+            CIT.kind to stringSchema(
+                "Its kind: ${TraitFieldKind.entries.joinToString(", ") { "'${it.name}'" }}; a kept field keeps its kind.",
+            ),
+            CIT.description to stringSchema("The line under it."),
+            CIT.required to mapOf("type" to "boolean", "description" to "Whether the data requires it."),
+            CIT.choices to arraySchema(
+                "For a kind with choices: each {value, label}, a new one's value made from its label.",
+                objectSchema(
+                    CIT.value to stringSchema("Its stored value."),
+                    CIT.label to stringSchema("What it shows."),
+                    required = listOf(CIT.label),
+                ),
+            ),
+            required = listOf(CIT.label, CIT.kind),
+        )
+        return listOf(
+            write(
+                ATOOL.saveTemplateWorkflow,
+                "Makes a workflow from a template, or changes one made so, as a draft: its name, and per data-entry task its " +
+                    "label and the traits it collects. It is saved as the workflow's overlay of the template, keeping " +
+                    "everything else the template or the workflow says -- use this, not patch_config, for a workflow made " +
+                    "from a template, the client's starter New form among them. A new one is seen by '${CWF.visibility}' " +
+                    "in the sandbox, administrators only when absent; in the client, by administrators until a person opens " +
+                    "it. **Dry run first**: it says what the change would do to stored forms once published.",
+                objectSchema(
+                    CWF.slots to slots,
+                    CWF.visibility to visibility,
+                    dryRun,
+                    required = listOf(CWF.slots, CFEP.dryRun),
+                ),
+                UADEP.clientWorkflowSave, listOf(CWF.slots, CWF.visibility),
+            ),
+            write(
+                ATOOL.removeTemplateWorkflow,
+                "Removes a workflow made from a template, as a draft. A workflow written whole is removed where it is " +
+                    "written, with patch_config. **Dry run first**: it says which stored forms take part in it.",
+                objectSchema(workflowId, dryRun, required = listOf(WFD.workflowId, CFEP.dryRun)),
+                UADEP.clientWorkflowRemove, listOf(WFD.workflowId),
+            ),
+            write(
+                ATOOL.setWorkflowParams,
+                "Sets a workflow's parameters **in the sandbox only**, in force there at once, for the person to try: " +
+                    "'${WFP.windows}' (a normal workflow's '${WFD.lifetime}', '${WFD.relevancy}' and '${WFD.engagement}', " +
+                    "each {start, end} of moments, either optional), '${WFP.visibility}' ({mode, labels}), and " +
+                    "'${WFP.enabled}' (whether a normal workflow is on). Parameters are never drafted or published: the " +
+                    "client's own are set by a person, on its page, so say what to set when it should reach the client's " +
+                    "people. '${WFP.unset}' names parameters to follow the client's again. **Dry run first**: it says the " +
+                    "parameters as they would be, and is refused where forms engaged with the workflow would be frozen or " +
+                    "hidden.",
+                objectSchema(
+                    workflowId,
+                    WFP.params to mapOf("type" to "object", "description" to "The parameters to set, each by its key."),
+                    WFP.unset to arraySchema("The parameters to stop setting, by key.", stringSchema("A parameter's key.")),
+                    dryRun,
+                    required = listOf(WFD.workflowId, CFEP.dryRun),
+                ),
+                UADEP.clientWorkflowParams, listOf(WFD.workflowId, WFP.params, WFP.unset), draft = false,
+            ),
+            write(
+                ATOOL.designTrait,
+                "Makes one of the client's own traits from a design, or changes one, as a draft: its label, description, and " +
+                    "fields, each with a label, a kind, whether it is required, and for a choice its choices. A design " +
+                    "naming no '${CIT.traitId}' makes a new trait, whose id and keys are made from its labels and never " +
+                    "change; one naming a trait the client stores changes it, keeping what the design does not own. " +
+                    "'${CIT.extendsTrait}' makes the trait a global one plus the fields it adds. **Dry run first**: a change " +
+                    "leaving stored forms with data the trait no longer accepts is reported.",
+                objectSchema(
+                    CIT.design to objectSchema(
+                        CIT.traitId to stringSchema("The trait to change; absent for a new one."),
+                        CIT.extendsTrait to stringSchema("A global trait this one adds fields to."),
+                        CIT.label to stringSchema("The trait's label."),
+                        CIT.description to stringSchema("What it is for."),
+                        CIT.fields to arraySchema("Its fields, in order.", traitField),
+                        required = listOf(CIT.label, CIT.fields),
+                    ),
+                    dryRun,
+                    required = listOf(CIT.design, CFEP.dryRun),
+                ),
+                UADEP.clientTraitDesign, listOf(CIT.design),
+            ),
+            write(
+                ATOOL.narrowTrait,
+                "Narrows a global trait for the client, as a draft -- moves that only narrow: '${CIT.hidden}' fields left " +
+                    "off its forms (the data still accepts them), '${CIT.required}' fields its data requires, and " +
+                    "'${CIT.choices}' a field's choices restricted, by field key to the values kept. '${CIT.label}' renames " +
+                    "it and '${CIT.description}' introduces it on the client's forms. Each list is the narrowing as it " +
+                    "should stand; an empty narrowing takes the trait back as declared. **Dry run first**: a narrowing " +
+                    "leaving stored forms with data the trait refuses is reported.",
+                objectSchema(
+                    CIT.narrowing to objectSchema(
+                        CIT.traitId to stringSchema("The global trait."),
+                        CIT.hidden to arraySchema("Fields its forms leave out.", stringSchema("A field's key.")),
+                        CIT.required to arraySchema("Fields its data requires.", stringSchema("A field's key.")),
+                        CIT.choices to mapOf(
+                            "type" to "object",
+                            "description" to "By field key, the choice values kept.",
+                            "additionalProperties" to arraySchema("The values kept.", stringSchema("A choice's value.")),
+                        ),
+                        CIT.label to stringSchema("Its name on the client's forms."),
+                        CIT.description to stringSchema("Its introduction on the client's forms."),
+                        required = listOf(CIT.traitId),
+                    ),
+                    dryRun,
+                    required = listOf(CIT.narrowing, CFEP.dryRun),
+                ),
+                UADEP.clientTraitNarrow, listOf(CIT.narrowing),
+            ),
+            write(
+                ATOOL.createReport,
+                "Makes a report from simple choices, as a draft, in the client's reports configuration: its name, " +
+                    "description, and columns, each a heading and a path from ${ATOOL.readReportPaths}. One-way: a " +
+                    "report is changed afterwards with patch_config. **Dry run first**: a report that does not bind is " +
+                    "refused, saying which column.",
+                objectSchema(
+                    RDEF.label to stringSchema("The report's name; its id is made from it."),
+                    RDEF.description to stringSchema("What the report shows, for the person choosing it."),
+                    RDEF.columns to arraySchema(
+                        "The columns, in order.",
+                        objectSchema(
+                            RDEF.label to stringSchema("The column's heading."),
+                            RDEF.path to stringSchema("What it reads, a path from ${ATOOL.readReportPaths}."),
+                            RCR.groupedBy to mapOf("type" to "boolean", "description" to "A totals report groups by it."),
+                            RCR.charted to mapOf("type" to "boolean", "description" to "The report's chart measures it."),
+                            required = listOf(RDEF.label, RDEF.path),
+                        ),
+                    ),
+                    RDEF.history to mapOf("type" to "boolean", "description" to "Whether a nightly snapshot of its grouped run is kept."),
+                    RDEF.chart to stringSchema(
+                        "The chart a totals report opens on: ${ReportChartKind.entries.joinToString(", ") { "'${it.name}'" }}.",
+                    ),
+                    dryRun,
+                    required = listOf(RDEF.label, RDEF.columns, CFEP.dryRun),
+                ),
+                UADEP.reportCreate, listOf(RDEF.label, RDEF.description, RDEF.columns, RDEF.history, RDEF.chart),
+            ),
+            write(
+                ATOOL.removeReport,
+                "Removes a report the client stores, as a draft; one declared in code or inherited is refused. Its " +
+                    "snapshots are kept. **Dry run first**.",
+                objectSchema(
+                    RRUN.reportId to stringSchema("The report, by its id."), dryRun,
+                    required = listOf(RRUN.reportId, CFEP.dryRun),
+                ),
+                UADEP.reportRemove, listOf(RRUN.reportId),
+            ),
         )
     }
 
@@ -914,6 +1135,16 @@ object AssistantTools {
     @KdrPrivate
     fun given(input: Map<String, Any?>, fields: List<String>): Map<String, Any?> =
         fields.filter { input.containsKey(it) }.associateWith { input[it] }
+
+    /**
+     * The dry-run switch of a write held to [dryRunFirst], as its tool schema's property: one wording for every such
+     * tool. A getter, so a tool list built in an initializer above it never reads it before it is set.
+     */
+    private val dryRunProperty: Pair<String, Any?>
+        get() = CFEP.dryRun to mapOf("type" to "boolean", "description" to "True to check the change without saving it.")
+
+    /** Whether a tool's [input] asks for a dry run. */
+    private fun isDryRun(input: Map<String, Any?>): Boolean = input[CFEP.dryRun] == true
 
     /** What a targeted save that takes one sends to say it expects a draft ([CPY.mode]), so a live one is refused. */
     @KdrPrivate
@@ -998,7 +1229,7 @@ object AssistantTools {
     fun patch(run: ToolRun, input: Map<String, Any?>): ToolResult {
         val withoutBundles: (Any?) -> Any? = { payload -> (payload as? Map<*, *>)?.filterKeys { it != CFEP.configs } ?: payload }
         return dryRunFirst(
-            run, ATOOL.patchConfig, CFEP.bundlePatch, mapOf(CFEP.configs to input[CFEP.configs]), input[CFEP.dryRun] == true,
+            run, ATOOL.patchConfig, CFEP.bundlePatch, mapOf(CFEP.configs to input[CFEP.configs]), isDryRun(input),
             alsoSend = emptyMap(), alsoWrite = mapOf(CFEP.reloadField to true), dryShape = withoutBundles,
         )
     }

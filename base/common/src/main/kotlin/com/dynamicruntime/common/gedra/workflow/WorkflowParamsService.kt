@@ -190,6 +190,27 @@ class WorkflowParamsService : ServiceInitializer {
     fun visibilityFor(cxt: KdrCxt, client: String?, workflowId: String): WfVisibility = resolve(cxt, client, workflowId).visibility
 
     /**
+     * What [save] would make of [edit] and [unset], with nothing stored (issue #1766): the parameters as [client] would
+     * then resolve them, set now by the caller, with the setting they replace at the front of the history as [save] keeps
+     * it. Refused for a caller [save] refuses.
+     */
+    fun dryRunSave(
+        cxt: KdrCxt,
+        client: String,
+        workflowId: String,
+        edit: WfParams,
+        unset: Set<String> = emptySet(),
+    ): ResolvedWorkflowParams {
+        ClientJoin.requireMayEditConfig(cxt, client, changing(workflowId))
+        val before = resolve(cxt, client, workflowId)
+        val params = (before.own?.params ?: WfParams.none).edited(edit, unset)
+        val history = before.own?.let { (listOf(it) + before.history).take(WFP.historyKept) } ?: before.history
+        return ResolvedWorkflowParams(WfParamsSetting(params, cxt.instanceNow(), cxt.userId), history, before.parent, before.source)
+    }
+
+    private fun changing(workflowId: String) = "changing workflow '$workflowId''s parameters"
+
+    /**
      * Changes [client]'s own parameters for [workflowId]: those [edit] sets replace its own, and those named in [unset]
      * are no longer its own, so they follow the fallback again ([WfParams.edited]). What they replace is kept in the
      * history. Returns false, writing nothing, when that leaves its own values as they were. A sandbox saving values for
@@ -199,7 +220,7 @@ class WorkflowParamsService : ServiceInitializer {
     fun save(cxt: KdrCxt, client: String, workflowId: String, edit: WfParams, unset: Set<String> = emptySet()): Boolean {
         // What a client runs, as its configuration is (issue #1668): a visitor a deployment keeps out of a demo client's
         // configuration is kept out of its workflows' parameters too.
-        ClientJoin.requireMayEditConfig(cxt, client, "changing workflow '$workflowId''s parameters")
+        ClientJoin.requireMayEditConfig(cxt, client, changing(workflowId))
         return GedraConfigService.get(cxt).withClientLock(cxt, client, WPT.tranSave) { sqlCxt ->
             // The transaction's own context: its session holds the connection, and it acts as the caller does.
             val tcxt = sqlCxt.cxt

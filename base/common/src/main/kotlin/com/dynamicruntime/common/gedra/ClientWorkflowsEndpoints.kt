@@ -178,6 +178,7 @@ internal fun SchModuleBuilder.clientWorkflowsEndpoints() {
                     "impact report.",
             ) { type = SCT.boolean }
             expectedModeField()
+            dryRunField()
         },
     ) { c, request ->
         val client = overseenClient(c, request[CLD.client].toOptStr())
@@ -190,8 +191,10 @@ internal fun SchModuleBuilder.clientWorkflowsEndpoints() {
             }
         }
         val slots = templateSlotsFromInfo(request[CWF.slots].toJsonMapOrEmpty())
-        val result = ClientWorkflowEdit.save(c, client, slots, expectedModeOf(request), gate, visibility)
+        val dryRun = dryRunOf(request)
+        val result = ClientWorkflowEdit.save(c, client, slots, expectedModeOf(request), gate, visibility, dryRun)
         editorSaveResult(c, client, result.configName, CWF.slots to result.slots.toInfo(), result.mode, result.issues, result.draftImpact)
+            .markedDryRun(dryRun)
     }
 
     // --- a workflow's parameters: a normal one's time windows, and who sees any (issues #1121, #1356, #1384) ---
@@ -201,6 +204,9 @@ internal fun SchModuleBuilder.clientWorkflowsEndpoints() {
         property(CLD.client, "The client or sandbox they were set in.", required = true)
         property(CWF.params, "The workflow's parameters now, with their earlier settings.", required = true) { ref(CWF.paramsTypeName) }
         formStatesAutoProperty()
+        property(CFEP.dryRun, "Present and true for a dry run (issue #1766): nothing was saved, and the parameters are as they would be.") {
+            type = SCT.boolean
+        }
     }
 
     generalEndpoint(
@@ -215,7 +221,8 @@ internal fun SchModuleBuilder.clientWorkflowsEndpoints() {
             "again; any other is left as it is. In force at once, with no draft and no publish; what they replace is " +
             "kept among the earlier settings. A change that would, now, freeze or hide forms engaged with the workflow -- " +
             "turning it off hides them -- " +
-            "or take one out of its owner's sight, is refused with the impact report unless the impact is acknowledged.",
+            "or take one out of its owner's sight, is refused with the impact report unless the impact is acknowledged. " +
+            "With dryRun true (issue #1766), checked so and not saved: the parameters as they would then be.",
         HttpMethod.POST,
         outputRef = CWF.paramsResultTypeName,
         needsClientConfig = true,
@@ -232,6 +239,7 @@ internal fun SchModuleBuilder.clientWorkflowsEndpoints() {
                 "Save although forms engaged with the workflow would be frozen, hidden, or out of their owners' sight; " +
                     "without it, such a save is refused with the impact report.",
             ) { type = SCT.boolean }
+            dryRunField()
         },
     ) { c, request ->
         val client = overseenClient(c, request[CLD.client].toOptStr())
@@ -242,8 +250,9 @@ internal fun SchModuleBuilder.clientWorkflowsEndpoints() {
             throw KdrException.mkInput("The parameters do not read: ${e.message}")
         }
         val unset = request[WFP.unset].toJsonListOfStrings().toSet()
-        val resolved = ClientWorkflowEdit.saveParams(c, client, request[WFD.workflowId].toOptStr().orEmpty(), params, unset, gate)
-        mapOf(CLD.client to client, CWF.params to ClientWorkflowEdit.paramsInfo(c, resolved)).withFormStatesAuto(c)
+        val dryRun = dryRunOf(request)
+        val resolved = ClientWorkflowEdit.saveParams(c, client, request[WFD.workflowId].toOptStr().orEmpty(), params, unset, gate, dryRun)
+        mapOf(CLD.client to client, CWF.params to ClientWorkflowEdit.paramsInfo(c, resolved)).withFormStatesAuto(c).markedDryRun(dryRun)
     }
 
     // --- removing a workflow made from a template (issue #1346) ---
@@ -261,8 +270,9 @@ internal fun SchModuleBuilder.clientWorkflowsEndpoints() {
         UADEP.clientWorkflowRemove,
         "Removes one of a client's workflows made from a template (issue #1346), from the stored configuration holding " +
             "it. Then as every editor's save. A live removal of a workflow forms take part in is refused with the impact " +
-            "report unless the impact is acknowledged. Refused for a sandbox, and for a workflow written whole or not " +
-            "stored by the client.",
+            "report unless the impact is acknowledged. From a sandbox, a draft of its client's (issue #1358). Refused for a " +
+            "workflow written whole or not stored by the client. With dryRun true (issue #1766), checked as the removal " +
+            "would be and not stored.",
         HttpMethod.POST,
         outputRef = CWF.removeResultTypeName,
         needsClientConfig = true,
@@ -274,12 +284,15 @@ internal fun SchModuleBuilder.clientWorkflowsEndpoints() {
                 "Remove it although forms take part in it; without it, such a removal is refused with the impact report.",
             ) { type = SCT.boolean }
             expectedModeField()
+            dryRunField()
         },
     ) { c, request ->
         val client = overseenClient(c, request[CLD.client].toOptStr())
         val gate = if (request[IMP.acknowledgeImpact] == true) ImpactGate.acknowledged else ImpactGate.refuse
         val workflowId = request[WFD.workflowId].toOptStr().orEmpty()
-        val result = ClientWorkflowEdit.remove(c, client, workflowId, expectedModeOf(request), gate)
+        val dryRun = dryRunOf(request)
+        val result = ClientWorkflowEdit.remove(c, client, workflowId, expectedModeOf(request), gate, dryRun)
         editorSaveResult(c, client, result.configName, WFD.workflowId to workflowId, result.mode, result.issues, result.draftImpact)
+            .markedDryRun(dryRun)
     }
 }

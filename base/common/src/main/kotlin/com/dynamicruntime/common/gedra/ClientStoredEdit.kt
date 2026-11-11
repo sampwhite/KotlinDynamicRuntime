@@ -136,6 +136,24 @@ object ClientStoredEdit {
     }
 
     /**
+     * An editor's save made to take effect ([takeEffect]), or -- a [dryRun], which stored nothing -- checked as it would be
+     * ([dryRunEffect]) (issue #1766): the one call after an editor's write, so a dry run cannot reach the publish or the
+     * reload. Answers the issues the result reports. [undo] runs only for a real save whose publish is refused.
+     */
+    fun settle(
+        cxt: KdrCxt,
+        target: EditTarget,
+        written: GedraConfigRow,
+        dryRun: Boolean,
+        undo: () -> Unit,
+        restorePublished: Boolean = false,
+        impact: ImpactGate = ImpactGate.unchecked,
+        recalculateForms: Boolean = true,
+    ): List<GedraConfigIssue> =
+        if (dryRun) dryRunEffect(cxt, target, written, impact)
+        else takeEffect(cxt, target, written, undo, restorePublished, impact, recalculateForms).issues
+
+    /**
      * What [publishAndReload] checks before publishing [written], run on the revision in hand (issue #1764): the
      * [impact] gate, the instance's [PublishCheck], and -- for a client that runs only what it publishes -- the
      * publish's trial, which for one that runs its latest has nothing to judge that the write's trial did not.
