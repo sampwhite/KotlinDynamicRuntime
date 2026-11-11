@@ -340,7 +340,7 @@ object WorkflowStateDeriver : GedraStateDeriver {
             // Frozen: its last calculated entry, carried forward as it stood.
             frozen[workflowId]?.let { return@map mapOf(GE.traitId to WFS.workflowState, GE.data to it) }
             val data = linkedMapOf<String, Any?>(WFD.workflowId to workflowId)
-            declared[workflowId]?.let {
+            declared[workflowId]?.let { it ->
                 data[WFS.computedAgainstRef] = it.ref.text
                 data[WFS.cfacts] = own.getValue(workflowId).sorted()
                 data[WFS.singletonCfacts] = singletons.getValue(workflowId)

@@ -665,7 +665,7 @@ private val ownClientKeys = setOf(
 private const val part3Heading = "## Part 3:"
 /** A part's heading, and the banner on the first line under it: an image named by its repo path (issue #1463). */
 private const val partHeadingPrefix = "## Part "
-private val bannerRegex = Regex("""!\[[^\]]+]\(([^)]+)\)""")
+private val bannerRegex = Regex("""!\[[^]]+]\(([^)]+)\)""")
 private const val markdownRule = "---"
 private val kdaPathRegex = Regex("""/kda(/[A-Za-z/]+[A-Za-z])""")
 

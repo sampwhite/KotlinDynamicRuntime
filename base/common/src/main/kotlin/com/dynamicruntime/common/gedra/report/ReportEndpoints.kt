@@ -566,6 +566,7 @@ class AggregateRun(val groups: List<ReportGroup>, val scanned: Int, val excluded
  * [groupBy], rolled-up and [excludeEmpty] columns, the forms missing an excluding value left out, the rest grouped.
  * The run endpoint pages the groups; a snapshot stores them. [exactDates] and [zone] are [runBoundReport]'s.
  */
+@Suppress("CollectionConcatenationToBuildCollection")
 fun aggregateReportRun(
     c: KdrCxt,
     client: String,

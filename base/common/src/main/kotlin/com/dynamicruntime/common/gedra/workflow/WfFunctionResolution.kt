@@ -149,6 +149,7 @@ private fun ResolutionScope.checkApprovalAuthority(def: WfDef, task: WfTask, res
  * resolved, not the task's stored one, since a trial resolves without assigning. What a CTA filter and an approval step's
  * rule are both held to.
  */
+@Suppress("CollectionConcatenationToBuildCollection")
 private fun ResolutionScope.personFacts(resolved: List<WfFunction>): Set<String> =
     SchemaService.get(cxt).cfactsFor(client).requestNames + RCF.all +
         resolved.filter { it.event == WfEventType.viewerCfacts }.flatMap { ViewerCfactsFn.of(it).emittedCfacts }

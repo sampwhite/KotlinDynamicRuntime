@@ -313,9 +313,9 @@ private fun metaValue(attr: String, subject: ReportSubject): Any? = when (attr) 
  * [value] as a flat list: a list's elements, nested lists opened, nulls dropped; one value as itself. The nesting a
  * data path can produce is bounded by the path's own length, and [depth] holds the walk to it regardless.
  */
-private fun flatValues(value: Any?, depth: Int = 0): List<Any?> = when {
-    value == null -> emptyList()
-    value is List<*> -> if (depth > RPT.maxFields) emptyList() else value.flatMap { flatValues(it, depth + 1) }
+private fun flatValues(value: Any?, depth: Int = 0): List<Any?> = when (value) {
+    null -> emptyList()
+    is List<*> -> if (depth > RPT.maxFields) emptyList() else value.flatMap { flatValues(it, depth + 1) }
     else -> listOf(value)
 }
 

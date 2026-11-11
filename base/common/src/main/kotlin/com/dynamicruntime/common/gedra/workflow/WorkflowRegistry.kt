@@ -390,8 +390,12 @@ fun buildWorkflowRegistries(
                     step.waiting?.let { "$of waiting text of task '${task.id}'" to it },
                 )
             }
-            val labels = listOf("task '${task.id}'" to task.label) + task.saves.map { "save '${it.id}'" to it.label } +
-                displayTexts + approvalCopy
+            val labels = buildList {
+                addAll(listOf("task '${task.id}'" to task.label))
+                task.saves.mapTo(this) { "save '${it.id}'" to it.label }
+                addAll(displayTexts)
+                addAll(approvalCopy)
+            }
             for ((where, label) in labels) {
                 labelProblem(scope, label, fragments)?.let {
                     reportConfigProblem(cxt, problem(scope, w, "has a label on $where that $it"), issues)
