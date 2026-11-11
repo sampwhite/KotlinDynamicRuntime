@@ -2,6 +2,7 @@
    exists to show a label whose words live in a file rather than in the definition, so a client's copy overlay can
    reword it; docs/demo-client/workshop-logistics.md explains it. -/
 
+/-where none: the conference demo's own words, which its layout pulls and no other client shows. -/
 # @logistics
 
 # +heading Workshop logistics

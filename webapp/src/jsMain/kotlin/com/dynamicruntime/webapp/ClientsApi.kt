@@ -619,6 +619,8 @@ class CopyKeyView(
     val value: String,
     /** Where the application shows the file (issue #933); null for one it does not show. */
     val shownOn: String?,
+    /** Where a person sees the key, `<page>: <place>`, for one a client is likely to reword (issue #1799); else null. */
+    val where: String? = null,
 )
 
 /** The keys listing's items as [CopyKeyView]s; one without its address is not a key. Pure, and covered under `jsNodeTest`. */
@@ -630,6 +632,7 @@ fun parseCopyKeys(items: List<Map<String, Any?>>): List<CopyKeyView> = items.map
         audience = row[COV.audience].toOptStr().orEmpty(),
         value = row[COV.value].toOptStr().orEmpty(),
         shownOn = row[COV.shownOn].toOptStr(),
+        where = row[CPY.where].toOptStr(),
     )
 }
 

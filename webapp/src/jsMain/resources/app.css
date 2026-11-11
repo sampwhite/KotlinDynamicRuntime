@@ -1359,6 +1359,8 @@ textarea.copy-edit { font-family: inherit; min-height: 5rem; }
 .copy-key-head > code { font-size: .9rem; }
 .copy-key-status { font-size: .8rem; color: var(--text-muted); }
 .copy-key-status-refused { color: var(--danger); }
+/* Where a person sees the key (issue #1799), under its head. */
+.copy-key-where { font-size: .8rem; color: var(--text-muted); margin-bottom: 4px; }
 .copy-key-actions { margin-left: auto; display: inline-flex; align-items: center; gap: 2px; }
 .copy-value {
     max-height: 12rem;

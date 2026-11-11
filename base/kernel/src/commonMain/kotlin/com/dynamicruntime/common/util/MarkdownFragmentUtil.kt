@@ -1,6 +1,8 @@
 package com.dynamicruntime.common.util
 
 import com.dynamicruntime.common.annotation.KdrPrivate
+import com.dynamicruntime.common.content.CPAGE
+import com.dynamicruntime.common.content.FragmentNotes
 import com.dynamicruntime.common.exception.ACT
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
@@ -155,6 +157,101 @@ fun String.parseOmnibusFragments(): Map<String, Map<String, Map<String, String>>
     return sections.mapValues { (_, body) -> body.joinToString("\n").parseMarkdownFragments() }
 }
 
+/**
+ * Reads the copy notes ([FragmentNotes]) of a fragment file's text (issue #1799). Refused, with a [MarkdownError]: a note
+ * with nothing after it to be about, two notes on one key or namespace, a note not written `<page>: <place>` with a page
+ * of [CPAGE.pages] or `none`, and a namespace's note that is not `none`.
+ *
+ * Comments are found as [parseMarkdownFragments] strips them, so a note is wherever a comment may be. It is about the
+ * first key or namespace line after it.
+ *
+ * Theme: #CUSTX.
+ */
+fun String.parseFragmentNotes(): FragmentNotes {
+    val text = this.replace("\r\n", "\n").replace('\r', '\n')
+    // The text with every comment removed, as the parse sees it, and each note at the offset its comment was removed from.
+    val cleaned = StringBuilder(text.length)
+    val notes = mutableListOf<Pair<Int, String>>()
+    var i = 0
+    while (i < text.length) {
+        if (i + 1 < text.length && text[i] == '/' && text[i + 1] == '-') {
+            val close = text.indexOf("-/", i + 2)
+            if (close < 0) {
+                throw mkMarkdownException(
+                    MarkdownError.unterminatedComment, "Markdown has an unterminated '/-' comment starting at offset $i.",
+                )
+            }
+            val body = text.substring(i + 2, close)
+            if (body.startsWith(FragmentNotes.notePrefix)) {
+                notes.add(cleaned.length to body.substring(FragmentNotes.notePrefix.length).replace(Regex("\\s+"), " ").trim())
+            }
+            i = close + 2
+        } else {
+            cleaned.append(text[i])
+            i++
+        }
+    }
+
+    val byNamespace = LinkedHashMap<String, String>()
+    val byKey = LinkedHashMap<String, LinkedHashMap<String, String>>()
+    var namespace: String? = null
+    var next = 0
+    var lineStart = 0
+    for (line in cleaned.split('\n')) {
+        val isNamespace = isNamespaceLine(line)
+        val isKey = isKeyLine(line)
+        if (isNamespace || isKey) {
+            val pending = mutableListOf<String>()
+            while (next < notes.size && notes[next].first <= lineStart) {
+                pending.add(notes[next].second)
+                next++
+            }
+            val name = if (isNamespace) line.substring(3).trim() else line.substring(3).takeWhile { it > ' ' }
+            if (isNamespace) namespace = name
+            val about = if (isNamespace) "namespace '$name'" else "key '${namespace ?: ""}.$name'"
+            if (pending.size > 1) {
+                throw mkMarkdownException(MarkdownError.duplicateNote, "The $about has more than one '/-where' note.")
+            }
+            pending.singleOrNull()?.let { note ->
+                checkCopyNote(note, about)
+                if (isNamespace) {
+                    if (!FragmentNotes.isNotReworded(note)) {
+                        throw mkMarkdownException(
+                            MarkdownError.locatedNamespace,
+                            "The $about has a '/-where' note naming a page; a namespace's note may only be " +
+                                "'${CPAGE.none}: ...', since where a person sees copy is said key by key.",
+                        )
+                    }
+                    byNamespace[name] = note
+                } else if (namespace != null) {
+                    byKey.getOrPut(namespace) { LinkedHashMap() }[name] = note
+                }
+            }
+        }
+        lineStart += line.length + 1
+    }
+    if (next < notes.size) {
+        throw mkMarkdownException(
+            MarkdownError.danglingNote, "A '/-where' note (\"${notes[next].second}\") has no key or namespace after it.",
+        )
+    }
+    return FragmentNotes(byNamespace, byKey)
+}
+
+/** Refuses a note not written `<page>: <place>`, with a page [CPAGE] lists or `none`. */
+@KdrPrivate
+fun checkCopyNote(note: String, about: String) {
+    val page = FragmentNotes.pageOf(note)
+    val place = note.substringAfter(':', "").trim()
+    if (!note.contains(':') || place.isEmpty() || (page != CPAGE.none && page !in CPAGE.pages)) {
+        throw mkMarkdownException(
+            MarkdownError.badNote,
+            "The $about has the '/-where' note \"$note\", which is not '<page>: <where on it>' with a page of " +
+                "${CPAGE.pages.joinToString(", ")}, or '${CPAGE.none}: <why not>'.",
+        )
+    }
+}
+
 /** Error codes reported by [parseMarkdownFragments], carried under [KdrException.errorCodeKey]. */
 @Suppress("EnumEntryName")
 enum class MarkdownError : ProblemCode {
@@ -190,6 +287,18 @@ enum class MarkdownError : ProblemCode {
 
     /** An omnibus file had content before its first `# !` file heading, so it belongs to no file. */
     contentBeforeFile,
+
+    /** A copy note (`/-where ...-/`, issue #1799) had no key or namespace after it. */
+    danglingNote,
+
+    /** A key or namespace had two copy notes. */
+    duplicateNote,
+
+    /** A copy note was not `<page>: <place>` with a known page, or `none: <why>`. */
+    badNote,
+
+    /** A namespace's copy note named a page; only a key's may. */
+    locatedNamespace,
 }
 
 /**

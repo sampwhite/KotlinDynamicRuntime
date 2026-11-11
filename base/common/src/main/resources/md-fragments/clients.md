@@ -3,6 +3,7 @@
    #1384). The page's other words are still in the webapp, and belong here as they are moved. Named by the shell's
    UI-config after the home file, since the page has no UI-config of its own. -/
 
+/-where none: the Clients page's explanations, an administrator's page. -/
 # @about
 # +whatIsThis
 Who the client is.
@@ -12,6 +13,7 @@ Who the client is.
 - **Description** is an internal note about who, what, or why, which only administrators see.
 
 
+/-where none: the Clients page's explanations, an administrator's page. -/
 # @behavior
 # +whatIsThis
 How the client behaves for its people.
@@ -32,6 +34,7 @@ How the client behaves for its people.
   edited on this page chooses them under **Forms and data**.
 
 
+/-where none: the Clients page's explanations, an administrator's page. -/
 # @platform
 # +whatIsThis
 What the platform sets about the client. A client's own administrator sees these, and cannot change them.
@@ -47,6 +50,7 @@ What the platform sets about the client. A client's own administrator sees these
 - **Web resources** names the package of web resources the client presents.
 
 
+/-where none: the Clients page's explanations, an administrator's page. -/
 # @runs
 # +whatIsThis
 Where the client is defined, and where it runs.
@@ -61,6 +65,7 @@ Where the client is defined, and where it runs.
 - **Plan** is what the client may hold, and how much of it is used.
 
 
+/-where none: the Clients page's explanations, an administrator's page. -/
 # @formsData
 # +whatIsThis
 What the client's forms hold, and the steps people take to fill them in.
@@ -75,6 +80,7 @@ What the client's forms hold, and the steps people take to fill them in.
   they see it. Its **time windows** say when it is available at all, and when new forms may join it.
 
 
+/-where none: the Clients page's explanations, an administrator's page. -/
 # @traitPreview
 # +whatIsThis
 The form as people will see this trait in it, drawn from the trait as you have it here, changes and all. Try it:
@@ -84,6 +90,7 @@ Nothing you enter in the preview is saved or sent anywhere, and no form changes.
 changes to the trait.
 
 
+/-where none: the Clients page's explanations, an administrator's page. -/
 # @listingColumns
 # +whatIsThis
 The columns of the client's **forms listing**, beside each form's name and dates. Each column shows one trait's
@@ -102,6 +109,7 @@ A column changes nothing a form holds. It is stored with the client's definition
 definition's changes do.
 
 
+/-where none: the Clients page's explanations, an administrator's page. -/
 # @formStates
 # +whatIsThis
 Each form stores its **state**: which workflows it can take part in, and where it stands in each. The state is
@@ -120,6 +128,7 @@ has. It runs while you wait, so it is offered only for a client holding no more 
 gives; a larger client is brought up to date by the nightly run.
 
 
+/-where none: the Clients page's explanations, an administrator's page. -/
 # @copy
 # +whatIsThis
 **Copy** is the words the application shows this client's people: headings, help, buttons, and mails. The client can
@@ -134,6 +143,7 @@ reword any of it.
 Copy is configuration: for a client with a sandbox, a change is a draft until it is published.
 
 
+/-where none: the Clients page's explanations, an administrator's page. -/
 # @images
 # +whatIsThis
 The images this client's people see.
@@ -144,6 +154,7 @@ The images this client's people see.
   with a sandbox, a change is a draft until it is published.
 
 
+/-where none: the Clients page's explanations, an administrator's page. -/
 # @menu
 # +whatIsThis
 The **menu** is the list under the app bar's ☰ button. The client can rename an item, hide it, or show it to a
@@ -156,6 +167,7 @@ Most of the shipped menu is for the deployment's own operators, test instances, 
 people are never offered. The list shows only the items they may be, unless asked for every one.
 
 
+/-where none: the Clients page's explanations, an administrator's page. -/
 # @sandbox
 /- The last paragraph names controls of the app bar (Open sandbox, the sandbox's chip and its Back to, the switcher
    under the user's name), which live elsewhere: keep it in step with the bar when they change (issue #1397). -/
@@ -177,6 +189,7 @@ sandbox's name in place of Open sandbox, and **Back to** the client returns you 
 you are also listed in the menu under your name in the bar, and choosing one switches to it.
 
 
+/-where none: the Clients page's explanations, an administrator's page. -/
 # @storedConfig
 # +whatIsThis
 A client's configuration is kept in named parts, one row each: its definition, its copy, a trait or a workflow of its
@@ -197,6 +210,7 @@ own. Every saved change makes a new **revision** of its part.
 Configuration written in code is not listed here: it changes with a release of the application.
 
 
+/-where none: the Clients page's explanations, an administrator's page. -/
 # @files
 /- The Files explanation shows its own image, a component's (`img:kdr:fileRefs`), and walks a client through replacing
    it with one of its own files: the concept, practiced on the text that explains it. Keep the steps' words in step
@@ -229,12 +243,14 @@ To try it, make this explanation show an image of your own:
 Upload the image first: copy naming a file the client does not have is refused when it is saved.
 
 
+/-where none: the Clients page's explanations, an administrator's page. -/
 # @workflows
 /- Shown under "Seen by" when a workflow is made from a template (issue #1384). Empty as shipped: the form already says
    who sees the new workflow, and a deployment that teaches -- the `reference` flavor -- adds how to open one up. -/
 # +newWorkflowNote
 
 
+/-where none: the Clients page's explanations, an administrator's page. -/
 # @bundlePublishing
 # +whatIsThis
 A client keeps its configuration in **bundles**, and each change to a bundle makes a new revision of it. For a client
@@ -250,6 +266,7 @@ people get it only when it is **published**. A client without a sandbox runs eve
   that holds entries, remove them below, save, and publish the emptied bundle; then **Delete** is offered.
 
 
+/-where none: the Clients page's explanations, an administrator's page. -/
 # @bundleList
 # +whatIsThis
 Every bundle the client stores, with what each holds. A bundle is made of **slots**, one for each kind of thing it
@@ -276,6 +293,7 @@ from another client, naming that client's own name, is offered as this client's:
 `@self` too.
 
 
+/-where none: the Clients page's explanations, an administrator's page. -/
 # @bundleCode
 # +whatIsThis
 What the client runs that no bundle it stores holds, read-only.

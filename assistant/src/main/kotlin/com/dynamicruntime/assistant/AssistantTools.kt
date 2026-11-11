@@ -4,7 +4,9 @@ import com.dynamicruntime.common.annotation.KdrPrivate
 import com.dynamicruntime.common.assistant.ABLK
 import com.dynamicruntime.common.assistant.ATOOL
 import com.dynamicruntime.common.cfact.CFD
+import com.dynamicruntime.common.content.CPAGE
 import com.dynamicruntime.common.content.ContentResources
+import com.dynamicruntime.common.content.FragmentNotes
 import com.dynamicruntime.common.content.MDOC
 import com.dynamicruntime.common.content.MarkdownDocDef
 import com.dynamicruntime.common.content.MarkdownDocService
@@ -84,6 +86,10 @@ object CPYIDX {
 
     /** Said instead when a file or namespace holds no keys. */
     const val none = "none"
+
+    /** The index's two parts: the pages, each with how many keys a client is likely to reword there, and the files. */
+    const val pages = "pages"
+    const val files = "files"
 }
 
 /** What a tool answered: [text] for the model, and whether it was an error the model can correct from. */
@@ -403,18 +409,23 @@ object AssistantTools {
         AssistantTool(
             ATOOL.readCopy,
             "Reads the copy the client may reword: the words its pages, forms, and mails show, as the client reads them, " +
-                "each a key of a namespace of a fragment file, with where the file is shown. With no '${ATOOL.file}', an " +
-                "index: each file, where it is shown, and its namespaces with how many keys each holds. With a " +
-                "'${ATOOL.file}', that file's keys and their values, narrowed to one '${ATOOL.namespace}' when given.",
+                "each a key of a namespace of a fragment file, with where the file is shown. A key a client is likely to " +
+                "reword also says where a person sees it, in '${CPY.where}': '<page>: <where on it>'. With no input, an " +
+                "index: the pages, each with how many such keys it has, and each file, where it is shown, and its " +
+                "namespaces with how many keys each holds. With a '${ATOOL.page}', the keys a person sees on that page, " +
+                "across files: start there when someone describes words by where they are. With a '${ATOOL.file}', that " +
+                "file's keys and their values, narrowed to one '${ATOOL.namespace}' when given.",
             objectSchema(
+                ATOOL.page to stringSchema("A page, as the index names it, such as '${CPAGE.home}' or '${CPAGE.mail}'."),
                 ATOOL.file to stringSchema("A fragment file's id, such as 'home'."),
                 ATOOL.namespace to stringSchema("A namespace of that file, to read only its keys."),
             ),
             HttpMethod.GET, CPY.keysPath,
         ) { run, input ->
+            val page = input[ATOOL.page].toOptStr()
             val file = input[ATOOL.file].toOptStr()
             val namespace = input[ATOOL.namespace].toOptStr()
-            run.call(HttpMethod.GET, CPY.keysPath, shape = { payload -> copyKeysShaped(payload, file, namespace) })
+            run.call(HttpMethod.GET, CPY.keysPath, shape = { payload -> copyKeysShaped(payload, file, namespace, page) })
         },
         AssistantTool(
             ATOOL.readOverrides,
@@ -918,20 +929,38 @@ object AssistantTools {
 
     /**
      * `read_copy`'s answer (issue #1762) from the copy keys [payload]: every key is more than one answer holds, so with no
-     * [file] an index -- each file, where it is shown, and its namespaces with their key counts -- and with one, its
-     * keys, narrowed to [namespace] when given. A file or namespace with no keys says so, naming the files there are.
+     * [file] or [page] an index -- the pages with how many located keys each has (issue #1799), and each file, where it
+     * is shown, and its namespaces with their key counts. With a [page], the keys whose note names it, across files;
+     * with a [file], its keys, narrowed to [namespace] when given. A page, file, or namespace with no keys says so,
+     * naming the ones there are.
+     *
+     * Theme: #CUSTX.
      */
     @KdrPrivate
-    fun copyKeysShaped(payload: Any?, file: String?, namespace: String?): Any {
+    fun copyKeysShaped(payload: Any?, file: String?, namespace: String?, page: String? = null): Any {
         val keys = (payload as? Map<*, *>)?.get(EP.items).toJsonListOfMaps()
-        if (file == null) {
-            return keys.groupBy { it[COV.fileId].toOptStr().orEmpty() }.map { (fileId, inFile) ->
-                linkedMapOf(
-                    COV.fileId to fileId,
-                    COV.shownOn to inFile.firstNotNullOfOrNull { it[COV.shownOn] },
-                    CPYIDX.namespaces to inFile.groupingBy { it[COV.namespaceField].toOptStr().orEmpty() }.eachCount(),
+        val pageOf = { key: Map<String, Any?> -> key[CPY.where].toOptStr()?.let { FragmentNotes.pageOf(it) } }
+        if (page != null) {
+            val onPage = keys.filter { pageOf(it).equals(page, ignoreCase = true) && (file == null || it[COV.fileId] == file) }
+            if (onPage.isEmpty()) {
+                return mapOf(
+                    CPYIDX.none to "No copy keys say they are on the page '$page'. The pages are: " +
+                        "${CPAGE.pages.joinToString(", ")}; a key on none of them can be found by its file.",
                 )
             }
+            return onPage
+        }
+        if (file == null) {
+            return linkedMapOf(
+                CPYIDX.pages to CPAGE.pages.associateWith { p -> keys.count { pageOf(it) == p } }.filterValues { it > 0 },
+                CPYIDX.files to keys.groupBy { it[COV.fileId].toOptStr().orEmpty() }.map { (fileId, inFile) ->
+                    linkedMapOf(
+                        COV.fileId to fileId,
+                        COV.shownOn to inFile.firstNotNullOfOrNull { it[COV.shownOn] },
+                        CPYIDX.namespaces to inFile.groupingBy { it[COV.namespaceField].toOptStr().orEmpty() }.eachCount(),
+                    )
+                },
+            )
         }
         val chosen = keys.filter { it[COV.fileId] == file && (namespace == null || it[COV.namespaceField] == namespace) }
         if (chosen.isEmpty()) {

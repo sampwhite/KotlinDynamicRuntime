@@ -2,6 +2,7 @@
    shared definition's. Design View's other words are still in the webapp, and belong here as they are moved. Named
    by the shell's UI-config after the home file, since the view has no UI-config of its own. -/
 
+/-where none: Design View's explanation, for whoever edits a workflow's layout. -/
 # @ownCopy
 # +whatIsThis
 A field's copy (its label, description and hint) and a section's heading come from its **shared** definition: every

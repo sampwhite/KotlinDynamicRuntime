@@ -212,7 +212,7 @@ val CopyFileEditor = FC<CopyFileEditorProps> { props ->
         }
         Input {
             value = filter
-            placeholder = "Find a key or the words it says"
+            placeholder = "Find a key, the words it says, or where it is"
             allowClear = true
             style = js("({ maxWidth: 320 })")
             onChange = { e -> filter = (e.target.value as? String).orEmpty() }
@@ -433,6 +433,13 @@ private fun ChildrenBuilder.copyKeyItem(
                     onClick = { onRaw(!isRaw) }
                     +(if (isRaw) "Rendered" else "As written")
                 }
+            }
+        }
+        // Where a person sees the key (issue #1799), for one a client is likely to reword.
+        row.where?.let { where ->
+            div {
+                className = ClassName("copy-key-where")
+                +copyWhereText(where)
             }
         }
         if (isEditing) {

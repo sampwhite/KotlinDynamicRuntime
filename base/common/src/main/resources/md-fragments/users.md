@@ -2,6 +2,7 @@
    words are still in the webapp, and belong here as they are moved. Named by the shell's UI-config after the home
    file, since the page has no UI-config of its own. -/
 
+/-where none: the Users page's explanation, an administrator's page. -/
 # @userList
 # +whatIsThis
 Each row is a user you administer, or, if you are an editor, a user of your client. A user is one person's account in

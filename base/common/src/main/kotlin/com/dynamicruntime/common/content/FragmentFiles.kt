@@ -1,6 +1,7 @@
 package com.dynamicruntime.common.content
 
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.util.parseFragmentNotes
 import com.dynamicruntime.common.util.parseMarkdownFragments
 import com.dynamicruntime.common.util.parseOmnibusFragments
 
@@ -118,6 +119,32 @@ fun duplicateOmnibusDeclarations(sources: List<FragmentSource>): List<String> =
         .filterValues { it.size > 1 }
         .keys.map { it.first }.distinct()
         .map { "the omnibus fragment file '$it' is declared more than once" }
+
+/**
+ * The copy notes (issue #1799) of each fragment file a component ships as a base layer, by file id, and the faults of
+ * the files whose notes do not read -- each a finding, as a file whose values do not parse is.
+ *
+ * Only a component's own file, read from `md-fragments/<fileId>.md`, has notes: a client's configuration and a flavor
+ * change words, and where a key is shown is the component's to say. A file two components ship as a base takes the
+ * first one's.
+ *
+ * Theme: #CUSTX.
+ */
+fun componentCopyNotes(sources: List<FragmentSource>): Pair<Map<String, FragmentNotes>, List<String>> {
+    val notes = LinkedHashMap<String, FragmentNotes>()
+    val faults = mutableListOf<String>()
+    for (source in sources) {
+        val origin = "${MarkdownFragmentService.resourceDir}/${source.fileId}.md"
+        if (source.isOverlay || source.client != null || source.origin != origin || source.fileId in notes) continue
+        val text = ContentResources.readText(MarkdownFragmentService.resourceDir, source.fileId) ?: continue
+        try {
+            notes[source.fileId] = text.parseFragmentNotes()
+        } catch (e: KdrException) {
+            faults.add("the copy notes of '$origin' do not read: ${e.message}")
+        }
+    }
+    return notes to faults
+}
 
 /** Reads and parses `md-fragments/<resourceId>.md`, or null when the resource is absent. */
 private fun readFragmentResource(resourceId: String): Map<String, Map<String, String>>? =

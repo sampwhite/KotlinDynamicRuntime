@@ -32,6 +32,12 @@ object CPY {
     const val applyResultTypeName = "CopyApplyResult"
     const val appliedTypeName = "CopyApplied"
 
+    /**
+     * A key's copy note (issue #1799): where a person sees it, `<page>: <place>`, for a key a client is likely to reword.
+     * Theme: #CUSTX.
+     */
+    const val where = "where"
+
     /** The apply request's list of changes, and the result's list of what each key now reads. */
     const val changes = "changes"
     const val keys = "keys"

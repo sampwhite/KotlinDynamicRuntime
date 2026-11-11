@@ -60,6 +60,23 @@ class CopyFileViewTest {
     }
 
     @Test
+    fun aKeysCopyNoteIsDrawnAndFoundByThePlaceItNames() {
+        // Issue #1799: where a person sees a key, from the keys listing, to its row; Find matches it.
+        val located = parseCopyKeys(listOf(
+            mapOf(
+                COV.fileId to "home", COV.namespaceField to "home", COV.key to "intro", COV.value to "Hello",
+                CPY.where to "Home: the paragraphs under the title.",
+            ),
+            mapOf(COV.fileId to "home", COV.namespaceField to "nav", COV.key to "title", COV.value to "Documents"),
+        ))
+        assertEquals(listOf("Home: the paragraphs under the title.", null), located.map { it.where })
+        val placed = copyKeyRows(located, emptyList())
+        assertEquals(listOf("home:home.intro"), shown(copyFileGroups(placed, CopyViewQuery(null, "under the title"))))
+        assertEquals("Home \u2014 the paragraphs under the title.", copyWhereText("Home: the paragraphs under the title."))
+        assertEquals("somewhere", copyWhereText("somewhere"))
+    }
+
+    @Test
     fun onlyChangedKeepsTheOverriddenKeysAndThePendingOnes() {
         val pending = mapOf(at("home", "home", "title") to PendingCopy("Hello"))
         assertEquals(listOf("home:home.brand", "home:home.renamed", "home:nav.title"), shown(copyFileGroups(rows, CopyViewQuery("home", onlyChanged = true))))

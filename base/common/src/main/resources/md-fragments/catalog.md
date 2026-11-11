@@ -2,6 +2,7 @@
    page's other words are still in the webapp, and belong here as they are moved. Named by the shell's UI-config after
    the home file, since the page has no UI-config of its own. -/
 
+/-where none: the endpoint catalog's explanation, an administrator's page. -/
 # @endpointList
 # +whatIsThis
 Every endpoint you may call, as this site describes it: its path, what it takes, and what it answers. One you may not

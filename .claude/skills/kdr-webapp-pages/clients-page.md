@@ -247,8 +247,10 @@ file -- lays out every namespace and key with the value the client reads, in a p
 apart from the rest of the page (`.copy-file`: a shade darker than the card, headed in a tint of the accent by the
 file, where it is shown and its key count -- `copyFileCountText`). Each value is rendered as Markdown in a box that
 scrolls on its own past a few lines (`.copy-value`), or **As written** per key; placeholders and pulls show as written,
-since there is nothing to fill them from. **Find** searches every file's keys *and values* instead (`copyRowMatches`,
-`copyFileGroups`) -- an administrator usually knows the words on screen, not the key -- and **Only changed** keeps
+since there is nothing to fill them from. A key a client is likely to reword says under its name where a person sees it
+(its copy note, the keys' `where`, issue #1799; `copyWhereText`, "Home — the paragraphs under the title."; theme
+#CUSTX). **Find** searches every file's keys, values, and places instead (`copyRowMatches`, `copyFileGroups`) -- an
+administrator usually knows the words on screen, or where they are, not the key -- and **Only changed** keeps
 the keys the client's configuration sets. The view opens on **no** file (`copyViewOpenFile`): a preselected one read as
 nothing having been chosen, and choosing it again changed nothing. With no file chosen, **Only changed** lists every
 file's changed keys -- the client's customizations at a glance (`copyViewSpansFiles`). A changed key says who set it (`copyRowStatus`), with "What it replaces"

@@ -4,6 +4,7 @@
 /- The page's own words (issue #1479). `structureLabel` is what a screen reader calls the line under the title: the
    address, the person's users, and the access of the one acted as. The name is a panel of its own, saved by its own
    Save; what you are called is not a credential, so it needs no emailed code. -/
+/-where none: the Profile page, the same for every client. -/
 # @profile
 # +title Your profile
 # +structureLabel How your account is put together
@@ -28,6 +29,7 @@
    do here, one line per thing, chosen from the `can*` keys: every client, else their own client (`canAdministerOrg`
    for one confined to an organization), else their own address's users (an administrator in `public`); an editor's,
    as far; an operator's; opening the sandbox; and, for a user who administers and edits no client, their own forms. -/
+/-where none: the Profile page, the same for every client. -/
 # @account
 # +title Your account
 # +signedInAs Signed in as
@@ -63,6 +65,7 @@
    ${users.signsInAs} are supplied by the page, each as "Member B in Acme". `helpExtra` is empty as shipped; a
    deployment flavor's overlay adds to it (the reference flavor says the bar can switch too). `whatIsThis` is the
    concept behind it, opened from the heading's "What is this?" link; empty, the link is not offered. -/
+/-where none: the Profile page, the same for every client. -/
 # @users
 # +title Your users
 # +help
@@ -103,6 +106,7 @@ Switching moves you from one to another without signing in again.
 
 /- The public placeholder (issue #752): a person may remove their public users, down to nothing -- they
    registered themselves, so they can register again. `helpOnly` is for their last user. -/
+/-where none: the Profile page, the same for every client. -/
 # @placeholder
 # +title Your public account
 # +help You registered before being placed anywhere, so you have an account in the public placeholder client. You can remove it. This is permanent, and your other accounts are not affected.
@@ -115,6 +119,7 @@ Switching moves you from one to another without signing in again.
 /- The Sign-in panel (issue #1479): the password's status, the emailed code that a change needs, and its removal, which
    asks first (`removeQuestion`). `remove` is the danger button that asks, drawn with an ellipsis; `removeConfirm` is
    the one that removes. -/
+/-where none: the Profile page, the same for every client. -/
 # @password
 # +title Sign-in
 # +hasPassword You have a password set. You can change it or remove it.

@@ -2,6 +2,7 @@
    words are still in the webapp, and belong here as they are moved. Named by the shell's UI-config after the home
    file, since the page has no UI-config of its own. -/
 
+/-where none: the Reports page's explanations, an administrator's page. -/
 # @views
 # +whatIsThis
 A report reads the client's forms in one of three views.
@@ -17,6 +18,7 @@ A report reads the client's forms in one of three views.
 
 **Must have** leaves out the forms with no value in the columns chosen there.
 
+/-where none: the Reports page's explanations, an administrator's page. -/
 # @newReport
 # +whatIsThis
 **New report** makes a report from a few choices, of one of two kinds.

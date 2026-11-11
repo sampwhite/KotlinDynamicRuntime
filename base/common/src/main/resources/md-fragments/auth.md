@@ -2,6 +2,7 @@
    Fetched via /st/<appId>/md/auth:<buildId>. The frontend resolves ${...} placeholders at render time;
    ${user.*} values are supplied from live state (the account name in the menu, the email in the code note). -/
 
+/-where none: the account menu, the same for every client. -/
 # @menu
 # +signedInAs Signed in as **${user.publicName}**
 # +profile Profile
@@ -9,6 +10,7 @@
 # +login Log in
 # +register Register
 
+/-where none: seen before signing in, so in the deployment's words. -/
 # @login
 # +title Log in
 /- Above the sign-in form, and empty as shipped, so nothing shows (issue #1221): a word about this deployment's
@@ -29,6 +31,7 @@
 # +newPasswordHelp You can use it to sign in from this browser next time.
 # +orDivider or
 
+/-where none: seen before signing in, so in the deployment's words. -/
 # @register
 # +title Create your account
 /- Above the registration form, and empty as shipped, so nothing shows (issue #1698): a word about what the address is
@@ -60,6 +63,7 @@
 /- Claiming an account created for you (issue #751): the third mode of the auth flow. No choice lists -- the
    client and persona are typed from the invitation, so an anonymous caller learns nothing about a client's
    configuration -- and the page reports the code as sent whatever the backend found: the mail says the rest. -/
+/-where none: seen before signing in, so in the deployment's words. -/
 # @claim
 # +title Claim an account created for you
 # +intro Somebody created an account for you and told you the client ID and the persona. Enter them with your email address, and a code will be sent to that address.
@@ -73,11 +77,13 @@
 # +finish Claim and sign in
 # +loginLink Claim an account created for you
 
+/-where none: seen before signing in, so in the deployment's words. -/
 # @verify
 # +expiresNote The code expires in fifteen minutes.
 
 /- The invitation page (issue #751): reached from a mailed link. Nothing happens until the person accepts,
    so a mail scanner that opens the link accepts nothing on their behalf. -/
+/-where none: seen before signing in, so in the deployment's words. -/
 # @invite
 # +title You have been invited
 # +summary An account has been created for **${invite.email}** at **${invite.clientName}**, as **${invite.persona}**.
@@ -95,6 +101,7 @@
    substituted ${...} params are run through sanitizeForDisplay, so a param cannot inject a link. The frontend
    still shows these as plain text today, so Markdown would render literally until it renders them as Markdown
    (a later frontend change) – author with that in mind. Keys match AERR. -/
+/-where none: the sign-in flow's error messages. -/
 # @error
 # +codeIncorrect The verification code is incorrect.
 # +tokenExpired The sign-in form has expired. Please request a new code and try again.

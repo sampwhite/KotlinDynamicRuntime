@@ -3,14 +3,17 @@
    task's page shows. A workflow's own label (issue #719) -- the page's title -- sits under a namespace named
    for the workflow. -/
 
+/-where none: Acme's own workflow words, which no other client shows. -/
 # @createForm
 
 # +label New expense form
 
+/-where none: Acme's own workflow words, which no other client shows. -/
 # @reviewForm
 
 # +label Expense report review
 
+/-where none: Acme's own workflow words, which no other client shows. -/
 # @identify
 
 # +label Answer an issues question and enter your expense report
@@ -19,11 +22,13 @@
 /- The core details workflow's tasks (issue #656): the owner revisits the same data after creation. Two tasks, one
    namespace each -- the review of the two form traits, and the supplied-defaults profile (issue #711). -/
 
+/-where none: Acme's own workflow words, which no other client shows. -/
 # @details
 
 # +label Review your expense report and questionnaire
 # +save Save changes
 
+/-where none: Acme's own workflow words, which no other client shows. -/
 # @profile
 
 # +label Confirm your contact details
@@ -32,6 +37,7 @@
 /- The normal workflow's eligibility explanations (issue #783): shown as the reasons a form cannot be put
    into the audit review, under a namespace named for the workflow, keyed by the eligibility test's id. -/
 
+/-where none: Acme's own workflow words, which no other client shows. -/
 # @auditReview
 
 # +coreDetailsDone Finish reviewing your form first -- an audit review starts from a completed review.

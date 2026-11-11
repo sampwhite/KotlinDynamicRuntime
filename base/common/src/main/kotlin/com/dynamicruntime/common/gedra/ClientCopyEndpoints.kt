@@ -1,5 +1,6 @@
 package com.dynamicruntime.common.gedra
 
+import com.dynamicruntime.common.content.CPAGE
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.endpoint.HttpMethod
 import com.dynamicruntime.common.endpoint.InputFieldsBuilder
@@ -28,6 +29,8 @@ fun clientCopySchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CPY.namespace) 
         property(COV.value, "The value this client reads, every layer applied.", required = true) { emptyIsAbsent = false }
         property(COV.shownOn, "Where the application shows the file's copy, as its declaration says; absent for a file " +
             "the application does not show -- a fixture, or one only a deployment's own frontend reads by URL.")
+        property(CPY.where, "Where a person sees this key, as '<page>: <where on it>', for a key a client is likely to " +
+            "reword; absent for the rest. The page is one of ${CPAGE.pages.joinToString(", ")}.")
     }
     type(CPY.resultTypeName) {
         type = SCT.kObject
@@ -90,6 +93,7 @@ fun clientCopySchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CPY.namespace) 
                 COV.fileId to it.fileId, COV.namespaceField to it.namespace, COV.key to it.key, COV.audience to it.audience, COV.value to it.value,
             )
             it.shownOn?.let { where -> out[COV.shownOn] = where }
+            it.where?.let { where -> out[CPY.where] = where }
             out
         }
     }
