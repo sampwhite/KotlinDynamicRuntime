@@ -7,6 +7,8 @@ import com.dynamicruntime.common.assistant.ATOOL
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.gedra.CCT
 import com.dynamicruntime.common.gedra.CFEP
+import com.dynamicruntime.common.gedra.COV
+import com.dynamicruntime.common.gedra.CPY
 import com.dynamicruntime.common.gedra.CLD
 import com.dynamicruntime.common.gedra.DSV
 import com.dynamicruntime.common.gedra.GDF
@@ -136,6 +138,33 @@ class AssistantTranscriptTest {
         assertEquals(listOf("`gone`", "The included traits"), made.map { it.title })
         assertEquals(emptyList(), made[0].workflowIds)
         assertNull(made[0].version)
+    }
+
+    @Test
+    fun aWordingOrMenuWriteIsLabeledByWhatItChangedAndListsTheBundleItLandedIn() {
+        // Issue #1763: the copy and menu editors' saves, as tools.
+        val title = mapOf(COV.fileId to "home", COV.namespaceField to "home", COV.key to "title")
+        fun call(name: String, input: Map<String, Any?>, result: String = "{\"${COV.configName}\":\"copy\"}", isError: Boolean = false) =
+            ToolCall("w", name, input, result, isError)
+        assertEquals("Drafted copy `home: home.title`", toolsLabel(listOf(call(ATOOL.setCopy, title))))
+        assertEquals("Drafted the platform's wording for copy `home: home.title`", toolsLabel(listOf(call(ATOOL.resetCopy, title))))
+        assertEquals(
+            "Drafted copy in `home` (2 keys)",
+            toolsLabel(listOf(call(ATOOL.applyCopy, mapOf(COV.fileId to "home", CPY.changes to listOf(emptyMap<String, Any?>(), emptyMap()))))),
+        )
+        assertEquals("Drafted menu item `docs`", toolsLabel(listOf(call(ATOOL.setMenuItem, mapOf(COV.itemId to "docs")))))
+        assertEquals("Drafted the shipped menu item `docs`", toolsLabel(listOf(call(ATOOL.resetMenuItem, mapOf(COV.itemId to "docs")))))
+        assertEquals("Not drafted: menu item `docs`", toolsLabel(listOf(call(ATOOL.setMenuItem, mapOf(COV.itemId to "docs"), "No.", true))))
+
+        // The bundle each save landed in is a draft, once however often it is written; a refused one is none.
+        val written = listOf(
+            person(1, text("Reword the title, and hide Documents.")),
+            model(2, use("a", ATOOL.setCopy, title + (COV.value to "Hi")), use("b", ATOOL.setMenuItem, mapOf(COV.itemId to "docs"))),
+            person(3, result("a", "{\"${COV.configName}\":\"copy\"}"), result("b", "{\"${COV.configName}\":\"copy\"}")),
+            model(4, use("c", ATOOL.resetCopy, title)),
+            person(5, result("c", "Nothing to put back.", isError = true)),
+        )
+        assertEquals(listOf("`copy`"), draftsOf(written).map { it.title })
     }
 
     @Test

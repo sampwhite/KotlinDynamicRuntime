@@ -702,6 +702,60 @@ class AssistantTurnsTest : StringSpec({
         AssistantTools.run(run, ATOOL.readDefinition, mapOf(DSV.slot to "kdr:nope", DSV.key to "memo")).isError shouldBe true
     }
 
+    "the wording and menu writes save drafts from the sandbox: the sandbox shows them, the client's people do not yet" {
+        // Issue #1763: the copy and menu editors' saves, as tools, called as the person's user in the sandbox.
+        val client = "asstwording"
+        val admin = clientWithAssistant(cxt, client)
+        val sandboxUserId = admin.postData(AEP.openSandbox, emptyMap())[UPF.userId].toOptLong().shouldNotBeNull()
+        admin.postData(AEP.leaveSandbox, mapOf(AFLD.userId to admin.userId))
+        val row = UserService.get(cxt).queryByUserId(cxt, sandboxUserId).shouldNotBeNull()
+        val run = ToolRun(cxt, InProcessPrincipal(sandboxUserId, row.identityId, row.client, "assistant:test", AssistantTools.scope), "t1763")
+        fun write(name: String, input: Map<String, Any?>): Map<String, Any?> {
+            val result = AssistantTools.run(run, name, input)
+            result.isError shouldBe false
+            return result.text.json().toJsonMapOrEmpty()
+        }
+        val title = mapOf(COV.fileId to HFRAG.home, COV.namespaceField to HFRAG.homeNs, COV.key to HFRAG.title)
+        // The title as the sandbox reads it (through the read tool), and as the client's people do.
+        fun sandboxTitle(): Any? = AssistantTools.run(run, ATOOL.readCopy, mapOf(ATOOL.file to HFRAG.home, ATOOL.namespace to HFRAG.homeNs))
+            .text.json().toJsonListOfMaps().single { it[COV.key] == HFRAG.title }[COV.value]
+        fun clientTitle(): Any? = admin.getItems(CPY.keysPath)
+            .single { it[COV.fileId] == HFRAG.home && it[COV.namespaceField] == HFRAG.homeNs && it[COV.key] == HFRAG.title }[COV.value]
+        val shipped = clientTitle()
+
+        write(ATOOL.setCopy, title + (COV.value to "Welcome to the club"))[CPY.mode] shouldBe EDM.draft
+        sandboxTitle() shouldBe "Welcome to the club"
+        clientTitle() shouldBe shipped
+        // Several keys together, one of them put back.
+        val applied = write(
+            ATOOL.applyCopy,
+            mapOf(
+                COV.fileId to HFRAG.home,
+                CPY.changes to listOf(
+                    mapOf(COV.namespaceField to HFRAG.homeNs, COV.key to HFRAG.title, CPY.reset to true),
+                    mapOf(COV.namespaceField to HFRAG.homeNs, COV.key to HFRAG.note, COV.value to "Meetings are on Tuesdays."),
+                ),
+            ),
+        )
+        applied[CPY.mode] shouldBe EDM.draft
+        sandboxTitle() shouldBe shipped
+        write(ATOOL.resetCopy, mapOf(COV.fileId to HFRAG.home, COV.namespaceField to HFRAG.homeNs, COV.key to HFRAG.note))[CPY.mode] shouldBe
+            EDM.draft
+        // A key the client does not reword cannot be put back: the endpoint's refusal, for the model to correct from.
+        AssistantTools.run(run, ATOOL.resetCopy, title).isError shouldBe true
+
+        // The menu: hidden in the sandbox, offered as before to the client's people, then put back.
+        fun sandboxDocs(): Any? = AssistantTools.run(run, ATOOL.readMenu, emptyMap()).text.json().toJsonMapOrEmpty()[EP.items]
+            .toJsonListOfMaps().single { it[COV.itemId] == HMENU.docs }[MNU.condition]
+        fun clientDocs(): Any? = admin.getItems(MNU.itemsPath).single { it[COV.itemId] == HMENU.docs }[MNU.condition]
+        val offered = clientDocs()
+        write(ATOOL.setMenuItem, mapOf(COV.itemId to HMENU.docs, MNU.visibility to MNU.hide))[CPY.mode] shouldBe EDM.draft
+        sandboxDocs() shouldBe CFACT.neverName
+        clientDocs() shouldBe offered
+        write(ATOOL.resetMenuItem, mapOf(COV.itemId to HMENU.docs))[CPY.mode] shouldBe EDM.draft
+        sandboxDocs() shouldBe offered
+    }
+
     "each tool's endpoint exists, is open to the seam, and takes what the tool sends; the assistant's own are session-only" {
         val schema = cxt.getGlobalSchema()
         for (tool in AssistantTools.all.filter { it.path != null }) {

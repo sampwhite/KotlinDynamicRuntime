@@ -6,6 +6,8 @@ import com.dynamicruntime.common.assistant.ATOOL
 import com.dynamicruntime.common.gedra.CCT
 import com.dynamicruntime.common.gedra.CFEP
 import com.dynamicruntime.common.gedra.CLD
+import com.dynamicruntime.common.gedra.COV
+import com.dynamicruntime.common.gedra.CPY
 import com.dynamicruntime.common.gedra.DSV
 import com.dynamicruntime.common.gedra.GDF
 import com.dynamicruntime.common.gedra.GE
@@ -120,11 +122,32 @@ fun toolsLabel(calls: List<ToolCall>): String {
             }
             ATOOL.setIncludedTraits ->
                 parts.add(if (call.isError) "Not drafted: the included traits" else "Drafted the included traits$outcome")
+            in wordingAndMenuWrites -> {
+                val what = wroteWhat(call)
+                parts.add(if (call.isError) "Not drafted: $what" else "Drafted $what$outcome")
+            }
             else -> looked.add(lookedAt(call) + outcome)
         }
     }
     if (looked.isNotEmpty()) parts.add(0, "Looked at: ${looked.joinToString(", ")}")
     return parts.joinToString("; ")
+}
+
+/** The targeted writes of the client's wording and menu (issue #1763), each saving a draft of one bundle. */
+private val wordingAndMenuWrites = setOf(ATOOL.setCopy, ATOOL.applyCopy, ATOOL.resetCopy, ATOOL.setMenuItem, ATOOL.resetMenuItem)
+
+/** What a wording or menu write changed, as the label names it: "copy `home: home.title`", "menu item `docs`". */
+fun wroteWhat(call: ToolCall): String {
+    val file = call.input.getOptStr(COV.fileId).orEmpty()
+    fun key() = "copy `$file: ${call.input.getOptStr(COV.namespaceField).orEmpty()}.${call.input.getOptStr(COV.key).orEmpty()}`"
+    val item = "menu item `${call.input.getOptStr(COV.itemId).orEmpty()}`"
+    return when (call.name) {
+        ATOOL.setCopy -> key()
+        ATOOL.resetCopy -> "the platform's wording for ${key()}"
+        ATOOL.applyCopy -> "copy in `$file` (${call.input[CPY.changes].toJsonListOfMaps().size} keys)"
+        ATOOL.resetMenuItem -> "the shipped $item"
+        else -> item
+    }
 }
 
 /** What a read call looked at, as the label names it. */
@@ -172,7 +195,8 @@ fun writtenVersions(result: String?): Map<String, Long> =
 
 /**
  * One configuration the conversation drafted (issue #1527): a bundle written by `patch_config` -- its latest version, as
- * far as the answer said, and the workflows its edits added or changed -- or the included traits ([isTraits]).
+ * far as the answer said, and the workflows its edits added or changed -- or by a wording or menu save (issue #1763), or
+ * the included traits ([isTraits]).
  */
 class AssistantDraft(val bundle: String?, val version: Long?, val workflowIds: List<String>, val isTraits: Boolean = false) {
     /** How the drafts panel names it: "`rsvp` (v3)", or "The included traits". */
@@ -204,6 +228,11 @@ fun draftsOf(messages: List<StoredMessage>): List<AssistantDraft> {
                 }
             }
             ATOOL.setIncludedTraits -> drafts[CLD.includedTraits] = AssistantDraft(null, null, emptyList(), isTraits = true)
+            // The bundle a wording or menu save landed in (issue #1763), which its answer names.
+            in wordingAndMenuWrites -> {
+                val name = call.result.jsonMapOrNull()?.getOptStr(COV.configName) ?: continue
+                drafts[name] = drafts[name] ?: AssistantDraft(name, null, emptyList())
+            }
         }
     }
     return drafts.values.toList()
