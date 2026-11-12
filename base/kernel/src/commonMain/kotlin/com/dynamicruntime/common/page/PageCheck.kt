@@ -64,9 +64,7 @@ fun pageDocumentProblems(text: String, scope: PageCheckScope): List<String> {
 /** What is wrong with [fence]'s kind and parameters, or null. A fence's keys that are not text are named here too. */
 private fun fenceKindProblem(fence: PageFence, scope: PageCheckScope): String? {
     val widget = fence.widget
-    if (widget == null) {
-        return if (fence.copy == null) "names neither a ${PGW.widget} nor a ${PGW.copy}, so it would draw nothing." else null
-    }
+        ?: return if (fence.copy == null) "names neither a ${PGW.widget} nor a ${PGW.copy}, so it would draw nothing." else null
     val kind = scope.catalog.kind(widget)
         ?: return "names the widget '$widget', which is not one of ${scope.catalog.kinds.joinToString(", ") { "'${it.name}'" }}."
     if (!scope.shipped && kind.placement == PageWidgetPlacement.shippedCopy) {
