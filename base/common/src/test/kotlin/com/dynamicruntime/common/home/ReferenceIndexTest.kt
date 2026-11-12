@@ -17,7 +17,7 @@ class ReferenceIndexTest : StringSpec({
     "every document under the references' directory but the index is a served reference, generated and unlisted" {
         val references = servedReferences()
         references.map { it.docId } shouldContainExactlyInAnyOrder listOf(
-            HDOC.schemaDialect, HDOC.validationMessages, HDOC.expressions, HDOC.facts, HDOC.copy, HDOC.reportPaths,
+            HDOC.schemaDialect, HDOC.validationMessages, HDOC.expressions, HDOC.facts, HDOC.copy, HDOC.pageWidgets, HDOC.reportPaths,
             HDOC.formLayouts, HDOC.rolesAndAccess, HDOC.clientConfiguration,
         )
         for (doc in references) {

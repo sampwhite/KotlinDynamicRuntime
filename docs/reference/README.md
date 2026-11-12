@@ -15,6 +15,7 @@ Read a guide first for how the pieces fit together: [Start here](../start-here.m
 | [Expressions](expressions.md) | The expression language copy, columns, layouts, and computed values are written in, and its functions -- made from the functions. |
 | [Facts](facts.md) | The yes-or-no facts that decide who sees a menu entry or a field, who may save, and which forms a workflow takes. |
 | [Copy](copy.md) | The Markdown copy is written in, the roles that set a phrase or an image apart, and the fragment files copy is kept in. |
+| [Page widgets](page-widgets.md) | How a page written as copy places widgets with fences, what the checks refuse, and every kind of widget -- made from the kinds. |
 | [Report paths](report-paths.md) | How a report column names where its value comes from, and every attribute a path can end in, with its kind. |
 | [Form layouts](form-layouts.md) | What a type's layout may hold: field copy, which fields show and in what order, form wording, and a client's changes. |
 | [Roles and access](roles-and-access.md) | What each role grants, who may call each section of the API, whose data a caller reads, and how to ask why not. |

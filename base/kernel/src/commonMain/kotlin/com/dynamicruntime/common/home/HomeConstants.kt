@@ -821,6 +821,8 @@ object HDOC {
     const val facts = "facts"
     /** Copy: the Markdown the runtime renders, its roles, and the fragment files copy is kept in (issue #1562). Generated. */
     const val copy = "copy"
+    /** How a page document places widgets with fences, and every widget kind (issue #1792). Generated. */
+    const val pageWidgets = "page-widgets"
     /** How a report column's path is written, and every name it may end in (issue #1563). Generated. */
     const val reportPaths = "report-paths"
     /** What a type's `g-layout` may hold, and how a client's layout merges with the shared one (issue #1609). Generated. */
