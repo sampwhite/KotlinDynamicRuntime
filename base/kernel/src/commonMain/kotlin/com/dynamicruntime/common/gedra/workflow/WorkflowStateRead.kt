@@ -88,15 +88,19 @@ fun currentApprovals(entries: List<Map<String, Any?>>, workflowId: String): Map<
  * `approvalKey` to its latest [WFS.approvalReversedEvent] -- who reversed it, when, why, and which approval they chose
  * ([WFS.reversedFrom]). None when the form is not engaged. What a task shows in place of the approval it had, until it
  * is approved again. Read from the trail alone, after its last `engaged` event, since a reversal removes the record.
+ * [given] is the approvals that count now, by key: [currentApprovals]' keys, which a caller that has them passes.
  */
-fun currentReversals(entries: List<Map<String, Any?>>, workflowId: String): Map<String, Map<String, Any?>> {
+fun currentReversals(
+    entries: List<Map<String, Any?>>,
+    workflowId: String,
+    given: Set<String> = currentApprovals(entries, workflowId).keys,
+): Map<String, Map<String, Any?>> {
     val engagement = engagementDataOf(entries, workflowId).orEmpty()
     if (engagement[WFS.engaged] != true) {
         return emptyMap()
     }
     val events = engagement[WFS.events].toJsonListOfMaps()
     val since = events.indexOfLast { it[WFS.kind].toOptStr() == WFS.engagedEvent } + 1
-    val given = currentApprovals(entries, workflowId).keys
     val out = LinkedHashMap<String, Map<String, Any?>>()
     for (event in events.drop(since)) {
         val key = event[WFS.note].toOptStr() ?: continue
@@ -127,9 +131,14 @@ fun newestWorkflowStamp(entries: List<Map<String, Any?>>, workflowId: String): I
  * The latest reversal standing against an approval task of [workflowId] (issue #1787): among the task's steps' keys
  * ([keys], each an [approvalKey]), the [currentReversals] event with the newest `at` -- so for a task approved in steps,
  * the last step reversed and not given again. Null when none stands: never reversed, given again since, or the form
- * re-engaged.
+ * re-engaged. [given] as for [currentReversals].
  */
-fun taskReversal(entries: List<Map<String, Any?>>, workflowId: String, keys: List<String>): Map<String, Any?>? {
-    val reversals = currentReversals(entries, workflowId)
+fun taskReversal(
+    entries: List<Map<String, Any?>>,
+    workflowId: String,
+    keys: List<String>,
+    given: Set<String> = currentApprovals(entries, workflowId).keys,
+): Map<String, Any?>? {
+    val reversals = currentReversals(entries, workflowId, given)
     return keys.mapNotNull { reversals[it] }.maxByOrNull { it[WFS.at].toOptInstant() ?: Instant.DISTANT_PAST }
 }

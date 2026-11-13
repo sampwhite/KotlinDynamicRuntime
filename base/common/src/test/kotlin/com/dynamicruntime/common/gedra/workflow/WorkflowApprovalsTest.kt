@@ -68,7 +68,7 @@ class WorkflowApprovalsTest : StringSpec({
             ),
         )
         // The newest is the approval's, two milliseconds on; a clock that has not passed it is moved one past it.
-        WorkflowEngagement.newestStamp(entries, "wf") shouldBe t + 2.milliseconds
+        newestWorkflowStamp(entries, "wf") shouldBe t + 2.milliseconds
         WorkflowEngagement.stampAfter(entries, "wf", t) shouldBe t + 3.milliseconds
         // A clock already past it is taken as it is.
         WorkflowEngagement.stampAfter(entries, "wf", t + 10.milliseconds) shouldBe t + 10.milliseconds

@@ -14,6 +14,10 @@ import com.dynamicruntime.common.gedra.GedraConfigReload
 import com.dynamicruntime.common.gedra.GedraConfigService
 import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.gedraConfig
+import com.dynamicruntime.common.gedra.report.RDEF
+import com.dynamicruntime.common.gedra.report.RMETA
+import com.dynamicruntime.common.gedra.report.RRUN
+import com.dynamicruntime.common.gedra.report.RWF
 import com.dynamicruntime.common.gedra.workflow.CDF
 import com.dynamicruntime.common.gedra.workflow.WFD
 import com.dynamicruntime.common.gedra.workflow.WFS
@@ -214,6 +218,41 @@ class ApprovalReversalTest : StringSpec({
         // An administrator of every client may too, through the client's own copy of the endpoint.
         fullAdmin.postData(clientPath(GEP.workflowReverseApproval, client), reverse(gid, "a"))
         approvalKeys(gid) shouldBe emptyList()
+    }
+
+    "a report reads a standing reversal and the workflow's last activity from the stored trail" {
+        // Read back through the database, where the trail's events are open maps of parsed JSON -- not the kernel test's
+        // hand-built values.
+        val gid = approvedForm()
+        admin.postData(GEP.workflowReverseApproval, reverse(gid, "b", "sign", "Signed too soon."))
+        val reversal = events(gid).last()
+        reversal[WFS.kind] shouldBe WFS.approvalReversedEvent
+        val approvalB = "workflow.$workflowId.${RWF.approval}[b]"
+        fun column(label: String, path: String) = mapOf(RDEF.label to label, RDEF.path to path)
+        admin.postData(
+            UADEP.reportCreate,
+            mapOf(
+                RDEF.label to "Reversals",
+                RDEF.columns to listOf(
+                    column("Form", "meta.${RMETA.gedraId}"),
+                    column("Reversed", "$approvalB.${RWF.reversed}"),
+                    column("Reversed on", "$approvalB.${RWF.reversedAt}"),
+                    column("Reversed by", "$approvalB.${RWF.reversedBy}"),
+                    column("Reason", "$approvalB.${RWF.reversedReason}"),
+                    column("First reversed", "workflow.$workflowId.${RWF.approval}[a].${RWF.reversed}"),
+                    column("Last activity", "workflow.$workflowId.${RWF.lastActivityAt}"),
+                ),
+            ),
+        )
+        val rows = admin.getItems(UADEP.reportRun, mapOf(RRUN.reportId to "reversals")).map { it[RRUN.values].toJsonMapOrEmpty() }
+        val row = rows.single { it["form"] == gid }
+        row["reversed"] shouldBe true
+        row["reversedOn"] shouldBe reversal[WFS.at]
+        row["reversedBy"] shouldBe admin.userId
+        row["reason"] shouldBe "Signed too soon."
+        // The first approval still stands, and the reversal is the last thing anyone did there.
+        row["firstReversed"] shouldBe false
+        row["lastActivity"] shouldBe reversal[WFS.at]
     }
 
     "an administrator of another client cannot reach the form" {
