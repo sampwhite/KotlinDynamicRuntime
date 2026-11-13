@@ -260,6 +260,8 @@ fun addCoreCFacts(collector: SchemaCollector) {
             CFACTS.loggedIn, CFGRP.caller,
             "True when the request carries an authenticated identity -- neither the anonymous profile nor " +
                 "the unauthenticated system one.",
+            // Delivered to the frontend (issue #1793): a page's widget fence tests it, judged in the browser.
+            toFrontend = true,
         ),
     ) { it.userProfile.isLoggedIn }
     collector.addCFact(
@@ -267,6 +269,8 @@ fun addCoreCFacts(collector: SchemaCollector) {
             CFACTS.anonymous, CFGRP.caller,
             "True when the request carries no authenticated identity. The positive form of `~${CFACTS.loggedIn}`, and " +
                 "preferred over it: a test written by exclusion admits every state invented later.",
+            // Delivered with `loggedIn` (issue #1793), so a page's fence can say it the preferred way.
+            toFrontend = true,
         ),
     ) { !it.userProfile.isLoggedIn }
     collector.addCFact(

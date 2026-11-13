@@ -1,6 +1,6 @@
 package com.dynamicruntime.common.content
 
-import com.dynamicruntime.common.cfact.CFactRegistry
+import com.dynamicruntime.common.cfact.pageCfactNames
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.gedra.GedraConfig
 import com.dynamicruntime.common.page.PGW
@@ -9,14 +9,11 @@ import com.dynamicruntime.common.page.PageWidgets
 import com.dynamicruntime.common.page.pageDocumentProblems
 import com.dynamicruntime.common.startup.SchemaService
 
-/** The cfacts of [this] that are sent to the frontend (issue #1792): all a page's condition, judged in the browser, sees. */
-fun CFactRegistry.frontendNames(): Set<String> = defs.values.filter { it.toFrontend }.mapTo(LinkedHashSet()) { it.name }
-
 /**
  * Copy every client shares whose widget fences are wrong (issue #1792): one finding per key and problem, said as
  * [pageDocumentProblems] says them. For the fragment check at boot, as [sharedCopyRoleProblems] is for roles; a client's
  * own copy is judged with its configuration ([ClientCopyPageCheck]). A fence's `copy` key is looked for in its file
- * as every client shares it, and its condition is held to the cfacts every client knows and those sent to the frontend.
+ * as every client shares it, and its condition is held to the cfacts every client knows and those a page can see.
  */
 fun sharedCopyPageProblems(cxt: KdrCxt, sources: List<FragmentSource>): List<String> {
     val shared = sources.filter { it.client == null }
@@ -26,7 +23,7 @@ fun sharedCopyPageProblems(cxt: KdrCxt, sources: List<FragmentSource>): List<Str
     }
     if (withFences.isEmpty()) return emptyList()
     val registry = SchemaService.get(cxt).cfactsFor(null)
-    val frontend = registry.frontendNames()
+    val pageCfacts = registry.pageCfactNames()
     val merged = HashMap<String, Map<String, Map<String, String>>>()
     val findings = mutableListOf<String>()
     for ((layer, content) in withFences) {
@@ -36,7 +33,7 @@ fun sharedCopyPageProblems(cxt: KdrCxt, sources: List<FragmentSource>): List<Str
         val scope = PageCheckScope(
             PageWidgets.core, shipped = true,
             copyKeyExists = { namespace, key -> file[namespace]?.containsKey(key) == true },
-            knownCfacts = registry.names, frontendCfacts = frontend,
+            knownCfacts = registry.names, pageCfacts = pageCfacts,
         )
         for ((namespace, keys) in content) {
             for ((key, value) in keys) {
@@ -57,7 +54,8 @@ fun sharedCopyPageProblems(cxt: KdrCxt, sources: List<FragmentSource>): List<Str
  *    for this one (a parent's copy copied to its sandbox, a template's cloned to the client, a source overlay filed under
  *    it) -- and in the client's [configs] being judged, which a write trial has not registered yet;
  *  - its condition is held to the cfacts the client knows (the global ones, and its own as the schema service has them)
- *    plus those its [configs] declare, and of those, the ones sent to the frontend.
+ *    plus those its [configs] declare, and of those, the ones a page can see ([pageCfactNames]): never the client's own,
+ *    which are about its forms, sent to the frontend or not.
  *
  * What is registered may be the client's copy before this write; it only adds names, so a fence is never refused for it.
  */
@@ -66,11 +64,7 @@ class ClientCopyPageCheck(private val cxt: KdrCxt, private val client: String, c
 
     private val facts: Pair<Set<String>, Set<String>> by lazy {
         val registry = SchemaService.get(cxt).cfactsFor(client)
-        val declared = own.flatMap { it.cfacts }
-        Pair(
-            registry.names + declared.map { it.name },
-            registry.frontendNames() + declared.filter { it.toFrontend }.map { it.name },
-        )
+        Pair(registry.names + own.flatMap { it.cfacts }.map { it.name }, registry.pageCfactNames())
     }
 
     private val scopes = HashMap<String, PageCheckScope>()
@@ -91,7 +85,7 @@ class ClientCopyPageCheck(private val cxt: KdrCxt, private val client: String, c
             copyKeyExists = { namespace, key ->
                 file[namespace]?.containsKey(key) == true || judged.any { it[namespace]?.containsKey(key) == true }
             },
-            knownCfacts = facts.first, frontendCfacts = facts.second,
+            knownCfacts = facts.first, pageCfacts = facts.second,
         )
     }
 }

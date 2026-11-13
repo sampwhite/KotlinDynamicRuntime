@@ -17,6 +17,7 @@ import com.dynamicruntime.common.content.fragmentRefs
 import com.dynamicruntime.common.content.uiFragmentsProperty
 import com.dynamicruntime.common.cfact.CFACT
 import com.dynamicruntime.common.cfact.CFACTS
+import com.dynamicruntime.common.cfact.CallerCfacts
 import com.dynamicruntime.common.cfact.factsMarkdown
 import com.dynamicruntime.common.context.ENVGRP
 import com.dynamicruntime.common.context.EnvVarDef
@@ -330,6 +331,12 @@ fun homeSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.home") {
                 "The images components ship that are kept in the repository (issue #1463), each path there to its " +
                     "rooted name, a key of `${HFLD.images}`: a document's link to that path is drawn as the image.",
             ) { mapOfValues { type = SCT.string } }
+            property(
+                HFLD.cfacts,
+                "The caller's cfacts that are sent to the frontend (issue #1793), each name to whether it is present for " +
+                    "them: the whole such vocabulary, so a test naming an absent one still parses. What a page's widget " +
+                    "fences are judged on in the browser.",
+            ) { mapOfValues { type = SCT.boolean } }
         }
     }
 
@@ -372,8 +379,11 @@ fun homeSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.home") {
             ),
             UIC.state to buildMap {
                 put(HFLD.links, homeLinksFor(c))
-                // The menu and the cards together, so the caller's cfacts are assembled once for both (issue #1636).
-                val blocks = UiBlockService.get(c).resolveAll(c, listOf(HMENU.block, HCARD.block))
+                // The caller's cfacts, assembled once (issue #1636) for the menu, the cards, and what a page's conditions
+                // are judged on in the browser (issue #1793).
+                val facts = CallerCfacts.assemble(c)
+                put(HFLD.cfacts, facts.forPages)
+                val blocks = UiBlockService.get(c).resolveAll(c, listOf(HMENU.block, HCARD.block), facts)
                 put(HFLD.menu, blocks[HMENU.block]?.get(HFLD.menu) as? List<*> ?: emptyList<Any?>())
                 put(HCARD.cards, blocks[HCARD.block]?.get(HCARD.cards) as? List<*> ?: emptyList<Any?>())
                 put(HFLD.userInfo, c.userProfile.toUserInfo())

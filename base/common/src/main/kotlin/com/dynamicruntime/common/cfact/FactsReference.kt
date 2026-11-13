@@ -11,6 +11,7 @@ import com.dynamicruntime.common.gedra.workflow.WFC
 import com.dynamicruntime.common.gedra.workflow.WFD
 import com.dynamicruntime.common.gedra.workflow.WSC
 import com.dynamicruntime.common.gedra.workflow.WfApproval
+import com.dynamicruntime.common.page.PGW
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.startup.SchemaCollector
 import com.dynamicruntime.common.uiblock.UIB
@@ -115,8 +116,10 @@ joins them.
 ## The platform's facts
 
 Every deployment declares these. The last column says whether a fact is sent to the browser with the page. A field's
-`$${SCH.visibleWhen}` may name only a fact that is, and sees only the request's facts among them, so the caller's facts
-marked Yes are the ones it can test.
+`$${SCH.visibleWhen}` and a page widget's `$${PGW.cfactExpression}` may name only a fact that is, and see only the
+request's facts among them, so the caller's facts marked Yes are the ones they can test. Each is sent by a deliberate
+choice. A client's own facts are sent only where its declaration sets `$${CCT.toFrontend}`, and are about its forms, so
+a page widget's condition may not name them.
 
 A component a deployment adds can declare facts under a name of its own, as the workflow assistant declares
 `$${ASST.onCFact}`. The **Client facts** page, for a client's operators and administrators, lists every fact the client
@@ -134,6 +137,11 @@ private fun placesTable(): String {
         Triple(
             "A field's `${SCH.visibleWhen}`, in its schema",
             "Whether the field is on the form. A write that would change a field kept off is refused.",
+            "The request's, and only those sent to the browser.",
+        ),
+        Triple(
+            "A [page widget](page-widgets.md)'s `${PGW.cfactExpression}`",
+            "Whether the widget is drawn on the page. It is judged in the browser.",
             "The request's, and only those sent to the browser.",
         ),
         Triple(

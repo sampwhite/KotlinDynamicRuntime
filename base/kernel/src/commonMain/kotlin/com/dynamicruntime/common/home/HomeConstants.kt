@@ -256,6 +256,13 @@ object HFLD {
      * drawn as the image, so one plain Markdown image shows both on GitHub and in the app. The same for every caller.
      */
     const val imagePaths = "imagePaths"
+
+    /**
+     * In the shell config's state (issue #1793): the caller's cfacts that are sent to the frontend, each name to whether
+     * it is present for them -- the whole such vocabulary, so a test naming an absent one still parses. What a page's
+     * widget fences are judged on in the browser.
+     */
+    const val cfacts = "cfacts"
 }
 
 /**
