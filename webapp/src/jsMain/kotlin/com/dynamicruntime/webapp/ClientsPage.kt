@@ -568,6 +568,8 @@ private fun ChildrenBuilder.clientDetail(
                     this.configEditable = configEditable
                     paramsEditable = row?.configLocked == null
                     formsOpenable = impactFormsOpenable(acrossClients, onSandboxPage = row?.sandboxOf != null)
+                    // How a workflow made restricted is opened to people (issue #1384): empty as shipped, said by a flavor.
+                    newWorkflowNote = pageCopy.opt(PFRAG.workflowsNs, PFRAG.newWorkflowNote)
                     this.onChanged = onChanged
                 }
                 // Bringing its forms' stored state up to date with the configuration above now, rather than overnight
