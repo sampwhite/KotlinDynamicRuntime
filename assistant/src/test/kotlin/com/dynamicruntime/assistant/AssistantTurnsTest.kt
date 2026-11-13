@@ -63,6 +63,7 @@ import com.dynamicruntime.common.home.HEP
 import com.dynamicruntime.common.home.HFLD
 import com.dynamicruntime.common.home.HFRAG
 import com.dynamicruntime.common.home.HMENU
+import com.dynamicruntime.common.home.changeGroups
 import com.dynamicruntime.common.http.request.InProcessCaller
 import com.dynamicruntime.common.http.request.InProcessPrincipal
 import com.dynamicruntime.common.http.request.ROLE
@@ -1011,6 +1012,34 @@ class AssistantTurnsTest : StringSpec({
         narrowed.text.json().toJsonMapOrEmpty()[CPY.mode] shouldBe EDM.draft
         overlaid.overlaidTypesFor(sandboxOf(narrowClient)) shouldContain NarrowableTraitComponent.dataType
         overlaid.overlaidTypesFor(narrowClient) shouldNotContain NarrowableTraitComponent.dataType
+    }
+
+    "every write tool is a row of the making-changes guide, with the row's endpoint and dry run" {
+        // Issue #1807: the guide names, for each kind of change, the tool to make it with, so no tool can be added, moved
+        // to another endpoint, or given a dry run without the guide saying so. Theme: #DOCDR.
+        val ways = changeGroups.flatMap { it.ways }
+        // Every tool that is not a read, whatever its method.
+        for (tool in AssistantTools.all.filter { it.path != null && it.method != HttpMethod.GET }) {
+            val rows = ways.filter { it.tool == tool.name }
+            withClue("${tool.name} has no row") { rows.shouldNotBeEmpty() }
+            for (row in rows) {
+                withClue("${tool.name}: ${row.change}") {
+                    row.path shouldBe tool.path
+                    row.dryRun shouldBe (CFEP.dryRun in tool.sends)
+                }
+            }
+        }
+        // And every tool a row names is one the assistant has.
+        for (way in ways) way.tool?.let { AssistantTools.byName.keys shouldContain it }
+        // The guide says which endpoints take a dry run, so each row's endpoint takes one exactly when the row says so --
+        // a row with no tool included.
+        val schema = cxt.getGlobalSchema()
+        for (way in ways) {
+            val path = way.path ?: continue
+            val endpoint = schema.endpoints["$path:${HttpMethod.POST.name}"].shouldNotBeNull()
+            val input = resolveEndpointInputType(endpoint, schema.types).shouldNotBeNull()
+            withClue("${way.change}: $path") { (CFEP.dryRun in input.properties.keys) shouldBe way.dryRun }
+        }
     }
 
     "each tool's endpoint exists, is open to the seam, and takes what the tool sends; the assistant's own are session-only" {

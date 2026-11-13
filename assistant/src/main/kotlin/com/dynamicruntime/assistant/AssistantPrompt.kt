@@ -99,7 +99,8 @@ object AssistantPrompt {
             |- A workflow made from a template ('fromTemplate') -- the starter New form among them -- is changed with
             |  save_template_workflow: its name, and per task its label and the traits it collects. It keeps everything
             |  else the workflow says, its saves' labels and its layouts among them. Do not write such a workflow with
-            |  patch_config: an entry you write there replaces the old one whole, so anything you leave out is lost.
+            |  patch_config: a field you give there is written whole, the workflow's whole 'definition' among them, so
+            |  anything you leave out of it is lost.
             |- The core details workflow, whose entry is 'coreDetails', is also at most one per client: it holds what every
             |  form carries and edits after it exists. Data a form needs from its start belongs on the New form instead.
             |

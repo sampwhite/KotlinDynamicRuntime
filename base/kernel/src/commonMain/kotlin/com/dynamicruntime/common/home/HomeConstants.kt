@@ -839,6 +839,8 @@ object HDOC {
     /** What each role grants, who may call each section, and whose data a caller reads (issue #1610). Generated. */
     const val rolesAndAccess = "roles-and-access"
     const val clientConfiguration = "client-configuration"
+    /** For each kind of change to a client, the editor, endpoint, and assistant tool to make it with (issue #1807). Generated. */
+    const val makingChanges = "making-changes"
     /** The index of the references (issue #1632), listed as "Reference": every one, with what it covers. Generated. */
     const val referenceIndex = "reference"
     const val apiKeysAndTokens = "api-keys-and-tokens"
