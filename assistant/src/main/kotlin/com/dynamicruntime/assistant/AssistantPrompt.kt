@@ -96,11 +96,10 @@ object AssistantPrompt {
             |  workflow's task, so every new form asks for it, or have the new workflow's own task collect it once a form
             |  exists. Say which you chose, and why.
             |- view_workflow with no workflowId shows the creation workflow as it runs, if there is one.
-            |- A workflow made from a template is stored as an overlay of it ('fromTemplate'), naming only what it changes:
-            |  for example its label, and per task its label and the traits it collects, but also its saves' labels and its
-            |  layouts. To change what such a creation workflow asks for, read its stored entry first and write it back
-            |  with only the task's traits changed: an entry you write replaces the old one whole, so anything you leave
-            |  out is lost.
+            |- A workflow made from a template ('fromTemplate') -- the starter New form among them -- is changed with
+            |  save_template_workflow: its name, and per task its label and the traits it collects. It keeps everything
+            |  else the workflow says, its saves' labels and its layouts among them. Do not write such a workflow with
+            |  patch_config: an entry you write there replaces the old one whole, so anything you leave out is lost.
             |- The core details workflow, whose entry is 'coreDetails', is also at most one per client: it holds what every
             |  form carries and edits after it exists. Data a form needs from its start belongs on the New form instead.
             |

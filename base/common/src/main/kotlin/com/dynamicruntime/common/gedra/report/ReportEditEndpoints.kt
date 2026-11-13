@@ -5,6 +5,9 @@ import com.dynamicruntime.common.endpoint.SchModuleBuilder
 import com.dynamicruntime.common.gedra.CIT
 import com.dynamicruntime.common.gedra.CLD
 import com.dynamicruntime.common.gedra.editorSaveResult
+import com.dynamicruntime.common.gedra.dryRunField
+import com.dynamicruntime.common.gedra.dryRunOf
+import com.dynamicruntime.common.gedra.markedDryRun
 import com.dynamicruntime.common.gedra.expectedModeField
 import com.dynamicruntime.common.gedra.expectedModeOf
 import com.dynamicruntime.common.gedra.overseenClient
@@ -128,11 +131,14 @@ internal fun SchModuleBuilder.reportEditEndpoints() {
                     "`${RCR.charted}`, or the count of forms when none is; absent for the table alone.",
             ) { options(ReportChartKind.entries) }
             expectedModeField()
+            dryRunField()
         },
     ) { c, request ->
         val client = overseenClient(c, request[RRUN.client].toOptStr())
-        val result = ReportEdit.create(c, client, request, expectedModeOf(request))
+        val dryRun = dryRunOf(request)
+        val result = ReportEdit.create(c, client, request, expectedModeOf(request), dryRun)
         editorSaveResult(c, client, result.configName, RRUN.reportId to result.reportId, result.mode, result.issues, null)
+            .markedDryRun(dryRun)
     }
 
     generalEndpoint(
@@ -147,10 +153,13 @@ internal fun SchModuleBuilder.reportEditEndpoints() {
             overseenClientField(RRUN.client)
             field(RRUN.reportId, "The report to remove.", required = true)
             expectedModeField()
+            dryRunField()
         },
     ) { c, request ->
         val client = overseenClient(c, request[RRUN.client].toOptStr())
-        val result = ReportEdit.remove(c, client, request[RRUN.reportId].toOptStr().orEmpty(), expectedModeOf(request))
+        val dryRun = dryRunOf(request)
+        val result = ReportEdit.remove(c, client, request[RRUN.reportId].toOptStr().orEmpty(), expectedModeOf(request), dryRun)
         editorSaveResult(c, client, result.configName, RRUN.reportId to result.reportId, result.mode, result.issues, null)
+            .markedDryRun(dryRun)
     }
 }

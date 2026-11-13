@@ -77,8 +77,9 @@ kernel's renderer. Its summarized thinking shows as muted notes; an empty note (
 shows nothing. **The tool results the API stores as the person's are never shown as the person's**: each is joined to
 its call, and the calls of one answer collapse into one line (`toolsLabel`) -- "Looked at: workflows, bundle `flows`",
 "Checked a change to `flows`", "Drafted `flows` (v3)", "Drafted copy `home: home.title`", "Drafted menu item `docs`",
-"Checked a change to the client's definition" (`wroteWhat`, issues #1763, #1764) -- that opens to each call's input and
-result. A call still
+"Checked a change to the client's definition" (`wroteWhat`, issues #1763-#1766) -- that opens to each call's input and
+result. A workflow's parameters read "Set the sandbox's parameters of `review`": they are the sandbox's own, in force at
+once, never a draft, so they name no bundle and are not among the drafts (issue #1766). A call still
 running ends with an ellipsis, and a refused one says so. A write's version comes from its answer, which may have been
 cut to fit what the model is shown and then is not JSON: the label goes without a version, rather than failing.
 

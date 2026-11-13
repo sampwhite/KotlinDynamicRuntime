@@ -317,7 +317,7 @@ internal fun SchModuleBuilder.clientTraitsEndpoints() {
             "trial reload finds a new problem, then published and reloaded -- refused, with the impact report, when " +
             "that would leave forms the client stores holding a trait it no longer supports, unless the impact is " +
             "acknowledged. For a client with a Shadow Sandbox (issue #930) saved as a draft instead, judged when it " +
-            "is published. Refused for a client defined in code, for a sandbox (its traits are its parent's), " +
+            "is published; from a sandbox, a draft of its client's (issue #1358). Refused for a client defined in code, " +
             "and while the definition's configuration has somebody's unpublished changes, which a live save would " +
             "publish.",
         HttpMethod.POST,
@@ -367,8 +367,9 @@ internal fun SchModuleBuilder.clientTraitsEndpoints() {
             "config lock, refused when a trial reload finds a new problem -- the plan's limits on schemas and " +
             "attributes among them -- then published and reloaded; for a client with a Shadow Sandbox saved as a " +
             "draft instead. An edit that would leave stored forms holding data the trait no longer accepts is refused " +
-            "with the impact report unless the impact is acknowledged. Refused for a sandbox (its traits are its " +
-            "parent's) and for a trait declared in code.",
+            "with the impact report unless the impact is acknowledged. From a sandbox, a draft of its client's (issue " +
+            "#1358). Refused for a trait declared in code. With dryRun true (issue #1766), checked as the save would " +
+            "be and not stored.",
         HttpMethod.POST,
         outputRef = CIT.designResultTypeName,
         needsClientConfig = true,
@@ -381,6 +382,7 @@ internal fun SchModuleBuilder.clientTraitsEndpoints() {
                     "such a save is refused with the impact report.",
             ) { type = SCT.boolean }
             expectedModeField()
+            dryRunField()
         },
     ) { c, request ->
         val client = overseenClient(c, request[CLD.client].toOptStr())
@@ -390,8 +392,10 @@ internal fun SchModuleBuilder.clientTraitsEndpoints() {
         } catch (e: IllegalArgumentException) {
             throw KdrException.mkInput(e.message ?: "The design does not read.")
         }
-        val result = ClientTraitDesignEdit.save(c, client, design, expectedModeOf(request), gate)
+        val dryRun = dryRunOf(request)
+        val result = ClientTraitDesignEdit.save(c, client, design, expectedModeOf(request), gate, dryRun)
         editorSaveResult(c, client, result.configName, CIT.design to result.design.toInfo(), result.mode, result.issues, result.draftImpact)
+            .markedDryRun(dryRun)
     }
 
     // --- narrowing a global trait (issue #1119) -------------------------------------------------------------------
@@ -437,8 +441,9 @@ internal fun SchModuleBuilder.clientTraitsEndpoints() {
             "first narrowing, or where a stored alteration is; an empty narrowing removes it. Then as every editor's " +
             "save: published and reloaded, or a draft for a client with a Shadow Sandbox, whose impact on the live " +
             "client's stored forms is reported for information. A live save leaving stored forms holding data the " +
-            "narrowed trait refuses is refused with the impact report unless the impact is acknowledged. Refused for a " +
-            "sandbox, and for an alteration declared in code.",
+            "narrowed trait refuses is refused with the impact report unless the impact is acknowledged. From a sandbox, " +
+            "a draft of its client's (issue #1358). Refused for an alteration declared in code. With dryRun true (issue " +
+            "#1766), checked as the save would be and not stored.",
         HttpMethod.POST,
         outputRef = CIT.narrowResultTypeName,
         needsClientConfig = true,
@@ -451,16 +456,18 @@ internal fun SchModuleBuilder.clientTraitsEndpoints() {
                     "save is refused with the impact report.",
             ) { type = SCT.boolean }
             expectedModeField()
+            dryRunField()
         },
     ) { c, request ->
         val client = overseenClient(c, request[CLD.client].toOptStr())
         val gate = if (request[IMP.acknowledgeImpact] == true) ImpactGate.acknowledged else ImpactGate.refuse
+        val dryRun = dryRunOf(request)
         val result = ClientTraitNarrowEdit.save(
-            c, client, traitNarrowingFromInfo(request[CIT.narrowing].toJsonMapOrEmpty()), expectedModeOf(request), gate,
+            c, client, traitNarrowingFromInfo(request[CIT.narrowing].toJsonMapOrEmpty()), expectedModeOf(request), gate, dryRun,
         )
         editorSaveResult(
             c, client, result.configName, CIT.narrowing to result.narrowing.toInfo(), result.mode, result.issues, result.draftImpact,
-        )
+        ).markedDryRun(dryRun)
     }
 }
 

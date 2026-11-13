@@ -11,6 +11,9 @@ import com.dynamicruntime.common.gedra.COV
 import com.dynamicruntime.common.gedra.CPY
 import com.dynamicruntime.common.gedra.CUS
 import com.dynamicruntime.common.gedra.CLD
+import com.dynamicruntime.common.gedra.CIT
+import com.dynamicruntime.common.gedra.report.RDEF
+import com.dynamicruntime.common.gedra.workflow.WFD
 import com.dynamicruntime.common.gedra.DSV
 import com.dynamicruntime.common.gedra.GDF
 import com.dynamicruntime.common.gedra.GE
@@ -196,6 +199,29 @@ class AssistantTranscriptTest {
             person(5, result("b", "{\"${COV.configName}\":\"main\"}")),
         )
         assertEquals(listOf("`main`"), draftsOf(saved).map { it.title })
+    }
+
+    @Test
+    fun aTemplateWorkflowTraitOrReportWriteIsLabeledAndOnlyADraftIsListed() {
+        // Issue #1766: a workflow's parameters are the sandbox's own, no draft, so they name no bundle and list none.
+        fun call(name: String, input: Map<String, Any?>, result: String = "{\"${COV.configName}\":\"reports\"}") =
+            ToolCall("c", name, input, result, false)
+        assertEquals("Drafted report `Memos`", toolsLabel(listOf(call(ATOOL.createReport, mapOf(RDEF.label to "Memos")))))
+        assertEquals(
+            "Checked a change to trait `Safety`",
+            toolsLabel(listOf(call(ATOOL.designTrait, mapOf(CIT.design to mapOf(CIT.label to "Safety"), CFEP.dryRun to true)))),
+        )
+        val params = call(ATOOL.setWorkflowParams, mapOf(WFD.workflowId to "review"), result = "{\"client\":\"x:sandbox\"}")
+        assertEquals("Set the sandbox's parameters of `review`", toolsLabel(listOf(params)))
+        val made = listOf(
+            person(1, text("Add a report, and turn review off here.")),
+            model(
+                2, use("a", ATOOL.createReport, mapOf(RDEF.label to "Memos")),
+                use("b", ATOOL.setWorkflowParams, mapOf(WFD.workflowId to "review")),
+            ),
+            person(3, result("a", "{\"${COV.configName}\":\"reports\"}"), result("b", "{\"client\":\"x:sandbox\"}")),
+        )
+        assertEquals(listOf("`reports`"), draftsOf(made).map { it.title })
     }
 
     @Test

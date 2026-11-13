@@ -156,8 +156,12 @@ class GedraConfigService : ServiceInitializer {
         mustBeNew: Boolean = false,
         /** The content is the server's own code's, whoever started it: see [ConfigWrite.authoredInCode]. */
         authoredInCode: Boolean = false,
+        /** False for a dry run (issue #1766): the revision is built and judged as the write would be, and not stored. */
+        store: Boolean = true,
     ): GedraConfigRow =
-        writeConfigs(cxt, config.gedraId.client, listOf(ConfigWrite(config, impliedDelete, mustBeNew, authoredInCode)), trial).single()
+        writeConfigs(
+            cxt, config.gedraId.client, listOf(ConfigWrite(config, impliedDelete, mustBeNew, authoredInCode)), trial, store,
+        ).single()
 
     /**
      * Stores several configs of one [client] in **one** transaction under the client's lock (issue #843), each as
@@ -171,6 +175,8 @@ class GedraConfigService : ServiceInitializer {
         client: String,
         writes: List<ConfigWrite>,
         trial: Boolean = false,
+        /** False for a dry run (issue #1766): every revision is built and judged, and none is stored. */
+        store: Boolean = true,
     ): List<GedraConfigRow> {
         for (write in writes) {
             if (write.config.gedraId.client != client) {
@@ -199,7 +205,7 @@ class GedraConfigService : ServiceInitializer {
                 }
                 // Its own file refs are what code-authored content vouches for: every one of them is the code's.
                 val vouched = if (write.authoredInCode) gedraConfigToEntries(write.config)[CCT.fileRefDef].orEmpty() else emptyList()
-                writeRevisionUnderLock(wcxt, sqlCxt, table, configId, write.config, latest, write.impliedDelete, vouched)
+                writeRevisionUnderLock(wcxt, sqlCxt, table, configId, write.config, latest, write.impliedDelete, vouched, store)
             }
             if (trial) trialWritten(wcxt, written, before)
             written

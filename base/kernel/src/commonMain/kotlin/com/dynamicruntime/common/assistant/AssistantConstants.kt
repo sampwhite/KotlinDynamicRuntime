@@ -299,6 +299,15 @@ object ATOOL {
     const val setWorkflowLabel = "set_workflow_label"
     const val setShownFields = "set_shown_fields"
 
+    // The targeted writes of the client's template workflows, traits, and reports (issue #1766), each dry-run first.
+    const val saveTemplateWorkflow = "save_template_workflow"
+    const val removeTemplateWorkflow = "remove_template_workflow"
+    const val setWorkflowParams = "set_workflow_params"
+    const val designTrait = "design_trait"
+    const val narrowTrait = "narrow_trait"
+    const val createReport = "create_report"
+    const val removeReport = "remove_report"
+
     // A tool input that is not an endpoint's own field: the document `read_doc` reads.
     const val doc = "doc"
 

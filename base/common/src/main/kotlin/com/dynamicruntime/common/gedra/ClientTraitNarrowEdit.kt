@@ -116,9 +116,17 @@ object ClientTraitNarrowEdit {
 
     /**
      * Saves [narrowing] of a global trait for [client] -- see the class note. [expected] is how the caller told its
-     * user the save would take effect; [impact] whether a save that affects stored forms goes ahead.
+     * user the save would take effect; [impact] whether a save that affects stored forms goes ahead. A [dryRun] (issue
+     * #1766) is judged as the save would be, and stores nothing.
      */
-    fun save(cxt: KdrCxt, client: String, narrowing: TraitNarrowing, expected: String? = null, impact: ImpactGate = ImpactGate.refuse): Result {
+    fun save(
+        cxt: KdrCxt,
+        client: String,
+        narrowing: TraitNarrowing,
+        expected: String? = null,
+        impact: ImpactGate = ImpactGate.refuse,
+        dryRun: Boolean = false,
+    ): Result {
         // From a sandbox, its parent's: the sandbox holds no configuration, and a save is a draft of the parent's (#1358).
         val owner = sandboxParentOf(client) ?: client
         val base = globalTraitBases(cxt)[narrowing.traitId]
@@ -138,7 +146,7 @@ object ClientTraitNarrowEdit {
         }
         val body = narrowing.toAlteration(base.body, existing?.body)
         val written: GedraConfigRow
-        val reload: ConfigReloadResult
+        val issues: List<GedraConfigIssue>
         val name = CIT.narrowPrefix + narrowing.traitId.replace(':', '_')
         // The editor's own configuration for the trait outlives a narrowing taken back to nothing, which leaves it empty;
         // narrowing again writes into it, since a configuration once written is never made anew.
@@ -147,8 +155,8 @@ object ClientTraitNarrowEdit {
             body ?: throw KdrException.mkInput("Client '$owner' takes trait '${narrowing.traitId}' as it is; nothing to save.")
             val entry = mapOf(CCT.typeName to base.typeName, CCT.schema to body)
             val config = reassembleForWrite(bound, name, clientNamespace(owner), owner, mapOf(CCT.schemaDef to listOf(entry)))
-            written = GedraConfigService.get(bound).writeConfig(bound, config, trial = true, mustBeNew = true)
-            reload = ClientStoredEdit.takeEffect(cxt, target, written, undo = {}, impact = impact)
+            written = GedraConfigService.get(bound).writeConfig(bound, config, trial = true, mustBeNew = true, store = !dryRun)
+            issues = ClientStoredEdit.settle(cxt, target, written, dryRun, undo = {}, impact = impact)
         } else {
             if (existing == null) {
                 body ?: throw KdrException.mkInput("Client '$owner' takes trait '${narrowing.traitId}' as it is; nothing to save.")
@@ -158,8 +166,8 @@ object ClientTraitNarrowEdit {
                 if (body == existing.body) throw KdrException.mkInput("Trait '${narrowing.traitId}' is already narrowed so; nothing to save.")
             }
             // The type's entry rewritten, removed (`to` null), or added where the configuration has none.
-            fun patch(row: GedraConfigRow, to: Map<String, Any?>?) =
-                GedraConfigService.get(bound).patchConfigs(bound, trial = true) { edit(row.configId) { slots ->
+            fun patch(row: GedraConfigRow, to: Map<String, Any?>?, dry: Boolean = false) =
+                ClientStoredEdit.patch(bound, dry) { edit(row.configId) { slots ->
                     val out = LinkedHashMap(slots)
                     val listed = slots[CCT.schemaDef].orEmpty()
                     val entries = listed.mapNotNull {
@@ -170,15 +178,15 @@ object ClientTraitNarrowEdit {
                     if (entries.isEmpty() && added.isEmpty()) out.remove(CCT.schemaDef) else out[CCT.schemaDef] = entries + added
                     out
                 } }.single()
-            written = patch(holder, body)
-            reload = ClientStoredEdit.takeEffect(
-                cxt, target, written,
+            written = patch(holder, body, dryRun)
+            issues = ClientStoredEdit.settle(
+                cxt, target, written, dryRun,
                 undo = { patch(written, existing?.body) },
                 restorePublished = holder.isPublished,
                 impact = impact,
             )
         }
         val now = traitNarrowingOf(narrowing.traitId, base.body, body).narrowing ?: narrowing
-        return Result(written.configId.baseId, now, reload.issues, target.mode, ClientStoredEdit.draftImpact(target, written))
+        return Result(written.configId.baseId, now, issues, target.mode, ClientStoredEdit.draftImpact(target, written))
     }
 }

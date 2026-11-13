@@ -228,9 +228,9 @@ object ReportEdit {
 
     /**
      * Makes the report [request] describes for [client] -- see the class note. [expected] is how the caller told its
-     * user the create would take effect.
+     * user the create would take effect. A [dryRun] (issue #1766) is judged as the create would be, and stores nothing.
      */
-    fun create(cxt: KdrCxt, client: String, request: Map<String, Any?>, expected: String? = null): Result {
+    fun create(cxt: KdrCxt, client: String, request: Map<String, Any?>, expected: String? = null, dryRun: Boolean = false): Result {
         val owner = sandboxParentOf(client) ?: client
         val label = request[RDEF.label].toOptStr()?.trim().orEmpty()
         if (label.isEmpty()) throw KdrException.mkInput("A report needs a name.")
@@ -255,13 +255,13 @@ object ReportEdit {
         val holder = svc.readLatest(bound, holderId)
         holder?.let { ClientStoredEdit.requireNoForeignDraft(target, it, "a new report") }
         val entry = linkedMapOf(CCT.reportId to reportId, CCT.definition to report.toJsonMap())
-        fun patch(change: (List<Map<String, Any?>>) -> List<Map<String, Any?>>) = svc.patchConfigs(bound, trial = true) {
+        fun patch(dry: Boolean = false, change: (List<Map<String, Any?>>) -> List<Map<String, Any?>>) = ClientStoredEdit.patch(bound, dry) {
             edit(holderId) { slots ->
                 val now = change(slots[CCT.reportDef].orEmpty())
                 if (now.isEmpty()) slots - CCT.reportDef else slots + (CCT.reportDef to now)
             }
         }.single()
-        val written = patch { current ->
+        val written = patch(dryRun) { current ->
             if (current.any { it[CCT.reportId] == reportId }) {
                 throw KdrException(
                     "Client '$owner' was given a report '$reportId' meanwhile. Give this one another name.", code = EXC.conflict,
@@ -269,8 +269,8 @@ object ReportEdit {
             }
             current + entry
         }
-        val reload = ClientStoredEdit.takeEffect(
-            cxt, target, written,
+        val issues = ClientStoredEdit.settle(
+            cxt, target, written, dryRun,
             undo = {
                 val undone = patch { current -> current.filter { it[CCT.reportId] != reportId } }
                 // A configuration this create made goes with it, so it is not left an empty draft the next create is refused for.
@@ -279,7 +279,7 @@ object ReportEdit {
             restorePublished = holder?.isPublished == true,
             recalculateForms = false,
         )
-        return Result(written.configId.baseId, reportId, reload.issues, target.mode)
+        return Result(written.configId.baseId, reportId, issues, target.mode)
     }
 
     /**
@@ -289,7 +289,7 @@ object ReportEdit {
      * reloaded, a refused publish putting the report back, or a draft for a client with a sandbox. The report's
      * snapshots are kept, listable under its id, as they are for a report removed in the bundle editor.
      */
-    fun remove(cxt: KdrCxt, client: String, reportId: String, expected: String? = null): Result {
+    fun remove(cxt: KdrCxt, client: String, reportId: String, expected: String? = null, dryRun: Boolean = false): Result {
         val owner = sandboxParentOf(client) ?: client
         val target = ClientStoredEdit.target(cxt, client, "reportRemove", expected)
         val bound = target.bound
@@ -308,26 +308,26 @@ object ReportEdit {
             throw KdrException.mkInput("Report '$reportId' cannot be removed here: $where.")
         }
         ClientStoredEdit.requireNoForeignDraft(target, holder, "removing a report")
-        fun patch(change: (List<Map<String, Any?>>) -> List<Map<String, Any?>>) = svc.patchConfigs(bound, trial = true) {
+        fun patch(dry: Boolean = false, change: (List<Map<String, Any?>>) -> List<Map<String, Any?>>) = ClientStoredEdit.patch(bound, dry) {
             edit(holder.configId) { slots ->
                 val now = change(slots[CCT.reportDef].orEmpty())
                 if (now.isEmpty()) slots - CCT.reportDef else slots + (CCT.reportDef to now)
             }
         }.single()
         val before = holder.entriesBySlot()[CCT.reportDef].orEmpty()
-        val written = patch { current ->
+        val written = patch(dryRun) { current ->
             if (current.none { it[CCT.reportId] == reportId }) {
                 throw KdrException("Client '$owner''s report '$reportId' was removed meanwhile.", code = EXC.conflict)
             }
             current.filter { it[CCT.reportId] != reportId }
         }
-        val reload = ClientStoredEdit.takeEffect(
-            cxt, target, written,
+        val issues = ClientStoredEdit.settle(
+            cxt, target, written, dryRun,
             undo = { patch { before } },
             restorePublished = holder.isPublished,
             recalculateForms = false,
         )
-        return Result(written.configId.baseId, reportId, reload.issues, target.mode)
+        return Result(written.configId.baseId, reportId, issues, target.mode)
     }
 
     /**

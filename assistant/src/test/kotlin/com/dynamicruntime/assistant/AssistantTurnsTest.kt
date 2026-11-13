@@ -24,6 +24,7 @@ import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.gedra.CUS
 import com.dynamicruntime.common.gedra.ClientService
 import com.dynamicruntime.common.gedra.WorkflowLayout
+import com.dynamicruntime.common.startup.ComponentDefinition
 import com.dynamicruntime.common.startup.SchemaService
 import com.dynamicruntime.common.gedra.COV
 import com.dynamicruntime.common.gedra.CPY
@@ -39,6 +40,7 @@ import com.dynamicruntime.common.gedra.GDF
 import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.gedra.GED
 import com.dynamicruntime.common.gedra.GEP
+import com.dynamicruntime.common.gedra.GedraConfig
 import com.dynamicruntime.common.gedra.GedraConfigBuilder
 import com.dynamicruntime.common.gedra.GedraConfigReload
 import com.dynamicruntime.common.gedra.GedraConfigService
@@ -83,6 +85,13 @@ import com.dynamicruntime.common.util.toOptInstantOrNull
 import com.dynamicruntime.common.util.toOptLong
 import com.dynamicruntime.common.util.toOptStr
 import com.dynamicruntime.kdn.Startup
+import com.dynamicruntime.common.gedra.workflow.WfVisibility
+import com.dynamicruntime.common.gedra.workflow.WorkflowParamsService
+import com.dynamicruntime.common.gedra.workflow.WFP
+import com.dynamicruntime.common.gedra.TraitFieldKind
+import com.dynamicruntime.common.gedra.report.RDEF
+import com.dynamicruntime.common.gedra.report.RRUN
+import com.dynamicruntime.common.gedra.report.ReportService
 import io.kotest.assertions.withClue
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldBeEmpty
@@ -113,7 +122,7 @@ class AssistantTurnsTest : StringSpec({
     fun boot(name: String, with: ScriptedModel): KdrCxt = Startup.mkTestBootCxt(
         name, name,
         mapOf(AssistantService.modelConfigKey to with, AENV.maxSteps.name to "4", AENV.turnsPerHour.name to "6"),
-        additionalComponents = listOf(AssistantComponent()),
+        additionalComponents = listOf(AssistantComponent(), NarrowableTraitComponent()),
     )
     val cxt = boot("assistantTurns1526", model)
     val service = AssistantService.get(cxt)
@@ -130,9 +139,16 @@ class AssistantTurnsTest : StringSpec({
 
     /**
      * A client with a sandbox, a published `main` (its definition and a trait) and `flows` (its workflows), the
-     * assistant switched on, and its administrator. [sandbox] false leaves the sandbox off.
+     * assistant switched on, and its administrator. [sandbox] false leaves the sandbox off; [includedTraits] are the
+     * global traits it takes.
      */
-    fun clientWithAssistant(on: KdrCxt, client: String, sandbox: Boolean = true, workflows: Int = 1): TestUser {
+    fun clientWithAssistant(
+        on: KdrCxt,
+        client: String,
+        sandbox: Boolean = true,
+        workflows: Int = 1,
+        includedTraits: List<String> = emptyList(),
+    ): TestUser {
         val setup = on.mkSubContext("setup", client).also { it.userId = 15260L }
         val configs = GedraConfigService.get(on)
         configs.writeConfig(
@@ -141,7 +157,7 @@ class AssistantTurnsTest : StringSpec({
                 defineClient(
                     ClientDef(
                         clientId = client, name = "Client $client", usageType = ClientUsageType.dev, audience = ClientAudience.internal,
-                        enabledEnvironments = setOf(ENV.unit, ENV.local), sandbox = sandbox,
+                        enabledEnvironments = setOf(ENV.unit, ENV.local), sandbox = sandbox, includedTraits = includedTraits,
                     ),
                 )
                 trait("MemoEntry", "memo", setOf(GedraDataType.formDoc), "A memo.") {
@@ -651,7 +667,7 @@ class AssistantTurnsTest : StringSpec({
         val excluded = listOf(
             HttpMethod.POST to CFEP.bundleWrite, HttpMethod.POST to CFEP.bundlePublish, HttpMethod.POST to CFEP.bundleRevert,
             HttpMethod.POST to CFEP.bundleDelete, HttpMethod.POST to CFEP.publishedOnly, HttpMethod.POST to UADEP.clientSandbox,
-            HttpMethod.POST to UADEP.clientWorkflowParams, HttpMethod.POST to ACNV.messagePath, HttpMethod.POST to UADEP.userCreate,
+            HttpMethod.POST to ACNV.messagePath, HttpMethod.POST to UADEP.userCreate,
             HttpMethod.POST to ADEP.userCreate, HttpMethod.GET to OENV.envReferencePath, HttpMethod.POST to TEP.becomeUser,
             // From the sandbox these answer for its own users and forms, not the client's (issue #1762), so none is a tool.
             HttpMethod.GET to UADEP.userSearch, HttpMethod.GET to GEP.formDocs,
@@ -914,6 +930,89 @@ class AssistantTurnsTest : StringSpec({
         options.map { it[SCH.value] } shouldBe listOf("note")
     }
 
+    "the template workflow, trait, and report writes dry-run first, and save drafts the sandbox runs" {
+        // Issue #1766: the Clients page's editors, as tools, called as the person's user in the sandbox.
+        val client = "asstcatalog"
+        val admin = clientWithAssistant(cxt, client)
+        val sandboxUserId = admin.postData(AEP.openSandbox, emptyMap())[UPF.userId].toOptLong().shouldNotBeNull()
+        admin.postData(AEP.leaveSandbox, mapOf(AFLD.userId to admin.userId))
+        val row = UserService.get(cxt).queryByUserId(cxt, sandboxUserId).shouldNotBeNull()
+        val principal = InProcessPrincipal(sandboxUserId, row.identityId, row.client, "assistant:test", AssistantTools.scope)
+        val run = ToolRun(cxt, principal, "t1766")
+        fun tool(name: String, input: Map<String, Any?>) = AssistantTools.run(run, name, input)
+        fun ok(name: String, input: Map<String, Any?>): Map<String, Any?> =
+            tool(name, input).also { withClue("$name: ${it.text}") { it.isError shouldBe false } }.text.json().toJsonMapOrEmpty()
+        // Dry-run, then -- the step answered -- saved: what each write below does.
+        fun dryThenSave(name: String, input: Map<String, Any?>): Map<String, Any?> {
+            tool(name, input + (CFEP.dryRun to false)).text shouldContain "dry run this change first"
+            ok(name, input + (CFEP.dryRun to true))[CFEP.dryRun] shouldBe true
+            run.endStep()
+            return ok(name, input + (CFEP.dryRun to false))
+        }
+        val sandbox = sandboxOf(client)
+        fun workflow(of: String, id: String) = WorkflowService.get(cxt).forClient(of).workflow(id)
+        val params = WorkflowParamsService.get(cxt)
+
+        // A workflow made from a template: a draft the sandbox runs, seen there as chosen, by administrators in the client.
+        val slots = WfTemplateSlots(null, WFT.collect, "Collect memos", listOf(WfTaskSlot("collect", "Memo", listOf(WfTraitRef("memo")))))
+        val made = mapOf(CWF.slots to slots.toInfo(), CWF.visibility to WfVisibility.everyone.toInfo())
+        tool(ATOOL.saveTemplateWorkflow, made + (CFEP.dryRun to true))
+        workflow(sandbox, "collectMemos").shouldBeNull()
+        run.endStep()
+        ok(ATOOL.saveTemplateWorkflow, made + (CFEP.dryRun to false))[CPY.mode] shouldBe EDM.draft
+        workflow(sandbox, "collectMemos").shouldNotBeNull()
+        workflow(client, "collectMemos").shouldBeNull()
+        params.resolve(cxt, sandbox, "collectMemos").visibility shouldBe WfVisibility.everyone
+        params.resolve(cxt, client, "collectMemos").visibility shouldBe WfVisibility.adminsOnly
+        dryThenSave(ATOOL.removeTemplateWorkflow, mapOf(WFD.workflowId to "collectMemos"))[CPY.mode] shouldBe EDM.draft
+        workflow(sandbox, "collectMemos").shouldBeNull()
+
+        // A workflow's parameters: the sandbox's own, in force there; the client's untouched.
+        val off = mapOf(WFD.workflowId to "review", WFP.params to mapOf(WFP.enabled to false))
+        dryThenSave(ATOOL.setWorkflowParams, off)
+        params.resolve(cxt, sandbox, "review").inForce.enabled shouldBe false
+        params.resolve(cxt, client, "review").own.shouldBeNull()
+
+        // A trait of the client's own: a draft the sandbox runs.
+        val design = mapOf(
+            CIT.design to mapOf(
+                CIT.label to "Safety", CIT.fields to listOf(mapOf(CIT.label to "Notes", CIT.kind to TraitFieldKind.text.name)),
+            ),
+        )
+        dryThenSave(ATOOL.designTrait, design)[CPY.mode] shouldBe EDM.draft
+        SchemaService.get(cxt).gedraTraitsFor(sandbox).map { it.traitId } shouldContain "safety"
+        SchemaService.get(cxt).gedraTraitsFor(client).map { it.traitId } shouldNotContain "safety"
+
+        // A report: a draft the sandbox runs; its removal's dry run keeps it.
+        val report = mapOf(RDEF.label to "Memos", RDEF.columns to listOf(mapOf(RDEF.label to "Created", RDEF.path to "meta.createdAt")))
+        dryThenSave(ATOOL.createReport, report)[CPY.mode] shouldBe EDM.draft
+        ReportService.get(cxt).forClient(sandbox).report("memos").shouldNotBeNull()
+        ReportService.get(cxt).forClient(client).report("memos").shouldBeNull()
+        ok(ATOOL.removeReport, mapOf(RRUN.reportId to "memos", CFEP.dryRun to true))[CFEP.dryRun] shouldBe true
+        ReportService.get(cxt).forClient(sandbox).report("memos").shouldNotBeNull()
+
+        // A global trait narrowed, in a client of its own that takes one: a draft the sandbox runs.
+        val narrowClient = "asstnarrow"
+        val narrowAdmin = clientWithAssistant(cxt, narrowClient, includedTraits = listOf(NarrowableTraitComponent.survey))
+        val narrowUserId = narrowAdmin.postData(AEP.openSandbox, emptyMap())[UPF.userId].toOptLong().shouldNotBeNull()
+        val narrowRow = UserService.get(cxt).queryByUserId(cxt, narrowUserId).shouldNotBeNull()
+        val narrowRun = ToolRun(
+            cxt, InProcessPrincipal(narrowUserId, narrowRow.identityId, narrowRow.client, "assistant:test", AssistantTools.scope), "n1766",
+        )
+        val narrowing = mapOf(CIT.narrowing to mapOf(CIT.traitId to NarrowableTraitComponent.survey, CIT.hidden to listOf("notes")))
+        AssistantTools.run(narrowRun, ATOOL.narrowTrait, narrowing + (CFEP.dryRun to false)).text shouldContain "dry run this change first"
+        val dryNarrow = AssistantTools.run(narrowRun, ATOOL.narrowTrait, narrowing + (CFEP.dryRun to true))
+        withClue(dryNarrow.text) { dryNarrow.isError shouldBe false }
+        val overlaid = SchemaService.get(cxt)
+        overlaid.overlaidTypesFor(sandboxOf(narrowClient)) shouldNotContain NarrowableTraitComponent.dataType
+        narrowRun.endStep()
+        val narrowed = AssistantTools.run(narrowRun, ATOOL.narrowTrait, narrowing + (CFEP.dryRun to false))
+        withClue(narrowed.text) { narrowed.isError shouldBe false }
+        narrowed.text.json().toJsonMapOrEmpty()[CPY.mode] shouldBe EDM.draft
+        overlaid.overlaidTypesFor(sandboxOf(narrowClient)) shouldContain NarrowableTraitComponent.dataType
+        overlaid.overlaidTypesFor(narrowClient) shouldNotContain NarrowableTraitComponent.dataType
+    }
+
     "each tool's endpoint exists, is open to the seam, and takes what the tool sends; the assistant's own are session-only" {
         val schema = cxt.getGlobalSchema()
         for (tool in AssistantTools.all.filter { it.path != null }) {
@@ -1023,3 +1122,24 @@ class AssistantTurnsTest : StringSpec({
         starting() shouldBe false
     }
 })
+
+/** A global trait with a data type of its own, so a client has one to narrow (`narrow_trait`, issue #1766). */
+class NarrowableTraitComponent : ComponentDefinition {
+    override val providerName: String = "narrowableTraitFixture"
+    override val ownerRoot: String = "fixture"
+
+    override fun gedraConfigs(cxt: KdrCxt): List<GedraConfig> = listOf(
+        gedraConfig(cxt, "narrowable", "fixture.narrowable") {
+            trait("SurveyEntry", survey, setOf(GedraDataType.formDoc), "A survey to narrow.") {
+                property("name", "Who answers.", required = true)
+                property("notes", "Anything else.")
+            }
+        },
+    )
+
+    @Suppress("ConstPropertyName")
+    companion object {
+        const val survey = "fixture:survey"
+        const val dataType = "fixture.narrowable.SurveyData"
+    }
+}

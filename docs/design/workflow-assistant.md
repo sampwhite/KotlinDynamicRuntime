@@ -198,6 +198,13 @@ else is refused, and a drift test holds each tool to its endpoint.
 | `set_shared_heading` | a trait's heading and introduction for every workflow, as a draft | `POST /clientAdmin/design/sharedHeading` |
 | `set_workflow_label` | a workflow's, a task's, or a save's label, as a draft | `POST /clientAdmin/design/label` |
 | `set_shown_fields` | which fields a workflow's form shows, dry-run first, as a draft | `POST /clientAdmin/design/shownFields` |
+| `save_template_workflow` | a workflow made from a template, or its slots changed, dry-run first, as a draft | `POST /clientAdmin/client/workflows/save` |
+| `remove_template_workflow` | a workflow made from a template removed, dry-run first, as a draft | `POST /clientAdmin/client/workflows/remove` |
+| `set_workflow_params` | a workflow's windows, visibility, or switch -- the sandbox's own, dry-run first | `POST /clientAdmin/client/workflows/params` |
+| `design_trait` | one of the client's own traits from a design, dry-run first, as a draft | `POST /clientAdmin/client/traits/design` |
+| `narrow_trait` | a global trait narrowed for the client, dry-run first, as a draft | `POST /clientAdmin/client/traits/narrow` |
+| `create_report` | a report from simple choices, dry-run first, as a draft | `POST /clientAdmin/report/create` |
+| `remove_report` | a report the client stores removed, dry-run first, as a draft | `POST /clientAdmin/report/remove` |
 
 `patch_config` refuses a write unless a dry run of exactly the same configs was accepted in an earlier step of the same
 turn, so the model has read its impact first. A write asks for a reload, as the bundle editor's does (issue #1770): a
@@ -219,8 +226,9 @@ whole. Each is judged against a basis read with the definition -- a workflow's `
 A change of a field's choices, judged against the forms holding a removed one, and of the fields a form shows take a
 dry run first; a draft's dry run answers what publishing it would do to stored forms (`draftImpact`). Left out on purpose:
 publishing, reverting, deleting a bundle, `publishedOnly`, `bundle/write` (which deletes what it is not given), the
-sandbox switch, `workflows/params` (in force at once), users, keys, sessions, form data, the endpoint catalog, and
-every `admin`, `operator`, and `fixture` endpoint. The reads of the client (issue #1762) answer for the sandbox, which
+sandbox switch, users, keys, sessions, form data, the endpoint catalog, and every `admin`, `operator`, and `fixture`
+endpoint. A workflow's parameters are a tool since issue #1766, but only the sandbox's own: parameters are in force at
+once and never drafted or published, so from the sandbox a tool sets the sandbox's, and the client's stay a person's. The reads of the client (issue #1762) answer for the sandbox, which
 runs its drafts, except the drafts, their impact, and the checklist, which answer for the client itself; the client's
 users and stored forms are left out of them, since from the sandbox both answer for the sandbox's own. Two answers are
 reshaped to fit what the model is shown: the menu says the audiences once rather than per item, and the copy is an index

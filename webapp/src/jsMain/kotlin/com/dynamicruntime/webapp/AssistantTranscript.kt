@@ -9,6 +9,11 @@ import com.dynamicruntime.common.gedra.CLD
 import com.dynamicruntime.common.gedra.COV
 import com.dynamicruntime.common.gedra.CPY
 import com.dynamicruntime.common.gedra.CUS
+import com.dynamicruntime.common.gedra.CIT
+import com.dynamicruntime.common.gedra.CWF
+import com.dynamicruntime.common.gedra.report.RDEF
+import com.dynamicruntime.common.gedra.report.RRUN
+import com.dynamicruntime.common.gedra.workflow.WFD
 import com.dynamicruntime.common.gedra.DSV
 import com.dynamicruntime.common.gedra.GDF
 import com.dynamicruntime.common.gedra.GE
@@ -125,11 +130,13 @@ fun toolsLabel(calls: List<ToolCall>): String {
                 parts.add(if (call.isError) "Not drafted: the included traits" else "Drafted the included traits$outcome")
             in targetedWrites -> {
                 val what = wroteWhat(call)
+                // A workflow's parameters are set, in force at once in the sandbox, never drafted (issue #1766).
+                val verb = if (call.name == ATOOL.setWorkflowParams) "Set" else "Drafted"
                 parts.add(
                     when {
                         call.input[CFEP.dryRun] == true -> "Checked a change to $what$outcome"
-                        call.isError -> "Not drafted: $what"
-                        else -> "Drafted $what$outcome"
+                        call.isError -> "Not ${verb.lowercase()}: $what"
+                        else -> "$verb $what$outcome"
                     },
                 )
             }
@@ -142,12 +149,16 @@ fun toolsLabel(calls: List<ToolCall>): String {
 
 /**
  * The targeted writes, each saving a draft of one bundle: the client's wording and menu (issue #1763), its definition
- * and forms list (issue #1764), whose saves but the layout's are dry-run first, and Design View's edits (issue #1765).
+ * and forms list (issue #1764), whose saves but the layout's are dry-run first, Design View's edits (issue #1765), and
+ * the editors of template workflows, traits, and reports (issue #1766). A workflow's parameters are no draft: their
+ * answer names no bundle, so they are listed among none.
  */
 private val targetedWrites = setOf(
     ATOOL.setCopy, ATOOL.applyCopy, ATOOL.resetCopy, ATOOL.setMenuItem, ATOOL.resetMenuItem,
     ATOOL.setClientDefinition, ATOOL.saveFormsListColumn, ATOOL.removeFormsListColumn, ATOOL.setFormsListLayout,
     ATOOL.setFieldCopy, ATOOL.setSharedField, ATOOL.setHeading, ATOOL.setSharedHeading, ATOOL.setWorkflowLabel, ATOOL.setShownFields,
+    ATOOL.saveTemplateWorkflow, ATOOL.removeTemplateWorkflow, ATOOL.setWorkflowParams, ATOOL.designTrait, ATOOL.narrowTrait,
+    ATOOL.createReport, ATOOL.removeReport,
 )
 
 /**
@@ -175,6 +186,14 @@ fun wroteWhat(call: ToolCall): String {
         ATOOL.setSharedHeading -> "a shared heading"
         ATOOL.setWorkflowLabel -> "a label in `${call.input.getOptStr(DSV.workflowId).orEmpty()}`"
         ATOOL.setShownFields -> "the fields `${call.input.getOptStr(DSV.workflowId).orEmpty()}` shows"
+        // The editors of template workflows, traits, and reports (issue #1766), by what they make or change.
+        ATOOL.saveTemplateWorkflow -> "workflow `${call.input[CWF.slots].toJsonMapOrEmpty().getOptStr(WFD.label).orEmpty()}`"
+        ATOOL.removeTemplateWorkflow -> "the removal of workflow `${call.input.getOptStr(WFD.workflowId).orEmpty()}`"
+        ATOOL.setWorkflowParams -> "the sandbox's parameters of `${call.input.getOptStr(WFD.workflowId).orEmpty()}`"
+        ATOOL.designTrait -> "trait `${call.input[CIT.design].toJsonMapOrEmpty().getOptStr(CIT.label).orEmpty()}`"
+        ATOOL.narrowTrait -> "the narrowing of `${call.input[CIT.narrowing].toJsonMapOrEmpty().getOptStr(CIT.traitId).orEmpty()}`"
+        ATOOL.createReport -> "report `${call.input.getOptStr(RDEF.label).orEmpty()}`"
+        ATOOL.removeReport -> "the removal of report `${call.input.getOptStr(RRUN.reportId).orEmpty()}`"
         else -> item
     }
 }
