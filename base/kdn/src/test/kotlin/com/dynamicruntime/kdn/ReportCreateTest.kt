@@ -142,6 +142,9 @@ class ReportCreateTest : StringSpec({
             "workflow.review.ctaKeyword" to "Call to action",
             "workflow.review.approval[approve].approved" to "Approve the talk: approved",
             "workflow.review.approval[approve].approvedAt" to "Approve the talk: approved on",
+            // Whether an administrator's reversal stands, and when anyone last acted on the form there (issue #1787).
+            "workflow.review.approval[approve].reversed" to "Approve the talk: reversed",
+            "workflow.review.lastActivityAt" to "Last activity",
         )
     }
 

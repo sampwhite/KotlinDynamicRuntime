@@ -1234,3 +1234,14 @@ overridden, an approval reversed with its reason (issue #1787) -- but no page dr
 each approval stands now, and the latest reversal of a step not given again. A history panel would read the trail
 (`GET /gedra/formDoc/states`), name each actor as the view names an approver (`shownName`), and say what each event did.
 Built when someone asks what happened to a form, rather than where it stands.
+
+## When someone wants the forms listing to show or sort by workflow activity
+
+A form's `updatedAt` moves only when its data is saved; approving, reversing, engaging, and overriding a lock write the
+form's workflow state instead, so none of them moves it, and that is deliberate (#1787): the date and its `updatedBy` say
+who changed the form's contents. When anyone last acted on the form in a workflow is a report attribute,
+`workflow.<id>.lastActivityAt` (the kernel's `newestWorkflowStamp`). The forms listing has no such column or sort: its
+sorts are SQL over the data row, and the stamp lives in the state row's entries. A listing that wanted it would sort by
+the state row's own `updatedAt` -- close, but a recompute after a save or a configuration change moves it too -- or by a
+stamp written beside the engagement as each act is taken. Built when a reviewer or administrator asks to see the forms
+most recently approved or reversed first.

@@ -9,7 +9,6 @@ import com.dynamicruntime.common.sql.SqlTopicUtil
 import com.dynamicruntime.common.startup.SchemaService
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
-import com.dynamicruntime.common.util.toOptInstant
 import com.dynamicruntime.common.util.toOptStr
 import kotlin.time.Instant
 
@@ -113,16 +112,10 @@ object WorkflowEngagement {
         }
 
     /**
-     * The newest stamp already on [workflowId]'s engagement in [entries] (issue #1267): its `lastEngagedAt`, each of its
-     * events' `at`, and the `approvedAt` of each approval recorded for it -- or null when it has none.
+     * The newest stamp already on [workflowId]'s engagement in [entries] (issue #1267), or null when it has none: the
+     * kernel's [newestWorkflowStamp], which a report reads as the workflow's last activity (issue #1787).
      */
-    fun newestStamp(entries: List<Map<String, Any?>>, workflowId: String): Instant? {
-        val engagement = engagementDataOf(entries, workflowId).orEmpty()
-        val stamps = listOfNotNull(engagement[WFS.lastEngagedAt].toOptInstant()) +
-            engagement[WFS.events].toJsonListOfMaps().mapNotNull { it[WFS.at].toOptInstant() } +
-            recordedApprovals(entries, workflowId).values.mapNotNull { it[WFS.approvedAt].toOptInstant() }
-        return stamps.maxOrNull()
-    }
+    fun newestStamp(entries: List<Map<String, Any?>>, workflowId: String): Instant? = newestWorkflowStamp(entries, workflowId)
 
     /**
      * The stamp for a new step on [workflowId]'s engagement, taken under the form's lock (issue #1267): [now], moved a

@@ -86,6 +86,7 @@ closed to new forms that this form never entered.
 | `ctaKeyword` | Text | The search keyword of the task the form's people are asked to do next, such as `review`, while the workflow is under way. A report's table shows the keyword's report label. |
 | `ctaFilterLabel` | Text | Whom the task the form's people are asked to do next waits on, in the client's words, such as "Waiting on a Northwest reviewer", while the workflow is under way and its call to action says. |
 | `lastEngagedAt` | Date | When the form last entered the workflow. |
+| `lastActivityAt` | Date | When anyone last acted on the form in the workflow: entered or left it, gave or reversed an approval, or overrode a lock. Saving the form's data is not counted; the form's `updatedAt` says when that happened. |
 
 ### An approval
 
@@ -97,6 +98,10 @@ closed to new forms that this form never entered.
 | `approved` | Yes or no | Whether a reviewer has approved the task. |
 | `approvedAt` | Date | When the task was approved. |
 | `approvedBy` | Number | The user id of the reviewer who approved it. |
+| `reversed` | Yes or no | Whether an administrator reversed the task's approval, or a step of it, and it has not been given again since the form entered the workflow. |
+| `reversedAt` | Date | When the approval was reversed, while it stands reversed. |
+| `reversedBy` | Number | The user id of the administrator who reversed it. |
+| `reversedReason` | Text | Why the administrator reversed it, in their words. |
 
 ## The owner: `user`
 

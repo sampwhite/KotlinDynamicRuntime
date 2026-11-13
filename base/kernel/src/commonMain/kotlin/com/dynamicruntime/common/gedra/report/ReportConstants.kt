@@ -95,11 +95,20 @@ object RWF {
     const val ctaFilterLabel = "ctaFilterLabel"
     const val lastEngagedAt = "lastEngagedAt"
 
+    /** When anyone last acted on the form in the workflow (issue #1787): the newest stamp on its engagement. */
+    const val lastActivityAt = "lastActivityAt"
+
     /** Not an attribute but a step: `approval[<taskId>]`, then one of [approvalAttrs]. */
     const val approval = "approval"
     const val approved = "approved"
     const val approvedAt = "approvedAt"
     const val approvedBy = "approvedBy"
+
+    /** An approval reversed by an administrator and not given again (issue #1787): whether, when, by whom, and why. */
+    const val reversed = "reversed"
+    const val reversedAt = "reversedAt"
+    const val reversedBy = "reversedBy"
+    const val reversedReason = "reversedReason"
 
     val attrs: Map<String, ReportAttr> = listOf(
         ReportAttr(
@@ -125,12 +134,25 @@ object RWF {
                 "a Northwest reviewer\", while the workflow is under way and its call to action says.",
         ),
         ReportAttr(lastEngagedAt, ReportKind.date, "When the form last entered the workflow."),
+        ReportAttr(
+            lastActivityAt, ReportKind.date,
+            "When anyone last acted on the form in the workflow: entered or left it, gave or reversed an approval, or " +
+                "overrode a lock. Saving the form's data is not counted; the form's `updatedAt` says when that happened.",
+        ),
     ).associateBy { it.name }
 
     val approvalAttrs: Map<String, ReportAttr> = listOf(
         ReportAttr(approved, ReportKind.boolean, "Whether a reviewer has approved the task."),
         ReportAttr(approvedAt, ReportKind.date, "When the task was approved."),
         ReportAttr(approvedBy, ReportKind.number, "The user id of the reviewer who approved it."),
+        ReportAttr(
+            reversed, ReportKind.boolean,
+            "Whether an administrator reversed the task's approval, or a step of it, and it has not been given again since " +
+                "the form entered the workflow.",
+        ),
+        ReportAttr(reversedAt, ReportKind.date, "When the approval was reversed, while it stands reversed."),
+        ReportAttr(reversedBy, ReportKind.number, "The user id of the administrator who reversed it."),
+        ReportAttr(reversedReason, ReportKind.string, "Why the administrator reversed it, in their words."),
     ).associateBy { it.name }
 }
 

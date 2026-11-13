@@ -269,7 +269,8 @@ state can outlive a cfact. Those names join the request's facts when an expressi
   its approvals, and whether it is kept to its owner from the caller.
 
 **Reports.** A report reads state through its `workflow.<workflowId>.<attr>` paths (`category`, `engaged`, `eligible`,
-`finished`, `tasksDone`, `ctaTask`, `lastEngagedAt`, and an approval task's `approved`, `approvedAt`, `approvedBy`) and
+`finished`, `tasksDone`, `ctaTask`, `lastEngagedAt`, `lastActivityAt`, and an approval task's `approved`, `approvedAt`,
+`approvedBy`, `reversed`, `reversedAt`, `reversedBy`, `reversedReason`) and
 through `meta.formStatus`, `meta.coreDetailsStatus`, and `meta.cfacts`. Paths never expose raw state entries, and a run
 reads states only when a column needs them. See [`reporting.md`](../reporting.md#paths).
 
