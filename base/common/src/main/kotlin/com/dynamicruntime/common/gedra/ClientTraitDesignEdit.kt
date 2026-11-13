@@ -36,6 +36,7 @@ import com.dynamicruntime.common.util.toOptStr
  * holding data the trait no longer accepts -- a field made required, a choice removed -- is refused with the impact
  * report until acknowledged (issue #935). A new trait has no data to judge.
  */
+@Suppress("CollectionConcatenationToBuildCollection")
 object ClientTraitDesignEdit {
     /**
      * What a save did: the configuration the trait is in, the trait as designed now, how it took effect, and -- for a

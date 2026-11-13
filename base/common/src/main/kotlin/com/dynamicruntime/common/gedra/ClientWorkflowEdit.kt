@@ -52,6 +52,7 @@ import com.dynamicruntime.common.util.toOptStr
  * rule reads that the client lacks, a plan's limit -- as the load would. A change to a workflow forms already engage
  * goes through the impact report (issue #935), and a draft reports what publishing it would do, for information.
  */
+@Suppress("CollectionConcatenationToBuildCollection")
 object ClientWorkflowEdit {
     /** What a save did: the configuration the workflow is in, its slots now, how it took effect, and a draft's impact. */
     class Result(
