@@ -45,6 +45,7 @@ class MenuAudience(
  *   (issue #1114), inside the root client.
  * - `#always` differs from "everyone" only on an edge node, which is not a distinction of people at all.
  */
+@Suppress("ConstPropertyName")
 object HomeMenuAudiences {
     val all: List<MenuAudience> = listOf(
         MenuAudience(CFACTS.app, "Everyone", offered = true),
@@ -173,5 +174,5 @@ object HomeMenuAudiences {
     }
 
     /** What an item's own condition is called when the table has no name for it: the one it shipped under. */
-    val asShipped: String = "As shipped"
+    const val asShipped: String = "As shipped"
 }
