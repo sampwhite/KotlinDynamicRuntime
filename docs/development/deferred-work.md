@@ -1226,3 +1226,22 @@ code field in `AuthFlow.kt`).
 - **The code and the password on separate steps** *(#1790, deferred here 2026-11-11).* Check the code first, then
   show the password, so Chrome never sees a code field beside a password field. It changes the registration and
   set-password flows and the backend steps behind them.
+
+## When an administrator wants to see a form's whole workflow history
+
+Every act on a form's workflow leaves an event on its engagement's trail -- engaged, disengaged, approved, a lock
+overridden, an approval reversed with its reason (issue #1787) -- but no page draws the trail. The form shows only where
+each approval stands now, and the latest reversal of a step not given again. A history panel would read the trail
+(`GET /gedra/formDoc/states`), name each actor as the view names an approver (`shownName`), and say what each event did.
+Built when someone asks what happened to a form, rather than where it stands.
+
+## When someone wants the forms listing to show or sort by workflow activity
+
+A form's `updatedAt` moves only when its data is saved; approving, reversing, engaging, and overriding a lock write the
+form's workflow state instead, so none of them moves it, and that is deliberate (#1787): the date and its `updatedBy` say
+who changed the form's contents. When anyone last acted on the form in a workflow is a report attribute,
+`workflow.<id>.lastActivityAt` (the kernel's `newestWorkflowStamp`). The forms listing has no such column or sort: its
+sorts are SQL over the data row, and the stamp lives in the state row's entries. A listing that wanted it would sort by
+the state row's own `updatedAt` -- close, but a recompute after a save or a configuration change moves it too -- or by a
+stamp written beside the engagement as each act is taken. Built when a reviewer or administrator asks to see the forms
+most recently approved or reversed first.

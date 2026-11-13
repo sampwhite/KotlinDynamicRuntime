@@ -8,6 +8,7 @@ import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.gedra.GedraDataRow
 import com.dynamicruntime.common.gedra.GedraDataService
 import com.dynamicruntime.common.gedra.GedraId
+import com.dynamicruntime.common.user.AdminRules
 import com.dynamicruntime.common.user.ReadScopeRules
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
@@ -92,15 +93,54 @@ object WorkflowApprovals {
     }
 
     /**
+     * What the workflow view shows of a form's approvals: those that count ([current], by `approvalKey`), and those
+     * reversed in this engagement and not given again ([reversals], each key to its latest reversal event, issue #1787).
+     */
+    class ForView(val current: Map<String, Map<String, Any?>>, val reversals: Map<String, Map<String, Any?>>) {
+        companion object {
+            val none = ForView(emptyMap(), emptyMap())
+        }
+    }
+
+    /**
      * The approvals the workflow view shows for [gedraId]'s form, read in the caller's scope -- or none, without a
      * read, when there is no form yet or [def] has no approval task.
      */
-    fun forView(cxt: KdrCxt, def: WfDef, gedraId: String?): Map<String, Map<String, Any?>> {
+    fun forView(cxt: KdrCxt, def: WfDef, gedraId: String?): ForView {
         if (gedraId == null || def.tasks.none { it.approval != null }) {
-            return emptyMap()
+            return ForView.none
         }
         val states = GedraDataService.get(cxt).readState(cxt, GedraId.parse(gedraId), ReadScopeRules.forCaller(cxt))
-        return of(states, def.workflowId)
+        return ForView(of(states, def.workflowId), currentReversals(states, def.workflowId))
+    }
+
+    /**
+     * Whether the caller may reverse approvals of [def] on a form of [client] (issue #1787): they administer that client
+     * ([AdminRules.oversees] -- their own, or any for an administrator of every client), and the workflow is being
+     * calculated, as an approval is only given while it is. Not editors, reviewers, or the form's owner: an approval is a
+     * reviewer's act, and taking it back is a client's administrator's. What the reverse endpoint enforces and the view
+     * offers the control by, so the two agree.
+     */
+    fun mayReverse(cxt: KdrCxt, client: String, def: WfDef): Boolean =
+        AdminRules.oversees(cxt, client) && WorkflowPhases.calculatesNow(cxt, client, def)
+
+    /**
+     * Every approval of [def] in the workflow's order (issue #1787): each approval task in task order, and each of its
+     * steps in turn, as `approvalKey`s -- the order a reversal takes the later ones away in.
+     */
+    fun keysInOrder(def: WfDef): List<String> = def.tasks.flatMap { task -> task.approvalSteps.map { approvalKey(task.id, it.id) } }
+
+    /**
+     * The approvals reversing [key] takes away, given the form's current [approvals] (issue #1787): [key] itself and every
+     * later step and approval of [def] that counts now -- each was given on the strength of the one reversed. Earlier
+     * ones, and later ones not given, are left alone. Empty when [key] is not given now or names no approval of [def].
+     */
+    fun reversedWith(def: WfDef, approvals: Map<String, Map<String, Any?>>, key: String): List<String> {
+        if (key !in approvals) return emptyList()
+        val order = keysInOrder(def)
+        val at = order.indexOf(key)
+        if (at < 0) return emptyList()
+        return order.drop(at).filter { it in approvals }
     }
 
     /**
@@ -190,14 +230,91 @@ object WorkflowApprovals {
             val key = approvalKey(task.id, step.id)
             val event = linkedMapOf<String, Any?>(WFS.kind to WFS.approvedEvent, WFS.at to stamp, WFS.by to by, WFS.note to key)
             // A stale record for this step (from an earlier engagement) shares the new one's key; it is replaced.
-            val others = current.filterNot {
-                it[GE.traitId].toOptStr() == WFS.workflowApproval &&
-                    it[GE.data].toJsonMapOrEmpty().let { d ->
-                        d[WFD.workflowId].toOptStr() == workflowId &&
-                            approvalKey(d[WFS.taskId].toOptStr().orEmpty(), d[WFS.stepId].toOptStr()) == key
-                    }
-            }
+            val others = current.filterNot { isRecordOf(it, workflowId, setOf(key)) }
             WorkflowEngagement.withEvent(others + approval, workflowId, event)
+        }
+    }
+
+    /**
+     * Whether state [entry] is an approval record of [workflowId] filed under one of [keys] (`approvalKey`), current or
+     * stale: what approving replaces and reversing removes.
+     */
+    fun isRecordOf(entry: Map<String, Any?>, workflowId: String, keys: Set<String>): Boolean =
+        entry[GE.traitId].toOptStr() == WFS.workflowApproval &&
+            entry[GE.data].toJsonMapOrEmpty().let { d ->
+                d[WFD.workflowId].toOptStr() == workflowId &&
+                    approvalKey(d[WFS.taskId].toOptStr().orEmpty(), d[WFS.stepId].toOptStr()) in keys
+            }
+
+    /**
+     * Reverses step [stepId] of [task] of [declared] on the form [row] (issue #1787), as the administrator [cxt] acts as,
+     * for [reason], and returns the form's state as it then stands. Null [stepId] names the task's one step, which only an
+     * approval given at once has. The caller -- the reverse endpoint -- has already established **who** may
+     * ([mayReverse]); this establishes, under the lock and against the state as freshly recomputed
+     * ([GedraDataService.changeState]), that the form is engaged with the workflow and the step's approval counts now --
+     * else a conflict (409): a stale page, or two administrators at once, reverses nothing.
+     *
+     * It takes away the step's approval and every later one that counts ([reversedWith]): their records are removed, so
+     * every reader of [of] -- the recompute, locks, reports, Needs Review -- sees them gone with no change of its own, and
+     * an [WFS.approvalReversedEvent] is appended for each, which is the record of the reversal. The recompute after puts
+     * the call to action back on the reversed step, takes away the cfacts the approvals gave, and re-arms their locks.
+     * The form's data is untouched.
+     */
+    fun reverse(
+        cxt: KdrCxt,
+        row: GedraDataRow,
+        declared: WfDeclared,
+        task: WfTask,
+        stepId: String?,
+        reason: String,
+    ): List<Map<String, Any?>> {
+        val def = declared.def
+        val workflowId = def.workflowId
+        val step = if (stepId == null) {
+            if (!task.approval?.steps.isNullOrEmpty()) {
+                throw KdrException.mkInput(
+                    "Task '${task.id}' of workflow '$workflowId' is approved in steps, so a reversal names the step it " +
+                        "reverses (${GDF.stepId}).",
+                )
+            }
+            task.approvalSteps.single()
+        } else {
+            task.approvalStep(stepId)
+                ?: throw KdrException.mkInput("Task '${task.id}' of workflow '$workflowId' has no approval step '$stepId'.")
+        }
+        val key = approvalKey(task.id, step.id)
+        // The actor and the moment, taken before the owner binding -- they are who reversed, not whose form it is.
+        val at = cxt.instanceNow()
+        val by = cxt.userProfile.userId
+        return GedraDataService.get(cxt).changeState(cxt, row) { current ->
+            if (workflowId !in engagedWorkflowIds(current)) {
+                throw KdrException.mkInput(
+                    "This form is not in workflow '$workflowId', so it has no approval there to reverse.",
+                )
+            }
+            val reversed = reversedWith(def, of(current, workflowId), key)
+            if (reversed.isEmpty()) {
+                throw KdrException(
+                    "Step '${step.id}' of task '${task.id}' of workflow '$workflowId' is not approved for this form, so " +
+                        "there is nothing to reverse.",
+                    code = EXC.conflict,
+                )
+            }
+            val kept = current.filterNot { isRecordOf(it, workflowId, reversed.toSet()) }
+            // One event per approval taken away, each after every stamp already on the engagement (issue #1267), so the
+            // trail keeps their order even inside one millisecond.
+            reversed.fold(kept) { entries, k ->
+                val stamp = WorkflowEngagement.stampAfter(entries, workflowId, at)
+                val event = linkedMapOf<String, Any?>(
+                    WFS.kind to WFS.approvalReversedEvent,
+                    WFS.at to stamp,
+                    WFS.by to by,
+                    WFS.note to k,
+                    WFS.reversedFrom to key,
+                    WFS.reason to reason,
+                )
+                WorkflowEngagement.withEvent(entries, workflowId, event)
+            }
         }
     }
 }

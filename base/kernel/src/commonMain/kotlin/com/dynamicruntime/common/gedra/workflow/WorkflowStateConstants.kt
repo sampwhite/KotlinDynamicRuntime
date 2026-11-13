@@ -218,6 +218,23 @@ object WFS {
      * the reason the writer gave -- the record an override leaves, since it is never silent.
      */
     const val lockOverriddenEvent = "lockOverridden"
+
+    /**
+     * An event kind (issue #1787): an administrator reversed the approval its [note] names -- its `approvalKey`, the
+     * task and the step -- giving [reason]. One is written for each approval a reversal takes away: the one chosen
+     * ([reversedFrom]) and every later step and approval of the workflow that went with it, since the approval record
+     * itself is removed and the trail is what remembers it.
+     */
+    const val approvalReversedEvent = "approvalReversed"
+
+    /** On an [approvalReversedEvent]: why the administrator reversed it, in their words. */
+    const val reason = "reason"
+
+    /**
+     * On an [approvalReversedEvent]: the `approvalKey` the administrator chose to reverse -- the event's own [note] for
+     * that one, an earlier one for a later approval reversed along with it.
+     */
+    const val reversedFrom = "reversedFrom"
 }
 
 /**

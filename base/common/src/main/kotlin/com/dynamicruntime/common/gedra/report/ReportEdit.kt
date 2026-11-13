@@ -200,7 +200,8 @@ object ReportEdit {
     }
 
     /**
-     * What a report says about [wf] on a form: where the form stands, and each approval task's approval -- and, for a
+     * What a report says about [wf] on a form: where the form stands, when anyone last acted on it there (issue #1787),
+     * and each approval task's approval and, while it stands reversed, when and why -- and, for a
      * workflow whose calls to action carry search keywords ([withKeywords], issue #1600), its next task and that task's
      * keyword, and whom it waits on when one of its CTA filters may say ([labelsCtaFilter]).
      */
@@ -217,7 +218,12 @@ object ReportEdit {
             val taskLabel = plainLabel(task.label, task.id)
             offered(scope, WorkflowPath(wf.workflowId, RWF.approved, task.id).canonicalText, "$taskLabel: approved")?.let { add(it) }
             offered(scope, WorkflowPath(wf.workflowId, RWF.approvedAt, task.id).canonicalText, "$taskLabel: approved on")?.let { add(it) }
+            offered(scope, WorkflowPath(wf.workflowId, RWF.reversed, task.id).canonicalText, "$taskLabel: reversed")?.let { add(it) }
+            offered(scope, WorkflowPath(wf.workflowId, RWF.reversedAt, task.id).canonicalText, "$taskLabel: reversed on")?.let { add(it) }
+            offered(scope, WorkflowPath(wf.workflowId, RWF.reversedReason, task.id).canonicalText, "$taskLabel: reversal reason")
+                ?.let { add(it) }
         }
+        offered(scope, WorkflowPath(wf.workflowId, RWF.lastActivityAt).canonicalText, "Last activity")?.let { add(it) }
     }
 
     /**

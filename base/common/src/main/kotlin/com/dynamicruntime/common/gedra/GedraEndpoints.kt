@@ -933,9 +933,14 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
             val approvals = WorkflowApprovals.forView(c, declared.def, row?.gedraId?.fullId)
             // Kept to its owner (issue #1433): the whole form read-only for this caller, as the guard would refuse a save.
             val keptToOwner = row != null && states != null && OwnerOnly.keepsOut(c, row, states)
+            // Whether this caller may reverse the form's approvals (issue #1787), by the reverse endpoint's rule.
+            // Asked only of a workflow with an approval task, which is all it is read for.
+            val mayReverse = row != null && declared.def.entry == WfEntry.normal &&
+                declared.def.tasks.any { it.approval != null } && WorkflowApprovals.mayReverse(c, row.client, declared.def)
             resolveWorkflowView(
-                c, declared, entriesByTask, ownerAttributes, approvals, formFacts, lockedTraits, keptToOwner,
+                c, declared, entriesByTask, ownerAttributes, approvals.current, formFacts, lockedTraits, keptToOwner,
                 formEntries = row?.entries.orEmpty(), rowFacts = RowCfacts.of(c, row?.userId),
+                reversals = approvals.reversals, mayReverse = mayReverse,
             )
         }
     }
@@ -1135,6 +1140,64 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
                 throw KdrException(approveRefusal(c, judge, task, row), code = EXC.notAuthorized)
             }
         }
+        mapOf(GDF.gedraId to row.gedraId.fullId, GDF.states to WorkflowPhases.shownStates(c, row.client, states))
+    }
+
+    // An administrator of the form's client reverses an approval (issue #1787): the step named, and every later step and
+    // approval of the workflow with it, for a reason recorded on the trail and shown on the task. Who may is the one
+    // workflow act decided by role -- the section admits anyone signed in, so it is asked here, by the rule the view
+    // offers the control by (WorkflowApprovals.mayReverse). When -- engaged, the step approved now -- is settled under
+    // the lock by WorkflowApprovals.reverse.
+    generalEndpoint(
+        GEP.workflowReverseApproval,
+        "Reverses an approval of a normal workflow for a form, as an administrator of the form's client: the step named, " +
+            "and every later step and approval of the workflow with it, which have to be given again. The reason is " +
+            "recorded on the workflow's trail and shown on the task. Answers with the form's state as it then stands.",
+        HttpMethod.POST,
+        outputRef = GEP.workflowStatesType,
+        inputFields = {
+            field(GDF.gedraId, "The form whose approval to reverse.", required = true)
+            field(GDF.workflowId, "The normal workflow the approval task belongs to.", required = true)
+            field(GDF.taskId, "The approval task whose approval to reverse.", required = true)
+            field(
+                GDF.stepId,
+                "The step to reverse, with every one after it. Required for a task approved in steps; absent, the task's " +
+                    "one step.",
+            )
+            field(
+                GDF.reason,
+                "Why the approval is reversed, at most ${GDF.maxReasonLength} characters: shown on the task " +
+                    "until it is approved again.",
+                required = true,
+            )
+        },
+        publicApi = true,
+        needsClientConfig = true,
+    ) { c, request ->
+        val workflowId = request[GDF.workflowId].toOptStr()
+            ?: throw KdrException.mkInput("A ${GDF.workflowId} is required.")
+        val taskId = request[GDF.taskId].toOptStr() ?: throw KdrException.mkInput("A ${GDF.taskId} is required.")
+        // Who may comes first: a caller who never may is told so, not asked for a better reason.
+        val row = stateTargetRow(c, request)
+        if (!AdminRules.oversees(c, row.client)) {
+            throw KdrException(
+                "Reversing an approval takes an administrator of client '${row.client}'.",
+                code = EXC.notAuthorized,
+            )
+        }
+        val reason = request[GDF.reason].toOptStr()?.trim().orEmpty()
+        if (reason.isEmpty()) throw KdrException.mkInput("Say why the approval is reversed: a ${GDF.reason} is required.")
+        if (reason.length > GDF.maxReasonLength) {
+            throw KdrException.mkInput("A ${GDF.reason} is at most ${GDF.maxReasonLength} characters.")
+        }
+        val declared = WorkflowPhases.liveFor(c, WorkflowService.get(c).forClient(row.client), workflowId)
+            ?.takeIf { it.def.entry == WfEntry.normal }
+            ?: throw KdrException.mkInput("'$workflowId' is not a normal workflow of client '${row.client}'.")
+        // A frozen workflow (past its relevancy, issue #790) keeps what it recorded: no approval is given or taken back.
+        WorkflowPhases.requireCalculated(c, row.client, declared.def, "reversed")
+        val task = declared.def.task(taskId)?.takeIf { it.approval != null }
+            ?: throw KdrException.mkInput("'$taskId' is not an approval task of workflow '$workflowId'.")
+        val states = WorkflowApprovals.reverse(c, row, declared, task, request[GDF.stepId].toOptStr(), reason)
         mapOf(GDF.gedraId to row.gedraId.fullId, GDF.states to WorkflowPhases.shownStates(c, row.client, states))
     }
 

@@ -3,6 +3,7 @@ package com.dynamicruntime.kdn
 import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.endpoint.EP
+import com.dynamicruntime.common.endpoint.clientPath
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.gedra.ClientAudience
 import com.dynamicruntime.common.gedra.ClientDef
@@ -262,6 +263,11 @@ class WorkflowWindowsTest : StringSpec({
             EXC.conflict, GEP.workflowApprove,
             mapOf(GDF.gedraId to engagedForm, GDF.workflowId to "inspection", GDF.taskId to "approve"),
         )
+        // Nor is an approval taken back (issue #1787): a frozen workflow keeps what it recorded, even from an administrator.
+        TestUser.createFullAdmin(cxt, "reverser@windows790.test").expectError(
+            EXC.conflict, clientPath(GEP.workflowReverseApproval, client),
+            mapOf(GDF.gedraId to engagedForm, GDF.workflowId to "inspection", GDF.taskId to "approve", GDF.reason to "Late"),
+        )["errorMessage"].toOptStr().orEmpty() shouldContain "cannot be reversed now"
     }
 
     "past its lifetime the workflow vanishes, but the engagement is kept and can still be withdrawn" {

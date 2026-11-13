@@ -132,4 +132,72 @@ class TaskDisplayViewTest {
         assertNull(task.display)
         assertFalse(task.isDisabled)
     }
+
+    /** A task approved at once ("Approve the notes") and one in two steps ("Sign it off"), as an administrator sees them. */
+    private fun reversalView(signGiven: Boolean = true) = view(
+        mapOf(
+            WFD.id to "a", WFD.label to "Approve the notes",
+            WVF.approval to mapOf(
+                WVF.approved to true,
+                WVF.steps to listOf(mapOf(WFD.id to "a", WVF.approved to true, WVF.canReverse to true)),
+            ),
+        ),
+        mapOf(WFD.id to "record", WFD.label to "Record more"),
+        mapOf(
+            WFD.id to "b", WFD.label to "Sign it off",
+            WVF.approval to mapOf(
+                WVF.approved to signGiven,
+                WVF.steps to listOf(
+                    mapOf(WFD.id to "look", WFD.label to "First look", WVF.approved to true, WVF.canReverse to true),
+                    mapOf(WFD.id to "sign", WFD.label to "Sign-off", WVF.approved to signGiven, WVF.canReverse to signGiven),
+                ),
+            ),
+        ),
+    )
+
+    @Test
+    fun reversingAnApprovalNamesTheLaterApprovalsThatGoWithIt() {
+        val view = reversalView()
+        assertTrue(view.tasks.first().approval!!.steps.single().canReverse)
+        assertEquals(listOf("Sign it off: First look", "Sign it off: Sign-off"), reversalTakesWith(view, "a", "a"))
+        assertEquals(
+            "Reverse this approval? It has to be given again. " +
+                "It also reverses “Sign it off: First look” and “Sign it off: Sign-off”.",
+            reversalQuestion(view, "a", "a"),
+        )
+        assertEquals(
+            "Reverse this approval? It has to be given again. It also reverses “Sign it off: Sign-off”.",
+            reversalQuestion(view, "b", "look"),
+        )
+        assertEquals("Reverse this approval? It has to be given again.", reversalQuestion(view, "b", "sign"))
+        // A later step not given goes with nothing.
+        assertEquals(listOf("Sign it off: First look"), reversalTakesWith(reversalView(signGiven = false), "a", "a"))
+    }
+
+    @Test
+    fun aReversedStepSaysWhoReversedItWhenAndWhy() {
+        fun step(extra: Map<String, Any?>) = view(
+            approvalTask(
+                approvedBlock + (WVF.approved to false) + (WVF.steps to listOf(mapOf(WFD.id to "approve", WVF.approved to false) + extra)),
+            ),
+        ).tasks.single().approval!!.steps.single()
+        val reversed = mapOf(
+            WVF.reversedByName to "Ada Admin", WVF.reversedAt to "2026-11-11T19:18:34.577Z", WVF.reversedReason to "The figures were wrong",
+        )
+        assertEquals("Approval reversed by Ada Admin on 2026-11-11: The figures were wrong.", reversedLine(step(reversed)))
+        // Named by its label, with the approval it went with, an email left out, and the reason's own end kept.
+        assertEquals(
+            "Sign-off reversed on 2026-11-11, with “Approve the notes”: Why was this signed?",
+            reversedLine(
+                step(
+                    reversed + mapOf(
+                        WFD.label to "Sign-off", WVF.reversedByName to "ada@acme.test", WVF.reversedReason to "Why was this signed?",
+                        WVF.reversedWith to "Approve the notes",
+                    ),
+                ),
+            ),
+        )
+        assertNull(reversedLine(step(emptyMap())))
+        assertFalse(step(reversed).canReverse)
+    }
 }

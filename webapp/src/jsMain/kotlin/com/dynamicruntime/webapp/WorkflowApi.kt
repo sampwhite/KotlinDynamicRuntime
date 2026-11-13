@@ -73,6 +73,25 @@ object WorkflowApi {
     }
 
     /**
+     * Reverses step [stepId] of approval task [taskId] (issue #1787), and every later step and approval of the workflow
+     * with it, as an administrator of the form's client, for [reason]. [stepId] is null for an approval given at once.
+     */
+    suspend fun reverseApproval(
+        gedraId: String, workflowId: String, taskId: String, reason: String, client: String? = null, stepId: String? = null,
+    ) {
+        Http.sendApi(
+            "POST", pathFor(GEP.workflowReverseApproval, client),
+            buildMap {
+                put(GDF.gedraId, gedraId)
+                put(WFD.workflowId, workflowId)
+                put(GDF.taskId, taskId)
+                stepId?.let { put(GDF.stepId, it) }
+                put(GDF.reason, reason)
+            },
+        )
+    }
+
+    /**
      * Posts a task's collected entries; the outcome is either a refusal naming what is missing, or the form.
      * [client] as for [fetchCoreDetailsView]: the form's client's copy of the save, so it runs under that client's rules.
      */

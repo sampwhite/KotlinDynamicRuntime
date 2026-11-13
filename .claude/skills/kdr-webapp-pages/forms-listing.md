@@ -127,6 +127,16 @@ alone also confines the rows to X: on a client's own copy, an `allClients` calle
   given, by its label (`givenStepLines`), above the prompt, in place of the one approved line once all are given; the
   approve names the step it showed (`stepId`), so a stale page is refused (409) rather than giving the next step. Who
   the step waits on is the view's `waitingOn` (the step's rule is the CTA filter), else the approval's `waiting`.
+- **An administrator reverses an approval** (issue #1787). A step given carries `canReverse` for an administrator of
+  the form's client while the workflow is calculated (`WorkflowApprovals.mayReverse`, the rule the endpoint enforces),
+  and the page draws **Reverse approval…** under its line: `DangerConfirm` with a required reason (`askReason`), its
+  question naming the later steps and approvals that go with it (`reversalQuestion`, `reversalTakesWith`), then
+  `POST /gedra/workflow/reverseApproval` with the step, and a reload through `onApproveSettled`, a refusal shown by the
+  task as "Couldn't reverse the approval." (`ApproveRefusal.lead`). Like approving, it waits while another approval or
+  reversal runs (`blocked`) and while any task holds unsaved edits. A step reversed in this engagement and not given
+  again shows `reversedLine` above the prompt -- who, when, why, and "with “…”" when it went with an earlier approval --
+  to everyone who sees the task, until it is approved again.
+  The approve confirmation says "Only an administrator can reverse an approval."
 - **A workflow's listing is its own page** (`page=workflowForms`, issue #792): where a count on the Workflows
   page leads. `FormsPage` draws it in workflow mode -- the workflow as heading, a state switch, `← Workflows` --
   with the workflow and state riding the address as search keys (`formsDrillKeys`) so showing more, sorting and a client

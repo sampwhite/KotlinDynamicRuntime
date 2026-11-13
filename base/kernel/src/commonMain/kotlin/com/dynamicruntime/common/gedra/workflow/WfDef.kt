@@ -280,6 +280,23 @@ object WVF {
     const val canApprove = "canApprove"
 
     /**
+     * On each given step of an approval task's [approval] in a normal workflow's view (issue #1787): whether this caller
+     * may reverse it -- the caller administers the form's client, and the workflow is being calculated -- the rule the
+     * reverse endpoint enforces, so the page offers the control only where it works.
+     */
+    const val canReverse = "canReverse"
+
+    /**
+     * On each step of an approval task's [approval] that is not given now (issue #1787): the step's latest reversal in
+     * the current engagement -- when, by whom (as [approvedByName] names a reviewer), why, and, for one reversed along
+     * with an earlier approval, that approval's name ([approvalName]: its task's label, and its step's).
+     */
+    const val reversedAt = "reversedAt"
+    const val reversedByName = "reversedByName"
+    const val reversedReason = "reversedReason"
+    const val reversedWith = "reversedWith"
+
+    /**
      * On a view resolved against a form, and the locks endpoint's answer (issue #857): the traits locked for this
      * caller, each with its `traitId`, the `workflowId` and `label` of the workflow locking it, and [canOverride] --
      * so the page draws them read-only and offers an override only to whoever may make one.
@@ -680,6 +697,13 @@ class WfApprovalStep(
  * whose [stepId] is the task's own -- as an approval was keyed before steps -- and `<task>.<step>` for a declared step.
  */
 fun approvalKey(taskId: String, stepId: String?): String = if (stepId == null || stepId == taskId) taskId else "$taskId.$stepId"
+
+/**
+ * What an approval is called where a reversal names it (issue #1787): its task's label, and its step's when it has one.
+ * Labels as shown, already resolved from copy. One rule for the view's `reversedWith` and the page's confirmation, so
+ * the two name an approval alike.
+ */
+fun approvalName(taskLabel: String, stepLabel: String?): String = listOfNotNull(taskLabel, stepLabel).joinToString(": ")
 
 /**
  * A task's **task layout** -- as opposed to a *field* layout (`SchLayout`, `g-layout`), which presents the fields

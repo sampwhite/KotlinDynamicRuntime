@@ -272,8 +272,11 @@ class ReportEvalTest {
     @Test
     fun everyVocabularyAttributeHasAReading() {
         // A name the parser accepts and the evaluator cannot read would be a silently blank column; with full state
-        // every workflow and approval attribute has a value, and none throws.
-        for (path in workflowPaths("auditReview")) assertTrue(value(path) != null, path)
+        // every workflow and approval attribute has a value, and none throws -- a reversal's, with one standing.
+        for (path in workflowPaths("auditReview")) {
+            val s = if (reversalAttrs.any { path.endsWith(".$it") }) withTrail() else subject()
+            assertTrue(value(path, s = s) != null, path)
+        }
         val fullOwner = RUSR.attrs.keys.associateWith<String, Any?> { "x" }
         for (name in RUSR.attrs.keys) assertTrue(value("user.$name", ReportKind.string, s = subject(owner = fullOwner)) != null, name)
         val fullMeta = ReportSubject(RMETA.attrs.keys.associateWith { "x" }, entries, states(), owner) { WfPhase.engageable }
@@ -305,6 +308,60 @@ class ReportEvalTest {
         val both = stepped(first, stepRecord("second", t2, 14L))
         assertEquals(true, value("workflow.auditReview.approval[approveAudit].approved", s = both))
         assertEquals(14L, value("workflow.auditReview.approval[approveAudit].approvedBy", s = both))
+    }
+
+    // Issue #1787: the approval given at t2 is reversed at t3, which removes its record and leaves events on the trail.
+    private val t3 = "2026-03-04T10:00:00Z".parseDate()
+    private val t4 = "2026-03-05T10:00:00Z".parseDate()
+
+    private fun event(kind: String, at: Any, vararg more: Pair<String, Any?>) = mapOf(WFS.kind to kind, WFS.at to at) + more
+
+    private val reversalTrail = listOf(
+        event(WFS.engagedEvent, t1),
+        event(WFS.approvedEvent, t2, WFS.by to 12L, WFS.note to "approveAudit"),
+        event(
+            WFS.approvalReversedEvent, t3,
+            WFS.by to 20L, WFS.note to "approveAudit", WFS.reversedFrom to "approveAudit", WFS.reason to "Wrong total",
+        ),
+    )
+
+    /** The default state with its engagement's trail set to [events] and its approval records replaced by [records]. */
+    private fun withTrail(events: List<Map<String, Any?>> = reversalTrail, vararg records: Map<String, Any?>) = subject(
+        states().filterNot { it[GE.traitId] == WFS.workflowApproval || it[GE.traitId] == WFS.workflowEngagement } +
+            state(
+                WFS.workflowEngagement,
+                mapOf(WFD.workflowId to "auditReview", WFS.engaged to true, WFS.lastEngagedAt to t1, WFS.events to events),
+            ) + records,
+    )
+
+    /** An approval's attributes that have a value only while a reversal stands -- read against [withTrail]'s. */
+    private val reversalAttrs = setOf(RWF.reversed, RWF.reversedAt, RWF.reversedBy, RWF.reversedReason)
+
+    @Test
+    fun aReversedApprovalSaysWhenByWhomAndWhyAndIsTheLastActivity() {
+        val key = "approveAudit"
+        val trail = reversalTrail
+        val reversed = withTrail()
+        val path = "workflow.auditReview.approval[$key]"
+        assertEquals(false, value("$path.approved", s = reversed))
+        assertEquals(true, value("$path.reversed", s = reversed))
+        assertEquals(t3, value("$path.reversedAt", s = reversed))
+        assertEquals(20L, value("$path.reversedBy", s = reversed))
+        assertEquals("Wrong total", value("$path.reversedReason", s = reversed))
+        assertEquals(t3, value("workflow.auditReview.lastActivityAt", s = reversed))
+        // Never reversed: no reversal, and the approval is the last thing anyone did.
+        assertEquals(false, value("$path.reversed"))
+        assertNull(value("$path.reversedAt"))
+        assertEquals(t2, value("workflow.auditReview.lastActivityAt"))
+        // Given again: the reversal no longer stands, and the new approval is the last activity.
+        val again = withTrail(
+            trail + event(WFS.approvedEvent, t4, WFS.by to 14L, WFS.note to key),
+            state(WFS.workflowApproval, mapOf(WFD.workflowId to "auditReview", WFS.taskId to key, WFS.approvedAt to t4, WFS.approvedBy to 14L)),
+        )
+        assertEquals(true, value("$path.approved", s = again))
+        assertEquals(false, value("$path.reversed", s = again))
+        assertNull(value("$path.reversedReason", s = again))
+        assertEquals(t4, value("workflow.auditReview.lastActivityAt", s = again))
     }
 
     @Test

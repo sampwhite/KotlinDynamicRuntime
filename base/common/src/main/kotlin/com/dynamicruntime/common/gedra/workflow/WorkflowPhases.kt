@@ -141,14 +141,20 @@ object WorkflowPhases {
     private val perWorkflowTraits = setOf(WFS.workflowEngagement, WFS.workflowState, WFS.workflowApproval)
 
     /**
+     * Whether [def] is being calculated in [client] now -- relevant, not past its relevancy or before it: what
+     * [requireCalculated] refuses by, for a view that offers an act only where it would be taken (issue #1787).
+     */
+    fun calculatesNow(cxt: KdrCxt, client: String?, def: WfDef): Boolean = paramsOf(cxt, client, def).phaseAt(cxt.instanceNow()).calculates
+
+    /**
      * Refuses [doing] -- "saved", "approved" -- in a workflow that is not being calculated in [client]: past its relevancy
      * (frozen, for a form engaged with it) or not yet relevant. A 409, since the request is well-formed and would
      * succeed at another time.
      */
     fun requireCalculated(cxt: KdrCxt, client: String?, def: WfDef, doing: String) {
+        if (calculatesNow(cxt, client, def)) return
         val now = cxt.instanceNow()
         val params = paramsOf(cxt, client, def)
-        if (params.phaseAt(now).calculates) return
         val w = params.windowsInForce.effectiveRelevancy
         val start = w.start
         val reason = if (!params.enabledInForce) {

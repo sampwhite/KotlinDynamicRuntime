@@ -16,6 +16,8 @@ import com.dynamicruntime.common.gedra.workflow.engagementDataOf
 import com.dynamicruntime.common.gedra.workflow.formStatusOf
 import com.dynamicruntime.common.gedra.workflow.formWorkflowWeights
 import com.dynamicruntime.common.gedra.workflow.formWorkflowsOf
+import com.dynamicruntime.common.gedra.workflow.newestWorkflowStamp
+import com.dynamicruntime.common.gedra.workflow.taskReversal
 import com.dynamicruntime.common.gedra.workflow.coreDetailsStatusOf
 import com.dynamicruntime.common.gedra.workflow.workflowStateDataOf
 import com.dynamicruntime.common.schema.SchOption
@@ -27,6 +29,8 @@ import com.dynamicruntime.common.util.parseDayOrNull
 import com.dynamicruntime.common.util.pluckDataPath
 import com.dynamicruntime.common.util.toJsonListOrEmpty
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
+import com.dynamicruntime.common.util.toOptInstant
+import com.dynamicruntime.common.util.toOptLongOrNull
 import com.dynamicruntime.common.util.toOptStr
 import com.dynamicruntime.common.util.toDay
 import com.dynamicruntime.common.util.toStartOfDay
@@ -264,10 +268,17 @@ private fun workflowValue(path: WorkflowPath, subject: ReportSubject): Any? {
         val approvals = currentApprovals(subject.states, id)
         val keys = subject.approvalSteps(id, taskId)?.map { approvalKey(taskId, it) } ?: listOf(taskId)
         val approval = if (keys.all { it in approvals }) approvals[keys.last()] else null
+        // A reversal standing against the task (issue #1787): the latest of its steps' not given again.
+        fun reversal() = taskReversal(subject.states, id, keys, approvals.keys)
         return when (path.attrName) {
             RWF.approved -> approval != null
             RWF.approvedAt -> approval?.get(WFS.approvedAt)
             RWF.approvedBy -> approval?.get(WFS.approvedBy)
+            RWF.reversed -> reversal() != null
+            RWF.reversedAt -> reversal()?.get(WFS.at).toOptInstant()
+            // The trail's events are open maps, so read as a user id is, whatever number type the stored JSON gave.
+            RWF.reversedBy -> reversal()?.get(WFS.by).toOptLongOrNull()
+            RWF.reversedReason -> reversal()?.get(WFS.reason).toOptStr()
             else -> throw unreadAttribute(path)
         }
     }
@@ -280,6 +291,7 @@ private fun workflowValue(path: WorkflowPath, subject: ReportSubject): Any? {
         RWF.ctaFilterLabel -> if (shown?.category == WfColumnCategory.engaged) ctaFilterLabelOf(subject, id) else null
         RWF.engaged -> engaged
         RWF.lastEngagedAt -> engagement?.get(WFS.lastEngagedAt)
+        RWF.lastActivityAt -> newestWorkflowStamp(subject.states, id)
         RWF.eligible -> workflowStateDataOf(subject.states, id)?.get(WFS.eligible) as? Boolean
         RWF.tasksDone -> workflowStateDataOf(subject.states, id)?.get(WFS.tasksDone) as? Boolean
         else -> throw unreadAttribute(path)

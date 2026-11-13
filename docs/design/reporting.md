@@ -58,7 +58,10 @@ selector := [*] | [v1,v2,...] | [name=v,...]
 - **`workflow`** reads what the forms listing shows about one workflow on the form: `category` (eligible, engaged,
   finished, ineligible), `engaged`, `eligible`, `finished`, `tasksDone`, `ctaTask`, `ctaKeyword` (the search keyword
   its call to action carries, shown by the keyword's report label), `ctaFilterLabel` (whom it waits on, in the
-  client's words), `lastEngagedAt`, and an approval task's `approved`, `approvedAt`, `approvedBy`. Never raw state. A
+  client's words), `lastEngagedAt`, `lastActivityAt` (when anyone last acted on the form in the workflow, the newest
+  stamp on its engagement: entering or leaving it, an approval or its reversal, a lock override, never a save of the
+  data, #1787), and an approval task's `approved`, `approvedAt`, `approvedBy`, and -- while an administrator's reversal
+  stands, #1787 -- `reversed`, `reversedAt`, `reversedBy`, `reversedReason`. Never raw state. A
   workflow the client no longer has, one outside its lifetime, and one closed to new forms that this form never engaged
   with show blank, whatever state is left behind. A keyword is always about the work, whoever may act: a report is
   stored and exported apart from any one viewer (issue #1600).

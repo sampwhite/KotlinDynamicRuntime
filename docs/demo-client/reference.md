@@ -241,7 +241,7 @@ depends on it.
 | Source | What follows | Example |
 | --- | --- | --- |
 | `form` | A trait's id, then a field of its data. A trait the platform ships keeps its full id. | `form.session.track`, `form.kdr:name.name` |
-| `workflow` | A workflow's id, then one of `category`, `engaged`, `eligible`, `finished`, `tasksDone`, `ctaTask`, or `lastEngagedAt`. | `workflow.review.category` |
+| `workflow` | A workflow's id, then one of its attributes, such as `category`, `finished`, or `lastActivityAt`, or `approval[<task>]` and one of an approval's, such as `approved` or `reversedReason`. The [report path reference](../reference/report-paths.md) lists them all. | `workflow.review.category`, `workflow.review.approval[accept].approved` |
 | `user` | One of `userId`, `name`, `publicName`, `email`, `persona`, `org`, `labels`, `isEntity`, or `enabled`, about the person who owns the form. | `user.name` |
 | `meta` | One of `gedraId`, `client`, `org`, `ownerId`, `createdAt`, `updatedAt`, `formStatus`, `coreDetailsStatus`, or `cfacts`, about the form itself. | `meta.formStatus` |
 
