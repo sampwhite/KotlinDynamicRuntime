@@ -640,13 +640,23 @@ fun parseCopyKeys(items: List<Map<String, Any?>>): List<CopyKeyView> = items.map
  * A mail as the client's copy renders it, with sample values (issue #1799): its subject, its text part, and its HTML
  * part, a whole document. [mode] says whose words: the client's people's ([EDM.live]) or its sandbox's ([EDM.draft]).
  */
-class MailPreviewView(val client: String, val mail: String, val mode: String, val subject: String, val text: String, val html: String)
+class MailPreviewView(
+    val client: String,
+    val mail: String,
+    val mode: String,
+    /** The From header (issue #1804): the name the mail's copy gives, and the deployment's address. */
+    val from: String,
+    val subject: String,
+    val text: String,
+    val html: String,
+)
 
 /** The mail preview endpoint's answer as a [MailPreviewView]. Pure, and covered under `jsNodeTest`. */
 fun parseMailPreview(results: Map<String, Any?>): MailPreviewView = MailPreviewView(
     client = results[COV.client].toOptStr().orEmpty(),
     mail = results[CPY.mail].toOptStr().orEmpty(),
     mode = results[CPY.mode].toOptStr() ?: EDM.live,
+    from = results[CPY.from].toOptStr().orEmpty(),
     subject = results[CPY.subject].toOptStr().orEmpty(),
     text = results[CPY.text].toOptStr().orEmpty(),
     html = results[CPY.html].toOptStr().orEmpty(),

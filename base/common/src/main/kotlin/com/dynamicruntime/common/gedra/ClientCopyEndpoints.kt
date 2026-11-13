@@ -9,6 +9,8 @@ import com.dynamicruntime.common.endpoint.schemaModule
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.mail.MCOPY
 import com.dynamicruntime.common.mail.MailPreview
+import com.dynamicruntime.common.mail.MailService
+import com.dynamicruntime.common.mail.mailFromHeader
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.util.getReqNonBlankStr
 import com.dynamicruntime.common.util.toJsonListOfMaps
@@ -86,6 +88,7 @@ fun clientCopySchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CPY.namespace) 
         property(CPY.mail, "The mail: a namespace of the mail file.", required = true)
         property(CPY.mode, "Whose words: '${EDM.live}', the client's people's, or '${EDM.draft}', its sandbox's, where a " +
             "save of its copy is a draft.", required = true)
+        property(CPY.from, "The From header: the name the mail's copy gives, and the deployment's address.", required = true)
         property(CPY.subject, "The subject.", required = true) { emptyIsAbsent = false }
         property(CPY.text, "The plain text part.", required = true) { emptyIsAbsent = false }
         property(CPY.html, "The HTML part, a whole document with inline styles only.", required = true)
@@ -113,6 +116,7 @@ fun clientCopySchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CPY.namespace) 
             COV.client to preview.client,
             CPY.mail to preview.mail,
             CPY.mode to preview.mode,
+            CPY.from to mailFromHeader(preview.rendered.fromName, MailService.get(c).fromAddressForApp),
             CPY.subject to preview.rendered.subject,
             CPY.text to preview.rendered.text,
             CPY.html to preview.rendered.html,

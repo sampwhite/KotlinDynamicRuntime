@@ -22,10 +22,11 @@ external interface MailPreviewPanelProps : Props {
 private val mailPreviewScope = MainScope()
 
 /**
- * One mail as the client's copy renders it (issue #1799), under its namespace in the copy editor's `mail` file: its
- * subject, then its HTML part as a mail client would draw it, or its text part. The server renders it by the code that
- * sends mail, with a made-up address and code, so what shows here is what is sent. Read again whenever the page re-reads,
- * which a save of the copy makes it do; a read still in flight for another client or mail is disowned.
+ * One mail as the client's copy renders it (issue #1799), under its namespace in the copy editor's `mail` file: who it
+ * is from (issue #1804), its subject, then its HTML part as a mail client would draw it, or its text part. The server
+ * renders it by the code that sends mail, with a made-up address and code, so what shows here is what is sent. Read
+ * again whenever the page re-reads, which a save of the copy makes it do; a read still in flight for another client or
+ * mail is disowned.
  *
  * The HTML part is drawn in an empty-sandboxed frame: it runs nothing, and its inline styles reach nothing of the page.
  *
@@ -64,6 +65,11 @@ val MailPreviewPanel = FC<MailPreviewPanelProps> { props ->
                 +"Loading…"
             }
             else -> {
+                // Who it is from (issue #1804), as an inbox shows it.
+                p {
+                    className = ClassName("mail-preview-from")
+                    +"From: ${shown.from}"
+                }
                 div {
                     className = ClassName("mail-preview-head")
                     span {

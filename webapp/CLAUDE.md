@@ -264,7 +264,8 @@ Current UI-config endpoints:
   skill's `public-home.md`.
 - **The mails are fragment copy** (issue #773): every mail the auth flows send -- the code, the invitation, the
   sign-in reminder, the claim page's answers -- is authored in the **backend** fragment file `mail.md` (never served; one namespace
-  per mail, `subject` + `body`, a shared `common.footer` and `common.htmlStyle`) and goes out as one message
+  per mail, `subject` + `body`, a shared `common.footer` and `common.htmlStyle`, and `common.fromName`, the From
+  header's name beside the deployment's `no-reply@` address, issue #1804) and goes out as one message
   with a text part (the kernel's `renderMarkdownText`) and an HTML part (`renderMarkdown`, issue #795). `MailCopy`
   renders it for the client of the user the mail is *about* -- an invitation's user, a claim's key -- so a
   client's config overlay of `mail` rewords its mails and signs them as itself, whoever sent them. Params are

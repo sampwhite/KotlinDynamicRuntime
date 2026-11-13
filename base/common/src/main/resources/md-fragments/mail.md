@@ -27,8 +27,13 @@
    inline style of the HTML part's body (inline only: mail clients strip stylesheets), where a client sets its
    colors. `sentFrom` follows the footer whenever the deployment's host is known, so a reader with several
    instances can tell their mails apart (issue #1276); a client overlays it empty to leave it out.
-   `testDeploymentNote` follows that on a public test deployment only (issue #1150). -/
+   `testDeploymentNote` follows that on a public test deployment only (issue #1150). `fromName` is who every mail is
+   from, the From header's name beside the deployment's address (issue #1804): plain words, Markdown reduced to text;
+   a client names itself with `${clientName}`, and empty sends the address alone. The registration code has no client,
+   so it is always the deployment's. -/
 # @common
+/-where Mail: the name every mail is from, shown in the inbox list and above the subject. -/
+# +fromName KotlinDynamicRuntime
 /-where Mail: the line closing every mail. -/
 # +footer This message was sent automatically. If you were not expecting it, you can ignore it.
 /-where Mail: the line after the closing one, naming the site the mail came from. -/

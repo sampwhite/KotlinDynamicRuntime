@@ -12,6 +12,7 @@ import com.dynamicruntime.common.gedra.GedraConfigReload
 import com.dynamicruntime.common.gedra.GedraConfigService
 import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.http.request.TestHttpClient
+import com.dynamicruntime.common.mail.MAIL
 import com.dynamicruntime.common.mail.MCOPY
 import com.dynamicruntime.common.mail.MailCopy
 import com.dynamicruntime.common.mail.MailService
@@ -69,6 +70,8 @@ class MailCopyTest : StringSpec({
             }
             namespace(MCOPY.common) {
                 key(MCOPY.footer, "Sent by the Mail Co desk.")
+                // Who it is from, naming the client (issue #1804).
+                key(MCOPY.fromName, $$"${clientName} Desk")
                 // And says nothing of the deployment (issue #1276): an emptied line is left out.
                 key(MCOPY.sentFrom, "")
             }
@@ -114,6 +117,9 @@ class MailCopyTest : StringSpec({
         // Then the deployment it came from (issue #1276): the configured public URL's host.
         sent.text.substringAfter("sent automatically") shouldContain "Sent from mail.test."
         sent.html!!.substringAfter("sent automatically") shouldContain "Sent from mail.test."
+        // From the deployment's name, as shipped (issue #1804), which the read-back shows too.
+        sent.from shouldBe "\"KotlinDynamicRuntime\" <${MAIL.unsentFromAddress}>"
+        emails.first()[TSE.from] shouldBe sent.from
     }
 
     "a host is its URL's host and port, lower-cased, or nothing when there is none" {
@@ -187,6 +193,8 @@ class MailCopyTest : StringSpec({
         sent.text shouldNotContain "{.value}"
         sent.text shouldContain "Sent by the Mail Co desk."
         sent.text shouldNotContain "sent automatically"
+        // From the client, by the name its copy gives (issue #1804).
+        sent.from shouldBe "\"Mail Co Desk\" <${MAIL.unsentFromAddress}>"
         sent.html.shouldNotBeNull() shouldContain "Welcome to <em>Mail Co</em>, <a style=\"font-weight: bold; color: inherit; text-decoration: none;\">$overlaid</a>. Accept with the link:"
         sent.html!! shouldContain "Sent by the Mail Co desk."
         // The overlay named only the invitation, so the client's other mails keep the shipped wording -- with

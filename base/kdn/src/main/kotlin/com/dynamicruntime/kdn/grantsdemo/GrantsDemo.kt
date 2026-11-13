@@ -347,6 +347,7 @@ fun grantsDemoMailWords(cxt: KdrCxtBase = LiteCxt(), client: String = GrantsDemo
     gedraConfig(cxt, GrantsDemo.mailWordsConfig, clientNamespace(client), client) {
         fragmentOverlay(AFRAG.mail) {
             namespace(MCOPY.common) {
+                key(MCOPY.fromName, "Riverbend Community Fund")
                 key(MCOPY.footer, "From the grants team at the Riverbend Community Fund.")
                 key(MCOPY.sentFrom, $$"Sent from the fund's grant site, ${siteHost}.")
                 key(MCOPY.htmlStyle, "font-family: Georgia, serif; font-size: 16px; line-height: 1.6; color: #1f3b2d;")

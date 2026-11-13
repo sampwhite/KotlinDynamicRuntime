@@ -121,7 +121,7 @@ Force-loads (`true`) or skips (`false`) the `sample` module's demo file upload/d
 
 **Default when unset:** unset (required when mail can be sent)
 
-The domain mail is sent from, through Mailgun -- e.g. `mg.dynamicruntime.org` (issue #1250). The endpoint (`https://api.mailgun.net/v3/<domain>/messages`) and the from-address (`kdr-automail@<domain>`) are derived from it; the config keys `mailgunUri` and `appFromAddress` override either. Required when the node loads a Mailgun key -- whenever something may be sent for real -- and the boot is refused without it. With no key loaded, as on every test and local run, nothing is sent and it is not needed.
+The domain mail is sent from, through Mailgun -- e.g. `mg.dynamicruntime.org` (issue #1250). The endpoint (`https://api.mailgun.net/v3/<domain>/messages`) and the from-address (`no-reply@<domain>`, under the name a mail's copy gives as `common.fromName`) are derived from it; the config keys `mailgunUri` and `appFromAddress` override either. Required when the node loads a Mailgun key -- whenever something may be sent for real -- and the boot is refused without it. With no key loaded, as on every test and local run, nothing is sent and it is not needed.
 
 ### `KDR_MAIL_TRANSMIT_ADMIN_DOMAIN`
 

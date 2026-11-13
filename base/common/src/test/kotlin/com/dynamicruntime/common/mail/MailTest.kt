@@ -36,7 +36,17 @@ private fun mailSendingTests() = stringSpec {
     "the endpoint and the from-address derive from the mail domain" {
         val sending = mailSendingFor(config(MAILENV.mailDomain.name to "mg.example.org"), keyLoaded = true)
         sending.mailgunUri shouldBe "https://api.mailgun.net/v3/mg.example.org/messages"
-        sending.fromAddress shouldBe "kdr-automail@mg.example.org"
+        sending.fromAddress shouldBe "no-reply@mg.example.org"
+    }
+
+    "a From header names its sender in quotes, and nothing the name says escapes them (issue #1804)" {
+        mailFromHeader("Riverbend Community Fund", "no-reply@mg.example.org") shouldBe
+            "\"Riverbend Community Fund\" <no-reply@mg.example.org>"
+        // A quote or a backslash is escaped; a line break, which would start a header of its own, becomes a space.
+        mailFromHeader("Say \"hi\" \\ bye\r\nBcc: x@evil.test", "a@b.test") shouldBe
+            "\"Say \\\"hi\\\" \\\\ bye Bcc: x@evil.test\" <a@b.test>"
+        // No name, the address alone.
+        mailFromHeader("  ", "a@b.test") shouldBe "a@b.test"
     }
 
     "the config keys override what the domain would give" {

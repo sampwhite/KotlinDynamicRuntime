@@ -71,10 +71,12 @@ class CopyFileViewTest {
         ), emptyList())
         assertEquals(setOf("verifyCode"), copyMailNamespaces(mailRows))
         val parsed = parseMailPreview(mapOf(
-            COV.client to "acme", CPY.mail to "verifyCode", CPY.mode to EDM.draft, CPY.subject to "Your code",
+            COV.client to "acme", CPY.mail to "verifyCode", CPY.mode to EDM.draft, CPY.from to "\"Acme\" <no-reply@mg.example>",
+            CPY.subject to "Your code",
             CPY.text to "It is ABC123.", CPY.html to "<html></html>",
         ))
         assertEquals("Your code", parsed.subject)
+        assertEquals("\"Acme\" <no-reply@mg.example>", parsed.from)
         assertEquals(true, mailPreviewModeText(parsed.mode).contains("sandbox"))
         assertEquals(false, mailPreviewModeText(EDM.live).contains("sandbox"))
     }

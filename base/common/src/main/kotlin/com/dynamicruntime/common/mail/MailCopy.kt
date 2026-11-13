@@ -33,6 +33,12 @@ object MCOPY {
     const val htmlStyle = "htmlStyle"
 
     /**
+     * Who every mail is from, as the From header names it (issue #1804): plain words, which a client rewords to name
+     * itself (`${clientName}` is bound) and a flavor to name its product. The address beside it is the deployment's.
+     */
+    const val fromName = "fromName"
+
+    /**
      * The line a public test deployment's mails end with, after the [footer] (issue #1150): the deployment is for
      * testing and development only. Its own key rather than part of the footer, so a client that signs its mails
      * with a footer of its own does not drop it.
@@ -88,8 +94,11 @@ object MCOPY {
     const val maxParamLength = 2000
 }
 
-/** A mail rendered from its fragment copy: the subject, the `text/plain` part and the `text/html` part. */
-class RenderedMail(val subject: String, val text: String, val html: String)
+/**
+ * A mail rendered from its fragment copy: the subject, the `text/plain` part and the `text/html` part, and the name it
+ * is from (issue #1804), plain words for the From header, empty when the copy gives none.
+ */
+class RenderedMail(val subject: String, val text: String, val html: String, val fromName: String = "")
 
 /**
  * Renders a mail from the `mail` fragment file (issue #773), so the copy is authored like every other
@@ -177,7 +186,9 @@ object MailCopy {
         val hooks = MarkdownHooks(decorateSpan = ::decorateValue)
         val rendered = body.evalTemplate(forHtml, env = env).renderMarkdown(hooks) +
             closing.joinToString("") { "<p style=\"$footerStyle\">" + it.evalTemplate(forHtml, env = env).renderMarkdownInline(hooks) + "</p>" }
-        return RenderedMail(subject, text, wrapHtml(rendered, copy(MCOPY.common, MCOPY.htmlStyle)))
+        // Who it is from (issue #1804), as plain words: Markdown reduced to its text, as the subject reads.
+        val fromName = copy(MCOPY.common, MCOPY.fromName).evalTemplate(sanitized, env = env).renderMarkdownText().trim()
+        return RenderedMail(subject, text, wrapHtml(rendered, copy(MCOPY.common, MCOPY.htmlStyle)), fromName)
     }
 
     /**
