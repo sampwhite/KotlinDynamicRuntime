@@ -2,6 +2,7 @@
    %{@t("questionnaire.topicHelp")} / %{@t("questionnaire.heading")} / %{@t("questionnaire.intro")}. Demonstrates a layout pulling shared
    copy from a fragment file, resolved server-side at delivery. -/
 
+/-where none: the sample form's layout help, which only the sample's own form shows. -/
 # @questionnaire
 
 # +topicHelp Pick the subject these answers are about — pulled from a shared fragment file.

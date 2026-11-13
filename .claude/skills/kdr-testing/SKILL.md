@@ -616,11 +616,11 @@ way, so a cleanup slimming a mixed file sees which block it must keep.
 | Kind | Tests | What fails when the docs drift |
 | --- | --- | --- |
 | Skills | `EndpointSkillExamplesTest`, `SchemaSkillExamplesTest`, `TableCacheSkillExamplesTest`, `FlavorSkillExamplesTest`, `ImagesSkillExamplesTest`, `TestClientSkillExamplesTest` | A skill's example no longer compiles or does what the skill says. |
-| Documents run as programs | `ApiGuideTest`, `PublicWalkThroughTest`, `ConfDemoDocsTest` | A request, field, choice or step a page shows is not the product's. |
+| Documents run as programs | `ApiGuideTest`, `PublicWalkThroughTest`, `ConfDemoDocsTest`, `GrantsDemoDocsTest` | A request, field, choice or step a page shows is not the product's, or (the grants demo) a copy key with a place is not reworded by the demo or shown on its pages. |
 | Generated references | `ReferenceCopiesTest` for the copies, and a check per page that it lists everything the code declares: `FactsReference` and the facts test in `CFactRegistryEndpointTest`, `RolesReference`, `SchMessageReference`, `SchLayoutReference`, `ConfigReference`, `ReferenceIndex`, `CopyReference`, `ScriptReference`, `ReportPathReference`, the reference tests in `SchMetaSchemaTest` (schema dialect), and the endpoint and environment-variable tests in `ReferenceCopiesTest` | A committed copy differs from what the code generates, or a page leaves out something the code declares. |
 | Operator reference | `EnvVarReferenceTest` | The operator view of the variables a node read, which no static file could show, stops saying how each resolved. |
 | Links and wiring | `RepoDocLinksTest`, the reference links in `HomeUiConfigEndpointTest`, `SitePoliciesTest` | A link or a declared document leads nowhere. |
-| Registries | `ThemeTagsTest`, `MarkdownRoleStylesTest` | A tag is used without being registered (or a registered one marks too few places), or a declared Markdown role has no style in `app.css`. |
+| Registries | `ThemeTagsTest`, `MarkdownRoleStylesTest`, `CopyNotesTest` | A tag is used without being registered (or a registered one marks too few places), a declared Markdown role has no style in `app.css`, or a shipped copy key has no copy note. |
 
 The copy check and the per-page checks are not redundant. `ReferenceCopiesTest` holds a committed copy to what the
 generator writes, so an item the generator leaves out is missing from both and passes. Only the page's own check, which

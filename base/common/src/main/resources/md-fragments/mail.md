@@ -16,7 +16,12 @@
 
    Every body spells out the address it is about, although it is the `to`: Gmail folds the repeated tail of a
    thread's mails behind an ellipsis, and a tester's plus-addressed variants of one inbox would otherwise all
-   read alike. -/
+   read alike.
+
+   Every key has a copy note, its own or its namespace's (issue #1799): a comment opening with the word "where",
+   saying where a person sees a key a client is likely to reword, so the assistant and the copy editor can find it by
+   its place, or `none` and why not. A new key needs one, or `copyNotesTest` fails; docs/reference/copy.md says how to
+   write one. A key with a place is also reworded by the grants demo (docs/grants-demo/), whose test says so. -/
 
 /- Shared by every mail. `footer` closes each one; a client overlays it to sign as itself. `htmlStyle` is the
    inline style of the HTML part's body (inline only: mail clients strip stylesheets), where a client sets its
@@ -24,15 +29,23 @@
    instances can tell their mails apart (issue #1276); a client overlays it empty to leave it out.
    `testDeploymentNote` follows that on a public test deployment only (issue #1150). -/
 # @common
+/-where Mail: the line closing every mail. -/
 # +footer This message was sent automatically. If you were not expecting it, you can ignore it.
+/-where Mail: the line after the closing one, naming the site the mail came from. -/
 # +sentFrom Sent from ${siteHost}.
+/-where Mail: the style of every mail as it is drawn, its font, size, and colors. -/
 # +htmlStyle font-family: -apple-system, Helvetica, Arial, sans-serif; font-size: 15px; line-height: 1.5; color: #222222;
+/-where none: a public test deployment's own warning. -/
 # +testDeploymentNote This deployment is for testing and development only, and its data may be reset at any time.
 
 /- The frontend's dev autofill and `AuthFlowTest` read the code out of "verification code is <code>." -- keep
    that phrase. -/
 # @verifyCode
+/-where Mail: the subject of the code sent to one of the client's people signing in by code. A registration's code
+   uses the same key in the deployment's words, since no client is known yet. -/
 # +subject Your verification code
+/-where Mail: the body of the code sent to one of the client's people signing in by code. A registration's code
+   uses the same key in the deployment's words, since no client is known yet. -/
 # +body
 Your verification code is [${code}]{.code}.
 
@@ -40,7 +53,9 @@ Enter it where you asked for it. It expires in fifteen minutes.
 
 
 # @verifyCodePassword
+/-where Mail: the subject of the code sent to one of the client's people setting or changing a password. -/
 # +subject Your verification code
+/-where Mail: the body of the code sent to one of the client's people setting or changing a password. -/
 # +body
 Your verification code is [${code}]{.code}.
 
@@ -52,7 +67,9 @@ Enter it to set or change your password. It expires in fifteen minutes.
    since two clients may share a name. The persona is its label, "Admin" or "Member B": the page takes it as typed
    in any case, so the mail need not show `persona`, the stored form ("admin", "member B"). -/
 # @invitation
+/-where Mail: the subject of the invitation sent to someone an administrator adds to the client. -/
 # +subject You have been invited
+/-where Mail: the body of the invitation sent to someone an administrator adds to the client. -/
 # +body
 An account has been created for [${address}]{.value} at [${clientName}]{.value}, as [${personaLabel}]{.value}.
 
@@ -72,7 +89,9 @@ The link expires in seven days.
 /- A reminder to a user who has already claimed their account (issue #1504), sent by an administrator. It carries the
    ordinary sign-in page, never a link that signs in by itself: holding this mail proves nothing. -/
 # @signInReminder
+/-where Mail: the subject of the reminder of how to sign in that an administrator sends one of the client's people. -/
 # +subject Your account at ${clientName}
+/-where Mail: the body of the reminder of how to sign in that an administrator sends one of the client's people. -/
 # +body
 You have an account for [${address}]{.value} at [${clientName}]{.value}, as [${personaLabel}]{.value}.
 
@@ -86,7 +105,9 @@ switch to this one after you sign in.
    ... is <code>." -- keep that phrase. The page always reports a code as sent; these say what actually matched,
    as specifically as the inbox's owner is entitled to. -/
 # @claimCode
+/-where Mail: the subject of the code sent to someone claiming an account the client made for them. -/
 # +subject Claiming your account
+/-where Mail: the body of the code sent to someone claiming an account the client made for them. -/
 # +body
 Your verification code for claiming the account [${address}]{.value} at [${clientName}]{.value} as [${personaLabel}]{.value} is [${code}]{.code}.
 
@@ -94,6 +115,8 @@ Enter it on the page where you asked for it. It expires in fifteen minutes.
 
 
 /- Nothing typed was even an id, so nothing typed is named. -/
+/-where none: the claim page's answer when nothing typed was an id, so it names no client and is in the deployment's
+   words. -/
 # @claimNoMatch
 # +subject Claiming your account
 # +body
@@ -103,7 +126,11 @@ If you were invited, enter the client ID and persona exactly as the invitation g
 
 
 # @claimNoMatchInClient
+/-where Mail: the subject of the claim page's answer to one of the client's people, when the persona typed did not
+   match. -/
 # +subject Claiming your account
+/-where Mail: the body of the claim page's answer to one of the client's people, when the persona typed did not
+   match. -/
 # +body
 We could not find an account matching what was entered on the claim page:
 
@@ -114,6 +141,8 @@ We could not find an account matching what was entered on the claim page:
 This address does have an account in that client; check the persona (and persona suffix) against what the invitation gave you.
 
 
+/-where none: the claim page's answer to an address with no user in the client typed, so to someone who is not one
+   of its people. -/
 # @claimNoMatchNamed
 # +subject Claiming your account
 # +body

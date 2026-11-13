@@ -69,3 +69,4 @@ each tag marks, and warns when one marks more than 40, too broad to review and a
 | `#NARRW` | What a client's alteration of a shared type may change: narrowing, never widening. | decides or describes what a client may change in a type it shares with others. |
 | `#TPLPS` | The two template passes: `%{…}` on the server at delivery, `${…}` on the page. | resolves, checks, or describes either pass, or keeps the two apart. |
 | `#DOCDR` | Documentation-drift checks: the tests that fail when a document, a skill or a generated reference falls behind the code. | checks a document, skill or reference against the code, or describes those checks. |
+| `#CUSTX` | The copy a client customizes: each shipped key's copy note (where a person sees it, or why a client does not reword it), the pages a note may name, and what reads, serves, and checks the notes. | reads, serves, or checks a copy note, or describes which keys a client is likely to reword. |

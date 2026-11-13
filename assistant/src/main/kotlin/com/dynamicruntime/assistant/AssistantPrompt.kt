@@ -9,6 +9,7 @@ import com.dynamicruntime.common.gedra.workflow.WorkflowService
 import com.dynamicruntime.common.home.HDOC
 import com.dynamicruntime.common.util.sha256Hex
 import com.dynamicruntime.common.util.toJsonStr
+import com.dynamicruntime.kdn.grantsdemo.GrantsDemo
 import java.util.concurrent.ConcurrentHashMap
 
 /**
@@ -102,6 +103,16 @@ object AssistantPrompt {
             |  out is lost.
             |- The core details workflow, whose entry is 'coreDetails', is also at most one per client: it holds what every
             |  form carries and edits after it exists. Data a form needs from its start belongs on the New form instead.
+            |
+            |Wording:
+            |- People describe words by where they see them ("the line under the title on Home", "the invitation mail").
+            |  Find the key with read_copy: its index lists the pages, and read_copy with that page lists the keys a
+            |  person sees there, each saying where in 'where'. Then change it with set_copy or apply_copy.
+            |- A key with no 'where' is not one a client usually rewords: before changing one, say what it is and where it
+            |  is shown, from its file's 'shownOn'.
+            |- The grants demo rewords every key that has a 'where', theme by theme: read_doc
+            |  '${GrantsDemo.docIdPrefix}README' lists its pages. Read the theme's page when someone wants a whole area in their
+            |  own words, such as their mails.
             |
             |The application's API guide follows, for what it says about a client's configuration: its bundles, slots,
             |entries, and edits. It is written for a program calling the API with a key; your tools make those calls for

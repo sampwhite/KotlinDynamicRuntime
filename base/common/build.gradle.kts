@@ -290,11 +290,39 @@ val themeTagsTest = tasks.register<Test>("themeTagsTest") {
     )
 }
 
+// CopyNotesTest (issue #1799) reads every fragment file a module ships straight from the tree, to hold each key to a
+// copy note, so that a module's new key is judged however its own tests boot. The files are inputs of a task of its
+// own, handed in as the theme-tagged files are above: a change to a fragment file reruns the check.
+class FragmentFilesArgument(
+    @get:InputFiles @get:PathSensitive(PathSensitivity.RELATIVE) val files: FileCollection,
+) : CommandLineArgumentProvider {
+    override fun asArguments() = listOf("-Dkdr.fragmentFiles=" + files.files.sorted().joinToString(File.pathSeparator))
+}
+
+val copyNotesTestClass = "com.dynamicruntime.common.content.CopyNotesTest"
+
+val copyNotesTest = tasks.register<Test>("copyNotesTest") {
+    description = "Checks that every key of every fragment file a module ships has a copy note (issue #1799)."
+    group = "verification"
+    testClassesDirs = sourceSets.test.get().output.classesDirs
+    classpath = sourceSets.test.get().runtimeClasspath
+    filter.includeTestsMatching(copyNotesTestClass)
+    jvmArgumentProviders.add(
+        FragmentFilesArgument(
+            fileTree(repoRoot) {
+                include("**/src/main/resources/md-fragments/*.md")
+                exclude("**/build/**", "**/node_modules/**", "**/.gradle/**")
+            },
+        ),
+    )
+}
+
 tasks.named<Test>("test") {
     filter.excludeTestsMatching(docLinksTestClass)
     filter.excludeTestsMatching(themeTagsTestClass)
+    filter.excludeTestsMatching(copyNotesTestClass)
 }
 
 tasks.named("check") {
-    dependsOn(docLinksTest, themeTagsTest)
+    dependsOn(docLinksTest, themeTagsTest, copyNotesTest)
 }

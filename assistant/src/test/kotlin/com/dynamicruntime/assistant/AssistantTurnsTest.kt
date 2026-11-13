@@ -4,6 +4,7 @@ import com.dynamicruntime.common.assistant.ACNV
 import com.dynamicruntime.common.assistant.ASST
 import com.dynamicruntime.common.assistant.ATOOL
 import com.dynamicruntime.common.cfact.CFACT
+import com.dynamicruntime.common.content.CPAGE
 import com.dynamicruntime.common.content.UIC
 import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.KdrCxt
@@ -704,9 +705,15 @@ class AssistantTurnsTest : StringSpec({
         menu[MNU.audiences].toJsonListOfMaps().shouldNotBeEmpty()
         workflows.keys shouldNotContain MNU.audiences
         workflows.keys shouldNotContain MNU.baseCondition
-        // The copy: an index of the files, then one file's namespace whole.
-        val index = read(ATOOL.readCopy).toJsonListOfMaps().single { it[COV.fileId] == HFRAG.home }
-        index[CPYIDX.namespaces].toJsonMapOrEmpty().keys shouldContain HFRAG.formEntriesNs
+        // The copy: an index of the pages and the files, then one file's namespace whole.
+        val index = read(ATOOL.readCopy).toJsonMapOrEmpty()
+        index[CPYIDX.files].toJsonListOfMaps().single { it[COV.fileId] == HFRAG.home }[CPYIDX.namespaces]
+            .toJsonMapOrEmpty().keys shouldContain HFRAG.formEntriesNs
+        index[CPYIDX.pages].toJsonMapOrEmpty().keys shouldContain CPAGE.home
+        // A page's keys, across files, each saying where on the page it is (issue #1799).
+        val onHome = read(ATOOL.readCopy, mapOf(ATOOL.page to CPAGE.home)).toJsonListOfMaps()
+        onHome.single { it[COV.key] == HFRAG.intro }[CPY.where].toString() shouldStartWith "${CPAGE.home}:"
+        read(ATOOL.readCopy, mapOf(ATOOL.page to "Nowhere")).toJsonMapOrEmpty()[CPYIDX.none].toString() shouldContain "The pages are:"
         val entries = read(ATOOL.readCopy, mapOf(ATOOL.file to HFRAG.home, ATOOL.namespace to HFRAG.formEntriesNs)).toJsonListOfMaps()
         entries.single()[COV.key] shouldBe HFRAG.formEntryLabel
         entries.single()[COV.value] shouldBe HFRAG.defaultEntryLabel

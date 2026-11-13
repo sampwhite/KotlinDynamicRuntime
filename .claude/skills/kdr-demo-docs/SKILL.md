@@ -7,8 +7,9 @@ description: >-
   wordier and plainer), the `<!-- kdr-doc: ... -->` markers and what `ConfDemoDocsTest` holds them to, and the process
   (page before DSL, append traits never insert, try the page's own steps on your own server). Use when adding a page
   for a new workflow, editing an existing page, extending the reference page, or changing `ConfDemo.kt` in a way that
-  changes a bundle the pages show. Expect to augment this skill as pages accumulate; it was written after the first
-  four.
+  changes a bundle the pages show. Also the grants demo's pages in `docs/grants-demo/`, the client in its own words:
+  when a copy key gains or loses a location note, and `GrantsDemoDocsTest` fails until the demo and a page follow.
+  Expect to augment this skill as pages accumulate; it was written after the first four.
 ---
 
 # Writing the conference demo's documentation
@@ -151,11 +152,36 @@ Run it alone with `cd <workspace> && ./gradlew :base:kdn:test --tests '*ConfDemo
 - Keep the `kdr-test-clients` skill's pointer to `ConfDemo.kt` true: it is the full worked example of a client
   definition, so a change there is a change to what that skill promises.
 
+## The grants demo (`docs/grants-demo/`)
+
+A second demo with its own pages (issue #1799; theme #CUSTX): `grantsdemo`, a community fund's grant program that
+rewords **every** copy key a client is likely to reword -- each key whose copy note (`/-where <page>: ...-/`, in its
+fragment file) names where a person sees it -- and nothing else. Its workflows exist only to give its words something
+to name. The voice and the markers above hold for it; what differs:
+
+- **One bundle per theme**, each holding one copy overlay: `siteWords`, `homeWords`, `formsWords`, `mailWords`. Each
+  theme's page shows its bundle whole, then a **words table** headed exactly
+  `| Where it is | Key | As shipped | In the demo |`: the key's note, its address (`` `home: home.title` ``), the
+  shipped words, and the demo's. A cell may end in `…` to show only the start, and `(none)` is no words.
+- **`GrantsDemoDocsTest` holds it all together**: the demo rewords exactly the located keys; each located key has one
+  row on some page, its note, shipped words, and demo words matching; and every JSON block shows what the demo stores
+  (the checker the two demos share is `DemoDocBlocks.kt`).
+- **When a key gains a location** (a new mail, say, once its notes say `Mail: ...`), the test fails twice, naming it:
+  add its words to the theme's bundle in `GrantsDemo.kt`, and a row to that theme's page. A new theme is a new
+  bundle, added to `GrantsDemo.wordsConfigs`, and a new page, declared in `grantsDemoDocs()`.
+- **No administrator's role to join as.** A visitor sees the fund's words and cannot change them for everyone, since a
+  reference deployment lets a joined administrator edit a demo. Provisioned at boot by the `reference` flavor
+  (`GrantsDemo.provisionAtBootKey`), and by the `grants-demo` simulation on a test instance.
+- **The assistant reads the pages** (`read_doc`, `grants-demo-README`), and its prompt points it there for a whole area
+  of wording, so a page says what each key is for in words an assistant can pass on.
+
 ## Files
 
 - `docs/demo-client/*.md` -- the pages. `README.md` first, `reference.md` for the shared material.
 - `base/kdn/src/main/kotlin/com/dynamicruntime/kdn/confdemo/ConfDemo.kt` -- the client, its bundles, the
   simulation, and `confDemoDocs()`.
 - `base/kdn/src/test/kotlin/com/dynamicruntime/kdn/ConfDemoDocsTest.kt` -- the maintenance test.
+- `docs/grants-demo/*.md`, `base/kdn/src/main/kotlin/com/dynamicruntime/kdn/grantsdemo/GrantsDemo.kt`, and
+  `base/kdn/src/test/kotlin/com/dynamicruntime/kdn/GrantsDemoDocsTest.kt` -- the grants demo's pages, client, and test.
 - `kdr-docs/thoughts-client-and-wf-example.md` in the private Actions notes -- the design, the domain, and why the
   pages are ordered as they are.

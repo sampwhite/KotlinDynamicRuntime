@@ -111,6 +111,27 @@ A second paragraph, still part of the intro.
 A name may not hold a `.`, since `namespace.key` could not reach it, and a key is declared once in a namespace. Each
 value is trimmed of the space around it.
 
+## Where a key is shown
+
+A file a component ships says, for each key, whether a client is likely to reword it and, when it is, where a person
+sees it. It says so in a note: a comment that starts `/-where `, directly before the key.
+
+```
+/-where Home: the paragraphs under the title. -/
+# +intro
+```
+
+- **A key a client is likely to reword** has its page, then where on the page: `<page>: <where on it>`, with one of
+  these pages: **App bar**, **Browser tab**, **Home**, **Forms**, **Workflow**, **Form**, **Reports**, or **Mail**.
+- **Any other key** has `none: <why not>`, such as a page the same for every client, or words seen before anyone signs
+  in. A note before a namespace may only be this, and holds for each of its keys that has no note of its own.
+- **Every key has one**, its own or its namespace's. A check fails on a key with neither, so whoever adds a key decides.
+
+The Clients page's **Copy** panel shows a key's place under it, and finds keys by it. The keys listing returns it as
+`where`, and the assistant's `read_copy` lists the keys of a page by it. A note is a comment, so the values read exactly
+as they would without it. The [grants demo](../grants-demo/README.md) rewords every key that has a place, one theme a
+page.
+
 ## A client's copy overlay
 
 A client changes copy one key at a time. An overlay names a fragment file, and under it the namespaces and keys it

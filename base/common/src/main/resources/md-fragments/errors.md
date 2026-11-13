@@ -3,6 +3,7 @@
    mechanism is generic: any subsystem may flag an error `sensitive`, and this is the message its client sees
    when a deployment obfuscates. Shown to the user as designed *copy* (errorFromFragment=true). -/
 
+/-where none: the deployment's stand-in for an error it hides, the same for every client. -/
 # @general
 /- The stand-in for a `sensitive` error's real message when a deployment obfuscates it -- deliberately vague,
    revealing nothing about whether an account/email exists. -/

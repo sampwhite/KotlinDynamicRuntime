@@ -62,9 +62,11 @@ For a developer who runs the runtime, extends it, or contributes to it.
    and the rule behind them.
 3. **[The conference demo](demo-client/README.md),** a client built from configuration alone, its JSON explained one
    piece at a time.
-4. **[The schema dialect](reference/schema-dialect.md),** for the JSON Schema keywords the runtime reads, and its own.
-5. **[Deploying a lightweight node](deploy/lightweight-node.md),** to run a site of your own on one small server.
-6. **[Contributing](../CONTRIBUTING.md)** and **[the code guide](development/code-guide.md),** before you change the
+4. **[The grants demo](grants-demo/README.md),** a client in its own words: every piece of copy a client is likely to
+   reword, reworded theme by theme.
+5. **[The schema dialect](reference/schema-dialect.md),** for the JSON Schema keywords the runtime reads, and its own.
+6. **[Deploying a lightweight node](deploy/lightweight-node.md),** to run a site of your own on one small server.
+7. **[Contributing](../CONTRIBUTING.md)** and **[the code guide](development/code-guide.md),** before you change the
    code. The README lists [the design documents](../README.md#design-documents) behind each part.
 
 ## Have an AI configure it

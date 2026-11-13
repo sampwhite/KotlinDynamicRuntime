@@ -2,6 +2,7 @@
 
 package com.dynamicruntime.common.util
 
+import com.dynamicruntime.common.content.CPAGE
 import com.dynamicruntime.common.gedra.CCT
 import com.dynamicruntime.common.home.HFRAG
 
@@ -14,6 +15,9 @@ import com.dynamicruntime.common.home.HFRAG
  * The roles table is made from [markdownRoles], the list the copy checks hold copy to, so a role cannot be added without
  * appearing here. The syntax is prose, stated from [renderMarkdown]'s KDoc and [parseMarkdownFragments]'s, which are
  * what the renderer and the parser do. Here beside them, in the kernel, since both are the kernel's own.
+ *
+ * The pages a copy note may name (issue #1799) are made from [CPAGE.pages], so a page cannot be added without appearing
+ * here. Theme: #CUSTX.
  *
  * One Markdown literal, as the other generated references are: `$${…}` substitutes, and a single `${…}` is the page's
  * own text. It sits at the margin because `trimIndent` runs after substitution, where a table's lines would defeat it.
@@ -124,6 +128,27 @@ A second paragraph, still part of the intro.
 
 A name may not hold a `.`, since `namespace.key` could not reach it, and a key is declared once in a namespace. Each
 value is trimmed of the space around it.
+
+## Where a key is shown
+
+A file a component ships says, for each key, whether a client is likely to reword it and, when it is, where a person
+sees it. It says so in a note: a comment that starts `/-where `, directly before the key.
+
+```
+/-where Home: the paragraphs under the title. -/
+# +intro
+```
+
+- **A key a client is likely to reword** has its page, then where on the page: `<page>: <where on it>`, with one of
+  these pages: $${CPAGE.pages.map { "**$it**" }.let { it.dropLast(1).joinToString(", ") + ", or " + it.last() }}.
+- **Any other key** has `none: <why not>`, such as a page the same for every client, or words seen before anyone signs
+  in. A note before a namespace may only be this, and holds for each of its keys that has no note of its own.
+- **Every key has one**, its own or its namespace's. A check fails on a key with neither, so whoever adds a key decides.
+
+The Clients page's **Copy** panel shows a key's place under it, and finds keys by it. The keys listing returns it as
+`where`, and the assistant's `read_copy` lists the keys of a page by it. A note is a comment, so the values read exactly
+as they would without it. The [grants demo](../grants-demo/README.md) rewords every key that has a place, one theme a
+page.
 
 ## A client's copy overlay
 

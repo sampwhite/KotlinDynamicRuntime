@@ -62,6 +62,8 @@ object DOCORDER {
     const val walkThrough = -90
     const val readme = -80
     const val confDemo = -70
+    /** The grants demo (issue #1799), a client in its own words, after the conference demo it builds on. */
+    const val grantsDemo = -65
     /** The index of the references generated from the code. */
     const val reference = -60
     /** The license reads last. */

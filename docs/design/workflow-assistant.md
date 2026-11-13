@@ -170,7 +170,7 @@ else is refused, and a drift test holds each tool to its endpoint.
 | `view_workflow` | a workflow as the sandbox runs it | `GET /gedra/workflow/view` |
 | `read_client` | the client's definition as the sandbox runs it: labels and their notes, join roles, time zone | `GET /clientAdmin/client/definition` |
 | `read_menu` | the home menu's items, the audiences said once | `GET /clientAdmin/client/menu/items` |
-| `read_copy` | an index of the copy files, or one file's keys (a namespace of it) | `GET /clientAdmin/client/copy/keys` |
+| `read_copy` | an index of the pages and the copy files, the keys a person sees on one page, or one file's keys (a namespace of it) | `GET /clientAdmin/client/copy/keys` |
 | `read_overrides` | what the client's own configuration rewords or changes | `GET /clientAdmin/client/overrides` |
 | `read_forms_list` | the forms list's columns, and the fields a column could show | `GET /clientAdmin/client/usages` |
 | `list_reports` | the reports the client may run | `GET /clientAdmin/reports` |

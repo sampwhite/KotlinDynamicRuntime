@@ -1173,6 +1173,27 @@ class GedraConfigService : ServiceInitializer {
         return stampedByKey.values.toList() + carried
     }
 
+    /**
+     * Whether [config]'s latest revision is published and already says exactly what [config] does (issue #1799): every
+     * entry the config carries is stored unchanged, and the revision holds no entry the config does not carry. A write
+     * of it would add a revision that changes nothing, which a provisioning run on every start can skip. Read without
+     * the client's lock, so it answers for the moment it reads: a caller that then writes takes the lock as ever.
+     */
+    fun publishedAsIs(cxt: KdrCxt, config: GedraConfig): Boolean {
+        val latest = readLatest(cxt, config.gedraId) ?: return false
+        if (!latest.isPublished) return false
+        val prior = keyStoredEntries(latest.entries)
+        val seen = mutableSetOf<String>()
+        for ((slot, rawEntries) in gedraConfigToEntries(config)) {
+            val pk = slotPrimaryKeys[slot] ?: return false
+            for (raw in rawEntries) {
+                val key = entryKey(slot, pk.map { raw[it] })
+                if (!seen.add(key) || !entryDataUnchanged(prior[key], raw)) return false
+            }
+        }
+        return prior.keys == seen
+    }
+
     /** Folds stored entries into a map addressed by their slot key -- the diff source a write reads under lock. */
     private fun keyStoredEntries(entries: List<Map<String, Any?>>): Map<String, Map<String, Any?>> {
         val byKey = LinkedHashMap<String, Map<String, Any?>>()

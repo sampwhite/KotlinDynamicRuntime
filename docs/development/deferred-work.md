@@ -383,6 +383,18 @@ The trigger is a client asking for it; none has. When one does:
 - **Design View's ghost for a conditional field** (#972) shows a field that is absent; a choice that is absent needs a
   marking of its own.
 
+## When a client wants every word its people read in its own terms
+
+A client rewords copy key by key, and the grants demo (`docs/grants-demo/`) rewords every key a client is likely to.
+Some words a client's people read are still the webapp's own, with no key: the forms list's **New form** and **Create a
+form** buttons, its count of forms, and an empty list's "You haven't created any forms yet." So a client that calls its
+forms applications still shows "form" there.
+
+- **Move them into copy** *(found with #1799, deferred here 2026-11-11).* Each becomes a key of the `home` file with a
+  copy note, which `copyNotesTest` then asks the grants demo to reword, as the page-by-page move the "What is this?"
+  files began (issue #1337). Left out because no client has asked to rename its forms, and the menu's names already
+  change on the **Menu** panel.
+
 ## When a client's forms list has more columns than its users want to see
 
 The forms list shows every column a client declares in `kdr:usageDef`, after the application's own, for everyone. The

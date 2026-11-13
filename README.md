@@ -309,6 +309,10 @@ workflows, and two reports. Each page shows one bundle's stored JSON and explain
 served in the application as well as here. Start with [the opening page](docs/demo-client/README.md). The demo is
 provisioned by the `conf-demo` simulation on any test instance.
 
+[`docs/grants-demo/`](docs/grants-demo/README.md) shows the **grants demo**, a client in its own words: a community
+fund's grant program that rewords every piece of copy a client is likely to reword (its site's name, its home page, the
+words of its process, and its mails), one theme a page. It is provisioned by the `grants-demo` simulation.
+
 ## Design documents
 
 [`docs/design/gedra/entry.md`](docs/design/gedra/entry.md) describes the **Gedra entry** — the universal stored entity

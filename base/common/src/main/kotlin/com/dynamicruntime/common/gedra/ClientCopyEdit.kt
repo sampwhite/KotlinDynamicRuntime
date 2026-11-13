@@ -59,6 +59,11 @@ object ClientCopyEdit {
         val value: String,
         /** Where the application shows the file (issue #933); null for one it does not show. */
         val shownOn: String?,
+        /**
+         * Where a person sees the key, `<page>: <place>`, for one a client is likely to reword (issue #1799): its copy
+         * note. Null for the rest.
+         */
+        val where: String? = null,
     )
 
     /**
@@ -71,8 +76,11 @@ object ClientCopyEdit {
         val fileIds = MarkdownFragmentService.registeredFragmentSources(cxt).filter { !it.isOverlay }.map { it.fileId }.distinct()
         return fileIds.flatMap { fileId ->
             val effective = fragments.effectiveFragmentsFor(cxt, fileId, client) ?: return@flatMap emptyList()
+            val notes = fragments.copyNotes(fileId)
             effective.content.flatMap { (ns, keys) ->
-                keys.map { (key, value) -> CopyKey(fileId, ns, key, effective.audience.name, value, effective.shownOnFor(client)) }
+                keys.map { (key, value) ->
+                    CopyKey(fileId, ns, key, effective.audience.name, value, effective.shownOnFor(client), notes.whereOf(ns, key))
+                }
             }
         }
     }

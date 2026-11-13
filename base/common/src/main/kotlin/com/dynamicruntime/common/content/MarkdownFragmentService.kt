@@ -111,6 +111,8 @@ class MarkdownFragmentService : ServiceInitializer, ContentServer {
      * the config holding them, so a stored overlay is forgiven outside unit tests rather than refusing the boot.
      */
     fun checkFragmentsAtStartup(cxt: KdrCxt) {
+        val (copyNotesRead, noteFaults) = componentCopyNotes(registeredFragmentSources(cxt))
+        copyNotes = copyNotesRead
         val all = checkFragments(cxt)
         // A client's overlay is judged apart from the files every client shares (issue #841): a finding only its
         // merge has came from its overlay, which is dropped -- the client's copy reverting to the default --
@@ -130,7 +132,9 @@ class MarkdownFragmentService : ServiceInitializer, ContentServer {
             sharedCopyPageProblems(cxt, registeredFragmentSources(cxt)) +
             // A flavor-directory file that would not parse (issue #1220): already left out, and judged here like any
             // fragment fault -- refused outside production, reported in it.
-            DeployFlavors.deploymentCopyFaults(cxt)
+            DeployFlavors.deploymentCopyFaults(cxt) +
+            // A copy note that does not read (issue #1799): its file's notes are left out, so its keys say nowhere.
+            noteFaults
         // Notes are surfaced but never refuse a boot (issue #514): a backend file carrying a frontend pull is
         // not wrong, only resting on a human assertion. Logged so the fact is visible, and carried on the
         // operator report for a running node.
@@ -152,6 +156,18 @@ class MarkdownFragmentService : ServiceInitializer, ContentServer {
         }
         LogStartup.warn(cxt, "Markdown fragment files have problems: $detail")
     }
+
+    // The copy notes of the components' files (issue #1799), read once at boot: classpath files do not change.
+    @Volatile
+    private var copyNotes: Map<String, FragmentNotes> = emptyMap()
+
+    /**
+     * The copy notes of [fileId] (issue #1799): where a person sees each of its keys a client is likely to reword, and
+     * which are not ones. Empty for a file no component ships, or one whose notes did not read.
+     *
+     * Theme: #CUSTX.
+     */
+    fun copyNotes(fileId: String): FragmentNotes = copyNotes[fileId] ?: FragmentNotes.empty
 
     private fun where(r: FragmentCheckResult) = r.fileId + (r.client?.let { " (client '$it')" } ?: "")
 

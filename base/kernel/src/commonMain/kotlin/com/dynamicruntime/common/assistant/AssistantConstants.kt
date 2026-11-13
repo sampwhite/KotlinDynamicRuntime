@@ -309,4 +309,7 @@ object ATOOL {
 
     // `set_field_copy`'s input saying it removes the workflow's own copy (issue #1765), which a missing entry once did.
     const val remove = "remove"
+
+    // `read_copy`'s page (issue #1799): the keys whose copy note says a person sees them there.
+    const val page = "page"
 }

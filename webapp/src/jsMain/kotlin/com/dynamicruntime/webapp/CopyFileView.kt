@@ -4,6 +4,8 @@ import com.dynamicruntime.common.gedra.COV
 import com.dynamicruntime.common.gedra.CPY
 import com.dynamicruntime.common.gedra.EDM
 import com.dynamicruntime.common.gedra.GCI
+import com.dynamicruntime.common.user.AFRAG
+import com.dynamicruntime.common.user.MAILNS
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toOptStr
 
@@ -31,6 +33,8 @@ class CopyKeyRow(
     val override: CopyOverrideView?,
     /** Where the application shows the file (issue #933); null for one it does not show. */
     val shownOn: String?,
+    /** Where a person sees the key, `<page>: <place>`, for one a client is likely to reword (issue #1799); else null. */
+    val where: String? = null,
 ) {
     val orphan: Boolean get() = override?.orphan == true
 }
@@ -44,7 +48,7 @@ fun copyKeyRows(keys: List<CopyKeyView>, overrides: List<CopyOverrideView>): Lis
     val byAddress = overrides.associateBy { CopyAddress(it.fileId, it.namespace, it.key) }
     val rows = keys.map { k ->
         val at = CopyAddress(k.fileId, k.namespace, k.key)
-        CopyKeyRow(at, k.audience, k.value, byAddress[at], k.shownOn)
+        CopyKeyRow(at, k.audience, k.value, byAddress[at], k.shownOn, k.where)
     }
     val listed = rows.map { it.address }.toSet()
     val orphans = overrides.filter { CopyAddress(it.fileId, it.namespace, it.key) !in listed }.map {
@@ -61,6 +65,28 @@ fun copyKeyRows(keys: List<CopyKeyView>, overrides: List<CopyOverrideView>): Lis
     return out
 }
 
+/**
+ * A key's copy note as the editor draws it under the key (issue #1799): the page, then where on it, "Home — the
+ * paragraphs under the title." Pure, and covered under `jsNodeTest`.
+ */
+fun copyWhereText(where: String): String {
+    val page = where.substringBefore(':', "").trim()
+    val place = where.substringAfter(':').trim()
+    return if (page.isEmpty()) where else "$page \u2014 $place"
+}
+
+/**
+ * The namespaces of the `mail` file that are mails (issue #1799), as the kernel lists them ([MAILNS]) -- the list the
+ * server previews by -- and the client's copy has. Pure, and covered under `jsNodeTest`.
+ */
+fun copyMailNamespaces(rows: List<CopyKeyRow>): Set<String> =
+    rows.filter { it.address.fileId == AFRAG.mail && it.address.namespace in MAILNS.all }.map { it.address.namespace }.toSet()
+
+/** What a mail preview says of whose words it shows (issue #1799). Pure, and covered under `jsNodeTest`. */
+fun mailPreviewModeText(mode: String): String =
+    if (mode == EDM.draft) "In the sandbox's words, drafts included, which the client's people are not sent yet."
+    else "In the words the client's people are sent now."
+
 /** A pending change to one key: a [value] to set, or -- null -- a reset of the client's stored value. */
 class PendingCopy(val value: String?) {
     val reset: Boolean get() = value == null
@@ -76,14 +102,16 @@ class CopyFileGroup(val fileId: String, val shownOn: String?, val namespaces: Li
 class CopyViewQuery(val fileId: String?, val filter: String = "", val onlyChanged: Boolean = false)
 
 /**
- * Whether [row] answers [filter]: its `namespace.key` or the value it reads contains the words, ignoring case -- the
- * value being how an administrator usually knows a key, from what the page says. A blank filter matches everything.
- * Pure, and covered under `jsNodeTest`.
+ * Whether [row] answers [filter]: its `namespace.key`, the value it reads, or where a person sees it (issue #1799)
+ * contains the words, ignoring case -- the value being how an administrator usually knows a key, from what the page
+ * says, and the place how they describe one they cannot quote ("Home", "the invitation"). A blank filter matches
+ * everything. Pure, and covered under `jsNodeTest`.
  */
 fun copyRowMatches(row: CopyKeyRow, filter: String): Boolean {
     val words = filter.trim()
     if (words.isEmpty()) return true
-    return row.address.nsKey.contains(words, ignoreCase = true) || row.value.contains(words, ignoreCase = true)
+    return row.address.nsKey.contains(words, ignoreCase = true) || row.value.contains(words, ignoreCase = true) ||
+        row.where?.contains(words, ignoreCase = true) == true
 }
 
 /**

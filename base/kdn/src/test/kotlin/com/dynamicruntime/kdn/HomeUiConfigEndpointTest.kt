@@ -25,6 +25,7 @@ import com.dynamicruntime.common.util.imageRefIds
 import com.dynamicruntime.common.util.renderMarkdown
 import com.dynamicruntime.common.util.toJsonMap
 import com.dynamicruntime.kdn.confdemo.ConfDemo
+import com.dynamicruntime.kdn.grantsdemo.GrantsDemo
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.assertions.withClue
 import io.kotest.core.spec.style.StringSpec
@@ -158,14 +159,16 @@ class HomeUiConfigEndpointTest : StringSpec({
         links.forEach { (it[HFLD.sourcePath] as String).isNotEmpty() shouldBe true }
         // And the one-line description the Documents listing shows beside each (issue #554).
         links.forEach { (it[HFLD.description] as String).isNotEmpty() shouldBe true }
-        // The listing offers six, in this order (issue #1632): "Start here", the documentation's map by audience (issue
-        // #1510); the walk-through and the README, the ways in; the conference demo; the reference index; and the license.
-        // The walk-through and the demo are kdn's, declared after common's documents, so their places are set by order.
+        // The listing offers seven, in this order (issue #1632): "Start here", the documentation's map by audience (issue
+        // #1510); the walk-through and the README, the ways in; the conference demo and the grants demo (issue #1799); the
+        // reference index; and the license. The walk-through and the demos are kdn's, declared after common's documents,
+        // so their places are set by order.
         // The guides and the references are served but unlisted, reached from "Start here" and the index, as the design
         // documents (issue #1238) and a suite's inner pages -- the conference demo's, say -- are (issue #1136).
         val listed = links.filter { it[HFLD.listed] == true }.map { it[HFLD.id] }
         listed shouldContainExactly listOf(
-            HDOC.startHere, WalkThrough.docId, HDOC.readme, ConfDemo.docIdPrefix + "README", HDOC.referenceIndex, HDOC.license,
+            HDOC.startHere, WalkThrough.docId, HDOC.readme, ConfDemo.docIdPrefix + "README", GrantsDemo.docIdPrefix + "README",
+            HDOC.referenceIndex, HDOC.license,
         )
     }
 
