@@ -106,6 +106,7 @@ enum class ClockOp { advance, set, freeze, unfreeze, reset }
 object TSE {
     const val emails = "emails"
     const val to = "to"
+    const val from = "from"
     const val subject = "subject"
     const val text = "text"
     const val html = "html"

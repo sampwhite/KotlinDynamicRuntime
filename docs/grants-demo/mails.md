@@ -18,6 +18,7 @@ Here is the whole `mailWords` bundle:
       "fileId": "mail",
       "content": {
         "common": {
+          "fromName": "Riverbend Community Fund",
           "footer": "From the grants team at the Riverbend Community Fund.",
           "sentFrom": "Sent from the fund's grant site, ${siteHost}.",
           "htmlStyle": "font-family: Georgia, serif; font-size: 16px; line-height: 1.6; color: #1f3b2d;"
@@ -60,6 +61,7 @@ looks.
 
 | Where it is | Key | As shipped | In the demo |
 | --- | --- | --- | --- |
+| Mail: the name every mail is from, shown in the inbox list and above the subject. | `mail: common.fromName` | KotlinDynamicRuntime | Riverbend Community Fund |
 | Mail: the line closing every mail. | `mail: common.footer` | This message was sent automatically. If you were not expecting it, you can ignore it. | From the grants team at the Riverbend Community Fund. |
 | Mail: the line after the closing one, naming the site the mail came from. | `mail: common.sentFrom` | `Sent from ${siteHost}.` | `Sent from the fund's grant site, ${siteHost}.` |
 | Mail: the style of every mail as it is drawn, its font, size, and colors. | `mail: common.htmlStyle` | font-family: -apple-system, Helvetica, Arial, sans-serif; font-size: 15px; line-height: 1.5; color:… | font-family: Georgia, serif; font-size: 16px; line-height: 1.6; color: #1f3b2d; |
@@ -85,14 +87,19 @@ a reader can copy it.
 **The style is the HTML part's.** A mail goes out as text and as HTML, from the one body. `htmlStyle` is the inline
 style of the HTML part, where a client sets its font and colors. Inline only, since mail clients strip style sheets.
 
+**Who it is from** is `fromName`, the name a mail app shows in the inbox list and above the subject, beside the
+deployment's sending address. It is plain words, and a client may name itself with `${clientName}`. A deployment can
+word it for every client: a reference deployment's mails are from "Gedra". The code sent to someone registering has no
+client yet, so it is always from the deployment's name.
+
 **Every mail closes the same way**: the body, then `footer`, then `sentFrom`. A client that wants no line naming the
 site makes `sentFrom` empty.
 
 ## What you see
 
-Sign in by code as one of the fund's people, and the mail that arrives is the fund's. Its subject is **Your Riverbend
-sign-in code**, it closes with the grants team's line and names the fund's grant site, and its HTML part is set in a
-serif.
+Sign in by code as one of the fund's people, and the mail that arrives is the fund's. It is from **Riverbend Community
+Fund**, its subject is **Your Riverbend sign-in code**, it closes with the grants team's line and names the fund's grant
+site, and its HTML part is set in a serif.
 
 - **On a public reference site,** your demo user is one of the fund's people, but your address signs in as whichever of
   your users is chosen for it. On your **Profile** page, choose **Use for next sign-in** on your Grants demo user, then

@@ -37,6 +37,7 @@ object CPY {
 
     /** The mail preview's fields: which mail (a namespace of the `mail` file), and its rendered subject and parts. */
     const val mail = "mail"
+    const val from = "from"
     const val subject = "subject"
     const val text = "text"
     const val html = "html"

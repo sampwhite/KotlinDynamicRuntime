@@ -35,10 +35,16 @@ object MAIL {
     const val appFromAddress = "appFromAddress"
 
     /**
+     * The local part of the from-address derived from the mail domain (issue #1804): `no-reply`, since a reply goes
+     * nowhere. Who a mail is from is said by its display name, the `mail` file's `common.fromName` copy.
+     */
+    const val fromLocalPart = "no-reply"
+
+    /**
      * The from-address of mail no domain was configured for -- only ever simulated, since mail that can be sent
      * needs a domain (issue #1250). Under `.invalid` (RFC 2606), so it can never be a real address.
      */
-    const val unsentFromAddress = "kdr-automail@mail.invalid"
+    const val unsentFromAddress = "$fromLocalPart@mail.invalid"
 
     /**
      * The **indirection** key for the Mailgun API key: its value is the name of the property in
@@ -78,7 +84,8 @@ object MAILENV {
     val mailDomain = EnvVarDef(
         "KDR_MAIL_DOMAIN", group = ENVGRP.application, defaultDoc = "unset (required when mail can be sent)",
         description = "The domain mail is sent from, through Mailgun -- e.g. `mg.dynamicruntime.org` (issue #1250). The " +
-            "endpoint (`https://api.mailgun.net/v3/<domain>/messages`) and the from-address (`kdr-automail@<domain>`) " +
+            "endpoint (`https://api.mailgun.net/v3/<domain>/messages`) and the from-address (`no-reply@<domain>`, under the " +
+            "name a mail's copy gives as `common.fromName`) " +
             "are derived from it; the config keys `mailgunUri` and `appFromAddress` override either. Required when " +
             "the node loads a Mailgun key -- whenever something may be sent for real -- and the boot is refused " +
             "without it. With no key loaded, as on every test and local run, nothing is sent and it is not needed.",
@@ -120,6 +127,18 @@ class SentEmail(
 )
 
 /**
+ * A mail's From header (issue #1804): [address] under the display [name] a mail's copy gives, `"Name" <address>`, or
+ * the bare address when the name is blank. The name is copy a client writes, so it is made safe for a header: every
+ * control character (a line break above all, which would start a header of its own) becomes a space, and a quote or a
+ * backslash is escaped inside the quoted name, so nothing it says can add an address or a header.
+ */
+fun mailFromHeader(name: String, address: String): String {
+    val plain = name.map { if (it < ' ' || it == '\u007f') ' ' else it }.joinToString("").replace(Regex(" +"), " ").trim()
+    if (plain.isEmpty()) return address
+    return "\"" + plain.replace("\\", "\\\\").replace("\"", "\\\"") + "\" <$address>"
+}
+
+/**
  * Where mail is sent through and whom it is from (issue #1250): [mailgunUri] is null when nothing can be sent.
  */
 class MailSending(val mailgunUri: String?, val fromAddress: String)
@@ -135,7 +154,7 @@ class MailSending(val mailgunUri: String?, val fromAddress: String)
 fun mailSendingFor(config: KdrInstanceConfig, keyLoaded: Boolean): MailSending {
     val domain = config.getEnvVar(MAILENV.mailDomain)?.trim()?.ifEmpty { null }
     val uri = (config.get(MAIL.mailgunUri) as? String) ?: domain?.let { "https://api.mailgun.net/v3/$it/messages" }
-    val from = (config.get(MAIL.appFromAddress) as? String) ?: domain?.let { "kdr-automail@$it" }
+    val from = (config.get(MAIL.appFromAddress) as? String) ?: domain?.let { "${MAIL.fromLocalPart}@$it" }
     if (keyLoaded && (uri == null || from == null)) {
         throw KdrException(
             "Refusing to start: this node can send mail (its Mailgun key is loaded) but does not say from where. Set " +
@@ -321,7 +340,8 @@ class MailService : ServiceInitializer {
         inBackground: Boolean = false,
     ): SentEmail {
         val rendered = MailCopy.render(cxt, client, mail, params)
-        return sendEmail(cxt, to, rendered.subject, rendered.text, rendered.html, inBackground = inBackground)
+        val from = mailFromHeader(rendered.fromName, fromAddressForApp)
+        return sendEmail(cxt, to, rendered.subject, rendered.text, rendered.html, from = from, inBackground = inBackground)
     }
 
     /**

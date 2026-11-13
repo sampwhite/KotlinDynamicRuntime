@@ -14,6 +14,7 @@ import com.dynamicruntime.common.gedra.GedraConfigType
 import com.dynamicruntime.common.gedra.GedraId
 import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.http.request.ROLE
+import com.dynamicruntime.common.mail.MAIL
 import com.dynamicruntime.common.mail.MCOPY
 import com.dynamicruntime.common.mail.MailPreview
 import com.dynamicruntime.common.naming.clientNamespace
@@ -44,6 +45,8 @@ class CopyMailPreviewTest : StringSpec({
         code[COV.client] shouldBe GrantsDemo.client
         code[CPY.mode] shouldBe EDM.live
         code[CPY.subject] shouldBe "Your Riverbend sign-in code"
+        // From the fund (issue #1804), at the deployment's address.
+        code[CPY.from] shouldBe "\"Riverbend Community Fund\" <${MAIL.unsentFromAddress}>"
         // The text part, its code read out as the tests and the dev autofill read a real one's, then the closing line.
         val text = code[CPY.text] as String
         text shouldContain "verification code is ${MailPreview.sampleCode}."

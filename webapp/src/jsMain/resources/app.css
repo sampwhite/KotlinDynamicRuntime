@@ -1364,6 +1364,7 @@ textarea.copy-edit { font-family: inherit; min-height: 5rem; }
 .mail-preview { margin: 0 0 14px; }
 .mail-preview-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
 .mail-preview-subject { font-weight: 600; color: var(--text); }
+.mail-preview-from { margin: 0 0 2px; font-size: .85rem; color: var(--text-muted); }
 .mail-preview-frame {
     display: block; width: 100%; height: 340px; border: 1px solid var(--border); border-radius: 6px; background: #ffffff;
 }

@@ -110,3 +110,9 @@ else. Within the site, a client's administrators can see the email addresses of 
 yours to the demo's administrators.
 
 An account lasts only until the site's data is cleared.
+
+/- Who every mail is from (issue #1804): the product a reference deployment presents, in place of the runtime's
+   name. A client's own wording still wins over it. -/
+# !mail
+# @common
+# +fromName Gedra
