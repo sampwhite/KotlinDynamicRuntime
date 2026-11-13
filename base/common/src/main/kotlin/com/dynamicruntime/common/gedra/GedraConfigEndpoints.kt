@@ -16,6 +16,7 @@ import com.dynamicruntime.common.schema.SchTypeBuilder
 import com.dynamicruntime.common.user.ADEP
 import com.dynamicruntime.common.user.AdminRules
 import com.dynamicruntime.common.util.getReqNonBlankStr
+import com.dynamicruntime.common.util.joinAsPhrase
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonListOrEmpty
 import com.dynamicruntime.common.util.toJsonListOfStrings
@@ -805,7 +806,7 @@ private fun requireOperatorFieldsKept(c: KdrCxt, proposed: ClientDef?) {
     val keep = changed.joinToString(", ") { field ->
         (current ?: ClientFieldPolicies.leastAuthority)[field]?.let { "$field '$it'" } ?: "$field unset"
     }
-    val fields = if (changed.size <= 2) changed.joinToString(" and ") else "${changed.dropLast(1).joinToString(", ")}, and ${changed.last()}"
+    val fields = joinAsPhrase(changed)
     throw KdrException(
         "Client '${c.client}''s $fields may be set only by a platform operator; a client administrator's write must " +
             "keep them as they are ($keep).",

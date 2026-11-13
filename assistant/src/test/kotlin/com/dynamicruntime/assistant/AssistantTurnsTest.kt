@@ -936,6 +936,9 @@ class AssistantTurnsTest : StringSpec({
         AssistantTools.readableDoc(cxt, "facts").shouldNotBeNull()
         AssistantTools.readableDoc(cxt, "copy").shouldNotBeNull()
         AssistantTools.readableDoc(cxt, "report-paths").shouldNotBeNull()
+        // How the menu and Home's cards are changed, and who may call what (issue #1767).
+        AssistantTools.readableDoc(cxt, "menu-and-home-cards").shouldNotBeNull()
+        AssistantTools.readableDoc(cxt, "roles-and-access").shouldNotBeNull()
         AssistantTools.readableDoc(cxt, "api-guide").shouldBeNull()
     }
 
