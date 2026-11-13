@@ -2,9 +2,10 @@
 # Reference
 
 These pages list what the runtime reads and offers: every schema keyword, validation code, expression function, fact,
-copy role, report path, form layout key, role, and configuration slot, and every environment variable and endpoint.
-Each is generated from the code it describes, so it says what the runtime does, not what it was once meant to do. A
-copy of each is committed beside the code, and the build's `check` fails while one is behind it.
+copy role, report path, form layout key, role, configuration slot, core menu item, and home card. Two more list every
+environment variable and every endpoint. Each is generated from the code it describes, so it says what the runtime
+does, not what it was once meant to do. A copy of each is committed beside the code, and the build's `check` fails while
+one is behind it.
 
 Read a guide first for how the pieces fit together: [Start here](../start-here.md) says which, by what you want to do.
 
@@ -18,6 +19,7 @@ Read a guide first for how the pieces fit together: [Start here](../start-here.m
 | [Page widgets](page-widgets.md) | How a page written as copy places widgets with fences, what the checks refuse, and every kind of widget -- made from the kinds. |
 | [Report paths](report-paths.md) | How a report column names where its value comes from, and every attribute a path can end in, with its kind. |
 | [Form layouts](form-layouts.md) | What a type's layout may hold: field copy, which fields show and in what order, form wording, and a client's changes. |
+| [Menu and home cards](menu-and-home-cards.md) | How a client's menu and Home's cards are changed, by an overlay or the menu editor, and every item the platform ships. |
 | [Roles and access](roles-and-access.md) | What each role grants, who may call each section of the API, whose data a caller reads, and how to ask why not. |
 | [Client configuration](client-configuration.md) | Every slot of a client's configuration, what its entries hold, and what a write or an edit of one must send. |
 

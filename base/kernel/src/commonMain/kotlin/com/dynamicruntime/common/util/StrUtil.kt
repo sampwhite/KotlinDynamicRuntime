@@ -1,3 +1,5 @@
+@file:Suppress("HttpUrlsUsage")
+
 package com.dynamicruntime.common.util
 
 fun String.splitComma(): List<String> {
@@ -218,13 +220,15 @@ fun humanizeFieldName(name: String): String {
 }
 
 /**
- * [items] as one phrase for a sentence: `A`, `A and B`, `A, B and C` -- how a message names several things (the
- * traits a lock holds, the workflows holding them). Empty for none.
+ * [items] as one phrase for a sentence: `A`, `A and B`, `A, B, and C` -- how a message or a document names several
+ * things (the traits a lock holds, the workflows holding them). With the serial comma, as all our prose is written
+ * (issue #1767). Empty for none.
  */
 fun joinAsPhrase(items: List<String>, last: String = "and"): String = when (items.size) {
     0 -> ""
     1 -> items[0]
-    else -> items.dropLast(1).joinToString(", ") + " $last " + items.last()
+    2 -> "${items[0]} $last ${items[1]}"
+    else -> items.dropLast(1).joinToString(", ") + ", $last " + items.last()
 }
 
 private const val bytesPerKb = 1024L
