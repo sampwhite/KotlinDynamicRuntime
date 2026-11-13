@@ -213,6 +213,16 @@ object MAILNS {
 }
 
 /**
+ * The code in a code mail's text part (issue #1805), or null: the word after "verification code is:", or after
+ * "verification code for claiming ... is:", which the mail puts on a line of its own. The frontend's dev autofill and
+ * the tests read a mailed code here, so a rewording of a code mail keeps that phrase.
+ */
+fun verifyCodeInMail(text: String): String? = verifyCodeInMailPattern.find(text)?.groupValues?.get(1)
+
+// Lazily to the first " is:" on the line, so a client name or persona label holding a colon does not stop it.
+private val verifyCodeInMailPattern = Regex("verification code[^\\n]*? is:\\s*([0-9A-Za-z]+)")
+
+/**
  * Keys of the `error` namespace in the `auth` fragment file: the copy for auth error messages (issue #108).
  * The backend renders these from `KdrException`'s `KdrMsg` at the top-level handler -- the sentence lives here
  * (in `auth.md`), not duplicated in Kotlin. The `${...}`-bearing ones take the noted params.

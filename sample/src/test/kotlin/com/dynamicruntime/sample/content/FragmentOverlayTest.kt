@@ -16,6 +16,7 @@ import com.dynamicruntime.common.mail.MailService
 import com.dynamicruntime.common.user.ADEP
 import com.dynamicruntime.common.user.ADF
 import com.dynamicruntime.common.user.TestUser
+import com.dynamicruntime.common.user.verifyCodeInMail
 import com.dynamicruntime.common.util.jsonMap
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonListOfStrings
@@ -119,7 +120,7 @@ private fun fragmentOverlayTests() = stringSpec {
         MailCopy.render(cxt, SC.acme, MCOPY.verifyCode, code).text shouldContain "on behalf of Acme"
         MailCopy.render(cxt, SC.globex, MCOPY.verifyCode, code).text shouldContain "on behalf of Globex"
         MailCopy.render(cxt, null, MCOPY.verifyCode, code).text shouldContain "sent automatically"
-        MailCopy.render(cxt, SC.acme, MCOPY.verifyCode, code).text shouldContain "Your verification code is 424242."
+        verifyCodeInMail(MailCopy.render(cxt, SC.acme, MCOPY.verifyCode, code).text) shouldBe "424242"
         // Through the real path: an invitation into acme is signed by acme, although a full-scope administrator
         // in another client sent it -- the copy follows the user the mail is about.
         val admin = TestUser.createFullAdmin(cxt, "mail-admin@example.com")

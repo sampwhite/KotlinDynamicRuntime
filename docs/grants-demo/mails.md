@@ -25,11 +25,11 @@ Here is the whole `mailWords` bundle:
         },
         "verifyCode": {
           "subject": "Your Riverbend sign-in code",
-          "body": "Your verification code is [${code}]{.code}.\n\nEnter it on the Riverbend grant site to sign in. It expires in fifteen minutes."
+          "body": "Your verification code is:\n\n[${code}]{.code}\n\nEnter it on the Riverbend grant site to sign in. It expires in fifteen minutes."
         },
         "verifyCodePassword": {
           "subject": "Your Riverbend password code",
-          "body": "Your verification code is [${code}]{.code}.\n\nEnter it to set or change your password for the Riverbend grant site. It expires in fifteen minutes."
+          "body": "Your verification code is:\n\n[${code}]{.code}\n\nEnter it to set or change your password for the Riverbend grant site. It expires in fifteen minutes."
         },
         "invitation": {
           "subject": "Your account with the Riverbend Community Fund",
@@ -41,7 +41,7 @@ Here is the whole `mailWords` bundle:
         },
         "claimCode": {
           "subject": "Claiming your Riverbend account",
-          "body": "Your verification code for claiming the account [${address}]{.value} at the Riverbend Community Fund as [${personaLabel}]{.value} is [${code}]{.code}.\n\nEnter it on the page where you asked for it. It expires in fifteen minutes."
+          "body": "Your verification code for claiming the account [${address}]{.value} at the Riverbend Community Fund as [${personaLabel}]{.value} is:\n\n[${code}]{.code}\n\nEnter it on the page where you asked for it. It expires in fifteen minutes."
         },
         "claimNoMatchInClient": {
           "subject": "Claiming your Riverbend account",
@@ -66,9 +66,9 @@ looks.
 | Mail: the line after the closing one, naming the site the mail came from. | `mail: common.sentFrom` | `Sent from ${siteHost}.` | `Sent from the fund's grant site, ${siteHost}.` |
 | Mail: the style of every mail as it is drawn, its font, size, and colors. | `mail: common.htmlStyle` | font-family: -apple-system, Helvetica, Arial, sans-serif; font-size: 15px; line-height: 1.5; color:… | font-family: Georgia, serif; font-size: 16px; line-height: 1.6; color: #1f3b2d; |
 | Mail: the subject of the code sent to one of the client's people signing in by code. A registration's code uses the same key in the deployment's words, since no client is known yet. | `mail: verifyCode.subject` | Your verification code | Your Riverbend sign-in code |
-| Mail: the body of the code sent to one of the client's people signing in by code. A registration's code uses the same key in the deployment's words, since no client is known yet. | `mail: verifyCode.body` | `Your verification code is [${code}]{.code}. Enter it where you asked for it. It expires in fifteen…` | `Your verification code is [${code}]{.code}. Enter it on the Riverbend grant site to sign in.…` |
+| Mail: the body of the code sent to one of the client's people signing in by code. A registration's code uses the same key in the deployment's words, since no client is known yet. | `mail: verifyCode.body` | `Your verification code is: [${code}]{.code} Enter it where you asked for it. It expires in fifteen…` | `Your verification code is: [${code}]{.code} Enter it on the Riverbend grant site to sign in.…` |
 | Mail: the subject of the code sent to one of the client's people setting or changing a password. | `mail: verifyCodePassword.subject` | Your verification code | Your Riverbend password code |
-| Mail: the body of the code sent to one of the client's people setting or changing a password. | `mail: verifyCodePassword.body` | `Your verification code is [${code}]{.code}. Enter it to set or change your password. It expires in…` | `Your verification code is [${code}]{.code}. Enter it to set or change your password…` |
+| Mail: the body of the code sent to one of the client's people setting or changing a password. | `mail: verifyCodePassword.body` | `Your verification code is: [${code}]{.code} Enter it to set or change your password. It expires in…` | `Your verification code is: [${code}]{.code} Enter it to set or change your password…` |
 | Mail: the subject of the invitation sent to someone an administrator adds to the client. | `mail: invitation.subject` | You have been invited | Your account with the Riverbend Community Fund |
 | Mail: the body of the invitation sent to someone an administrator adds to the client. | `mail: invitation.body` | `An account has been created for [${address}]{.value} at [${clientName}]{.value}, as…` | The Riverbend Community Fund has made you an account on its grant site… |
 | Mail: the subject of the reminder of how to sign in that an administrator sends one of the client's people. | `mail: signInReminder.subject` | `Your account at ${clientName}` | Signing in to the Riverbend grant site |
@@ -83,6 +83,10 @@ mail's own, and each mail's shipped body uses the ones it has. Reworded, a body 
 mail its code, an invitation its link and what to type if the link fails. The
 [copy reference](../reference/copy.md#roles) explains `{.code}` and `{.value}`, which set a code or an address apart so
 a reader can copy it.
+
+**A code is on a line of its own, and never in the subject.** A phone offers a mailed code for the field that asks for
+it, and finds the code more readily on a line by itself. A subject is shown on a locked phone, where anyone holding it
+could read the code, so the shipped code mails keep it out, and so do the demo's.
 
 **The style is the HTML part's.** A mail goes out as text and as HTML, from the one body. `htmlStyle` is the inline
 style of the HTML part, where a client sets its font and colors. Inline only, since mail clients strip style sheets.

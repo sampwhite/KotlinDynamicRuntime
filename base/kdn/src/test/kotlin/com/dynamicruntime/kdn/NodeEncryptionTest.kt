@@ -6,7 +6,7 @@ import com.dynamicruntime.common.node.InstanceConfigService
 import com.dynamicruntime.common.node.NodeService
 import com.dynamicruntime.common.util.mkEncryptionKey
 import com.dynamicruntime.common.util.stdHashToBytes
-import com.dynamicruntime.common.util.toReadableChars
+import com.dynamicruntime.common.util.toDigits
 import com.dynamicruntime.common.util.toJsonMap
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
@@ -90,8 +90,8 @@ class NodeEncryptionTest : StringSpec({
         val token = "token-abc"
         val address = "victim@example.com"
 
-        // What the attacker can build with only public values (the pre-fix algorithm, verbatim).
-        val attackerGuess = (address + token).stdHashToBytes().toReadableChars(NodeService.verifyCodeBytes)
+        // What the attacker can build with only public values (the pre-fix algorithm, written as today's digits).
+        val attackerGuess = (address + token).stdHashToBytes().toDigits(NodeService.verifyCodeDigits)
 
         node.computeVerifyCode(token, address) shouldNotBe attackerGuess
     }

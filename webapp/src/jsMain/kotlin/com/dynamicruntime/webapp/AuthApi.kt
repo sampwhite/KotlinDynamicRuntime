@@ -10,6 +10,7 @@ import com.dynamicruntime.common.user.AFEAT
 import com.dynamicruntime.common.user.AFLD
 import com.dynamicruntime.common.user.PERSONA
 import com.dynamicruntime.common.user.UserChoice
+import com.dynamicruntime.common.user.verifyCodeInMail
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptLong
@@ -289,11 +290,8 @@ object AuthApi {
         val results = Http.getApiResult(TEP.simulatedEmails).valueOrNull() ?: return null
         val emails = results[EP.results].toJsonMapOrEmpty()[TSE.emails].toJsonListOfMaps()
         val text = emails.firstOrNull { it[TSE.to] == email }?.get(TSE.text) as? String
-        return text?.let { codePattern.find(it)?.groupValues?.get(1) }
+        return text?.let { verifyCodeInMail(it) }
     }
-
-    /** The verification code in an email body (see the auth email template: "... verification code is <code>."). */
-    private val codePattern = Regex("verification code is (\\S+?)[.\\s]")
 
     private fun userFrom(response: Map<String, Any?>): UserProfile =
         UserProfile.fromUserInfo(response[EP.results].toJsonMapOrEmpty())

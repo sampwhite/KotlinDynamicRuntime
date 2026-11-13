@@ -171,11 +171,15 @@ none of its own.
 - **The Register page says what the address is for, where it is typed** (issue #1698): the auth file's `register.intro`,
   empty in core, drawn above the form as the Log in page draws `login.intro`. The `reference` flavor repeats the card's
   promise there, since both Register buttons on the home page come straight to the form.
-- **The sign-in, Register, and claim fields are typed on phones and filled by password managers** (issues #1785, #1790).
+- **The sign-in, Register, and claim fields are typed on phones and filled by password managers** (issues #1785, #1790,
+  #1805).
   The address field takes `textField(..., email = true)`: the email keyboard (`inputmode="email"`), no leading capital,
   no autocorrect or spelling marks, with `autocomplete="username"` kept; `inputmode` rather than `type="email"`, which
-  validates and would refuse the username sign-in also takes. The code field starts a phone keyboard in capitals
-  (`AC.capitalizeCharacters`), and the server takes a code in any case. **Chrome fills the remembered username into
+  validates and would refuse the username sign-in also takes. A code is six digits, and its field shows a phone's
+  number pad (`AC.inputModeNumeric`) and keeps `autocomplete="one-time-code"`, so a phone offers a code it finds in a
+  mail; the mail puts the code on a line of its own, where a phone looks for it, and never in the subject, which a
+  locked phone shows. The server ignores
+  a space or a hyphen typed in it. **Chrome fills the remembered username into
   the code field** when it fills a password beside it (Register, sign-in's "Email me a code and set a password",
   Profile's password change), whatever the code field says, and on other sites too. A hidden username field, a
   read-only address with named fields, and a nonstandard `autocomplete` value were each tried and failed (issue

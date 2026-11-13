@@ -20,6 +20,7 @@ import com.dynamicruntime.common.mail.MailPreview
 import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.user.AFRAG
 import com.dynamicruntime.common.user.TestUser
+import com.dynamicruntime.common.user.verifyCodeInMail
 import com.dynamicruntime.kdn.grantsdemo.GrantsDemo
 import com.dynamicruntime.kdn.grantsdemo.provisionGrantsDemo
 import io.kotest.core.spec.style.StringSpec
@@ -49,7 +50,7 @@ class CopyMailPreviewTest : StringSpec({
         code[CPY.from] shouldBe "\"Riverbend Community Fund\" <${MAIL.unsentFromAddress}>"
         // The text part, its code read out as the tests and the dev autofill read a real one's, then the closing line.
         val text = code[CPY.text] as String
-        text shouldContain "verification code is ${MailPreview.sampleCode}."
+        verifyCodeInMail(text) shouldBe MailPreview.sampleCode
         text shouldContain "From the grants team at the Riverbend Community Fund."
         // The HTML part, in the fund's style.
         val html = code[CPY.html] as String
