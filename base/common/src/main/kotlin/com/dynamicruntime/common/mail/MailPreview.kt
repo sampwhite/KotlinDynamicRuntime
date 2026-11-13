@@ -22,6 +22,7 @@ import com.dynamicruntime.common.user.PERSONA
  *
  * Theme: #CUSTX.
  */
+@Suppress("ConstPropertyName")
 object MailPreview {
     /** The address a preview's mail is about: made up, so no preview shows a real person's. */
     const val sampleAddress = "pat@example.com"
